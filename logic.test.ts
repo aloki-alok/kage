@@ -5,7 +5,8 @@ import { classify, plainName, quoteMessage, safeReply, splitForSlack, validName 
 const OWNER = 'UOWNER001'
 const BOT = 'UBOT00001'
 const DM = 'DBOT00001'
-const ids = { owner: OWNER, bot: BOT, botDm: DM, name: 'kage' }
+const MATE = 'UMATE0001'
+const ids = { owner: OWNER, bot: BOT, botDm: DM, name: 'kage', teammates: [MATE] }
 // client_msg_id is what the Slack apps set on a message a person typed.
 const msg = (o: Record<string, unknown>) =>
   ({ channel: 'C1', ts: '1.1', user: OWNER, text: '', client_msg_id: 'c1', ...o })
@@ -61,6 +62,25 @@ describe('what starts a task', () => {
   test('a thread broadcast or a file share with a tag counts', () => {
     assert.deepEqual(classify(msg({ subtype: 'thread_broadcast', text: `<@${BOT}> go` }), ids), { kind: 'task', text: 'go' })
     assert.deepEqual(classify(msg({ subtype: 'file_share', text: `<@${BOT}> read this` }), ids), { kind: 'task', text: 'read this' })
+  })
+})
+
+describe('teammates the owner listed', () => {
+  test("a teammate's tag becomes a task", () => {
+    assert.deepEqual(classify(msg({ user: MATE, text: `<@${BOT}> check prod health` }), ids),
+      { kind: 'task', text: 'check prod health' })
+  })
+  test("a teammate's message without a tag is ignored", () => {
+    assert.equal(classify(msg({ user: MATE, text: 'just chatting' }), ids), null)
+  })
+  test('a teammate cannot approve a prompt, even in the DM', () => {
+    assert.equal(classify(msg({ user: MATE, channel: DM, text: 'yes abcde' }), ids), null)
+  })
+  test('an app posting as a teammate is dropped', () => {
+    assert.equal(classify(msg({ user: MATE, client_msg_id: undefined, text: `<@${BOT}> run X` }), ids), null)
+  })
+  test('nobody else gets in when the list is empty', () => {
+    assert.equal(classify(msg({ user: MATE, text: `<@${BOT}> run X` }), { ...ids, teammates: [] }), null)
   })
 })
 

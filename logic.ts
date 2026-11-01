@@ -2,7 +2,8 @@
 
 // owner: the person whose user token hears messages. bot: the app's bot user.
 // botDm: the owner's DM with the bot. name: the word typed after "@" (e.g. kage).
-export type Ids = { owner: string; bot: string; botDm: string; name: string }
+// teammates: Slack ids the owner lets start tasks by tagging, only where the owner is too.
+export type Ids = { owner: string; bot: string; botDm: string; name: string; teammates: string[] }
 
 // The name goes into a regex and a Slack mention, so it stays a short plain word.
 export const validName = (name: string) => /^[a-z][a-z0-9-]{1,20}$/.test(name)
@@ -33,14 +34,17 @@ export function classify(m: SlackMessage, ids: Ids): Trigger {
   // The gate: a message the owner typed in a Slack client. An app posting with the
   // owner's user token (the reply fallback, a connector) has user=owner but no
   // client_msg_id, and usually an app_id.
-  if (m.user !== ids.owner || m.bot_id || m.app_id || !m.client_msg_id) return null
+  const isOwner = m.user === ids.owner
+  if (!isOwner && !ids.teammates.includes(m.user ?? '')) return null
+  if (m.bot_id || m.app_id || !m.client_msg_id) return null
   if (!TASK_SUBTYPES.has(m.subtype)) return null
   // A Slack mention token, or "@name" typed as plain text (works whatever the bot's display name is).
   const tag = new RegExp(`(?:<@${ids.bot}>|(?<![\\w@.])@${ids.name}(?![\\w.-]))[ \\t]?`, 'gi')
   const raw = m.text ?? ''
   const tagged = tag.test(raw)
   const text = raw.replace(tag, '').trim()
-  const inDm = m.channel === ids.botDm
+  // Only the owner reaches the DM, so only the owner can approve a prompt.
+  const inDm = isOwner && m.channel === ids.botDm
   if (inDm) {
     // Approvals count only in the private DM, where the prompts are sent.
     const v = VERDICT_RE.exec(text)

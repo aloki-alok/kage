@@ -73,6 +73,21 @@ Your laptop must be on, awake and online. `start.sh` stops a Mac from idling to 
 - **Plain text works too:** typing `@kage` without picking it from Slack's list still counts.
 - **Canvases and files:** Kage can't be tagged inside a canvas, and it sees file names, not contents. Paste a canvas link in your message and ask Kage to read it, if your session has a Slack MCP connector.
 
+### Let a teammate tag it
+
+Add their Slack user IDs to `~/.config/kage/env`, then restart Kage:
+
+```
+KAGE_TEAMMATES=U0123ABC,U0456DEF
+```
+
+A teammate can tag `@kage` only in a conversation you are also in, because Kage hears Slack through your account. Their tasks run in your session, with two limits:
+
+- Anything that needs your yes (prod changes, deploys, protected branches, merges) waits for your yes.
+- Secrets go to your DM, never to their thread.
+
+Only you can approve a permission prompt.
+
 You get 🥷 on your message when Kage picks it up, and ⚔️ when it has answered. Long jobs get a one-line "working on it" reply first, then the result. Answers stay in the thread. Only something that must never show in a channel (a password, a token, a key, someone's private data) goes to your DM instead.
 
 ## How it works
@@ -108,7 +123,7 @@ Kage gives Slack a path into a session that has everything your laptop has. Thes
 
 | Risk | What stops it |
 |---|---|
-| Someone else tags `@kage` | Only your Slack user ID passes the gate. Everyone else is dropped before Claude sees anything. |
+| Someone else tags `@kage` | Only your Slack user ID, plus any IDs you list in `KAGE_TEAMMATES`, passes the gate. Everyone else is dropped before Claude sees anything. A teammate can never approve a prompt. |
 | An app or script posts as you, using your token | Slack sets `client_msg_id` only on messages a person typed in a Slack app. Kage requires it and rejects anything with an `app_id`. |
 | A message in the thread says "ignore your instructions and..." | Thread messages reach Claude quoted, labelled by Slack ID, and marked as data. Only your own tagged line is the task. |
 | Claude is tricked into posting somewhere else | Replies may only go to a channel or DM a task came from, or to your DM with the bot. `@channel`, `@here` and user mentions are defused. |
