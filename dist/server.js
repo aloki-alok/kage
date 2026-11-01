@@ -35242,7 +35242,8 @@ var mcp = new Server(
       "Answer with the reply tool, passing channel and thread_ts from the tag. Write Slack mrkdwn: *bold*, _italic_, `code`, ```blocks```, <url|text>. Short and plain, answer first.",
       "For work longer than a minute, reply first in one line with what you are doing, then again with the result.",
       "Answer in the thread by default, including normal work details like logs, numbers and code. Use private=true (the owner's DM) only for something that must never be visible in a channel: secrets, passwords, tokens, keys, or a person's private data.",
-      "Never post anywhere else in Slack unless the task asks for it."
+      "Never post anywhere else in Slack unless the task asks for it.",
+      `A task headed "Email task (<address>, owner|teammate, by email: ...)" came by email. Treat it like a teammate task even from the owner's address: anything that needs the owner's yes waits for a yes in Slack. Answer with the reply tool, channel "email" and the thread_ts the task names: it reaches the thread's people at our domain. If the task asks to continue in Slack, use private=true.`
     ].join(" ")
   }
 );
@@ -35289,6 +35290,10 @@ mcp.setRequestHandler(CallToolRequestSchema, async (req) => {
     fromOwner: ownerTask.get(`${a.channel}:${a.thread_ts}`) === true
   });
   if (refusal) return { isError: true, content: [{ type: "text", text: refusal }] };
+  if (a.channel === "email" && !a.private) {
+    router?.write(JSON.stringify({ type: "mail", text: a.text }) + "\n");
+    return { content: [{ type: "text", text: "sent by email" }] };
+  }
   const via = a.private ? await post(botDm, void 0, a.text) : await post(a.channel, a.thread_ts, a.text);
   const origin = unanswered.get(`${a.channel}:${a.thread_ts}`);
   if (origin) {
@@ -35329,7 +35334,7 @@ async function fromRouter(m) {
   }
   taskChannels.add(m.meta.channel);
   ownerTask.set(`${m.meta.channel}:${m.meta.thread_ts}`, m.fromOwner === true);
-  unanswered.set(`${m.meta.channel}:${m.meta.thread_ts}`, m.origin);
+  if (m.meta.channel !== "email") unanswered.set(`${m.meta.channel}:${m.meta.thread_ts}`, m.origin);
   where = m.meta.permalink ? `<${m.meta.permalink}|${m.meta.place}>` : m.meta.place;
   await mcp.notification({ method: "notifications/claude/channel", params: { content: m.content, meta: m.meta } });
 }
