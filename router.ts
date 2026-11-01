@@ -18,7 +18,7 @@ const THREADS = `${DIR}/threads.json`
 // start.sh sets the command that starts Claude Code with the kage channel.
 const CLAUDE = process.env.KAGE_CLAUDE || (log('KAGE_CLAUDE is not set: start Kage with ./start.sh'), process.exit(1))
 const MAX = Number(env.KAGE_MAX_SESSIONS || 4)
-const IDLE_MIN = Number(env.KAGE_IDLE_MINUTES || 5)
+const IDLE_MIN = Number(env.KAGE_IDLE_MINUTES || 30)
 
 process.on('unhandledRejection', e => log('unhandled', e))
 
