@@ -18,7 +18,7 @@ const THREADS = `${DIR}/threads.json`
 // start.sh sets the command that starts Claude Code with the kage channel.
 const CLAUDE = process.env.KAGE_CLAUDE || (log('KAGE_CLAUDE is not set: start Kage with ./start.sh'), process.exit(1))
 const MAX = Number(env.KAGE_MAX_SESSIONS || 4)
-const IDLE_MIN = Number(env.KAGE_IDLE_MINUTES || 30)
+const IDLE_MIN = Number(env.KAGE_IDLE_MINUTES || 5)
 
 process.on('unhandledRejection', e => log('unhandled', e))
 
@@ -36,6 +36,11 @@ const tmux = (...a: string[]) => execFileSync('tmux', a, { encoding: 'utf8' })
 // Claude Code keeps a session's transcript in a folder named after the working directory.
 // Its mtime is the session's last activity, and its existence means there is something to resume.
 const PROJECT = `${process.env.HOME}/.claude/projects/${process.cwd().replace(/[^A-Za-z0-9]/g, '-')}`
+// Cleanup: Claude Code deletes old transcripts (cleanupPeriodDays, 30 by default). A thread whose
+// transcript is gone has nothing to resume, so it leaves the map; a new tag there starts fresh.
+// A pane that just started has no transcript yet, so running panes are kept.
+const runningAtStart = new Set(panes().keys())
+for (const [k, id] of Object.entries(saved)) if (!existsSync(`${PROJECT}/${id}.jsonl`) && !runningAtStart.has(id)) delete saved[k]
 const lastActivity = (key: string): number => { try { return statSync(`${PROJECT}/${d.saved()[key]}.jsonl`).mtimeMs } catch { return 0 } }
 
 // Every thread is a pane in one tiled window, "threads", labelled with its channel. Each pane
@@ -90,8 +95,7 @@ const d: Dispatcher<ToSession> = new Dispatcher<ToSession>({
 }, { max: MAX, idleMs: IDLE_MIN * 60_000, connectMs: (CLAUDE.includes('development-channels') ? 30 : 3) * 60_000, newId: randomUUID, saved })
 
 // Panes still running from before this router restarted keep working.
-const running = new Set(panes().keys())
-d.adopt(Object.keys(saved).filter(k => running.has(saved[k]!)), Date.now())
+d.adopt(Object.keys(saved).filter(k => runningAtStart.has(saved[k]!)), Date.now())
 // A task that could not reach a session gets ⚠️ on its message instead of waiting forever.
 const giveBack = (m: ToSession) => {
   if (m.type !== 'task') return

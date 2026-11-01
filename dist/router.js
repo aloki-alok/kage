@@ -17303,10 +17303,10 @@ var require_client = __commonJS({
         });
       }
       if (err.code === "ERR_TLS_CERT_ALTNAME_INVALID") {
-        const running2 = client[kQueue].splice(client[kRunningIdx], client[kRunning]);
+        const running = client[kQueue].splice(client[kRunningIdx], client[kRunning]);
         client[kPendingIdx] = client[kRunningIdx];
-        for (let i = 0; i < running2.length; i++) {
-          util.errorRequest(client, running2[i], err);
+        for (let i = 0; i < running.length; i++) {
+          util.errorRequest(client, running[i], err);
         }
         while (client[kPending] > 0 && client[kQueue][client[kPendingIdx]].servername === client[kServerName]) {
           const request = client[kQueue].splice(client[kPendingIdx], 1)[0];
@@ -17633,8 +17633,8 @@ var require_pool_base = __commonJS({
       }
       get [kRunning]() {
         let ret = 0;
-        for (const { [kRunning]: running2 } of this[kClients]) {
-          ret += running2;
+        for (const { [kRunning]: running } of this[kClients]) {
+          ret += running;
         }
         return ret;
       }
@@ -37041,7 +37041,7 @@ var SOCK = `${DIR}/router.sock`;
 var THREADS = `${DIR}/threads.json`;
 var CLAUDE = process.env.KAGE_CLAUDE || (log("KAGE_CLAUDE is not set: start Kage with ./start.sh"), process.exit(1));
 var MAX = Number(env.KAGE_MAX_SESSIONS || 4);
-var IDLE_MIN = Number(env.KAGE_IDLE_MINUTES || 30);
+var IDLE_MIN = Number(env.KAGE_IDLE_MINUTES || 5);
 process.on("unhandledRejection", (e) => log("unhandled", e));
 var PICKED_UP = "ninja";
 var WAITING = "hourglass_flowing_sand";
@@ -37053,6 +37053,8 @@ var react = (channel, ts, name) => (channel === ids.botDm ? bot : user).reaction
 var saved = existsSync(THREADS) ? JSON.parse(readFileSync2(THREADS, "utf8")) : {};
 var tmux = (...a) => execFileSync("tmux", a, { encoding: "utf8" });
 var PROJECT = `${process.env.HOME}/.claude/projects/${process.cwd().replace(/[^A-Za-z0-9]/g, "-")}`;
+var runningAtStart = new Set(panes().keys());
+for (const [k, id] of Object.entries(saved)) if (!existsSync(`${PROJECT}/${id}.jsonl`) && !runningAtStart.has(id)) delete saved[k];
 var lastActivity = (key) => {
   try {
     return statSync(`${PROJECT}/${d.saved()[key]}.jsonl`).mtimeMs;
@@ -37113,8 +37115,7 @@ var d = new Dispatcher({
   }
   // The dev route waits for a person to confirm a warning screen in each new pane.
 }, { max: MAX, idleMs: IDLE_MIN * 6e4, connectMs: (CLAUDE.includes("development-channels") ? 30 : 3) * 6e4, newId: randomUUID, saved });
-var running = new Set(panes().keys());
-d.adopt(Object.keys(saved).filter((k) => running.has(saved[k])), Date.now());
+d.adopt(Object.keys(saved).filter((k) => runningAtStart.has(saved[k])), Date.now());
 var giveBack = (m) => {
   if (m.type !== "task") return;
   log("could not deliver to a session:", m.meta.place, m.origin.ts, `(attach: tmux attach -t ${NAME})`);

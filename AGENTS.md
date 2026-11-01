@@ -78,7 +78,7 @@ Run every command from the repo root. Each step ends with a check. Go to the nex
 | Stop | `tmux kill-session -t =<name>` |
 | Start at login on or off (macOS) | `./autostart.sh on` or `./autostart.sh off` |
 | Let a teammate tag it | `./setup.sh teammate add <name, @handle or id>` (also `remove`, `list`). If it lists two people, ask which one. |
-| Change the session limits | Add `KAGE_MAX_SESSIONS=4` or `KAGE_IDLE_MINUTES=30` to `~/.config/kage/env`, then restart |
+| Change the session limits | Add `KAGE_MAX_SESSIONS=4` or `KAGE_IDLE_MINUTES=5` to `~/.config/kage/env`, then restart |
 | Update Kage | `git pull`, then restart. The plugin reads this folder, so no reinstall is needed. |
 
 The token file is `~/.config/kage/env` (mode 600). Never print it, copy it or commit it.

@@ -103,9 +103,10 @@ Each thread gets its own Claude Code session, in its own pane of the `threads` t
 
 - **Restarts keep the context.** Each thread keeps its conversation id for good. If Claude Code exits, Kage restarts, or your Mac reboots, the thread's next tag resumes the same conversation.
 - **At most 4 sessions run at once.** A tag over the limit gets ⏳ and starts when a session frees up.
-- **Idle panes close after 30 minutes** with no activity, unless Claude is still working or waiting on your approval. The conversation is kept, and the next tag in that thread reopens it.
+- **Idle panes close after 5 minutes** with no activity, unless Claude is still working or waiting on your approval. Nothing keeps running. The conversation stays on disk, and the next tag in that thread reopens it with its full history.
+- **Old threads clean themselves up.** Claude Code deletes transcripts after 30 days (its `cleanupPeriodDays` setting). Kage then forgets that thread, and a new tag there starts fresh.
 
-To change the limits, add `KAGE_MAX_SESSIONS=6` or `KAGE_IDLE_MINUTES=60` to `~/.config/kage/env`, then restart Kage.
+To change the limits, add `KAGE_MAX_SESSIONS=6` or `KAGE_IDLE_MINUTES=15` to `~/.config/kage/env`, then restart Kage.
 
 ### Let a teammate tag it
 
