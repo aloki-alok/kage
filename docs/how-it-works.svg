@@ -1,0 +1,64 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="880" height="330" viewBox="0 0 880 330" role="img" aria-labelledby="t d">
+  <title id="t">How Kage works</title>
+  <desc id="d">Your Slack message travels over Socket Mode to a small server on your machine, which checks you sent it and hands it to your Claude Code session; Claude replies in the same thread.</desc>
+  <style>
+    :root { --bg:#ffffff; --ink:#18161d; --muted:#6b665e; --line:#cfcac0; --card:#f6f4ef; --accent:#d23c25; --mine:#fbefec; }
+    @media (prefers-color-scheme: dark) {
+      :root { --bg:#0f0e13; --ink:#f4f1ea; --muted:#a39e94; --line:#3a3746; --card:#1b1a22; --accent:#e5462e; --mine:#1f1517; }
+    }
+    .sans { font-family: ui-sans-serif, -apple-system, "Segoe UI", Helvetica, Arial, sans-serif; }
+    .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+    .card { fill: var(--card); stroke: var(--line); }
+    .h { fill: var(--ink); font-size: 15px; font-weight: 700; }
+    .s { fill: var(--muted); font-size: 12.5px; }
+    .n { fill: var(--accent); font-size: 12px; font-weight: 700; }
+    .arrow { stroke: var(--accent); stroke-width: 2; fill: none; marker-end: url(#tip); }
+    .back { stroke: var(--muted); stroke-width: 1.5; fill: none; stroke-dasharray: 5 4; marker-end: url(#tipm); }
+  </style>
+  <defs>
+    <marker id="tip" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0 L10 5 L0 10 Z" fill="var(--accent)"/></marker>
+    <marker id="tipm" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0 L10 5 L0 10 Z" fill="var(--muted)"/></marker>
+  </defs>
+  <rect width="880" height="330" rx="14" fill="var(--bg)"/>
+
+  <!-- your machine -->
+  <rect x="300" y="40" width="556" height="214" rx="14" fill="var(--mine)" stroke="var(--accent)" stroke-opacity=".45" stroke-dasharray="6 5"/>
+  <text x="318" y="64" class="sans n" letter-spacing="1.5">YOUR MACHINE</text>
+
+  <!-- 1 Slack -->
+  <rect x="24" y="96" width="200" height="104" rx="12" class="card"/>
+  <text x="40" y="122" class="sans n">1</text>
+  <text x="58" y="122" class="sans h">You, in Slack</text>
+  <text x="40" y="148" class="mono s">@kage check this</text>
+  <text x="40" y="168" class="sans s">any channel, thread,</text>
+  <text x="40" y="185" class="sans s">DM or group DM</text>
+
+  <path d="M226 148 L 318 148" class="arrow"/>
+  <text x="232" y="138" class="sans s">Socket Mode</text>
+  <text x="232" y="168" class="sans s">no open port</text>
+
+  <!-- 2 server -->
+  <rect x="322" y="96" width="232" height="140" rx="12" class="card"/>
+  <text x="338" y="122" class="sans n">2</text>
+  <text x="356" y="122" class="sans h">server.ts gate</text>
+  <text x="338" y="148" class="sans s">✓ typed by you (user id,</text>
+  <text x="352" y="165" class="sans s">real Slack client)</text>
+  <text x="338" y="186" class="sans s">✓ tagged @kage, or a DM</text>
+  <text x="338" y="207" class="sans s">+ thread as quoted context</text>
+  <text x="352" y="226" class="sans s">(data, never commands)</text>
+
+  <path d="M556 148 L 616 148" class="arrow"/>
+
+  <!-- 3 Claude Code -->
+  <rect x="620" y="96" width="220" height="140" rx="12" class="card"/>
+  <text x="636" y="122" class="sans n">3</text>
+  <text x="654" y="122" class="sans h">Claude Code</text>
+  <text x="636" y="148" class="sans s">your session in tmux, with</text>
+  <text x="636" y="165" class="sans s">your CLAUDE.md, tools,</text>
+  <text x="636" y="182" class="sans s">MCP servers and access</text>
+  <text x="636" y="207" class="mono s">channels: server:kage</text>
+
+  <!-- 4 reply -->
+  <path d="M730 238 C 730 300, 124 300, 124 204" class="back"/>
+  <text x="352" y="296" class="sans s"><tspan class="n">4</tspan>  reply tool → the same thread (your DM only for secrets)</text>
+</svg>
