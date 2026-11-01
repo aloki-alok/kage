@@ -1,4 +1,7 @@
-<p align="center"><img src="docs/hero.svg" alt="kage: tag your own Claude Code from anywhere in Slack" width="880"></p>
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/hero-dark.png">
+  <img src="docs/hero-light.png" alt="kage: your shadow does the work while you sit at your laptop" width="100%">
+</picture>
 
 Kage lets you tag `@kage` in any Slack thread, DM or channel, and your own Claude Code session on your laptop does the work and answers in the same thread. It uses your setup: your `CLAUDE.md`, your tools, your MCP servers, your access. Nobody else can drive it. It only acts on messages you typed yourself.
 
