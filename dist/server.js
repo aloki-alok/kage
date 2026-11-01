@@ -35113,6 +35113,31 @@ var validName = (name) => /^[a-z][a-z0-9-]{1,20}$/.test(name);
 function safeReply(text) {
   return text.replace(/<!(channel|here|everyone)[^>]*>/g, "$1").replace(/<@([A-Z0-9]+)>/g, "@$1");
 }
+var SECRET_SHAPES = [
+  ["AWS access key", /\b(AKIA|ASIA)[0-9A-Z]{16}\b/],
+  ["Slack token", /\bxox[abprs]-[0-9A-Za-z-]{10,}/],
+  ["GitHub token", /\b(gh[pousr]_[0-9A-Za-z]{30,}|github_pat_\w{20,})/],
+  ["private key", /-----BEGIN [A-Z ]*PRIVATE KEY-----/],
+  ["API key", /\bsk-(proj-|ant-)?[\w-]{20,}/],
+  ["secret assignment", /\b\w*(secret|token|password|passwd|api_?key)\w*\s*[=:]\s*['"]?[^\s'"`]{12,}/i]
+];
+function findSecret(text) {
+  for (const [name, shape] of SECRET_SHAPES) if (shape.test(text)) return name;
+  let prev = "";
+  for (const line of text.split("\n")) {
+    const near = `${prev} ${line}`;
+    prev = line;
+    if (!/pass(word|wd)|secret|credential/i.test(near)) continue;
+    for (const [, span = ""] of line.matchAll(/`([^`\s]{10,})`/g))
+      if (/[A-Z]/.test(span) && /[a-z]/.test(span) && /\d/.test(span)) return "password";
+  }
+}
+function secretRefusal(text, o) {
+  if (o.private) return;
+  const secret = findSecret(text);
+  if (!secret || o.ownerAsked && o.fromOwner) return;
+  return o.fromOwner ? `refused: this looks like a ${secret}, and threads are seen by others. Send it with private=true, or set owner_asked=true only if the owner's own task line asks for it in the thread.` : `refused: this looks like a ${secret}, and this task is from a teammate. Send the secret to the owner with private=true.`;
+}
 function splitForSlack(text, max = 3500) {
   const parts = [];
   let cur = "";
@@ -35194,6 +35219,7 @@ var SOCK = `${dirname(ENV_FILE)}/router.sock`;
 process.on("unhandledRejection", (e) => log("unhandled", e));
 var botDm = "";
 var taskChannels = /* @__PURE__ */ new Set();
+var ownerTask = /* @__PURE__ */ new Map();
 var ANSWERED = "crossed_swords";
 var unanswered = /* @__PURE__ */ new Map();
 var where = "a thread";
@@ -35230,7 +35256,8 @@ mcp.setRequestHandler(ListToolsRequestSchema, async () => ({
         channel: { type: "string", description: "channel attribute from the task tag" },
         thread_ts: { type: "string", description: "thread_ts attribute from the task tag" },
         text: { type: "string", description: "Slack mrkdwn text" },
-        private: { type: "boolean", description: `true sends it to the owner's DM with ${Title} instead of the thread` }
+        private: { type: "boolean", description: `true sends it to the owner's DM with ${Title} instead of the thread` },
+        owner_asked: { type: "boolean", description: "true only when the owner's own task line asks to post this secret in the thread. Ignored on a teammate's task." }
       },
       required: ["channel", "thread_ts", "text"]
     }
@@ -35256,6 +35283,12 @@ mcp.setRequestHandler(CallToolRequestSchema, async (req) => {
   if (!a.private && !taskChannels.has(a.channel)) {
     return { isError: true, content: [{ type: "text", text: "refused: no task came from that channel; use private=true" }] };
   }
+  const refusal = secretRefusal(a.text, {
+    private: a.private,
+    ownerAsked: a.owner_asked,
+    fromOwner: ownerTask.get(`${a.channel}:${a.thread_ts}`) === true
+  });
+  if (refusal) return { isError: true, content: [{ type: "text", text: refusal }] };
   const via = a.private ? await post(botDm, void 0, a.text) : await post(a.channel, a.thread_ts, a.text);
   const origin = unanswered.get(`${a.channel}:${a.thread_ts}`);
   if (origin) {
@@ -35295,6 +35328,7 @@ async function fromRouter(m) {
     return;
   }
   taskChannels.add(m.meta.channel);
+  ownerTask.set(`${m.meta.channel}:${m.meta.thread_ts}`, m.fromOwner === true);
   unanswered.set(`${m.meta.channel}:${m.meta.thread_ts}`, m.origin);
   where = m.meta.permalink ? `<${m.meta.permalink}|${m.meta.place}>` : m.meta.place;
   await mcp.notification({ method: "notifications/claude/channel", params: { content: m.content, meta: m.meta } });

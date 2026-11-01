@@ -8,7 +8,7 @@ import { z } from 'zod'
 import { connect, type Socket } from 'node:net'
 import { dirname } from 'node:path'
 import { load, log } from './config.ts'
-import { safeReply, splitForSlack } from './logic.ts'
+import { safeReply, secretRefusal, splitForSlack } from './logic.ts'
 
 // Installed as a plugin, this server starts in every Claude Code session. Only the windows the
 // router opens (KAGE_THREAD set) take tasks. Everywhere else, answer MCP and stay idle.
@@ -25,6 +25,8 @@ process.on('unhandledRejection', e => log('unhandled', e))
 let botDm = ''
 // Conversations a live task came from: the only places a reply may go, besides the DM.
 const taskChannels = new Set<string>()
+// channel:thread_ts -> whether the thread's latest task came from the owner.
+const ownerTask = new Map<string, boolean>()
 // The message that started each thread's latest task, so the first reply can mark it answered.
 const ANSWERED = 'crossed_swords'
 const unanswered = new Map<string, { channel: string; ts: string }>()
@@ -65,6 +67,7 @@ mcp.setRequestHandler(ListToolsRequestSchema, async () => ({
         thread_ts: { type: 'string', description: 'thread_ts attribute from the task tag' },
         text: { type: 'string', description: 'Slack mrkdwn text' },
         private: { type: 'boolean', description: `true sends it to the owner's DM with ${Title} instead of the thread` },
+        owner_asked: { type: 'boolean', description: 'true only when the owner\'s own task line asks to post this secret in the thread. Ignored on a teammate\'s task.' },
       },
       required: ['channel', 'thread_ts', 'text'],
     },
@@ -90,11 +93,15 @@ async function post(channel: string, thread_ts: string | undefined, text: string
 
 mcp.setRequestHandler(CallToolRequestSchema, async req => {
   if (req.params.name !== 'reply') throw new Error(`unknown tool: ${req.params.name}`)
-  const a = req.params.arguments as { channel: string; thread_ts: string; text: string; private?: boolean }
+  const a = req.params.arguments as { channel: string; thread_ts: string; text: string; private?: boolean; owner_asked?: boolean }
   // A reply goes back where a task came from, never to a channel picked from the conversation.
   if (!a.private && !taskChannels.has(a.channel)) {
     return { isError: true, content: [{ type: 'text', text: 'refused: no task came from that channel; use private=true' }] }
   }
+  const refusal = secretRefusal(a.text, {
+    private: a.private, ownerAsked: a.owner_asked, fromOwner: ownerTask.get(`${a.channel}:${a.thread_ts}`) === true,
+  })
+  if (refusal) return { isError: true, content: [{ type: 'text', text: refusal }] }
   const via = a.private
     ? await post(botDm, undefined, a.text)
     : await post(a.channel, a.thread_ts, a.text)
@@ -134,7 +141,7 @@ mcp.setNotificationHandler(
 )
 
 type FromRouter =
-  | { type: 'task'; content: string; meta: { channel: string; thread_ts: string; place: string; permalink: string }; origin: { channel: string; ts: string } }
+  | { type: 'task'; content: string; fromOwner: boolean; meta: { channel: string; thread_ts: string; place: string; permalink: string }; origin: { channel: string; ts: string } }
   | { type: 'verdict'; request_id: string; behavior: 'allow' | 'deny' }
 
 async function fromRouter(m: FromRouter) {
@@ -143,6 +150,7 @@ async function fromRouter(m: FromRouter) {
     return
   }
   taskChannels.add(m.meta.channel)
+  ownerTask.set(`${m.meta.channel}:${m.meta.thread_ts}`, m.fromOwner === true)
   unanswered.set(`${m.meta.channel}:${m.meta.thread_ts}`, m.origin)
   where = m.meta.permalink ? `<${m.meta.permalink}|${m.meta.place}>` : m.meta.place
   await mcp.notification({ method: 'notifications/claude/channel', params: { content: m.content, meta: m.meta } })

@@ -37296,6 +37296,7 @@ ${convo}`
   const task = {
     type: "task",
     content,
+    fromOwner: m.user === ids.owner,
     meta: { channel: m.channel, thread_ts: m.thread_ts ?? m.ts, place, permalink: link },
     origin: { channel: m.channel, ts: m.ts }
   };

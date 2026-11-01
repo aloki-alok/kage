@@ -164,6 +164,7 @@ Kage gives Slack a path into a session that has everything your laptop has. Thes
 | An app or script posts as you, using your token | Slack sets `client_msg_id` only on messages a person typed in a Slack app. Kage requires it and rejects anything with an `app_id`. |
 | A message in the thread says "ignore your instructions and..." | Thread messages reach Claude quoted, labelled by Slack ID, and marked as data. Only your own tagged line is the task. |
 | Claude is tricked into posting somewhere else | Replies may only go to a channel or DM a task came from, or to your DM with the bot. `@channel`, `@here` and user mentions are defused. |
+| Claude puts a password or key in a thread | The reply tool checks every thread reply for secret shapes (keys, tokens, a password in code) and sends it back to Claude with a hint to use your DM. The owner can still ask for it in the thread; a teammate's task never can. |
 | Tokens leak | Tokens live in `~/.config/kage/env` with mode `600`, outside the repo. Each person uses their own Slack app and tokens. |
 
 Kage acts with your full Claude Code permissions. Keep your usual permission settings and guard hooks on, and treat an approval prompt like one in your terminal.

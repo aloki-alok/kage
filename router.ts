@@ -92,7 +92,7 @@ const paneOf = (key: string) => panes().get(d.saved()[key]!)
 const hasBoard = () => tmux('list-windows', '-t', `=${NAME}`, '-F', '#{window_name}').split('\n').includes('threads')
 
 type ToSession =
-  | { type: 'task'; content: string; meta: Record<string, string>; origin: { channel: string; ts: string } }
+  | { type: 'task'; content: string; fromOwner: boolean; meta: Record<string, string>; origin: { channel: string; ts: string } }
   | { type: 'verdict'; request_id: string; behavior: 'allow' | 'deny' }
 
 const save = () => writeFileSync(THREADS, JSON.stringify(d.saved(), null, 1), { mode: 0o600 })
@@ -262,6 +262,7 @@ async function onMessage(m: SlackMessage) {
   const task: ToSession = {
     type: 'task',
     content,
+    fromOwner: m.user === ids.owner,
     meta: { channel: m.channel, thread_ts: m.thread_ts ?? m.ts, place, permalink: link },
     origin: { channel: m.channel, ts: m.ts },
   }
