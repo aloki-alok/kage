@@ -8,7 +8,8 @@ import { CallToolRequestSchema, ListToolsRequestSchema } from '@modelcontextprot
 import { SocketModeClient, LogLevel } from '@slack/socket-mode'
 import { WebClient } from '@slack/web-api'
 import { z } from 'zod'
-import { readFileSync } from 'node:fs'
+import { readFileSync, writeFileSync } from 'node:fs'
+import { dirname } from 'node:path'
 import { classify, plainName, quoteMessage, safeReply, splitForSlack, validName, type Ids, type SlackMessage } from './logic.ts'
 
 // stdout is the MCP pipe: every log line must go to stderr.
@@ -272,3 +273,5 @@ async function onMessage(m: SlackMessage) {
 
 await socket.start()
 log(`listening as ${botAuth.user} (@${NAME}) for ${ownerName} ${ids.owner}; DM ${ids.botDm}; teammates ${TEAMMATES.join(',') || 'none'}`)
+// `setup.sh doctor` reads this to prove the live session reached Slack.
+writeFileSync(`${dirname(ENV_FILE)}/status`, `connected ${new Date().toISOString()} pid ${process.pid} as @${NAME}\n`, { mode: 0o600 })

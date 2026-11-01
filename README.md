@@ -11,6 +11,26 @@ Kage lets you tag `@kage` in any Slack thread, DM or channel, and your own Claud
              3 callers still read the old name. Fix is on branch fix/order-amount.
 ```
 
+## Set it up with your agent
+
+Paste this into Claude Code (or any coding agent with a shell):
+
+```text
+Set up Kage for me: https://github.com/aloki-alok/kage
+Clone it into ~/kage, then follow its AGENTS.md from start to finish.
+Do every step yourself, and stop only for the steps it marks for me.
+Finish when ./setup.sh doctor ends with "All good".
+```
+
+Your agent does the work. You only do what a person has to do:
+
+- In Slack, click **Create** on the prefilled app, generate one token, and click **Allow**.
+- Paste the three tokens into the hidden prompts in the terminal window your agent opens. The tokens never pass through the agent.
+- On the first start, answer Claude Code's "trust this folder?" question once.
+- If your Claude org shows Kage's warning screen, press Enter on it once per start. An org Owner can approve Kage so the screen goes away (see [Start without prompts](#start-without-prompts)).
+
+The rest of this page is for doing it by hand, and for knowing how it works.
+
 ## Before you start
 
 | You need | Why |
@@ -20,7 +40,7 @@ Kage lets you tag `@kage` in any Slack thread, DM or channel, and your own Claud
 | Channels turned on for your Claude org | Team and Enterprise only: an org Owner turns it on once under [Organization settings > Claude Code > Channels](https://claude.ai/admin-settings/claude-code). Personal Pro and Max accounts skip this. |
 | Permission to create an app in your Slack workspace | If your workspace restricts apps, an admin approves it once. |
 
-## Set it up (about 5 minutes)
+## Set it up by hand (about 5 minutes)
 
 1. Clone and run the setup script:
    ```sh
@@ -42,6 +62,7 @@ On the first start, Claude Code may ask whether you trust your home folder: choo
 
 | To | Run |
 |---|---|
+| Check every part | `./setup.sh doctor` (each problem comes with its fix) |
 | See what it's doing | `tmux attach -t <name>` (your name, `kage` by default) (leave with `Ctrl-b` then `d`) |
 | Stop it | `tmux kill-session -t <name>` |
 | Restart after changing code or settings | stop it, then `./start.sh` |
@@ -133,6 +154,8 @@ Kage acts with your full Claude Code permissions. Keep your usual permission set
 
 ## Troubleshooting
 
+Start with `./setup.sh doctor`. It checks the tools, the tokens, the plugin, the org approval, the session and the Slack connection, and prints the fix for each failure.
+
 | You see | Do this |
 |---|---|
 | No 🥷 on your message | Check that Kage is running: `tmux ls`. Then `tmux attach -t <name>` and look for an error. |
@@ -145,6 +168,7 @@ Kage acts with your full Claude Code permissions. Keep your usual permission set
 ## Develop
 
 ```sh
+npm ci              # once, for the tests, the type check and the build
 npm test            # gate and formatting rules (node --test)
 npm run typecheck   # tsc --noEmit
 ```
@@ -154,6 +178,8 @@ npm run typecheck   # tsc --noEmit
 | `logic.ts` | The gate (who may drive it), quoting, reply safety, message splitting. Pure functions, all tested. |
 | `server.ts` | The channel: Slack Socket Mode in, Claude Code channel events out, the reply tool, approval relay. |
 | `manifest.ts` | The Slack app manifest for your chosen name. |
-| `setup.sh`, `start.sh`, `autostart.sh` | One-time setup, starting the session in tmux (with restarts), and starting at login. |
+| `AGENTS.md` | The setup and run steps for a coding agent, each with its check. `CLAUDE.md` points Claude Code to it. |
+| `setup.sh` | Setup steps (`check`, `app`, `save`) and `doctor`, which checks the whole install. With no argument it walks a person through setup. |
+| `start.sh`, `autostart.sh` | Starting the session in tmux (with restarts), and starting at login. |
 | `dist/server.js` | `server.ts` bundled into one file (`npm run build`), so the plugin needs no `npm install`. Rebuild and commit it after changing the server. |
 | `.claude-plugin/`, `.mcp.json` | The plugin and marketplace manifests for the no-prompt route. |

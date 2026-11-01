@@ -17,7 +17,7 @@ const manifest = {
   },
   oauth_config: {
     scopes: {
-      // The bot posts replies and approval prompts, and reacts with 👀.
+      // The bot posts replies and approval prompts, and adds the pickup and done reactions.
       bot: ['chat:write', 'im:write', 'im:history', 'reactions:write', 'users:read'],
       // Your user token hears your conversations, reads the thread for context, and replies
       // where the bot isn't a member.

@@ -30263,7 +30263,7 @@ var require_snapshot_recorder = __commonJS({
   "node_modules/undici/lib/mock/snapshot-recorder.js"(exports, module) {
     "use strict";
     var { writeFile, readFile, mkdir } = __require("node:fs/promises");
-    var { dirname, resolve } = __require("node:path");
+    var { dirname: dirname2, resolve } = __require("node:path");
     var { setTimeout: setTimeout2, clearTimeout: clearTimeout2 } = __require("node:timers");
     var { InvalidArgumentError, UndiciError } = require_errors4();
     var { setHeader } = require_util2();
@@ -30510,7 +30510,7 @@ var require_snapshot_recorder = __commonJS({
           throw new InvalidArgumentError("Snapshot path is required");
         }
         const resolvedPath = resolve(path);
-        await mkdir(dirname(resolvedPath), { recursive: true });
+        await mkdir(dirname2(resolvedPath), { recursive: true });
         const data = Array.from(this.#snapshots.entries()).map(([hash2, snapshot]) => ({
           hash: hash2,
           snapshot
@@ -67155,7 +67155,8 @@ var StdioServerTransport = class {
 // server.ts
 var import_socket_mode = __toESM(require_src(), 1);
 var import_web_api = __toESM(require_dist5(), 1);
-import { readFileSync } from "node:fs";
+import { readFileSync, writeFileSync } from "node:fs";
+import { dirname } from "node:path";
 
 // logic.ts
 var validName = (name) => /^[a-z][a-z0-9-]{1,20}$/.test(name);
@@ -67443,6 +67444,8 @@ ${convo}`
 }
 await socket.start();
 log(`listening as ${botAuth.user} (@${NAME}) for ${ownerName} ${ids.owner}; DM ${ids.botDm}; teammates ${TEAMMATES.join(",") || "none"}`);
+writeFileSync(`${dirname(ENV_FILE)}/status`, `connected ${(/* @__PURE__ */ new Date()).toISOString()} pid ${process.pid} as @${NAME}
+`, { mode: 384 });
 /*! Bundled license information:
 
 undici/lib/web/fetch/body.js:
