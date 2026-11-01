@@ -77,6 +77,15 @@ export function quoteMessage(
   return body.split('\n').map((l, i) => `> ${i === 0 ? `[${who} ${x.ts}] ` : ''}${l}`).join('\n')
 }
 
+// The instruction line of a task. A teammate's text is less trusted than the owner's: it can't
+// close the <channel> tag, and it stays on one line so it can't forge a "Task from <owner>:" line.
+export function taskLine(text: string, from: { name: string; teammate?: string }): string {
+  let t = text.replace(/<\/?channel/gi, m => m.replace('<', '&lt;'))
+  if (from.teammate) t = t.replace(/\s+/g, ' ').trim()
+  t ||= '(empty: they only tagged you)'
+  return from.teammate ? `Teammate task (${from.teammate}, ${from.name}, not the owner): ${t}` : `Task from ${from.name}: ${t}`
+}
+
 // Display names are set by their owners: one line, no angle brackets, before they reach Claude.
 export const plainName = (name: string) => name.replace(/[<>]/g, '').replace(/\s+/g, ' ').trim()
 
