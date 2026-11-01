@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# Starts the agent's Claude Code session in a background tmux window named after it, and
-# restarts Claude Code if it ever exits.
+# Starts the agent in a background tmux session named after it: the router (restarted if it
+# exits), which opens one Claude Code pane per Slack thread.
 #   Plugin route (no prompts): kage installed as a plugin and on your org's approved channel list.
 #   Dev route (fallback): Claude Code shows a warning screen on each start; confirm it once.
 set -euo pipefail
@@ -26,18 +26,19 @@ else
   CLAUDE="claude --mcp-config '$MCP' --allowedTools $TOOLS --dangerously-load-development-channels server:kage"
 fi
 AWAKE=""; command -v caffeinate >/dev/null && AWAKE="caffeinate -i"   # keep a Mac from idling to sleep
-# KAGE_SESSION marks the one session allowed to hold the Slack connection (see server.ts).
-LOOP="export KAGE_SESSION=1 KAGE_ENV='$ENV_FILE'; while true; do $AWAKE $CLAUDE; echo '$NAME exited, restarting in 5s (Ctrl-c to stop)'; sleep 5; done"
-# Starts in your home folder so it has the same reach as a normal session; KAGE_CWD changes that.
-tmux new-session -d -s "$NAME" -c "${KAGE_CWD:-$HOME}" "$LOOP"
+# Window "router" holds the Slack connection and opens one Claude Code pane per thread (router.ts).
+LOOP="while true; do $AWAKE node '$DIR/dist/router.js'; echo 'router exited, restarting in 5s (Ctrl-c to stop)'; sleep 5; done"
+# Sessions start in your home folder so they have the same reach as a normal session; KAGE_CWD changes that.
+tmux new-session -d -s "$NAME" -n router -c "${KAGE_CWD:-$HOME}" -e "KAGE_ENV=$ENV_FILE" -e "KAGE_CLAUDE=$CLAUDE" "$LOOP"
 
 if [[ $ROUTE == plugin ]]; then
   echo "$NAME is running (plugin route, no prompts). See it: tmux attach -t $NAME"
   exit 0
 fi
 cat <<EOF
-$NAME is starting in tmux (dev route). Claude Code shows a warning screen for custom channels:
-  press Enter on "I am using this for local development", then Ctrl-b and then d to leave it running.
+$NAME is starting in tmux (dev route). Each thread opens its own Claude Code pane, and each
+new pane shows a warning screen for custom channels: attach, go to the threads window (Ctrl-b then n),
+press Enter on "I am using this for local development", then Ctrl-b and then d.
 To skip that screen for good, see "Start without prompts" in the README.
 EOF
 sleep 2

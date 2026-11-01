@@ -66,18 +66,19 @@ Run every command from the repo root. Each step ends with a check. Go to the nex
    ```
    Check: the last line is `All good`. Every `FAIL` line names its fix. Do that fix, then run the doctor again. Kage takes about 20 seconds to connect after a start.
 
-10. Tell the person to tag `@<name>` in any Slack thread. They get 🥷 when Kage picks the task up, and ⚔️ when it has answered.
+10. Tell the person to tag `@<name>` in any Slack thread. They get 🥷 when Kage picks the task up, and ⚔️ when it has answered. Each thread runs in its own Claude Code session.
 
 ## Run it
 
 | Task | Command |
 |---|---|
 | Health check | `./setup.sh doctor` |
-| See the session | `tmux attach -t <name>` (leave with `Ctrl-b` then `d`) |
+| See the sessions | `tmux attach -t <name>`, then `Ctrl-b` `n` to the `threads` window: one pane per thread, labelled with its channel. `Ctrl-b` `z` zooms a pane. Leave with `Ctrl-b` then `d`. |
 | Restart | `tmux kill-session -t =<name> && ./start.sh` |
 | Stop | `tmux kill-session -t =<name>` |
 | Start at login on or off (macOS) | `./autostart.sh on` or `./autostart.sh off` |
-| Let a teammate tag it | Add `KAGE_TEAMMATES=U0123ABC,U0456DEF` to `~/.config/kage/env`, then restart |
+| Let a teammate tag it | `./setup.sh teammate add <name, @handle or id>` (also `remove`, `list`). If it lists two people, ask which one. |
+| Change the session limits | Add `KAGE_MAX_SESSIONS=4` or `KAGE_IDLE_MINUTES=30` to `~/.config/kage/env`, then restart |
 | Update Kage | `git pull`, then restart. The plugin reads this folder, so no reinstall is needed. |
 
 The token file is `~/.config/kage/env` (mode 600). Never print it, copy it or commit it.
@@ -85,5 +86,6 @@ The token file is `~/.config/kage/env` (mode 600). Never print it, copy it or co
 ## Change the code
 
 - `logic.ts` holds the gate: who may start a task, quoting, reply safety. Every rule in it has a test in `logic.test.ts`.
-- After a change to `server.ts` or `logic.ts`, run `npm ci` once, then `npm test`, `npm run typecheck` and `npm run build`. Commit `dist/server.js` with the change, because the plugin runs the bundle. Then restart Kage.
+- `router.ts` holds the one Slack connection and opens a tmux pane per thread in the `threads` window. `server.ts` is the channel inside each pane.
+- After a change to `router.ts`, `server.ts`, `config.ts` or `logic.ts`, run `npm ci` once, then `npm test`, `npm run typecheck` and `npm run build`. Commit `dist/` with the change, because the plugin and the router run the bundles. Then restart Kage.
 - The server writes logs to stderr only. Stdout carries the channel protocol, so a stray `console.log` breaks it.

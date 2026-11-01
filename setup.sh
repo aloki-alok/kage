@@ -5,6 +5,7 @@
 #   ./setup.sh app [name]       write the Slack app manifest and print the link that creates the app
 #   ./setup.sh save [name]      ask for the three Slack tokens (hidden), check them, save them
 #   ./setup.sh doctor           check every part and print the fix for anything wrong
+#   ./setup.sh teammate list | add <who> | remove <who>   who else may tag it (name, @handle or id)
 set -euo pipefail
 cd "$(dirname "$0")"
 ENV_FILE="${KAGE_ENV:-$HOME/.config/kage/env}"
@@ -141,5 +142,6 @@ case "${1:-}" in
   app) cmd_app "${2:-}" ;;
   save) cmd_save "${2:-}" ;;
   doctor) cmd_doctor ;;
-  *) die "Usage: $0 [check | app [name] | save [name] | doctor]" ;;
+  teammate) node teammate.ts "${@:2}" ;;
+  *) die "Usage: $0 [check | app [name] | save [name] | doctor | teammate list|add|remove]" ;;
 esac
