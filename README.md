@@ -46,6 +46,23 @@ On the first start, Claude Code may ask whether you trust your home folder: choo
 | Stop it | `tmux kill-session -t <name>` |
 | Restart after changing code or settings | stop it, then `./start.sh` |
 
+### Start without prompts
+
+The warning screen appears because Kage isn't on Anthropic's list of approved channels. Your org can approve it, and then Kage starts with no screen, restarts itself if Claude Code exits, and can start at login.
+
+1. An org Owner opens [Claude Code admin settings](https://claude.ai/admin-settings/claude-code), finds managed settings, and adds:
+   ```json
+   { "allowedChannelPlugins": [ { "marketplace": "kage", "plugin": "kage" } ] }
+   ```
+   This list replaces Anthropic's default channel list for your org, so add any official channel your team already uses (for example `{ "marketplace": "claude-plugins-official", "plugin": "telegram" }`).
+2. Install Kage as a plugin, from the repo folder:
+   ```sh
+   claude plugin marketplace add "$PWD" && claude plugin install kage@kage
+   ```
+   The plugin's server starts in every Claude Code session, but only the session `start.sh` launches connects to Slack. The others stay idle.
+3. Add `KAGE_ROUTE=plugin` to `~/.config/kage/env`, stop Kage, and run `./start.sh` again.
+4. Optional, macOS: `./autostart.sh on` starts Kage at login. `./autostart.sh off` undoes it.
+
 Your laptop must be on, awake and online. `start.sh` stops a Mac from idling to sleep with `caffeinate`, but closing the lid still sleeps it unless the Mac is plugged into a display.
 
 ## Use it
@@ -122,4 +139,6 @@ npm run typecheck   # tsc --noEmit
 | `logic.ts` | The gate (who may drive it), quoting, reply safety, message splitting. Pure functions, all tested. |
 | `server.ts` | The channel: Slack Socket Mode in, Claude Code channel events out, the reply tool, approval relay. |
 | `manifest.ts` | The Slack app manifest for your chosen name. |
-| `setup.sh`, `start.sh` | One-time setup, and starting the session in tmux. |
+| `setup.sh`, `start.sh`, `autostart.sh` | One-time setup, starting the session in tmux (with restarts), and starting at login. |
+| `dist/server.js` | `server.ts` bundled into one file (`npm run build`), so the plugin needs no `npm install`. Rebuild and commit it after changing the server. |
+| `.claude-plugin/`, `.mcp.json` | The plugin and marketplace manifests for the no-prompt route. |

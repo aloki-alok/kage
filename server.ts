@@ -24,6 +24,14 @@ const logger = {
   setName: () => {},
 }
 
+// Installed as a plugin, this server starts in every Claude Code session. Only the session
+// start.sh launches may hold the Slack connection: Slack splits events across connections,
+// so a second one would swallow messages. Everywhere else, answer MCP and stay idle.
+if (process.env.KAGE_SESSION !== '1') {
+  await new Server({ name: 'kage', version: '0.3.0' }, { capabilities: {} }).connect(new StdioServerTransport())
+  await new Promise(() => {})
+}
+
 // Tokens live in a private file outside the repo (setup.sh writes it with mode 600).
 const ENV_FILE = process.env.KAGE_ENV || `${process.env.HOME}/.config/kage/env`
 const env: Record<string, string> = {}

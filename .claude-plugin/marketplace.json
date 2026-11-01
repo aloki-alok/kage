@@ -1,0 +1,8 @@
+{
+  "name": "kage",
+  "description": "Kage: a Slack channel for Claude Code",
+  "owner": { "name": "Alok", "url": "https://github.com/aloki-alok" },
+  "plugins": [
+    { "name": "kage", "source": "./", "description": "Tag your own Claude Code session from anywhere in Slack." }
+  ]
+}

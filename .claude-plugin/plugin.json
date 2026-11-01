@@ -1,0 +1,8 @@
+{
+  "name": "kage",
+  "version": "0.3.0",
+  "description": "Tag your own Claude Code session from anywhere in Slack.",
+  "author": { "name": "Alok", "url": "https://github.com/aloki-alok" },
+  "repository": "https://github.com/aloki-alok/kage",
+  "license": "MIT"
+}
