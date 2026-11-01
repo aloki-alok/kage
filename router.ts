@@ -5,7 +5,7 @@
 import { SocketModeClient, LogLevel } from '@slack/socket-mode'
 import { execFileSync } from 'node:child_process'
 import { randomUUID } from 'node:crypto'
-import { chmodSync, existsSync, readFileSync, statSync, unlinkSync, writeFileSync } from 'node:fs'
+import { chmodSync, existsSync, readdirSync, readFileSync, statSync, unlinkSync, writeFileSync } from 'node:fs'
 import { createServer } from 'node:net'
 import { dirname } from 'node:path'
 import { load, log, logger } from './config.ts'
@@ -41,7 +41,14 @@ const PROJECT = `${process.env.HOME}/.claude/projects/${process.cwd().replace(/[
 // A pane that just started has no transcript yet, so running panes are kept.
 const runningAtStart = new Set(panes().keys())
 for (const [k, id] of Object.entries(saved)) if (!existsSync(`${PROJECT}/${id}.jsonl`) && !runningAtStart.has(id)) delete saved[k]
-const lastActivity = (key: string): number => { try { return statSync(`${PROJECT}/${d.saved()[key]}.jsonl`).mtimeMs } catch { return 0 } }
+// The latest write by the session or by any of its subagents: a session that handed its work to
+// a background agent sits idle at its own prompt while the agent works.
+function lastActivity(key: string): number {
+  const id = d.saved()[key]
+  const files = [`${PROJECT}/${id}.jsonl`]
+  try { files.push(...readdirSync(`${PROJECT}/${id}/subagents`).map(f => `${PROJECT}/${id}/subagents/${f}`)) } catch {}
+  return Math.max(0, ...files.map(f => { try { return statSync(f).mtimeMs } catch { return 0 } }))
+}
 
 // Every thread is a pane in one tiled window, "threads", labelled with its channel. Each pane
 // carries its session id in the tmux option @kage, which is how the router finds it again.
@@ -83,13 +90,14 @@ const d: Dispatcher<ToSession> = new Dispatcher<ToSession>({
     log('closed', pane, 'for', key)
   },
   lastActivity,
-  // ponytail: reads the bottom of Claude Code's screen (spinner "… (12s", or "· 2 shells" in the
-  // status bar); a UI change makes it miss, and then only the transcript mtime keeps a long task alive.
+  // ponytail: reads the bottom of Claude Code's screen: the spinner "… (12s", "· 2 shells" in the
+  // status bar, or a running background agent listed as "◯ general-purpose  ...". A UI change makes
+  // it miss, and then only the transcript times keep a long task alive.
   busy(key) {
     const pane = paneOf(key)
     if (!pane) return false
-    const bottom = tmux('capture-pane', '-p', '-t', pane).split('\n').filter(l => l.trim()).slice(-8).join('\n')
-    return /… \(\d/.test(bottom) || /· \d+ shells?\b/.test(bottom)
+    const bottom = tmux('capture-pane', '-p', '-t', pane).split('\n').filter(l => l.trim()).slice(-20).join('\n')
+    return /… \(\d/.test(bottom) || /· \d+ shells?\b/.test(bottom) || /^\s*◯ /m.test(bottom)
   },
 // The dev route waits for a person to confirm a warning screen in each new pane.
 }, { max: MAX, idleMs: IDLE_MIN * 60_000, connectMs: (CLAUDE.includes('development-channels') ? 30 : 3) * 60_000, newId: randomUUID, saved })

@@ -36828,7 +36828,7 @@ var require_src = __commonJS({
 var import_socket_mode = __toESM(require_src(), 1);
 import { execFileSync } from "node:child_process";
 import { randomUUID } from "node:crypto";
-import { chmodSync, existsSync, readFileSync as readFileSync2, statSync, unlinkSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, readdirSync, readFileSync as readFileSync2, statSync, unlinkSync, writeFileSync } from "node:fs";
 import { createServer } from "node:net";
 import { dirname } from "node:path";
 
@@ -37055,13 +37055,21 @@ var tmux = (...a) => execFileSync("tmux", a, { encoding: "utf8" });
 var PROJECT = `${process.env.HOME}/.claude/projects/${process.cwd().replace(/[^A-Za-z0-9]/g, "-")}`;
 var runningAtStart = new Set(panes().keys());
 for (const [k, id] of Object.entries(saved)) if (!existsSync(`${PROJECT}/${id}.jsonl`) && !runningAtStart.has(id)) delete saved[k];
-var lastActivity = (key) => {
+function lastActivity(key) {
+  const id = d.saved()[key];
+  const files = [`${PROJECT}/${id}.jsonl`];
   try {
-    return statSync(`${PROJECT}/${d.saved()[key]}.jsonl`).mtimeMs;
+    files.push(...readdirSync(`${PROJECT}/${id}/subagents`).map((f) => `${PROJECT}/${id}/subagents/${f}`));
   } catch {
-    return 0;
   }
-};
+  return Math.max(0, ...files.map((f) => {
+    try {
+      return statSync(f).mtimeMs;
+    } catch {
+      return 0;
+    }
+  }));
+}
 var BOARD = `=${NAME}:threads`;
 var places = /* @__PURE__ */ new Map();
 function panes() {
@@ -37105,13 +37113,14 @@ var d = new Dispatcher({
     log("closed", pane, "for", key);
   },
   lastActivity,
-  // ponytail: reads the bottom of Claude Code's screen (spinner "… (12s", or "· 2 shells" in the
-  // status bar); a UI change makes it miss, and then only the transcript mtime keeps a long task alive.
+  // ponytail: reads the bottom of Claude Code's screen: the spinner "… (12s", "· 2 shells" in the
+  // status bar, or a running background agent listed as "◯ general-purpose  ...". A UI change makes
+  // it miss, and then only the transcript times keep a long task alive.
   busy(key) {
     const pane = paneOf(key);
     if (!pane) return false;
-    const bottom = tmux("capture-pane", "-p", "-t", pane).split("\n").filter((l) => l.trim()).slice(-8).join("\n");
-    return /… \(\d/.test(bottom) || /· \d+ shells?\b/.test(bottom);
+    const bottom = tmux("capture-pane", "-p", "-t", pane).split("\n").filter((l) => l.trim()).slice(-20).join("\n");
+    return /… \(\d/.test(bottom) || /· \d+ shells?\b/.test(bottom) || /^\s*◯ /m.test(bottom);
   }
   // The dev route waits for a person to confirm a warning screen in each new pane.
 }, { max: MAX, idleMs: IDLE_MIN * 6e4, connectMs: (CLAUDE.includes("development-channels") ? 30 : 3) * 6e4, newId: randomUUID, saved });
