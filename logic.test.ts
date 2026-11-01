@@ -1,6 +1,6 @@
 import { describe, test } from 'node:test'
 import assert from 'node:assert/strict'
-import { classify, Dispatcher, findPeople, teammatesIn, threadKey, withTeammates, plainName, quoteMessage, safeReply, splitForSlack, taskLine, validName } from './logic.ts'
+import { classify, Dispatcher, findPeople, liveCronJobs, teammatesIn, threadKey, withTeammates, plainName, quoteMessage, safeReply, splitForSlack, taskLine, validName } from './logic.ts'
 
 const OWNER = 'UOWNER001'
 const BOT = 'UBOT00001'
@@ -392,5 +392,26 @@ describe('the teammate list in the env file', () => {
   test('the first teammate adds the line; removing the last drops it', () => {
     assert.equal(withTeammates('KAGE_NAME=kage\n', ['U9']), 'KAGE_NAME=kage\nKAGE_TEAMMATES=U9\n')
     assert.equal(withTeammates(env, []), 'KAGE_NAME=kage\nSLACK_BOT_TOKEN=xoxb-1\n')
+  })
+})
+
+describe('a session with a repeating check stays open', () => {
+  const H = 3600_000
+  const at = (h: number) => new Date(Date.UTC(2026, 10, 1) + h * H).toISOString()
+  const made = (id: string, h: number, kind = 'recurring') => ({ timestamp: at(h), text: `Scheduled ${kind} job ${id} (*/5 * * * *). Next run: ...` })
+  const cancelled = (id: string, h: number) => ({ timestamp: at(h), text: `Cancelled job ${id}.` })
+  const t0 = Date.parse(at(0))
+
+  test('a job made by the running process counts until it is cancelled', () => {
+    assert.deepEqual(liveCronJobs([made('aa11', 1)], t0, t0 + 2 * H), ['aa11'])
+    assert.deepEqual(liveCronJobs([made('aa11', 1), cancelled('aa11', 2)], t0, t0 + 3 * H), [])
+  })
+  test('a job made before this process started died with the old one', () => {
+    assert.deepEqual(liveCronJobs([made('aa11', 1)], t0 + 2 * H, t0 + 3 * H), [])
+  })
+  test('a recurring job expires after 7 days, a one-shot after a day', () => {
+    assert.deepEqual(liveCronJobs([made('aa11', 1)], t0, t0 + 7 * 24 * H + 2 * H), [])
+    assert.deepEqual(liveCronJobs([made('bb22', 1, 'one-shot')], t0, t0 + 3 * H), ['bb22'])
+    assert.deepEqual(liveCronJobs([made('bb22', 1, 'one-shot')], t0, t0 + 26 * H), [])
   })
 })

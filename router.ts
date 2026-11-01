@@ -9,7 +9,7 @@ import { chmodSync, existsSync, readdirSync, readFileSync, statSync, unlinkSync,
 import { createServer } from 'node:net'
 import { dirname } from 'node:path'
 import { load, log, logger } from './config.ts'
-import { classify, Dispatcher, plainName, quoteMessage, taskLine, threadKey, type Ids, type SlackMessage } from './logic.ts'
+import { classify, Dispatcher, liveCronJobs, plainName, quoteMessage, taskLine, threadKey, type Ids, type SlackMessage } from './logic.ts'
 
 const { ENV_FILE, NAME, Title, TEAMMATES, env, need, bot, user } = load()
 const DIR = dirname(ENV_FILE)
@@ -48,6 +48,36 @@ function lastActivity(key: string): number {
   const files = [`${PROJECT}/${id}.jsonl`]
   try { files.push(...readdirSync(`${PROJECT}/${id}/subagents`).map(f => `${PROJECT}/${id}/subagents/${f}`)) } catch {}
   return Math.max(0, ...files.map(f => { try { return statSync(f).mtimeMs } catch { return 0 } }))
+}
+
+// The tool results in a session's transcript that mention a job (CronCreate, CronDelete).
+function cronResults(id: string): { timestamp: string; text: string }[] {
+  let raw = ''
+  try { raw = readFileSync(`${PROJECT}/${id}.jsonl`, 'utf8') } catch { return [] }
+  const out: { timestamp: string; text: string }[] = []
+  for (const line of raw.split('\n')) {
+    if (!line.includes(' job ')) continue
+    let r: any
+    try { r = JSON.parse(line) } catch { continue }
+    const content = r?.message?.content
+    if (!r.timestamp || !Array.isArray(content)) continue
+    for (const b of content) {
+      if (b?.type !== 'tool_result') continue
+      const text = typeof b.content === 'string' ? b.content : (b.content ?? []).map((c: any) => c?.text ?? '').join('')
+      out.push({ timestamp: r.timestamp, text })
+    }
+  }
+  return out
+}
+
+// When the Claude Code process in a pane started (the pane's shell loop is its parent).
+// No process (between restarts): Infinity, so no job counts as alive.
+function processStart(pane: string): number {
+  try {
+    const shell = tmux('display-message', '-p', '-t', pane, '#{pane_pid}').trim()
+    const child = execFileSync('pgrep', ['-P', shell], { encoding: 'utf8' }).trim().split('\n')[0]!
+    return Date.parse(execFileSync('ps', ['-o', 'lstart=', '-p', child], { encoding: 'utf8' }).trim()) || Infinity
+  } catch { return Infinity }
 }
 
 // Every thread is a pane in one tiled window, "threads", labelled with its channel. Each pane
@@ -97,7 +127,9 @@ const d: Dispatcher<ToSession> = new Dispatcher<ToSession>({
     const pane = paneOf(key)
     if (!pane) return false
     const bottom = tmux('capture-pane', '-p', '-t', pane).split('\n').filter(l => l.trim()).slice(-20).join('\n')
-    return /… \(\d/.test(bottom) || /· \d+ shells?\b/.test(bottom) || /^\s*◯ /m.test(bottom)
+    if (/… \(\d/.test(bottom) || /· \d+ shells?\b/.test(bottom) || /^\s*◯ /m.test(bottom)) return true
+    // A repeating check (CronCreate) lives only in this Claude Code process: keep the pane for it.
+    return liveCronJobs(cronResults(d.saved()[key]!), processStart(pane), Date.now()).length > 0
   },
 // The dev route waits for a person to confirm a warning screen in each new pane.
 }, { max: MAX, idleMs: IDLE_MIN * 60_000, connectMs: (CLAUDE.includes('development-channels') ? 30 : 3) * 60_000, newId: randomUUID, saved })

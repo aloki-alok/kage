@@ -36986,6 +36986,17 @@ var Dispatcher = class {
     return true;
   }
 };
+function liveCronJobs(results, since, now) {
+  const jobs = /* @__PURE__ */ new Map();
+  for (const r of results) {
+    const t = Date.parse(r.timestamp);
+    const made = /Scheduled (\S+) job ([0-9a-f]+)/.exec(r.text);
+    if (made && t >= since) jobs.set(made[2], t + (made[1] === "recurring" ? 7 : 1) * 24 * 36e5);
+    const gone = /Cancelled job ([0-9a-f]+)/.exec(r.text);
+    if (gone) jobs.delete(gone[1]);
+  }
+  return [...jobs].filter(([, until]) => now < until).map(([id]) => id);
+}
 
 // config.ts
 var log = (...a) => console.error("[kage]", ...a);
@@ -37070,6 +37081,41 @@ function lastActivity(key) {
     }
   }));
 }
+function cronResults(id) {
+  let raw = "";
+  try {
+    raw = readFileSync2(`${PROJECT}/${id}.jsonl`, "utf8");
+  } catch {
+    return [];
+  }
+  const out = [];
+  for (const line of raw.split("\n")) {
+    if (!line.includes(" job ")) continue;
+    let r;
+    try {
+      r = JSON.parse(line);
+    } catch {
+      continue;
+    }
+    const content = r?.message?.content;
+    if (!r.timestamp || !Array.isArray(content)) continue;
+    for (const b of content) {
+      if (b?.type !== "tool_result") continue;
+      const text = typeof b.content === "string" ? b.content : (b.content ?? []).map((c) => c?.text ?? "").join("");
+      out.push({ timestamp: r.timestamp, text });
+    }
+  }
+  return out;
+}
+function processStart(pane) {
+  try {
+    const shell = tmux("display-message", "-p", "-t", pane, "#{pane_pid}").trim();
+    const child = execFileSync("pgrep", ["-P", shell], { encoding: "utf8" }).trim().split("\n")[0];
+    return Date.parse(execFileSync("ps", ["-o", "lstart=", "-p", child], { encoding: "utf8" }).trim()) || Infinity;
+  } catch {
+    return Infinity;
+  }
+}
 var BOARD = `=${NAME}:threads`;
 var places = /* @__PURE__ */ new Map();
 function panes() {
@@ -37120,7 +37166,8 @@ var d = new Dispatcher({
     const pane = paneOf(key);
     if (!pane) return false;
     const bottom = tmux("capture-pane", "-p", "-t", pane).split("\n").filter((l) => l.trim()).slice(-20).join("\n");
-    return /… \(\d/.test(bottom) || /· \d+ shells?\b/.test(bottom) || /^\s*◯ /m.test(bottom);
+    if (/… \(\d/.test(bottom) || /· \d+ shells?\b/.test(bottom) || /^\s*◯ /m.test(bottom)) return true;
+    return liveCronJobs(cronResults(d.saved()[key]), processStart(pane), Date.now()).length > 0;
   }
   // The dev route waits for a person to confirm a warning screen in each new pane.
 }, { max: MAX, idleMs: IDLE_MIN * 6e4, connectMs: (CLAUDE.includes("development-channels") ? 30 : 3) * 6e4, newId: randomUUID, saved });

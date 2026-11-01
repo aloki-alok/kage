@@ -262,3 +262,19 @@ export function withTeammates(env: string, ids: string[]): string {
   const unique = [...new Set(ids)]
   return [...rest, ...(unique.length ? [`KAGE_TEAMMATES=${unique.join(',')}`] : [])].join('\n') + '\n'
 }
+
+// Repeating checks a session made with CronCreate live only in its Claude Code process, so
+// closing the pane ends them. These are the jobs still alive: made since `since` (when the
+// running process started), not cancelled, and not expired (recurring after 7 days, as Claude
+// Code does; ponytail: a one-shot after a day, since its fire time isn't parsed).
+export function liveCronJobs(results: { timestamp: string; text: string }[], since: number, now: number): string[] {
+  const jobs = new Map<string, number>()
+  for (const r of results) {
+    const t = Date.parse(r.timestamp)
+    const made = /Scheduled (\S+) job ([0-9a-f]+)/.exec(r.text)
+    if (made && t >= since) jobs.set(made[2]!, t + (made[1] === 'recurring' ? 7 : 1) * 24 * 3600_000)
+    const gone = /Cancelled job ([0-9a-f]+)/.exec(r.text)
+    if (gone) jobs.delete(gone[1]!)
+  }
+  return [...jobs].filter(([, until]) => now < until).map(([id]) => id)
+}
