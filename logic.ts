@@ -331,3 +331,12 @@ export function openWaiting(tsv: string): { when: string; link: string; what: st
   }
   return [...open.values()].flat()
 }
+
+// Sources that hold the owner's private data. Only the owner's own task may read them.
+const PRIVATE_TOOL = /^mcp__.*(gmail|google_drive|google_calendar|granola|fireflies)/i
+export function privateToolRefusal(tool: string, sender: string | undefined): string | undefined {
+  if (!PRIVATE_TOOL.test(tool) || sender === 'owner') return undefined
+  return `${tool} reads the owner's private data, and this task did not come from the owner. Reply that this needs the owner, and stop.`
+}
+// Where the server records who sent a thread's latest task, for the private-data hook.
+export const senderFile = (dir: string, thread: string) => `${dir}/sender/${thread.replace(/[^A-Za-z0-9.]/g, '_')}`

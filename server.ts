@@ -6,10 +6,10 @@ import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js'
 import { CallToolRequestSchema, ListToolsRequestSchema } from '@modelcontextprotocol/sdk/types.js'
 import { z } from 'zod'
 import { connect, type Socket } from 'node:net'
-import { appendFileSync, readFileSync } from 'node:fs'
+import { appendFileSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { dirname } from 'node:path'
 import { load, log } from './config.ts'
-import { openWaiting, safeReply, secretRefusal, splitForSlack, tsvRow } from './logic.ts'
+import { openWaiting, safeReply, secretRefusal, senderFile, splitForSlack, tsvRow } from './logic.ts'
 
 // Installed as a plugin, this server starts in every Claude Code session. Only the windows the
 // router opens (KAGE_THREAD set) take tasks. Everywhere else, answer MCP and stay idle.
@@ -202,6 +202,10 @@ async function fromRouter(m: FromRouter) {
   }
   taskChannels.add(m.meta.channel)
   ownerTask.set(`${m.meta.channel}:${m.meta.thread_ts}`, m.fromOwner === true)
+  // The private-data hook reads this. It must land before the task does, so a failure drops the task.
+  const sender = senderFile(dirname(ENV_FILE), THREAD!)
+  mkdirSync(dirname(sender), { recursive: true, mode: 0o700 })
+  writeFileSync(sender, m.fromOwner === true && m.meta.channel !== 'email' ? 'owner' : 'teammate', { mode: 0o600 })
   if (m.meta.channel !== 'email') unanswered.set(`${m.meta.channel}:${m.meta.thread_ts}`, m.origin)
   where = m.meta.permalink ? `<${m.meta.permalink}|${m.meta.place}>` : m.meta.place
   const key = `${m.meta.channel}:${m.meta.thread_ts}`

@@ -1,6 +1,6 @@
 import { describe, test } from 'node:test'
 import assert from 'node:assert/strict'
-import { classify, Dispatcher, findPeople, findSecret, secretRefusal, liveCronJobs, teammatesIn, threadKey, withTeammates, plainName, quoteMessage, safeReply, splitForSlack, taskLine, validName, openWaiting, tsvRow } from './logic.ts'
+import { classify, Dispatcher, findPeople, findSecret, secretRefusal, liveCronJobs, teammatesIn, threadKey, withTeammates, plainName, quoteMessage, safeReply, splitForSlack, taskLine, validName, openWaiting, tsvRow, privateToolRefusal } from './logic.ts'
 
 const OWNER = 'UOWNER001'
 const BOT = 'UBOT00001'
@@ -475,5 +475,19 @@ describe('the ledgers', () => {
   test('two offers in one thread both stay open', () => {
     const rows = [tsvRow(['t1', 'open', 'C1:1.1', 'l', 'a']), tsvRow(['t2', 'open', 'C1:1.1', 'l', 'b'])].join('')
     assert.deepEqual(openWaiting(rows).map(i => i.what), ['a', 'b'])
+  })
+})
+
+describe('private sources on a teammate task', () => {
+  const MAIL = 'mcp__claude_ai_Gmail__search_threads'
+  test('the owner may read mail', () => assert.equal(privateToolRefusal(MAIL, 'owner'), undefined))
+  test('a teammate may not read mail, drive, calendar or meeting notes', () => {
+    for (const t of [MAIL, 'mcp__claude_ai_Google_Drive__read', 'mcp__claude_ai_Google_Calendar__list', 'mcp__granola__query_granola_meetings', 'mcp__plugin_product-management_fireflies__get'])
+      assert.match(privateToolRefusal(t, 'teammate') ?? '', /owner/)
+  })
+  test('an unknown sender is refused', () => assert.ok(privateToolRefusal(MAIL, undefined)))
+  test('other tools are fine for a teammate', () => {
+    for (const t of ['Bash', 'Read', 'mcp__kage__reply', 'mcp__claude_ai_Slack__slack_send_message'])
+      assert.equal(privateToolRefusal(t, 'teammate'), undefined)
   })
 })

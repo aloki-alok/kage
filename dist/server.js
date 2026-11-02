@@ -35102,7 +35102,7 @@ var StdioServerTransport = class {
 
 // server.ts
 import { connect } from "node:net";
-import { appendFileSync, readFileSync as readFileSync2 } from "node:fs";
+import { appendFileSync, mkdirSync, readFileSync as readFileSync2, writeFileSync } from "node:fs";
 import { dirname } from "node:path";
 
 // config.ts
@@ -35170,6 +35170,7 @@ function openWaiting(tsv) {
   }
   return [...open2.values()].flat();
 }
+var senderFile = (dir, thread) => `${dir}/sender/${thread.replace(/[^A-Za-z0-9.]/g, "_")}`;
 
 // config.ts
 var log = (...a) => console.error("[kage]", ...a);
@@ -35394,6 +35395,9 @@ async function fromRouter(m) {
   }
   taskChannels.add(m.meta.channel);
   ownerTask.set(`${m.meta.channel}:${m.meta.thread_ts}`, m.fromOwner === true);
+  const sender = senderFile(dirname(ENV_FILE), THREAD);
+  mkdirSync(dirname(sender), { recursive: true, mode: 448 });
+  writeFileSync(sender, m.fromOwner === true && m.meta.channel !== "email" ? "owner" : "teammate", { mode: 384 });
   if (m.meta.channel !== "email") unanswered.set(`${m.meta.channel}:${m.meta.thread_ts}`, m.origin);
   where = m.meta.permalink ? `<${m.meta.permalink}|${m.meta.place}>` : m.meta.place;
   const key = `${m.meta.channel}:${m.meta.thread_ts}`;
