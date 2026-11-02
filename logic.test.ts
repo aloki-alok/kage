@@ -1,6 +1,6 @@
 import { describe, test } from 'node:test'
 import assert from 'node:assert/strict'
-import { classify, Dispatcher, findPeople, findSecret, secretRefusal, liveCronJobs, teammatesIn, threadKey, withTeammates, plainName, quoteMessage, safeReply, splitForSlack, taskLine, validName , openWaiting, tsvRow } from './logic.ts'
+import { classify, Dispatcher, findPeople, findSecret, secretRefusal, liveCronJobs, teammatesIn, threadKey, withTeammates, plainName, quoteMessage, safeReply, splitForSlack, taskLine, validName, openWaiting, tsvRow } from './logic.ts'
 
 const OWNER = 'UOWNER001'
 const BOT = 'UBOT00001'

@@ -35160,7 +35160,7 @@ ${line}` : line;
   parts.push(cur);
   return parts;
 }
-var tsvRow = (cells) => cells.map((c) => c.replace(/[\t\r\n]+/g, " ")).join("	") + "\n";
+var tsvRow = (cells) => cells.map((c) => (c ?? "").replace(/[\t\r\n]+/g, " ")).join("	") + "\n";
 function openWaiting(tsv) {
   const open2 = /* @__PURE__ */ new Map();
   for (const line of tsv.split("\n")) {
@@ -35229,7 +35229,13 @@ var { ENV_FILE, Title, bot, user } = load();
 var SOCK = `${dirname(ENV_FILE)}/router.sock`;
 var WAITING = `${dirname(ENV_FILE)}/waiting.tsv`;
 var PROD_LOG = `${dirname(ENV_FILE)}/prod-actions.tsv`;
-var append = (file2, cells) => appendFileSync(file2, tsvRow([(/* @__PURE__ */ new Date()).toISOString(), ...cells]), { mode: 384 });
+var append = (file2, cells) => {
+  try {
+    appendFileSync(file2, tsvRow([(/* @__PURE__ */ new Date()).toISOString(), ...cells]), { mode: 384 });
+  } catch (e) {
+    log("ledger write failed", file2, e);
+  }
+};
 process.on("unhandledRejection", (e) => log("unhandled", e));
 var botDm = "";
 var taskChannels = /* @__PURE__ */ new Set();
@@ -35276,7 +35282,7 @@ mcp.setRequestHandler(ListToolsRequestSchema, async () => ({
         text: { type: "string", description: "Slack mrkdwn text" },
         private: { type: "boolean", description: `true sends it to the owner's DM with ${Title} instead of the thread` },
         owner_asked: { type: "boolean", description: "true only when the owner's own task line asks to post this secret in the thread. Ignored on a teammate's task." },
-        waiting: { type: "string", description: 'If this reply asks a question or offers something and the work waits on the answer: one line naming what waits ("Open a PR for lock_id?"). It stays on the waiting list until the thread gets a new task.' }
+        waiting: { type: "string", description: 'If this reply asks a question or offers something and the work waits on the answer: one line naming what waits ("Open a PR for lock_id?"). It stays on the waiting list until this thread gets a new task, even when the reply is private.' }
       },
       required: ["channel", "thread_ts", "text"]
     }

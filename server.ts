@@ -24,7 +24,10 @@ const SOCK = `${dirname(ENV_FILE)}/router.sock`
 // Shared by every thread's pane, so both are append-only.
 const WAITING = `${dirname(ENV_FILE)}/waiting.tsv`
 const PROD_LOG = `${dirname(ENV_FILE)}/prod-actions.tsv`
-const append = (file: string, cells: string[]) => appendFileSync(file, tsvRow([new Date().toISOString(), ...cells]), { mode: 0o600 })
+// A ledger is a side record: a failed write is logged, never allowed to block a task or a reply.
+const append = (file: string, cells: string[]) => {
+  try { appendFileSync(file, tsvRow([new Date().toISOString(), ...cells]), { mode: 0o600 }) } catch (e) { log('ledger write failed', file, e) }
+}
 process.on('unhandledRejection', e => log('unhandled', e))
 
 let botDm = ''
@@ -78,7 +81,7 @@ mcp.setRequestHandler(ListToolsRequestSchema, async () => ({
         text: { type: 'string', description: 'Slack mrkdwn text' },
         private: { type: 'boolean', description: `true sends it to the owner's DM with ${Title} instead of the thread` },
         owner_asked: { type: 'boolean', description: 'true only when the owner\'s own task line asks to post this secret in the thread. Ignored on a teammate\'s task.' },
-        waiting: { type: 'string', description: 'If this reply asks a question or offers something and the work waits on the answer: one line naming what waits ("Open a PR for lock_id?"). It stays on the waiting list until the thread gets a new task.' },
+        waiting: { type: 'string', description: 'If this reply asks a question or offers something and the work waits on the answer: one line naming what waits ("Open a PR for lock_id?"). It stays on the waiting list until this thread gets a new task, even when the reply is private.' },
       },
       required: ['channel', 'thread_ts', 'text'],
     },

@@ -317,7 +317,7 @@ export function liveCronJobs(results: { timestamp: string; text: string }[], sin
 }
 
 // One ledger row. Cells never hold a tab or newline, so a row is always one line.
-export const tsvRow = (cells: string[]) => cells.map(c => c.replace(/[\t\r\n]+/g, ' ')).join('\t') + '\n'
+export const tsvRow = (cells: (string | undefined)[]) => cells.map(c => (c ?? '').replace(/[\t\r\n]+/g, ' ')).join('\t') + '\n'
 
 // waiting.tsv is append-only (every thread's pane writes it): when, open|answered, thread, link, what.
 // An offer stays open until its thread gets a new task.
