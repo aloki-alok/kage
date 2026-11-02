@@ -1,6 +1,6 @@
 import { describe, test } from 'node:test'
 import assert from 'node:assert/strict'
-import { classify, Dispatcher, findPeople, findSecret, secretRefusal, liveCronJobs, teammatesIn, threadKey, withTeammates, plainName, quoteMessage, safeReply, splitForSlack, taskLine, validName } from './logic.ts'
+import { classify, Dispatcher, findPeople, findSecret, secretRefusal, liveCronJobs, teammatesIn, threadKey, withTeammates, plainName, quoteMessage, safeReply, splitForSlack, taskLine, validName , openWaiting, tsvRow } from './logic.ts'
 
 const OWNER = 'UOWNER001'
 const BOT = 'UBOT00001'
@@ -449,5 +449,31 @@ describe('who may put a secret in a thread', () => {
   test('private replies and secret-free text pass', () => {
     assert.equal(secretRefusal(pw, { fromOwner: false, private: true }), undefined)
     assert.equal(secretRefusal('done, rows reset', { fromOwner: false }), undefined)
+  })
+})
+
+describe('the ledgers', () => {
+  test('a row keeps tabs and newlines out of its cells', () => {
+    assert.equal(tsvRow(['a\tb', 'line1\nline2', 'ok']), 'a b\tline1 line2\tok\n')
+  })
+  test('an offer stays open until its thread gets a new task', () => {
+    const rows = [
+      tsvRow(['t1', 'open', 'C1:1.1', 'link1', 'Open a PR for lock_id?']),
+      tsvRow(['t2', 'open', 'C2:2.2', 'link2', 'Restart the router?']),
+      tsvRow(['t3', 'answered', 'C1:1.1', '', '']),
+    ].join('')
+    assert.deepEqual(openWaiting(rows), [{ when: 't2', link: 'link2', what: 'Restart the router?' }])
+  })
+  test('a new offer after an answer opens again', () => {
+    const rows = [
+      tsvRow(['t1', 'open', 'C1:1.1', 'l', 'first']),
+      tsvRow(['t2', 'answered', 'C1:1.1', '', '']),
+      tsvRow(['t3', 'open', 'C1:1.1', 'l', 'second']),
+    ].join('')
+    assert.deepEqual(openWaiting(rows).map(i => i.what), ['second'])
+  })
+  test('two offers in one thread both stay open', () => {
+    const rows = [tsvRow(['t1', 'open', 'C1:1.1', 'l', 'a']), tsvRow(['t2', 'open', 'C1:1.1', 'l', 'b'])].join('')
+    assert.deepEqual(openWaiting(rows).map(i => i.what), ['a', 'b'])
   })
 })

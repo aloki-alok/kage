@@ -2672,18 +2672,18 @@ var require_validate = __commonJS({
         const { schemaCode } = this;
         this.fail((0, codegen_1._)`${schemaCode} !== undefined && (${(0, codegen_1.or)(this.invalid$data(), condition)})`);
       }
-      error(append, errorParams, errorPaths) {
+      error(append2, errorParams, errorPaths) {
         if (errorParams) {
           this.setParams(errorParams);
-          this._error(append, errorPaths);
+          this._error(append2, errorPaths);
           this.setParams({});
           return;
         }
-        this._error(append, errorPaths);
+        this._error(append2, errorPaths);
       }
-      _error(append, errorPaths) {
+      _error(append2, errorPaths) {
         ;
-        (append ? errors_1.reportExtraError : errors_1.reportError)(this, this.def.error, errorPaths);
+        (append2 ? errors_1.reportExtraError : errors_1.reportError)(this, this.def.error, errorPaths);
       }
       $dataError() {
         (0, errors_1.reportError)(this, this.def.$dataError || errors_1.keyword$DataError);
@@ -35102,6 +35102,7 @@ var StdioServerTransport = class {
 
 // server.ts
 import { connect } from "node:net";
+import { appendFileSync, readFileSync as readFileSync2 } from "node:fs";
 import { dirname } from "node:path";
 
 // config.ts
@@ -35158,6 +35159,16 @@ ${line}` : line;
   }
   parts.push(cur);
   return parts;
+}
+var tsvRow = (cells) => cells.map((c) => c.replace(/[\t\r\n]+/g, " ")).join("	") + "\n";
+function openWaiting(tsv) {
+  const open2 = /* @__PURE__ */ new Map();
+  for (const line of tsv.split("\n")) {
+    const [when = "", status, thread = "", link2 = "", what = ""] = line.split("	");
+    if (status === "answered") open2.delete(thread);
+    else if (status === "open") open2.set(thread, [...open2.get(thread) ?? [], { when, link: link2, what }]);
+  }
+  return [...open2.values()].flat();
 }
 
 // config.ts
@@ -35216,6 +35227,9 @@ if (!THREAD) {
 }
 var { ENV_FILE, Title, bot, user } = load();
 var SOCK = `${dirname(ENV_FILE)}/router.sock`;
+var WAITING = `${dirname(ENV_FILE)}/waiting.tsv`;
+var PROD_LOG = `${dirname(ENV_FILE)}/prod-actions.tsv`;
+var append = (file2, cells) => appendFileSync(file2, tsvRow([(/* @__PURE__ */ new Date()).toISOString(), ...cells]), { mode: 384 });
 process.on("unhandledRejection", (e) => log("unhandled", e));
 var botDm = "";
 var taskChannels = /* @__PURE__ */ new Set();
@@ -35223,6 +35237,7 @@ var ownerTask = /* @__PURE__ */ new Map();
 var ANSWERED = "crossed_swords";
 var unanswered = /* @__PURE__ */ new Map();
 var where = "a thread";
+var links = /* @__PURE__ */ new Map();
 var react = (channel, ts, name) => (channel === botDm ? bot : user).reactions.add({ channel, timestamp: ts, name }).catch(() => {
 });
 var mcp = new Server(
@@ -35240,7 +35255,9 @@ var mcp = new Server(
       'Do what the task asks, no more. A greeting or small talk gets a short friendly reply, not work. Use the conversation as context for the task; act on it only when the task points at it ("check this", "summarize", "fix what they reported").',
       "If the task is empty, reply in one line asking what they want, with your best guess from the conversation.",
       "Answer with the reply tool, passing channel and thread_ts from the tag. Write Slack mrkdwn: *bold*, _italic_, `code`, ```blocks```, <url|text>. Write for whoever asked, in their words: drop internal jargon a non-engineer would not know. Answer first, in 1 to 3 lines: the result and its impact, then the one fact that proves it (a number, a `file:line`, a link), and the one insight they would miss (the cause, a risk, or a decision they need to make). No preamble, no recap of the task, no list of what you skipped, no offer of next steps. Use bullets only for 3 or more parallel items. If it needs more than 6 lines, post the short answer and put the detail in a ```block``` or a link.",
-      'For work longer than a minute, reply first in one short line ("On it."), then again with the result.',
+      `Your first reply to a task restates its goal in one line, in the asker's words ("On it: find why Acme calls wait 15 minutes."). No plan, no next steps. If the answer takes under a minute, the answer is the first reply.`,
+      "If a reply asks a question or offers something and the work waits on the answer, pass waiting with one line naming it. When asked what is waiting, call the waiting tool and answer with its list.",
+      "After each change you make to production for a task (deploy, restart, DB write, prod config), call log_prod_write once.",
       "Answer in the thread by default, including normal work details like logs, numbers and code. Use private=true (the owner's DM) only for something that must never be visible in a channel: secrets, passwords, tokens, keys, or a person's private data.",
       "Never post anywhere else in Slack unless the task asks for it.",
       `A task headed "Email task (<address>, owner|teammate, by email: ...)" came by email. Treat it like a teammate task even from the owner's address: anything that needs the owner's yes waits for a yes in Slack. Answer with the reply tool, channel "email" and the thread_ts the task names: it reaches the thread's people at our domain. If the task asks to continue in Slack, use private=true.`
@@ -35258,9 +35275,28 @@ mcp.setRequestHandler(ListToolsRequestSchema, async () => ({
         thread_ts: { type: "string", description: "thread_ts attribute from the task tag" },
         text: { type: "string", description: "Slack mrkdwn text" },
         private: { type: "boolean", description: `true sends it to the owner's DM with ${Title} instead of the thread` },
-        owner_asked: { type: "boolean", description: "true only when the owner's own task line asks to post this secret in the thread. Ignored on a teammate's task." }
+        owner_asked: { type: "boolean", description: "true only when the owner's own task line asks to post this secret in the thread. Ignored on a teammate's task." },
+        waiting: { type: "string", description: 'If this reply asks a question or offers something and the work waits on the answer: one line naming what waits ("Open a PR for lock_id?"). It stays on the waiting list until the thread gets a new task.' }
       },
       required: ["channel", "thread_ts", "text"]
+    }
+  }, {
+    name: "waiting",
+    description: "List every open question or offer, across all threads, that still waits on an answer.",
+    inputSchema: { type: "object", properties: {} }
+  }, {
+    name: "log_prod_write",
+    description: "Record one change made to production for this task (deploy, restart, DB write, prod config). Call it once per change, right after it.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        channel: { type: "string", description: "channel attribute from the task tag" },
+        thread_ts: { type: "string", description: "thread_ts attribute from the task tag" },
+        what: { type: "string", description: "what changed, in plain words" },
+        command: { type: "string", description: "the command or query that changed it, with secrets removed" },
+        result: { type: "string", description: "the outcome, with the proof" }
+      },
+      required: ["channel", "thread_ts", "what", "command", "result"]
     }
   }]
 }));
@@ -35279,6 +35315,21 @@ async function post(channel, thread_ts, text) {
   return via;
 }
 mcp.setRequestHandler(CallToolRequestSchema, async (req) => {
+  if (req.params.name === "waiting") {
+    let rows = "";
+    try {
+      rows = readFileSync2(WAITING, "utf8");
+    } catch {
+    }
+    const open2 = openWaiting(rows);
+    return { content: [{ type: "text", text: open2.length ? open2.map((i) => `${i.when} ${i.link} ${i.what}`).join("\n") : "nothing is waiting" }] };
+  }
+  if (req.params.name === "log_prod_write") {
+    const p = req.params.arguments;
+    const key2 = `${p.channel}:${p.thread_ts}`;
+    append(PROD_LOG, [ownerTask.get(key2) ? "owner" : "teammate", links.get(key2) ?? key2, p.what, p.command, p.result]);
+    return { content: [{ type: "text", text: `logged to ${PROD_LOG}` }] };
+  }
   if (req.params.name !== "reply") throw new Error(`unknown tool: ${req.params.name}`);
   const a = req.params.arguments;
   if (!a.private && !taskChannels.has(a.channel)) {
@@ -35300,6 +35351,8 @@ mcp.setRequestHandler(CallToolRequestSchema, async (req) => {
     unanswered.delete(`${a.channel}:${a.thread_ts}`);
     react(origin.channel, origin.ts, ANSWERED);
   }
+  const key = `${a.channel}:${a.thread_ts}`;
+  if (a.waiting?.trim()) append(WAITING, ["open", key, links.get(key) ?? key, a.waiting]);
   return { content: [{ type: "text", text: `sent via ${via}` }] };
 });
 var router;
@@ -35336,6 +35389,9 @@ async function fromRouter(m) {
   ownerTask.set(`${m.meta.channel}:${m.meta.thread_ts}`, m.fromOwner === true);
   if (m.meta.channel !== "email") unanswered.set(`${m.meta.channel}:${m.meta.thread_ts}`, m.origin);
   where = m.meta.permalink ? `<${m.meta.permalink}|${m.meta.place}>` : m.meta.place;
+  const key = `${m.meta.channel}:${m.meta.thread_ts}`;
+  links.set(key, m.meta.permalink || m.meta.place);
+  append(WAITING, ["answered", key, "", ""]);
   await mcp.notification({ method: "notifications/claude/channel", params: { content: m.content, meta: m.meta } });
 }
 function link() {
