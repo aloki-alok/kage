@@ -1,7 +1,7 @@
 {
   "hooks": {
     "PreToolUse": [
-      { "matcher": "mcp__.*", "hooks": [{ "type": "command", "command": "node \"${CLAUDE_PLUGIN_ROOT}/dist/private-data-guard.js\"" }] }
+      { "matcher": "mcp__.*|Write|Edit|MultiEdit|NotebookEdit", "hooks": [{ "type": "command", "command": "node \"${CLAUDE_PLUGIN_ROOT}/dist/private-data-guard.js\"" }] }
     ]
   }
 }

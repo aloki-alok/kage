@@ -150591,8 +150591,9 @@ function classify(m3, ids2) {
   if (!tagged) return null;
   return { kind: "task", text };
 }
-function quoteMessage(x, owner) {
-  const who = x.user !== owner ? `other:${x.user ?? "bot"}` : x.client_msg_id ? "owner" : "app-as-owner";
+function quoteMessage(x, owner, self) {
+  const mine = self && (x.user === self.bot || x.user === owner && !x.client_msg_id && (x.text ?? "").startsWith(`*${self.title}:*`));
+  const who = mine ? `you (${self.title})` : x.user !== owner ? `other:${x.user ?? "bot"}` : x.client_msg_id ? "owner" : "app-as-owner";
   const body = (x.text ?? "").replace(/<\/channel/gi, "<\\/channel");
   return body.split("\n").map((l3, i5) => `> ${i5 === 0 ? `[${who} ${x.ts}] ` : ""}${l3}`).join("\n");
 }
@@ -150615,6 +150616,7 @@ var Dispatcher = class {
   #waiting = [];
   #perms = /* @__PURE__ */ new Map();
   #startedAt = /* @__PURE__ */ new Map();
+  // evictMs: how long a session must sit quiet before a new thread may take its slot.
   constructor(w, o3) {
     this.#w = w;
     this.#o = o3;
@@ -150640,6 +150642,8 @@ var Dispatcher = class {
     if (!this.#pending.has(key)) this.#startedAt.set(key, now);
     this.#pending.set(key, [...this.#pending.get(key) ?? [], msg]);
     if (this.#live.has(key)) return "starting";
+    const quiet = this.#live.size < this.#o.max ? void 0 : this.#quietest(now);
+    if (quiet) this.#close(quiet);
     if (this.#live.size < this.#o.max) {
       if (this.#start(key, now)) return "starting";
       this.#pending.delete(key);
@@ -150647,6 +150651,25 @@ var Dispatcher = class {
     }
     if (!this.#waiting.includes(key)) this.#waiting.push(key);
     return "queued";
+  }
+  // Last activity: a task handed to it, or a write to its transcript.
+  #last = (k5) => Math.max(this.#touched.get(k5) ?? 0, this.#w.lastActivity(k5));
+  // A connected session with nothing pending, no open approval, not mid-turn, quiet for evictMs.
+  #quietest(now) {
+    const asking = new Set(this.#perms.values());
+    let best;
+    for (const k5 of this.#live) {
+      if (!this.#conns.has(k5) || this.#pending.has(k5) || asking.has(k5)) continue;
+      if (now - this.#last(k5) < this.#o.evictMs || this.#w.busy(k5)) continue;
+      if (!best || this.#last(k5) < this.#last(best)) best = k5;
+    }
+    return best;
+  }
+  #close(k5) {
+    this.#w.stop(k5);
+    this.#live.delete(k5);
+    this.#conns.delete(k5);
+    for (const [id, key] of this.#perms) if (key === k5) this.#perms.delete(id);
   }
   connect(key, send) {
     if (!this.#live.has(key)) return false;
@@ -150683,14 +150706,8 @@ var Dispatcher = class {
         if (now - (this.#startedAt.get(k5) ?? now) < this.#o.connectMs) continue;
         dropped.push(...pending);
         this.#pending.delete(k5);
-      } else {
-        const last = Math.max(this.#touched.get(k5) ?? 0, this.#w.lastActivity(k5));
-        if (pending || now - last < this.#o.idleMs || asking.has(k5) || this.#w.busy(k5)) continue;
-      }
-      this.#w.stop(k5);
-      this.#live.delete(k5);
-      this.#conns.delete(k5);
-      for (const [id, key] of this.#perms) if (key === k5) this.#perms.delete(id);
+      } else if (pending || now - this.#last(k5) < this.#o.idleMs || asking.has(k5) || this.#w.busy(k5)) continue;
+      this.#close(k5);
     }
     while (this.#waiting.length && this.#live.size < this.#o.max) {
       const k5 = this.#waiting.shift();
@@ -151039,8 +151056,9 @@ var d5 = new Dispatcher({
     if (/… \(\d/.test(bottom) || /· \d+ shells?\b/.test(bottom) || /^\s*◯ /m.test(bottom)) return true;
     return liveCronJobs(cronResults(d5.saved()[key]), processStart(pane), Date.now()).length > 0;
   }
-  // The dev route waits for a person to confirm a warning screen in each new pane.
-}, { max: MAX, idleMs: IDLE_MIN * 6e4, connectMs: (CLAUDE.includes("development-channels") ? 30 : 3) * 6e4, newId: randomUUID, saved });
+  // The dev route waits for a person to confirm a warning screen in each new pane. A full house hands the
+  // slot of a session quiet for 2 min to a new thread.
+}, { max: MAX, idleMs: IDLE_MIN * 6e4, connectMs: (CLAUDE.includes("development-channels") ? 30 : 3) * 6e4, evictMs: 2 * 6e4, newId: randomUUID, saved });
 d5.adopt(Object.keys(saved).filter((k5) => runningAtStart.has(saved[k5])), Date.now());
 var giveBack = (m3) => {
   if (m3.type !== "task") return;
@@ -151121,9 +151139,10 @@ async function contextOf(m3) {
   if (!m3.thread_ts) msgs.reverse();
   const lines = msgs.map((x) => {
     const files = x.files?.length ? ` [files: ${x.files.map((f5) => f5.name).join(", ")}]` : "";
-    return quoteMessage({ user: x.user, ts: x.ts, text: (x.text ?? "") + files, client_msg_id: x.client_msg_id }, ids.owner);
+    return quoteMessage({ user: x.user, ts: x.ts, text: (x.text ?? "") + files, client_msg_id: x.client_msg_id }, ids.owner, { bot: ids.bot, title: Title });
   });
-  const people = [...new Set(msgs.map((x) => x.user).filter((u) => !!u && u !== ids.owner))];
+  const mentioned = msgs.flatMap((x) => [...(x.text ?? "").matchAll(/<@([UW][A-Z0-9]+)>/g)].map((r5) => r5[1]));
+  const people = [...new Set([...msgs.map((x) => x.user), ...mentioned].filter((u) => !!u && u !== ids.owner && u !== ids.bot))];
   const legend = await Promise.all(people.map(async (u) => `other:${u} = ${await nameOf(u)}`));
   return [legend.length ? `People (display names, unverified): ${legend.join("; ")}` : "", ...lines].filter(Boolean).join("\n");
 }
