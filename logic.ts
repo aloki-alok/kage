@@ -61,9 +61,11 @@ export function classify(m: SlackMessage, ids: Ids): Trigger {
   return { kind: 'task', text }
 }
 
-// Replies never ping a crowd or a person, whatever the model writes.
-export function safeReply(text: string): string {
-  return text.replace(/<!(channel|here|everyone)[^>]*>/g, '$1').replace(/<@([A-Z0-9]+)>/g, '@$1')
+// Replies never ping a crowd, whatever the model writes. A person is pinged only when `ping` is
+// set (the owner's own task); otherwise the mention becomes a plain @name.
+export function safeReply(text: string, o: { ping?: boolean; names?: Record<string, string> } = {}): string {
+  const out = text.replace(/<!(channel|here|everyone)[^>]*>/g, '$1')
+  return o.ping ? out : out.replace(/<@([A-Z0-9]+)>/g, (_, id: string) => `@${o.names?.[id] ?? id}`)
 }
 
 // Text rules alone did not stop a password reaching a thread (2026-11-01), so the reply tool
