@@ -107,9 +107,13 @@ export function secretRefusal(
 // set to anything), and can't close the <channel> tag they arrive in.
 export function quoteMessage(
   x: { user?: string; ts?: string; text?: string; client_msg_id?: string }, owner: string,
+  self?: { bot: string; title: string },
 ): string {
-  // The owner's id without client_msg_id is an app posting with their token, not them.
-  const who = x.user !== owner ? `other:${x.user ?? 'bot'}` : x.client_msg_id ? 'owner' : 'app-as-owner'
+  // The owner's id without client_msg_id is an app posting with their token, not them. Kage's own
+  // fallback posts are those, marked "*Kage:*" (server.ts post).
+  const mine = self && (x.user === self.bot || (x.user === owner && !x.client_msg_id && (x.text ?? '').startsWith(`*${self.title}:*`)))
+  const who = mine ? `you (${self.title})`
+    : x.user !== owner ? `other:${x.user ?? 'bot'}` : x.client_msg_id ? 'owner' : 'app-as-owner'
   const body = (x.text ?? '').replace(/<\/channel/gi, '<\\/channel')
   return body.split('\n').map((l, i) => `> ${i === 0 ? `[${who} ${x.ts}] ` : ''}${l}`).join('\n')
 }

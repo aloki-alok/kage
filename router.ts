@@ -210,10 +210,12 @@ async function contextOf(m: SlackMessage): Promise<string> {
   if (!m.thread_ts) msgs.reverse()
   const lines = msgs.map(x => {
     const files = x.files?.length ? ` [files: ${x.files.map(f => f.name).join(', ')}]` : ''
-    return quoteMessage({ user: x.user, ts: x.ts, text: (x.text ?? '') + files, client_msg_id: (x as { client_msg_id?: string }).client_msg_id }, ids.owner)
+    return quoteMessage({ user: x.user, ts: x.ts, text: (x.text ?? '') + files, client_msg_id: (x as { client_msg_id?: string }).client_msg_id }, ids.owner, { bot: ids.bot, title: Title })
   })
   // Names help Claude read the thread; ids are what it trusts (anyone can set a display name).
-  const people = [...new Set(msgs.map(x => x.user).filter((u): u is string => !!u && u !== ids.owner))]
+  // Senders and people mentioned as <@U...>, so Claude can name them in a reply.
+  const mentioned = msgs.flatMap(x => [...(x.text ?? '').matchAll(/<@([UW][A-Z0-9]+)>/g)].map(r => r[1]))
+  const people = [...new Set([...msgs.map(x => x.user), ...mentioned].filter((u): u is string => !!u && u !== ids.owner && u !== ids.bot))]
   const legend = await Promise.all(people.map(async u => `other:${u} = ${await nameOf(u)}`))
   return [legend.length ? `People (display names, unverified): ${legend.join('; ')}` : '', ...lines]
     .filter(Boolean).join('\n')
