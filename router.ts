@@ -10,6 +10,7 @@ import { dirname } from 'node:path'
 import { load, log } from './config.ts'
 import { connectEmail } from './connectors/email.ts'
 import { connectSlack } from './connectors/slack.ts'
+import { dailyDue, openWaiting, staleWaiting } from './core/ledgers.ts'
 import { Dispatcher } from './core/sessions.ts'
 import type { Task, ToSession } from './runtime/protocol.ts'
 import { listenForSessions } from './runtime/session-link.ts'
@@ -53,8 +54,33 @@ const deliver = (key: string, task: Task, place: string) => {
 }
 const slack = await connectSlack({
   appToken: need('SLACK_APP_TOKEN'), bot, user, name: NAME, title: Title, teammates: TEAMMATES,
-  hub: { deliver, verdict: (id, behavior) => d.verdict(id, { type: 'verdict', request_id: id, behavior }) },
+  hub: { deliver, verdict: (id, behavior) => d.verdict(id, { type: 'verdict', request_id: id, behavior }), status },
 })
+
+const readFile = (f: string) => { try { return readFileSync(f, 'utf8') } catch { return '' } }
+const WAITING = `${DIR}/waiting.tsv`
+function status(): string {
+  const s = d.status(Date.now())
+  const min = (ms: number) => `${Math.round(ms / 60_000)} min`
+  const lines = s.live.map(l => `• ${places.get(l.key) ?? l.key}: ${l.state}${l.state === 'quiet' ? ` for ${min(l.quietMs)}` : ''}`)
+  const open = openWaiting(readFile(WAITING)).length
+  return [
+    `*${s.live.length} of ${MAX} sessions*${s.waiting.length ? `, ${s.waiting.length} waiting for a slot` : ''}`,
+    ...lines,
+    ...s.waiting.map(k => `• ${places.get(k) ?? k}: waiting for a slot`),
+    `${open} question${open === 1 ? '' : 's'} waiting on you`,
+  ].join('\n')
+}
+
+// Once a day from 10:30 IST, the owner gets the questions that have waited on them for a day or more.
+const DAILY = `${DIR}/daily-sent`
+setInterval(() => {
+  const today = dailyDue(Date.now(), readFile(DAILY).trim() || undefined)
+  if (!today) return
+  writeFileSync(DAILY, today, { mode: 0o600 })
+  const stale = staleWaiting(readFile(WAITING), Date.now(), 24 * 3600_000)
+  if (stale.length) slack.notifyOwner([`*Still waiting on you (${stale.length})*`, ...stale.map(i => `• <${i.link}|${i.what}> (since ${i.when.slice(0, 10)})`)].join('\n'))
+}, 10 * 60_000)
 const email = connectEmail({
   env, dir: DIR, name: NAME, deliver,
   failed: task => slack.notifyOwner(`Could not start a session for ${task.meta.place}.`),

@@ -59,6 +59,16 @@ export class Dispatcher<M> {
     return 'queued'
   }
 
+  // What runs now, for "@kage status".
+  status(now: number) {
+    const asking = new Set(this.#perms.values())
+    const state = (k: string) => !this.#conns.has(k) ? 'starting' : this.#w.busy(k) ? 'busy' : asking.has(k) ? 'asking' : 'quiet'
+    return {
+      live: [...this.#live].map(key => ({ key, state: state(key), quietMs: now - this.#last(key) })),
+      waiting: [...this.#waiting],
+    }
+  }
+
   // Last activity: a task handed to it, or a write to its transcript.
   #last = (k: string) => Math.max(this.#touched.get(k) ?? 0, this.#w.lastActivity(k))
 

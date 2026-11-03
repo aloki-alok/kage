@@ -20,10 +20,20 @@ export type SlackMessage = {
   thread_ts?: string
 }
 
+// side: run it in its own session, beside the thread's (which may be busy with something else).
+// status: the owner asks the hub what is running; no session reads it.
 export type Trigger =
-  | { kind: 'task'; text: string }
+  | { kind: 'task'; text: string; side?: true }
+  | { kind: 'status' }
   | { kind: 'verdict'; request_id: string; behavior: 'allow' | 'deny' }
   | null
+
+const SIDE_RE = /^side\b:?\s*/i
+const task = (text: string, isOwner: boolean): Trigger => {
+  if (isOwner && /^status$/i.test(text)) return { kind: 'status' }
+  const side = SIDE_RE.exec(text)
+  return side ? { kind: 'task', text: text.slice(side[0].length), side: true } : { kind: 'task', text }
+}
 
 // Claude Code's request ids: five lowercase letters without "l".
 const VERDICT_RE = /^\s*(y|yes|n|no)\s+([a-km-z]{5})\s*$/i
@@ -55,10 +65,10 @@ export function classify(m: SlackMessage, ids: Ids): Trigger {
         behavior: v[1]!.toLowerCase().startsWith('y') ? 'allow' : 'deny',
       }
     }
-    return { kind: 'task', text }
+    return task(text, true)
   }
   if (!tagged) return null
-  return { kind: 'task', text }
+  return task(text, isOwner)
 }
 
 // Other people's words go to Claude quoted and labelled by Slack id (names can be

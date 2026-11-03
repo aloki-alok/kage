@@ -60,6 +60,17 @@ describe('what starts a task', () => {
     assert.deepEqual(classify(msg({ channel: DM, text: `<@${BOT}> what is open?` }), ids),
       { kind: 'task', text: 'what is open?' })
   })
+  test('"status" from the owner asks the hub, not a session; from a teammate it is a plain task', () => {
+    assert.deepEqual(classify(msg({ text: `<@${BOT}> status` }), ids), { kind: 'status' })
+    assert.deepEqual(classify(msg({ channel: DM, text: ' Status ' }), ids), { kind: 'status' })
+    assert.deepEqual(classify(msg({ user: MATE, text: '@kage status' }), ids), { kind: 'task', text: 'status' })
+    assert.deepEqual(classify(msg({ text: '@kage status of the deploy?' }), ids), { kind: 'task', text: 'status of the deploy?' })
+  })
+  test('"side <task>" runs beside a busy thread session, in its own', () => {
+    assert.deepEqual(classify(msg({ text: '@kage side check the queue' }), ids), { kind: 'task', text: 'check the queue', side: true })
+    assert.deepEqual(classify(msg({ user: MATE, text: '@kage side: look' }), ids), { kind: 'task', text: 'look', side: true })
+    assert.deepEqual(classify(msg({ text: '@kage sidebar is broken' }), ids), { kind: 'task', text: 'sidebar is broken' })
+  })
   test('a thread broadcast or a file share with a tag counts', () => {
     assert.deepEqual(classify(msg({ subtype: 'thread_broadcast', text: `<@${BOT}> go` }), ids), { kind: 'task', text: 'go' })
     assert.deepEqual(classify(msg({ subtype: 'file_share', text: `<@${BOT}> read this` }), ids), { kind: 'task', text: 'read this' })

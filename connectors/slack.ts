@@ -15,6 +15,7 @@ const FAILED = 'warning'
 export type Hub = {
   deliver(key: string, task: Task, place: string): 'sent' | 'starting' | 'queued' | 'failed'
   verdict(requestId: string, behavior: 'allow' | 'deny'): boolean
+  status(): string
 }
 
 export async function connectSlack(o: { appToken: string; bot: WebClient; user: WebClient; name: string; title: string; teammates: string[]; hub: Hub }) {
@@ -86,6 +87,7 @@ export async function connectSlack(o: { appToken: string; bot: WebClient; user: 
       if (!o.hub.verdict(t.request_id, t.behavior)) log('no running session asked for', t.request_id)
       return
     }
+    if (t.kind === 'status') return say(m.channel, m.thread_ts ?? m.ts, o.hub.status())
     react(m.channel, m.ts, PICKED_UP)
     const [place, convo, link] = await Promise.all([
       placeOf(m.channel),
@@ -103,7 +105,9 @@ export async function connectSlack(o: { appToken: string; bot: WebClient; user: 
       meta: { channel: m.channel, thread_ts: m.thread_ts ?? m.ts, place, permalink: link },
       origin: { channel: m.channel, ts: m.ts },
     }
-    const r = o.hub.deliver(threadKey(m, ids.botDm), task, place)
+    // A side task gets a session of its own, keyed by its message, beside the thread's.
+    const key = t.side ? `${threadKey(m, ids.botDm)}#side-${m.ts}` : threadKey(m, ids.botDm)
+    const r = o.hub.deliver(key, task, t.side ? `${place} (side)` : place)
     if (r === 'queued') react(m.channel, m.ts, WAITING)
     if (r === 'failed') failed(task)
   }
@@ -111,6 +115,10 @@ export async function connectSlack(o: { appToken: string; bot: WebClient; user: 
   // A task that could not reach a session gets ⚠️ on its message instead of waiting forever.
   const failed = (task: Task) => react(task.origin.channel, task.origin.ts, FAILED)
   const notifyOwner = (text: string) => void bot.chat.postMessage({ channel: ids.botDm, text }).catch(() => {})
+  // A hub answer in the thread: as the bot, or as the owner marked with the name where the bot can't post.
+  const say = (channel: string, thread_ts: string, text: string) =>
+    bot.chat.postMessage({ channel, thread_ts, text }).catch(() =>
+      user.chat.postMessage({ channel, thread_ts, text: `*${o.title}:* ${text}` })).then(() => {}, e => log('status reply failed', e))
 
   // Messages in one thread are handled one after another, so a quick follow-up can't overtake.
   const queue = new Map<string, Promise<void>>()

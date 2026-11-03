@@ -26,3 +26,14 @@ export function postedBy(tsv: string, channel: string, ts: string): 'bot' | 'own
   }
   return by === 'bot' || by === 'owner' ? by : undefined
 }
+
+// The daily note to the owner: questions that have waited on them for ageMs or more.
+export const staleWaiting = (tsv: string, now: number, ageMs: number) =>
+  openWaiting(tsv).filter(i => now - Date.parse(i.when) >= ageMs)
+
+// Due once a UTC day from 05:00 UTC (10:30 IST): returns today's date to record as sent.
+export function dailyDue(now: number, lastSent: string | undefined): string | undefined {
+  const t = new Date(now)
+  const today = t.toISOString().slice(0, 10)
+  return t.getUTCHours() >= 5 && lastSent !== today ? today : undefined
+}

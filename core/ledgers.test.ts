@@ -1,7 +1,25 @@
 import { describe, test } from 'node:test'
 import assert from 'node:assert/strict'
-import { openWaiting, postedBy, tsvRow } from './ledgers.ts'
+import { dailyDue, openWaiting, postedBy, staleWaiting, tsvRow } from './ledgers.ts'
 
+
+describe('the daily note of what waits on the owner', () => {
+  const day = 24 * 3600_000
+  const now = Date.parse('2026-11-04T05:10:00Z')
+  test('only questions open for a day or more are in it', () => {
+    const rows = [
+      tsvRow(['2026-11-02T09:00:00Z', 'open', 'C1:1.1', 'l1', 'old']),
+      tsvRow(['2026-11-04T01:00:00Z', 'open', 'C2:2.2', 'l2', 'new']),
+    ].join('')
+    assert.deepEqual(staleWaiting(rows, now, day).map(i => i.what), ['old'])
+  })
+  test('it is due once a day, from 10:30 IST (05:00 UTC)', () => {
+    assert.equal(dailyDue(Date.parse('2026-11-04T04:59:00Z'), undefined), undefined)
+    assert.equal(dailyDue(now, undefined), '2026-11-04')
+    assert.equal(dailyDue(now, '2026-11-04'), undefined)
+    assert.equal(dailyDue(now, '2026-11-03'), '2026-11-04')
+  })
+})
 
 describe('the ledgers', () => {
   test('a row keeps tabs and newlines out of its cells', () => {

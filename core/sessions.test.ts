@@ -112,6 +112,23 @@ describe('one Claude session per thread', () => {
     d.sweep(5000)
     assert.deepEqual(stopped, [])
   })
+  test('status names each live session as busy, asking, starting or quiet, and the threads waiting', () => {
+    const { d, activity, busy, inbox } = setup({ max: 4 })
+    d.task('A', 'a', 0); inbox('A'); busy.add('A')
+    d.task('B', 'b', 0); inbox('B'); d.permission('B', 'abcde')
+    d.task('C', 'c', 0)                          // not connected yet
+    d.task('D', 'd', 0); inbox('D'); activity.set('D', 1000)
+    d.task('E', 'e', 0)                          // full, nobody quiet long enough: waits
+    assert.deepEqual(d.status(1200), {
+      live: [
+        { key: 'A', state: 'busy', quietMs: 1200 },
+        { key: 'B', state: 'asking', quietMs: 1200 },
+        { key: 'C', state: 'starting', quietMs: 1200 },
+        { key: 'D', state: 'quiet', quietMs: 200 },
+      ],
+      waiting: ['E'],
+    })
+  })
   test('a closed or restarted thread resumes its saved session id', () => {
     const { d, started, activity, inbox } = setup({ saved: { A: 'old-id' } })
     d.task('A', 'a', 0)
