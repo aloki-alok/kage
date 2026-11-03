@@ -18,6 +18,7 @@ export type SlackMessage = {
   subtype?: string
   text?: string
   thread_ts?: string
+  channel_type?: string
 }
 
 // side: run it in its own session, beside the thread's (which may be busy with something else).

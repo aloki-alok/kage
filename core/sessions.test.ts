@@ -1,20 +1,6 @@
 import { describe, test } from 'node:test'
 import assert from 'node:assert/strict'
-import { Dispatcher, liveCronJobs, threadKey } from './sessions.ts'
-
-const DM = 'DBOT00001'
-
-describe('which session a message goes to', () => {
-  test('a thread reply and its top-level message share one key', () => {
-    assert.equal(threadKey({ channel: 'C1', ts: '5.5' }, DM), 'C1:5.5')
-    assert.equal(threadKey({ channel: 'C1', ts: '6.6', thread_ts: '5.5' }, DM), 'C1:5.5')
-  })
-  test('top-level DMs to the bot share one session, a DM thread gets its own', () => {
-    assert.equal(threadKey({ channel: DM, ts: '1.1' }, DM), 'dm')
-    assert.equal(threadKey({ channel: DM, ts: '2.2' }, DM), 'dm')
-    assert.equal(threadKey({ channel: DM, ts: '3.3', thread_ts: '1.1' }, DM), `${DM}:1.1`)
-  })
-})
+import { Dispatcher, liveCronJobs } from './sessions.ts'
 
 describe('one Claude session per thread', () => {
   // A fake tmux: records starts and stops; activity times are set per key.

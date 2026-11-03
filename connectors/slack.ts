@@ -5,7 +5,7 @@ import { SocketModeClient, LogLevel } from '@slack/socket-mode'
 import type { WebClient } from '@slack/web-api'
 import { log, logger } from '../config.ts'
 import { classify, plainName, quoteMessage, taskLine, type Ids, type SlackMessage } from '../core/gate.ts'
-import { threadKey } from '../core/sessions.ts'
+import { sessionKey, slackConversation } from '../core/conversations.ts'
 import type { Task } from '../runtime/protocol.ts'
 
 const PICKED_UP = 'ninja'
@@ -109,8 +109,8 @@ export async function connectSlack(o: { appToken: string; bot: WebClient; user: 
       meta: { channel: m.channel, thread_ts: m.thread_ts ?? m.ts, place, permalink: link },
       origin: { channel: m.channel, ts: m.ts },
     }
-    // A side task gets a session of its own, keyed by its message, beside the thread's.
-    const key = t.side ? `${threadKey(m, ids.botDm)}#side-${m.ts}` : threadKey(m, ids.botDm)
+    // A side task gets a lane of its own on the same conversation.
+    const key = sessionKey(slackConversation(m, ids.botDm), { lane: t.side ? `side-${m.ts}` : 'main' })
     const r = o.hub.deliver(key, task, t.side ? `${place} (side)` : place)
     if (r === 'queued') react(m.channel, m.ts, WAITING)
     if (r === 'failed') failed(task)
@@ -127,7 +127,7 @@ export async function connectSlack(o: { appToken: string; bot: WebClient; user: 
   socket.on('message', async ({ event, ack }) => {
     await ack()
     const m = event as SlackMessage
-    const k = m.channel ? threadKey(m, ids.botDm) : ''
+    const k = m.channel ? sessionKey(slackConversation(m, ids.botDm)) : ''
     const next = (queue.get(k) ?? Promise.resolve()).then(() => onMessage(m)).catch(e => log('message handling failed', e))
     queue.set(k, next)
     await next

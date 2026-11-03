@@ -1,8 +1,4 @@
-// One Claude session per thread: the session key, the dispatcher and its window interface.
-
-// One Claude session per conversation: a thread, or the top-level DM with the bot.
-export const threadKey = (m: { channel: string; ts: string; thread_ts?: string }, botDm: string) =>
-  m.channel === botDm && !m.thread_ts ? 'dm' : `${m.channel}:${m.thread_ts ?? m.ts}`
+// One Claude session per conversation: the dispatcher and its window interface. Keys come from core/conversations.ts.
 
 // start/stop run a session's window (start throws if it can't). lastActivity: when it last wrote
 // its transcript (ms). busy: Claude is mid-turn, which a long tool call can be with no writes.

@@ -87,7 +87,7 @@ The token file is `~/.config/kage/env` (mode 600). Never print it, copy it or co
 
 | Folder or file | Holds |
 |---|---|
-| `core/` | Pure rules, each with a `*.test.ts` next to it: `gate` (who may start a task, the task line, quoting, teammates), `sessions` (session key and dispatcher), `outbound` (mentions, secrets, Slack-sized parts), `ledgers`, `guards` (hook rules) |
+| `core/` | Pure rules, each with a `*.test.ts` next to it: `gate` (who may start a task, the task line, quoting, teammates), `conversations` (where a message lives and its session key), `sessions` (the dispatcher), `outbound` (mentions, secrets, Slack-sized parts), `ledgers`, `guards` (hook rules) |
 | `connectors/` | One file per place Kage hears from: `slack.ts` (the one Socket Mode connection), `email.ts` with `mail.ts` and `mailbox.ts`. A connector turns a message into a `Task` and never decides who may drive Kage: `core/gate.ts` does |
 | `runtime/` | Where sessions run: `tmux-windows.ts` (a pane per thread), `session-link.ts` (the socket sessions connect to), `protocol.ts` (the messages on it) |
 | `router.ts` | The hub: wiring only |
