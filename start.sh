@@ -15,7 +15,8 @@ if tmux has-session -t "=$NAME" 2>/dev/null; then   # "=" means exact name, not 
   exit 0
 fi
 
-TOOLS="mcp__kage__reply mcp__plugin_kage_kage__reply"
+TOOLS=""
+for t in reply edit_message delete_message; do TOOLS="$TOOLS mcp__kage__$t mcp__plugin_kage_kage__$t"; done
 # Kage keeps its own memory (logic.ts memoryDirs reads the same default).
 MEM="$(sed -n 's/^KAGE_MEMORY=//p' "$ENV_FILE")"; MEM="${MEM:-$(dirname "$ENV_FILE")/memory}"
 [[ "$MEM" =~ [\'\"\\] ]] && { echo "Move KAGE_MEMORY to a path without quotes or backslashes." >&2; exit 1; }

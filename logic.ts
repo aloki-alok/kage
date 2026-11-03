@@ -359,6 +359,17 @@ export function openWaiting(tsv: string): { when: string; link: string; what: st
   return [...open.values()].flat()
 }
 
+// posted.tsv is append-only: when, channel, ts, bot|owner|deleted. The token a message went out
+// with is the one that may change it; anything not on the list is someone else's.
+export function postedBy(tsv: string, channel: string, ts: string): 'bot' | 'owner' | undefined {
+  let by: string | undefined
+  for (const line of tsv.split('\n')) {
+    const [, c, t, who] = line.split('\t')
+    if (c === channel && t === ts) by = who
+  }
+  return by === 'bot' || by === 'owner' ? by : undefined
+}
+
 // Sources that hold the owner's private data. Only the owner's own task may read them.
 const PRIVATE_TOOL = /^mcp__.*(gmail|google_drive|google_calendar|granola|fireflies)/i
 export function privateToolRefusal(tool: string, sender: string | undefined): string | undefined {

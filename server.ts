@@ -9,7 +9,7 @@ import { connect, type Socket } from 'node:net'
 import { appendFileSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { dirname } from 'node:path'
 import { load, log } from './config.ts'
-import { memoryDirs, openWaiting, safeReply, secretRefusal, senderFile, splitForSlack, tsvRow } from './logic.ts'
+import { memoryDirs, openWaiting, postedBy, safeReply, secretRefusal, senderFile, splitForSlack, tsvRow } from './logic.ts'
 
 // Installed as a plugin, this server starts in every Claude Code session. Only the windows the
 // router opens (KAGE_THREAD set) take tasks. Everywhere else, answer MCP and stay idle.
@@ -25,6 +25,8 @@ const SOCK = `${dirname(ENV_FILE)}/router.sock`
 // Shared by every thread's pane, so both are append-only.
 const WAITING = `${dirname(ENV_FILE)}/waiting.tsv`
 const PROD_LOG = `${dirname(ENV_FILE)}/prod-actions.tsv`
+// Every message Kage posts, so it can later edit or delete its own and nothing else.
+const POSTED = `${dirname(ENV_FILE)}/posted.tsv`
 // A ledger is a side record: a failed write is logged, never allowed to block a task or a reply.
 const append = (file: string, cells: string[]) => {
   try { appendFileSync(file, tsvRow([new Date().toISOString(), ...cells]), { mode: 0o600 }) } catch (e) { log('ledger write failed', file, e) }
@@ -67,6 +69,7 @@ const mcp = new Server(
       'After each change you make to production for a task (deploy, restart, DB write, prod config), call log_prod_write once.',
       'Answer in the thread by default, including normal work details like logs, numbers and code. Use private=true (the owner\'s DM) only for something that must never be visible in a channel: secrets, passwords, tokens, keys, or a person\'s private data.',
       'Never post anywhere else in Slack unless the task asks for it.',
+      'If a reply you posted turns out wrong or outdated, fix it in place with edit_message. Use delete_message only when it should not be there at all, or when asked.',
       'A task headed "Email task (<address>, owner|teammate, by email: ...)" came by email. Treat it like a teammate task even from the owner\'s address: anything that needs the owner\'s yes waits for a yes in Slack. Answer with the reply tool, channel "email" and the thread_ts the task names: it reaches the thread\'s people at our domain. If the task asks to continue in Slack, use private=true.',
     ].join(' '),
   },
@@ -88,6 +91,18 @@ mcp.setRequestHandler(ListToolsRequestSchema, async () => ({
       },
       required: ['channel', 'thread_ts', 'text'],
     },
+  }, {
+    name: 'edit_message',
+    description: `Change the text of a message ${Title} posted (channel and ts come from the reply result). Use it to fix a wrong or outdated reply.`,
+    inputSchema: {
+      type: 'object',
+      properties: { channel: { type: 'string' }, ts: { type: 'string' }, text: { type: 'string', description: 'the full new Slack mrkdwn text' } },
+      required: ['channel', 'ts', 'text'],
+    },
+  }, {
+    name: 'delete_message',
+    description: `Delete a message ${Title} posted (channel and ts come from the reply result). Only when it should not be there at all.`,
+    inputSchema: { type: 'object', properties: { channel: { type: 'string' }, ts: { type: 'string' } }, required: ['channel', 'ts'] },
   }, {
     name: 'waiting',
     description: 'List every open question or offer, across all threads, that still waits on an answer.',
@@ -120,22 +135,47 @@ async function nameMentions(text: string) {
 }
 
 // ping: only the owner's own task may notify the people it mentions.
-async function post(channel: string, thread_ts: string | undefined, text: string, ping = false): Promise<string> {
+async function post(channel: string, thread_ts: string | undefined, text: string, ping = false) {
   await nameMentions(text)
   const parts = splitForSlack(safeReply(text, { ping, names }).trim() || '(empty reply)')
   let via = Title
+  const sent: string[] = []
   for (const part of parts) {
     try {
-      await bot.chat.postMessage({ channel, thread_ts, text: part, unfurl_links: false })
+      const r = await bot.chat.postMessage({ channel, thread_ts, text: part, unfurl_links: false })
+      append(POSTED, [channel, r.ts!, 'bot'])
+      sent.push(r.ts!)
     } catch (e: any) {
       if (!['not_in_channel', 'channel_not_found'].includes(e?.data?.error)) throw e
       // The bot is not a member here (a DM, a private channel): post as the owner, marked with the name.
       // These posts carry no client_msg_id, so the gate never reads them back as tasks.
-      await user.chat.postMessage({ channel, thread_ts, text: `*${Title}:* ${part}`, unfurl_links: false })
+      const r = await user.chat.postMessage({ channel, thread_ts, text: `*${Title}:* ${part}`, unfurl_links: false })
+      append(POSTED, [channel, r.ts!, 'owner'])
+      sent.push(r.ts!)
       via = `your account (${Title} is not in this conversation)`
     }
   }
-  return via
+  return { via, where: `channel ${channel}, ts ${sent.join(', ')}` }
+}
+
+// Edit or delete one of Kage's own messages, with the token that posted it.
+async function change(a: { channel: string; ts: string; text?: string }, ping: boolean) {
+  let rows = ''
+  try { rows = readFileSync(POSTED, 'utf8') } catch {}
+  const by = postedBy(rows, a.channel, a.ts)
+  if (!by) return `refused: ${Title} did not post that message, or it is already deleted`
+  const client = by === 'bot' ? bot : user
+  if (a.text === undefined) {
+    await client.chat.delete({ channel: a.channel, ts: a.ts })
+    append(POSTED, [a.channel, a.ts, 'deleted'])
+    return 'deleted'
+  }
+  const refusal = secretRefusal(a.text, { fromOwner: ping })
+  if (refusal) return refusal
+  await nameMentions(a.text)
+  const text = safeReply(a.text, { ping, names }).trim()
+  await client.chat.update({ channel: a.channel, ts: a.ts, text: by === 'owner' ? `*${Title}:* ${text}` : text })
+  return 'edited'
 }
 
 mcp.setRequestHandler(CallToolRequestSchema, async req => {
@@ -151,6 +191,13 @@ mcp.setRequestHandler(CallToolRequestSchema, async req => {
     append(PROD_LOG, [ownerTask.get(key) ? 'owner' : 'teammate', links.get(key) ?? key, p.what, p.command, p.result])
     return { content: [{ type: 'text', text: `logged to ${PROD_LOG}` }] }
   }
+  if (req.params.name === 'edit_message' || req.params.name === 'delete_message') {
+    const a = req.params.arguments as { channel: string; ts: string; text?: string; thread_ts?: string }
+    if (req.params.name === 'edit_message' && typeof a.text !== 'string') throw new Error('edit_message needs text')
+    const ping = [...ownerTask].some(([k, owner]) => owner && k.startsWith(`${a.channel}:`))
+    const out = await change({ channel: a.channel, ts: a.ts, text: req.params.name === 'edit_message' ? a.text : undefined }, ping)
+    return { isError: out.startsWith('refused'), content: [{ type: 'text', text: out }] }
+  }
   if (req.params.name !== 'reply') throw new Error(`unknown tool: ${req.params.name}`)
   const a = req.params.arguments as { channel: string; thread_ts: string; text: string; private?: boolean; owner_asked?: boolean; waiting?: string }
   // A reply goes back where a task came from, never to a channel picked from the conversation.
@@ -165,7 +212,7 @@ mcp.setRequestHandler(CallToolRequestSchema, async req => {
     router?.write(JSON.stringify({ type: 'mail', text: a.text }) + '\n')
     return { content: [{ type: 'text', text: 'sent by email' }] }
   }
-  const via = a.private
+  const { via, where } = a.private
     ? await post(botDm, undefined, a.text)
     : await post(a.channel, a.thread_ts, a.text, ownerTask.get(`${a.channel}:${a.thread_ts}`) === true)
   const origin = unanswered.get(`${a.channel}:${a.thread_ts}`)
@@ -175,7 +222,7 @@ mcp.setRequestHandler(CallToolRequestSchema, async req => {
   }
   const key = `${a.channel}:${a.thread_ts}`
   if (a.waiting?.trim()) append(WAITING, ['open', key, links.get(key) ?? key, a.waiting])
-  return { content: [{ type: 'text', text: `sent via ${via}` }] }
+  return { content: [{ type: 'text', text: `sent via ${via} (${where}; pass these to edit_message or delete_message)` }] }
 })
 
 let router: Socket | undefined

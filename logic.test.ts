@@ -1,6 +1,6 @@
 import { describe, test } from 'node:test'
 import assert from 'node:assert/strict'
-import { classify, Dispatcher, findPeople, findSecret, secretRefusal, liveCronJobs, teammatesIn, threadKey, withTeammates, plainName, quoteMessage, safeReply, splitForSlack, taskLine, validName, openWaiting, tsvRow, privateToolRefusal, ownerMemoryRefusal } from './logic.ts'
+import { classify, Dispatcher, findPeople, findSecret, secretRefusal, liveCronJobs, teammatesIn, threadKey, withTeammates, plainName, quoteMessage, safeReply, splitForSlack, taskLine, validName, openWaiting, tsvRow, privateToolRefusal, ownerMemoryRefusal, postedBy } from './logic.ts'
 
 const OWNER = 'UOWNER001'
 const BOT = 'UBOT00001'
@@ -509,6 +509,13 @@ describe('the ledgers', () => {
       tsvRow(['t3', 'open', 'C1:1.1', 'l', 'second']),
     ].join('')
     assert.deepEqual(openWaiting(rows).map(i => i.what), ['second'])
+  })
+  test('Kage may change only a message it posted, with the token it posted with', () => {
+    const rows = [tsvRow(['t1', 'C1', '1.1', 'bot']), tsvRow(['t2', 'C2', '2.2', 'owner']), tsvRow(['t3', 'C1', '1.1', 'deleted'])].join('')
+    assert.equal(postedBy(rows, 'C2', '2.2'), 'owner')
+    assert.equal(postedBy(rows, 'C1', '1.1'), undefined)     // already deleted
+    assert.equal(postedBy(rows, 'C1', '9.9'), undefined)     // someone else's message
+    assert.equal(postedBy(tsvRow(['t1', 'C1', '1.1', 'bot']), 'C1', '1.1'), 'bot')
   })
   test('two offers in one thread both stay open', () => {
     const rows = [tsvRow(['t1', 'open', 'C1:1.1', 'l', 'a']), tsvRow(['t2', 'open', 'C1:1.1', 'l', 'b'])].join('')

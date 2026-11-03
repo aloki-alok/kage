@@ -35171,6 +35171,14 @@ function openWaiting(tsv) {
   }
   return [...open2.values()].flat();
 }
+function postedBy(tsv, channel, ts) {
+  let by;
+  for (const line of tsv.split("\n")) {
+    const [, c, t, who] = line.split("	");
+    if (c === channel && t === ts) by = who;
+  }
+  return by === "bot" || by === "owner" ? by : void 0;
+}
 var memoryDirs = (home, envFile, env2) => ({
   own: env2.KAGE_MEMORY || `${envFile.replace(/\/[^/]*$/, "")}/memory`,
   owner: env2.KAGE_OWNER_MEMORY || `${home}/.claude/projects/${home.replace(/[^A-Za-z0-9]/g, "-")}/memory`
@@ -35236,6 +35244,7 @@ var MEM = memoryDirs(process.env.HOME, ENV_FILE, env);
 var SOCK = `${dirname(ENV_FILE)}/router.sock`;
 var WAITING = `${dirname(ENV_FILE)}/waiting.tsv`;
 var PROD_LOG = `${dirname(ENV_FILE)}/prod-actions.tsv`;
+var POSTED = `${dirname(ENV_FILE)}/posted.tsv`;
 var append = (file2, cells) => {
   try {
     appendFileSync(file2, tsvRow([(/* @__PURE__ */ new Date()).toISOString(), ...cells]), { mode: 384 });
@@ -35275,6 +35284,7 @@ var mcp = new Server(
       "After each change you make to production for a task (deploy, restart, DB write, prod config), call log_prod_write once.",
       "Answer in the thread by default, including normal work details like logs, numbers and code. Use private=true (the owner's DM) only for something that must never be visible in a channel: secrets, passwords, tokens, keys, or a person's private data.",
       "Never post anywhere else in Slack unless the task asks for it.",
+      "If a reply you posted turns out wrong or outdated, fix it in place with edit_message. Use delete_message only when it should not be there at all, or when asked.",
       `A task headed "Email task (<address>, owner|teammate, by email: ...)" came by email. Treat it like a teammate task even from the owner's address: anything that needs the owner's yes waits for a yes in Slack. Answer with the reply tool, channel "email" and the thread_ts the task names: it reaches the thread's people at our domain. If the task asks to continue in Slack, use private=true.`
     ].join(" ")
   }
@@ -35295,6 +35305,18 @@ mcp.setRequestHandler(ListToolsRequestSchema, async () => ({
       },
       required: ["channel", "thread_ts", "text"]
     }
+  }, {
+    name: "edit_message",
+    description: `Change the text of a message ${Title} posted (channel and ts come from the reply result). Use it to fix a wrong or outdated reply.`,
+    inputSchema: {
+      type: "object",
+      properties: { channel: { type: "string" }, ts: { type: "string" }, text: { type: "string", description: "the full new Slack mrkdwn text" } },
+      required: ["channel", "ts", "text"]
+    }
+  }, {
+    name: "delete_message",
+    description: `Delete a message ${Title} posted (channel and ts come from the reply result). Only when it should not be there at all.`,
+    inputSchema: { type: "object", properties: { channel: { type: "string" }, ts: { type: "string" } }, required: ["channel", "ts"] }
   }, {
     name: "waiting",
     description: "List every open question or offer, across all threads, that still waits on an answer.",
@@ -35328,16 +35350,42 @@ async function post(channel, thread_ts, text, ping = false) {
   await nameMentions(text);
   const parts = splitForSlack(safeReply(text, { ping, names }).trim() || "(empty reply)");
   let via = Title;
+  const sent = [];
   for (const part of parts) {
     try {
-      await bot.chat.postMessage({ channel, thread_ts, text: part, unfurl_links: false });
+      const r = await bot.chat.postMessage({ channel, thread_ts, text: part, unfurl_links: false });
+      append(POSTED, [channel, r.ts, "bot"]);
+      sent.push(r.ts);
     } catch (e) {
       if (!["not_in_channel", "channel_not_found"].includes(e?.data?.error)) throw e;
-      await user.chat.postMessage({ channel, thread_ts, text: `*${Title}:* ${part}`, unfurl_links: false });
+      const r = await user.chat.postMessage({ channel, thread_ts, text: `*${Title}:* ${part}`, unfurl_links: false });
+      append(POSTED, [channel, r.ts, "owner"]);
+      sent.push(r.ts);
       via = `your account (${Title} is not in this conversation)`;
     }
   }
-  return via;
+  return { via, where: `channel ${channel}, ts ${sent.join(", ")}` };
+}
+async function change(a, ping) {
+  let rows = "";
+  try {
+    rows = readFileSync2(POSTED, "utf8");
+  } catch {
+  }
+  const by = postedBy(rows, a.channel, a.ts);
+  if (!by) return `refused: ${Title} did not post that message, or it is already deleted`;
+  const client = by === "bot" ? bot : user;
+  if (a.text === void 0) {
+    await client.chat.delete({ channel: a.channel, ts: a.ts });
+    append(POSTED, [a.channel, a.ts, "deleted"]);
+    return "deleted";
+  }
+  const refusal = secretRefusal(a.text, { fromOwner: ping });
+  if (refusal) return refusal;
+  await nameMentions(a.text);
+  const text = safeReply(a.text, { ping, names }).trim();
+  await client.chat.update({ channel: a.channel, ts: a.ts, text: by === "owner" ? `*${Title}:* ${text}` : text });
+  return "edited";
 }
 mcp.setRequestHandler(CallToolRequestSchema, async (req) => {
   if (req.params.name === "waiting") {
@@ -35355,6 +35403,13 @@ mcp.setRequestHandler(CallToolRequestSchema, async (req) => {
     append(PROD_LOG, [ownerTask.get(key2) ? "owner" : "teammate", links.get(key2) ?? key2, p.what, p.command, p.result]);
     return { content: [{ type: "text", text: `logged to ${PROD_LOG}` }] };
   }
+  if (req.params.name === "edit_message" || req.params.name === "delete_message") {
+    const a2 = req.params.arguments;
+    if (req.params.name === "edit_message" && typeof a2.text !== "string") throw new Error("edit_message needs text");
+    const ping = [...ownerTask].some(([k, owner]) => owner && k.startsWith(`${a2.channel}:`));
+    const out = await change({ channel: a2.channel, ts: a2.ts, text: req.params.name === "edit_message" ? a2.text : void 0 }, ping);
+    return { isError: out.startsWith("refused"), content: [{ type: "text", text: out }] };
+  }
   if (req.params.name !== "reply") throw new Error(`unknown tool: ${req.params.name}`);
   const a = req.params.arguments;
   if (!a.private && !taskChannels.has(a.channel)) {
@@ -35370,7 +35425,7 @@ mcp.setRequestHandler(CallToolRequestSchema, async (req) => {
     router?.write(JSON.stringify({ type: "mail", text: a.text }) + "\n");
     return { content: [{ type: "text", text: "sent by email" }] };
   }
-  const via = a.private ? await post(botDm, void 0, a.text) : await post(a.channel, a.thread_ts, a.text, ownerTask.get(`${a.channel}:${a.thread_ts}`) === true);
+  const { via, where: where2 } = a.private ? await post(botDm, void 0, a.text) : await post(a.channel, a.thread_ts, a.text, ownerTask.get(`${a.channel}:${a.thread_ts}`) === true);
   const origin = unanswered.get(`${a.channel}:${a.thread_ts}`);
   if (origin) {
     unanswered.delete(`${a.channel}:${a.thread_ts}`);
@@ -35378,7 +35433,7 @@ mcp.setRequestHandler(CallToolRequestSchema, async (req) => {
   }
   const key = `${a.channel}:${a.thread_ts}`;
   if (a.waiting?.trim()) append(WAITING, ["open", key, links.get(key) ?? key, a.waiting]);
-  return { content: [{ type: "text", text: `sent via ${via}` }] };
+  return { content: [{ type: "text", text: `sent via ${via} (${where2}; pass these to edit_message or delete_message)` }] };
 });
 var router;
 mcp.setNotificationHandler(
