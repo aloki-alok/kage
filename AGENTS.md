@@ -85,7 +85,13 @@ The token file is `~/.config/kage/env` (mode 600). Never print it, copy it or co
 
 ## Change the code
 
-- `logic.ts` holds the gate: who may start a task, quoting, reply safety. Every rule in it has a test in `logic.test.ts`.
-- `router.ts` holds the one Slack connection and opens a tmux pane per thread in the `threads` window. `server.ts` is the channel inside each pane.
-- After a change to `router.ts`, `server.ts`, `config.ts` or `logic.ts`, run `npm ci` once, then `npm test`, `npm run typecheck` and `npm run build`. Commit `dist/` with the change, because the plugin and the router run the bundles. Then restart Kage.
+| Folder or file | Holds |
+|---|---|
+| `core/` | Pure rules, each with a `*.test.ts` next to it: `gate` (who may start a task, the task line, quoting, teammates), `sessions` (session key and dispatcher), `outbound` (mentions, secrets, Slack-sized parts), `ledgers`, `guards` (hook rules) |
+| `connectors/` | One file per place Kage hears from: `slack.ts` (the one Socket Mode connection), `email.ts` with `mail.ts` and `mailbox.ts`. A connector turns a message into a `Task` and never decides who may drive Kage: `core/gate.ts` does |
+| `runtime/` | Where sessions run: `tmux-windows.ts` (a pane per thread), `session-link.ts` (the socket sessions connect to), `protocol.ts` (the messages on it) |
+| `router.ts` | The hub: wiring only |
+| `server.ts` | The Kage channel inside each thread's Claude Code session: reply, edit and delete tools, approvals |
+
+- After a change to any `.ts` file, run `npm ci` once, then `npm test`, `npm run typecheck` and `npm run build`. Commit `dist/` with the change, because the plugin and the hub run the bundles. Then restart Kage.
 - The server writes logs to stderr only. Stdout carries the channel protocol, so a stray `console.log` breaks it.

@@ -6,7 +6,7 @@ import { SendEmailCommand, SESv2Client } from '@aws-sdk/client-sesv2'
 import { dkimVerify } from 'mailauth/lib/dkim/verify.js'
 import { simpleParser, type AddressObject } from 'mailparser'
 import { existsSync, readFileSync, writeFileSync } from 'node:fs'
-import { log } from './config.ts'
+import { log } from '../config.ts'
 import { composeReply, mailTask, replyTargets, type InboundMail, type MailConfig } from './mail.ts'
 
 type Thread = { mail: InboundMail }

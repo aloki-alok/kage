@@ -9,6 +9,7 @@ import { connect, type Socket } from 'node:net'
 import { appendFileSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { dirname } from 'node:path'
 import { load, log } from './config.ts'
+import type { ToSession } from './runtime/protocol.ts'
 import { memoryDirs, senderFile } from './core/guards.ts'
 import { openWaiting, postedBy, tsvRow } from './core/ledgers.ts'
 import { safeReply, secretRefusal, splitForSlack } from './core/outbound.ts'
@@ -254,9 +255,7 @@ mcp.setNotificationHandler(
   },
 )
 
-type FromRouter =
-  | { type: 'task'; content: string; fromOwner: boolean; meta: { channel: string; thread_ts: string; place: string; permalink: string }; origin: { channel: string; ts: string } }
-  | { type: 'verdict'; request_id: string; behavior: 'allow' | 'deny' }
+type FromRouter = ToSession
 
 async function fromRouter(m: FromRouter) {
   if (m.type === 'verdict') {
