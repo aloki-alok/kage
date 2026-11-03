@@ -1,6 +1,8 @@
 // Email connector: turns a mail from the owner or a listed teammate into a Task for the hub, and
 // sends a session's reply back to that mail thread. Rules live in mail.ts, transport in mailbox.ts.
 import { log } from '../config.ts'
+import { parseSessionKey, type Conversation } from '../core/conversations.ts'
+import type { Delivery } from '../core/sessions.ts'
 import type { Task } from '../runtime/protocol.ts'
 import { emailTaskLine } from './mail.ts'
 import { startMailbox } from './mailbox.ts'
@@ -10,7 +12,7 @@ export function connectEmail(o: {
   env: Record<string, string>
   dir: string
   name: string
-  deliver: (key: string, task: Task, place: string) => 'sent' | 'starting' | 'queued' | 'failed'
+  deliver: (c: Conversation, task: Task, place: string) => Delivery
   failed: (task: Task) => void
 }) {
   const { env } = o
@@ -35,7 +37,8 @@ export function connectEmail(o: {
         origin: { channel: 'email', ts: t.key },
       }
       log('mail task from', t.from, 'for', place)
-      if (o.deliver(t.key, task, place) === 'failed') o.failed(task)
+      // The mail key is the session key; it reads back into its conversation.
+      if (o.deliver(parseSessionKey(t.key)!.conversation, task, place) === 'failed') o.failed(task)
     },
   })
   log(`email on: ${cfg.self}, owner ${cfg.owner}, teammates ${cfg.teammates.join(',') || 'none'}`)

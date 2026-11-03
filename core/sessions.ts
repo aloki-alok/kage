@@ -1,12 +1,25 @@
-// One Claude session per thread: the session key, the dispatcher and its window interface.
-
-// One Claude session per conversation: a thread, or the top-level DM with the bot.
-export const threadKey = (m: { channel: string; ts: string; thread_ts?: string }, botDm: string) =>
-  m.channel === botDm && !m.thread_ts ? 'dm' : `${m.channel}:${m.thread_ts ?? m.ts}`
+// One Claude session per conversation: the dispatcher and its window interface. Keys come from core/conversations.ts.
 
 // start/stop run a session's window (start throws if it can't). lastActivity: when it last wrote
-// its transcript (ms). busy: Claude is mid-turn, which a long tool call can be with no writes.
-export type Windows = { start(key: string, id: string): void; stop(key: string): void; lastActivity(key: string): number; busy(key: string): boolean }
+// its transcript (ms). busy: Claude is mid-turn, which a long tool call can be with no writes; 'watching': idle, kept
+// only because a timed check (cron job) of its own is alive.
+// What happened to a task: handed over, its session starting, waiting for a slot, waiting while the
+// owner has the thread in a terminal, or lost (the window could not open).
+export type Delivery = 'sent' | 'starting' | 'queued' | 'held' | 'failed'
+
+export type Windows ={ start(key: string, id: string): void; stop(key: string): void; lastActivity(key: string): number; busy(key: string): boolean | 'watching' }
+
+// A runtime switch without closing anything: threads whose pane ran when the hub started keep it,
+// and every session started from now on runs on `next`. A closed pane's thread resumes on `next`.
+export function mixWindows(panes: Windows, next: Windows, onPane: Set<string>): Windows {
+  const of = (k: string) => (onPane.has(k) ? panes : next)
+  return {
+    start: (k, id) => { onPane.delete(k); next.start(k, id) },
+    stop: k => { const w = of(k); onPane.delete(k); w.stop(k) },
+    lastActivity: k => of(k).lastActivity(k),
+    busy: k => of(k).busy(k),
+  }
+}
 
 // Routes tasks to one session per thread. Each thread keeps its session id for good, so a
 // window that closed or restarted resumes the same conversation. At most `max` windows run.
@@ -19,6 +32,7 @@ export class Dispatcher<M> {
   #pending = new Map<string, M[]>()
   #touched = new Map<string, number>()
   #waiting: string[] = []
+  #held = new Set<string>()          // threads the owner took into a terminal: their tasks wait
   #perms = new Map<string, string>()
   #startedAt = new Map<string, number>()
 
@@ -38,7 +52,7 @@ export class Dispatcher<M> {
   }
 
   // 'failed': the window could not open; the task was not kept.
-  task(key: string, msg: M, now: number): 'sent' | 'starting' | 'queued' | 'failed' {
+  task(key: string, msg: M, now: number): Delivery {
     this.#touched.set(key, now)
     const send = this.#conns.get(key)
     if (send) { send(msg); return 'sent' }
@@ -46,7 +60,22 @@ export class Dispatcher<M> {
     // restarting gets the full connectMs again.
     if (!this.#pending.has(key)) this.#startedAt.set(key, now)
     this.#pending.set(key, [...(this.#pending.get(key) ?? []), msg])
+    if (this.#held.has(key)) return 'held'
     if (this.#live.has(key)) return 'starting'
+    return this.#admit(key, now)
+  }
+
+  // Whether the hub can restart itself without cutting anything off: every session connected, not
+  // mid-turn, not asking, and quiet for evictMs; no task waiting for a slot; no thread held by a
+  // terminal. An SDK session dies with the hub, so this must be true for it too.
+  quietEverywhere(now: number): boolean {
+    const s = this.status(now)
+    return !s.waiting.length && !s.held.length
+      && s.live.every(l => l.state === 'quiet' && l.quietMs >= this.#o.evictMs)
+  }
+
+  // Start the thread's session if there is a slot (a full house frees its quietest), else queue it.
+  #admit(key: string, now: number): 'starting' | 'queued' | 'failed' {
     // Full: the quietest session gives up its slot. It loses nothing, its next task resumes it.
     const quiet = this.#live.size < this.#o.max ? undefined : this.#quietest(now)
     if (quiet) this.#close(quiet)
@@ -59,13 +88,56 @@ export class Dispatcher<M> {
     return 'queued'
   }
 
+  // The owner takes the thread's session into a terminal: close it here and hand over its id.
+  // Never in the middle of a turn or an open approval: that work would be cut off. A session handed
+  // a task within evictMs counts as busy, since a pane shows no work for a moment after a task.
+  hold(key: string, now: number): { id: string } | { refused: 'unknown' | 'held' | 'busy' | 'asking' } {
+    const id = this.#ids.get(key)
+    if (!id) return { refused: 'unknown' }
+    if (this.#held.has(key)) return { refused: 'held' }
+    if (this.#live.has(key)) {
+      if ([...this.#perms.values()].includes(key)) return { refused: 'asking' }
+      if (now - this.#last(key) < this.#o.evictMs || this.#busy(key)) return { refused: 'busy' }
+      this.#close(key)
+    }
+    this.#waiting = this.#waiting.filter(k => k !== key)
+    this.#held.add(key)
+    return { id }
+  }
+
+  // The console closes one session. Its next task resumes it, so only work in progress is at risk:
+  // refused while it starts, asks or works, by the same test as hold().
+  stop(key: string, now: number): { ok: true } | { refused: 'closed' | 'starting' | 'busy' | 'asking' } {
+    if (!this.#live.has(key)) return { refused: 'closed' }
+    if (!this.#conns.has(key)) return { refused: 'starting' }
+    if ([...this.#perms.values()].includes(key)) return { refused: 'asking' }
+    if (now - this.#last(key) < this.#o.evictMs || this.#busy(key)) return { refused: 'busy' }
+    this.#close(key)
+    return { ok: true }
+  }
+
+  // The terminal gave the thread back. Tasks that came meanwhile start its session again; the ones
+  // that cannot (the window failed to open) are returned, so the router can say so.
+  release(key: string, now: number): M[] {
+    const waiting = this.#pending.get(key)
+    if (!this.#held.delete(key) || !waiting) return []
+    return this.#admit(key, now) === 'failed' ? waiting : []
+  }
+
   // What runs now, for "@kage status".
   status(now: number) {
     const asking = new Set(this.#perms.values())
-    const state = (k: string) => !this.#conns.has(k) ? 'starting' : this.#busy(k) ? 'busy' : asking.has(k) ? 'asking' : 'quiet'
+    // Work shows first, then a question for you, then a watch: a watching session that asks must say so.
+    const state = (k: string) => {
+      if (!this.#conns.has(k)) return 'starting'
+      const b = this.#busyKind(k)
+      return b === true ? 'busy' : asking.has(k) ? 'asking' : b === 'watching' ? 'watching' : 'quiet'
+    }
     return {
       live: [...this.#live].map(key => ({ key, state: state(key), quietMs: now - this.#last(key) })),
       waiting: [...this.#waiting],
+      held: [...this.#held],
+      max: this.#o.max,
     }
   }
 
@@ -74,7 +146,8 @@ export class Dispatcher<M> {
 
   // A connected session with nothing pending, no open approval, not mid-turn, quiet for evictMs.
   // A busy check that fails (tmux gone, a capture error) counts as busy: never close on a guess.
-  #busy(k: string): boolean {
+  #busy(k: string): boolean { return !!this.#busyKind(k) }
+  #busyKind(k: string): boolean | 'watching' {
     try { return this.#w.busy(k) } catch { return true }
   }
 
@@ -150,6 +223,16 @@ export class Dispatcher<M> {
       }
     }
     return dropped
+  }
+
+  // Whether a scheduled run may go to this thread now. blocked: held by a terminal, a task pending
+  // or queued for a slot, or its session not connected yet. busy: connected and mid-turn. A closed
+  // thread is ready: the run starts it.
+  ready(key: string): 'ready' | 'busy' | 'blocked' {
+    if (this.#held.has(key) || this.#pending.has(key) || this.#waiting.includes(key)) return 'blocked'
+    if (!this.#live.has(key)) return 'ready'
+    if (!this.#conns.has(key)) return 'blocked'
+    return this.#busy(key) ? 'busy' : 'ready'
   }
 
   #start(key: string, now: number): boolean {

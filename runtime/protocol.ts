@@ -12,8 +12,17 @@ export type Task = {
 export type Verdict = { type: 'verdict'; request_id: string; behavior: 'allow' | 'deny' }
 export type ToSession = Task | Verdict
 
-// Session to hub: hello (which thread it serves), an open approval, an email reply for its thread.
+// Session to hub: hello (which thread it serves), an open approval, an email reply for its own chat.
+// hold comes from `kage attach` instead: the owner takes the thread into a terminal until it disconnects.
+// The hub answers it with { type: 'hold', id } or { type: 'hold', refused }.
+// board and stop come from `kage top` the same way: the hub answers { type: 'board', ...status } and
+// { type: 'stop', ok: true } or { type: 'stop', refused }.
 export type FromSession =
+  | { type: 'board' }
+  | { type: 'stop'; key: string }
+  | { type: 'hold'; key: string; pid: number }   // pid: the attach process, which owns the hold
   | { type: 'hello'; key: string }
   | { type: 'permission'; id: string }
   | { type: 'mail'; text: string }
+  | { type: 'schedule'; id: string; cron: string; prompt: string; recurring: boolean }   // its own thread; the hub decides trust
+  | { type: 'unschedule'; id: string }

@@ -1,5 +1,6 @@
 // Email as a way to tag Kage: who may, what the ask is, and how a reply goes back.
 // Pure functions; the router does the AWS calls.
+import { sessionKey } from '../core/conversations.ts'
 
 export type InboundMail = {
   // SES receipt verdicts: PASS, FAIL, GRAY or PROCESSING_FAILED.
@@ -55,7 +56,7 @@ export function mailTask(m: InboundMail, c: MailConfig): MailTask {
   if (!new RegExp(`@${c.name}\\b`, 'i').test(ask)) return { drop: 'not tagged in the new text' }
   const root = m.references[0] ?? m.inReplyTo ?? m.messageId
   const quoted = m.text.slice(m.text.indexOf(ask) + ask.length).trim()
-  return { key: `mail:${root}`, sender, ask, quoted }
+  return { key: sessionKey({ connector: 'email', chat: root, kind: 'mail' }), sender, ask, quoted }
 }
 
 // Reply-all, kept to our own domains: the sender in To, other participants in Cc.

@@ -17,7 +17,7 @@ describe('long replies', () => {
 
 describe('secrets never go to a thread', () => {
   test('flags the leak that happened: a password in a code span after the word password', () => {
-    const leak = 'Temp AWS console password for teammate (user `teammate`, sign in at <https://111122223333.signin.aws.amazon.com/console>):\n`EXAMPLE-PASSWORD`\nIt works once.'
+    const leak = 'Temp AWS console password for Sam (user `sam`, sign in at <https://123456789012.signin.aws.amazon.com/console>):\n`Qx7#example-not-a-real-pw`\nIt works once.'
     assert.ok(findSecret(leak))
   })
   test('flags well-known token shapes', () => {
@@ -26,16 +26,16 @@ describe('secrets never go to a thread', () => {
       assert.ok(findSecret(s), s)
   })
   test('leaves normal work details alone', () => {
-    for (const s of ['The temp password comes from Alok separately, never in Slack threads.',
-      'SSM into `i-0123456789abcdef0`, role `arn:aws:iam::444455556666:role/teammate-staging-ssm`',
-      'Reset rows 3329 to 3335 at 21:00 IST; head `16d8041a8`, run `aws ssm start-session --target i-0123456789abcdef0`',
+    for (const s of ['The temp password comes from the owner separately, never in Slack threads.',
+      'SSM into `i-0abc123def4567890`, role `arn:aws:iam::123456789012:role/staging-ssm`',
+      'Reset rows 3329 to 3335 at 21:00 UTC; head `16d8041a8`, run `aws ssm start-session --target i-0abc123def4567890`',
       'password reset flow fails in `resetPasswordController.ts`'])
       assert.equal(findSecret(s), undefined, s)
   })
 })
 
 describe('who may put a secret in a thread', () => {
-  const pw = 'Temp password:\n`EXAMPLE-PASSWORD`'
+  const pw = 'Temp password:\n`Qx7#example-not-a-real-pw`'
   test('refused by default, even for the owner', () => {
     assert.ok(secretRefusal(pw, { fromOwner: true }))
   })

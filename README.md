@@ -29,8 +29,6 @@ Your agent does the work. You only do what a person has to do:
 
 - In Slack, click **Create** on the prefilled app, generate one token, and click **Allow**.
 - Paste the three tokens into the hidden prompts in the terminal window your agent opens. The tokens never pass through the agent.
-- On the first start, answer Claude Code's "trust this folder?" question once.
-- If your Claude org shows Kage's warning screen, press Enter on it once per start. An org Owner can approve Kage so the screen goes away (see [Start without prompts](#start-without-prompts)).
 
 The rest of this page is for doing it by hand, and for knowing how it works.
 
@@ -39,8 +37,7 @@ The rest of this page is for doing it by hand, and for knowing how it works.
 | You need | Why |
 |---|---|
 | macOS or Linux, Node 22.18 or newer, `tmux` | Kage runs TypeScript directly on Node and lives in a background terminal. |
-| A recent [Claude Code](https://code.claude.com/docs/en/quickstart), logged in with a claude.ai account | Kage feeds messages into a normal Claude Code session through channels, a research-preview feature. Update with `claude update` if the channel never registers. |
-| Channels turned on for your Claude org | Team and Enterprise only: an org Owner turns it on once under [Organization settings > Claude Code > Channels](https://claude.ai/admin-settings/claude-code). Personal Pro and Max accounts skip this. |
+| A recent [Claude Code](https://code.claude.com/docs/en/quickstart), logged in with a claude.ai account | Each thread is a normal Claude Code session with your settings, skills, tools and logins. |
 | Permission to create an app in your Slack workspace | If your workspace restricts apps, an admin approves it once. |
 
 ## Set it up by hand (about 5 minutes)
@@ -61,18 +58,19 @@ The rest of this page is for doing it by hand, and for knowing how it works.
 ./start.sh
 ```
 
-On the first start, Claude Code may ask whether you trust your home folder: choose **Yes**. Then it shows a warning screen for custom channels, on every start (Kage is not on Anthropic's built-in channel list). Press Enter on **"I am using this for local development"**, then press `Ctrl-b` and then `d` to leave it running in the background. Each Slack thread gets its own Claude Code pane, and on this route every new pane shows that screen, so attach and confirm it each time (within 30 minutes, or the task gets ⚠️). The no-prompt route below skips it.
+The first start installs the Agent SDK, then Kage runs in the background with no screens to confirm. Each Slack thread gets its own Claude Code session inside it.
 
 | To | Run |
 |---|---|
 | Check every part | `./setup.sh doctor` (each problem comes with its fix) |
-| See what it's doing | `tmux attach -t <name>` (your name, `kage` by default), then `Ctrl-b` `n` to the `threads` window. Each pane is one thread, labelled with its channel. `Ctrl-b` then an arrow key moves between panes, `Ctrl-b` `z` zooms one to full screen and back, and `Ctrl-b` `d` leaves. |
+| See what it's doing | `./setup.sh top`: every live thread, its state and its live feed, by mouse or keys |
+| Start at login (macOS) | `./autostart.sh on` (`off` undoes it) |
 | Stop it | `tmux kill-session -t <name>` |
 | Restart after changing code or settings | stop it, then `./start.sh`. Thread sessions resume their conversations on their next tag. |
 
-### Start without prompts
+### Run threads as tmux panes instead
 
-The warning screen appears because Kage isn't on Anthropic's list of approved channels. Your org can approve it, and then Kage starts with no screen, restarts itself if Claude Code exits, and can start at login.
+Add `KAGE_RUNTIME=tmux` to `~/.config/kage/env` and restart to give each thread a Claude Code pane you can watch with `tmux attach -t <name>`. Panes talk to Kage through channels, a research-preview feature: on Team and Enterprise an org Owner turns Channels on under [Organization settings > Claude Code > Channels](https://claude.ai/admin-settings/claude-code). Each new pane shows a warning screen for custom channels until your org approves Kage:
 
 1. An org Owner opens [Claude Code admin settings](https://claude.ai/admin-settings/claude-code), finds managed settings, and adds:
    ```json
@@ -85,7 +83,6 @@ The warning screen appears because Kage isn't on Anthropic's list of approved ch
    ```
    The plugin's server starts in every Claude Code session, but only the panes Kage opens for its threads take tasks. Your other sessions stay idle.
 3. Add `KAGE_ROUTE=plugin` to `~/.config/kage/env`, stop Kage, and run `./start.sh` again.
-4. Optional, macOS: `./autostart.sh on` starts Kage at login. `./autostart.sh off` undoes it.
 
 Your laptop must be on, awake and online. `start.sh` stops a Mac from idling to sleep with `caffeinate`, but closing the lid still sleeps it unless the Mac is plugged into a display.
 
@@ -111,8 +108,8 @@ To change the limits, add `KAGE_MAX_SESSIONS=6` or `KAGE_IDLE_MINUTES=15` to `~/
 ### Let a teammate tag it
 
 ```sh
-./setup.sh teammate add Riya      # a name, @handle, Slack member id, or a pasted mention
-./setup.sh teammate remove Riya
+./setup.sh teammate add dana      # a name, @handle, Slack member id, or a pasted mention
+./setup.sh teammate remove dana
 ./setup.sh teammate list
 ```
 
@@ -125,7 +122,7 @@ A teammate can tag `@kage` only in a conversation you are also in, because Kage 
 
 Only you can approve a permission prompt.
 
-You get 🥷 on your message when Kage picks it up, and ⚔️ when it has answered. Long jobs get a one-line "working on it" reply first, then the result. Answers stay in the thread. Only something that must never show in a channel (a password, a token, a key, someone's private data) goes to your DM instead.
+You get 🥷 on your message when Kage picks it up. Then 🗡️ means a quick answer, 📜 means Kage asked you something and waits for your reply, and ⚔️ means the task is done. Long jobs get a one-line "working on it" reply first, then the result. Answers stay in the thread. Only something that must never show in a channel (a password, a token, a key, someone's private data) goes to your DM instead.
 
 ## How it works
 
@@ -133,7 +130,7 @@ You get 🥷 on your message when Kage picks it up, and ⚔️ when it has answe
 
 1. **Slack to your machine.** Kage opens an outbound websocket to Slack ([Socket Mode](https://api.slack.com/apis/socket-mode)), so Slack never needs to reach your laptop. No public URL, no open port.
 2. **The gate.** `router.ts` hears every message in conversations you're in (through your user token), and drops everything except messages you typed that tag `@kage`, or your DMs to the bot.
-3. **Into Claude Code.** The router hands the task to that thread's own session (opening its pane if needed), and it arrives through Claude Code's [channels](https://code.claude.com/docs/en/channels-reference.md) feature. Other people's messages arrive quoted and labelled by Slack ID, as background, never as instructions.
+3. **Into Claude Code.** The router hands the task to that thread's own session (starting it if needed) through the Agent SDK, or through Claude Code's [channels](https://code.claude.com/docs/en/channels-reference.md) feature for tmux panes. Other people's messages arrive quoted and labelled by Slack ID, as background, never as instructions.
 4. **Back to Slack.** Claude answers with Kage's `reply` tool, in the thread the task came from.
 
 ### Approvals from your phone
@@ -171,7 +168,7 @@ Kage acts with your full Claude Code permissions. Keep your usual permission set
 
 ## Troubleshooting
 
-Start with `./setup.sh doctor`. It checks the tools, the tokens, the plugin, the org approval, the session and the Slack connection, and prints the fix for each failure.
+Start with `./setup.sh doctor`. It checks the tools, the tokens, the Agent SDK (or, for tmux panes, the plugin and the org approval), the session and the Slack connection, and prints the fix for each failure.
 
 | You see | Do this |
 |---|---|
@@ -196,7 +193,7 @@ npm run typecheck   # tsc --noEmit
 |---|---|
 | `core/` | Pure rules, all tested: the gate (who may drive it), which session gets a task, what may go out (mentions, secrets, message splitting), ledgers, hook guards. |
 | `connectors/` | Where Kage hears from: Slack (the one Socket Mode connection) and email. Each turns a message into a task. |
-| `runtime/` | Where sessions run: one tmux pane per thread, and the local socket they connect to. |
+| `runtime/` | Where sessions run: one Agent SDK session per thread inside the hub (or one tmux pane each), and the local socket panes connect to. |
 | `router.ts` | The hub: wires connectors, the dispatcher and the runtime together. |
 | `server.ts` | The channel inside each thread's session: tasks in from the hub, the reply, edit and delete tools, approval relay. |
 | `config.ts` | Reads the env file and makes the Slack clients. |

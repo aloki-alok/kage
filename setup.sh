@@ -5,6 +5,7 @@
 #   ./setup.sh app [name]       write the Slack app manifest and print the link that creates the app
 #   ./setup.sh save [name]      ask for the three Slack tokens (hidden), check them, save them
 #   ./setup.sh doctor           check every part and print the fix for anything wrong
+#   ./setup.sh top              full-screen console: every thread, attach, stop
 #   ./setup.sh teammate list | add <who> | remove <who>   who else may tag it (name, @handle or id)
 set -euo pipefail
 cd "$(dirname "$0")"
@@ -106,7 +107,10 @@ cmd_doctor() {
   fi
   NAME="$(env_get KAGE_NAME)"; NAME="${NAME:-kage}"
 
-  if [[ "$(env_get KAGE_ROUTE)" == plugin ]]; then
+  if [[ "$(env_get KAGE_RUNTIME)" != tmux ]]; then
+    node -e 'import("@anthropic-ai/claude-agent-sdk").catch(()=>process.exit(1))' 2>/dev/null && pass "threads run on the Agent SDK, no prompts" \
+      || fail "Agent SDK does not load: run npm ci, then restart (until then threads open as tmux panes)"
+  elif [[ "$(env_get KAGE_ROUTE)" == plugin ]]; then
     claude plugin list --json 2>/dev/null | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>process.exit(JSON.parse(s).some(p=>p.id==="kage@kage"&&p.enabled)?0:1))' \
       && pass "plugin kage@kage installed and enabled" \
       || fail "plugin: run claude plugin marketplace add \"$PWD\" && claude plugin install kage@kage"
@@ -143,5 +147,9 @@ case "${1:-}" in
   save) cmd_save "${2:-}" ;;
   doctor) cmd_doctor ;;
   teammate) node teammate.ts "${@:2}" ;;
-  *) die "Usage: $0 [check | app [name] | save [name] | doctor | teammate list|add|remove]" ;;
+  watch) node watch.ts "${@:2}" ;;
+  top) node top.ts "${@:2}" ;;
+  attach) node attach.ts "${@:2}" ;;
+  export-crons) node export-crons.ts "${@:2}" ;;
+  *) die "Usage: $0 [check | app [name] | save [name] | doctor | teammate list|add|remove | top | watch [place] | attach [place]]" ;;
 esac

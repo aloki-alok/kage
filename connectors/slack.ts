@@ -2,10 +2,12 @@
 // can be only one). It hears through the owner's user token, passes each message through the gate,
 // and turns a tag into a Task for the hub. Reactions on the tagged message show its state.
 import { SocketModeClient, LogLevel } from '@slack/socket-mode'
+import { appendFileSync } from 'node:fs'
 import type { WebClient } from '@slack/web-api'
 import { log, logger } from '../config.ts'
 import { classify, plainName, quoteMessage, taskLine, type Ids, type SlackMessage } from '../core/gate.ts'
-import { threadKey } from '../core/sessions.ts'
+import { sessionKey, slackConversation, type Conversation, type Lane } from '../core/conversations.ts'
+import type { Delivery } from '../core/sessions.ts'
 import type { Task } from '../runtime/protocol.ts'
 
 const PICKED_UP = 'ninja'
@@ -13,12 +15,12 @@ const WAITING = 'hourglass_flowing_sand'
 const FAILED = 'warning'
 
 export type Hub = {
-  deliver(key: string, task: Task, place: string): 'sent' | 'starting' | 'queued' | 'failed'
+  deliver(c: Conversation, task: Task, place: string, lane?: Lane): Delivery
   verdict(requestId: string, behavior: 'allow' | 'deny'): boolean
   status(): string
 }
 
-export async function connectSlack(o: { appToken: string; bot: WebClient; user: WebClient; name: string; title: string; teammates: string[]; hub: Hub }) {
+export async function connectSlack(o: { dir: string; appToken: string; bot: WebClient; user: WebClient; name: string; title: string; teammates: string[]; hub: Hub }) {
   const { bot, user } = o
   // The owner is whoever the user token belongs to: that token is what hears messages.
   const me = await user.auth.test()
@@ -28,7 +30,7 @@ export async function connectSlack(o: { appToken: string; bot: WebClient; user: 
     process.exit(1)
   }
   const dm = await bot.conversations.open({ users: me.user_id! })
-  const ids: Ids = { owner: me.user_id!, bot: botAuth.user_id!, botDm: dm.channel!.id!, name: o.name, teammates: o.teammates }
+  const ids: Ids = { owner: me.user_id!, bot: botAuth.user_id!, botDm: dm.channel!.id!, name: o.name, teammates: o.teammates, team: me.team_id! }
   const react = (channel: string, ts: string, name: string) =>
     (channel === ids.botDm ? bot : user).reactions.add({ channel, timestamp: ts, name }).catch(() => {})
 
@@ -109,10 +111,9 @@ export async function connectSlack(o: { appToken: string; bot: WebClient; user: 
       meta: { channel: m.channel, thread_ts: m.thread_ts ?? m.ts, place, permalink: link },
       origin: { channel: m.channel, ts: m.ts },
     }
-    // A side task gets a session of its own, keyed by its message, beside the thread's.
-    const key = t.side ? `${threadKey(m, ids.botDm)}#side-${m.ts}` : threadKey(m, ids.botDm)
-    const r = o.hub.deliver(key, task, t.side ? `${place} (side)` : place)
-    if (r === 'queued') react(m.channel, m.ts, WAITING)
+    // A side task gets a lane of its own on the same conversation.
+    const r = o.hub.deliver(slackConversation(m, ids.botDm), task, t.side ? `${place} (side)` : place, t.side ? `side-${m.ts}` : 'main')
+    if (r === 'queued' || r === 'held') react(m.channel, m.ts, WAITING)
     if (r === 'failed') failed(task)
   }
 
@@ -124,15 +125,22 @@ export async function connectSlack(o: { appToken: string; bot: WebClient; user: 
   // Messages in one thread are handled one after another, so a quick follow-up can't overtake.
   const queue = new Map<string, Promise<void>>()
   const socket = new SocketModeClient({ appToken: o.appToken, logger, logLevel: LogLevel.WARN })
+  // ponytail: temporary recorder for canvas mentions (subtype document_mention, comments as
+  // app_mention) until the canvas route is built from real payloads. Delete with that change.
+  const recordCanvas = (kind: string, e: unknown) => {
+    try { appendFileSync(`${o.dir}/canvas-events.jsonl`, JSON.stringify({ kind, at: new Date().toISOString(), e }) + '\n', { mode: 0o600 }) } catch {}
+  }
+  socket.on('app_mention', async ({ event, ack }) => { await ack(); recordCanvas('app_mention', event) })
   socket.on('message', async ({ event, ack }) => {
     await ack()
+    if ((event as { subtype?: string }).subtype === 'document_mention' || (event as { files?: { filetype?: string }[] }).files?.some(f => f.filetype === 'quip' || f.filetype === 'canvas')) recordCanvas('message', event)
     const m = event as SlackMessage
-    const k = m.channel ? threadKey(m, ids.botDm) : ''
+    const k = m.channel ? sessionKey(slackConversation(m, ids.botDm)) : ''
     const next = (queue.get(k) ?? Promise.resolve()).then(() => onMessage(m)).catch(e => log('message handling failed', e))
     queue.set(k, next)
     await next
     if (queue.get(k) === next) queue.delete(k)
   })
 
-  return { ids, ownerName, botUser: botAuth.user, failed, notifyOwner, start: () => socket.start() }
+  return { ids, ownerName, botUser: botAuth.user, socket, failed, notifyOwner, placeOf, start: () => socket.start() }
 }

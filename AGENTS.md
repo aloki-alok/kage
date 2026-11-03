@@ -36,50 +36,38 @@ Run every command from the repo root. Each step ends with a check. Go to the nex
    On Linux, ask them to run `cd ~/kage && ./setup.sh save <name>` in a terminal. The window prints `ok: saved to ... owner U...` when the tokens work.
    Check: `./setup.sh doctor` shows `ok` for the three `SLACK_` tokens. The other lines may still fail at this point.
 
-6. Pick the start route. Read the org's channel approval:
+6. Start it.
    ```sh
-   node -e 'const f=process.env.HOME+"/.claude/remote-settings.json";let s={};try{s=require(f)}catch{};console.log(JSON.stringify(s.allowedChannelPlugins||null))'
-   ```
-   - If the list contains `{"marketplace":"kage","plugin":"kage"}`, use the plugin route (step 7).
-   - If it prints `null` or lacks kage, use the dev route (step 8). Tell the person that an org Owner can approve Kage later (README, "Start without prompts").
-   - If Claude Code later says "Channels are not enabled for your org", the person's org Owner turns on Channels at https://claude.ai/admin-settings/claude-code. Personal Pro and Max accounts skip this.
-
-7. Plugin route (no prompts, can start at login).
-   ```sh
-   claude plugin marketplace add "$PWD" && claude plugin install kage@kage
-   grep -q '^KAGE_ROUTE=' ~/.config/kage/env || echo 'KAGE_ROUTE=plugin' >> ~/.config/kage/env
    ./start.sh
    ```
-   **Person, first start only:** Claude Code may ask whether they trust the home folder. If the doctor in step 9 says "not connected", ask them to run `tmux attach -t <name>`, choose **Yes**, then press `Ctrl-b` and `d`. Do not answer it for them.
+   Check: it prints `running, no prompts`. The first start installs the Agent SDK, which takes about a minute.
 
    On macOS, ask the person whether Kage should start at login. If yes, run `./autostart.sh on`.
 
-8. Dev route.
-   ```sh
-   ./start.sh
-   ```
-   **Person:** Claude Code shows a warning screen for custom channels on every start, and on the first start it may also ask whether they trust the home folder. Ask them to run `tmux attach -t <name>`, choose **Yes** on the trust question, press Enter on "I am using this for local development", and then press `Ctrl-b` and `d`. Do not press the keys for them: those screens are their consent.
-
-9. Prove it works.
+7. Prove it works.
    ```sh
    ./setup.sh doctor
    ```
    Check: the last line is `All good`. Every `FAIL` line names its fix. Do that fix, then run the doctor again. Kage takes about 20 seconds to connect after a start.
 
-10. Tell the person to tag `@<name>` in any Slack thread. They get 🥷 when Kage picks the task up, and ⚔️ when it has answered. Each thread runs in its own Claude Code session.
+8. Tell the person to tag `@<name>` in any Slack thread. They get 🥷 when Kage picks the task up, then 🗡️ for a quick answer, 📜 when Kage waits on their reply, and ⚔️ when the task is done. Each thread runs in its own Claude Code session.
 
 ## Run it
 
 | Task | Command |
 |---|---|
 | Health check | `./setup.sh doctor` |
-| See the sessions | `tmux attach -t <name>`, then `Ctrl-b` `n` to the `threads` window: one pane per thread, labelled with its channel. `Ctrl-b` `z` zooms a pane. Leave with `Ctrl-b` then `d`. |
+| Manage sessions in one screen | `./setup.sh top` draws Kage holding a string to every live thread (asks you, working, starting, watching, quiet), with ended threads under them. Mouse or keys: hover or `↑↓` pick, click or `⏎` open the live feed, `a` attach, `x` cut (the thread resumes on its next task), `s` schedules, `/` search, `q` quit. It needs a hub built from this version for live state. Regenerate Kage's picture with `node make-hero.ts` and its hand with `node make-hand.ts` (macOS). |
+| Follow what every thread does | `./setup.sh watch`, or `./setup.sh watch acme` for threads whose place contains "acme". Read only, works with both runtimes. |
+| Work in a thread's session yourself | `./setup.sh attach <place>` opens it in your terminal with its whole conversation. Kage holds the thread (new tasks wait) until you quit, then takes it back. It refuses while Kage is mid-turn or waiting on an approval. |
+| See the panes (tmux runtime only) | `tmux attach -t <name>`, then `Ctrl-b` `n` to the `threads` window: one pane per thread, labelled with its channel. `Ctrl-b` `z` zooms a pane. Leave with `Ctrl-b` then `d`. |
 | Restart | `tmux kill-session -t =<name> && ./start.sh` |
 | Stop | `tmux kill-session -t =<name>` |
 | Start at login on or off (macOS) | `./autostart.sh on` or `./autostart.sh off` |
 | Let a teammate tag it | `./setup.sh teammate add <name, @handle or id>` (also `remove`, `list`). If it lists two people, ask which one. |
 | Change the session limits | Add `KAGE_MAX_SESSIONS=4` or `KAGE_IDLE_MINUTES=30` to `~/.config/kage/env`, then restart |
-| Update Kage | `git pull`, then restart. The plugin reads this folder, so no reinstall is needed. |
+| Run threads as tmux panes instead | Add `KAGE_RUNTIME=tmux` to `~/.config/kage/env`, then restart. Each pane then shows a channels warning screen that the person confirms (README, "Run threads as tmux panes instead"). |
+| Update Kage | `git pull`, then restart. The plugin reads this folder, so no reinstall is needed. A restart ends SDK sessions mid-turn, and each resumes its conversation on its next task. An env file with no `KAGE_RUNTIME` line moves from panes to the SDK on that restart: running panes keep their thread until they close. |
 
 The token file is `~/.config/kage/env` (mode 600). Never print it, copy it or commit it.
 
@@ -87,11 +75,11 @@ The token file is `~/.config/kage/env` (mode 600). Never print it, copy it or co
 
 | Folder or file | Holds |
 |---|---|
-| `core/` | Pure rules, each with a `*.test.ts` next to it: `gate` (who may start a task, the task line, quoting, teammates), `sessions` (session key and dispatcher), `outbound` (mentions, secrets, Slack-sized parts), `ledgers`, `guards` (hook rules) |
-| `connectors/` | One file per place Kage hears from: `slack.ts` (the one Socket Mode connection), `email.ts` with `mail.ts` and `mailbox.ts`. A connector turns a message into a `Task` and never decides who may drive Kage: `core/gate.ts` does |
-| `runtime/` | Where sessions run: `tmux-windows.ts` (a pane per thread), `session-link.ts` (the socket sessions connect to), `protocol.ts` (the messages on it) |
+| `core/` | Pure rules, each with a `*.test.ts` next to it: `gate` (who may start a task, the task line, quoting, teammates), `conversations` (where a message lives and its session key), `sessions` (the dispatcher), `outbound` (mentions, secrets, Slack-sized parts), `ledgers`, `guards` (hook rules) |
+| `connectors/` | One file per place Kage hears from: `slack.ts` (the one Socket Mode connection) with `slack-commands.ts`, `email.ts` with `mail.ts` and `mailbox.ts`. A connector turns a message into a `Task` and never decides who may drive Kage: `core/gate.ts` does |
+| `runtime/` | Where sessions run: `sdk-sessions.ts` (the default: an Agent SDK session per thread, inside the hub), `tmux-windows.ts` (a pane per thread), `session-link.ts` (the socket sessions connect to), `protocol.ts` (the messages on it), `store.ts` (one SQLite file: conversations and their sessions), `kage-tools.ts` (a session's reply, edit, delete, waiting and prod-log tools, its instructions and approval prompt, with no transport) |
 | `router.ts` | The hub: wiring only |
-| `server.ts` | The Kage channel inside each thread's Claude Code session: reply, edit and delete tools, approvals |
+| `server.ts` | Serves `kage-tools.ts` over MCP inside each thread's tmux pane |
 
 - After a change to any `.ts` file, run `npm ci` once, then `npm test`, `npm run typecheck` and `npm run build`. Commit `dist/` with the change, because the plugin and the hub run the bundles. Then restart Kage.
 - The server writes logs to stderr only. Stdout carries the channel protocol, so a stray `console.log` breaks it.

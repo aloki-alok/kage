@@ -18,7 +18,7 @@ describe('private sources on a teammate task', () => {
     const MEM = '/home/o/.claude/projects/-home-o/memory'
     const ok = (tool: string, file_path: string) => assert.equal(ownerMemoryRefusal(tool, { file_path }, MEM), undefined, `${tool} ${file_path}`)
     const no = (tool: string, file_path: string) => assert.match(ownerMemoryRefusal(tool, { file_path }, MEM) ?? '', /people notes/, `${tool} ${file_path}`)
-    test('a note about a person may be written', () => { ok('Write', `${MEM}/user_teammate.md`); ok('Edit', `${MEM}/user_teammate.md`) })
+    test('a note about a person may be written', () => { ok('Write', `${MEM}/user_sam.md`); ok('Edit', `${MEM}/user_sam.md`) })
     test('the index may be edited, never overwritten', () => { ok('Edit', `${MEM}/MEMORY.md`); no('Write', `${MEM}/MEMORY.md`) })
     test('any other memory of the owner is read-only', () => {
       no('Write', `${MEM}/feedback_x.md`); no('Edit', `${MEM}/project_y.md`); no('MultiEdit', `${MEM}/sub/user_z.md`)

@@ -6,6 +6,19 @@ import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs'
 import { log } from '../config.ts'
 import { liveCronJobs, type Windows } from '../core/sessions.ts'
 
+// When the Claude Code process in a pane started (the pane's shell loop is its parent). No process
+// (between restarts): Infinity, so no job counts as alive. Its CronCreate jobs live only that long.
+export function paneProcessStart(pane: string): number {
+  try {
+    const shell = execFileSync('tmux', ['display-message', '-p', '-t', pane, '#{pane_pid}'], { encoding: 'utf8' }).trim()
+    const child = execFileSync('pgrep', ['-P', shell], { encoding: 'utf8' }).trim().split('\n')[0]!
+    return Date.parse(execFileSync('ps', ['-o', 'lstart=', '-p', child], { encoding: 'utf8' }).trim()) || Infinity
+  } catch { return Infinity }
+}
+
+// The folder Claude Code keeps a session's transcripts in: named after the working directory.
+export const claudeProject = (cwd: string) => `${process.env.HOME}/.claude/projects/${cwd.replace(/[^A-Za-z0-9]/g, '-')}`
+
 export function tmuxWindows(o: {
   name: string
   envFile: string
@@ -17,7 +30,7 @@ export function tmuxWindows(o: {
   const tmux = (...a: string[]) => execFileSync('tmux', a, { encoding: 'utf8' })
   // Claude Code keeps a session's transcript in a folder named after the working directory.
   // Its mtime is the session's last activity, and its existence means there is something to resume.
-  const PROJECT = `${process.env.HOME}/.claude/projects/${process.cwd().replace(/[^A-Za-z0-9]/g, '-')}`
+  const PROJECT = claudeProject(process.cwd())
   const BOARD = `=${o.name}:threads`
 
   // session id -> pane id
@@ -46,16 +59,6 @@ export function tmuxWindows(o: {
       }
     }
     return out
-  }
-
-  // When the Claude Code process in a pane started (the pane's shell loop is its parent).
-  // No process (between restarts): Infinity, so no job counts as alive.
-  function processStart(pane: string): number {
-    try {
-      const shell = tmux('display-message', '-p', '-t', pane, '#{pane_pid}').trim()
-      const child = execFileSync('pgrep', ['-P', shell], { encoding: 'utf8' }).trim().split('\n')[0]!
-      return Date.parse(execFileSync('ps', ['-o', 'lstart=', '-p', child], { encoding: 'utf8' }).trim()) || Infinity
-    } catch { return Infinity }
   }
 
   const windows: Windows = {
@@ -97,7 +100,7 @@ export function tmuxWindows(o: {
       const bottom = tmux('capture-pane', '-p', '-t', pane).split('\n').filter(l => l.trim()).slice(-20).join('\n')
       if (/… \(\d/.test(bottom) || /· \d+ shells?\b/.test(bottom) || /^\s*◯ /m.test(bottom)) return true
       // A repeating check (CronCreate) lives only in this Claude Code process: keep the pane for it.
-      return liveCronJobs(cronResults(o.idOf(key)!), processStart(pane), Date.now()).length > 0
+      return liveCronJobs(cronResults(o.idOf(key)!), paneProcessStart(pane), Date.now()).length > 0 ? 'watching' : false
     },
   }
 

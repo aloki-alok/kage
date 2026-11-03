@@ -3,7 +3,7 @@
 // owner: the person whose user token hears messages. bot: the app's bot user.
 // botDm: the owner's DM with the bot. name: the word typed after "@" (e.g. kage).
 // teammates: Slack ids the owner lets start tasks by tagging, only where the owner is too.
-export type Ids = { owner: string; bot: string; botDm: string; name: string; teammates: string[] }
+export type Ids = { owner: string; bot: string; botDm: string; name: string; teammates: string[]; team?: string }
 
 // The name goes into a regex and a Slack mention, so it stays a short plain word.
 export const validName = (name: string) => /^[a-z][a-z0-9-]{1,20}$/.test(name)
@@ -18,6 +18,7 @@ export type SlackMessage = {
   subtype?: string
   text?: string
   thread_ts?: string
+  channel_type?: string
 }
 
 // side: run it in its own session, beside the thread's (which may be busy with something else).

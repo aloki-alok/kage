@@ -31,7 +31,7 @@ export function postedBy(tsv: string, channel: string, ts: string): 'bot' | 'own
 export const staleWaiting = (tsv: string, now: number, ageMs: number) =>
   openWaiting(tsv).filter(i => now - Date.parse(i.when) >= ageMs)
 
-// Due once a UTC day from 05:00 UTC (10:30 IST): returns today's date to record as sent.
+// Due once a UTC day from 05:00 UTC: returns today's date to record as sent.
 export function dailyDue(now: number, lastSent: string | undefined): string | undefined {
   const t = new Date(now)
   const today = t.toISOString().slice(0, 10)

@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # macOS: start the agent when you log in. Usage: ./autostart.sh on | off
-# Use it with the plugin route; the dev route waits on a screen nobody is there to confirm.
+# Works with the default runtime and the plugin route; tmux panes on the dev route wait on a screen nobody confirms.
 set -euo pipefail
 DIR="$(cd "$(dirname "$0")" && pwd)"
 LABEL="dev.kage.start"
