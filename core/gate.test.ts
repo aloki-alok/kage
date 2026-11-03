@@ -66,10 +66,13 @@ describe('what starts a task', () => {
     assert.deepEqual(classify(msg({ user: MATE, text: '@kage status' }), ids), { kind: 'task', text: 'status' })
     assert.deepEqual(classify(msg({ text: '@kage status of the deploy?' }), ids), { kind: 'task', text: 'status of the deploy?' })
   })
-  test('"side <task>" runs beside a busy thread session, in its own', () => {
-    assert.deepEqual(classify(msg({ text: '@kage side check the queue' }), ids), { kind: 'task', text: 'check the queue', side: true })
-    assert.deepEqual(classify(msg({ user: MATE, text: '@kage side: look' }), ids), { kind: 'task', text: 'look', side: true })
+  test('"side: <task>" from the owner runs beside a busy thread session, in its own', () => {
+    assert.deepEqual(classify(msg({ text: '@kage side: check the queue' }), ids), { kind: 'task', text: 'check the queue', side: true })
+    // Only the exact "side:" counts, so ordinary words starting with side stay the task.
+    assert.deepEqual(classify(msg({ text: '@kage side effects of the migration?' }), ids), { kind: 'task', text: 'side effects of the migration?' })
     assert.deepEqual(classify(msg({ text: '@kage sidebar is broken' }), ids), { kind: 'task', text: 'sidebar is broken' })
+    // A teammate can't open extra sessions: it is a plain task in the thread's session.
+    assert.deepEqual(classify(msg({ user: MATE, text: '@kage side: look' }), ids), { kind: 'task', text: 'side: look' })
   })
   test('a thread broadcast or a file share with a tag counts', () => {
     assert.deepEqual(classify(msg({ subtype: 'thread_broadcast', text: `<@${BOT}> go` }), ids), { kind: 'task', text: 'go' })
@@ -121,6 +124,10 @@ describe('approvals', () => {
 describe('what goes out and what comes in', () => {
   test('mass mentions and user tags are defused in replies', () => {
     assert.equal(safeReply('hey <!channel> <!here> <!everyone> <@U123> done'), 'hey channel here everyone @U123 done')
+  })
+  test('labelled mentions and user groups never slip through as pings', () => {
+    assert.equal(safeReply('hi <@U1|bob> and <!subteam^S123|@devs>', { names: { U1: 'Bob' } }), 'hi @Bob and @devs')
+    assert.equal(safeReply('hi <!subteam^S123>', { ping: true }), 'hi @group')
   })
   test('a defused mention shows the name, not the id', () => {
     assert.equal(safeReply('ask <@U1> and <@U2>', { names: { U1: 'teammate' } }), 'ask @teammate and @U2')

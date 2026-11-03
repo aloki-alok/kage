@@ -87,7 +87,11 @@ export async function connectSlack(o: { appToken: string; bot: WebClient; user: 
       if (!o.hub.verdict(t.request_id, t.behavior)) log('no running session asked for', t.request_id)
       return
     }
-    if (t.kind === 'status') return say(m.channel, m.thread_ts ?? m.ts, o.hub.status())
+    // Status names the owner's other conversations, so it goes to the owner's DM only, never the thread.
+    if (t.kind === 'status') {
+      react(m.channel, m.ts, PICKED_UP)
+      return void notifyOwner(o.hub.status())
+    }
     react(m.channel, m.ts, PICKED_UP)
     const [place, convo, link] = await Promise.all([
       placeOf(m.channel),
@@ -114,11 +118,8 @@ export async function connectSlack(o: { appToken: string; bot: WebClient; user: 
 
   // A task that could not reach a session gets ⚠️ on its message instead of waiting forever.
   const failed = (task: Task) => react(task.origin.channel, task.origin.ts, FAILED)
-  const notifyOwner = (text: string) => void bot.chat.postMessage({ channel: ids.botDm, text }).catch(() => {})
-  // A hub answer in the thread: as the bot, or as the owner marked with the name where the bot can't post.
-  const say = (channel: string, thread_ts: string, text: string) =>
-    bot.chat.postMessage({ channel, thread_ts, text }).catch(() =>
-      user.chat.postMessage({ channel, thread_ts, text: `*${o.title}:* ${text}` })).then(() => {}, e => log('status reply failed', e))
+  // Resolves false when the post failed, so a caller can try again later.
+  const notifyOwner = (text: string) => bot.chat.postMessage({ channel: ids.botDm, text }).then(() => true, e => (log('owner DM failed', e?.data?.error ?? e), false))
 
   // Messages in one thread are handled one after another, so a quick follow-up can't overtake.
   const queue = new Map<string, Promise<void>>()

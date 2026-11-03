@@ -3,8 +3,11 @@
 // Replies never ping a crowd, whatever the model writes. A person is pinged only when `ping` is
 // set (the owner's own task); otherwise the mention becomes a plain @name.
 export function safeReply(text: string, o: { ping?: boolean; names?: Record<string, string> } = {}): string {
+  // User groups (<!subteam^S1|@devs>) are crowds too.
   const out = text.replace(/<!(channel|here|everyone)[^>]*>/g, '$1')
-  return o.ping ? out : out.replace(/<@([A-Z0-9]+)>/g, (_, id: string) => `@${o.names?.[id] ?? id}`)
+    .replace(/<!subteam\^[A-Z0-9]+(?:\|@?([^>]*))?>/g, (_, label?: string) => `@${label || 'group'}`)
+  // <@U1> and the labelled <@U1|bob> both notify.
+  return o.ping ? out : out.replace(/<@([A-Z0-9]+)(?:\|[^>]*)?>/g, (_, id: string) => `@${o.names?.[id] ?? id}`)
 }
 
 // Text rules alone did not stop a password reaching a thread (2026-11-01), so the reply tool

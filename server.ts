@@ -9,6 +9,7 @@ import { connect, type Socket } from 'node:net'
 import { appendFileSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { dirname } from 'node:path'
 import { load, log } from './config.ts'
+import { plainName } from './core/gate.ts'
 import type { ToSession } from './runtime/protocol.ts'
 import { memoryDirs, senderFile } from './core/guards.ts'
 import { openWaiting, postedBy, tsvRow } from './core/ledgers.ts'
@@ -133,7 +134,7 @@ async function nameMentions(text: string) {
     if (names[id!]) continue
     const u = await user.users.info({ user: id! }).catch(() => null)
     const p = u?.user as { real_name?: string; name?: string; profile?: { display_name?: string } } | undefined
-    if (p) names[id!] = p.profile?.display_name || p.real_name || p.name || id!
+    if (p) names[id!] = plainName(p.profile?.display_name || p.real_name || p.name || id!)
   }
 }
 
@@ -165,6 +166,9 @@ async function post(channel: string, thread_ts: string | undefined, text: string
 async function change(a: { channel: string; ts: string; text?: string }, ping: boolean) {
   let rows = ''
   try { rows = readFileSync(POSTED, 'utf8') } catch {}
+  // Only in a conversation this session's tasks came from, or the owner's DM: another thread's
+  // session owns its own messages.
+  if (a.channel !== botDm && !taskChannels.has(a.channel)) return `refused: no task in this session came from ${a.channel}`
   const by = postedBy(rows, a.channel, a.ts)
   if (!by) return `refused: ${Title} did not post that message, or it is already deleted`
   const client = by === 'bot' ? bot : user

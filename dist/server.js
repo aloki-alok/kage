@@ -35111,6 +35111,7 @@ import { readFileSync } from "node:fs";
 
 // core/gate.ts
 var validName = (name) => /^[a-z][a-z0-9-]{1,20}$/.test(name);
+var plainName = (name) => name.replace(/[<>]/g, "").replace(/\s+/g, " ").trim();
 
 // config.ts
 var log = (...a) => console.error("[kage]", ...a);
@@ -35188,8 +35189,8 @@ function postedBy(tsv, channel, ts) {
 
 // core/outbound.ts
 function safeReply(text, o = {}) {
-  const out = text.replace(/<!(channel|here|everyone)[^>]*>/g, "$1");
-  return o.ping ? out : out.replace(/<@([A-Z0-9]+)>/g, (_, id) => `@${o.names?.[id] ?? id}`);
+  const out = text.replace(/<!(channel|here|everyone)[^>]*>/g, "$1").replace(/<!subteam\^[A-Z0-9]+(?:\|@?([^>]*))?>/g, (_, label) => `@${label || "group"}`);
+  return o.ping ? out : out.replace(/<@([A-Z0-9]+)(?:\|[^>]*)?>/g, (_, id) => `@${o.names?.[id] ?? id}`);
 }
 var SECRET_SHAPES = [
   ["AWS access key", /\b(AKIA|ASIA)[0-9A-Z]{16}\b/],
@@ -35349,7 +35350,7 @@ async function nameMentions(text) {
     if (names[id]) continue;
     const u = await user.users.info({ user: id }).catch(() => null);
     const p = u?.user;
-    if (p) names[id] = p.profile?.display_name || p.real_name || p.name || id;
+    if (p) names[id] = plainName(p.profile?.display_name || p.real_name || p.name || id);
   }
 }
 async function post(channel, thread_ts, text, ping = false) {
@@ -35378,6 +35379,7 @@ async function change(a, ping) {
     rows = readFileSync2(POSTED, "utf8");
   } catch {
   }
+  if (a.channel !== botDm && !taskChannels.has(a.channel)) return `refused: no task in this session came from ${a.channel}`;
   const by = postedBy(rows, a.channel, a.ts);
   if (!by) return `refused: ${Title} did not post that message, or it is already deleted`;
   const client = by === "bot" ? bot : user;

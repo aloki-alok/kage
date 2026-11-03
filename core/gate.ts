@@ -28,10 +28,12 @@ export type Trigger =
   | { kind: 'verdict'; request_id: string; behavior: 'allow' | 'deny' }
   | null
 
-const SIDE_RE = /^side\b:?\s*/i
+// Only the exact "side:" counts, so "side effects of ..." stays a normal task. Owner only, so a
+// teammate can't open extra sessions and push the owner's out.
+const SIDE_RE = /^side:\s*/i
 const task = (text: string, isOwner: boolean): Trigger => {
   if (isOwner && /^status$/i.test(text)) return { kind: 'status' }
-  const side = SIDE_RE.exec(text)
+  const side = isOwner ? SIDE_RE.exec(text) : null
   return side ? { kind: 'task', text: text.slice(side[0].length), side: true } : { kind: 'task', text }
 }
 

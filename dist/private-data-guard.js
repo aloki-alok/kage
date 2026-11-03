@@ -2,10 +2,11 @@ import { createRequire } from 'node:module'; const require = createRequire(impor
 
 // private-data-guard.ts
 import { readFileSync } from "node:fs";
-import { dirname } from "node:path";
+import { dirname as dirname2 } from "node:path";
 
 // core/guards.ts
-import { resolve } from "node:path";
+import { realpathSync } from "node:fs";
+import { basename, dirname, join, resolve } from "node:path";
 var PRIVATE_TOOL = /^mcp__.*(gmail|google_drive|google_calendar|granola|fireflies)/i;
 function privateToolRefusal(tool, sender) {
   if (!PRIVATE_TOOL.test(tool) || sender === "owner") return void 0;
@@ -16,14 +17,26 @@ var memoryDirs = (home, envFile, env) => ({
   owner: env.KAGE_OWNER_MEMORY || `${home}/.claude/projects/${home.replace(/[^A-Za-z0-9]/g, "-")}/memory`
 });
 var WRITE_TOOLS = /* @__PURE__ */ new Set(["Write", "Edit", "MultiEdit", "NotebookEdit"]);
-function ownerMemoryRefusal(tool, input, ownerMemory) {
-  if (!WRITE_TOOLS.has(tool) || !input.file_path) return;
-  const file = resolve(input.file_path);
-  const dir = resolve(ownerMemory);
-  if (!file.startsWith(`${dir}/`)) return;
+function ownerMemoryRefusal(tool, input, ownerMemory, home = process.env.HOME ?? "") {
+  const raw = input.file_path ?? input.notebook_path;
+  if (!WRITE_TOOLS.has(tool) || !raw) return;
+  const file = realish(raw.replace(/^~(?=\/)/, home));
+  const dir = realish(ownerMemory);
+  if (!file.toLowerCase().startsWith(`${dir.toLowerCase()}/`)) return;
   const name = file.slice(dir.length + 1);
   if (/^user_[\w-]+\.md$/.test(name) || name === "MEMORY.md" && tool !== "Write") return;
   return `The owner's memory takes only people notes (user_<name>.md) from you. Save your own lessons in your own memory folder.`;
+}
+function realish(p) {
+  const rest = [];
+  for (let cur = resolve(p); ; cur = dirname(cur)) {
+    try {
+      return join(realpathSync(cur), ...rest);
+    } catch {
+    }
+    if (dirname(cur) === cur) return resolve(p);
+    rest.unshift(basename(cur));
+  }
 }
 var senderFile = (dir, thread2) => `${dir}/sender/${thread2.replace(/[^A-Za-z0-9.]/g, "_")}`;
 
@@ -32,7 +45,7 @@ var thread = process.env.KAGE_THREAD;
 if (thread) {
   const { tool_name, tool_input } = JSON.parse(readFileSync(0, "utf8"));
   const envFile = process.env.KAGE_ENV || `${process.env.HOME}/.config/kage/env`;
-  const dir = dirname(envFile);
+  const dir = dirname2(envFile);
   let sender;
   try {
     sender = readFileSync(senderFile(dir, thread), "utf8").trim();

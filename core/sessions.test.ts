@@ -18,7 +18,7 @@ describe('which session a message goes to', () => {
 
 describe('one Claude session per thread', () => {
   // A fake tmux: records starts and stops; activity times are set per key.
-  function setup(o: { max?: number; saved?: Record<string, string> } = {}) {
+  function setup(o: { max?: number; saved?: Record<string, string>; busyThrows?: boolean } = {}) {
     const started: [string, string][] = []
     const stopped: string[] = []
     const activity = new Map<string, number>()
@@ -30,7 +30,7 @@ describe('one Claude session per thread', () => {
         start: (k, id) => { if (broken.has(k)) throw new Error('tmux failed'); started.push([k, id]) },
         stop: k => stopped.push(k),
         lastActivity: k => activity.get(k) ?? 0,
-        busy: k => busy.has(k),
+        busy: k => { if (o.busyThrows) throw new Error('tmux capture failed'); return busy.has(k) },
       },
       { max: o.max ?? 2, idleMs: 1000, connectMs: 100, evictMs: 300, newId: () => `id${++n}`, saved: o.saved },
     )
@@ -89,6 +89,20 @@ describe('one Claude session per thread', () => {
     assert.equal(d.task('A', 'again', 2000), 'starting')
     assert.deepEqual(stopped, ['A', 'B'])
     assert.deepEqual(started.at(-1), ['A', 'id1'])
+  })
+  test('a waiting thread gets the slot once a session has been quiet long enough, not only after the idle close', () => {
+    const { d, started, stopped, activity, inbox } = setup({ max: 1 })
+    d.task('A', 'a', 0); inbox('A'); activity.set('A', 0)
+    assert.equal(d.task('B', 'b', 100), 'queued')      // A quiet only 100 ms
+    d.sweep(400)                                         // A quiet 400 ms > evictMs 300, < idleMs 1000
+    assert.deepEqual(stopped, ['A'])
+    assert.deepEqual(started.map(s => s[0]), ['A', 'B'])
+  })
+  test('a session whose busy check fails counts as busy, and the new task still waits safely', () => {
+    const { d, stopped, inbox } = setup({ max: 1, busyThrows: true })
+    d.task('A', 'a', 0); inbox('A')
+    assert.equal(d.task('B', 'b', 5000), 'queued')
+    assert.deepEqual(stopped, [])
   })
   test('a busy, asking, starting or just-active session is never evicted; then the thread waits', () => {
     const { d, stopped, activity, busy, inbox } = setup({ max: 4 })

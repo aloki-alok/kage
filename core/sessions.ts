@@ -62,7 +62,7 @@ export class Dispatcher<M> {
   // What runs now, for "@kage status".
   status(now: number) {
     const asking = new Set(this.#perms.values())
-    const state = (k: string) => !this.#conns.has(k) ? 'starting' : this.#w.busy(k) ? 'busy' : asking.has(k) ? 'asking' : 'quiet'
+    const state = (k: string) => !this.#conns.has(k) ? 'starting' : this.#busy(k) ? 'busy' : asking.has(k) ? 'asking' : 'quiet'
     return {
       live: [...this.#live].map(key => ({ key, state: state(key), quietMs: now - this.#last(key) })),
       waiting: [...this.#waiting],
@@ -73,12 +73,17 @@ export class Dispatcher<M> {
   #last = (k: string) => Math.max(this.#touched.get(k) ?? 0, this.#w.lastActivity(k))
 
   // A connected session with nothing pending, no open approval, not mid-turn, quiet for evictMs.
+  // A busy check that fails (tmux gone, a capture error) counts as busy: never close on a guess.
+  #busy(k: string): boolean {
+    try { return this.#w.busy(k) } catch { return true }
+  }
+
   #quietest(now: number): string | undefined {
     const asking = new Set(this.#perms.values())
     let best: string | undefined
     for (const k of this.#live) {
       if (!this.#conns.has(k) || this.#pending.has(k) || asking.has(k)) continue
-      if (now - this.#last(k) < this.#o.evictMs || this.#w.busy(k)) continue
+      if (now - this.#last(k) < this.#o.evictMs || this.#busy(k)) continue
       if (!best || this.#last(k) < this.#last(best)) best = k
     }
     return best
@@ -128,10 +133,16 @@ export class Dispatcher<M> {
         if (now - (this.#startedAt.get(k) ?? now) < this.#o.connectMs) continue
         dropped.push(...pending)
         this.#pending.delete(k)
-      } else if (pending || now - this.#last(k) < this.#o.idleMs || asking.has(k) || this.#w.busy(k)) continue
+      } else if (pending || now - this.#last(k) < this.#o.idleMs || asking.has(k) || this.#busy(k)) continue
       this.#close(k)
     }
-    while (this.#waiting.length && this.#live.size < this.#o.max) {
+    // Threads waiting for a slot also take the slot of a session that has since gone quiet.
+    while (this.#waiting.length) {
+      if (this.#live.size >= this.#o.max) {
+        const quiet = this.#quietest(now)
+        if (!quiet) break
+        this.#close(quiet)
+      }
       const k = this.#waiting.shift()!
       if (!this.#start(k, now)) {
         dropped.push(...this.#pending.get(k) ?? [])

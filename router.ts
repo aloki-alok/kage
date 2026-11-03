@@ -74,22 +74,24 @@ function status(): string {
 
 // Once a day from 10:30 IST, the owner gets the questions that have waited on them for a day or more.
 const DAILY = `${DIR}/daily-sent`
-setInterval(() => {
+setInterval(async () => {
   const today = dailyDue(Date.now(), readFile(DAILY).trim() || undefined)
   if (!today) return
-  writeFileSync(DAILY, today, { mode: 0o600 })
   const stale = staleWaiting(readFile(WAITING), Date.now(), 24 * 3600_000)
-  if (stale.length) slack.notifyOwner([`*Still waiting on you (${stale.length})*`, ...stale.map(i => `• <${i.link}|${i.what}> (since ${i.when.slice(0, 10)})`)].join('\n'))
+  const sent = !stale.length || await slack.notifyOwner([`*Still waiting on you (${stale.length})*`,
+    ...stale.map(i => `• ${i.link ? `<${i.link}|${i.what}>` : i.what} (since ${i.when.slice(0, 10)})`)].join('\n'))
+  // Marked only once the note went out (or there was nothing to say), so a failed post retries.
+  if (sent) writeFileSync(DAILY, today, { mode: 0o600 })
 }, 10 * 60_000)
 const email = connectEmail({
   env, dir: DIR, name: NAME, deliver,
-  failed: task => slack.notifyOwner(`Could not start a session for ${task.meta.place}.`),
+  failed: task => void slack.notifyOwner(`Could not start a session for ${task.meta.place}.`),
 })
 // Each connector marks its own failures: ⚠️ on a Slack message, a DM line for an email.
 const failed = (m: ToSession) => {
   if (m.type !== 'task') return
   log('could not deliver to a session:', m.meta.place, m.origin.ts, `(attach: tmux attach -t ${NAME})`)
-  if (m.origin.channel === 'email') slack.notifyOwner(`Could not start a session for ${m.meta.place}.`)
+  if (m.origin.channel === 'email') void slack.notifyOwner(`Could not start a session for ${m.meta.place}.`)
   else slack.failed(m)
 }
 setInterval(() => { try { d.sweep(Date.now()).forEach(failed) } catch (e) { log('sweep failed', e) } }, 60_000)
@@ -97,7 +99,7 @@ setInterval(() => { try { d.sweep(Date.now()).forEach(failed) } catch (e) { log(
 listenForSessions(`${DIR}/router.sock`, d, {
   mail: (key, text) => void email?.send(key, text).catch(e => {
     log('mail reply failed', key, e)
-    slack.notifyOwner(`Email reply failed for ${places.get(key) ?? key}: ${e}`)
+    void slack.notifyOwner(`Email reply failed for ${places.get(key) ?? key}: ${e}`)
   }),
 })
 

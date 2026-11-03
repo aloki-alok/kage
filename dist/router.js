@@ -150562,10 +150562,10 @@ import { readFileSync } from "node:fs";
 
 // core/gate.ts
 var validName = (name) => /^[a-z][a-z0-9-]{1,20}$/.test(name);
-var SIDE_RE = /^side\b:?\s*/i;
+var SIDE_RE = /^side:\s*/i;
 var task = (text, isOwner) => {
   if (isOwner && /^status$/i.test(text)) return { kind: "status" };
-  const side = SIDE_RE.exec(text);
+  const side = isOwner ? SIDE_RE.exec(text) : null;
   return side ? { kind: "task", text: text.slice(side[0].length), side: true } : { kind: "task", text };
 };
 var VERDICT_RE = /^\s*(y|yes|n|no)\s+([a-km-z]{5})\s*$/i;
@@ -150892,7 +150892,7 @@ var Dispatcher = class {
   // What runs now, for "@kage status".
   status(now) {
     const asking = new Set(this.#perms.values());
-    const state2 = (k5) => !this.#conns.has(k5) ? "starting" : this.#w.busy(k5) ? "busy" : asking.has(k5) ? "asking" : "quiet";
+    const state2 = (k5) => !this.#conns.has(k5) ? "starting" : this.#busy(k5) ? "busy" : asking.has(k5) ? "asking" : "quiet";
     return {
       live: [...this.#live].map((key) => ({ key, state: state2(key), quietMs: now - this.#last(key) })),
       waiting: [...this.#waiting]
@@ -150901,12 +150901,20 @@ var Dispatcher = class {
   // Last activity: a task handed to it, or a write to its transcript.
   #last = (k5) => Math.max(this.#touched.get(k5) ?? 0, this.#w.lastActivity(k5));
   // A connected session with nothing pending, no open approval, not mid-turn, quiet for evictMs.
+  // A busy check that fails (tmux gone, a capture error) counts as busy: never close on a guess.
+  #busy(k5) {
+    try {
+      return this.#w.busy(k5);
+    } catch {
+      return true;
+    }
+  }
   #quietest(now) {
     const asking = new Set(this.#perms.values());
     let best;
     for (const k5 of this.#live) {
       if (!this.#conns.has(k5) || this.#pending.has(k5) || asking.has(k5)) continue;
-      if (now - this.#last(k5) < this.#o.evictMs || this.#w.busy(k5)) continue;
+      if (now - this.#last(k5) < this.#o.evictMs || this.#busy(k5)) continue;
       if (!best || this.#last(k5) < this.#last(best)) best = k5;
     }
     return best;
@@ -150952,10 +150960,15 @@ var Dispatcher = class {
         if (now - (this.#startedAt.get(k5) ?? now) < this.#o.connectMs) continue;
         dropped.push(...pending);
         this.#pending.delete(k5);
-      } else if (pending || now - this.#last(k5) < this.#o.idleMs || asking.has(k5) || this.#w.busy(k5)) continue;
+      } else if (pending || now - this.#last(k5) < this.#o.idleMs || asking.has(k5) || this.#busy(k5)) continue;
       this.#close(k5);
     }
-    while (this.#waiting.length && this.#live.size < this.#o.max) {
+    while (this.#waiting.length) {
+      if (this.#live.size >= this.#o.max) {
+        const quiet = this.#quietest(now);
+        if (!quiet) break;
+        this.#close(quiet);
+      }
       const k5 = this.#waiting.shift();
       if (!this.#start(k5, now)) {
         dropped.push(...this.#pending.get(k5) ?? []);
@@ -151048,7 +151061,10 @@ async function connectSlack(o3) {
       if (!o3.hub.verdict(t.request_id, t.behavior)) log("no running session asked for", t.request_id);
       return;
     }
-    if (t.kind === "status") return say(m3.channel, m3.thread_ts ?? m3.ts, o3.hub.status());
+    if (t.kind === "status") {
+      react(m3.channel, m3.ts, PICKED_UP);
+      return void notifyOwner(o3.hub.status());
+    }
     react(m3.channel, m3.ts, PICKED_UP);
     const [place, convo, link] = await Promise.all([
       placeOf(m3.channel),
@@ -151074,10 +151090,7 @@ ${convo}`
     if (r5 === "failed") failed2(task2);
   }
   const failed2 = (task2) => react(task2.origin.channel, task2.origin.ts, FAILED);
-  const notifyOwner = (text) => void bot2.chat.postMessage({ channel: ids.botDm, text }).catch(() => {
-  });
-  const say = (channel, thread_ts, text) => bot2.chat.postMessage({ channel, thread_ts, text }).catch(() => user2.chat.postMessage({ channel, thread_ts, text: `*${o3.title}:* ${text}` })).then(() => {
-  }, (e5) => log("status reply failed", e5));
+  const notifyOwner = (text) => bot2.chat.postMessage({ channel: ids.botDm, text }).then(() => true, (e5) => (log("owner DM failed", e5?.data?.error ?? e5), false));
   const queue = /* @__PURE__ */ new Map();
   const socket = new import_socket_mode.SocketModeClient({ appToken: o3.appToken, logger, logLevel: import_socket_mode.LogLevel.WARN });
   socket.on("message", async ({ event, ack }) => {
@@ -151331,24 +151344,27 @@ function status() {
   ].join("\n");
 }
 var DAILY = `${DIR}/daily-sent`;
-setInterval(() => {
+setInterval(async () => {
   const today = dailyDue(Date.now(), readFile3(DAILY).trim() || void 0);
   if (!today) return;
-  writeFileSync2(DAILY, today, { mode: 384 });
   const stale = staleWaiting(readFile3(WAITING2), Date.now(), 24 * 36e5);
-  if (stale.length) slack.notifyOwner([`*Still waiting on you (${stale.length})*`, ...stale.map((i5) => `\u2022 <${i5.link}|${i5.what}> (since ${i5.when.slice(0, 10)})`)].join("\n"));
+  const sent = !stale.length || await slack.notifyOwner([
+    `*Still waiting on you (${stale.length})*`,
+    ...stale.map((i5) => `\u2022 ${i5.link ? `<${i5.link}|${i5.what}>` : i5.what} (since ${i5.when.slice(0, 10)})`)
+  ].join("\n"));
+  if (sent) writeFileSync2(DAILY, today, { mode: 384 });
 }, 10 * 6e4);
 var email = connectEmail({
   env: env2,
   dir: DIR,
   name: NAME,
   deliver,
-  failed: (task2) => slack.notifyOwner(`Could not start a session for ${task2.meta.place}.`)
+  failed: (task2) => void slack.notifyOwner(`Could not start a session for ${task2.meta.place}.`)
 });
 var failed = (m3) => {
   if (m3.type !== "task") return;
   log("could not deliver to a session:", m3.meta.place, m3.origin.ts, `(attach: tmux attach -t ${NAME})`);
-  if (m3.origin.channel === "email") slack.notifyOwner(`Could not start a session for ${m3.meta.place}.`);
+  if (m3.origin.channel === "email") void slack.notifyOwner(`Could not start a session for ${m3.meta.place}.`);
   else slack.failed(m3);
 };
 setInterval(() => {
@@ -151361,7 +151377,7 @@ setInterval(() => {
 listenForSessions(`${DIR}/router.sock`, d5, {
   mail: (key, text) => void email?.send(key, text).catch((e5) => {
     log("mail reply failed", key, e5);
-    slack.notifyOwner(`Email reply failed for ${places.get(key) ?? key}: ${e5}`);
+    void slack.notifyOwner(`Email reply failed for ${places.get(key) ?? key}: ${e5}`);
   })
 });
 await slack.start();

@@ -1,5 +1,8 @@
 import { describe, test } from 'node:test'
 import assert from 'node:assert/strict'
+import { mkdirSync, mkdtempSync, symlinkSync, writeFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 import { ownerMemoryRefusal, privateToolRefusal } from './guards.ts'
 
 
@@ -20,6 +23,22 @@ describe('private sources on a teammate task', () => {
     test('any other memory of the owner is read-only', () => {
       no('Write', `${MEM}/feedback_x.md`); no('Edit', `${MEM}/project_y.md`); no('MultiEdit', `${MEM}/sub/user_z.md`)
       no('Write', `${MEM}/../memory/feedback_x.md`)
+    })
+    test('another spelling of the same folder is still the owner memory: case, ~, a notebook path', () => {
+      no('Write', `${MEM.toUpperCase()}/FEEDBACK_X.md`)
+      assert.match(ownerMemoryRefusal('Write', { file_path: '~/.claude/projects/-home-o/memory/feedback_x.md' }, MEM, '/home/o') ?? '', /people notes/)
+      assert.match(ownerMemoryRefusal('NotebookEdit', { notebook_path: `${MEM}/x.ipynb` }, MEM) ?? '', /people notes/)
+    })
+    test('a link that points into the owner memory is followed', () => {
+      const root = mkdtempSync(join(tmpdir(), 'kage-guard-'))
+      const mem = join(root, 'memory')
+      mkdirSync(mem)
+      writeFileSync(join(mem, 'feedback_x.md'), 'x')
+      symlinkSync(join(mem, 'feedback_x.md'), join(root, 'link.md'))
+      symlinkSync(mem, join(root, 'dirlink'))
+      assert.match(ownerMemoryRefusal('Write', { file_path: join(root, 'link.md') }, mem) ?? '', /people notes/)
+      assert.match(ownerMemoryRefusal('Write', { file_path: join(root, 'dirlink', 'new_feedback.md') }, mem) ?? '', /people notes/)
+      assert.equal(ownerMemoryRefusal('Write', { file_path: join(root, 'dirlink', 'user_bob.md') }, mem), undefined)
     })
     test("Kage's own memory and other files are free, and reads are never blocked", () => {
       ok('Write', '/home/o/.config/kage/memory/feedback_x.md'); ok('Read', `${MEM}/feedback_x.md`); ok('Write', '/tmp/x.md')
