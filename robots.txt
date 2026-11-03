@@ -1,0 +1,3 @@
+User-agent: *
+Allow: /
+Sitemap: https://aloki-alok.github.io/kage/sitemap.xml
