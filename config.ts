@@ -1,7 +1,7 @@
 // Settings and Slack clients shared by the router and the per-thread sessions.
 import { WebClient, LogLevel } from '@slack/web-api'
 import { readFileSync } from 'node:fs'
-import { validName } from './logic.ts'
+import { validName } from './core/gate.ts'
 
 // In a session, stdout is the MCP pipe: every log line goes to stderr.
 export const log = (...a: unknown[]) => console.error('[kage]', ...a)

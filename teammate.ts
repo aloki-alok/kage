@@ -4,7 +4,7 @@
 import { execFileSync } from 'node:child_process'
 import { readFileSync, renameSync, writeFileSync } from 'node:fs'
 import { dirname } from 'node:path'
-import { findPeople, teammatesIn, withTeammates, type Person } from './logic.ts'
+import { findPeople, teammatesIn, withTeammates, type Person } from './core/gate.ts'
 
 const ENV_FILE = process.env.KAGE_ENV || `${process.env.HOME}/.config/kage/env`
 const env = readFileSync(ENV_FILE, 'utf8')

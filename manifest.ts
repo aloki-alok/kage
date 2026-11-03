@@ -1,5 +1,5 @@
 // Prints the Slack app manifest for the name in KAGE_NAME (setup.sh calls this).
-import { validName } from './logic.ts'
+import { validName } from './core/gate.ts'
 
 const name = process.env.KAGE_NAME || 'kage'
 if (!validName(name)) throw new Error(`bad name: ${name}`)
