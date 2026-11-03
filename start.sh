@@ -17,7 +17,7 @@ fi
 
 TOOLS=""
 for t in reply edit_message delete_message; do TOOLS="$TOOLS mcp__kage__$t mcp__plugin_kage_kage__$t"; done
-# Kage keeps its own memory (logic.ts memoryDirs reads the same default).
+# Kage keeps its own memory (core/guards.ts memoryDirs reads the same default).
 MEM="$(sed -n 's/^KAGE_MEMORY=//p' "$ENV_FILE")"; MEM="${MEM:-$(dirname "$ENV_FILE")/memory}"
 [[ "$MEM" =~ [\'\"\\] ]] && { echo "Move KAGE_MEMORY to a path without quotes or backslashes." >&2; exit 1; }
 mkdir -p "$MEM"

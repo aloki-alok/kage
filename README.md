@@ -194,9 +194,11 @@ npm run typecheck   # tsc --noEmit
 
 | File | What it holds |
 |---|---|
-| `logic.ts` | The gate (who may drive it), quoting, reply safety, message splitting, which session gets a task, finding a teammate. Pure, all tested. |
-| `router.ts` | The one Slack connection: the gate, then each task to its thread's session (opens, resumes and closes the tmux panes). |
-| `server.ts` | The channel inside each thread's session: tasks in from the router, the reply tool, approval relay. |
+| `core/` | Pure rules, all tested: the gate (who may drive it), which session gets a task, what may go out (mentions, secrets, message splitting), ledgers, hook guards. |
+| `connectors/` | Where Kage hears from: Slack (the one Socket Mode connection) and email. Each turns a message into a task. |
+| `runtime/` | Where sessions run: one tmux pane per thread, and the local socket they connect to. |
+| `router.ts` | The hub: wires connectors, the dispatcher and the runtime together. |
+| `server.ts` | The channel inside each thread's session: tasks in from the hub, the reply, edit and delete tools, approval relay. |
 | `config.ts` | Reads the env file and makes the Slack clients. |
 | `teammate.ts` | `./setup.sh teammate list, add, remove`. |
 | `manifest.ts` | The Slack app manifest for your chosen name. |
