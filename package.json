@@ -8,7 +8,7 @@
     "node": ">=22.18"
   },
   "scripts": {
-    "test": "node --test core/*.test.ts connectors/*.test.ts",
+    "test": "node --test core/*.test.ts connectors/*.test.ts runtime/*.test.ts",
     "typecheck": "tsc --noEmit",
     "build": "esbuild server.ts router.ts private-data-guard.ts --bundle --platform=node --format=esm --target=node22 --outdir=dist --log-level=warning --banner:js=\"import { createRequire } from 'node:module'; const require = createRequire(import.meta.url);\""
   },

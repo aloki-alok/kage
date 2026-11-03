@@ -5,7 +5,7 @@ import { SocketModeClient, LogLevel } from '@slack/socket-mode'
 import type { WebClient } from '@slack/web-api'
 import { log, logger } from '../config.ts'
 import { classify, plainName, quoteMessage, taskLine, type Ids, type SlackMessage } from '../core/gate.ts'
-import { sessionKey, slackConversation } from '../core/conversations.ts'
+import { sessionKey, slackConversation, type Conversation, type Lane } from '../core/conversations.ts'
 import type { Task } from '../runtime/protocol.ts'
 
 const PICKED_UP = 'ninja'
@@ -13,7 +13,7 @@ const WAITING = 'hourglass_flowing_sand'
 const FAILED = 'warning'
 
 export type Hub = {
-  deliver(key: string, task: Task, place: string): 'sent' | 'starting' | 'queued' | 'failed'
+  deliver(c: Conversation, task: Task, place: string, lane?: Lane): 'sent' | 'starting' | 'queued' | 'failed'
   verdict(requestId: string, behavior: 'allow' | 'deny'): boolean
   status(): string
 }
@@ -110,8 +110,7 @@ export async function connectSlack(o: { appToken: string; bot: WebClient; user: 
       origin: { channel: m.channel, ts: m.ts },
     }
     // A side task gets a lane of its own on the same conversation.
-    const key = sessionKey(slackConversation(m, ids.botDm), { lane: t.side ? `side-${m.ts}` : 'main' })
-    const r = o.hub.deliver(key, task, t.side ? `${place} (side)` : place)
+    const r = o.hub.deliver(slackConversation(m, ids.botDm), task, t.side ? `${place} (side)` : place, t.side ? `side-${m.ts}` : 'main')
     if (r === 'queued') react(m.channel, m.ts, WAITING)
     if (r === 'failed') failed(task)
   }

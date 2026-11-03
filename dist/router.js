@@ -17957,11 +17957,11 @@ var init_invoke_store = __esm({
         if (this.isProtectedKey(key)) {
           throw new Error(`Cannot modify protected Lambda context field: ${String(key)}`);
         }
-        const store = this.als.getStore();
-        if (!store) {
+        const store2 = this.als.getStore();
+        if (!store2) {
           throw new Error("No context available");
         }
-        store[key] = value;
+        store2[key] = value;
       }
       run(context, fn) {
         return this.als.run(context, fn);
@@ -84226,25 +84226,25 @@ var require_trace = __commonJS({
         if (existing) {
           return existing.store;
         }
-        const store = new internals.Store(schema);
+        const store2 = new internals.Store(schema);
         const { filename, line } = schema._flags._tracerLocation || Pinpoint.location(5);
-        this._schemas.set(schema, { filename, line, store });
-        return store;
+        this._schemas.set(schema, { filename, line, store: store2 });
+        return store2;
       }
       _combine(merged, sources) {
-        for (const { store } of this._schemas.values()) {
-          store._combine(merged, sources);
+        for (const { store: store2 } of this._schemas.values()) {
+          store2._combine(merged, sources);
         }
       }
       report(file) {
         const coverage = [];
-        for (const { filename, line, store } of this._schemas.values()) {
+        for (const { filename, line, store: store2 } of this._schemas.values()) {
           if (file && file !== filename) {
             continue;
           }
           const missing = [];
           const skipped = [];
-          for (const [schema, log2] of store._sources.entries()) {
+          for (const [schema, log2] of store2._sources.entries()) {
             if (internals.sub(log2.paths, skipped)) {
               continue;
             }
@@ -89207,8 +89207,8 @@ var require_number = __commonJS({
             return this.$_addRule({ name: "precision", args: { limit } });
           },
           validate(value, helpers, { limit }) {
-            const places2 = value.toString().match(internals.precisionRx);
-            const decimals = Math.max((places2[1] ? places2[1].length : 0) - (places2[2] ? parseInt(places2[2], 10) : 0), 0);
+            const places = value.toString().match(internals.precisionRx);
+            const decimals = Math.max((places[1] ? places[1].length : 0) - (places[2] ? parseInt(places[2], 10) : 0), 0);
             if (decimals <= limit) {
               return value;
             }
@@ -136175,13 +136175,13 @@ var require_mock_call_history = __commonJS({
     "use strict";
     var { kMockCallHistoryAddLog } = require_mock_symbols();
     var { InvalidArgumentError } = require_errors5();
-    function handleFilterCallsWithOptions(criteria, options, handler, store, allLogs) {
+    function handleFilterCallsWithOptions(criteria, options, handler, store2, allLogs) {
       switch (options.operator) {
         case "OR":
-          store.push(...handler(criteria, allLogs));
-          return store;
+          store2.push(...handler(criteria, allLogs));
+          return store2;
         case "AND":
-          return handler(criteria, store);
+          return handler(criteria, store2);
         default:
           throw new InvalidArgumentError("options.operator must to be a case insensitive string equal to 'OR' or 'AND'");
       }
@@ -138943,12 +138943,12 @@ var require_cache2 = __commonJS({
       }
       return false;
     }
-    function assertCacheStore(store, name = "CacheStore") {
-      if (typeof store !== "object" || store === null) {
-        throw new TypeError(`expected type of ${name} to be a CacheStore, got ${store === null ? "null" : typeof store}`);
+    function assertCacheStore(store2, name = "CacheStore") {
+      if (typeof store2 !== "object" || store2 === null) {
+        throw new TypeError(`expected type of ${name} to be a CacheStore, got ${store2 === null ? "null" : typeof store2}`);
       }
       for (const fn of ["get", "createWriteStream", "delete"]) {
-        if (typeof store[fn] !== "function") {
+        if (typeof store2[fn] !== "function") {
           throw new TypeError(`${name} needs to have a \`${fn}()\` function`);
         }
       }
@@ -139631,15 +139631,15 @@ var require_cache_handler = __commonJS({
       }
       return locationUrl.pathname + locationUrl.search;
     }
-    function deleteCachedUri(store, cacheKey, path) {
-      deleteCachedValue(store, {
+    function deleteCachedUri(store2, cacheKey, path) {
+      deleteCachedValue(store2, {
         ...cacheKey,
         path
       });
       for (let i5 = 0; i5 < util.safeHTTPMethods.length; i5++) {
         const method = util.safeHTTPMethods[i5];
         if (method !== cacheKey.method) {
-          deleteCachedValue(store, {
+          deleteCachedValue(store2, {
             ...cacheKey,
             method,
             path
@@ -139647,7 +139647,7 @@ var require_cache_handler = __commonJS({
         }
       }
     }
-    function deleteLocationTargets(store, cacheKey, headerValue) {
+    function deleteLocationTargets(store2, cacheKey, headerValue) {
       if (headerValue === void 0) {
         return;
       }
@@ -139655,14 +139655,14 @@ var require_cache_handler = __commonJS({
       for (let i5 = 0; i5 < values.length; i5++) {
         const path = getSameOriginPath(cacheKey, values[i5]);
         if (path !== void 0) {
-          deleteCachedUri(store, cacheKey, path);
+          deleteCachedUri(store2, cacheKey, path);
         }
       }
     }
-    function invalidateUnsafeRequest(store, cacheKey, resHeaders) {
-      deleteCachedUri(store, cacheKey, cacheKey.path);
-      deleteLocationTargets(store, cacheKey, resHeaders.location);
-      deleteLocationTargets(store, cacheKey, resHeaders["content-location"]);
+    function invalidateUnsafeRequest(store2, cacheKey, resHeaders) {
+      deleteCachedUri(store2, cacheKey, cacheKey.path);
+      deleteLocationTargets(store2, cacheKey, resHeaders.location);
+      deleteLocationTargets(store2, cacheKey, resHeaders["content-location"]);
     }
     var CacheHandler = class {
       /**
@@ -139705,8 +139705,8 @@ var require_cache_handler = __commonJS({
        * @param {import('../../types/cache-interceptor.d.ts').default.CacheKey} cacheKey
        * @param {import('../../types/dispatcher.d.ts').default.DispatchHandler} handler
        */
-      constructor({ store, type, cacheByDefault }, cacheKey, handler) {
-        this.#store = store;
+      constructor({ store: store2, type, cacheByDefault }, cacheKey, handler) {
+        this.#store = store2;
         this.#cacheType = type;
         this.#cacheByDefault = cacheByDefault;
         this.#cacheKey = cacheKey;
@@ -139952,15 +139952,15 @@ var require_cache_handler = __commonJS({
         this.#handler.onResponseError?.(this.#downstreamController, err);
       }
     };
-    function deleteCachedValue(store, cacheKey) {
+    function deleteCachedValue(store2, cacheKey) {
       try {
-        store.delete(cacheKey)?.catch?.(noop);
+        store2.delete(cacheKey)?.catch?.(noop);
       } catch {
       }
     }
-    function deleteCachedValueIfNotModified(statusCode, store, cacheKey) {
+    function deleteCachedValueIfNotModified(statusCode, store2, cacheKey) {
       if (statusCode === 304) {
-        deleteCachedValue(store, cacheKey);
+        deleteCachedValue(store2, cacheKey);
       }
     }
     function revalidationResponseDisallowsCachedReuse(cacheType, resHeaders, cacheControlDirectives) {
@@ -140250,7 +140250,7 @@ var require_memory_cache_store = __commonJS({
         assertCacheKey(key);
         assertCacheValue(val);
         const topLevelKey = `${key.origin}:${key.path}`;
-        const store = this;
+        const store2 = this;
         const entry = { ...key, ...val, body: [], size: 0 };
         return new Writable4({
           write(chunk, encoding, callback) {
@@ -140258,7 +140258,7 @@ var require_memory_cache_store = __commonJS({
               chunk = Buffer.from(chunk, encoding);
             }
             entry.size += chunk.byteLength;
-            if (entry.size > store.#maxEntrySize) {
+            if (entry.size > store2.#maxEntrySize) {
               this.destroy();
             } else {
               entry.body.push(chunk);
@@ -140266,36 +140266,36 @@ var require_memory_cache_store = __commonJS({
             callback(null);
           },
           final(callback) {
-            let entries = store.#entries.get(topLevelKey);
+            let entries = store2.#entries.get(topLevelKey);
             if (entries) {
-              store.#entries.delete(topLevelKey);
+              store2.#entries.delete(topLevelKey);
             } else {
               entries = [];
             }
-            store.#entries.set(topLevelKey, entries);
+            store2.#entries.set(topLevelKey, entries);
             const previousEntry = findEntry(key, entries, -Infinity);
             if (previousEntry) {
               const index = entries.indexOf(previousEntry);
               entries.splice(index, 1, entry);
-              store.#size -= previousEntry.size;
+              store2.#size -= previousEntry.size;
             } else {
               entries.push(entry);
-              store.#count += 1;
+              store2.#count += 1;
             }
-            store.#size += entry.size;
-            if (store.#size > store.#maxSize || store.#count > store.#maxCount) {
-              if (!store.#hasEmittedMaxSizeEvent) {
-                store.emit("maxSizeExceeded", {
-                  size: store.#size,
-                  maxSize: store.#maxSize,
-                  count: store.#count,
-                  maxCount: store.#maxCount
+            store2.#size += entry.size;
+            if (store2.#size > store2.#maxSize || store2.#count > store2.#maxCount) {
+              if (!store2.#hasEmittedMaxSizeEvent) {
+                store2.emit("maxSizeExceeded", {
+                  size: store2.#size,
+                  maxSize: store2.#maxSize,
+                  count: store2.#count,
+                  maxCount: store2.#maxCount
                 });
-                store.#hasEmittedMaxSizeEvent = true;
+                store2.#hasEmittedMaxSizeEvent = true;
               }
-              store.#evict(entry);
-              if (store.#size < store.#maxSize && store.#count < store.#maxCount) {
-                store.#hasEmittedMaxSizeEvent = false;
+              store2.#evict(entry);
+              if (store2.#size < store2.#maxSize && store2.#count < store2.#maxCount) {
+                store2.#hasEmittedMaxSizeEvent = false;
               }
             }
             callback(null);
@@ -140594,9 +140594,9 @@ var require_cache3 = __commonJS({
       }
       return false;
     }
-    function deleteCachedValue(store, cacheKey) {
+    function deleteCachedValue(store2, cacheKey) {
       try {
-        store.delete(cacheKey)?.catch?.(nop);
+        store2.delete(cacheKey)?.catch?.(nop);
       } catch {
       }
     }
@@ -140851,7 +140851,7 @@ var require_cache3 = __commonJS({
     }
     module.exports = (opts = {}) => {
       const {
-        store = new MemoryCacheStore(),
+        store: store2 = new MemoryCacheStore(),
         methods = ["GET"],
         cacheByDefault = void 0,
         type = "shared",
@@ -140860,7 +140860,7 @@ var require_cache3 = __commonJS({
       if (typeof opts !== "object" || opts === null) {
         throw new TypeError(`expected type of opts to be an Object, got ${opts === null ? "null" : typeof opts}`);
       }
-      assertCacheStore(store, "opts.store");
+      assertCacheStore(store2, "opts.store");
       assertCacheMethods(methods, "opts.methods");
       assertCacheOrigins(origins, "opts.origins");
       if (typeof cacheByDefault !== "undefined" && typeof cacheByDefault !== "number") {
@@ -140870,7 +140870,7 @@ var require_cache3 = __commonJS({
         throw new TypeError(`expected opts.type to be shared, private, or undefined, got ${typeof type}`);
       }
       const globalOpts = {
-        store,
+        store: store2,
         methods,
         cacheByDefault,
         type
@@ -140919,7 +140919,7 @@ var require_cache3 = __commonJS({
           if (!arrayIncludes(util.safeHTTPMethods, opts2.method)) {
             return dispatch(opts2, new CacheHandler(globalOpts, cacheKey, handler));
           }
-          const result = store.get(cacheKey);
+          const result = store2.get(cacheKey);
           if (result && typeof result.then === "function") {
             return result.then((result2) => handleResult(
               dispatch,
@@ -141936,7 +141936,7 @@ var require_sqlite_cache_store = __commonJS({
     var { Writable: Writable4 } = __require("node:stream");
     var { assertCacheKey, assertCacheValue } = require_cache2();
     var { zstdCompressSync, zstdDecompressSync } = __require("node:zlib");
-    var DatabaseSync;
+    var DatabaseSync2;
     var VERSION = 4;
     var MAX_ENTRY_SIZE = 2 * 1e3 * 1e3 * 1e3;
     var COMPRESS_THRESHOLD = 1024 * 1024;
@@ -142007,10 +142007,10 @@ var require_sqlite_cache_store = __commonJS({
             this.#compressThreshold = opts.compressThreshold;
           }
         }
-        if (!DatabaseSync) {
-          DatabaseSync = __require("node:sqlite").DatabaseSync;
+        if (!DatabaseSync2) {
+          DatabaseSync2 = __require("node:sqlite").DatabaseSync;
         }
-        this.#db = new DatabaseSync(opts?.location ?? ":memory:");
+        this.#db = new DatabaseSync2(opts?.location ?? ":memory:");
         this.#db.exec(`
       PRAGMA journal_mode = WAL;
       PRAGMA synchronous = NORMAL;
@@ -142203,12 +142203,12 @@ var require_sqlite_cache_store = __commonJS({
         assertCacheValue(value);
         let size = 0;
         const body = [];
-        const store = this;
+        const store2 = this;
         return new Writable4({
           decodeStrings: true,
           write(chunk, encoding, callback) {
             size += chunk.byteLength;
-            if (size <= store.#maxEntrySize) {
+            if (size <= store2.#maxEntrySize) {
               body.push(chunk);
             } else {
               this.destroy();
@@ -142216,7 +142216,7 @@ var require_sqlite_cache_store = __commonJS({
             callback();
           },
           final(callback) {
-            store.set(key, { ...value, body });
+            store2.set(key, { ...value, body });
             callback();
           }
         });
@@ -150553,7 +150553,7 @@ var require_src2 = __commonJS({
 
 // router.ts
 import { randomUUID } from "node:crypto";
-import { existsSync as existsSync3, readFileSync as readFileSync4, writeFileSync as writeFileSync2 } from "node:fs";
+import { existsSync as existsSync3, readFileSync as readFileSync4, renameSync, writeFileSync as writeFileSync2 } from "node:fs";
 import { dirname } from "node:path";
 
 // config.ts
@@ -150665,6 +150665,23 @@ function sessionKey(c5, o3 = {}) {
   const base = c5.connector === "email" ? `mail:${c5.chat}` : c5.connector === "whatsapp" ? `wa:${c5.chat}` : c5.agentDm ? "dm" : `${c5.chat}:${c5.thread}`;
   const lane = o3.lane && o3.lane !== "main" ? `#${o3.lane}` : "";
   return `${o3.agent ? `${o3.agent}/` : ""}${base}${lane}`;
+}
+var KEY = /^(?:([a-z][a-z0-9-]{1,20})\/)?(.+?)(?:#(side-[^#]+))?$/;
+function parseSessionKey(key, botDm = "") {
+  const m3 = KEY.exec(key);
+  if (!m3) return;
+  const [, agent, base = "", lane] = m3;
+  if (key.includes("#") && !lane) return;
+  let conversation;
+  if (base === "dm") conversation = { connector: "slack", chat: botDm, kind: "dm", agentDm: true };
+  else if (base.startsWith("mail:") && base.length > 5) conversation = { connector: "email", chat: base.slice(5), kind: "mail" };
+  else if (base.startsWith("wa:") && base.length > 3) conversation = { connector: "whatsapp", chat: base.slice(3), kind: "chat" };
+  else {
+    const s2 = /^([A-Z0-9]+):(\d+\.\d+)$/.exec(base);
+    if (!s2) return;
+    conversation = { connector: "slack", chat: s2[1], thread: s2[2], kind: s2[1].startsWith("D") ? "dm" : "channel" };
+  }
+  return { ...agent && { agent }, ...lane && { lane }, conversation };
 }
 
 // connectors/mail.ts
@@ -150842,7 +150859,7 @@ ${t.quoted.replace(/<\/channel/gi, "<\\/channel").split("\n").map((l3) => `> ${l
         origin: { channel: "email", ts: t.key }
       };
       log("mail task from", t.from, "for", place);
-      if (o3.deliver(t.key, task2, place) === "failed") o3.failed(task2);
+      if (o3.deliver(parseSessionKey(t.key).conversation, task2, place) === "failed") o3.failed(task2);
     }
   });
   log(`email on: ${cfg.self}, owner ${cfg.owner}, teammates ${cfg.teammates.join(",") || "none"}`);
@@ -150876,7 +150893,7 @@ async function connectSlack(o3) {
     return names.get(id);
   }
   const ownerName = (await nameOf(ids.owner)).split(" ")[0] || "the owner";
-  async function placeOf(channel) {
+  async function placeOf2(channel) {
     if (channel === ids.botDm) return `DM with ${o3.title}`;
     const info = await user2.conversations.info({ channel }).catch(() => null);
     const c5 = info?.channel;
@@ -150916,7 +150933,7 @@ async function connectSlack(o3) {
     }
     react(m3.channel, m3.ts, PICKED_UP);
     const [place, convo, link] = await Promise.all([
-      placeOf(m3.channel),
+      placeOf2(m3.channel),
       m3.channel === ids.botDm && !m3.thread_ts ? Promise.resolve("") : contextOf(m3),
       user2.chat.getPermalink({ channel: m3.channel, message_ts: m3.ts }).then((r6) => r6.permalink ?? "").catch(() => "")
     ]);
@@ -150933,8 +150950,7 @@ ${convo}`
       meta: { channel: m3.channel, thread_ts: m3.thread_ts ?? m3.ts, place, permalink: link },
       origin: { channel: m3.channel, ts: m3.ts }
     };
-    const key = sessionKey(slackConversation(m3, ids.botDm), { lane: t.side ? `side-${m3.ts}` : "main" });
-    const r5 = o3.hub.deliver(key, task2, t.side ? `${place} (side)` : place);
+    const r5 = o3.hub.deliver(slackConversation(m3, ids.botDm), task2, t.side ? `${place} (side)` : place, t.side ? `side-${m3.ts}` : "main");
     if (r5 === "queued") react(m3.channel, m3.ts, WAITING);
     if (r5 === "failed") failed2(task2);
   }
@@ -151172,6 +151188,86 @@ function listenForSessions(path, d6, o3) {
   }).listen(path, () => chmodSync(path, 384));
 }
 
+// runtime/store.ts
+import { DatabaseSync } from "node:sqlite";
+var SCHEMA2 = `
+create table if not exists conversations (
+  key text primary key,          -- sessionKey(): agent, conversation and lane
+  connector text not null, chat text not null, thread text, kind text not null, agent_dm integer not null default 0,
+  place text not null,           -- what people read: "#general", "DM with Kage"
+  first_seen integer not null, last_seen integer not null
+);
+create table if not exists sessions (
+  key text primary key,          -- the same key; kept for good so a thread always resumes its own session
+  claude_id text not null
+);`;
+function openStore(path) {
+  const db = new DatabaseSync(path);
+  db.exec("pragma journal_mode = wal");
+  db.exec(SCHEMA2);
+  const upsertConversation = db.prepare(`insert into conversations (key, connector, chat, thread, kind, agent_dm, place, first_seen, last_seen)
+    values (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    on conflict (key) do update set place = excluded.place, last_seen = max(last_seen, excluded.last_seen)`);
+  const insertConversation = db.prepare(`insert into conversations (key, connector, chat, thread, kind, agent_dm, place, first_seen, last_seen)
+    values (?, ?, ?, ?, ?, ?, ?, ?, ?) on conflict (key) do nothing`);
+  const upsertSession = db.prepare("insert into sessions (key, claude_id) values (?, ?) on conflict (key) do update set claude_id = excluded.claude_id");
+  const insertSession = db.prepare("insert into sessions (key, claude_id) values (?, ?) on conflict (key) do nothing");
+  const row = (c5) => [c5.connector, c5.chat, c5.thread ?? null, c5.kind, c5.agentDm ? 1 : 0];
+  return {
+    // A message arrived in this conversation.
+    seen(key, c5, place, now) {
+      upsertConversation.run(key, ...row(c5), place, now, now);
+    },
+    conversation(key) {
+      const r5 = db.prepare("select * from conversations where key = ?").get(key);
+      if (!r5) return void 0;
+      const conversation = { connector: r5.connector, chat: r5.chat, kind: r5.kind, ...r5.thread !== null && { thread: r5.thread }, ...r5.agent_dm && { agentDm: true } };
+      return { key: r5.key, conversation, place: r5.place, firstSeen: Number(r5.first_seen), lastSeen: Number(r5.last_seen) };
+    },
+    sessions() {
+      return Object.fromEntries(db.prepare("select key, claude_id from sessions").all().map((r5) => [r5.key, r5.claude_id]));
+    },
+    // The dispatcher's whole map, written in one transaction.
+    saveSessions(map3) {
+      db.exec("begin");
+      try {
+        for (const [k5, id] of Object.entries(map3)) upsertSession.run(k5, id);
+        db.exec("commit");
+      } catch (e5) {
+        db.exec("rollback");
+        throw e5;
+      }
+    },
+    forget(key) {
+      db.prepare("delete from sessions where key = ?").run(key);
+    },
+    // One-time move from threads.json. Rows already in the store win; keys it can't read are reported.
+    importThreads(map3, botDm, now) {
+      const skipped = [];
+      let imported = 0;
+      db.exec("begin");
+      try {
+        for (const [k5, id] of Object.entries(map3)) {
+          const parsed = parseSessionKey(k5, botDm);
+          if (!parsed) {
+            skipped.push(k5);
+            continue;
+          }
+          insertConversation.run(k5, ...row(parsed.conversation), k5, now, now);
+          insertSession.run(k5, id);
+          imported++;
+        }
+        db.exec("commit");
+      } catch (e5) {
+        db.exec("rollback");
+        throw e5;
+      }
+      return { imported, skipped };
+    },
+    close: () => db.close()
+  };
+}
+
 // runtime/tmux-windows.ts
 import { execFileSync } from "node:child_process";
 import { existsSync as existsSync2, readdirSync, readFileSync as readFileSync3, statSync } from "node:fs";
@@ -151298,29 +151394,11 @@ var CLAUDE = process.env.KAGE_CLAUDE || (log("KAGE_CLAUDE is not set: start Kage
 var MAX = Number(env2.KAGE_MAX_SESSIONS || 4);
 var IDLE_MIN = Number(env2.KAGE_IDLE_MINUTES || 30);
 process.on("unhandledRejection", (e5) => log("unhandled", e5));
-var saved = existsSync3(THREADS) ? JSON.parse(readFileSync4(THREADS, "utf8")) : {};
-var places = /* @__PURE__ */ new Map();
-var tmux = tmuxWindows({
-  name: NAME,
-  envFile: ENV_FILE,
-  claude: CLAUDE,
-  idOf: (key) => d5.saved()[key],
-  placeOf: (key) => places.get(key) ?? key,
-  onStart: () => writeFileSync2(THREADS, JSON.stringify(d5.saved(), null, 1), { mode: 384 })
-});
-var runningAtStart = tmux.running();
-for (const [k5, id] of Object.entries(saved)) if (!tmux.hasTranscript(id) && !runningAtStart.has(id)) delete saved[k5];
-var d5 = new Dispatcher(tmux.windows, {
-  max: MAX,
-  idleMs: IDLE_MIN * 6e4,
-  connectMs: (CLAUDE.includes("development-channels") ? 30 : 3) * 6e4,
-  evictMs: 2 * 6e4,
-  newId: randomUUID,
-  saved
-});
-d5.adopt(Object.keys(saved).filter((k5) => runningAtStart.has(saved[k5])), Date.now());
-var deliver = (key, task2, place) => {
-  places.set(key, place);
+var store = openStore(`${DIR}/kage.db`);
+var placeOf = (key) => store.conversation(key)?.place ?? key;
+var deliver = (c5, task2, place, lane = "main") => {
+  const key = sessionKey(c5, { lane });
+  store.seen(key, c5, place, Date.now());
   return d5.task(key, task2, Date.now());
 };
 var slack = await connectSlack({
@@ -151332,6 +151410,34 @@ var slack = await connectSlack({
   teammates: TEAMMATES,
   hub: { deliver, verdict: (id, behavior) => d5.verdict(id, { type: "verdict", request_id: id, behavior }), status }
 });
+if (existsSync3(THREADS)) {
+  const r5 = store.importThreads(JSON.parse(readFileSync4(THREADS, "utf8")), slack.ids.botDm, Date.now());
+  log(`moved threads.json into the store: ${r5.imported} threads${r5.skipped.length ? `, skipped ${r5.skipped.join(" ")}` : ""}`);
+  renameSync(THREADS, `${THREADS}.imported`);
+}
+var tmux = tmuxWindows({
+  name: NAME,
+  envFile: ENV_FILE,
+  claude: CLAUDE,
+  idOf: (key) => d5.saved()[key],
+  placeOf,
+  onStart: () => store.saveSessions(d5.saved())
+});
+var saved = store.sessions();
+var runningAtStart = tmux.running();
+for (const [k5, id] of Object.entries(saved)) if (!tmux.hasTranscript(id) && !runningAtStart.has(id)) {
+  delete saved[k5];
+  store.forget(k5);
+}
+var d5 = new Dispatcher(tmux.windows, {
+  max: MAX,
+  idleMs: IDLE_MIN * 6e4,
+  connectMs: (CLAUDE.includes("development-channels") ? 30 : 3) * 6e4,
+  evictMs: 2 * 6e4,
+  newId: randomUUID,
+  saved
+});
+d5.adopt(Object.keys(saved).filter((k5) => runningAtStart.has(saved[k5])), Date.now());
 var readFile3 = (f5) => {
   try {
     return readFileSync4(f5, "utf8");
@@ -151343,12 +151449,12 @@ var WAITING2 = `${DIR}/waiting.tsv`;
 function status() {
   const s2 = d5.status(Date.now());
   const min = (ms) => `${Math.round(ms / 6e4)} min`;
-  const lines = s2.live.map((l3) => `\u2022 ${places.get(l3.key) ?? l3.key}: ${l3.state}${l3.state === "quiet" ? ` for ${min(l3.quietMs)}` : ""}`);
+  const lines = s2.live.map((l3) => `\u2022 ${placeOf(l3.key)}: ${l3.state}${l3.state === "quiet" ? ` for ${min(l3.quietMs)}` : ""}`);
   const open = openWaiting(readFile3(WAITING2)).length;
   return [
     `*${s2.live.length} of ${MAX} sessions*${s2.waiting.length ? `, ${s2.waiting.length} waiting for a slot` : ""}`,
     ...lines,
-    ...s2.waiting.map((k5) => `\u2022 ${places.get(k5) ?? k5}: waiting for a slot`),
+    ...s2.waiting.map((k5) => `\u2022 ${placeOf(k5)}: waiting for a slot`),
     `${open} question${open === 1 ? "" : "s"} waiting on you`
   ].join("\n");
 }
@@ -151386,7 +151492,7 @@ setInterval(() => {
 listenForSessions(`${DIR}/router.sock`, d5, {
   mail: (key, text) => void email?.send(key, text).catch((e5) => {
     log("mail reply failed", key, e5);
-    void slack.notifyOwner(`Email reply failed for ${places.get(key) ?? key}: ${e5}`);
+    void slack.notifyOwner(`Email reply failed for ${placeOf(key)}: ${e5}`);
   })
 });
 await slack.start();
