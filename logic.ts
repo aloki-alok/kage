@@ -160,7 +160,7 @@ export type Windows = { start(key: string, id: string): void; stop(key: string):
 // window that closed or restarted resumes the same conversation. At most `max` windows run.
 export class Dispatcher<M> {
   #w: Windows
-  #o: { max: number; idleMs: number; connectMs: number; newId: () => string }
+  #o: { max: number; idleMs: number; connectMs: number; evictMs: number; newId: () => string }
   #ids: Map<string, string>
   #live = new Set<string>()
   #conns = new Map<string, (m: M) => void>()
@@ -170,7 +170,8 @@ export class Dispatcher<M> {
   #perms = new Map<string, string>()
   #startedAt = new Map<string, number>()
 
-  constructor(w: Windows, o: { max: number; idleMs: number; connectMs: number; newId: () => string; saved?: Record<string, string> }) {
+  // evictMs: how long a session must sit quiet before a new thread may take its slot.
+  constructor(w: Windows, o: { max: number; idleMs: number; connectMs: number; evictMs: number; newId: () => string; saved?: Record<string, string> }) {
     this.#w = w
     this.#o = o
     this.#ids = new Map(Object.entries(o.saved ?? {}))
@@ -194,6 +195,9 @@ export class Dispatcher<M> {
     if (!this.#pending.has(key)) this.#startedAt.set(key, now)
     this.#pending.set(key, [...(this.#pending.get(key) ?? []), msg])
     if (this.#live.has(key)) return 'starting'
+    // Full: the quietest session gives up its slot. It loses nothing, its next task resumes it.
+    const quiet = this.#live.size < this.#o.max ? undefined : this.#quietest(now)
+    if (quiet) this.#close(quiet)
     if (this.#live.size < this.#o.max) {
       if (this.#start(key, now)) return 'starting'
       this.#pending.delete(key)
@@ -201,6 +205,28 @@ export class Dispatcher<M> {
     }
     if (!this.#waiting.includes(key)) this.#waiting.push(key)
     return 'queued'
+  }
+
+  // Last activity: a task handed to it, or a write to its transcript.
+  #last = (k: string) => Math.max(this.#touched.get(k) ?? 0, this.#w.lastActivity(k))
+
+  // A connected session with nothing pending, no open approval, not mid-turn, quiet for evictMs.
+  #quietest(now: number): string | undefined {
+    const asking = new Set(this.#perms.values())
+    let best: string | undefined
+    for (const k of this.#live) {
+      if (!this.#conns.has(k) || this.#pending.has(k) || asking.has(k)) continue
+      if (now - this.#last(k) < this.#o.evictMs || this.#w.busy(k)) continue
+      if (!best || this.#last(k) < this.#last(best)) best = k
+    }
+    return best
+  }
+
+  #close(k: string) {
+    this.#w.stop(k)
+    this.#live.delete(k)
+    this.#conns.delete(k)
+    for (const [id, key] of this.#perms) if (key === k) this.#perms.delete(id)
   }
 
   connect(key: string, send: (m: M) => void): boolean {
@@ -240,14 +266,8 @@ export class Dispatcher<M> {
         if (now - (this.#startedAt.get(k) ?? now) < this.#o.connectMs) continue
         dropped.push(...pending)
         this.#pending.delete(k)
-      } else {
-        const last = Math.max(this.#touched.get(k) ?? 0, this.#w.lastActivity(k))
-        if (pending || now - last < this.#o.idleMs || asking.has(k) || this.#w.busy(k)) continue
-      }
-      this.#w.stop(k)
-      this.#live.delete(k)
-      this.#conns.delete(k)
-      for (const [id, key] of this.#perms) if (key === k) this.#perms.delete(id)
+      } else if (pending || now - this.#last(k) < this.#o.idleMs || asking.has(k) || this.#w.busy(k)) continue
+      this.#close(k)
     }
     while (this.#waiting.length && this.#live.size < this.#o.max) {
       const k = this.#waiting.shift()!

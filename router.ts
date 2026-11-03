@@ -133,8 +133,9 @@ const d: Dispatcher<ToSession> = new Dispatcher<ToSession>({
     // A repeating check (CronCreate) lives only in this Claude Code process: keep the pane for it.
     return liveCronJobs(cronResults(d.saved()[key]!), processStart(pane), Date.now()).length > 0
   },
-// The dev route waits for a person to confirm a warning screen in each new pane.
-}, { max: MAX, idleMs: IDLE_MIN * 60_000, connectMs: (CLAUDE.includes('development-channels') ? 30 : 3) * 60_000, newId: randomUUID, saved })
+// The dev route waits for a person to confirm a warning screen in each new pane. A full house hands the
+// slot of a session quiet for 2 min to a new thread.
+}, { max: MAX, idleMs: IDLE_MIN * 60_000, connectMs: (CLAUDE.includes('development-channels') ? 30 : 3) * 60_000, evictMs: 2 * 60_000, newId: randomUUID, saved })
 
 // Panes still running from before this router restarted keep working.
 d.adopt(Object.keys(saved).filter(k => runningAtStart.has(saved[k]!)), Date.now())

@@ -189,7 +189,7 @@ describe('one Claude session per thread', () => {
         lastActivity: k => activity.get(k) ?? 0,
         busy: k => busy.has(k),
       },
-      { max: o.max ?? 2, idleMs: 1000, connectMs: 100, newId: () => `id${++n}`, saved: o.saved },
+      { max: o.max ?? 2, idleMs: 1000, connectMs: 100, evictMs: 300, newId: () => `id${++n}`, saved: o.saved },
     )
     const inbox = (k: string) => { const got: string[] = []; d.connect(k, m => got.push(m)); return got }
     return { d, started, stopped, activity, busy, broken, inbox }
@@ -231,6 +231,30 @@ describe('one Claude session per thread', () => {
     d.sweep(5000)
     assert.deepEqual(stopped, ['A'])
     assert.deepEqual(started.map(s => s[0]), ['A', 'B'])
+  })
+  test('over the limit, the idlest quiet session closes so a new thread starts at once', () => {
+    const { d, started, stopped, activity, inbox } = setup({ max: 2 })
+    d.task('A', 'a', 0); inbox('A')
+    d.task('B', 'b', 0); inbox('B')
+    activity.set('A', 100)
+    activity.set('B', 200)
+    assert.equal(d.task('C', 'c', 900), 'starting')
+    assert.deepEqual(stopped, ['A'])
+    assert.deepEqual(started.map(s => s[0]), ['A', 'B', 'C'])
+    assert.deepEqual(inbox('C'), ['c'])
+    // A comes back later in its own session, by evicting the next quiet one.
+    assert.equal(d.task('A', 'again', 2000), 'starting')
+    assert.deepEqual(stopped, ['A', 'B'])
+    assert.deepEqual(started.at(-1), ['A', 'id1'])
+  })
+  test('a busy, asking, starting or just-active session is never evicted; then the thread waits', () => {
+    const { d, stopped, activity, busy, inbox } = setup({ max: 4 })
+    d.task('busy', 'x', 0); inbox('busy'); busy.add('busy')
+    d.task('asking', 'x', 0); inbox('asking'); d.permission('asking', 'abcde')
+    d.task('starting', 'x', 0)                  // never connected: its task is still pending
+    d.task('fresh', 'x', 0); inbox('fresh'); activity.set('fresh', 800)
+    assert.equal(d.task('new', 'n', 1000), 'queued')
+    assert.deepEqual(stopped, [])
   })
   test('a session working recently, or with tasks not yet delivered, is not closed', () => {
     const { d, stopped, activity, inbox } = setup()
