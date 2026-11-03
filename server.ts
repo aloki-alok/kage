@@ -9,7 +9,9 @@ import { connect, type Socket } from 'node:net'
 import { appendFileSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { dirname } from 'node:path'
 import { load, log } from './config.ts'
-import { memoryDirs, openWaiting, postedBy, safeReply, secretRefusal, senderFile, splitForSlack, tsvRow } from './logic.ts'
+import { memoryDirs, senderFile } from './core/guards.ts'
+import { openWaiting, postedBy, tsvRow } from './core/ledgers.ts'
+import { safeReply, secretRefusal, splitForSlack } from './core/outbound.ts'
 
 // Installed as a plugin, this server starts in every Claude Code session. Only the windows the
 // router opens (KAGE_THREAD set) take tasks. Everywhere else, answer MCP and stay idle.

@@ -3,7 +3,7 @@
 // It also keeps the owner's memory read-only for Kage, except notes about people.
 import { readFileSync } from 'node:fs'
 import { dirname } from 'node:path'
-import { memoryDirs, ownerMemoryRefusal, privateToolRefusal, senderFile } from './logic.ts'
+import { memoryDirs, ownerMemoryRefusal, privateToolRefusal, senderFile } from './core/guards.ts'
 
 const thread = process.env.KAGE_THREAD
 if (thread) {

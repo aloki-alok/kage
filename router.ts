@@ -11,7 +11,8 @@ import { dirname } from 'node:path'
 import { load, log, logger } from './config.ts'
 import { emailTaskLine } from './mail.ts'
 import { startMailbox } from './mailbox.ts'
-import { classify, Dispatcher, liveCronJobs, plainName, quoteMessage, taskLine, threadKey, type Ids, type SlackMessage } from './logic.ts'
+import { classify, plainName, quoteMessage, taskLine, type Ids, type SlackMessage } from './core/gate.ts'
+import { Dispatcher, liveCronJobs, threadKey } from './core/sessions.ts'
 
 const { ENV_FILE, NAME, Title, TEAMMATES, env, need, bot, user } = load()
 const DIR = dirname(ENV_FILE)

@@ -35109,8 +35109,84 @@ import { dirname } from "node:path";
 var import_web_api = __toESM(require_dist5(), 1);
 import { readFileSync } from "node:fs";
 
-// logic.ts
+// core/gate.ts
 var validName = (name) => /^[a-z][a-z0-9-]{1,20}$/.test(name);
+
+// config.ts
+var log = (...a) => console.error("[kage]", ...a);
+var level = import_web_api.LogLevel.WARN;
+var logger = {
+  debug: () => {
+  },
+  info: () => {
+  },
+  warn: (...a) => log("warn", ...a),
+  error: (...a) => log("error", ...a),
+  setLevel: (l) => {
+    level = l;
+  },
+  getLevel: () => level,
+  setName: () => {
+  }
+};
+function load() {
+  const ENV_FILE2 = process.env.KAGE_ENV || `${process.env.HOME}/.config/kage/env`;
+  const env2 = {};
+  for (const line of readFileSync(ENV_FILE2, "utf8").split("\n")) {
+    const m = /^\s*([A-Z_]+)\s*=\s*["']?(.*?)["']?\s*$/.exec(line);
+    if (m) env2[m[1]] = m[2];
+  }
+  const need = (k) => env2[k] || (log(`missing ${k} in ${ENV_FILE2}`), process.exit(1));
+  const NAME = (env2.KAGE_NAME || "kage").toLowerCase();
+  if (!validName(NAME)) {
+    log(`KAGE_NAME "${NAME}" must be a short lowercase word (letters, digits, dashes)`);
+    process.exit(1);
+  }
+  const TEAMMATES = (env2.KAGE_TEAMMATES || "").split(",").map((s) => s.trim()).filter(Boolean);
+  if (TEAMMATES.some((t) => !/^[UW][A-Z0-9]{2,}$/.test(t))) {
+    log("KAGE_TEAMMATES must be Slack user ids like U0123ABC, comma separated");
+    process.exit(1);
+  }
+  return {
+    ENV_FILE: ENV_FILE2,
+    env: env2,
+    need,
+    NAME,
+    Title: NAME[0].toUpperCase() + NAME.slice(1),
+    TEAMMATES,
+    bot: new import_web_api.WebClient(need("SLACK_BOT_TOKEN"), { logger }),
+    user: new import_web_api.WebClient(need("SLACK_USER_TOKEN"), { logger })
+  };
+}
+
+// core/guards.ts
+var memoryDirs = (home, envFile, env2) => ({
+  own: env2.KAGE_MEMORY || `${envFile.replace(/\/[^/]*$/, "")}/memory`,
+  owner: env2.KAGE_OWNER_MEMORY || `${home}/.claude/projects/${home.replace(/[^A-Za-z0-9]/g, "-")}/memory`
+});
+var senderFile = (dir, thread) => `${dir}/sender/${thread.replace(/[^A-Za-z0-9.]/g, "_")}`;
+
+// core/ledgers.ts
+var tsvRow = (cells) => cells.map((c) => (c ?? "").replace(/[\t\r\n]+/g, " ")).join("	") + "\n";
+function openWaiting(tsv) {
+  const open2 = /* @__PURE__ */ new Map();
+  for (const line of tsv.split("\n")) {
+    const [when = "", status, thread = "", link2 = "", what = ""] = line.split("	");
+    if (status === "answered") open2.delete(thread);
+    else if (status === "open") open2.set(thread, [...open2.get(thread) ?? [], { when, link: link2, what }]);
+  }
+  return [...open2.values()].flat();
+}
+function postedBy(tsv, channel, ts) {
+  let by;
+  for (const line of tsv.split("\n")) {
+    const [, c, t, who] = line.split("	");
+    if (c === channel && t === ts) by = who;
+  }
+  return by === "bot" || by === "owner" ? by : void 0;
+}
+
+// core/outbound.ts
 function safeReply(text, o = {}) {
   const out = text.replace(/<!(channel|here|everyone)[^>]*>/g, "$1");
   return o.ping ? out : out.replace(/<@([A-Z0-9]+)>/g, (_, id) => `@${o.names?.[id] ?? id}`);
@@ -35160,76 +35236,6 @@ ${line}` : line;
   }
   parts.push(cur);
   return parts;
-}
-var tsvRow = (cells) => cells.map((c) => (c ?? "").replace(/[\t\r\n]+/g, " ")).join("	") + "\n";
-function openWaiting(tsv) {
-  const open2 = /* @__PURE__ */ new Map();
-  for (const line of tsv.split("\n")) {
-    const [when = "", status, thread = "", link2 = "", what = ""] = line.split("	");
-    if (status === "answered") open2.delete(thread);
-    else if (status === "open") open2.set(thread, [...open2.get(thread) ?? [], { when, link: link2, what }]);
-  }
-  return [...open2.values()].flat();
-}
-function postedBy(tsv, channel, ts) {
-  let by;
-  for (const line of tsv.split("\n")) {
-    const [, c, t, who] = line.split("	");
-    if (c === channel && t === ts) by = who;
-  }
-  return by === "bot" || by === "owner" ? by : void 0;
-}
-var memoryDirs = (home, envFile, env2) => ({
-  own: env2.KAGE_MEMORY || `${envFile.replace(/\/[^/]*$/, "")}/memory`,
-  owner: env2.KAGE_OWNER_MEMORY || `${home}/.claude/projects/${home.replace(/[^A-Za-z0-9]/g, "-")}/memory`
-});
-var senderFile = (dir, thread) => `${dir}/sender/${thread.replace(/[^A-Za-z0-9.]/g, "_")}`;
-
-// config.ts
-var log = (...a) => console.error("[kage]", ...a);
-var level = import_web_api.LogLevel.WARN;
-var logger = {
-  debug: () => {
-  },
-  info: () => {
-  },
-  warn: (...a) => log("warn", ...a),
-  error: (...a) => log("error", ...a),
-  setLevel: (l) => {
-    level = l;
-  },
-  getLevel: () => level,
-  setName: () => {
-  }
-};
-function load() {
-  const ENV_FILE2 = process.env.KAGE_ENV || `${process.env.HOME}/.config/kage/env`;
-  const env2 = {};
-  for (const line of readFileSync(ENV_FILE2, "utf8").split("\n")) {
-    const m = /^\s*([A-Z_]+)\s*=\s*["']?(.*?)["']?\s*$/.exec(line);
-    if (m) env2[m[1]] = m[2];
-  }
-  const need = (k) => env2[k] || (log(`missing ${k} in ${ENV_FILE2}`), process.exit(1));
-  const NAME = (env2.KAGE_NAME || "kage").toLowerCase();
-  if (!validName(NAME)) {
-    log(`KAGE_NAME "${NAME}" must be a short lowercase word (letters, digits, dashes)`);
-    process.exit(1);
-  }
-  const TEAMMATES = (env2.KAGE_TEAMMATES || "").split(",").map((s) => s.trim()).filter(Boolean);
-  if (TEAMMATES.some((t) => !/^[UW][A-Z0-9]{2,}$/.test(t))) {
-    log("KAGE_TEAMMATES must be Slack user ids like U0123ABC, comma separated");
-    process.exit(1);
-  }
-  return {
-    ENV_FILE: ENV_FILE2,
-    env: env2,
-    need,
-    NAME,
-    Title: NAME[0].toUpperCase() + NAME.slice(1),
-    TEAMMATES,
-    bot: new import_web_api.WebClient(need("SLACK_BOT_TOKEN"), { logger }),
-    user: new import_web_api.WebClient(need("SLACK_USER_TOKEN"), { logger })
-  };
 }
 
 // server.ts

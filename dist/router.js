@@ -150563,7 +150563,7 @@ import { dirname } from "node:path";
 var import_web_api = __toESM(require_dist4(), 1);
 import { readFileSync } from "node:fs";
 
-// logic.ts
+// core/gate.ts
 var validName = (name) => /^[a-z][a-z0-9-]{1,20}$/.test(name);
 var VERDICT_RE = /^\s*(y|yes|n|no)\s+([a-km-z]{5})\s*$/i;
 var TASK_SUBTYPES = /* @__PURE__ */ new Set([void 0, "thread_broadcast", "file_share"]);
@@ -150604,143 +150604,6 @@ function taskLine(text, from) {
   return from.teammate ? `Teammate task (${from.teammate}, ${from.name}, not the owner): ${t}` : `Task from ${from.name}: ${t}`;
 }
 var plainName = (name) => name.replace(/[<>]/g, "").replace(/\s+/g, " ").trim();
-var threadKey = (m3, botDm) => m3.channel === botDm && !m3.thread_ts ? "dm" : `${m3.channel}:${m3.thread_ts ?? m3.ts}`;
-var Dispatcher = class {
-  #w;
-  #o;
-  #ids;
-  #live = /* @__PURE__ */ new Set();
-  #conns = /* @__PURE__ */ new Map();
-  #pending = /* @__PURE__ */ new Map();
-  #touched = /* @__PURE__ */ new Map();
-  #waiting = [];
-  #perms = /* @__PURE__ */ new Map();
-  #startedAt = /* @__PURE__ */ new Map();
-  // evictMs: how long a session must sit quiet before a new thread may take its slot.
-  constructor(w, o3) {
-    this.#w = w;
-    this.#o = o3;
-    this.#ids = new Map(Object.entries(o3.saved ?? {}));
-  }
-  saved = () => Object.fromEntries(this.#ids);
-  connection = (key) => this.#conns.get(key);
-  // Windows already running when the router starts (it restarted, they did not).
-  adopt(keys, now) {
-    for (const k5 of keys) if (this.#ids.has(k5)) {
-      this.#live.add(k5);
-      this.#startedAt.set(k5, now);
-    }
-  }
-  // 'failed': the window could not open; the task was not kept.
-  task(key, msg, now) {
-    this.#touched.set(key, now);
-    const send = this.#conns.get(key);
-    if (send) {
-      send(msg);
-      return "sent";
-    }
-    if (!this.#pending.has(key)) this.#startedAt.set(key, now);
-    this.#pending.set(key, [...this.#pending.get(key) ?? [], msg]);
-    if (this.#live.has(key)) return "starting";
-    const quiet = this.#live.size < this.#o.max ? void 0 : this.#quietest(now);
-    if (quiet) this.#close(quiet);
-    if (this.#live.size < this.#o.max) {
-      if (this.#start(key, now)) return "starting";
-      this.#pending.delete(key);
-      return "failed";
-    }
-    if (!this.#waiting.includes(key)) this.#waiting.push(key);
-    return "queued";
-  }
-  // Last activity: a task handed to it, or a write to its transcript.
-  #last = (k5) => Math.max(this.#touched.get(k5) ?? 0, this.#w.lastActivity(k5));
-  // A connected session with nothing pending, no open approval, not mid-turn, quiet for evictMs.
-  #quietest(now) {
-    const asking = new Set(this.#perms.values());
-    let best;
-    for (const k5 of this.#live) {
-      if (!this.#conns.has(k5) || this.#pending.has(k5) || asking.has(k5)) continue;
-      if (now - this.#last(k5) < this.#o.evictMs || this.#w.busy(k5)) continue;
-      if (!best || this.#last(k5) < this.#last(best)) best = k5;
-    }
-    return best;
-  }
-  #close(k5) {
-    this.#w.stop(k5);
-    this.#live.delete(k5);
-    this.#conns.delete(k5);
-    for (const [id, key] of this.#perms) if (key === k5) this.#perms.delete(id);
-  }
-  connect(key, send) {
-    if (!this.#live.has(key)) return false;
-    this.#conns.set(key, send);
-    for (const m3 of this.#pending.get(key) ?? []) send(m3);
-    this.#pending.delete(key);
-    return true;
-  }
-  // Only the current connection's close counts; a stale one closing late changes nothing.
-  // Its open approvals go with it: the Claude Code process that asked is gone.
-  disconnect(key, send) {
-    if (this.#conns.get(key) !== send) return;
-    this.#conns.delete(key);
-    for (const [id, k5] of this.#perms) if (k5 === key) this.#perms.delete(id);
-  }
-  permission(key, requestId) {
-    this.#perms.set(requestId, key);
-  }
-  verdict(requestId, msg) {
-    const send = this.#conns.get(this.#perms.get(requestId) ?? "");
-    if (!send) return false;
-    this.#perms.delete(requestId);
-    send(msg);
-    return true;
-  }
-  // Closes windows idle for idleMs and windows that never connected within connectMs, then starts
-  // waiting threads. Returns the tasks it could not deliver, so the router can say so in Slack.
-  sweep(now) {
-    const dropped = [];
-    const asking = new Set(this.#perms.values());
-    for (const k5 of this.#live) {
-      const pending = this.#pending.get(k5);
-      if (pending && !this.#conns.has(k5)) {
-        if (now - (this.#startedAt.get(k5) ?? now) < this.#o.connectMs) continue;
-        dropped.push(...pending);
-        this.#pending.delete(k5);
-      } else if (pending || now - this.#last(k5) < this.#o.idleMs || asking.has(k5) || this.#w.busy(k5)) continue;
-      this.#close(k5);
-    }
-    while (this.#waiting.length && this.#live.size < this.#o.max) {
-      const k5 = this.#waiting.shift();
-      if (!this.#start(k5, now)) {
-        dropped.push(...this.#pending.get(k5) ?? []);
-        this.#pending.delete(k5);
-      }
-    }
-    return dropped;
-  }
-  #start(key, now) {
-    if (!this.#ids.has(key)) this.#ids.set(key, this.#o.newId());
-    try {
-      this.#w.start(key, this.#ids.get(key));
-    } catch {
-      return false;
-    }
-    this.#live.add(key);
-    this.#startedAt.set(key, now);
-    return true;
-  }
-};
-function liveCronJobs(results, since, now) {
-  const jobs = /* @__PURE__ */ new Map();
-  for (const r5 of results) {
-    const t = Date.parse(r5.timestamp);
-    const made = /Scheduled (\S+) job ([0-9a-f]+)/.exec(r5.text);
-    if (made && t >= since) jobs.set(made[2], t + (made[1] === "recurring" ? 7 : 1) * 24 * 36e5);
-    const gone = /Cancelled job ([0-9a-f]+)/.exec(r5.text);
-    if (gone) jobs.delete(gone[1]);
-  }
-  return [...jobs].filter(([, until]) => now < until).map(([id]) => id);
-}
 
 // config.ts
 var log = (...a5) => console.error("[kage]", ...a5);
@@ -150930,6 +150793,145 @@ function startMailbox(o3) {
     await ses.send(new import_client_sesv2.SendEmailCommand({ FromEmailAddress: o3.cfg.self, Content: { Raw: { Data: Buffer.from(raw) } } }));
     log("mail sent for", key, "to", [...to, ...cc].join(","));
   };
+}
+
+// core/sessions.ts
+var threadKey = (m3, botDm) => m3.channel === botDm && !m3.thread_ts ? "dm" : `${m3.channel}:${m3.thread_ts ?? m3.ts}`;
+var Dispatcher = class {
+  #w;
+  #o;
+  #ids;
+  #live = /* @__PURE__ */ new Set();
+  #conns = /* @__PURE__ */ new Map();
+  #pending = /* @__PURE__ */ new Map();
+  #touched = /* @__PURE__ */ new Map();
+  #waiting = [];
+  #perms = /* @__PURE__ */ new Map();
+  #startedAt = /* @__PURE__ */ new Map();
+  // evictMs: how long a session must sit quiet before a new thread may take its slot.
+  constructor(w, o3) {
+    this.#w = w;
+    this.#o = o3;
+    this.#ids = new Map(Object.entries(o3.saved ?? {}));
+  }
+  saved = () => Object.fromEntries(this.#ids);
+  connection = (key) => this.#conns.get(key);
+  // Windows already running when the router starts (it restarted, they did not).
+  adopt(keys, now) {
+    for (const k5 of keys) if (this.#ids.has(k5)) {
+      this.#live.add(k5);
+      this.#startedAt.set(k5, now);
+    }
+  }
+  // 'failed': the window could not open; the task was not kept.
+  task(key, msg, now) {
+    this.#touched.set(key, now);
+    const send = this.#conns.get(key);
+    if (send) {
+      send(msg);
+      return "sent";
+    }
+    if (!this.#pending.has(key)) this.#startedAt.set(key, now);
+    this.#pending.set(key, [...this.#pending.get(key) ?? [], msg]);
+    if (this.#live.has(key)) return "starting";
+    const quiet = this.#live.size < this.#o.max ? void 0 : this.#quietest(now);
+    if (quiet) this.#close(quiet);
+    if (this.#live.size < this.#o.max) {
+      if (this.#start(key, now)) return "starting";
+      this.#pending.delete(key);
+      return "failed";
+    }
+    if (!this.#waiting.includes(key)) this.#waiting.push(key);
+    return "queued";
+  }
+  // Last activity: a task handed to it, or a write to its transcript.
+  #last = (k5) => Math.max(this.#touched.get(k5) ?? 0, this.#w.lastActivity(k5));
+  // A connected session with nothing pending, no open approval, not mid-turn, quiet for evictMs.
+  #quietest(now) {
+    const asking = new Set(this.#perms.values());
+    let best;
+    for (const k5 of this.#live) {
+      if (!this.#conns.has(k5) || this.#pending.has(k5) || asking.has(k5)) continue;
+      if (now - this.#last(k5) < this.#o.evictMs || this.#w.busy(k5)) continue;
+      if (!best || this.#last(k5) < this.#last(best)) best = k5;
+    }
+    return best;
+  }
+  #close(k5) {
+    this.#w.stop(k5);
+    this.#live.delete(k5);
+    this.#conns.delete(k5);
+    for (const [id, key] of this.#perms) if (key === k5) this.#perms.delete(id);
+  }
+  connect(key, send) {
+    if (!this.#live.has(key)) return false;
+    this.#conns.set(key, send);
+    for (const m3 of this.#pending.get(key) ?? []) send(m3);
+    this.#pending.delete(key);
+    return true;
+  }
+  // Only the current connection's close counts; a stale one closing late changes nothing.
+  // Its open approvals go with it: the Claude Code process that asked is gone.
+  disconnect(key, send) {
+    if (this.#conns.get(key) !== send) return;
+    this.#conns.delete(key);
+    for (const [id, k5] of this.#perms) if (k5 === key) this.#perms.delete(id);
+  }
+  permission(key, requestId) {
+    this.#perms.set(requestId, key);
+  }
+  verdict(requestId, msg) {
+    const send = this.#conns.get(this.#perms.get(requestId) ?? "");
+    if (!send) return false;
+    this.#perms.delete(requestId);
+    send(msg);
+    return true;
+  }
+  // Closes windows idle for idleMs and windows that never connected within connectMs, then starts
+  // waiting threads. Returns the tasks it could not deliver, so the router can say so in Slack.
+  sweep(now) {
+    const dropped = [];
+    const asking = new Set(this.#perms.values());
+    for (const k5 of this.#live) {
+      const pending = this.#pending.get(k5);
+      if (pending && !this.#conns.has(k5)) {
+        if (now - (this.#startedAt.get(k5) ?? now) < this.#o.connectMs) continue;
+        dropped.push(...pending);
+        this.#pending.delete(k5);
+      } else if (pending || now - this.#last(k5) < this.#o.idleMs || asking.has(k5) || this.#w.busy(k5)) continue;
+      this.#close(k5);
+    }
+    while (this.#waiting.length && this.#live.size < this.#o.max) {
+      const k5 = this.#waiting.shift();
+      if (!this.#start(k5, now)) {
+        dropped.push(...this.#pending.get(k5) ?? []);
+        this.#pending.delete(k5);
+      }
+    }
+    return dropped;
+  }
+  #start(key, now) {
+    if (!this.#ids.has(key)) this.#ids.set(key, this.#o.newId());
+    try {
+      this.#w.start(key, this.#ids.get(key));
+    } catch {
+      return false;
+    }
+    this.#live.add(key);
+    this.#startedAt.set(key, now);
+    return true;
+  }
+};
+function liveCronJobs(results, since, now) {
+  const jobs = /* @__PURE__ */ new Map();
+  for (const r5 of results) {
+    const t = Date.parse(r5.timestamp);
+    const made = /Scheduled (\S+) job ([0-9a-f]+)/.exec(r5.text);
+    if (made && t >= since) jobs.set(made[2], t + (made[1] === "recurring" ? 7 : 1) * 24 * 36e5);
+    const gone = /Cancelled job ([0-9a-f]+)/.exec(r5.text);
+    if (gone) jobs.delete(gone[1]);
+  }
+  return [...jobs].filter(([, until]) => now < until).map(([id]) => id);
 }
 
 // router.ts

@@ -4,7 +4,7 @@ import { createRequire } from 'node:module'; const require = createRequire(impor
 import { readFileSync } from "node:fs";
 import { dirname } from "node:path";
 
-// logic.ts
+// core/guards.ts
 import { resolve } from "node:path";
 var PRIVATE_TOOL = /^mcp__.*(gmail|google_drive|google_calendar|granola|fireflies)/i;
 function privateToolRefusal(tool, sender) {
