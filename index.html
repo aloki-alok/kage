@@ -373,7 +373,7 @@ footer .wrap { display: flex; flex-wrap: wrap; gap: 8px 24px; justify-content: s
       </div>
       <p class="lede">An illustration with made-up threads. Press the buttons to make things happen. Click a row to open that thread.</p>
     </div>
-    <div class="stage" id="demostage"><pre id="screen" role="img" aria-label="Animated mock of kage top: a stone hand holds a string to each of Kage's threads, with the state of each"></pre></div>
+    <div class="stage" id="demostage"><pre id="screen" role="img" aria-label="Animated mock of kage top: strings run from the gold star in Kage's picture to each of his threads, with the state of each"></pre></div>
     <div class="mterm" id="mterm"><div class="mbar"><i></i><i></i><i></i><span>kage top</span></div><div class="mbody" id="mbody"></div></div>
     <div class="ev" id="evrow" role="group" aria-label="Make it happen">
       <span>Make it happen:</span>
@@ -702,19 +702,6 @@ const star4 = (x, cx, cy, r) => { x.beginPath(); for (let i = 0; i < 8; i++) { c
 const field = (x, w, h, cx, cy, r) => { x.fillStyle = '#000'; x.fillRect(0, 0, w, h); const f = x.createRadialGradient(cx, cy, 3, cx, cy, r); f.addColorStop(0, '#b3121a'); f.addColorStop(1, '#000'); x.fillStyle = f; x.fillRect(0, 0, w, h) }
 
 // Figures drawn here in canvas, then turned into braille. Each one has its own subject, crop and scale.
-function artHand(hc = 46, hr = 23) {           // demo: a colossal hand enters from the left edge; strings leave its fingertips
-  const c = cvs(hc, hr), x = c.getContext('2d'), w = c.width, h = c.height
-  field(x, w, h, w * .55, h / 2, w * .6)
-  const skin = x.createLinearGradient(0, h * .15, 0, h * .85); skin.addColorStop(0, '#f6f2ec'); skin.addColorStop(.6, '#e2dcd4'); skin.addColorStop(1, '#a8a199')
-  x.fillStyle = skin; x.strokeStyle = skin; x.lineCap = 'round'
-  x.beginPath(); x.moveTo(0, h * .38); x.lineTo(w * .28, h * .42); x.lineTo(w * .28, h * .6); x.lineTo(0, h * .64); x.fill()
-  x.beginPath(); x.ellipse(w * .38, h * .51, w * .13, h * .15, 0, 0, 7); x.fill()
-  const tipY = [.16, .35, .54, .73], tipX = [.72, .8, .78, .68]
-  tipY.forEach((ty, i) => { x.lineWidth = h * .06; x.beginPath(); x.moveTo(w * .44, h * (.4 + i * .06)); x.lineTo(w * tipX[i], h * ty); x.stroke() })
-  x.lineWidth = h * .07; x.beginPath(); x.moveTo(w * .34, h * .62); x.lineTo(w * .48, h * .86); x.stroke()
-  star4(x, w * .93, h * .5, h * .1)
-  return toBraille(c, hc, hr, { dither: true, mask: (nx, ny) => 1 - smooth(.7, 1.15, Math.hypot(Math.max(nx, 0) * .75, ny)) })
-}
 function artGate() {           // safety: a closed gate, a gold star for a keyhole
   const hc = 44, hr = 26, c = cvs(hc, hr), x = c.getContext('2d'), w = c.width, h = c.height
   field(x, w, h, w / 2, h * .6, w * .6)
@@ -741,7 +728,8 @@ function buildHero(img, hc, hr) {
   const cv = cvs(hc, hr); cv.getContext('2d').drawImage(img, 0, 0, cv.width, cv.height)
   return toBraille(cv, hc, hr, { mask: radial(.82, 1.22) })
 }
-const handCells = document.getElementById('screen') ? artHand() : null
+// The gold star in Kage's picture: the strings of `kage top` leave from it, as in the real console.
+const starIn = cells => { for (let r = 0; r < cells.length; r++) { const c = cells[r].findIndex(([, k]) => k === 'g'); if (c >= 0) return [c, r] } return [cells[0].length, cells.length >> 1] }
 function drawCells(cells, x0, y0, t, fast) {
   if (!cells) return
   const HR = cells.length, HC = cells[0].length
@@ -899,12 +887,12 @@ function loom(t) {
   put(W - clock.length - 2, 1, clock, 'm')
   if (T.some(x => x.st === 'asks')) { const a = '◆ 1 thread waits on you'; put(W - a.length - 2, 2, a, Math.floor(t / 450) % 2 ? 'G' : 'g') }
   HITS = []
-  drawCells(handCells, 1, 4, t, true)
-  const hx = 47, hy = 15, lx = W >= 100 ? 54 : 51, right = W - 2
+  drawCells(hero, 1, 4, t, true)
+  const [sx, sy] = hero ? starIn(hero) : [46, 11], hx = 1 + sx, hy = 4 + sy, lx = W >= 100 ? 54 : 51, right = W - 2
   const since = reduce ? 1e9 : t - boot
   const p = clamp((since - 900) / 500), ease = p * p * (3 - 2 * p)
   const live = [...T].sort((a, b) => ORDER[a.st] - ORDER[b.st])
-  live.forEach((th, i) => {           // threads orbit the hand, then fly out to their rows as the strings pull tight
+  live.forEach((th, i) => {           // threads orbit Kage, then fly out to their rows as the strings pull tight
     const y = 5 + i * 3, a = since / 250 + i * Math.PI * 2 / live.length
     const ox = 23 + Math.cos(a) * 25, oy = 15 + Math.sin(a) * 10
     const nx = ox + (lx - 2 - ox) * ease, ny = oy + (y - oy) * ease
@@ -918,7 +906,7 @@ function loom(t) {
     put(lx, y + 1, th.step.slice(0, right - lx), 'm')
     for (let x = lx - 2; x < right; x += 3) { HITS.push([x, y, { ...th, ch: th.name }]); HITS.push([x, y + 1, { ...th, ch: th.name }]) }
   })
-  put(hx, hy, '◉', 'G')
+  put(hx, hy, '✦', T.some(x => x.st === 'asks') && Math.floor(t / 450) % 2 ? 'W' : 'G')   // blinks while a thread asks, as in kage top
   if (p < 1) { keys(); return }
   let y = 5 + live.length * 3
   put(lx - 2, y, '─'.repeat(right - lx + 2), 'k'); y++
@@ -934,7 +922,7 @@ function loom(t) {
     const n = k => rest.filter(c => c.conn === k).length
     put(lx - 2, H - 3, `+ ${more} more · slack ${n('slack')} · email ${n('email')}${CL.whatsapp ? ` · whatsapp ${n('wa')}` : ''} · / to search`.slice(0, right - lx + 2), 'g')
   }
-  if (QUEUED) put(2, 24, `… ${QUEUED} waits for a free hand`, 'g')
+  if (QUEUED) put(2, 24, `… ${QUEUED} waits for a free slot`, 'g')
   if (OPEN) detail(t, W >= 100 ? 20 : 2, right)
   keys()
 }
