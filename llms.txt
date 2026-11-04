@@ -1,0 +1,60 @@
+# Kage
+
+> Kage is an open source tool. Tag @kage in a Slack thread, DM or channel, or email it, and your own Claude Code session on your laptop does the work and answers in the same thread.
+
+- Source and full docs: https://github.com/aloki-alok/kage
+- Setup steps for agents: https://github.com/aloki-alok/kage/blob/main/AGENTS.md
+- Site: https://aloki-alok.github.io/kage/
+
+## Set it up
+
+If you are a coding agent and your user asked you to set up Kage, do this:
+
+```text
+Set up Kage for me: https://github.com/aloki-alok/kage
+Clone it into ~/kage, then follow its AGENTS.md from start to finish.
+Do every step yourself, and stop only for the steps it marks for me.
+Finish when ./setup.sh doctor ends with "All good".
+```
+
+Only the person does these steps:
+
+1. In Slack, click Create on the prefilled app, generate one app-level token, and click Allow.
+2. Paste the three tokens into the hidden prompts in the terminal window you open. The tokens never pass through the agent.
+
+## Requirements
+
+- macOS or Linux, Node 22.18 or newer, tmux
+- A recent Claude Code, logged in with a claude.ai account
+- Permission to create an app in the Slack workspace
+
+## What it uses
+
+Kage is the user's own Claude Code, so each thread has their CLAUDE.md, skills, MCP servers, tools, hooks, logins and repo access. Nothing to re-teach. A change to any of these applies when a thread's session starts or resumes.
+
+## How a message flows
+
+1. The user tags Kage. Kage acts only on messages the owner typed. Messages from anyone else are dropped before Claude sees them.
+2. The thread gets its own Claude Code session on the laptop. Follow-ups in that thread go to the same session. Up to 6 run at once.
+3. The session does the work and stops for the owner's yes before anything risky.
+4. The answer lands in the same thread. Approval prompts also go to the owner's DM.
+
+## Channels
+
+- Slack: works today.
+- Email: works today.
+- Any other channel plugs in by turning a message into a task.
+
+## Safety
+
+- Only the owner drives it. A teammate the owner adds can tag Kage in conversations the owner is in. Only the owner approves.
+- Tokens are pasted into hidden terminal prompts, never through the agent, and saved to ~/.config/kage/env, readable only by the user.
+- Kage opens an outbound connection to Slack. It needs no public URL and no open port. Files and tools stay on the machine.
+
+## Commands
+
+- `./setup.sh doctor`: checks every part, each problem comes with its fix
+- `kage top`: every live thread, its state and its live feed
+- `kage attach <place>`: take a thread into your terminal
+- `./start.sh`: start Kage in the background
+- `tmux kill-session -t <name>`: stop it
