@@ -11,11 +11,12 @@ import { mkdirSync, writeFileSync } from 'node:fs'
 import { dirname } from 'node:path'
 import { load, log } from './config.ts'
 import type { ToSession } from './runtime/protocol.ts'
+import { senderOf } from './core/gate.ts'
 import { memoryDirs, senderFile } from './core/guards.ts'
 import { sessionTools } from './runtime/kage-tools.ts'
 import { schedulesIn } from './runtime/store.ts'
 
-// Installed as a plugin, this server starts in every Claude Code session. Only the windows the
+// Installed as a plugin, this server starts in every Claude Code session. Only the panes the
 // router opens (KAGE_THREAD set) take tasks. Everywhere else, answer MCP and stay idle.
 const THREAD = process.env.KAGE_THREAD
 if (!THREAD) {
@@ -29,10 +30,11 @@ process.on('unhandledRejection', e => log('unhandled', e))
 
 let botDm = ''
 let router: Socket | undefined
+const unsentAsks: string[] = []   // approvals asked while the hub restarted: it learns them on reconnect
 const kage = sessionTools({
   title: Title, bot, user, botDm: () => botDm, dir: dirname(ENV_FILE),
   memory: memoryDirs(process.env.HOME!, ENV_FILE, env),
-  send: m => router?.write(JSON.stringify(m) + '\n'),
+  send: m => { if (!router?.writable) return false; router.write(JSON.stringify(m) + '\n') },   // a dead socket loses it
   // Writes go through the hub, which files them under this pane's thread; reading the store is safe.
   schedules: {
     // Done only once the store holds it: the hub may refuse it (logged there) or be restarting.
@@ -77,7 +79,8 @@ mcp.setNotificationHandler(
   }),
   async ({ params: p }) => {
     // The router sends the yes or no back to this session only.
-    router?.write(JSON.stringify({ type: 'permission', id: p.request_id }) + '\n')
+    if (router?.writable) router.write(JSON.stringify({ type: 'permission', id: p.request_id }) + '\n')
+    else unsentAsks.push(p.request_id)
     await kage.askOwner({ id: p.request_id, tool: p.tool_name, description: p.description, preview: p.input_preview })
       .catch(e => log('permission prompt failed', e?.data?.error ?? e))
   },
@@ -91,7 +94,7 @@ async function fromRouter(m: ToSession) {
   // The private-data hook reads this. It must land before the task does, so a failure drops the task.
   const sender = senderFile(dirname(ENV_FILE), THREAD!)
   mkdirSync(dirname(sender), { recursive: true, mode: 0o700 })
-  writeFileSync(sender, m.fromOwner === true && m.meta.channel !== 'email' ? 'owner' : 'teammate', { mode: 0o600 })
+  writeFileSync(sender, senderOf({ fromOwner: m.fromOwner === true, meta: m.meta }), { mode: 0o600 })
   kage.onTask(m)
   await mcp.notification({ method: 'notifications/claude/channel', params: { content: m.content, meta: m.meta } })
 }
@@ -100,7 +103,11 @@ async function fromRouter(m: ToSession) {
 function link() {
   const s = connect(SOCK)
   let buf = ''
-  s.on('connect', () => { router = s; s.write(JSON.stringify({ type: 'hello', key: THREAD }) + '\n') })
+  s.on('connect', () => {
+    router = s
+    s.write(JSON.stringify({ type: 'hello', key: THREAD }) + '\n')
+    for (const id of unsentAsks.splice(0)) s.write(JSON.stringify({ type: 'permission', id }) + '\n')
+  })
   s.on('data', chunk => {
     buf += chunk
     for (let i; (i = buf.indexOf('\n')) >= 0;) {

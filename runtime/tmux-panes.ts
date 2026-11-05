@@ -4,7 +4,8 @@
 import { execFileSync } from 'node:child_process'
 import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs'
 import { log } from '../config.ts'
-import { liveCronJobs, type Windows } from '../core/sessions.ts'
+import { liveCronJobs } from '../core/cron.ts'
+import type { Runner } from '../core/sessions.ts'
 
 // When the Claude Code process in a pane started (the pane's shell loop is its parent). No process
 // (between restarts): Infinity, so no job counts as alive. Its CronCreate jobs live only that long.
@@ -19,7 +20,7 @@ export function paneProcessStart(pane: string): number {
 // The folder Claude Code keeps a session's transcripts in: named after the working directory.
 export const claudeProject = (cwd: string) => `${process.env.HOME}/.claude/projects/${cwd.replace(/[^A-Za-z0-9]/g, '-')}`
 
-export function tmuxWindows(o: {
+export function tmuxPanes(o: {
   name: string
   envFile: string
   claude: string                              // the command start.sh built, with the kage channel
@@ -61,7 +62,8 @@ export function tmuxWindows(o: {
     return out
   }
 
-  const windows: Windows = {
+  const runner: Runner = {
+    outlivesHub: () => true,
     start(key, id) {
       // Resume the thread's conversation once it has a transcript; until then, start it under that id.
       // The loop brings Claude Code back with the same conversation if it ever exits.
@@ -105,7 +107,7 @@ export function tmuxWindows(o: {
   }
 
   return {
-    windows,
+    runner,
     // Session ids with a pane right now.
     running: () => new Set(panes().keys()),
     // Claude Code deletes old transcripts (cleanupPeriodDays, 30 by default); without one there is nothing to resume.

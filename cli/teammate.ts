@@ -1,16 +1,16 @@
 // Lists, adds or removes the teammates who may tag Kage, then restarts the router so it
-// takes effect. Running sessions keep going. Usage (via setup.sh):
-//   ./setup.sh teammate list | add <name, @handle, id or mention> | remove <same>
-import { execFileSync } from 'node:child_process'
+// takes effect. Open sessions resume on their next tag. Usage:
+//   kage teammate list | add <name, @handle, id or mention> | remove <same>
+import { spawnSync } from 'node:child_process'
+import { fileURLToPath } from 'node:url'
 import { readFileSync, renameSync, writeFileSync } from 'node:fs'
-import { dirname } from 'node:path'
-import { findPeople, teammatesIn, withTeammates, type Person } from './core/gate.ts'
+import { findPeople, teammatesIn, withTeammates, type Person } from '../core/gate.ts'
 
 const ENV_FILE = process.env.KAGE_ENV || `${process.env.HOME}/.config/kage/env`
 const env = readFileSync(ENV_FILE, 'utf8')
 const token = /^SLACK_USER_TOKEN=(.*)$/m.exec(env)?.[1]
 const die = (msg: string): never => { console.error(msg); process.exit(1) }
-if (!token) die(`No SLACK_USER_TOKEN in ${ENV_FILE}. Run ./setup.sh save first.`)
+if (!token) die(`No SLACK_USER_TOKEN in ${ENV_FILE}. Run kage save first.`)
 
 async function slack(method: string, params: Record<string, string>) {
   const r = await fetch(`https://slack.com/api/${method}?${new URLSearchParams(params)}`, { headers: { Authorization: `Bearer ${token}` } })
@@ -40,17 +40,12 @@ async function resolve(query: string) {
   return p
 }
 
-// The router reads the list when it starts; its tmux loop starts it again within 5 s.
-function restartRouter() {
-  try {
-    const pid = readFileSync(`${dirname(ENV_FILE)}/status`, 'utf8').split(' ')[3]!
-    // The status file outlives the router; never kill a pid that is now some other program.
-    if (!execFileSync('ps', ['-p', pid, '-o', 'command='], { encoding: 'utf8' }).includes('router.js')) throw new Error('not the router')
-    process.kill(Number(pid))
-    console.log('Restarted the router; it is back in about 10 s. Running sessions keep going.')
-  } catch {
-    console.log('Kage is not running; the change applies at the next ./start.sh.')
-  }
+// The hub reads the list when it starts. Inside a Kage session a restart would end that session
+// before it could answer, so there it only says how to apply the change.
+const restartHub = () => {
+  if (process.env.KAGE_CLAUDE) return console.log('Saved. Kage picks it up when the owner runs kage restart in their own terminal.')
+  const r = spawnSync(fileURLToPath(new URL('../setup.sh', import.meta.url)), ['restart'], { stdio: 'inherit' })
+  if (r.status !== 0) console.log('The change applies at the next kage start.')
 }
 
 const [cmd, ...rest] = process.argv.slice(2)
@@ -69,8 +64,8 @@ if (cmd === 'list') {
     writeFileSync(`${ENV_FILE}.new`, withTeammates(env, next), { mode: 0o600 })
     renameSync(`${ENV_FILE}.new`, ENV_FILE)
     console.log(`${cmd === 'add' ? 'Added' : 'Removed'} ${p.name} (${p.id}).`)
-    restartRouter()
+    restartHub()
   }
 } else {
-  die('Usage: ./setup.sh teammate list | add <name or id> | remove <name or id>')
+  die('Usage: kage teammate list | add <name or id> | remove <name or id>')
 }

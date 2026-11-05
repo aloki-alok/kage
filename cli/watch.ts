@@ -2,11 +2,11 @@
 // kage watch: follow every thread's session from a terminal, one line per step: the task, what
 // Kage does, what it replies. Reads the hub's store and the Claude Code transcripts, so it works
 // with both runtimes (tmux panes and SDK sessions) and never touches a running session.
-//   ./setup.sh watch [place]     only threads whose place contains [place], e.g. "acme"
+//   kage watch [place]     only threads whose place contains [place], e.g. "support"
 import { existsSync, statSync } from 'node:fs'
 import { dirname } from 'node:path'
 import { DatabaseSync } from 'node:sqlite'
-import { newLines, transcriptLine } from './core/transcript.ts'
+import { newLines, stepTime, transcriptLine } from '../core/transcript.ts'
 
 const HOME = process.env.HOME!
 const DIR = dirname(process.env.KAGE_ENV || `${HOME}/.config/kage/env`)
@@ -20,7 +20,20 @@ const threads = db.prepare('select s.key, s.claude_id as id, coalesce(c.place, s
 
 const RECENT = 30 * 60_000   // on start, show the last steps of threads active in the last 30 min
 const offsets = new Map<string, number>()
-const time = () => new Date().toTimeString().slice(0, 8)
+const time = (t = Date.now()) => new Date(t).toTimeString().slice(0, 8)
+// Kage's palette (docs/how-it-works.svg): red for what reaches people, muted for the rest.
+const tty = process.stdout.isTTY
+const paint = (rgb: string, s: string) => (tty ? `\x1b[38;2;${rgb}m${s}\x1b[0m` : s)
+const RED = '229;70;46', MUTED = '163;158;148', INK = '244;241;234'
+const COLOR: Record<string, string> = { reply: RED, error: RED, task: INK, input: INK }
+let lastPlace = ''
+function print(at: number, place: string, step: string) {
+  const label = step.slice(0, 5).trim()
+  // A run of steps from one thread names it once: the place is a header, not a column.
+  if (place !== lastPlace) console.log(`\n${paint(RED, '▍')} ${paint(INK, place)}`)
+  lastPlace = place
+  console.log(`  ${paint(MUTED, time(at))}  ${paint(COLOR[label] ?? MUTED, step.slice(0, 5))} ${step.slice(6)}`)
+}
 
 if (!existsSync(PROJECT)) console.error(`No transcripts in ${PROJECT}. If the hub runs in another folder, set KAGE_CWD to it.`)
 
@@ -38,9 +51,12 @@ function scan(first: boolean) {
     }
     const r = newLines(file, offsets.get(file)!)
     offsets.set(file, r.offset)
-    let steps = r.lines.map(transcriptLine).filter(Boolean).flatMap(s => s!.split('\n'))
+    let steps = r.lines.flatMap(raw => {
+      const at = stepTime(raw) ?? Date.now()
+      return (transcriptLine(raw)?.split('\n') ?? []).map(s => ({ at, s }))
+    })
     if (first) steps = steps.slice(-5)
-    for (const s of steps) console.log(`${time()}  ${t.place.slice(0, 24).padEnd(24)}  ${s}`)
+    for (const { at, s } of steps) print(at, t.place, s)
   }
 }
 

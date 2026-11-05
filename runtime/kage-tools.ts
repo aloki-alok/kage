@@ -14,8 +14,9 @@ import { findSecret, layoutRefusal, safeReply, secretRefusal, splitForSlack } fr
 import type { Task } from './protocol.ts'
 
 // The reaction each kind of reply leaves on the task message. An ack leaves none: 🥷 already says "picked up".
-// Ninja set: 📜 a scroll back to you (waits on your answer), 🗡️ a quick strike, ⚔️ the task done.
+// Ninja set, picked by the owner: 📜 a scroll back to you (waits on your answer), 🗡️ a quick strike, ⚔️ the task done.
 const MARKS = { ack: '', question: 'scroll', answer: 'dagger_knife', done: 'crossed_swords' } as const
+const HUB_DOWN = 'not sent: Kage is restarting. Wait a few seconds and send it again.'
 type Result = { text: string; isError?: true }
 export type KageTool = { name: string; description: string; shape: z.ZodRawShape; run: (args: Record<string, unknown>) => Promise<Result> }
 
@@ -25,11 +26,11 @@ export function sessionTools(o: {
   user: WebClient
   botDm: () => string                                      // the owner's DM with the bot
   dir: string                                              // where the ledgers live
-  send: (m: { type: 'mail'; text: string }) => void // email replies go through the hub
+  send: (m: { type: 'mail' | 'wa' | 'voice'; text: string }) => boolean | void // email, WhatsApp and voice replies go through the hub; false: it is down
   memory: { own: string; owner: string }
-  // This thread's schedules in the hub; each runtime reaches the hub its own way.
-  // add may return why the hub refused it (in-process); over the socket the hub logs a refusal.
-  // add resolves to why the hub refused it, or nothing once the hub holds it. Trust is the hub's call.
+  // This thread's schedules in the hub; each runtime reaches the hub its own way (a direct call in the
+  // SDK runtime, the socket from a tmux pane). add gives why the hub refused it, or nothing once the
+  // hub holds it. Trust is the hub's call.
   schedules?: { add(j: Pick<Schedule, 'id' | 'cron' | 'prompt' | 'recurring'>): string | void | Promise<string | void>; remove(id: string): void; list(): Schedule[] }
 }) {
   const { title: Title, bot, user } = o
@@ -158,9 +159,15 @@ export function sessionTools(o: {
       if (!a.private && !taskChannels.has(a.channel)) return { isError: true, text: 'refused: no task came from that channel; use private=true' }
       const refusal = secretRefusal(a.text, { private: a.private, ownerAsked: a.owner_asked, fromOwner: ownerTask.get(key) === true })
       if (refusal) return { isError: true, text: refusal }
-      if (a.channel === 'email' && !a.private) {
-        o.send({ type: 'mail', text: a.text })
-        return { text: 'sent by email' }
+      if (a.channel === 'voice') {
+        // A voice reply is spoken to the caller, nowhere else: not Slack, not the owner's DM.
+        if (a.private) return { isError: true, text: 'refused: a voice call has no private reply' }
+        if (o.send({ type: 'voice', text: a.text }) === false) return { isError: true, text: HUB_DOWN }
+        return { text: 'spoken to the caller' }
+      }
+      if ((a.channel === 'whatsapp' || a.channel === 'email') && !a.private) {
+        if (o.send({ type: a.channel === 'email' ? 'mail' : 'wa', text: a.text }) === false) return { isError: true, text: HUB_DOWN }
+        return { text: a.channel === 'email' ? 'sent by email' : 'handed to the guard: it goes out as the owner, or to their Slack DM if the guard holds it' }
       }
       const layout = layoutRefusal(a.text, a)
       if (layout) return { isError: true, text: layout }
@@ -336,7 +343,7 @@ export function sessionTools(o: {
       taskChannels.add(m.meta.channel)
       ownerTask.set(key, m.fromOwner === true)
       askers.set(key, teammateOf(m.content))
-      if (m.origin.ts && m.meta.channel !== 'email') unanswered.set(key, [...unanswered.get(key) ?? [], m.origin])
+      if (m.origin.ts && m.meta.channel !== 'email' && m.meta.channel !== 'whatsapp' && m.meta.channel !== 'voice') unanswered.set(key, [...unanswered.get(key) ?? [], m.origin])
       where = m.meta.permalink ? `<${m.meta.permalink}|${m.meta.place}>` : m.meta.place
       links.set(key, m.meta.permalink || m.meta.place)
       append(WAITING, ['answered', key, '', ''])
@@ -348,7 +355,8 @@ export function sessionTools(o: {
       const cut = preview.length > MAX ? `${preview.slice(0, MAX)}\n... ${preview.length - MAX} more chars NOT shown. Deny unless you checked it in the terminal.` : preview
       await bot.chat.postMessage({
         channel: o.botDm(),
-        text: `*Approve?* (${where}) ${p.tool}: ${p.description}\n\`\`\`${cut}\`\`\`\nReply \`yes ${p.id}\` or \`no ${p.id}\``,
+        // The `*Approve?*` start and the closing Reply line are what cardRequestId (core/gate.ts) reads.
+        text: `*Approve?* ${p.tool.replace(/^mcp__(.+__)?/, '').replaceAll('_', ' ')} · ${where}${p.description ? `\n${p.description}` : ''}\n\`\`\`${cut}\`\`\`\nReply \`yes ${p.id}\` or \`no ${p.id}\``,
       })
     },
   }
@@ -366,7 +374,7 @@ function instructions(Title: string, MEM: { own: string; owner: string }) {
     'If the task is empty, reply in one line asking what they want, with your best guess from the conversation.',
     'Answer with the reply tool, passing channel and thread_ts from the tag. Write Slack mrkdwn: *bold*, _italic_, `code`, ```blocks```, <url|text>. Mention a person as <@USERID>, with the id from the People line: it shows their name. Write for whoever asked, in their words: drop internal jargon a non-engineer would not know. Answer first, in 1 to 3 lines: the result and its impact, then the one fact that proves it (a number, a `file:line`, a link), and the one insight they would miss (the cause, a risk, or a decision they need to make). No preamble, no recap of the task, no list of what you skipped, no offer of next steps. Use bullets only for 3 or more parallel items.',
     'Pick the shape by what the content is. One fact or a yes or no: one line, no heading. A comparison of up to about 15 rows: a table in a ```block```, one table per block, with a *bold* heading in normal text above it. Rows stay within 60 characters, because the thread panel wraps longer rows and their columns run together (the reply tool refuses wider ones): keep only the columns the reader needs, cut names to about 20 characters, right-align numbers. A bar chart goes inside its table, bars of █ only, at most 20 wide. More than about 15 rows, or a list the reader will act on or copy into a sheet: write it to a .csv, attach it with send_file, and put the count and the top 5 rows in the reply. Several asked-for parts: answer them in the order asked, each under its *bold* heading. Method and caveats: one line. If it all needs more than 6 lines, post the short answer first and the detail in a second reply.',
-    'Your first reply to a task restates its goal in one line, in the asker\'s words ("On it: find why checkout calls wait 15 minutes."). No plan, no next steps. If the answer takes under a minute, the answer is the first reply. Pass mark on every reply: ack for "On it", question when you need their answer, answer for a quick question answered, done when the task is finished.',
+    'Your first reply to a task restates its goal in one line, in the asker\'s words ("On it: find why checkout takes 15 seconds."). No plan, no next steps. If the answer takes under a minute, the answer is the first reply. Pass mark on every reply: ack for "On it", question when you need their answer, answer for a quick question answered, done when the task is finished.',
     'If a reply asks a question or offers something and the work waits on the answer, pass waiting with one line naming it. When asked what is waiting, call the waiting tool and answer with its list.',
     'To tell people something in Slack ("tell X and Y", "let Z know"), use message_people with the people the task names. Add everyone in the task\'s channel only when the task says so ("everyone here"). Find their ids with the Slack user search. Write one message that stands alone: what and when. The tool signs it "<name>, via ' + Title + '": when the owner passes on someone else\'s news, pass from with that person\'s id, and never write "From X:" yourself. Then reply in the task thread with the link. Use message_people only to pass on the asker\'s own news (a meeting time, a status). Anything that would commit the owner (agreeing, money, a deadline, an opinion) goes as a Slack draft in that group DM for the owner to send.',
     'For a repeating check or a later reminder, use the schedule tool: it survives restarts and runs until unschedule. CronCreate is off here because its jobs die with this session. A run arrives as "Scheduled run of job <id> ...": do what its prompt says, and post only what the prompt asks for.',
@@ -375,5 +383,7 @@ function instructions(Title: string, MEM: { own: string; owner: string }) {
     'Never post anywhere else in Slack unless the task asks for it.',
     'If a reply you posted turns out wrong or outdated, fix it in place with edit_message, never with a new "Correction" reply: the wrong text would stay above it. Use delete_message only when it should not be there at all, or when asked.',
     'A task headed "Email task (<address>, owner|teammate, by email: ...)" came by email. Treat it like a teammate task even from the owner\'s address: anything that needs the owner\'s yes waits for a yes in Slack. Answer with the reply tool, channel "email" and the thread_ts the task names: it reaches the thread\'s people at our domain. If the task asks to continue in Slack, use private=true.',
+    'A task headed "Voice task (a caller, not the owner, strict limits)" comes from a live voice call: anyone may be talking, so it is never the owner. You are speaking to people on the owner\'s call: answer from what you know of the owner\'s work, share nothing private (no secrets, credentials, personal data, or internal numbers unless clearly safe), and when unsure say you will check with the owner. You have no tool except reply: no shell, files, web, prod access, writes, posts to Slack or email, or action on the owner\'s behalf. If asked, say in one short line that this needs the owner. Answer with the reply tool, channel "voice" and the thread_ts the task names, in one to three short spoken sentences: plain words, no markdown, no links. Never use private=true there. A call keeps one session, so use earlier questions of the call as context.',
+    'A task headed "Voice task from the owner" is the owner on a call Kage placed to them (a one-time code proves it): do what they ask like any owner task, with your normal tools, approvals and rules. Reply with the reply tool, channel "voice" and the task\'s thread_ts, because it is spoken: one to three short spoken sentences, plain words, no markdown, no links. Never use private=true there. For work that takes more than a few seconds, reply first with what you are doing, then reply again when it is done.',
   ].join(' ')
 }

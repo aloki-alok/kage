@@ -1,30 +1,36 @@
 #!/usr/bin/env node
-// Kage hub: wires the pieces together and holds no rules of its own.
-//   connectors/  Slack and email: hear a message, pass the gate, hand the hub a Task
+// Kage hub: wires the pieces together. Rules belong in core/; the few still here are named below.
+//   connectors/  Slack, email, WhatsApp, voice: hear a message, pass the gate, hand the hub a Task
 //   core/        pure rules: the gate, the dispatcher, what may go out, ledgers, hook guards
-//   runtime/     where sessions run (tmux panes), the socket they connect to, the store
-// server.ts is the other end: the Kage channel inside each thread's Claude Code session.
+//   runtime/     where sessions run (Agent SDK by default, or tmux panes), the socket, the store
+// Still here: thread trust (noteTrust), how each connector shows a failure (failed), the daily
+// "still waiting" note, and the self-restart into a newer build.
+// server.ts is the other end for tmux panes only: the Kage channel inside each pane's Claude Code.
 import { execFileSync } from 'node:child_process'
 import { randomUUID } from 'node:crypto'
-import { existsSync, mkdirSync, readFileSync, renameSync, statSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { dirname } from 'node:path'
 import { load, log } from './config.ts'
 import { connectEmail } from './connectors/email.ts'
 import { listenForCommands } from './connectors/slack-commands.ts'
 import { connectSlack } from './connectors/slack.ts'
+import { connectVoice } from './connectors/voice.ts'
+import { startWhatsApp } from './connectors/whatsapp-link.ts'
 import { parseCommands } from './core/commands.ts'
 import { memoryDirs } from './core/guards.ts'
 import { sessionKey, type Conversation, type Lane } from './core/conversations.ts'
+import { senderOf } from './core/gate.ts'
 import { dailyDue, openWaiting, staleWaiting } from './core/ledgers.ts'
-import { Dispatcher, mixWindows } from './core/sessions.ts'
+import { Dispatcher, mixRunners } from './core/sessions.ts'
 import type { Task, ToSession } from './runtime/protocol.ts'
 import { sessionTools } from './runtime/kage-tools.ts'
 import { scheduler } from './runtime/scheduler.ts'
-import { sdkWindows } from './runtime/sdk-sessions.ts'
+import { sdkSessions } from './runtime/sdk-sessions.ts'
 import { listenForSessions, restoreHolds, routeReply } from './runtime/session-link.ts'
 import { openStore } from './runtime/store.ts'
-import { tmuxWindows } from './runtime/tmux-windows.ts'
+import { tmuxPanes } from './runtime/tmux-panes.ts'
+import { codeStamp } from './runtime/code-stamp.ts'
 
 const { ENV_FILE, NAME, Title, TEAMMATES, env, need, bot, user } = load()
 const DIR = dirname(ENV_FILE)
@@ -48,14 +54,16 @@ const deliver = (c: Conversation, task: Task, place: string, lane: Lane = 'main'
   noteTrust(key, task)
   return d.task(key, task, Date.now())
 }
-// A thread is owner-trusted while every task it got came from the owner by Slack; a schedule set up
+// A thread is owner-trusted while every task it got came from the owner by Slack (not email or voice); a schedule set up
 // there runs with owner trust, anywhere else with a teammate's. Kept in the store so a restart keeps
 // it. A thread with a session from before this was recorded starts untrusted: its history is unknown.
 const noteTrust = (key: string, t: Task) =>
-  store.noteTask(key, t.fromOwner && t.meta.channel !== 'email', key in d.saved())
+  store.noteTask(key, senderOf(t) === 'owner', key in d.saved())
 const slack = await connectSlack({
   dir: DIR, appToken: need('SLACK_APP_TOKEN'), bot, user, name: NAME, title: Title, teammates: TEAMMATES,
   hub: { deliver, verdict: (id, behavior) => d.verdict(id, { type: 'verdict', request_id: id, behavior }), status },
+  // AFK mode is on unless KAGE_AFK=off. Its stand-in reads the owner's memory, read only.
+  afk: env.KAGE_AFK === 'off' ? undefined : { memory: memoryDirs(process.env.HOME!, ENV_FILE, env).owner, model: env.KAGE_AFK_MODEL || 'sonnet' },
 })
 
 // threads.json came before the store: move it in once (the "dm" key needs the bot DM's id), then retire it.
@@ -72,16 +80,16 @@ void (async () => {
   }
 })()
 
-const tmux = tmuxWindows({
+const tmux = tmuxPanes({
   name: NAME, envFile: ENV_FILE, claude: CLAUDE,
   idOf: key => d.saved()[key],
   placeOf,
   onStart: () => store.saveSessions(d.saved()),
 })
 // Each thread runs as an Agent SDK session inside this process, unless KAGE_RUNTIME=tmux gives it a
-// tmux pane. The SDK is not bundled (start.sh installs it), so a missing one falls back to panes.
+// tmux pane. A missing SDK package falls back to panes.
 // Panes still running when the hub starts keep their thread (and their CronCreate jobs) until they
-// close; see mixWindows.
+// close; see mixRunners.
 const MEM = memoryDirs(process.env.HOME!, ENV_FILE, env)
 const sdkLib = env.KAGE_RUNTIME === 'tmux' ? undefined : await (async () => ({
   lib: await import('@anthropic-ai/claude-agent-sdk'),
@@ -91,7 +99,7 @@ const sdkLib = env.KAGE_RUNTIME === 'tmux' ? undefined : await (async () => ({
   console.error(`Agent SDK not usable (${e.message}), so threads open as tmux panes. Run npm ci, then restart.`)
   return undefined
 })
-const sdk = sdkLib ? sdkWindows({
+const sdk = sdkLib ? sdkSessions({
   sdk: sdkLib.lib,
   hub: () => d,
   tools: (key, send) => sessionTools({
@@ -120,8 +128,8 @@ for (const [k, id] of Object.entries(saved)) if (!tmux.hasTranscript(id) && !run
 // The dev route waits for a person to confirm a warning screen in each new pane. A full house hands
 // the slot of a session quiet for 2 min to a new thread.
 const onPane = new Set(Object.keys(saved).filter(k => runningAtStart.has(saved[k]!)))
-const windows = !sdk ? tmux.windows : onPane.size ? mixWindows(tmux.windows, sdk.windows, onPane) : sdk.windows
-const d: Dispatcher<ToSession> = new Dispatcher<ToSession>(windows, {
+const runner = !sdk ? tmux.runner : onPane.size ? mixRunners(tmux.runner, sdk.runner, onPane) : sdk.runner
+const d: Dispatcher<ToSession> = new Dispatcher<ToSession>(runner, {
   max: MAX, idleMs: IDLE_MIN * 60_000, connectMs: (CLAUDE.includes('development-channels') ? 30 : 3) * 60_000,
   evictMs: 2 * 60_000, newId: randomUUID, saved,
 })
@@ -137,7 +145,7 @@ const schedules = scheduler({
   trusted: key => store.trust(key) === true,
 })
 setInterval(() => { try { schedules.tick(Date.now()) } catch (e) { log('schedule tick failed', e) } }, 20_000)
-// CronCreate jobs moved out of stopped tmux panes (export-crons.ts): adopted once, then retired.
+// CronCreate jobs moved out of stopped tmux panes (cli/export-crons.ts): adopted once, then retired.
 // Only when no pane survived this start: a pane still running would run each job a second time.
 const CRONS = `${DIR}/crons-import.json`
 if (existsSync(CRONS) && runningAtStart.size) log('crons-import.json waits: panes are still running, so their jobs are still alive')
@@ -186,43 +194,67 @@ const email = connectEmail({
   env, dir: DIR, name: NAME, deliver,
   failed: task => void slack.notifyOwner(`Could not start a session for ${task.meta.place}.`),
 })
+// Voice is on when KAGE_VOICE_TOKEN is set, unless KAGE_VOICE=off. A voice agent reaches it over a tunnel.
+const voice = connectVoice({
+  env, name: NAME, deliver,
+  end: key => { if (key.startsWith('voice:')) d.end(key) },   // only the call's own session
+  slot: key => d.hasFreeSlot(key),   // a call never evicts or queues ahead of the owner's threads
+  failed: task => void slack.notifyOwner(`Could not start a session for ${task.meta.place}.`),
+})
 listenForCommands(slack.socket, { user, team: slack.ids.team!, commands: COMMANDS, logFile: `${DIR}/commands.tsv` })
 
-// Each connector marks its own failures: ⚠️ on a Slack message, a DM line for an email
-// thread or a scheduled run (it has no message to mark).
+// WhatsApp is on when Kage's WAHA config exists, unless KAGE_WHATSAPP=off (the kill switch).
+const whatsapp = env.KAGE_WHATSAPP !== 'off' && existsSync(`${DIR}/waha/.env`) ? startWhatsApp({
+  dir: DIR, name: NAME, owner: slack.ownerName, env,
+  notify: text => void slack.notifyOwner(text),
+  // The stand-in reads only this folder: notes the owner wrote for it, never their whole memory.
+  memory: env.KAGE_WA_MEMORY || `${DIR}/wa-notes`,
+  onTask(t) {
+    const task: Task = {
+      type: 'task', content: t.content, fromOwner: true,
+      meta: { channel: 'whatsapp', thread_ts: t.chat, place: t.place, permalink: '' },
+      origin: { channel: 'whatsapp', ts: t.chat },
+    }
+    log('whatsapp task for', t.place)
+    if (deliver({ connector: 'whatsapp', chat: t.chat, kind: 'chat' }, task, t.place) === 'failed') failed(task)
+  },
+}) : undefined
+
+// Each connector marks its own failures: ⚠️ on a Slack message, a DM line for an email or WhatsApp
+// chat or a scheduled run (it has no message to mark).
 function failed(m: ToSession) {
   if (m.type !== 'task') return
   log('could not deliver to a session:', m.meta.place, m.origin.ts, `(attach: tmux attach -t ${NAME})`)
   if (!m.origin.ts) void slack.notifyOwner(`Could not start a session for a scheduled run in ${m.meta.place}.`)
-  else if (m.origin.channel === 'email') void slack.notifyOwner(`Could not start a session for ${m.meta.place}.`)
+  else if (m.origin.channel === 'email' || m.origin.channel === 'whatsapp' || m.origin.channel === 'voice') void slack.notifyOwner(`Could not start a session for ${m.meta.place}.`)
   else slack.failed(m)
 }
 setInterval(() => { try { d.sweep(Date.now()).forEach(failed) } catch (e) { log('sweep failed', e) } }, 60_000)
 
-// Kage updates itself: a newer build of this hub (a merge, then npm run build) takes over once
+// Kage updates itself: newer code (a merge, a pull, the install line again) takes over once
 // nothing would be cut off. The loop start.sh runs the hub in starts it again 5s after it exits.
-// ponytail: a live cron job counts as busy, so a week-long cron delays the update; restart by hand then.
-// A different bundle than the one this hub started from, settled for 10s so a build or merge still
-// writing it is never picked up half-written. Compared to the boot mtime, not the clock, so a file
-// with a future time cannot restart the hub over and over.
-const BUILD = fileURLToPath(import.meta.url)
-const builtAt = () => { try { return statSync(BUILD).mtimeMs } catch { return 0 } }
-const BOOT_BUILD = builtAt()
+// ponytail: a live cron job inside the hub (SDK) counts as busy, so it delays the update; restart by hand then. A pane outlives the hub.
+// The change must be settled for 10s, so a merge still writing files is never picked up half-done.
+// Compared to the boot stamp, not the clock, so a file with a future time cannot restart the hub over and over.
+const CODE = dirname(fileURLToPath(import.meta.url))
+const BOOT_CODE = codeStamp(CODE)
 setInterval(() => {
-  const built = builtAt()
-  if (built && built !== BOOT_BUILD && Date.now() - built > 10_000 && d.quietEverywhere(Date.now())) {
-    log('a newer build is in place and every session is quiet: restarting into it')
+  const code = codeStamp(CODE)
+  if (code && code !== BOOT_CODE && Date.now() - code > 10_000 && d.quietEverywhere(Date.now())) {
+    log('newer code is in place and every session is quiet: restarting into it')
     process.exit(0)
   }
 }, 60_000)
 
 const replies = {
+  voice: (key: string, text: string) => voice?.reply(key, text),
+  wa: (key: string, text: string) => void whatsapp?.(key, text).catch(e => log('whatsapp send failed', key, e)),
   mail: (key: string, text: string) => void email?.send(key, text).catch(e => {
     log('mail reply failed', key, e)
     void slack.notifyOwner(`Email reply failed for ${placeOf(key)}: ${e}`)
   }),
 }
-listenForSessions(`${DIR}/router.sock`, d, { ...replies, failed, schedules })
+listenForSessions(`${DIR}/router.sock`, d, { ...replies, failed, schedules, callCode: voice?.issueCode })
 
 await slack.start()
 log(`listening as ${slack.botUser} (@${NAME}) for ${slack.ownerName} ${slack.ids.owner}; up to ${MAX} sessions; teammates ${TEAMMATES.join(',') || 'none'}`)
