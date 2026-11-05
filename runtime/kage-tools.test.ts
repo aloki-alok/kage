@@ -198,10 +198,10 @@ describe("a session's Kage tools", () => {
     s.t.onTask({ ...s.task({ fromOwner: false }), content: 'Teammate task (USAM00001, Sam, not the owner): tell Bo we meet at 3' })
     await s.call('message_people', { channel: 'C1', thread_ts: '5.5', users: ['UBO000001'], text: 'We meet at 3 pm.' })
     assert.ok(s.calls.includes('owner open UBO000001,USAM00001'))
-    assert.ok(s.calls.includes('owner post G-UBO000001,USAM00001 We meet at 3 pm.\n_(sent by Kage for Sam)_'))
+    assert.ok(s.calls.includes('owner post G-UBO000001,USAM00001 We meet at 3 pm.\n_Sam, via Kage_'))
     // An edit keeps the tag and the look of the first post.
     assert.equal((await s.call('edit_message', { channel: 'G-UBO000001,USAM00001', ts: '9.1', text: 'Ryu approves the discount.' })).text, 'edited')
-    assert.ok(s.calls.includes('owner edit G-UBO000001,USAM00001 9.1 Ryu approves the discount.\n_(sent by Kage for Sam)_'))
+    assert.ok(s.calls.includes('owner edit G-UBO000001,USAM00001 9.1 Ryu approves the discount.\n_Sam, via Kage_'))
     assert.equal((await s.call('message_people', { channel: 'C1', thread_ts: '5.5', users: ['UBO000001'], text: 'key AKIAABCDEFGHIJKLMNOP' })).isError, true)
   })
   test("another session cannot edit or delete what message_people posted, even in a group DM it also messaged", async () => {
@@ -212,7 +212,7 @@ describe("a session's Kage tools", () => {
     b.t.onTask({ ...b.task({ fromOwner: false }), content: 'Teammate task (USAM00001, Sam, not the owner): x' })
     await b.call('reply', { channel: 'C1', thread_ts: '5.5', text: 'On it', mark: 'ack' })   // b's own posts start at 9.2
     await b.call('message_people', { channel: 'C1', thread_ts: '5.5', users: ['UBO000001'], text: 'hi' })
-    assert.ok(b.calls.includes('owner post G-UBO000001,USAM00001 hi\n_(sent by Kage for Sam)_'))
+    assert.ok(b.calls.includes('owner post G-UBO000001,USAM00001 hi\n_Sam, via Kage_'))
     assert.equal((await b.call('edit_message', { channel: 'G-UBO000001,USAM00001', ts: '9.1', text: 'changed' })).isError, true)
     assert.equal((await b.call('delete_message', { channel: 'G-UBO000001,USAM00001', ts: '9.1' })).isError, true)
     // Not even a session whose task came from that group DM itself.
@@ -220,11 +220,24 @@ describe("a session's Kage tools", () => {
     c.t.onTask(c.task({ channel: 'G-UBO000001,USAM00001' }))
     assert.equal((await c.call('edit_message', { channel: 'G-UBO000001,USAM00001', ts: '9.1', text: 'changed' })).isError, true)
   })
+  test("the owner can pass on someone else's message: it is signed with their name, and they are in the group", async () => {
+    const s = setup()
+    s.t.onTask(s.task())
+    await s.call('message_people', { channel: 'C1', thread_ts: '5.5', users: ['UBO000001'], from: 'USAM00001', text: 'We meet at 3 pm.' })
+    assert.ok(s.calls.includes('owner open UBO000001,USAM00001'))
+    assert.ok(s.calls.includes('owner post G-UBO000001,USAM00001 We meet at 3 pm.\n_Sam, via Kage_'), s.calls.join('\n'))
+  })
+  test("a teammate cannot sign a message with someone else's name", async () => {
+    const s = setup()
+    s.t.onTask({ ...s.task({ fromOwner: false }), content: 'Teammate task (USAM00001, Sam, not the owner): x' })
+    await s.call('message_people', { channel: 'C1', thread_ts: '5.5', users: ['UBO000001'], from: 'UBOSS0001', text: 'hi' })
+    assert.ok(s.calls.includes('owner post G-UBO000001,USAM00001 hi\n_Sam, via Kage_'))
+  })
   test("a non-owner task whose line names no teammate still gets the tag", async () => {
     const s = setup()
     s.t.onTask(s.task({ channel: 'C9', fromOwner: false }))
     await s.call('message_people', { channel: 'C9', thread_ts: '5.5', users: ['UBO000001'], text: 'hi' })
-    assert.ok(s.calls.includes('owner post G-UBO000001 hi\n_(sent by Kage for a teammate)_'))
+    assert.ok(s.calls.includes('owner post G-UBO000001 hi\n_A teammate, via Kage_'))
   })
   test('telling people is refused from a thread with no task, for a bad id, a crowd, or without the scope', async () => {
     const s = setup()
