@@ -47,8 +47,35 @@ export function secretRefusal(
     : `refused: this looks like a ${secret}, and this task is from a teammate. Send the secret to the owner with private=true.`
 }
 
-// Slack caps a message near 40k chars but long blocks render badly; split on lines.
+const FENCE = '```'
+const isOpen = (s: string) => s.split(FENCE).length % 2 === 0
+
+// Slack caps a message near 40k chars but long blocks render badly; split on lines. A cut inside a
+// ``` block closes it and reopens it in the next part, or that part shows in a proportional font.
 export function splitForSlack(text: string, max = 3500): string[] {
+  const parts = splitLines(text, Math.max(1, max - 2 * (FENCE.length + 1)))
+  let open = false
+  return parts.map(p => {
+    const part = open ? `${FENCE}\n${p}` : p
+    open = isOpen(part)
+    // A cut next to a fence line would leave an empty block (```\n```): drop the pair.
+    return (open ? `${part}\n${FENCE}` : part).replace(/^```\n```(\n|$)/, '').replace(/(^|\n)```\n```$/, '')
+  }).filter(Boolean)
+}
+
+// A thread panel fits about 64 characters of Slack's code font. A longer row wraps, and its last
+// column lands under the row as if it were the next row (measured 2026-11-05: Monaco 12px, 500 px).
+export const CODE_WIDTH = 60
+export function layoutRefusal(text: string, o: { wide?: boolean } = {}): string | undefined {
+  if (o.wide) return
+  const rows = text.split(FENCE).filter((_, i) => i % 2 === 1).flatMap(b => b.split('\n'))
+  const long = rows.filter(r => r.length > CODE_WIDTH)
+  if (!long.length) return
+  const worst = long.reduce((a, b) => (b.length > a.length ? b : a))
+  return `not sent: ${long.length} lines inside a code block are wider than ${CODE_WIDTH} characters, so they wrap in the Slack thread panel and the columns run together. Widest (${worst.length}): ${worst.trim()}\nNarrow the table: drop columns the reader does not need, cut names to about 20 characters, shorten bars. A long table goes in a file with send_file. Pass wide=true only for a log or code, never a table.`
+}
+
+function splitLines(text: string, max: number): string[] {
   const parts: string[] = []
   let cur = ''
   for (const line of text.split('\n')) {
