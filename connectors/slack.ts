@@ -5,10 +5,12 @@ import { SocketModeClient, LogLevel } from '@slack/socket-mode'
 import { appendFileSync } from 'node:fs'
 import type { WebClient } from '@slack/web-api'
 import { log, logger } from '../config.ts'
-import { classify, plainName, quoteMessage, taskLine, type Ids, type SlackMessage } from '../core/gate.ts'
+import { cardRequestId, classify, plainName, quoteMessage, taskLine, type Ids } from '../core/gate.ts'
+import type { SlackMessage } from '../core/slack-message.ts'
 import { sessionKey, slackConversation, type Conversation, type Lane } from '../core/conversations.ts'
 import type { Delivery } from '../core/sessions.ts'
 import type { Task } from '../runtime/protocol.ts'
+import { startAfk } from './slack-afk.ts'
 
 const PICKED_UP = 'ninja'
 const WAITING = 'hourglass_flowing_sand'
@@ -20,7 +22,9 @@ export type Hub = {
   status(): string
 }
 
-export async function connectSlack(o: { dir: string; appToken: string; bot: WebClient; user: WebClient; name: string; title: string; teammates: string[]; hub: Hub }) {
+export async function connectSlack(o: { dir: string; appToken: string; bot: WebClient; user: WebClient; name: string; title: string; teammates: string[]; hub: Hub
+  // AFK mode (connectors/slack-afk.ts); absent means off.
+  afk?: { memory: string; model: string } }) {
   const { bot, user } = o
   // The owner is whoever the user token belongs to: that token is what hears messages.
   const me = await user.auth.test()
@@ -75,6 +79,14 @@ export async function connectSlack(o: { dir: string; appToken: string; bot: WebC
       .filter(Boolean).join('\n')
   }
 
+  // The request id when an owner DM replies under one of the hub's approval cards.
+  async function cardOf(m: SlackMessage): Promise<string | undefined> {
+    if (m.channel !== ids.botDm || m.user !== ids.owner || !m.thread_ts || m.thread_ts === m.ts) return undefined
+    const r = await bot.conversations.history({ channel: m.channel, latest: m.thread_ts, inclusive: true, limit: 1 }).catch(() => null)
+    const parent = r?.messages?.[0]
+    return parent?.ts === m.thread_ts && parent.user === ids.bot ? cardRequestId(parent.text ?? '') : undefined
+  }
+
   // Socket Mode may redeliver; each Slack message becomes at most one task.
   const seen = new Set<string>()
   async function onMessage(m: SlackMessage) {
@@ -83,13 +95,23 @@ export async function connectSlack(o: { dir: string; appToken: string; bot: WebC
     seen.add(seenKey)
     if (seen.size > 5000) seen.clear()
 
-    const t = classify(m, ids)
+    // AFK sees every message: it answers mentions of the owner, and mutes where the owner types.
+    afk?.heard(m)
+    const t = classify(m, ids, await cardOf(m))
     if (!t) return
+    // Answers to a card go under the card, so the owner sees what happened to their yes.
+    const underCard = (text: string) => bot.chat.postMessage({ channel: m.channel, thread_ts: m.thread_ts ?? m.ts, text }).catch(() => {})
     if (t.kind === 'verdict') {
-      if (!o.hub.verdict(t.request_id, t.behavior)) log('no running session asked for', t.request_id)
-      return
+      if (o.hub.verdict(t.request_id, t.behavior)) return void react(m.channel, m.ts, t.behavior === 'allow' ? 'white_check_mark' : 'x')
+      log('no running session asked for', t.request_id)
+      return void underCard(`Request \`${t.request_id}\` is no longer waiting (its session ended or it was already answered). Tag the original thread again to redo it.`)
     }
+    if (t.kind === 'card') return void underCard(`Reply \`yes\` or \`no\` here to answer request \`${t.request_id}\`.`)
     // Status names the owner's other conversations, so it goes to the owner's DM only, never the thread.
+    if (t.kind === 'afk') {
+      react(m.channel, m.ts, PICKED_UP)
+      return void (afk ? afk.command(t.command) : notifyOwner('AFK mode is off here (KAGE_AFK=off).'))
+    }
     if (t.kind === 'status') {
       react(m.channel, m.ts, PICKED_UP)
       return void notifyOwner(o.hub.status())
@@ -121,6 +143,8 @@ export async function connectSlack(o: { dir: string; appToken: string; bot: WebC
   const failed = (task: Task) => react(task.origin.channel, task.origin.ts, FAILED)
   // Resolves false when the post failed, so a caller can try again later.
   const notifyOwner = (text: string) => bot.chat.postMessage({ channel: ids.botDm, text }).then(() => true, e => (log('owner DM failed', e?.data?.error ?? e), false))
+
+  const afk = o.afk && startAfk({ dir: o.dir, title: o.title, ownerName, ids, bot, user, ...o.afk, notify: notifyOwner, contextOf, placeOf, nameOf })
 
   // Messages in one thread are handled one after another, so a quick follow-up can't overtake.
   const queue = new Map<string, Promise<void>>()

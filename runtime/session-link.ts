@@ -8,11 +8,14 @@ import { log } from '../config.ts'
 import type { FromSession, ToSession } from './protocol.ts'
 import type { scheduler } from './scheduler.ts'
 
-type Replies = { mail: (key: string, text: string) => void }
+type Replies = { mail: (key: string, text: string) => void; wa: (key: string, text: string) => void; voice: (key: string, text: string) => void }
 
-// An email reply from a session goes only to that session's own thread.
-export function routeReply(key: string, m: { type: 'mail'; text: string }, o: Replies) {
+// An email, WhatsApp or voice reply from a session goes only to that session's own thread or chat.
+// WhatsApp sends also pass the guard downstream.
+export function routeReply(key: string, m: { type: 'mail' | 'wa' | 'voice'; text: string }, o: Replies) {
   if (m.type === 'mail' && key.startsWith('mail:')) o.mail(key, m.text)
+  else if (m.type === 'wa' && key.startsWith('wa:')) o.wa(key, m.text)
+  else if (m.type === 'voice' && key.startsWith('voice:')) o.voice(key, m.text)
 }
 
 // A thread a terminal holds (kage attach) is a file in held/ naming the attach process, so a hold
@@ -28,7 +31,7 @@ const heldKeys = (dir: string) => { try { return readdirSync(join(dir, 'held')).
 // At hub start, before any connector runs: hold again every thread whose terminal still runs.
 export function restoreHolds(dir: string, d: Dispatcher<ToSession>, now: number) {
   for (const key of heldKeys(dir)) {
-    if (alive(holderOf(dir, key)) && 'id' in d.hold(key, now)) continue
+    if (alive(holderOf(dir, key)) && 'id' in d.hold(key)) continue
     rmSync(holdFile(dir, key), { force: true })
   }
 }
@@ -37,6 +40,7 @@ export function restoreHolds(dir: string, d: Dispatcher<ToSession>, now: number)
 export function listenForSessions(path: string, d: Dispatcher<ToSession>, o: Replies & {
   failed: (m: ToSession) => void
   schedules: Pick<ReturnType<typeof scheduler>, 'add' | 'remove'>
+  callCode?: () => string
 }) {
   try { unlinkSync(path) } catch {}
   const dir = dirname(path)
@@ -64,7 +68,7 @@ export function listenForSessions(path: string, d: Dispatcher<ToSession>, o: Rep
         if (!m || typeof m !== 'object') continue   // a bare null or number must not take the hub down
         if (m.type === 'hold' && !key && !held && typeof m.key === 'string') {
           const pid = typeof m.pid === 'number' ? m.pid : 0
-          let r = d.hold(m.key, Date.now())
+          let r = d.hold(m.key)
           // The terminal that held it before a hub restart takes its hold back.
           if ('refused' in r && r.refused === 'held' && !owned.has(m.key) && alive(pid) && holderOf(dir, m.key) === pid) r = { id: d.saved()[m.key]! }
           if ('id' in r) {
@@ -77,6 +81,10 @@ export function listenForSessions(path: string, d: Dispatcher<ToSession>, o: Rep
         } else if (m.type === 'board' && !key && !held) {
           // The console's view of live state, which exists only in this process.
           sock.write(JSON.stringify({ type: 'board', ...d.status(Date.now()) }) + '\n')
+        } else if (m.type === 'callcode' && !key && !held) {
+          // A one-time code for a call Kage places to the owner (kage call); only someone on this machine reaches the socket.
+          const code = o.callCode?.()
+          sock.write(JSON.stringify({ type: 'callcode', ...(code ? { code } : { refused: 'voice is off' }) }) + '\n')
         } else if (m.type === 'stop' && !key && !held && typeof m.key === 'string') {
           sock.write(JSON.stringify({ type: 'stop', ...d.stop(m.key, Date.now()) }) + '\n')
         } else if (m.type === 'hello' && !key && !held && typeof m.key === 'string') {
@@ -84,7 +92,7 @@ export function listenForSessions(path: string, d: Dispatcher<ToSession>, o: Rep
           else sock.destroy()
         } else if (m.type === 'permission' && key && typeof m.id === 'string') {
           d.permission(key, m.id)
-        } else if (m.type === 'mail' && key && typeof m.text === 'string') {
+        } else if ((m.type === 'mail' || m.type === 'wa' || m.type === 'voice') && key && typeof m.text === 'string') {
           routeReply(key, { type: m.type, text: m.text }, o)
         } else if (m.type === 'schedule' && key) {
           // Always for the session's own thread, whatever the message says.

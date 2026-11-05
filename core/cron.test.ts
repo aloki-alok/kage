@@ -1,6 +1,6 @@
 import { describe, test } from 'node:test'
 import assert from 'node:assert/strict'
-import { cronJobsFromTranscript, cronMatches, dueSchedules, nextRun, parseCron, type Schedule } from './cron.ts'
+import { cronJobsFromTranscript, cronMatches, liveCronJobs, dueSchedules, nextRun, parseCron, type Schedule } from './cron.ts'
 
 // Local time, as Claude Code's CronCreate reads its expressions.
 const at = (s: string) => new Date(s)
@@ -90,5 +90,26 @@ describe('the cron jobs still alive in a Claude Code transcript', () => {
     ]
     const jobs = cronJobsFromTranscript(lines, Date.parse('2026-11-02T00:00:00Z'))
     assert.deepEqual(jobs, [{ id: 'bb22', cron: '7,37 8-23 * * *', prompt: 'watch leads', recurring: true, created: Date.parse('2026-11-03T03:30:31Z') }])
+  })
+})
+
+describe('a session with a repeating check stays open', () => {
+  const H = 3600_000
+  const at = (h: number) => new Date(Date.UTC(2026, 10, 1) + h * H).toISOString()
+  const made = (id: string, h: number, kind = 'recurring') => ({ timestamp: at(h), text: `Scheduled ${kind} job ${id} (*/5 * * * *). Next run: ...` })
+  const cancelled = (id: string, h: number) => ({ timestamp: at(h), text: `Cancelled job ${id}.` })
+  const t0 = Date.parse(at(0))
+
+  test('a job made by the running process counts until it is cancelled', () => {
+    assert.deepEqual(liveCronJobs([made('aa11', 1)], t0, t0 + 2 * H), ['aa11'])
+    assert.deepEqual(liveCronJobs([made('aa11', 1), cancelled('aa11', 2)], t0, t0 + 3 * H), [])
+  })
+  test('a job made before this process started died with the old one', () => {
+    assert.deepEqual(liveCronJobs([made('aa11', 1)], t0 + 2 * H, t0 + 3 * H), [])
+  })
+  test('a recurring job expires after 7 days, a one-shot after a day', () => {
+    assert.deepEqual(liveCronJobs([made('aa11', 1)], t0, t0 + 7 * 24 * H + 2 * H), [])
+    assert.deepEqual(liveCronJobs([made('bb22', 1, 'one-shot')], t0, t0 + 3 * H), ['bb22'])
+    assert.deepEqual(liveCronJobs([made('bb22', 1, 'one-shot')], t0, t0 + 26 * H), [])
   })
 })

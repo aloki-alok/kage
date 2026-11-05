@@ -1,6 +1,6 @@
 // What `kage top` shows: one row per thread, what state it is in, and in what order to look at
 // them. Pure: the console feeds it the hub's live board, the store and the transcripts' times.
-import { cronJobsFromTranscript, nextRun, type Schedule } from './cron.ts'
+import { CRON_RECURRING_TTL, cronJobsFromTranscript, nextRun, type Schedule } from './cron.ts'
 
 // What the hub reports (Dispatcher.status): live sessions, threads waiting for a slot or held by a terminal.
 export type Live = {
@@ -59,7 +59,7 @@ export function whenLabel(t: number | undefined, now: number): string {
 // only reads when. ponytail: a check from an earlier process of the same thread could still show,
 // since the console cannot see the process start.
 export function watchingNext(lines: string[], now: number): number | undefined {
-  const jobs = cronJobsFromTranscript(lines, now - 7 * DAY).filter(j => j.recurring || now - j.created < DAY)
+  const jobs = cronJobsFromTranscript(lines, now - CRON_RECURRING_TTL).filter(j => j.recurring || now - j.created < DAY)
   let best: number | undefined
   for (const j of jobs) {
     let at: Date | undefined

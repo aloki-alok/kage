@@ -1,5 +1,5 @@
 // Prints the Slack app manifest for the name in KAGE_NAME (setup.sh calls this).
-import { validName } from './core/gate.ts'
+import { validName } from '../core/gate.ts'
 
 const name = process.env.KAGE_NAME || 'kage'
 if (!validName(name)) throw new Error(`bad name: ${name}`)
@@ -25,6 +25,8 @@ const manifest = {
         'channels:history', 'groups:history', 'im:history', 'mpim:history',
         'channels:read', 'groups:read', 'im:read', 'mpim:read',
         'chat:write', 'reactions:write', 'users:read',
+        // AFK mode sets your status while you are away, then puts the old one back.
+        'users.profile:read', 'users.profile:write',
         // message_people opens the group DM of you and the people a task names.
         'im:write', 'mpim:write',
       ],

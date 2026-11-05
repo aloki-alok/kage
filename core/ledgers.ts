@@ -4,7 +4,7 @@
 export const tsvRow = (cells: (string | undefined)[]) => cells.map(c => (c ?? '').replace(/[\t\r\n]+/g, ' ')).join('\t') + '\n'
 
 // waiting.tsv is append-only (every thread's pane writes it): when, open|answered, thread, link, what.
-// An offer stays open until its thread gets a new task.
+// A question stays open until its thread gets a new task.
 // ponytail: any new task closes it, even from someone else in the thread; match the asker if that bites.
 export function openWaiting(tsv: string): { when: string; link: string; what: string }[] {
   const open = new Map<string, { when: string; link: string; what: string }[]>()
