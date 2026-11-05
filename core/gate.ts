@@ -98,6 +98,12 @@ export function taskLine(text: string, from: { name: string; teammate?: string }
   return from.teammate ? `Teammate task (${from.teammate}, ${from.name}, not the owner): ${t}` : `Task from ${from.name}: ${t}`
 }
 
+// The teammate behind a task, read back from the first line taskLine wrote; none on the owner's task.
+export function teammateOf(content: string): { id: string; name: string } | undefined {
+  const m = /^Teammate task \(([UW][A-Z0-9]+), (.*?), not the owner\): /.exec(content)
+  return m ? { id: m[1]!, name: m[2]! } : undefined
+}
+
 // Display names are set by their owners: one line, no angle brackets, before they reach Claude.
 export const plainName = (name: string) => name.replace(/[<>]/g, '').replace(/\s+/g, ' ').trim()
 

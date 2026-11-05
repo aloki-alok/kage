@@ -25,6 +25,8 @@ const manifest = {
         'channels:history', 'groups:history', 'im:history', 'mpim:history',
         'channels:read', 'groups:read', 'im:read', 'mpim:read',
         'chat:write', 'reactions:write', 'users:read',
+        // message_people opens the group DM of you and the people a task names.
+        'im:write', 'mpim:write',
       ],
     },
   },

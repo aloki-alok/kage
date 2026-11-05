@@ -19,6 +19,14 @@ function fakeSlack() {
       },
       update: async (a: { channel: string; ts: string; text: string }) => { calls.push(`${who} edit ${a.channel} ${a.ts} ${a.text}`) },
       delete: async (a: { channel: string; ts: string }) => { calls.push(`${who} delete ${a.channel} ${a.ts}`) },
+      getPermalink: async (a: { channel: string; message_ts: string }) => ({ permalink: `https://x/${a.channel}/${a.message_ts}` }),
+    },
+    conversations: {
+      open: async (a: { users: string }) => {
+        if (a.users.includes('UNOSCOPE')) throw Object.assign(new Error('x'), { data: { error: 'missing_scope' } })
+        calls.push(`${who} open ${a.users}`)
+        return { channel: { id: `G-${a.users}` } }
+      },
     },
     filesUploadV2: async (a: { channel_id: string; thread_ts: string; filename: string }) => {
       if (a.channel_id === 'CPRIV') throw Object.assign(new Error('x'), { data: { error: 'not_in_channel' } })
@@ -31,9 +39,9 @@ function fakeSlack() {
   return { calls, bot: client('bot'), user: client('owner') }
 }
 
-function setup() {
+function setup(o: { dir?: string } = {}) {
   const slack = fakeSlack()
-  const dir = mkdtempSync(join(tmpdir(), 'kage-tools-'))
+  const dir = o.dir ?? mkdtempSync(join(tmpdir(), 'kage-tools-'))
   const out: string[] = []
   const jobs: any[] = []
   const t = sessionTools({
@@ -174,6 +182,62 @@ describe("a session's Kage tools", () => {
     const r = await s.call('send_file', { channel: 'CPRIV', thread_ts: '5.5', path: csv })
     assert.equal(r.isError, true)
     assert.match(r.text, /in the thread instead/)
+  })
+  test("telling people opens the group DM of exactly them and posts as the owner, and the post can be edited", async () => {
+    const s = setup()
+    s.t.onTask(s.task())
+    const r = await s.call('message_people', { channel: 'C1', thread_ts: '5.5', users: ['UBO000001', 'USAM00001'], text: 'We meet at 3 pm about growth.' })
+    assert.equal(r.isError, undefined)
+    assert.ok(s.calls.includes('owner open UBO000001,USAM00001'))
+    assert.ok(s.calls.includes('owner post G-UBO000001,USAM00001 We meet at 3 pm about growth.'))
+    assert.match(r.text, /https:\/\/x\/G-UBO000001,USAM00001\//)
+    assert.equal((await s.call('edit_message', { channel: 'G-UBO000001,USAM00001', ts: '9.1', text: 'We meet at 4 pm.' })).text, 'edited')
+  })
+  test("on a teammate's task the asker is always in the group, the message says who asked, and secrets stay out", async () => {
+    const s = setup()
+    s.t.onTask({ ...s.task({ fromOwner: false }), content: 'Teammate task (USAM00001, Sam, not the owner): tell Bo we meet at 3' })
+    await s.call('message_people', { channel: 'C1', thread_ts: '5.5', users: ['UBO000001'], text: 'We meet at 3 pm.' })
+    assert.ok(s.calls.includes('owner open UBO000001,USAM00001'))
+    assert.ok(s.calls.includes('owner post G-UBO000001,USAM00001 We meet at 3 pm.\n_(sent by Kage for Sam)_'))
+    // An edit keeps the tag and the look of the first post.
+    assert.equal((await s.call('edit_message', { channel: 'G-UBO000001,USAM00001', ts: '9.1', text: 'Ryu approves the discount.' })).text, 'edited')
+    assert.ok(s.calls.includes('owner edit G-UBO000001,USAM00001 9.1 Ryu approves the discount.\n_(sent by Kage for Sam)_'))
+    assert.equal((await s.call('message_people', { channel: 'C1', thread_ts: '5.5', users: ['UBO000001'], text: 'key AKIAABCDEFGHIJKLMNOP' })).isError, true)
+  })
+  test("another session cannot edit or delete what message_people posted, even in a group DM it also messaged", async () => {
+    const a = setup()
+    a.t.onTask(a.task())
+    await a.call('message_people', { channel: 'C1', thread_ts: '5.5', users: ['UBO000001', 'USAM00001'], text: 'from the owner' })
+    const b = setup({ dir: a.dir })
+    b.t.onTask({ ...b.task({ fromOwner: false }), content: 'Teammate task (USAM00001, Sam, not the owner): x' })
+    await b.call('reply', { channel: 'C1', thread_ts: '5.5', text: 'On it', mark: 'ack' })   // b's own posts start at 9.2
+    await b.call('message_people', { channel: 'C1', thread_ts: '5.5', users: ['UBO000001'], text: 'hi' })
+    assert.ok(b.calls.includes('owner post G-UBO000001,USAM00001 hi\n_(sent by Kage for Sam)_'))
+    assert.equal((await b.call('edit_message', { channel: 'G-UBO000001,USAM00001', ts: '9.1', text: 'changed' })).isError, true)
+    assert.equal((await b.call('delete_message', { channel: 'G-UBO000001,USAM00001', ts: '9.1' })).isError, true)
+    // Not even a session whose task came from that group DM itself.
+    const c = setup({ dir: a.dir })
+    c.t.onTask(c.task({ channel: 'G-UBO000001,USAM00001' }))
+    assert.equal((await c.call('edit_message', { channel: 'G-UBO000001,USAM00001', ts: '9.1', text: 'changed' })).isError, true)
+  })
+  test("a non-owner task whose line names no teammate still gets the tag", async () => {
+    const s = setup()
+    s.t.onTask(s.task({ channel: 'C9', fromOwner: false }))
+    await s.call('message_people', { channel: 'C9', thread_ts: '5.5', users: ['UBO000001'], text: 'hi' })
+    assert.ok(s.calls.includes('owner post G-UBO000001 hi\n_(sent by Kage for a teammate)_'))
+  })
+  test('telling people is refused from a thread with no task, for a bad id, a crowd, or without the scope', async () => {
+    const s = setup()
+    s.t.onTask(s.task())
+    const no = (users: string[], channel = 'C1') => s.call('message_people', { channel, thread_ts: '5.5', users, text: 'hi' })
+    assert.equal((await no(['UBO000001'], 'COTHER')).isError, true)
+    s.t.onTask(s.task({ channel: 'email', fromOwner: false }))
+    assert.equal((await no(['UBO000001'], 'email')).isError, true)
+    assert.equal((await no(['C0CHANNEL1'])).isError, true)
+    assert.equal((await no([])).isError, true)
+    assert.equal((await no(Array.from({ length: 9 }, (_, i) => `UPERSON0${i}`))).isError, true)
+    assert.match((await no(['UNOSCOPE'])).text, /mpim:write/)
+    assert.ok(!s.calls.some(c => c.includes(' post ')))
   })
   test('edit and delete work only on what this session posted, with the token that posted it', async () => {
     const s = setup()
