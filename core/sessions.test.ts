@@ -1,6 +1,6 @@
 import { describe, test } from 'node:test'
 import assert from 'node:assert/strict'
-import { Dispatcher, liveCronJobs, mixWindows, type Windows } from './sessions.ts'
+import { Dispatcher, mixRunners, type Runner } from './sessions.ts'
 
 describe('one Claude session per thread', () => {
   // A fake tmux: records starts and stops; activity times are set per key.
@@ -10,7 +10,8 @@ describe('one Claude session per thread', () => {
     const activity = new Map<string, number>()
     const busy = new Set<string>()
     const watching = new Set<string>()    // busy only because a timed check (cron job) is alive
-    const broken = new Set<string>()      // keys whose window fails to open
+    const broken = new Set<string>()      // keys whose session fails to open
+    const panes = new Set<string>()       // keys whose session outlives a hub restart (a tmux pane)
     let n = 0
     const d = new Dispatcher<string>(
       {
@@ -18,11 +19,12 @@ describe('one Claude session per thread', () => {
         stop: k => stopped.push(k),
         lastActivity: k => activity.get(k) ?? 0,
         busy: k => { if (o.busyThrows) throw new Error('tmux capture failed'); return busy.has(k) || (watching.has(k) ? 'watching' : false) },
+        outlivesHub: k => panes.has(k),
       },
       { max: o.max ?? 2, idleMs: 1000, connectMs: 100, evictMs: 300, newId: () => `id${++n}`, saved: o.saved },
     )
     const inbox = (k: string) => { const got: string[] = []; d.connect(k, m => got.push(m)); return got }
-    return { d, started, stopped, activity, busy, watching, broken, inbox }
+    return { d, started, stopped, activity, busy, watching, broken, panes, inbox }
   }
 
   test('a new thread starts a session and gets its task once the session connects', () => {
@@ -30,6 +32,28 @@ describe('one Claude session per thread', () => {
     assert.equal(d.task('A', 'first', 0), 'starting')
     assert.deepEqual(started, [['A', 'id1']])
     assert.deepEqual(inbox('A'), ['first'])
+  })
+  test('hasFreeSlot: a live thread or an open slot, never one that would evict or jump the queue', () => {
+    const { d } = setup({ max: 2 })
+    d.task('A', 'a', 0)
+    assert.equal(d.hasFreeSlot('A'), true)    // already live
+    assert.equal(d.hasFreeSlot('B'), true)    // a slot is open
+    d.task('B', 'b', 0)
+    assert.equal(d.hasFreeSlot('C'), false)   // full: starting C would evict a quiet session
+    assert.equal(d.hasFreeSlot('A'), true)
+  })
+  test('end closes only that thread and forgets its waiting task', () => {
+    const { d, stopped, inbox } = setup({ max: 1 })
+    d.task('A', 'a', 0)
+    d.task('B', 'b', 0)                                  // full: B waits
+    d.end('B')
+    d.end('nobody')
+    assert.deepEqual(stopped, [])
+    assert.equal(d.status(0).waiting.length, 0)
+    d.end('A')
+    assert.deepEqual(stopped, ['A'])
+    assert.equal(d.hasFreeSlot('C'), true)
+    assert.deepEqual(inbox('A'), [])                     // no longer live: it does not connect
   })
   test('a follow-up goes to the running session of its thread, no new session', () => {
     const { d, started, inbox } = setup()
@@ -138,7 +162,6 @@ describe('one Claude session per thread', () => {
     d.task('B', 'b', 0); inbox('B')
     assert.deepEqual(d.status(9_999).live.map(l => l.state), ['watching', 'quiet'])
     assert.deepEqual(d.stop('A', 9_999), { refused: 'busy' })
-    assert.deepEqual(d.hold('A', 9_999), { refused: 'busy' })
     assert.equal(d.quietEverywhere(9_999), false)
     d.sweep(99_999)                       // long idle: a plain session closes, a watching one stays
     assert.deepEqual(d.status(99_999).live.map(l => l.key), ['A'])
@@ -165,7 +188,7 @@ describe('one Claude session per thread', () => {
     assert.deepEqual(started, [['A', 'old-id'], ['A', 'old-id']])
     assert.deepEqual(d.saved(), { A: 'old-id' })
   })
-  test('windows found running after a router restart are reused, not started again', () => {
+  test('sessions found running after a router restart are reused, not started again', () => {
     const { d, started, inbox } = setup({ saved: { A: 'old-id' } })
     d.adopt(['A', 'unknown'], 0)
     assert.equal(d.task('A', 'a', 0), 'starting')
@@ -186,14 +209,14 @@ describe('one Claude session per thread', () => {
     assert.equal(d.verdict('zzzzz', 'yes'), false)
     assert.deepEqual([a, b], [['a'], ['b', 'yes']])
   })
-  test('a window that fails to open gives its task back and holds no slot', () => {
+  test('a session that fails to open gives its task back and holds no slot', () => {
     const { d, broken, started } = setup({ max: 1 })
     broken.add('A')
     assert.equal(d.task('A', 'a', 0), 'failed')
     assert.equal(d.task('B', 'b', 0), 'starting')
     assert.deepEqual(started.map(s => s[0]), ['B'])
   })
-  test('a window that never connects is closed and its tasks are handed back', () => {
+  test('a session that never connects is closed and its tasks are handed back', () => {
     const { d, stopped, started } = setup({ max: 1 })
     d.task('A', 'a1', 0)
     d.task('A', 'a2', 10)
@@ -203,7 +226,7 @@ describe('one Claude session per thread', () => {
     assert.deepEqual(stopped, ['A'])
     assert.deepEqual(started.map(s => s[0]), ['A', 'B'])
   })
-  test('a queued thread whose window fails to open is handed back by the sweep', () => {
+  test('a queued thread whose session fails to open is handed back by the sweep', () => {
     const { d, broken, activity, inbox } = setup({ max: 1 })
     d.task('A', 'a', 0)
     inbox('A')
@@ -224,7 +247,7 @@ describe('one Claude session per thread', () => {
     d.sweep(5000)
     assert.deepEqual(stopped, ['B'])
   })
-  test('a long-running window that is only restarting gets the full connect time again', () => {
+  test('a long-running session that is only restarting gets the full connect time again', () => {
     const { d, stopped, inbox } = setup()
     d.task('A', 'a', 0)
     inbox('A')
@@ -234,14 +257,14 @@ describe('one Claude session per thread', () => {
     assert.deepEqual(stopped, [])
     assert.deepEqual(d.sweep(10_200), ['b'])
   })
-  test('an adopted window that never reconnects times out too', () => {
+  test('an adopted session that never reconnects times out too', () => {
     const { d, stopped } = setup({ saved: { A: 'old-id' } })
     d.adopt(['A'], 0)
     d.task('A', 'a', 0)
     assert.deepEqual(d.sweep(200), ['a'])
     assert.deepEqual(stopped, ['A'])
   })
-  test('an approval from a session that went away no longer keeps its window open', () => {
+  test('an approval from a session that went away no longer keeps its session open', () => {
     const { d, stopped, inbox } = setup()
     d.task('A', 'a', 0)
     inbox('A')
@@ -265,7 +288,7 @@ describe('one Claude session per thread', () => {
   test('holding a thread closes its session and gives its id; tasks wait, and release brings them back', () => {
     const { d, started, stopped, inbox } = setup()
     d.task('A', 'first', 0); inbox('A')
-    assert.deepEqual(d.hold('A', 9_999), { id: 'id1' })
+    assert.deepEqual(d.hold('A'), { id: 'id1' })
     assert.deepEqual(stopped, ['A'])
     assert.equal(d.task('A', 'while away', 1), 'held')
     assert.equal(started.length, 1)                       // nothing starts while the terminal has it
@@ -277,7 +300,7 @@ describe('one Claude session per thread', () => {
   test('tasks that cannot start on release come back, so the owner hears about them', () => {
     const { d, broken, inbox } = setup()
     d.task('A', 'first', 0); inbox('A')
-    d.hold('A', 9_999)
+    d.hold('A')
     d.task('A', 'while away', 1)
     broken.add('A')
     assert.deepEqual(d.release('A', 2), ['while away'])
@@ -285,31 +308,41 @@ describe('one Claude session per thread', () => {
   test('a held thread with no waiting task starts nothing on release; its next task resumes it', () => {
     const { d, started, inbox } = setup()
     d.task('A', 'first', 0); inbox('A')
-    d.hold('A', 9_999)
+    d.hold('A')
     d.release('A', 1)
     assert.equal(started.length, 1)
     assert.equal(d.task('A', 'next', 2), 'starting')
     assert.deepEqual(started.at(-1), ['A', 'id1'])
   })
-  test('a busy or asking session, an unknown thread or one already held is not handed over', () => {
-    const { d, busy, inbox } = setup()
-    d.task('A', 'a', 0); inbox('A')
-    busy.add('A')
-    assert.deepEqual(d.hold('A', 9_999), { refused: 'busy' })
-    busy.delete('A')
-    d.permission('A', 'abcde')
-    assert.deepEqual(d.hold('A', 9_999), { refused: 'asking' })
-    assert.deepEqual(d.hold('Z', 9_999), { refused: 'unknown' })
-    d.task('B', 'b', 0); inbox('B')
-    d.hold('B', 9_999)
-    assert.deepEqual(d.hold('B', 9_999), { refused: 'held' })
+  // Attach is Esc in Claude Code: the owner gets the session now, whatever it is doing.
+  test('attach takes a busy, asking or watching session at once: its turn stops and the terminal gets the id', () => {
+    for (const [what, cut] of [['busy', 'busy'], ['asking', 'asking'], ['watching', 'watching']] as const) {
+      const { d, busy, watching, inbox, stopped } = setup()
+      d.task('A', 'a', 0); inbox('A')
+      if (what === 'busy') busy.add('A')
+      if (what === 'asking') d.permission('A', 'abcde')
+      if (what === 'watching') watching.add('A')
+      assert.deepEqual(d.hold('A'), { id: 'id1', cut })
+      assert.deepEqual(stopped, ['A'])
+      assert.equal(d.task('A', 'while attached', 5), 'held')      // new tasks wait for the terminal
+    }
   })
-  test('a session just handed a task counts as busy, even before it shows any work', () => {
+  test('tasks that reached a busy session after its turn began are kept when attach cuts it, and go to it after', () => {
+    const { d, busy, inbox } = setup()
+    d.task('A', 'start', 0); const got = inbox('A')
+    busy.add('A')
+    assert.equal(d.task('A', 'one more thing', 1), 'sent')       // queued behind the turn, maybe never read
+    assert.deepEqual(d.hold('A'), { id: 'id1', cut: 'busy' })
+    d.release('A', 9)
+    assert.deepEqual(inbox('A'), ['one more thing'])            // 'start' began the cut turn: it is in the transcript
+    assert.deepEqual(got, ['start', 'one more thing'])
+  })
+  test('a quiet session is handed over with nothing cut; an unknown thread or one already held is refused', () => {
     const { d, inbox } = setup()
     d.task('A', 'a', 0); inbox('A')
-    d.task('A', 'b', 1000)
-    assert.deepEqual(d.hold('A', 1100), { refused: 'busy' })   // within evictMs (300) of the task
-    assert.deepEqual(d.hold('A', 1400), { id: 'id1' })
+    assert.deepEqual(d.hold('A'), { id: 'id1' })
+    assert.deepEqual(d.hold('A'), { refused: 'held' })
+    assert.deepEqual(d.hold('Z'), { refused: 'unknown' })
   })
   // Stop from the console: close one session. Its next task resumes it, so nothing is lost.
   test('stopping a quiet session closes it; the thread resumes on its next task', () => {
@@ -331,7 +364,7 @@ describe('one Claude session per thread', () => {
     d.task('D', 'd', 0); inbox('D')
     assert.deepEqual(d.stop('D', 100), { refused: 'busy' })   // within evictMs (300) of its task
     assert.deepEqual(d.stop('Z', 9_999), { refused: 'closed' })
-    d.hold('D', 9_999)
+    d.hold('D')
     assert.deepEqual(d.stop('D', 9_999), { refused: 'closed' })
     assert.deepEqual(stopped, ['D'])                           // only the hold closed anything
   })
@@ -369,61 +402,52 @@ describe('one Claude session per thread', () => {
     assert.equal(d.ready('A'), 'ready')
     d.task('B', 'b', 0)
     assert.equal(d.ready('B'), 'blocked')                     // queued for a slot
-    d.hold('A', 9_999)
+    d.hold('A')
     assert.equal(d.ready('A'), 'blocked')                     // in a terminal
+  })
+  test('a pane kept only by its timed check does not block a self-restart: the pane outlives the hub', () => {
+    const { d, busy, watching, panes, inbox } = setup()
+    d.task('A', 'a', 0); inbox('A'); watching.add('A'); panes.add('A')
+    assert.equal(d.quietEverywhere(9_999), true)
+    panes.delete('A')
+    assert.equal(d.quietEverywhere(9_999), false)             // an in-hub session's check dies with the hub
+    panes.add('A'); busy.add('A')
+    assert.equal(d.quietEverywhere(9_999), false)             // a pane mid-turn could lose a reply in the gap
   })
   test('a held thread also blocks a self-restart', () => {
     const { d, inbox } = setup()
     d.task('A', 'a', 0); inbox('A')
-    d.hold('A', 9_999)
+    d.hold('A')
     assert.equal(d.quietEverywhere(9_999), false)
   })
   test('a thread waiting for a slot can be held, and leaves the queue until release', () => {
     const { d, started, inbox } = setup({ max: 1, saved: { B: 'old' } })
     d.task('A', 'a', 0); inbox('A')
     assert.equal(d.task('B', 'b', 0), 'queued')
-    assert.deepEqual(d.hold('B', 9_999), { id: 'old' })
+    assert.deepEqual(d.hold('B'), { id: 'old' })
     assert.deepEqual(d.status(0).waiting, [])
     assert.equal(started.length, 1)
   })
 })
 
-describe('a session with a repeating check stays open', () => {
-  const H = 3600_000
-  const at = (h: number) => new Date(Date.UTC(2026, 10, 1) + h * H).toISOString()
-  const made = (id: string, h: number, kind = 'recurring') => ({ timestamp: at(h), text: `Scheduled ${kind} job ${id} (*/5 * * * *). Next run: ...` })
-  const cancelled = (id: string, h: number) => ({ timestamp: at(h), text: `Cancelled job ${id}.` })
-  const t0 = Date.parse(at(0))
-
-  test('a job made by the running process counts until it is cancelled', () => {
-    assert.deepEqual(liveCronJobs([made('aa11', 1)], t0, t0 + 2 * H), ['aa11'])
-    assert.deepEqual(liveCronJobs([made('aa11', 1), cancelled('aa11', 2)], t0, t0 + 3 * H), [])
-  })
-  test('a job made before this process started died with the old one', () => {
-    assert.deepEqual(liveCronJobs([made('aa11', 1)], t0 + 2 * H, t0 + 3 * H), [])
-  })
-  test('a recurring job expires after 7 days, a one-shot after a day', () => {
-    assert.deepEqual(liveCronJobs([made('aa11', 1)], t0, t0 + 7 * 24 * H + 2 * H), [])
-    assert.deepEqual(liveCronJobs([made('bb22', 1, 'one-shot')], t0, t0 + 3 * H), ['bb22'])
-    assert.deepEqual(liveCronJobs([made('bb22', 1, 'one-shot')], t0, t0 + 26 * H), [])
-  })
-})
-
 describe('switching runtime without closing the panes that run', () => {
-  const fake = (name: string, calls: string[]): Windows => ({
+  const fake = (name: string, calls: string[]): Runner => ({
     start: k => { calls.push(`${name} start ${k}`) },
     stop: k => { calls.push(`${name} stop ${k}`) },
     lastActivity: () => (name === 'pane' ? 1 : 2),
     busy: () => name === 'pane',
+    ...(name === 'pane' ? { outlivesHub: () => true } : {}),
   })
   test('a thread whose pane still runs stays in it; anything started from now on runs on the new runtime', () => {
     const calls: string[] = []
-    const w = mixWindows(fake('pane', calls), fake('sdk', calls), new Set(['A', 'C']))
+    const w = mixRunners(fake('pane', calls), fake('sdk', calls), new Set(['A', 'C']))
     w.start('C', 'id-c')          // a pane that died on its own: never restarted as a pane
     assert.equal(w.busy('C'), false)
     calls.length = 0
     assert.equal(w.busy('A'), true)
     assert.equal(w.lastActivity('A'), 1)
+    assert.equal(w.outlivesHub!('A'), true)     // a pane survives a hub restart
+    assert.equal(w.outlivesHub!('B'), false)    // a session on the new runtime does not
     assert.equal(w.busy('B'), false)
     w.start('B', 'id-b')
     w.stop('A')                   // the pane closes

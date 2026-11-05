@@ -28,12 +28,12 @@ describe('the store', () => {
   })
   test('threads.json from before the store is imported once, keys and session ids unchanged', () => {
     const s = openStore(':memory:')
-    const old = { 'C1:5.5': 'id-1', dm: 'id-2', 'mail:<r@x>': 'id-3', 'C1:5.5#side-6.6': 'id-5', junk: 'id-6' }
+    const old = { 'C1:5.5': 'id-1', dm: 'id-2', 'mail:<r@x>': 'id-3', 'wa:91@c.us': 'id-4', 'C1:5.5#side-6.6': 'id-5', junk: 'id-6' }
     const r = s.importThreads(old, DM, 50)
-    assert.deepEqual(r, { imported: 4, skipped: ['junk'] })
-    assert.deepEqual(s.sessions(), { 'C1:5.5': 'id-1', dm: 'id-2', 'mail:<r@x>': 'id-3', 'C1:5.5#side-6.6': 'id-5' })
+    assert.deepEqual(r, { imported: 5, skipped: ['junk'] })
+    assert.deepEqual(s.sessions(), { 'C1:5.5': 'id-1', dm: 'id-2', 'mail:<r@x>': 'id-3', 'wa:91@c.us': 'id-4', 'C1:5.5#side-6.6': 'id-5' })
     assert.equal(s.conversation('dm')?.conversation.chat, DM)
-    assert.equal(s.conversation('mail:<r@x>')?.conversation.connector, 'email')
+    assert.equal(s.conversation('wa:91@c.us')?.conversation.connector, 'whatsapp')
     // A second import changes nothing that is already there.
     s.saveSessions({ ...s.sessions(), 'C1:5.5': 'id-new' })
     s.importThreads(old, DM, 60)

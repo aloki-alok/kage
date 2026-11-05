@@ -22,14 +22,24 @@ export function newLines(file: string, offset: number): { lines: string[]; offse
   return { lines: buf.subarray(0, end).toString('utf8').split('\n').filter(Boolean), offset: offset + end + 1 }
 }
 
-// What the task asked, what Kage said and did. Everything else gives undefined.
 const MAX = 120
 const short = (s: string) => {
   const first = s.trim().split('\n')[0]!.trim()
   return first.length > MAX ? `${first.slice(0, MAX - 1)}…` : first
 }
-const tag = (label: string, text: string) => `${label.padEnd(5)} ${short(text)}`
+const tag = (label: string, text: string) => `${label.padEnd(5)} ${short(text)}`.trimEnd()
+// mcp__claude_ai_Slack__slack_read_thread reads as "slack read thread": the tool's own name, in words.
+const toolName = (name: string) => name.startsWith('mcp__') ? name.slice(name.lastIndexOf('__') + 2).replaceAll('_', ' ') : name
 
+// When the line was written, so a backlog shows when each step ran rather than when it was read.
+export function stepTime(raw: string): number | undefined {
+  try {
+    const t = Date.parse((JSON.parse(raw) as { timestamp?: string }).timestamp ?? '')
+    return Number.isNaN(t) ? undefined : t
+  } catch { return undefined }
+}
+
+// What the task asked, what Kage said and did. Everything else gives undefined.
 export function transcriptLine(raw: string): string | undefined {
   let r: { type?: string; message?: { content?: unknown } }
   try { r = JSON.parse(raw) } catch { return undefined }
@@ -46,7 +56,7 @@ export function transcriptLine(raw: string): string | undefined {
     else if (r.type === 'assistant' && b.type === 'tool_use' && b.name) {
       const i = b.input ?? {}
       if (/^mcp__(plugin_kage_)?kage__reply$/.test(b.name)) out.push(tag('reply', String(i.text ?? '')))
-      else out.push(tag(b.name.replace(/^mcp__(plugin_\w+?_)?/, ''), String(i.description ?? i.command ?? i.file_path ?? i.pattern ?? i.prompt ?? i.url ?? '')))
+      else out.push(tag(toolName(b.name), String(i.description ?? i.command ?? i.file_path ?? i.pattern ?? i.prompt ?? i.url ?? '')))
     } else if (r.type === 'user' && b.type === 'tool_result' && b.is_error) {
       const c = b.content
       out.push(tag('error', typeof c === 'string' ? c : Array.isArray(c) ? c.map(x => x?.text ?? '').join('') : ''))

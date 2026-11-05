@@ -33,13 +33,13 @@ export function scheduler(o: {
     add(key: string, j: Pick<Schedule, 'id' | 'cron' | 'prompt' | 'recurring'>, now: number): string | undefined {
       try { parseCron(j.cron) } catch (e) { return (e as Error).message }
       if (!nextRun(j.cron, new Date(now), RUNS_WITHIN)) return `${j.cron} never runs`
-      // ponytail: Slack threads only; email needs their own reply path for a run with no message.
+      // ponytail: Slack threads only; email and WhatsApp need their own reply path for a run with no message.
       if (store.conversation(key)?.conversation.connector !== 'slack') return 'schedules work in Slack threads only'
       if (this.list(key).length >= PER_THREAD) return `this thread already has ${PER_THREAD} schedules`
       store.addSchedule({ ...j, key, fromOwner: o.trusted(key), created: now, lastFired: 0 })
       log('scheduled', j.id, j.cron, 'for', key)
     },
-    // Jobs moved out of tmux panes (export-crons.ts) when they stopped. `ranUntil` is when the export
+    // Jobs moved out of tmux panes (cli/export-crons.ts) when they stopped. `ranUntil` is when the export
     // read them: every run before it already happened in the pane, every run after it is the hub's.
     adopt(jobs: (Pick<Schedule, 'id' | 'key' | 'cron' | 'prompt' | 'recurring' | 'fromOwner' | 'created'>)[], ranUntil: number) {
       const adopted: string[] = [], skipped: string[] = []

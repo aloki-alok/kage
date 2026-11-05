@@ -20,9 +20,10 @@ Paste this into Claude Code (or any coding agent with a shell):
 
 ```text
 Set up Kage for me: https://github.com/aloki-alok/kage
-Clone it into ~/kage, then follow its AGENTS.md from start to finish.
+Install it with: curl -fsSL https://raw.githubusercontent.com/aloki-alok/kage/main/install.sh | bash
+Then follow AGENTS.md in ~/.local/share/kage from start to finish.
 Do every step yourself, and stop only for the steps it marks for me.
-Finish when ./setup.sh doctor ends with "All good".
+Finish when kage doctor ends with "All good".
 ```
 
 Your agent does the work. You only do what a person has to do:
@@ -42,10 +43,11 @@ The rest of this page is for doing it by hand, and for knowing how it works.
 
 ## Set it up by hand (about 5 minutes)
 
-1. Clone and run the setup script:
+1. Install it. One line, no git needed: it downloads Kage, puts the `kage` command on your PATH, and starts the setup.
    ```sh
-   git clone https://github.com/aloki-alok/kage && cd kage && ./setup.sh
+   curl -fsSL https://raw.githubusercontent.com/aloki-alok/kage/main/install.sh | bash
    ```
+   Run the same line again later to update. Your settings stay.
 2. Pick a name when asked. `kage` is the default. Whatever you pick becomes the `@name` you tag.
 3. A browser tab opens with your Slack app already filled in. Pick your workspace, then click **Next** and **Create**.
 4. Under **Basic Information > App-Level Tokens**, click **Generate**, add the scope `connections:write`, and copy the token (`xapp-...`).
@@ -55,22 +57,27 @@ The rest of this page is for doing it by hand, and for knowing how it works.
 ## Start it
 
 ```sh
-./start.sh
+kage start
 ```
 
 The first start installs the Agent SDK, then Kage runs in the background with no screens to confirm. Each Slack thread gets its own Claude Code session inside it.
 
+`kage` alone says whether Kage is running and lists every command. `kage help <command>` shows one with an example, and a mistyped command gets the closest real one.
+
 | To | Run |
 |---|---|
-| Check every part | `./setup.sh doctor` (each problem comes with its fix) |
-| See what it's doing | `./setup.sh top`: every live thread, its state and its live feed, by mouse or keys |
-| Start at login (macOS) | `./autostart.sh on` (`off` undoes it) |
-| Stop it | `tmux kill-session -t <name>` |
-| Restart after changing code or settings | stop it, then `./start.sh`. Thread sessions resume their conversations on their next tag. |
+| Check every part | `kage doctor` prints the command that fixes each problem |
+| See every session live | `kage top`, by mouse or keys. `kage status` prints one look. |
+| Follow every step as it happens | `kage watch`, or `kage watch support` for one place |
+| Work in a thread yourself | `kage attach <place>`. You get it at once (a running turn stops, as with Esc), and Kage gets it back when you quit. |
+| Read the hub log | `kage logs`, or `kage logs 500` |
+| Pick up a changed setting | `kage restart` |
+| Stop it | `kage stop`. Each thread resumes its conversation on its next tag. |
+| Start at login (macOS) | `kage autostart on` (`off` undoes it) |
 
 ### Run threads as tmux panes instead
 
-Add `KAGE_RUNTIME=tmux` to `~/.config/kage/env` and restart to give each thread a Claude Code pane you can watch with `tmux attach -t <name>`. Panes talk to Kage through channels, a research-preview feature: on Team and Enterprise an org Owner turns Channels on under [Organization settings > Claude Code > Channels](https://claude.ai/admin-settings/claude-code). Each new pane shows a warning screen for custom channels until your org approves Kage:
+Add `KAGE_RUNTIME=tmux` to `~/.config/kage/env`, then `kage stop` and `kage start`, to give each thread a Claude Code pane you can watch with `tmux attach -t <name>`. Panes talk to Kage through channels, a research-preview feature: on Team and Enterprise an org Owner turns Channels on under [Organization settings > Claude Code > Channels](https://claude.ai/admin-settings/claude-code). Each new pane shows a warning screen for custom channels until your org approves Kage:
 
 1. An org Owner opens [Claude Code admin settings](https://claude.ai/admin-settings/claude-code), finds managed settings, and adds:
    ```json
@@ -82,7 +89,7 @@ Add `KAGE_RUNTIME=tmux` to `~/.config/kage/env` and restart to give each thread 
    claude plugin marketplace add "$PWD" && claude plugin install kage@kage
    ```
    The plugin's server starts in every Claude Code session, but only the panes Kage opens for its threads take tasks. Your other sessions stay idle.
-3. Add `KAGE_ROUTE=plugin` to `~/.config/kage/env`, stop Kage, and run `./start.sh` again.
+3. Add `KAGE_ROUTE=plugin` to `~/.config/kage/env`, run `kage stop`, then `kage start`.
 
 Your laptop must be on, awake and online. `start.sh` stops a Mac from idling to sleep with `caffeinate`, but closing the lid still sleeps it unless the Mac is plugged into a display.
 
@@ -96,24 +103,24 @@ Your laptop must be on, awake and online. `start.sh` stops a Mac from idling to 
 
 ### One session per thread
 
-Each thread gets its own Claude Code session, in its own pane of the `threads` tmux window, so a new tag never interrupts work in another thread. The panes tile, so you can watch up to 4 at once. A follow-up in the same thread goes to the same session, with everything it already knows. Your top-level DMs with the bot share one session.
+Each thread gets its own Claude Code session, so a new tag never interrupts work in another thread. A follow-up in the same thread goes to the same session, with everything it already knows. Your top-level DMs with the bot share one session. Run `kage top` to see every session live.
 
 - **Restarts keep the context.** Each thread keeps its conversation id for good. If Claude Code exits, Kage restarts, or your Mac reboots, the thread's next tag resumes the same conversation.
 - **At most 4 sessions run at once.** A tag over the limit gets ⏳ and starts when a session frees up.
-- **Idle panes close after 30 minutes** with no activity, unless Claude is still working, a background agent or shell is running, a repeating check it set up (a cron) is still live, or it waits on your approval. Nothing keeps running. The conversation stays on disk, and the next tag in that thread reopens it with its full history.
+- **Idle sessions close after 30 minutes** with no activity, unless Claude is still working, a background agent or shell is running, a repeating check it set up (a cron) is still live, or it waits on your approval. Nothing keeps running. The conversation stays on disk, and the next tag in that thread reopens it with its full history.
 - **Old threads clean themselves up.** Claude Code deletes transcripts after 30 days (its `cleanupPeriodDays` setting). Kage then forgets that thread, and a new tag there starts fresh.
 
-To change the limits, add `KAGE_MAX_SESSIONS=6` or `KAGE_IDLE_MINUTES=15` to `~/.config/kage/env`, then restart Kage.
+To change the limits, add `KAGE_MAX_SESSIONS=6` or `KAGE_IDLE_MINUTES=15` to `~/.config/kage/env`, then restart Kage. Every setting is in [the settings reference](docs/settings.md).
 
 ### Let a teammate tag it
 
 ```sh
-./setup.sh teammate add dana      # a name, @handle, Slack member id, or a pasted mention
-./setup.sh teammate remove dana
-./setup.sh teammate list
+kage teammate add priya      # a name, @handle, Slack member id, or a pasted mention
+kage teammate remove priya
+kage teammate list
 ```
 
-It finds the person in your workspace, updates `~/.config/kage/env`, and restarts the router, which takes about 10 seconds. Running sessions keep going. If a name matches two people, it lists both with their ids, so you can pick one.
+It finds the person in your workspace, updates `~/.config/kage/env`, and restarts the hub, which takes about 10 seconds. Open sessions resume on their next tag. If a name matches two people, it lists both with their ids, so you can pick one.
 
 A teammate can tag `@kage` only in a conversation you are also in, because Kage hears Slack through your account. Their tasks run in your session, with two limits:
 
@@ -126,11 +133,11 @@ You get 🥷 on your message when Kage picks it up. Then 🗡️ means a quick a
 
 ## How it works
 
-<p align="center"><img src="docs/how-it-works.svg" alt="Slack sends your message over Socket Mode to server.ts on your machine, which checks it is from you and hands it to your Claude Code session; Claude replies in the same thread" width="880"></p>
+<p align="center"><img src="docs/how-it-works.svg" alt="Slack sends your message over Socket Mode to the Kage hub on your machine, which checks it is from you and hands it to your Claude Code session; Claude replies in the same thread" width="880"></p>
 
 1. **Slack to your machine.** Kage opens an outbound websocket to Slack ([Socket Mode](https://api.slack.com/apis/socket-mode)), so Slack never needs to reach your laptop. No public URL, no open port.
-2. **The gate.** `router.ts` hears every message in conversations you're in (through your user token), and drops everything except messages you typed that tag `@kage`, or your DMs to the bot.
-3. **Into Claude Code.** The router hands the task to that thread's own session (starting it if needed) through the Agent SDK, or through Claude Code's [channels](https://code.claude.com/docs/en/channels-reference.md) feature for tmux panes. Other people's messages arrive quoted and labelled by Slack ID, as background, never as instructions.
+2. **The gate.** The hub (`router.ts`) hears every message in conversations you're in (through your user token, in `connectors/slack.ts`). The gate (`core/gate.ts`) drops everything except messages you typed that tag `@kage`, or your DMs to the bot.
+3. **Into Claude Code.** The hub hands the task to that thread's own session (starting it if needed) through the Agent SDK, or through Claude Code's [channels](https://code.claude.com/docs/en/channels-reference.md) feature for tmux panes. Other people's messages arrive quoted and labelled by Slack ID, as background, never as instructions.
 4. **Back to Slack.** Claude answers with Kage's `reply` tool, in the thread the task came from.
 
 ### Approvals from your phone
@@ -140,7 +147,7 @@ When Claude needs your permission (an edit, a risky command), the prompt also co
 ```mermaid
 sequenceDiagram
     participant C as Claude Code
-    participant K as server.ts
+    participant K as Kage hub
     participant S as Your DM with Kage
     C->>K: permission request "abcde": Bash git push
     K->>S: Approve? Bash: git push origin fix/x ... Reply "yes abcde" or "no abcde"
@@ -168,39 +175,19 @@ Kage acts with your full Claude Code permissions. Keep your usual permission set
 
 ## Troubleshooting
 
-Start with `./setup.sh doctor`. It checks the tools, the tokens, the Agent SDK (or, for tmux panes, the plugin and the org approval), the session and the Slack connection, and prints the fix for each failure.
+Start with `kage doctor`. It checks the tools, the tokens, the Agent SDK (or, for tmux panes, the plugin and the org approval), the session and the Slack connection, and prints the fix for each failure.
 
 | You see | Do this |
 |---|---|
-| No 🥷 on your message | Check that Kage is running: `tmux ls`. Then `tmux attach -t <name>` and look for an error. |
+| No 🥷 on your message | Run `kage status`. If Kage is stopped, `kage start`. If it runs, `kage logs` shows the error. |
 | "Channels are not enabled for your org" in the session | An org Owner turns on Channels in [Claude Code admin settings](https://claude.ai/admin-settings/claude-code), then you restart Kage. |
-| 🥷 appears but no ⚔️ or answer | Attach and look at the thread's pane in the `threads` window. Claude may be waiting on a permission prompt or still working. |
-| ⚠️ on your message | Its session did not start or connect within 3 minutes. Attach and look at the `router` window's log. |
+| 🥷 appears but no ⚔️ or answer | Run `kage top` and open the thread: Claude may be waiting on a permission prompt or still working. |
+| ⚠️ on your message | Its session did not start or connect within 3 minutes. `kage logs` shows why. |
 | ⏳ on your message | All sessions are busy. It starts when one frees up (`KAGE_MAX_SESSIONS` raises the limit). |
 | `@kage` isn't suggested when you type | The bot's display name differs. Plain-text `@kage` still works. To rename it: **App Home > App Display Name**, then reinstall the app. |
 | Replies show as you, marked "Kage:" | The bot isn't in that conversation (a DM or private channel), so Kage posts with your token. Invite the bot to the channel to change that. |
-| Router errors | Attach and open the `router` window: it shows the router's log. A healthy start prints `listening as ...`. |
+| Hub errors | `kage logs` prints the hub's log. A healthy start prints `listening as ...`. |
 
 ## Develop
 
-```sh
-npm ci              # once, for the tests, the type check and the build
-npm test            # gate and formatting rules (node --test)
-npm run typecheck   # tsc --noEmit
-```
-
-| File | What it holds |
-|---|---|
-| `core/` | Pure rules, all tested: the gate (who may drive it), which session gets a task, what may go out (mentions, secrets, message splitting), ledgers, hook guards. |
-| `connectors/` | Where Kage hears from: Slack (the one Socket Mode connection) and email. Each turns a message into a task. |
-| `runtime/` | Where sessions run: one Agent SDK session per thread inside the hub (or one tmux pane each), and the local socket panes connect to. |
-| `router.ts` | The hub: wires connectors, the dispatcher and the runtime together. |
-| `server.ts` | The channel inside each thread's session: tasks in from the hub, the reply, edit and delete tools, approval relay. |
-| `config.ts` | Reads the env file and makes the Slack clients. |
-| `teammate.ts` | `./setup.sh teammate list, add, remove`. |
-| `manifest.ts` | The Slack app manifest for your chosen name. |
-| `AGENTS.md` | The setup and run steps for a coding agent, each with its check. `CLAUDE.md` points Claude Code to it. |
-| `setup.sh` | Setup steps (`check`, `app`, `save`), `doctor`, which checks the whole install, and `teammate`. With no argument it walks a person through setup. |
-| `start.sh`, `autostart.sh` | Starting the router in tmux (with restarts), and starting at login. |
-| `dist/` | `server.ts` and `router.ts` bundled (`npm run build`), so the plugin needs no `npm install`. Rebuild and commit it after changing either. |
-| `.claude-plugin/`, `.mcp.json` | The plugin and marketplace manifests for the no-prompt route. |
+The code map, the tests and the build are in [CONTRIBUTING.md](CONTRIBUTING.md).

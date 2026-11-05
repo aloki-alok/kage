@@ -3,19 +3,18 @@
 // holds a string to every live thread; ended threads are one dim row each. It reads the store and the
 // transcripts, asks the hub for live state over its socket, and acts only through the hub. It never
 // starts a hub. Mouse works on every row.
-//   ./setup.sh top           the console (q quits)
-//   ./setup.sh top --once    print one settled frame and exit (COLUMNS and LINES set its size)
+//   kage top           the console (q quits)
+//   kage top --once    print one settled frame and exit (COLUMNS and LINES set its size)
 import { spawnSync } from 'node:child_process'
 import { existsSync, readFileSync, statSync } from 'node:fs'
 import { connect, type Socket } from 'node:net'
 import { dirname } from 'node:path'
 import { DatabaseSync } from 'node:sqlite'
-import { ago, boardRows, nextRuns, watchingNext, whenLabel, type Live, type Row, type State } from './core/board.ts'
-import { assignAnchors, filterRows, hit, layout, moreLine, STRING, type Layout } from './core/loom.ts'
-import { HAND_BIG, HAND_SMALL } from './hand.ts'
-import { newLines, transcriptLine } from './core/transcript.ts'
-import { HERO_BIG, HERO_SMALL } from './hero.ts'
-import { schedulesIn } from './runtime/store.ts'
+import { ago, boardRows, nextRuns, watchingNext, whenLabel, type Live, type Row, type State } from '../core/board.ts'
+import { filterRows, hit, layout, moreLine, STRING, type Layout } from '../core/loom.ts'
+import { newLines, transcriptLine } from '../core/transcript.ts'
+import { HERO_BIG, HERO_SMALL } from '../core/hero.ts'
+import { schedulesIn } from '../runtime/store.ts'
 
 const HOME = process.env.HOME!
 const DIR = dirname(process.env.KAGE_ENV || `${HOME}/.config/kage/env`)
@@ -96,9 +95,7 @@ function follow(key: string) {
 const prevState = new Map<string, State>()
 const sinceState = new Map<string, number>()
 const lastY = new Map<string, number>()
-let cuts: { from: [number, number]; y: number; t0: number }[] = []
-let layoutKey = ''
-const lastTie = new Map<string, [number, number]>()   // where each live string last left the hand
+let cuts: { y: number; t0: number }[] = []
 
 function rebuild() {
   const rows = filterRows(board, query)
@@ -118,7 +115,7 @@ function refresh(now: number) {
   if (live) {
     for (const r of board) {
       const p = prevState.get(r.key)
-      if (p && p !== 'closed' && r.state === 'closed' && lastY.has(r.key) && lastTie.has(r.key)) cuts.push({ from: lastTie.get(r.key)!, y: lastY.get(r.key)!, t0: now })
+      if (p && p !== 'closed' && r.state === 'closed' && lastY.has(r.key)) cuts.push({ y: lastY.get(r.key)!, t0: now })
       if (p !== r.state) sinceState.set(r.key, now)
       prevState.set(r.key, r.state)
     }
@@ -262,7 +259,7 @@ function string(pts: [number, number, string][], kind: string, t: number, i: num
   }
 }
 
-// A cut string splits at its middle: the hand's half draws back, the other half falls as dust.
+// A cut string splits at its middle: the star's half draws back, the other half falls as dust.
 function cutString(pts: [number, number, string][], t: number, t0: number) {
   const n = pts.length, e = clamp((t - t0) / 1600), mid = Math.floor(n / 2)
   for (let j = 0; j < Math.floor(mid * (1 - e)); j++) put(pts[j]![0], pts[j]![1], pts[j]![2], 'm')
@@ -285,42 +282,24 @@ function glitch(t: number) {
 // ---- one frame
 
 const TONE: Record<string, string> = { red: 'R', gold: 'G', white: 'w', muted: 'm', dim: 'd' }
-const tz = () => ' ' + (new Intl.DateTimeFormat('en', { timeZoneName: 'short' }).formatToParts().find(p => p.type === 'timeZoneName')?.value ?? '')
+const tz = () => ` ${new Intl.DateTimeFormat([], { timeZoneName: 'short' }).formatToParts(new Date()).find(p => p.type === 'timeZoneName')?.value ?? ''}`
 const WORD = ['█▄▀ ▄▀█ █▀▀ █▀▀', '█ █ █▀█ █▄█ ██▄']
 function rowLabel(r: Row, now: number) {
   return r.state === 'watching' ? `next ${whenLabel(r.next, now)}` : r.state === 'quiet' ? ago(r.ageMs) : r.label
-}
-
-// The hand: God's hand, in braille, reaching from Kage. Every live string is tied to a fingertip. A
-// working finger tugs one cell back as its pulse leaves; a fingertip that asks glows gold; at rest
-// the fingers sway.
-const HANDS = { big: HAND_BIG, small: HAND_SMALL }
-function drawHand(l: Layout, art: typeof HAND_BIG, t: number, since: number, ties: { col: number; row: number; tug: boolean; glow: boolean }[], bob: (c: number) => number) {
-  const hand = l.hand!
-  art.chars.forEach((line, r) => [...line].forEach((ch, c) => {
-    if (ch === ' ' || since < 500 + c * 12) return
-    let dx = 0, k = 'w'
-    for (const tie of ties) {
-      if (Math.abs(c - tie.col) > 4 || Math.abs(r - tie.row) > 2) continue
-      if (tie.tug) dx = -1
-      if (tie.glow && Math.abs(c - tie.col) <= 2 && Math.abs(r - tie.row) <= 1) k = Math.floor(t / 450) % 2 ? 'G' : 'g'
-    }
-    put(hand.x + c + dx, hand.y + r + bob(c), ch, k)
-  }))
 }
 
 function frame(t: number, since: number): string[] {
   const now = Date.now()
   clear()
   WORD.forEach((l, i) => put(2, 1 + i, l, 'W'))
-  const clock = live ? `${live.live.length} of ${live.max} strings · ${new Date(now).toTimeString().slice(0, 5)}${tz()}` : existsSync(SOCK) ? 'no live state' : 'hub offline'
-  put(W - clock.length - 2, 1, clock, 'm')
-  const asks = board.filter(r => r.state === 'asking').length
-  if (asks) { const a = `◆ ${asks} thread${asks === 1 ? ' waits' : 's wait'} on you`; put(W - a.length - 2, 2, a, Math.floor(t / 450) % 2 ? 'G' : 'g') }
 
   const l = layout(W, H, view.live.map(r => r.key), view.ended.map(r => r.key))
-  if (layoutKey !== `${l.mode}${W}x${H}`) { layoutKey = `${l.mode}${W}x${H}`; lastTie.clear() }   // old tie points are stale after a resize
   L = l
+  // The header ends where the rows end, so it reads as the list's title.
+  const clock = live ? `${live.live.length} of ${live.max} strings · ${new Date(now).toTimeString().slice(0, 5)}${tz()}` : existsSync(SOCK) ? 'no live state' : 'hub offline'
+  put(l.right - clock.length + 1, 1, clock, 'm')
+  const asks = board.filter(r => r.state === 'asking').length
+  if (asks) { const a = `◆ ${asks} thread${asks === 1 ? ' waits' : 's wait'} on you`; put(l.right - a.length + 1, 2, a, Math.floor(t / 450) % 2 ? 'G' : 'g') }
   const visible = [...l.live, ...l.ended].map(r => r.key)
   if (!visible.includes(selKey)) selKey = visible[0] ?? ''
   const active = hover ?? selKey
@@ -329,46 +308,23 @@ function frame(t: number, since: number): string[] {
   for (const r of l.live) lastY.set(r.key, r.y)
 
   if (l.hero) drawHero(l, t, since)
-  const hand = l.hand
-  const art = hand ? HANDS[l.mode as 'big' | 'small'] : undefined
+  const star = l.star
   const p = l.hero ? clamp((since - 900) / 500) : 1, ease = p * p * (3 - 2 * p)
   const cx = l.hero ? l.hero.x + l.hero.cols / 2 : 0, cy = l.hero ? l.hero.y + l.hero.rows / 2 : 0
-  // Fingertips: each live row's string is tied to one; a row past the last tip starts below the hand, in row order.
-  const absA = art ? (art.anchors as [number, number][]).map(([x, y]) => [hand!.x + x + 1, hand!.y + y] as [number, number]) : []
-  const idx = art ? assignAnchors(absA, l.live.map(r => r.y), l.lx - 2) : []
-  const resting = !l.live.some(pos => ['working', 'asking', 'starting'].includes(byKey.get(pos.key)!.state))
-  const bob = (c: number) => (art && resting && c >= art.chars[0]!.length * 0.4 && Math.sin(t / 1100) > 0.4 ? 1 : 0)
-  const ties = l.live.map((pos, i) => {
-    const r = byKey.get(pos.key)!
-    const [ax, ay] = idx[i] ?? [0, 0]
-    const col = ax - (hand ? hand.x + 1 : 0), row = ay - (hand ? hand.y : 0)
-    const x = hand ? ax : 0, y = hand ? ay + bob(col) : 0
-    return { col, row, x, y, r, tug: false, glow: r.state === 'asking' }
-  })
-  // The start: the live threads circle Kage, then fly out to their rows as the strings pull tight.
-  const route = ties.map((tie, i) => {
-    const pos = l.live[i]!
-    const a = since / 300 + i * Math.PI * 2 / Math.max(1, l.live.length)
-    const ox = cx + Math.cos(a) * (l.hero ? l.hero.cols * 0.54 : 0), oy = cy + Math.sin(a) * (l.hero ? l.hero.rows * 0.43 : 0)
-    const nx = ox + (l.lx - 2 - ox) * ease, ny = oy + (pos.y - oy) * ease
-    const pts = hand ? path(tie.x, tie.y, nx, ny) : []
-    // A working finger tugs back one cell as its pulse leaves the tip.
-    if (tie.r.state === 'working' && since > 1400 && ((t / 45) + i * 7) % (pts.length + 8) < 3) tie.tug = true
-    return { nx, ny, pts }
-  })
-  if (hand && art && since > 300) drawHand(l, art, t, since, ties, bob)
+  // Every string hangs from the star; it blinks while a thread waits on you.
+  if (star && since > 500) put(star.x, star.y, '✦', asks && Math.floor(t / 450) % 2 ? 'G' : 'g')
   l.live.forEach((pos, i) => {
-    const { r, tug } = ties[i]!
+    const r = byKey.get(pos.key)!
     const style = STRING[r.state]
     const hot = pos.key === active
-    const { nx, ny, pts } = route[i]!
-    if (hand && since > 500) {
-      const sx = ties[i]!.x - (tug ? 1 : 0)
-      const real = tug ? path(sx, ties[i]!.y, nx, ny) : pts
-      string(real, hot ? 'blink' : style.kind, t, i, sinceState.get(pos.key) ?? boot, since)
+    if (star && since > 500) {
+      // The start: the live threads circle Kage, then fly out to their rows as the strings pull tight.
+      const a = since / 300 + i * Math.PI * 2 / Math.max(1, l.live.length)
+      const ox = cx + Math.cos(a) * l.hero!.cols * 0.54, oy = cy + Math.sin(a) * l.hero!.rows * 0.43
+      const nx = ox + (l.lx - 2 - ox) * ease, ny = oy + (pos.y - oy) * ease
+      string(path(star.x + 1, star.y, nx, ny), hot ? 'blink' : style.kind, t, i, sinceState.get(pos.key) ?? boot, since)
       put(nx, ny, style.glyph, TONE[style.tone]!)
-      lastTie.set(pos.key, [ties[i]!.x, ties[i]!.y])
-    } else if (!hand) put(l.lx - 2, pos.y, style.glyph, TONE[style.tone]!)
+    } else if (!star) put(l.lx - 2, pos.y, style.glyph, TONE[style.tone]!)
     if (p < 1) return
     const tone = TONE[style.tone]!
     if (hot) put(l.lx - 4, pos.y, '▶', 'R')
@@ -380,7 +336,7 @@ function frame(t: number, since: number): string[] {
       if (step) put(l.lx, pos.y + 1, clip(step.text, l.right - l.lx), 'm')
     }
   })
-  for (const c of cuts) if (hand) cutString(path(c.from[0], c.from[1], l.lx - 2, c.y), t, c.t0)
+  for (const c of cuts) if (star) cutString(path(star.x + 1, star.y, l.lx - 2, c.y), t, c.t0)
   if (p >= 1) {
     if (l.ended.length) put(l.lx - 2, l.sepY, '─'.repeat(Math.max(0, l.right - l.lx + 3)), 'k')
     for (const pos of l.ended) {
@@ -504,7 +460,8 @@ process.stdout.on('resize', () => { process.stdout.write(`${BG}\x1b[2J`); draw()
 
 const say = (m: string) => { message = m; messageAt = Date.now() }
 const CUT_WHY = { closed: 'it is not running', starting: 'it is still starting', busy: 'it is working', asking: 'it waits on your approval' } as const
-const ATTACH_WHY: Partial<Record<State, string>> = { working: 'it is working', asking: 'it waits on your approval', starting: 'it is starting', held: 'it is already open in a terminal', watching: 'a timed check is running in it' }
+// Attach takes any running session at once (it stops a turn, like Esc); only one terminal may hold it.
+const ATTACH_WHY: Partial<Record<State, string>> = { held: 'it is already open in a terminal' }
 const placeOf = (key: string) => known.find(k => k.key === key)?.place ?? key
 
 async function cut(key: string) {

@@ -6,7 +6,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { Dispatcher } from '../core/sessions.ts'
 import type { Task, ToSession } from './protocol.ts'
-import { listenForSessions, restoreHolds } from './session-link.ts'
+import { listenForSessions, restoreHolds, routeReply } from './session-link.ts'
 
 const task = (content: string): Task => ({ type: 'task', content, fromOwner: true, meta: { channel: 'C1', thread_ts: '5.5', place: '#g', permalink: '' }, origin: { channel: 'C1', ts: '5.5' } })
 const until = async (ok: () => boolean) => { for (let i = 0; i < 100 && !ok(); i++) await new Promise(r => setTimeout(r, 10)) }
@@ -18,7 +18,7 @@ test('a terminal holds a thread for as long as it stays connected, then hands it
     { max: 2, idleMs: 9e9, connectMs: 9e9, evictMs: 0, newId: () => 'id1', saved: { A: 'id1' } },
   )
   const sock = join(mkdtempSync(join(tmpdir(), 'kage-link-')), 's.sock')
-  const server = listenForSessions(sock, d, { mail: () => {}, failed: () => {}, schedules: { add: () => undefined, remove: () => {} } })
+  const server = listenForSessions(sock, d, { mail: () => {}, wa: () => {}, voice: () => {}, failed: () => {}, schedules: { add: () => undefined, remove: () => {} } })
   await until(() => server.listening)
 
   const c = connect(sock)
@@ -76,7 +76,7 @@ test('a hold outlives a hub restart: the new hub holds the thread before any tas
   restoreHolds(dir, two.d, Date.now())
   assert.equal(two.d.task('A', task('during restart'), 0), 'held')
   assert.equal(two.d.task('B', task('b'), 0), 'starting')   // the dead terminal's hold was dropped
-  const s2 = listenForSessions(sock, two.d, { mail: () => {}, failed: () => {}, schedules: { add: () => undefined, remove: () => {} } })
+  const s2 = listenForSessions(sock, two.d, { mail: () => {}, wa: () => {}, voice: () => {}, failed: () => {}, schedules: { add: () => undefined, remove: () => {} } })
   await until(() => s2.listening)
   const other = await ask('A', 12345)
   assert.equal(other.reply.refused, 'held')   // another terminal may not take it
@@ -99,7 +99,7 @@ test("a session's schedule always lands in its own thread, whatever key the mess
   const removed: string[] = []
   const sock = join(mkdtempSync(join(tmpdir(), 'kage-link-')), 's.sock')
   const server = listenForSessions(sock, d, {
-    mail: () => {}, failed: () => {},
+    mail: () => {}, wa: () => {}, voice: () => {}, failed: () => {},
     schedules: { add: (key, j) => { added.push(`${key} ${j.id} ${j.cron}`); return undefined }, remove: (key, id) => { removed.push(`${key} ${id}`) } },
   })
   await until(() => server.listening)
@@ -125,7 +125,7 @@ test('the console reads the live board and stops a quiet session over the socket
   d.task('B', task('b'), 0)
   d.connect('B', () => {})
   const sock = join(mkdtempSync(join(tmpdir(), 'kage-link-')), 's.sock')
-  const server = listenForSessions(sock, d, { mail: () => {}, failed: () => {}, schedules: { add: () => undefined, remove: () => {} } })
+  const server = listenForSessions(sock, d, { mail: () => {}, wa: () => {}, voice: () => {}, failed: () => {}, schedules: { add: () => undefined, remove: () => {} } })
   await until(() => server.listening)
   const ask = async (m: object, hello?: string) => {
     const c = connect(sock)
@@ -149,4 +149,14 @@ test('the console reads the live board and stops a quiet session over the socket
   await ask({ type: 'stop', key: 'B' }, 'B')
   assert.deepEqual(stopped, ['A'])
   server.close()
+})
+
+test('a voice reply goes only to a voice conversation, and a mail or WhatsApp reply never does', () => {
+  const got: string[] = []
+  const o = { mail: (k: string) => got.push(`mail ${k}`), wa: (k: string) => got.push(`wa ${k}`), voice: (k: string, t: string) => got.push(`voice ${k} ${t}`) }
+  routeReply('voice:abc', { type: 'voice', text: 'hi' }, o)
+  routeReply('mail:<a@b>', { type: 'voice', text: 'x' }, o)
+  routeReply('wa:1', { type: 'voice', text: 'x' }, o)
+  routeReply('voice:abc', { type: 'mail', text: 'x' }, o)
+  assert.deepEqual(got, ['voice voice:abc hi'])
 })

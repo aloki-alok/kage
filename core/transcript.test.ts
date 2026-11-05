@@ -3,7 +3,7 @@ import assert from 'node:assert/strict'
 import { appendFileSync, mkdtempSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { newLines, transcriptLine } from './transcript.ts'
+import { newLines, stepTime, transcriptLine } from './transcript.ts'
 
 const line = (o: object) => JSON.stringify(o)
 const assistant = (...content: object[]) => line({ type: 'assistant', message: { content } })
@@ -36,6 +36,15 @@ test("Kage's own replies, other tools and text each get one short line", () => {
   assert.equal(transcriptLine(assistant({ type: 'tool_use', name: 'Read', input: { file_path: '/a/b.ts' } })), 'Read  /a/b.ts')
   assert.equal(transcriptLine(assistant({ type: 'text', text: 'Looking at it.' })), 'says  Looking at it.')
   assert.equal(transcriptLine(assistant({ type: 'text', text: 'x'.repeat(300) }))!.length, 126)
+})
+test('a tool from another MCP server reads as words, without its server prefix or a trailing gap', () => {
+  assert.equal(transcriptLine(assistant({ type: 'tool_use', name: 'mcp__claude_ai_Slack__slack_read_thread', input: { channel_id: 'C1' } })), 'slack read thread')
+  assert.equal(transcriptLine(assistant({ type: 'tool_use', name: 'mcp__kage__schedule', input: { prompt: 'run the account review' } })), 'schedule run the account review')
+})
+test('a step carries the time it was written, so a backlog shows when each step ran', () => {
+  assert.equal(stepTime(line({ type: 'assistant', timestamp: '2026-11-04T08:30:00.000Z', message: { content: [] } })), Date.parse('2026-11-04T08:30:00.000Z'))
+  assert.equal(stepTime(line({ type: 'assistant', message: { content: [] } })), undefined)
+  assert.equal(stepTime('not json'), undefined)
 })
 test('a failed tool shows; thinking, successful results and bookkeeping lines do not', () => {
   assert.equal(transcriptLine(line({ type: 'user', message: { content: [{ type: 'tool_result', is_error: true, content: 'permission denied' }] } })), 'error permission denied')

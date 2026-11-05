@@ -7,7 +7,7 @@ import { createSdkMcpServer, tool } from '@anthropic-ai/claude-agent-sdk'
 import { Dispatcher } from '../core/sessions.ts'
 import { sessionTools } from './kage-tools.ts'
 import type { Task, ToSession } from './protocol.ts'
-import { sdkWindows } from './sdk-sessions.ts'
+import { sdkSessions } from './sdk-sessions.ts'
 
 // A fake Agent SDK: each query() records its options and the user messages it reads, and the test
 // pushes SDK messages out of it. Its handshake completes unless silent, and then it says nothing
@@ -59,7 +59,7 @@ function setup(o: { transcript?: boolean; silent?: boolean; dmFails?: boolean } 
   }
   const dir = mkdtempSync(join(tmpdir(), 'kage-sdk-'))
   let d!: Dispatcher<ToSession>
-  const s = sdkWindows({
+  const s = sdkSessions({
     sdk: { query: sdk.query as any, createSdkMcpServer, tool },
     hub: () => d,
     tools: (_key, send) => sessionTools({ title: 'Kage', bot: slack as any, user: slack as any, botDm: () => 'DBOT', dir, send, memory: { own: '/own', owner: '/owner' } }),
@@ -70,7 +70,7 @@ function setup(o: { transcript?: boolean; silent?: boolean; dmFails?: boolean } 
     restartMs: 10,
   })
   let n = 0
-  d = new Dispatcher<ToSession>(s.windows, { max: 2, idleMs: 60_000, connectMs: 60_000, evictMs: 1, newId: () => ID.slice(0, -1) + n++ })
+  d = new Dispatcher<ToSession>(s.runner, { max: 2, idleMs: 60_000, connectMs: 60_000, evictMs: 1, newId: () => ID.slice(0, -1) + n++ })
   const task = (o: { fromOwner?: boolean; place?: string; content?: string; channel?: string } = {}): Task => ({
     type: 'task', content: o.content ?? 'Task from Sam: hi', fromOwner: o.fromOwner ?? true,
     meta: { channel: o.channel ?? 'C1', thread_ts: '5.5', place: o.place ?? '#general', permalink: 'https://x/p' },
@@ -90,7 +90,9 @@ describe('Kage sessions on the Agent SDK', () => {
       assert.equal(o.sessionId, `${ID.slice(0, -1)}0`)
       assert.equal(o.resume, undefined)
       assert.ok(o.mcpServers.kage)
-      assert.ok(o.allowedTools.includes('mcp__kage__reply'))
+      // Kage's own tools need no approval, and stay out of allowedTools so the SDK's approval callback still sees every call.
+      assert.ok(!(o.allowedTools ?? []).some((n: string) => n.startsWith('mcp__kage__')))
+      assert.deepEqual(await o.canUseTool('mcp__kage__reply', { text: 'hi' }, { signal: new AbortController().signal }), { behavior: 'allow', updatedInput: { text: 'hi' } })
       assert.deepEqual(o.systemPrompt, { type: 'preset', preset: 'claude_code' })
       assert.equal(o.env.KAGE_THREAD, undefined)   // the plugin's own channel must stay idle in this process
       assert.equal(o.env.CLAUDE_CODE_EMIT_SESSION_STATE_EVENTS, '1')   // without it "idle" never comes and the slot never frees
@@ -123,15 +125,15 @@ describe('Kage sessions on the Agent SDK', () => {
     const t = setup()
     t.d.task('C1:5.5', t.task(), 0)
     await tick()
-    assert.equal(t.s.windows.busy('C1:5.5'), true)
+    assert.equal(t.s.runner.busy('C1:5.5'), true)
     t.sdk.runs[0]!.emit({ type: 'result' })
     t.sdk.runs[0]!.emit({ type: 'system', subtype: 'session_state_changed', state: 'running' })
     await tick()
-    assert.equal(t.s.windows.busy('C1:5.5'), true)   // a background agent still runs after the result
+    assert.equal(t.s.runner.busy('C1:5.5'), true)   // a background agent still runs after the result
     t.sdk.runs[0]!.emit({ type: 'system', subtype: 'session_state_changed', state: 'idle' })
     await tick()
-    assert.equal(t.s.windows.busy('C1:5.5'), false)
-    assert.ok(t.s.windows.lastActivity('C1:5.5') > 0)
+    assert.equal(t.s.runner.busy('C1:5.5'), false)
+    assert.ok(t.s.runner.lastActivity('C1:5.5') > 0)
   })
   test('a Claude Code that never sends the state event still frees its slot when the turn ends', async () => {
     const t = setup()
@@ -139,7 +141,7 @@ describe('Kage sessions on the Agent SDK', () => {
     await tick()
     t.sdk.runs[0]!.emit({ type: 'result' })
     await tick()
-    assert.equal(t.s.windows.busy('C1:5.5'), false)
+    assert.equal(t.s.runner.busy('C1:5.5'), false)
   })
   test('a session holding a cron job stays kept, as watching, until the job is cancelled', async () => {
     const t = setup()
@@ -149,10 +151,10 @@ describe('Kage sessions on the Agent SDK', () => {
     t.sdk.runs[0]!.emit(result('Scheduled recurring job 4f2a (every 15 min)'))
     t.sdk.runs[0]!.emit({ type: 'system', subtype: 'session_state_changed', state: 'idle' })
     await tick()
-    assert.equal(t.s.windows.busy('C1:5.5'), 'watching')
+    assert.equal(t.s.runner.busy('C1:5.5'), 'watching')
     t.sdk.runs[0]!.emit(result('Cancelled job 4f2a.'))
     await tick()
-    assert.equal(t.s.windows.busy('C1:5.5'), false)
+    assert.equal(t.s.runner.busy('C1:5.5'), false)
   })
   test("an approval goes to the owner's DM and their yes or no reaches only the session that asked", async () => {
     const t = setup()
@@ -196,11 +198,28 @@ describe('Kage sessions on the Agent SDK', () => {
     await tick()
     assert.deepEqual(await run('mcp__claude_ai_Gmail__search'), {})
   })
+  // A call that brought back the owner's one-time code is the owner (core/gate.ts senderOf), so only a stranger's call is limited.
+  test("on a stranger's voice call the hook allows only the reply tool", async () => {
+    const t = setup()
+    const task = t.task({ fromOwner: false })
+    task.meta.channel = 'voice'
+    t.d.task('C1:5.5', task, 0)
+    await tick()
+    const hook = t.sdk.runs[0]!.options.hooks.PreToolUse[0]
+    const run = (tool_name: string) => hook.hooks[0]({ hook_event_name: 'PreToolUse', tool_name, tool_input: {} }, undefined, { signal: signal() })
+    assert.equal((await run('Bash')).hookSpecificOutput.permissionDecision, 'deny')
+    assert.equal((await run('mcp__claude_ai_Gmail__search')).hookSpecificOutput.permissionDecision, 'deny')
+    assert.equal((await run('WebFetch')).hookSpecificOutput.permissionDecision, 'deny')
+    assert.deepEqual(await run('mcp__kage__reply'), {})
+    t.d.task('C1:5.5', t.task(), 1)   // the next task is the owner's: the limit follows the latest task
+    await tick()
+    assert.deepEqual(await run('Bash'), {})
+  })
   test('stop closes the session and denies its open approvals', async () => {
     const t = setup()
     t.d.task('C1:5.5', t.task(), 0)
     const ask = t.sdk.runs[0]!.options.canUseTool('Bash', { command: 'ls' }, { signal: signal() })
-    t.s.windows.stop('C1:5.5')
+    t.s.runner.stop('C1:5.5')
     assert.equal(t.sdk.runs[0]!.closed, true)
     assert.equal((await ask).behavior, 'deny')
     await tick(30)

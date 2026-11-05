@@ -1,5 +1,5 @@
 // Email as a way to tag Kage: who may, what the ask is, and how a reply goes back.
-// Pure functions; the router does the AWS calls.
+// Pure functions; mailbox.ts does the AWS calls.
 import { sessionKey } from '../core/conversations.ts'
 
 export type InboundMail = {

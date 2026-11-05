@@ -8,10 +8,18 @@ export function privateToolRefusal(tool: string, sender: string | undefined): st
   if (!PRIVATE_TOOL.test(tool) || sender === 'owner') return undefined
   return `${tool} reads the owner's private data, and this task did not come from the owner. Reply that this needs the owner, and stop.`
 }
+// A voice call may be anyone, and its session holds the owner's memory in context, so it gets its
+// reply tool and nothing else: no shell, no files, no web (a URL can carry that context out), no
+// posting, no schedules, no other MCP tools. Its approval prompts never reach the owner either.
+const VOICE_OK = new Set(['mcp__kage__reply', 'mcp__plugin_kage_kage__reply', 'ToolSearch'])   // the reply tool (dev-route and plugin-route names), and ToolSearch, which loads it when deferred
+export function voiceToolRefusal(tool: string, sender: string | undefined): string | undefined {
+  if (sender !== 'voice' || VOICE_OK.has(tool)) return undefined
+  return `${tool} is not allowed on a voice call: anyone may be talking. Answer from what you know, or say you will check with the owner.`
+}
 // Kage's own memory (start.sh points autoMemoryDirectory at it) and the owner's, which is the
 // memory of the home folder project in Claude Code.
 export const memoryDirs = (home: string, envFile: string, env: Record<string, string | undefined>) => ({
-  own: env.KAGE_MEMORY || `${envFile.replace(/\/[^/]*$/, '')}/memory`,
+  own: env.KAGE_MEMORY || `${dirname(envFile)}/memory`,
   owner: env.KAGE_OWNER_MEMORY || `${home}/.claude/projects/${home.replace(/[^A-Za-z0-9]/g, '-')}/memory`,
 })
 // Kage keeps its own memory; in the owner's it may write only notes about people (user_*.md) and

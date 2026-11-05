@@ -1,7 +1,7 @@
 import { describe, test } from 'node:test'
 import assert from 'node:assert/strict'
-import { assignAnchors, bodyAnchors, filterRows, hit, layout, moreLine, segmentsCross, STRING } from './loom.ts'
-import { HAND_BIG, HAND_SMALL } from '../hand.ts'
+import { filterRows, hit, layout, moreLine, STRING } from './loom.ts'
+import { HERO_BIG, HERO_SMALL } from './hero.ts'
 import type { Row, State } from './board.ts'
 
 const row = (key: string, place = key, connector = 'slack'): Row => ({ key, place, connector, state: 'closed', label: 'closed', ageMs: 0 })
@@ -39,14 +39,24 @@ describe('where everything goes on screen', () => {
     assert.equal(l.more, 0)
     assert.equal(l.moreY, undefined)
   })
-  test('the hand comes out of Kage and its fingertips end left of the rows', () => {
-    for (const [cols, rows] of [[100, 38], [80, 30], [70, 24]] as const) {
+  test('every string leaves the gold star in Kage\'s picture, and the rows start clear of Kage', () => {
+    for (const [cols, rows, art] of [[100, 38, HERO_BIG], [80, 30, HERO_SMALL], [70, 24, HERO_SMALL]] as const) {
       const l = layout(cols, rows, live, [])
-      assert.ok(l.hand!.x < l.hero!.x + l.hero!.cols, 'overlaps Kage')
-      assert.ok(l.hand!.x + l.hand!.cols < l.lx - 2, 'tips end before the rows')
-      assert.ok(l.hand!.y + l.hand!.rows < rows - 1)
+      const [sx, sy] = [l.star!.x - l.hero!.x, l.star!.y - l.hero!.y]
+      assert.equal(art.cls[sy]![sx], 'g', `${cols}x${rows}: the star cell is gold`)
+      assert.ok(l.lx - 4 > l.hero!.x + l.hero!.cols, `${cols}x${rows}: rows clear of Kage`)
     }
-    assert.equal(layout(60, 38, live, []).hand, undefined)
+    assert.equal(layout(60, 38, live, []).star, undefined)
+  })
+})
+
+describe('the list keeps a readable width', () => {
+  test('on a wide terminal a row ends near its name, so the eye can follow it to its age', () => {
+    const l = layout(190, 45, ['a'], ['x'])
+    assert.ok(l.right - l.lx <= 80, `row is ${l.right - l.lx} columns wide`)
+  })
+  test('on a narrow terminal the row still runs to the edge', () => {
+    assert.equal(layout(80, 24, ['a'], ['x']).right, 78)
   })
 })
 
@@ -73,10 +83,10 @@ describe('which thread a mouse cell points at', () => {
 })
 
 describe('search by place', () => {
-  const rows = [row('1', '#customer-acme'), row('2', 'DM with Pat'), row('3', '#Customer-Beta')]
+  const rows = [row('1', '#customer-support'), row('2', 'DM with Jay'), row('3', '#Customer-Acme')]
   test('keeps the rows whose place contains the text, any case', () => {
     assert.deepEqual(filterRows(rows, 'customer').map(r => r.key), ['1', '3'])
-    assert.deepEqual(filterRows(rows, 'PAT').map(r => r.key), ['2'])
+    assert.deepEqual(filterRows(rows, 'JAY').map(r => r.key), ['2'])
   })
   test('empty text keeps every row; text that matches nothing keeps none', () => {
     assert.equal(filterRows(rows, '').length, 3)
@@ -86,8 +96,11 @@ describe('search by place', () => {
 
 describe('the line that counts what is not shown', () => {
   test('names the count and each channel', () => {
-    const rest = [row('a', 'a', 'slack'), row('b', 'b', 'slack'), row('c', 'c', 'email'), row('d', 'd', 'email'), row('e', 'e', 'slack')]
-    assert.equal(moreLine(rest), '+ 5 more · slack 3 · email 2 · / to search')
+    const rest = [row('a', 'a', 'slack'), row('b', 'b', 'slack'), row('c', 'c', 'email'), row('d', 'd', 'whatsapp'), row('e', 'e', 'slack')]
+    assert.equal(moreLine(rest), '+ 5 more · slack 3 · email 1 · whatsapp 1 · voice 0 · / to search')
+  })
+  test('counts voice calls too, so the parts add up to the total', () => {
+    assert.equal(moreLine([row('a', 'a', 'voice'), row('b', 'b', 'slack')]), '+ 2 more · slack 1 · email 0 · whatsapp 0 · voice 1 · / to search')
   })
 })
 
@@ -103,58 +116,5 @@ describe('each state has its own string', () => {
   test('a thread without a session has no string: queued waits loose, closed is cut', () => {
     assert.equal(style('queued').kind, 'none')
     assert.equal(style('closed').kind, 'cut')
-  })
-})
-
-describe('which fingertip each string ties to', () => {
-  // A hand reaching right: forearm, one finger out to the right, three hanging below, in dots.
-  const DW = 40, DH = 24, mask = new Array<number>(DW * DH).fill(0)
-  const box = (x0: number, y0: number, x1: number, y1: number) => { for (let y = y0; y < y1; y++) for (let x = x0; x < x1; x++) mask[y * DW + x] = 1 }
-  box(0, 6, 24, 14)        // forearm and palm
-  box(24, 6, 40, 9)        // the reaching finger
-  box(26, 14, 29, 22); box(31, 14, 34, 20); box(36, 14, 39, 18)   // three hanging fingers
-  test('anchors: the reaching tip, the lowest fingertips and two knuckles, top to bottom', () => {
-    const a = bodyAnchors(mask, DW, DH)
-    assert.ok(a.length <= 6 && a.length >= 5)
-    assert.deepEqual(a, [...a].sort((p, q) => p[1] - q[1] || q[0] - p[0]))
-    assert.ok(a.some(([x, y]) => x === 19 && y === 1), 'the reaching fingertip')
-    assert.ok(a.some(([x, y]) => x === 13 && y === 5), 'the longest hanging fingertip')
-  })
-  const A: [number, number][] = [[10, 1], [19, 1], [12, 3], [14, 5], [16, 4], [18, 3]]
-  const rows = (n: number) => Array.from({ length: n }, (_, i) => 1 + i * 3)
-  test('one row takes the reaching tip; several spread over the anchors', () => {
-    assert.deepEqual(assignAnchors(A, rows(1), 40), [A[1]])
-    const two = assignAnchors(A, rows(2), 40)
-    assert.deepEqual(two, [A[0], A[5]])
-  })
-  test('no anchor takes two strings, and rows past the anchors leave the wrist', () => {
-    for (let n = 1; n <= 9; n++) {
-      const got = assignAnchors(A, rows(n), 40), real = got.filter(([x, y]) => A.some(a => a[0] === x && a[1] === y))
-      assert.equal(got.length, n)
-      assert.equal(real.length, Math.min(n, A.length))
-      assert.equal(new Set(real.map(String)).size, real.length)
-    }
-    const past = assignAnchors(A, rows(8), 40).slice(6)
-    assert.ok(past.every(([, y]) => y > 5), 'wrist exits sit below every anchor')
-  })
-  test('the same rows always get the same anchors', () => {
-    assert.deepEqual(assignAnchors(A, rows(4), 40), assignAnchors(A, rows(4), 40))
-  })
-  test('anchors that would send two strings across each other are swapped to ones that do not', () => {
-    // Anchor 0 is lower and further left than anchor 1; straight to rows 1 and 7 the strings cross.
-    const B: [number, number][] = [[2, 9], [6, 3]]
-    const got = assignAnchors(B, [1, 7], 40)
-    assert.ok(!segmentsCross(got[0]!, [40, 1], got[1]!, [40, 7]))
-  })
-  test('on the real hand, strings to rows never cross, at every size and thread count', () => {
-    for (const [cols, rows, art] of [[100, 38, HAND_BIG], [80, 30, HAND_SMALL], [70, 24, HAND_SMALL]] as const) {
-      for (let n = 1; n <= 20; n++) {
-        const l = layout(cols, rows, Array.from({ length: n }, (_, i) => `t${i}`), [])
-        const abs = (art.anchors as [number, number][]).map(([x, y]) => [l.hand!.x + x + 1, l.hand!.y + y] as [number, number])
-        const pts = assignAnchors(abs, l.live.map(r => r.y), l.lx - 2)
-        const segs = l.live.map((r, i) => [pts[i]!, [l.lx - 2, r.y]] as const)
-        for (let i = 0; i < segs.length; i++) for (let j = i + 1; j < segs.length; j++) assert.ok(!segmentsCross(segs[i]![0], segs[i]![1], segs[j]![0], segs[j]![1]), `${cols}x${rows} n=${n}: strings ${i} and ${j} cross`)
-      }
-    }
   })
 })
