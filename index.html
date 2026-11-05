@@ -86,10 +86,13 @@ code { font-family: var(--mono); font-size: .9em; color: var(--ink); background:
   transform-origin: 0 82%; transform: scaleY(calc(-1 * var(--len, .6))) skewX(calc(-1 * var(--skew, 48deg)));
   -webkit-mask-image: linear-gradient(to bottom, transparent 5%, #000 90%); mask-image: linear-gradient(to bottom, transparent 5%, #000 90%); }
 .mark { font: 400 2.2rem var(--display); }
-.say { position: relative; font: 400 clamp(2.5rem, 11vw, 10rem)/1 var(--display); letter-spacing: -0.02em; padding-top: clamp(28px, 6vw, 72px); white-space: nowrap; }
+.top { display: flex; justify-content: space-between; align-items: center; gap: 16px; }
+.top a { font: 600 12px/1 var(--mono); letter-spacing: .1em; text-transform: uppercase; }
+.example { margin: clamp(40px, 6vw, 72px) 0 0; padding-top: 20px; border-top: 1px solid var(--line); }
+.say { position: relative; font: 400 clamp(2.5rem, 10vw, 8.5rem)/1 var(--display); letter-spacing: -0.02em; padding-top: 12px; white-space: nowrap; }
 .say::after { content: ""; position: absolute; left: 0; right: 0; bottom: .19em; height: 1px; background: currentColor; opacity: .25; }
 .say i { font-style: italic; }
-.under { position: relative; min-height: clamp(150px, 20vw, 230px); }
+.under { position: relative; min-height: clamp(150px, 18vw, 210px); }
 .work { position: absolute; right: 0; bottom: 6px; display: flex; flex-direction: column; gap: 2px; text-align: right; font: 400 clamp(12px, 1.3vw, 14px)/1.6 var(--mono); }
 .work span { opacity: 0; transition: opacity .35s; }
 .work span.on, html:not(.js) .work span { opacity: 1; }
@@ -97,7 +100,7 @@ code { font-family: var(--mono); font-size: .9em; color: var(--ink); background:
 .dial { display: flex; align-items: center; gap: 14px; margin-top: 18px; flex-wrap: wrap; }
 .dial input { flex: 1 1 120px; accent-color: var(--ink); }
 .dial output { font: 400 1.6rem var(--display); min-width: 3.2em; }
-.hero h1 { font: 400 clamp(30px, 4.2vw, 52px)/1.08 var(--display); margin-top: clamp(32px, 5vw, 56px); max-width: 22ch; }
+.hero h1 { font: 400 clamp(38px, 6vw, 84px)/1.02 var(--display); margin-top: clamp(32px, 6vw, 72px); max-width: 18ch; }
 .hero h1 i { font-style: italic; }
 .hero .sub { color: var(--muted); margin-top: 14px; max-width: 52ch; }
 @media (prefers-reduced-motion: reduce) { .work span { transition: none; } }
@@ -325,24 +328,27 @@ footer .wrap { display: flex; flex-wrap: wrap; gap: 8px 24px; justify-content: s
 <main>
 <div class="wrap">
   <header class="hero">
-    <span class="cast mark" aria-label="kage">kage<span class="shadow" aria-hidden="true" style="--len:.55; --skew:52deg">kage</span></span>
-    <div class="say" aria-hidden="true"><span class="cast"><i>@kage</i> cover for me<span class="shadow" id="hero-shadow"><i>@kage</i> cover for me</span></span></div>
-    <div class="under">
-      <div class="work" id="work" aria-label="What Kage did while you were away">
-        <span data-h="13">set your status: away until 22:00</span>
-        <span data-h="15">6 people asked for you</span>
-        <span data-h="17">answered 5 from what you know</span>
-        <span data-h="19">kept a list of what changed</span>
-        <span data-h="21" class="needs">1 needs your yes: a refund over $500</span>
-      </div>
-    </div>
-    <div class="dial"><span class="kick" style="margin:0">Time</span><input type="range" id="hour" min="12" max="22" step="0.25" value="21" aria-label="Time of day"><output id="clock" for="hour">21:00</output></div>
+    <div class="top"><span class="cast mark" aria-label="kage">kage<span class="shadow" aria-hidden="true" style="--len:.55; --skew:52deg">kage</span></span><a href="https://github.com/aloki-alok/kage">Open source on GitHub</a></div>
     <h1>Tag <i>Kage</i> wherever you work. Your own Claude Code does the work.</h1>
-    <p class="sub">It finds the problem and fixes it the way you would. Open source.</p>
+    <p class="sub">Kage runs on your laptop with your setup. It finds the problem and fixes it the way you would.</p>
     <div class="cta">
       <a class="btn pri" href="#setup">Set it up</a>
-      <a class="btn" href="https://github.com/aloki-alok/kage">View on GitHub</a>
+      <a class="btn" href="#how">How it works</a>
     </div>
+    <figure class="example" aria-label="Example: you tag Kage before you leave, and it covers for you until 22:00">
+      <span class="kick">Example: you leave at 18:00</span>
+      <div class="say" aria-hidden="true"><span class="cast"><i>@kage</i> cover for me<span class="shadow" id="hero-shadow"><i>@kage</i> cover for me</span></span></div>
+      <div class="under">
+        <div class="work" id="work">
+          <span data-h="13">set your status: away until 22:00</span>
+          <span data-h="15">6 people asked for you</span>
+          <span data-h="17">answered 5 from what you know</span>
+          <span data-h="19">kept a list of what changed</span>
+          <span data-h="21" class="needs">1 needs your yes: a refund over $500</span>
+        </div>
+      </div>
+      <figcaption class="dial"><span class="kick" style="margin:0">Drag the clock</span><input type="range" id="hour" min="12" max="22" step="0.25" value="21" aria-label="Time of day"><output id="clock" for="hour">21:00</output></figcaption>
+    </figure>
   </header>
 
   <section id="context" class="context" aria-labelledby="h-context">
