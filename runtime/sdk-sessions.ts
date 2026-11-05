@@ -42,7 +42,7 @@ export function sdkWindows(o: {
 }) {
   const sessions = new Map<string, Session>()
   // The tools the owner approved for every pane in start.sh.
-  const ALLOWED = ['reply', 'edit_message', 'delete_message', 'schedule', 'unschedule', 'schedules'].map(t => `mcp__kage__${t}`)
+  const ALLOWED = ['reply', 'edit_message', 'delete_message', 'send_file', 'message_people', 'schedule', 'unschedule', 'schedules'].map(t => `mcp__kage__${t}`)
 
   function open(key: string, s: Session, carried: SDKUserMessage[] = []) {
     const inbox = makeInbox(carried)

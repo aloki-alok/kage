@@ -18,13 +18,15 @@ const manifest = {
   oauth_config: {
     scopes: {
       // The bot posts replies and approval prompts, and adds the pickup and done reactions.
-      bot: ['chat:write', 'im:write', 'im:history', 'reactions:write', 'users:read'],
+      bot: ['chat:write', 'files:write', 'im:write', 'im:history', 'reactions:write', 'users:read'],
       // Your user token hears your conversations, reads the thread for context, and replies
       // where the bot isn't a member.
       user: [
         'channels:history', 'groups:history', 'im:history', 'mpim:history',
         'channels:read', 'groups:read', 'im:read', 'mpim:read',
         'chat:write', 'reactions:write', 'users:read',
+        // message_people opens the group DM of you and the people a task names.
+        'im:write', 'mpim:write',
       ],
     },
   },
