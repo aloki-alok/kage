@@ -50,6 +50,9 @@ section:target { display: block; }
 </template>
 <section id="hero-light"></section>
 <section id="hero-dark" class="night"></section>
+<!-- Social preview for the Pages site (og:image), the hero at 1200 x 630. -->
+<section id="og"></section>
+<style>#og .hero { width: 1200px; height: 630px; } #og .say { top: 170px; font-size: 8.6rem; }</style>
 <script>
-for (const id of ['hero-light', 'hero-dark']) document.getElementById(id).append(document.getElementById('hero').content.cloneNode(true));
+for (const id of ['hero-light', 'hero-dark', 'og']) document.getElementById(id).append(document.getElementById('hero').content.cloneNode(true));
 </script>
