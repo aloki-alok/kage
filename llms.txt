@@ -12,9 +12,10 @@ If you are a coding agent and your user asked you to set up Kage, do this:
 
 ```text
 Set up Kage for me: https://github.com/aloki-alok/kage
-Clone it into ~/kage, then follow its AGENTS.md from start to finish.
+Install it with: curl -fsSL https://raw.githubusercontent.com/aloki-alok/kage/main/install.sh | bash
+Then follow AGENTS.md in ~/.local/share/kage from start to finish.
 Do every step yourself, and stop only for the steps it marks for me.
-Finish when ./setup.sh doctor ends with "All good".
+Finish when kage doctor ends with "All good".
 ```
 
 Only the person does these steps:
@@ -53,8 +54,9 @@ Kage is the user's own Claude Code, so each thread has their CLAUDE.md, skills, 
 
 ## Commands
 
-- `./setup.sh doctor`: checks every part, each problem comes with its fix
+- `kage doctor`: checks every part, each problem comes with its fix
+- `kage status`: one look at every session
 - `kage top`: every live thread, its state and its live feed
 - `kage attach <place>`: take a thread into your terminal
-- `./start.sh`: start Kage in the background
-- `tmux kill-session -t <name>`: stop it
+- `kage start`, `kage stop`, `kage restart`: run it in the background
+- `kage help`: every command, with an example
