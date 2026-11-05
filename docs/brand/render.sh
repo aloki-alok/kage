@@ -8,4 +8,5 @@ shot icon-light 512,512 1
 shot icon-dark 512,512 1
 shot hero-light 1280,560 2
 shot hero-dark 1280,560 2
+shot og 1200,630 1   # copy to og.png on the gh-pages branch
 ls -la ./*.png
