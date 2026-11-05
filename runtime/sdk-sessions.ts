@@ -1,13 +1,16 @@
 // The session runtime on the Agent SDK: each thread is one long-lived query() inside the hub, with
-// Kage's tools served in-process. It fills the same Windows interface as tmux-windows.ts, so the
+// Kage's tools served in-process. It fills the same Runner interface as tmux-panes.ts, so the
 // dispatcher does not know which one runs. Unlike a tmux pane, a session here lives and dies with
 // the hub process, crons included.
 // The SDK comes in as an argument: the hub imports it only when this runtime is on, so a tmux-only
 // install needs no SDK.
 import type { createSdkMcpServer, Options, Query, SDKMessage, SDKUserMessage, tool } from '@anthropic-ai/claude-agent-sdk'
 import { log } from '../config.ts'
-import { ownerMemoryRefusal, privateToolRefusal } from '../core/guards.ts'
-import { liveCronJobs, type Dispatcher, type Windows } from '../core/sessions.ts'
+import { senderOf, type Sender } from '../core/gate.ts'
+import { ownerMemoryRefusal, privateToolRefusal, voiceToolRefusal } from '../core/guards.ts'
+import { approvalPreview } from '../core/preview.ts'
+import { liveCronJobs } from '../core/cron.ts'
+import type { Dispatcher, Runner } from '../core/sessions.ts'
 import type { sessionTools } from './kage-tools.ts'
 import type { Task, ToSession } from './protocol.ts'
 
@@ -20,7 +23,7 @@ export type Sdk = {
 type Session = {
   id: string
   kage: Kage
-  sender?: 'owner' | 'teammate'                 // who sent the latest task: the guard hook reads it
+  sender?: Sender               // who sent the latest task: the guard hook reads it
   state: 'idle' | 'running' | 'requires_action'
   last: number
   stopped: boolean
@@ -29,19 +32,20 @@ type Session = {
   jobs: { timestamp: string; text: string }[]   // tool results that made or cancelled a cron job
 }
 
-export function sdkWindows(o: {
+export function sdkSessions(o: {
   sdk: Sdk
   hub: () => Dispatcher<ToSession>
-  tools: (key: string, send: (m: { type: 'mail'; text: string }) => void) => Kage   // one set per thread
+  tools: (key: string, send: (m: { type: 'mail' | 'wa' | 'voice'; text: string }) => void) => Kage   // one set per thread
   hasTranscript: (id: string) => boolean
-  toHub: (key: string, m: { type: 'mail'; text: string }) => void
+  toHub: (key: string, m: { type: 'mail' | 'wa' | 'voice'; text: string }) => void
   options: Options                                 // cwd, settings, settingSources, the claude binary
   ownerMemory: string
   onStart?: () => void                            // a new id may have been minted: save the map
   restartMs?: number
 }) {
   const sessions = new Map<string, Session>()
-  // The tools the owner approved for every pane in start.sh.
+  // Kage's own tools, approved for every session (start.sh does the same for panes). Approved in canUseTool, not
+  // allowedTools, which would skip the callback and makes the SDK warn on every session.
   const ALLOWED = ['reply', 'edit_message', 'delete_message', 'send_file', 'message_people', 'schedule', 'unschedule', 'schedules'].map(t => `mcp__kage__${t}`)
 
   function open(key: string, s: Session, carried: SDKUserMessage[] = []) {
@@ -61,19 +65,18 @@ export function sdkWindows(o: {
         ...(o.hasTranscript(s.id) ? { resume: s.id } : { sessionId: s.id }),
         systemPrompt: { type: 'preset', preset: 'claude_code' },
         mcpServers: { ...o.options.mcpServers, kage: server },
-        allowedTools: [...o.options.allowedTools ?? [], ...ALLOWED],
         // Its jobs die with the session; the schedule tool replaces it.
         disallowedTools: [...o.options.disallowedTools ?? [], 'CronCreate', 'CronDelete', 'CronList'],
         // Claude Code sends session_state_changed, which busy() reads, only when asked.
         env: { ...env, CLAUDE_CODE_EMIT_SESSION_STATE_EVENTS: '1' },
-        canUseTool: (name, input, x) => ask(key, s, name, x.title ?? x.description ?? '', input, x.signal),
+        canUseTool: (name, input, x) => ALLOWED.includes(name) ? Promise.resolve({ behavior: 'allow' as const, updatedInput: input }) : ask(key, s, name, x.title ?? x.description ?? '', input, x.signal),
         // The same rules as private-data-guard.ts, in-process. A failed check blocks the call.
         hooks: {
           PreToolUse: [{
             onFailure: 'block',
             hooks: [async input => {
               const i = input as { tool_name: string; tool_input?: Record<string, string> }
-              const reason = privateToolRefusal(i.tool_name, s.sender) ?? ownerMemoryRefusal(i.tool_name, i.tool_input ?? {}, o.ownerMemory)
+              const reason = privateToolRefusal(i.tool_name, s.sender) ?? voiceToolRefusal(i.tool_name, s.sender) ?? ownerMemoryRefusal(i.tool_name, i.tool_input ?? {}, o.ownerMemory)
               return reason ? { hookSpecificOutput: { hookEventName: 'PreToolUse', permissionDecision: 'deny', permissionDecisionReason: reason } } : {}
             }],
           }],
@@ -82,7 +85,7 @@ export function sdkWindows(o: {
     })
     const send = (m: ToSession) => {
       if (m.type === 'verdict') { s.asks.get(m.request_id)?.(m.behavior); return }
-      s.sender = m.fromOwner && m.meta.channel !== 'email' ? 'owner' : 'teammate'
+      s.sender = senderOf(m)
       s.kage.onTask(m)
       s.state = 'running'
       s.last = Date.now()
@@ -130,7 +133,7 @@ export function sdkWindows(o: {
       signal.addEventListener('abort', () => done('deny'), { once: true })
       // Open with the dispatcher only once the owner can see it: an open approval holds the slot,
       // and a prompt that never posted can never be answered.
-      s.kage.askOwner({ id, tool, description, preview: JSON.stringify(input, null, 2) }).then(
+      s.kage.askOwner({ id, tool, description, preview: approvalPreview(tool, input) }).then(
         () => { if (s.asks.has(id)) o.hub().permission(key, id) },
         e => { log('permission prompt failed', e?.data?.error ?? e); done('deny') },
       )
@@ -139,7 +142,7 @@ export function sdkWindows(o: {
 
   const denyAll = (s: Session) => { for (const done of [...s.asks.values()]) done('deny') }
 
-  const windows: Windows = {
+  const runner: Runner = {
     start(key, id) {
       const s: Session = sessions.get(key) ?? {
         id, state: 'idle', last: 0, stopped: false, asks: new Map(), jobs: [],
@@ -168,7 +171,7 @@ export function sdkWindows(o: {
       return s.state !== 'idle' ? true : liveCronJobs(s.jobs, s.run?.started ?? Infinity, Date.now()).length > 0 ? 'watching' : false
     },
   }
-  return { windows, running: () => new Set([...sessions.values()].map(s => s.id)) }
+  return { runner, running: () => new Set([...sessions.values()].map(s => s.id)) }
 }
 
 // Tool results that mention a job (CronCreate, CronDelete), stamped now, for liveCronJobs.

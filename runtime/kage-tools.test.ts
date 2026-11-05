@@ -39,13 +39,13 @@ function fakeSlack() {
   return { calls, bot: client('bot'), user: client('owner') }
 }
 
-function setup(o: { dir?: string } = {}) {
+function setup(o: { hubDown?: boolean; dir?: string } = {}) {
   const slack = fakeSlack()
   const dir = o.dir ?? mkdtempSync(join(tmpdir(), 'kage-tools-'))
   const out: string[] = []
   const jobs: any[] = []
   const t = sessionTools({
-    title: 'Kage', bot: slack.bot as any, user: slack.user as any, botDm: () => 'DBOT', dir, send: m => out.push(`${m.type} ${m.text}`), memory: { own: '/own', owner: '/owner' },
+    title: 'Kage', bot: slack.bot as any, user: slack.user as any, botDm: () => 'DBOT', dir, send: m => { if (o.hubDown) return false; out.push(`${m.type} ${m.text}`) }, memory: { own: '/own', owner: '/owner' },
     schedules: {
       add: j => { jobs.push({ ...j, key: 'C1:5.5', created: 0, lastFired: 0 }) },
       remove: id => { jobs.splice(jobs.findIndex(j => j.id === id), 1) },
@@ -200,8 +200,8 @@ describe("a session's Kage tools", () => {
     assert.ok(s.calls.includes('owner open UBO000001,USAM00001'))
     assert.ok(s.calls.includes('owner post G-UBO000001,USAM00001 We meet at 3 pm.\n_Sam, via Kage_'))
     // An edit keeps the tag and the look of the first post.
-    assert.equal((await s.call('edit_message', { channel: 'G-UBO000001,USAM00001', ts: '9.1', text: 'Ryu approves the discount.' })).text, 'edited')
-    assert.ok(s.calls.includes('owner edit G-UBO000001,USAM00001 9.1 Ryu approves the discount.\n_Sam, via Kage_'))
+    assert.equal((await s.call('edit_message', { channel: 'G-UBO000001,USAM00001', ts: '9.1', text: 'Sam approves the discount.' })).text, 'edited')
+    assert.ok(s.calls.includes('owner edit G-UBO000001,USAM00001 9.1 Sam approves the discount.\n_Sam, via Kage_'))
     assert.equal((await s.call('message_people', { channel: 'C1', thread_ts: '5.5', users: ['UBO000001'], text: 'key AKIAABCDEFGHIJKLMNOP' })).isError, true)
   })
   test("another session cannot edit or delete what message_people posted, even in a group DM it also messaged", async () => {
@@ -263,11 +263,36 @@ describe("a session's Kage tools", () => {
     assert.equal((await s.call('delete_message', { channel: 'CPRIV', ts: '9.1' })).text, 'deleted')
     assert.equal((await s.call('delete_message', { channel: 'CPRIV', ts: '9.1' })).isError, true)           // already gone
   })
-  test('email replies are handed to the hub, not posted', async () => {
+  test('email and WhatsApp replies are handed to the hub, not posted', async () => {
     const s = setup()
     s.t.onTask(s.task({ channel: 'email', thread_ts: 'mail:<r@x>' }))
     assert.equal((await s.call('reply', { channel: 'email', thread_ts: 'mail:<r@x>', text: 'hi' })).text, 'sent by email')
     assert.deepEqual(s.out, ['mail hi'])
+  })
+  test('a reply the hub cannot take (it is restarting) fails, so the session tries again instead of believing it went', async () => {
+    const s = setup({ hubDown: true })
+    s.t.onTask(s.task({ channel: 'email', thread_ts: 'mail:<r@x>' }))
+    const r = await s.call('reply', { channel: 'email', thread_ts: 'mail:<r@x>', text: 'hi' })
+    assert.equal(r.isError, true)
+    assert.match(r.text, /restarting/)
+    s.t.onTask(s.task({ channel: 'voice', thread_ts: 'voice:abc', fromOwner: false }))
+    assert.equal((await s.call('reply', { channel: 'voice', thread_ts: 'voice:abc', text: 'hi' })).isError, true)
+  })
+  test('a voice reply is handed to the hub, never posted, and cannot go to the owner DM', async () => {
+    const s = setup()
+    s.t.onTask(s.task({ channel: 'voice', thread_ts: 'voice:abc', fromOwner: false }))
+    assert.equal((await s.call('reply', { channel: 'voice', thread_ts: 'voice:abc', text: 'hi', private: true })).isError, true)
+    assert.equal((await s.call('reply', { channel: 'voice', thread_ts: 'voice:abc', text: 'hi' })).text, 'spoken to the caller')
+    assert.deepEqual(s.out, ['voice hi'])
+    assert.deepEqual(s.calls, [])
+  })
+  test('the instructions limit a voice call to the reply tool and to nothing private', () => {
+    const i = setup().t.instructions
+    assert.match(i, /Voice task/)
+    assert.match(i, /people on the owner's call/)
+    assert.match(i, /share nothing private/)
+    assert.match(i, /check with the owner/)
+    assert.match(i, /no tool except reply/)
   })
   test('an open question lands on the waiting list, and the next task in that thread closes it', async () => {
     const s = setup()

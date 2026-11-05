@@ -2,14 +2,14 @@
 // For a full restart or the switch to SDK sessions: move the CronCreate jobs still alive in the tmux
 // panes into the hub's schedules, so no watcher is lost when the panes stop. Run it right before
 // `tmux kill-session`; the hub adopts the file on its next start (runtime/scheduler.ts adopt).
-//   ./setup.sh export-crons
+//   kage export-crons
 import { execFileSync } from 'node:child_process'
 import { readFileSync, renameSync, writeFileSync } from 'node:fs'
 import { dirname } from 'node:path'
 import { DatabaseSync } from 'node:sqlite'
-import { cronJobsFromTranscript } from './core/cron.ts'
-import { senderFile } from './core/guards.ts'
-import { claudeProject, paneProcessStart } from './runtime/tmux-windows.ts'
+import { cronJobsFromTranscript } from '../core/cron.ts'
+import { senderFile } from '../core/guards.ts'
+import { claudeProject, paneProcessStart } from '../runtime/tmux-panes.ts'
 
 const HOME = process.env.HOME!
 const DIR = dirname(process.env.KAGE_ENV || `${HOME}/.config/kage/env`)

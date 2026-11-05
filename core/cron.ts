@@ -92,6 +92,14 @@ export function dueSchedules(all: Schedule[], now: number): { fire: Schedule[]; 
   return { fire, drop }
 }
 
+// What Claude Code's CronCreate and CronDelete answer, the only record of a job outside its process.
+// A wording change in Claude Code breaks these two, and with them "watching" and the job import.
+const CRON_MADE = /Scheduled (\S+) job ([0-9a-f]+)/
+const CRON_CANCELLED = /Cancelled job ([0-9a-f]+)/
+// Claude Code drops a recurring job after 7 days. ponytail: a one-shot counts for a day, since its fire time isn't parsed.
+export const CRON_RECURRING_TTL = 7 * 24 * 3600_000
+const CRON_ONE_SHOT_TTL = 24 * 3600_000
+
 // The CronCreate jobs a Claude Code transcript still holds: made by the process running since
 // `since` (Claude Code keeps them only in memory) and not cancelled. Used to move them into the hub.
 export function cronJobsFromTranscript(lines: string[], since: number) {
@@ -108,13 +116,28 @@ export function cronJobsFromTranscript(lines: string[], since: number) {
         made.set(b.id, { cron: b.input.cron, prompt: String(b.input.prompt ?? ''), recurring: b.input.recurring !== false, created: t })
       } else if (b.type === 'tool_result') {
         const text = typeof b.content === 'string' ? b.content : Array.isArray(b.content) ? b.content.map((c: { text?: string }) => c?.text ?? '').join('') : ''
-        const ok = /Scheduled \S+ job ([0-9a-f]+)/.exec(text)
+        const ok = CRON_MADE.exec(text)
         const job = b.tool_use_id && made.get(b.tool_use_id)
-        if (ok && job && !jobs.has(ok[1]!)) jobs.set(ok[1]!, { id: ok[1]!, cron: job.cron, prompt: job.prompt, recurring: job.recurring, created: job.created ?? t ?? 0 })
-        const gone = /Cancelled job ([0-9a-f]+)/.exec(text)
+        if (ok && job && !jobs.has(ok[2]!)) jobs.set(ok[2]!, { id: ok[2]!, cron: job.cron, prompt: job.prompt, recurring: job.recurring, created: job.created ?? t ?? 0 })
+        const gone = CRON_CANCELLED.exec(text)
         if (gone) cancelled.add(gone[1]!)
       }
     }
   }
   return [...jobs.values()].filter(j => !cancelled.has(j.id) && j.created >= since)
+}
+
+// Repeating checks a session made with CronCreate live only in its Claude Code process, so
+// closing the pane ends them. These are the jobs still alive: made since `since` (when the
+// running process started), not cancelled, and not expired (see CRON_RECURRING_TTL).
+export function liveCronJobs(results: { timestamp: string; text: string }[], since: number, now: number): string[] {
+  const jobs = new Map<string, number>()
+  for (const r of results) {
+    const t = Date.parse(r.timestamp)
+    const made = CRON_MADE.exec(r.text)
+    if (made && t >= since) jobs.set(made[2]!, t + (made[1] === 'recurring' ? CRON_RECURRING_TTL : CRON_ONE_SHOT_TTL))
+    const gone = CRON_CANCELLED.exec(r.text)
+    if (gone) jobs.delete(gone[1]!)
+  }
+  return [...jobs].filter(([, until]) => now < until).map(([id]) => id)
 }

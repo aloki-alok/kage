@@ -1,18 +1,97 @@
 #!/usr/bin/env bash
-# Sets Kage up. With no argument it walks a person through every step.
-# An agent runs the steps one at a time (see AGENTS.md):
-#   ./setup.sh check            tools present and new enough
-#   ./setup.sh app [name]       write the Slack app manifest and print the link that creates the app
-#   ./setup.sh save [name]      ask for the three Slack tokens (hidden), check them, save them
-#   ./setup.sh doctor           check every part and print the fix for anything wrong
-#   ./setup.sh top              full-screen console: every thread, attach, stop
-#   ./setup.sh teammate list | add <who> | remove <who>   who else may tag it (name, @handle or id)
+# The kage command. `./setup.sh link` puts it on PATH as `kage`; `kage help` lists every command.
+# Commands live in the COMMANDS table below and in the case at the bottom; core/cli-help.test.ts
+# checks that the two list the same names.
 set -euo pipefail
-cd "$(dirname "$0")"
+cd "$(dirname "$(readlink -f "$0")")"  # readlink: works when run through the kage link
 ENV_FILE="${KAGE_ENV:-$HOME/.config/kage/env}"
 
 say() { printf '\n\033[1m%s\033[0m\n' "$*"; }
 die() { printf '\033[31m%s\033[0m\n' "$*" >&2; exit 1; }
+
+# group|name|arguments|what it does|example. `kage help` prints it grouped; `kage help <name>` prints one.
+COMMANDS='Set up|setup||Walk through the first setup, one step at a time|kage setup
+Set up|check||Check that node 22.18+, claude and tmux are installed|kage check
+Set up|app|[name]|Write the Slack app for the name you tag, and open the link that creates it|kage app kage
+Set up|save|[name]|Paste the three Slack tokens into hidden prompts; each is checked with Slack|kage save
+Set up|doctor||Check every part, and print the command that fixes each problem|kage doctor
+Set up|link||Put the kage command on your PATH (~/.local/bin/kage)|./setup.sh link
+Set up|autostart|on or off|Start Kage when you log in to this Mac|kage autostart on
+Run|start||Start Kage in the background|kage start
+Run|stop||Stop Kage. Open sessions end, and each resumes on its next tag|kage stop
+Run|restart||Restart the hub to pick up a new setting (about 10 s)|kage restart
+Run|status||One look at every session and what it is doing|kage status
+Run|logs|[lines]|The last lines of the hub log (80 unless you say)|kage logs 200
+Watch|top||The live console: every thread, its feed, attach and stop, by mouse or keys|kage top
+Watch|watch|[place]|Follow every step every session takes, as it happens|kage watch support
+Watch|attach|[place]|Take a thread into this terminal; Kage gets it back when you quit|kage attach general
+People|teammate|list, add, remove|Who else may tag Kage (a name, @handle or Slack id)|kage teammate add priya
+People|call||Kage phones you, and the call can do anything you can (needs KAGE_CALL_COMMAND)|kage call'
+
+cmd_help() {
+  local B= R=; [[ -t 1 ]] && B=$'\033[1m' R=$'\033[0m'
+  if [[ -n "${1:-}" ]]; then
+    local row; row="$(printf '%s\n' "$COMMANDS" | awk -F'|' -v n="$1" '$2==n')"
+    [[ -n $row ]] || unknown "$1"
+    IFS='|' read -r _ n a d e <<<"$row"
+    printf "${B}kage %s${R} %s\n  %s\n  Example: %s\n" "$n" "$a" "$d" "$e"
+    return
+  fi
+  printf "${B}kage${R}  tag @kage in Slack, and your own Claude Code does the work on this machine.\n"
+  local group="" g n a d e
+  while IFS='|' read -r g n a d e; do
+    [[ $g == "$group" ]] || { printf "\n${B}%s${R}\n" "$g"; group=$g; }
+    printf '  %-28s %s\n' "$n${a:+ $a}" "$d"
+  done <<<"$COMMANDS"
+  printf '\nkage help <command> shows one command with an example. Settings: docs/settings.md\n'
+}
+
+unknown() {
+  local guess; guess="$(node -e 'import("./core/cli-help.ts").then(m=>{const s=m.suggest(process.argv[1],process.argv.slice(2));if(s)console.log(s)})' "$1" $(printf '%s\n' "$COMMANDS" | cut -d'|' -f2) 2>/dev/null || true)"
+  printf 'No command "%s".%s Run kage help for the list.\n' "$1" "${guess:+ Did you mean kage $guess?}" >&2
+  exit 2
+}
+
+# A Kage session runs inside the hub, so stopping the hub from there ends that session mid-turn.
+inside_kage() {
+  [[ -n "${KAGE_CLAUDE:-}" && "${2:-}" != --force ]] || return 0
+  die "This shell runs inside Kage, so kage $1 would end this session too. Run kage $1 --force to do it anyway."
+}
+
+kage_name() { NAME="$(env_get KAGE_NAME)"; NAME="${NAME:-kage}"; }
+running() { kage_name; tmux has-session -t "=$NAME" 2>/dev/null; }
+
+cmd_stop() {
+  inside_kage stop "${1:-}"
+  running || { echo "$NAME is not running."; return 0; }
+  tmux kill-session -t "=$NAME" && echo "Stopped $NAME. Each thread resumes its conversation on its next tag."
+}
+
+# Kills the hub only: its tmux loop (start.sh) starts it again in 5 s. A change to KAGE_ROUTE,
+# KAGE_RUNTIME, KAGE_CWD or KAGE_MEMORY needs kage stop, then kage start, since start.sh fixed those.
+cmd_restart() {
+  inside_kage restart "${1:-}"
+  running || { echo "$NAME is not running. Start it: kage start"; return 1; }
+  local pid; pid="$(awk '{print $4}' "$(dirname "$ENV_FILE")/status" 2>/dev/null || true)"
+  # The status file outlives the hub; never kill a pid that is now some other program.
+  if [[ -n $pid ]] && ps -p "$pid" -o command= 2>/dev/null | grep -q 'router.ts'; then
+    kill "$pid" && echo "Restarted the hub; it is back in about 10 s. Open sessions resume on their next tag."
+  else
+    echo "The hub is between restarts. Wait 10 s, then kage status." >&2; return 1
+  fi
+}
+
+cmd_status() {
+  running || { echo "$NAME is not running. Start it: kage start"; return 1; }
+  node cli/top.ts --once
+}
+
+cmd_logs() {
+  running || { echo "$NAME is not running, so there is no live log. Start it: kage start"; return 1; }
+  local n="${1:-80}"; [[ $n =~ ^[0-9]+$ ]] || die "kage logs takes a number of lines, like kage logs 200"
+  # tmux keeps about 2,000 lines of the hub window; the blank rows below the last line are dropped.
+  tmux capture-pane -p -J -t "=$NAME:router" -S - | grep -v '^$' | tail -n "$n"
+}
 
 valid_name() {
   NAME="$(printf '%s' "${1:-kage}" | tr '[:upper:]' '[:lower:]')"
@@ -30,7 +109,7 @@ cmd_check() {
 
 cmd_app() {
   valid_name "${1:-}"
-  KAGE_NAME="$NAME" node manifest.ts > slack-manifest.json
+  KAGE_NAME="$NAME" node cli/manifest.ts > slack-manifest.json
   URL="https://api.slack.com/apps?new_app=1&manifest_json=$(node -e 'process.stdout.write(encodeURIComponent(require("fs").readFileSync("slack-manifest.json","utf8")))')"
   (open "$URL" 2>/dev/null || xdg-open "$URL" 2>/dev/null || true) &
   cat <<EOF
@@ -95,14 +174,14 @@ cmd_doctor() {
   fail() { printf 'FAIL  %s\n' "$*"; bad=1; }
   note() { printf 'note  %s\n' "$*"; }
 
-  (cmd_check >/dev/null 2>&1) && pass "tools: node 22.18+, claude, tmux" || fail "tools: run ./setup.sh check for the missing one"
+  (cmd_check >/dev/null 2>&1) && pass "tools: node 22.18+, claude, tmux" || fail "tools: run kage check for the missing one"
   if [[ ! -f "$ENV_FILE" ]]; then
-    fail "tokens: no $ENV_FILE. Run ./setup.sh app, then ./setup.sh save"
+    fail "tokens: no $ENV_FILE. Run kage app, then kage save"
   else
     [[ "$(stat -c %a "$ENV_FILE" 2>/dev/null || stat -f %Lp "$ENV_FILE")" == 600 ]] && pass "token file is private (600)" || fail "token file: run chmod 600 $ENV_FILE"
     local k
     for k in SLACK_APP_TOKEN SLACK_USER_TOKEN SLACK_BOT_TOKEN; do
-      slack_check "$(env_get $k)" >/dev/null 2>&1 && pass "$k accepted by Slack" || fail "$k: missing or rejected. Run ./setup.sh save again"
+      slack_check "$(env_get $k)" >/dev/null 2>&1 && pass "$k accepted by Slack" || fail "$k: missing or rejected. Run kage save again"
     done
   fi
   NAME="$(env_get KAGE_NAME)"; NAME="${NAME:-kage}"
@@ -116,18 +195,19 @@ cmd_doctor() {
       || fail "plugin: run claude plugin marketplace add \"$PWD\" && claude plugin install kage@kage"
     node -e 'const f=process.env.HOME+"/.claude/remote-settings.json";let s={};try{s=require(f)}catch{};process.exit((s.allowedChannelPlugins||[]).some(p=>p.marketplace==="kage"&&p.plugin==="kage")?0:1)' \
       && pass "your Claude org approves the kage channel" \
-      || fail "org approval missing: an org Owner adds kage to allowedChannelPlugins (README, Start without prompts)"
+      || fail "org approval missing: an org Owner adds kage to allowedChannelPlugins (README, 'Run threads as tmux panes instead')"
   else
     note "dev route: Claude Code shows a warning screen on each start, and a person confirms it"
   fi
 
-  if tmux has-session -t "=$NAME" 2>/dev/null; then pass "tmux session $NAME is running"; else fail "not running: ./start.sh"; fi
+  if tmux has-session -t "=$NAME" 2>/dev/null; then pass "tmux session $NAME is running"; else fail "not running: kage start"; fi
   local st="$(dirname "$ENV_FILE")/status"
   if [[ -f $st ]] && ps -p "$(awk '{print $4}' "$st")" >/dev/null 2>&1; then
     pass "connected to Slack: $(cat "$st")"
   else
-    fail "not connected to Slack yet: wait 20 s after start, or tmux attach -t $NAME to see why"
+    fail "not connected to Slack yet: wait 20 s after start, or run kage logs to see why"
   fi
+  command -v kage >/dev/null || note "kage is not on your PATH: run ./setup.sh link to type kage <command> anywhere"
   [[ $bad == 0 ]] && echo "All good. Tag @$NAME in Slack to try it." || return 1
 }
 
@@ -137,19 +217,32 @@ cmd_interactive() {
   say "3/4  Create your Slack app"; cmd_app "$NAME"
   read -r -p "Press Enter when you have the three tokens. "
   say "4/4  Save your tokens"; cmd_save "$NAME"
-  say "Done. Start it with ./start.sh"
+  say "Done. Start it with kage start (run ./setup.sh link first to put kage on your PATH)"
 }
 
+# Help comes first, so "kage teammate add --help" never reaches a command that would act on it.
+for a in "$@"; do [[ $a == -h || $a == --help ]] && { [[ $1 == "$a" || $1 == help ]] && cmd_help || cmd_help "$1"; exit 0; }; done
+
 case "${1:-}" in
-  "") cmd_interactive ;;
+  "") if [[ -f "$ENV_FILE" ]]; then { running && echo "$NAME is running. kage status shows its sessions." || echo "$NAME is not running. Start it: kage start"; echo; cmd_help; }; else cmd_interactive; fi ;;
+  help) cmd_help "${2:-}" ;;
+  setup) cmd_interactive ;;
   check) cmd_check ;;
   app) cmd_app "${2:-}" ;;
   save) cmd_save "${2:-}" ;;
   doctor) cmd_doctor ;;
-  teammate) node teammate.ts "${@:2}" ;;
-  watch) node watch.ts "${@:2}" ;;
-  top) node top.ts "${@:2}" ;;
-  attach) node attach.ts "${@:2}" ;;
-  export-crons) node export-crons.ts "${@:2}" ;;
-  *) die "Usage: $0 [check | app [name] | save [name] | doctor | teammate list|add|remove | top | watch [place] | attach [place]]" ;;
+  link) mkdir -p ~/.local/bin && ln -sf "$PWD/setup.sh" ~/.local/bin/kage && echo "ok: run kage from anywhere (needs ~/.local/bin on PATH)" ;;
+  autostart) ./autostart.sh "${2:-}" ;;
+  start) ./start.sh ;;
+  stop) cmd_stop "${2:-}" ;;
+  restart) cmd_restart "${2:-}" ;;
+  status) cmd_status ;;
+  logs) cmd_logs "${2:-}" ;;
+  top) node cli/top.ts "${@:2}" ;;
+  watch) node cli/watch.ts "${@:2}" ;;
+  attach) node cli/attach.ts "${@:2}" ;;
+  teammate) node cli/teammate.ts "${@:2}" ;;
+  call) node cli/call.ts ;;
+  export-crons) node cli/export-crons.ts "${@:2}" ;;   # one-time move of CronCreate jobs out of tmux panes; not in help
+  *) unknown "$1" ;;
 esac

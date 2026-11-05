@@ -29,6 +29,8 @@ describe('the key of the session working on a conversation', () => {
     assert.equal(sessionKey({ connector: 'slack', chat: DM, kind: 'dm', agentDm: true }), 'dm')
     assert.equal(sessionKey({ connector: 'slack', chat: DM, thread: '1.1', kind: 'dm' }), `${DM}:1.1`)
     assert.equal(sessionKey({ connector: 'email', chat: '<root@x>', kind: 'mail' }), 'mail:<root@x>')
+    assert.equal(sessionKey({ connector: 'whatsapp', chat: '100000000000001@lid', kind: 'chat' }), 'wa:100000000000001@lid')
+    assert.equal(sessionKey({ connector: 'voice', chat: 'abc-123', kind: 'chat' }), 'voice:abc-123')
   })
   test('a side lane gets its own session on the same conversation', () => {
     assert.equal(sessionKey(slack, { lane: 'side-6.6' }), 'C1:5.5#side-6.6')
@@ -43,7 +45,8 @@ describe('the key of the session working on a conversation', () => {
       [slack, {}], [slack, { lane: 'side-6.6' }], [slack, { agent: 'ops', lane: 'side-6.6' }],
       [{ connector: 'slack', chat: DM, kind: 'dm', agentDm: true }, {}],
       [{ connector: 'email', chat: '<a:b@c>', kind: 'mail' }, {}],
-      [{ connector: 'email', chat: '<b@c>', kind: 'mail' }, { agent: 'ops' }],
+      [{ connector: 'whatsapp', chat: '91999@c.us', kind: 'chat' }, { agent: 'ops' }],
+      [{ connector: 'voice', chat: 'abc-123', kind: 'chat' }, {}],
     ] as [Conversation, { agent?: string; lane?: `side-${string}` }][]) {
       const k = sessionKey(c, o)
       const back = parseSessionKey(k, DM)

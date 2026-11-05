@@ -2,9 +2,9 @@
 // kage attach <place>: take one thread's session into this terminal, with its whole conversation,
 // and give it back to Kage when you quit Claude Code. While you have it, the hub holds the thread:
 // its session is closed there, and new tasks for it wait until you quit.
-//   ./setup.sh attach            list recent threads
-//   ./setup.sh attach acme       the one thread whose place contains "acme"
-import { spawn } from 'node:child_process'
+//   kage attach            list recent threads and type a number
+//   kage attach support    the one thread whose place contains "support" (several words are fine)
+import { spawn, spawnSync } from 'node:child_process'
 import { existsSync, readFileSync, rmSync } from 'node:fs'
 import { connect, type Socket } from 'node:net'
 import { dirname } from 'node:path'
@@ -15,32 +15,44 @@ const DIR = dirname(process.env.KAGE_ENV || `${HOME}/.config/kage/env`)
 // Resume from the hub's working folder: Claude Code finds a session's transcript by folder.
 const CWD = process.env.KAGE_CWD || HOME
 const SOCK = `${DIR}/router.sock`
-if (!existsSync(`${DIR}/kage.db`) || !existsSync(SOCK)) { console.error('Kage is not running: start it with ./start.sh'); process.exit(1) }
+if (!existsSync(`${DIR}/kage.db`) || !existsSync(SOCK)) { console.error('Kage is not running: start it with kage start'); process.exit(1) }
 
 const db = new DatabaseSync(`${DIR}/kage.db`, { readOnly: true })
 const rows = db.prepare(`select s.key, coalesce(c.place, s.key) as place from sessions s
   left join conversations c using (key) order by c.last_seen desc nulls last`).all() as { key: string; place: string }[]
-const want = process.argv[2]?.toLowerCase()
-const found = want ? rows.filter(r => r.key === process.argv[2] || r.place.toLowerCase().includes(want)) : []
+const arg = process.argv.slice(2).join(' ')
+const want = arg.toLowerCase()
+let found = want ? rows.filter(r => r.key === arg || r.place.toLowerCase().includes(want)) : []
 if (found.length !== 1) {
-  console.error(want ? `${found.length} threads match "${process.argv[2]}". Pick one:` : 'Pick a thread:')
-  for (const r of (found.length ? found : rows).slice(0, 20)) console.error(`  ${r.place}   (${r.key})`)
-  process.exit(1)
+  const list = (found.length ? found : rows).slice(0, 20)
+  console.error(want ? `${found.length} threads match "${arg}". Pick one (newest first):` : 'Pick a thread (newest first):')
+  list.forEach((r, i) => console.error(`  ${String(i + 1).padStart(2)}. ${r.place}   (${r.key})`))
+  if (!process.stdin.isTTY) process.exit(1)
+  process.stderr.write('Number: ')
+  const n = Number(await new Promise<string>(r => process.stdin.once('data', b => r(String(b).trim()))))
+  process.stdin.pause()
+  if (!list[n - 1]) { console.error('No such number.'); process.exit(1) }
+  found = [list[n - 1]!]
 }
 const { key, place } = found[0]!
 
 const WHY = {
   unknown: 'Kage has no session for it',
   held: 'it is already open in another terminal',
-  busy: 'Kage is working in it right now. Try again when it is quiet (./setup.sh watch shows it)',
-  asking: 'Kage is waiting on your approval in it',
 } as const
+// What attaching stopped, like Esc in Claude Code. The conversation is all there; the turn just ended early.
+const CUT = {
+  busy: 'Kage was mid-turn: that turn stopped. Tell it "continue" to pick it up.',
+  asking: 'Kage was waiting on your approval: that request was denied. Ask again here if you want it.',
+  watching: 'A timed check was running in it and has ended. Schedules made with the schedule tool keep running after you quit.',
+} as const
+type Refusal = keyof typeof WHY
 
 // Hold the thread for as long as this connection lives. If the hub restarts, hold it again, so a
 // new task cannot start a second copy of this session while you work in it.
 let claude: ReturnType<typeof spawn> | undefined
-function hold(): Promise<string> {
-  return new Promise((resolve, reject) => {
+function hold(): Promise<{ id: string; cut?: keyof typeof CUT }> {
+  return new Promise((resolve, reject: (e: Error) => void) => {
     const s: Socket = connect(SOCK)
     let buf = ''
     s.on('connect', () => s.write(JSON.stringify({ type: 'hold', key, pid: process.pid }) + '\n'))
@@ -48,9 +60,10 @@ function hold(): Promise<string> {
       buf += b
       const i = buf.indexOf('\n')
       if (i < 0) return
-      const r = JSON.parse(buf.slice(0, i)) as { id?: string; refused?: keyof typeof WHY }
-      if (r.id) resolve(r.id)
-      else reject(new Error(WHY[r.refused!] ?? r.refused))
+      const r = JSON.parse(buf.slice(0, i)) as { id?: string; cut?: keyof typeof CUT; refused?: Refusal }
+      if (r.id) return resolve({ id: r.id, cut: r.cut })
+      s.destroy()
+      reject(new Error(WHY[r.refused!] ?? r.refused))
     })
     s.on('error', () => {})
     s.on('close', () => {
@@ -60,15 +73,17 @@ function hold(): Promise<string> {
   })
 }
 
-let id: string
-try { id = await hold() } catch (e) { console.error(`Cannot attach to ${place}: ${(e as Error).message}.`); process.exit(1) }
-console.error(`Attached to ${place}. Quit Claude Code to give it back to Kage.`)
+const { id, cut } = await hold().catch((e: Error) => { console.error(`Cannot attach to ${place}: ${e.message}.`); process.exit(1) })
+if (cut) console.error(CUT[cut])
+console.error(`Attached to ${place}. New tasks for it wait for you. Quit Claude Code to give it back to Kage.`)
 // The hold must last exactly as long as Claude Code here. Ctrl-c and friends reach both processes;
 // Claude Code handles them, and this one waits for it to exit.
 for (const sig of ['SIGINT', 'SIGQUIT', 'SIGHUP'] as const) process.on(sig, () => {})
-// ponytail: a fixed wait for the hub's copy of the session to exit after it was closed; wait on
-// its pid instead if an overlap ever shows up in the transcript.
-await new Promise(r => setTimeout(r, 2000))
+// The hub's copy of the session can take up to 7 s to exit after a cut (the SDK signals it late).
+// Resume only once no process runs this session id, so two never write one transcript.
+const running = () => spawnSync('pgrep', ['-f', id]).status === 0
+for (let waited = 0; running() && waited < 15_000; waited += 250) await new Promise(r => setTimeout(r, 250))
+if (running()) { console.error(`Kage's copy of ${place} is still running. Try kage attach again in a minute.`); process.exit(1) }
 claude = spawn('claude', ['--resume', id], { stdio: 'inherit', cwd: CWD })
 claude.on('exit', code => {
   // The hub drops the hold when this connection closes. If the hub is down right now, drop its file

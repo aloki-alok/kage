@@ -3,7 +3,7 @@ import assert from 'node:assert/strict'
 import { mkdirSync, mkdtempSync, symlinkSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { ownerMemoryRefusal, privateToolRefusal } from './guards.ts'
+import { ownerMemoryRefusal, privateToolRefusal, voiceToolRefusal } from './guards.ts'
 
 
 describe('private sources on a teammate task', () => {
@@ -45,7 +45,21 @@ describe('private sources on a teammate task', () => {
     })
   })
   test('other tools are fine for a teammate', () => {
-    for (const t of ['Bash', 'Read', 'mcp__kage__reply', 'mcp__claude_ai_Slack__slack_send_message'])
+    for (const t of ['WebSearch', 'WebFetch', 'Bash', 'Read', 'mcp__kage__reply', 'mcp__claude_ai_Slack__slack_send_message'])
       assert.equal(privateToolRefusal(t, 'teammate'), undefined)
+  })
+})
+
+describe('tools on a voice call', () => {
+  test('only the reply tool is allowed: a web request could carry the owner context out in a URL', () => {
+    // ToolSearch only loads a deferred tool's schema (the reply tool is often deferred); what it loads still passes this guard.
+    for (const t of ['mcp__kage__reply', 'mcp__plugin_kage_kage__reply', 'ToolSearch']) assert.equal(voiceToolRefusal(t, 'voice'), undefined, t)
+  })
+  test('shell, files, posting, scheduling and other MCP tools are refused', () => {
+    for (const t of ['WebFetch', 'WebSearch', 'Bash', 'Read', 'Write', 'Edit', 'Grep', 'Agent', 'mcp__kage__edit_message', 'mcp__kage__delete_message', 'mcp__kage__schedule', 'mcp__kage__log_prod_write', 'mcp__claude_ai_Slack__slack_send_message'])
+      assert.match(voiceToolRefusal(t, 'voice') ?? '', /voice call/, t)
+  })
+  test('other senders are not limited here', () => {
+    for (const s of ['owner', 'teammate', undefined]) assert.equal(voiceToolRefusal('Bash', s), undefined)
   })
 })

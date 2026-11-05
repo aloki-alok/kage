@@ -7,12 +7,12 @@
 set -euo pipefail
 DIR="$(cd "$(dirname "$0")" && pwd)"
 ENV_FILE="${KAGE_ENV:-$HOME/.config/kage/env}"
-[[ -f "$ENV_FILE" ]] || { echo "No $ENV_FILE yet. Run ./setup.sh first." >&2; exit 1; }
+[[ -f "$ENV_FILE" ]] || { echo "No $ENV_FILE yet. Run kage setup first." >&2; exit 1; }
 [[ "$DIR$ENV_FILE" =~ [\'\"\\] ]] && { echo "Move kage or its env file to a path without quotes or backslashes." >&2; exit 1; }
 NAME="$(sed -n 's/^KAGE_NAME=//p' "$ENV_FILE")"; NAME="${NAME:-kage}"
 
 if tmux has-session -t "=$NAME" 2>/dev/null; then   # "=" means exact name, not a prefix
-  echo "$NAME is already running. See it: tmux attach -t $NAME   (leave: Ctrl-b then d)"
+  echo "$NAME is already running. See it: kage status"
   exit 0
 fi
 
@@ -29,31 +29,30 @@ if [[ "$(sed -n "s/^KAGE_ROUTE=//p" "$ENV_FILE")" == plugin ]]; then
   CLAUDE="claude --channels plugin:kage@kage --allowedTools $TOOLS"
 else
   ROUTE=dev
-  MCP="{\"mcpServers\":{\"kage\":{\"command\":\"$(command -v node)\",\"args\":[\"$DIR/dist/server.js\"]}}}"
+  MCP="{\"mcpServers\":{\"kage\":{\"command\":\"$(command -v node)\",\"args\":[\"$DIR/server.ts\"]}}}"
   CLAUDE="claude --mcp-config '$MCP' --allowedTools $TOOLS --dangerously-load-development-channels server:kage"
 fi
 RUNTIME="$(sed -n 's/^KAGE_RUNTIME=//p' "$ENV_FILE" | tail -1)"   # the hub's env parser keeps the last line too
 sdk_loads() { (cd "$DIR" && node -e 'import("@anthropic-ai/claude-agent-sdk").catch(()=>process.exit(1))') 2>/dev/null; }
-# Threads run inside the hub on the Agent SDK, which is not bundled: install it once.
-if [[ $RUNTIME != tmux ]] && ! sdk_loads; then
-  echo "Installing the Agent SDK (once)..."
-  (cd "$DIR" && npm ci --no-audit --no-fund --loglevel=error) || echo "npm ci failed, so threads open as tmux panes." >&2
-fi
+# Kage runs from its source, so its packages must match package-lock.json. npm stamps node_modules/.package-lock.json
+# on each install, so a pull that changes the packages reinstalls them before the hub starts again.
+PACKAGES="cd '$DIR' && { [ package-lock.json -ot node_modules/.package-lock.json ] || npm ci --no-audit --no-fund --loglevel=error; }"
+bash -c "$PACKAGES" || { echo "npm ci failed: run it in $DIR and read the error." >&2; exit 1; }
 AWAKE=""; command -v caffeinate >/dev/null && AWAKE="caffeinate -i"   # keep a Mac from idling to sleep
 # Window "router" holds the Slack connection and opens one Claude Code pane per thread (router.ts).
-LOOP="while true; do $AWAKE node '$DIR/dist/router.js'; echo 'router exited, restarting in 5s (Ctrl-c to stop)'; sleep 5; done"
+LOOP="while true; do ( $PACKAGES ); $AWAKE node '$DIR/router.ts'; echo 'router exited, restarting in 5s (Ctrl-c to stop)'; sleep 5; done"
 # Sessions start in your home folder so they have the same reach as a normal session; KAGE_CWD changes that.
 tmux new-session -d -s "$NAME" -n router -c "${KAGE_CWD:-$HOME}" -e "KAGE_ENV=$ENV_FILE" -e "KAGE_CLAUDE=$CLAUDE" "$LOOP"
 
 if [[ $ROUTE == plugin ]] || { [[ $RUNTIME != tmux ]] && sdk_loads; }; then
-  echo "$NAME is running, no prompts. See every thread: ./setup.sh top"
+  echo "$NAME is running, no prompts. See every thread: kage top"
   exit 0
 fi
 cat <<EOF
 $NAME is starting in tmux (dev route). Each thread opens its own Claude Code pane, and each
 new pane shows a warning screen for custom channels: attach, go to the threads window (Ctrl-b then n),
 press Enter on "I am using this for local development", then Ctrl-b and then d.
-To skip that screen, remove KAGE_RUNTIME=tmux from the env file and restart.
+To skip that screen, remove KAGE_RUNTIME=tmux from the env file, then kage stop and kage start.
 EOF
 sleep 2
 if [[ -t 1 && -z "${TMUX:-}" ]]; then tmux attach -t "=$NAME"; else echo "Confirm it with: tmux attach -t $NAME"; fi

@@ -45,9 +45,9 @@ describe('what each thread is doing, in the order the owner must look', () => {
     assert.deepEqual(Object.fromEntries(r.map(x => [x.key, x.ageMs])), { a: 9 * MIN, b: 3 * MIN, c: 5 * HOUR })
   })
   test('every closed thread is listed, newest first, with the channel it came from', () => {
-    const k = [{ key: 'old', place: '#old', lastSeen: NOW - 9 * DAY, connector: 'email' }, { key: 'new', place: '#new', lastSeen: NOW - HOUR, connector: 'slack' }]
+    const k = [{ key: 'old', place: '#old', lastSeen: NOW - 9 * DAY, connector: 'email' }, { key: 'new', place: '#new', lastSeen: NOW - HOUR, connector: 'whatsapp' }]
     const r = boardRows(k, live(), new Map(), new Map(), NOW).rows
-    assert.deepEqual(r.map(x => [x.key, x.connector]), [['new', 'slack'], ['old', 'email']])
+    assert.deepEqual(r.map(x => [x.key, x.connector]), [['new', 'whatsapp'], ['old', 'email']])
   })
   test('with the hub down every thread reads closed, so nothing looks alive that is not', () => {
     const r = rows(known('a'), undefined)
