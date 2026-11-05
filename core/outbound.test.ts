@@ -1,6 +1,59 @@
 import { describe, test } from 'node:test'
 import assert from 'node:assert/strict'
-import { findSecret, secretRefusal, splitForSlack } from './outbound.ts'
+import { findSecret, layoutRefusal, secretRefusal, splitForSlack } from './outbound.ts'
+
+describe('a long table split across messages stays a table', () => {
+  const rows = Array.from({ length: 60 }, (_, i) => `+1555010${String(i).padStart(4, '0')}  Org ${i}`)
+  const text = `*Idle numbers*\n\`\`\`\n${rows.join('\n')}\n\`\`\`\nDone.`
+  test('a cut inside a ``` block closes it there and reopens it in the next part', () => {
+    const parts = splitForSlack(text, 400)
+    assert.ok(parts.length >= 3)
+    for (const p of parts) assert.equal(p.split('```').length % 2, 1, `unbalanced part:\n${p}`)
+    assert.ok(parts.every(p => p.length <= 400))
+    // Every row shows in the code font: inside a block that its own message opens.
+    for (const r of rows) {
+      const p = parts.find(x => x.includes(r))
+      assert.ok(p, r)
+      assert.equal(p.slice(0, p.indexOf(r)).split('```').length % 2, 0, `outside a block: ${r}`)
+    }
+  })
+})
+
+describe('a cut never leaves an empty code block', () => {
+  test('a cut just before the closing fence', () => {
+    const text = `\`\`\`\n${'a'.repeat(386)}\n\`\`\`\nafter`
+    const parts = splitForSlack(text, 400)
+    assert.ok(parts.every(p => !p.includes('```\n```')), JSON.stringify(parts))
+    assert.ok(parts.join('\n').includes('after'))
+  })
+  test('a limit too small for the fences still ends and keeps the text', () => {
+    assert.equal(splitForSlack('abcdef', 5).join(''), 'abcdef')
+  })
+  test('a line longer than a whole message, inside a block', () => {
+    const parts = splitForSlack(`\`\`\`\n${'b'.repeat(900)}\n\`\`\``, 400)
+    assert.ok(parts.every(p => p.replaceAll('`', '').trim()), JSON.stringify(parts))
+    assert.equal(parts.join('').replace(/[`\n]/g, ''), 'b'.repeat(900))
+  })
+})
+
+describe('code blocks fit the Slack thread panel', () => {
+  // A row shaped like one that wrapped in the thread panel: 74 characters.
+  const wide = '+15550100248  Riverside Learning Academy Orga  never        2026-11-30'
+  test('refuses a row wider than 60 characters inside a block, and says how to fix it', () => {
+    assert.match(layoutRefusal(`Idle numbers:\n\`\`\`\n${wide}\n\`\`\``) ?? '', /60/)
+  })
+  test('also when the row sits on the fence line', () => {
+    assert.ok(layoutRefusal(`\`\`\`${wide}\n\`\`\``))
+  })
+  test('a bar counts as one character: a 60-wide row of bars passes, 61 does not', () => {
+    assert.equal(layoutRefusal(`\`\`\`\n${'█'.repeat(53)} 42 (5)\n\`\`\``), undefined)
+    assert.ok(layoutRefusal(`\`\`\`\n${'█'.repeat(54)} 42 (5)\n\`\`\``))
+  })
+  test('long prose outside a block, and a log passed as wide, are left alone', () => {
+    assert.equal(layoutRefusal(`${wide} ${wide}`), undefined)
+    assert.equal(layoutRefusal(`\`\`\`\n${wide}\n\`\`\``, { wide: true }), undefined)
+  })
+})
 
 
 describe('long replies', () => {
@@ -11,7 +64,10 @@ describe('long replies', () => {
     assert.equal(parts.join('\n'), text)
   })
   test('hard-splits a single line longer than the limit', () => {
-    assert.deepEqual(splitForSlack('y'.repeat(2500), 1000).map(p => p.length), [1000, 1000, 500])
+    const parts = splitForSlack('y'.repeat(2500), 1000)
+    assert.equal(parts.length, 3)
+    assert.ok(parts.every(p => p.length <= 1000))
+    assert.equal(parts.join(''), 'y'.repeat(2500))
   })
 })
 
