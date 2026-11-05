@@ -181,28 +181,34 @@ export function sessionTools(o: {
     run: args => change(args as { channel: string; ts: string; text: string; wide?: boolean }, pingIn(String(args.channel))),
   }, {
     name: 'message_people',
-    description: `Tell people something in Slack: posts in the group DM of the owner and these people, under the owner's name (${Title} cannot join a group DM). On a teammate's task the asker is added, and the message says it was sent for them. Returns the link: share it in the task thread with reply.`,
+    description: `Tell people something in Slack: posts in the group DM of the owner and these people, under the owner's name (${Title} cannot join a group DM). The message is signed "<name>, via ${Title}" for the person it is from: the asker on a teammate's task, or from on the owner's, and that person is added to the group. Returns the link: share it in the task thread with reply.`,
     shape: {
       channel: s.describe('channel attribute from the task tag'),
       thread_ts: s.describe('thread_ts attribute from the task tag'),
       users: z.array(s).describe('Slack user ids (U...) of the people to tell, at most 8; the owner is always in the group'),
-      text: s.describe('the message, complete on its own: what, when, from whom'),
+      from: s.optional().describe('Slack user id of the person the message is from, when the owner passes on someone else\'s news. Ignored on a teammate\'s task: it is always the asker.'),
+      text: s.describe('the message, complete on its own: what and when. The tool adds the sign-off, so do not write "From X:"'),
     },
     async run(args) {
-      const a = args as { channel: string; thread_ts: string; users: string[]; text: string }
+      const a = args as { channel: string; thread_ts: string; users: string[]; text: string; from?: string }
       const key = `${a.channel}:${a.thread_ts}`
       if (!taskChannels.has(a.channel) || ['email', 'whatsapp', 'voice'].includes(a.channel)) return { isError: true, text: 'refused: only a task from a Slack thread may message people' }
       // Anyone but the owner gets the tag, even when their task line names no teammate.
-      const asker = ownerTask.get(key) === true ? undefined : askers.get(key) ?? { id: '', name: 'a teammate' }
-      // The asker always sees what went out for them.
-      const people = [...new Set([...a.users, ...asker?.id ? [asker.id] : []])]
-      if (!a.users.length || people.length > 8 || people.some(u => !/^[UW][A-Z0-9]+$/.test(u))) return { isError: true, text: 'refused: name 1 to 8 people by their Slack user id (U...)' }
+      const asker = ownerTask.get(key) === true ? undefined : askers.get(key) ?? { id: '', name: 'A teammate' }
+      const ids = [...a.users, ...a.from ? [a.from] : []]
+      if (!a.users.length || ids.some(u => !/^[UW][A-Z0-9]+$/.test(u))) return { isError: true, text: 'refused: name 1 to 8 people by their Slack user id (U...)' }
+      // Signed by the asker on a teammate's task, whatever from says; on the owner's, by from if given.
+      if (!asker && a.from) await nameMentions(`<@${a.from}>`)
+      const signer = asker ?? (a.from ? { id: a.from, name: names[a.from] ?? a.from } : undefined)
+      // The person a message is signed for always sees it.
+      const people = [...new Set([...a.users, ...signer?.id ? [signer.id] : []])]
+      if (people.length > 8) return { isError: true, text: 'refused: name 1 to 8 people by their Slack user id (U...)' }
       const refusal = secretRefusal(a.text, { fromOwner: !asker })
       if (refusal) return { isError: true, text: refusal }
       const layout = layoutRefusal(a.text)
       if (layout) return { isError: true, text: layout }
       await nameMentions(a.text)
-      const tag = asker ? `\n_(sent by ${Title} for ${asker.name})_` : ''
+      const tag = signer ? `\n_${signer.name}, via ${Title}_` : ''
       const text = `${safeReply(a.text, { ping: true, names }).trim()}${tag}`
       let dm: string
       try {
@@ -362,7 +368,7 @@ function instructions(Title: string, MEM: { own: string; owner: string }) {
     'Pick the shape by what the content is. One fact or a yes or no: one line, no heading. A comparison of up to about 15 rows: a table in a ```block```, one table per block, with a *bold* heading in normal text above it. Rows stay within 60 characters, because the thread panel wraps longer rows and their columns run together (the reply tool refuses wider ones): keep only the columns the reader needs, cut names to about 20 characters, right-align numbers. A bar chart goes inside its table, bars of █ only, at most 20 wide. More than about 15 rows, or a list the reader will act on or copy into a sheet: write it to a .csv, attach it with send_file, and put the count and the top 5 rows in the reply. Several asked-for parts: answer them in the order asked, each under its *bold* heading. Method and caveats: one line. If it all needs more than 6 lines, post the short answer first and the detail in a second reply.',
     'Your first reply to a task restates its goal in one line, in the asker\'s words ("On it: find why checkout calls wait 15 minutes."). No plan, no next steps. If the answer takes under a minute, the answer is the first reply. Pass mark on every reply: ack for "On it", question when you need their answer, answer for a quick question answered, done when the task is finished.',
     'If a reply asks a question or offers something and the work waits on the answer, pass waiting with one line naming it. When asked what is waiting, call the waiting tool and answer with its list.',
-    'To tell people something in Slack ("tell X and Y", "let Z know"), use message_people with the people the task names. Add everyone in the task\'s channel only when the task says so ("everyone here"). Find their ids with the Slack user search. Write one message that stands alone: what, when, and from whom. Then reply in the task thread with the link. Use message_people only to pass on the asker\'s own news (a meeting time, a status). Anything that would commit the owner (agreeing, money, a deadline, an opinion) goes as a Slack draft in that group DM for the owner to send.',
+    'To tell people something in Slack ("tell X and Y", "let Z know"), use message_people with the people the task names. Add everyone in the task\'s channel only when the task says so ("everyone here"). Find their ids with the Slack user search. Write one message that stands alone: what and when. The tool signs it "<name>, via ' + Title + '": when the owner passes on someone else\'s news, pass from with that person\'s id, and never write "From X:" yourself. Then reply in the task thread with the link. Use message_people only to pass on the asker\'s own news (a meeting time, a status). Anything that would commit the owner (agreeing, money, a deadline, an opinion) goes as a Slack draft in that group DM for the owner to send.',
     'For a repeating check or a later reminder, use the schedule tool: it survives restarts and runs until unschedule. CronCreate is off here because its jobs die with this session. A run arrives as "Scheduled run of job <id> ...": do what its prompt says, and post only what the prompt asks for.',
     'After each change you make to production for a task (deploy, restart, DB write, prod config), call log_prod_write once.',
     'Answer in the thread by default, including normal work details like logs, numbers and code. Use private=true (the owner\'s DM) only for something that must never be visible in a channel: secrets, passwords, tokens, keys, or a person\'s private data.',
