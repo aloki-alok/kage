@@ -44,6 +44,13 @@ test('the threads that cost most this week are listed, three at most', () => {
   assert.doesNotMatch(text, /#a\b/)
 })
 
+test('with threads as tmux panes, the retro says spend is not tracked instead of listing none', () => {
+  const text = retro({ ...base, schedules: [sched('aa')], runs: runs('aa', 'C1:1.1', 70), costTracked: false }).join('\n')
+  assert.match(text, /unschedule aa/)
+  assert.match(text, /not tracked.*tmux/)
+  assert.equal(retro({ ...base, schedules: [], costTracked: false }).length, 0)   // the note alone sends no DM
+})
+
 test('due once a week, from Monday 09:00 on the Mac clock, or later in the week if Monday was missed', () => {
   const monday9 = new Date(2026, 10, 9, 9, 5).getTime()   // local time, whatever the zone
   assert.equal(retroDue(monday9, undefined), true)
