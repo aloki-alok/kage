@@ -93,5 +93,5 @@ export function composeReply(r: {
 // so anything that needs the owner's yes still waits for it in Slack. One line, no channel tag.
 export function emailTaskLine(from: string, sender: 'owner' | 'teammate', ask: string): string {
   const t = noChannelTag(ask).replace(/\s+/g, ' ').trim()
-  return `Email task (${from}, ${sender}, by email: teammate limits apply): ${t}`
+  return `Email task (${noChannelTag(from).replace(/\s+/g, ' ')}, ${sender}, by email: teammate limits apply): ${t}`
 }
