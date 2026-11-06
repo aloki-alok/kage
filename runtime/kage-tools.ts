@@ -348,7 +348,8 @@ export function sessionTools(o: {
       if (m.origin.ts && m.meta.channel !== 'email' && m.meta.channel !== 'whatsapp' && m.meta.channel !== 'voice') unanswered.set(key, [...unanswered.get(key) ?? [], m.origin])
       where = m.meta.permalink ? `<${m.meta.permalink}|${m.meta.place}>` : m.meta.place
       links.set(key, m.meta.permalink || m.meta.place)
-      append(WAITING, ['answered', key, '', ''])
+      // A scheduled run is not the owner answering. A row only when something was open keeps the file to real answers.
+      if (!m.scheduled && openWaiting(read(WAITING)).some(i => i.thread === key)) append(WAITING, ['answered', key, '', ''])
     },
     // Ask the owner, in their DM, to approve one tool call. Rejects when the prompt did not post.
     async askOwner(p: { id: string; tool: string; description: string; preview: string }) {

@@ -312,4 +312,17 @@ describe("a session's Kage tools", () => {
     assert.equal((await s.call('waiting', {})).text, 'nothing is waiting')
     assert.match(readFileSync(join(s.dir, 'posted.tsv'), 'utf8'), /C1\t9\.1\tbot\tC1:5\.5\n/)
   })
+  test('a scheduled run in the thread does not answer its open question', async () => {
+    const s = setup()
+    s.t.onTask(s.task())
+    await s.call('reply', { channel: 'C1', thread_ts: '5.5', text: 'PR?', waiting: 'Open a PR?' })
+    s.t.onTask({ ...s.task(), origin: { channel: 'C1', ts: '' }, scheduled: true })
+    assert.match((await s.call('waiting', {})).text, /Open a PR\?/)
+  })
+  test('a task logs an answer only when its thread had an open question', async () => {
+    const s = setup()
+    s.t.onTask(s.task())
+    s.t.onTask(s.task())
+    assert.doesNotMatch(readFileSync(join(s.dir, 'waiting.tsv'), { encoding: 'utf8', flag: 'a+' }), /answered/)
+  })
 })

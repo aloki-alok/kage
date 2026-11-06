@@ -40,6 +40,7 @@ test('a due schedule runs as a task in its own thread, with the trust it was set
   assert.equal(task.fromOwner, false)
   assert.deepEqual(task.meta, { channel: 'C1', thread_ts: '5.5', place: '#ops', permalink: '' })
   assert.equal(task.origin.ts, '')                       // no message to react on
+  assert.equal(task.scheduled, true)                      // so it answers no open question
   assert.match(task.content, /^Scheduled run of job j1 \(\*\/15 \* \* \* \*\)/)
   assert.match(task.content, /check the queue$/)
 })
