@@ -1,6 +1,7 @@
 // Email as a way to tag Kage: who may, what the ask is, and how a reply goes back.
 // Pure functions; mailbox.ts does the AWS calls.
 import { sessionKey } from '../core/conversations.ts'
+import { noChannelTag } from '../core/gate.ts'
 
 export type InboundMail = {
   // SES receipt verdicts: PASS, FAIL, GRAY or PROCESSING_FAILED.
@@ -91,6 +92,6 @@ export function composeReply(r: {
 // The instruction line Claude reads. Email gets teammate limits even from the owner's address,
 // so anything that needs the owner's yes still waits for it in Slack. One line, no channel tag.
 export function emailTaskLine(from: string, sender: 'owner' | 'teammate', ask: string): string {
-  const t = ask.replace(/<\/?channel/gi, m => m.replace('<', '&lt;')).replace(/\s+/g, ' ').trim()
+  const t = noChannelTag(ask).replace(/\s+/g, ' ').trim()
   return `Email task (${from}, ${sender}, by email: teammate limits apply): ${t}`
 }

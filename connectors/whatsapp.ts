@@ -6,6 +6,8 @@
 //    task the owner started.
 // Everything else is stored and ignored.
 
+import { noChannelTag } from '../core/gate.ts'
+
 // fromMe: sent from the owner's account. viaApi: sent through WAHA, which only Kage uses, so it is
 // Kage's own message even though it is fromMe too.
 export type WaMessage = { chat: string; id: string; fromMe: boolean; viaApi?: boolean; text: string; forwarded?: boolean; edited?: boolean }
@@ -57,7 +59,7 @@ export const hasTag = (text: string, name: string) => tagFor(name).test(text)
 // The task for the owner's own session. Their ask is the only instruction; the chat is quoted data.
 export function waTaskContent(ask: string, place: string, chat: string, history: WaLine[], name: string, owner: string): string {
   const quoted = history.filter(l => !(l.fromMe && hasTag(l.text, name)))
-    .map(l => `> [${l.fromMe ? owner : 'them'}] ${oneLine(l.text).replace(/<\/channel/gi, '<\\/channel')}`)
+    .map(l => `> [${l.fromMe ? owner : 'them'}] ${noChannelTag(oneLine(l.text))}`)
   return [
     `WhatsApp task from ${owner} (their own message in ${place}): ${oneLine(ask)}`,
     `The reply tool with channel "whatsapp" and thread_ts "${chat}" sends to this chat AS ${owner}, to the people in it: send only what ${owner} would say to them, in their voice, short, plain text, no markdown, and no "On it" line. Never share anything internal (code, prod, customers, money, security, other chats) unless their ask says to. Always answer in this chat. Use private=true (their Slack DM) only when you need ${owner}'s permission or an answer from them before you can reply; never for a status note.`,
