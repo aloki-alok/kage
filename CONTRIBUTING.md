@@ -50,7 +50,7 @@ Write logs to stderr only. In a tmux pane, stdout carries the channel protocol, 
 | `conversations.ts` | A conversation and its session key, both ways. |
 | `sessions.ts` | The dispatcher: one session per key, the slot limit, idle close, eviction, holds for `kage attach`. |
 | `outbound.ts` | What may go out: no crowd pings, no secrets in a thread, Slack-sized parts, code blocks narrow enough for the thread panel. |
-| `guards.ts` | Hook rules: private sources, voice calls, the owner's memory. |
+| `guards.ts` | Hook rules: private sources, voice calls, the owner's memory, Slack posts only through Kage's tools. |
 | `ledgers.ts` | The append-only files: questions waiting on the owner, the daily note. |
 | `cron.ts` | Cron expressions, which schedules are due, and reading Claude Code's own cron jobs. |
 | `afk.ts` | AFK mode: when the stand-in answers and what it may say. |

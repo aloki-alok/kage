@@ -238,6 +238,15 @@ describe('Kage sessions on the Agent SDK', () => {
     await tick()
     assert.deepEqual(await run('Bash'), {})
   })
+  test("even on the owner's task the hook refuses the Slack connector's send, so posts go through Kage's tools", async () => {
+    const t = setup()
+    t.d.task('C1:5.5', t.task(), 0)
+    await tick()
+    const hook = t.sdk.runs[0]!.options.hooks.PreToolUse[0]
+    const run = (tool_name: string) => hook.hooks[0]({ hook_event_name: 'PreToolUse', tool_name, tool_input: {} }, undefined, { signal: signal() })
+    assert.equal((await run('mcp__claude_ai_Slack__slack_send_message')).hookSpecificOutput.permissionDecision, 'deny')
+    assert.deepEqual(await run('mcp__claude_ai_Slack__slack_read_thread'), {})
+  })
   test('stop closes the session and denies its open approvals', async () => {
     const t = setup()
     t.d.task('C1:5.5', t.task(), 0)
