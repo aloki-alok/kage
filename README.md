@@ -1,6 +1,6 @@
 <picture>
-  <source media="(prefers-color-scheme: dark)" srcset="docs/hero-dark.png">
-  <img src="docs/hero-light.png" alt="kage: your shadow does the work while you sit at your laptop" width="100%">
+  <source media="(prefers-color-scheme: dark)" srcset="docs/brand/hero-dark.png">
+  <img src="docs/brand/hero-light.png" alt="@kage cover for me, and its shadow: Kage set your status, answered 5 of 6 people, and kept 1 refund for your yes" width="100%">
 </picture>
 
 Kage lets you tag `@kage` in any Slack thread, DM or channel, and your own Claude Code session on your laptop does the work and answers in the same thread. It uses your setup: your `CLAUDE.md`, your tools, your MCP servers, your access. Nobody else can drive it. It only acts on messages you typed yourself.
