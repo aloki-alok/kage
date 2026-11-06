@@ -62,7 +62,7 @@ kage start
 
 The first start installs the Agent SDK, then Kage runs in the background with no screens to confirm. Each Slack thread gets its own Claude Code session inside it.
 
-`kage` alone says whether Kage is running and lists every command. `kage help <command>` shows one with an example, and a mistyped command gets the closest real one.
+`kage` alone says whether Kage is running and shows the six commands you use most. `kage help` lists all of them, `kage help <command>` shows one with an example, and a mistyped command gets the closest real one.
 
 | To | Run |
 |---|---|
@@ -71,6 +71,9 @@ The first start installs the Agent SDK, then Kage runs in the background with no
 | Follow every step as it happens | `kage watch`, or `kage watch support` for one place |
 | Work in a thread yourself | `kage attach <place>`. You get it at once (a running turn stops, as with Esc), and Kage gets it back when you quit. |
 | Read the hub log | `kage logs`, or `kage logs 500` |
+| See every schedule and watch | `kage schedules`: what runs, where, and when it runs next |
+| See what each thread spent | `kage cost`, or `kage cost 7` for a week |
+| Undo the weekly memory tidy | `kage dream undo` |
 | Pick up a changed setting | `kage restart` |
 | Stop it | `kage stop`. Each thread resumes its conversation on its next tag. |
 | Start at login (macOS) | `kage autostart on` (`off` undoes it) |
@@ -107,10 +110,24 @@ Each thread gets its own Claude Code session, so a new tag never interrupts work
 
 - **Restarts keep the context.** Each thread keeps its conversation id for good. If Claude Code exits, Kage restarts, or your Mac reboots, the thread's next tag resumes the same conversation.
 - **At most 4 sessions run at once.** A tag over the limit gets ⏳ and starts when a session frees up.
-- **Idle sessions close after 30 minutes** with no activity, unless Claude is still working, a background agent or shell is running, a repeating check it set up (a cron) is still live, or it waits on your approval. Nothing keeps running. The conversation stays on disk, and the next tag in that thread reopens it with its full history.
+- **Idle sessions close after 30 minutes** with no activity, unless Claude is still working, a background agent or shell is running, or it waits on your approval. Nothing keeps running. The conversation stays on disk, and the next tag in that thread reopens it with its full history.
 - **Old threads clean themselves up.** Claude Code deletes transcripts after 30 days (its `cleanupPeriodDays` setting). Kage then forgets that thread, and a new tag there starts fresh.
 
 To change the limits, add `KAGE_MAX_SESSIONS=6` or `KAGE_IDLE_MINUTES=15` to `~/.config/kage/env`, then restart Kage. Every setting is in [the settings reference](docs/settings.md).
+
+### Schedules and watches
+
+Ask in a thread: `@kage check the deploy every 30 minutes`, or `@kage tell me when Priya replies here`. Kage keeps the schedule itself, so it survives restarts, and a watch wakes only when someone writes in the thread. A watch ends by itself after 7 days.
+
+### What Kage does on its own
+
+- **Every morning:** a DM with the questions that have waited on you for a day or more.
+- **Every Monday:** a DM with the schedules that run often but rarely post, and the threads that cost most. It only suggests: you decide.
+- **Once a week, at night:** it tidies its own memory (merges duplicates, archives what nobody used). `kage dream undo` puts it back.
+
+### Other places to reach it
+
+Slack is the main channel. Email, voice calls and GitHub events (reviews, failed checks, issues assigned to you) can reach the same Kage too. Each is off until you set it up: see [the settings reference](docs/settings.md).
 
 ### Let a teammate tag it
 
