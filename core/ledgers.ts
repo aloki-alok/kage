@@ -16,7 +16,7 @@ export function openWaiting(tsv: string): { when: string; link: string; what: st
   return [...open.values()].flat()
 }
 
-// posted.tsv is append-only: when, channel, ts, bot|owner|deleted. The token a message went out
+// posted.tsv is append-only: when, channel, ts, bot|owner|deleted, the session key that posted (rows before 11-06 have none). The token a message went out
 // with is the one that may change it; anything not on the list is someone else's.
 export function postedBy(tsv: string, channel: string, ts: string): 'bot' | 'owner' | undefined {
   let by: string | undefined
@@ -36,4 +36,27 @@ export function dailyDue(now: number, lastSent: string | undefined): string | un
   const t = new Date(now)
   const today = t.toISOString().slice(0, 10)
   return t.getUTCHours() >= 5 && lastSent !== today ? today : undefined
+}
+
+// costs.tsv is append-only: when, session key, this turn's USD, the session's running total. The
+// Agent SDK reports a running total per Claude conversation (resumes carry it on), never a turn's
+// own cost, so a turn is what the total grew by. A total that went down started over (/clear).
+// ponytail: a /clear followed by a turn dearer than the old total reads as growth; the total alone can't tell.
+// A crash result reports zeros: undefined, so the caller logs nothing and keeps the old total.
+export const turnCost = (last: number | undefined, total: number) =>
+  !(total > 0) ? undefined : last === undefined || total < last ? total : Math.round((total - last) * 1e6) / 1e6
+const costRows = (tsv: string) => tsv.split('\n').filter(Boolean).map(l => {
+  const [when = '', key = '', usd = '', total = ''] = l.split('\t')
+  return { at: Date.parse(when), key, usd: Number(usd), total: Number(total) }
+}).filter(r => r.key && Number.isFinite(r.usd))
+export const lastTotals = (tsv: string) => new Map(costRows(tsv).map(r => [r.key, r.total]))
+export function spendSince(tsv: string, since: number): { key: string; usd: number; turns: number }[] {
+  const by = new Map<string, { key: string; usd: number; turns: number }>()
+  for (const r of costRows(tsv)) {
+    if (!(r.at >= since)) continue
+    const k = by.get(r.key) ?? by.set(r.key, { key: r.key, usd: 0, turns: 0 }).get(r.key)!
+    k.usd = Math.round((k.usd + r.usd) * 1e6) / 1e6
+    k.turns++
+  }
+  return [...by.values()].sort((a, b) => b.usd - a.usd)
 }

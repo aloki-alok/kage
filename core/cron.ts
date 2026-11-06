@@ -45,6 +45,9 @@ export function nextRun(expr: string, from: Date, withinMs: number): Date | unde
   return undefined
 }
 
+// The cron of a watch: it runs when someone writes in its thread (runtime/scheduler.ts heard).
+export const REPLY = '@reply'
+
 export type Schedule = {
   id: string
   key: string            // the thread whose session runs it
@@ -54,7 +57,7 @@ export type Schedule = {
   fromOwner: boolean     // who asked for it: each run gets the same trust as that first task
   created: number
   lastFired: number
-  ends?: number          // when set: the schedule is dropped from then on (only jobs adopted from CronCreate)
+  ends?: number          // when set: the schedule is dropped from then on (jobs adopted from CronCreate, and every watch)
 }
 
 // A recurring run missed by more than this (the hub was down) is skipped; the next one runs as usual.
@@ -66,6 +69,7 @@ export function dueSchedules(all: Schedule[], now: number): { fire: Schedule[]; 
   const fire: Schedule[] = [], drop: string[] = []
   for (const s of all) {
     if (s.ends && now >= s.ends) { drop.push(s.id); continue }
+    if (s.cron === REPLY) continue   // a watch runs on messages (runtime/scheduler.ts heard), never on the clock
     let c: Cron
     try { c = parseCron(s.cron) } catch { continue }   // added through schedule(), which checks it
     if (!s.recurring) {
@@ -141,3 +145,34 @@ export function liveCronJobs(results: { timestamp: string; text: string }[], sin
   }
   return [...jobs].filter(([, until]) => now < until).map(([id]) => id)
 }
+
+// A schedule in words for a person (kage schedules). Only the shapes people set; any other stays as written.
+const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
+const DAYS = ['Sundays', 'Mondays', 'Tuesdays', 'Wednesdays', 'Thursdays', 'Fridays', 'Saturdays']
+const two = (n: string) => n.padStart(2, '0')
+export function cadence(cron: string): string {
+  if (cron === REPLY) return 'when someone writes'
+  const f = cron.trim().split(/\s+/)
+  if (f.length !== 5) return cron
+  const [min, hour, dom, mon, dow] = f as [string, string, string, string, string]
+  let when: string | undefined
+  const every = /^\*\/(\d+)$/.exec(min)
+  const range = /^(\d+)-(\d+)$/.exec(hour)
+  if (dom !== '*' && dow !== '*') return cron
+  if (every && 60 % Number(every[1]) === 0 && (hour === '*' || range)) when = `every ${every[1]} min${range ? `, ${two(range[1]!)}:00 to ${two(range[2]!)}:59` : ''}`
+  else if (/^\d+$/.test(min) && range) when = `hourly at :${two(min)}, ${two(range[1]!)}:00 to ${two(range[2]!)}:59`
+  else if (/^\d+$/.test(min) && /^\d+$/.test(hour)) when = `daily at ${two(hour)}:${two(min)}`
+  if (!when) return cron
+  if (dom !== '*' || mon !== '*') {
+    if (!/^\d+$/.test(dom) || !/^\d+$/.test(mon)) return cron
+    when += `, on ${dom} ${MONTHS[Number(mon) - 1]}`
+  }
+  if (dow === '1-5') when += ', weekdays'
+  else if (/^[0-6]$/.test(dow)) when += `, ${DAYS[Number(dow)]}`
+  else if (dow !== '*') return cron
+  return when
+}
+
+// The first line of a schedule's prompt, without the Slack ids the hub needs and a person does not: an aside
+// holding a channel id or thread timestamp goes whole. An id needs a digit, so a capitalised word stays.
+export const promptPreview = (p: string) => p.split('\n')[0]!.replace(/\s*\([^)]*(\b[BCDGTUW](?=[0-9A-Z]*\d)[0-9A-Z]{8,}\b|\d{10}\.\d{6})[^)]*\)/g, '').replace(/\s*(?:thread|channel)?\s*\b[BCDGTUW](?=[0-9A-Z]*\d)[0-9A-Z]{8,}\b(?:\s*\/\s*\d{10}\.\d{6})?/g, '').replace(/\s+/g, ' ').trim()

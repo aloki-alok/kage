@@ -20,6 +20,8 @@ describe('a mistyped command gets the closest real one', () => {
     assert.equal(suggest('atach', names), 'attach')
     assert.equal(suggest('docter', names), 'doctor')
     assert.equal(suggest('stats', names), 'status')
+    assert.equal(suggest('stauts', names), 'status')        // two letters swapped is one slip
+    assert.equal(suggest('dcotor', names), 'doctor')
   })
   test('a start of a name finds the one name it starts', () => {
     assert.equal(suggest('team', names), 'teammate')

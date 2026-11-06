@@ -7,7 +7,7 @@ import { appendFileSync, mkdirSync, readFileSync, realpathSync, statSync } from 
 import { basename, extname } from 'node:path'
 import { z } from 'zod'
 import { log } from '../config.ts'
-import { nextRun, parseCron, type Schedule } from '../core/cron.ts'
+import { nextRun, parseCron, REPLY, type Schedule } from '../core/cron.ts'
 import { plainName, teammateOf } from '../core/gate.ts'
 import { openWaiting, postedBy, tsvRow } from '../core/ledgers.ts'
 import { findSecret, layoutRefusal, safeReply, secretRefusal, splitForSlack } from '../core/outbound.ts'
@@ -78,7 +78,8 @@ export function sessionTools(o: {
   }
 
   // ping: only the owner's own task may notify the people it mentions.
-  async function post(channel: string, thread_ts: string | undefined, text: string, ping = false) {
+  // key: the session that answered, so the retro credits a private reply to the thread it answers.
+  async function post(key: string, channel: string, thread_ts: string | undefined, text: string, ping = false) {
     await nameMentions(text)
     const parts = splitForSlack(safeReply(text, { ping, names }).trim() || '(empty reply)')
     let via = Title
@@ -86,14 +87,14 @@ export function sessionTools(o: {
     for (const part of parts) {
       try {
         const r = await bot.chat.postMessage({ channel, thread_ts, text: part, unfurl_links: false })
-        append(POSTED, [channel, r.ts!, 'bot'])
+        append(POSTED, [channel, r.ts!, 'bot', key])
         sent.push(r.ts!)
       } catch (e: any) {
         if (!['not_in_channel', 'channel_not_found'].includes(e?.data?.error)) throw e
         // The bot is not a member here (a DM, a private channel): post as the owner, marked with the name.
         // These posts carry no client_msg_id, so the gate never reads them back as tasks.
         const r = await user.chat.postMessage({ channel, thread_ts, text: `*${Title}:* ${part}`, unfurl_links: false })
-        append(POSTED, [channel, r.ts!, 'owner'])
+        append(POSTED, [channel, r.ts!, 'owner', key])
         sent.push(r.ts!)
         via = `your account (${Title} is not in this conversation)`
       }
@@ -171,7 +172,7 @@ export function sessionTools(o: {
       }
       const layout = layoutRefusal(a.text, a)
       if (layout) return { isError: true, text: layout }
-      const { via, where: at } = a.private ? await post(o.botDm(), undefined, a.text) : await post(a.channel, a.thread_ts, a.text, ownerTask.get(key) === true)
+      const { via, where: at } = a.private ? await post(key, o.botDm(), undefined, a.text) : await post(key, a.channel, a.thread_ts, a.text, ownerTask.get(key) === true)
       // A question keeps the task open, so its final reply still marks the task.
       const emoji = MARKS[a.mark ?? 'done']
       if (emoji) {
@@ -296,22 +297,23 @@ export function sessionTools(o: {
   const jobs = o.schedules
   if (jobs) tools.push({
     name: 'schedule',
-    description: 'Run a prompt in this thread on a schedule (or once at a set time). Use it instead of CronCreate: CronCreate jobs die when this session closes or Kage restarts, these do not. A schedule runs until you cancel it with unschedule.',
+    description: 'Run a prompt in this thread on a schedule (or once at a set time), or each time someone writes here. Use it instead of CronCreate: CronCreate jobs die when this session closes or Kage restarts, these do not. To wait for someone\'s message, use cron "@reply", never a minute cron: it runs only when a message arrives, and ends by itself after 7 days. A clock schedule runs until you cancel it with unschedule.',
     shape: {
-      cron: s.describe('5-field cron in local time: minute hour day-of-month month day-of-week, e.g. "*/15 9-18 * * 1-5"'),
+      cron: s.describe('"@reply" to run on each new message here, or a 5-field cron in local time: minute hour day-of-month month day-of-week, e.g. "*/15 9-18 * * 1-5"'),
       prompt: s.describe('what to do on each run, complete on its own: name the thread, the check, and when to stay quiet'),
       recurring: z.boolean().optional().describe('false runs it once, at the next match. Default true'),
     },
     async run(args) {
       const a = args as { cron: string; prompt: string; recurring?: boolean }
-      try { parseCron(a.cron) } catch (e) { return { isError: true, text: (e as Error).message } }
+      if (a.cron !== REPLY) try { parseCron(a.cron) } catch (e) { return { isError: true, text: (e as Error).message } }
       if (!a.prompt.trim()) return { isError: true, text: 'the prompt is empty' }
       const id = randomBytes(4).toString('hex')
       const recurring = a.recurring !== false
       const no = await jobs.add({ id, cron: a.cron, prompt: a.prompt, recurring })
       if (no) return { isError: true, text: no }
+      if (a.cron === REPLY) return { text: `Watching: job ${id} runs each time someone writes in this thread, for 7 days. Kept by Kage: it survives restarts.` }
       const next = nextRun(a.cron, new Date(), 366 * 24 * 3600_000)
-      return { text: `Scheduled ${recurring ? 'recurring' : 'one-shot'} job ${id} (${a.cron}). Next run: ${next?.toLocaleString() ?? 'none within a year'}. Kept by Kage: it survives restarts and runs until unschedule.` }
+      return { text: `Kage schedule ${id} set, ${recurring ? 'recurring' : 'one-shot'} (${a.cron}). Next run: ${next?.toLocaleString() ?? 'none within a year'}. Kept by Kage: it survives restarts and runs until unschedule.` }
     },
   }, {
     name: 'unschedule',

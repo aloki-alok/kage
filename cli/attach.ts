@@ -7,11 +7,10 @@
 import { spawn, spawnSync } from 'node:child_process'
 import { existsSync, readFileSync, rmSync } from 'node:fs'
 import { connect, type Socket } from 'node:net'
-import { dirname } from 'node:path'
+import { DIR } from './home.ts'
 import { DatabaseSync } from 'node:sqlite'
 
 const HOME = process.env.HOME!
-const DIR = dirname(process.env.KAGE_ENV || `${HOME}/.config/kage/env`)
 // Resume from the hub's working folder: Claude Code finds a session's transcript by folder.
 const CWD = process.env.KAGE_CWD || HOME
 const SOCK = `${DIR}/router.sock`
