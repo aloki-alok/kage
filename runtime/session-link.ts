@@ -42,7 +42,7 @@ export function listenForSessions(path: string, d: Dispatcher<ToSession>, o: Rep
   schedules: Pick<ReturnType<typeof scheduler>, 'add' | 'remove'>
   callCode?: () => string
   // kage tell: the owner's words into one thread, as a task (router.ts decides how).
-  tell?: (key: string, text: string) => { ok: true } | { refused: string }
+  tell?: (key: string, text: string) => { ok: true; held?: true } | { refused: string }
 }) {
   try { unlinkSync(path) } catch {}
   const dir = dirname(path)
@@ -88,7 +88,8 @@ export function listenForSessions(path: string, d: Dispatcher<ToSession>, o: Rep
           const code = o.callCode?.()
           sock.write(JSON.stringify({ type: 'callcode', ...(code ? { code } : { refused: 'voice is off' }) }) + '\n')
         } else if (m.type === 'tell' && !key && !held && typeof m.key === 'string' && typeof m.text === 'string') {
-          // Only a console on this machine reaches here: a session's own socket (hello) never speaks as the owner.
+          // Speaks as the owner. A session's hello'd socket cannot; its Bash can open a new one, the same limit as
+          // core/guards.ts (stops mistakes, not a determined session). kage tell refuses inside a session.
           const r = !m.text.trim() ? { refused: 'empty message' } : o.tell?.(m.key, m.text.trim()) ?? { refused: 'this hub cannot take messages' }
           sock.write(JSON.stringify({ type: 'tell', ...r }) + '\n')
         } else if (m.type === 'stop' && !key && !held && typeof m.key === 'string') {
