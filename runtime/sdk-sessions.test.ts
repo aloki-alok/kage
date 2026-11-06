@@ -289,8 +289,7 @@ describe('Kage sessions on the Agent SDK', () => {
     assert.deepEqual(t.sdk.runs[0]!.set.slice(2), [{ model: undefined }, { effortLevel: null }])
     t.sdk.runs[0]!.end()
     await tick(30)
-    assert.equal(t.sdk.runs[1]!.options.model, undefined)
-    assert.equal(t.sdk.runs[1]!.options.effort, undefined)
+    assert.ok(!('model' in t.sdk.runs[1]!.options) && !('effort' in t.sdk.runs[1]!.options))   // so the hub's own options still hold
   })
   test('set_model changes only what it is given', async () => {
     const t = setup()
@@ -298,5 +297,10 @@ describe('Kage sessions on the Agent SDK', () => {
     await tick()
     await t.call('set_model', { effort: 'low' })
     assert.deepEqual(t.sdk.runs[0]!.set, [{ effortLevel: 'low' }])
+    await t.call('set_model', { model: 'sonnet' })
+    t.sdk.runs[0]!.end()
+    await tick(30)
+    assert.equal(t.sdk.runs[1]!.options.model, 'sonnet')
+    assert.equal(t.sdk.runs[1]!.options.effort, 'low')
   })
 })
