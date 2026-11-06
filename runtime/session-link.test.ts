@@ -151,6 +151,37 @@ test('the console reads the live board and stops a quiet session over the socket
   server.close()
 })
 
+test('the console tells a thread something as the owner, and a session cannot', async () => {
+  const d = new Dispatcher<ToSession>(
+    { start: () => {}, stop: () => {}, lastActivity: () => 0, busy: () => false },
+    { max: 3, idleMs: 9e9, connectMs: 9e9, evictMs: 0, newId: () => 'id1' },
+  )
+  d.task('B', task('b'), 0)
+  d.connect('B', () => {})
+  const told: [string, string][] = []
+  const tell = (key: string, text: string) => key === 'A' ? (told.push([key, text]), { ok: true as const }) : { refused: 'no thread with that key' }
+  const sock = join(mkdtempSync(join(tmpdir(), 'kage-link-')), 's.sock')
+  const server = listenForSessions(sock, d, { mail: () => {}, wa: () => {}, voice: () => {}, failed: () => {}, schedules: { add: () => undefined, remove: () => {} }, tell })
+  await until(() => server.listening)
+  const ask = async (m: object, hello?: string) => {
+    const c = connect(sock)
+    let r = ''
+    c.on('data', b => { r += b })
+    if (hello) c.write(JSON.stringify({ type: 'hello', key: hello }) + '\n')
+    c.write(JSON.stringify(m) + '\n')
+    await until(() => r.includes('\n'))
+    c.end()
+    return r ? JSON.parse(r) : undefined
+  }
+  assert.deepEqual(await ask({ type: 'tell', key: 'A', text: 'use the staging db' }), { type: 'tell', ok: true })
+  assert.deepEqual(told, [['A', 'use the staging db']])
+  assert.deepEqual(await ask({ type: 'tell', key: 'Z', text: 'hi' }), { type: 'tell', refused: 'no thread with that key' })
+  assert.deepEqual(await ask({ type: 'tell', key: 'A', text: '   ' }), { type: 'tell', refused: 'empty message' })
+  // A thread's own session may not speak as the owner in another thread.
+  await ask({ type: 'tell', key: 'A', text: 'from a session' }, 'B')
+  assert.deepEqual(told, [['A', 'use the staging db']])
+  server.close()
+})
 test('a voice reply goes only to a voice conversation, and a mail or WhatsApp reply never does', () => {
   const got: string[] = []
   const o = { mail: (k: string) => got.push(`mail ${k}`), wa: (k: string) => got.push(`wa ${k}`), voice: (k: string, t: string) => got.push(`voice ${k} ${t}`) }

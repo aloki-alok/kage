@@ -317,7 +317,21 @@ const replies = {
     void slack.notifyOwner(`Email reply failed for ${placeOf(key)}: ${e}`)
   }),
 }
-listenForSessions(`${DIR}/router.sock`, d, { ...replies, failed, schedules, callCode: voice?.issueCode })
+// kage tell: the owner's words into a thread, typed on this machine. Same shape as a scheduled run (runtime/scheduler.ts).
+function tell(key: string, text: string): { ok: true } | { refused: string } {
+  const c = store.conversation(key)
+  if (!c) return { refused: 'no thread with that key' }
+  const task: Task = {
+    type: 'task', fromOwner: true, content: `From the owner, typed in the terminal: ${text}`,
+    meta: { channel: c.conversation.chat, thread_ts: c.conversation.thread ?? '', place: c.place, permalink: '' },
+    origin: { channel: c.conversation.chat, ts: '' },
+  }
+  log('tell', c.place)
+  noteTrust(key, task)
+  if (d.task(key, task, Date.now()) === 'failed') { failed(task); return { refused: 'could not start a session there' } }
+  return { ok: true }
+}
+listenForSessions(`${DIR}/router.sock`, d, { ...replies, failed, schedules, tell, callCode: voice?.issueCode })
 
 await slack.start()
 log(`listening as ${slack.botUser} (@${NAME}) for ${slack.ownerName} ${slack.ids.owner}; up to ${MAX} sessions; teammates ${TEAMMATES.join(',') || 'none'}`)
