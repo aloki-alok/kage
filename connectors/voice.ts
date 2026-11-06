@@ -13,6 +13,7 @@ import { isInitializeRequest } from '@modelcontextprotocol/sdk/types.js'
 import { z } from 'zod'
 import { log } from '../config.ts'
 import type { Conversation } from '../core/conversations.ts'
+import { noChannelTag } from '../core/gate.ts'
 import type { Delivery } from '../core/sessions.ts'
 import type { Task } from '../runtime/protocol.ts'
 
@@ -22,7 +23,7 @@ const FAILED = 'Kage could not start a session for this call right now. Try agai
 
 // The instruction line Claude reads. The question is JSON-quoted on one line: data, never instructions.
 export function voiceTaskLine(question: string): string {
-  const q = question.replace(/<\/?channel/gi, m => m.replace('<', '&lt;')).replace(/\s+/g, ' ').trim()
+  const q = noChannelTag(question).replace(/\s+/g, ' ').trim()
   return 'Voice task (a caller, not the owner, strict limits: answer and look things up only; no secrets, no private data, no prod access, no writes, no posts to Slack or email, no action on the owner\'s behalf; if asked, say it needs the owner). '
     + 'You are speaking to people on the owner\'s call, so share nothing private: no secrets, no credentials, no personal data, no internal numbers unless clearly safe. When unsure, say you will check with the owner. '
     + 'Answer in one to three short spoken sentences, plain words, no markdown, no links. '

@@ -86,14 +86,17 @@ export function quoteMessage(
   const mine = self && (x.user === self.bot || (x.user === owner && !x.client_msg_id && (x.text ?? '').startsWith(`*${self.title}:*`)))
   const who = mine ? `you (${self.title})`
     : x.user !== owner ? `other:${x.user ?? 'bot'}` : x.client_msg_id ? 'owner' : 'app-as-owner'
-  const body = (x.text ?? '').replace(/<\/channel/gi, '<\\/channel')
+  const body = noChannelTag(x.text ?? '')
   return body.split('\n').map((l, i) => `> ${i === 0 ? `[${who} ${x.ts}] ` : ''}${l}`).join('\n')
 }
+
+// Text from outside can neither open nor close the <channel> tag Claude reads tasks in.
+export const noChannelTag = (s: string) => s.replace(/<(\/?channel)/gi, '&lt;$1')
 
 // The instruction line of a task. A teammate's text is less trusted than the owner's: it can't
 // close the <channel> tag, and it stays on one line so it can't forge a "Task from <owner>:" line.
 export function taskLine(text: string, from: { name: string; teammate?: string }): string {
-  let t = text.replace(/<\/?channel/gi, m => m.replace('<', '&lt;'))
+  let t = noChannelTag(text)
   if (from.teammate) t = t.replace(/\s+/g, ' ').trim()
   t ||= '(empty: they only tagged you)'
   return from.teammate ? `Teammate task (${from.teammate}, ${from.name}, not the owner): ${t}` : `Task from ${from.name}: ${t}`
