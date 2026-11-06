@@ -2,9 +2,10 @@
   <title id="t">How Kage works</title>
   <desc id="d">Your Slack message travels over Socket Mode to a small server on your machine, which checks you sent it and hands it to your Claude Code session; Claude replies in the same thread.</desc>
   <style>
-    :root { --bg:#ffffff; --ink:#18161d; --muted:#6b665e; --line:#cfcac0; --card:#f6f4ef; --accent:#d23c25; --mine:#fbefec; }
+    /* Cast tokens (docs/brand/brand.html). Orange is kept for "needs you", so the flow is drawn in ink. */
+    :root { --bg:#f2efe9; --ink:#16140f; --muted:#6d675e; --line:#d8d2c7; --card:#e9e5dd; --accent:#16140f; --mine:#f2efe9; }
     @media (prefers-color-scheme: dark) {
-      :root { --bg:#0f0e13; --ink:#f4f1ea; --muted:#a39e94; --line:#3a3746; --card:#1b1a22; --accent:#e5462e; --mine:#1f1517; }
+      :root { --bg:#121110; --ink:#efe9df; --muted:#a19b91; --line:#2c2925; --card:#1b1916; --accent:#efe9df; --mine:#121110; }
     }
     .sans { font-family: ui-sans-serif, -apple-system, "Segoe UI", Helvetica, Arial, sans-serif; }
     .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
