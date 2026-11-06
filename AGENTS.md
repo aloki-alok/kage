@@ -63,6 +63,7 @@ The install line puts `kage` on your PATH (in a git checkout, run `./setup.sh li
 | The live console (mouse or keys: `↑↓` pick, `⏎` open the feed, `a` attach, `x` cut, `s` schedules, `/` search, `q` quit) | `kage top` |
 | Follow every step | `kage watch`, or `kage watch support` for threads whose place contains "support" |
 | Work in a thread's session yourself | `kage attach <place>`. It takes the session at once: a turn in progress stops, as with Esc. New tasks for it wait until you quit. When several threads share a place, attach by the key it lists. |
+| Tell a thread something, as you | `kage tell <place> <message>`. Its session takes it after the current turn and answers in the thread. |
 | The hub log | `kage logs` |
 | Restart after a settings change | `kage restart`. A change to `KAGE_RUNTIME`, `KAGE_ROUTE`, `KAGE_CWD` or `KAGE_MEMORY` needs `kage stop`, then `kage start`. |
 | Stop | `kage stop` |
