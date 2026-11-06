@@ -11,7 +11,7 @@ import { mkdirSync, writeFileSync } from 'node:fs'
 import { dirname } from 'node:path'
 import { load, log } from './config.ts'
 import type { ToSession } from './runtime/protocol.ts'
-import { senderOf } from './core/gate.ts'
+import { senderOf, withoutInvisible } from './core/gate.ts'
 import { memoryDirs, senderFile } from './core/guards.ts'
 import { sessionTools } from './runtime/kage-tools.ts'
 import { schedulesIn } from './runtime/store.ts'
@@ -96,7 +96,7 @@ async function fromRouter(m: ToSession) {
   mkdirSync(dirname(sender), { recursive: true, mode: 0o700 })
   writeFileSync(sender, senderOf({ fromOwner: m.fromOwner === true, meta: m.meta }), { mode: 0o600 })
   kage.onTask(m)
-  await mcp.notification({ method: 'notifications/claude/channel', params: { content: m.content, meta: m.meta } })
+  await mcp.notification({ method: 'notifications/claude/channel', params: { content: withoutInvisible(m.content), meta: m.meta } })
 }
 
 // Connects to the router and stays connected: it reconnects after a router restart.

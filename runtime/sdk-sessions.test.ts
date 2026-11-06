@@ -121,6 +121,12 @@ describe('Kage sessions on the Agent SDK', () => {
     assert.equal(said.match(/<channel/g)!.length, 1)
     assert.equal(said.match(/<\/channel>/g)!.length, 1)
   })
+  test('hidden Unicode in a task never reaches Claude', async () => {
+    const t = setup()
+    t.d.task('C1:5.5', t.task({ content: 'hi\u200B there\u{E0041}' }), 0)
+    await tick()
+    assert.match(t.sdk.runs[0]!.said[0]!, /\nhi there\n/)
+  })
   test('busy from a task until the session says idle', async () => {
     const t = setup()
     t.d.task('C1:5.5', t.task(), 0)
@@ -143,18 +149,18 @@ describe('Kage sessions on the Agent SDK', () => {
     await tick()
     assert.equal(t.s.runner.busy('C1:5.5'), false)
   })
-  test('a session holding a cron job stays kept, as watching, until the job is cancelled', async () => {
+  // CronCreate is off in SDK sessions; the schedule tool's jobs live in the hub's store and survive a restart,
+  // so a session that set one up is quiet, free to restart or give up its slot.
+  test('a session that set up a hub schedule is not kept as watching', async () => {
     const t = setup()
     t.d.task('C1:5.5', t.task(), 0)
     await tick()
     const result = (text: string) => ({ type: 'user', message: { content: [{ type: 'tool_result', content: text }] } })
-    t.sdk.runs[0]!.emit(result('Scheduled recurring job 4f2a (every 15 min)'))
+    t.sdk.runs[0]!.emit(result('Scheduled recurring job 4f2a (*/15 * * * *). Next run: 6 Nov. Kept by Kage: it survives restarts and runs until unschedule.'))
     t.sdk.runs[0]!.emit({ type: 'system', subtype: 'session_state_changed', state: 'idle' })
     await tick()
-    assert.equal(t.s.runner.busy('C1:5.5'), 'watching')
-    t.sdk.runs[0]!.emit(result('Cancelled job 4f2a.'))
-    await tick()
     assert.equal(t.s.runner.busy('C1:5.5'), false)
+    assert.ok(t.sdk.runs[0]!.options.disallowedTools.includes('CronCreate'))   // why the runner tracks no jobs
   })
   test("an approval goes to the owner's DM and their yes or no reaches only the session that asked", async () => {
     const t = setup()

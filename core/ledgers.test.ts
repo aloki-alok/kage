@@ -1,6 +1,6 @@
 import { describe, test } from 'node:test'
 import assert from 'node:assert/strict'
-import { dailyDue, openWaiting, postedBy, staleWaiting, tsvRow } from './ledgers.ts'
+import { dailyDue, lastTotals, openWaiting, postedBy, spendSince, staleWaiting, tsvRow, turnCost } from './ledgers.ts'
 
 
 describe('the daily note of what waits on the owner', () => {
@@ -51,5 +51,29 @@ describe('the ledgers', () => {
   test('two questions in one thread both stay open', () => {
     const rows = [tsvRow(['t1', 'open', 'C1:1.1', 'l', 'a']), tsvRow(['t2', 'open', 'C1:1.1', 'l', 'b'])].join('')
     assert.deepEqual(openWaiting(rows).map(i => i.what), ['a', 'b'])
+  })
+})
+
+describe('the cost ledger', () => {
+  test('a turn costs what the running total grew by; a total that went down started over', () => {
+    assert.equal(turnCost(undefined, 0.4), 0.4)
+    assert.equal(turnCost(0.4, 0.75), 0.35)
+    assert.equal(turnCost(0.75, 0.1), 0.1)                       // /clear or a fresh session
+    assert.equal(turnCost(0.1, 0.3), 0.2)                        // no float dust
+    assert.equal(turnCost(5, 0), undefined)                      // a crash result reports zeros: not a turn
+    assert.equal(turnCost(5, Number.NaN), undefined)
+  })
+  test('the last total per thread comes back from the file, so a restart does not count a turn twice', () => {
+    const tsv = [tsvRow(['2026-11-06T01:00:00Z', 'C1:1.1', '0.4', '0.4']), tsvRow(['2026-11-06T02:00:00Z', 'C1:1.1', '0.35', '0.75']), tsvRow(['2026-11-06T02:00:00Z', 'dm', '0.2', '0.2'])].join('')
+    assert.deepEqual(lastTotals(tsv), new Map([['C1:1.1', 0.75], ['dm', 0.2]]))
+  })
+  test('spend per thread since a time, most expensive first, with its turns', () => {
+    const tsv = [
+      tsvRow(['2026-11-04T01:00:00Z', 'dm', '9', '9']),
+      tsvRow(['2026-11-06T01:00:00Z', 'C1:1.1', '0.4', '0.4']),
+      tsvRow(['2026-11-06T02:00:00Z', 'C1:1.1', '0.35', '0.75']),
+      tsvRow(['2026-11-06T02:00:00Z', 'dm', '0.2', '9.2']),
+    ].join('')
+    assert.deepEqual(spendSince(tsv, Date.parse('2026-11-05T00:00:00Z')), [{ key: 'C1:1.1', usd: 0.75, turns: 2 }, { key: 'dm', usd: 0.2, turns: 1 }])
   })
 })

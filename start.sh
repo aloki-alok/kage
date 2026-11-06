@@ -40,7 +40,7 @@ PACKAGES="cd '$DIR' && { [ package-lock.json -ot node_modules/.package-lock.json
 bash -c "$PACKAGES" || { echo "npm ci failed: run it in $DIR and read the error." >&2; exit 1; }
 AWAKE=""; command -v caffeinate >/dev/null && AWAKE="caffeinate -i"   # keep a Mac from idling to sleep
 # Window "router" holds the Slack connection and opens one Claude Code pane per thread (router.ts).
-LOOP="while true; do ( $PACKAGES ); $AWAKE node '$DIR/router.ts'; echo 'router exited, restarting in 5s (Ctrl-c to stop)'; sleep 5; done"
+LOOP="while true; do ( $PACKAGES ); $AWAKE node '$DIR/router.ts'; code=\$?; when=\$(date -u +%FT%TZ); printf '%s\\t%s\\n' \"\$when\" \"\$code\" >> '$(dirname "$ENV_FILE")/exits.tsv'; echo \"\$when router exited with code \$code, restarting in 5s (Ctrl-c to stop)\"; sleep 5; done"
 # Sessions start in your home folder so they have the same reach as a normal session; KAGE_CWD changes that.
 tmux new-session -d -s "$NAME" -n router -c "${KAGE_CWD:-$HOME}" -e "KAGE_ENV=$ENV_FILE" -e "KAGE_CLAUDE=$CLAUDE" "$LOOP"
 
