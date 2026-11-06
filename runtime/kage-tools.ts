@@ -230,7 +230,7 @@ export function sessionTools(o: {
       append(POSTED, [dm, r.ts!, 'people'])
       sentForPeople.set(`${dm}:${r.ts}`, tag)
       const link = await user.chat.getPermalink({ channel: dm, message_ts: r.ts! }).then(x => x.permalink ?? '').catch(() => '')
-      return { text: `sent under the owner's name: ${link || dm} (channel ${dm}, ts ${r.ts}; pass these to edit_message or delete_message)` }
+      return { text: `sent from the owner's account, marked ${Title}: ${link || dm} (channel ${dm}, ts ${r.ts}; pass these to edit_message or delete_message)` }
     },
   }, {
     name: 'send_file',

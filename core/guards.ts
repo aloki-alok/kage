@@ -18,9 +18,10 @@ export function voiceToolRefusal(tool: string, sender: string | undefined): stri
 }
 // A Slack connector posts as the owner with no sign of Kage. Kage's reply and message_people tools
 // post as Kage, or mark a post from the owner's account, so every Slack post goes through them.
-const SLACK_SEND = /^mcp__.*slack.*__slack_(send_message|schedule_message)$/i
+// Any Slack server's tool that sends, posts, schedules or replies; drafts post nothing.
+const SLACK_SEND = /^mcp__[^_]*.*slack.*__.*(send|post|schedule|reply|add_message)/i
 export function slackSendRefusal(tool: string): string | undefined {
-  if (!SLACK_SEND.test(tool)) return undefined
+  if (!SLACK_SEND.test(tool) || /draft/i.test(tool)) return undefined
   return `${tool} posts as the owner with no sign of Kage. Use the reply tool for this thread, or message_people to tell someone else.`
 }
 // Kage's own memory (start.sh points autoMemoryDirectory at it) and the owner's, which is the
