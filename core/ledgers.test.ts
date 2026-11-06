@@ -31,7 +31,7 @@ describe('the ledgers', () => {
       tsvRow(['t2', 'open', 'C2:2.2', 'link2', 'Restart the router?']),
       tsvRow(['t3', 'answered', 'C1:1.1', '', '']),
     ].join('')
-    assert.deepEqual(openWaiting(rows), [{ when: 't2', link: 'link2', what: 'Restart the router?' }])
+    assert.deepEqual(openWaiting(rows), [{ when: 't2', thread: 'C2:2.2', link: 'link2', what: 'Restart the router?' }])
   })
   test('a new question after an answer opens again', () => {
     const rows = [
