@@ -231,6 +231,7 @@ function dream(now: number) {
     type: 'task', fromOwner: true, content: dreamTask(MEM),
     meta: { channel: slack.ids.botDm, thread_ts: '', place: `DM with ${Title} (dream)`, permalink: '' },
     origin: { channel: slack.ids.botDm, ts: '' },
+    scheduled: true,
   }
   log('dream starts, memory saved to', snap)
   if (deliver(c, task, task.meta.place, 'side-dream') !== 'failed') writeFileSync(DREAMT, String(now), { mode: 0o600 })
