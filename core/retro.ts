@@ -22,6 +22,7 @@ export function retro(o: {
   runs: string     // runs.tsv: when, schedule id, session key (one row per run the scheduler handed over)
   posted: string   // posted.tsv: when, channel, ts, bot|owner|people|deleted, the session key that posted
   costs: string    // costs.tsv
+  costTracked?: boolean   // false when threads run as tmux panes: only the SDK runner reports cost
   now: number
 }): string[] {
   const since = o.now - WEEK
@@ -38,8 +39,8 @@ export function retro(o: {
     }
   }
   const top = spendSince(o.costs, since).slice(0, 3)
-  return [
-    ...(quiet.length ? ['*Schedules that run a lot and rarely say anything*', ...quiet] : []),
-    ...(top.length ? ['*Most spent this week*', ...top.map(t => `• $${t.usd.toFixed(2)} ${o.placeOf(t.key)} (${t.turns} turns)`)] : []),
-  ]
+  const spend = o.costTracked === false
+    ? (quiet.length ? ['_Spend is not tracked while threads run as tmux panes, only on the Agent SDK runner._'] : [])
+    : top.length ? ['*Most spent this week*', ...top.map(t => `• $${t.usd.toFixed(2)} ${o.placeOf(t.key)} (${t.turns} turns)`)] : []
+  return [...(quiet.length ? ['*Schedules that run a lot and rarely say anything*', ...quiet] : []), ...spend]
 }
