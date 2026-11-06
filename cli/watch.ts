@@ -4,12 +4,11 @@
 // with both runtimes (tmux panes and SDK sessions) and never touches a running session.
 //   kage watch [place]     only threads whose place contains [place], e.g. "support"
 import { existsSync, statSync } from 'node:fs'
-import { dirname } from 'node:path'
+import { DIR } from './home.ts'
 import { DatabaseSync } from 'node:sqlite'
 import { newLines, stepTime, transcriptLine } from '../core/transcript.ts'
 
 const HOME = process.env.HOME!
-const DIR = dirname(process.env.KAGE_ENV || `${HOME}/.config/kage/env`)
 // Sessions run in the hub's working folder (start.sh: KAGE_CWD, else home); Claude Code names the
 // transcript folder after it.
 const PROJECT = `${HOME}/.claude/projects/${(process.env.KAGE_CWD || HOME).replace(/[^A-Za-z0-9]/g, '-')}`

@@ -1,13 +1,15 @@
 // Pure help for the kage command: the closest real command to a mistyped one.
 
+// Edits between two words, where two swapped letters count as one slip ("stauts" is one from "status").
 const distance = (a: string, b: string) => {
-  let prev = Array.from({ length: b.length + 1 }, (_, j) => j)
+  const d = Array.from({ length: a.length + 1 }, (_, i) => Array.from({ length: b.length + 1 }, (_, j) => (i === 0 ? j : j === 0 ? i : 0)))
   for (let i = 1; i <= a.length; i++) {
-    const row = [i]
-    for (let j = 1; j <= b.length; j++) row[j] = Math.min(prev[j]! + 1, row[j - 1]! + 1, prev[j - 1]! + (a[i - 1] === b[j - 1] ? 0 : 1))
-    prev = row
+    for (let j = 1; j <= b.length; j++) {
+      d[i]![j] = Math.min(d[i - 1]![j]! + 1, d[i]![j - 1]! + 1, d[i - 1]![j - 1]! + (a[i - 1] === b[j - 1] ? 0 : 1))
+      if (i > 1 && j > 1 && a[i - 1] === b[j - 2] && a[i - 2] === b[j - 1]) d[i]![j] = Math.min(d[i]![j]!, d[i - 2]![j - 2]! + 1)
+    }
   }
-  return prev[b.length]!
+  return d[a.length]![b.length]!
 }
 
 // The one name the word starts, else the nearest name within 2 edits. A tie or a wide miss gives nothing.

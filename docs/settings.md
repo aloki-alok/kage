@@ -56,6 +56,10 @@ Email is on when `KAGE_MAIL_ADDRESS`, `KAGE_MAIL_QUEUE` and `KAGE_OWNER_EMAIL` a
 | Setting | Default | Effect |
 |---|---|---|
 | `KAGE_VOICE_TOKEN` | none | Turns voice on: an MCP endpoint with one tool, `ask_kage`, behind `Authorization: Bearer <token>`. |
+| `KAGE_GITHUB_SECRET` | none | With `KAGE_GITHUB_LOGIN`, turns GitHub on: a webhook at `127.0.0.1:<port>/github`, checked against this secret. Point a tunnel at it, then add the webhook on a repo (content type JSON, events: pull request reviews, pull requests, issues, issue comments, check suites). |
+| `KAGE_GITHUB_LOGIN` | none | Your GitHub username. Only events that are yours wake Kage: a review on your pull request, failed checks on it, an issue or a review request given to you, a comment that mentions you, from people the repo lists as owner, member or collaborator. Each pull request or issue gets one thread in your DM with Kage. |
+| `KAGE_GITHUB_PORT` | `8789` | The local port the GitHub webhook listens on. |
+| `KAGE_GITHUB_PER_HOUR` | `20` | At most this many GitHub events start work in an hour; past it, you get one note and the rest are skipped until the hour is up. |
 | `KAGE_VOICE_PORT` | `8787` | It listens on `127.0.0.1:<port>/mcp`. Put a tunnel in front of it. |
 | `KAGE_VOICE_MAX` | `1` | Calls at a time. A call never takes a slot from your threads. |
 | `KAGE_VOICE_PER_HOUR` | `20` | New calls per hour. |

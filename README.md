@@ -191,3 +191,7 @@ Start with `kage doctor`. It checks the tools, the tokens, the Agent SDK (or, fo
 ## Develop
 
 The code map, the tests and the build are in [CONTRIBUTING.md](CONTRIBUTING.md).
+
+## License
+
+MIT. See [LICENSE](LICENSE).

@@ -6,7 +6,7 @@ import { fileURLToPath } from 'node:url'
 import { readFileSync, renameSync, writeFileSync } from 'node:fs'
 import { findPeople, teammatesIn, withTeammates, type Person } from '../core/gate.ts'
 
-const ENV_FILE = process.env.KAGE_ENV || `${process.env.HOME}/.config/kage/env`
+import { ENV_FILE } from './home.ts'
 const env = readFileSync(ENV_FILE, 'utf8')
 const token = /^SLACK_USER_TOKEN=(.*)$/m.exec(env)?.[1]
 const die = (msg: string): never => { console.error(msg); process.exit(1) }

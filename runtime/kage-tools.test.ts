@@ -3,6 +3,7 @@ import assert from 'node:assert/strict'
 import { mkdtempSync, readFileSync, symlinkSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
+import { liveCronJobs } from '../core/cron.ts'
 import { sessionTools } from './kage-tools.ts'
 import type { Task } from './protocol.ts'
 
@@ -105,7 +106,9 @@ describe("a session's Kage tools", () => {
     s.t.onTask(s.task({ fromOwner: false }))
     assert.equal((await s.call('schedule', { cron: '61 * * * *', prompt: 'x' })).isError, true)
     const r = await s.call('schedule', { cron: '*/15 * * * *', prompt: 'check the queue' })
-    assert.match(r.text, /^Scheduled recurring job ([0-9a-f]{8})/)
+    assert.match(r.text, /^Kage schedule [0-9a-f]{8} set, recurring/)
+    // The pane runner reads "Scheduled ... job" as Claude's own CronCreate, which would keep the session as watching.
+    assert.deepEqual(liveCronJobs([{ timestamp: new Date().toISOString(), text: r.text }], 0, Date.now()), [])
     assert.deepEqual(s.jobs.map(j => [j.cron, j.prompt, j.recurring]), [['*/15 * * * *', 'check the queue', true]])
     assert.match((await s.call('schedules', {})).text, /check the queue/)
     assert.equal((await s.call('unschedule', { id: 'ffffffff' })).isError, true)    // not this thread's
@@ -294,6 +297,12 @@ describe("a session's Kage tools", () => {
     assert.match(i, /check with the owner/)
     assert.match(i, /no tool except reply/)
   })
+  test('a private reply is logged as posted by the thread it answers', async () => {
+    const s = setup()
+    s.t.onTask(s.task())
+    await s.call('reply', { channel: 'C1', thread_ts: '5.5', text: 'just for you', private: true })
+    assert.match(readFileSync(join(s.dir, 'posted.tsv'), 'utf8'), /\tDBOT\t[^\t]+\tbot\tC1:5\.5\n/)
+  })
   test('an open question lands on the waiting list, and the next task in that thread closes it', async () => {
     const s = setup()
     s.t.onTask(s.task())
@@ -301,6 +310,6 @@ describe("a session's Kage tools", () => {
     assert.match((await s.call('waiting', {})).text, /Open a PR\?/)
     s.t.onTask(s.task())
     assert.equal((await s.call('waiting', {})).text, 'nothing is waiting')
-    assert.match(readFileSync(join(s.dir, 'posted.tsv'), 'utf8'), /C1\t9\.1\tbot/)
+    assert.match(readFileSync(join(s.dir, 'posted.tsv'), 'utf8'), /C1\t9\.1\tbot\tC1:5\.5\n/)
   })
 })

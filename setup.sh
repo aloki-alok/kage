@@ -22,6 +22,9 @@ Run|stop||Stop Kage. Open sessions end, and each resumes on its next tag|kage st
 Run|restart||Restart the hub to pick up a new setting (about 10 s)|kage restart
 Run|status||One look at every session and what it is doing|kage status
 Run|logs|[lines]|The last lines of the hub log (80 unless you say)|kage logs 200
+Run|cost|[days]|What each thread spent, most first (1 day unless you say)|kage cost 7
+Run|dream|undo|Put the memory back to how it was before the last weekly dream|kage dream undo
+Watch|schedules||Every schedule and reply watch, in every thread|kage schedules
 Watch|top||The live console: every thread, its feed, attach and stop, by mouse or keys|kage top
 Watch|watch|[place]|Follow every step every session takes, as it happens|kage watch support
 Watch|attach|[place]|Take a thread into this terminal; Kage gets it back when you quit|kage attach general
@@ -44,6 +47,16 @@ cmd_help() {
     printf '  %-28s %s\n' "$n${a:+ $a}" "$d"
   done <<<"$COMMANDS"
   printf '\nkage help <command> shows one command with an example. Settings: docs/settings.md\n'
+}
+
+# Bare kage: the few commands used every day. kage help has the rest.
+cmd_short() {
+  local n d
+  for n in status top logs schedules cost doctor; do
+    d="$(printf '%s\n' "$COMMANDS" | awk -F'|' -v n="$n" '$2==n {print $4}')"
+    printf '  kage %-12s %s\n' "$n" "$d"
+  done
+  printf '\nkage help lists all %s commands.\n' "$(printf '%s\n' "$COMMANDS" | wc -l | tr -d ' ')"
 }
 
 unknown() {
@@ -202,7 +215,7 @@ cmd_doctor() {
 
   if tmux has-session -t "=$NAME" 2>/dev/null; then pass "tmux session $NAME is running"; else fail "not running: kage start"; fi
   local st="$(dirname "$ENV_FILE")/status"
-  if [[ -f $st ]] && ps -p "$(awk '{print $4}' "$st")" >/dev/null 2>&1; then
+  if [[ -f $st ]] && ps -p "$(awk '{print $4}' "$st")" >/dev/null 2>&1 && [[ $(awk '{print $1}' "$st") == connected ]]; then
     pass "connected to Slack: $(cat "$st")"
   else
     fail "not connected to Slack yet: wait 20 s after start, or run kage logs to see why"
@@ -224,7 +237,7 @@ cmd_interactive() {
 for a in "$@"; do [[ $a == -h || $a == --help ]] && { [[ $1 == "$a" || $1 == help ]] && cmd_help || cmd_help "$1"; exit 0; }; done
 
 case "${1:-}" in
-  "") if [[ -f "$ENV_FILE" ]]; then { running && echo "$NAME is running. kage status shows its sessions." || echo "$NAME is not running. Start it: kage start"; echo; cmd_help; }; else cmd_interactive; fi ;;
+  "") if [[ -f "$ENV_FILE" ]]; then { running && echo "$NAME is running." || echo "$NAME is not running. Start it: kage start"; echo; cmd_short; }; else cmd_interactive; fi ;;
   help) cmd_help "${2:-}" ;;
   setup) cmd_interactive ;;
   check) cmd_check ;;
@@ -238,6 +251,9 @@ case "${1:-}" in
   restart) cmd_restart "${2:-}" ;;
   status) cmd_status ;;
   logs) cmd_logs "${2:-}" ;;
+  cost) node cli/cost.ts "${@:2}" ;;
+  schedules) node cli/schedules.ts ;;
+  dream) node cli/dream.ts "${@:2}" ;;
   top) node cli/top.ts "${@:2}" ;;
   watch) node cli/watch.ts "${@:2}" ;;
   attach) node cli/attach.ts "${@:2}" ;;

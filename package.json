@@ -2,6 +2,7 @@
   "name": "kage",
   "version": "0.3.0",
   "description": "Tag your own Claude Code session from anywhere in Slack.",
+  "license": "MIT",
   "type": "module",
   "private": true,
   "engines": {
@@ -20,12 +21,17 @@
     "@slack/socket-mode": "^3.1.1",
     "@slack/web-api": "^8.3.0",
     "mailauth": "7.3.0",
-    "mailparser": "3.9.40",
+    "mailparser": "3.14.2",
     "zod": "^4.6.7"
   },
   "devDependencies": {
     "@types/mailparser": "^3.9.0",
     "@types/node": "^24",
     "typescript": "^5.9"
+  },
+  "overrides": {
+    "joi": "18.3.2",
+    "nodemailer": "10.3.1",
+    "undici": "8.12.4"
   }
 }

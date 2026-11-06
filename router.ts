@@ -8,24 +8,29 @@
 // server.ts is the other end for tmux panes only: the Kage channel inside each pane's Claude Code.
 import { execFileSync } from 'node:child_process'
 import { randomUUID } from 'node:crypto'
-import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs'
+import { appendFileSync, existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { dirname } from 'node:path'
 import { load, log } from './config.ts'
 import { connectEmail } from './connectors/email.ts'
 import { listenForCommands } from './connectors/slack-commands.ts'
 import { connectSlack } from './connectors/slack.ts'
+import { connectGithub } from './connectors/github.ts'
 import { connectVoice } from './connectors/voice.ts'
 import { startWhatsApp } from './connectors/whatsapp-link.ts'
 import { parseCommands } from './core/commands.ts'
 import { memoryDirs } from './core/guards.ts'
-import { sessionKey, type Conversation, type Lane } from './core/conversations.ts'
+import { placeFor, sessionKey, type Conversation, type Lane } from './core/conversations.ts'
 import { senderOf } from './core/gate.ts'
-import { dailyDue, openWaiting, staleWaiting } from './core/ledgers.ts'
+import { dailyDue, lastTotals, openWaiting, staleWaiting, tsvRow, turnCost } from './core/ledgers.ts'
+import { dreamDue, dreamTask } from './core/dream.ts'
+import { retro, retroDue } from './core/retro.ts'
 import { Dispatcher, mixRunners } from './core/sessions.ts'
 import type { Task, ToSession } from './runtime/protocol.ts'
 import { sessionTools } from './runtime/kage-tools.ts'
 import { scheduler } from './runtime/scheduler.ts'
+import { runJobs } from './runtime/jobs.ts'
+import { snapshotMemory } from './runtime/memory-snapshot.ts'
 import { sdkSessions } from './runtime/sdk-sessions.ts'
 import { listenForSessions, restoreHolds, routeReply } from './runtime/session-link.ts'
 import { openStore } from './runtime/store.ts'
@@ -40,12 +45,16 @@ const CLAUDE = process.env.KAGE_CLAUDE || (log('KAGE_CLAUDE is not set: start Ka
 const MAX = Number(env.KAGE_MAX_SESSIONS || 4)
 const IDLE_MIN = Number(env.KAGE_IDLE_MINUTES || 30)
 process.on('unhandledRejection', e => log('unhandled', e))
+// Every way the hub ends says why in the log: a signal (kage restart or stop), or a crash. An unhandled
+// promise only logs: the hub keeps running.
+for (const sig of ['SIGTERM', 'SIGINT', 'SIGHUP'] as const) process.on(sig, () => { log(`stopped by ${sig}`); process.exit(0) })
+process.on('uncaughtException', e => { log('crashed', e); process.exit(1) })
 let COMMANDS: Map<string, string>
 try { COMMANDS = parseCommands(env.KAGE_COMMANDS || '') } catch (e) { log(String(e)); process.exit(1) }
 
 // One SQLite file holds every conversation seen and the session working on each (runtime/store.ts).
 const store = openStore(`${DIR}/kage.db`)
-const placeOf = (key: string) => store.conversation(key)?.place ?? key
+const placeOf = (key: string) => placeFor(k => store.conversation(k)?.place, key)
 
 // Connectors hand the hub a conversation; the hub alone turns it into a session key.
 const deliver = (c: Conversation, task: Task, place: string, lane: Lane = 'main') => {
@@ -61,7 +70,7 @@ const noteTrust = (key: string, t: Task) =>
   store.noteTask(key, senderOf(t) === 'owner', key in d.saved())
 const slack = await connectSlack({
   dir: DIR, appToken: need('SLACK_APP_TOKEN'), bot, user, name: NAME, title: Title, teammates: TEAMMATES,
-  hub: { deliver, verdict: (id, behavior) => d.verdict(id, { type: 'verdict', request_id: id, behavior }), status },
+  hub: { deliver, verdict: (id, behavior) => d.verdict(id, { type: 'verdict', request_id: id, behavior }), status, heard: m => schedules.heard(m) },
   // AFK mode is on unless KAGE_AFK=off. Its stand-in reads the owner's memory, read only.
   afk: env.KAGE_AFK === 'off' ? undefined : { memory: memoryDirs(process.env.HOME!, ENV_FILE, env).owner, model: env.KAGE_AFK_MODEL || 'sonnet' },
 })
@@ -99,6 +108,10 @@ const sdkLib = env.KAGE_RUNTIME === 'tmux' ? undefined : await (async () => ({
   console.error(`Agent SDK not usable (${e.message}), so threads open as tmux panes. Run npm ci, then restart.`)
   return undefined
 })
+// What each turn cost (core/ledgers.ts): `kage cost` reads it.
+const COSTS = `${DIR}/costs.tsv`
+const RUNS = `${DIR}/runs.tsv`
+const costTotals = lastTotals(existsSync(COSTS) ? readFileSync(COSTS, 'utf8') : '')
 const sdk = sdkLib ? sdkSessions({
   sdk: sdkLib.lib,
   hub: () => d,
@@ -116,6 +129,12 @@ const sdk = sdkLib ? sdkSessions({
   },
   ownerMemory: MEM.owner,
   onStart: () => store.saveSessions(d.saved()),
+  onResult: (key, total) => {
+    const usd = turnCost(costTotals.get(key), total)
+    if (usd === undefined) return
+    costTotals.set(key, total)
+    try { appendFileSync(COSTS, tsvRow([new Date().toISOString(), key, String(usd), String(total)]), { mode: 0o600 }) } catch (e) { log('cost ledger', e) }
+  },
 }) : undefined
 if (sdk) mkdirSync(MEM.own, { recursive: true })
 
@@ -143,8 +162,8 @@ const schedules = scheduler({
   deliver: (key, task) => { noteTrust(key, task); return d.task(key, task, Date.now()) },
   ready: key => d.ready(key),
   trusted: key => store.trust(key) === true,
+  ran: (j, at) => { try { appendFileSync(RUNS, tsvRow([new Date(at).toISOString(), j.id, j.key]), { mode: 0o600 }) } catch (e) { log('run ledger', e) } },
 })
-setInterval(() => { try { schedules.tick(Date.now()) } catch (e) { log('schedule tick failed', e) } }, 20_000)
 // CronCreate jobs moved out of stopped tmux panes (cli/export-crons.ts): adopted once, then retired.
 // Only when no pane survived this start: a pane still running would run each job a second time.
 const CRONS = `${DIR}/crons-import.json`
@@ -181,15 +200,50 @@ function status(): string {
 
 // Once a day from 05:00 UTC, the owner gets the questions that have waited on them for a day or more.
 const DAILY = `${DIR}/daily-sent`
-setInterval(async () => {
-  const today = dailyDue(Date.now(), readFile(DAILY).trim() || undefined)
+async function dailyNote(now: number) {
+  const today = dailyDue(now, readFile(DAILY).trim() || undefined)
   if (!today) return
-  const stale = staleWaiting(readFile(WAITING), Date.now(), 24 * 3600_000)
+  const stale = staleWaiting(readFile(WAITING), now, 24 * 3600_000)
   const sent = !stale.length || await slack.notifyOwner([`*Still waiting on you (${stale.length})*`,
     ...stale.map(i => `• ${i.link ? `<${i.link}|${i.what}>` : i.what} (since ${i.when.slice(0, 10)})`)].join('\n'))
   // Marked only once the note went out (or there was nothing to say), so a failed post retries.
   if (sent) writeFileSync(DAILY, today, { mode: 0o600 })
-}, 10 * 60_000)
+}
+// Monday morning, the owner gets the weekly retro: what Kage's own ledgers say to change (core/retro.ts).
+const RETRO = `${DIR}/retro-sent`
+async function weeklyRetro(now: number) {
+  const last = Number(readFile(RETRO)) || undefined
+  if (!retroDue(now, last)) return
+  const lines = retro({ schedules: store.schedules(), placeOf, runs: readFile(RUNS), posted: readFile(`${DIR}/posted.tsv`), costs: readFile(COSTS), now })
+  const sent = !lines.length || await slack.notifyOwner(['*Weekly retro*, from what Kage did this week.', ...lines].join('\n'))
+  if (sent) writeFileSync(RETRO, String(now), { mode: 0o600 })
+}
+// Once a week in the small hours, while every session is quiet, Kage tidies its own memory (core/dream.ts).
+// A side lane of the bot DM, so the DM's own conversation is untouched. The hub snapshots the memory
+// first, so `kage dream undo` restores it whatever the dream did.
+const DREAMT = `${DIR}/dream-sent`
+function dream(now: number) {
+  const last = Number(readFile(DREAMT).trim()) || undefined
+  if (!dreamDue(now, last, d.quietEverywhere(now))) return
+  const snap = snapshotMemory(MEM.own, now)
+  const c: Conversation = { connector: 'slack', chat: slack.ids.botDm, kind: 'dm', agentDm: true }
+  const task: Task = {
+    type: 'task', fromOwner: true, content: dreamTask(MEM),
+    meta: { channel: slack.ids.botDm, thread_ts: '', place: `DM with ${Title} (dream)`, permalink: '' },
+    origin: { channel: slack.ids.botDm, ts: '' },
+  }
+  log('dream starts, memory saved to', snap)
+  if (deliver(c, task, task.meta.place, 'side-dream') !== 'failed') writeFileSync(DREAMT, String(now), { mode: 0o600 })
+}
+// GitHub is on when KAGE_GITHUB_SECRET and KAGE_GITHUB_LOGIN are set: a webhook through a tunnel.
+const github = env.KAGE_GITHUB_SECRET && env.KAGE_GITHUB_LOGIN ? connectGithub({
+  dir: DIR, secret: env.KAGE_GITHUB_SECRET, login: env.KAGE_GITHUB_LOGIN, port: Number(env.KAGE_GITHUB_PORT || 8789), botDm: slack.ids.botDm,
+  post: (text, thread) => bot.chat.postMessage({ channel: slack.ids.botDm, text, ...(thread && { thread_ts: thread }) }).then(r => r.ts, e => { log('github post failed', e); return undefined }),
+  deliver: (c, task, place) => deliver(c, task, place),
+  notify: text => void slack.notifyOwner(text),
+  perHour: Number(env.KAGE_GITHUB_PER_HOUR || 20),
+}) : undefined
+void github?.listening.then(port => log(`github on: 127.0.0.1:${port}/github for @${env.KAGE_GITHUB_LOGIN}`))
 const email = connectEmail({
   env, dir: DIR, name: NAME, deliver,
   failed: task => void slack.notifyOwner(`Could not start a session for ${task.meta.place}.`),
@@ -229,7 +283,6 @@ function failed(m: ToSession) {
   else if (m.origin.channel === 'email' || m.origin.channel === 'whatsapp' || m.origin.channel === 'voice') void slack.notifyOwner(`Could not start a session for ${m.meta.place}.`)
   else slack.failed(m)
 }
-setInterval(() => { try { d.sweep(Date.now()).forEach(failed) } catch (e) { log('sweep failed', e) } }, 60_000)
 
 // Kage updates itself: newer code (a merge, a pull, the install line again) takes over once
 // nothing would be cut off. The loop start.sh runs the hub in starts it again 5s after it exits.
@@ -238,13 +291,23 @@ setInterval(() => { try { d.sweep(Date.now()).forEach(failed) } catch (e) { log(
 // Compared to the boot stamp, not the clock, so a file with a future time cannot restart the hub over and over.
 const CODE = dirname(fileURLToPath(import.meta.url))
 const BOOT_CODE = codeStamp(CODE)
-setInterval(() => {
+function selfUpdate(now: number) {
   const code = codeStamp(CODE)
-  if (code && code !== BOOT_CODE && Date.now() - code > 10_000 && d.quietEverywhere(Date.now())) {
+  if (code && code !== BOOT_CODE && now - code > 10_000 && d.quietEverywhere(now)) {
     log('newer code is in place and every session is quiet: restarting into it')
     process.exit(0)
   }
-}, 60_000)
+}
+
+// Every timed job of the hub, on one clock (runtime/jobs.ts).
+runJobs([
+  { name: 'schedules', every: 20_000, run: now => schedules.tick(now) },
+  { name: 'sweep', every: 60_000, run: now => d.sweep(now).forEach(failed) },
+  { name: 'daily note', every: 10 * 60_000, run: dailyNote },
+  { name: 'self-update', every: 60_000, run: selfUpdate },
+  { name: 'dream', every: 10 * 60_000, run: dream },
+  { name: 'retro', every: 10 * 60_000, run: weeklyRetro },
+])
 
 const replies = {
   voice: (key: string, text: string) => voice?.reply(key, text),
@@ -258,5 +321,4 @@ listenForSessions(`${DIR}/router.sock`, d, { ...replies, failed, schedules, call
 
 await slack.start()
 log(`listening as ${slack.botUser} (@${NAME}) for ${slack.ownerName} ${slack.ids.owner}; up to ${MAX} sessions; teammates ${TEAMMATES.join(',') || 'none'}`)
-// `setup.sh doctor` reads this to prove the hub reached Slack.
-writeFileSync(`${DIR}/status`, `connected ${new Date().toISOString()} pid ${process.pid} as @${NAME}\n`, { mode: 0o600 })
+// The status file `setup.sh doctor` reads follows the socket (connectors/slack.ts).
