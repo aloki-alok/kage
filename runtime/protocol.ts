@@ -11,6 +11,7 @@ export type Task = {
   fromOwner: boolean
   meta: { channel: string; thread_ts: string; place: string; permalink: string }
   origin: { channel: string; ts: string }
+  scheduled?: true   // Kage started it itself (a schedule, dream), so it answers no open question
 }
 export type Verdict = { type: 'verdict'; request_id: string; behavior: 'allow' | 'deny' }
 export type ToSession = Task | Verdict
