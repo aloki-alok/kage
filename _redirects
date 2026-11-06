@@ -1,0 +1,5 @@
+# tick lived at the apex until 2026-11-06. Old embeds keep working.
+/tick.css https://tick.crwl.tech/tick.css 301
+/tick.js https://tick.crwl.tech/tick.js 301
+/skill.md https://tick.crwl.tech/skill.md 301
+/fonts/* https://tick.crwl.tech/fonts/:splat 301

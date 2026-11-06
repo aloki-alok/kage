@@ -4,7 +4,7 @@
 
 - Source and full docs: https://github.com/aloki-alok/kage
 - Setup steps for agents: https://github.com/aloki-alok/kage/blob/main/AGENTS.md
-- Site: https://aloki-alok.github.io/kage/
+- Site: https://crwl.tech/
 
 ## Set it up
 
