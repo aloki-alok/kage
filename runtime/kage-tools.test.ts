@@ -318,6 +318,8 @@ describe("a session's Kage tools", () => {
     await s.call('reply', { channel: 'C1', thread_ts: '5.5', text: 'PR?', waiting: 'Open a PR?' })
     s.t.onTask({ ...s.task(), origin: { channel: 'C1', ts: '' }, scheduled: true })
     assert.match((await s.call('waiting', {})).text, /Open a PR\?/)
+    s.t.onTask({ ...s.task(), origin: { channel: 'C1', ts: '' } })   // kage tell: the owner, with no Slack message behind it
+    assert.equal((await s.call('waiting', {})).text, 'nothing is waiting')
   })
   test('a task logs an answer only when its thread had an open question', async () => {
     const s = setup()

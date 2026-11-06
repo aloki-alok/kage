@@ -47,6 +47,7 @@ const signal = () => new AbortController().signal
 
 function setup(o: { transcript?: boolean; silent?: boolean; dmFails?: boolean } = {}) {
   const sdk = fakeSdk(o)
+  const results: [string, number, boolean][] = []
   const posts: string[] = []
   const slack = {
     chat: { postMessage: async (a: { channel: string; text: string }) => {
@@ -68,6 +69,7 @@ function setup(o: { transcript?: boolean; silent?: boolean; dmFails?: boolean } 
     options: { cwd: '/home', settingSources: ['user'] },
     ownerMemory: '/owner',
     restartMs: 10,
+    onResult: (key, total, resumed) => { results.push([key, total, resumed]) },
   })
   let n = 0
   d = new Dispatcher<ToSession>(s.runner, { max: 2, idleMs: 60_000, connectMs: 60_000, evictMs: 1, newId: () => ID.slice(0, -1) + n++ })
@@ -77,7 +79,7 @@ function setup(o: { transcript?: boolean; silent?: boolean; dmFails?: boolean } 
     origin: { channel: o.channel ?? 'C1', ts: '5.5' },
   })
   const idOf = (text: string) => /`yes ([a-km-z]{5})`/.exec(text)![1]!
-  return { sdk, posts, d, s, task, idOf }
+  return { sdk, posts, d, s, task, idOf, results }
 }
 
 describe('Kage sessions on the Agent SDK', () => {
@@ -104,6 +106,16 @@ describe('Kage sessions on the Agent SDK', () => {
     t.d.task('C1:5.5', t.task(), 0)
     assert.equal(t.sdk.runs[0]!.options.resume, `${ID.slice(0, -1)}0`)
     assert.equal(t.sdk.runs[0]!.options.sessionId, undefined)
+  })
+  test('a turn reports its running cost and whether the conversation was resumed, so the ledger can baseline it', async () => {
+    for (const transcript of [true, false]) {
+      const t = setup({ transcript })
+      t.d.task('C1:5.5', t.task(), 0)
+      await tick()
+      t.sdk.runs[0]!.emit({ type: 'result', total_cost_usd: 51.8 })
+      await tick()
+      assert.deepEqual(t.results, [['C1:5.5', 51.8, transcript]])
+    }
   })
   test('a Claude process that never starts keeps its task with the dispatcher, which reports it', async () => {
     const t = setup({ silent: true })
