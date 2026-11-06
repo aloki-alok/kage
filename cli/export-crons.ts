@@ -5,14 +5,13 @@
 //   kage export-crons
 import { execFileSync } from 'node:child_process'
 import { readFileSync, renameSync, writeFileSync } from 'node:fs'
-import { dirname } from 'node:path'
+import { DIR } from './home.ts'
 import { DatabaseSync } from 'node:sqlite'
 import { cronJobsFromTranscript } from '../core/cron.ts'
 import { senderFile } from '../core/guards.ts'
 import { claudeProject, paneProcessStart } from '../runtime/tmux-panes.ts'
 
 const HOME = process.env.HOME!
-const DIR = dirname(process.env.KAGE_ENV || `${HOME}/.config/kage/env`)
 const NAME = process.env.KAGE_NAME || 'kage'
 const PROJECT = claudeProject(process.env.KAGE_CWD || HOME)
 

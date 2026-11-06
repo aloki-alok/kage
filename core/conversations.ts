@@ -51,3 +51,9 @@ export function parseSessionKey(key: string, botDm = ''): { agent?: string; lane
   }
   return { ...(agent && { agent }), ...(lane && { lane: lane as Lane }), conversation }
 }
+
+// The place people read for any session key: a side lane or another agent's prefix shows its conversation's place.
+export function placeFor(placeOf: (key: string) => string | undefined, key: string): string {
+  const m = KEY.exec(key)!
+  return placeOf(key) ?? (m[1] || m[3] ? `${placeOf(m[2]!) ?? key}${m[3] ? ' (side)' : ''}` : key)
+}

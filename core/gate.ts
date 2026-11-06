@@ -142,3 +142,11 @@ export function withTeammates(env: string, ids: string[]): string {
 export type Sender = 'owner' | 'teammate' | 'voice'
 export const senderOf = (t: { fromOwner: boolean; meta: { channel: string } }): Sender =>
   t.meta.channel === 'voice' ? (t.fromOwner ? 'owner' : 'voice') : t.fromOwner && t.meta.channel !== 'email' ? 'owner' : 'teammate'
+
+// Characters people never see but Claude reads: Unicode tag letters (whole hidden sentences), zero-width
+// spaces, word joiners, byte-order marks, soft hyphens, direction overrides, filler letters, variation
+// selectors and control codes. Kept, because real text needs them: the zero-width joiner and non-joiner
+// (emoji, Indic and Persian words), the direction marks U+200E, U+200F and U+061C (mixed Arabic or
+// Hebrew), U+FE0E and U+FE0F (emoji style), and tab and newline.
+const INVISIBLE = /[\u{E0000}-\u{E007F}\u{E0100}-\u{E01EF}\u{1D173}-\u{1D17A}\u200B\u2060-\u2064\u206A-\u206F\uFEFF\u00AD\u034F\u180E\u17B4\u17B5\u115F\u1160\u3164\uFFA0\uFE00-\uFE0D\u202A-\u202E\u2066-\u2069\x00-\x08\x0B\x0C\x0E-\x1F\x7F-\x9F]/gu
+export const withoutInvisible = (text: string) => text.replace(INVISIBLE, '')

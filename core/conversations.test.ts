@@ -1,6 +1,6 @@
 import { describe, test } from 'node:test'
 import assert from 'node:assert/strict'
-import { parseSessionKey, sessionKey, slackConversation, type Conversation } from './conversations.ts'
+import { parseSessionKey, placeFor, sessionKey, slackConversation, type Conversation } from './conversations.ts'
 
 const DM = 'DBOT00001'
 
@@ -59,4 +59,12 @@ describe('the key of the session working on a conversation', () => {
   test('a key that is not one of these shapes reads back as nothing', () => {
     for (const k of ['', 'C1', 'nope:x', 'ops/', 'C1:5.5#lane-x']) assert.equal(parseSessionKey(k), undefined, k)
   })
+})
+
+test('a side lane or another agent shows its conversation\'s place', () => {
+  const places = new Map([['C1:5.5', '#ops']])
+  assert.equal(placeFor(k => places.get(k), 'C1:5.5'), '#ops')
+  assert.equal(placeFor(k => places.get(k), 'C1:5.5#side-6.6'), '#ops (side)')
+  assert.equal(placeFor(k => places.get(k), 'ops/C1:5.5'), '#ops')
+  assert.equal(placeFor(k => places.get(k), 'C9:1.1'), 'C9:1.1')
 })

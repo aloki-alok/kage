@@ -6,10 +6,9 @@
 // install needs no SDK.
 import type { createSdkMcpServer, Options, Query, SDKMessage, SDKUserMessage, tool } from '@anthropic-ai/claude-agent-sdk'
 import { log } from '../config.ts'
-import { senderOf, type Sender } from '../core/gate.ts'
+import { senderOf, withoutInvisible, type Sender } from '../core/gate.ts'
 import { ownerMemoryRefusal, privateToolRefusal, voiceToolRefusal } from '../core/guards.ts'
 import { approvalPreview } from '../core/preview.ts'
-import { liveCronJobs } from '../core/cron.ts'
 import type { Dispatcher, Runner } from '../core/sessions.ts'
 import type { sessionTools } from './kage-tools.ts'
 import type { Task, ToSession } from './protocol.ts'
@@ -29,7 +28,6 @@ type Session = {
   stopped: boolean
   run?: { q: Query; inbox: Inbox; send: (m: ToSession) => void; started: number }
   asks: Map<string, (b: 'allow' | 'deny') => void>
-  jobs: { timestamp: string; text: string }[]   // tool results that made or cancelled a cron job
 }
 
 export function sdkSessions(o: {
@@ -41,6 +39,7 @@ export function sdkSessions(o: {
   options: Options                                 // cwd, settings, settingSources, the claude binary
   ownerMemory: string
   onStart?: () => void                            // a new id may have been minted: save the map
+  onResult?: (key: string, totalUsd: number) => void   // a turn ended: the session's running cost so far
   restartMs?: number
 }) {
   const sessions = new Map<string, Session>()
@@ -105,8 +104,8 @@ export function sdkSessions(o: {
           connect()
           if (m.type === 'system' && m.subtype === 'session_state_changed') { sawState = true; s.state = m.state }
           // A Claude Code that never sends the state event: the turn's result is the best idle signal.
-          else if (m.type === 'result' && !sawState) s.state = 'idle'
-          else if (m.type === 'user') s.jobs.push(...cronMentions(m))
+          if (m.type === 'result') o.onResult?.(key, m.total_cost_usd)
+          if (m.type === 'result' && !sawState) s.state = 'idle'
         }
       } catch (e) { log('session ended', key, e) }
       // The Claude process is gone: its open approvals go with it. Unless the dispatcher closed it,
@@ -145,7 +144,7 @@ export function sdkSessions(o: {
   const runner: Runner = {
     start(key, id) {
       const s: Session = sessions.get(key) ?? {
-        id, state: 'idle', last: 0, stopped: false, asks: new Map(), jobs: [],
+        id, state: 'idle', last: 0, stopped: false, asks: new Map(),
         kage: o.tools(key, m => o.toHub(key, m)),
       }
       Object.assign(s, { id, stopped: false })
@@ -168,30 +167,19 @@ export function sdkSessions(o: {
     busy(key) {
       const s = sessions.get(key)
       if (!s) return false
-      return s.state !== 'idle' ? true : liveCronJobs(s.jobs, s.run?.started ?? Infinity, Date.now()).length > 0 ? 'watching' : false
+      return s.state !== 'idle'
     },
   }
   return { runner, running: () => new Set([...sessions.values()].map(s => s.id)) }
 }
 
-// Tool results that mention a job (CronCreate, CronDelete), stamped now, for liveCronJobs.
-function cronMentions(m: SDKMessage): { timestamp: string; text: string }[] {
-  const content = (m as { message?: { content?: unknown } }).message?.content
-  if (!Array.isArray(content)) return []
-  return content
-    .filter(b => b?.type === 'tool_result')
-    .map(b => typeof b.content === 'string' ? b.content : (b.content ?? []).map((c: { text?: string }) => c?.text ?? '').join(''))
-    .filter((text: string) => text.includes(' job '))
-    .map((text: string) => ({ timestamp: new Date().toISOString(), text }))
-}
-
 // A task as Claude Code shows a channel message. Attributes are escaped, and the content cannot
 // open or close a channel tag of its own.
 export function channelTag(m: Task) {
-  const attr = (v: string) => v.replaceAll('&', '&amp;').replaceAll('"', '&quot;').replaceAll('<', '&lt;')
+  const attr = (v: string) => withoutInvisible(v).replaceAll('&', '&amp;').replaceAll('"', '&quot;').replaceAll('<', '&lt;')
   const attrs = Object.entries({ channel: m.meta.channel, thread_ts: m.meta.thread_ts, place: m.meta.place, permalink: m.meta.permalink })
     .map(([k, v]) => `${k}="${attr(v)}"`).join(' ')
-  return `<channel source="kage" ${attrs}>\n${m.content.replace(/<(\/?)channel/gi, '&lt;$1channel')}\n</channel>`
+  return `<channel source="kage" ${attrs}>\n${withoutInvisible(m.content).replace(/<(\/?)channel/gi, '&lt;$1channel')}\n</channel>`
 }
 
 // Approval ids look like Claude Code's: five letters, no "l", which the gate's "yes <id>" expects.

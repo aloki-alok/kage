@@ -8,7 +8,7 @@
 import { spawnSync } from 'node:child_process'
 import { existsSync, readFileSync, statSync } from 'node:fs'
 import { connect, type Socket } from 'node:net'
-import { dirname } from 'node:path'
+import { DIR } from './home.ts'
 import { DatabaseSync } from 'node:sqlite'
 import { ago, boardRows, nextRuns, watchingNext, whenLabel, type Live, type Row, type State } from '../core/board.ts'
 import { filterRows, hit, layout, moreLine, STRING, type Layout } from '../core/loom.ts'
@@ -17,7 +17,6 @@ import { HERO_BIG, HERO_SMALL } from '../core/hero.ts'
 import { schedulesIn } from '../runtime/store.ts'
 
 const HOME = process.env.HOME!
-const DIR = dirname(process.env.KAGE_ENV || `${HOME}/.config/kage/env`)
 const PROJECT = `${HOME}/.claude/projects/${(process.env.KAGE_CWD || HOME).replace(/[^A-Za-z0-9]/g, '-')}`
 const DB = `${DIR}/kage.db`, SOCK = `${DIR}/router.sock`
 const ONCE = process.argv.includes('--once')
@@ -179,7 +178,6 @@ const put = (x: number, y: number, s: string, k: string) => {
 }
 const clean = (s: string) => s.replace(/[\x00-\x1f\x7f]/g, ' ')
 const clip = (s: string, n: number) => { const a = [...clean(s)]; return a.length <= n ? a.join('') : `${a.slice(0, Math.max(0, n - 1)).join('')}…` }
-const plain = (s: string) => s.replace(/\x1b\[[0-9;?<]*[A-Za-z]/g, '')
 const clamp = (v: number, a = 0, b = 1) => Math.max(a, Math.min(b, v))
 // Deterministic noise, so the start looks the same each run.
 const rnd = (i: number) => { const x = Math.sin(i * 12.9898) * 43758.5453; return x - Math.floor(x) }
@@ -441,7 +439,9 @@ if (ONCE) {
   ;({ cols: W, rows: H } = size())
   refresh(Date.now())
   frame(boot, 1e9)           // lays out, so the selection exists
-  console.log((process.stdout.isTTY ? toText() : toText().map(plain)).join('\n'))
+  // Piped (a script, a Kage session): one plain line per open thread instead of the picture.
+  if (process.stdout.isTTY) console.log(toText().join('\n'))
+  else for (const r of board.filter(r => r.state !== 'closed')) console.log([r.label, r.place, r.next ? `next ${whenLabel(r.next, Date.now())}` : `${ago(r.ageMs)} ago`].join('\t'))
   process.exit(0)
 }
 

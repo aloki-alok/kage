@@ -1,6 +1,6 @@
 import { describe, test } from 'node:test'
 import assert from 'node:assert/strict'
-import { cronJobsFromTranscript, cronMatches, liveCronJobs, dueSchedules, nextRun, parseCron, type Schedule } from './cron.ts'
+import { cadence, promptPreview, cronJobsFromTranscript, cronMatches, liveCronJobs, dueSchedules, nextRun, parseCron, REPLY, type Schedule } from './cron.ts'
 
 // Local time, as Claude Code's CronCreate reads its expressions.
 const at = (s: string) => new Date(s)
@@ -112,4 +112,33 @@ describe('a session with a repeating check stays open', () => {
     assert.deepEqual(liveCronJobs([made('bb22', 1, 'one-shot')], t0, t0 + 3 * H), ['bb22'])
     assert.deepEqual(liveCronJobs([made('bb22', 1, 'one-shot')], t0, t0 + 26 * H), [])
   })
+})
+
+test('a watch never fires on the clock, and is dropped once it ends', () => {
+  const w: Schedule = { id: 'w', key: 'C1:1.1', cron: REPLY, prompt: 'p', recurring: true, fromOwner: false, created: 0, lastFired: 0, ends: 10 * 60_000 }
+  assert.deepEqual(dueSchedules([w], 5 * 60_000), { fire: [], drop: [] })
+  assert.deepEqual(dueSchedules([w], 10 * 60_000), { fire: [], drop: ['w'] })
+})
+
+describe('a schedule in words', () => {
+  test('the shapes people set read as plain English; anything else stays as written', () => {
+    assert.equal(cadence('*/30 * * * *'), 'every 30 min')
+    assert.equal(cadence('*/15 9-18 * * 1-5'), 'every 15 min, 09:00 to 18:59, weekdays')
+    assert.equal(cadence('7 8-23 * * *'), 'hourly at :07, 08:00 to 23:59')
+    assert.equal(cadence('31 19 * * *'), 'daily at 19:31')
+    assert.equal(cadence('*/30 8-23 6 11 *'), 'every 30 min, 08:00 to 23:59, on 6 Nov')
+    assert.equal(cadence('0 9 * * 1'), 'daily at 09:00, Mondays')
+    assert.equal(cadence('@reply'), 'when someone writes')
+    assert.equal(cadence('5,35 * * * *'), '5,35 * * * *')
+    // A date and a weekday together fire on either one, which words would misread: left as written.
+    assert.equal(cadence('0 9 6 11 1'), '0 9 6 11 1')
+    // A step that does not divide the hour restarts at :00, so it is not "every 7 min".
+    assert.equal(cadence('*/7 * * * *'), '*/7 * * * *')
+  })
+})
+
+test('a schedule prompt reads without the Slack ids the hub needs', () => {
+  assert.equal(promptPreview('Stock alarm for #telephony thread C0TESTAAA11 / 1700000000.000001 (asked by Priya U0TESTBBB22). Steps:\nmore'), 'Stock alarm for #telephony. Steps:')
+  assert.equal(promptPreview('Newsletter monitor (thread C0TESTCCC33 / 1700000000.000002). Check'), 'Newsletter monitor. Check')
+  assert.equal(promptPreview('Check DASHBOARD and CUSTOMERS (see DEPLOYMENT notes)'), 'Check DASHBOARD and CUSTOMERS (see DEPLOYMENT notes)')
 })
