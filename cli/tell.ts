@@ -9,6 +9,7 @@ import { DatabaseSync } from 'node:sqlite'
 import { DIR } from './home.ts'
 
 const SOCK = `${DIR}/router.sock`
+if (process.env.KAGE_CLAUDE) { console.error('This shell runs inside Kage: a session cannot speak as the owner.'); process.exit(1) }
 if (!existsSync(`${DIR}/kage.db`) || !existsSync(SOCK)) { console.error('Kage is not running: start it with kage start'); process.exit(1) }
 const [arg = '', ...words] = process.argv.slice(2)
 const text = words.join(' ').trim()
@@ -39,9 +40,9 @@ s.on('data', b => {
   buf += b
   const i = buf.indexOf('\n')
   if (i < 0) return
-  const r = JSON.parse(buf.slice(0, i)) as { ok?: true; refused?: string }
+  const r = JSON.parse(buf.slice(0, i)) as { ok?: true; held?: true; refused?: string }
   s.destroy()
-  if (r.ok) console.error(`Told ${place}.`)
+  if (r.ok) console.error(r.held ? `Told ${place}. It is open in kage attach, so it reads this when you quit there.` : `Told ${place}.`)
   else { console.error(`Could not tell ${place}: ${r.refused}.`); process.exitCode = 1 }
 })
 s.on('error', e => { console.error(`Kage did not answer: ${e.message}`); process.exitCode = 1 })

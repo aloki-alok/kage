@@ -318,9 +318,11 @@ const replies = {
   }),
 }
 // kage tell: the owner's words into a thread, typed on this machine. Same shape as a scheduled run (runtime/scheduler.ts).
-function tell(key: string, text: string): { ok: true } | { refused: string } {
+function tell(key: string, text: string): { ok: true; held?: true } | { refused: string } {
   const c = store.conversation(key)
   if (!c) return { refused: 'no thread with that key' }
+  // ponytail: Slack only, like schedules; email and WhatsApp tasks need their connector's own meta, add when wanted.
+  if (c.conversation.connector !== 'slack') return { refused: 'tell works on Slack threads only for now' }
   const task: Task = {
     type: 'task', fromOwner: true, content: `From the owner, typed in the terminal: ${text}`,
     meta: { channel: c.conversation.chat, thread_ts: c.conversation.thread ?? '', place: c.place, permalink: '' },
@@ -328,8 +330,9 @@ function tell(key: string, text: string): { ok: true } | { refused: string } {
   }
   log('tell', c.place)
   noteTrust(key, task)
-  if (d.task(key, task, Date.now()) === 'failed') { failed(task); return { refused: 'could not start a session there' } }
-  return { ok: true }
+  const r = d.task(key, task, Date.now())
+  if (r === 'failed') { failed(task); return { refused: 'could not start a session there' } }
+  return r === 'held' ? { ok: true, held: true } : { ok: true }
 }
 listenForSessions(`${DIR}/router.sock`, d, { ...replies, failed, schedules, tell, callCode: voice?.issueCode })
 
