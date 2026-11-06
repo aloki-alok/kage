@@ -117,7 +117,7 @@ export function sessionTools(o: {
       const no = secretRefusal(a.text, { fromOwner: !tag }) ?? layoutRefusal(a.text)
       if (no) return { isError: true, text: no }
       await nameMentions(a.text)
-      await user.chat.update({ channel: a.channel, ts: a.ts, text: `${safeReply(a.text, { ping: true, names }).trim()}${tag}` })
+      await user.chat.update({ channel: a.channel, ts: a.ts, text: `*${Title}:* ${safeReply(a.text, { ping: true, names }).trim()}${tag}` })
       return { text: 'edited' }
     }
     if (a.channel !== o.botDm() && !taskChannels.has(a.channel)) return { isError: true, text: `refused: no task in this session came from ${a.channel}` }
@@ -189,7 +189,7 @@ export function sessionTools(o: {
     run: args => change(args as { channel: string; ts: string; text: string; wide?: boolean }, pingIn(String(args.channel))),
   }, {
     name: 'message_people',
-    description: `Tell people something in Slack: posts in the group DM of the owner and these people, under the owner's name (${Title} cannot join a group DM). The message is signed "<name>, via ${Title}" for the person it is from: the asker on a teammate's task, or from on the owner's, and that person is added to the group. Returns the link: share it in the task thread with reply.`,
+    description: `Tell people something in Slack: posts in the group DM of the owner and these people, from the owner's account (${Title} cannot join a group DM), starting with "${Title}:" so people see it is ${Title}. It ends with "asked by <name>" for the person it is from: the asker on a teammate's task, or from on the owner's, and that person is added to the group. Returns the link: share it in the task thread with reply.`,
     shape: {
       channel: s.describe('channel attribute from the task tag'),
       thread_ts: s.describe('thread_ts attribute from the task tag'),
@@ -216,8 +216,9 @@ export function sessionTools(o: {
       const layout = layoutRefusal(a.text)
       if (layout) return { isError: true, text: layout }
       await nameMentions(a.text)
-      const tag = signer ? `\n_${signer.name}, via ${Title}_` : ''
-      const text = `${safeReply(a.text, { ping: true, names }).trim()}${tag}`
+      const tag = signer ? `\n_asked by ${signer.name}_` : ''
+      // Sent from the owner's account, so it says it is Kage, like every other post from there.
+      const text = `*${Title}:* ${safeReply(a.text, { ping: true, names }).trim()}${tag}`
       let dm: string
       try {
         dm = (await user.conversations.open({ users: people.join(',') })).channel!.id!
