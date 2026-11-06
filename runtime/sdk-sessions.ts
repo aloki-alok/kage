@@ -60,13 +60,22 @@ export function sdkSessions(o: {
         const r = await t.run(args)
         return { isError: r.isError, content: [{ type: 'text' as const, text: r.text }] }
       })), o.sdk.tool('set_model', SET_MODEL, {
-        model: z.string().regex(/^(default|opus|sonnet|haiku|fable|claude-[a-z0-9.-]+)(\[1m\])?$/).optional().describe('opus, sonnet, haiku, fable, a full claude- model id, or default'),
+        // Aliases only: a typo'd full id would pass setModel and then fail every turn of the thread.
+        model: z.enum(['opus', 'sonnet', 'haiku', 'default']).optional(),
         effort: z.enum(['low', 'medium', 'high', 'xhigh', 'max', 'default']).optional().describe('reasoning effort; maximum or ultra means max'),
       }, async a => {
-        const pick = { ...picks.get(key) }
-        if (a.model) { pick.model = a.model === 'default' ? undefined : a.model; await q.setModel(pick.model) }
-        if (a.effort) { pick.effort = a.effort === 'default' ? undefined : a.effort; await q.applyFlagSettings({ effortLevel: pick.effort ?? null }) }
-        picks.set(key, pick)
+        // Only set keys go in the pick: an undefined one would override the hub's own options on reopen.
+        const pick: Pick = { ...picks.get(key) }
+        if (a.model) {
+          await q.setModel(a.model === 'default' ? undefined : a.model)
+          if (a.model === 'default') delete pick.model; else pick.model = a.model
+          picks.set(key, { ...pick })
+        }
+        if (a.effort) {
+          await q.applyFlagSettings({ effortLevel: a.effort === 'default' ? null : a.effort })
+          if (a.effort === 'default') delete pick.effort; else pick.effort = a.effort
+          picks.set(key, { ...pick })
+        }
         log('set_model', key, s.sender, pick.model ?? 'default', pick.effort ?? 'default')
         return { content: [{ type: 'text' as const, text: `This thread now runs on ${pick.model ?? 'the default model'} at ${pick.effort ?? 'default'} effort.` }] }
       })],
