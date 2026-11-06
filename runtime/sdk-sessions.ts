@@ -39,7 +39,7 @@ export function sdkSessions(o: {
   options: Options                                 // cwd, settings, settingSources, the claude binary
   ownerMemory: string
   onStart?: () => void                            // a new id may have been minted: save the map
-  onResult?: (key: string, totalUsd: number) => void   // a turn ended: the session's running cost so far
+  onResult?: (key: string, totalUsd: number, resumed: boolean) => void   // a turn ended: the session's running cost so far
   restartMs?: number
 }) {
   const sessions = new Map<string, Session>()
@@ -57,11 +57,12 @@ export function sdkSessions(o: {
       })),
     })
     const { KAGE_THREAD: _, ...env } = process.env   // with it, the kage plugin's own channel would take the thread
+    const resumed = o.hasTranscript(s.id)
     const q = o.sdk.query({
       prompt: inbox,
       options: {
         ...o.options,
-        ...(o.hasTranscript(s.id) ? { resume: s.id } : { sessionId: s.id }),
+        ...(resumed ? { resume: s.id } : { sessionId: s.id }),
         systemPrompt: { type: 'preset', preset: 'claude_code' },
         mcpServers: { ...o.options.mcpServers, kage: server },
         // Its jobs die with the session; the schedule tool replaces it.
@@ -104,7 +105,7 @@ export function sdkSessions(o: {
           connect()
           if (m.type === 'system' && m.subtype === 'session_state_changed') { sawState = true; s.state = m.state }
           // A Claude Code that never sends the state event: the turn's result is the best idle signal.
-          if (m.type === 'result') o.onResult?.(key, m.total_cost_usd)
+          if (m.type === 'result') o.onResult?.(key, m.total_cost_usd, resumed)
           if (m.type === 'result' && !sawState) s.state = 'idle'
         }
       } catch (e) { log('session ended', key, e) }

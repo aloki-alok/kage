@@ -63,6 +63,11 @@ describe('the cost ledger', () => {
     assert.equal(turnCost(5, 0), undefined)                      // a crash result reports zeros: not a turn
     assert.equal(turnCost(5, Number.NaN), undefined)
   })
+  test('a resumed conversation with no row yet starts a baseline, not a turn that cost its whole life', () => {
+    assert.equal(turnCost(undefined, 51.8, true), 0)
+    assert.equal(turnCost(51.8, 52.1, true), 0.3)               // after the baseline, turns count as usual
+    assert.equal(turnCost(undefined, 0.4, false), 0.4)           // a new conversation's first turn is all its own
+  })
   test('the last total per thread comes back from the file, so a restart does not count a turn twice', () => {
     const tsv = [tsvRow(['2026-11-06T01:00:00Z', 'C1:1.1', '0.4', '0.4']), tsvRow(['2026-11-06T02:00:00Z', 'C1:1.1', '0.35', '0.75']), tsvRow(['2026-11-06T02:00:00Z', 'dm', '0.2', '0.2'])].join('')
     assert.deepEqual(lastTotals(tsv), new Map([['C1:1.1', 0.75], ['dm', 0.2]]))
