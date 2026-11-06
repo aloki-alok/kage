@@ -214,7 +214,7 @@ const RETRO = `${DIR}/retro-sent`
 async function weeklyRetro(now: number) {
   const last = Number(readFile(RETRO)) || undefined
   if (!retroDue(now, last)) return
-  const lines = retro({ schedules: store.schedules(), placeOf, runs: readFile(RUNS), posted: readFile(`${DIR}/posted.tsv`), costs: readFile(COSTS), now })
+  const lines = retro({ schedules: store.schedules(), placeOf, runs: readFile(RUNS), posted: readFile(`${DIR}/posted.tsv`), costs: readFile(COSTS), costTracked: !!sdk, now })
   const sent = !lines.length || await slack.notifyOwner(['*Weekly retro*, from what Kage did this week.', ...lines].join('\n'))
   if (sent) writeFileSync(RETRO, String(now), { mode: 0o600 })
 }
