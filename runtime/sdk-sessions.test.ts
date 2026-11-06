@@ -14,13 +14,13 @@ import { sdkSessions } from './sdk-sessions.ts'
 // until it has a prompt, as the real one may. end() makes the Claude
 // process exit on its own.
 function fakeSdk(o: { silent?: boolean } = {}) {
-  const runs: { options: any; said: string[]; emit: (m: object) => void; end: () => void; closed: boolean }[] = []
+  const runs: { options: any; said: string[]; emit: (m: object) => void; end: () => void; closed: boolean; set: object[] }[] = []
   const query = ({ prompt, options }: { prompt: AsyncIterable<any>; options: any }) => {
     const out: object[] = []
     let wake = () => {}
     let done = false
     const run = {
-      options, said: [] as string[], closed: false,
+      options, said: [] as string[], closed: false, set: [] as object[],
       emit: (m: object) => { out.push(m); wake() },
       end: () => { done = true; wake() },
     }
@@ -29,6 +29,8 @@ function fakeSdk(o: { silent?: boolean } = {}) {
     return {
       initializationResult: () => o.silent ? new Promise(() => {}) : Promise.resolve({}),
       close() { run.closed = true; run.end() },
+      async setModel(model?: string) { run.set.push({ model }) },
+      async applyFlagSettings(x: object) { run.set.push(x) },
       async *[Symbol.asyncIterator]() {
         while (true) {
           while (out.length) yield out.shift()
@@ -59,9 +61,12 @@ function setup(o: { transcript?: boolean; silent?: boolean; dmFails?: boolean } 
     users: { info: async () => ({}) },
   }
   const dir = mkdtempSync(join(tmpdir(), 'kage-sdk-'))
+  const servers: Parameters<typeof createSdkMcpServer>[0][] = []
+  // Calls a Kage tool of the newest session the way Claude would.
+  const call = (name: string, args: object) => (servers.at(-1)!.tools!.find(x => x.name === name)!.handler as any)(args, {})
   let d!: Dispatcher<ToSession>
   const s = sdkSessions({
-    sdk: { query: sdk.query as any, createSdkMcpServer, tool },
+    sdk: { query: sdk.query as any, createSdkMcpServer: (c => { servers.push(c); return createSdkMcpServer(c) }) as typeof createSdkMcpServer, tool },
     hub: () => d,
     tools: (_key, send) => sessionTools({ title: 'Kage', bot: slack as any, user: slack as any, botDm: () => 'DBOT', dir, send, memory: { own: '/own', owner: '/owner' } }),
     hasTranscript: () => o.transcript ?? false,
@@ -79,7 +84,7 @@ function setup(o: { transcript?: boolean; silent?: boolean; dmFails?: boolean } 
     origin: { channel: o.channel ?? 'C1', ts: '5.5' },
   })
   const idOf = (text: string) => /`yes ([a-km-z]{5})`/.exec(text)![1]!
-  return { sdk, posts, d, s, task, idOf, results }
+  return { sdk, posts, d, s, task, idOf, results, call }
 }
 
 describe('Kage sessions on the Agent SDK', () => {
@@ -255,5 +260,43 @@ describe('Kage sessions on the Agent SDK', () => {
     assert.equal(t.d.task('C1:5.5', t.task({ content: 'again' }), 1), 'sent')
     await tick()
     assert.match(t.sdk.runs[1]!.said.at(-1)!, /again/)
+  })
+  test('set_model switches the running session, and the thread keeps the pick when its session comes back', async () => {
+    const t = setup({ transcript: true })
+    t.d.task('C1:5.5', t.task(), 0)
+    await tick()
+    assert.equal((await t.sdk.runs[0]!.options.canUseTool('mcp__kage__set_model', {}, { signal: signal() })).behavior, 'allow')
+    const r = await t.call('set_model', { model: 'opus', effort: 'max' })
+    assert.deepEqual(t.sdk.runs[0]!.set, [{ model: 'opus' }, { effortLevel: 'max' }])
+    assert.match(r.content[0].text, /opus.*max/)
+    t.sdk.runs[0]!.end()
+    await tick(30)
+    assert.equal(t.sdk.runs[1]!.options.model, 'opus')
+    assert.equal(t.sdk.runs[1]!.options.effort, 'max')
+    // after an idle close too, and only on this thread
+    t.s.runner.stop('C1:5.5')
+    t.s.runner.start('C1:5.5', ID)
+    assert.equal(t.sdk.runs[2]!.options.model, 'opus')
+    t.d.task('C2:6.6', t.task({ channel: 'C2' }), 0)
+    assert.equal(t.sdk.runs[3]!.options.model, undefined)
+  })
+  test('set_model with default goes back to the default model and effort', async () => {
+    const t = setup()
+    t.d.task('C1:5.5', t.task(), 0)
+    await tick()
+    await t.call('set_model', { model: 'opus', effort: 'max' })
+    await t.call('set_model', { model: 'default', effort: 'default' })
+    assert.deepEqual(t.sdk.runs[0]!.set.slice(2), [{ model: undefined }, { effortLevel: null }])
+    t.sdk.runs[0]!.end()
+    await tick(30)
+    assert.equal(t.sdk.runs[1]!.options.model, undefined)
+    assert.equal(t.sdk.runs[1]!.options.effort, undefined)
+  })
+  test('set_model changes only what it is given', async () => {
+    const t = setup()
+    t.d.task('C1:5.5', t.task(), 0)
+    await tick()
+    await t.call('set_model', { effort: 'low' })
+    assert.deepEqual(t.sdk.runs[0]!.set, [{ effortLevel: 'low' }])
   })
 })

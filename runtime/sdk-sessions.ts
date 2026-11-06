@@ -4,7 +4,8 @@
 // the hub process, crons included.
 // The SDK comes in as an argument: the hub imports it only when this runtime is on, so a tmux-only
 // install needs no SDK.
-import type { createSdkMcpServer, Options, Query, SDKMessage, SDKUserMessage, tool } from '@anthropic-ai/claude-agent-sdk'
+import type { createSdkMcpServer, EffortLevel, Options, Query, SDKMessage, SDKUserMessage, tool } from '@anthropic-ai/claude-agent-sdk'
+import { z } from 'zod'
 import { log } from '../config.ts'
 import { senderOf, withoutInvisible, type Sender } from '../core/gate.ts'
 import { ownerMemoryRefusal, privateToolRefusal, voiceToolRefusal } from '../core/guards.ts'
@@ -19,6 +20,7 @@ export type Sdk = {
   createSdkMcpServer: typeof createSdkMcpServer
   tool: typeof tool
 }
+type Pick = { model?: string; effort?: EffortLevel }
 type Session = {
   id: string
   kage: Kage
@@ -43,18 +45,31 @@ export function sdkSessions(o: {
   restartMs?: number
 }) {
   const sessions = new Map<string, Session>()
+  // A thread's model and effort, asked for in the thread. Kept after its session closes, so the next one starts on it.
+  // ponytail: lost on a hub restart, save it in the store if people mind.
+  const picks = new Map<string, Pick>()
   // Kage's own tools, approved for every session (start.sh does the same for panes). Approved in canUseTool, not
   // allowedTools, which would skip the callback and makes the SDK warn on every session.
-  const ALLOWED = ['reply', 'edit_message', 'delete_message', 'send_file', 'message_people', 'schedule', 'unschedule', 'schedules'].map(t => `mcp__kage__${t}`)
+  const ALLOWED = ['reply', 'edit_message', 'delete_message', 'send_file', 'message_people', 'schedule', 'unschedule', 'schedules', 'set_model'].map(t => `mcp__kage__${t}`)
 
   function open(key: string, s: Session, carried: SDKUserMessage[] = []) {
     const inbox = makeInbox(carried)
     const server = o.sdk.createSdkMcpServer({
       name: 'kage', instructions: s.kage.instructions,
-      tools: s.kage.tools.map(t => o.sdk.tool(t.name, t.description, t.shape, async args => {
+      tools: [...s.kage.tools.map(t => o.sdk.tool(t.name, t.description, t.shape, async args => {
         const r = await t.run(args)
         return { isError: r.isError, content: [{ type: 'text' as const, text: r.text }] }
-      })),
+      })), o.sdk.tool('set_model', SET_MODEL, {
+        model: z.string().regex(/^(default|opus|sonnet|haiku|fable|claude-[a-z0-9.-]+)(\[1m\])?$/).optional().describe('opus, sonnet, haiku, fable, a full claude- model id, or default'),
+        effort: z.enum(['low', 'medium', 'high', 'xhigh', 'max', 'default']).optional().describe('reasoning effort; maximum or ultra means max'),
+      }, async a => {
+        const pick = { ...picks.get(key) }
+        if (a.model) { pick.model = a.model === 'default' ? undefined : a.model; await q.setModel(pick.model) }
+        if (a.effort) { pick.effort = a.effort === 'default' ? undefined : a.effort; await q.applyFlagSettings({ effortLevel: pick.effort ?? null }) }
+        picks.set(key, pick)
+        log('set_model', key, s.sender, pick.model ?? 'default', pick.effort ?? 'default')
+        return { content: [{ type: 'text' as const, text: `This thread now runs on ${pick.model ?? 'the default model'} at ${pick.effort ?? 'default'} effort.` }] }
+      })],
     })
     const { KAGE_THREAD: _, ...env } = process.env   // with it, the kage plugin's own channel would take the thread
     const resumed = o.hasTranscript(s.id)
@@ -63,6 +78,7 @@ export function sdkSessions(o: {
       options: {
         ...o.options,
         ...(resumed ? { resume: s.id } : { sessionId: s.id }),
+        ...picks.get(key),
         systemPrompt: { type: 'preset', preset: 'claude_code' },
         mcpServers: { ...o.options.mcpServers, kage: server },
         // Its jobs die with the session; the schedule tool replaces it.
@@ -173,6 +189,8 @@ export function sdkSessions(o: {
   }
   return { runner, running: () => new Set([...sessions.values()].map(s => s.id)) }
 }
+
+const SET_MODEL = 'Switch the model or reasoning effort of this thread, when the owner or a teammate asks for it in plain words ("use opus max", "go back to the default"). It applies from the next step and stays for the thread. Leave out what they did not ask to change.'
 
 // A task as Claude Code shows a channel message. Attributes are escaped, and the content cannot
 // open or close a channel tag of its own.
