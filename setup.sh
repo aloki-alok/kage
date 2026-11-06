@@ -29,6 +29,7 @@ Watch|top||The live console: every thread, its feed, attach and stop, by mouse o
 Watch|watch|[place]|Follow every step every session takes, as it happens|kage watch support
 Watch|attach|[place]|Take a thread into this terminal; Kage gets it back when you quit|kage attach general
 People|teammate|list, add, remove|Who else may tag Kage (a name, @handle or Slack id)|kage teammate add priya
+People|tell|<place> <message>|Tell a thread something as you; its session takes it after the current turn|kage tell support use the staging db
 People|call||Kage phones you, and the call can do anything you can (needs KAGE_CALL_COMMAND)|kage call'
 
 cmd_help() {
@@ -257,6 +258,7 @@ case "${1:-}" in
   top) node cli/top.ts "${@:2}" ;;
   watch) node cli/watch.ts "${@:2}" ;;
   attach) node cli/attach.ts "${@:2}" ;;
+  tell) node cli/tell.ts "${@:2}" ;;
   teammate) node cli/teammate.ts "${@:2}" ;;
   call) node cli/call.ts ;;
   export-crons) node cli/export-crons.ts "${@:2}" ;;   # one-time move of CronCreate jobs out of tmux panes; not in help

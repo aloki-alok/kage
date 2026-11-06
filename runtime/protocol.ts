@@ -24,6 +24,7 @@ export type FromSession =
   | { type: 'board' }
   | { type: 'callcode' }   // kage call: the hub answers { type: 'callcode', code } or { type: 'callcode', refused }
   | { type: 'stop'; key: string }
+  | { type: 'tell'; key: string; text: string }   // kage tell: the hub answers { type: 'tell', ok: true } or { type: 'tell', refused }
   | { type: 'hold'; key: string; pid: number }   // pid: the attach process, which owns the hold
   | { type: 'hello'; key: string }
   | { type: 'permission'; id: string }
