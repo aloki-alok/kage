@@ -129,8 +129,8 @@ const sdk = sdkLib ? sdkSessions({
   },
   ownerMemory: MEM.owner,
   onStart: () => store.saveSessions(d.saved()),
-  onResult: (key, total) => {
-    const usd = turnCost(costTotals.get(key), total)
+  onResult: (key, total, resumed) => {
+    const usd = turnCost(costTotals.get(key), total, resumed)
     if (usd === undefined) return
     costTotals.set(key, total)
     try { appendFileSync(COSTS, tsvRow([new Date().toISOString(), key, String(usd), String(total)]), { mode: 0o600 }) } catch (e) { log('cost ledger', e) }
