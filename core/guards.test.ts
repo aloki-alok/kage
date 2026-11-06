@@ -3,7 +3,7 @@ import assert from 'node:assert/strict'
 import { mkdirSync, mkdtempSync, symlinkSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { ownerMemoryRefusal, privateToolRefusal, voiceToolRefusal } from './guards.ts'
+import { ownerMemoryRefusal, privateToolRefusal, slackSendRefusal, voiceToolRefusal } from './guards.ts'
 
 
 describe('private sources on a teammate task', () => {
@@ -61,5 +61,14 @@ describe('tools on a voice call', () => {
   })
   test('other senders are not limited here', () => {
     for (const s of ['owner', 'teammate', undefined]) assert.equal(voiceToolRefusal('Bash', s), undefined)
+  })
+})
+
+describe("Slack posts go through Kage's own tools", () => {
+  test('the Slack connector may not send or schedule a message', () => {
+    for (const t of ['mcp__claude_ai_Slack__slack_send_message', 'mcp__claude_ai_Slack__slack_schedule_message', 'mcp__plugin_design_slack__slack_send_message']) assert.match(slackSendRefusal(t)!, /reply|message_people/)
+  })
+  test('reading Slack, drafts and canvases still work, and so do Kage tools', () => {
+    for (const t of ['mcp__claude_ai_Slack__slack_read_thread', 'mcp__claude_ai_Slack__slack_send_message_draft', 'mcp__claude_ai_Slack__slack_create_canvas', 'mcp__kage__reply', 'mcp__kage__message_people']) assert.equal(slackSendRefusal(t), undefined)
   })
 })

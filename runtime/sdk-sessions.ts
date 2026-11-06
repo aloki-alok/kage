@@ -8,7 +8,7 @@ import type { createSdkMcpServer, EffortLevel, Options, Query, SDKMessage, SDKUs
 import { z } from 'zod'
 import { log } from '../config.ts'
 import { senderOf, withoutInvisible, type Sender } from '../core/gate.ts'
-import { ownerMemoryRefusal, privateToolRefusal, voiceToolRefusal } from '../core/guards.ts'
+import { ownerMemoryRefusal, privateToolRefusal, slackSendRefusal, voiceToolRefusal } from '../core/guards.ts'
 import { approvalPreview } from '../core/preview.ts'
 import type { Dispatcher, Runner } from '../core/sessions.ts'
 import type { sessionTools } from './kage-tools.ts'
@@ -101,7 +101,7 @@ export function sdkSessions(o: {
             onFailure: 'block',
             hooks: [async input => {
               const i = input as { tool_name: string; tool_input?: Record<string, string> }
-              const reason = privateToolRefusal(i.tool_name, s.sender) ?? voiceToolRefusal(i.tool_name, s.sender) ?? ownerMemoryRefusal(i.tool_name, i.tool_input ?? {}, o.ownerMemory)
+              const reason = privateToolRefusal(i.tool_name, s.sender) ?? voiceToolRefusal(i.tool_name, s.sender) ?? slackSendRefusal(i.tool_name) ?? ownerMemoryRefusal(i.tool_name, i.tool_input ?? {}, o.ownerMemory)
               return reason ? { hookSpecificOutput: { hookEventName: 'PreToolUse', permissionDecision: 'deny', permissionDecisionReason: reason } } : {}
             }],
           }],
