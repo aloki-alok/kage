@@ -6,7 +6,7 @@ import { memoryDirs } from '../core/guards.ts'
 import { undoToSnapshot } from '../runtime/memory-snapshot.ts'
 import { ENV_FILE } from './home.ts'
 
-if (process.argv[2] !== 'undo') { console.error('Usage: kage dream undo  (puts memory back as it was before the last weekly tidy)'); process.exit(2) }
+if (process.argv[2] !== 'undo') { console.error('Usage: kage dream undo  (puts memory back as it was before the last nightly dream)'); process.exit(2) }
 // KAGE_MEMORY may be set in the env file; only that line is read, never a token.
 const line = readFileSync(ENV_FILE, 'utf8').split('\n').find(l => l.startsWith('KAGE_MEMORY='))
 const own = memoryDirs(process.env.HOME!, ENV_FILE, { KAGE_MEMORY: line?.slice('KAGE_MEMORY='.length).trim() || undefined }).own

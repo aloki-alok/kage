@@ -124,7 +124,7 @@ Ask in a thread: `@kage check the deploy every 30 minutes`, or `@kage tell me wh
 
 - **Every morning:** a DM with the questions that have waited on you for a day or more.
 - **Every Monday:** a DM with the schedules that run often but rarely post, and the threads that cost most. It only suggests: you decide.
-- **Once a week, at night:** it tidies its own memory (merges duplicates, archives what nobody used). `kage dream undo` puts it back.
+- **Every night:** it reads the day's threads for lessons, such as your corrections, and saves them. It also tidies its own memory (merges duplicates, archives what nobody used). `kage dream undo` puts it back.
 
 ### Other places to reach it
 
