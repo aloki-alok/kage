@@ -5,6 +5,7 @@ import { GetObjectCommand, S3Client } from '@aws-sdk/client-s3'
 import { SendEmailCommand, SESv2Client } from '@aws-sdk/client-sesv2'
 import { dkimVerify } from 'mailauth/lib/dkim/verify.js'
 import { simpleParser, type AddressObject } from 'mailparser'
+import { promises as dns } from 'node:dns'
 import { existsSync, readFileSync, writeFileSync } from 'node:fs'
 import { log } from '../config.ts'
 import { composeReply, mailTask, replyTargets, type InboundMail, type MailConfig } from './mail.ts'
@@ -14,6 +15,11 @@ export type MailTaskOut = { key: string; sender: 'owner' | 'teammate'; from: str
 
 const addrs = (a?: AddressObject | AddressObject[]) =>
   (Array.isArray(a) ? a : a ? [a] : []).flatMap(x => x.value.map(v => v.address ?? '')).filter(Boolean)
+// DKIM keys are TXT answers too big for plain UDP. Home routers often drop those (no EDNS, no TCP),
+// so Node's lookup times out and every mail fails its signature check. Public resolvers serve them.
+const resolver = new dns.Resolver({ timeout: 5000, tries: 2 })
+resolver.setServers(['1.1.1.1', '8.8.8.8', ...dns.getServers()])
+const dkimResolver = (name: string, rr: string) => resolver.resolve(name, rr) as Promise<string[] | string[][]>
 const list = (v?: string | string[]) => (Array.isArray(v) ? v : v ? v.split(/\s+/) : []).filter(Boolean)
 
 export function startMailbox(o: {
@@ -41,7 +47,7 @@ export function startMailbox(o: {
     const r = n.receipt
     const res = await s3.send(new GetObjectCommand({ Bucket: r.action.bucketName, Key: r.action.objectKey }))
     const raw = Buffer.from(await res.Body!.transformToByteArray())
-    const [dk, p] = await Promise.all([dkimVerify(raw), simpleParser(raw)])
+    const [dk, p] = await Promise.all([dkimVerify(raw, { resolver: dkimResolver }), simpleParser(raw)])
     const mail: InboundMail = {
       verdicts: { spam: r.spamVerdict?.status, virus: r.virusVerdict?.status, dmarc: r.dmarcVerdict?.status },
       dkim: dk.results.map((x: any) => ({ domain: x.signingDomain ?? '', selector: x.selector ?? '', pass: x.status?.result === 'pass' })),
