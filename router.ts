@@ -8,7 +8,7 @@
 // server.ts is the other end for tmux panes only: the Kage channel inside each pane's Claude Code.
 import { execFileSync } from 'node:child_process'
 import { randomUUID } from 'node:crypto'
-import { appendFileSync, existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs'
+import { appendFileSync, existsSync, mkdirSync, readFileSync, renameSync, statSync, writeFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { dirname } from 'node:path'
 import { load, log } from './config.ts'
@@ -23,7 +23,7 @@ import { memoryDirs } from './core/guards.ts'
 import { placeFor, sessionKey, type Conversation, type Lane } from './core/conversations.ts'
 import { senderOf } from './core/gate.ts'
 import { dailyDue, lastTotals, openWaiting, staleWaiting, tsvRow, turnCost } from './core/ledgers.ts'
-import { dreamDue, dreamTask } from './core/dream.ts'
+import { dreamDue, dreamTask, threadsSince } from './core/dream.ts'
 import { retro, retroDue } from './core/retro.ts'
 import { Dispatcher, mixRunners } from './core/sessions.ts'
 import type { Task, ToSession } from './runtime/protocol.ts'
@@ -34,7 +34,7 @@ import { snapshotMemory } from './runtime/memory-snapshot.ts'
 import { sdkSessions } from './runtime/sdk-sessions.ts'
 import { listenForSessions, restoreHolds, routeReply } from './runtime/session-link.ts'
 import { openStore } from './runtime/store.ts'
-import { tmuxPanes } from './runtime/tmux-panes.ts'
+import { claudeProject, tmuxPanes } from './runtime/tmux-panes.ts'
 import { codeStamp } from './runtime/code-stamp.ts'
 
 const { ENV_FILE, NAME, Title, TEAMMATES, env, need, bot, user } = load()
@@ -218,17 +218,23 @@ async function weeklyRetro(now: number) {
   const sent = !lines.length || await slack.notifyOwner(['*Weekly retro*, from what Kage did this week.', ...lines].join('\n'))
   if (sent) writeFileSync(RETRO, String(now), { mode: 0o600 })
 }
-// Once a week in the small hours, while every session is quiet, Kage tidies its own memory (core/dream.ts).
-// A side lane of the bot DM, so the DM's own conversation is untouched. The hub snapshots the memory
-// first, so `kage dream undo` restores it whatever the dream did.
+// Every night in the small hours, while every session is quiet, Kage learns from the day's threads and
+// tidies its own memory (core/dream.ts). A side lane of the bot DM, so the DM's own conversation is
+// untouched. The hub snapshots the memory first, so `kage dream undo` restores it whatever the dream did.
 const DREAMT = `${DIR}/dream-sent`
+const PROJECT = claudeProject(process.cwd())   // both runners start sessions in the hub's folder
 function dream(now: number) {
   const last = Number(readFile(DREAMT).trim()) || undefined
   if (!dreamDue(now, last, d.quietEverywhere(now))) return
   const snap = snapshotMemory(MEM.own, now)
+  // At most a day back, so a Mac that slept through a few nights is not handed a week of threads.
+  const since = Math.max(last ?? 0, now - 24 * 3600_000)
+  const file = (id: string) => `${PROJECT}/${id}.jsonl`
+  const threads = threadsSince(store.sessions(), id => { try { return statSync(file(id)).mtimeMs } catch { return undefined } }, since)
+    .map(t => ({ place: placeOf(t.key), file: file(t.id) }))
   const c: Conversation = { connector: 'slack', chat: slack.ids.botDm, kind: 'dm', agentDm: true }
   const task: Task = {
-    type: 'task', fromOwner: true, content: dreamTask(MEM),
+    type: 'task', fromOwner: true, content: dreamTask(MEM, threads, new Date(since).toISOString()),
     meta: { channel: slack.ids.botDm, thread_ts: '', place: `DM with ${Title} (dream)`, permalink: '' },
     origin: { channel: slack.ids.botDm, ts: '' },
     scheduled: true,
