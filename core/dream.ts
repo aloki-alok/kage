@@ -21,9 +21,9 @@ export function threadsSince(sessions: Record<string, string>, mtime: (id: strin
 export function dreamTask(m: { own: string; owner: string }, threads: { place: string; file: string }[], since: string): string {
   const read = threads.length
     ? [
-        `1. Today's threads. Read what happened in each one after ${since}: the tasks (\`jq -r 'select(.type=="user" and .timestamp>"${since}") | .message.content | if type=="string" then . else (map(select(.type=="text").text) | join("\\n")) end | select(length>0)' <file>\`) and your replies.`,
+        `1. Today's threads. Read what happened in each one after ${since}: the tasks (\`jq -r 'select(.type=="user" and .timestamp>"${since}") | .message.content | if type=="string" then . else (map(select(.type=="text").text) | join("\\n")) end | select(length>0)' <file>\`).`,
         ...threads.map(t => `   • ${t.place}: ${t.file}`),
-        `   Look for times the owner corrected you, said what they prefer, or repeated an ask, and for a method a thread had to work out. For each lasting lesson, update the note in ${m.own} that covers it, or write a new feedback note with the why. Skip one-off facts and anything already saved.`,
+        `   Look for times the owner corrected you, said what they prefer, or repeated an ask, and for a method a thread had to work out. For each lasting lesson, update the note in ${m.own} that covers it, or write a new feedback note with the why. Skip one-off facts, anything already saved, and anything private to a teammate.`,
       ]
     : ['1. No threads moved since the last dream, so there is nothing new to learn from.']
   return [
