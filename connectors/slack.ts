@@ -89,7 +89,7 @@ export async function connectSlack(o: { dir: string; appToken: string; bot: WebC
     return parent?.ts === m.thread_ts && parent.user === ids.bot ? cardRequestId(parent.text ?? '') : undefined
   }
 
-  // posted.tsv: every message Kage posted, with the session that posted it (runtime/kage-tools.ts post).
+  // posted.tsv: every message Kage posted, with the thread whose task posted it (runtime/kage-tools.ts post).
   const readPosted = () => { try { return readFileSync(`${o.dir}/posted.tsv`, 'utf8') } catch { return '' } }
 
   // Socket Mode may redeliver; each Slack message becomes at most one task.
