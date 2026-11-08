@@ -41,6 +41,18 @@ describe('what starts a task', () => {
     assert.deepEqual(classify(msg({ text: `<@${BOT}> check the  thread` }), ids),
       { kind: 'task', text: 'check the  thread' })
   })
+  // "can you do this?" with a screenshot: without the tag Claude guessed "this" from older messages.
+  test('files on the tagged message reach the task text', () => {
+    const files = [{ name: 'image.png' }, { name: 'leads.csv' }]
+    assert.deepEqual(classify(msg({ user: MATE, subtype: 'file_share', files, text: `<@${BOT}> can you do this?` }), ids),
+      { kind: 'task', text: 'can you do this? [files: image.png, leads.csv]' })
+    assert.deepEqual(classify(msg({ channel: DM, files, text: 'see this' }), ids),
+      { kind: 'task', text: 'see this [files: image.png, leads.csv]' })
+  })
+  test('a file does not turn an approval into a task', () => {
+    assert.deepEqual(classify(msg({ channel: DM, files: [{ name: 'a.png' }], text: 'yes abcde' }), ids),
+      { kind: 'verdict', request_id: 'abcde', behavior: 'allow' })
+  })
   test('the name typed as plain "@name" also counts', () => {
     assert.deepEqual(classify(msg({ text: '@Kage how are you?' }), ids), { kind: 'task', text: 'how are you?' })
     assert.deepEqual(classify(msg({ text: 'hey @kage check this' }), ids), { kind: 'task', text: 'hey check this' })
