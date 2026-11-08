@@ -27,6 +27,19 @@ export function postedBy(tsv: string, channel: string, ts: string): 'bot' | 'own
   return by === 'bot' || by === 'owner' ? by : undefined
 }
 
+// The thread ("C1:1.1") whose task posted this message in the owner's DM (a private ask), so the
+// owner's answer under it goes back there. None for the DM's own threads.
+// ponytail: posted.tsv logs the thread, not the lane, so a side lane's ask is answered in the main lane.
+export function askedFrom(tsv: string, dm: string, ts: string): string | undefined {
+  let key: string | undefined
+  for (const line of tsv.split('\n')) {
+    const [, c, t, , k] = line.split('\t')
+    if (c === dm && t === ts) key = k
+  }
+  // Only a Slack thread can take the answer: an email, WhatsApp or call ask stays a DM task.
+  return key && /^(?:[\w-]+\/)?[A-Z0-9]+:\d+\.\d+(?:#.+)?$/.test(key) && !key.includes(`${dm}:`) ? key : undefined
+}
+
 // The daily note to the owner: questions that have waited on them for ageMs or more.
 export const staleWaiting = (tsv: string, now: number, ageMs: number) =>
   openWaiting(tsv).filter(i => now - Date.parse(i.when) >= ageMs)
