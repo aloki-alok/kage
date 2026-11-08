@@ -1,6 +1,6 @@
 import { describe, test } from 'node:test'
 import assert from 'node:assert/strict'
-import { dailyDue, lastTotals, openWaiting, postedBy, spendSince, staleWaiting, tsvRow, turnCost } from './ledgers.ts'
+import { askedFrom, dailyDue, lastTotals, openWaiting, postedBy, spendSince, staleWaiting, tsvRow, turnCost } from './ledgers.ts'
 
 
 describe('the daily note of what waits on the owner', () => {
@@ -47,6 +47,24 @@ describe('the ledgers', () => {
     assert.equal(postedBy(rows, 'C1', '1.1'), undefined)     // already deleted
     assert.equal(postedBy(rows, 'C1', '9.9'), undefined)     // someone else's message
     assert.equal(postedBy(tsvRow(['t1', 'C1', '1.1', 'bot']), 'C1', '1.1'), 'bot')
+  })
+  test('an answer under a private ask belongs to the thread that asked', () => {
+    const rows = [
+      tsvRow(['t1', 'DTEST', '5.5', 'bot', 'CTEST:1.1']),        // private ask from a channel thread
+      tsvRow(['t2', 'DTEST', '6.6', 'bot', 'DTEST:6.6']),        // the DM thread's own reply
+      tsvRow(['t3', 'DTEST', '7.7', 'bot', 'dm']),               // the rolling DM
+      tsvRow(['t4', 'DTEST', '8.8', 'bot']),                     // row from before keys were logged
+      tsvRow(['t5', 'COTHER', '4.4', 'bot', 'CTEST:9.9']),       // same ts, another channel
+      tsvRow(['t6', 'DTEST', '3.3', 'bot', 'mail:abc']),         // private ask from an email thread
+      tsvRow(['t7', 'DTEST', '2.2', 'bot', 'voice:xyz']),        // private ask from a call
+    ].join('')
+    assert.equal(askedFrom(rows, 'DTEST', '3.3'), undefined)  // not a Slack thread: stays a DM task
+    assert.equal(askedFrom(rows, 'DTEST', '2.2'), undefined)
+    assert.equal(askedFrom(rows, 'DTEST', '5.5'), 'CTEST:1.1')
+    assert.equal(askedFrom(rows, 'DTEST', '6.6'), undefined)
+    assert.equal(askedFrom(rows, 'DTEST', '7.7'), undefined)
+    assert.equal(askedFrom(rows, 'DTEST', '8.8'), undefined)
+    assert.equal(askedFrom(rows, 'DTEST', '4.4'), undefined)  // not Kage's message in the DM
   })
   test('two questions in one thread both stay open', () => {
     const rows = [tsvRow(['t1', 'open', 'C1:1.1', 'l', 'a']), tsvRow(['t2', 'open', 'C1:1.1', 'l', 'b'])].join('')
