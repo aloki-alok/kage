@@ -36,7 +36,8 @@ export function askedFrom(tsv: string, dm: string, ts: string): string | undefin
     const [, c, t, , k] = line.split('\t')
     if (c === dm && t === ts) key = k
   }
-  return key && key !== 'dm' && !key.startsWith(`${dm}:`) ? key : undefined
+  // Only a Slack thread can take the answer: an email, WhatsApp or call ask stays a DM task.
+  return key && /^(?:[\w-]+\/)?[A-Z0-9]+:\d+\.\d+(?:#.+)?$/.test(key) && !key.includes(`${dm}:`) ? key : undefined
 }
 
 // The daily note to the owner: questions that have waited on them for ageMs or more.
