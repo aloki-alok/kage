@@ -27,8 +27,9 @@ export function postedBy(tsv: string, channel: string, ts: string): 'bot' | 'own
   return by === 'bot' || by === 'owner' ? by : undefined
 }
 
-// The other thread's session key behind a message Kage posted in the owner's DM (a private ask), so
-// the owner's answer under it goes back to the thread that asked. None for the DM's own sessions.
+// The thread ("C1:1.1") whose task posted this message in the owner's DM (a private ask), so the
+// owner's answer under it goes back there. None for the DM's own threads.
+// ponytail: posted.tsv logs the thread, not the lane, so a side lane's ask is answered in the main lane.
 export function askedFrom(tsv: string, dm: string, ts: string): string | undefined {
   let key: string | undefined
   for (const line of tsv.split('\n')) {
