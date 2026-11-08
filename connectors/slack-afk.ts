@@ -6,7 +6,7 @@ import { spawn } from 'node:child_process'
 import { mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import type { WebClient } from '@slack/web-api'
 import { log } from '../config.ts'
-import { actOn, afkGuardPrompt, decideAfk, MAX_REPLIES, notePing, outsider, parseTriage, restoreTo, standInPrompt, summaryOf, untilOf, type Afk, type AfkCommand, type Status } from '../core/afk.ts'
+import { actOn, afkGuardPrompt, decideAfk, MAX_REPLIES, noteMention, notePing, outsider, parseTriage, restoreTo, standInPrompt, summaryOf, untilOf, type Afk, type AfkCommand, type Status } from '../core/afk.ts'
 import type { SlackMessage } from '../core/slack-message.ts'
 import { findSecret, safeReply } from '../core/outbound.ts'
 import { guardVerdict } from './whatsapp.ts'
@@ -126,7 +126,7 @@ export function startAfk(o: {
     const before = state
     if (!before) return
     const w = before.watch[key] ??= { channel, thread_ts, mentions: 0 }
-    if (mentioned) w.mentions++
+    const repeat = mentioned && noteMention(w, Date.now())
     save()
     const [u, c] = await Promise.all([o.user.users.info({ user: msg.user! }).catch(() => null), o.user.conversations.info({ channel }).catch(() => null)])
     const outside = outsider(u?.user, c?.channel, o.ids.team ?? '')
@@ -138,24 +138,24 @@ export function startAfk(o: {
     const { system, prompt } = standInPrompt({ owner: o.ownerName, title: o.title, until: when(before.until, before.tz), note: before.note, place, from: who, convo: all })
     const out = parseTriage(await claude(system, prompt, o.memory, 'Read,Grep,Glob,Bash', GH))
     if (!out) return void log('afk: stand-in gave no usable answer in', place)
-    // Checked again after the thinking: the owner may be back, or typing here.
+    // Checked again after the thinking: the owner may be back, or typing here. since, not the
+    // object: a second away during the thinking keeps the same away period.
     const s = state
-    if (!s || s !== before || s.until <= Date.now() || s.muted.includes(key)) return
-    const act = actOn(out.urgency, key, w, s, Date.now(), outside)
+    if (!s || s.since !== before.since || s.until <= Date.now() || s.muted.includes(key)) return
+    const act = actOn(out.urgency, repeat, key, w, s, Date.now(), outside)
     const where = link ? `<${link}|${place}>` : place
     notePing(s, { key, when: Date.now(), who, place, link, note: out.note, waits: out.waits, urgency: out.urgency })
     if (act.call) { w.called = true; s.lastCall = Date.now() }
     save()
     log('afk triage', key, out.urgency, act)
-    if (act.call) {
-      const no = o.call ? await o.call(`${who} in ${place}: ${out.note}`).catch(e => String(e)) : 'no KAGE_CALL_COMMAND'
-      await o.notify(`:rotating_light: P0 from ${who} in ${where}: ${out.note}\n${no ? `Could not phone you (${no}).` : 'Calling you now.'}`)
-    }
+    // Not awaited: the dialer must not hold up the reply or the thread's next triage.
+    if (act.call) void (o.call ? o.call(`${who} in ${place}: ${out.note}`).catch(e => String(e)) : Promise.resolve('no KAGE_CALL_COMMAND'))
+      .then(no => o.notify(`:rotating_light: P0 from ${who} in ${where}: ${out.note}\n${no ? `Could not phone you (${no}).` : 'Calling you now.'}`))
     if (!act.post || !out.reply) return
     const g = afkGuardPrompt(all, out.reply)
     const why = findSecret(out.reply) ? 'looks like a key or secret' : (v => v.send ? '' : v.reason)(guardVerdict(await claude(g.system, g.prompt, ROOM, '')))
     const t = state
-    if (!t || t !== s || t.muted.includes(key) || (t.replies[key] ?? 0) >= MAX_REPLIES) return
+    if (!t || t.since !== s.since || t.muted.includes(key) || (t.replies[key] ?? 0) >= MAX_REPLIES) return
     if (why) return void await o.notify(`Held a reply to ${who} in ${where} (${why}). Post it yourself if it is fine:\n${out.reply}`)
     t.replies[key] = (t.replies[key] ?? 0) + 1
     save()

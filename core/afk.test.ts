@@ -1,6 +1,6 @@
 import { describe, test } from 'node:test'
 import assert from 'node:assert/strict'
-import { actOn, awayCommand, CALL_GAP, decideAfk, MAX_REPLIES, notePing, outsider, parseTriage, restoreTo, untilOf, type Afk, type Ping, type Urgency, type Watch } from './afk.ts'
+import { actOn, awayCommand, BURST, CALL_GAP, decideAfk, MAX_REPLIES, noteMention, notePing, outsider, parseTriage, restoreTo, untilOf, type Afk, type Ping, type Urgency, type Watch } from './afk.ts'
 
 const OWNER = 'UOWNER001'
 const BOT = 'UBOT00001'
@@ -83,13 +83,14 @@ describe('decideAfk: what a heard message does while the owner is away', () => {
 })
 
 describe('actOn: post, call, or only track', () => {
-  const t = (urgency: Urgency, w = watch(), a = afk(), o = false) => actOn(urgency, 'C1:5.5', w, a, NOW, o)
+  const t = (urgency: Urgency, w = watch(), a = afk(), o = false, repeat = false) => actOn(urgency, repeat, 'C1:5.5', w, a, NOW, o)
   test('a first mention that can wait is only tracked', () => {
     assert.deepEqual(t('normal'), { post: false, call: false })
     assert.deepEqual(t('low'), { post: false, call: false })
   })
-  test('a second mention gets a reply', () => {
-    assert.deepEqual(t('normal', watch({ mentions: 2 })), { post: true, call: false })
+  test('a repeat mention gets a reply; later chatter in the thread does not', () => {
+    assert.deepEqual(t('normal', watch({ mentions: 2 }), afk(), false, true), { post: true, call: false })
+    assert.deepEqual(t('normal', watch({ mentions: 2 }), afk(), false, false), { post: false, call: false })
   })
   test('high takes over at once; p0 also phones the owner', () => {
     assert.deepEqual(t('high'), { post: true, call: false })
@@ -104,8 +105,19 @@ describe('actOn: post, call, or only track', () => {
     assert.deepEqual(t('p0', watch(), afk({ replies: { 'C1:5.5': MAX_REPLIES } })), { post: false, call: true })
   })
   test('an outsider never gets a reply, but a p0 still calls', () => {
-    assert.deepEqual(t('high', watch({ mentions: 2 }), afk(), true), { post: false, call: false })
+    assert.deepEqual(t('high', watch({ mentions: 2 }), afk(), true, true), { post: false, call: false })
     assert.deepEqual(t('p0', watch(), afk(), true), { post: false, call: true })
+  })
+})
+
+describe('noteMention: a burst of messages is one mention', () => {
+  test('the second mention counts only after BURST', () => {
+    const w = watch({ mentions: 0 })
+    assert.equal(noteMention(w, NOW), false)
+    assert.equal(noteMention(w, NOW + BURST - 1), false)
+    assert.equal(w.mentions, 1)
+    assert.equal(noteMention(w, NOW + 2 * BURST), true)
+    assert.equal(w.mentions, 2)
   })
 })
 

@@ -75,7 +75,8 @@ function phoneOwner(reason: string): Promise<string> {
   if (!command) return Promise.resolve('no KAGE_CALL_COMMAND')
   if (!voice) return Promise.resolve('voice is off (KAGE_VOICE_TOKEN)')
   const p = spawn(command, { shell: true, stdio: 'ignore', env: { ...process.env, KAGE_CALL_CODE: voice.issueCode(), KAGE_CALL_REASON: reason.slice(0, 300) } })
-  return new Promise(res => { p.on('error', e => res(String(e))); p.on('close', code => res(code === 0 ? '' : `dialer exited ${code}`)) })
+  const timer = setTimeout(() => p.kill(), 60_000)   // a dialer that hangs reports as failed
+  return new Promise(res => { p.on('error', e => res(String(e))); p.on('close', code => { clearTimeout(timer); res(code === 0 ? '' : `dialer exited ${code ?? 'on timeout'}`) }) })
 }
 const slack = await connectSlack({
   dir: DIR, appToken: need('SLACK_APP_TOKEN'), bot, user, name: NAME, title: Title, teammates: TEAMMATES,
