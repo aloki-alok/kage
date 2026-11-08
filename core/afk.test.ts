@@ -1,6 +1,6 @@
 import { describe, test } from 'node:test'
 import assert from 'node:assert/strict'
-import { decideAfk, outsider, parseAfk, parseStandIn, restoreTo, untilOf, type Afk } from './afk.ts'
+import { actOn, awayCommand, BURST, CALL_GAP, decideAfk, MAX_REPLIES, noteMention, notePing, outsider, parseTriage, restoreTo, untilOf, type Afk, type Ping, type Urgency, type Watch } from './afk.ts'
 
 const OWNER = 'UOWNER001'
 const BOT = 'UBOT00001'
@@ -8,34 +8,23 @@ const DM = 'DBOT00001'
 const ids = { owner: OWNER, bot: BOT, botDm: DM, name: 'kage' }
 const NOW = Date.parse('2026-11-04T06:00:00Z')   // 11:30 IST
 const IST = 'Asia/Kolkata'
-const afk = (o: Partial<Afk> = {}): Afk => ({ since: NOW - 60_000, until: NOW + 3600_000, note: '', replies: {}, muted: [], pings: [], ...o })
+const afk = (o: Partial<Afk> = {}): Afk => ({ since: NOW - 60_000, until: NOW + 3600_000, note: '', replies: {}, muted: [], watch: {}, pings: [], ...o })
+const watch = (o: Partial<Watch> = {}): Watch => ({ channel: 'C1', thread_ts: '5.5', mentions: 1, ...o })
+const ping = (o: Partial<Ping> = {}): Ping => ({ key: 'C1:5.5', when: NOW, who: 'Sam', place: '#eng', link: '', note: '', waits: false, urgency: 'normal', ...o })
 const msg = (o: Record<string, unknown>) =>
   ({ channel: 'C1', ts: '1.1', user: 'UPEER0001', text: `<@${OWNER}> can you check this`, client_msg_id: 'c1', channel_type: 'channel', ...o })
 
-describe('parseAfk: the owner turns it on and off', () => {
-  test('afk alone, with a time, with a note', () => {
-    assert.deepEqual(parseAfk('afk'), { kind: 'afk', note: '' })
-    assert.deepEqual(parseAfk('AFK 2h'), { kind: 'afk', minutes: 120, note: '' })
-    assert.deepEqual(parseAfk('afk 45 min in a meeting'), { kind: 'afk', minutes: 45, note: 'in a meeting' })
-    assert.deepEqual(parseAfk('afk until 6pm, on a flight'), { kind: 'afk', at: { h: 18, m: 0 }, note: 'on a flight' })
-    assert.deepEqual(parseAfk('afk till 18:30'), { kind: 'afk', at: { h: 18, m: 30 }, note: '' })
-    assert.deepEqual(parseAfk('afk, dentist'), { kind: 'afk', note: 'dentist' })
+describe('awayCommand: what the away tool was given', () => {
+  test('minutes, a 24-hour clock time, or neither', () => {
+    assert.deepEqual(awayCommand({ minutes: 60, note: 'lunch' }), { kind: 'afk', minutes: 60, note: 'lunch' })
+    assert.deepEqual(awayCommand({ until: '18:30', note: '' }), { kind: 'afk', at: { h: 18, m: 30 }, note: '' })
+    assert.deepEqual(awayCommand({ until: '9:05' }), { kind: 'afk', at: { h: 9, m: 5 }, note: '' })
+    assert.deepEqual(awayCommand({}), { kind: 'afk', note: '' })
   })
-  test('the way people say it', () => {
-    assert.deepEqual(parseAfk('kage im afk for 30 mins, take over'), { kind: 'afk', minutes: 30, note: 'take over' })
-    assert.deepEqual(parseAfk("I'm going afk for 1 hour"), { kind: 'afk', minutes: 60, note: '' })
-    assert.deepEqual(parseAfk('going afk till 6pm'), { kind: 'afk', at: { h: 18, m: 0 }, note: '' })
-    assert.deepEqual(parseAfk("i'm back"), { kind: 'back' })
-    assert.deepEqual(parseAfk('kage back'), { kind: 'back' })
-  })
-  test('back', () => {
-    assert.deepEqual(parseAfk('back'), { kind: 'back' })
-    assert.deepEqual(parseAfk('Back.'), { kind: 'back' })
-  })
-  test('ordinary tasks that start with the word stay tasks', () => {
-    assert.equal(parseAfk('afk mode is broken, look at it'), null)
-    assert.equal(parseAfk('back up the db'), null)
-    assert.equal(parseAfk('afk until never'), null)
+  test('a time it cannot read is refused, not guessed', () => {
+    for (const a of [{ until: '6pm' }, { until: '25:00' }, { until: '18:75' }, { minutes: 0 }, { minutes: -5 }, { minutes: 2.5 }]) {
+      assert.equal(typeof awayCommand(a), 'string', JSON.stringify(a))
+    }
   })
 })
 
@@ -53,13 +42,18 @@ describe('untilOf: when it ends', () => {
 })
 
 describe('decideAfk: what a heard message does while the owner is away', () => {
-  test('a mention of the owner gets the stand-in, answered in its thread', () => {
-    assert.deepEqual(decideAfk(msg({ ts: '5.5' }), afk(), ids, NOW), { kind: 'stand-in', key: 'C1:5.5', channel: 'C1', thread_ts: '5.5' })
-    assert.deepEqual(decideAfk(msg({ ts: '6.6', thread_ts: '5.5' }), afk(), ids, NOW), { kind: 'stand-in', key: 'C1:5.5', channel: 'C1', thread_ts: '5.5' })
+  test('a mention of the owner starts a triage of its thread', () => {
+    assert.deepEqual(decideAfk(msg({ ts: '5.5' }), afk(), ids, NOW), { kind: 'triage', key: 'C1:5.5', channel: 'C1', thread_ts: '5.5', mentioned: true })
+    assert.deepEqual(decideAfk(msg({ ts: '6.6', thread_ts: '5.5' }), afk(), ids, NOW), { kind: 'triage', key: 'C1:5.5', channel: 'C1', thread_ts: '5.5', mentioned: true })
   })
-  test('a DM to the owner gets the stand-in without a mention, outside a thread', () => {
+  test('a watched thread is triaged again on every message, mention or not', () => {
+    const plain = msg({ ts: '7.7', thread_ts: '5.5', text: 'any update?' })
+    assert.deepEqual(decideAfk(plain, afk({ watch: { 'C1:5.5': watch() } }), ids, NOW), { kind: 'triage', key: 'C1:5.5', channel: 'C1', thread_ts: '5.5', mentioned: false })
+    assert.equal(decideAfk(plain, afk(), ids, NOW).kind, 'ignore')
+  })
+  test('a DM to the owner counts as a mention, keyed by the DM', () => {
     assert.deepEqual(decideAfk(msg({ channel: 'D9', channel_type: 'im', text: 'hey, quick one' }), afk(), ids, NOW),
-      { kind: 'stand-in', key: 'D9', channel: 'D9', thread_ts: undefined })
+      { kind: 'triage', key: 'D9', channel: 'D9', thread_ts: undefined, mentioned: true })
   })
   test('a group DM needs the mention', () => {
     assert.equal(decideAfk(msg({ channel: 'G9', channel_type: 'mpim', text: 'lunch?' }), afk(), ids, NOW).kind, 'ignore')
@@ -68,7 +62,7 @@ describe('decideAfk: what a heard message does while the owner is away', () => {
     assert.equal(decideAfk(msg({}), undefined, ids, NOW).kind, 'ignore')
     assert.equal(decideAfk(msg({}), afk({ until: NOW }), ids, NOW).kind, 'ignore')
   })
-  test('bots, apps, edits and Kage itself never get an answer', () => {
+  test('bots, apps, edits and Kage itself never start a triage', () => {
     for (const o of [{ bot_id: 'B1' }, { app_id: 'A1' }, { client_msg_id: undefined }, { subtype: 'message_changed' }, { user: BOT }]) {
       assert.equal(decideAfk(msg(o), afk(), ids, NOW).kind, 'ignore', JSON.stringify(o))
     }
@@ -77,18 +71,63 @@ describe('decideAfk: what a heard message does while the owner is away', () => {
     assert.equal(decideAfk(msg({ text: `<@${OWNER}> <@${BOT}> deploy` }), afk(), ids, NOW).kind, 'ignore')
     assert.equal(decideAfk(msg({ text: `<@${OWNER}> @kage deploy` }), afk(), ids, NOW).kind, 'ignore')
   })
-  test('the owner typing somewhere mutes that conversation', () => {
-    assert.deepEqual(decideAfk(msg({ user: OWNER, text: 'on it' }), afk(), ids, NOW), { kind: 'mute', channel: 'C1' })
-    assert.equal(decideAfk(msg({}), afk({ muted: ['C1'] }), ids, NOW).kind, 'ignore')
-    assert.equal(decideAfk(msg({ channel: 'C2' }), afk({ muted: ['C1'] }), ids, NOW).kind, 'stand-in')
+  test('the owner typing in a thread mutes that thread only', () => {
+    assert.deepEqual(decideAfk(msg({ user: OWNER, ts: '6.6', thread_ts: '5.5', text: 'on it' }), afk(), ids, NOW), { kind: 'mute', key: 'C1:5.5' })
+    assert.equal(decideAfk(msg({ ts: '7.7', thread_ts: '5.5' }), afk({ muted: ['C1:5.5'] }), ids, NOW).kind, 'ignore')
+    assert.equal(decideAfk(msg({ ts: '8.8' }), afk({ muted: ['C1:5.5'] }), ids, NOW).kind, 'triage')
   })
-  test('the owner in the Kage DM or an app with his token does not mute', () => {
+  test('the owner in the Kage DM or an app with their token does not mute', () => {
     assert.equal(decideAfk(msg({ user: OWNER, channel: DM }), afk(), ids, NOW).kind, 'ignore')
     assert.equal(decideAfk(msg({ user: OWNER, client_msg_id: undefined }), afk(), ids, NOW).kind, 'ignore')
   })
-  test('5 replies per thread, then silence', () => {
-    assert.equal(decideAfk(msg({ ts: '5.5' }), afk({ replies: { 'C1:5.5': 4 } }), ids, NOW).kind, 'stand-in')
-    assert.equal(decideAfk(msg({ ts: '5.5' }), afk({ replies: { 'C1:5.5': 5 } }), ids, NOW).kind, 'ignore')
+})
+
+describe('actOn: post, call, or only track', () => {
+  const t = (urgency: Urgency, w = watch(), a = afk(), o = false, repeat = false) => actOn(urgency, repeat, 'C1:5.5', w, a, NOW, o)
+  test('a first mention that can wait is only tracked', () => {
+    assert.deepEqual(t('normal'), { post: false, call: false })
+    assert.deepEqual(t('low'), { post: false, call: false })
+  })
+  test('a repeat mention gets a reply; later chatter in the thread does not', () => {
+    assert.deepEqual(t('normal', watch({ mentions: 2 }), afk(), false, true), { post: true, call: false })
+    assert.deepEqual(t('normal', watch({ mentions: 2 }), afk(), false, false), { post: false, call: false })
+  })
+  test('high takes over at once; p0 also phones the owner', () => {
+    assert.deepEqual(t('high'), { post: true, call: false })
+    assert.deepEqual(t('p0'), { post: true, call: true })
+  })
+  test('one call per thread, and none within CALL_GAP of the last', () => {
+    assert.deepEqual(t('p0', watch({ called: true })), { post: true, call: false })
+    assert.deepEqual(t('p0', watch(), afk({ lastCall: NOW - CALL_GAP + 1 })), { post: true, call: false })
+    assert.deepEqual(t('p0', watch(), afk({ lastCall: NOW - CALL_GAP })), { post: true, call: true })
+  })
+  test('5 replies per thread, then only tracking and calls', () => {
+    assert.deepEqual(t('p0', watch(), afk({ replies: { 'C1:5.5': MAX_REPLIES } })), { post: false, call: true })
+  })
+  test('an outsider never gets a reply, but a p0 still calls', () => {
+    assert.deepEqual(t('high', watch({ mentions: 2 }), afk(), true, true), { post: false, call: false })
+    assert.deepEqual(t('p0', watch(), afk(), true), { post: false, call: true })
+  })
+})
+
+describe('noteMention: a burst of messages is one mention', () => {
+  test('the second mention counts only after BURST', () => {
+    const w = watch({ mentions: 0 })
+    assert.equal(noteMention(w, NOW), false)
+    assert.equal(noteMention(w, NOW + BURST - 1), false)
+    assert.equal(w.mentions, 1)
+    assert.equal(noteMention(w, NOW + 2 * BURST), true)
+    assert.equal(w.mentions, 2)
+  })
+})
+
+describe('notePing: one line per thread, kept current', () => {
+  test('a later triage of the same thread replaces its line', () => {
+    const a = afk()
+    notePing(a, ping({ key: 'C1:5.5', note: 'Sam asks about #42' }))
+    notePing(a, ping({ key: 'C2:1.1', note: 'Ana says thanks' }))
+    notePing(a, ping({ key: 'C1:5.5', note: 'Sam: #42 is now blocking the release', urgency: 'high' }))
+    assert.deepEqual(a.pings.map(p => p.note), ['Ana says thanks', 'Sam: #42 is now blocking the release'])
   })
 })
 
@@ -111,16 +150,18 @@ describe('outsider: who never gets an answer', () => {
   })
 })
 
-describe('parseStandIn: what the stand-in wrote', () => {
-  test('reply, note and waits', () => {
-    assert.deepEqual(parseStandIn('REPLY: Maya is away till 6.\nHe will check the PR then.\nNOTE: Sam wants #42 reviewed\nWAITS: yes'),
-      { reply: 'Maya is away till 6.\nHe will check the PR then.', note: 'Sam wants #42 reviewed', waits: true })
-    assert.deepEqual(parseStandIn('REPLY: hi\nNOTE: said hi\nWAITS: no'), { reply: 'hi', note: 'said hi', waits: false })
+describe('parseTriage: what the stand-in wrote', () => {
+  test('urgency, note, waits, then the draft reply', () => {
+    assert.deepEqual(parseTriage('URGENCY: high\nNOTE: Sam wants #42 reviewed\nWAITS: yes\nREPLY: Maya is away till 6.\nShe will check the PR then.'),
+      { urgency: 'high', note: 'Sam wants #42 reviewed', waits: true, reply: 'Maya is away till 6.\nShe will check the PR then.' })
   })
-  test('anything else posts nothing', () => {
-    assert.equal(parseStandIn('Sure, here is my reply: hi'), null)
-    assert.equal(parseStandIn('REPLY:\nNOTE: x\nWAITS: no'), null)
-    assert.equal(parseStandIn('REPLY: hi'), null)
+  test('REPLY none means nothing to post', () => {
+    assert.deepEqual(parseTriage('URGENCY: low\nNOTE: thanks\nWAITS: no\nREPLY: none'), { urgency: 'low', note: 'thanks', waits: false, reply: '' })
+  })
+  test('anything else is unusable', () => {
+    assert.equal(parseTriage('Sure, here is my reply: hi'), null)
+    assert.equal(parseTriage('URGENCY: urgent\nNOTE: x\nWAITS: no\nREPLY: hi'), null)
+    assert.equal(parseTriage('URGENCY: low\nNOTE: x\nREPLY: hi'), null)
   })
 })
 

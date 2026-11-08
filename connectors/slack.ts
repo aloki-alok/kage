@@ -27,7 +27,7 @@ export type Hub = {
 
 export async function connectSlack(o: { dir: string; appToken: string; bot: WebClient; user: WebClient; name: string; title: string; teammates: string[]; hub: Hub
   // AFK mode (connectors/slack-afk.ts); absent means off.
-  afk?: { memory: string; model: string } }) {
+  afk?: { memory: string; model: string; call?: (reason: string) => Promise<string> } }) {
   const { bot, user } = o
   // The owner is whoever the user token belongs to: that token is what hears messages.
   const me = await user.auth.test()
@@ -96,7 +96,7 @@ export async function connectSlack(o: { dir: string; appToken: string; bot: WebC
     seen.add(seenKey)
     if (seen.size > 5000) seen.clear()
 
-    // AFK sees every message: it answers mentions of the owner, and mutes where the owner types.
+    // AFK sees every message: it watches threads that mention the owner, and mutes threads the owner types in.
     afk?.heard(m)
     const t = classify(m, ids, await cardOf(m))
     if (!t) {
@@ -116,10 +116,6 @@ export async function connectSlack(o: { dir: string; appToken: string; bot: WebC
     }
     if (t.kind === 'card') return void underCard(`Reply \`yes\` or \`no\` here to answer request \`${t.request_id}\`.`)
     // Status names the owner's other conversations, so it goes to the owner's DM only, never the thread.
-    if (t.kind === 'afk') {
-      react(m.channel, m.ts, PICKED_UP)
-      return void (afk ? afk.command(t.command) : notifyOwner('AFK mode is off here (KAGE_AFK=off).'))
-    }
     if (t.kind === 'status') {
       react(m.channel, m.ts, PICKED_UP)
       return void notifyOwner(o.hub.status())
@@ -197,5 +193,5 @@ export async function connectSlack(o: { dir: string; appToken: string; bot: WebC
     if (v === 'restart and tell') notifyOwner('Slack has not reconnected for 6 minutes, so I may miss tags. I keep retrying. If it lasts, run `kage logs` on the Mac.')
   }, 30_000).unref()
 
-  return { ids, ownerName, botUser: botAuth.user, socket, failed, notifyOwner, placeOf, start: () => socket.start() }
+  return { ids, ownerName, botUser: botAuth.user, socket, failed, notifyOwner, placeOf, afk, start: () => socket.start() }
 }

@@ -34,7 +34,7 @@ grep -rhoE 'KAGE_[A-Z_]+' --include=*.ts --include=*.sh . --exclude-dir=node_mod
 
 | Setting | Default | Effect |
 |---|---|---|
-| `KAGE_AFK` | on | `off` turns AFK mode off. On, you DM Kage "afk for 30 mins" and it answers people who mention or DM you until you say "back". |
+| `KAGE_AFK` | on | `off` turns AFK mode off. On, tell Kage you are stepping away in any words ("cover for me, lunch for an hour"). It watches threads that mention or DM you and stays quiet unless you are mentioned again or it is urgent. A P0 phones you through `KAGE_CALL_COMMAND`. Say you are back in any words for the summary. Threads run as tmux panes cannot switch it yet. |
 | `KAGE_AFK_MODEL` | `sonnet` | The model the stand-in uses. |
 
 ## Email
@@ -64,7 +64,7 @@ Email is on when `KAGE_MAIL_ADDRESS`, `KAGE_MAIL_QUEUE` and `KAGE_OWNER_EMAIL` a
 | `KAGE_VOICE_MAX` | `1` | Calls at a time. A call never takes a slot from your threads. |
 | `KAGE_VOICE_PER_HOUR` | `20` | New calls per hour. |
 | `KAGE_VOICE` | on | `off` turns voice off. |
-| `KAGE_CALL_COMMAND` | none | The command `kage call` runs to phone you. It gets a one-time code in `$KAGE_CALL_CODE`. |
+| `KAGE_CALL_COMMAND` | none | The command `kage call` and an AFK P0 run to phone you. It gets a one-time code in `$KAGE_CALL_CODE`, and for a P0 the reason in `$KAGE_CALL_REASON`. |
 
 ## WhatsApp
 

@@ -31,6 +31,7 @@ process.on('unhandledRejection', e => log('unhandled', e))
 let botDm = ''
 let router: Socket | undefined
 const unsentAsks: string[] = []   // approvals asked while the hub restarted: it learns them on reconnect
+// ponytail: no away or back tools in a pane (AFK lives in the hub process); add a socket message when panes need it.
 const kage = sessionTools({
   title: Title, bot, user, botDm: () => botDm, dir: dirname(ENV_FILE),
   memory: memoryDirs(process.env.HOME!, ENV_FILE, env),
