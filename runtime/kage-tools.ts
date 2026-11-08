@@ -1,4 +1,4 @@
-// Kage's tools inside one session (reply, edit, delete, send a file, message people, waiting, prod log), its instructions, and the
+// Kage's tools inside one session (reply, edit, delete, send a file, message people, waiting, prod log, away, back), its instructions, and the
 // approval prompt. No transport here: server.ts serves them over MCP stdio for a tmux pane, and an
 // SDK session can serve them in-process. One instance per session.
 import type { WebClient } from '@slack/web-api'
@@ -7,6 +7,7 @@ import { appendFileSync, mkdirSync, readFileSync, realpathSync, statSync } from 
 import { basename, extname } from 'node:path'
 import { z } from 'zod'
 import { log } from '../config.ts'
+import { awayCommand, type AfkCommand } from '../core/afk.ts'
 import { nextRun, parseCron, REPLY, type Schedule } from '../core/cron.ts'
 import { plainName, teammateOf } from '../core/gate.ts'
 import { openWaiting, postedBy, tsvRow } from '../core/ledgers.ts'
@@ -32,6 +33,8 @@ export function sessionTools(o: {
   // SDK runtime, the socket from a tmux pane). add gives why the hub refused it, or nothing once the
   // hub holds it. Trust is the hub's call.
   schedules?: { add(j: Pick<Schedule, 'id' | 'cron' | 'prompt' | 'recurring'>): string | void | Promise<string | void>; remove(id: string): void; list(): Schedule[] }
+  // AFK on or off in the hub; resolves the line for the owner. Absent: AFK mode is off.
+  afk?: (c: AfkCommand) => Promise<string>
 }) {
   const { title: Title, bot, user } = o
   // Shared by every session, so all three are append-only.
@@ -332,6 +335,33 @@ export function sessionTools(o: {
     async run() {
       const all = jobs.list()
       return { text: all.length ? all.map(j => `${j.id} ${j.cron}${j.recurring ? '' : ' (once)'} ${j.prompt.split('\n')[0]!.slice(0, 120)}`).join('\n') : 'no schedules in this thread' }
+    },
+  })
+  // AFK mode lives in the hub (connectors/slack-afk.ts). Only the owner's own task may switch it.
+  const afk = o.afk
+  const ownerOnly = (a: Record<string, unknown>) => ownerTask.get(`${String(a.channel)}:${String(a.thread_ts)}`) === true
+  if (afk) tools.push({
+    name: 'away',
+    description: 'Turn AFK mode on when the owner says, in any words, that they are stepping away or want you to cover for them ("take over", "cover for me", "going to eat for an hour", "in a meeting till 4"). While on, Kage watches threads that mention the owner, stays quiet unless they are mentioned again or it is urgent, and phones them for a P0. Calling it again moves the end time. Owner tasks only. Post the result line to the owner with reply.',
+    shape: {
+      channel: s.describe('channel attribute from the task tag'),
+      thread_ts: s.describe('thread_ts attribute from the task tag'),
+      minutes: z.number().optional().describe('how long, if they said a length ("an hour" is 60)'),
+      until: s.optional().describe('the end as a 24-hour time in their zone, like "16:00", if they said a clock time. Leave both out for the 12-hour default'),
+      note: s.optional().describe('why they are away and anything they asked you to handle, in their words'),
+    },
+    async run(args) {
+      if (!ownerOnly(args)) return { isError: true, text: 'only the owner can turn AFK mode on' }
+      const c = awayCommand(args as { minutes?: number; until?: string; note?: string })
+      return typeof c === 'string' ? { isError: true, text: c } : { text: await afk(c) }
+    },
+  }, {
+    name: 'back',
+    description: 'Turn AFK mode off when the owner says, in any words, that they are back. Returns the summary of who wanted what: post it to the owner with reply. Owner tasks only.',
+    shape: { channel: s.describe('channel attribute from the task tag'), thread_ts: s.describe('thread_ts attribute from the task tag') },
+    async run(args) {
+      if (!ownerOnly(args)) return { isError: true, text: 'only the owner can turn AFK mode off' }
+      return { text: await afk({ kind: 'back' }) }
     },
   })
   const pingIn = (channel: string) => [...ownerTask].some(([k, owner]) => owner && k.startsWith(`${channel}:`))

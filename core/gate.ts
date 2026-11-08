@@ -1,5 +1,4 @@
 // Who may drive Kage and what Claude reads: the sender gate, the task line, quoting, teammates.
-import { parseAfk, type AfkCommand } from './afk.ts'
 import { agentTag, filesTag, typedByPerson, type SlackMessage } from './slack-message.ts'
 
 // owner: the person whose user token hears messages. bot: the app's bot user.
@@ -15,8 +14,6 @@ export const validName = (name: string) => /^[a-z][a-z0-9-]{1,20}$/.test(name)
 export type Trigger =
   | { kind: 'task'; text: string; side?: true }
   | { kind: 'status' }
-  // afk: the owner turns AFK mode on or off (core/afk.ts); no session reads it.
-  | { kind: 'afk'; command: AfkCommand }
   // card: the owner wrote something other than yes or no in an approval card's thread.
   | { kind: 'card'; request_id: string }
   | { kind: 'verdict'; request_id: string; behavior: 'allow' | 'deny' }
@@ -25,10 +22,8 @@ export type Trigger =
 // Only the exact "side:" counts, so "side effects of ..." stays a normal task. Owner only, so a
 // teammate can't open extra sessions and push the owner's out.
 const SIDE_RE = /^side:\s*/i
-const task = (text: string, isOwner: boolean, name: string, files: string): Trigger => {
+const task = (text: string, isOwner: boolean, files: string): Trigger => {
   if (isOwner && /^status$/i.test(text)) return { kind: 'status' }
-  const afk = isOwner ? parseAfk(text, name) : null
-  if (afk) return { kind: 'afk', command: afk }
   const side = isOwner ? SIDE_RE.exec(text) : null
   return side ? { kind: 'task', text: text.slice(side[0].length) + files, side: true } : { kind: 'task', text: text + files }
 }
@@ -69,10 +64,10 @@ export function classify(m: SlackMessage, ids: Ids, card?: string): Trigger {
         behavior: v[1]!.toLowerCase().startsWith('y') ? 'allow' : 'deny',
       }
     }
-    return task(text, true, ids.name, filesTag(m))
+    return task(text, true, filesTag(m))
   }
   if (!tagged) return null
-  return task(text, isOwner, ids.name, filesTag(m))
+  return task(text, isOwner, filesTag(m))
 }
 
 // Other people's words go to Claude quoted and labelled by Slack id (names can be

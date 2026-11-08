@@ -72,12 +72,6 @@ describe('what starts a task', () => {
     assert.deepEqual(classify(msg({ channel: DM, text: `<@${BOT}> what is open?` }), ids),
       { kind: 'task', text: 'what is open?' })
   })
-  test('"afk ..." and "back" from the owner go to the hub; from a teammate they are plain tasks', () => {
-    assert.deepEqual(classify(msg({ channel: DM, text: 'afk 2h' }), ids), { kind: 'afk', command: { kind: 'afk', minutes: 120, note: '' } })
-    assert.deepEqual(classify(msg({ text: `<@${BOT}> back` }), ids), { kind: 'afk', command: { kind: 'back' } })
-    assert.deepEqual(classify(msg({ user: MATE, text: '@kage afk 2h' }), ids), { kind: 'task', text: 'afk 2h' })
-    assert.deepEqual(classify(msg({ channel: DM, text: 'afk mode is broken' }), ids), { kind: 'task', text: 'afk mode is broken' })
-  })
   test('"status" from the owner asks the hub, not a session; from a teammate it is a plain task', () => {
     assert.deepEqual(classify(msg({ text: `<@${BOT}> status` }), ids), { kind: 'status' })
     assert.deepEqual(classify(msg({ channel: DM, text: ' Status ' }), ids), { kind: 'status' })

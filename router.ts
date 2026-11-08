@@ -6,7 +6,7 @@
 // Still here: thread trust (noteTrust), how each connector shows a failure (failed), the daily
 // "still waiting" note, and the self-restart into a newer build.
 // server.ts is the other end for tmux panes only: the Kage channel inside each pane's Claude Code.
-import { execFileSync } from 'node:child_process'
+import { execFileSync, spawn } from 'node:child_process'
 import { randomUUID } from 'node:crypto'
 import { appendFileSync, existsSync, mkdirSync, readFileSync, renameSync, statSync, writeFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
@@ -68,11 +68,20 @@ const deliver = (c: Conversation, task: Task, place: string, lane: Lane = 'main'
 // it. A thread with a session from before this was recorded starts untrusted: its history is unknown.
 const noteTrust = (key: string, t: Task) =>
   store.noteTask(key, senderOf(t) === 'owner', key in d.saved())
+// AFK's P0 call, the same route as `kage call` (cli/call.ts): a one-time code, then the dialer.
+// The dialer may pass $KAGE_CALL_REASON to the voice agent. Resolves '' once placed, else why not.
+function phoneOwner(reason: string): Promise<string> {
+  const command = env.KAGE_CALL_COMMAND
+  if (!command) return Promise.resolve('no KAGE_CALL_COMMAND')
+  if (!voice) return Promise.resolve('voice is off (KAGE_VOICE_TOKEN)')
+  const p = spawn(command, { shell: true, stdio: 'ignore', env: { ...process.env, KAGE_CALL_CODE: voice.issueCode(), KAGE_CALL_REASON: reason.slice(0, 300) } })
+  return new Promise(res => { p.on('error', e => res(String(e))); p.on('close', code => res(code === 0 ? '' : `dialer exited ${code}`)) })
+}
 const slack = await connectSlack({
   dir: DIR, appToken: need('SLACK_APP_TOKEN'), bot, user, name: NAME, title: Title, teammates: TEAMMATES,
   hub: { deliver, verdict: (id, behavior) => d.verdict(id, { type: 'verdict', request_id: id, behavior }), status, heard: m => schedules.heard(m) },
   // AFK mode is on unless KAGE_AFK=off. Its stand-in reads the owner's memory, read only.
-  afk: env.KAGE_AFK === 'off' ? undefined : { memory: memoryDirs(process.env.HOME!, ENV_FILE, env).owner, model: env.KAGE_AFK_MODEL || 'sonnet' },
+  afk: env.KAGE_AFK === 'off' ? undefined : { memory: memoryDirs(process.env.HOME!, ENV_FILE, env).owner, model: env.KAGE_AFK_MODEL || 'sonnet', call: phoneOwner },
 })
 
 // threads.json came before the store: move it in once (the "dm" key needs the bot DM's id), then retire it.
@@ -118,6 +127,7 @@ const sdk = sdkLib ? sdkSessions({
   tools: (key, send) => sessionTools({
     title: Title, bot, user, botDm: () => slack.ids.botDm, dir: DIR, send, memory: MEM,
     schedules: { add: j => schedules.add(key, j, Date.now()), remove: id => schedules.remove(key, id), list: () => schedules.list(key) },
+    afk: slack.afk?.command,
   }),
   hasTranscript: tmux.hasTranscript,
   toHub: (key, m) => routeReply(key, m, replies),
