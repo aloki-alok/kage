@@ -1,65 +1,62 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="880" height="330" viewBox="0 0 880 330" role="img" aria-labelledby="t d">
+<svg xmlns="http://www.w3.org/2000/svg" width="880" height="300" viewBox="0 0 880 300" role="img" aria-labelledby="t d">
   <title id="t">How Kage works</title>
-  <desc id="d">Your Slack message travels over Socket Mode to a small server on your machine, which checks you sent it and hands it to your Claude Code session; Claude replies in the same thread.</desc>
+  <desc id="d">You tag @kage in Slack. The message reaches the Kage hub on your machine over Socket Mode, which checks it came from you and hands it to your own Claude Code session. Claude answers in the same thread.</desc>
   <style>
-    /* Cast tokens (docs/brand/brand.html). Orange is kept for "needs you", so the flow is drawn in ink. */
-    :root { --bg:#f2efe9; --ink:#16140f; --muted:#6d675e; --line:#d8d2c7; --card:#e9e5dd; --accent:#16140f; --mine:#f2efe9; }
+    /* Cast tokens (docs/brand/brand.html). Orange means "needs you", so the flow is drawn in ink. */
+    :root { --bg:#f2efe9; --ink:#16140f; --muted:#6d675e; --line:#d8d2c7; --card:#ebe7df; }
     @media (prefers-color-scheme: dark) {
-      :root { --bg:#121110; --ink:#efe9df; --muted:#a19b91; --line:#2c2925; --card:#1b1916; --accent:#efe9df; --mine:#121110; }
+      :root { --bg:#121110; --ink:#efe9df; --muted:#a19b91; --line:#2e2b27; --card:#1a1816; }
     }
     .sans { font-family: ui-sans-serif, -apple-system, "Segoe UI", Helvetica, Arial, sans-serif; }
     .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
     .card { fill: var(--card); stroke: var(--line); }
-    .h { fill: var(--ink); font-size: 15px; font-weight: 700; }
-    .s { fill: var(--muted); font-size: 12.5px; }
-    .n { fill: var(--accent); font-size: 12px; font-weight: 700; }
-    .arrow { stroke: var(--accent); stroke-width: 2; fill: none; marker-end: url(#tip); }
-    .back { stroke: var(--muted); stroke-width: 1.5; fill: none; stroke-dasharray: 5 4; marker-end: url(#tipm); }
+    .h { fill: var(--ink); font-size: 15px; font-weight: 600; }
+    .s { fill: var(--muted); font-size: 13px; }
+    .k { fill: var(--ink); font-size: 13px; }
+    .step { fill: var(--muted); font-size: 12px; }
+    .wire { stroke: var(--ink); stroke-width: 1.5; fill: none; marker-end: url(#tip); }
+    .back { stroke: var(--muted); stroke-width: 1.5; fill: none; marker-end: url(#tipm); }
   </style>
   <defs>
-    <marker id="tip" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0 L10 5 L0 10 Z" fill="var(--accent)"/></marker>
-    <marker id="tipm" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0 L10 5 L0 10 Z" fill="var(--muted)"/></marker>
+    <marker id="tip" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="8" markerHeight="8" orient="auto"><path d="M1 1 L8 5 L1 9" fill="none" stroke="var(--ink)" stroke-width="1.6"/></marker>
+    <marker id="tipm" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="8" markerHeight="8" orient="auto"><path d="M1 1 L8 5 L1 9" fill="none" stroke="var(--muted)" stroke-width="1.6"/></marker>
   </defs>
-  <rect width="880" height="330" rx="14" fill="var(--bg)"/>
+  <rect width="880" height="300" rx="16" fill="var(--bg)"/>
 
-  <!-- your machine -->
-  <rect x="300" y="40" width="556" height="214" rx="14" fill="var(--mine)" stroke="var(--accent)" stroke-opacity=".45" stroke-dasharray="6 5"/>
-  <text x="318" y="64" class="sans n" letter-spacing="1.5">YOUR MACHINE</text>
+  <!-- Your machine: a quiet bracket over cards 2 and 3 -->
+  <path d="M332 52 L332 44 L852 44 L852 52" fill="none" stroke="var(--line)" stroke-width="1.5"/>
+  <text x="592" y="34" text-anchor="middle" class="sans s">On your machine</text>
 
-  <!-- 1 Slack -->
-  <rect x="24" y="96" width="200" height="104" rx="12" class="card"/>
-  <text x="40" y="122" class="sans n">1</text>
-  <text x="58" y="122" class="sans h">You, in Slack</text>
-  <text x="40" y="148" class="mono s">@kage check this</text>
-  <text x="40" y="168" class="sans s">any channel, thread,</text>
-  <text x="40" y="185" class="sans s">DM or group DM</text>
+  <!-- 1 You, in Slack -->
+  <rect x="28" y="64" width="212" height="132" rx="12" class="card"/>
+  <text x="48" y="94" class="sans step">1</text>
+  <text x="64" y="94" class="sans h">You, in Slack</text>
+  <text x="48" y="128" class="mono k">@kage check this</text>
+  <text x="48" y="154" class="sans s">In any thread, channel</text>
+  <text x="48" y="174" class="sans s">or DM</text>
 
-  <path d="M226 148 L 318 148" class="arrow"/>
-  <text x="232" y="138" class="sans s">Socket Mode</text>
-  <text x="232" y="168" class="sans s">no open port</text>
+  <path d="M246 130 L 326 130" class="wire"/>
+  <text x="286" y="118" text-anchor="middle" class="sans step">Socket Mode</text>
 
-  <!-- 2 server -->
-  <rect x="322" y="96" width="232" height="140" rx="12" class="card"/>
-  <text x="338" y="122" class="sans n">2</text>
-  <text x="356" y="122" class="sans h">server.ts gate</text>
-  <text x="338" y="148" class="sans s">✓ typed by you (user id,</text>
-  <text x="352" y="165" class="sans s">real Slack client)</text>
-  <text x="338" y="186" class="sans s">✓ tagged @kage, or a DM</text>
-  <text x="338" y="207" class="sans s">+ thread as quoted context</text>
-  <text x="352" y="226" class="sans s">(data, never commands)</text>
+  <!-- 2 Kage hub -->
+  <rect x="332" y="64" width="232" height="132" rx="12" class="card"/>
+  <text x="352" y="94" class="sans step">2</text>
+  <text x="368" y="94" class="sans h">Kage hub</text>
+  <text x="352" y="128" class="sans s">Checks the message is yours</text>
+  <text x="352" y="150" class="sans s">Adds the thread as context</text>
+  <text x="352" y="172" class="sans s">No open port</text>
 
-  <path d="M556 148 L 616 148" class="arrow"/>
+  <path d="M570 130 L 614 130" class="wire"/>
 
   <!-- 3 Claude Code -->
-  <rect x="620" y="96" width="220" height="140" rx="12" class="card"/>
-  <text x="636" y="122" class="sans n">3</text>
-  <text x="654" y="122" class="sans h">Claude Code</text>
-  <text x="636" y="148" class="sans s">your session in tmux, with</text>
-  <text x="636" y="165" class="sans s">your CLAUDE.md, tools,</text>
-  <text x="636" y="182" class="sans s">MCP servers and access</text>
-  <text x="636" y="207" class="mono s">channels: server:kage</text>
+  <rect x="620" y="64" width="232" height="132" rx="12" class="card"/>
+  <text x="640" y="94" class="sans step">3</text>
+  <text x="656" y="94" class="sans h">Claude Code</text>
+  <text x="640" y="128" class="sans s">Your own session, with</text>
+  <text x="640" y="150" class="sans s">your skills, tools and</text>
+  <text x="640" y="172" class="sans s">access</text>
 
-  <!-- 4 reply -->
-  <path d="M730 238 C 730 300, 124 300, 124 204" class="back"/>
-  <text x="352" y="296" class="sans s"><tspan class="n">4</tspan>  reply tool → the same thread (your DM only for secrets)</text>
+  <!-- 4 the answer comes back -->
+  <path d="M736 204 L736 244 L134 244 L134 206" class="back"/>
+  <text x="440" y="270" text-anchor="middle" class="sans s"><tspan class="step">4</tspan>  The answer, in the same thread</text>
 </svg>
