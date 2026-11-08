@@ -55,7 +55,11 @@ describe('the ledgers', () => {
       tsvRow(['t3', 'DTEST', '7.7', 'bot', 'dm']),               // the rolling DM
       tsvRow(['t4', 'DTEST', '8.8', 'bot']),                     // row from before keys were logged
       tsvRow(['t5', 'COTHER', '4.4', 'bot', 'CTEST:9.9']),       // same ts, another channel
+      tsvRow(['t6', 'DTEST', '3.3', 'bot', 'mail:abc']),         // private ask from an email thread
+      tsvRow(['t7', 'DTEST', '2.2', 'bot', 'voice:xyz']),        // private ask from a call
     ].join('')
+    assert.equal(askedFrom(rows, 'DTEST', '3.3'), undefined)  // not a Slack thread: stays a DM task
+    assert.equal(askedFrom(rows, 'DTEST', '2.2'), undefined)
     assert.equal(askedFrom(rows, 'DTEST', '5.5'), 'CTEST:1.1')
     assert.equal(askedFrom(rows, 'DTEST', '6.6'), undefined)
     assert.equal(askedFrom(rows, 'DTEST', '7.7'), undefined)
