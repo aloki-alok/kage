@@ -6,7 +6,7 @@ import { appendFileSync, writeFileSync } from 'node:fs'
 import type { WebClient } from '@slack/web-api'
 import { log, logger } from '../config.ts'
 import { cardRequestId, classify, plainName, quoteMessage, taskLine, type Ids } from '../core/gate.ts'
-import { typedByPerson, type SlackMessage } from '../core/slack-message.ts'
+import { filesTag, typedByPerson, type SlackMessage } from '../core/slack-message.ts'
 import { sessionKey, slackConversation, type Conversation, type Lane } from '../core/conversations.ts'
 import type { Delivery } from '../core/sessions.ts'
 import type { Task } from '../runtime/protocol.ts'
@@ -69,10 +69,8 @@ export async function connectSlack(o: { dir: string; appToken: string; bot: WebC
       : await user.conversations.history({ channel: m.channel, latest: m.ts, limit: 12 }).catch(() => null)
     const msgs = (res?.messages ?? []).filter(x => x.ts !== m.ts)
     if (!m.thread_ts) msgs.reverse()
-    const lines = msgs.map(x => {
-      const files = x.files?.length ? ` [files: ${x.files.map(f => f.name).join(', ')}]` : ''
-      return quoteMessage({ user: x.user, ts: x.ts, text: (x.text ?? '') + files, client_msg_id: (x as { client_msg_id?: string }).client_msg_id }, ids.owner, { bot: ids.bot, title: o.title })
-    })
+    const lines = msgs.map(x =>
+      quoteMessage({ user: x.user, ts: x.ts, text: (x.text ?? '') + filesTag(x), client_msg_id: (x as { client_msg_id?: string }).client_msg_id }, ids.owner, { bot: ids.bot, title: o.title }))
     // Names help Claude read the thread; ids are what it trusts (anyone can set a display name).
     // Senders and people mentioned as <@U...>, so Claude can name them in a reply.
     const mentioned = msgs.flatMap(x => [...(x.text ?? '').matchAll(/<@([UW][A-Z0-9]+)>/g)].map(r => r[1]))

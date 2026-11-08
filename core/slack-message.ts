@@ -11,7 +11,12 @@ export type SlackMessage = {
   text?: string
   thread_ts?: string
   channel_type?: string
+  files?: { name?: string }[]
 }
+
+// Claude sees no attachment unless the text names it; it then reads the file with the Slack tools.
+export const filesTag = (m: { files?: { name?: string }[] }) =>
+  m.files?.length ? ` [files: ${m.files.map(f => f.name).join(', ')}]` : ''
 
 // Plain messages, threaded broadcasts and uploads. Edits, joins and deletes never count.
 const TYPED_SUBTYPES = new Set([undefined, 'thread_broadcast', 'file_share'])
