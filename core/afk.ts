@@ -12,12 +12,15 @@ export type AfkCommand = { kind: 'afk'; minutes?: number; at?: { h: number; m: n
 // watch: threads someone mentioned the owner in. pings: one line per watched thread, the latest.
 export type Urgency = 'p0' | 'high' | 'normal' | 'low'
 export type Ping = { key: string; when: number; who: string; place: string; link: string; note: string; waits: boolean; urgency: Urgency }
-export type Watch = { channel: string; thread_ts?: string; mentions: number; called?: boolean }
+// mentions: counted mentions, at most one per BURST from lastMention (when the last one counted).
+export type Watch = { channel: string; thread_ts?: string; mentions: number; lastMention?: number; called?: boolean }
 export type Afk = { since: number; until: number; note: string; replies: Record<string, number>; muted: string[]; watch: Record<string, Watch>; pings: Ping[]; lastCall?: number }
 
 export const MAX_REPLIES = 5
 // Calls are loud: one per thread, and at most one per this gap across threads.
 export const CALL_GAP = 20 * 60_000
+// "hey" then "quick q" a minute later is one mention, not a second ping.
+export const BURST = 5 * 60_000
 const DEFAULT_MS = 12 * 3600_000
 
 // The away tool's arguments (the session read the owner's words). Refuses what it cannot read
@@ -73,10 +76,19 @@ export function decideAfk(m: SlackMessage, afk: Afk | undefined, ids: { owner: s
 }
 
 // What a triage does. Quiet by default: a reply needs a second mention or a high urgency, a call a P0.
-// An outsider is tracked and may cause a call, but never gets a reply.
-export function actOn(urgency: Urgency, key: string, w: Watch, afk: Afk, now: number, outside: boolean): { post: boolean; call: boolean } {
+// Counts a mention; true when it is a repeat (the owner "mentioned again").
+export function noteMention(w: Watch, now: number): boolean {
+  if (w.lastMention !== undefined && now - w.lastMention < BURST) return false
+  w.mentions++
+  w.lastMention = now
+  return w.mentions >= 2
+}
+
+// repeat: this message is a repeat mention (noteMention). An outsider is tracked and may cause a
+// call, but never gets a reply.
+export function actOn(urgency: Urgency, repeat: boolean, key: string, w: Watch, afk: Afk, now: number, outside: boolean): { post: boolean; call: boolean } {
   const call = urgency === 'p0' && !w.called && (afk.lastCall === undefined || now - afk.lastCall >= CALL_GAP)
-  const wants = urgency === 'p0' || urgency === 'high' || w.mentions >= 2
+  const wants = urgency === 'p0' || urgency === 'high' || repeat
   return { post: wants && !outside && (afk.replies[key] ?? 0) < MAX_REPLIES, call }
 }
 
