@@ -27,6 +27,17 @@ export function postedBy(tsv: string, channel: string, ts: string): 'bot' | 'own
   return by === 'bot' || by === 'owner' ? by : undefined
 }
 
+// The other thread's session key behind a message Kage posted in the owner's DM (a private ask), so
+// the owner's answer under it goes back to the thread that asked. None for the DM's own sessions.
+export function askedFrom(tsv: string, dm: string, ts: string): string | undefined {
+  let key: string | undefined
+  for (const line of tsv.split('\n')) {
+    const [, c, t, , k] = line.split('\t')
+    if (c === dm && t === ts) key = k
+  }
+  return key && key !== 'dm' && !key.startsWith(`${dm}:`) ? key : undefined
+}
+
 // The daily note to the owner: questions that have waited on them for ageMs or more.
 export const staleWaiting = (tsv: string, now: number, ageMs: number) =>
   openWaiting(tsv).filter(i => now - Date.parse(i.when) >= ageMs)
