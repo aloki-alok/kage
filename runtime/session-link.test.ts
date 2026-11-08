@@ -182,6 +182,32 @@ test('the console tells a thread something as the owner, and a session cannot', 
   assert.deepEqual(told, [['A', 'use the staging db']])
   server.close()
 })
+test('a voice code goes to the owner by DM, and the asker only learns it was sent', async () => {
+  const d = new Dispatcher<ToSession>(
+    { start: () => {}, stop: () => {}, lastActivity: () => 0, busy: () => false },
+    { max: 3, idleMs: 9e9, connectMs: 9e9, evictMs: 0, newId: () => 'id1' },
+  )
+  const base = { mail: () => {}, wa: () => {}, voice: () => {}, failed: () => {}, schedules: { add: () => undefined, remove: () => {} } }
+  const ask = async (sock: string) => {
+    const c = connect(sock)
+    let r = ''
+    c.on('data', b => { r += b })
+    c.write(JSON.stringify({ type: 'voicecode' }) + '\n')
+    await until(() => r.includes('\n'))
+    c.end()
+    return JSON.parse(r)
+  }
+  const dir = mkdtempSync(join(tmpdir(), 'kage-link-'))
+  let sent = 0
+  const on = listenForSessions(join(dir, 'a.sock'), d, { ...base, voiceCode: async () => (sent++, { ok: true as const }) })
+  const off = listenForSessions(join(dir, 'b.sock'), d, base)
+  await until(() => on.listening && off.listening)
+  assert.deepEqual(await ask(join(dir, 'a.sock')), { type: 'voicecode', ok: true })
+  assert.equal(sent, 1)
+  assert.deepEqual(await ask(join(dir, 'b.sock')), { type: 'voicecode', refused: 'voice is off' })
+  on.close()
+  off.close()
+})
 test('a voice reply goes only to a voice conversation, and a mail or WhatsApp reply never does', () => {
   const got: string[] = []
   const o = { mail: (k: string) => got.push(`mail ${k}`), wa: (k: string) => got.push(`wa ${k}`), voice: (k: string, t: string) => got.push(`voice ${k} ${t}`) }

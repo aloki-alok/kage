@@ -30,7 +30,8 @@ Watch|watch|[place]|Follow every step every session takes, as it happens|kage wa
 Watch|attach|[place]|Take a thread into this terminal; Kage gets it back when you quit|kage attach general
 People|teammate|list, add, remove|Who else may tag Kage (a name, @handle or Slack id)|kage teammate add priya
 People|tell|<place> <message>|Tell a thread something as you; its session takes it after the current turn|kage tell support use the staging db
-People|call||Kage phones you, and the call can do anything you can (needs KAGE_CALL_COMMAND)|kage call'
+People|call||Kage phones you, and the call can do anything you can (needs KAGE_CALL_COMMAND)|kage call
+People|voice-code||DMs you a code to say on a voice call (the avatar page): that call can then do anything you can|kage voice-code'
 
 cmd_help() {
   local B= R=; [[ -t 1 ]] && B=$'\033[1m' R=$'\033[0m'
@@ -261,6 +262,7 @@ case "${1:-}" in
   tell) node cli/tell.ts "${@:2}" ;;
   teammate) node cli/teammate.ts "${@:2}" ;;
   call) node cli/call.ts ;;
+  voice-code) node cli/voice-code.ts ;;
   export-crons) node cli/export-crons.ts "${@:2}" ;;   # one-time move of CronCreate jobs out of tmux panes; not in help
   *) unknown "$1" ;;
 esac

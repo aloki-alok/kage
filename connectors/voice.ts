@@ -4,7 +4,7 @@
 // voiceToolRefusal enforce it. The one exception is a call Kage placed to the owner itself: `kage call`
 // gets a one-time code (issueCode), the dialer hands it to the agent, and the first call that asks with
 // it is the owner for its whole length. Caller ID is never trusted: anyone can fake a number. The reply comes back through replies.voice in router.ts.
-import { createHash, randomBytes, randomUUID, timingSafeEqual } from 'node:crypto'
+import { createHash, randomBytes, randomInt, randomUUID, timingSafeEqual } from 'node:crypto'
 import { createServer, type IncomingMessage } from 'node:http'
 import type { AddressInfo } from 'node:net'
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
@@ -56,6 +56,7 @@ const BUSY = 'Kage is busy, try again shortly.'
 const IDLE_MS = 3 * 60_000
 const HOUR_MS = 3_600_000
 const CODE_MS = 10 * 60_000   // a code not used by a call within this is dead
+const SPOKEN_TRIES = 3
 const same = ' (That answers your earlier question. Ask your new one again.)'
 
 // On when KAGE_VOICE_TOKEN is set, unless KAGE_VOICE=off (the kill switch).
@@ -93,12 +94,30 @@ export function connectVoice(o: {
     return code
   }
 
+  // A code the owner reads aloud on a call (the face page has no dialer to carry the long one). Six digits is
+  // guessable, so only one is live, and SPOKEN_TRIES wrong codes from any caller kill it.
+  let spoken: { code: string; until: number; misses: number } | undefined
+  function issueSpokenCode() {
+    const code = String(randomInt(1_000_000)).padStart(6, '0')
+    spoken = { code, until: now() + CODE_MS, misses: 0 }
+    return code
+  }
+
   // A live code is spent by the first call that brings it: that call is the owner until it ends.
   function claim(key: string, code: string | undefined) {
-    const until = code ? codes.get(code) : undefined
-    if (until === undefined) return
-    codes.delete(code!)
-    if (until >= now()) owners.add(key)
+    if (!code) return
+    const until = codes.get(code)
+    if (until !== undefined) {
+      codes.delete(code)
+      if (until >= now()) owners.add(key)
+      return
+    }
+    if (!spoken || owners.has(key)) return
+    if (spoken.until < now()) { spoken = undefined; return }
+    const digits = code.replace(/\D/g, '')
+    if (digits.length !== spoken.code.length) return   // not a try at the spoken code: a stale hex code, a mishearing
+    if (digits === spoken.code) { spoken = undefined; owners.add(key); return }
+    if (++spoken.misses >= SPOKEN_TRIES) spoken = undefined
   }
 
   // The router's replies.voice: a session's reply for this call. A call that is gone drops it.
@@ -187,7 +206,7 @@ export function connectVoice(o: {
       description: `Ask ${o.name} one question and get a short answer to speak. If it says ${o.name} is still working, ask again in a moment.`,
       inputSchema: {
         question: z.string().trim().min(1).max(MAX_QUESTION).describe(`The question, ${MAX_QUESTION} characters at most`),
-        owner_code: z.string().max(64).optional().describe('The call code you were given for this call, if any. Never say it aloud.'),
+        owner_code: z.string().max(64).optional().describe('The call code for this call: the one you were given, or the digits the caller says as their code. Never say it aloud.'),
       },
     }, async ({ question, owner_code }) => ({ content: [{ type: 'text' as const, text: await ask(transport.sessionId!, question, owner_code) }] }))
     void mcp.connect(transport)
@@ -218,7 +237,7 @@ export function connectVoice(o: {
   const listening = new Promise<number>(ok => server.listen(port, '127.0.0.1', () => ok((server.address() as AddressInfo).port)))
   void listening.then(p => log(`voice on: 127.0.0.1:${p}`))
   return {
-    reply, listening, sweep, issueCode, calls: () => calls.size, sessions: () => sessions.size,
+    reply, listening, sweep, issueCode, issueSpokenCode, calls: () => calls.size, sessions: () => sessions.size,
     address: () => (server.address() as AddressInfo).address,
     async close() {
       clearInterval(timer)

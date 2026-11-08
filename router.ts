@@ -352,7 +352,13 @@ function tell(key: string, text: string): { ok: true; held?: true } | { refused:
   if (r === 'failed') { failed(task); return { refused: 'could not start a session there' } }
   return r === 'held' ? { ok: true, held: true } : { ok: true }
 }
-listenForSessions(`${DIR}/router.sock`, d, { ...replies, failed, schedules, tell, callCode: voice?.issueCode })
+// kage voice-code: the code goes straight to the owner's DM, never to whoever asked for it.
+async function voiceCode(): Promise<{ ok: true } | { refused: string }> {
+  if (!voice) return { refused: 'voice is off' }
+  const sent = await slack.notifyOwner(`Your voice code: *${voice.issueSpokenCode()}*. On the call, say "my code is" and the digits. It works once, for 10 minutes, and 3 wrong codes kill it.`)
+  return sent ? { ok: true } : { refused: 'could not DM you' }
+}
+listenForSessions(`${DIR}/router.sock`, d, { ...replies, failed, schedules, tell, callCode: voice?.issueCode, voiceCode })
 
 await slack.start()
 log(`listening as ${slack.botUser} (@${NAME}) for ${slack.ownerName} ${slack.ids.owner}; up to ${MAX} sessions; teammates ${TEAMMATES.join(',') || 'none'}`)

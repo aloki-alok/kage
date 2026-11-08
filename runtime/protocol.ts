@@ -24,6 +24,7 @@ export type ToSession = Task | Verdict
 export type FromSession =
   | { type: 'board' }
   | { type: 'callcode' }   // kage call: the hub answers { type: 'callcode', code } or { type: 'callcode', refused }
+  | { type: 'voicecode' }   // kage voice-code: the hub DMs the owner a code and answers { type: 'voicecode', ok: true } or { refused }
   | { type: 'stop'; key: string }
   | { type: 'tell'; key: string; text: string }   // kage tell: the hub answers { type: 'tell', ok: true } or { type: 'tell', refused }
   | { type: 'hold'; key: string; pid: number }   // pid: the attach process, which owns the hold
