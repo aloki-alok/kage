@@ -10,8 +10,7 @@ export function safeReply(text: string, o: { ping?: boolean; names?: Record<stri
   return o.ping ? out : out.replace(/<@([A-Z0-9]+)(?:\|[^>]*)?>/g, (_, id: string) => `@${o.names?.[id] ?? id}`)
 }
 
-// Text rules alone did not stop a password reaching a thread (2026-11-01), so the reply tool
-// checks. A hit sends the reply back with a hint to use private=true; a false alarm costs one retry.
+// Text rules alone do not stop a secret reaching a thread, so the reply tool checks. A hit sends the reply back with a hint to use private=true; a false alarm costs one retry.
 const SECRET_SHAPES: [string, RegExp][] = [
   ['AWS access key', /\b(AKIA|ASIA)[0-9A-Z]{16}\b/],
   ['Slack token', /\bxox[abprs]-[0-9A-Za-z-]{10,}/],

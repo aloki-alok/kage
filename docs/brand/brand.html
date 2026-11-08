@@ -15,9 +15,9 @@ section:target { display: block; }
 
 /* The cast: the same letters, flipped onto the ground and slanted away from the light. */
 .cast { position: relative; display: inline-block; line-height: 1; }
-.cast .shadow { position: absolute; left: 0; top: 0; white-space: nowrap; color: var(--shade); opacity: .9;
+.cast .shadow { position: absolute; left: 0; top: 0; white-space: nowrap; color: var(--shade); opacity: .4;
   transform-origin: 0 82%; transform: scaleY(calc(-1 * var(--len))) skewX(calc(-1 * var(--skew)));
-  -webkit-mask-image: linear-gradient(to bottom, transparent 5%, #000 90%); }
+  -webkit-mask-image: linear-gradient(to bottom, transparent 15%, #000 92%); }
 
 .hero { width: 1280px; height: 560px; padding: 40px 56px; background: var(--light); color: var(--shade); position: relative; overflow: hidden; }
 .hero .word { font: 400 2.4rem var(--you); }
@@ -26,7 +26,7 @@ section:target { display: block; }
 .hero .say i { font-style: italic; }
 .hero .work { position: absolute; right: 56px; bottom: 40px; text-align: right; font: 1rem/1.7 var(--kage); }
 .hero .work .needs { color: var(--signal); }
-.hero .tag { position: absolute; left: 56px; bottom: 40px; font: 600 .78rem var(--kage); letter-spacing: .14em; text-transform: uppercase; color: var(--mid); }
+.hero .tag { position: absolute; left: 56px; bottom: 40px; font: 400 1rem/1.7 var(--kage); color: var(--mid); }
 </style>
 
 <!-- App icon, as on the Cast page. 96 units, rendered at 512 px. -->
@@ -36,8 +36,8 @@ section:target { display: block; }
 <!-- README hero: what you typed, its evening shadow, and the work Kage did in it. -->
 <template id="hero">
   <div class="hero">
-    <span class="cast word">kage<span class="shadow" style="--len:.55; --skew:52deg">kage</span></span>
-    <div class="say"><span class="cast"><i>@kage</i> cover for me<span class="shadow" style="--len:.8; --skew:64deg"><i>@kage</i> cover for me</span></span></div>
+    <span class="cast word">kage<span class="shadow" style="--len:.4; --skew:56deg">kage</span></span>
+    <div class="say"><span class="cast"><i>@kage</i> cover for me<span class="shadow" style="--len:.48; --skew:60deg"><i>@kage</i> cover for me</span></span></div>
     <div class="work">
       <div>set your status: away until 22:00</div>
       <div>6 people asked for you</div>
