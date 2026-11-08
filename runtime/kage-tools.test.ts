@@ -52,6 +52,7 @@ function setup(o: { hubDown?: boolean; dir?: string } = {}) {
       remove: id => { jobs.splice(jobs.findIndex(j => j.id === id), 1) },
       list: () => jobs,
     },
+    afk: async c => { out.push(`afk ${JSON.stringify(c)}`); return 'AFK on' },
   })
   const call = (name: string, args: Record<string, unknown>) => t.tools.find(x => x.name === name)!.run(args)
   const task = (o: Partial<Task['meta']> & { fromOwner?: boolean } = {}): Task => ({
@@ -328,5 +329,16 @@ describe("a session's Kage tools", () => {
     s.t.onTask(s.task())
     s.t.onTask(s.task())
     assert.doesNotMatch(readFileSync(join(s.dir, 'waiting.tsv'), { encoding: 'utf8', flag: 'a+' }), /answered/)
+  })
+  test('away and back switch AFK on the owner\'s task only', async () => {
+    const s = setup()
+    s.t.onTask(s.task({ fromOwner: false }))
+    assert.equal((await s.call('away', { channel: 'C1', thread_ts: '5.5', minutes: 60 })).isError, true)
+    assert.equal((await s.call('back', { channel: 'C1', thread_ts: '5.5' })).isError, true)
+    s.t.onTask(s.task())
+    assert.equal((await s.call('away', { channel: 'C1', thread_ts: '5.5', minutes: 60, note: 'lunch' })).text, 'AFK on')
+    assert.equal((await s.call('away', { channel: 'C1', thread_ts: '5.5', until: '6pm' })).isError, true)
+    await s.call('back', { channel: 'C1', thread_ts: '5.5' })
+    assert.deepEqual(s.out, ['afk {"kind":"afk","note":"lunch","minutes":60}', 'afk {"kind":"back"}'])
   })
 })

@@ -53,7 +53,7 @@ Write logs to stderr only. In a tmux pane, stdout carries the channel protocol, 
 | `guards.ts` | Hook rules: private sources, voice calls, the owner's memory, Slack posts only through Kage's tools. |
 | `ledgers.ts` | The append-only files: questions waiting on the owner, the daily note. |
 | `cron.ts` | Cron expressions, which schedules are due, and reading Claude Code's own cron jobs. |
-| `afk.ts` | AFK mode: when the stand-in answers and what it may say. |
+| `afk.ts` | AFK mode: which threads the stand-in watches, when it posts or phones the owner, and what it may say. |
 | `commands.ts` | Local slash commands (`KAGE_COMMANDS`). |
 | `preview.ts` | How an approval shows the call it asks about. |
 | `transcript.ts` | Turning a Claude Code transcript line into a line a person can follow. |
@@ -65,7 +65,7 @@ Write logs to stderr only. In a tmux pane, stdout carries the channel protocol, 
 |---|---|
 | `sdk-sessions.ts` | The default runner: an Agent SDK session per key, inside the hub. |
 | `tmux-panes.ts` | The other runner: a Claude Code pane per key. |
-| `kage-tools.ts` | A session's tools (reply, edit, delete, send a file, message people, waiting, prod log, schedules), its instructions, and the approval card. |
+| `kage-tools.ts` | A session's tools (reply, edit, delete, send a file, message people, waiting, prod log, schedules, away and back), its instructions, and the approval card. |
 | `session-link.ts` | The local socket that panes and the `kage` commands connect to. |
 | `protocol.ts` | The messages on that socket. |
 | `store.ts` | One SQLite file: conversations, their sessions, schedules, trust. The hub is its only writer. |
