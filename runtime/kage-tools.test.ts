@@ -10,11 +10,13 @@ import type { Task } from './protocol.ts'
 // A fake Slack: records posts, edits, deletes and reactions; the bot is not in channel "CPRIV".
 function fakeSlack() {
   const calls: string[] = []
+  const posts: { channel: string; thread_ts?: string; text: string }[] = []
   let n = 0
   const client = (who: string) => ({
     chat: {
-      postMessage: async (a: { channel: string; text: string }) => {
+      postMessage: async (a: { channel: string; thread_ts?: string; text: string }) => {
         if (who === 'bot' && a.channel === 'CPRIV') throw Object.assign(new Error('x'), { data: { error: 'not_in_channel' } })
+        posts.push({ channel: a.channel, thread_ts: a.thread_ts, text: a.text })
         calls.push(`${who} post ${a.channel} ${a.text}`)
         return { ts: `9.${++n}` }
       },
@@ -37,7 +39,7 @@ function fakeSlack() {
     reactions: { add: async (a: { channel: string; name: string }) => { calls.push(`${who} react ${a.channel} ${a.name}`) } },
     users: { info: async () => ({ user: { real_name: 'Sam' } }) },
   })
-  return { calls, bot: client('bot'), user: client('owner') }
+  return { calls, posts, bot: client('bot'), user: client('owner') }
 }
 
 function setup(o: { hubDown?: boolean; dir?: string } = {}) {
@@ -305,6 +307,18 @@ describe("a session's Kage tools", () => {
     s.t.onTask(s.task())
     await s.call('reply', { channel: 'C1', thread_ts: '5.5', text: 'just for you', private: true })
     assert.match(readFileSync(join(s.dir, 'posted.tsv'), 'utf8'), /\tDBOT\t[^\t]+\tbot\tC1:5\.5\n/)
+  })
+  test('a private reply goes into the DM thread the owner answered in, until a task comes from elsewhere', async () => {
+    const s = setup()
+    s.t.onTask({ ...s.task(), origin: { channel: 'C1', ts: '5.6', thread: '5.5' } })   // a channel thread reply is not a DM thread
+    await s.call('reply', { channel: 'C1', thread_ts: '5.5', text: 'first', private: true })
+    s.t.onTask({ ...s.task(), origin: { channel: 'DBOT', ts: '8.2', thread: '8.1' } })
+    await s.call('reply', { channel: 'C1', thread_ts: '5.5', text: 'second', private: true })
+    s.t.onTask({ ...s.task(), origin: { channel: 'C1', ts: '' }, scheduled: true })    // a scheduled run keeps the DM thread
+    await s.call('reply', { channel: 'C1', thread_ts: '5.5', text: 'reminder', private: true })
+    s.t.onTask(s.task())
+    await s.call('reply', { channel: 'C1', thread_ts: '5.5', text: 'third', private: true })
+    assert.deepEqual(s.posts.map(p => `${p.channel} ${p.thread_ts ?? '-'} ${p.text}`), ['DBOT - first', 'DBOT 8.1 second', 'DBOT 8.1 reminder', 'DBOT - third'])
   })
   test('an open question lands on the waiting list, and the next task in that thread closes it', async () => {
     const s = setup()

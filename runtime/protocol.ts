@@ -10,7 +10,7 @@ export type Task = {
   content: string
   fromOwner: boolean
   meta: { channel: string; thread_ts: string; place: string; permalink: string }
-  origin: { channel: string; ts: string }
+  origin: { channel: string; ts: string; thread?: string }   // thread: the Slack thread the message sits in, when it is a reply
   scheduled?: true   // Kage started it itself (a schedule, dream), so it answers no open question
 }
 export type Verdict = { type: 'verdict'; request_id: string; behavior: 'allow' | 'deny' }
