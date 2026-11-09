@@ -13,7 +13,7 @@ import type { Delivery } from '../core/sessions.ts'
 import type { Task } from '../runtime/protocol.ts'
 import { startAfk } from './slack-afk.ts'
 import { socketWatch } from '../core/socket-watch.ts'
-import type { Inbox } from '../runtime/store.ts'
+import type { Inbox, Saved } from '../runtime/store.ts'
 
 const PICKED_UP = 'ninja'
 const WAITING = 'hourglass_flowing_sand'
@@ -42,7 +42,7 @@ export async function intake(m: SlackMessage, ack: () => Promise<void>, hub: Pic
 
 export async function connectSlack(o: { dir: string; appToken: string; bot: WebClient; user: WebClient; name: string; title: string; teammates: string[]; hub: Hub
   // AFK mode (connectors/slack-afk.ts); absent means off.
-  afk?: { memory: string; model: string; call?: (reason: string) => Promise<string> } }) {
+  afk?: { memory: string; model: string; saved: Saved; call?: (reason: string) => Promise<string> } }) {
   const { bot, user } = o
   // The owner is whoever the user token belongs to: that token is what hears messages.
   const me = await user.auth.test()

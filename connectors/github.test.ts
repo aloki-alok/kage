@@ -1,8 +1,6 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { createHmac } from 'node:crypto'
-import { mkdtempSync } from 'node:fs'
-import { tmpdir } from 'node:os'
 import { connectGithub } from './github.ts'
 import { openStore, type Store } from '../runtime/store.ts'
 
@@ -16,7 +14,7 @@ async function setup(postMs = 0, perHour = 100, store: Store = openStore(':memor
   let failing = () => false
   let throwing = false
   const gh = connectGithub({
-    dir: mkdtempSync(`${tmpdir()}/kage-gh-`), secret: SECRET, login: 'me', port: 0, botDm: 'DB', perHour, notify: (t: string) => void told.push(t),
+    saved: store, secret: SECRET, login: 'me', port: 0, botDm: 'DB', perHour, notify: (t: string) => void told.push(t),
     inbox: { take: (s, c, p) => store.take(s, c, p, Date.now()), handled: s => store.handled(s), has: s => store.has(s) },
     post: async (text, thread) => { await new Promise(r => setTimeout(r, postMs)); if (failing()) return undefined; posts.push({ text, ...(thread && { thread }) }); return String(ts++) },
     deliver: (c, task) => { if (throwing) throw new Error('runner down'); tasks.push({ key: `${c.chat}:${c.thread}`, content: task.content, fromOwner: task.fromOwner === true }); return 'sent' },
@@ -133,4 +131,14 @@ test('a delivery whose handling throws stays in the store to replay, and the own
     assert.deepEqual(t.store.unhandled(0).map(x => x.source), ['github:d-44'])
     assert.match(t.told.at(-1)!, /GitHub event failed/)
   } finally { t.gh.close() }
+})
+test('after a restart, the next event on a pull request lands in its old thread', async () => {
+  const store = openStore(':memory:')
+  const a = await setup(0, 100, store)
+  await a.send(review(45)).finally(() => a.gh.close())
+  const b = await setup(0, 100, store)
+  try {
+    await b.send(review(45))
+    assert.equal(b.posts[0]!.thread, '100')
+  } finally { b.gh.close() }
 })
