@@ -3,12 +3,13 @@
 // where colleagues mention them or DM them, posts only when actOn says so, and phones the owner for
 // a P0. It never starts a session: tags of Kage still go through the gate as before.
 import { spawn } from 'node:child_process'
-import { mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { mkdirSync } from 'node:fs'
 import type { WebClient } from '@slack/web-api'
 import { log } from '../config.ts'
 import { actOn, afkGuardPrompt, decideAfk, MAX_REPLIES, noteMention, notePing, outsider, parseTriage, restoreTo, standInPrompt, summaryOf, untilOf, type Afk, type AfkCommand, type Status } from '../core/afk.ts'
 import type { SlackMessage } from '../core/slack-message.ts'
 import { findSecret, safeReply } from '../core/outbound.ts'
+import type { Saved } from '../runtime/store.ts'
 import { guardVerdict } from './whatsapp.ts'
 
 type Ids = { owner: string; bot: string; botDm: string; name: string; team?: string }
@@ -19,7 +20,7 @@ const GH = ['gh pr view', 'gh pr list', 'gh issue view', 'gh issue list'].map(c 
 
 export function startAfk(o: {
   dir: string; title: string; ownerName: string; ids: Ids; bot: WebClient; user: WebClient
-  memory: string; model: string
+  memory: string; model: string; saved: Saved
   notify: (text: string) => Promise<boolean>
   contextOf: (m: SlackMessage) => Promise<string>
   placeOf: (channel: string) => Promise<string>
@@ -27,15 +28,13 @@ export function startAfk(o: {
   // Phones the owner (KAGE_CALL_COMMAND); resolves '' once the call is placed, else why not.
   call?: (reason: string) => Promise<string>
 }) {
-  const FILE = `${o.dir}/afk.json`
   // An empty folder for the guard, so its Claude finds no CLAUDE.md or project memory.
   const ROOM = `${o.dir}/standin`
   mkdirSync(ROOM, { recursive: true, mode: 0o700 })
-  // Kept on disk so a hub restart stays away; prior is the owner's status before Kage set its own.
-  let state: (Afk & { tz: string; ours: string; prior?: Status }) | undefined
-  try { state = JSON.parse(readFileSync(FILE, 'utf8')) } catch {}
-  if (state) state.watch ??= {}   // a file from before threads were watched
-  const save = () => state ? writeFileSync(FILE, JSON.stringify(state), { mode: 0o600 }) : rmSync(FILE, { force: true })
+  // Saved so a hub restart stays away; prior is the owner's status before Kage set its own.
+  let state = o.saved.load('afk') as (Afk & { tz: string; ours: string; prior?: Status }) | undefined
+  if (state) state.watch ??= {}   // saved before threads were watched
+  const save = () => o.saved.save('afk', state)
 
   // "6:00 pm", or "Thu 9:00 am" when it is not today in the owner's zone.
   const when = (t: number, tz: string) => {

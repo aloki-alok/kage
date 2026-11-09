@@ -3,7 +3,6 @@
 // happen in Slack like every other task, and the owner answers there in person. The event's text was
 // written by other people, so the task runs at teammate trust. Off unless KAGE_GITHUB_SECRET and
 // KAGE_GITHUB_LOGIN are set. Reach it through a tunnel to 127.0.0.1:<port>/github.
-import { readFileSync, renameSync, writeFileSync } from 'node:fs'
 import { createServer } from 'node:http'
 import type { AddressInfo } from 'node:net'
 import { log } from '../config.ts'
@@ -12,12 +11,12 @@ import { noChannelTag } from '../core/gate.ts'
 import { githubEvent, signedByGithub } from '../core/github.ts'
 import type { Delivery } from '../core/sessions.ts'
 import type { Task } from '../runtime/protocol.ts'
-import type { Inbox } from '../runtime/store.ts'
+import type { Inbox, Saved } from '../runtime/store.ts'
 
 const MAX_BODY = 1_000_000   // GitHub caps a delivery at 25 MB; the events read here are far smaller
 
 export function connectGithub(o: {
-  dir: string; secret: string; login: string; port: number; botDm: string
+  saved: Saved; secret: string; login: string; port: number; botDm: string
   post: (text: string, thread?: string) => Promise<string | undefined>   // in the owner's DM with Kage; the message ts
   deliver: (c: Conversation, task: Task, place: string) => Delivery
   notify: (text: string) => void                                         // the owner's DM, plain
@@ -26,11 +25,9 @@ export function connectGithub(o: {
 }) {
 
   // One event at a time, so two quick events on a new pull request open one thread, not two.
-  // "owner/repo#12" -> its DM thread. Its own file, not the store: the store's place for a thread changes
-  // to "DM with Kage" once the owner answers in it, and the next event must still find the thread.
-  const FILE = `${o.dir}/github-threads.json`
-  let threads: Record<string, string> = {}
-  try { threads = JSON.parse(readFileSync(FILE, 'utf8')) } catch {}
+  // "owner/repo#12" -> its DM thread, kept apart from the conversations table: that table's place
+  // for a thread changes to "DM with Kage" once the owner answers in it, and the next event must still find the thread.
+  const threads = (o.saved.load('github-threads') ?? {}) as Record<string, string>
   let chain: Promise<unknown> = Promise.resolve()
   const started: number[] = []   // when each of the last hour's events started work
   let capTold = false
@@ -63,8 +60,7 @@ export function connectGithub(o: {
     // GitHub never sends a delivery again by itself, so a lost event is told to the owner instead.
     if (thread && !known) {
       threads[e.thread] = thread
-      writeFileSync(`${FILE}.tmp`, JSON.stringify(threads), { mode: 0o600 })
-      renameSync(`${FILE}.tmp`, FILE)
+      o.saved.save('github-threads', threads)
     }
     if (!thread) { o.notify(`A GitHub event for ${e.thread} could not open its thread here: ${e.url || 'no link'}`); return true }
     const quoted = e.quoted ? `\n${noChannelTag(e.quoted).split('\n').map(l => `> ${l}`).join('\n')}` : ''

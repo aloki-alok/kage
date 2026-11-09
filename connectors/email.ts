@@ -5,14 +5,14 @@ import { parseSessionKey, type Conversation } from '../core/conversations.ts'
 import { noChannelTag } from '../core/gate.ts'
 import type { Delivery } from '../core/sessions.ts'
 import type { Task } from '../runtime/protocol.ts'
-import type { Inbox } from '../runtime/store.ts'
+import type { Inbox, Saved } from '../runtime/store.ts'
 import { emailTaskLine } from './mail.ts'
 import { startMailbox } from './mailbox.ts'
 
 // On when the mail settings exist, unless KAGE_EMAIL=off (the kill switch).
 export function connectEmail(o: {
   env: Record<string, string>
-  dir: string
+  saved: Saved
   name: string
   deliver: (c: Conversation, task: Task, place: string) => Delivery
   failed: (task: Task) => void
@@ -26,7 +26,7 @@ export function connectEmail(o: {
     domains: [env.KAGE_OWNER_EMAIL.split('@')[1]!],
   }
   const send = startMailbox({
-    env, dir: o.dir, cfg, inbox: o.inbox,
+    env, saved: o.saved, cfg, inbox: o.inbox,
     onTask(t) {
       const place = `email: ${t.subject.slice(0, 60)}`
       const content = [
