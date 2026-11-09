@@ -13,6 +13,7 @@ import type { Delivery } from '../core/sessions.ts'
 import type { Task } from '../runtime/protocol.ts'
 import { startAfk } from './slack-afk.ts'
 import { socketWatch } from '../core/socket-watch.ts'
+import type { Inbox } from '../runtime/store.ts'
 
 const PICKED_UP = 'ninja'
 const WAITING = 'hourglass_flowing_sand'
@@ -24,10 +25,7 @@ export type Hub = {
   status(): string
   // Someone other than the owner wrote without starting a task: wakes the reply watches on that conversation (runtime/scheduler.ts).
   heard(m: { chat: string; thread?: string; quoted: string }): void
-  // The inbox (runtime/store.ts): take is false for a source id heard before; handled drops the stored text.
-  take(source: string, connector: string, payload: string): boolean
-  handled(source: string): void
-}
+} & Inbox
 
 // Into the inbox before the ack: Slack sends again only what was not acked, so a crash after the
 // write is replayed from the store on the next start (router.ts), and a redelivery runs once.

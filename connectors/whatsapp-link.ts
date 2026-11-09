@@ -2,9 +2,10 @@
 // message here, signed. whatsapp.ts decides; this module does the I/O.
 import { spawn } from 'node:child_process'
 import { createHmac, timingSafeEqual } from 'node:crypto'
-import { appendFileSync, mkdirSync, readFileSync } from 'node:fs'
+import { mkdirSync, readFileSync } from 'node:fs'
 import { createServer } from 'node:http'
 import { log } from '../config.ts'
+import type { Inbox } from '../runtime/store.ts'
 import { findSecret } from '../core/outbound.ts'
 import { decideWhatsApp, fromWaha, guardPrompt, guardVerdict, standInPrompt, waTaskContent, type Arming, type WahaPayload, type WaLine } from './whatsapp.ts'
 
@@ -14,7 +15,18 @@ const ARM_MS = 60 * 60_000
 // A webhook body above this is refused unread: WAHA events are a few KB.
 const MAX_BODY = 1_000_000
 
-export function startWhatsApp(o: { dir: string; name: string; owner: string; env: Record<string, string>; memory: string; onTask: (t: WaTask) => void; notify: (text: string) => void }) {
+// A signed WAHA webhook body, into the inbox before WAHA hears 200: a hub that dies while handling it
+// replays it from the store on the next start (router.ts), and a redelivered message id runs once.
+// Returns the message to run, or nothing (another event, or a repeat).
+export function wahaIntake(body: string, inbox: Inbox): { source?: string; payload: WahaPayload } | undefined {
+  const e = JSON.parse(body) as { event?: string; payload?: WahaPayload }
+  if (e.event !== 'message.any' || !e.payload) return undefined
+  const source = e.payload.id ? `wa:${e.payload.id}` : undefined
+  if (source && !inbox.take(source, 'whatsapp', JSON.stringify(e.payload))) return undefined
+  return { source, payload: e.payload }
+}
+
+export function startWhatsApp(o: { dir: string; name: string; owner: string; env: Record<string, string>; memory: string; inbox: Inbox; onTask: (t: WaTask) => void; notify: (text: string) => void }) {
   const waha = Object.fromEntries(readFileSync(`${o.dir}/waha/.env`, 'utf8').split('\n').filter(l => l.includes('='))
     .map(l => [l.slice(0, l.indexOf('=')), l.slice(l.indexOf('=') + 1)]))
   const URL = o.env.KAGE_WAHA_URL || 'http://127.0.0.1:3198'
@@ -26,7 +38,6 @@ export function startWhatsApp(o: { dir: string; name: string; owner: string; env
   mkdirSync(o.memory, { recursive: true, mode: 0o700 })
 
   const armed = new Map<string, Arming & { brief: string }>()
-  const seen = new Set<string>()
   const busy = new Map<string, boolean>()
 
   const api = async (path: string, init?: RequestInit) => {
@@ -88,9 +99,7 @@ export function startWhatsApp(o: { dir: string; name: string; owner: string; env
 
   async function onEvent(p: WahaPayload) {
     const m = fromWaha(p)
-    if (!m.chat || seen.has(m.id)) return
-    seen.add(m.id)
-    if (seen.size > 5000) seen.clear()
+    if (!m.chat) return
     const action = decideWhatsApp(m, armed, o.name, Date.now())
     if (action.kind === 'ignore') return
     log('whatsapp', action.kind, m.chat)
@@ -101,6 +110,8 @@ export function startWhatsApp(o: { dir: string; name: string; owner: string; env
     o.onTask({ chat: action.chat, place, content: waTaskContent(action.text, place, action.chat, await history(action.chat), o.name, o.owner) })
   }
 
+  // A failed event stays unhandled, so the next start tries it again.
+  const run = (p: WahaPayload, source?: string) => onEvent(p).then(() => { if (source) o.inbox.handled(source) }, err => log('whatsapp event failed', err))
   const signed = (body: Buffer, given?: string) => {
     if (!given) return false
     const want = Buffer.from(createHmac('sha512', HMAC).update(body).digest('hex'))
@@ -122,15 +133,17 @@ export function startWhatsApp(o: { dir: string; name: string; owner: string; env
     req.on('end', () => {
       const body = Buffer.concat(chunks)
       if (req.method !== 'POST' || req.url !== '/waha' || !signed(body, req.headers['x-webhook-hmac'] as string | undefined)) { res.writeHead(401).end(); return }
+      let got: ReturnType<typeof wahaIntake>
+      try { got = wahaIntake(body.toString(), o.inbox) } catch (err) { log('whatsapp bad event', err); res.writeHead(400).end(); return }
       res.writeHead(200).end()
-      try {
-        appendFileSync(`${o.dir}/wa-messages.jsonl`, body.toString().replace(/\n/g, ' ') + '\n', { mode: 0o600 })
-        const e = JSON.parse(body.toString()) as { event?: string; payload?: WahaPayload }
-        if (e.event === 'message.any' && e.payload) onEvent(e.payload).catch(err => log('whatsapp event failed', err))
-      } catch (err) { log('whatsapp bad event', err) }
+      if (got) void run(got.payload, got.source)
     })
   }).listen(PORT, HOST, () => log(`whatsapp on: listening on ${HOST}:${PORT}`))
 
-  // A session can send only to its own chat: the key names it.
-  return async (key: string, text: string) => { await send(key.slice('wa:'.length), text) }
+  return {
+    // A session can send only to its own chat: the key names it.
+    send: async (key: string, text: string) => { await send(key.slice('wa:'.length), text) },
+    // A message the last run took but never handled, from the inbox.
+    replay: (source: string, payload: string) => run(JSON.parse(payload) as WahaPayload, source),
+  }
 }

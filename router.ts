@@ -33,7 +33,7 @@ import { runJobs } from './runtime/jobs.ts'
 import { snapshotMemory } from './runtime/memory-snapshot.ts'
 import { sdkSessions } from './runtime/sdk-sessions.ts'
 import { listenForSessions, restoreHolds, routeReply } from './runtime/session-link.ts'
-import { openStore } from './runtime/store.ts'
+import { openStore, type Inbox } from './runtime/store.ts'
 import { claudeProject, tmuxPanes } from './runtime/tmux-panes.ts'
 import { codeStamp } from './runtime/code-stamp.ts'
 
@@ -55,6 +55,8 @@ try { COMMANDS = parseCommands(env.KAGE_COMMANDS || '') } catch (e) { log(String
 // One SQLite file holds every conversation seen and the session working on each (runtime/store.ts).
 const store = openStore(`${DIR}/kage.db`)
 const placeOf = (key: string) => placeFor(k => store.conversation(k)?.place, key)
+// Every connector writes what it hears here before acknowledging it (runtime/store.ts, the inbox).
+const inbox: Inbox = { take: (source, connector, payload) => store.take(source, connector, payload, Date.now()), handled: source => store.handled(source) }
 
 // Connectors hand the hub a conversation; the hub alone turns it into a session key.
 const deliver = (c: Conversation, task: Task, place: string, lane: Lane = 'main') => {
@@ -81,7 +83,7 @@ function phoneOwner(reason: string): Promise<string> {
 const slack = await connectSlack({
   dir: DIR, appToken: need('SLACK_APP_TOKEN'), bot, user, name: NAME, title: Title, teammates: TEAMMATES,
   hub: { deliver, verdict: (id, behavior) => d.verdict(id, { type: 'verdict', request_id: id, behavior }), status, heard: m => schedules.heard(m),
-    take: (source, connector, payload) => store.take(source, connector, payload, Date.now()), handled: source => store.handled(source) },
+    ...inbox },
   // AFK mode is on unless KAGE_AFK=off. Its stand-in reads the owner's memory, read only.
   afk: env.KAGE_AFK === 'off' ? undefined : { memory: memoryDirs(process.env.HOME!, ENV_FILE, env).owner, model: env.KAGE_AFK_MODEL || 'sonnet', call: phoneOwner },
 })
@@ -260,11 +262,11 @@ const github = env.KAGE_GITHUB_SECRET && env.KAGE_GITHUB_LOGIN ? connectGithub({
   post: (text, thread) => bot.chat.postMessage({ channel: slack.ids.botDm, text, ...(thread && { thread_ts: thread }) }).then(r => r.ts, e => { log('github post failed', e); return undefined }),
   deliver: (c, task, place) => deliver(c, task, place),
   notify: text => void slack.notifyOwner(text),
-  perHour: Number(env.KAGE_GITHUB_PER_HOUR || 20),
+  perHour: Number(env.KAGE_GITHUB_PER_HOUR || 20), inbox,
 }) : undefined
 void github?.listening.then(port => log(`github on: 127.0.0.1:${port}/github for @${env.KAGE_GITHUB_LOGIN}`))
 const email = connectEmail({
-  env, dir: DIR, name: NAME, deliver,
+  env, dir: DIR, name: NAME, deliver, inbox,
   failed: task => void slack.notifyOwner(`Could not start a session for ${task.meta.place}.`),
 })
 // Voice is on when KAGE_VOICE_TOKEN is set, unless KAGE_VOICE=off. A voice agent reaches it over a tunnel.
@@ -278,7 +280,7 @@ listenForCommands(slack.socket, { user, team: slack.ids.team!, commands: COMMAND
 
 // WhatsApp is on when Kage's WAHA config exists, unless KAGE_WHATSAPP=off (the kill switch).
 const whatsapp = env.KAGE_WHATSAPP !== 'off' && existsSync(`${DIR}/waha/.env`) ? startWhatsApp({
-  dir: DIR, name: NAME, owner: slack.ownerName, env,
+  dir: DIR, name: NAME, owner: slack.ownerName, env, inbox,
   notify: text => void slack.notifyOwner(text),
   // The stand-in reads only this folder: notes the owner wrote for it, never their whole memory.
   memory: env.KAGE_WA_MEMORY || `${DIR}/wa-notes`,
@@ -330,7 +332,7 @@ runJobs([
 
 const replies = {
   voice: (key: string, text: string) => voice?.reply(key, text),
-  wa: (key: string, text: string) => void whatsapp?.(key, text).catch(e => log('whatsapp send failed', key, e)),
+  wa: (key: string, text: string) => void whatsapp?.send(key, text).catch(e => log('whatsapp send failed', key, e)),
   mail: (key: string, text: string) => void email?.send(key, text).catch(e => {
     log('mail reply failed', key, e)
     void slack.notifyOwner(`Email reply failed for ${placeOf(key)}: ${e}`)
@@ -356,10 +358,16 @@ function tell(key: string, text: string): { ok: true; held?: true } | { refused:
 listenForSessions(`${DIR}/router.sock`, d, { ...replies, failed, schedules, tell, callCode: voice?.issueCode })
 
 await slack.start()
-// Messages the last run acked but never handled (it died in between) run now. Older than 10 minutes, they are let go.
+// Messages the last run took but never handled (it died in between) run now. Older than 10 minutes, they are let go.
+// Email needs no replay: SQS resends a mail until it is deleted after handling.
 store.prune(Date.now() - 7 * 86_400_000)
 const missed = store.unhandled(Date.now() - 10 * 60_000)
 if (missed.length) log(`replaying ${missed.length} message${missed.length === 1 ? '' : 's'} the last run heard but never handled`)
-for (const r of missed) if (r.connector === 'slack') void slack.replay(r.source, r.payload)
+const replayers: Record<string, ((source: string, payload: string) => Promise<unknown>) | undefined> = { slack: slack.replay, github: github?.replay, whatsapp: whatsapp?.replay }
+for (const r of missed) {
+  const replay = replayers[r.connector]
+  if (replay) void replay(r.source, r.payload).catch(e => log('replay failed', r.source, e))
+  else { log('cannot replay', r.source, '(its connector is off)'); store.handled(r.source) }
+}
 log(`listening as ${slack.botUser} (@${NAME}) for ${slack.ownerName} ${slack.ids.owner}; up to ${MAX} sessions; teammates ${TEAMMATES.join(',') || 'none'}`)
 // The status file `setup.sh doctor` reads follows the socket (connectors/slack.ts).

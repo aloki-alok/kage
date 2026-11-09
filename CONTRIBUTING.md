@@ -80,3 +80,4 @@ A connector touches more places than it should today. Copy `connectors/email.ts`
 2. `senderOf` in `core/gate.ts`, if its sender is not plainly the owner or a teammate.
 3. The reply type in `runtime/protocol.ts`, `routeReply` in `runtime/session-link.ts`, and the `reply` tool in `runtime/kage-tools.ts`.
 4. `replies` and `failed` in `router.ts`.
+5. The inbox (`Inbox` in `runtime/store.ts`): `take` each message with a unique source id before you acknowledge it, and `handled` after. If the source does not resend by itself, add a `replay` to `replayers` in `router.ts`.

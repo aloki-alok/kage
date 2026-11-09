@@ -1,5 +1,7 @@
 import { describe, test } from 'node:test'
 import assert from 'node:assert/strict'
+import { wahaIntake } from './whatsapp-link.ts'
+import { openStore } from '../runtime/store.ts'
 import { decideWhatsApp, fromWaha, standInPrompt, guardPrompt, guardVerdict, waTaskContent, MAX_STAND_IN_REPLIES, type Arming, type WaMessage } from './whatsapp.ts'
 
 const NOW = 1_000_000
@@ -126,5 +128,26 @@ describe('what each side gets to read', () => {
     assert.deepEqual(guardVerdict('send.\n'), { send: true, reason: '' })
     assert.deepEqual(guardVerdict('HOLD: shares a server ip'), { send: false, reason: 'shares a server ip' })
     for (const out of ['', 'SENDING it now', 'I think SEND', 'Sure! SEND']) assert.equal(guardVerdict(out).send, false, out)
+  })
+})
+
+describe('a WhatsApp webhook reaches the inbox before WAHA hears 200', () => {
+  const store = () => { const s = openStore(':memory:'); return { s, inbox: { take: (a: string, c: string, p: string | null) => s.take(a, c, p, 1), handled: (a: string) => s.handled(a) } } }
+  const event = (id: string) => JSON.stringify({ event: 'message.any', payload: { id, from: '100TEST@c.us', body: 'hi' } })
+  test('a message is stored with its id and comes back if never handled', () => {
+    const { s, inbox } = store()
+    assert.equal(wahaIntake(event('m1'), inbox)?.source, 'wa:m1')
+    assert.deepEqual(s.unhandled(0).map(r => [r.source, JSON.parse(r.payload).body]), [['wa:m1', 'hi']])
+  })
+  test('a redelivered message id runs once, even after a restart', () => {
+    const { inbox } = store()
+    assert.ok(wahaIntake(event('m2'), inbox))
+    assert.equal(wahaIntake(event('m2'), inbox), undefined)
+  })
+  test('other events are not stored, and a broken body throws so WAHA hears an error', () => {
+    const { s, inbox } = store()
+    assert.equal(wahaIntake(JSON.stringify({ event: 'session.status', payload: { id: 'x' } }), inbox), undefined)
+    assert.deepEqual(s.unhandled(0), [])
+    assert.throws(() => wahaIntake('{not json', inbox))
   })
 })

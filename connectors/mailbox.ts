@@ -8,6 +8,7 @@ import { simpleParser, type AddressObject } from 'mailparser'
 import { promises as dns } from 'node:dns'
 import { existsSync, readFileSync, writeFileSync } from 'node:fs'
 import { log } from '../config.ts'
+import type { Inbox } from '../runtime/store.ts'
 import { composeReply, mailTask, replyTargets, type InboundMail, type MailConfig } from './mail.ts'
 
 type Thread = { mail: InboundMail }
@@ -23,7 +24,7 @@ const dkimResolver = (name: string, rr: string) => resolver.resolve(name, rr) as
 const list = (v?: string | string[]) => (Array.isArray(v) ? v : v ? v.split(/\s+/) : []).filter(Boolean)
 
 export function startMailbox(o: {
-  env: Record<string, string>; dir: string; cfg: MailConfig; onTask: (t: MailTaskOut) => void
+  env: Record<string, string>; dir: string; cfg: MailConfig; inbox: Inbox; onTask: (t: MailTaskOut) => void
 }) {
   const region = o.env.KAGE_AWS_REGION || 'us-west-1'
   const credentials = { accessKeyId: o.env.KAGE_AWS_ACCESS_KEY_ID!, secretAccessKey: o.env.KAGE_AWS_SECRET_ACCESS_KEY! }
@@ -33,13 +34,7 @@ export function startMailbox(o: {
   const queue = o.env.KAGE_MAIL_QUEUE!
   const THREADS = `${o.dir}/mail-threads.json`
   const threads: Record<string, Thread> = existsSync(THREADS) ? JSON.parse(readFileSync(THREADS, 'utf8')) : {}
-  // Message-IDs already handled: SQS delivers at least once.
-  const SEEN = `${o.dir}/mail-seen.json`
-  const seen: string[] = existsSync(SEEN) ? JSON.parse(readFileSync(SEEN, 'utf8')) : []
-  const save = () => {
-    writeFileSync(THREADS, JSON.stringify(threads), { mode: 0o600 })
-    writeFileSync(SEEN, JSON.stringify(seen.slice(-1000)), { mode: 0o600 })
-  }
+  const save = () => writeFileSync(THREADS, JSON.stringify(threads), { mode: 0o600 })
 
   async function handle(body: string) {
     const n = JSON.parse(body)
@@ -60,12 +55,12 @@ export function startMailbox(o: {
       subject: p.subject ?? '',
       text: p.text ?? '',
     }
-    if (seen.includes(mail.messageId)) return
-    seen.push(mail.messageId)
+    // SQS delivers at least once: a Message-ID already in the inbox is a repeat. Only the id is kept,
+    // since SQS itself holds the mail until it is deleted after handling.
+    if (!o.inbox.take(`mail:${mail.messageId}`, 'mail', null)) return
     const t = mailTask(mail, o.cfg)
     if ('drop' in t) {
       log('mail dropped:', mail.from, JSON.stringify(mail.subject), t.drop)
-      save()
       return
     }
     threads[t.key] = { mail }

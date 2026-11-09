@@ -112,6 +112,12 @@ describe('the inbox: every message the hub hears, written before it is acknowled
     const raw = new DatabaseSync(path, { readOnly: true })
     assert.deepEqual({ ...raw.prepare('select count(*) n from inbox where payload is not null').get() }, { n: 0 })
   })
+  test('an id recorded with no payload catches repeats and is never replayed (SQS holds the mail itself)', () => {
+    const s = openStore(':memory:')
+    assert.equal(s.take('mail:<a@x>', 'mail', null, 100), true)
+    assert.equal(s.take('mail:<a@x>', 'mail', null, 101), false)
+    assert.deepEqual(s.unhandled(0), [])
+  })
   test('source ids older than the keep window are dropped', () => {
     const s = openStore(':memory:')
     s.take('a', 'slack', 'x', 100); s.handled('a')
