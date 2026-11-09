@@ -106,11 +106,16 @@ export function connectGithub(o: {
       if (source && !o.inbox.take(source, 'github', JSON.stringify({ type, body }))) { res.writeHead(202).end(); return }
       run(type, body, source)
         .then(took => res.writeHead(took ? 202 : 204).end())
-        .catch(e => { log('github event failed', e); res.writeHead(500).end() })
+        .catch(e => {
+          // GitHub will not send it again, and the store replays it only on a start within 10 minutes.
+          log('github event failed', e)
+          o.notify(`A GitHub event failed here (${String(e).slice(0, 120)}). It runs again if Kage restarts within 10 minutes; otherwise redeliver it from the webhook's page.`)
+          res.writeHead(500).end()
+        })
     })
   })
   const listening = new Promise<number>(ok => server.listen(o.port, '127.0.0.1', () => ok((server.address() as AddressInfo).port)))
   // A delivery the last run took but never handled, from the inbox.
-  const replay = (source: string, payload: string) => { const { type, body } = JSON.parse(payload); return run(type, body, source) }
+  const replay = async (source: string, payload: string) => { const { type, body } = JSON.parse(payload); return run(type, body, source) }
   return { listening, replay, close: () => server.close() }
 }

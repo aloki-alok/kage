@@ -38,8 +38,9 @@ create table if not exists trust (
 
 export type Store = ReturnType<typeof openStore>
 // What a connector gets from the store: take is false for a source id heard before. A null payload
-// records the id only, for a source that resends by itself until handled (SQS).
-export type Inbox = { take(source: string, connector: string, payload: string | null): boolean; handled(source: string): void }
+// records the id only, for a source that resends by itself until handled (SQS): such a source
+// checks has() first and takes the id after handling.
+export type Inbox = { take(source: string, connector: string, payload: string | null): boolean; handled(source: string): void; has(source: string): boolean }
 
 const toSchedule = (r: Record<string, any>): Schedule => ({
   id: r.id, key: r.key, cron: r.cron, prompt: r.prompt, recurring: r.recurring === 1, fromOwner: r.from_owner === 1,
@@ -141,6 +142,7 @@ export function openStore(path: string) {
     take(source: string, connector: string, payload: string | null, now: number): boolean {
       return Number(db.prepare('insert into inbox (source, connector, at, payload) values (?, ?, ?, ?) on conflict (source) do nothing').run(source, connector, now, payload).changes) > 0
     },
+    has: (source: string) => db.prepare('select 1 from inbox where source = ?').get(source) !== undefined,
     handled(source: string) { db.prepare('update inbox set payload = null where source = ?').run(source) },
     // Messages taken but never handled: a crash came between the ack and the task. Ones older than
     // `since` are let go (a reply hours late does more harm than none), so they never come back.

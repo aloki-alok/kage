@@ -56,7 +56,7 @@ try { COMMANDS = parseCommands(env.KAGE_COMMANDS || '') } catch (e) { log(String
 const store = openStore(`${DIR}/kage.db`)
 const placeOf = (key: string) => placeFor(k => store.conversation(k)?.place, key)
 // Every connector writes what it hears here before acknowledging it (runtime/store.ts, the inbox).
-const inbox: Inbox = { take: (source, connector, payload) => store.take(source, connector, payload, Date.now()), handled: source => store.handled(source) }
+const inbox: Inbox = { take: (source, connector, payload) => store.take(source, connector, payload, Date.now()), handled: source => store.handled(source), has: source => store.has(source) }
 
 // Connectors hand the hub a conversation; the hub alone turns it into a session key.
 const deliver = (c: Conversation, task: Task, place: string, lane: Lane = 'main') => {

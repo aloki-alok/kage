@@ -2,6 +2,7 @@ import { describe, test } from 'node:test'
 import assert from 'node:assert/strict'
 import { wahaIntake } from './whatsapp-link.ts'
 import { openStore } from '../runtime/store.ts'
+import { tmpdir } from 'node:os'
 import { decideWhatsApp, fromWaha, standInPrompt, guardPrompt, guardVerdict, waTaskContent, MAX_STAND_IN_REPLIES, type Arming, type WaMessage } from './whatsapp.ts'
 
 const NOW = 1_000_000
@@ -132,7 +133,8 @@ describe('what each side gets to read', () => {
 })
 
 describe('a WhatsApp webhook reaches the inbox before WAHA hears 200', () => {
-  const store = () => { const s = openStore(':memory:'); return { s, inbox: { take: (a: string, c: string, p: string | null) => s.take(a, c, p, 1), handled: (a: string) => s.handled(a) } } }
+  const inboxOf = (s: ReturnType<typeof openStore>) => ({ take: (a: string, c: string, p: string | null) => s.take(a, c, p, 1), handled: (a: string) => s.handled(a), has: (a: string) => s.has(a) })
+  const store = () => { const s = openStore(':memory:'); return { s, inbox: inboxOf(s) } }
   const event = (id: string) => JSON.stringify({ event: 'message.any', payload: { id, from: '100TEST@c.us', body: 'hi' } })
   test('a message is stored with its id and comes back if never handled', () => {
     const { s, inbox } = store()
@@ -140,9 +142,11 @@ describe('a WhatsApp webhook reaches the inbox before WAHA hears 200', () => {
     assert.deepEqual(s.unhandled(0).map(r => [r.source, JSON.parse(r.payload).body]), [['wa:m1', 'hi']])
   })
   test('a redelivered message id runs once, even after a restart', () => {
-    const { inbox } = store()
-    assert.ok(wahaIntake(event('m2'), inbox))
-    assert.equal(wahaIntake(event('m2'), inbox), undefined)
+    const path = `${tmpdir()}/kage-wa-${process.pid}-${Date.now()}.db`
+    const first = openStore(path)
+    assert.ok(wahaIntake(event('m2'), inboxOf(first)))
+    first.close()
+    assert.equal(wahaIntake(event('m2'), inboxOf(openStore(path))), undefined)
   })
   test('other events are not stored, and a broken body throws so WAHA hears an error', () => {
     const { s, inbox } = store()

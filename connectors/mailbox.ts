@@ -55,17 +55,18 @@ export function startMailbox(o: {
       subject: p.subject ?? '',
       text: p.text ?? '',
     }
-    // SQS delivers at least once: a Message-ID already in the inbox is a repeat. Only the id is kept,
-    // since SQS itself holds the mail until it is deleted after handling.
-    if (!o.inbox.take(`mail:${mail.messageId}`, 'mail', null)) return
+    // SQS delivers at least once: a Message-ID already in the inbox is a repeat. The id is recorded
+    // only after handling (SQS holds the mail until then), so a crash midway gets the mail again.
+    const source = `mail:${mail.messageId}`
+    if (o.inbox.has(source)) return
     const t = mailTask(mail, o.cfg)
-    if ('drop' in t) {
-      log('mail dropped:', mail.from, JSON.stringify(mail.subject), t.drop)
-      return
+    if ('drop' in t) log('mail dropped:', mail.from, JSON.stringify(mail.subject), t.drop)
+    else {
+      threads[t.key] = { mail }
+      save()
+      o.onTask({ key: t.key, sender: t.sender, from: mail.from, subject: mail.subject, ask: t.ask, quoted: t.quoted })
     }
-    threads[t.key] = { mail }
-    save()
-    o.onTask({ key: t.key, sender: t.sender, from: mail.from, subject: mail.subject, ask: t.ask, quoted: t.quoted })
+    o.inbox.take(source, 'mail', null)
   }
 
   async function poll() {

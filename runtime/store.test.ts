@@ -114,7 +114,9 @@ describe('the inbox: every message the hub hears, written before it is acknowled
   })
   test('an id recorded with no payload catches repeats and is never replayed (SQS holds the mail itself)', () => {
     const s = openStore(':memory:')
+    assert.equal(s.has('mail:<a@x>'), false)
     assert.equal(s.take('mail:<a@x>', 'mail', null, 100), true)
+    assert.equal(s.has('mail:<a@x>'), true)
     assert.equal(s.take('mail:<a@x>', 'mail', null, 101), false)
     assert.deepEqual(s.unhandled(0), [])
   })

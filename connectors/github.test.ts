@@ -14,11 +14,12 @@ async function setup(postMs = 0, perHour = 100, store: Store = openStore(':memor
   const told: string[] = []
   let ts = 100
   let failing = () => false
+  let throwing = false
   const gh = connectGithub({
     dir: mkdtempSync(`${tmpdir()}/kage-gh-`), secret: SECRET, login: 'me', port: 0, botDm: 'DB', perHour, notify: (t: string) => void told.push(t),
-    inbox: { take: (s, c, p) => store.take(s, c, p, Date.now()), handled: s => store.handled(s) },
+    inbox: { take: (s, c, p) => store.take(s, c, p, Date.now()), handled: s => store.handled(s), has: s => store.has(s) },
     post: async (text, thread) => { await new Promise(r => setTimeout(r, postMs)); if (failing()) return undefined; posts.push({ text, ...(thread && { thread }) }); return String(ts++) },
-    deliver: (c, task) => { tasks.push({ key: `${c.chat}:${c.thread}`, content: task.content, fromOwner: task.fromOwner === true }); return 'sent' },
+    deliver: (c, task) => { if (throwing) throw new Error('runner down'); tasks.push({ key: `${c.chat}:${c.thread}`, content: task.content, fromOwner: task.fromOwner === true }); return 'sent' },
   })
   const port = await gh.listening
   const send = (body: string, type = 'pull_request_review', sig: string | undefined = undefined, id = '') => {
@@ -26,7 +27,7 @@ async function setup(postMs = 0, perHour = 100, store: Store = openStore(':memor
     if (id) headers['x-github-delivery'] = id
     return fetch(`http://127.0.0.1:${port}/github`, { method: 'POST', body, headers })
   }
-  return { gh, store, posts, tasks, told, send, failPosts: (f: () => boolean) => { failing = f } }
+  return { gh, store, posts, tasks, told, send, failPosts: (f: () => boolean) => { failing = f }, throwOnDeliver: () => { throwing = true } }
 }
 test('a signed event the owner cares about opens one DM thread per pull request, and runs at teammate trust', async () => {
   const t = await setup()
@@ -113,5 +114,23 @@ test('a delivery stored but never handled, because the hub died, runs on the nex
     for (const r of t.store.unhandled(0)) await t.gh.replay(r.source, r.payload)
     assert.equal(t.tasks.length, 1)
     assert.deepEqual(t.store.unhandled(0), [])
+  } finally { t.gh.close() }
+})
+test('an unsigned delivery is refused before anything is stored', async () => {
+  const t = await setup()
+  try {
+    const r = await t.send(review(43), 'pull_request_review', 'sha256=bad', 'd-43')
+    assert.equal(r.status, 401)
+    assert.equal(t.store.has('github:d-43'), false)
+  } finally { t.gh.close() }
+})
+test('a delivery whose handling throws stays in the store to replay, and the owner hears it failed', async () => {
+  const t = await setup()
+  try {
+    t.throwOnDeliver()
+    const r = await t.send(review(44), 'pull_request_review', undefined, 'd-44')
+    assert.equal(r.status, 500)
+    assert.deepEqual(t.store.unhandled(0).map(x => x.source), ['github:d-44'])
+    assert.match(t.told.at(-1)!, /GitHub event failed/)
   } finally { t.gh.close() }
 })

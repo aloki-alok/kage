@@ -144,6 +144,6 @@ export function startWhatsApp(o: { dir: string; name: string; owner: string; env
     // A session can send only to its own chat: the key names it.
     send: async (key: string, text: string) => { await send(key.slice('wa:'.length), text) },
     // A message the last run took but never handled, from the inbox.
-    replay: (source: string, payload: string) => run(JSON.parse(payload) as WahaPayload, source),
+    replay: async (source: string, payload: string) => run(JSON.parse(payload) as WahaPayload, source),
   }
 }
