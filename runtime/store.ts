@@ -1,5 +1,5 @@
 // The hub's store: one SQLite file (Node's built-in sqlite) holding every conversation Kage has
-// seen and the Claude session id working on each. The hub is its only writer.
+// seen, the Claude session id working on each, and every message heard (the inbox). The hub is its only writer.
 import { DatabaseSync } from 'node:sqlite'
 import { parseSessionKey, type Conversation } from '../core/conversations.ts'
 import type { Schedule } from '../core/cron.ts'
@@ -22,6 +22,14 @@ create table if not exists schedules (
   from_owner integer not null,   -- each run gets the trust of the task that asked for it
   created integer not null, last_fired integer not null default 0,
   ends integer                   -- null: runs until cancelled
+);
+-- Every message the hub hears, written before the source is acknowledged: a crash after the
+-- ack replays it on the next start, and a redelivery of the same source id is a duplicate.
+create table if not exists inbox (
+  source text primary key,       -- slack:<channel>:<ts>, github:<delivery>, mail:<message-id>, wa:<id>
+  connector text not null,
+  at integer not null,
+  payload text                   -- the raw event until it is handled, then null: other people's text does not stay
 );
 create table if not exists trust (
   key text primary key,          -- a thread is owner-trusted while every task it got came from the owner
@@ -126,6 +134,20 @@ export function openStore(path: string) {
     setTrust(key: string, ownerOnly: boolean) {
       db.prepare('insert into trust (key, owner_only) values (?, ?) on conflict (key) do update set owner_only = excluded.owner_only').run(key, ownerOnly ? 1 : 0)
     },
+    // Durable intake (the inbox table). false: this source id was taken before, so it is a redelivery.
+    take(source: string, connector: string, payload: string, now: number): boolean {
+      return Number(db.prepare('insert into inbox (source, connector, at, payload) values (?, ?, ?, ?) on conflict (source) do nothing').run(source, connector, now, payload).changes) > 0
+    },
+    handled(source: string) { db.prepare('update inbox set payload = null where source = ?').run(source) },
+    // Messages taken but never handled: a crash came between the ack and the task. Ones older than
+    // `since` are let go (a reply hours late does more harm than none), so they never come back.
+    unhandled(since: number): { source: string; connector: string; payload: string; at: number }[] {
+      db.prepare('update inbox set payload = null where payload is not null and at < ?').run(since)
+      return (db.prepare('select source, connector, payload, at from inbox where payload is not null order by at').all() as Record<string, any>[])
+        .map(r => ({ source: r.source, connector: r.connector, payload: r.payload, at: Number(r.at) }))
+    },
+    // Redeliveries come within minutes (Slack) or days (SQS, GitHub's manual redeliver), so a week of ids is enough.
+    prune(before: number) { db.prepare('delete from inbox where payload is null and at < ?').run(before) },
     close: () => db.close(),
   }
 }

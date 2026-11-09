@@ -80,7 +80,8 @@ function phoneOwner(reason: string): Promise<string> {
 }
 const slack = await connectSlack({
   dir: DIR, appToken: need('SLACK_APP_TOKEN'), bot, user, name: NAME, title: Title, teammates: TEAMMATES,
-  hub: { deliver, verdict: (id, behavior) => d.verdict(id, { type: 'verdict', request_id: id, behavior }), status, heard: m => schedules.heard(m) },
+  hub: { deliver, verdict: (id, behavior) => d.verdict(id, { type: 'verdict', request_id: id, behavior }), status, heard: m => schedules.heard(m),
+    take: (source, connector, payload) => store.take(source, connector, payload, Date.now()), handled: source => store.handled(source) },
   // AFK mode is on unless KAGE_AFK=off. Its stand-in reads the owner's memory, read only.
   afk: env.KAGE_AFK === 'off' ? undefined : { memory: memoryDirs(process.env.HOME!, ENV_FILE, env).owner, model: env.KAGE_AFK_MODEL || 'sonnet', call: phoneOwner },
 })
@@ -355,5 +356,10 @@ function tell(key: string, text: string): { ok: true; held?: true } | { refused:
 listenForSessions(`${DIR}/router.sock`, d, { ...replies, failed, schedules, tell, callCode: voice?.issueCode })
 
 await slack.start()
+// Messages the last run acked but never handled (it died in between) run now. Older than 10 minutes, they are let go.
+store.prune(Date.now() - 7 * 86_400_000)
+const missed = store.unhandled(Date.now() - 10 * 60_000)
+if (missed.length) log(`replaying ${missed.length} message${missed.length === 1 ? '' : 's'} the last run heard but never handled`)
+for (const r of missed) if (r.connector === 'slack') void slack.replay(r.source, r.payload)
 log(`listening as ${slack.botUser} (@${NAME}) for ${slack.ownerName} ${slack.ids.owner}; up to ${MAX} sessions; teammates ${TEAMMATES.join(',') || 'none'}`)
 // The status file `setup.sh doctor` reads follows the socket (connectors/slack.ts).
