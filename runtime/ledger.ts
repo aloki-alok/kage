@@ -2,7 +2,7 @@
 // The hub and every tmux pane write them, so unlike the rest of the store they have many writers:
 // SQLite's lock (WAL plus a busy timeout) keeps their rows whole and in order.
 // text() gives back the TSV the parsers in core/ledgers.ts and core/retro.ts already read.
-import { existsSync, readFileSync, renameSync } from 'node:fs'
+import { existsSync, readdirSync, readFileSync, renameSync } from 'node:fs'
 import { DatabaseSync } from 'node:sqlite'
 import { log } from '../config.ts'
 import { tsvRow } from '../core/ledgers.ts'
@@ -21,22 +21,31 @@ export function openLedgers(dir: string, now = () => new Date().toISOString()) {
   ); create index if not exists ledger_name on ledger (name, id)`)
   const insert = db.prepare('insert into ledger (name, at, cells) values (?, ?, ?)')
 
-  // <name>.tsv from before this table: moved in once, under the write lock so two processes
-  // starting together can't both import it, then renamed so it is never read twice.
+  // <name>.tsv from before this table moves in once, safe against a crash and two processes at once:
+  //   1. rename it to a unique .importing-<pid>-<time> name: only one process wins the rename;
+  //   2. copy its rows and a marker for that name in one transaction: a replay after a crash skips it;
+  //   3. rename it to .imported-<...>. A crash between any two steps is picked up on the next open.
+  // A pane still on old code may write a fresh <name>.tsv later; it gets its own unique name.
+  db.exec('create table if not exists ledger_imported (file text primary key)')
   for (const name of NAMES) {
     const file = `${dir}/${name}.tsv`
-    if (!existsSync(file)) continue
-    db.exec('begin immediate')
-    try {
-      if (existsSync(file)) {
-        for (const line of readFileSync(file, 'utf8').split('\n').filter(Boolean)) {
-          const [at = '', ...cells] = line.split('\t')
-          insert.run(name, at, JSON.stringify(cells))
-        }
-        renameSync(file, `${file}.imported`)
-      }
-      db.exec('commit')
-    } catch (e) { db.exec('rollback'); log('ledger import failed', file, e) }
+    try { if (existsSync(file)) renameSync(file, `${file}.importing-${process.pid}-${Date.now()}`) } catch {}
+    for (const f of readdirSync(dir).filter(f => f.startsWith(`${name}.tsv.importing-`))) {
+      try {
+        db.exec('begin immediate')
+        try {
+          if (!db.prepare('select 1 from ledger_imported where file = ?').get(f)) {
+            for (const line of readFileSync(`${dir}/${f}`, 'utf8').split('\n').filter(Boolean)) {
+              const [at = '', ...cells] = line.split('\t')
+              insert.run(name, at, JSON.stringify(cells))
+            }
+            db.prepare('insert into ledger_imported (file) values (?)').run(f)
+          }
+          db.exec('commit')
+        } catch (e) { try { db.exec('rollback') } catch {} throw e }
+        renameSync(`${dir}/${f}`, `${dir}/${f.replace('.importing-', '.imported-')}`)
+      } catch (e) { log('ledger import failed', f, e) }
+    }
   }
 
   return {

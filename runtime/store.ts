@@ -1,5 +1,6 @@
 // The hub's store: one SQLite file (Node's built-in sqlite) holding every conversation Kage has
-// seen, the Claude session id working on each, and every message heard (the inbox). The hub is its only writer.
+// seen, the Claude session id working on each, and every message heard (the inbox). The hub is the only
+// writer of these tables. tmux panes also write the ledger table in the same file (runtime/ledger.ts).
 import { DatabaseSync } from 'node:sqlite'
 import { parseSessionKey, type Conversation } from '../core/conversations.ts'
 import type { Schedule } from '../core/cron.ts'

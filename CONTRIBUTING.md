@@ -68,7 +68,7 @@ Write logs to stderr only. In a tmux pane, stdout carries the channel protocol, 
 | `kage-tools.ts` | A session's tools (reply, edit, delete, send a file, message people, waiting, prod log, schedules, away and back), its instructions, and the approval card. |
 | `session-link.ts` | The local socket that panes and the `kage` commands connect to. |
 | `protocol.ts` | The messages on that socket. |
-| `store.ts` | One SQLite file: conversations, their sessions, schedules, trust, and the inbox of every message heard. The hub is its only writer. |
+| `store.ts` | One SQLite file: conversations, their sessions, schedules, trust, and the inbox of every message heard. The hub is the only writer of these tables. |
 | `ledger.ts` | The ledgers (waiting, posted, prod-actions, costs, runs, commands) as rows in that file. The hub and every pane write them. Old `.tsv` files move in once. |
 | `scheduler.ts` | Runs due schedules as tasks in their thread. |
 | `code-stamp.ts` | When the code changed, so the hub knows to restart into it. |
