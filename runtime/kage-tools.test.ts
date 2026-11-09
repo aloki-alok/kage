@@ -4,6 +4,7 @@ import { mkdtempSync, readFileSync, symlinkSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { liveCronJobs } from '../core/cron.ts'
+import { openLedgers } from './ledger.ts'
 import { sessionTools } from './kage-tools.ts'
 import type { Task } from './protocol.ts'
 
@@ -45,10 +46,11 @@ function fakeSlack() {
 function setup(o: { hubDown?: boolean; dir?: string } = {}) {
   const slack = fakeSlack()
   const dir = o.dir ?? mkdtempSync(join(tmpdir(), 'kage-tools-'))
+  const ledgers = openLedgers(dir)
   const out: string[] = []
   const jobs: any[] = []
   const t = sessionTools({
-    title: 'Kage', bot: slack.bot as any, user: slack.user as any, botDm: () => 'DBOT', dir, send: m => { if (o.hubDown) return false; out.push(`${m.type} ${m.text}`) }, memory: { own: '/own', owner: '/owner' },
+    title: 'Kage', bot: slack.bot as any, user: slack.user as any, botDm: () => 'DBOT', dir, ledgers, send: m => { if (o.hubDown) return false; out.push(`${m.type} ${m.text}`) }, memory: { own: '/own', owner: '/owner' },
     schedules: {
       add: j => { jobs.push({ ...j, key: 'C1:5.5', created: 0, lastFired: 0 }) },
       remove: id => { jobs.splice(jobs.findIndex(j => j.id === id), 1) },
@@ -62,7 +64,7 @@ function setup(o: { hubDown?: boolean; dir?: string } = {}) {
     meta: { channel: o.channel ?? 'C1', thread_ts: o.thread_ts ?? '5.5', place: '#general', permalink: 'https://x/p' },
     origin: { channel: o.channel ?? 'C1', ts: '5.5' },
   })
-  return { ...slack, dir, out, t, call, task, jobs }
+  return { ...slack, dir, ledgers, out, t, call, task, jobs }
 }
 
 describe("a session's Kage tools", () => {
@@ -306,7 +308,7 @@ describe("a session's Kage tools", () => {
     const s = setup()
     s.t.onTask(s.task())
     await s.call('reply', { channel: 'C1', thread_ts: '5.5', text: 'just for you', private: true })
-    assert.match(readFileSync(join(s.dir, 'posted.tsv'), 'utf8'), /\tDBOT\t[^\t]+\tbot\tC1:5\.5\n/)
+    assert.match(s.ledgers.text('posted'), /\tDBOT\t[^\t]+\tbot\tC1:5\.5\n/)
   })
   test('a private reply goes into the DM thread the owner answered in, until a task comes from elsewhere', async () => {
     const s = setup()
@@ -327,7 +329,7 @@ describe("a session's Kage tools", () => {
     assert.match((await s.call('waiting', {})).text, /Open a PR\?/)
     s.t.onTask(s.task())
     assert.equal((await s.call('waiting', {})).text, 'nothing is waiting')
-    assert.match(readFileSync(join(s.dir, 'posted.tsv'), 'utf8'), /C1\t9\.1\tbot\tC1:5\.5\n/)
+    assert.match(s.ledgers.text('posted'), /C1\t9\.1\tbot\tC1:5\.5\n/)
   })
   test('a scheduled run in the thread does not answer its open question', async () => {
     const s = setup()
@@ -342,7 +344,7 @@ describe("a session's Kage tools", () => {
     const s = setup()
     s.t.onTask(s.task())
     s.t.onTask(s.task())
-    assert.doesNotMatch(readFileSync(join(s.dir, 'waiting.tsv'), { encoding: 'utf8', flag: 'a+' }), /answered/)
+    assert.doesNotMatch(s.ledgers.text('waiting'), /answered/)
   })
   test('away and back switch AFK on the owner\'s task only', async () => {
     const s = setup()

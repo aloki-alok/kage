@@ -3,14 +3,15 @@
 // SDK session can serve them in-process. One instance per session.
 import type { WebClient } from '@slack/web-api'
 import { randomBytes } from 'node:crypto'
-import { appendFileSync, mkdirSync, readFileSync, realpathSync, statSync } from 'node:fs'
+import { mkdirSync, readFileSync, realpathSync, statSync } from 'node:fs'
 import { basename, extname } from 'node:path'
 import { z } from 'zod'
 import { log } from '../config.ts'
 import { awayCommand, type AfkCommand } from '../core/afk.ts'
 import { nextRun, parseCron, REPLY, type Schedule } from '../core/cron.ts'
 import { plainName, teammateOf } from '../core/gate.ts'
-import { openWaiting, postedBy, tsvRow } from '../core/ledgers.ts'
+import { openWaiting, postedBy } from '../core/ledgers.ts'
+import type { Ledgers } from './ledger.ts'
 import { findSecret, layoutRefusal, safeReply, secretRefusal, splitForSlack } from '../core/outbound.ts'
 import type { Task } from './protocol.ts'
 
@@ -26,7 +27,8 @@ export function sessionTools(o: {
   bot: WebClient
   user: WebClient
   botDm: () => string                                      // the owner's DM with the bot
-  dir: string                                              // where the ledgers live
+  dir: string                                              // where sent files live
+  ledgers: Ledgers                                         // shared by every session (runtime/ledger.ts)
   send: (m: { type: 'mail' | 'wa' | 'voice'; text: string }) => boolean | void // email, WhatsApp and voice replies go through the hub; false: it is down
   memory: { own: string; owner: string }
   // This thread's schedules in the hub; each runtime reaches the hub its own way (a direct call in the
@@ -37,19 +39,11 @@ export function sessionTools(o: {
   afk?: (c: AfkCommand) => Promise<string>
 }) {
   const { title: Title, bot, user } = o
-  // Shared by every session, so all three are append-only.
-  const WAITING = `${o.dir}/waiting.tsv`
-  const PROD_LOG = `${o.dir}/prod-actions.tsv`
-  // Every message Kage posts, so it can later edit or delete its own and nothing else.
-  const POSTED = `${o.dir}/posted.tsv`
   // send_file sends only what was written in the thread's own folder: not any file on the disk, and
   // not a file another thread's task (an owner's, say) wrote.
   const filesOf = (channel: string, thread_ts: string) => `${o.dir}/files/${`${channel}_${thread_ts}`.replace(/[^\w.-]/g, '_')}`
-  // A ledger is a side record: a failed write is logged, never allowed to block a task or a reply.
-  const append = (file: string, cells: string[]) => {
-    try { appendFileSync(file, tsvRow([new Date().toISOString(), ...cells]), { mode: 0o600 }) } catch (e) { log('ledger write failed', file, e) }
-  }
-  const read = (file: string) => { try { return readFileSync(file, 'utf8') } catch { return '' } }
+  // posted: every message Kage posts, so it can later edit or delete its own and nothing else.
+  const { add: append, text: ledger } = o.ledgers
 
   // Conversations a live task came from: the only places a reply may go, besides the DM.
   const taskChannels = new Set<string>()
@@ -92,14 +86,14 @@ export function sessionTools(o: {
     for (const part of parts) {
       try {
         const r = await bot.chat.postMessage({ channel, thread_ts, text: part, unfurl_links: false })
-        append(POSTED, [channel, r.ts!, 'bot', key])
+        append('posted', [channel, r.ts!, 'bot', key])
         sent.push(r.ts!)
       } catch (e: any) {
         if (!['not_in_channel', 'channel_not_found'].includes(e?.data?.error)) throw e
         // The bot is not a member here (a DM, a private channel): post as the owner, marked with the name.
         // These posts carry no client_msg_id, so the gate never reads them back as tasks.
         const r = await user.chat.postMessage({ channel, thread_ts, text: `*${Title}:* ${part}`, unfurl_links: false })
-        append(POSTED, [channel, r.ts!, 'owner', key])
+        append('posted', [channel, r.ts!, 'owner', key])
         sent.push(r.ts!)
         via = `your account (${Title} is not in this conversation)`
       }
@@ -115,7 +109,7 @@ export function sessionTools(o: {
     if (tag !== undefined) {
       if (a.text === undefined) {
         await user.chat.delete({ channel: a.channel, ts: a.ts })
-        append(POSTED, [a.channel, a.ts, 'deleted'])
+        append('posted', [a.channel, a.ts, 'deleted'])
         sentForPeople.delete(`${a.channel}:${a.ts}`)
         return { text: 'deleted' }
       }
@@ -126,12 +120,12 @@ export function sessionTools(o: {
       return { text: 'edited' }
     }
     if (a.channel !== o.botDm() && !taskChannels.has(a.channel)) return { isError: true, text: `refused: no task in this session came from ${a.channel}` }
-    const by = postedBy(read(POSTED), a.channel, a.ts)
+    const by = postedBy(ledger('posted'), a.channel, a.ts)
     if (!by) return { isError: true, text: `refused: ${Title} did not post that message, or it is already deleted` }
     const client = by === 'bot' ? bot : user
     if (a.text === undefined) {
       await client.chat.delete({ channel: a.channel, ts: a.ts })
-      append(POSTED, [a.channel, a.ts, 'deleted'])
+      append('posted', [a.channel, a.ts, 'deleted'])
       return { text: 'deleted' }
     }
     const refusal = secretRefusal(a.text, { fromOwner: ping })
@@ -184,7 +178,7 @@ export function sessionTools(o: {
         for (const origin of unanswered.get(key) ?? []) react(origin.channel, origin.ts, emoji)
         if (a.mark !== 'question') unanswered.delete(key)
       }
-      if (a.waiting?.trim()) append(WAITING, ['open', key, links.get(key) ?? key, a.waiting])
+      if (a.waiting?.trim()) append('waiting', ['open', key, links.get(key) ?? key, a.waiting])
       return { text: `sent via ${via} (${at}; pass these to edit_message or delete_message)` }
     },
   }, {
@@ -232,7 +226,7 @@ export function sessionTools(o: {
         throw e
       }
       const r = await user.chat.postMessage({ channel: dm, text, unfurl_links: false })
-      append(POSTED, [dm, r.ts!, 'people'])
+      append('posted', [dm, r.ts!, 'people'])
       sentForPeople.set(`${dm}:${r.ts}`, tag)
       const link = await user.chat.getPermalink({ channel: dm, message_ts: r.ts! }).then(x => x.permalink ?? '').catch(() => '')
       return { text: `sent from the owner's account, marked ${Title}: ${link || dm} (channel ${dm}, ts ${r.ts}; pass these to edit_message or delete_message)` }
@@ -255,7 +249,7 @@ export function sessionTools(o: {
       const type = extname(real).toLowerCase()
       if (type !== '.csv' && type !== '.png') return { isError: true, text: 'refused: send a .csv (it opens in Excel and Google Sheets) or a .png' }
       // A file goes to the whole thread, so a secret in it is refused for everyone, owner included.
-      const csv = type === '.csv' ? read(real) : ''
+      const csv = type === '.csv' ? readFileSync(real, 'utf8') : ''
       const secret = findSecret(csv) || (/(^|,)\s*"?[^,\n]*(password|passwd|secret|token|api.?key)/i.test(csv.split('\n')[0]!) && 'password or key column')
       if (secret) return { isError: true, text: `refused: the file looks like it holds a ${secret}. Leave it out of the file.` }
       try {
@@ -278,7 +272,7 @@ export function sessionTools(o: {
     description: 'List every open question or offer, across all threads, that still waits on an answer.',
     shape: {},
     async run() {
-      const open = openWaiting(read(WAITING))
+      const open = openWaiting(ledger('waiting'))
       return { text: open.length ? open.map(i => `${i.when} ${i.link} ${i.what}`).join('\n') : 'nothing is waiting' }
     },
   }, {
@@ -294,8 +288,8 @@ export function sessionTools(o: {
     async run(args) {
       const p = args as { channel: string; thread_ts: string; what: string; command: string; result: string }
       const key = `${p.channel}:${p.thread_ts}`
-      append(PROD_LOG, [ownerTask.get(key) ? 'owner' : 'teammate', links.get(key) ?? key, p.what, p.command, p.result])
-      return { text: `logged to ${PROD_LOG}` }
+      append('prod-actions', [ownerTask.get(key) ? 'owner' : 'teammate', links.get(key) ?? key, p.what, p.command, p.result])
+      return { text: 'logged to the prod-actions ledger' }
     },
   }]
   // Schedules the hub keeps for this thread: they survive restarts and closed sessions, and end
@@ -384,7 +378,7 @@ export function sessionTools(o: {
       where = m.meta.permalink ? `<${m.meta.permalink}|${m.meta.place}>` : m.meta.place
       links.set(key, m.meta.permalink || m.meta.place)
       // A scheduled run is not the owner answering. A row only when something was open keeps the file to real answers.
-      if (!m.scheduled && openWaiting(read(WAITING)).some(i => i.thread === key)) append(WAITING, ['answered', key, '', ''])
+      if (!m.scheduled && openWaiting(ledger('waiting')).some(i => i.thread === key)) append('waiting', ['answered', key, '', ''])
     },
     // Ask the owner, in their DM, to approve one tool call. Rejects when the prompt did not post.
     async askOwner(p: { id: string; tool: string; description: string; preview: string }) {

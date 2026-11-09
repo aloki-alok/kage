@@ -58,7 +58,8 @@ export function schedulesIn(path: string, key?: string): Schedule[] {
 
 export function openStore(path: string) {
   const db = new DatabaseSync(path)
-  db.exec('pragma journal_mode = wal')
+  // The ledger table in this file has other writers (tmux panes, runtime/ledger.ts): wait for their lock, don't fail.
+  db.exec('pragma journal_mode = wal; pragma busy_timeout = 5000')
   db.exec(SCHEMA)
   const upsertConversation = db.prepare(`insert into conversations (key, connector, chat, thread, kind, agent_dm, place, first_seen, last_seen)
     values (?, ?, ?, ?, ?, ?, ?, ?, ?)

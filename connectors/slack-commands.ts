@@ -3,14 +3,13 @@
 import type { SocketModeClient } from '@slack/socket-mode'
 import type { WebClient } from '@slack/web-api'
 import { execFile } from 'node:child_process'
-import { appendFileSync } from 'node:fs'
 import { log } from '../config.ts'
 import { commandRequest, type CommandRequest } from '../core/commands.ts'
-import { tsvRow } from '../core/ledgers.ts'
 import { splitForSlack } from '../core/outbound.ts'
+import type { Ledgers } from '../runtime/ledger.ts'
 
 // ponytail: one run at a time on this Mac; move the handler to a server if the team leans on it.
-export function listenForCommands(socket: SocketModeClient, o: { user: WebClient; team: string; commands: Map<string, string>; logFile: string }) {
+export function listenForCommands(socket: SocketModeClient, o: { user: WebClient; team: string; commands: Map<string, string>; ledgers: Ledgers }) {
   let chain = Promise.resolve()
   socket.on('slash_commands', async ({ body, ack }) => {
     const r = body as CommandRequest & { response_url?: string }
@@ -21,7 +20,7 @@ export function listenForCommands(socket: SocketModeClient, o: { user: WebClient
     if (!who || who.is_restricted || who.is_ultra_restricted || who.is_stranger) return ack({ response_type: 'ephemeral', text: 'This command works only for full members of this workspace.' })
     const n = v.numbers.length
     await ack({ response_type: 'in_channel', text: `Looking up ${n} number${n > 1 ? 's' : ''}. This takes about ${Math.ceil((n * 6 + 15) / 60)} min, after any lookup already running.` })
-    try { appendFileSync(o.logFile, tsvRow([new Date().toISOString(), r.user_id, r.command, String(n)]), { mode: 0o600 }) } catch (e) { log('command log failed', e) }
+    o.ledgers.add('commands', [r.user_id!, r.command ?? '', String(n)])
     const post = (text: string) => fetch(r.response_url!, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ response_type: 'in_channel', text }) })
       .then(res => { if (!res.ok) log('command reply refused', res.status) })
     chain = chain.then(() => new Promise<void>(done => {

@@ -14,6 +14,7 @@ import type { ToSession } from './runtime/protocol.ts'
 import { senderOf, withoutInvisible } from './core/gate.ts'
 import { memoryDirs, senderFile } from './core/guards.ts'
 import { sessionTools } from './runtime/kage-tools.ts'
+import { openLedgers } from './runtime/ledger.ts'
 import { schedulesIn } from './runtime/store.ts'
 
 // Installed as a plugin, this server starts in every Claude Code session. Only the panes the
@@ -33,7 +34,7 @@ let router: Socket | undefined
 const unsentAsks: string[] = []   // approvals asked while the hub restarted: it learns them on reconnect
 // ponytail: no away or back tools in a pane (AFK lives in the hub process); add a socket message when panes need it.
 const kage = sessionTools({
-  title: Title, bot, user, botDm: () => botDm, dir: dirname(ENV_FILE),
+  title: Title, bot, user, botDm: () => botDm, dir: dirname(ENV_FILE), ledgers: openLedgers(dirname(ENV_FILE)),
   memory: memoryDirs(process.env.HOME!, ENV_FILE, env),
   send: m => { if (!router?.writable) return false; router.write(JSON.stringify(m) + '\n') },   // a dead socket loses it
   // Writes go through the hub, which files them under this pane's thread; reading the store is safe.

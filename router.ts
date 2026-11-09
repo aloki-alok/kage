@@ -8,7 +8,7 @@
 // server.ts is the other end for tmux panes only: the Kage channel inside each pane's Claude Code.
 import { execFileSync, spawn } from 'node:child_process'
 import { randomUUID } from 'node:crypto'
-import { appendFileSync, existsSync, mkdirSync, readFileSync, renameSync, statSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, readFileSync, renameSync, statSync, writeFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { dirname } from 'node:path'
 import { load, log } from './config.ts'
@@ -22,7 +22,7 @@ import { parseCommands } from './core/commands.ts'
 import { memoryDirs } from './core/guards.ts'
 import { placeFor, sessionKey, type Conversation, type Lane } from './core/conversations.ts'
 import { senderOf } from './core/gate.ts'
-import { dailyDue, lastTotals, openWaiting, staleWaiting, tsvRow, turnCost } from './core/ledgers.ts'
+import { dailyDue, lastTotals, openWaiting, staleWaiting, turnCost } from './core/ledgers.ts'
 import { dreamDue, dreamTask, threadsSince } from './core/dream.ts'
 import { retro, retroDue } from './core/retro.ts'
 import { Dispatcher, mixRunners } from './core/sessions.ts'
@@ -34,6 +34,7 @@ import { snapshotMemory } from './runtime/memory-snapshot.ts'
 import { sdkSessions } from './runtime/sdk-sessions.ts'
 import { listenForSessions, restoreHolds, routeReply } from './runtime/session-link.ts'
 import { openStore, type Inbox } from './runtime/store.ts'
+import { openLedgers } from './runtime/ledger.ts'
 import { claudeProject, tmuxPanes } from './runtime/tmux-panes.ts'
 import { codeStamp } from './runtime/code-stamp.ts'
 
@@ -54,6 +55,8 @@ try { COMMANDS = parseCommands(env.KAGE_COMMANDS || '') } catch (e) { log(String
 
 // One SQLite file holds every conversation seen and the session working on each (runtime/store.ts).
 const store = openStore(`${DIR}/kage.db`)
+// What Kage posted, waits on, spent and ran, in the same file (runtime/ledger.ts). Old .tsv files move in once.
+const ledgers = openLedgers(DIR)
 const placeOf = (key: string) => placeFor(k => store.conversation(k)?.place, key)
 // Every connector writes what it hears here before acknowledging it (runtime/store.ts, the inbox).
 const inbox: Inbox = { take: (source, connector, payload) => store.take(source, connector, payload, Date.now()), handled: source => store.handled(source), has: source => store.has(source) }
@@ -83,7 +86,7 @@ function phoneOwner(reason: string): Promise<string> {
 const slack = await connectSlack({
   dir: DIR, appToken: need('SLACK_APP_TOKEN'), bot, user, name: NAME, title: Title, teammates: TEAMMATES,
   hub: { deliver, verdict: (id, behavior) => d.verdict(id, { type: 'verdict', request_id: id, behavior }), status, heard: m => schedules.heard(m),
-    ...inbox },
+    posted: () => ledgers.text('posted'), ...inbox },
   // AFK mode is on unless KAGE_AFK=off. Its stand-in reads the owner's memory, read only.
   afk: env.KAGE_AFK === 'off' ? undefined : { memory: memoryDirs(process.env.HOME!, ENV_FILE, env).owner, model: env.KAGE_AFK_MODEL || 'sonnet', call: phoneOwner },
 })
@@ -122,14 +125,12 @@ const sdkLib = env.KAGE_RUNTIME === 'tmux' ? undefined : await (async () => ({
   return undefined
 })
 // What each turn cost (core/ledgers.ts): `kage cost` reads it.
-const COSTS = `${DIR}/costs.tsv`
-const RUNS = `${DIR}/runs.tsv`
-const costTotals = lastTotals(existsSync(COSTS) ? readFileSync(COSTS, 'utf8') : '')
+const costTotals = lastTotals(ledgers.text('costs'))
 const sdk = sdkLib ? sdkSessions({
   sdk: sdkLib.lib,
   hub: () => d,
   tools: (key, send) => sessionTools({
-    title: Title, bot, user, botDm: () => slack.ids.botDm, dir: DIR, send, memory: MEM,
+    title: Title, bot, user, botDm: () => slack.ids.botDm, dir: DIR, ledgers, send, memory: MEM,
     schedules: { add: j => schedules.add(key, j, Date.now()), remove: id => schedules.remove(key, id), list: () => schedules.list(key) },
     afk: slack.afk?.command,
   }),
@@ -147,7 +148,7 @@ const sdk = sdkLib ? sdkSessions({
     const usd = turnCost(costTotals.get(key), total, resumed)
     if (usd === undefined) return
     costTotals.set(key, total)
-    try { appendFileSync(COSTS, tsvRow([new Date().toISOString(), key, String(usd), String(total)]), { mode: 0o600 }) } catch (e) { log('cost ledger', e) }
+    ledgers.add('costs', [key, String(usd), String(total)])
   },
 }) : undefined
 if (sdk) mkdirSync(MEM.own, { recursive: true })
@@ -176,7 +177,7 @@ const schedules = scheduler({
   deliver: (key, task) => { noteTrust(key, task); return d.task(key, task, Date.now()) },
   ready: key => d.ready(key),
   trusted: key => store.trust(key) === true,
-  ran: (j, at) => { try { appendFileSync(RUNS, tsvRow([new Date(at).toISOString(), j.id, j.key]), { mode: 0o600 }) } catch (e) { log('run ledger', e) } },
+  ran: j => ledgers.add('runs', [j.id, j.key]),
 })
 // CronCreate jobs moved out of stopped tmux panes (cli/export-crons.ts): adopted once, then retired.
 // Only when no pane survived this start: a pane still running would run each job a second time.
@@ -197,12 +198,11 @@ else if (existsSync(CRONS)) {
 }
 
 const readFile = (f: string) => { try { return readFileSync(f, 'utf8') } catch { return '' } }
-const WAITING = `${DIR}/waiting.tsv`
 function status(): string {
   const s = d.status(Date.now())
   const min = (ms: number) => `${Math.round(ms / 60_000)} min`
   const lines = s.live.map(l => `• ${placeOf(l.key)}: ${l.state}${l.state === 'quiet' ? ` for ${min(l.quietMs)}` : ''}`)
-  const open = openWaiting(readFile(WAITING)).length
+  const open = openWaiting(ledgers.text('waiting')).length
   return [
     `*${s.live.length} of ${MAX} sessions*${s.waiting.length ? `, ${s.waiting.length} waiting for a slot` : ''}`,
     ...lines,
@@ -217,7 +217,7 @@ const DAILY = `${DIR}/daily-sent`
 async function dailyNote(now: number) {
   const today = dailyDue(now, readFile(DAILY).trim() || undefined)
   if (!today) return
-  const stale = staleWaiting(readFile(WAITING), now, 24 * 3600_000)
+  const stale = staleWaiting(ledgers.text('waiting'), now, 24 * 3600_000)
   const sent = !stale.length || await slack.notifyOwner([`*Still waiting on you (${stale.length})*`,
     ...stale.map(i => `• ${i.link ? `<${i.link}|${i.what}>` : i.what} (since ${i.when.slice(0, 10)})`)].join('\n'))
   // Marked only once the note went out (or there was nothing to say), so a failed post retries.
@@ -228,7 +228,7 @@ const RETRO = `${DIR}/retro-sent`
 async function weeklyRetro(now: number) {
   const last = Number(readFile(RETRO)) || undefined
   if (!retroDue(now, last)) return
-  const lines = retro({ schedules: store.schedules(), placeOf, runs: readFile(RUNS), posted: readFile(`${DIR}/posted.tsv`), costs: readFile(COSTS), costTracked: !!sdk, now })
+  const lines = retro({ schedules: store.schedules(), placeOf, runs: ledgers.text('runs'), posted: ledgers.text('posted'), costs: ledgers.text('costs'), costTracked: !!sdk, now })
   const sent = !lines.length || await slack.notifyOwner(['*Weekly retro*, from what Kage did this week.', ...lines].join('\n'))
   if (sent) writeFileSync(RETRO, String(now), { mode: 0o600 })
 }
@@ -276,7 +276,7 @@ const voice = connectVoice({
   slot: key => d.hasFreeSlot(key),   // a call never evicts or queues ahead of the owner's threads
   failed: task => void slack.notifyOwner(`Could not start a session for ${task.meta.place}.`),
 })
-listenForCommands(slack.socket, { user, team: slack.ids.team!, commands: COMMANDS, logFile: `${DIR}/commands.tsv` })
+listenForCommands(slack.socket, { user, team: slack.ids.team!, commands: COMMANDS, ledgers })
 
 // WhatsApp is on when Kage's WAHA config exists, unless KAGE_WHATSAPP=off (the kill switch).
 const whatsapp = env.KAGE_WHATSAPP !== 'off' && existsSync(`${DIR}/waha/.env`) ? startWhatsApp({
