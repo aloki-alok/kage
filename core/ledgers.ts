@@ -1,9 +1,9 @@
-// Append-only ledgers on disk: rows, open questions, Kage's own posts.
+// Reading the ledgers (rows in kage.db, runtime/ledger.ts, read back as TSV): open questions, Kage's own posts, costs.
 
 // One ledger row. Cells never hold a tab or newline, so a row is always one line.
 export const tsvRow = (cells: (string | undefined)[]) => cells.map(c => (c ?? '').replace(/[\t\r\n]+/g, ' ')).join('\t') + '\n'
 
-// waiting.tsv is append-only (every thread's pane writes it): when, open|answered, thread, link, what.
+// The waiting ledger (runtime/ledger.ts; every thread's pane writes it): when, open|answered, thread, link, what.
 // A question stays open until its thread gets a new task.
 // ponytail: any new task closes it, even from someone else in the thread; match the asker if that bites.
 export function openWaiting(tsv: string): { when: string; thread: string; link: string; what: string }[] {
@@ -16,7 +16,7 @@ export function openWaiting(tsv: string): { when: string; thread: string; link: 
   return [...open.values()].flat()
 }
 
-// posted.tsv is append-only: when, channel, ts, bot|owner|deleted, the session key that posted (rows before 11-06 have none). The token a message went out
+// The posted ledger: when, channel, ts, bot|owner|deleted, the session key that posted (rows before 11-06 have none). The token a message went out
 // with is the one that may change it; anything not on the list is someone else's.
 export function postedBy(tsv: string, channel: string, ts: string): 'bot' | 'owner' | undefined {
   let by: string | undefined
@@ -29,7 +29,7 @@ export function postedBy(tsv: string, channel: string, ts: string): 'bot' | 'own
 
 // The thread ("C1:1.1") whose task posted this message in the owner's DM (a private ask), so the
 // owner's answer under it goes back there. None for the DM's own threads.
-// ponytail: posted.tsv logs the thread, not the lane, so a side lane's ask is answered in the main lane.
+// ponytail: the posted ledger logs the thread, not the lane, so a side lane's ask is answered in the main lane.
 export function askedFrom(tsv: string, dm: string, ts: string): string | undefined {
   let key: string | undefined
   for (const line of tsv.split('\n')) {
@@ -51,7 +51,7 @@ export function dailyDue(now: number, lastSent: string | undefined): string | un
   return t.getUTCHours() >= 5 && lastSent !== today ? today : undefined
 }
 
-// costs.tsv is append-only: when, session key, this turn's USD, the session's running total. The
+// The costs ledger: when, session key, this turn's USD, the session's running total. The
 // Agent SDK reports a running total per Claude conversation (resumes carry it on), never a turn's
 // own cost, so a turn is what the total grew by. A total that went down started over (/clear).
 // ponytail: a /clear followed by a turn dearer than the old total reads as growth; the total alone can't tell.

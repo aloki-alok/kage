@@ -19,9 +19,9 @@ const rows = (tsv: string, since: number) => tsv.split('\n').map(l => l.split('\
 export function retro(o: {
   schedules: Schedule[]
   placeOf: (key: string) => string
-  runs: string     // runs.tsv: when, schedule id, session key (one row per run the scheduler handed over)
-  posted: string   // posted.tsv: when, channel, ts, bot|owner|people|deleted, the session key that posted
-  costs: string    // costs.tsv
+  runs: string     // the runs ledger: when, schedule id, session key (one row per run the scheduler handed over)
+  posted: string   // the posted ledger: when, channel, ts, bot|owner|people|deleted, the session key that posted
+  costs: string    // the costs ledger
   costTracked?: boolean   // false when threads run as tmux panes: only the SDK runner reports cost
   now: number
 }): string[] {

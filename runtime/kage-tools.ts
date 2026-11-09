@@ -55,7 +55,7 @@ export function sessionTools(o: {
   // channel:thread_ts -> the teammate who asked, when it was not the owner.
   const askers = new Map<string, { id: string; name: string } | undefined>()
   // channel:ts -> the tag of each message_people post from this session ('' on the owner's task).
-  // Only this session may change them, and an edit keeps the tag: posted.tsv marks them 'people',
+  // Only this session may change them, and an edit keeps the tag: the posted ledger marks them 'people',
   // which postedBy never matches, so other sessions are refused.
   const sentForPeople = new Map<string, string>()
   // channel:thread_ts -> the DM thread the owner wrote the latest task in, so a private reply answers there, not as a new DM message.
