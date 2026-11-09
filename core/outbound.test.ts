@@ -1,6 +1,24 @@
 import { describe, test } from 'node:test'
 import assert from 'node:assert/strict'
-import { findSecret, layoutRefusal, secretRefusal, splitForSlack } from './outbound.ts'
+import { findSecret, layoutRefusal, safeReply, secretRefusal, splitForSlack } from './outbound.ts'
+
+describe('person mentions over Slack always use the user id, so they highlight', () => {
+  test('a person mention stays <@U…> so Slack renders it as a real mention', () => {
+    assert.equal(safeReply('Handing this to <@UTEST0001>, over to you.'), 'Handing this to <@UTEST0001>, over to you.')
+  })
+  test('a labelled mention <@U…|name> is kept too', () => {
+    assert.equal(safeReply('ping <@UTEST0001|sam>'), 'ping <@UTEST0001|sam>')
+  })
+  test('crowd pings never go out: @channel, @here, @everyone lose the tag', () => {
+    assert.equal(safeReply('<!channel> heads up'), 'channel heads up')
+    assert.equal(safeReply('<!here> quick note'), 'here quick note')
+    assert.equal(safeReply('<!everyone|@everyone> all'), 'everyone all')
+  })
+  test('a user group is a crowd too: it drops to a plain label', () => {
+    assert.equal(safeReply('<!subteam^S123|@devs> look'), '@devs look')
+    assert.equal(safeReply('<!subteam^S123> look'), '@group look')
+  })
+})
 
 describe('a long table split across messages stays a table', () => {
   const rows = Array.from({ length: 60 }, (_, i) => `+1555010${String(i).padStart(4, '0')}  Org ${i}`)

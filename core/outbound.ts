@@ -1,13 +1,11 @@
-// What may go out: crowd and person mentions, secrets, Slack-sized parts.
+// What may go out: crowd mentions and Slack-sized parts (secrets are checked separately).
 
-// Replies never ping a crowd, whatever the model writes. A person is pinged only when `ping` is
-// set (the owner's own task); otherwise the mention becomes a plain @name.
-export function safeReply(text: string, o: { ping?: boolean; names?: Record<string, string> } = {}): string {
-  // User groups (<!subteam^S1|@devs>) are crowds too.
-  const out = text.replace(/<!(channel|here|everyone)[^>]*>/g, '$1')
+// A person mention keeps its <@U…> form, so Slack highlights it and the person sees it. A crowd
+// ping never goes out, whatever the model writes: @channel/@here/@everyone and user groups
+// (<!subteam^S1|@devs>) drop to plain text.
+export function safeReply(text: string): string {
+  return text.replace(/<!(channel|here|everyone)[^>]*>/g, '$1')
     .replace(/<!subteam\^[A-Z0-9]+(?:\|@?([^>]*))?>/g, (_, label?: string) => `@${label || 'group'}`)
-  // <@U1> and the labelled <@U1|bob> both notify.
-  return o.ping ? out : out.replace(/<@([A-Z0-9]+)(?:\|[^>]*)?>/g, (_, id: string) => `@${o.names?.[id] ?? id}`)
 }
 
 // Text rules alone do not stop a secret reaching a thread, so the reply tool checks. A hit sends the reply back with a hint to use private=true; a false alarm costs one retry.

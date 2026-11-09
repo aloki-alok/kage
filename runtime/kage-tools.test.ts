@@ -120,14 +120,14 @@ describe("a session's Kage tools", () => {
     assert.equal((await s.call('unschedule', { id: s.jobs[0].id })).isError, undefined)
     assert.deepEqual(s.jobs, [])
   })
-  test("only the owner's task pings; a teammate's mention shows the name", async () => {
+  test('a person mention keeps its <@id> on any task, so Slack highlights it', async () => {
     const s = setup()
     s.t.onTask(s.task({ fromOwner: false }))
     await s.call('reply', { channel: 'C1', thread_ts: '5.5', text: 'ask <@U1>' })
     s.t.onTask(s.task({ channel: 'C2' }))
     await s.call('reply', { channel: 'C2', thread_ts: '5.5', text: 'ask <@U1>' })
-    assert.ok(s.calls.includes('bot post C1 ask @Sam'))
-    assert.ok(s.calls.includes('bot post C2 ask <@U1>'))
+    assert.ok(s.calls.includes('bot post C1 ask <@U1>'))   // teammate task
+    assert.ok(s.calls.includes('bot post C2 ask <@U1>'))   // owner task
   })
   test('a secret never goes to a thread on a teammate task', async () => {
     const s = setup()
