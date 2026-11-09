@@ -12,6 +12,7 @@ import { noChannelTag } from '../core/gate.ts'
 import { githubEvent, signedByGithub } from '../core/github.ts'
 import type { Delivery } from '../core/sessions.ts'
 import type { Task } from '../runtime/protocol.ts'
+import type { Inbox } from '../runtime/store.ts'
 
 const MAX_BODY = 1_000_000   // GitHub caps a delivery at 25 MB; the events read here are far smaller
 
@@ -21,6 +22,7 @@ export function connectGithub(o: {
   deliver: (c: Conversation, task: Task, place: string) => Delivery
   notify: (text: string) => void                                         // the owner's DM, plain
   perHour: number                                                         // events that may start work in an hour
+  inbox: Inbox
 }) {
 
   // One event at a time, so two quick events on a new pull request open one thread, not two.
@@ -77,7 +79,12 @@ export function connectGithub(o: {
     return true
   }
 
-  const seen = new Set<string>()
+  // A failed event stays unhandled, so the next start tries it again.
+  const run = async (type: string, body: string, source?: string) => {
+    const took = await handle(type, body)
+    if (source) o.inbox.handled(source)
+    return took
+  }
   const server = createServer((req, res) => {
     if (req.method !== 'POST' || req.url !== '/github') { res.writeHead(404).end(); return }
     // Bytes first, decoded once: a character split across two chunks must not break the signature.
@@ -90,15 +97,25 @@ export function connectGithub(o: {
     })
     req.on('end', () => {
       const body = Buffer.concat(chunks).toString('utf8')
-      // GitHub sends a delivery again when it saw no answer: the same id runs once.
-      const id = String(req.headers['x-github-delivery'] ?? '')
-      if (id && seen.has(id)) { res.writeHead(202).end(); return }
       if (!signedByGithub(o.secret, body, req.headers['x-hub-signature-256'] as string | undefined)) { res.writeHead(401).end(); return }
-      handle(String(req.headers['x-github-event'] ?? ''), body)
-        .then(took => { if (id) { seen.add(id); if (seen.size > 1000) seen.clear() } res.writeHead(took ? 202 : 204).end() })
-        .catch(e => { log('github event failed', e); res.writeHead(500).end() })
+      // Into the inbox first: GitHub does not resend a delivery by itself, so a hub that dies while
+      // handling it replays it from the store on the next start (router.ts). A redelivered id runs once.
+      const type = String(req.headers['x-github-event'] ?? '')
+      const id = String(req.headers['x-github-delivery'] ?? '')
+      const source = id ? `github:${id}` : undefined
+      if (source && !o.inbox.take(source, 'github', JSON.stringify({ type, body }))) { res.writeHead(202).end(); return }
+      run(type, body, source)
+        .then(took => res.writeHead(took ? 202 : 204).end())
+        .catch(e => {
+          // GitHub will not send it again, and the store replays it only on a start within 10 minutes.
+          log('github event failed', e)
+          o.notify(`A GitHub event failed here (${String(e).slice(0, 120)}). It runs again if Kage restarts within 10 minutes; otherwise redeliver it from the webhook's page.`)
+          res.writeHead(500).end()
+        })
     })
   })
   const listening = new Promise<number>(ok => server.listen(o.port, '127.0.0.1', () => ok((server.address() as AddressInfo).port)))
-  return { listening, close: () => server.close() }
+  // A delivery the last run took but never handled, from the inbox.
+  const replay = async (source: string, payload: string) => { const { type, body } = JSON.parse(payload); return run(type, body, source) }
+  return { listening, replay, close: () => server.close() }
 }
