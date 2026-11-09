@@ -1,5 +1,6 @@
 import { describe, test } from 'node:test'
 import assert from 'node:assert/strict'
+import { DatabaseSync } from 'node:sqlite'
 import { openStore } from './store.ts'
 
 const DM = 'DBOT00001'
@@ -75,4 +76,48 @@ test('imported threads keep their key as the name until a lookup names them', ()
   s.name('C1:5.5', '#ops')
   assert.deepEqual(s.unnamed(), [])
   assert.equal(s.conversation('C1:5.5')!.place, '#ops')
+})
+
+describe('the inbox: every message the hub hears, written before it is acknowledged', () => {
+  test('a source id is taken once: a redelivery after a restart is a duplicate', () => {
+    const path = `${process.env.TMPDIR ?? '/tmp'}/kage-inbox-${process.pid}-${Date.now()}.db`
+    const a = openStore(path)
+    assert.equal(a.take('slack:C1:5.5', 'slack', '{"ts":"5.5"}', 100), true)
+    assert.equal(a.take('slack:C1:5.5', 'slack', '{"ts":"5.5"}', 101), false)
+    a.close()
+    assert.equal(openStore(path).take('slack:C1:5.5', 'slack', '{"ts":"5.5"}', 200), false)
+  })
+  test('a message taken but never handled comes back on the next start, once handled it does not', () => {
+    const s = openStore(':memory:')
+    s.take('slack:C1:1.1', 'slack', 'one', 100)
+    s.take('github:abc', 'github', 'two', 110)
+    s.take('slack:C1:2.2', 'slack', 'three', 120)
+    s.handled('slack:C1:1.1')
+    assert.deepEqual(s.unhandled(0), [{ source: 'github:abc', connector: 'github', payload: 'two', at: 110 }, { source: 'slack:C1:2.2', connector: 'slack', payload: 'three', at: 120 }])
+  })
+  test('a message too old to replay is marked handled instead, so it never comes back', () => {
+    const s = openStore(':memory:')
+    s.take('slack:C1:1.1', 'slack', 'old', 100)
+    s.take('slack:C1:2.2', 'slack', 'new', 500)
+    assert.deepEqual(s.unhandled(300).map(r => r.source), ['slack:C1:2.2'])
+    assert.deepEqual(s.unhandled(0).map(r => r.source), ['slack:C1:2.2'])
+  })
+  test('a handled message keeps only its source id: other people\'s text does not stay in the store', () => {
+    const path = `${process.env.TMPDIR ?? '/tmp'}/kage-inbox-text-${process.pid}-${Date.now()}.db`
+    const s = openStore(path)
+    s.take('slack:C1:1.1', 'slack', 'secret text', 100)
+    s.handled('slack:C1:1.1')
+    assert.equal(s.take('slack:C1:1.1', 'slack', 'secret text', 101), false)
+    s.close()
+    const raw = new DatabaseSync(path, { readOnly: true })
+    assert.deepEqual({ ...raw.prepare('select count(*) n from inbox where payload is not null').get() }, { n: 0 })
+  })
+  test('source ids older than the keep window are dropped', () => {
+    const s = openStore(':memory:')
+    s.take('a', 'slack', 'x', 100); s.handled('a')
+    s.take('b', 'slack', 'y', 900); s.handled('b')
+    s.prune(500)
+    assert.equal(s.take('a', 'slack', 'x', 1000), true)
+    assert.equal(s.take('b', 'slack', 'y', 1000), false)
+  })
 })

@@ -24,6 +24,20 @@ export type Hub = {
   status(): string
   // Someone other than the owner wrote without starting a task: wakes the reply watches on that conversation (runtime/scheduler.ts).
   heard(m: { chat: string; thread?: string; quoted: string }): void
+  // The inbox (runtime/store.ts): take is false for a source id heard before; handled drops the stored text.
+  take(source: string, connector: string, payload: string): boolean
+  handled(source: string): void
+}
+
+// Into the inbox before the ack: Slack sends again only what was not acked, so a crash after the
+// write is replayed from the store on the next start (router.ts), and a redelivery runs once.
+// A failed write throws before the ack, so Slack sends the event again.
+export async function intake(m: SlackMessage, ack: () => Promise<void>, hub: Pick<Hub, 'take'>, hear: (m: SlackMessage, source: string) => Promise<void>) {
+  // No channel or ts gives no id to catch a repeat by: such an event runs as heard, unrecorded.
+  const source = m.channel && m.ts ? `slack:${m.channel}:${m.ts}` : undefined
+  const fresh = !source || hub.take(source, 'slack', JSON.stringify(m))
+  await ack()
+  if (fresh) await hear(m, source ?? '')
 }
 
 export async function connectSlack(o: { dir: string; appToken: string; bot: WebClient; user: WebClient; name: string; title: string; teammates: string[]; hub: Hub
@@ -92,14 +106,7 @@ export async function connectSlack(o: { dir: string; appToken: string; bot: WebC
   // posted.tsv: every message Kage posted, with the thread whose task posted it (runtime/kage-tools.ts post).
   const readPosted = () => { try { return readFileSync(`${o.dir}/posted.tsv`, 'utf8') } catch { return '' } }
 
-  // Socket Mode may redeliver; each Slack message becomes at most one task.
-  const seen = new Set<string>()
   async function onMessage(m: SlackMessage) {
-    const seenKey = `${m.channel}:${m.ts}`
-    if (seen.has(seenKey)) return
-    seen.add(seenKey)
-    if (seen.size > 5000) seen.clear()
-
     // AFK sees every message: it watches threads that mention the owner, and mutes threads the owner types in.
     afk?.heard(m)
     const t = classify(m, ids, await cardOf(m))
@@ -172,16 +179,18 @@ export async function connectSlack(o: { dir: string; appToken: string; bot: WebC
     try { appendFileSync(`${o.dir}/canvas-events.jsonl`, JSON.stringify({ kind, at: new Date().toISOString(), e }) + '\n', { mode: 0o600 }) } catch {}
   }
   socket.on('app_mention', async ({ event, ack }) => { await ack(); recordCanvas('app_mention', event) })
-  socket.on('message', async ({ event, ack }) => {
-    await ack()
-    if ((event as { subtype?: string }).subtype === 'document_mention' || (event as { files?: { filetype?: string }[] }).files?.some(f => f.filetype === 'quip' || f.filetype === 'canvas')) recordCanvas('message', event)
-    const m = event as SlackMessage
+  async function hear(m: SlackMessage, source: string) {
     const k = m.channel ? sessionKey(slackConversation(m, ids.botDm)) : ''
     const next = (queue.get(k) ?? Promise.resolve()).then(() => onMessage(m)).catch(e => log('message handling failed', e))
     queue.set(k, next)
     await next
+    if (source) o.hub.handled(source)
     if (queue.get(k) === next) queue.delete(k)
-  })
+  }
+  socket.on('message', ({ event, ack }) => intake(event as SlackMessage, ack, o.hub, (m, source) => {
+    if ((m as { subtype?: string }).subtype === 'document_mention' || (m as { files?: { filetype?: string }[] }).files?.some(f => f.filetype === 'quip' || f.filetype === 'canvas')) recordCanvas('message', m)
+    return hear(m, source)
+  }))
 
   // The client reconnects on its own; this catches the times it gives up (core/socket-watch.ts).
   const watch = socketWatch({ downMs: 3 * 60_000 })
@@ -206,5 +215,7 @@ export async function connectSlack(o: { dir: string; appToken: string; bot: WebC
     if (v === 'restart and tell') notifyOwner('Slack has not reconnected for 6 minutes, so I may miss tags. I keep retrying. If it lasts, run `kage logs` on the Mac.')
   }, 30_000).unref()
 
-  return { ids, ownerName, botUser: botAuth.user, socket, failed, notifyOwner, placeOf, afk, start: () => socket.start() }
+  // A message the last run took but never handled, from the inbox. It runs as if just heard.
+  const replay = (source: string, payload: string) => hear(JSON.parse(payload) as SlackMessage, source)
+  return { ids, ownerName, botUser: botAuth.user, socket, failed, notifyOwner, placeOf, afk, replay, start: () => socket.start() }
 }
