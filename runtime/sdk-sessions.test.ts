@@ -7,6 +7,7 @@ import { createSdkMcpServer, tool } from '@anthropic-ai/claude-agent-sdk'
 import { Dispatcher } from '../core/sessions.ts'
 import { sessionTools } from './kage-tools.ts'
 import type { Task, ToSession } from './protocol.ts'
+import { openLedgers } from './ledger.ts'
 import { sdkSessions } from './sdk-sessions.ts'
 
 // A fake Agent SDK: each query() records its options and the user messages it reads, and the test
@@ -68,7 +69,7 @@ function setup(o: { transcript?: boolean; silent?: boolean; dmFails?: boolean } 
   const s = sdkSessions({
     sdk: { query: sdk.query as any, createSdkMcpServer: (c => { servers.push(c); return createSdkMcpServer(c) }) as typeof createSdkMcpServer, tool },
     hub: () => d,
-    tools: (_key, send) => sessionTools({ title: 'Kage', bot: slack as any, user: slack as any, botDm: () => 'DBOT', dir, send, memory: { own: '/own', owner: '/owner' } }),
+    tools: (_key, send) => sessionTools({ title: 'Kage', bot: slack as any, user: slack as any, botDm: () => 'DBOT', dir, ledgers: openLedgers(dir), send, memory: { own: '/own', owner: '/owner' } }),
     hasTranscript: () => o.transcript ?? false,
     toHub: () => {},
     options: { cwd: '/home', settingSources: ['user'] },

@@ -2,7 +2,7 @@
 // can be only one). It hears through the owner's user token, passes each message through the gate,
 // and turns a tag into a Task for the hub. Reactions on the tagged message show its state.
 import { SocketModeClient, LogLevel } from '@slack/socket-mode'
-import { appendFileSync, readFileSync, writeFileSync } from 'node:fs'
+import { appendFileSync, writeFileSync } from 'node:fs'
 import type { WebClient } from '@slack/web-api'
 import { log, logger } from '../config.ts'
 import { cardRequestId, classify, plainName, quoteMessage, taskLine, type Ids } from '../core/gate.ts'
@@ -25,6 +25,8 @@ export type Hub = {
   status(): string
   // Someone other than the owner wrote without starting a task: wakes the reply watches on that conversation (runtime/scheduler.ts).
   heard(m: { chat: string; thread?: string; quoted: string }): void
+  // The posted ledger: every message Kage posted, with the thread whose task posted it (runtime/kage-tools.ts).
+  posted(): string
 } & Inbox
 
 // Into the inbox before the ack: Slack sends again only what was not acked, so a crash after the
@@ -101,8 +103,6 @@ export async function connectSlack(o: { dir: string; appToken: string; bot: WebC
     return parent?.ts === m.thread_ts && parent.user === ids.bot ? cardRequestId(parent.text ?? '') : undefined
   }
 
-  // posted.tsv: every message Kage posted, with the thread whose task posted it (runtime/kage-tools.ts post).
-  const readPosted = () => { try { return readFileSync(`${o.dir}/posted.tsv`, 'utf8') } catch { return '' } }
 
   async function onMessage(m: SlackMessage) {
     // AFK sees every message: it watches threads that mention the owner, and mutes threads the owner types in.
@@ -132,7 +132,7 @@ export async function connectSlack(o: { dir: string; appToken: string; bot: WebC
     react(m.channel, m.ts, PICKED_UP)
     // The owner answering under a private ask: the thread that asked takes it, not a new DM session.
     const askedKey = m.channel === ids.botDm && m.thread_ts && m.thread_ts !== m.ts
-      ? askedFrom(readPosted(), ids.botDm, m.thread_ts) : undefined
+      ? askedFrom(o.hub.posted(), ids.botDm, m.thread_ts) : undefined
     const asked = askedKey ? parseSessionKey(askedKey, ids.botDm)?.conversation : undefined
     const [place, convo, link] = await Promise.all([
       placeOf(asked?.chat ?? m.channel),

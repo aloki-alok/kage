@@ -4,6 +4,7 @@
 import { existsSync, readFileSync } from 'node:fs'
 import { DIR, ENV_FILE, placeNamer } from './home.ts'
 import { spendSince } from '../core/ledgers.ts'
+import { openLedgers } from '../runtime/ledger.ts'
 
 // Only the Agent SDK runner reports what a turn cost. Say so, so empty or old numbers do not read as $0.
 if (/^\s*KAGE_RUNTIME\s*=\s*["']?tmux/m.test(existsSync(ENV_FILE) ? readFileSync(ENV_FILE, 'utf8') : '')) {
@@ -12,9 +13,9 @@ if (/^\s*KAGE_RUNTIME\s*=\s*["']?tmux/m.test(existsSync(ENV_FILE) ? readFileSync
 
 const days = Number(process.argv[2] ?? 1)
 if (!(days > 0)) { console.error('kage cost takes a number of days, like kage cost 7'); process.exit(1) }
-const tsv = existsSync(`${DIR}/costs.tsv`) ? readFileSync(`${DIR}/costs.tsv`, 'utf8') : ''
+const tsv = openLedgers(DIR).text('costs')
 const rows = spendSince(tsv, Date.now() - days * 24 * 3600_000)
-if (!rows.length) { console.log(`No turns in the last ${days} day${days === 1 ? '' : 's'}. The hub adds a line to ${DIR}/costs.tsv after each SDK turn.`); process.exit(0) }
+if (!rows.length) { console.log(`No turns in the last ${days} day${days === 1 ? '' : 's'}. The hub records each SDK turn's cost in ${DIR}/kage.db.`); process.exit(0) }
 const place = placeNamer()
 const total = rows.reduce((a, r) => a + r.usd, 0)
 const turns = rows.reduce((a, r) => a + r.turns, 0)
