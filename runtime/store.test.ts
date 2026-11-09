@@ -1,5 +1,7 @@
 import { describe, test } from 'node:test'
 import assert from 'node:assert/strict'
+import { existsSync, mkdtempSync, readdirSync, writeFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
 import { DatabaseSync } from 'node:sqlite'
 import { openStore } from './store.ts'
 
@@ -127,5 +129,46 @@ describe('the inbox: every message the hub hears, written before it is acknowled
     s.prune(500)
     assert.equal(s.take('a', 'slack', 'x', 1000), true)
     assert.equal(s.take('b', 'slack', 'y', 1000), false)
+  })
+})
+
+describe('saved state: what a connector keeps across a restart (AFK, GitHub and mail threads)', () => {
+  const tmp = () => mkdtempSync(`${tmpdir()}/kage-state-`)
+  test('a saved value reads back after a restart, and undefined removes it', () => {
+    const path = `${tmp()}/kage.db`
+    const a = openStore(path)
+    assert.equal(a.load('afk'), undefined)
+    a.save('afk', { until: 5, watch: { 'C1:5.5': 1 } })
+    a.close()
+    const b = openStore(path)
+    assert.deepEqual(b.load('afk'), { until: 5, watch: { 'C1:5.5': 1 } })
+    b.save('afk', undefined)
+    assert.equal(b.load('afk'), undefined)
+  })
+  test('an old JSON file moves in once and is kept beside as .imported', () => {
+    const dir = tmp()
+    writeFileSync(`${dir}/github-threads.json`, '{"acme/app#12":"100.1"}')
+    const s = openStore(':memory:')
+    s.importState({ 'github-threads': `${dir}/github-threads.json` })
+    assert.deepEqual(s.load('github-threads'), { 'acme/app#12': '100.1' })
+    assert.equal(existsSync(`${dir}/github-threads.json`), false)
+    assert.equal(readdirSync(dir).filter(f => f.startsWith('github-threads.json.imported-')).length, 1)
+  })
+  test('a row already saved wins over a file left by a crash, and the file is cleared', () => {
+    const dir = tmp()
+    const s = openStore(':memory:')
+    s.save('afk', { until: 9 })
+    writeFileSync(`${dir}/afk.json`, '{"until":1}')
+    s.importState({ afk: `${dir}/afk.json` })
+    assert.deepEqual(s.load('afk'), { until: 9 })
+    assert.equal(existsSync(`${dir}/afk.json`), false)
+  })
+  test('a file that is not JSON is left where it is, and nothing is saved', () => {
+    const dir = tmp()
+    writeFileSync(`${dir}/mail-threads.json`, '{"half')
+    const s = openStore(':memory:')
+    s.importState({ 'mail-threads': `${dir}/mail-threads.json` })
+    assert.equal(s.load('mail-threads'), undefined)
+    assert.equal(existsSync(`${dir}/mail-threads.json`), true)
   })
 })

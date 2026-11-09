@@ -1,6 +1,7 @@
 // The hub's store: one SQLite file (Node's built-in sqlite) holding every conversation Kage has
-// seen, the Claude session id working on each, and every message heard (the inbox). The hub is the only
-// writer of these tables. tmux panes also write the ledger table in the same file (runtime/ledger.ts).
+// seen, the Claude session id working on each, every message heard (the inbox), and what connectors
+// keep across a restart (state). The hub is the only writer of these tables. tmux panes also write the ledger table in the same file (runtime/ledger.ts).
+import { existsSync, readFileSync, renameSync } from 'node:fs'
 import { DatabaseSync } from 'node:sqlite'
 import { parseSessionKey, type Conversation } from '../core/conversations.ts'
 import type { Schedule } from '../core/cron.ts'
@@ -32,6 +33,11 @@ create table if not exists inbox (
   at integer not null,
   payload text                   -- the raw event until it is handled, then null: other people's text does not stay
 );
+-- What a connector keeps across a restart, one JSON value per name: afk, github-threads, mail-threads.
+create table if not exists state (
+  name text primary key,
+  value text not null
+);
 create table if not exists trust (
   key text primary key,          -- a thread is owner-trusted while every task it got came from the owner
   owner_only integer not null
@@ -41,6 +47,8 @@ export type Store = ReturnType<typeof openStore>
 // What a connector gets from the store: take is false for a source id heard before. A null payload
 // records the id only, for a source that resends by itself until handled (SQS): such a source
 // checks has() first and takes the id after handling.
+// What a connector keeps across a restart. undefined removes it.
+export type Saved = { load(name: string): unknown; save(name: string, value: unknown): void }
 export type Inbox = { take(source: string, connector: string, payload: string | null): boolean; handled(source: string): void; has(source: string): boolean }
 
 const toSchedule = (r: Record<string, any>): Schedule => ({
@@ -155,6 +163,26 @@ export function openStore(path: string) {
     },
     // Redeliveries come within minutes (Slack) or days (SQS, GitHub's manual redeliver), so a week of ids is enough.
     prune(before: number) { db.prepare('delete from inbox where payload is null and at < ?').run(before) },
+    load(name: string): unknown {
+      const r = db.prepare('select value from state where name = ?').get(name) as { value: string } | undefined
+      return r && JSON.parse(r.value)
+    },
+    save(name: string, value: unknown) {
+      if (value === undefined) db.prepare('delete from state where name = ?').run(name)
+      else db.prepare('insert into state (name, value) values (?, ?) on conflict (name) do update set value = excluded.value').run(name, JSON.stringify(value))
+    },
+    // One-time move from the old JSON files. The row is written before the file is renamed, so a crash
+    // between them leaves a file that the next start only clears: a row already saved wins.
+    importState(files: Record<string, string>) {
+      for (const [name, file] of Object.entries(files)) {
+        if (!existsSync(file)) continue
+        try {
+          const value = JSON.parse(readFileSync(file, 'utf8'))
+          db.prepare('insert into state (name, value) values (?, ?) on conflict (name) do nothing').run(name, JSON.stringify(value))
+          renameSync(file, `${file}.imported-${Date.now()}`)
+        } catch (e) { console.error(`kage: could not import ${file}, left in place:`, e) }
+      }
+    },
     close: () => db.close(),
   }
 }
