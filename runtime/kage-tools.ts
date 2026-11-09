@@ -66,6 +66,7 @@ export function sessionTools(o: {
   const react = (channel: string, ts: string, name: string) =>
     (channel === o.botDm() ? bot : user).reactions.add({ channel, timestamp: ts, name }).catch(() => {})
 
+  // The display name behind a <@U…> id, for the "asked by <name>" sign-off on message_people.
   const names: Record<string, string> = {}
   async function nameMentions(text: string) {
     for (const [, id] of text.matchAll(/<@([UW][A-Z0-9]+)>/g)) {
@@ -76,11 +77,9 @@ export function sessionTools(o: {
     }
   }
 
-  // ping: only the owner's own task may notify the people it mentions.
   // key: the session that answered, so the retro credits a private reply to the thread it answers.
-  async function post(key: string, channel: string, thread_ts: string | undefined, text: string, ping = false) {
-    await nameMentions(text)
-    const parts = splitForSlack(safeReply(text, { ping, names }).trim() || '(empty reply)')
+  async function post(key: string, channel: string, thread_ts: string | undefined, text: string) {
+    const parts = splitForSlack(safeReply(text).trim() || '(empty reply)')
     let via = Title
     const sent: string[] = []
     for (const part of parts) {
@@ -115,8 +114,7 @@ export function sessionTools(o: {
       }
       const no = secretRefusal(a.text, { fromOwner: !tag }) ?? layoutRefusal(a.text)
       if (no) return { isError: true, text: no }
-      await nameMentions(a.text)
-      await user.chat.update({ channel: a.channel, ts: a.ts, text: `*${Title}:* ${safeReply(a.text, { ping: true, names }).trim()}${tag}` })
+      await user.chat.update({ channel: a.channel, ts: a.ts, text: `*${Title}:* ${safeReply(a.text).trim()}${tag}` })
       return { text: 'edited' }
     }
     if (a.channel !== o.botDm() && !taskChannels.has(a.channel)) return { isError: true, text: `refused: no task in this session came from ${a.channel}` }
@@ -132,8 +130,7 @@ export function sessionTools(o: {
     if (refusal) return { isError: true, text: refusal }
     const layout = layoutRefusal(a.text, a)
     if (layout) return { isError: true, text: layout }
-    await nameMentions(a.text)
-    const text = safeReply(a.text, { ping, names }).trim()
+    const text = safeReply(a.text).trim()
     await client.chat.update({ channel: a.channel, ts: a.ts, text: by === 'owner' ? `*${Title}:* ${text}` : text })
     return { text: 'edited' }
   }
@@ -171,7 +168,7 @@ export function sessionTools(o: {
       }
       const layout = layoutRefusal(a.text, a)
       if (layout) return { isError: true, text: layout }
-      const { via, where: at } = a.private ? await post(key, o.botDm(), dmThread.get(key), a.text) : await post(key, a.channel, a.thread_ts, a.text, ownerTask.get(key) === true)
+      const { via, where: at } = a.private ? await post(key, o.botDm(), dmThread.get(key), a.text) : await post(key, a.channel, a.thread_ts, a.text)
       // A question keeps the task open, so its final reply still marks the task.
       const emoji = MARKS[a.mark ?? 'done']
       if (emoji) {
@@ -214,10 +211,9 @@ export function sessionTools(o: {
       if (refusal) return { isError: true, text: refusal }
       const layout = layoutRefusal(a.text)
       if (layout) return { isError: true, text: layout }
-      await nameMentions(a.text)
       const tag = signer ? `\n_asked by ${signer.name}_` : ''
       // Sent from the owner's account, so it says it is Kage, like every other post from there.
-      const text = `*${Title}:* ${safeReply(a.text, { ping: true, names }).trim()}${tag}`
+      const text = `*${Title}:* ${safeReply(a.text).trim()}${tag}`
       let dm: string
       try {
         dm = (await user.conversations.open({ users: people.join(',') })).channel!.id!
