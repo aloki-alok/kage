@@ -25,6 +25,7 @@ type Session = {
   id: string
   kage: Kage
   sender?: Sender               // who sent the latest task: the guard hook reads it
+  task?: Task                   // the latest task: a safety block reports it
   state: 'idle' | 'running' | 'requires_action'
   last: number
   stopped: boolean
@@ -42,6 +43,7 @@ export function sdkSessions(o: {
   ownerMemory: string
   onStart?: () => void                            // a new id may have been minted: save the map
   onResult?: (key: string, totalUsd: number, resumed: boolean) => void   // a turn ended: the session's running cost so far
+  onBlocked?: (key: string, task: Task | undefined, category: string | null) => void   // the safety check stopped a turn (core/blocks.ts)
   restartMs?: number
 }) {
   const sessions = new Map<string, Session>()
@@ -111,6 +113,7 @@ export function sdkSessions(o: {
     const send = (m: ToSession) => {
       if (m.type === 'verdict') { s.asks.get(m.request_id)?.(m.behavior); return }
       s.sender = senderOf(m)
+      s.task = m
       s.kage.onTask(m)
       s.state = 'running'
       s.last = Date.now()
@@ -124,13 +127,20 @@ export function sdkSessions(o: {
     q.initializationResult().then(connect, () => {})
     void (async () => {
       let sawState = false
+      let blocked = false   // once per turn: a new CLI sends the system event and the refused assistant frame
       try {
         for await (const m of q as AsyncIterable<SDKMessage>) {
           s.last = Date.now()
           connect()
           if (m.type === 'system' && m.subtype === 'session_state_changed') { sawState = true; s.state = m.state }
           // A Claude Code that never sends the state event: the turn's result is the best idle signal.
-          if (m.type === 'result') o.onResult?.(key, m.total_cost_usd, resumed)
+          // The system event carries the category. An older CLI only marks stop_reason on the assistant frame.
+          const refused = (m.type === 'system' && m.subtype === 'model_refusal_no_fallback') || (m.type === 'assistant' && m.message.stop_reason === 'refusal')
+          if (refused && !blocked) {
+            blocked = true
+            o.onBlocked?.(key, s.task, (m.type === 'system' && m.subtype === 'model_refusal_no_fallback' && m.api_refusal_category) || null)
+          }
+          if (m.type === 'result') { blocked = false; o.onResult?.(key, m.total_cost_usd, resumed) }
           if (m.type === 'result' && !sawState) s.state = 'idle'
         }
       } catch (e) { log('session ended', key, e) }

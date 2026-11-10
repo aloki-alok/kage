@@ -22,6 +22,7 @@ import { parseCommands } from './core/commands.ts'
 import { memoryDirs } from './core/guards.ts'
 import { placeFor, sessionKey, type Conversation, type Lane } from './core/conversations.ts'
 import { senderOf } from './core/gate.ts'
+import { answersInThread, OFF_LIMITS, planBlock } from './core/blocks.ts'
 import { dailyDue, lastTotals, openWaiting, staleWaiting, turnCost } from './core/ledgers.ts'
 import { dreamDue, dreamTask, threadsSince } from './core/dream.ts'
 import { retro, retroDue } from './core/retro.ts'
@@ -67,8 +68,40 @@ const inbox: Inbox = { take: (source, connector, payload) => store.take(source, 
 const deliver = (c: Conversation, task: Task, place: string, lane: Lane = 'main') => {
   const key = sessionKey(c, { lane })
   store.seen(key, c, place, Date.now())
+  if (closedTo(key, task)) return 'sent'
   noteTrust(key, task)
   return d.task(key, task, Date.now())
+}
+// When the safety check stops a turn (core/blocks.ts): the thread starts over on a new session, since the old one
+// stays flagged. A teammate's thread closes to teammates, side lanes included, until the owner writes in it.
+const CLOSED = 'closed-threads'
+const closed = () => new Set((store.load(CLOSED) as string[] | undefined) ?? [])
+const setClosed = (thread: string, on: boolean) => {
+  const s = closed()
+  if (on) s.add(thread); else s.delete(thread)
+  store.save(CLOSED, s.size ? [...s] : undefined)
+}
+const threadOf = (key: string) => key.split('#')[0]!
+const sayInThread = (key: string, t: Task, text: string) =>
+  void bot.chat.postMessage({ channel: t.meta.channel, thread_ts: t.meta.thread_ts, text }).then(
+    r => ledgers.add('posted', [t.meta.channel, r.ts!, 'bot', key]),
+    e => log('could not post the block line', key, e?.data?.error ?? e))
+function blocked(key: string, t: Task | undefined, category: string | null) {
+  log('the safety check stopped a turn in', key, category ?? '')
+  const p = planBlock(t, category)
+  d.reset(key)
+  store.forget(key)
+  if (p.close) setClosed(threadOf(key), true)
+  if (p.reply && t) sayInThread(key, t, p.reply)
+  if (p.dm) void slack.notifyOwner(p.dm)
+}
+function closedTo(key: string, t: Task): boolean {
+  const thread = threadOf(key)
+  if (!closed().has(thread)) return false
+  if (senderOf(t) === 'owner') { setClosed(thread, false); return false }
+  log('closed thread, task dropped:', key)
+  if (answersInThread(t)) sayInThread(key, t, OFF_LIMITS)
+  return true
 }
 // A thread is owner-trusted while every task it got came from the owner by Slack (not email or voice); a schedule set up
 // there runs with owner trust, anywhere else with a teammate's. Kept in the store so a restart keeps
@@ -152,6 +185,7 @@ const sdk = sdkLib ? sdkSessions({
     costTotals.set(key, total)
     ledgers.add('costs', [key, String(usd), String(total)])
   },
+  onBlocked: (key, task, category) => blocked(key, task, category),
 }) : undefined
 if (sdk) mkdirSync(MEM.own, { recursive: true })
 
@@ -176,7 +210,7 @@ restoreHolds(DIR, d, Date.now())
 // Schedules live in the store and run as tasks in their thread (runtime/scheduler.ts).
 const schedules = scheduler({
   store, failed,
-  deliver: (key, task) => { noteTrust(key, task); return d.task(key, task, Date.now()) },
+  deliver: (key, task) => { if (closedTo(key, task)) return 'sent'; noteTrust(key, task); return d.task(key, task, Date.now()) },
   ready: key => d.ready(key),
   trusted: key => store.trust(key) === true,
   ran: j => ledgers.add('runs', [j.id, j.key]),

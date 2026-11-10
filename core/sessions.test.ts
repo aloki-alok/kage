@@ -55,6 +55,15 @@ describe('one Claude session per thread', () => {
     assert.equal(d.hasFreeSlot('C'), true)
     assert.deepEqual(inbox('A'), [])                     // no longer live: it does not connect
   })
+  test('reset closes the thread and its next task starts a new conversation, not the old one', () => {
+    const { d, started, stopped } = setup({ saved: { A: 'old' } })
+    d.task('A', 'a', 0)
+    d.reset('A')
+    assert.deepEqual(stopped, ['A'])
+    assert.equal(d.saved().A, undefined)
+    d.task('A', 'again', 1)
+    assert.deepEqual(started, [['A', 'old'], ['A', 'id1']])
+  })
   test('a follow-up goes to the running session of its thread, no new session', () => {
     const { d, started, inbox } = setup()
     d.task('A', 'first', 0)
