@@ -4,6 +4,7 @@ import { mkdtempSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { createSdkMcpServer, tool } from '@anthropic-ai/claude-agent-sdk'
+import { z } from 'zod'
 import { Dispatcher } from '../core/sessions.ts'
 import { sessionTools } from './kage-tools.ts'
 import type { Task, ToSession } from './protocol.ts'
@@ -85,7 +86,7 @@ function setup(o: { transcript?: boolean; silent?: boolean; dmFails?: boolean } 
     origin: { channel: o.channel ?? 'C1', ts: '5.5' },
   })
   const idOf = (text: string) => /`yes ([a-km-z]{5})`/.exec(text)![1]!
-  return { sdk, posts, d, s, task, idOf, results, call }
+  return { sdk, posts, d, s, task, idOf, results, call, servers }
 }
 
 describe('Kage sessions on the Agent SDK', () => {
@@ -312,5 +313,13 @@ describe('Kage sessions on the Agent SDK', () => {
     await tick(30)
     assert.equal(t.sdk.runs[1]!.options.model, 'sonnet')
     assert.equal(t.sdk.runs[1]!.options.effort, 'low')
+  })
+  test('set_model offers fable and refuses a full model id', async () => {
+    const t = setup()
+    t.d.task('C1:5.6', t.task(), 0)
+    await tick()
+    const shape = z.object(t.servers.at(-1)!.tools!.find(x => x.name === 'set_model')!.inputSchema as z.ZodRawShape)
+    assert.ok(shape.safeParse({ model: 'fable' }).success)
+    assert.ok(!shape.safeParse({ model: 'claude-fable-5-2' }).success)
   })
 })
