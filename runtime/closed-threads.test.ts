@@ -63,6 +63,12 @@ describe('a thread the safety check stopped', () => {
     t.d.end('D1:5.5')
     assert.equal(t.deliver('D1:5.5', t.mate('after reopen')), 'starting')
   })
+  test("a schedule set up as the owner before the thread closed does not reopen it", () => {
+    const t = setup()
+    t.c.blocked('D1:5.5', [t.mate()], null)
+    assert.equal(t.deliver('D1:5.5', { ...t.owner, scheduled: true, origin: { channel: 'D1', ts: '' } }), 'sent')
+    assert.equal(t.deliver('D1:5.5', t.mate()), 'sent')
+  })
   test('the closed list survives a hub restart', () => {
     const t = setup()
     t.c.blocked('D1:5.5', [t.mate()], null)

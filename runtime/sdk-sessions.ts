@@ -25,7 +25,7 @@ type Session = {
   id: string
   kage: Kage
   sender?: Sender               // who sent the latest task: the guard hook reads it
-  turn: Task[]                  // the tasks the current turn read: a safety block reports them
+  turn: { task: Task; mid: boolean }[]   // tasks the current turn may have read: a safety block reports them. mid: sent mid-turn
   state: 'idle' | 'running' | 'requires_action'
   last: number
   stopped: boolean
@@ -113,7 +113,7 @@ export function sdkSessions(o: {
     const send = (m: ToSession) => {
       if (m.type === 'verdict') { s.asks.get(m.request_id)?.(m.behavior); return }
       s.sender = senderOf(m)
-      s.turn.push(m)
+      s.turn.push({ task: m, mid: s.state !== 'idle' })
       s.kage.onTask(m)
       s.state = 'running'
       s.last = Date.now()
@@ -139,9 +139,10 @@ export function sdkSessions(o: {
           const refused = (m.type === 'system' && m.subtype === 'model_refusal_no_fallback') || (m.type === 'assistant' && !m.parent_tool_use_id && m.message.stop_reason === 'refusal')
           if (refused && !blocked) {
             blocked = true
-            o.onBlocked?.(key, s.turn, (m.type === 'system' && m.subtype === 'model_refusal_no_fallback' && m.api_refusal_category) || null)
+            o.onBlocked?.(key, s.turn.map(x => x.task), (m.type === 'system' && m.subtype === 'model_refusal_no_fallback' && m.api_refusal_category) || null)
           }
-          if (m.type === 'result') { blocked = false; s.turn = []; o.onResult?.(key, m.total_cost_usd, resumed) }
+          // A task sent mid-turn may be read by the next turn instead, so it stays one turn longer.
+          if (m.type === 'result') { blocked = false; s.turn = s.turn.filter(x => x.mid).map(x => ({ ...x, mid: false })); o.onResult?.(key, m.total_cost_usd, resumed) }
           if (m.type === 'result' && !sawState) s.state = 'idle'
         }
       } catch (e) { log('session ended', key, e) }

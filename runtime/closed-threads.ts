@@ -33,11 +33,11 @@ export function closedThreads(o: {
       if (p.reply && t) o.say(key, t, p.reply)
       if (p.dm) o.tellOwner(p.dm)
     },
-    // true: the task is dropped. The owner's task reopens the thread instead.
+    // true: the task is dropped. The owner's task reopens the thread instead, but not a schedule set up before it closed.
     closedTo(key: string, t: Task): boolean {
       const thread = threadOf(key)
       if (!closed().has(thread)) return false
-      if (senderOf(t) === 'owner') { setClosed(thread, false); return false }
+      if (senderOf(t) === 'owner' && !t.scheduled) { setClosed(thread, false); return false }
       log('closed thread, task dropped:', key)
       if (answersInThread(t)) o.say(key, t, OFF_LIMITS)
       return true
