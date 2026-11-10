@@ -54,6 +54,7 @@ Write logs to stderr only. In a tmux pane, stdout carries the channel protocol, 
 | `ledgers.ts` | Reading the ledgers: questions waiting on the owner, what Kage posted, what turns cost, the daily note. |
 | `cron.ts` | Cron expressions, which schedules are due, and reading Claude Code's own cron jobs. |
 | `afk.ts` | AFK mode: which threads the stand-in watches, when it posts or phones the owner, and what it may say. |
+| `blocks.ts` | When the safety check stops a turn: the line in the thread, the owner's DM, and whether the thread closes. |
 | `commands.ts` | Local slash commands (`KAGE_COMMANDS`). |
 | `preview.ts` | How an approval shows the call it asks about. |
 | `transcript.ts` | Turning a Claude Code transcript line into a line a person can follow. |
@@ -71,6 +72,7 @@ Write logs to stderr only. In a tmux pane, stdout carries the channel protocol, 
 | `store.ts` | One SQLite file: conversations, their sessions, schedules, trust, the inbox of every message heard, and what connectors keep across a restart (AFK, GitHub and mail threads). The hub is the only writer of these tables. Old `.json` files move in once. |
 | `ledger.ts` | The ledgers (waiting, posted, prod-actions, costs, runs, commands) as rows in that file. The hub and every pane write them. Old `.tsv` files move in once. |
 | `scheduler.ts` | Runs due schedules as tasks in their thread. |
+| `closed-threads.ts` | A thread the safety check stopped: it starts on a new session, and a teammate's stays closed until the owner writes in it. |
 | `code-stamp.ts` | When the code changed, so the hub knows to restart into it. |
 
 ## Add a connector

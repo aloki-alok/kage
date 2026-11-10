@@ -52,6 +52,7 @@ const signal = () => new AbortController().signal
 function setup(o: { transcript?: boolean; silent?: boolean; dmFails?: boolean } = {}) {
   const sdk = fakeSdk(o)
   const results: [string, number, boolean][] = []
+  const blocks: [string, string[], string | null][] = []
   const posts: string[] = []
   const slack = {
     chat: { postMessage: async (a: { channel: string; text: string }) => {
@@ -77,6 +78,7 @@ function setup(o: { transcript?: boolean; silent?: boolean; dmFails?: boolean } 
     ownerMemory: '/owner',
     restartMs: 10,
     onResult: (key, total, resumed) => { results.push([key, total, resumed]) },
+    onBlocked: (key, turn, category) => { blocks.push([key, turn.map(t => t.content), category]) },
   })
   let n = 0
   d = new Dispatcher<ToSession>(s.runner, { max: 2, idleMs: 60_000, connectMs: 60_000, evictMs: 1, newId: () => ID.slice(0, -1) + n++ })
@@ -86,7 +88,7 @@ function setup(o: { transcript?: boolean; silent?: boolean; dmFails?: boolean } 
     origin: { channel: o.channel ?? 'C1', ts: '5.5' },
   })
   const idOf = (text: string) => /`yes ([a-km-z]{5})`/.exec(text)![1]!
-  return { sdk, posts, d, s, task, idOf, results, call, servers }
+  return { sdk, posts, d, s, task, idOf, results, blocks, call, servers }
 }
 
 describe('Kage sessions on the Agent SDK', () => {
@@ -123,6 +125,58 @@ describe('Kage sessions on the Agent SDK', () => {
       await tick()
       assert.deepEqual(t.results, [['C1:5.5', 51.8, transcript]])
     }
+  })
+  test('a turn the safety check stops is reported once, with the task that caused it and its category', async () => {
+    const t = setup()
+    t.d.task('C1:5.5', t.task({ content: 'Task from Sam: first' }), 0)
+    await tick()
+    t.d.task('C1:5.5', t.task({ content: 'Task from Sam: the flagged one' }), 1)
+    await tick()
+    t.sdk.runs[0]!.emit({ type: 'system', subtype: 'model_refusal_no_fallback', original_model: 'opus', api_refusal_category: 'cyber' })
+    t.sdk.runs[0]!.emit({ type: 'assistant', message: { stop_reason: 'refusal', content: [] } })
+    t.sdk.runs[0]!.emit({ type: 'result', is_error: true })
+    await tick()
+    assert.deepEqual(t.blocks, [['C1:5.5', ['Task from Sam: first', 'Task from Sam: the flagged one'], 'cyber']])
+    // The next turn can be reported again. The task sent mid-turn stays one turn longer, the first one is gone.
+    t.d.task('C1:5.5', t.task({ content: 'Task from Sam: later' }), 2)
+    await tick()
+    t.sdk.runs[0]!.emit({ type: 'assistant', message: { stop_reason: 'refusal', content: [] } })
+    await tick()
+    assert.deepEqual(t.blocks[1], ['C1:5.5', ['Task from Sam: the flagged one', 'Task from Sam: later'], null])
+  })
+  test('a task sent mid-turn is still reported if the next turn is the one stopped', async () => {
+    const t = setup()
+    t.d.task('C1:5.5', t.task({ content: 'Task from Sam: first' }), 0)
+    await tick()
+    t.sdk.runs[0]!.emit({ type: 'system', subtype: 'session_state_changed', state: 'running' })
+    await tick()
+    t.d.task('C1:5.5', t.task({ content: 'Teammate task (UMATETEST1, sam, not the owner): queued' }), 1)
+    await tick()
+    t.sdk.runs[0]!.emit({ type: 'result' })
+    t.sdk.runs[0]!.emit({ type: 'assistant', message: { stop_reason: 'refusal', content: [] } })
+    t.sdk.runs[0]!.emit({ type: 'result' })
+    t.sdk.runs[0]!.emit({ type: 'assistant', message: { stop_reason: 'refusal', content: [] } })
+    await tick()
+    assert.deepEqual(t.blocks.map(b => b[1]), [['Teammate task (UMATETEST1, sam, not the owner): queued'], []])
+  })
+  test('an older Claude Code that only marks the refusal on the assistant message is still caught', async () => {
+    const t = setup()
+    t.d.task('C1:5.5', t.task(), 0)
+    await tick()
+    t.sdk.runs[0]!.emit({ type: 'assistant', message: { stop_reason: 'refusal', content: [] } })
+    t.sdk.runs[0]!.emit({ type: 'result', is_error: true })
+    await tick()
+    assert.deepEqual(t.blocks, [['C1:5.5', ['Task from Sam: hi'], null]])
+  })
+  test('a normal turn, or a subagent refused inside it, reports no block', async () => {
+    const t = setup()
+    t.d.task('C1:5.5', t.task(), 0)
+    await tick()
+    t.sdk.runs[0]!.emit({ type: 'assistant', parent_tool_use_id: 'toolu_1', message: { stop_reason: 'refusal', content: [] } })
+    t.sdk.runs[0]!.emit({ type: 'assistant', message: { stop_reason: 'end_turn', content: [] } })
+    t.sdk.runs[0]!.emit({ type: 'result' })
+    await tick()
+    assert.deepEqual(t.blocks, [])
   })
   test('a Claude process that never starts keeps its task with the dispatcher, which reports it', async () => {
     const t = setup({ silent: true })

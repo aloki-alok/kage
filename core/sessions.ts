@@ -95,6 +95,12 @@ export class Dispatcher<M> {
     this.#waiting = this.#waiting.filter(k => k !== key)
   }
 
+  // end, and the next task starts a new conversation: the old one can't be resumed (the safety check flagged it).
+  reset(key: string) {
+    this.end(key)
+    this.#ids.delete(key)
+  }
+
   // Start the thread's session if there is a slot (a full house frees its quietest), else queue it.
   #admit(key: string, now: number): 'starting' | 'queued' | 'failed' {
     // Full: the quietest session gives up its slot. It loses nothing, its next task resumes it.

@@ -37,6 +37,7 @@ import { openStore, type Inbox } from './runtime/store.ts'
 import { openLedgers } from './runtime/ledger.ts'
 import { claudeProject, tmuxPanes } from './runtime/tmux-panes.ts'
 import { codeStamp } from './runtime/code-stamp.ts'
+import { closedThreads } from './runtime/closed-threads.ts'
 
 const { ENV_FILE, NAME, Title, TEAMMATES, env, need, bot, user } = load()
 const DIR = dirname(ENV_FILE)
@@ -67,9 +68,19 @@ const inbox: Inbox = { take: (source, connector, payload) => store.take(source, 
 const deliver = (c: Conversation, task: Task, place: string, lane: Lane = 'main') => {
   const key = sessionKey(c, { lane })
   store.seen(key, c, place, Date.now())
+  if (closedTo(key, task)) return 'sent'
   noteTrust(key, task)
   return d.task(key, task, Date.now())
 }
+// A thread the safety check stopped starts over, closed to teammates until the owner writes (runtime/closed-threads.ts).
+const { blocked, closedTo } = closedThreads({
+  store,
+  reset: key => d.reset(key),
+  say: (key, t, text) => void bot.chat.postMessage({ channel: t.meta.channel, thread_ts: t.meta.thread_ts, text }).then(
+    r => ledgers.add('posted', [t.meta.channel, r.ts!, 'bot', key]),
+    e => log('could not post the block line', key, e?.data?.error ?? e)),
+  tellOwner: text => void slack.notifyOwner(text),
+})
 // A thread is owner-trusted while every task it got came from the owner by Slack (not email or voice); a schedule set up
 // there runs with owner trust, anywhere else with a teammate's. Kept in the store so a restart keeps
 // it. A thread with a session from before this was recorded starts untrusted: its history is unknown.
@@ -152,6 +163,7 @@ const sdk = sdkLib ? sdkSessions({
     costTotals.set(key, total)
     ledgers.add('costs', [key, String(usd), String(total)])
   },
+  onBlocked: blocked,
 }) : undefined
 if (sdk) mkdirSync(MEM.own, { recursive: true })
 
@@ -176,7 +188,7 @@ restoreHolds(DIR, d, Date.now())
 // Schedules live in the store and run as tasks in their thread (runtime/scheduler.ts).
 const schedules = scheduler({
   store, failed,
-  deliver: (key, task) => { noteTrust(key, task); return d.task(key, task, Date.now()) },
+  deliver: (key, task) => { if (closedTo(key, task)) return 'sent'; noteTrust(key, task); return d.task(key, task, Date.now()) },
   ready: key => d.ready(key),
   trusted: key => store.trust(key) === true,
   ran: j => ledgers.add('runs', [j.id, j.key]),
@@ -352,6 +364,7 @@ function tell(key: string, text: string): { ok: true; held?: true } | { refused:
     origin: { channel: c.conversation.chat, ts: '' },
   }
   log('tell', c.place)
+  closedTo(key, task)   // the owner's words reopen a closed thread
   noteTrust(key, task)
   const r = d.task(key, task, Date.now())
   if (r === 'failed') { failed(task); return { refused: 'could not start a session there' } }
