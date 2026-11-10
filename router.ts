@@ -22,7 +22,6 @@ import { parseCommands } from './core/commands.ts'
 import { memoryDirs } from './core/guards.ts'
 import { placeFor, sessionKey, type Conversation, type Lane } from './core/conversations.ts'
 import { senderOf } from './core/gate.ts'
-import { answersInThread, blockedTask, OFF_LIMITS, planBlock } from './core/blocks.ts'
 import { dailyDue, lastTotals, openWaiting, staleWaiting, turnCost } from './core/ledgers.ts'
 import { dreamDue, dreamTask, threadsSince } from './core/dream.ts'
 import { retro, retroDue } from './core/retro.ts'
@@ -38,6 +37,7 @@ import { openStore, type Inbox } from './runtime/store.ts'
 import { openLedgers } from './runtime/ledger.ts'
 import { claudeProject, tmuxPanes } from './runtime/tmux-panes.ts'
 import { codeStamp } from './runtime/code-stamp.ts'
+import { closedThreads } from './runtime/closed-threads.ts'
 
 const { ENV_FILE, NAME, Title, TEAMMATES, env, need, bot, user } = load()
 const DIR = dirname(ENV_FILE)
@@ -72,38 +72,15 @@ const deliver = (c: Conversation, task: Task, place: string, lane: Lane = 'main'
   noteTrust(key, task)
   return d.task(key, task, Date.now())
 }
-// When the safety check stops a turn (core/blocks.ts): the thread starts over on a new session, since the old one
-// stays flagged. A teammate's thread closes to teammates, side lanes included, until the owner writes in it.
-const CLOSED = 'closed-threads'
-const closed = () => new Set((store.load(CLOSED) as string[] | undefined) ?? [])
-const setClosed = (thread: string, on: boolean) => {
-  const s = closed()
-  if (on) s.add(thread); else s.delete(thread)
-  store.save(CLOSED, s.size ? [...s] : undefined)
-}
-const threadOf = (key: string) => key.split('#')[0]!
-const sayInThread = (key: string, t: Task, text: string) =>
-  void bot.chat.postMessage({ channel: t.meta.channel, thread_ts: t.meta.thread_ts, text }).then(
+// A thread the safety check stopped starts over, closed to teammates until the owner writes (runtime/closed-threads.ts).
+const { blocked, closedTo } = closedThreads({
+  store,
+  reset: key => d.reset(key),
+  say: (key, t, text) => void bot.chat.postMessage({ channel: t.meta.channel, thread_ts: t.meta.thread_ts, text }).then(
     r => ledgers.add('posted', [t.meta.channel, r.ts!, 'bot', key]),
-    e => log('could not post the block line', key, e?.data?.error ?? e))
-function blocked(key: string, turn: Task[], category: string | null) {
-  log('the safety check stopped a turn in', key, category ?? '')
-  const p = planBlock(turn, category)
-  const t = blockedTask(turn)
-  d.reset(key)
-  store.forget(key)
-  if (p.close) setClosed(threadOf(key), true)
-  if (p.reply && t) sayInThread(key, t, p.reply)
-  if (p.dm) void slack.notifyOwner(p.dm)
-}
-function closedTo(key: string, t: Task): boolean {
-  const thread = threadOf(key)
-  if (!closed().has(thread)) return false
-  if (senderOf(t) === 'owner') { setClosed(thread, false); return false }
-  log('closed thread, task dropped:', key)
-  if (answersInThread(t)) sayInThread(key, t, OFF_LIMITS)
-  return true
-}
+    e => log('could not post the block line', key, e?.data?.error ?? e)),
+  tellOwner: text => void slack.notifyOwner(text),
+})
 // A thread is owner-trusted while every task it got came from the owner by Slack (not email or voice); a schedule set up
 // there runs with owner trust, anywhere else with a teammate's. Kept in the store so a restart keeps
 // it. A thread with a session from before this was recorded starts untrusted: its history is unknown.
