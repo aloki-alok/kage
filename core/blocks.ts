@@ -13,18 +13,25 @@ export type BlockPlan = { reply?: string; dm?: string; close: boolean }
 // A thread line only answers a Slack message: a schedule has none, and email, WhatsApp and voice reply in their own way.
 export const answersInThread = (t: Task) => !!t.origin.ts && !['email', 'whatsapp', 'voice'].includes(t.meta.channel)
 
-export function planBlock(t: Task | undefined, category: string | null): BlockPlan {
+// turn: every task the stopped turn read. A teammate's among them is the one it is about: closing on the owner's
+// follow-up would leave the teammate's ask open.
+export const blockedTask = (turn: Task[]) => turn.find(x => senderOf(x) !== 'owner') ?? turn.at(-1)
+
+export function planBlock(turn: Task[], category: string | null): BlockPlan {
+  const t = blockedTask(turn)
   const owner = t ? senderOf(t) === 'owner' : false
   const inThread = !!t && answersInThread(t)
   const reply = inThread ? (owner ? OWNER_BLOCKED : OFF_LIMITS) : undefined
   if (owner && inThread) return { reply, close: false }
+  // Only a Slack thread closes: the owner reopens it by writing there, which email and WhatsApp can't offer.
+  const close = !owner && inThread
   const who = t && teammateOf(t.content)
   const ask = t?.content.replace(/^(Teammate task \(.*?, not the owner\)|Task from .*?): /, '').split('\n\nConversation so far')[0]!.slice(0, 400)
   const place = t ? (t.meta.permalink ? `<${t.meta.permalink}|${t.meta.place}>` : t.meta.place) : 'a thread'
   const dm = [
     `*The safety check stopped a turn* in ${place}${category ? ` (${category})` : ''}.`,
     ...(ask ? [`${who ? who.name : 'The task'} asked: “${ask}”`] : []),
-    owner ? 'Nothing was posted.' : `I replied “${OFF_LIMITS}” and closed the thread to teammates. Reply in it to reopen it.`,
+    close ? `I replied “${OFF_LIMITS}” and closed the thread to teammates. Reply in it to reopen it.` : 'Nothing was posted. The next message there starts fresh.',
   ].join('\n')
-  return { ...(reply && { reply }), dm, close: !owner }
+  return { ...(reply && { reply }), dm, close }
 }

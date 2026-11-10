@@ -52,7 +52,7 @@ const signal = () => new AbortController().signal
 function setup(o: { transcript?: boolean; silent?: boolean; dmFails?: boolean } = {}) {
   const sdk = fakeSdk(o)
   const results: [string, number, boolean][] = []
-  const blocks: [string, string | undefined, string | null][] = []
+  const blocks: [string, string[], string | null][] = []
   const posts: string[] = []
   const slack = {
     chat: { postMessage: async (a: { channel: string; text: string }) => {
@@ -78,7 +78,7 @@ function setup(o: { transcript?: boolean; silent?: boolean; dmFails?: boolean } 
     ownerMemory: '/owner',
     restartMs: 10,
     onResult: (key, total, resumed) => { results.push([key, total, resumed]) },
-    onBlocked: (key, task, category) => { blocks.push([key, task?.content, category]) },
+    onBlocked: (key, turn, category) => { blocks.push([key, turn.map(t => t.content), category]) },
   })
   let n = 0
   d = new Dispatcher<ToSession>(s.runner, { max: 2, idleMs: 60_000, connectMs: 60_000, evictMs: 1, newId: () => ID.slice(0, -1) + n++ })
@@ -136,7 +136,13 @@ describe('Kage sessions on the Agent SDK', () => {
     t.sdk.runs[0]!.emit({ type: 'assistant', message: { stop_reason: 'refusal', content: [] } })
     t.sdk.runs[0]!.emit({ type: 'result', is_error: true })
     await tick()
-    assert.deepEqual(t.blocks, [['C1:5.5', 'Task from Sam: the flagged one', 'cyber']])
+    assert.deepEqual(t.blocks, [['C1:5.5', ['Task from Sam: first', 'Task from Sam: the flagged one'], 'cyber']])
+    // The next turn starts with no tasks of the old one and can be reported again.
+    t.d.task('C1:5.5', t.task({ content: 'Task from Sam: later' }), 2)
+    await tick()
+    t.sdk.runs[0]!.emit({ type: 'assistant', message: { stop_reason: 'refusal', content: [] } })
+    await tick()
+    assert.deepEqual(t.blocks[1], ['C1:5.5', ['Task from Sam: later'], null])
   })
   test('an older Claude Code that only marks the refusal on the assistant message is still caught', async () => {
     const t = setup()
@@ -145,12 +151,13 @@ describe('Kage sessions on the Agent SDK', () => {
     t.sdk.runs[0]!.emit({ type: 'assistant', message: { stop_reason: 'refusal', content: [] } })
     t.sdk.runs[0]!.emit({ type: 'result', is_error: true })
     await tick()
-    assert.deepEqual(t.blocks, [['C1:5.5', 'Task from Sam: hi', null]])
+    assert.deepEqual(t.blocks, [['C1:5.5', ['Task from Sam: hi'], null]])
   })
-  test('a normal turn reports no block', async () => {
+  test('a normal turn, or a subagent refused inside it, reports no block', async () => {
     const t = setup()
     t.d.task('C1:5.5', t.task(), 0)
     await tick()
+    t.sdk.runs[0]!.emit({ type: 'assistant', parent_tool_use_id: 'toolu_1', message: { stop_reason: 'refusal', content: [] } })
     t.sdk.runs[0]!.emit({ type: 'assistant', message: { stop_reason: 'end_turn', content: [] } })
     t.sdk.runs[0]!.emit({ type: 'result' })
     await tick()

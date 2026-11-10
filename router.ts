@@ -22,7 +22,7 @@ import { parseCommands } from './core/commands.ts'
 import { memoryDirs } from './core/guards.ts'
 import { placeFor, sessionKey, type Conversation, type Lane } from './core/conversations.ts'
 import { senderOf } from './core/gate.ts'
-import { answersInThread, OFF_LIMITS, planBlock } from './core/blocks.ts'
+import { answersInThread, blockedTask, OFF_LIMITS, planBlock } from './core/blocks.ts'
 import { dailyDue, lastTotals, openWaiting, staleWaiting, turnCost } from './core/ledgers.ts'
 import { dreamDue, dreamTask, threadsSince } from './core/dream.ts'
 import { retro, retroDue } from './core/retro.ts'
@@ -86,9 +86,10 @@ const sayInThread = (key: string, t: Task, text: string) =>
   void bot.chat.postMessage({ channel: t.meta.channel, thread_ts: t.meta.thread_ts, text }).then(
     r => ledgers.add('posted', [t.meta.channel, r.ts!, 'bot', key]),
     e => log('could not post the block line', key, e?.data?.error ?? e))
-function blocked(key: string, t: Task | undefined, category: string | null) {
+function blocked(key: string, turn: Task[], category: string | null) {
   log('the safety check stopped a turn in', key, category ?? '')
-  const p = planBlock(t, category)
+  const p = planBlock(turn, category)
+  const t = blockedTask(turn)
   d.reset(key)
   store.forget(key)
   if (p.close) setClosed(threadOf(key), true)
@@ -185,7 +186,7 @@ const sdk = sdkLib ? sdkSessions({
     costTotals.set(key, total)
     ledgers.add('costs', [key, String(usd), String(total)])
   },
-  onBlocked: (key, task, category) => blocked(key, task, category),
+  onBlocked: blocked,
 }) : undefined
 if (sdk) mkdirSync(MEM.own, { recursive: true })
 
@@ -386,6 +387,7 @@ function tell(key: string, text: string): { ok: true; held?: true } | { refused:
     origin: { channel: c.conversation.chat, ts: '' },
   }
   log('tell', c.place)
+  closedTo(key, task)   // the owner's words reopen a closed thread
   noteTrust(key, task)
   const r = d.task(key, task, Date.now())
   if (r === 'failed') { failed(task); return { refused: 'could not start a session there' } }

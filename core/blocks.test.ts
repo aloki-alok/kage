@@ -13,7 +13,7 @@ const task = (o: Partial<Task> & { content?: string } = {}): Task => ({
 
 describe('what Kage does when the safety check stops a turn', () => {
   test('a teammate gets the off-limits line, the thread closes, and the owner gets the ask by DM', () => {
-    const p = planBlock(task(), 'cyber')
+    const p = planBlock([task()], 'cyber')
     assert.equal(p.reply, OFF_LIMITS)
     assert.equal(p.close, true)
     assert.match(p.dm!, /sam/)
@@ -26,23 +26,31 @@ describe('what Kage does when the safety check stops a turn', () => {
     assert.doesNotMatch(OFF_LIMITS, /owner|Ryu|Alok|told|asked/i)
   })
   test('the owner gets a note in the thread, no DM, and the thread stays open', () => {
-    const p = planBlock(task({ fromOwner: true, content: 'Task from Ryu: do the thing' }), 'cyber')
+    const p = planBlock([task({ fromOwner: true, content: 'Task from Ryu: do the thing' })], 'cyber')
     assert.deepEqual(p, { reply: OWNER_BLOCKED, close: false })
   })
   test('a run with no message to answer (a schedule) only DMs the owner', () => {
-    const p = planBlock(task({ fromOwner: true, origin: { channel: 'C1', ts: '' } }), null)
+    const p = planBlock([task({ fromOwner: true, origin: { channel: 'C1', ts: '' } })], null)
     assert.equal(p.reply, undefined)
     assert.match(p.dm!, /safety check/)
     assert.equal(p.close, false)
   })
-  test('email, WhatsApp and voice get no thread line: the owner hears by DM', () => {
-    const p = planBlock(task({ meta: { channel: 'email', thread_ts: 'mail:1', place: 'Email from sam', permalink: '' }, origin: { channel: 'email', ts: 'm1' } }), null)
+  test('email, WhatsApp and voice get no thread line and stay open, since only a Slack thread can be reopened: the owner hears by DM', () => {
+    const p = planBlock([task({ meta: { channel: 'email', thread_ts: 'mail:1', place: 'Email from sam', permalink: '' }, origin: { channel: 'email', ts: 'm1' } })], null)
     assert.equal(p.reply, undefined)
     assert.match(p.dm!, /Email from sam/)
+    assert.doesNotMatch(p.dm!, /off-limits|closed/)
+    assert.equal(p.close, false)
+  })
+  test('in a turn with several tasks, a teammate in it is the one the block is about', () => {
+    const mine = task({ fromOwner: true, content: 'Task from Ryu: carry on' })
+    const p = planBlock([task(), mine], 'cyber')
+    assert.equal(p.reply, OFF_LIMITS)
     assert.equal(p.close, true)
+    assert.match(p.dm!, /sam asked/)
   })
   test('an unknown task still reaches the owner', () => {
-    const p = planBlock(undefined, null)
+    const p = planBlock([], null)
     assert.equal(p.reply, undefined)
     assert.match(p.dm!, /safety check/)
   })
