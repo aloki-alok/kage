@@ -1,6 +1,6 @@
 import { describe, test } from 'node:test'
 import assert from 'node:assert/strict'
-import { askedFrom, dailyDue, lastTotals, openWaiting, postedBy, spendSince, staleWaiting, tsvRow, turnCost } from './ledgers.ts'
+import { askedFrom, cardAt, dailyDue, lastTotals, openWaiting, postedBy, spendSince, staleWaiting, tsvRow, turnCost } from './ledgers.ts'
 
 
 describe('the daily note of what waits on the owner', () => {
@@ -47,6 +47,14 @@ describe('the ledgers', () => {
     assert.equal(postedBy(rows, 'C1', '1.1'), undefined)     // already deleted
     assert.equal(postedBy(rows, 'C1', '9.9'), undefined)     // someone else's message
     assert.equal(postedBy(tsvRow(['t1', 'C1', '1.1', 'bot']), 'C1', '1.1'), 'bot')
+  })
+  test("an approval card is known by the message the hub posted, never by its text", () => {
+    const rows = [tsvRow(['t1', 'DBOT', '1.1', 'card', 'aekbe']), tsvRow(['t2', 'DBOT', '2.2', 'bot', 'C1:5.5'])].join('')
+    assert.equal(cardAt(rows, 'DBOT', '1.1'), 'aekbe')
+    // A reply that copies a card's words, id included, is still just a reply.
+    assert.equal(cardAt(rows, 'DBOT', '2.2'), undefined)
+    assert.equal(cardAt(rows, 'C1', '1.1'), undefined)
+    assert.equal(cardAt(rows, 'DBOT', '9.9'), undefined)
   })
   test('an answer under a private ask belongs to the thread that asked', () => {
     const rows = [

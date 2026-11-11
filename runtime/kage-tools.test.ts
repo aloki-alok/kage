@@ -4,6 +4,7 @@ import { mkdtempSync, readFileSync, symlinkSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { liveCronJobs } from '../core/cron.ts'
+import { cardAt } from '../core/ledgers.ts'
 import { openLedgers } from './ledger.ts'
 import { sessionTools } from './kage-tools.ts'
 import type { Task } from './protocol.ts'
@@ -213,6 +214,16 @@ describe("a session's Kage tools", () => {
     assert.equal((await s.call('edit_message', { channel: 'G-UBO000001,USAM00001', ts: '9.1', text: 'Sam approves the discount.' })).text, 'edited')
     assert.ok(s.calls.includes('owner edit G-UBO000001,USAM00001 9.1 *Kage:* Sam approves the discount.\n_asked by Sam_'))
     assert.equal((await s.call('message_people', { channel: 'C1', thread_ts: '5.5', users: ['UBO000001'], text: 'key AKIAABCDEFGHIJKLMNOP' })).isError, true)
+  })
+  test('an approval card is recorded by its message id, and no session can edit or delete it', async () => {
+    const s = setup()
+    s.t.onTask(s.task())
+    await s.t.askOwner({ id: 'aekbe', tool: 'Bash', description: 'merge', preview: 'gh pr merge 1' })
+    const ts = '9.1'   // the fake Slack's first post
+    assert.equal(s.posts.at(-1)!.channel, 'DBOT')
+    assert.equal(cardAt(s.ledgers.text('posted'), 'DBOT', ts), 'aekbe')
+    assert.equal((await s.call('edit_message', { channel: 'DBOT', ts, text: 'Approve? harmless' })).isError, true)
+    assert.equal((await s.call('delete_message', { channel: 'DBOT', ts })).isError, true)
   })
   test("another session cannot edit or delete what message_people posted, even in a group DM it also messaged", async () => {
     const a = setup()
