@@ -33,8 +33,6 @@ const VERDICT_RE = /^\s*(y|yes|n|no)\s+([a-km-z]{5})\s*$/i
 // Inside a card's thread the card names the request, so the first word alone decides.
 const CARD_YES = /^(y|yes|ok|okay|sure|approve|approved|go)\b/i
 const CARD_NO = /^(n|no|deny|stop|cancel)\b/i
-// The id the hub's approval card asks for (runtime/kage-tools.ts askOwner writes it).
-export const cardRequestId = (text: string) => /^\*Approve\?\*[\s\S]*\nReply `yes ([a-km-z]{5})`/.exec(text)?.[1]
 // card: the request id of the approval card this message replies under, if it does.
 export function classify(m: SlackMessage, ids: Ids, card?: string): Trigger {
   // The gate: a message the owner (or a listed teammate) typed in a Slack client.

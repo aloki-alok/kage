@@ -5,10 +5,10 @@ import { SocketModeClient, LogLevel } from '@slack/socket-mode'
 import { appendFileSync, writeFileSync } from 'node:fs'
 import type { WebClient } from '@slack/web-api'
 import { log, logger } from '../config.ts'
-import { cardRequestId, classify, plainName, quoteMessage, taskLine, type Ids } from '../core/gate.ts'
+import { classify, plainName, quoteMessage, taskLine, type Ids } from '../core/gate.ts'
 import { filesTag, typedByPerson, type SlackMessage } from '../core/slack-message.ts'
 import { parseSessionKey, sessionKey, slackConversation, type Conversation, type Lane } from '../core/conversations.ts'
-import { askedFrom } from '../core/ledgers.ts'
+import { askedFrom, cardAt } from '../core/ledgers.ts'
 import type { Delivery } from '../core/sessions.ts'
 import type { Task } from '../runtime/protocol.ts'
 import { startAfk } from './slack-afk.ts'
@@ -96,18 +96,17 @@ export async function connectSlack(o: { dir: string; appToken: string; bot: WebC
   }
 
   // The request id when an owner DM replies under one of the hub's approval cards.
-  async function cardOf(m: SlackMessage): Promise<string | undefined> {
+  // Looked up by the card's message id in the posted ledger, never by its text, which any bot post could copy.
+  function cardOf(m: SlackMessage): string | undefined {
     if (m.channel !== ids.botDm || m.user !== ids.owner || !m.thread_ts || m.thread_ts === m.ts) return undefined
-    const r = await bot.conversations.history({ channel: m.channel, latest: m.thread_ts, inclusive: true, limit: 1 }).catch(() => null)
-    const parent = r?.messages?.[0]
-    return parent?.ts === m.thread_ts && parent.user === ids.bot ? cardRequestId(parent.text ?? '') : undefined
+    return cardAt(o.hub.posted(), m.channel, m.thread_ts)
   }
 
 
   async function onMessage(m: SlackMessage) {
     // AFK sees every message: it watches threads that mention the owner, and mutes threads the owner types in.
     afk?.heard(m)
-    const t = classify(m, ids, await cardOf(m))
+    const t = classify(m, ids, cardOf(m))
     if (!t) {
       // The owner answering in person needs no watch to run as well.
       if (typedByPerson(m) && m.channel !== ids.botDm && m.user !== ids.owner) {

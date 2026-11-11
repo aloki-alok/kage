@@ -1,6 +1,6 @@
 import { describe, test } from 'node:test'
 import assert from 'node:assert/strict'
-import { cardRequestId, classify, findPeople, plainName, quoteMessage, senderOf, taskLine, teammateOf, teammatesIn, validName, withoutInvisible, withTeammates } from './gate.ts'
+import { classify, findPeople, plainName, quoteMessage, senderOf, taskLine, teammateOf, teammatesIn, validName, withoutInvisible, withTeammates } from './gate.ts'
 import { safeReply } from './outbound.ts'
 
 const OWNER = 'UOWNER001'
@@ -160,11 +160,6 @@ describe('replies in an approval card thread', () => {
   })
   test('a teammate still cannot approve in a card thread', () => {
     assert.equal(reply('yes', { user: MATE }), null)
-  })
-  test('the card id is read from the card the hub posts, and only from that', () => {
-    const posted = '*Approve?* (<https://x|DM with Mani>) Bash: Merge PR 229\n```{"command": "gh pr merge 229"}```\nReply `yes aekbe` or `no aekbe`'
-    assert.equal(cardRequestId(posted), 'aekbe')
-    assert.equal(cardRequestId('On it: Reply `yes aekbe` if you agree'), undefined)
   })
   test('without a card, a thread reply in the DM stays a task', () => {
     assert.equal(classify(msg({ channel: DM, thread_ts: '9.9', text: 'yes merge it' }), ids)?.kind, 'task')

@@ -16,7 +16,7 @@ export function openWaiting(tsv: string): { when: string; thread: string; link: 
   return [...open.values()].flat()
 }
 
-// The posted ledger: when, channel, ts, bot|owner|deleted, the session key that posted (rows before 11-06 have none). The token a message went out
+// The posted ledger: when, channel, ts, bot|owner|people|deleted|card, the session key that posted (a card row holds its request id instead) (rows before 11-06 have none). The token a message went out
 // with is the one that may change it; anything not on the list is someone else's.
 export function postedBy(tsv: string, channel: string, ts: string): 'bot' | 'owner' | undefined {
   let by: string | undefined
@@ -25,6 +25,15 @@ export function postedBy(tsv: string, channel: string, ts: string): 'bot' | 'own
     if (c === channel && t === ts) by = who
   }
   return by === 'bot' || by === 'owner' ? by : undefined
+}
+
+// The request id of the approval card the hub posted at this message. Only the hub's own 'card' row
+// counts: a reply that copies a card's words is a 'bot' row, so it can never approve a real request.
+export function cardAt(tsv: string, channel: string, ts: string): string | undefined {
+  for (const line of tsv.split('\n')) {
+    const [, c, t, kind, id] = line.split('\t')
+    if (c === channel && t === ts && kind === 'card') return id
+  }
 }
 
 // The thread ("C1:1.1") whose task posted this message in the owner's DM (a private ask), so the

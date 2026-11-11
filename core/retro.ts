@@ -20,7 +20,7 @@ export function retro(o: {
   schedules: Schedule[]
   placeOf: (key: string) => string
   runs: string     // the runs ledger: when, schedule id, session key (one row per run the scheduler handed over)
-  posted: string   // the posted ledger: when, channel, ts, bot|owner|people|deleted, the session key that posted
+  posted: string   // the posted ledger: when, channel, ts, bot|owner|people|deleted|card, the session key that posted
   costs: string    // the costs ledger
   costTracked?: boolean   // false when threads run as tmux panes: only the SDK runner reports cost
   now: number
