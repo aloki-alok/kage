@@ -5,8 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Kage: run Claude Code from Slack and email, open source</title>
 <meta name="description" content="Kage is an open source, self-hosted Slack AI agent. Tag it in Slack or email and your own Claude Code session on your laptop does the work and answers in the same thread.">
-<meta name="theme-color" content="#f2efe9" media="(prefers-color-scheme: light)">
-<meta name="theme-color" content="#121110" media="(prefers-color-scheme: dark)">
+<meta name="theme-color" content="#0a0b0d">
 <link rel="canonical" href="https://crwl.tech/">
 <script>if (location.hostname.endsWith('github.io')) location.replace('https://crwl.tech/' + location.hash)</script>
 <link rel="alternate" type="text/markdown" href="llms.txt" title="Kage for agents">
@@ -28,886 +27,268 @@
 <script type="application/ld+json">
 {"@context":"https://schema.org","@type":"SoftwareApplication","name":"Kage","description":"Open source tool that lets you tag Kage in Slack or email so your own Claude Code session on your laptop does the work and answers in the same thread.","applicationCategory":"DeveloperApplication","operatingSystem":"macOS, Linux","url":"https://crwl.tech/","codeRepository":"https://github.com/aloki-alok/kage","license":"https://opensource.org/license/mit","sameAs":["https://github.com/aloki-alok/kage"]}
 </script>
-<!-- ============================================================================
-     FEATURE CLAIMS. Set a line to false to remove that claim from the page
-     (text, demo parts and FAQ answers) before you deploy. Nothing else to edit.
-     ============================================================================ -->
-<script>
-window.CLAIMS = {
-  top: true,         // the `kage top` live demo and its mentions
-  attach: true,      // `kage attach`
-  schedules: true,   // schedules that survive restarts
-  whatsapp: false    // "WhatsApp is next" and the WhatsApp examples
-}
-document.documentElement.classList.add('js')
-</script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=JetBrains+Mono:wght@400;600;700&display=swap">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=JetBrains+Mono:wght@400;600&display=swap">
 <style>
+/* Cast, at night. Serif is you, mono is Kage, orange only means "needs you". The page is one day: the light moves, your words cast the shadow, the work lives in it. */
 :root {
-  /* Cast: light while you are here, dark while Kage works alone. Serif is you, mono is Kage. Orange (--signal) only means "needs you". */
-  --bg: #f2efe9; --panel: #e9e5dd; --chip: #e3ded4; --ink: #16140f; --muted: #6d675e; --line: #d8d2c7; --line2: #c9c2b5;
-  --signal: #ff4f00; --red: var(--ink); --field: var(--line2); --gold: var(--signal);
-  --term: #121110; --term-bar: #1b1916; --term-line: #2c2925; --term-ink: #e9e4da; --term-dim: #7d776e;
+  --bg: #0a0b0d; --ink: #e4e6e8; --muted: #7d838b; --faint: #464b52; --line: #1c1f23; --panel: #101215;
+  --signal: #ff4f00;
   --display: "Instrument Serif", "Times New Roman", serif;
-  --body: "JetBrains Mono", ui-monospace, Menlo, monospace;
-  --mono: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, monospace;
-  color-scheme: light;
+  --mono: "JetBrains Mono", ui-monospace, Menlo, monospace;
+  --light: 0; /* 0 at night, 1 at noon, set by the script */
+  color-scheme: dark;
 }
-@media (prefers-color-scheme: dark) { :root { --bg: #121110; --panel: #1b1916; --chip: #24211d; --ink: #efe9df; --muted: #a19b91; --line: #2c2925; --line2: #3a3631; color-scheme: dark; } }
 * { box-sizing: border-box; }
-html { overflow-x: clip; scroll-behavior: smooth; }
-body { margin: 0; background: var(--bg); color: var(--ink); font: 400 16px/1.55 var(--body); overflow-x: clip; }
-@media (prefers-reduced-motion: reduce) { html { scroll-behavior: auto; } }
-#bg { position: fixed; inset: 0; width: 100%; height: 100%; z-index: 0; pointer-events: none; }
-main, footer { position: relative; z-index: 1; }
-.wrap { max-width: 1200px; margin: 0 auto; padding-inline: max(20px, env(safe-area-inset-left, 0px)) max(20px, env(safe-area-inset-right, 0px)); position: relative; }
-section { padding-block: clamp(44px, 6vw, 80px); position: relative; }
-h1, h2 { font-family: var(--display); font-weight: 400; margin: 0; text-wrap: balance; letter-spacing: -0.01em; }
-h2 { font-size: clamp(34px, 6.4vw, 72px); line-height: .98; }
-h3 { font: 600 17px/1.3 var(--body); margin: 0 0 6px; }
+html { overflow-x: clip; }
+body { margin: 0; color: var(--ink); font: 400 15px/1.6 var(--mono); background: var(--bg); }
+.wrap { max-width: 1200px; margin: 0 auto; padding-inline: 20px; }
+a { color: var(--ink); text-underline-offset: 3px; text-decoration-color: var(--faint); }
+a:hover { text-decoration-color: var(--ink); }
+:focus-visible { outline: 2px solid var(--signal); outline-offset: 3px; }
 p { margin: 0; }
-.lede { color: var(--muted); max-width: 58ch; margin-top: 14px; }
-.kick { font: italic 400 clamp(24px, 3vw, 30px)/1 var(--display); color: var(--ink); margin-bottom: 30px; --len: .5; --skew: 50deg; }
-.kick .shadow { opacity: .35; }
-.kick + * { display: block; }
-.hint { font: 600 12px/1 var(--mono); color: var(--muted); }
-a { color: var(--ink); text-decoration-color: var(--red); text-underline-offset: 3px; }
-a:hover { color: var(--ink); }
-a:focus-visible, button:focus-visible, summary:focus-visible, [tabindex]:focus-visible { outline: 2px solid var(--signal); outline-offset: 3px; }
-code { font-family: var(--mono); font-size: .9em; color: var(--ink); background: var(--chip); padding: 1px 6px; }
-.btn { display: inline-block; font: 600 13px/1 var(--body); letter-spacing: .08em; text-transform: uppercase; color: var(--ink); background: transparent; border: 1px solid var(--line2); padding: 14px 18px; cursor: pointer; text-decoration: none; }
-.btn:hover { border-color: var(--red); color: var(--ink); }
-.btn.pri { background: var(--ink); border-color: var(--ink); color: var(--bg); }
-.btn.pri:hover { background: var(--ink); color: var(--bg); opacity: .88; }
 .sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
 
-/* hero: what you typed stands on a baseline; its shadow lengthens through the day and holds the work */
-.hero { padding-block: clamp(24px, 4vw, 48px) clamp(40px, 6vw, 80px); }
-.cast { position: relative; display: inline-block; line-height: 1; }
-.cast .shadow { position: absolute; left: 0; top: 0; white-space: nowrap; color: var(--ink); opacity: .9; pointer-events: none;
-  transform-origin: 0 82%; transform: scaleY(calc(-1 * var(--len, .6))) skewX(calc(-1 * var(--skew, 48deg)));
+/* the cast: same letters, flipped and slanted under the baseline */
+.cast { position: relative; display: inline-block; line-height: 1; white-space: nowrap; }
+.cast .shadow { position: absolute; left: 0; top: 0; pointer-events: none; transform-origin: 0 82%;
+  transform: scaleY(calc(-1 * var(--len, .6))) skewX(calc(-1 * var(--skew, 48deg)));
+  opacity: var(--sop, .5); transition: transform 1.6s cubic-bezier(.19,1,.22,1), opacity 1.6s;
   -webkit-mask-image: linear-gradient(to bottom, transparent 5%, #000 90%); mask-image: linear-gradient(to bottom, transparent 5%, #000 90%); }
-.mark { font: 400 2.2rem var(--display); }
-.top { display: flex; justify-content: space-between; align-items: center; gap: 16px; }
-.top .src { display: inline-flex; align-items: center; gap: 10px; text-decoration: none; border: 1px solid var(--line2); border-radius: 999px; padding: 9px 16px 9px 12px; font: 500 14px/1 var(--mono); color: var(--ink); transition: border-color .15s, background .15s; }
-.top .src svg { width: 18px; height: 18px; flex: none; }
-.top .src:hover, .top .src:focus-visible { border-color: var(--ink); outline: none; }
-.example { margin: clamp(40px, 6vw, 72px) 0 0; padding-top: 20px; border-top: 1px solid var(--line); }
-.say { position: relative; font: 400 clamp(2.5rem, 10vw, 8.5rem)/1 var(--display); letter-spacing: -0.02em; padding-top: 12px; white-space: nowrap; }
-.say::after { content: ""; position: absolute; left: 0; right: 0; bottom: .19em; height: 1px; background: currentColor; opacity: .25; }
+
+/* the sky: a light from above that only exists by day */
+.sky { position: fixed; inset: 0; pointer-events: none; z-index: 0; opacity: var(--light); transition: opacity 1.6s;
+  background: radial-gradient(120% 70% at var(--sun-x, 50%) -10%, #1d2228 0%, transparent 60%); }
+main, header, footer { position: relative; z-index: 1; }
+
+header .wrap { display: flex; justify-content: space-between; align-items: center; padding-block: 28px; }
+.mark { font: 400 2rem var(--display); --len: .55; --skew: 52deg; }
+.mark .shadow { opacity: .35; }
+.src { font: 500 13px/1 var(--mono); color: var(--muted); text-decoration: none; }
+.src:hover { color: var(--ink); }
+
+/* hero: one screen, one hour at a time */
+.hero { min-height: 100dvh; display: grid; grid-template-rows: auto 1fr auto; padding-bottom: 40px; margin-top: -88px; padding-top: 88px; }
+.hero h1 { font: 400 clamp(20px, 2.2vw, 26px)/1.3 var(--display); color: var(--muted); max-width: 34ch; margin: clamp(16px, 4vh, 48px) 0 0; }
+.hero h1 b { font-weight: 400; color: var(--ink); }
+.scene { align-self: center; padding-block: 24px; }
+.where { font: 400 12px/1 var(--mono); color: var(--muted); letter-spacing: .04em; display: flex; gap: 14px; align-items: baseline; min-height: 1em; }
+.where .hh { font: 400 13px var(--mono); color: var(--ink); }
+.ctx { color: var(--faint); }
+.say { font: 400 var(--fs, 120px)/1 var(--display); letter-spacing: -.02em; margin-top: 18px; position: relative; }
 .say i { font-style: italic; }
-.under { position: relative; min-height: clamp(150px, 18vw, 210px); }
-.work { position: absolute; right: 0; bottom: 6px; display: flex; flex-direction: column; gap: 2px; text-align: right; font: 400 clamp(12px, 1.3vw, 14px)/1.6 var(--mono); }
-.work span { opacity: 0; transition: opacity .35s; }
-.work span.on, html:not(.js) .work span { opacity: 1; }
+.say::after { content: ""; position: absolute; left: 0; right: 0; bottom: .19em; height: 1px; background: var(--ink); opacity: .14; }
+.work { list-style: none; margin: 0; padding: 0; min-height: 7.5em; margin-top: clamp(28px, 5vw, 64px); margin-left: auto; max-width: 56ch; font: 400 14px/1.75 var(--mono); }
+.work li { opacity: 0; transform: translateY(4px); transition: opacity .6s, transform .6s; }
+.work li.on { opacity: 1; transform: none; }
+.work li::before { content: "kage  "; color: var(--faint); }
+.work li + li::before { content: "      "; }
 .work .needs { color: var(--signal); }
-.dial { display: flex; align-items: center; gap: 14px; margin-top: 18px; flex-wrap: wrap; }
-.dial input { flex: 1 1 120px; accent-color: var(--ink); }
-.dial output { font: 400 1.6rem var(--display); min-width: 3.2em; }
-.hero h1 { font: 400 clamp(38px, 6vw, 84px)/1.02 var(--display); margin-top: clamp(32px, 6vw, 72px); max-width: 18ch; }
-.hero h1 i { font-style: italic; }
-.hero .sub { color: var(--muted); margin-top: 14px; max-width: 52ch; }
-@media (prefers-reduced-motion: reduce) { .work span { transition: none; } }
-.cta { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 28px; }
 
-/* terminals */
-.stage { background: var(--term); border: 1px solid var(--term-line); overflow: hidden; position: relative; }
-.stage.bare { border-color: transparent; background: transparent; }
-.stage pre { margin: 0; padding: 14px 16px; font-family: var(--mono); line-height: 1.18; white-space: pre; color: var(--term-ink); }
-@media (max-width: 560px) { .stage pre { padding: 10px 8px; } }
-.ev { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-top: 14px; }
-.ev button { font: 600 13px/1 var(--body); letter-spacing: .06em; text-transform: uppercase; color: var(--ink); background: transparent; border: 1px solid var(--line2); padding: 11px 13px; cursor: pointer; }
-.ev button:hover { border-color: var(--red); }
-.c-r { color: var(--red); } .c-R { color: var(--ink);  } .c-f { color: var(--field); }
-.c-g { color: var(--gold); } .c-G { color: #ffe08a;  }
-.c-w { color: var(--ink); } .c-W { color: var(--ink);  }
-.bc { display: inline-block; width: 1ch; font-style: normal; overflow: hidden; vertical-align: top; }
-.c-m { color: var(--muted); } .c-d { color: #5a504b; } .c-k { color: var(--line); }
-@media (prefers-reduced-motion: reduce) { .c-R, .c-G, .c-W { text-shadow: none; } }
-.art { margin: 0; display: block; width: max-content; max-width: 100%; font-family: var(--mono); line-height: 1.18; white-space: pre; pointer-events: none; overflow: hidden; }
+/* the day: 24 hours on one line */
+.day { position: relative; padding-top: 28px; }
+.ticks { position: relative; height: 22px; border-bottom: 1px solid var(--line); }
+.ticks i { position: absolute; bottom: 0; width: 1px; height: 6px; background: var(--faint); }
+.ticks i.six { height: 12px; }
+.day input { position: absolute; inset: 22px 0 auto; width: 100%; margin: 0; top: 10px; height: 28px; opacity: 0; cursor: ew-resize; }
+.now { position: absolute; top: 4px; width: 1px; height: 24px; background: var(--ink); left: calc(var(--t, .6) * 100%); transition: left 1.6s cubic-bezier(.19,1,.22,1); pointer-events: none; }
+.now::after { content: ""; position: absolute; left: -3px; top: -3px; width: 7px; height: 7px; background: var(--ink); }
+.stops { position: relative; height: 34px; margin-top: 8px; }
+.stops button { position: absolute; transform: translateX(-50%); background: none; border: 0; padding: 6px 4px; font: 400 12px/1 var(--mono); color: var(--faint); cursor: pointer; transition: color .3s; }
+.stops button:hover, .stops button[aria-pressed="true"] { color: var(--ink); }
+.stops button.needs[aria-pressed="true"] { color: var(--signal); }
+.legend { display: flex; justify-content: space-between; font: 400 11px/1 var(--mono); color: var(--faint); margin-top: 2px; }
+.cta { display: flex; gap: 18px; align-items: center; margin-top: 28px; flex-wrap: wrap; }
+.btn { font: 600 12px/1 var(--mono); letter-spacing: .08em; text-transform: uppercase; color: var(--bg); background: var(--ink); padding: 14px 18px; text-decoration: none; border: 0; cursor: pointer; }
+.btn:hover { opacity: .88; }
 
-/* context: oversized type left, each thing Kage brings runs on a string out to every channel */
-.ctx-grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 40px 56px; align-items: center; }
-@media (max-width: 899px) { .ctx-grid { grid-template-columns: minmax(0, 1fr); } }
-.context h2 { font-size: clamp(44px, 6.4vw, 84px); line-height: .94; }
-.ctx { list-style: none; margin: 0; padding: 0; }
-.ctx li { position: relative; padding: 16px 0 16px 0; border-bottom: 1px solid var(--line); display: grid; gap: 2px; background: var(--bg); }
-.ctx li b { font: 400 clamp(24px, 3.2vw, 34px)/1 var(--display); }
-.ctx li span { color: var(--muted); }
-@keyframes out { to { background-position: 36px 0; } }
-@media (prefers-reduced-motion: reduce) { .ctx li::after { animation: none; } }
-/* channels: big tabs, the picked channel's exchange as a real chat thread */
-.tabs { display: flex; border-bottom: 1px solid var(--line2); margin-top: 28px; overflow-x: auto; scrollbar-width: none; }
-.tabs button { font: 400 clamp(22px, 3vw, 32px)/1 var(--display); background: none; border: 0; padding: 14px 22px 16px; color: var(--muted); cursor: pointer; position: relative; white-space: nowrap; transition: color .2s; }
-.tabs button:first-child { padding-left: 0; }
-.tabs button:hover, .tabs button[aria-selected="true"] { color: var(--ink); }
-.tabs button[aria-selected="true"]::after { content: ""; position: absolute; left: 0; right: 0; bottom: -1px; height: 4px; background: var(--red); }
-.ch-body { display: grid; grid-template-columns: minmax(0, 1.2fr) minmax(0, .8fr); gap: 28px 56px; padding-top: 28px; align-items: start; }
-@media (max-width: 899px) { .ch-body { grid-template-columns: minmax(0, 1fr); } }
-.thread { list-style: none; margin: 0; padding: 0; display: grid; gap: 16px; }
-html.js .thread:not(.on) { display: none; }
-html:not(.js) .tabs { display: none; }
-.msg { display: grid; grid-template-columns: 36px minmax(0, 1fr); gap: 12px; }
-.av { width: 36px; height: 36px; display: grid; place-items: center; font: 700 15px/1 var(--body); background: var(--line); }
-.av.you { background: var(--line2); }
-.av.k { background: var(--bg); border: 1px solid var(--line2); } .av.k svg { width: 22px; height: 22px; fill: var(--ink); }
-.who { font-weight: 600; } .who small { color: var(--muted); font-weight: 400; margin-left: 8px; font-size: 13px; }
-.txt { color: var(--ink); }
-.at { color: var(--ink); font-weight: 600; }
-.subj { font: 700 12px/1 var(--mono); letter-spacing: .1em; text-transform: uppercase; color: var(--muted); padding-bottom: 12px; border-bottom: 1px solid var(--line); }
-.note { color: var(--muted); border-left: 3px solid var(--red); padding-left: 14px; }
-.note b { color: var(--ink); display: block; font: 400 26px/1.05 var(--display); margin-bottom: 6px; }
+/* quiet sections */
+section.q { padding-block: clamp(72px, 12vw, 160px); border-top: 1px solid var(--line); }
+.q h2 { font: 400 clamp(36px, 5.4vw, 68px)/1 var(--display); margin: 0 0 clamp(28px, 4vw, 48px); letter-spacing: -.01em; max-width: 16ch; }
+.q h2 i { font-style: italic; }
+.lede { color: var(--muted); max-width: 52ch; margin: -16px 0 40px; }
+.grid5 { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 0; border-top: 1px solid var(--line); }
+.grid5 li { padding: 20px 20px 0 0; }
+.grid5 b { display: block; font: 400 24px/1.1 var(--display); margin-bottom: 8px; }
+.grid5 span { color: var(--muted); font-size: 13px; }
+.trust { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 40px; }
+.trust b { display: block; font: 400 clamp(28px, 3vw, 40px)/1 var(--display); margin-bottom: 12px; }
+.trust b i { font-style: italic; }
+.trust span { color: var(--muted); font-size: 13px; }
+.setup { display: grid; grid-template-columns: minmax(0, .8fr) minmax(0, 1.2fr); gap: 40px; align-items: start; }
+.term { background: var(--panel); border: 1px solid var(--line); }
+.term .bar { display: flex; justify-content: space-between; align-items: center; padding: 10px 14px; border-bottom: 1px solid var(--line); font: 400 11px/1 var(--mono); color: var(--faint); letter-spacing: .06em; text-transform: uppercase; }
+.term button { font: 600 11px/1 var(--mono); letter-spacing: .08em; text-transform: uppercase; background: var(--ink); color: var(--bg); border: 0; padding: 8px 10px; cursor: pointer; }
+.term pre { margin: 0; padding: 16px; white-space: pre-wrap; word-break: break-word; font: 400 13px/1.7 var(--mono); }
+details { border-bottom: 1px solid var(--line); }
+summary { list-style: none; cursor: pointer; padding: 18px 0; display: flex; justify-content: space-between; font: 400 22px/1.2 var(--display); }
+summary::after { content: "+"; font: 400 16px var(--mono); color: var(--muted); }
+details[open] summary::after { content: "−"; }
+details p { color: var(--muted); padding-bottom: 20px; max-width: 64ch; font-size: 14px; }
+footer { border-top: 1px solid var(--line); }
+footer .wrap { display: flex; justify-content: space-between; align-items: end; gap: 20px; padding-block: 40px 56px; flex-wrap: wrap; }
+footer .big { font: 400 clamp(72px, 14vw, 180px)/1 var(--display); --len: .8; --skew: 50deg; }
+footer .big .shadow { opacity: .25; }
+footer nav { display: flex; gap: 18px; font-size: 12px; color: var(--muted); }
 
-/* demo */
-.demo { display: grid; grid-template-columns: minmax(0, .8fr) minmax(0, 1.2fr); gap: 28px 56px; align-items: center; }
-@media (max-width: 899px) { .demo { grid-template-columns: minmax(0, 1fr); } }
-
-/* how: scroll-driven sequence, plain cards and one string, no terminal */
-.flow { display: grid; grid-template-columns: minmax(0, 1fr) 64px minmax(0, 1fr); align-items: stretch; gap: 0; background: var(--bg); border: 1px solid var(--line); padding: 22px; --seg: 0; --bead: -1; }
-.fcard { border: 1px solid var(--line2); padding: 16px; background: var(--panel); min-height: 168px; transition: border-color .3s; }
-.fcard h4 { margin: 0 0 14px; padding-bottom: 12px; border-bottom: 1px solid var(--line); font: 700 13px/1 var(--body); color: var(--ink); }
-.fcard h4 span { color: var(--muted); font-weight: 400; }
-/* the thread reads like a chat, the session like a terminal at work */
-.chat { display: grid; gap: 12px; align-content: start; }
-.chat h4 { margin: 0; }
-.chat .msg { grid-template-columns: 28px minmax(0, 1fr); gap: 10px; } .chat .av { width: 28px; height: 28px; font-size: 12px; } .chat .av.k svg { width: 14px; height: 14px; }
-.chat .txt { font-size: 15px; line-height: 1.4; }
-.fcard.sess { background: var(--term); padding: 0; }
-.sess h4 { display: flex; align-items: center; gap: 6px; padding: 10px 12px; margin: 0; background: var(--term-bar); color: var(--term-ink); border-color: var(--term-line); font: 700 12px/1 var(--mono); }
-.sess h4 i { width: 9px; height: 9px; border-radius: 50%; background: var(--term-line); } .sess h4 i:nth-child(3) { margin-right: 6px; }
-.sess pre { margin: 0; padding: 14px; white-space: pre-wrap; font: 400 13px/1.7 var(--mono); color: var(--term-ink); }
-.sess .dim { color: var(--term-dim); } .sess .red { color: var(--term-ink); } .sess .ok { color: var(--term-line); }
-.sess .cur { display: inline-block; width: .6em; height: 1em; margin-left: 6px; background: var(--red); vertical-align: text-bottom; animation: blink 1s steps(2) infinite; }
-.flow { position: relative; }
-.fline { position: relative; align-self: center; height: 2px; background: repeating-linear-gradient(90deg, var(--line2) 0 4px, transparent 4px 9px); }
-.fline i { position: absolute; inset: 0; background: var(--red); transform-origin: left; transform: scaleX(var(--seg)); }
-.fline b { position: absolute; top: -5px; left: calc(var(--bead) * 100% - 6px); width: 12px; height: 12px; border-radius: 50%; background: var(--ink); box- opacity: 0; }
-.flow[data-step="3"] .fline b { opacity: 1; }
-.flow .m2 { opacity: 0; transition: opacity .3s; } .flow .m3 { opacity: 0; transition: opacity .4s; }
-.flow[data-step="0"] .m2, .flow[data-step="1"] .m2, .flow[data-step="2"] .m2, .flow[data-step="3"] .m2 { opacity: 1; }
-.flow[data-step="3"] .m3 { opacity: 1; }
-.flow .s { display: none; color: var(--muted); } .flow[data-step="0"] .s0, .flow[data-step="1"] .s1, .flow[data-step="2"] .s2, .flow[data-step="3"] .s3 { display: block; }
-.flow[data-step="2"] .sess { border-color: var(--red); }
-.flow[data-step="1"] .sess { border-color: var(--ink); }
-.dots::after { content: ""; animation: dots 1.2s steps(4) infinite; } @keyframes dots { 0% { content: ""; } 25% { content: "."; } 50% { content: ".."; } 75% { content: "..."; } }
-.prog { grid-column: 1 / -1; display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin-top: 18px; }
-.prog u { height: 3px; background: var(--line); text-decoration: none; }
-.flow[data-step="0"] .prog u:nth-child(-n+1), .flow[data-step="1"] .prog u:nth-child(-n+2), .flow[data-step="2"] .prog u:nth-child(-n+3), .flow[data-step="3"] .prog u { background: var(--red); }
-@media (max-width: 640px) {
-  .flow { grid-template-columns: minmax(0, 1fr); grid-template-rows: auto 36px auto auto; padding: 14px; }
-  .fline { width: 2px; height: auto; justify-self: center; align-self: stretch; background: repeating-linear-gradient(180deg, var(--line2) 0 4px, transparent 4px 9px); }
-  .fline i { transform-origin: top; transform: scaleY(var(--seg)); }
-  .fline b { top: calc(var(--bead) * 100% - 6px); left: -5px; }
-  .fcard { min-height: 0; }
-  .flow { background: var(--bg); }
-}
-@media (prefers-reduced-motion: reduce) { .dots::after { animation: none; content: "..."; } }
-.seq { display: grid; grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr); gap: 0 48px; margin-top: 40px; }
-.seq .stagebox { position: sticky; top: 12vh; align-self: start; z-index: 2; }
-.seq .stage { background: var(--bg); }
-.steps { list-style: none; margin: 0; padding: 0; counter-reset: s; }
-.steps li { min-height: 46vh; display: flex; flex-direction: column; justify-content: center; opacity: .35; transition: opacity .3s; padding-left: 96px; position: relative; }
-.steps li.on, html:not(.js) .steps li { opacity: 1; }
-.steps li::before { counter-increment: s; content: "0" counter(s); position: absolute; left: 0; top: 50%; transform: translateY(-50%); font: 400 clamp(44px, 6vw, 72px)/1 var(--display); color: var(--red); }
-.steps h3 { font: 400 clamp(26px, 3.4vw, 40px)/1 var(--display); margin-bottom: 10px; }
-.steps p { color: var(--muted); max-width: 40ch; }
-html:not(.js) .steps li { min-height: 0; padding-block: 18px; }
 @media (max-width: 899px) {
-  .seq { grid-template-columns: minmax(0, 1fr); }
-  .steps li { min-height: 52vh; padding-left: 60px; }
-  /* Stacked: no room for step text below the sticky cards, so the active step shows in .cap inside the box
-     and the list only supplies scroll length (opacity 0 keeps it readable to screen readers). */
-  html.js .seq .steps li { opacity: 0; }
-  html.js .seq .stagebox { top: 0; padding-top: 8px; background: var(--bg); box-shadow: 0 18px 18px -6px var(--bg); }
-  .cap { position: relative; padding: 12px 0 0 52px; min-height: 104px; }
-  .cap::before { content: "0" attr(data-n); position: absolute; left: 0; top: 14px; font: 400 40px/1 var(--display); color: var(--red); }
-  .cap h3 { font: 400 24px/1 var(--display); margin-bottom: 4px; }
-  .cap p { color: var(--muted); font-size: 15px; line-height: 1.38; margin: 0; }}
-.cap { display: none; }
-@media (max-width: 899px) { html.js .cap { display: block; } }
-.facts { display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 0 24px; margin-top: 56px; border-top: 1px solid var(--line); }
-.facts div { padding: 16px 0; border-bottom: 1px solid var(--line); }
-.facts p { color: var(--muted); font-size: 15px; }
-
-/* safety: poster type, the gate bleeds in from the right */
-.safety { overflow: clip; }
-.safety .art { position: absolute; right: -8%; top: 50%; transform: translateY(-50%); opacity: .3; z-index: 0; }
-.safety .wrap > * { position: relative; z-index: 1; }
-.poster { display: grid; gap: clamp(22px, 4vw, 48px); margin-top: 36px; }
-.poster div { max-width: 100%; }
-.poster strong { display: block; font: 400 clamp(40px, 8.6vw, 112px)/.95 var(--display); }
-.poster div:nth-child(2) { margin-left: clamp(0px, 8vw, 120px); }
-.poster div:nth-child(3) { margin-left: clamp(0px, 16vw, 240px); }
-.poster strong em { font-style: italic; color: inherit; }
-/* solid plate: body text sat on the gate's dots and could not be read */
-.poster p { color: var(--ink); font-size: 18px; width: fit-content; max-width: 40ch; margin-top: 12px; padding: 6px 12px 6px 0; background: var(--bg); }
-
-/* setup: split, big type left, a typing terminal right */
-.setup { display: grid; grid-template-columns: minmax(0, .8fr) minmax(0, 1.2fr); gap: 32px 48px; align-items: center; }
-@media (max-width: 899px) { .setup { grid-template-columns: minmax(0, 1fr); } }
-.setup h2 { font-size: clamp(52px, 9vw, 120px); }
-.copy { font: 600 13px/1 var(--body); letter-spacing: .08em; text-transform: uppercase; color: var(--bg); background: var(--ink); border: 0; padding: 0 16px; min-height: 44px; cursor: pointer; min-width: 96px; }
-.copy:hover { opacity: .88; }
-.term pre { margin: 0; padding: 18px 18px 20px; font: 400 clamp(12.5px, 1.7vw, 15px)/1.65 var(--mono); white-space: pre-wrap; overflow-wrap: anywhere; min-height: 17em; }
-.paper { background: var(--panel); color: var(--ink); border: 1px solid var(--line); border-top: 2px solid var(--ink); }
-.paper .bar { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 10px 10px 10px 18px; border-bottom: 1px solid var(--line); font: 700 12px/1 var(--mono); letter-spacing: .12em; text-transform: uppercase; color: var(--muted); }
-.paper pre { margin: 0; padding: 22px 20px 28px; font: 400 clamp(14px, 1.7vw, 17px)/1.7 var(--mono); white-space: pre-wrap; overflow-wrap: anywhere; }
-.paper code { background: none; padding: 0; font-size: inherit; color: var(--ink); }
-.caret { display: inline-block; width: .6em; height: 1.1em; background: var(--red); vertical-align: text-bottom; animation: blink 1s steps(2) infinite; }
-@keyframes blink { 50% { opacity: 0; } }
-@media (prefers-reduced-motion: reduce) { .caret { animation: none; } }
-/* faq: accordion, eye bleeds off the right edge */
-.faq { overflow: clip; }
-.faq-list { margin-top: 40px; max-width: 820px; border-top: 1px solid var(--line); }
-details { border-bottom: 1px solid var(--line); background: var(--bg); }
-summary { list-style: none; cursor: pointer; padding: 20px 44px 20px 0; font: 600 clamp(17px, 2.2vw, 21px)/1.3 var(--body); position: relative; }
-summary::-webkit-details-marker { display: none; }
-summary::after { content: "+"; position: absolute; right: 6px; top: 50%; transform: translateY(-50%); font: 400 28px/1 var(--mono); color: var(--red); transition: transform .2s; }
-details[open] summary::after { transform: translateY(-50%) rotate(45deg); }
-details p { color: var(--muted); padding: 0 44px 22px 0; max-width: 62ch; }
-/* phone view: its own layout, not a shrunk desktop */
-#stickycopy, .wake { display: none; }
-#sheetwrap { position: fixed; inset: 0; z-index: 60; }
-#sheetwrap[hidden] { display: none; }
-.scrim { position: absolute; inset: 0; background: rgba(0,0,0,.6); }
-#sheet { position: absolute; left: 0; right: 0; bottom: 0; max-height: 72vh; overflow: auto; background: var(--panel); border-top: 2px solid var(--red); padding: 0 20px calc(24px + env(safe-area-inset-bottom, 0px)); touch-action: pan-y; animation: rise .28s ease-out; }
-@keyframes rise { from { transform: translateY(100%); } }
-#sheet .handle { width: 100%; height: 44px; display: flex; align-items: center; justify-content: center; cursor: grab; touch-action: none; }
-#sheet .handle::before { content: ""; width: 48px; height: 5px; border-radius: 3px; background: var(--line2); }
-#sheet h3 { font: 400 28px/1 var(--display); margin: 4px 0 4px; }
-#sheet .state { color: var(--muted); font: 700 13px/1 var(--mono); letter-spacing: .1em; text-transform: uppercase; margin-bottom: 14px; }
-#sheet ol { list-style: none; margin: 0; padding: 0; font: 400 15px/1.5 var(--mono); }
-#sheet li { padding: 8px 0; border-top: 1px solid var(--line); display: grid; grid-template-columns: 4.5em 1fr; gap: 8px; }
-#sheet li b { color: var(--ink); font-weight: 700; } #sheet li.reply b, #sheet li.reply span { color: var(--ink); }
-#sheetstring { position: fixed; inset: 0; width: 100%; height: 100%; pointer-events: none; z-index: 61; }
-#sheetstring path { fill: none; stroke: var(--red); stroke-width: 2; stroke-dasharray: 1; stroke-dashoffset: 0; animation: draw .45s ease-out; }
-@keyframes draw { from { stroke-dashoffset: 1; } }
-@media (prefers-reduced-motion: reduce) { #sheet, #sheetstring path { animation: none; } }
-/* phone demo: a plain, realistic terminal window with one line per thread */
-.more-btn { display: none; } html:not(.js) .mterm { display: none; }
-.mterm { border: 1px solid var(--term-line); background: var(--term); border-radius: 6px; overflow: hidden; font-family: var(--mono); }
-.mbar { display: flex; align-items: center; gap: 7px; padding: 12px 14px; background: var(--term-bar); border-bottom: 1px solid var(--term-line); color: var(--term-dim); font-size: 13px; }
-.mbar i { width: 11px; height: 11px; border-radius: 50%; background: var(--term-line); } .mbar i:first-child { background: var(--term-line); } .mbar i:nth-child(2) { background: var(--term-line); } .mbar i:nth-child(3) { background: var(--term-line); }
-.mbar span { margin-left: 8px; color: var(--term-ink); font-weight: 700; }
-.mrow { display: grid; grid-template-columns: 36px 20px minmax(0, 1fr) auto; align-items: center; gap: 10px; width: 100%; min-height: 72px; padding: 12px 18px 12px 0; transition: background .2s; background: none; border: 0; border-bottom: 1px solid var(--term-line); color: var(--term-ink); font: 400 14px/1.2 var(--mono); text-align: left; cursor: pointer; }
-.mrow:last-child { border-bottom: 0; }
-.mrow .stub { height: 2px; width: 100%; background: var(--term-line); position: relative; overflow: hidden; }
-.mrow .g { color: var(--term-dim); }
-.mrow .nm { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 700; font-size: 16px; }
-.mrow .nm small { display: block; overflow: hidden; text-overflow: ellipsis; font-weight: 400; font-size: 13px; color: var(--term-dim); margin-top: 4px; }
-.mrow .lb { color: var(--term-dim); font-size: 13px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; }
-.mrow:hover { background: var(--term-bar); }
-.mrow.st-working .stub { background: var(--term-dim); } .mrow.st-working .stub::after { content: ""; position: absolute; top: 0; left: -8px; width: 8px; height: 2px; background: var(--term-ink); box- animation: pulse 1s linear infinite; }
-@keyframes pulse { to { left: 100%; } }
-.mrow.st-working .g, .mrow.st-working .lb { color: var(--term-ink); }
-.mrow.st-asks .stub { background: var(--gold); animation: blink 1s steps(2) infinite; } .mrow.st-asks .g, .mrow.st-asks .lb { color: var(--gold); font-weight: 700; }
-.mrow.st-watching .stub { background: var(--term-ink); opacity: .7; } .mrow.st-watching .g { color: var(--term-ink); }
-.mrow.st-cutting { opacity: .35; text-decoration: line-through; transition: opacity 1.4s; }
-@media (prefers-reduced-motion: reduce) { .mrow.st-working .stub::after, .mrow.st-asks .stub { animation: none; } }
-@media (max-width: 640px) {
-  .more-btn { display: inline-block; } .ev:not(.open) .more-item { display: none; }
-  .ev { overflow-x: visible; flex-wrap: wrap; }
-  body { font-size: 16px; }
-  .btn { min-height: 48px; display: inline-flex; align-items: center; }
-  .hero { padding-top: 24px; gap: 20px; }
-  .stage.bare pre { padding: 0 4px; touch-action: pan-y; }
-  .wake { display: block; position: absolute; left: 50%; bottom: 14px; transform: translateX(-50%); z-index: 3; font: 600 14px/1 var(--body); letter-spacing: .08em; text-transform: uppercase; color: var(--ink); background: var(--bg); border: 1px solid var(--gold); padding: 0 18px; min-height: 48px; cursor: pointer; }
-  .wake[hidden] { display: none; }
-  .ev button { min-height: 44px; padding: 0 16px; font-size: 14px; }
-  .facts p, details p, .lede { font-size: 16px; }
-  .fcard p { font-size: 16px; }
-  .facts { grid-template-columns: minmax(0, 1fr); }
-  .term pre { font-size: 14px; }
-  summary { min-height: 56px; padding-block: 14px; }
-  .safety .art { opacity: .35; }
-  .setup h2 { font-size: clamp(64px, 22vw, 100px); }
-  #stickycopy { display: block; position: fixed; left: 12px; right: 12px; bottom: calc(12px + env(safe-area-inset-bottom, 0px)); z-index: 50; min-height: 52px; font-size: 15px; transform: translateY(160%); transition: transform .25s; box-shadow: 0 6px 24px rgba(0,0,0,.6); }
-  #stickycopy.show { transform: none; }
+  .grid5 { grid-template-columns: minmax(0, 1fr); } .grid5 li { padding: 16px 0; border-bottom: 1px solid var(--line); }
+  .trust, .setup { grid-template-columns: minmax(0, 1fr); }
+  .work { margin-left: 0; }
+  .stops button:not([aria-pressed="true"]) .lbl { display: none; }
 }
-footer { border-top: 1px solid var(--line); color: var(--muted); font-size: 14px; background: var(--bg); overflow: hidden; }
-/* The kage field from proof's ascii.js (aloki-alok/proof): live characters, the pointer drops ripples. */
-.ascii { margin: 0 20px; padding: 0; font: 400 11px/1 var(--mono); color: var(--ink); white-space: pre; overflow: hidden; cursor: crosshair; user-select: none; }
-.foot { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 8px 24px; padding-block: 18px 40px; border-top: 1px solid var(--line); }
-.foot nav { display: flex; gap: 20px; }
-@media (max-width: 720px) { .ascii { font-size: 7px; } }
+@media (prefers-reduced-motion: reduce) { .cast .shadow, .now, .sky, .work li { transition: none; } }
 </style>
 </head>
 <body>
+<div class="sky" aria-hidden="true"></div>
+<header><div class="wrap">
+  <span class="cast mark" aria-label="kage">kage<span class="shadow" aria-hidden="true">kage</span></span>
+  <a class="src" href="https://github.com/aloki-alok/kage">Read the source ↗</a>
+</div></header>
+
 <main>
-<div class="wrap">
-  <header class="hero">
-    <div class="top"><span class="cast mark" aria-label="kage">kage<span class="shadow" aria-hidden="true" style="--len:.55; --skew:52deg">kage</span></span><a class="src" href="https://github.com/aloki-alok/kage"><svg viewBox="0 0 16 16" aria-hidden="true"><path fill="currentColor" d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/></svg>Read the source</a></div>
-    <h1>Tag <i>Kage</i> wherever you work. Your own Claude Code does the work.</h1>
-    <p class="sub">Kage runs on your laptop with your setup. It finds the problem and fixes it the way you would.</p>
-    <div class="cta">
-      <a class="btn pri" href="#setup">Set it up</a>
-      <a class="btn" href="#how">How it works</a>
-    </div>
-    <figure class="example" aria-label="Example: you tag Kage before you leave, and it covers for you until 22:00">
-      <span class="cast kick">Example: you leave at 18:00<span class="shadow" aria-hidden="true">Example: you leave at 18:00</span></span>
-      <div class="say" aria-hidden="true"><span class="cast"><i>@kage</i> cover for me<span class="shadow" id="hero-shadow"><i>@kage</i> cover for me</span></span></div>
-      <div class="under">
-        <div class="work" id="work">
-          <span data-h="13">set your status: away until 22:00</span>
-          <span data-h="15">6 people asked for you</span>
-          <span data-h="17">answered 5 from what you know</span>
-          <span data-h="19">kept a list of what changed</span>
-          <span data-h="21" class="needs">1 needs your yes: a refund over $500</span>
-        </div>
-      </div>
-      <figcaption class="dial"><span class="hint">Drag the clock</span><input type="range" id="hour" min="12" max="22" step="0.25" value="21" aria-label="Time of day"><output id="clock" for="hour">21:00</output></figcaption>
-    </figure>
-  </header>
+<section class="hero wrap" aria-labelledby="h1">
+  <h1 id="h1"><b>Tag Kage wherever you work.</b> Your own Claude Code does the work, on your laptop, with your setup.</h1>
 
-  <section id="context" class="context" aria-labelledby="h-context">
-    <div class="ctx-grid">
-      <div>
-        <span class="cast kick">Shared context<span class="shadow" aria-hidden="true">Shared context</span></span>
-        <h2 id="h-context">It already knows how you work.</h2>
-        <p class="lede">Not a new bot. It is your Claude Code, so it starts with all of this. Correct it once and it remembers.</p>
-      </div>
-      <ul class="ctx" aria-label="What Kage brings with it">
-        <li><b>Your instructions</b><span><code>CLAUDE.md</code>, the way you work and your conventions</span></li>
-        <li><b>Your skills</b><span>every skill you have installed</span></li>
-        <li><b>Your tools</b><span>your MCP servers and tools, and your repos</span></li>
-        <li><b>Your hooks</b><span>the guards you already run</span></li>
-        <li><b>Your access</b><span>your logins, on your laptop</span></li>
-      </ul>
-    </div>
-  </section>
+  <div class="scene" aria-live="polite">
+    <p class="where"><span class="hh" id="hh">14:22</span><span id="ch">#incidents</span><span class="ctx" id="cx"></span></p>
+    <p class="say" id="say"><span class="cast"><span id="ask"></span><span class="shadow" aria-hidden="true" id="sh"></span></span></p>
+    <ul class="work" id="work"></ul>
+  </div>
 
-  <section id="channels" aria-labelledby="h-channels">
-    <svg width="0" height="0" style="position:absolute" aria-hidden="true"><symbol id="star" viewBox="0 0 24 24"><text x="6" y="19" font-family="Instrument Serif, serif" font-size="22">k</text></symbol></svg>
-    <span class="cast kick">Channels<span class="shadow" aria-hidden="true">Channels</span></span>
-    <h2 id="h-channels">One Kage. Every channel.</h2>
-    <div class="tabs" role="tablist" aria-label="Channels">
-      <button role="tab" id="t-slack" aria-controls="p-slack" aria-selected="true">Slack</button>
-      <button role="tab" id="t-email" aria-controls="p-email" aria-selected="false" tabindex="-1">Email</button>
-      <button role="tab" id="t-wa" aria-controls="p-wa" aria-selected="false" tabindex="-1" data-claim="whatsapp">WhatsApp</button>
-      <button role="tab" id="t-any" aria-controls="p-any" aria-selected="false" tabindex="-1">Any channel</button>
+  <div>
+    <div class="day">
+      <div class="ticks" id="ticks" aria-hidden="true"></div>
+      <span class="now" aria-hidden="true"></span>
+      <label class="sr" for="clock">Time of day</label>
+      <input id="clock" type="range" min="0" max="1439" step="1" value="862">
+      <div class="stops" id="stops"></div>
+      <div class="legend" aria-hidden="true"><span>00</span><span>06</span><span>12</span><span>18</span><span>24</span></div>
     </div>
-    <div class="ch-body">
-      <div>
-        <ol class="thread on" role="tabpanel" id="p-slack" aria-labelledby="t-slack"><li class="msg"><span class="av " aria-hidden="true">P</span><div><p class="who">Priya <small>14:21</small></p><p class="txt">checkout is throwing 500s since the 14:05 deploy</p></div></li><li class="msg"><span class="av you" aria-hidden="true">Y</span><div><p class="who">You <small>14:22</small></p><p class="txt"><b class="at">@kage</b> fix it</p></div></li><li class="msg"><span class="av k" aria-hidden="true"><svg viewBox="0 0 24 24"><use href="#star"/></svg></span><div><p class="who">Kage <small>14:26</small></p><p class="txt">The 14:05 deploy renamed <code>order.total</code> to <code>order.amount</code>. I fixed the 3 callers and the tests pass. The PR waits for your merge.</p></div></li></ol>
-        <ol class="thread" role="tabpanel" id="p-email" aria-labelledby="t-email"><li class="subj">Re: Invoice 4471 does not match PO 2210</li><li class="msg"><span class="av " aria-hidden="true">V</span><div><p class="who">Vendor <small>09:02</small></p><p class="txt">Please find the invoice attached.</p></div></li><li class="msg"><span class="av you" aria-hidden="true">Y</span><div><p class="who">You <small>09:10</small></p><p class="txt">Kage, check this against the order and draft a reply.</p></div></li><li class="msg"><span class="av k" aria-hidden="true"><svg viewBox="0 0 24 24"><use href="#star"/></svg></span><div><p class="who">Kage <small>09:13</small></p><p class="txt">2 lines are billed twice. I drafted a reply in your usual tone asking for a corrected invoice. It waits for you to send.</p></div></li></ol>
-        <ol class="thread" role="tabpanel" id="p-wa" aria-labelledby="t-wa" data-claim="whatsapp"><li class="msg"><span class="av you" aria-hidden="true">Y</span><div><p class="who">You <small>19:40</small></p><p class="txt">Kage, how many units are in stock?</p></div></li><li class="msg"><span class="av k" aria-hidden="true"><svg viewBox="0 0 24 24"><use href="#star"/></svg></span><div><p class="who">Kage <small>19:41</small></p><p class="txt">240 units. 3 items are below the minimum.</p></div></li></ol>
-        <ol class="thread" role="tabpanel" id="p-any" aria-labelledby="t-any"><li class="msg"><span class="av you" aria-hidden="true">?</span><div><p class="who">Your channel <small>next</small></p><p class="txt">A message arrives anywhere you work.</p></div></li><li class="msg"><span class="av k" aria-hidden="true"><svg viewBox="0 0 24 24"><use href="#star"/></svg></span><div><p class="who">Kage <small></small></p><p class="txt">It plugs in as one more string. All it has to do is turn a message into a task.</p></div></li></ol>
-      </div>
-      <p class="note"><b>Same Kage, every channel</b>Each channel reaches the same Claude Code, with the same setup.</p>
-    </div>
-  </section>
+    <div class="cta"><a class="btn" href="#setup">Set it up</a></div>
+  </div>
+</section>
 
-  <section id="demo" data-claim="top" aria-labelledby="h-demo">
-    <div class="demo">
-      <div>
-        <span class="cast kick">kage top<span class="shadow" aria-hidden="true">kage top</span></span>
-        <h2 id="h-demo">Every thread, one screen</h2>
-        <p class="lede">See what each thread is doing from your terminal. Click a row to open it.</p>
-      </div>
-      <div>
-    <div class="mterm" id="mterm"><div class="mbar"><i></i><i></i><i></i><span>kage top</span></div><div class="mbody" id="mbody"></div></div>
-    <div class="ev" id="evrow" role="group" aria-label="Make it happen">
-      <button id="e-ask">#incidents needs your yes</button>
-      <button id="e-tag" class="more-item">Tag in #sales</button>
-      <button id="e-cron" class="more-item" data-claim="schedules">Weekly report fires</button>
-      <button id="e-cut">Stop a thread</button>
-      <button id="e-boot" class="more-item">Replay start</button>
-      <button id="e-more" class="more-btn" type="button" aria-expanded="false">More</button>
-    </div>
-      </div>
-    </div>
-  </section>
+<section class="q" id="context" aria-labelledby="h-ctx"><div class="wrap">
+  <h2 id="h-ctx">It already knows how you work.</h2>
+  <p class="lede">Not a new bot. It is your Claude Code, so it starts with all of this. Correct it once and it remembers.</p>
+  <ul class="grid5">
+    <li><b>Instructions</b><span><code>CLAUDE.md</code>, your conventions</span></li>
+    <li><b>Skills</b><span>every skill you have installed</span></li>
+    <li><b>Tools</b><span>your MCP servers and your repos</span></li>
+    <li><b>Hooks</b><span>the guards you already run</span></li>
+    <li><b>Access</b><span>your logins, on your laptop</span></li>
+  </ul>
+</div></section>
 
-  <section id="how" aria-labelledby="h-how">
-    <span class="cast kick">How it works<span class="shadow" aria-hidden="true">How it works</span></span>
-    <h2 id="h-how">One tag. Its own session.</h2>
-    <p class="lede">Scroll to follow one message from tag to fix.</p>
-    <div class="seq" id="seq">
-      <div class="stagebox"><div class="flow" id="flow" data-step="0" role="img" aria-label="A message in a thread, its own session starting, the session finding and fixing the problem, and the fix travelling back">
-        <div class="fcard chat"><h4># incidents <span>· thread</span></h4><div class="msg"><span class="av" aria-hidden="true">P</span><div><p class="who">Priya</p><p class="txt">checkout is down</p></div></div><div class="msg m2"><span class="av you" aria-hidden="true">Y</span><div><p class="who">You</p><p class="txt"><b class="at">@kage</b> fix it</p></div></div><div class="msg m3"><span class="av k" aria-hidden="true"><svg viewBox="0 0 24 24"><use href="#star"/></svg></span><div><p class="who">Kage</p><p class="txt">Fixed the 3 callers, tests pass. The PR waits for your merge.</p></div></div></div>
-        <div class="fline"><i></i><b></b></div>
-        <div class="fcard sess"><h4><i></i><i></i><i></i>your session</h4><pre class="s s0"><span class="dim">waiting for a tag</span></pre><pre class="s s1">$ new session: #incidents
-<span class="dim">loaded your CLAUDE.md,
-skills and tools</span></pre><pre class="s s2"><span class="dim">$ reading the 14:05 deploy</span>
-order.total → order.amount
-<span class="dim">$ editing 3 callers</span>
-<span class="red">running tests</span><span class="cur"></span></pre><pre class="s s3"><span class="ok">tests pass</span>
-opened the PR
-<span class="dim">reply sent to the thread</span></pre></div>
-        <div class="prog" aria-hidden="true"><u></u><u></u><u></u><u></u></div>
-      </div><div class="cap" id="cap" aria-hidden="true"></div></div>
-      <ol class="steps" id="steps">
-        <li><h3>A message arrives</h3><p>You tag Kage. Messages from anyone else are dropped.</p></li>
-        <li><h3>A session starts</h3><p>The thread gets its own session on your laptop. Follow-ups go to the same one.</p></li>
-        <li><h3>It finds and fixes</h3><p>Your Claude Code fixes it your way, and asks your yes before anything risky.</p></li>
-        <li><h3>The fix travels back</h3><p>The answer lands in the same thread. Approvals also come to your DM.</p></li>
-      </ol>
-    </div>
-    <div class="facts">
-      <div><h3>Its own session</h3><p>Each thread gets one. Up to 6 run at once.</p></div>
-      <div><h3>Picks up where it stopped</h3><p>A thread resumes its own conversation, even after a restart.</p></div>
-      <div data-claim="schedules"><h3>Schedules survive restarts</h3><p>A check you ask for keeps running after Kage restarts.</p></div>
-      <div data-claim="top"><h3><code>kage top</code></h3><p>See every thread in your terminal.</p></div>
-      <div data-claim="attach"><h3><code>kage attach</code></h3><p>Take any thread into your terminal.</p></div>
-    </div>
-  </section>
+<section class="q" aria-labelledby="h-safe"><div class="wrap">
+  <h2 id="h-safe">Only <i>you</i> drive it.</h2>
+  <div class="trust">
+    <p><b>Your words only.</b><span>Messages from anyone else never reach Claude.</span></p>
+    <p><b>Tokens stay <i>yours</i>.</b><span>Pasted in your own terminal, never through your agent.</span></p>
+    <p><b>Limited trust.</b><span>Teammates you add can tag it. Only you approve.</span></p>
+  </div>
+</div></section>
 
-  <section id="safety" class="safety" aria-labelledby="h-safety">
-    <span class="cast kick">Safety<span class="shadow" aria-hidden="true">Safety</span></span>
-    <h2 id="h-safety" class="sr">Safety</h2>
-    <div class="poster">
-      <div><strong>Only <em>you</em> drive it.</strong><p>Messages from anyone else never reach Claude.</p></div>
-      <div><strong>Tokens stay <em>yours.</em></strong><p>Pasted in your own terminal, never through your agent.</p></div>
-      <div><strong>Limited <em>trust.</em></strong><p>Teammates you add can tag it. Only you approve.</p></div>
-    </div>
-  </section>
-
-  <section id="setup" aria-labelledby="h-setup">
-    <div class="setup">
-      <div>
-        <span class="cast kick">Set up<span class="shadow" aria-hidden="true">Set up</span></span>
-        <h2 id="h-setup">Paste. Done.</h2>
-        <p class="lede">Paste this into Claude Code, or any coding agent with a shell. It does the rest. You click Allow in Slack once.</p>
-      </div>
-      <div class="paper" id="term">
-        <div class="bar"><span>Paste into your coding agent</span><button class="copy" id="copy" type="button" aria-describedby="copied">Copy</button></div>
-        <pre><code id="prompt">Set up Kage for me: https://github.com/aloki-alok/kage
+<section class="q" id="setup" aria-labelledby="h-setup"><div class="wrap setup">
+  <div>
+    <h2 id="h-setup">Paste. Done.</h2>
+    <p class="lede" style="margin:0">Paste this into Claude Code, or any coding agent with a shell. It does the rest. You click Allow in Slack once.</p>
+  </div>
+  <div class="term">
+    <div class="bar"><span>paste into your coding agent</span><button id="copy">Copy</button></div>
+<pre id="prompt">Set up Kage for me: https://github.com/aloki-alok/kage
 Install it with: curl -fsSL https://raw.githubusercontent.com/aloki-alok/kage/main/install.sh | bash
 Then follow AGENTS.md in ~/.local/share/kage from start to finish.
 Do every step yourself, and stop only for the steps it marks for me.
-Finish when kage doctor ends with "All good".</code><span class="caret" aria-hidden="true"></span></pre>
-      </div>
-    </div>
-    <p class="sr" id="copied" role="status" aria-live="polite"></p>
-  </section>
-
-  <section id="faq" class="faq" aria-labelledby="h-faq">
-    <span class="cast kick">Questions<span class="shadow" aria-hidden="true">Questions</span></span>
-    <h2 id="h-faq">Asked often</h2>
-    <div class="faq-list">
-      <details><summary>Does my code leave my machine?</summary><p>Kage runs your own Claude Code session on your laptop, like any Claude Code session. It opens an outbound connection to Slack, so it needs no public URL and no open port. Your files and tools stay on your machine.</p></details>
-      <details><summary>Who can drive it?</summary><p>Only you. Kage acts only on messages you typed yourself, and drops everyone else before Claude sees anything. A teammate you add can tag it only in conversations you are in. Anything that needs your yes waits for you, and a teammate can never approve a prompt.</p></details>
-      <details><summary>What do I need?</summary><p>macOS or Linux, Node 22.18 or newer, tmux, and a recent Claude Code logged in with a claude.ai account. You also need permission to create an app in your Slack workspace.</p></details>    </div>
-  </section>
-</div>
-</main>
-<button class="copy" id="stickycopy" type="button">Copy the setup prompt</button>
-<div id="sheetwrap" hidden><div class="scrim" id="scrim"></div><section id="sheet" role="dialog" aria-modal="true" aria-labelledby="sh-title"><div class="handle" id="handle" tabindex="0" role="button" aria-label="Close thread"></div><h3 id="sh-title"></h3><p class="state" id="sh-state"></p><ol id="sh-feed"></ol></section></div>
-<svg id="sheetstring" aria-hidden="true" hidden><path pathLength="1" d=""/></svg>
-<footer>
-  <pre class="ascii" id="ascii" aria-hidden="true"></pre>
-  <div class="wrap foot">
-    <p>Built by <a href="https://alokranjan.me" rel="me author">Alok Ranjan</a>. Free and open source under the MIT license.</p>
-    <nav aria-label="Footer"><a href="https://github.com/aloki-alok/kage">github</a><a href="llms.txt">llms.txt</a><a href="https://x.com/aloki_alok">x</a></nav>
+Finish when kage doctor ends with "All good".</pre>
   </div>
-</footer>
+</div></section>
+
+<section class="q" aria-labelledby="h-faq"><div class="wrap">
+  <h2 id="h-faq">Asked often</h2>
+  <details><summary>Does my code leave my machine?</summary><p>Kage runs your own Claude Code session on your laptop, like any Claude Code session. It opens an outbound connection to Slack, so it needs no public URL and no open port. Your files and tools stay on your machine.</p></details>
+  <details><summary>Who can drive it?</summary><p>Only you. Kage acts only on messages you typed yourself, and drops everyone else before Claude sees anything. A teammate you add can tag it only in conversations you are in. Anything that needs your yes waits for you, and a teammate can never approve a prompt.</p></details>
+  <details><summary>What do I need?</summary><p>macOS or Linux, Node 22.18 or newer, tmux, and a recent Claude Code logged in with a claude.ai account. You also need permission to create an app in your Slack workspace.</p></details>
+</div></section>
+</main>
+
+<footer><div class="wrap">
+  <div><span class="cast big" aria-hidden="true">kage<span class="shadow">kage</span></span></div>
+  <nav><a href="https://github.com/aloki-alok/kage">github</a><a href="llms.txt">llms.txt</a></nav>
+</div></footer>
 
 <script>
-// Apply the claims list from the head: remove every element that makes a switched-off claim.
-document.querySelectorAll('[data-claim]').forEach(e => { if (!window.CLAIMS[e.dataset.claim]) e.remove() })
-// FAQ structured data, built from the answers that are left on the page.
+// One day of Kage. Every line here is a real kind of ask the live page already shows; 02:00 is the nightly dream (core/dream.ts).
+const DAY = [
+  { m: 120, t: '02:00', ch: 'nobody asked', cx: 'everyone is asleep', ask: '<i>the quiet hours</i>',
+    work: ["read the day's threads for lessons", 'saved 2 of your corrections', 'tidied its memory · kage dream undo puts it back'] },
+  { m: 550, t: '09:10', ch: 'email', cx: 'Re: Invoice 4471', ask: 'Kage, check this invoice',
+    work: ['2 lines are billed twice', 'drafted a reply in your usual tone', 'it waits for you to send'] },
+  { m: 862, t: '14:22', ch: '#incidents', cx: 'checkout is throwing 500s', ask: '<i>@kage</i> fix it',
+    work: ['the 14:05 deploy renamed order.total to order.amount', 'fixed the 3 callers, tests pass', 'the PR waits for your merge'] },
+  { m: 1080, t: '18:00', ch: 'DM', cx: 'you leave for the day', ask: '<i>@kage</i> cover for me',
+    work: ['set your status: away until 22:00', '6 people asked for you', 'answered 5 from what you know', '1 needs your yes: a refund over $500'], needs: true },
+  { m: 1180, t: '19:40', ch: 'DM', cx: 'from your phone', ask: 'Kage, how much stock?',
+    work: ['240 units', '3 items are below the minimum'] },
+]
+const $ = id => document.getElementById(id), root = document.documentElement
+const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches
+const clock = $('clock'), say = $('say')
+
+$('ticks').innerHTML = Array.from({ length: 25 }, (_, h) => `<i class="${h % 6 ? '' : 'six'}" style="left:${h / 24 * 100}%"></i>`).join('')
+$('stops').innerHTML = DAY.map((d, i) => `<button data-i="${i}" class="${d.needs ? 'needs' : ''}" style="left:${d.m / 1440 * 100}%" aria-pressed="false"><span class="lbl">${d.t}</span></button>`).join('')
+
+// The light: 0 at night, 1 at noon. By day the shadow swings with the sun; at night it lies long and still, which is when Kage works alone.
+function light(min) {
+  const h = min / 60, l = h > 6 && h < 18 ? Math.sin(Math.PI * (h - 6) / 12) : 0
+  const sh = $('sh')
+  if (l > 0) { sh.style.setProperty('--skew', `${(h - 12) / 6 * 58}deg`); sh.style.setProperty('--len', (0.32 + (1 - l) * 0.9).toFixed(2)); sh.style.setProperty('--sop', '.5') }
+  else { sh.style.setProperty('--skew', '8deg'); sh.style.setProperty('--len', '1.25'); sh.style.setProperty('--sop', '.28') }
+  root.style.setProperty('--light', l.toFixed(2))
+  root.style.setProperty('--sun-x', `${(h - 6) / 12 * 100}%`)
+  root.style.setProperty('--t', (min / 1440).toFixed(4))
+}
+
+// Fit the ask to the width, so a long ask never wraps and breaks its shadow.
+function fit(text) {
+  const w = Math.min(innerWidth - 40, 1160), n = text.replace(/<[^>]+>/g, '').length
+  root.style.setProperty('--fs', `${Math.min(132, w / (n * .46))}px`)
+}
+
+let shown = -1, timers = []
+function show(i) {
+  if (i === shown) return
+  shown = i
+  const d = DAY[i]
+  timers.forEach(clearTimeout); timers = []
+  $('hh').textContent = d.t; $('ch').textContent = d.ch; $('cx').textContent = d.cx
+  $('ask').innerHTML = d.ask; $('sh').innerHTML = d.ask; fit(d.ask)
+  $('work').innerHTML = d.work.map((w, j) => `<li class="${d.needs && j === d.work.length - 1 ? 'needs' : ''}">${w}</li>`).join('')
+  ;[...$('work').children].forEach((li, j) => timers.push(setTimeout(() => li.classList.add('on'), reduce ? 0 : 500 + j * 650)))
+  document.querySelectorAll('#stops button').forEach(b => b.setAttribute('aria-pressed', String(+b.dataset.i === i)))
+}
+const nearest = min => DAY.reduce((best, d, i) => Math.abs(d.m - min) < Math.abs(DAY[best].m - min) ? i : best, 0)
+function go(min) { clock.value = min; light(min); show(nearest(min)) }
+
+// Calm autoplay: one hour of the day every 7 seconds, until you touch the clock. None with reduced motion.
+let auto = reduce ? 0 : setInterval(() => go(DAY[(shown + 1) % DAY.length].m), 7000)
+const stop = () => { clearInterval(auto); auto = 0 }
+clock.addEventListener('input', () => { stop(); go(+clock.value) })
+clock.addEventListener('change', () => go(DAY[nearest(+clock.value)].m))
+$('stops').addEventListener('click', e => { const b = e.target.closest('button'); if (b) { stop(); go(DAY[b.dataset.i].m) } })
+addEventListener('resize', () => fit(DAY[shown].ask))
+go(DAY[2].m)
+
+$('copy').onclick = async () => { try { await navigator.clipboard.writeText($('prompt').textContent); $('copy').textContent = 'Copied' } catch { $('copy').textContent = 'Press Ctrl+C' } setTimeout(() => $('copy').textContent = 'Copy', 2000) }
+// FAQ structured data, built from the answers on the page.
 ;(() => {
-  const items = [...document.querySelectorAll('#faq details')].map(d => ({ '@type': 'Question', name: d.querySelector('summary').textContent.trim(), acceptedAnswer: { '@type': 'Answer', text: d.querySelector('p').textContent.replace(/\s+/g, ' ').trim() } }))
+  const items = [...document.querySelectorAll('details')].map(d => ({ '@type': 'Question', name: d.querySelector('summary').textContent.trim(), acceptedAnswer: { '@type': 'Answer', text: d.querySelector('p').textContent.replace(/\s+/g, ' ').trim() } }))
   const s = document.createElement('script'); s.type = 'application/ld+json'
   s.textContent = JSON.stringify({ '@context': 'https://schema.org', '@type': 'FAQPage', mainEntity: items }); document.head.appendChild(s)
 })()
-
-// Setup prompt: copy button and the phone's sticky copy button. The prompt shows in full at once, so nobody copies half of it.
-;(() => {
-  const code = document.getElementById('prompt'), term = document.getElementById('term')
-  const P = code.textContent   // copy exactly what the page shows
-  const b = document.getElementById('copy'), msg = document.getElementById('copied'), sc = document.getElementById('stickycopy')
-  const done = ok => { b.textContent = ok ? 'Copied' : 'Press Ctrl+C'; sc.textContent = ok ? 'Copied' : 'Select the prompt and copy it'; msg.textContent = ok ? 'Prompt copied' : 'Select the text and copy it'; setTimeout(() => { b.textContent = 'Copy'; sc.textContent = 'Copy the setup prompt'; msg.textContent = '' }, 2200) }
-  const copyIt = async () => {
-    try { await navigator.clipboard.writeText(P); return done(true) } catch {}
-    const r = document.createRange(); r.selectNodeContents(code); const s = getSelection(); s.removeAllRanges(); s.addRange(r)
-    let ok = false; try { ok = document.execCommand('copy') } catch {}
-    done(ok)
-  }
-  b.onclick = sc.onclick = copyIt
-  // The sticky copy button shows once the hero has scrolled away, and hides again at the setup terminal.
-  // On short phones it also hides during "how it works", where it would cover the step text in the sticky box.
-  let heroSeen = true, termSeen = false, seqSeen = false
-  const short = matchMedia('(max-height: 720px)')
-  const upd = () => sc.classList.toggle('show', !heroSeen && !termSeen && !(seqSeen && short.matches))
-  if ('IntersectionObserver' in window) {
-    new IntersectionObserver(([e]) => { heroSeen = e.isIntersecting; upd() }).observe(document.querySelector('.hero'))
-    new IntersectionObserver(([e]) => { termSeen = e.isIntersecting; upd() }).observe(term)
-    new IntersectionObserver(([e]) => { seqSeen = e.isIntersecting; upd() }).observe(document.getElementById('seq'))
-  }
-})()
-
-// Channel tabs: one thread shows at a time. Arrow keys move between tabs, as the ARIA tabs pattern expects.
-;(() => {
-  const tabs = [...document.querySelectorAll('#channels [role=tab]')]
-  const pick = (t, focus) => tabs.forEach(b => {
-    const on = b === t; b.setAttribute('aria-selected', on); b.tabIndex = on ? 0 : -1
-    document.getElementById(b.getAttribute('aria-controls')).classList.toggle('on', on)
-    if (on && focus) b.focus()
-  })
-  tabs.forEach((b, i) => {
-    b.onclick = () => pick(b)
-    b.onkeydown = e => { const d = { ArrowRight: 1, ArrowLeft: -1 }[e.key]; if (d) { e.preventDefault(); pick(tabs[(i + d + tabs.length) % tabs.length], true) } }
-  })
-})()
-
-// Shared motion state: tilt (phone gravity) eases toward the target and overshoots a little, like a hanging string.
-const TILT = window.TILT = { s: 0, v: 0, target: 0, on: false }
-// Cast hero: the sun lowers through the afternoon, the shadow lengthens and slants, and more of the work shows.
-;(() => {
-  const hour = document.getElementById('hour'), clock = document.getElementById('clock'), sh = document.getElementById('hero-shadow')
-  const items = document.querySelectorAll('#work span')
-  function draw() {
-    const h = +hour.value, f = (h - 12) / 10            // 0 at noon, 1 at 22:00
-    sh.style.setProperty('--len', (0.18 + 0.9 * f * f).toFixed(3))
-    sh.style.setProperty('--skew', (20 + 46 * f).toFixed(1) + 'deg')
-    const hh = Math.floor(h), mm = Math.round((h - hh) * 60)
-    clock.textContent = String(hh).padStart(2, '0') + ':' + String(mm).padStart(2, '0')
-    items.forEach(e => e.classList.toggle('on', +e.dataset.h <= h))
-  }
-  hour.addEventListener('input', draw); draw()
-})()
-
-// Terminals: a character grid painted as HTML. Hero, demo and the scroll sequence share one engine and take turns.
-;(() => {
-const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches
-const MQ = matchMedia('(max-width: 640px)'), TILT = window.TILT
-const GS = [1500, 120, 600]   // string growth: start ms, stagger ms, duration ms
-let W, H, G, screen
-const use = tm => { W = tm.W; H = tm.H; screen = tm.el }
-const clear = () => { G = Array.from({ length: H }, () => Array.from({ length: W }, () => [' ', 'w'])) }
-const put = (x, y, s, k) => {
-  x = Math.round(x); y = Math.round(y)
-  if (y < 0 || y >= H) return
-  for (const ch of s) { if (x >= 0 && x < W) G[y][x] = [ch, k]; x++ }
-}
-const esc = s => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
-const html = rows => rows.map(row => {
-  let out = '', k0 = null, buf = ''
-  const flush = () => { if (buf) out += `<span class="c-${k0}">${esc(buf).replace(/[⠀-⣿]/g, m => `<i class="bc">${m}</i>`)}</span>`; buf = '' }
-  for (const [c, k] of row) { if (k !== k0) { flush(); k0 = k } buf += c }
-  flush(); return out
-}).join('\n')
-const paint = () => { screen.innerHTML = html(G) }
-const rnd = i => { const x = Math.sin(i * 12.9898) * 43758.5453; return x - Math.floor(x) }
-const clamp = (v, a = 0, b = 1) => Math.max(a, Math.min(b, v))
-const smooth = (a, b, v) => { const t = clamp((v - a) / (b - a)); return t * t * (3 - 2 * t) }
-const now = () => performance.now()
-
-// Canvas pixels to braille cells. o.mask(nx, ny) in -1..1 gives the share of dots kept (red dots thin faster, so the
-// field melts into the dust). o.dither shades by dot density, for pictures drawn here. Colour class per cell from its pixels.
-const BAYER = [0, 8, 2, 10, 12, 4, 14, 6, 3, 11, 1, 9, 15, 7, 13, 5]
-function toBraille(cv, hc, hr, o = {}) {
-  const d = cv.getContext('2d', { willReadFrequently: true }).getImageData(0, 0, cv.width, cv.height).data
-  const BITS = [[0, 0, 1], [0, 1, 2], [0, 2, 4], [1, 0, 8], [1, 1, 16], [1, 2, 32], [0, 3, 64], [1, 3, 128]]
-  const out = []
-  for (let r = 0; r < hr; r++) {
-    const row = []
-    for (let c = 0; c < hc; c++) {
-      const fade = o.mask ? o.mask((c + .5) / hc * 2 - 1, (r + .5) / hr * 2 - 1) : 1
-      let bits = 0, sr = 0, sg = 0, sb = 0
-      for (const [dx, dy, b] of BITS) {
-        const px = c * 2 + dx, py = r * 4 + dy, i4 = (py * cv.width + px) * 4
-        const R = d[i4], Gg = d[i4 + 1], B = d[i4 + 2]
-        sr += R; sg += Gg; sb += B
-        const lum = .3 * R + .59 * Gg + .11 * B
-        const red = R > 110 && R > Gg * 1.7, gold = R > 180 && Gg > 150 && B < 100
-        let lit = gold || (o.dither ? lum > 30 + BAYER[(py % 4) * 4 + px % 4] * 12 : lum > 110) || (red && (dx + dy) % 2 === 0)
-        if (lit && !gold && fade < 1 && rnd(r * 7919 + c * 131 + b) > (red ? fade ** 3 : fade)) lit = false
-        if (lit) bits |= b
-      }
-      sr /= 8; sg /= 8; sb /= 8
-      const lum = .3 * sr + .59 * sg + .11 * sb
-      let k = 'd'
-      if (sr > 130 && sg > 100 && sb < 110 && sr - sb > 60 && sg - sb > 30) k = 'g'
-      else if (sr > 95 && sr > sg * 1.6) k = 'r'
-      else if (lum > 165) k = 'w'
-      else if (lum > 95) k = 'm'
-      row.push([bits ? String.fromCharCode(0x2800 + bits) : ' ', k])
-    }
-    out.push(row)
-  }
-  return out
-}
-const cvs = (hc, hr) => { const c = document.createElement('canvas'); c.width = hc * 2; c.height = hr * 4; return c }
-const radial = (a, b) => (nx, ny) => 1 - smooth(a, b, Math.hypot(nx, ny))
-const star4 = (x, cx, cy, r) => { x.beginPath(); for (let i = 0; i < 8; i++) { const a = i * Math.PI / 4 - Math.PI / 2, q = i % 2 ? r * .2 : r; x.lineTo(cx + Math.cos(a) * q, cy + Math.sin(a) * q) } x.closePath(); x.fillStyle = '#d4af37'; x.fill() }
-const field = (x, w, h, cx, cy, r) => { x.fillStyle = '#000'; x.fillRect(0, 0, w, h); const f = x.createRadialGradient(cx, cy, 3, cx, cy, r); f.addColorStop(0, '#b3121a'); f.addColorStop(1, '#000'); x.fillStyle = f; x.fillRect(0, 0, w, h) }
-
-// Figures drawn here in canvas, then turned into braille. Each one has its own subject, crop and scale.
-function artGate() {           // safety: a closed gate, a gold star for a keyhole
-  const hc = 44, hr = 26, c = cvs(hc, hr), x = c.getContext('2d'), w = c.width, h = c.height
-  field(x, w, h, w / 2, h * .6, w * .6)
-  x.fillStyle = '#f2eee8'; x.fillRect(w * .03, h * .08, w * .94, h * .1)
-  for (const px of [.1, .8]) { const g = x.createLinearGradient(w * px, 0, w * (px + .1), 0); g.addColorStop(0, '#f2eee8'); g.addColorStop(1, '#8c857e'); x.fillStyle = g; x.fillRect(w * px, h * .18, w * .1, h * .82); x.fillRect(w * (px - .015), h * .18, w * .13, h * .04) }
-  x.fillStyle = '#8c857e'; x.fillRect(w * .23, h * .22, w * .54, h * .78)
-  x.fillStyle = '#000'; for (let i = 0; i < 9; i++) x.fillRect(w * (.27 + i * .055), h * .26, 1, h * .7)
-  x.fillRect(w * .5 - 1, h * .22, 2, h * .78)
-  x.beginPath(); x.arc(w / 2, h * .6, w * .09, 0, 7); x.fillStyle = '#000'; x.fill()
-  star4(x, w / 2, h * .6, 9)
-  return toBraille(c, hc, hr, { dither: true, mask: radial(.75, 1.1) })
-}
-const ARTS = []
-for (const [id, make, frac, cap] of [['art-gate', artGate, 1, 44]]) {
-  const el = document.getElementById(id); if (!el) continue
-  const cells = make(); el.innerHTML = html(cells); ARTS.push([el, cells[0].length, frac, cap])
-}
-const fitArts = () => ARTS.forEach(([el, hc, frac, cap]) => { el.style.fontSize = Math.min(cap, Math.max(7, el.parentElement.clientWidth * (MQ.matches ? 1.5 : frac) / (hc * .602))) + 'px' })
-
-// The hero: Kage's avatar. Photo in, braille out, with a soft radial mask so it melts into the web.
-let hero = null
-let boot = now()
-function buildHero(img, hc, hr) {
-  const cv = cvs(hc, hr); cv.getContext('2d').drawImage(img, 0, 0, cv.width, cv.height)
-  return toBraille(cv, hc, hr, { mask: radial(.82, 1.22) })
-}
-// The gold star in Kage's picture: the strings of `kage top` leave from it, as in the real console.
-const starIn = cells => { for (let r = 0; r < cells.length; r++) { const c = cells[r].findIndex(([, k]) => k === 'g'); if (c >= 0) return [c, r] } return [cells[0].length, cells.length >> 1] }
-function drawCells(cells, x0, y0, t, fast) {
-  if (!cells) return
-  const HR = cells.length, HC = cells[0].length
-  const since = reduce ? 1e9 : t - boot
-  const scan = reduce ? -9 : ((t - boot) / 70) % (HR * 6)
-  for (let r = 0; r < HR; r++) for (let c = 0; c < HC; c++) {
-    let [ch, k] = cells[r][c]
-    const reveal = (rnd(r * HC + c + 1) * 1400 + r * 25) * (fast ? .25 : 1)
-    if (since < reveal) {                                   // still assembling: noise
-      if (rnd(r * 97 + c * 13 + Math.floor(t / 60)) > .55) put(x0 + c, y0 + r, String.fromCharCode(0x2800 + Math.floor(rnd(c * r + t / 50) * 255)), 'f')
-      continue
-    }
-    if (Math.abs(r - scan) < .6 && ch !== ' ') k = k === 'r' ? 'R' : 'W'
-    else if (k === 'g' && rnd(r * 7 + c + Math.floor(t / 300)) > .7) k = 'G'   // the star glints
-    if (ch !== ' ') put(x0 + c, y0 + r, ch, k)
-  }
-}
-
-const WORD = ['█▄▀ ▄▀█ █▀▀ █▀▀', '█ █ █▀█ █▄█ ██▄']
-const LABEL = { working: 'working', asks: 'asks you', watching: 'watching', quiet: 'quiet', spinning: 'starting', cutting: 'cut' }
-const TONE = { working: 'R', asks: 'G', watching: 'w', quiet: 'm', spinning: 'g', cutting: 'd' }
-const GLYPH = { working: '●', asks: '◆', watching: '◷', quiet: '○', spinning: '✦', cutting: '╳' }
-const ORDER = { asks: 0, working: 1, spinning: 2, watching: 3, quiet: 4, cutting: 5 }
-const CL = window.CLAIMS
-
-// Demo threads: made-up examples.
-let T, QUEUED
-function reset() {
-  const t0 = now()
-  T = [
-    { id: 'priya', name: 'DM with Priya', st: 'working', step: 'sql: signups by source, last 7 days', t0 },
-    { id: 'incidents', name: '#incidents', st: 'quiet', step: 'found the renamed order.amount field', ago: '12m', t0 },
-    { id: 'reports', name: '#reports', st: 'watching', next: 'Mon 09:00', step: 'weekly report: posted, next Monday', t0, claim: 'schedules' },
-    { id: 'deploys', name: '#deploys', st: 'watching', next: '18:37', step: '18:07 check: nothing new', t0, claim: 'schedules' },
-    { id: 'mail', name: 'mail: invoices', st: 'quiet', step: 'drafted a reply to the vendor', ago: '9m', t0 },
-    { id: 'wa', name: 'WhatsApp: team chat', st: 'quiet', step: 'sent the stock count', ago: '31m', t0, claim: 'whatsapp' },
-  ].filter(th => !th.claim || CL[th.claim])
-  Object.assign(T.find(x => x.id === 'incidents'), { st: 'asks', step: 'wants to merge the fix' })   // one row asks, one works
-  QUEUED = null
-}
-reset()
-
-function path(x0, y0, x1, y1) {
-  x0 = Math.round(x0); y0 = Math.round(y0); x1 = Math.round(x1); y1 = Math.round(y1)
-  const pts = [], dx = Math.abs(x1 - x0), dy = -Math.abs(y1 - y0), sx = x0 < x1 ? 1 : -1, sy = y0 < y1 ? 1 : -1
-  let err = dx + dy, x = x0, y = y0
-  for (;;) {
-    const px = x, py = y
-    if (x === x1 && y === y1) { pts.push([x, y, pts.length ? pts[pts.length - 1][2] : '│']); break }
-    const e2 = 2 * err
-    let mx = 0, my = 0
-    if (e2 >= dy) { err += dy; x += sx; mx = sx }
-    if (e2 <= dx) { err += dx; y += sy; my = sy }
-    pts.push([px, py, mx && my ? (mx === my ? '╲' : '╱') : my ? '│' : '─'])
-  }
-  return pts
-}
-const QUIET = { '│': '┊', '─': '┄', '╲': '·', '╱': '·' }
-function string(pts, th, t, i) {
-  const n = pts.length
-  const grown = reduce ? n : Math.floor(clamp((t - boot - GS[0] - i * GS[1]) / GS[2]) * n)
-  if (th.st === 'spinning') {
-    const m = Math.floor(clamp((t - th.t0) / 1800) * n)
-    for (let j = 0; j < m; j++) put(pts[j][0], pts[j][1], pts[j][2], 'g')
-    if (m < n && m > 0) put(pts[m][0], pts[m][1], '✦', 'G')
-    return
-  }
-  if (th.st === 'cutting') {
-    const e = clamp((t - th.t0) / 1600), mid = Math.floor(n / 2)
-    for (let j = 0; j < Math.floor(mid * (1 - e)); j++) put(pts[j][0], pts[j][1], pts[j][2], 'm')
-    for (let j = mid; j < n; j++) {
-      const fall = e * e * 14 + rnd(j) * e * 4, drift = (rnd(j * 3) - .5) * e * 6
-      const ch = e < .15 ? pts[j][2] : '·˙∙.'[j % 4]
-      put(pts[j][0] + drift, pts[j][1] + fall, ch, e < .4 ? 'r' : e < .75 ? 'm' : 'd')
-    }
-    if (e < .3) put(pts[mid][0] + 1, pts[mid][1], '✂', 'W')
-    return
-  }
-  for (let j = 0; j < Math.min(grown, n); j++) {
-    let [x, y, ch] = pts[j], k = 'm'
-    if (th.st === 'working') {
-      k = 'r'
-      const p = reduce ? -9 : ((t / 45) + i * 7) % (n + 8)
-      if (j === Math.floor(p)) { ch = '●'; k = 'R' } else if (j === Math.floor(p) - 1) { ch = '•'; k = 'R' } else if (j === Math.floor(p) - 2) k = 'R'
-    } else if (th.st === 'asks') {
-      k = Math.floor(t / 450) % 2 || reduce ? 'G' : 'g'
-      if (j === Math.floor(n / 2)) ch = '◆'
-    } else if (th.st === 'watching') {
-      k = 'w'
-      const p = reduce ? -9 : ((t / 110) + i * 11) % (n * 3)
-      if (j === Math.floor(p)) { ch = '∘'; k = 'W' }
-    } else { ch = QUIET[ch] ?? ch; k = 'm' }
-    put(x, y, ch, k)
-  }
-}
-
-const FEED = {
-  priya: [['task', 'Priya: signups from the new page?'], ['Bash', 'sql: signups by source, 7 days'], ['Bash', 'sql: same, split by plan'], ['reply', 'Priya, 312 signups, 41% from it'], ['says', 'checking the paid split next']],
-  incidents: [['task', 'what changed in the 14:05 deploy?'], ['Bash', 'git diff for the 14:05 deploy'], ['says', 'order.total became order.amount'], ['reply', '3 callers still use the old name']],
-  reports: [['input', 'weekly report, Mondays 09:00'], ['Bash', 'pull last week numbers'], ['reply', 'report posted in the thread'], ['says', 'next run: Monday 09:00']],
-  deploys: [['input', 'deploy check, every 30 min'], ['Bash', 'staging health: all green'], ['says', '18:07 check found nothing new']],
-  mail: [['task', 'invoice does not match the order'], ['Read', 'the order and the invoice'], ['reply', 'reply drafted, ready to send']],
-  wa: [['task', 'how many units are in stock?'], ['Bash', 'stock count from the sheet'], ['reply', '240 units, 3 below the minimum']],
-  sales: [['task', 'quote for a 5-seat team'], ['Read', 'the pricing doc'], ['says', 'drafting the reply']],
-}
-let rowsTick = () => {}
-// Plucking: a finger or pointer crossing a string sets it vibrating; the wave runs outward from the touch point.
-const PL = [], HS = []
-function swayPts(i, pts, t) {
-  const p = PL[i]; HS[i] = pts
-  if (!p || reduce) return pts
-  const dt = (t - p.t0) / 1000, A = 2.4 * Math.exp(-dt * 2.4), n = pts.length
-  if (A < .05) return pts
-  return pts.map(([x, y, ch], j) => [x + A * Math.sin(dt * 20 - Math.abs(j - p.j0) * .55) * Math.sin(Math.PI * j / (n - 1)), y, ch])
-}
-const mk = (id, W, H, draw) => { const el = document.getElementById(id); return el && { el, W, H, draw, vis: true, CW: 9, LH: 17, pad: [16, 14] } }
-const heroT = null   // the Cast hero is plain HTML, see the sun dial below
-const terms = [heroT].filter(Boolean)
-terms.forEach(tm => { new IntersectionObserver(([e]) => { tm.vis = e.isIntersecting }).observe(tm.el) })
-
-function fit() {
-  const mob = MQ.matches
-  if (heroT) { heroT.W = mob ? 46 : 80; heroT.H = mob ? 40 : 24 }
-  for (const tm of terms) {
-    const cs = getComputedStyle(tm.el), padX = parseFloat(cs.paddingLeft) * 2
-    const w = tm.el.parentElement.clientWidth - padX
-    tm.el.style.fontSize = Math.max(4, Math.min(17, w / (tm.W * .602))) + 'px'
-    const probe = document.createElement('span'); probe.textContent = 'x'.repeat(100); tm.el.appendChild(probe)
-    tm.CW = probe.getBoundingClientRect().width / 100; tm.LH = parseFloat(getComputedStyle(tm.el).lineHeight) || tm.CW * 2; probe.remove()
-    tm.pad = [parseFloat(cs.paddingLeft), parseFloat(cs.paddingTop)]
-  }
-  fitArts()
-}
-addEventListener('resize', fit); fit()
-document.fonts?.ready.then(fit)
-
-// Scroll progress of the "how it works" block drives the cards: the string draws out, the session works, the reply returns.
-const cap = document.getElementById('cap'), seqEl = document.getElementById('seq'), flow = document.getElementById('flow'), stepEls = [...document.querySelectorAll('#steps li')]
-function seqProgress() {
-  if (!seqEl) return
-  const r = seqEl.getBoundingClientRect()
-  const p = clamp((innerHeight * .2 - r.top) / (r.height - innerHeight * .6)), s = p * 4, step = Math.min(3, Math.floor(s + 1e-6)), q = s - step
-  // Stacked layout: the list is only scroll length, the active step is shown in the sticky box (see .cap).
-  if (cap.dataset.n != step + 1) { cap.dataset.n = step + 1; cap.innerHTML = stepEls[step].innerHTML }
-  flow.dataset.step = step
-  flow.style.setProperty('--seg', step === 0 ? 0 : step === 1 ? q : 1)
-  flow.style.setProperty('--bead', step === 3 ? 1 - q : -1)
-  stepEls.forEach((li, i) => li.classList.toggle('on', i === step))
-}
-addEventListener('scroll', seqProgress, { passive: true }); seqProgress()
-
-let last = 0
-function frame(t) {
-  if (t - last > 55) {
-    last = t
-    if (TILT.on) { TILT.v += (TILT.target - TILT.s) * .06; TILT.v *= .82; TILT.s += TILT.v; if (heroT) heroT.el.style.transform = `translateX(${(-TILT.s * 5).toFixed(1)}px)` }
-    rowsTick()
-    for (const tm of terms) { if (!tm.vis) continue; use(tm); clear(); tm.draw(t); paint() }
-  }
-  requestAnimationFrame(frame)
-}
-
-// kage top demo: one row per live thread. Clicking a row opens its feed as a sheet.
-if (document.getElementById('mbody')) {
-  const $ = id => document.getElementById(id)
-  const wrap = $('sheetwrap'), sheet = $('sheet'), handle = $('handle'), strEl = $('sheetstring'), strPath = strEl.querySelector('path')
-  let pt = [0, 0], dragDy = 0, raf = 0
-  const stringLoop = () => {          // the string from the row stretches up to the sheet's handle, and follows it as it moves
-    const hr = handle.getBoundingClientRect(), hx = hr.left + hr.width / 2, hy = hr.top + 22, sag = Math.max(0, 50 - dragDy * .5)
-    strPath.setAttribute('d', `M${pt[0]} ${pt[1]} Q ${(pt[0] + hx) / 2 + sag} ${(pt[1] + hy) / 2} ${hx} ${hy}`)
-    raf = requestAnimationFrame(stringLoop)
-  }
-  const closeSheet = () => { wrap.hidden = true; strEl.hidden = true; cancelAnimationFrame(raf) }
-  const openSheet = (th, p) => {
-    const live = T.find(x => x.id === th.id), st = live ? live.st : 'closed'
-    $('sh-title').textContent = live ? live.name : th.ch
-    $('sh-state').textContent = live ? (st === 'watching' ? `watching, next ${live.next}` : LABEL[st]) : `ended ${th.ago} ago`
-    const feed = FEED[th.id] ?? [['task', `a task in ${th.ch}`], ['reply', 'answered in the thread'], ['says', 'ended: nothing left to do']]
-    $('sh-feed').innerHTML = feed.map(([tag, text], i) => `<li class="${tag === 'reply' ? 'reply' : ''}"><b>${tag}</b><span>${esc(text)}</span></li>`).join('')
-    wrap.hidden = false; strEl.hidden = false; sheet.style.transform = ''; dragDy = 0; pt = p
-    strPath.style.animation = 'none'; void strPath.getBoundingClientRect(); strPath.style.animation = ''
-    cancelAnimationFrame(raf); stringLoop(); handle.focus({ preventScroll: true })
-  }
-  $('scrim').onclick = closeSheet
-  handle.onkeydown = e => { if (e.key === 'Enter' || e.key === ' ' || e.key === 'Escape') { e.preventDefault(); closeSheet() } }
-  let y0 = null
-  handle.onpointerdown = e => { y0 = e.clientY; handle.setPointerCapture(e.pointerId) }
-  handle.onpointermove = e => { if (y0 == null) return; dragDy = Math.max(0, e.clientY - y0); sheet.style.animation = 'none'; sheet.style.transform = `translateY(${dragDy}px)` }
-  handle.onpointerup = handle.onpointercancel = () => { if (y0 == null) return; y0 = null; if (dragDy > 80) closeSheet(); else { dragDy = 0; sheet.style.transform = '' } }
-
-  addEventListener('keydown', e => { if (e.key === 'Escape' && !wrap.hidden) closeSheet() })
-
-  // Real buttons, one per thread: name, what it is doing, state. Rebuilt only when a row changes.
-  const mbody = $('mbody'); let sig = ''
-  rowsTick = () => {
-    const rows = [...T].sort((a, b) => ORDER[a.st] - ORDER[b.st]).slice(0, 4)
-    const g = rows.map(x => x.id + x.st + x.step).join()
-    if (g === sig) return
-    sig = g
-    mbody.innerHTML = rows.map(th => `<button class="mrow st-${th.st}" data-id="${th.id}"><span class="stub"></span><span class="g">${GLYPH[th.st]}</span><span class="nm">${esc(th.name)}<small>${esc(th.step)}</small></span><span class="lb">${th.st === 'watching' ? 'next ' + th.next : th.st === 'quiet' ? th.ago + ' ago' : LABEL[th.st]}</span></button>`).join('')
-  }
-  mbody.addEventListener('click', e => {
-    const row = e.target.closest('.mrow'); if (!row) return
-    const th = T.find(x => x.id === row.dataset.id); if (!th) return
-    const r = row.getBoundingClientRect(); openSheet({ ...th, ch: th.name }, [r.left + 10, r.top + r.height / 2])
-  })
-  $('e-more').onclick = e => { const o = $('evrow').classList.toggle('open'); e.currentTarget.setAttribute('aria-expanded', o); e.currentTarget.textContent = o ? 'Fewer' : 'More' }
-  const find = id => T.find(x => x.id === id)
-  const set = (th, st, extra = {}) => Object.assign(th, { st, t0: now() }, extra)
-  const spawn = name => { const th = { id: 'sales', name, st: 'spinning', step: 'new tag: quote for a 5-seat team', t0: now() }; T.push(th); setTimeout(() => set(th, 'working', { step: 'reading the #sales thread' }), 1900) }
-  const on = (id, fn) => { const b = document.getElementById(id); if (b) b.onclick = fn }
-  on('e-tag', () => {
-    if (find('sales')) return set(find('sales'), 'working', { step: 'reading the #sales thread' })
-    if (T.length >= 6) { QUEUED = '#sales'; return }
-    spawn('#sales')
-  })
-  on('e-ask', () => {
-    const j = find('incidents'); if (!j) return
-    j.st === 'asks' ? set(j, 'working', { step: 'approved: running it' }) : set(j, 'asks', { step: 'run the migration on staging?' })
-  })
-  on('e-cron', () => {
-    const c = find('reports'); if (!c) return
-    set(c, 'working', { step: 'building the weekly report' })
-    setTimeout(() => set(c, 'watching', { next: 'Mon 09:00', step: 'weekly report: posted, next Monday' }), 4200)
-  })
-  on('e-cut', () => {
-    const v = find('wa') ?? find('mail') ?? T.find(x => x.st === 'quiet'); if (!v || v.st === 'cutting') return
-    set(v, 'cutting'); navigator.vibrate?.(14)          // a tiny buzz where the browser allows it (not iOS)
-    setTimeout(() => {
-      T = T.filter(x => x !== v)
-      if (QUEUED) { const q = QUEUED; QUEUED = null; spawn(q) }
-    }, 1700)
-  })
-  on('e-boot', () => reset())
-}
-
-requestAnimationFrame(frame)
-})()
-</script>
-<script type="module">
-import { field } from './ascii.js'
-const pre = document.getElementById('ascii')
-if (pre) field(pre, { word: 'kage', face: '400 100px "Instrument Serif"', rows: innerWidth > 720 ? 30 : 24 })
 </script>
 </body>
 </html>
