@@ -17,6 +17,8 @@ export function parseEnv(text: string): Env {
 }
 
 const list = (v?: string) => (v || '').split(',').map(s => s.trim()).filter(Boolean)
+// A wrong list entry as the reason shows it. A long one may be a token pasted on the wrong line, so only its place is named.
+const shown = (l: string[], i: number) => (l[i]!.length <= 20 ? `"${l[i]}"` : `a wrong entry ${i + 1} (too long to show)`)
 
 // What the hub needs from the file to run, or the one line that is wrong. A reason never holds a token.
 export function checkEnv(env: Env): ({ name: string } & AllowLists) | { error: string } {
@@ -25,12 +27,12 @@ export function checkEnv(env: Env): ({ name: string } & AllowLists) | { error: s
   if (!validName(name)) return { error: `KAGE_NAME "${name}" must be a short lowercase word (letters, digits, dashes)` }
   // Slack user ids who may tag the bot too. Empty: only the owner.
   const teammates = list(env.KAGE_TEAMMATES)
-  const notUser = teammates.find(t => !/^[UW][A-Z0-9]{2,}$/.test(t))
-  if (notUser !== undefined) return { error: `KAGE_TEAMMATES has "${notUser}", which is not a Slack user id like U0123ABC` }
+  const notUser = teammates.findIndex(t => !/^[UW][A-Z0-9]{2,}$/.test(t))
+  if (notUser >= 0) return { error: `KAGE_TEAMMATES has ${shown(teammates, notUser)}, which is not a Slack user id like U0123ABC` }
   // Slack app ids of teammates' own agents, whose posts count as that teammate's. Empty: none.
   const apps = list(env.KAGE_TRUSTED_APPS)
-  const notApp = apps.find(a => !/^A[A-Z0-9]{2,}$/.test(a))
-  if (notApp !== undefined) return { error: `KAGE_TRUSTED_APPS has "${notApp}", which is not a Slack app id like A0123ABC` }
+  const notApp = apps.findIndex(a => !/^A[A-Z0-9]{2,}$/.test(a))
+  if (notApp >= 0) return { error: `KAGE_TRUSTED_APPS has ${shown(apps, notApp)}, which is not a Slack app id like A0123ABC` }
   return { name, teammates, apps }
 }
 

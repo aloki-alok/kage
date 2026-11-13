@@ -17,6 +17,14 @@ describe('reading the env file', () => {
     assert.match(bad('KAGE_TRUSTED_APPS=UTEST0001\n'), /KAGE_TRUSTED_APPS.*"UTEST0001"/)
     assert.match(bad('KAGE_NAME=Not A Name\n'), /KAGE_NAME/)
   })
+  test('a long wrong entry may be a token on the wrong line: the reason names its place, never its text', () => {
+    const r = (checkEnv(parseEnv(FILE + 'KAGE_TEAMMATES=UTEST0001,xoxp-0000-pasted-on-the-wrong-line\n')) as { error: string }).error
+    assert.match(r, /KAGE_TEAMMATES.*entry 2/)
+    assert.ok(!r.includes('xoxp-0000'))
+    const a = (checkEnv(parseEnv(FILE + 'KAGE_TRUSTED_APPS=xoxb-0000-pasted-on-the-wrong-line\n')) as { error: string }).error
+    assert.match(a, /KAGE_TRUSTED_APPS.*entry 1/)
+    assert.ok(!a.includes('xoxb-0000'))
+  })
   test('a missing token is refused by its name', () => {
     assert.match((checkEnv(parseEnv('KAGE_NAME=kage\nSLACK_APP_TOKEN=xapp-test\nSLACK_BOT_TOKEN=xoxb-test\n')) as { error: string }).error, /SLACK_USER_TOKEN/)
   })
