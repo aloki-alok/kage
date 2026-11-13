@@ -29,7 +29,9 @@ Watch|schedules||Every schedule and reply watch, in every thread|kage schedules
 Watch|top||The live console: every thread, its feed, attach and stop, by mouse or keys|kage top
 Watch|watch|[place]|Follow every step every session takes, as it happens|kage watch support
 Watch|attach|[place or link]|Take a thread into this terminal, by its place or its Slack link in quotes; Kage gets it back when you quit|kage attach "https://example.slack.com/archives/C0123ABC/p1700000000123456"
-People|teammate|list, add, remove|Who else may tag Kage (a name, @handle or Slack id)|kage teammate add priya
+People|add|<person> or <app id> <owner>|Let a person tag Kage (a mention, member id, email, name or @handle), or an agent with the person or agent it answers to|kage add priya
+People|remove|<person or app id>|Take a person or an agent off the list; whoever answers to them goes too|kage remove priya
+People|list||Who may tag Kage besides you: each person, with their agents under them|kage list
 People|tell|<place> <message>|Tell a thread something as you; its session takes it after the current turn|kage tell support use the staging db
 People|call||Kage phones you, and the call can do anything you can (needs KAGE_CALL_COMMAND)|kage call'
 
@@ -235,7 +237,7 @@ cmd_interactive() {
   say "Done. Start it with kage start (run ./setup.sh link first to put kage on your PATH)"
 }
 
-# Help comes first, so "kage teammate add --help" never reaches a command that would act on it.
+# Help comes first, so "kage add --help" never reaches a command that would act on it.
 for a in "$@"; do [[ $a == -h || $a == --help ]] && { [[ $1 == "$a" || $1 == help ]] && cmd_help || cmd_help "$1"; exit 0; }; done
 
 case "${1:-}" in
@@ -261,7 +263,9 @@ case "${1:-}" in
   watch) node cli/watch.ts "${@:2}" ;;
   attach) node cli/attach.ts "${@:2}" ;;
   tell) node cli/tell.ts "${@:2}" ;;
-  teammate) node cli/teammate.ts "${@:2}" ;;
+  add) node cli/registry.ts "$@" ;;
+  remove) node cli/registry.ts "$@" ;;
+  list) node cli/registry.ts "$@" ;;
   call) node cli/call.ts ;;
   export-crons) node cli/export-crons.ts "${@:2}" ;;   # one-time move of CronCreate jobs out of tmux panes; not in help
   *) unknown "$1" ;;

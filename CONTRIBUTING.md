@@ -46,6 +46,7 @@ Write logs to stderr only. In a tmux pane, stdout carries the channel protocol, 
 | File | Rule |
 |---|---|
 | `gate.ts` | Who may start a task, the task line Claude reads, quoting the thread, teammates. |
+| `registry.ts` | Who is listed besides the owner: people, agents and each agent's owner, as two lines of the env file. |
 | `slack-message.ts` | What a Slack message event is, whether a person typed it, and the `@kage` tag. |
 | `conversations.ts` | A conversation and its session key, both ways. |
 | `sessions.ts` | The dispatcher: one session per key, the slot limit, idle close, eviction, holds for `kage attach`. |
