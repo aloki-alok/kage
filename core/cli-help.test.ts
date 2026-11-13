@@ -15,7 +15,7 @@ describe('every command kage lists is one it runs, and the other way', () => {
 })
 
 describe('a mistyped command gets the closest real one', () => {
-  const names = ['attach', 'start', 'stop', 'status', 'doctor', 'watch', 'top', 'teammate']
+  const names = ['attach', 'start', 'stop', 'status', 'doctor', 'watch', 'top', 'remove']
   test('one or two letters off finds it', () => {
     assert.equal(suggest('atach', names), 'attach')
     assert.equal(suggest('docter', names), 'doctor')
@@ -24,7 +24,7 @@ describe('a mistyped command gets the closest real one', () => {
     assert.equal(suggest('dcotor', names), 'doctor')
   })
   test('a start of a name finds the one name it starts', () => {
-    assert.equal(suggest('team', names), 'teammate')
+    assert.equal(suggest('rem', names), 'remove')
     assert.equal(suggest('doc', names), 'doctor')
   })
   test('nothing close gives nothing, rather than a wild guess', () => {
