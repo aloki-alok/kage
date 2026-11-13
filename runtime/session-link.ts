@@ -50,6 +50,8 @@ export function listenForSessions(path: string, d: Dispatcher<ToSession>, o: Rep
   // The usage-limit pause, when one is on (runtime/limit-pause.ts): kage status and kage list show it.
   paused?: () => { until: number; held: number } | undefined
   limitCounts?: () => LimitCounts
+  // kage restart and kage stop: take no new turns for a while, and name each thread still running.
+  quiesce?: () => { key: string; why: string }[]
 }) {
   try { unlinkSync(path) } catch {}
   const dir = dirname(path)
@@ -92,6 +94,8 @@ export function listenForSessions(path: string, d: Dispatcher<ToSession>, o: Rep
           const paused = o.paused?.()
           const limitCounts = o.limitCounts?.()
           sock.write(JSON.stringify({ type: 'board', ...d.status(Date.now()), ...(paused && { paused }), ...(limitCounts && { limitCounts }) }) + '\n')
+        } else if (m.type === 'quiesce' && !key && !held && o.quiesce) {
+          sock.write(JSON.stringify({ type: 'quiesce', waiting: o.quiesce() }) + '\n')
         } else if (m.type === 'reload' && !key && !held) {
           // It only reads the file that already decides the next start, so it gives a session no new power.
           sock.write(JSON.stringify({ type: 'reload', ...(o.reload?.() ?? { refused: 'this hub cannot reload' }) }) + '\n')

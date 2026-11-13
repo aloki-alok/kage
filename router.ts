@@ -393,7 +393,8 @@ function selfUpdate(now: number) {
 
 // Every timed job of the hub, on one clock (runtime/jobs.ts).
 runJobs([
-  { name: 'schedules', every: 20_000, run: now => schedules.tick(now) },
+  // A drain for kage restart or stop starts no scheduled run: one due now runs after the restart.
+  { name: 'schedules', every: 20_000, run: now => { if (!limits.draining(now)) schedules.tick(now) } },
   { name: 'sweep', every: 60_000, run: now => d.sweep(now).forEach(failed) },
   { name: 'limit pause', every: 20_000, run: now => limits.tick(now) },
   { name: 'daily note', every: 10 * 60_000, run: dailyNote },
@@ -439,7 +440,9 @@ function tell(key: string, text: string): { ok: true; held?: true } | { refused:
 }
 // kage reload: a changed allow list applies to the next message, with no restart and no turn cut (core/settings.ts).
 const reload = reloader({ boot: env, read: () => readFileSync(ENV_FILE, 'utf8'), apply: slack.allow, log })
-listenForSessions(`${DIR}/router.sock`, d, { ...replies, failed, schedules, tell, reload, paused: limits.paused, limitCounts: () => limits.counts, callCode: voice?.issueCode })
+listenForSessions(`${DIR}/router.sock`, d, { ...replies, failed, schedules, tell, reload, paused: () => limits.paused(), limitCounts: () => limits.counts,
+  // kage restart and stop: a drain renewed by each ask. A turn that just ended does not hold them up: its follow-up waits too.
+  quiesce: () => { const now = Date.now(); limits.drain(now); return d.unquiet(now).filter(u => u.why !== 'just active') }, callCode: voice?.issueCode })
 
 await slack.start()
 // Messages the last run took but never handled (it died in between) run now. Older than 10 minutes, they are let go.
