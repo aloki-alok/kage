@@ -74,7 +74,7 @@ The first start installs the Agent SDK, then Kage runs in the background with no
 | See every schedule and watch | `kage schedules`: what runs, where, and when it runs next |
 | See what each thread spent | `kage cost`, or `kage cost 7` for a week |
 | Undo the weekly memory tidy | `kage dream undo` |
-| Pick up a changed setting | `kage restart` |
+| Pick up a changed setting | `kage reload` for who may tag Kage: no session is cut. `kage restart` for any other setting. |
 | Stop it | `kage stop`. Each thread resumes its conversation on its next tag. |
 | Start at login (macOS) | `kage autostart on` (`off` undoes it) |
 

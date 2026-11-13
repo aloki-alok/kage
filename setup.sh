@@ -20,6 +20,7 @@ Set up|autostart|on or off|Start Kage when you log in to this Mac|kage autostart
 Run|start||Start Kage in the background|kage start
 Run|stop||Stop Kage. Open sessions end, and each resumes on its next tag|kage stop
 Run|restart||Restart the hub to pick up a new setting (about 10 s)|kage restart
+Run|reload||Read the settings file again with no restart: who may tag Kage changes at once|kage reload
 Run|status||One look at every session and what it is doing|kage status
 Run|logs|[lines]|The last lines of the hub log (80 unless you say)|kage logs 200
 Run|cost|[days]|What each thread spent, most first (1 day unless you say)|kage cost 7
@@ -250,6 +251,7 @@ case "${1:-}" in
   start) ./start.sh ;;
   stop) cmd_stop "${2:-}" ;;
   restart) cmd_restart "${2:-}" ;;
+  reload) node cli/reload.ts ;;
   status) cmd_status ;;
   logs) cmd_logs "${2:-}" ;;
   cost) node cli/cost.ts "${@:2}" ;;

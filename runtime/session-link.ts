@@ -4,6 +4,7 @@ import { chmodSync, mkdirSync, readdirSync, readFileSync, rmSync, unlinkSync, wr
 import { createServer } from 'node:net'
 import { dirname, join } from 'node:path'
 import type { Dispatcher } from '../core/sessions.ts'
+import type { Reloaded } from '../core/settings.ts'
 import { log } from '../config.ts'
 import type { FromSession, ToSession } from './protocol.ts'
 import type { scheduler } from './scheduler.ts'
@@ -43,6 +44,8 @@ export function listenForSessions(path: string, d: Dispatcher<ToSession>, o: Rep
   callCode?: () => string
   // kage tell: the owner's words into one thread, as a task (router.ts decides how).
   tell?: (key: string, text: string) => { ok: true; held?: true } | { refused: string }
+  // kage reload: read the settings file again (core/settings.ts).
+  reload?: () => Reloaded
 }) {
   try { unlinkSync(path) } catch {}
   const dir = dirname(path)
@@ -83,6 +86,9 @@ export function listenForSessions(path: string, d: Dispatcher<ToSession>, o: Rep
         } else if (m.type === 'board' && !key && !held) {
           // The console's view of live state, which exists only in this process.
           sock.write(JSON.stringify({ type: 'board', ...d.status(Date.now()) }) + '\n')
+        } else if (m.type === 'reload' && !key && !held) {
+          // It only reads the file that already decides the next start, so it gives a session no new power.
+          sock.write(JSON.stringify({ type: 'reload', ...(o.reload?.() ?? { refused: 'this hub cannot reload' }) }) + '\n')
         } else if (m.type === 'callcode' && !key && !held) {
           // A one-time code for a call Kage places to the owner (kage call); only someone on this machine reaches the socket.
           const code = o.callCode?.()
