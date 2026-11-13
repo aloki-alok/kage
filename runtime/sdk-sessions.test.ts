@@ -347,8 +347,11 @@ describe('Kage sessions on the Agent SDK', () => {
     const run = (tool_name: string) => o.hooks.PreToolUse[0].hooks[0]({ hook_event_name: 'PreToolUse', tool_name, tool_input: {} }, undefined, { signal: signal() })
     assert.deepEqual(await run('Read'), {})
     assert.deepEqual(await run('mcp__kage__reply'), {})
-    assert.match((await run('Bash')).hookSpecificOutput.permissionDecisionReason, /outside this specialist's grant/)
-    const asked = await o.canUseTool('Read', { file_path: '/x' }, { signal: signal() })
+    assert.match((await run('WebFetch')).hookSpecificOutput.permissionDecisionReason, /outside this specialist's grant/)
+    assert.match((await run('Bash')).hookSpecificOutput.permissionDecisionReason, /no shell/)
+    // A granted tool runs: the grant is the approval.
+    assert.equal((await o.canUseTool('Read', { file_path: '/x' }, { signal: signal() })).behavior, 'allow')
+    const asked = await o.canUseTool('WebFetch', { url: 'https://example.com' }, { signal: signal() })
     assert.equal(asked.behavior, 'deny')
     assert.match(asked.message, /approves nothing/)
     assert.deepEqual(t.posts, [])                  // no approval card reaches the owner

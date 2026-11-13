@@ -29,6 +29,7 @@ export function syncSpecialists(files: { name: string; text: string }[], store: 
     store.seen(sp.key, parseSessionKey(sp.key)!.conversation, `${sp.name} (specialist)`, now)
     store.addSchedule({ id, key: sp.key, cron: sp.cron, prompt, recurring: true, fromOwner: false, created: cur?.created ?? now, lastFired: cur?.lastFired ?? 0 })
   }
-  for (const s of store.schedules()) if (s.id.startsWith('spec-') && !ids.has(s.id)) store.removeSchedule(s.id)
+  // A removed specialist goes with every schedule in its lane, the ones it added itself too.
+  for (const s of store.schedules()) if ((s.id.startsWith('spec-') && !ids.has(s.id)) || (s.key.includes('#side-spec-') && !grants.has(s.key))) store.removeSchedule(s.id)
   return grants
 }

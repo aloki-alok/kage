@@ -32,6 +32,8 @@ test('a second sync with no change keeps the schedule and when it last ran; a ch
   syncSpecialists([file('0 10 * * *')], store, 9000, () => {})
   assert.equal(store.schedules()[0]!.cron, '0 10 * * *')
   assert.equal(store.schedules()[0]!.lastFired, 5000)
+  // A schedule the specialist added in its own lane goes with it.
+  store.addSchedule({ id: 'ab12cd34', key: KEY, cron: '0 * * * *', prompt: 'x', recurring: true, fromOwner: false, created: 0, lastFired: 0 })
   const grants = syncSpecialists([], store, 9000, () => {})
   assert.deepEqual(store.schedules(), [])
   assert.equal(grants.size, 0)

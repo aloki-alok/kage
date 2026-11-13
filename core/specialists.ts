@@ -25,7 +25,13 @@ export function parseSpecialist(name: string, text: string): Specialist | { erro
 // Of Kage's own tools, a specialist has only those for its thread, whatever its grant says: the rest act as the
 // owner (message_people, away), outlive the run (schedule) or need the owner (log_prod_write).
 const THREAD_TOOLS = ['reply', 'edit_message', 'delete_message'].map(t => `mcp__kage__${t}`)
-// The grant only shrinks: a tool outside it is denied.
-export const grantRefusal = (tool: string, grant: string[]) =>
-  THREAD_TOOLS.includes(tool) || (grant.includes(tool) && !tool.startsWith('mcp__kage__')) ? undefined
+const WRITES = ['Write', 'Edit', 'MultiEdit', 'NotebookEdit']
+// The grant only shrinks: a tool outside it is denied. A specialist can never widen it: it gets no shell, and no
+// writes in Kage's config folder, which holds its own file, the env file and the store.
+export function grantRefusal(tool: string, grant: string[], input: Record<string, unknown> = {}, confDir = '') {
+  if (tool === 'Bash') return 'A specialist gets no shell, granted or not: a shell could change its own grant.'
+  const path = String(input.file_path ?? input.notebook_path ?? '')
+  if (confDir && WRITES.includes(tool) && (path === confDir || path.startsWith(`${confDir}/`))) return `A specialist may not write in Kage's config folder (${confDir}).`
+  return THREAD_TOOLS.includes(tool) || (grant.includes(tool) && !tool.startsWith('mcp__kage__')) ? undefined
     : `${tool} is outside this specialist's grant (${grant.join(', ') || 'no tools'}). Say in the thread what you needed: your manager decides.`
+}

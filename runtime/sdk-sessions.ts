@@ -51,6 +51,7 @@ export function sdkSessions(o: {
   onTurn?: (key: string, tasks: Task[], limit?: Limit) => void
   // A specialist lane (core/specialists.ts): its grant. Only these tools, and it approves nothing.
   grantOf?: (key: string) => string[] | undefined
+  confDir?: string                                 // Kage's config folder: a specialist may not write in it
   restartMs?: number
 }) {
   const sessions = new Map<string, Session>()
@@ -104,8 +105,9 @@ export function sdkSessions(o: {
         // Claude Code sends session_state_changed, which busy() reads, only when asked.
         env: { ...env, CLAUDE_CODE_EMIT_SESSION_STATE_EVENTS: '1' },
         canUseTool: (name, input, x) => ALLOWED.includes(name) ? Promise.resolve({ behavior: 'allow' as const, updatedInput: input })
-          // A specialist approves nothing and puts no card in front of the owner: it says in its thread what it needed.
-          : o.grantOf?.(key) ? Promise.resolve({ behavior: 'deny' as const, message: 'A specialist approves nothing. Say in the thread what you needed and why: your manager decides.' })
+          // A specialist's grant is its approval; beyond it, it approves nothing and puts no card in front of the owner.
+          : o.grantOf?.(key) ? Promise.resolve(o.grantOf(key)!.includes(name) ? { behavior: 'allow' as const, updatedInput: input }
+            : { behavior: 'deny' as const, message: 'A specialist approves nothing. Say in the thread what you needed and why: your manager decides.' })
           : ask(key, s, name, x.title ?? x.description ?? '', input, x.signal),
         // The same rules as private-data-guard.ts, in-process. A failed check blocks the call.
         hooks: {
@@ -114,7 +116,7 @@ export function sdkSessions(o: {
             hooks: [async input => {
               const i = input as { tool_name: string; tool_input?: Record<string, string> }
               const grant = o.grantOf?.(key)
-              const reason = (grant && grantRefusal(i.tool_name, grant)) || (privateToolRefusal(i.tool_name, s.sender) ?? voiceToolRefusal(i.tool_name, s.sender) ?? slackSendRefusal(i.tool_name) ?? ownerMemoryRefusal(i.tool_name, i.tool_input ?? {}, o.ownerMemory))
+              const reason = (grant && grantRefusal(i.tool_name, grant, i.tool_input ?? {}, o.confDir)) || (privateToolRefusal(i.tool_name, s.sender) ?? voiceToolRefusal(i.tool_name, s.sender) ?? slackSendRefusal(i.tool_name) ?? ownerMemoryRefusal(i.tool_name, i.tool_input ?? {}, o.ownerMemory))
               return reason ? { hookSpecificOutput: { hookEventName: 'PreToolUse', permissionDecision: 'deny', permissionDecisionReason: reason } } : {}
             }],
           }],

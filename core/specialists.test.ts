@@ -35,4 +35,10 @@ describe('the grant', () => {
       assert.match(grantRefusal(t, []) ?? '', /grant/, t)
     for (const t of ['mcp__kage__reply', 'mcp__kage__edit_message', 'mcp__kage__delete_message']) assert.equal(grantRefusal(t, []), undefined, t)
   })
+  test('it can never widen its own grant: no shell, and no writes in Kage\'s config folder', () => {
+    assert.match(grantRefusal('Bash', ['Bash']) ?? '', /shell/)
+    assert.match(grantRefusal('Write', ['Write'], { file_path: '/conf/specialists/deploys.md' }, '/conf') ?? '', /config/)
+    assert.match(grantRefusal('Edit', ['Edit'], { file_path: '/conf/env' }, '/conf') ?? '', /config/)
+    assert.equal(grantRefusal('Write', ['Write'], { file_path: '/work/out.md' }, '/conf'), undefined)
+  })
 })
