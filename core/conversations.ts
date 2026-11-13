@@ -57,3 +57,13 @@ export function placeFor(placeOf: (key: string) => string | undefined, key: stri
   const m = KEY.exec(key)!
   return placeOf(key) ?? (m[1] || m[3] ? `${placeOf(m[2]!) ?? key}${m[3] ? ' (side)' : ''}` : key)
 }
+
+// The session key of the thread a pasted Slack message link points at ("Copy link" in Slack). A link to a
+// reply names its thread in thread_ts; any other message starts its own. Not a Slack message link: nothing.
+export function slackLinkKey(link: string): string | undefined {
+  const url = URL.parse(link.trim())
+  const m = url?.hostname.endsWith('.slack.com') ? /^\/archives\/([A-Z0-9]+)\/p(\d+)(\d{6})$/.exec(url.pathname) : null
+  if (!url || !m) return
+  const thread = url.searchParams.get('thread_ts') ?? `${m[2]}.${m[3]}`
+  return /^\d+\.\d+$/.test(thread) ? `${m[1]}:${thread}` : undefined
+}

@@ -69,7 +69,7 @@ The first start installs the Agent SDK, then Kage runs in the background with no
 | Check every part | `kage doctor` prints the command that fixes each problem |
 | See every session live | `kage top`, by mouse or keys. `kage status` prints one look. |
 | Follow every step as it happens | `kage watch`, or `kage watch support` for one place |
-| Work in a thread yourself | `kage attach <place>`. You get it at once (a running turn stops, as with Esc), and Kage gets it back when you quit. |
+| Work in a thread yourself | `kage attach '<link>'` with the thread's Slack link ("Copy link" on any message in it, kept in quotes), or `kage attach <place>`. You get it at once (a running turn stops, as with Esc), and Kage gets it back when you quit. |
 | Read the hub log | `kage logs`, or `kage logs 500` |
 | See every schedule and watch | `kage schedules`: what runs, where, and when it runs next |
 | See what each thread spent | `kage cost`, or `kage cost 7` for a week |
