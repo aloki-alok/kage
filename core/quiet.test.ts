@@ -35,3 +35,9 @@ test('a missed answer after a good one is a slow hub, not an old one: it asks ag
   assert.equal(r, 'quiet')
   assert.ok(!said.some(l => /cannot wait/.test(l)))
 })
+test('a hub that stops answering for 5 asks in a row is cut, so kage stop never hangs', async () => {
+  const { r, said, asks } = await run([[{ key: 'C1:5.5', why: 'busy' }], new Error('silent')])
+  assert.equal(r, 'cut')
+  assert.equal(asks, 6)
+  assert.match(said.at(-1)!, /does not answer/)
+})

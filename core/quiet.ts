@@ -10,12 +10,15 @@ export async function waitForQuiet(o: {
   cut: boolean                    // --cut-running: drain once, then cut what runs
 }): Promise<'quiet' | 'cut' | 'down'> {
   const seen = new Set<string>()
+  let missed = 0
   for (let first = true; ; first = false) {
     let waits: Wait[]
-    try { waits = await o.ask() } catch (e) {
+    try { waits = await o.ask(); missed = 0 } catch (e) {
       if ((e as Error).message === 'down') return 'down'
-      // Only a first ask with no answer means a hub from before the drain. Later, the hub is just slow: ask again.
-      if (!first) { await o.sleep(2000); continue }
+      // Only a first ask with no answer means a hub from before the drain. Later, the hub is just slow: ask again,
+      // up to 5 times in a row (about 35 s), so a hung hub cannot keep kage stop waiting for good.
+      if (!first && ++missed < 5) { await o.sleep(2000); continue }
+      if (!first) { o.say('The hub does not answer, so its turns are cut.'); return 'cut' }
       o.say('This hub is older and cannot wait for running turns, so they are cut.')
       return 'cut'
     }
