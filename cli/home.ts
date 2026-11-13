@@ -21,14 +21,14 @@ export function placeNamer(): (key: string) => string {
 }
 
 // One question to the running hub over its socket, and its one-line answer. Rejects with 'down' when no hub
-// is there, and with 'silent' when it does not answer in 5 s (a hub from before the question existed).
-export function askHub<T>(question: object): Promise<T> {
+// is there, and with 'silent' when it does not answer in time (a hung hub, or one from before the question existed).
+export function askHub<T>(question: object, timeoutMs = 5000): Promise<T> {
   const SOCK = `${DIR}/router.sock`
   return new Promise((res, rej) => {
     if (!existsSync(SOCK)) return rej(new Error('down'))
     const s = connect(SOCK)
     let buf = ''
-    s.setTimeout(5000, () => { s.destroy(); rej(new Error('silent')) })
+    s.setTimeout(timeoutMs, () => { s.destroy(); rej(new Error('silent')) })
     s.on('connect', () => s.write(JSON.stringify(question) + '\n'))
     s.on('data', b => {
       buf += b

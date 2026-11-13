@@ -23,7 +23,7 @@ export const claudeProject = (cwd: string) => `${process.env.HOME}/.claude/proje
 export function tmuxPanes(o: {
   name: string
   envFile: string
-  claude: string                              // the command start.sh built, with the kage channel
+  claude: string                              // the command run.sh built, with the kage channel
   idOf: (key: string) => string | undefined   // the thread's session id
   placeOf: (key: string) => string            // the pane's label
   onStart: () => void                         // a new id may have been minted: save the map
@@ -35,12 +35,15 @@ export function tmuxPanes(o: {
   const BOARD = `=${o.name}:threads`
 
   // session id -> pane id
+  // No session (the hub runs under launchd or systemd), or no tmux at all: no panes.
   const panes = (): Map<string, string> => {
-    const lines = tmux('list-panes', '-s', '-t', `=${o.name}`, '-F', '#{@kage} #{pane_id}').split('\n')
+    let lines: string[]
+    try { lines = tmux('list-panes', '-s', '-t', `=${o.name}`, '-F', '#{@kage} #{pane_id}').split('\n') } catch { return new Map() }
     return new Map(lines.filter(l => /^\S+ %\d+$/.test(l)).map(l => l.split(' ') as [string, string]))
   }
+  const hasSession = () => { try { tmux('has-session', '-t', `=${o.name}`); return true } catch { return false } }
   const paneOf = (key: string) => panes().get(o.idOf(key) ?? '')
-  const hasBoard = () => tmux('list-windows', '-t', `=${o.name}`, '-F', '#{window_name}').split('\n').includes('threads')
+  const hasBoard = () => hasSession() && tmux('list-windows', '-t', `=${o.name}`, '-F', '#{window_name}').split('\n').includes('threads')
 
   // The tool results in a session's transcript that mention a job (CronCreate, CronDelete).
   function cronResults(id: string): { timestamp: string; text: string }[] {
@@ -68,7 +71,10 @@ export function tmuxPanes(o: {
       // Resume the thread's conversation once it has a transcript; until then, start it under that id.
       // The loop brings Claude Code back with the same conversation if it ever exits.
       const run = `while true; do if [ -f '${PROJECT}/${id}.jsonl' ]; then eval "$KAGE_CLAUDE --resume ${id}"; else eval "$KAGE_CLAUDE --session-id ${id}"; fi; echo 'restarting in 3s'; sleep 3; done`
-      const where = hasBoard() ? ['split-window', '-d', '-t', BOARD] : ['new-window', '-d', '-t', `=${o.name}:`, '-n', 'threads']
+      // The first pane makes the tmux session when the hub runs under a service: tmux attach -t <name> shows it.
+      const where = hasBoard() ? ['split-window', '-d', '-t', BOARD]
+        : hasSession() ? ['new-window', '-d', '-t', `=${o.name}:`, '-n', 'threads']
+        : ['new-session', '-d', '-s', o.name, '-n', 'threads']
       const pane = tmux(...where, '-P', '-F', '#{pane_id}', '-c', process.cwd(),
         '-e', `KAGE_THREAD=${key}`, '-e', `KAGE_ENV=${o.envFile}`, '-e', `KAGE_CLAUDE=${o.claude}`, run).trim()
       tmux('set-option', '-p', '-t', pane, '@kage', id)
