@@ -29,6 +29,7 @@ Watch|top||The live console: every thread, its feed, attach and stop, by mouse o
 Watch|watch|[place]|Follow every step every session takes, as it happens|kage watch support
 Watch|attach|[place]|Take a thread into this terminal; Kage gets it back when you quit|kage attach general
 People|teammate|list, add, remove|Who else may tag Kage (a name, @handle or Slack id)|kage teammate add priya
+People|app|list, add, remove|Which agents of your teammates may tag Kage, by Slack app id; applies at the next kage restart|kage app add A0123ABC
 People|tell|<place> <message>|Tell a thread something as you; its session takes it after the current turn|kage tell support use the staging db
 People|call||Kage phones you, and the call can do anything you can (needs KAGE_CALL_COMMAND)|kage call'
 
@@ -37,8 +38,8 @@ cmd_help() {
   if [[ -n "${1:-}" ]]; then
     local row; row="$(printf '%s\n' "$COMMANDS" | awk -F'|' -v n="$1" '$2==n')"
     [[ -n $row ]] || unknown "$1"
-    IFS='|' read -r _ n a d e <<<"$row"
-    printf "${B}kage %s${R} %s\n  %s\n  Example: %s\n" "$n" "$a" "$d" "$e"
+    # A name can have two rows (kage app): show each.
+    while IFS='|' read -r _ n a d e; do printf "${B}kage %s${R} %s\n  %s\n  Example: %s\n" "$n" "$a" "$d" "$e"; done <<<"$row"
     return
   fi
   printf "${B}kage${R}  tag @kage in Slack, and your own Claude Code does the work on this machine.\n"
@@ -57,11 +58,11 @@ cmd_short() {
     d="$(printf '%s\n' "$COMMANDS" | awk -F'|' -v n="$n" '$2==n {print $4}')"
     printf '  kage %-12s %s\n' "$n" "$d"
   done
-  printf '\nkage help lists all %s commands.\n' "$(printf '%s\n' "$COMMANDS" | wc -l | tr -d ' ')"
+  printf '\nkage help lists all %s commands.\n' "$(printf '%s\n' "$COMMANDS" | cut -d'|' -f2 | sort -u | wc -l | tr -d ' ')"
 }
 
 unknown() {
-  local guess; guess="$(node -e 'import("./core/cli-help.ts").then(m=>{const s=m.suggest(process.argv[1],process.argv.slice(2));if(s)console.log(s)})' "$1" $(printf '%s\n' "$COMMANDS" | cut -d'|' -f2) 2>/dev/null || true)"
+  local guess; guess="$(node -e 'import("./core/cli-help.ts").then(m=>{const s=m.suggest(process.argv[1],process.argv.slice(2));if(s)console.log(s)})' "$1" $(printf '%s\n' "$COMMANDS" | cut -d'|' -f2 | sort -u) 2>/dev/null || true)"
   printf 'No command "%s".%s Run kage help for the list.\n' "$1" "${guess:+ Did you mean kage $guess?}" >&2
   exit 2
 }
@@ -242,7 +243,7 @@ case "${1:-}" in
   help) cmd_help "${2:-}" ;;
   setup) cmd_interactive ;;
   check) cmd_check ;;
-  app) cmd_app "${2:-}" ;;
+  app) case "${2:-}" in list|add|remove) node cli/app.ts "${@:2}" ;; *) cmd_app "${2:-}" ;; esac ;;
   save) cmd_save "${2:-}" ;;
   doctor) cmd_doctor ;;
   link) mkdir -p ~/.local/bin && ln -sf "$PWD/setup.sh" ~/.local/bin/kage && echo "ok: run kage from anywhere (needs ~/.local/bin on PATH)" ;;

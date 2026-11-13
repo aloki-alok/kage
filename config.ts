@@ -3,7 +3,7 @@ import { WebClient, LogLevel } from '@slack/web-api'
 import { readFileSync } from 'node:fs'
 import { inspect } from 'node:util'
 import { repeats } from './core/log-repeats.ts'
-import { validName } from './core/gate.ts'
+import { validAppId, validName } from './core/gate.ts'
 
 // In a session, stdout is the MCP pipe: every log line goes to stderr. The time lets one line be matched to another.
 export const log = (...a: unknown[]) => console.error(new Date().toISOString(), '[kage]', ...a)
@@ -44,7 +44,7 @@ export function load() {
   }
   // Slack app ids of teammates' own agents, whose posts count as that teammate's. Empty: none.
   const TRUSTED_APPS = (env.KAGE_TRUSTED_APPS || '').split(',').map(s => s.trim()).filter(Boolean)
-  if (TRUSTED_APPS.some(a => !/^A[A-Z0-9]{2,}$/.test(a))) {
+  if (!TRUSTED_APPS.every(validAppId)) {
     log('KAGE_TRUSTED_APPS must be Slack app ids like A0123ABC, comma separated')
     process.exit(1)
   }

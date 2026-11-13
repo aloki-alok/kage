@@ -1,6 +1,6 @@
 import { describe, test } from 'node:test'
 import assert from 'node:assert/strict'
-import { classify, findPeople, plainName, quoteMessage, senderOf, taskLine, teammateOf, teammatesIn, validName, withoutInvisible, withTeammates } from './gate.ts'
+import { classify, findPeople, plainName, quoteMessage, senderOf, taskLine, teammateOf, listIn, validAppId, validName, withList, withoutInvisible } from './gate.ts'
 import { safeReply } from './outbound.ts'
 
 const OWNER = 'UOWNER001'
@@ -265,19 +265,37 @@ describe('adding a teammate by name', () => {
 })
 
 describe('the teammate list in the env file', () => {
+  const T = 'KAGE_TEAMMATES'
   const env = 'KAGE_NAME=kage\nSLACK_BOT_TOKEN=xoxb-1\nKAGE_TEAMMATES=U1,U2\n'
   test('adding keeps every other line and skips a duplicate', () => {
-    assert.equal(withTeammates(env, ['U1', 'U2', 'U3']), 'KAGE_NAME=kage\nSLACK_BOT_TOKEN=xoxb-1\nKAGE_TEAMMATES=U1,U2,U3\n')
-    assert.deepEqual(teammatesIn(withTeammates(env, ['U1', 'U2', 'U2'])), ['U1', 'U2'])
+    assert.equal(withList(env, T, ['U1', 'U2', 'U3']), 'KAGE_NAME=kage\nSLACK_BOT_TOKEN=xoxb-1\nKAGE_TEAMMATES=U1,U2,U3\n')
+    assert.deepEqual(listIn(withList(env, T, ['U1', 'U2', 'U2']), T), ['U1', 'U2'])
   })
   test('a quoted or indented line is read and replaced, blank lines kept', () => {
     const quoted = 'KAGE_NAME=kage\n\n  KAGE_TEAMMATES="U1,U2"\n'
-    assert.deepEqual(teammatesIn(quoted), ['U1', 'U2'])
-    assert.equal(withTeammates(quoted, ['U1']), 'KAGE_NAME=kage\n\nKAGE_TEAMMATES=U1\n')
+    assert.deepEqual(listIn(quoted, T), ['U1', 'U2'])
+    assert.equal(withList(quoted, T, ['U1']), 'KAGE_NAME=kage\n\nKAGE_TEAMMATES=U1\n')
   })
   test('the first teammate adds the line; removing the last drops it', () => {
-    assert.equal(withTeammates('KAGE_NAME=kage\n', ['U9']), 'KAGE_NAME=kage\nKAGE_TEAMMATES=U9\n')
-    assert.equal(withTeammates(env, []), 'KAGE_NAME=kage\nSLACK_BOT_TOKEN=xoxb-1\n')
+    assert.equal(withList('KAGE_NAME=kage\n', T, ['U9']), 'KAGE_NAME=kage\nKAGE_TEAMMATES=U9\n')
+    assert.equal(withList(env, T, []), 'KAGE_NAME=kage\nSLACK_BOT_TOKEN=xoxb-1\n')
+  })
+})
+
+describe('the trusted app list in the env file', () => {
+  const env = 'KAGE_NAME=kage\nKAGE_TEAMMATES=U1,U2\n'
+  test('the first app adds its own line and leaves the teammate line alone', () => {
+    const next = withList(env, 'KAGE_TRUSTED_APPS', ['ATEST0001'])
+    assert.equal(next, 'KAGE_NAME=kage\nKAGE_TEAMMATES=U1,U2\nKAGE_TRUSTED_APPS=ATEST0001\n')
+    assert.deepEqual(listIn(next, 'KAGE_TRUSTED_APPS'), ['ATEST0001'])
+    assert.deepEqual(listIn(next, 'KAGE_TEAMMATES'), ['U1', 'U2'])
+  })
+  test('removing the last app drops its line only', () => {
+    assert.equal(withList(withList(env, 'KAGE_TRUSTED_APPS', ['ATEST0001']), 'KAGE_TRUSTED_APPS', []), env)
+  })
+  test('an app id is A, then capital letters and digits', () => {
+    for (const id of ['ATEST0001', 'A0TEST']) assert.equal(validAppId(id), true, id)
+    for (const id of ['', 'A', 'atest0001', 'UTEST0001', 'ATEST 001', 'ATEST0001,ATEST0002', 'ATEST0001\nSLACK_BOT_TOKEN=x']) assert.equal(validAppId(id), false, id)
   })
 })
 

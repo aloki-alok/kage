@@ -120,18 +120,22 @@ export function findPeople(people: Person[], query: string): { id: string; name:
     .map(p => ({ id: p.id, name: p.real_name || p.name || p.id }))
 }
 
-// Read the way config.ts reads the env file: optional indent, spaces and quotes.
-const TEAMMATES_LINE = /^\s*KAGE_TEAMMATES\s*=\s*["']?(.*?)["']?\s*$/
-export const teammatesIn = (env: string) =>
-  (env.split('\n').map(l => TEAMMATES_LINE.exec(l)?.[1]).findLast(v => v !== undefined) ?? '')
+// A comma separated id list in the env file (KAGE_TEAMMATES, KAGE_TRUSTED_APPS). Read the way
+// config.ts reads the file: optional indent, spaces and quotes.
+const listLine = (name: string) => new RegExp(`^\\s*${name}\\s*=\\s*["']?(.*?)["']?\\s*$`)
+export const listIn = (env: string, name: string) =>
+  (env.split('\n').map(l => listLine(name).exec(l)?.[1]).findLast(v => v !== undefined) ?? '')
     .split(',').map(s => s.trim()).filter(Boolean)
 
-// The env file with its KAGE_TEAMMATES line set to these ids; every other line stays as it was.
-export function withTeammates(env: string, ids: string[]): string {
-  const rest = env.replace(/\n+$/, '').split('\n').filter(l => !TEAMMATES_LINE.test(l))
+// The env file with that list set to these ids; every other line stays as it was.
+export function withList(env: string, name: string, ids: string[]): string {
+  const rest = env.replace(/\n+$/, '').split('\n').filter(l => !listLine(name).test(l))
   const unique = [...new Set(ids)]
-  return [...rest, ...(unique.length ? [`KAGE_TEAMMATES=${unique.join(',')}`] : [])].join('\n') + '\n'
+  return [...rest, ...(unique.length ? [`${name}=${unique.join(',')}`] : [])].join('\n') + '\n'
 }
+
+// A Slack app id, as config.ts accepts it in KAGE_TRUSTED_APPS. It goes into the env file, so it is one plain word.
+export const validAppId = (id: string) => /^A[A-Z0-9]{2,}$/.test(id)
 
 // Who a task counts as. Email never counts as the owner, whatever the task says: anyone may be behind
 // a mailbox forward. A voice call is the strictest label (see voiceToolRefusal) unless the voice

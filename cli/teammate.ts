@@ -4,7 +4,7 @@
 import { spawnSync } from 'node:child_process'
 import { fileURLToPath } from 'node:url'
 import { readFileSync, renameSync, writeFileSync } from 'node:fs'
-import { findPeople, teammatesIn, withTeammates, type Person } from '../core/gate.ts'
+import { findPeople, listIn, withList, type Person } from '../core/gate.ts'
 
 import { ENV_FILE } from './home.ts'
 const env = readFileSync(ENV_FILE, 'utf8')
@@ -50,7 +50,7 @@ const restartHub = () => {
 
 const [cmd, ...rest] = process.argv.slice(2)
 const query = rest.join(' ')
-const now = teammatesIn(env)
+const now = listIn(env, 'KAGE_TEAMMATES')
 if (cmd === 'list') {
   if (!now.length) console.log('No teammates: only you can tag Kage.')
   for (const id of now) console.log(`${id}  ${(await slack('users.info', { user: id })).user.real_name}`)
@@ -61,7 +61,7 @@ if (cmd === 'list') {
     console.log(`${p.name} (${p.id}) is ${cmd === 'add' ? 'already' : 'not'} a teammate.`)
   } else {
     // Write a copy, then swap it in: a crash mid-write never leaves a cut-off token file.
-    writeFileSync(`${ENV_FILE}.new`, withTeammates(env, next), { mode: 0o600 })
+    writeFileSync(`${ENV_FILE}.new`, withList(env, 'KAGE_TEAMMATES', next), { mode: 0o600 })
     renameSync(`${ENV_FILE}.new`, ENV_FILE)
     console.log(`${cmd === 'add' ? 'Added' : 'Removed'} ${p.name} (${p.id}).`)
     restartHub()

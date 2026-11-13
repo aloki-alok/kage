@@ -147,6 +147,15 @@ A teammate can tag `@kage` only in a conversation you are also in, because Kage 
 
 Only you can approve a permission prompt.
 
+A teammate who runs their own agent can let it tag `@kage` too. Add the agent's Slack app id (the teammate finds it at api.slack.com/apps, under Basic Information), then restart:
+
+```sh
+kage app add A0123ABC        # also: kage app remove A0123ABC, kage app list
+kage restart
+```
+
+A tagged post from that app counts as the teammate's task, with the same two limits. It never counts as yours, so an agent cannot approve anything.
+
 You get 🥷 on your message when Kage picks it up. Then 🗡️ means a quick answer, 📜 means Kage asked you something and waits for your reply, and ⚔️ means the task is done. Long jobs get a one-line "working on it" reply first, then the result. Answers stay in the thread. Only something that must never show in a channel (a password, a token, a key, someone's private data) goes to your DM instead.
 
 ## How it works

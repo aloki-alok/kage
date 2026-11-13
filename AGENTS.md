@@ -69,6 +69,7 @@ The install line puts `kage` on your PATH (in a git checkout, run `./setup.sh li
 | Stop | `kage stop` |
 | Start at login (macOS) | `kage autostart on` or `off` |
 | Let a teammate tag it | `kage teammate add <name, @handle or id>` (also `remove`, `list`). If it lists two people, ask which one. |
+| Let a teammate's own agent tag it | `kage app add <app id>` (also `remove`, `list`), then `kage restart`. The teammate must be listed too. The agent's owner finds the app id at api.slack.com/apps, under Basic Information. |
 | Voice, calls, email, AFK, limits | Every setting, with its default, is in [docs/settings.md](docs/settings.md). |
 | Run threads as tmux panes instead | Add `KAGE_RUNTIME=tmux` to `~/.config/kage/env`, then `kage stop` and `kage start`. Each pane then shows a channels warning screen that the person confirms (README, "Run threads as tmux panes instead"). |
 | Update Kage | Run the install line again (`curl -fsSL https://raw.githubusercontent.com/aloki-alok/kage/main/install.sh | bash`), or `git pull` in a git checkout. The hub restarts into the new code by itself once every session is quiet. A session cut by a restart resumes its conversation on its next task. |
