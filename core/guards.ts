@@ -24,7 +24,7 @@ export function slackSendRefusal(tool: string): string | undefined {
   if (!SLACK_SEND.test(tool) || /draft/i.test(tool)) return undefined
   return `${tool} posts as the owner with no sign of Kage. Use the reply tool for this thread, or message_people to tell someone else.`
 }
-// Kage's own memory (start.sh points autoMemoryDirectory at it) and the owner's, which is the
+// Kage's own memory (hub.ts points autoMemoryDirectory at it) and the owner's, which is the
 // memory of the home folder project in Claude Code.
 export const memoryDirs = (home: string, envFile: string, env: Record<string, string | undefined>) => ({
   own: env.KAGE_MEMORY || `${dirname(envFile)}/memory`,

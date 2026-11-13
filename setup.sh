@@ -11,18 +11,19 @@ die() { printf '\033[31m%s\033[0m\n' "$*" >&2; exit 1; }
 
 # group|name|arguments|what it does|example. `kage help` prints it grouped; `kage help <name>` prints one.
 COMMANDS='Set up|setup||Walk through the first setup, one step at a time|kage setup
-Set up|check||Check that node 22.18+, claude and tmux are installed|kage check
+Set up|check||Check that node 22.18+ and claude are installed (and tmux, for KAGE_RUNTIME=tmux)|kage check
 Set up|app|[name]|Write the Slack app for the name you tag, and open the link that creates it|kage app kage
 Set up|save|[name]|Paste the three Slack tokens into hidden prompts; each is checked with Slack|kage save
 Set up|doctor||Check every part, and print the command that fixes each problem|kage doctor
 Set up|link||Put the kage command on your PATH (~/.local/bin/kage)|./setup.sh link
-Set up|autostart|on or off|Start Kage when you log in to this Mac|kage autostart on
-Run|start||Start Kage in the background|kage start
+Set up|service|on or off|Let macOS or Linux keep Kage running: back after a crash, a reboot or a login|kage service on
+Run|start||Start Kage in the background (turns the service on the first time)|kage start
 Run|stop||Stop Kage. Open sessions end, and each resumes on its next tag|kage stop
 Run|restart||Restart the hub to pick up a new setting (about 10 s)|kage restart
 Run|reload||Read the settings file again with no restart: who may tag Kage changes at once|kage reload
 Run|status||One look at every session and what it is doing|kage status
-Run|logs|[lines]|The last lines of the hub log (80 unless you say)|kage logs 200
+Run|logs|[lines or -f]|The last lines of the hub log (80 unless you say), or -f to follow it|kage logs -f
+Run|run||Run the hub in the foreground for a supervisor other than launchd or systemd (Docker: --init); output goes to kage logs|kage run
 Run|cost|[days]|What each thread spent, most first (1 day unless you say)|kage cost 7
 Run|dream|undo|Put the memory back to how it was before the last weekly dream|kage dream undo
 Watch|schedules||Every schedule and reply watch, in every thread|kage schedules
@@ -76,19 +77,36 @@ inside_kage() {
 }
 
 kage_name() { NAME="$(env_get KAGE_NAME)"; NAME="${NAME:-kage}"; }
-running() { kage_name; tmux has-session -t "=$NAME" 2>/dev/null; }
+# A hub started before the service existed runs in a tmux session (start.sh). kage service on moves it.
+old_tmux() { command -v tmux >/dev/null && tmux has-session -t "=$NAME" 2>/dev/null; }
+running() { kage_name; ./service.sh running 2>/dev/null || old_tmux; }
+LOG="$(dirname "$ENV_FILE")/hub.log"
+
+cmd_start() {
+  kage_name
+  if ./service.sh installed; then ./service.sh start
+  else ./service.sh on || return 1; fi
+  echo "$NAME is starting. Check it in 20 s: kage doctor"
+  if [[ "$(env_get KAGE_RUNTIME)" == tmux && "$(env_get KAGE_ROUTE)" != plugin ]]; then
+    echo "Threads open as tmux panes (dev route): each new pane shows a warning screen. Confirm it in tmux attach -t $NAME."
+  fi
+}
 
 cmd_stop() {
   inside_kage stop "${1:-}"
-  running || { echo "$NAME is not running."; return 0; }
-  tmux kill-session -t "=$NAME" && echo "Stopped $NAME. Each thread resumes its conversation on its next tag."
+  kage_name
+  if ./service.sh installed; then ./service.sh stop
+  elif old_tmux; then tmux kill-session -t "=$NAME"
+  else echo "$NAME is not running."; return 0; fi
+  echo "Stopped $NAME. It stays down until kage start or the next login (Linux: the next boot). Each thread resumes its conversation on its next tag."
 }
 
-# Kills the hub only: its tmux loop (start.sh) starts it again in 5 s. A change to KAGE_ROUTE,
-# KAGE_RUNTIME, KAGE_CWD or KAGE_MEMORY needs kage stop, then kage start, since start.sh fixed those.
+# A change to KAGE_ROUTE, KAGE_RUNTIME, KAGE_CWD or KAGE_MEMORY needs kage stop, then kage start.
 cmd_restart() {
   inside_kage restart "${1:-}"
   running || { echo "$NAME is not running. Start it: kage start"; return 1; }
+  if ./service.sh installed; then ./service.sh restart && echo "Restarted the hub; it is back in about 10 s. Open sessions resume on their next tag."; return; fi
+  # The old tmux loop starts the hub again 5 s after it exits.
   local pid; pid="$(awk '{print $4}' "$(dirname "$ENV_FILE")/status" 2>/dev/null || true)"
   # The status file outlives the hub; never kill a pid that is now some other program.
   if [[ -n $pid ]] && ps -p "$pid" -o command= 2>/dev/null | grep -q 'router.ts'; then
@@ -104,9 +122,12 @@ cmd_status() {
 }
 
 cmd_logs() {
-  running || { echo "$NAME is not running, so there is no live log. Start it: kage start"; return 1; }
-  local n="${1:-80}"; [[ $n =~ ^[0-9]+$ ]] || die "kage logs takes a number of lines, like kage logs 200"
-  # tmux keeps about 2,000 lines of the hub window; the blank rows below the last line are dropped.
+  kage_name
+  if [[ "${1:-}" == -f ]]; then [[ -f $LOG ]] || die "No hub log yet: $LOG"; exec tail -n 40 -f "$LOG"; fi
+  local n="${1:-80}"; [[ $n =~ ^[0-9]+$ ]] || die "kage logs takes a number of lines, like kage logs 200, or -f to follow"
+  if [[ -f $LOG ]]; then tail -n "$n" "$LOG"; return; fi
+  # A hub from start.sh logs only to its tmux window, about 2,000 lines; the blank rows below the last line are dropped.
+  old_tmux || { echo "No hub log yet. Start it: kage start"; return 1; }
   tmux capture-pane -p -J -t "=$NAME:router" -S - | grep -v '^$' | tail -n "$n"
 }
 
@@ -120,8 +141,12 @@ cmd_check() {
   node -e 'const [a,b]=process.versions.node.split(".").map(Number); process.exit(a>22||(a===22&&b>=18)?0:1)' \
     || die "Node $(node -v) is too old: Kage runs TypeScript directly, which needs Node 22.18+."
   command -v claude >/dev/null || die "Claude Code is required: https://code.claude.com/docs/en/quickstart"
-  command -v tmux >/dev/null || die "tmux is required (macOS: brew install tmux)"
-  echo "ok: node $(node -v), $(claude --version | head -1), tmux"
+  local tm=""
+  if [[ "$(env_get KAGE_RUNTIME)" == tmux ]]; then
+    command -v tmux >/dev/null || die "tmux is required for KAGE_RUNTIME=tmux (macOS: brew install tmux)"
+    tm=", tmux"
+  fi
+  echo "ok: node $(node -v), $(claude --version | head -1)$tm"
 }
 
 cmd_app() {
@@ -191,7 +216,7 @@ cmd_doctor() {
   fail() { printf 'FAIL  %s\n' "$*"; bad=1; }
   note() { printf 'note  %s\n' "$*"; }
 
-  (cmd_check >/dev/null 2>&1) && pass "tools: node 22.18+, claude, tmux" || fail "tools: run kage check for the missing one"
+  (cmd_check >/dev/null 2>&1) && pass "tools: node 22.18+, claude" || fail "tools: run kage check for the missing one"
   if [[ ! -f "$ENV_FILE" ]]; then
     fail "tokens: no $ENV_FILE. Run kage app, then kage save"
   else
@@ -217,7 +242,19 @@ cmd_doctor() {
     note "dev route: Claude Code shows a warning screen on each start, and a person confirms it"
   fi
 
-  if tmux has-session -t "=$NAME" 2>/dev/null; then pass "tmux session $NAME is running"; else fail "not running: kage start"; fi
+  if ./service.sh installed; then
+    ./service.sh running && pass "the service keeps $NAME running" || fail "the service is on but $NAME is stopped: kage start"
+  elif old_tmux; then
+    fail "$NAME runs in tmux, which does not bring it back after a reboot or a kill: kage service on"
+  else
+    fail "not running: kage start"
+  fi
+  if [[ "$(./service.sh kind)" == systemd && "$(loginctl show-user "$(id -un)" -p Linger --value 2>/dev/null)" != yes ]]; then
+    fail "it starts only once you log in: sudo loginctl enable-linger $(id -un)"
+  fi
+  local boots; boots="$(awk -v t=$(( $(date +%s) - 86400 )) '$1 > t' "$(dirname "$ENV_FILE")/boots" 2>/dev/null | wc -l | tr -d ' ')"
+  (( boots > 5 )) && note "the hub started $boots times in 24 h: kage logs shows why"
+  [[ "$(uname -s)" == Darwin ]] && note "with the lid closed this Mac sleeps, and Kage is offline until it wakes"
   local st="$(dirname "$ENV_FILE")/status"
   if [[ -f $st ]] && ps -p "$(awk '{print $4}' "$st")" >/dev/null 2>&1 && [[ $(awk '{print $1}' "$st") == connected ]]; then
     pass "connected to Slack: $(cat "$st")"
@@ -249,8 +286,9 @@ case "${1:-}" in
   save) cmd_save "${2:-}" ;;
   doctor) cmd_doctor ;;
   link) mkdir -p ~/.local/bin && ln -sf "$PWD/setup.sh" ~/.local/bin/kage && echo "ok: run kage from anywhere (needs ~/.local/bin on PATH)" ;;
-  autostart) ./autostart.sh "${2:-}" ;;
-  start) ./start.sh ;;
+  service) ./service.sh "${2:-}" ;;
+  run) exec node hub.ts ;;
+  start) cmd_start ;;
   stop) cmd_stop "${2:-}" ;;
   restart) cmd_restart "${2:-}" ;;
   reload) node cli/reload.ts ;;

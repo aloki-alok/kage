@@ -40,13 +40,30 @@ import { openStore, type Inbox } from './runtime/store.ts'
 import { openLedgers } from './runtime/ledger.ts'
 import { claudeProject, tmuxPanes } from './runtime/tmux-panes.ts'
 import { codeStamp } from './runtime/code-stamp.ts'
+import { askHub } from './cli/home.ts'
+import { hubLock } from './runtime/hub-lock.ts'
+import { npmCi, packagesStale, rotate } from './runtime/hub-log.ts'
 import { closedThreads } from './runtime/closed-threads.ts'
 
 const { ENV_FILE, NAME, Title, TEAMMATES, TRUSTED_APPS, env, need, bot, user } = load()
 const DIR = dirname(ENV_FILE)
+// One hub per machine, checked before the store and Slack: two hubs on one Slack app split its events. A hub
+// that answers on the socket in 2 s is running, so this one exits 0 and its supervisor leaves it down. A bare
+// connect is not enough, because a hung hub still takes connects.
+if (await askHub({ type: 'board' }, 2000).then(() => true, () => false)) {
+  log('another hub is running and answers on its socket, so this one exits')
+  process.exit(0)
+}
+// Two hubs started at the same moment both find no answer, so the lock decides (runtime/hub-lock.ts).
+if (!await hubLock(`${DIR}/hub.lock`)) {
+  log('another hub holds the hub lock, so this one exits')
+  process.exit(0)
+}
 const THREADS = `${DIR}/threads.json`
-// start.sh sets the command that starts Claude Code with the kage channel.
-const CLAUDE = process.env.KAGE_CLAUDE || (log('KAGE_CLAUDE is not set: start Kage with ./start.sh'), process.exit(1))
+// hub.ts sets the command that starts Claude Code with the kage channel.
+const CLAUDE = process.env.KAGE_CLAUDE || (log('KAGE_CLAUDE is not set: start Kage with kage start'), process.exit(1))
+// A Mac stays awake while the hub runs. caffeinate -i stops idle sleep only: with the lid closed, Kage is offline.
+if (process.platform === 'darwin') spawn('caffeinate', ['-i', '-w', String(process.pid)], { stdio: 'ignore' }).on('error', () => {}).unref()
 const MAX = Number(env.KAGE_MAX_SESSIONS || 4)
 const IDLE_MIN = Number(env.KAGE_IDLE_MINUTES || 30)
 process.on('unhandledRejection', e => log('unhandled', e))
@@ -350,17 +367,27 @@ function failed(m: ToSession) {
 }
 
 // Kage updates itself: newer code (a merge, a pull, the install line again) takes over once
-// nothing would be cut off. The loop start.sh runs the hub in starts it again 5s after it exits.
+// nothing would be cut off. It exits 75, and the supervisor (service.sh) starts it again.
 // ponytail: a live cron job inside the hub (SDK) counts as busy, so it delays the update; restart by hand then. A pane outlives the hub.
 // The change must be settled for 10s, so a merge still writing files is never picked up half-done.
 // Compared to the boot stamp, not the clock, so a file with a future time cannot restart the hub over and over.
 const CODE = dirname(fileURLToPath(import.meta.url))
 const BOOT_CODE = codeStamp(CODE)
+let npmFailedFor = 0   // the code stamp whose npm ci failed: not tried again until the code moves
 function selfUpdate(now: number) {
   const code = codeStamp(CODE)
   if (code && code !== BOOT_CODE && now - code > 10_000 && d.quietEverywhere(now)) {
+    // New code may need new packages: npm stamps node_modules/.package-lock.json on each install.
+    if (packagesStale(CODE)) {
+      if (npmFailedFor === code) return
+      try { npmCi(CODE) } catch {
+        npmFailedFor = code
+        log('npm ci failed for the newer code, so the hub stays on the code it runs. Run npm ci in', CODE)
+        return
+      }
+    }
     log('newer code is in place and every session is quiet: restarting into it')
-    process.exit(0)
+    process.exit(75)
   }
 }
 
@@ -371,6 +398,8 @@ runJobs([
   { name: 'limit pause', every: 20_000, run: now => limits.tick(now) },
   { name: 'daily note', every: 10 * 60_000, run: dailyNote },
   { name: 'self-update', every: 60_000, run: selfUpdate },
+  // hub.ts rotates the log at each start; a hub that runs for weeks rotates it here.
+  { name: 'hub-log', every: 3_600_000, run: () => rotate(`${DIR}/hub.log`) },
   { name: 'dream', every: 10 * 60_000, run: dream },
   { name: 'retro', every: 10 * 60_000, run: weeklyRetro },
 ])

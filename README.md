@@ -37,7 +37,7 @@ The rest of this page is for doing it by hand, and for knowing how it works.
 
 | You need | Why |
 |---|---|
-| macOS or Linux, Node 22.18 or newer, `tmux` | Kage runs TypeScript directly on Node and lives in a background terminal. |
+| macOS or Linux, Node 22.18 or newer | Kage runs TypeScript directly on Node. macOS (launchd) or Linux (systemd) keeps it running. `tmux` only for tmux panes. |
 | A recent [Claude Code](https://code.claude.com/docs/en/quickstart), logged in with a claude.ai account | Each thread is a normal Claude Code session with your settings, skills, tools and logins. |
 | Permission to create an app in your Slack workspace | If your workspace restricts apps, an admin approves it once. |
 
@@ -60,7 +60,7 @@ The rest of this page is for doing it by hand, and for knowing how it works.
 kage start
 ```
 
-The first start installs the Agent SDK, then Kage runs in the background with no screens to confirm. Each Slack thread gets its own Claude Code session inside it.
+The first start installs the Agent SDK and turns on the service: macOS or Linux keeps Kage running, brings it back within about 10 s after a crash, and starts it at login (on Linux, at boot once linger is on; `kage doctor` prints the command). Three starts in 10 minutes send you a DM. Each Slack thread gets its own Claude Code session inside it.
 
 `kage` alone says whether Kage is running and shows the six commands you use most. `kage help` lists all of them, `kage help <command>` shows one with an example, and a mistyped command gets the closest real one.
 
@@ -70,17 +70,19 @@ The first start installs the Agent SDK, then Kage runs in the background with no
 | See every session live | `kage top`, by mouse or keys. `kage status` prints one look. |
 | Follow every step as it happens | `kage watch`, or `kage watch support` for one place |
 | Work in a thread yourself | `kage attach '<link>'` with the thread's Slack link ("Copy link" on any message in it, kept in quotes), or `kage attach <place>`. You get it at once (a running turn stops, as with Esc), and Kage gets it back when you quit. |
-| Read the hub log | `kage logs`, or `kage logs 500` |
+| Read the hub log | `kage logs`, `kage logs 500`, or `kage logs -f` to follow it |
 | See every schedule and watch | `kage schedules`: what runs, where, and when it runs next |
 | See what each thread spent | `kage cost`, or `kage cost 7` for a week |
 | Undo the weekly memory tidy | `kage dream undo` |
 | Pick up a changed setting | `kage reload` for who may tag Kage: no session is cut. `kage restart` for any other setting. |
-| Stop it | `kage stop`. Each thread resumes its conversation on its next tag. |
-| Start at login (macOS) | `kage autostart on` (`off` undoes it) |
+| Stop it | `kage stop`. It stays down until `kage start`. Each thread resumes its conversation on its next tag. |
+| Stop it starting by itself | `kage service off`. `kage service on` turns it back on. |
+| Give sessions your shell exports | Put them in `~/.config/kage/session.env` (mode 600), then `kage restart`. Sessions see only the service's environment, not your shell's. |
+| Use another supervisor (Docker, runit) | Have it run `kage run`: a non-zero exit means restart it, exit 0 means leave it down. Docker needs `--init`. |
 
 ### Run threads as tmux panes instead
 
-Add `KAGE_RUNTIME=tmux` to `~/.config/kage/env`, then `kage stop` and `kage start`, to give each thread a Claude Code pane you can watch with `tmux attach -t <name>`. Panes talk to Kage through channels, a research-preview feature: on Team and Enterprise an org Owner turns Channels on under [Organization settings > Claude Code > Channels](https://claude.ai/admin-settings/claude-code). Each new pane shows a warning screen for custom channels until your org approves Kage:
+Add `KAGE_RUNTIME=tmux` to `~/.config/kage/env`, then `kage stop` and `kage start`, to give each thread a Claude Code pane you can watch with `tmux attach -t <name>`. On Linux, systemd stops the panes with the hub on every restart, so a pane resumes its conversation on its next tag. Panes talk to Kage through channels, a research-preview feature: on Team and Enterprise an org Owner turns Channels on under [Organization settings > Claude Code > Channels](https://claude.ai/admin-settings/claude-code). Each new pane shows a warning screen for custom channels until your org approves Kage:
 
 1. An org Owner opens [Claude Code admin settings](https://claude.ai/admin-settings/claude-code), finds managed settings, and adds:
    ```json
@@ -94,7 +96,7 @@ Add `KAGE_RUNTIME=tmux` to `~/.config/kage/env`, then `kage stop` and `kage star
    The plugin's server starts in every Claude Code session, but only the panes Kage opens for its threads take tasks. Your other sessions stay idle.
 3. Add `KAGE_ROUTE=plugin` to `~/.config/kage/env`, run `kage stop`, then `kage start`.
 
-Your laptop must be on, awake and online. `start.sh` stops a Mac from idling to sleep with `caffeinate`, but closing the lid still sleeps it unless the Mac is plugged into a display.
+Your laptop must be on, awake and online. The hub stops a Mac from idling to sleep with `caffeinate`, but closing the lid still sleeps it unless the Mac is plugged into a display. Tags sent while it sleeps are not picked up later.
 
 ## Use it
 

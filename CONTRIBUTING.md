@@ -28,7 +28,7 @@ Write logs to stderr only. In a tmux pane, stdout carries the channel protocol, 
 
 | Folder or file | Holds |
 |---|---|
-| `router.ts` | The hub: wires connectors, the dispatcher, the runner and the store. Its header names the few rules still in it. |
+| `router.ts` | The hub, loaded by `hub.ts`: wires connectors, the dispatcher, the runner and the store. Its header names the few rules still in it. |
 | `server.ts` | For tmux panes only: serves Kage's tools over MCP inside each pane and relays approvals. |
 | `private-data-guard.ts` | The plugin hook (`hooks/hooks.json`) that runs the rules in `core/guards.ts` inside tmux panes. The SDK runner applies the same rules in process. |
 | `config.ts` | Reads the env file and makes the Slack clients. |
@@ -36,7 +36,9 @@ Write logs to stderr only. In a tmux pane, stdout carries the channel protocol, 
 | `connectors/` | Where Kage hears from. Each turns a message into a `Task` (`runtime/protocol.ts`). Who may drive Kage is decided in `core/gate.ts`, not here. |
 | `runtime/` | Where sessions run, and the hub's state. See the table below. |
 | `cli/` | The commands behind `kage <command>`. They run from source. |
-| `setup.sh`, `start.sh`, `autostart.sh` | The setup steps and doctor, starting the hub in tmux (restarted if it exits), and starting at login on macOS. |
+| `setup.sh` | The `kage` command: setup steps, doctor, start, stop, logs. |
+| `service.sh` | The LaunchAgent (macOS) or systemd user unit (Linux) that keeps the hub running. A non-zero exit restarts it, and exit 0 leaves it down. |
+| `hub.ts` | The hub's entry, run by the service: the log file's size, the boot count and the crash-loop DM, then `router.ts`. Node modules only, so a bad pull is still caught. `start.sh` only forwards old login items to `kage start`. |
 | `docs/settings.md` | Every setting in the env file. |
 | `AGENTS.md` | Setup steps for a coding agent. `CLAUDE.md` loads it and this file. |
 | `.claude-plugin/`, `.mcp.json`, `hooks/` | Used only when Kage is installed as a Claude Code plugin (tmux panes on the plugin route). |
@@ -76,6 +78,8 @@ Write logs to stderr only. In a tmux pane, stdout carries the channel protocol, 
 | `scheduler.ts` | Runs due schedules as tasks in their thread. |
 | `limit-pause.ts` | The usage-limit pause: a turn that ends on the limit keeps its inbox message, its thread gets one notice, and the message replays at the reset. |
 | `closed-threads.ts` | A thread the safety check stopped: it starts on a new session, and a teammate's stays closed until the owner writes in it. |
+| `hub-lock.ts` | One hub per machine: a listening socket the OS frees when the hub dies. |
+| `hub-log.ts` | The hub log's rotation and the package check, shared by `hub.ts` and the hub. |
 | `code-stamp.ts` | When the code changed, so the hub knows to restart into it. |
 
 ## Add a connector

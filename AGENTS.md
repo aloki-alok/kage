@@ -12,7 +12,7 @@ Run every command from the repo root. Each step ends with a check. Go to the nex
    ```sh
    ./setup.sh check
    ```
-   Check: it prints `ok:`. If a tool is missing, install it (macOS: `brew install node tmux`). For Claude Code, see https://code.claude.com/docs/en/quickstart.
+   Check: it prints `ok:`. If a tool is missing, install it (macOS: `brew install node`). For Claude Code, see https://code.claude.com/docs/en/quickstart.
 
 2. Pick the name. Ask the person what they want to tag in Slack. If they have no preference, use `kage`. The name starts with a lowercase letter, then 1 to 20 lowercase letters, digits or dashes. Use the same name in every step.
 
@@ -38,11 +38,9 @@ Run every command from the repo root. Each step ends with a check. Go to the nex
 
 6. Start it.
    ```sh
-   ./start.sh
+   ./setup.sh start
    ```
-   Check: it prints `running, no prompts`. The first start installs the Agent SDK, which takes about a minute.
-
-   On macOS, ask the person whether Kage should start at login. If yes, run `./autostart.sh on`.
+   Check: it prints `is starting`. It turns on the service, so macOS or Linux keeps Kage running and starts it at login. The first start installs the Agent SDK, which takes about a minute. On Linux, if it prints a `sudo loginctl enable-linger` line, ask the person to run it, so Kage also starts at boot with no login.
 
 7. Prove it works.
    ```sh
@@ -64,11 +62,12 @@ The install line puts `kage` on your PATH (in a git checkout, run `./setup.sh li
 | Follow every step | `kage watch`, or `kage watch support` for threads whose place contains "support" |
 | Work in a thread's session yourself | `kage attach '<link>'` with the thread's Slack link ("Copy link" on any message in it). Keep the quotes, because the link holds `?` and `&`. Or `kage attach <place>`. It takes the session at once: a turn in progress stops, as with Esc. New tasks for it wait until you quit. When several threads share a place, attach by the link, or by the key it lists. |
 | Tell a thread something, as you | `kage tell <place> <message>`. Its session takes it after the current turn and answers in the thread. |
-| The hub log | `kage logs`. A tag that Kage refused shows as a `dropped` line with the thread, the sender and the reason. |
+| The hub log | `kage logs`, or `kage logs -f` to follow it. A tag that Kage refused shows as a `dropped` line with the thread, the sender and the reason. |
 | Apply a settings change | `kage reload` for who may tag Kage (`KAGE_TEAMMATES`, `KAGE_TRUSTED_APPS`): it cuts no session, and a wrong file changes nothing. It names every other changed setting, and those need `kage restart`. A change to `KAGE_RUNTIME`, `KAGE_ROUTE`, `KAGE_CWD` or `KAGE_MEMORY` needs `kage stop`, then `kage start`. |
 | See a usage-limit pause | `kage status` and `kage list` say when Claude's usage limit paused Kage, when it resets, and how many messages are held. Each thread got one line about it. Held messages run by themselves at the reset. |
-| Stop | `kage stop` |
-| Start at login (macOS) | `kage autostart on` or `off` |
+| Stop | `kage stop`. It stays down until `kage start`. |
+| Stop it starting by itself | `kage service off`, and `kage service on` to undo it. |
+| Give sessions shell exports | Put them in `~/.config/kage/session.env` (mode 600), then `kage restart`. |
 | Let a teammate tag it | `kage add <mention, member id, email, name or @handle>`. If it lists two people, ask which one. `kage remove <same>` takes them off, and `kage list` shows who is listed. The change applies at once, with no restart. |
 | Let a teammate's agent tag it | `kage add <app id or a pasted mention of the agent> <its owner>`. With the mention, Kage also saves the agent's tag and puts it on every part of a reply to it. An agent gets at most 20 turns a minute and 4 in a row in one thread, and a post of its that says `(no reply needed)` starts no task. The owner is a person, or a listed agent's app id. It adds the person too. Removing a person removes their agents. |
 | Voice, calls, email, AFK, limits | Every setting, with its default, is in [docs/settings.md](docs/settings.md). |
