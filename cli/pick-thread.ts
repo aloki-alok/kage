@@ -4,12 +4,13 @@ import { DatabaseSync } from 'node:sqlite'
 import { matchThreads, slackLinkKey, type ThreadRow } from '../core/conversations.ts'
 import { DIR } from './home.ts'
 
-export async function pickThread(arg: string): Promise<{ key: string; place: string }> {
+// lanes: false leaves out side lanes, for a command that acts on a thread with its lanes (kage stop).
+export async function pickThread(arg: string, lanes = true): Promise<{ key: string; place: string }> {
   const db = new DatabaseSync(`${DIR}/kage.db`, { readOnly: true })
   const rows = db.prepare(`select s.key, coalesce(c.place, s.key) as place, c.chat, c.agent_dm from sessions s
     left join conversations c using (key) order by c.last_seen desc nulls last`).all() as ThreadRow[]
   db.close()
-  let found = matchThreads(rows, arg)
+  let found = matchThreads(lanes ? rows : rows.filter(r => !r.key.includes('#')), arg)
   const linked = slackLinkKey(arg)
   if (linked && !found.length) {
     console.error(`Kage has no session for that thread (${linked}). Tag Kage in the thread to start one, or leave the link out to pick from the list.`)

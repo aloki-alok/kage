@@ -156,3 +156,7 @@ export const senderOf = (t: { fromOwner: boolean; meta: { channel: string } }): 
 // Hebrew), U+FE0E and U+FE0F (emoji style), and tab and newline.
 const INVISIBLE = /[\u{E0000}-\u{E007F}\u{E0100}-\u{E01EF}\u{1D173}-\u{1D17A}\u200B\u2060-\u2064\u206A-\u206F\uFEFF\u00AD\u034F\u180E\u17B4\u17B5\u115F\u1160\u3164\uFFA0\uFE00-\uFE0D\u202A-\u202E\u2066-\u2069\x00-\x08\x0B\x0C\x0E-\x1F\x7F-\x9F]/gu
 export const withoutInvisible = (text: string) => text.replace(INVISIBLE, '')
+
+// Who may stop a thread's session (#51): the owner anywhere, a teammate only in a thread their own task started.
+// starters is kept in memory, so after a hub restart only the owner may.
+export const mayStop = (by: string, owner: string, starters: Map<string, string>, key: string) => by === owner || starters.get(key) === by

@@ -1,6 +1,6 @@
 import { describe, test } from 'node:test'
 import assert from 'node:assert/strict'
-import { classify, findPeople, plainName, quoteMessage, senderOf, taskLine, teammateOf, validName, withoutInvisible } from './gate.ts'
+import { mayStop, classify, findPeople, plainName, quoteMessage, senderOf, taskLine, teammateOf, validName, withoutInvisible } from './gate.ts'
 import { safeReply } from './outbound.ts'
 
 const OWNER = 'UOWNER001'
@@ -332,5 +332,15 @@ describe('invisible text', () => {
     assert.equal(withoutInvisible(`ok ${family} ❤️ नमस्ते`), `ok ${family} ❤️ नमस्ते`)
     assert.equal(withoutInvisible('\u0915\u094D\u200C\u0937'), '\u0915\u094D\u200C\u0937')
     assert.equal(withoutInvisible('\u05D0\u200F, b\tc\n'), '\u05D0\u200F, b\tc\n')   // direction marks, tab and newline stay   // the non-joiner shapes Indic and Persian words
+  })
+})
+
+describe('who may stop a thread', () => {
+  test('the owner anywhere, a teammate only in a thread their task started, nobody else', () => {
+    const starters = new Map([['C1:5.5', MATE]])
+    assert.equal(mayStop(OWNER, OWNER, starters, 'C1:9.9'), true)
+    assert.equal(mayStop(MATE, OWNER, starters, 'C1:5.5'), true)
+    assert.equal(mayStop(MATE, OWNER, starters, 'C1:9.9'), false)
+    assert.equal(mayStop('UOTHER001', OWNER, starters, 'C1:5.5'), false)
   })
 })

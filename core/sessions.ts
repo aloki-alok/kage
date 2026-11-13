@@ -167,14 +167,16 @@ export class Dispatcher<M> {
   // is starting, asking or mid-turn waits for the next sweep after that; a timed check is not a turn, so it ends now.
   // Tasks no session read are dropped and returned, so the caller can let their messages go.
   endThread(key: string, now: number, cut: boolean):
-    { ok: true; ending?: true; cut?: 'busy' | 'asking'; dropped: M[] } | { refused: 'closed' } {
+    { ok: true; ending?: true; asking?: true; cut?: 'busy' | 'asking'; dropped: M[] } | { refused: 'closed' } {
     const live = this.#live.has(key)
     if (!live && !this.#waiting.includes(key)) return { refused: 'closed' }
     const running = !live ? undefined : !this.#conns.has(key) || this.#busyKind(key) === true ? 'busy'
       : [...this.#perms.values()].includes(key) ? 'asking' : undefined
-    if (running && !cut) { this.#ending.add(key); return { ok: true, ending: true, dropped: [] } }
+    if (running && !cut) { this.#ending.add(key); return { ok: true, ending: true, ...(running === 'asking' && { asking: true as const }), dropped: [] } }
     this.#ending.delete(key)
-    return { ok: true, ...(running && { cut: running }), dropped: this.end(key) }
+    // A cut turn may never read what was sent to it mid-turn: those go with the pending ones.
+    const queued = running ? this.#midTurn.get(key) ?? [] : []
+    return { ok: true, ...(running && { cut: running }), dropped: [...queued, ...this.end(key)] }
   }
 
   // The terminal gave the thread back. Tasks that came meanwhile start its session again; the ones

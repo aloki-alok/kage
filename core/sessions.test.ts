@@ -69,6 +69,20 @@ describe('one Claude session per thread', () => {
     assert.deepEqual(d.endThread('B', 10, false), { ok: true, dropped: [] })
     assert.deepEqual(stopped, ['A', 'B'])
   })
+  test('stop now also returns the tasks queued behind the turn it cut, so their messages are let go', () => {
+    const { d, busy, inbox } = setup()
+    d.task('A', 'a', 0); inbox('A'); busy.add('A')
+    d.task('A', 'queued', 5)               // sent mid-turn: the session may never read it
+    assert.deepEqual(d.endThread('A', 10, true), { ok: true, cut: 'busy', dropped: ['queued'] })
+  })
+  test('a session that asks for approval is not ended by a plain stop: it waits, and says so', () => {
+    const { d, stopped, inbox } = setup()
+    d.task('A', 'a', 0); inbox('A')
+    d.permission('A', 'abcde')
+    assert.deepEqual(d.endThread('A', 10, false), { ok: true, ending: true, asking: true, dropped: [] })
+    d.sweep(20)
+    assert.deepEqual(stopped, [])
+  })
   test('stopping a thread waiting for a slot drops its task and returns it; an unknown thread is refused', () => {
     const { d } = setup({ max: 1 })
     d.task('A', 'a', 0)

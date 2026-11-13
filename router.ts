@@ -22,7 +22,7 @@ import { parseCommands } from './core/commands.ts'
 import { memoryDirs } from './core/guards.ts'
 import { limitLine, pauseLine, stopLine } from './core/board.ts'
 import { placeFor, sessionKey, type Conversation, type Lane } from './core/conversations.ts'
-import { senderOf } from './core/gate.ts'
+import { mayStop, senderOf } from './core/gate.ts'
 import { dailyDue, lastTotals, openWaiting, staleWaiting, turnCost } from './core/ledgers.ts'
 import { dreamDue, dreamTask, threadsSince } from './core/dream.ts'
 import { retro, retroDue } from './core/retro.ts'
@@ -91,17 +91,25 @@ const inbox: Inbox = { take: (source, connector, payload) => store.take(source, 
 const starters = new Map<string, string>()
 const deliver = (c: Conversation, task: Task, place: string, lane: Lane = 'main', by?: string) => {
   const key = sessionKey(c, { lane })
-  if (by && !d.saved()[key]) starters.set(key, by)
+  if (by && !d.saved()[key] && !starters.has(key)) starters.set(key, by)
   store.seen(key, c, place, Date.now())
   return toSession(key, task)
 }
-// kage stop <thread> and "@kage stop": end one session after its turn, or now. Messages no session read are let go.
+// kage stop <thread> and "@kage stop": end a thread's session and its side lanes, after their turn or now.
+// Messages no session read are let go.
 function stopThread(key: string, cut: boolean): string {
   const now = Date.now()
-  const r = d.endThread(key, now, cut)
-  const dropped = 'ok' in r ? r.dropped.filter((m): m is Task => m.type === 'task') : []
-  if (dropped.length) limits.turn(key, dropped, undefined, now)
-  return stopLine('ok' in r ? { ...r, dropped: dropped.length } : r, schedules.list(key).map(s => s.prompt.slice(0, 60)))
+  const end = (k: string) => {
+    const r = d.endThread(k, now, cut)
+    const dropped = 'ok' in r ? r.dropped.filter((m): m is Task => m.type === 'task') : []
+    if (dropped.length) limits.turn(k, dropped, undefined, now)
+    return { r, dropped: dropped.length }
+  }
+  const lanes = Object.keys(d.saved()).filter(k => k.startsWith(`${key}#`)).map(end).filter(l => 'ok' in l.r).length
+  const { r, dropped } = end(key)
+  // Only side lanes ran: the main session was not running, but the stop still did something.
+  const main = 'ok' in r ? { ...r, dropped } : lanes ? { ok: true as const, dropped: 0 } : r
+  return stopLine(main, schedules.list(key).map(s => s.prompt.slice(0, 60)), lanes)
 }
 // Every task on its way to a session. Paused by the usage limit: it is held for the reset, and no session starts.
 const toSession = (key: string, task: Task) => {
@@ -140,7 +148,7 @@ const slack = await connectSlack({
   dir: DIR, appToken: need('SLACK_APP_TOKEN'), bot, user, name: NAME, title: Title, teammates: TEAMMATES, apps: TRUSTED_APPS,
   hub: { deliver, stop: (c, cut, by) => {
       const key = sessionKey(c, { lane: 'main' })
-      return by === slack.ids.owner || starters.get(key) === by ? stopThread(key, cut) : 'Only the owner, or the teammate whose task started this thread, can stop it.'
+      return mayStop(by, slack.ids.owner, starters, key) ? stopThread(key, cut) : 'Only the owner, or the teammate whose task started this thread, can stop it.'
     }, verdict: (id, behavior) => d.verdict(id, { type: 'verdict', request_id: id, behavior }), status, heard: m => schedules.heard(m),
     posted: () => ledgers.text('posted'), ...inbox },
   // AFK mode is on unless KAGE_AFK=off. Its stand-in reads the owner's memory, read only.

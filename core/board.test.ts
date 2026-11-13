@@ -142,5 +142,7 @@ describe('the answer to a stop', () => {
     assert.equal(stopLine({ ok: true, cut: 'asking', dropped: 1 }, ['x']),
       'Stopped now: the approval it waited on was dropped. 1 waiting message was let go. Its schedule keeps running: x. The next tag starts it again.')
     assert.equal(stopLine({ refused: 'closed' }, ['x']), 'No session runs in this thread. Its schedule keeps running: x.')
+    assert.equal(stopLine({ ok: true, ending: true, asking: true, dropped: 0 }, []), 'It waits on an approval, so it stops once that is answered. stop now cuts it. The next tag starts it again.')
+    assert.equal(stopLine({ ok: true, dropped: 0 }, [], 1), 'Stopped. 1 side lane stopped too. The next tag starts it again.')
   })
 })
