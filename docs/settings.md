@@ -61,6 +61,9 @@ Email is on when `KAGE_MAIL_ADDRESS`, `KAGE_MAIL_QUEUE` and `KAGE_OWNER_EMAIL` a
 | `KAGE_GITHUB_LOGIN` | none | Your GitHub username. Only events that are yours wake Kage: a review on your pull request, failed checks on it, an issue or a review request given to you, a comment that mentions you, from people the repo lists as owner, member or collaborator. Each pull request or issue gets one thread in your DM with Kage. |
 | `KAGE_GITHUB_PORT` | `8789` | The local port the GitHub webhook listens on. |
 | `KAGE_GITHUB_PER_HOUR` | `20` | At most this many GitHub events start work in an hour; past it, you get one note and the rest are skipped until the hour is up. |
+| `KAGE_MEETING_TOKEN` | none | Turns meeting notes on: a webhook at `127.0.0.1:<port>/meeting` behind `Authorization: Bearer <token>`. Post a finished transcript as JSON: `{"title", "link", "segments": [{"speaker", "text", "start"}]}`, the shape Vexa's `GET /transcripts/...` returns. Each meeting gets a thread in your DM with Kage: notes, decisions, owners, open questions, and follow-ups Kage does only after your yes. |
+| `KAGE_MEETING_PORT` | `8790` | The local port the meeting webhook listens on. |
+| `KAGE_MEETING_PER_HOUR` | `10` | At most this many transcripts start work in an hour. |
 | `KAGE_VOICE_PORT` | `8787` | It listens on `127.0.0.1:<port>/mcp`. Put a tunnel in front of it. |
 | `KAGE_VOICE_MAX` | `1` | Calls at a time. A call never takes a slot from your threads. |
 | `KAGE_VOICE_PER_HOUR` | `20` | New calls per hour. |

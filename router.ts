@@ -16,6 +16,7 @@ import { connectEmail } from './connectors/email.ts'
 import { listenForCommands } from './connectors/slack-commands.ts'
 import { connectSlack } from './connectors/slack.ts'
 import { connectGithub } from './connectors/github.ts'
+import { connectMeeting } from './connectors/meeting.ts'
 import { connectVoice } from './connectors/voice.ts'
 import { startWhatsApp } from './connectors/whatsapp-link.ts'
 import { parseCommands } from './core/commands.ts'
@@ -365,6 +366,15 @@ const github = env.KAGE_GITHUB_SECRET && env.KAGE_GITHUB_LOGIN ? connectGithub({
   perHour: Number(env.KAGE_GITHUB_PER_HOUR || 20), inbox,
 }) : undefined
 void github?.listening.then(port => log(`github on: 127.0.0.1:${port}/github for @${env.KAGE_GITHUB_LOGIN}`))
+// Meetings are on when KAGE_MEETING_TOKEN is set: a finished transcript gets notes in its own DM thread.
+const meeting = env.KAGE_MEETING_TOKEN ? connectMeeting({
+  token: env.KAGE_MEETING_TOKEN, port: Number(env.KAGE_MEETING_PORT || 8790), botDm: slack.ids.botDm,
+  post: text => bot.chat.postMessage({ channel: slack.ids.botDm, text }).then(r => r.ts, e => { log('meeting post failed', e); return undefined }),
+  deliver: (c, task, place) => deliver(c, task, place),
+  notify: text => void slack.notifyOwner(text),
+  perHour: Number(env.KAGE_MEETING_PER_HOUR || 10), inbox,
+}) : undefined
+void meeting?.listening.then(port => log(`meetings on: 127.0.0.1:${port}/meeting`))
 const email = connectEmail({
   env, saved: store, name: NAME, deliver, inbox,
   failed: task => void slack.notifyOwner(`Could not start a session for ${task.meta.place}.`),
@@ -456,7 +466,7 @@ const replies = {
 }
 // How a stored message runs again: through its own connector, as if just heard.
 function replayOf(connector: string): ((source: string, payload: string) => Promise<unknown>) | undefined {
-  return ({ slack: slack.replay, github: github?.replay, whatsapp: whatsapp?.replay } as Record<string, ((source: string, payload: string) => Promise<unknown>) | undefined>)[connector]
+  return ({ slack: slack.replay, github: github?.replay, meeting: meeting?.replay, whatsapp: whatsapp?.replay } as Record<string, ((source: string, payload: string) => Promise<unknown>) | undefined>)[connector]
 }
 // kage tell: the owner's words into a thread, typed on this machine. Same shape as a scheduled run (runtime/scheduler.ts).
 function tell(key: string, text: string): { ok: true; held?: true } | { refused: string } {
