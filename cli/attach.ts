@@ -73,7 +73,8 @@ function hold(): Promise<{ id: string; cut?: keyof typeof CUT }> {
       s.destroy()
       reject(new Error(WHY[r.refused!] ?? r.refused))
     })
-    s.on('error', () => {})
+    // A socket file with no hub behind it (the hub stopped or crashed). Later tries, after a hub restart, stay quiet and try again.
+    s.on('error', () => { if (!claude) reject(new Error('Kage is not running. Start it with kage start')) })
     s.on('close', () => {
       if (claude?.exitCode !== null) return
       setTimeout(() => hold().catch(e => console.error(`\nWarning: Kage restarted and ${place} is no longer held (${e.message}). Quit now: Kage may run this thread too.`)), 1000)
