@@ -105,11 +105,14 @@ function stopThread(key: string, cut: boolean): string {
     if (dropped.length) limits.turn(k, dropped, undefined, now)
     return { r, dropped: dropped.length }
   }
-  const lanes = Object.keys(d.saved()).filter(k => k.startsWith(`${key}#`)).map(end).filter(l => 'ok' in l.r).length
+  const lanes = Object.keys(d.saved()).filter(k => k.startsWith(`${key}#`)).map(end).filter(l => 'ok' in l.r)
   const { r, dropped } = end(key)
-  // Only side lanes ran: the main session was not running, but the stop still did something.
-  const main = 'ok' in r ? { ...r, dropped } : lanes ? { ok: true as const, dropped: 0 } : r
-  return stopLine(main, schedules.list(key).map(s => s.prompt.slice(0, 60)), lanes)
+  const let_go = dropped + lanes.reduce((n, l) => n + l.dropped, 0)
+  const laneEnding = lanes.some(l => 'ok' in l.r && l.r.ending)
+  // Only side lanes ran: the answer is theirs. A lane still in its turn makes it "after the current turn".
+  const main = 'ok' in r ? { ...r, ...(laneEnding && { ending: true as const }), dropped: let_go }
+    : lanes.length ? { ok: true as const, ...(laneEnding && { ending: true as const }), dropped: let_go } : r
+  return stopLine(main, schedules.list(key).map(s => s.prompt.slice(0, 60)), lanes.length)
 }
 // Every task on its way to a session. Paused by the usage limit: it is held for the reset, and no session starts.
 const toSession = (key: string, task: Task) => {

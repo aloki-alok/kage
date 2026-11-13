@@ -112,6 +112,6 @@ export function stopLine(r: { ok: true; ending?: true; asking?: true; cut?: 'bus
     : r.cut === 'busy' ? 'Stopped now: the turn in progress was cut.'
     : r.cut === 'asking' ? 'Stopped now: the approval it waited on was dropped.' : 'Stopped.'
   const let_go = !r.dropped ? '' : r.dropped === 1 ? ' 1 waiting message was let go.' : ` ${r.dropped} waiting messages were let go.`
-  const side = !lanes ? '' : lanes === 1 ? ' 1 side lane stopped too.' : ` ${lanes} side lanes stopped too.`
+  const side = !lanes ? '' : lanes === 1 ? ' Its side lane stops too.' : ` Its ${lanes} side lanes stop too.`
   return `${what}${let_go}${side}${kept} The next tag starts it again.`
 }
