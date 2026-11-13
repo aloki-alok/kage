@@ -9,7 +9,7 @@ import { DatabaseSync } from 'node:sqlite'
 import { newLines, stepTime, transcriptLine } from '../core/transcript.ts'
 
 const HOME = process.env.HOME!
-// Sessions run in the hub's working folder (start.sh: KAGE_CWD, else home); Claude Code names the
+// Sessions run in the hub's working folder (run.sh: KAGE_CWD, else home); Claude Code names the
 // transcript folder after it.
 const PROJECT = `${HOME}/.claude/projects/${(process.env.KAGE_CWD || HOME).replace(/[^A-Za-z0-9]/g, '-')}`
 const only = process.argv[2]?.toLowerCase()

@@ -17,7 +17,7 @@ command -v curl >/dev/null && command -v tar >/dev/null || die "curl and tar are
 command -v node >/dev/null || die "Node.js 22.18 or newer is required: https://nodejs.org (macOS: brew install node)"
 node -e 'const [a,b]=process.versions.node.split(".").map(Number); process.exit(a>22||(a===22&&b>=18)?0:1)' \
   || die "Node $(node -v) is too old: Kage needs 22.18 or newer (macOS: brew upgrade node)."
-command -v tmux >/dev/null || die "tmux is required (macOS: brew install tmux)."
+command -v tmux >/dev/null || say "No tmux: fine, unless you set KAGE_RUNTIME=tmux."
 command -v claude >/dev/null || die "Claude Code is required: https://code.claude.com/docs/en/quickstart"
 
 # A git checkout is someone's working copy: updating it is git's job, not ours.

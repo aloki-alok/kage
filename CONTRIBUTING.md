@@ -36,7 +36,9 @@ Write logs to stderr only. In a tmux pane, stdout carries the channel protocol, 
 | `connectors/` | Where Kage hears from. Each turns a message into a `Task` (`runtime/protocol.ts`). Who may drive Kage is decided in `core/gate.ts`, not here. |
 | `runtime/` | Where sessions run, and the hub's state. See the table below. |
 | `cli/` | The commands behind `kage <command>`. They run from source. |
-| `setup.sh`, `start.sh`, `autostart.sh` | The setup steps and doctor, starting the hub in tmux (restarted if it exits), and starting at login on macOS. |
+| `setup.sh` | The `kage` command: setup steps, doctor, start, stop, logs. |
+| `service.sh` | The LaunchAgent (macOS) or systemd user unit (Linux) that keeps the hub running. A non-zero exit restarts it, and exit 0 leaves it down. |
+| `run.sh` | One hub run for the supervisor: packages, `hub.log`, the boot count and the crash-loop DM, then the hub. `start.sh` only forwards old login items to `kage start`. |
 | `docs/settings.md` | Every setting in the env file. |
 | `AGENTS.md` | Setup steps for a coding agent. `CLAUDE.md` loads it and this file. |
 | `.claude-plugin/`, `.mcp.json`, `hooks/` | Used only when Kage is installed as a Claude Code plugin (tmux panes on the plugin route). |

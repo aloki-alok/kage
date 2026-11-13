@@ -14,7 +14,7 @@ if (!command) {
   process.exit(1)
 }
 const sock = connect(`${dirname(ENV_FILE)}/router.sock`)
-sock.on('error', () => { console.error('Kage is not running. Start it with ./start.sh'); process.exit(1) })
+sock.on('error', () => { console.error('Kage is not running. Start it with kage start'); process.exit(1) })
 sock.write(JSON.stringify({ type: 'callcode' }) + '\n')
 let buf = ''
 sock.on('data', chunk => {

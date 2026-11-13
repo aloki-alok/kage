@@ -54,7 +54,7 @@ export function sdkSessions(o: {
   // A thread's model and effort, asked for in the thread. Kept after its session closes, so the next one starts on it.
   // ponytail: lost on a hub restart, save it in the store if people mind.
   const picks = new Map<string, Pick>()
-  // Kage's own tools, approved for every session (start.sh does the same for panes). Approved in canUseTool, not
+  // Kage's own tools, approved for every session (run.sh does the same for panes). Approved in canUseTool, not
   // allowedTools, which would skip the callback and makes the SDK warn on every session.
   const ALLOWED = ['reply', 'edit_message', 'delete_message', 'send_file', 'message_people', 'schedule', 'unschedule', 'schedules', 'set_model'].map(t => `mcp__kage__${t}`)
 
