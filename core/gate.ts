@@ -18,7 +18,16 @@ export type Trigger =
   // card: the owner wrote something other than yes or no in an approval card's thread.
   | { kind: 'card'; request_id: string }
   | { kind: 'verdict'; request_id: string; behavior: 'allow' | 'deny' }
-  | null
+  | { kind: 'drop'; reason: Drop }
+
+// Every reason the gate drops a message, with what the hub log says for it.
+export const DROPS = {
+  'not-tagged': 'it does not tag Kage',
+  'not-listed': 'the sender is not the owner or a listed teammate',
+  'not-proven': 'an app posted it or it is an edit, so no listed person typed it',
+} as const
+export type Drop = keyof typeof DROPS
+const drop = (reason: Drop): Trigger => ({ kind: 'drop', reason })
 
 // Only the exact "side:" counts, so "side effects of ..." stays a normal task. Owner only, so a
 // teammate can't open extra sessions and push the owner's out.
@@ -36,16 +45,17 @@ const CARD_YES = /^(y|yes|ok|okay|sure|approve|approved|go)\b/i
 const CARD_NO = /^(n|no|deny|stop|cancel)\b/i
 // card: the request id of the approval card this message replies under, if it does.
 export function classify(m: SlackMessage, ids: Ids, card?: string): Trigger {
-  // The gate: a message the owner (or a listed teammate) typed in a Slack client.
   const isOwner = m.user === ids.owner
-  if (!isOwner && !ids.teammates.includes(m.user ?? '')) return null
-  if (!typedByPerson(m) && (isOwner || !postedByTrustedApp(m, ids.apps ?? []))) return null
   const tag = agentTag(ids.bot, ids.name)
   const raw = m.text ?? ''
-  const tagged = tag.test(raw)
-  const text = raw.replace(tag, '').trim()
   // Only the owner reaches the DM, so only the owner can approve a prompt.
   const inDm = isOwner && m.channel === ids.botDm
+  // Most of what the hub hears is not for Kage. Checked first, so the other two reasons mean a refusal.
+  if (!tag.test(raw) && !inDm) return drop('not-tagged')
+  // The gate: a message the owner (or a listed teammate) typed in a Slack client.
+  if (!isOwner && !ids.teammates.includes(m.user ?? '')) return drop('not-listed')
+  if (!typedByPerson(m) && (isOwner || !postedByTrustedApp(m, ids.apps ?? []))) return drop('not-proven')
+  const text = raw.replace(tag, '').trim()
   if (inDm) {
     // Approvals count only in the private DM, where the prompts are sent. Slack keeps the
     // backticks when the owner pastes the card's `yes abcde`.
@@ -65,7 +75,6 @@ export function classify(m: SlackMessage, ids: Ids, card?: string): Trigger {
     }
     return task(text, true, filesTag(m))
   }
-  if (!tagged) return null
   return task(text, isOwner, filesTag(m))
 }
 
