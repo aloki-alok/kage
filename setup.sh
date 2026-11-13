@@ -27,7 +27,7 @@ Run|dream|undo|Put the memory back to how it was before the last weekly dream|ka
 Watch|schedules||Every schedule and reply watch, in every thread|kage schedules
 Watch|top||The live console: every thread, its feed, attach and stop, by mouse or keys|kage top
 Watch|watch|[place]|Follow every step every session takes, as it happens|kage watch support
-Watch|attach|[place]|Take a thread into this terminal; Kage gets it back when you quit|kage attach general
+Watch|attach|[place or link]|Take a thread into this terminal, by its place or its Slack link in quotes; Kage gets it back when you quit|kage attach "https://example.slack.com/archives/C0123ABC/p1700000000123456"
 People|teammate|list, add, remove|Who else may tag Kage (a name, @handle or Slack id)|kage teammate add priya
 People|tell|<place> <message>|Tell a thread something as you; its session takes it after the current turn|kage tell support use the staging db
 People|call||Kage phones you, and the call can do anything you can (needs KAGE_CALL_COMMAND)|kage call'

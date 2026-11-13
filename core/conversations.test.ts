@@ -1,6 +1,6 @@
 import { describe, test } from 'node:test'
 import assert from 'node:assert/strict'
-import { parseSessionKey, placeFor, sessionKey, slackConversation, type Conversation } from './conversations.ts'
+import { parseSessionKey, placeFor, sessionKey, slackConversation, slackLinkKey, type Conversation } from './conversations.ts'
 
 const DM = 'DBOT00001'
 
@@ -67,4 +67,23 @@ test('a side lane or another agent shows its conversation\'s place', () => {
   assert.equal(placeFor(k => places.get(k), 'C1:5.5#side-6.6'), '#ops (side)')
   assert.equal(placeFor(k => places.get(k), 'ops/C1:5.5'), '#ops')
   assert.equal(placeFor(k => places.get(k), 'C9:1.1'), 'C9:1.1')
+})
+
+describe('the session key a pasted Slack link points at', () => {
+  test('a link to a message is the thread that message starts', () => {
+    assert.equal(slackLinkKey('https://test.slack.com/archives/CTEST1/p1700000000123456'), 'CTEST1:1700000000.123456')
+  })
+  test('a link to a reply is the thread it sits in', () => {
+    assert.equal(slackLinkKey('https://test.slack.com/archives/CTEST1/p1700000005000200?thread_ts=1700000000.123456&cid=CTEST1'), 'CTEST1:1700000000.123456')
+  })
+  test('a link the shell cut at "&", or pasted with spaces around it, still works', () => {
+    assert.equal(slackLinkKey('  https://test.slack.com/archives/CTEST1/p1700000005000200?thread_ts=1700000000.123456\n'), 'CTEST1:1700000000.123456')
+  })
+  test('a place name, another site or a link with no message is not a link', () => {
+    for (const s of ['general', 'DM with Kage', 'CTEST1:1700000000.123456', 'https://test.slack.com/archives/CTEST1',
+      'https://example.com/archives/CTEST1/p1700000000123456', 'https://slack.com.example.com/archives/CTEST1/p1700000000123456',
+      'https://test.slack.com/archives/CTEST1/p1700000005000200?thread_ts=nope']) {
+      assert.equal(slackLinkKey(s), undefined, s)
+    }
+  })
 })
