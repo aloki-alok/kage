@@ -11,7 +11,7 @@ export const needsNoReply = (text: string) => /\(no\s+reply\s+needed\)/i.test(te
 // A tag inside code does not count: Slack sends no mention from a code block or inline code.
 const outsideCode = (p: string) => p.replace(/```[\s\S]*?(```|$)|`[^`\n]*`/g, '')
 export const addressed = (parts: string[], tag: string) =>
-  parts.map(p => (outsideCode(p).includes(`<@${tag}>`) ? p :`<@${tag}>${p.startsWith('```') ? '\n' : ' '}${p}`))
+  parts.map(p => (outsideCode(p).includes(`<@${tag}>`) ? p : `<@${tag}>${p.startsWith('```') ? '\n' : ' '}${p}`))
 
 // What a session reads under the task line when a listed agent posted the task. The rules it states are held in
 // code as well: the gate never reads an agent's post as an approval, and the reply tool adds the tag.
