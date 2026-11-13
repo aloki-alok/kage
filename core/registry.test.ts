@@ -52,7 +52,22 @@ describe('the registry: people and agents, read from the two lists', () => {
     assert.deepEqual(appEntry('ATEST0001'), { id: 'ATEST0001' })
     assert.deepEqual(appEntry('ATEST0001:UTEST0001'), { id: 'ATEST0001', owner: 'UTEST0001' })
     assert.deepEqual(appEntry('ATEST0002:ATEST0001'), { id: 'ATEST0002', owner: 'ATEST0001' })
-    for (const bad of ['', 'UTEST0001', 'ATEST0001:', 'ATEST0001:priya', 'ATEST0001:UTEST0001:UTEST0002', ':UTEST0001', 'ATEST0001:ATEST0001']) assert.equal(appEntry(bad), undefined, bad)
+    for (const bad of ['', 'UTEST0001', 'ATEST0001:', 'ATEST0001:priya', 'ATEST0001:UTEST0001:UTEST0002:UTEST0003', ':UTEST0001', 'ATEST0001:ATEST0001']) assert.equal(appEntry(bad), undefined, bad)
+  })
+  test('an agent may carry its tag: the Slack user id that a mention of it uses', () => {
+    assert.deepEqual(appEntry('ATEST0001:UTEST0001:UAGENT001'), { id: 'ATEST0001', owner: 'UTEST0001', tag: 'UAGENT001' })
+    for (const bad of ['ATEST0001:UTEST0001:ATEST0002', 'ATEST0001:UTEST0001:', 'ATEST0001::UAGENT001', 'ATEST0001:UTEST0001:UAGENT001:x']) assert.equal(appEntry(bad), undefined, bad)
+    const env = 'KAGE_TEAMMATES=UTEST0001\nKAGE_TRUSTED_APPS=ATEST0001:UTEST0001:UAGENT001\n'
+    assert.deepEqual(registryIn(env), [person('UTEST0001'), { kind: 'agent', id: 'ATEST0001', owner: 'UTEST0001', tag: 'UAGENT001' }])
+    assert.equal(withRegistry(env, registryIn(env)), env)
+  })
+  test('adding a listed agent again with its tag keeps the owner and saves the tag', () => {
+    const base = [person('UTEST0001'), agent('ATEST0001', 'UTEST0001')]
+    const tagged: Entry = { kind: 'agent', id: 'ATEST0001', owner: 'UTEST0001', tag: 'UAGENT001' }
+    assert.deepEqual(add(base, tagged), { entries: [person('UTEST0001'), tagged], added: [tagged] })
+    assert.deepEqual(add([person('UTEST0001'), tagged], tagged), { entries: [person('UTEST0001'), tagged], added: [] })
+    // Added again by app id alone, it keeps the tag it had.
+    assert.deepEqual(add([person('UTEST0001'), tagged], agent('ATEST0001', 'UTEST0001')), { entries: [person('UTEST0001'), tagged], added: [] })
   })
   test('an id says what it is', () => {
     assert.equal(kindOf('UTEST0001'), 'person')

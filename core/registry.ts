@@ -1,23 +1,26 @@
 // The registry: who may reach Kage besides the owner. A person is a Slack user id. An agent is a Slack app id
 // with one owner, who is a listed person or a listed agent (its manager). It lives in two lines of the env
-// file: KAGE_TEAMMATES=<user>,... and KAGE_TRUSTED_APPS=<app>:<owner>,... `kage add`, `remove` and `list` (cli/registry.ts) are its only writers.
+// file: KAGE_TEAMMATES=<user>,... and KAGE_TRUSTED_APPS=<app>:<owner>[:<tag>],... `kage add`, `remove` and `list` (cli/registry.ts) are its only writers.
 
 export type Entry =
   | { kind: 'person'; id: string }
   // No owner: listed by hand before owners existed. Any listed person's post through it counts (core/slack-message.ts).
-  | { kind: 'agent'; id: string; owner?: string }
+  // tag: the Slack user id a mention of the agent uses, so Kage can address it (core/agents.ts).
+  | { kind: 'agent'; id: string; owner?: string; tag?: string }
 
 export const validUserId = (id: string) => /^[UW][A-Z0-9]{2,}$/.test(id)
 // A Slack app id. It goes into the env file, so it is one plain word.
 export const validAppId = (id: string) => /^A[A-Z0-9]{2,}$/.test(id)
 export const kindOf = (id: string): Entry['kind'] | undefined => (validUserId(id) ? 'person' : validAppId(id) ? 'agent' : undefined)
 
-// One entry of KAGE_TRUSTED_APPS: "<app>" or "<app>:<owner>". Anything else is no entry.
-export function appEntry(s: string): { id: string; owner?: string } | undefined {
-  const [id = '', owner, more] = s.split(':')
+// One entry of KAGE_TRUSTED_APPS: "<app>", "<app>:<owner>" or "<app>:<owner>:<tag>". Anything else is no entry.
+export function appEntry(s: string): { id: string; owner?: string; tag?: string } | undefined {
+  const [id = '', owner, tag, more] = s.split(':')
   if (!validAppId(id) || more !== undefined) return undefined
   if (owner === undefined) return { id }
-  return kindOf(owner) && owner !== id ? { id, owner } : undefined
+  if (!kindOf(owner) || owner === id) return undefined
+  if (tag === undefined) return { id, owner }
+  return validUserId(tag) ? { id, owner, tag } : undefined
 }
 
 // A comma separated list in the env file. Read the way core/settings.ts reads the file: optional indent, spaces and quotes.
@@ -41,7 +44,7 @@ export const registryIn = (env: string): Entry[] => [
 export const withRegistry = (env: string, entries: Entry[]): string =>
   withList(
     withList(env, 'KAGE_TEAMMATES', entries.filter(e => e.kind === 'person').map(e => e.id)),
-    'KAGE_TRUSTED_APPS', entries.flatMap(e => (e.kind === 'agent' ? [e.owner ? `${e.id}:${e.owner}` : e.id] : [])),
+    'KAGE_TRUSTED_APPS', entries.flatMap(e => (e.kind === 'agent' ? [[e.id, ...(e.owner ? [e.owner, ...(e.tag ? [e.tag] : [])] : [])].join(':')] : [])),
   )
 
 // The listed person at the top of an agent's owner chain. None for an agent with no owner, an owner who is
@@ -59,22 +62,26 @@ export function ownerPerson(entries: Entry[], app: string): string | undefined {
 }
 
 // kage add. An agent comes with its owner. An owner who is a person is added with it; an owner who is an
-// agent must be listed already. An agent listed again moves to the new owner.
+// agent must be listed already. An agent listed again moves to the new owner, or takes the new tag.
 export function add(entries: Entry[], e: Entry): { entries: Entry[]; added: Entry[] } | { error: string } {
   if (e.kind === 'person') return entries.some(x => x.id === e.id) ? { entries, added: [] } : { entries: [...entries, e], added: [e] }
-  if (!e.owner) return { error: `agent ${e.id} needs an owner: the person or the agent it answers to` }
-  if (e.owner === e.id) return { error: `agent ${e.id} cannot be its own owner` }
+  const owner = e.owner
+  if (!owner) return { error: `agent ${e.id} needs an owner: the person or the agent it answers to` }
+  if (owner === e.id) return { error: `agent ${e.id} cannot be its own owner` }
   const had = entries.find(x => x.id === e.id)
-  if (had?.kind === 'agent' && had.owner === e.owner) return { entries, added: [] }
-  const ownerIsPerson = kindOf(e.owner) === 'person'
-  const newOwner: Entry[] = ownerIsPerson && !entries.some(x => x.id === e.owner) ? [{ kind: 'person', id: e.owner }] : []
-  if (!ownerIsPerson && !entries.some(x => x.id === e.owner)) return { error: `the owner ${e.owner} is not listed. Add it first.` }
-  if (!ownerIsPerson && e.owner !== had?.id && !ownerPerson(entries, e.owner)) return { error: `the owner ${e.owner} has no owner itself. Tie it to its owner first: kage add ${e.owner} <its owner>` }
+  // Listed again with no tag, it keeps the tag it had.
+  const tag = e.tag ?? (had?.kind === 'agent' ? had.tag : undefined)
+  const agent: Entry = { kind: 'agent', id: e.id, owner, ...(tag && { tag }) }
+  if (had?.kind === 'agent' && had.owner === owner && had.tag === tag) return { entries, added: [] }
+  const ownerIsPerson = kindOf(owner) === 'person'
+  const newOwner: Entry[] = ownerIsPerson && !entries.some(x => x.id === owner) ? [{ kind: 'person', id: owner }] : []
+  if (!ownerIsPerson && !entries.some(x => x.id === owner)) return { error: `the owner ${owner} is not listed. Add it first.` }
+  if (!ownerIsPerson && owner !== had?.id && !ownerPerson(entries, owner)) return { error: `the owner ${owner} has no owner itself. Tie it to its owner first: kage add ${owner} <its owner>` }
   const people = [...entries.filter(x => x.kind === 'person'), ...newOwner]
-  const agents = had ? entries.filter(x => x.kind === 'agent').map(x => (x.id === e.id ? e : x)) : [...entries.filter(x => x.kind === 'agent'), e]
+  const agents = had ? entries.filter(x => x.kind === 'agent').map(x => (x.id === e.id ? agent : x)) : [...entries.filter(x => x.kind === 'agent'), agent]
   const next = [...people, ...agents]
-  if (!ownerPerson(next, e.id)) return { error: `that would make a loop: ${e.owner} answers to ${e.id}` }
-  return { entries: next, added: [...newOwner, e] }
+  if (!ownerPerson(next, e.id)) return { error: `that would make a loop: ${owner} answers to ${e.id}` }
+  return { entries: next, added: [...newOwner, agent] }
 }
 
 // kage remove. Whoever answers to the removed one goes with it: a person's agents, and the agents those own.
