@@ -93,7 +93,7 @@ tools: WebFetch, WebSearch
 Every weekday at 9, check https://status.example.com and post a three-line summary in this thread.
 ```
 
-It runs on its schedule beside the thread's own session and posts in the thread. It has only the tools in `tools`, and teammate trust. It never gets a file or shell tool, granted or not, so it cannot change its own grant or read your tokens. WebFetch reaches http and https only. An MCP tool you grant by its full name runs with that tool's own reach. It approves nothing: when it needs a decision or another tool, it says so in the thread, and you decide there. A new, changed or deleted file applies within a minute, and `kage schedules` shows its runs. Specialists need the default runtime, not tmux panes.
+It runs on its schedule beside the thread's own session and posts in the thread. It has only the tools in `tools`, and teammate trust. Only web tools and outside MCP tools can be granted. It never gets a file, shell or agent tool, so it cannot change its own grant or read your tokens. WebFetch reaches http and https only. An MCP tool you grant by its full name runs with that tool's own reach. It approves nothing: when it needs a decision or another tool, it says so in the thread, and you decide there. A new, changed or deleted file applies within a minute, and `kage schedules` shows its runs. Specialists need the default runtime, not tmux panes.
 
 ### Run threads as tmux panes instead
 

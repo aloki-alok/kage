@@ -348,7 +348,7 @@ describe('Kage sessions on the Agent SDK', () => {
     assert.deepEqual(await run('WebSearch'), {})
     assert.deepEqual(await run('mcp__kage__reply'), {})
     assert.match((await run('mcp__other__thing')).hookSpecificOutput.permissionDecisionReason, /outside this specialist's grant/)
-    assert.match((await run('Bash')).hookSpecificOutput.permissionDecisionReason, /no file or shell/)
+    assert.match((await run('Bash')).hookSpecificOutput.permissionDecisionReason, /only web and MCP tools/)
     // A granted tool runs: the grant is the approval.
     assert.equal((await o.canUseTool('WebSearch', { query: 'x' }, { signal: signal() })).behavior, 'allow')
     // Two layers: Kage's tools that act as the owner are denied here too, not only by the hook.

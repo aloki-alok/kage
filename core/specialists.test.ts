@@ -35,12 +35,14 @@ describe('the grant', () => {
       assert.match(grantRefusal(t, []) ?? '', /grant/, t)
     for (const t of ['mcp__kage__reply', 'mcp__kage__edit_message', 'mcp__kage__delete_message']) assert.equal(grantRefusal(t, []), undefined, t)
   })
-  test('no file or shell tool, granted or not, so it cannot change its grant or read the tokens; web fetches only over http(s)', () => {
-    for (const t of ['Bash', 'Read', 'Grep', 'Glob', 'LS', 'NotebookRead', 'Write', 'Edit', 'MultiEdit', 'NotebookEdit'])
-      assert.match(grantRefusal(t, [t], { file_path: '/tmp/x' }) ?? '', /no file or shell/, t)
+  test('only web and outside MCP tools can be granted, so no file, shell or agent tool ever runs; web fetches only over http(s)', () => {
+    for (const t of ['Bash', 'Read', 'Grep', 'Glob', 'LS', 'NotebookRead', 'Write', 'Edit', 'MultiEdit', 'NotebookEdit', 'Monitor', 'PowerShell', 'Skill', 'Agent', 'Task', 'mcp__plugin_kage_kage__reply'])
+      assert.match(grantRefusal(t, [t], { file_path: '/tmp/x' }) ?? '', /only web and MCP tools/, t)
+    assert.equal(grantRefusal('mcp__claude_ai_Docs__read', ['mcp__claude_ai_Docs__read']), undefined)
     assert.equal(grantRefusal('WebFetch', ['WebFetch'], { url: 'https://example.com' }), undefined)
     assert.match(grantRefusal('WebFetch', ['WebFetch'], { url: 'file:///etc/hosts' }) ?? '', /http/)
     assert.match(grantRefusal('WebFetch', ['WebFetch'], { url: 'FILE:///etc/hosts' }) ?? '', /http/)
   })
+
 
 })

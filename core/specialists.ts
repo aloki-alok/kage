@@ -25,15 +25,16 @@ export function parseSpecialist(name: string, text: string): Specialist | { erro
 // Of Kage's own tools, a specialist has only those for its thread, whatever its grant says: the rest act as the
 // owner (message_people, away), outlive the run (schedule) or need the owner (log_prod_write).
 const THREAD_TOOLS = ['reply', 'edit_message', 'delete_message'].map(t => `mcp__kage__${t}`)
-// No file or shell tool, granted or not: a path check missed case, ~ and glob tricks, and a file tool could rewrite the
-// specialist's own grant or read the env file with the tokens. ponytail: v1 grants web and MCP tools only; a file
-// grant needs a sandboxed work folder first.
-const FILE_TOOLS = ['Bash', 'BashOutput', 'KillShell', 'Read', 'Grep', 'Glob', 'LS', 'NotebookRead', 'Write', 'Edit', 'MultiEdit', 'NotebookEdit']
+// What a grant may name: web tools and outside MCP tools, an allowlist so a new built-in tool stays out. No file,
+// shell or agent tool, granted or not: one could rewrite the specialist's own grant or read the env file with the
+// tokens. ponytail: a file grant needs a sandboxed work folder first.
+const grantable = (t: string) => t === 'WebFetch' || t === 'WebSearch' || (t.startsWith('mcp__') && !t.startsWith('mcp__kage__') && !t.startsWith('mcp__plugin_kage_'))
 
 // The grant only shrinks: a tool outside it is denied.
 export function grantRefusal(tool: string, grant: string[], input: Record<string, unknown> = {}) {
-  if (FILE_TOOLS.includes(tool)) return `A specialist gets no file or shell tool (${tool}), granted or not. Say in the thread what you needed: your manager decides.`
+  if (THREAD_TOOLS.includes(tool)) return undefined
+  if (!grantable(tool)) return `A specialist can be granted only web and MCP tools, not ${tool}. Say in the thread what you needed: your manager decides.`
   if (tool === 'WebFetch' && !/^https?:\/\//i.test(String(input.url ?? ''))) return 'A specialist fetches only http and https addresses.'
-  return THREAD_TOOLS.includes(tool) || (grant.includes(tool) && !tool.startsWith('mcp__kage__')) ? undefined
+  return grant.includes(tool) ? undefined
     : `${tool} is outside this specialist's grant (${grant.join(', ') || 'no tools'}). Say in the thread what you needed: your manager decides.`
 }
