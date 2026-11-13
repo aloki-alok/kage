@@ -30,7 +30,7 @@ export type Hub = {
   status(): string
   // Someone other than the owner wrote without starting a task: wakes the reply watches on that conversation (runtime/scheduler.ts).
   heard(m: { chat: string; thread?: string; quoted: string }): void
-  // The owner wrote in a thread without a tag: notes for the specialists working there.
+  // The owner wrote in a thread without a tag: notes for the kagelets working there.
   ownerWrote?(chat: string, thread: string, text: string): void
   // The posted ledger: every message Kage posted, with the thread whose task posted it (runtime/kage-tools.ts).
   posted(): string
@@ -39,7 +39,7 @@ export type Hub = {
 // Into the inbox before the ack: Slack sends again only what was not acked, so a crash after the
 // write is replayed from the store on the next start (router.ts), and a redelivery runs once.
 // A failed write throws before the ack, so Slack sends the event again.
-// The owner typed in a thread with no tag: a note for the specialists working there. Nobody else's words steer one.
+// The owner typed in a thread with no tag: a note for the kagelets working there. Nobody else's words steer one.
 export const ownerNote = (m: SlackMessage, ids: { owner: string; botDm: string }, reason: string) =>
   reason === 'not-tagged' && typedByPerson(m) && m.user === ids.owner && m.channel !== ids.botDm && !!m.thread_ts && m.thread_ts !== m.ts
 
@@ -127,7 +127,7 @@ export async function connectSlack(o: { dir: string; appToken: string; bot: WebC
         const quoted = quoteMessage({ user: m.user, ts: m.ts, text: m.text, client_msg_id: m.client_msg_id }, ids.owner, { bot: ids.bot, title: o.title })
         o.hub.heard({ chat: m.channel, ...(m.thread_ts && { thread: m.thread_ts }), quoted })
       }
-      // The owner's untagged reply in a thread: a specialist working there reads it on its next run (runtime/specialists.ts).
+      // The owner's untagged reply in a thread: a kagelet working there reads it on its next run (runtime/kagelets.ts).
       if (ownerNote(m, ids, t.reason)) o.hub.ownerWrote?.(m.channel, m.thread_ts!, m.text ?? '')
       return
     }

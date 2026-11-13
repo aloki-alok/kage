@@ -82,7 +82,7 @@ export function scheduler(o: {
       }
       return { adopted, skipped }
     },
-    // A specialist's "run now" (kage top, the manager's tool): one run at once, outside its cron. Returns why not.
+    // A kagelet's "run now" (kage top, the manager's tool): one run at once, outside its cron. Returns why not.
     runNow(id: string, now: number): string | undefined {
       const s = store.schedules().find(x => x.id === id)
       if (!s) return `no schedule ${id}: it is paused, removed, or not synced yet`

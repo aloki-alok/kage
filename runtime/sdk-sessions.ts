@@ -9,7 +9,7 @@ import { z } from 'zod'
 import { log } from '../config.ts'
 import { senderOf, withoutInvisible, type Sender } from '../core/gate.ts'
 import { ownerMemoryRefusal, privateToolRefusal, slackSendRefusal, voiceToolRefusal } from '../core/guards.ts'
-import { grantRefusal } from '../core/specialists.ts'
+import { grantRefusal } from '../core/kagelets.ts'
 import { approvalPreview } from '../core/preview.ts'
 import type { Dispatcher, Runner } from '../core/sessions.ts'
 import type { sessionTools } from './kage-tools.ts'
@@ -49,7 +49,7 @@ export function sdkSessions(o: {
   // A turn ended, or the session closed: the tasks it leaves behind. limit: it ended on the usage limit or an
   // overload, so it did none of them (runtime/limit-pause.ts).
   onTurn?: (key: string, tasks: Task[], limit?: Limit) => void
-  // A specialist lane (core/specialists.ts): its grant. Only these tools, and it approves nothing.
+  // A kagelet lane (core/kagelets.ts): its grant. Only these tools, and it approves nothing.
   grantOf?: (key: string) => string[] | undefined
   restartMs?: number
 }) {
@@ -59,7 +59,7 @@ export function sdkSessions(o: {
   const picks = new Map<string, Pick>()
   // Kage's own tools, approved for every session (hub.ts does the same for panes). Approved in canUseTool, not
   // allowedTools, which would skip the callback and makes the SDK warn on every session.
-  const ALLOWED = ['reply', 'edit_message', 'delete_message', 'send_file', 'message_people', 'schedule', 'unschedule', 'schedules', 'set_model', 'specialists'].map(t => `mcp__kage__${t}`)
+  const ALLOWED = ['reply', 'edit_message', 'delete_message', 'send_file', 'message_people', 'schedule', 'unschedule', 'schedules', 'set_model', 'kagelets'].map(t => `mcp__kage__${t}`)
 
   function open(key: string, s: Session, carried: SDKUserMessage[] = []) {
     const inbox = makeInbox(carried)
@@ -103,10 +103,10 @@ export function sdkSessions(o: {
         disallowedTools: [...o.options.disallowedTools ?? [], 'CronCreate', 'CronDelete', 'CronList'],
         // Claude Code sends session_state_changed, which busy() reads, only when asked.
         env: { ...env, CLAUDE_CODE_EMIT_SESSION_STATE_EVENTS: '1' },
-        // A specialist's grant is its approval, checked first: beyond it, even Kage's tools that act as the owner, it
+        // A kagelet's grant is its approval, checked first: beyond it, even Kage's tools that act as the owner, it
         // approves nothing and puts no card in front of the owner. The PreToolUse hook checks the same grant again.
         canUseTool: (name, input, x) => o.grantOf?.(key)
-          ? Promise.resolve(grantRefusal(name, o.grantOf(key)!, input) ? { behavior: 'deny' as const, message: 'A specialist approves nothing. Say in the thread what you needed and why: your manager decides.' }
+          ? Promise.resolve(grantRefusal(name, o.grantOf(key)!, input) ? { behavior: 'deny' as const, message: 'A kagelet approves nothing. Say in the thread what you needed and why: your manager decides.' }
             : { behavior: 'allow' as const, updatedInput: input })
           : ALLOWED.includes(name) ? Promise.resolve({ behavior: 'allow' as const, updatedInput: input })
           : ask(key, s, name, x.title ?? x.description ?? '', input, x.signal),

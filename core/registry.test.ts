@@ -117,7 +117,7 @@ describe('kage add', () => {
       added: [person('UTEST0002'), agent('ATEST0001', 'UTEST0002')],
     })
     assert.deepEqual(add(base, agent('ATEST0001', 'UTEST0001')), { entries: base, added: [] })
-    // A manager cannot be moved under its own specialist.
+    // A manager cannot be moved under its own kagelet.
     const chain = [...base, agent('ATEST0002', 'ATEST0001')]
     assert.match((add(chain, agent('ATEST0001', 'ATEST0002')) as { error: string }).error, /loop/)
   })

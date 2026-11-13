@@ -29,7 +29,7 @@ describe('a Slack event reaches the inbox before Slack is told it arrived', () =
   })
 })
 
-describe('the owner\'s untagged reply in a thread is a note for its specialists; nobody else\'s is', () => {
+describe('the owner\'s untagged reply in a thread is a note for its kagelets; nobody else\'s is', () => {
   const ids = { owner: 'UOWNER', botDm: 'DBOT' }
   const m = (o: Record<string, unknown>) => ({ type: 'message', channel: 'C1', ts: '2.2', thread_ts: '1.1', user: 'UOWNER', text: 'skip staging', client_msg_id: 'x', ...o }) as never
   test('the owner, typed, in a thread', () => {
