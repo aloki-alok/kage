@@ -225,3 +225,36 @@ describe('a turn that ends on the usage limit', () => {
     assert.match(h.toldOwner[0]!, /slack:C1:8\.8/)
   })
 })
+
+describe('a drain before kage restart or kage stop', () => {
+  test('new messages are held with no notice in the thread, and the pause says it is a drain', () => {
+    const h = hub()
+    h.p.drain(1000)
+    assert.equal(h.hear('C1:5.5', slackTask('7.7'), 2000), true)
+    assert.deepEqual(h.store.held().map(r => r.source), ['slack:C1:7.7'])
+    assert.deepEqual(h.notices, [])
+    assert.equal(h.p.paused(2000)?.draining, true)
+  })
+  test('a drain nobody renews ends after 10 s, and what it held replays', async () => {
+    const h = hub()
+    h.p.drain(0)
+    h.hear('C1:5.5', slackTask('7.7'), 1000)
+    h.p.drain(5000)                   // renewed: the lease now ends at 15 s
+    await h.p.tick(12_000)
+    assert.deepEqual(h.replayed, [])
+    await h.p.tick(15_000)
+    assert.deepEqual(h.replayed, ['slack:C1:7.7 event 7.7'])
+    assert.equal(h.p.paused(15_000), undefined)
+  })
+  test('a drain inside a usage-limit pause keeps the later reset, and the limit notice still goes out', async () => {
+    const h = hub()
+    const t = slackTask('7.7')
+    h.hear('C1:5.5', t, 0)
+    h.p.turn('C1:5.5', [t], { kind: 'rate_limit', until: 55 * MIN }, 1000)
+    h.p.drain(2000)
+    assert.equal(h.p.paused(2000)?.until, 55 * MIN)
+    assert.equal(h.notices.length, 1)
+    await h.p.tick(13_000)
+    assert.deepEqual(h.replayed, [])
+  })
+})

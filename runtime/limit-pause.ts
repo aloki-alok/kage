@@ -27,6 +27,9 @@ export function limitPause(o: {
   time?: (at: number, now: number) => string
 }) {
   let until: number | undefined
+  // A drain before kage restart or kage stop: a pause with no notice, as a lease that kage renews while it waits.
+  // If kage stops asking, the drain ends and what it held replays.
+  let drainUntil = 0
   const open = new Set<string>()                              // inbox ids that wait for their turn to end
   // Thread -> the reset time it was told. Told again only for a reset more than 30 minutes later, so a
   // retry every 15 minutes with no known reset does not post every time.
@@ -42,7 +45,7 @@ export function limitPause(o: {
     else if (t.scheduled && t.job) owed.set(t.job, { key, task: t })
     else return false
     counts.held++
-    if (until! - (told.get(key) ?? -Infinity) > 30 * 60_000) {
+    if (now >= drainUntil && until! - (told.get(key) ?? -Infinity) > 30 * 60_000) {
       told.set(key, until!)
       const at = (o.time ?? clockTime)(until!, now)
       o.notice(t, limit.kind === 'overloaded' ? `Paused: Claude is overloaded. I'll try again at ${at}.` : `Paused by the usage limit until ${at}. I'll pick this up then.`)
@@ -53,7 +56,13 @@ export function limitPause(o: {
 
   return {
     counts,
-    paused: () => (until === undefined ? undefined : { until, held: o.store.held().length + owed.size }),
+    paused: (now = Date.now()) => (until === undefined ? undefined
+      : { until, held: o.store.held().length + owed.size, ...(now < drainUntil && { draining: true as const }) }),
+    draining: (now: number) => now < drainUntil,
+    drain(now: number) {
+      drainUntil = now + 10_000
+      until = Math.max(until ?? 0, drainUntil)
+    },
     // After a hub start: messages held before it keep the pause.
     restore() { for (const r of o.store.held()) until = Math.max(until ?? 0, r.until) },
     // Before a task goes to a session. true: paused, and the task is held for the reset.

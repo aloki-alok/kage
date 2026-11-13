@@ -111,6 +111,8 @@ describe('the usage-limit pause, as kage status and kage list show it', () => {
     const at = new Date(2026, 10, 3, 18, 5).getTime()
     assert.equal(pauseLine({ until: at, held: 3 }, at - 3600_000), 'Paused by the usage limit until 18:05. 3 messages are held, and they run then.')
     assert.equal(pauseLine({ until: at, held: 1 }, at - 3600_000), 'Paused by the usage limit until 18:05. 1 message is held, and it runs then.')
+    // A drain for kage restart or stop is not the usage limit.
+    assert.equal(pauseLine({ until: at, held: 2, draining: true }, at - 5000), 'Stopping for a restart or a stop: new messages wait. 2 messages are held, and they run after it.')
     assert.equal(pauseLine({ until: at, held: 0 }, at - 3600_000), 'Paused by the usage limit until 18:05. No message is held.')
   })
 })
