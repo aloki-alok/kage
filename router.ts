@@ -198,7 +198,7 @@ const costTotals = lastTotals(ledgers.text('costs'))
 // Kagelets (#57): one file each in the kagelets folder, synced at start and each minute. Each runs on its
 // schedule in a side lane of its thread, at teammate trust, with only its grant, and approves nothing.
 let grants = new Map<string, string[]>()
-const KAGELETS = kageletsDir(DIR)
+const KAGELETS = kageletsDir(DIR, log)
 // The names from before the rename still read.
 const MAX_KAGELETS = Number(env.KAGE_MAX_KAGELETS || env.KAGE_MAX_SPECIALISTS || 10)
 const KAGELET_USD = Number(env.KAGE_KAGELET_DAILY_USD || env.KAGE_SPECIALIST_DAILY_USD || 2)

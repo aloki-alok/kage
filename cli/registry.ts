@@ -30,7 +30,7 @@ if (cmd === 'add' && args[0] === 'kagelet') {
   if (existsSync(file)) die(`${file} already exists. Edit it, or pick another name.`)
   mkdirSync(KAGELETS, { recursive: true, mode: 0o700 })
   writeFileSync(file, starterFile(), { mode: 0o600, flag: 'wx' })
-  console.log(`Wrote ${file}, paused.\nFill in its thread, schedule, tools and job, then take out the paused line (or press p on it in kage top). It runs within a minute.`)
+  console.log(`Wrote ${file}, paused.\nFill in its thread, schedule, tools and job, then run kage start ${name}. It runs within a minute.`)
   process.exit(0)
 }
 if (!existsSync(ENV_FILE)) die(`No settings file at ${ENV_FILE}. Run kage setup first.`)

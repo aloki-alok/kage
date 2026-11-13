@@ -6,10 +6,19 @@ import { parseSessionKey } from '../core/conversations.ts'
 import { NAME, parseKagelet, resultLine, rowLine, setPaused, kageletFile, kageletRows, type Maker, type KageletRow } from '../core/kagelets.ts'
 import type { Store } from './store.ts'
 
-// The kagelets folder. One from before the rename (specialists/) moves here once; with both, the new one wins.
-export function kageletsDir(dir: string) {
+// The kagelets folder. Only the hub (log given) moves one from before the rename (specialists/) here, once: a kage
+// command that moved it would empty the folder under an old hub still running, which then drops every schedule.
+// A command reads the old folder where it is. With both there, the new one wins and the hub says so.
+export function kageletsDir(dir: string, log?: (line: string) => void) {
   const now = `${dir}/kagelets`, old = `${dir}/specialists`
-  if (!existsSync(now) && existsSync(old)) renameSync(old, now)
+  if (!existsSync(old)) return now
+  if (!existsSync(now)) {
+    if (!log) return old
+    renameSync(old, now)
+    return now
+  }
+  const left = readKagelets(old).length
+  if (log && left) log(`${old} still holds ${left} file${left === 1 ? '' : 's'}, and ${now} is the folder in use: move them in by hand`)
   return now
 }
 

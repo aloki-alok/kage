@@ -207,15 +207,21 @@ test('a schedule from before the rename (old id and lane) moves to the new one, 
   assert.deepEqual(store.schedules().map(s => [s.id, s.key, s.created, s.lastFired]), [['kagelet-deploys', KEY, 100, 5000]])
 })
 
-test('the old folder moves to the new name once; with both there, the new one wins and the old stays', () => {
+test('only the hub moves the old folder; a kage command reads it where it is, so an old hub still running keeps its schedules', () => {
   const dir = mkdtempSync(`${tmpdir()}/kagelet-`)
   mkdirSync(`${dir}/specialists`)
   writeFileSync(`${dir}/specialists/deploys.md`, 'x')
-  assert.equal(kageletsDir(dir), `${dir}/kagelets`)
+  assert.equal(kageletsDir(dir), `${dir}/specialists`)
+  assert.equal(existsSync(`${dir}/specialists/deploys.md`), true)
+  const logs: string[] = []
+  assert.equal(kageletsDir(dir, l => logs.push(l)), `${dir}/kagelets`)
   assert.deepEqual(readKagelets(`${dir}/kagelets`), [{ name: 'deploys', text: 'x' }])
   assert.equal(existsSync(`${dir}/specialists`), false)
-  mkdirSync(`${dir}/specialists`)
   assert.equal(kageletsDir(dir), `${dir}/kagelets`)
-  assert.equal(existsSync(`${dir}/specialists`), true)
-  assert.equal(kageletsDir(mkdtempSync(`${tmpdir()}/kagelet-`)).endsWith('/kagelets'), true)
+  // Both there: the new one wins, and the hub says the old one is left.
+  mkdirSync(`${dir}/specialists`)
+  writeFileSync(`${dir}/specialists/other.md`, 'y')
+  assert.equal(kageletsDir(dir, l => logs.push(l)), `${dir}/kagelets`)
+  assert.match(logs.join('\n'), /specialists.*other\.md|1 file/)
+  assert.equal(kageletsDir(mkdtempSync(`${tmpdir()}/kagelet-`), () => {}).endsWith('/kagelets'), true)
 })

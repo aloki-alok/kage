@@ -118,7 +118,7 @@ describe('the rows kage list, kage top and the manager show', () => {
     const back = setPaused(paused, false, now)
     assert.match(back, new RegExp(`^resumed: ${new Date(now).toISOString().replace(/\./g, '\\.')}$`, 'm'))
     assert.equal((parseKagelet('x', back) as { paused: boolean }).paused, false)
-    assert.equal((setPaused(back, false, now + 1).match(/^resumed:/gm) ?? []).length, 1)
+    assert.equal(setPaused(back, false, now + 1), back)   // resuming one that runs changes nothing
   })
   test('a paused one has no next run', () => {
     assert.equal(rows[2]!.next, undefined)

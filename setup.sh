@@ -17,7 +17,7 @@ Set up|save|[name]|Paste the three Slack tokens into hidden prompts; each is che
 Set up|doctor||Check every part, and print the command that fixes each problem|kage doctor
 Set up|link||Put the kage command on your PATH (~/.local/bin/kage)|./setup.sh link
 Set up|service|on or off|Let macOS or Linux keep Kage running: back after a crash, a reboot or a login|kage service on
-Run|start||Start Kage in the background (turns the service on the first time)|kage start
+Run|start|[kagelet]|Start Kage in the background (turns the service on the first time). With a kagelet: run it again after kage stop|kage start
 Run|stop|[thread or kagelet] [--now or --cut-running]|Stop Kage once every running turn ends, or now with --cut-running. With a thread (link, place or key): end only its session, after its turn or --now. With a kagelet: pause it and keep its file|kage stop support
 Run|restart|[--cut-running]|Restart the hub once every running turn ends; new messages wait and run after it|kage restart
 Run|reload||Read the settings file again with no restart: who may tag Kage changes at once|kage reload
@@ -296,7 +296,8 @@ case "${1:-}" in
   link) mkdir -p ~/.local/bin && ln -sf "$PWD/setup.sh" ~/.local/bin/kage && echo "ok: run kage from anywhere (needs ~/.local/bin on PATH)" ;;
   service) ./service.sh "${2:-}" ;;
   run) exec node hub.ts ;;
-  start) cmd_start ;;
+  # A kagelet's name: resume it (cli/stop.ts). Otherwise the hub.
+  start) if [[ $# -gt 1 ]]; then node cli/stop.ts --resume "${@:2}"; else cmd_start; fi ;;
   # A thread (any word that is not a flag) or --now: one session (cli/stop.ts). Otherwise the whole hub.
   stop) if [[ " ${*:2} " == *" --now "* ]] || { [[ $# -gt 1 ]] && printf '%s\n' "${@:2}" | grep -qv '^--'; }; then node cli/stop.ts "${@:2}"; else cmd_stop "${@:2}"; fi ;;
   restart) cmd_restart "${@:2}" ;;

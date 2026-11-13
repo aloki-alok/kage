@@ -1,6 +1,6 @@
 // kage stop <link, place or key> [--now]: end one thread's session once its turn ends, or now. Its schedules keep
 // running, and its next tag starts it again. Bare kage stop stops the whole hub (setup.sh).
-// kage stop <kagelet>: pause it, keeping its file (runtime/kagelets.ts).
+// kage stop <kagelet>: pause it, keeping its file (runtime/kagelets.ts). kage start <kagelet> (--resume) runs it again.
 import { existsSync } from 'node:fs'
 import { askHub, DIR } from './home.ts'
 import { pickThread } from './pick-thread.ts'
@@ -11,9 +11,11 @@ if (process.env.KAGE_CLAUDE) { console.error('This shell runs inside Kage: a ses
 const args = process.argv.slice(2)
 // A kagelet's name wins over a place that contains the same word: kage stop <link> still reaches any thread.
 // It needs no running hub: the hub reads the file when it next runs.
-const name = args.filter(a => a !== '--now').join(' ')
+const resume = args.includes('--resume')
+const name = args.filter(a => a !== '--now' && a !== '--resume').join(' ')
 const KAGELETS = kageletsDir(DIR)
-if (NAME.test(name) && existsSync(`${KAGELETS}/${name}.md`)) { console.log(pauseKagelet(KAGELETS, name, true)); process.exit(0) }
+if (NAME.test(name) && existsSync(`${KAGELETS}/${name}.md`)) { console.log(pauseKagelet(KAGELETS, name, !resume)); process.exit(0) }
+if (resume) { console.error(`There is no kagelet named "${name}". kage list shows them.`); process.exit(1) }
 if (!existsSync(`${DIR}/kage.db`) || !existsSync(`${DIR}/router.sock`)) { console.error('Kage is not running: start it with kage start'); process.exit(1) }
 const cut = args.includes('--now')
 const other = args.find(a => a.startsWith('--') && a !== '--now')
