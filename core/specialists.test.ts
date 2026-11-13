@@ -30,5 +30,9 @@ describe('the grant', () => {
     assert.match(grantRefusal('Bash', ['Read']) ?? '', /grant/)
     assert.equal(grantRefusal('mcp__kage__reply', []), undefined)
     assert.match(grantRefusal('mcp__other__thing', []) ?? '', /grant/)
+    // Only the tools for its own thread: never the ones that act as the owner or outlive the run.
+    for (const t of ['mcp__kage__message_people', 'mcp__kage__schedule', 'mcp__kage__away', 'mcp__kage__send_file', 'mcp__kage__set_model', 'mcp__kage__log_prod_write'])
+      assert.match(grantRefusal(t, []) ?? '', /grant/, t)
+    for (const t of ['mcp__kage__reply', 'mcp__kage__edit_message', 'mcp__kage__delete_message']) assert.equal(grantRefusal(t, []), undefined, t)
   })
 })

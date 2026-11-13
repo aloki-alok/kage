@@ -22,7 +22,10 @@ export function parseSpecialist(name: string, text: string): Specialist | { erro
   return { name, key: `${thread}#side-spec-${name}`, cron, tools, job }
 }
 
-// The grant only shrinks: a tool outside it is denied. Kage's own tools stay, so it can answer in its thread.
+// Of Kage's own tools, a specialist has only those for its thread, whatever its grant says: the rest act as the
+// owner (message_people, away), outlive the run (schedule) or need the owner (log_prod_write).
+const THREAD_TOOLS = ['reply', 'edit_message', 'delete_message'].map(t => `mcp__kage__${t}`)
+// The grant only shrinks: a tool outside it is denied.
 export const grantRefusal = (tool: string, grant: string[]) =>
-  grant.includes(tool) || tool.startsWith('mcp__kage__') ? undefined
+  THREAD_TOOLS.includes(tool) || (grant.includes(tool) && !tool.startsWith('mcp__kage__')) ? undefined
     : `${tool} is outside this specialist's grant (${grant.join(', ') || 'no tools'}). Say in the thread what you needed: your manager decides.`
