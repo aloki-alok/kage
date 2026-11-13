@@ -1,5 +1,6 @@
 // The env file as settings: reading it, checking it, and taking a changed file into a running hub (kage reload).
 import { validName } from './gate.ts'
+import { appEntry, validUserId } from './registry.ts'
 
 export type Env = Record<string, string>
 // Who may reach Kage. These two lists are the settings a running hub takes without a restart.
@@ -27,12 +28,12 @@ export function checkEnv(env: Env): ({ name: string } & AllowLists) | { error: s
   if (!validName(name)) return { error: `KAGE_NAME "${name}" must be a short lowercase word (letters, digits, dashes)` }
   // Slack user ids who may tag the bot too. Empty: only the owner.
   const teammates = list(env.KAGE_TEAMMATES)
-  const notUser = teammates.findIndex(t => !/^[UW][A-Z0-9]{2,}$/.test(t))
+  const notUser = teammates.findIndex(t => !validUserId(t))
   if (notUser >= 0) return { error: `KAGE_TEAMMATES has ${shown(teammates, notUser)}, which is not a Slack user id like U0123ABC` }
-  // Slack app ids of teammates' own agents, whose posts count as that teammate's. Empty: none.
+  // Agents: a Slack app id, or "<app id>:<owner id>" (core/registry.ts). Empty: none.
   const apps = list(env.KAGE_TRUSTED_APPS)
-  const notApp = apps.findIndex(a => !/^A[A-Z0-9]{2,}$/.test(a))
-  if (notApp >= 0) return { error: `KAGE_TRUSTED_APPS has ${shown(apps, notApp)}, which is not a Slack app id like A0123ABC` }
+  const notApp = apps.findIndex(a => !appEntry(a))
+  if (notApp >= 0) return { error: `KAGE_TRUSTED_APPS has ${shown(apps, notApp)}, which is not a Slack app id like A0123ABC, or an app id and its owner like A0123ABC:U0123ABC` }
   return { name, teammates, apps }
 }
 

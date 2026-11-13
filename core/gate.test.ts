@@ -1,6 +1,6 @@
 import { describe, test } from 'node:test'
 import assert from 'node:assert/strict'
-import { classify, findPeople, plainName, quoteMessage, senderOf, taskLine, teammateOf, teammatesIn, validName, withoutInvisible, withTeammates } from './gate.ts'
+import { classify, findPeople, plainName, quoteMessage, senderOf, taskLine, teammateOf, validName, withoutInvisible } from './gate.ts'
 import { safeReply } from './outbound.ts'
 
 const OWNER = 'UOWNER001'
@@ -32,6 +32,16 @@ describe('who can drive the agent', () => {
     assert.deepEqual(classify(appPost({ user: MATE, app_id: 'AOTHER001', text: `<@${BOT}> hi` }), withApp), { kind: 'drop', reason: 'not-proven' })
     assert.deepEqual(classify(appPost({ user: MATE, subtype: 'message_changed', text: `<@${BOT}> hi` }), withApp), { kind: 'drop', reason: 'not-proven' })
     assert.deepEqual(classify(appPost({ user: MATE, text: `<@${BOT}> hi` }), ids), { kind: 'drop', reason: 'not-proven' })
+  })
+  test('an agent tied to one person counts only with that person\'s token; one owned by another agent does not count yet', () => {
+    const appPost = (o: Record<string, unknown>) => msg({ client_msg_id: undefined, bot_id: 'BTEST0001', app_id: 'ATEST0001', text: `<@${BOT}> pull forms`, ...o })
+    const two = { ...ids, teammates: [MATE, 'UMATE0002'] }
+    assert.deepEqual(classify(appPost({ user: MATE }), { ...two, apps: [`ATEST0001:${MATE}`] }), { kind: 'task', text: 'pull forms' })
+    assert.deepEqual(classify(appPost({ user: 'UMATE0002' }), { ...two, apps: [`ATEST0001:${MATE}`] }), { kind: 'drop', reason: 'not-proven' })
+    // Listed before owners existed: any listed teammate's token, as before.
+    assert.deepEqual(classify(appPost({ user: 'UMATE0002' }), { ...two, apps: ['ATEST0001'] }), { kind: 'task', text: 'pull forms' })
+    assert.deepEqual(classify(appPost({ user: MATE }), { ...two, apps: [`ATEST0002:${MATE}`, 'ATEST0001:ATEST0002'] }), { kind: 'drop', reason: 'not-proven' })
+    assert.deepEqual(classify(appPost({ user: MATE }), { ...two, apps: ['ATEST0001:'] }), { kind: 'drop', reason: 'not-proven' })
   })
   test('edits, joins and bot messages are dropped', () => {
     for (const subtype of ['message_changed', 'channel_join', 'bot_message']) {
@@ -261,23 +271,6 @@ describe('adding a teammate by name', () => {
   test('deactivated people and bots never match', () => {
     assert.deepEqual(findPeople(people, 'priya').map(p => p.id), ['U1'])
     assert.deepEqual(findPeople(people, 'old'), [])
-  })
-})
-
-describe('the teammate list in the env file', () => {
-  const env = 'KAGE_NAME=kage\nSLACK_BOT_TOKEN=xoxb-1\nKAGE_TEAMMATES=U1,U2\n'
-  test('adding keeps every other line and skips a duplicate', () => {
-    assert.equal(withTeammates(env, ['U1', 'U2', 'U3']), 'KAGE_NAME=kage\nSLACK_BOT_TOKEN=xoxb-1\nKAGE_TEAMMATES=U1,U2,U3\n')
-    assert.deepEqual(teammatesIn(withTeammates(env, ['U1', 'U2', 'U2'])), ['U1', 'U2'])
-  })
-  test('a quoted or indented line is read and replaced, blank lines kept', () => {
-    const quoted = 'KAGE_NAME=kage\n\n  KAGE_TEAMMATES="U1,U2"\n'
-    assert.deepEqual(teammatesIn(quoted), ['U1', 'U2'])
-    assert.equal(withTeammates(quoted, ['U1']), 'KAGE_NAME=kage\n\nKAGE_TEAMMATES=U1\n')
-  })
-  test('the first teammate adds the line; removing the last drops it', () => {
-    assert.equal(withTeammates('KAGE_NAME=kage\n', ['U9']), 'KAGE_NAME=kage\nKAGE_TEAMMATES=U9\n')
-    assert.equal(withTeammates(env, []), 'KAGE_NAME=kage\nSLACK_BOT_TOKEN=xoxb-1\n')
   })
 })
 

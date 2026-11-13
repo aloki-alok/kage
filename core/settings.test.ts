@@ -17,6 +17,11 @@ describe('reading the env file', () => {
     assert.match(bad('KAGE_TRUSTED_APPS=UTEST0001\n'), /KAGE_TRUSTED_APPS.*"UTEST0001"/)
     assert.match(bad('KAGE_NAME=Not A Name\n'), /KAGE_NAME/)
   })
+  test('an agent in the app list may name its owner, a person or another agent', () => {
+    const ok = checkEnv(parseEnv(FILE + 'KAGE_TRUSTED_APPS=ATEST0001:UTEST0001,ATEST0002:ATEST0001,ATEST0009\n')) as { apps: string[] }
+    assert.deepEqual(ok.apps, ['ATEST0001:UTEST0001', 'ATEST0002:ATEST0001', 'ATEST0009'])
+    assert.match((checkEnv(parseEnv(FILE + 'KAGE_TRUSTED_APPS=ATEST0001:priya\n')) as { error: string }).error, /KAGE_TRUSTED_APPS.*"ATEST0001:priya"/)
+  })
   test('a long wrong entry may be a token on the wrong line: the reason names its place, never its text', () => {
     const r = (checkEnv(parseEnv(FILE + 'KAGE_TEAMMATES=UTEST0001,xoxp-0000-pasted-on-the-wrong-line\n')) as { error: string }).error
     assert.match(r, /KAGE_TEAMMATES.*entry 2/)
