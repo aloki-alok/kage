@@ -42,6 +42,12 @@ export function load() {
     log('KAGE_TEAMMATES must be Slack user ids like U0123ABC, comma separated')
     process.exit(1)
   }
+  // Slack app ids of teammates' own agents, whose posts count as that teammate's. Empty: none.
+  const TRUSTED_APPS = (env.KAGE_TRUSTED_APPS || '').split(',').map(s => s.trim()).filter(Boolean)
+  if (TRUSTED_APPS.some(a => !/^A[A-Z0-9]{2,}$/.test(a))) {
+    log('KAGE_TRUSTED_APPS must be Slack app ids like A0123ABC, comma separated')
+    process.exit(1)
+  }
   return {
     ENV_FILE,
     env,
@@ -49,6 +55,7 @@ export function load() {
     NAME,
     Title: NAME[0]!.toUpperCase() + NAME.slice(1),
     TEAMMATES,
+    TRUSTED_APPS,
     bot: new WebClient(need('SLACK_BOT_TOKEN'), { logger }),
     user: new WebClient(need('SLACK_USER_TOKEN'), { logger }),
   }

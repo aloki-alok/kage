@@ -40,7 +40,7 @@ export async function intake(m: SlackMessage, ack: () => Promise<void>, hub: Pic
   if (fresh) await hear(m, source ?? '')
 }
 
-export async function connectSlack(o: { dir: string; appToken: string; bot: WebClient; user: WebClient; name: string; title: string; teammates: string[]; hub: Hub
+export async function connectSlack(o: { dir: string; appToken: string; bot: WebClient; user: WebClient; name: string; title: string; teammates: string[]; apps: string[]; hub: Hub
   // AFK mode (connectors/slack-afk.ts); absent means off.
   afk?: { memory: string; model: string; saved: Saved; call?: (reason: string) => Promise<string> } }) {
   const { bot, user } = o
@@ -52,7 +52,7 @@ export async function connectSlack(o: { dir: string; appToken: string; bot: WebC
     process.exit(1)
   }
   const dm = await bot.conversations.open({ users: me.user_id! })
-  const ids: Ids = { owner: me.user_id!, bot: botAuth.user_id!, botDm: dm.channel!.id!, name: o.name, teammates: o.teammates, team: me.team_id! }
+  const ids: Ids = { owner: me.user_id!, bot: botAuth.user_id!, botDm: dm.channel!.id!, name: o.name, teammates: o.teammates, apps: o.apps, team: me.team_id! }
   const react = (channel: string, ts: string, name: string) =>
     (channel === ids.botDm ? bot : user).reactions.add({ channel, timestamp: ts, name }).catch(() => {})
 
