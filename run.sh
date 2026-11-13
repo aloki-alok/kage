@@ -15,7 +15,7 @@ env_get() { sed -n "s/^$1=//p" "$ENV_FILE" | tail -1; }
 LOG="$CONF/hub.log"
 # The supervisor never holds the file open, so moving it is safe.
 [[ -f "$LOG" ]] && (( $(wc -c <"$LOG") > 10 * 1024 * 1024 )) && mv -f "$LOG" "$LOG.1"
-last="$(tail -n 5 "$LOG" 2>/dev/null)"   # how the run before this one ended
+last="$(tail -n 40 "$LOG" 2>/dev/null | grep -v '^[[:space:]]*at ' | tail -n 5)"   # how the run before this one ended, stack frames left out
 exec >>"$LOG" 2>&1
 
 # Boots of the last day stay in the file, for the doctor. The alert counts the last 10 minutes.
