@@ -1,6 +1,6 @@
 import { describe, test } from 'node:test'
 import assert from 'node:assert/strict'
-import { grantRefusal, parseSpecialist, rowLine, setPaused, specialistRows, starterFile } from './specialists.ts'
+import { grantRefusal, parseSpecialist, resultLine, rowLine, setPaused, specialistFile, specialistRows, starterFile } from './specialists.ts'
 
 const file = (head: string, body = 'Post a summary of the deploy log.') => `---\n${head}\n---\n${body}\n`
 const LINK = 'https://test.slack.com/archives/CTEST1/p1700000000123456'
@@ -8,7 +8,7 @@ const LINK = 'https://test.slack.com/archives/CTEST1/p1700000000123456'
 describe('a specialist file', () => {
   test('gives its thread lane, schedule, grant and job', () => {
     assert.deepEqual(parseSpecialist('deploys', file(`thread: ${LINK}\nschedule: 0 9 * * 1-5\ntools: Read, Grep,WebFetch`)), {
-      name: 'deploys', key: 'CTEST1:1700000000.123456#side-spec-deploys', link: LINK, cron: '0 9 * * 1-5', tools: ['Read', 'Grep', 'WebFetch'], job: 'Post a summary of the deploy log.', paused: false,
+      name: 'deploys', key: 'CTEST1:1700000000.123456#side-spec-deploys', link: LINK, cron: '0 9 * * 1-5', tools: ['Read', 'Grep', 'WebFetch'], job: 'Post a summary of the deploy log.', paused: false, by: 'owner', why: '',
     })
   })
   test('no tools line grants no tools', () => {
@@ -33,7 +33,7 @@ describe('the grant', () => {
     // Only the tools for its own thread: never the ones that act as the owner or outlive the run.
     for (const t of ['mcp__kage__message_people', 'mcp__kage__schedule', 'mcp__kage__away', 'mcp__kage__send_file', 'mcp__kage__set_model', 'mcp__kage__log_prod_write'])
       assert.match(grantRefusal(t, []) ?? '', /grant/, t)
-    for (const t of ['mcp__kage__reply', 'mcp__kage__edit_message', 'mcp__kage__delete_message']) assert.equal(grantRefusal(t, []), undefined, t)
+    for (const t of ['mcp__kage__reply', 'mcp__kage__edit_message', 'mcp__kage__delete_message', 'mcp__kage__report']) assert.equal(grantRefusal(t, []), undefined, t)
   })
   test('only web and outside MCP tools can be granted, so no file, shell or agent tool ever runs; web fetches only over http(s)', () => {
     for (const t of ['Bash', 'Read', 'Grep', 'Glob', 'LS', 'NotebookRead', 'Write', 'Edit', 'MultiEdit', 'NotebookEdit', 'Monitor', 'PowerShell', 'Skill', 'Agent', 'Task', 'mcp__plugin_kage_kage__reply'])
@@ -116,5 +116,50 @@ describe('the rows kage list, kage top and the manager show', () => {
     assert.match(rowLine(rows[1]!, now), /^deploys\s+runs\s+0 9 \* \* \*\s+last 09:00\s+next Sun 09:00\s+\$0\.75 today$/)
     assert.match(rowLine(rows[2]!, now), /^held\s+paused/)
     assert.match(rowLine(rows[0]!, now), /^broken\s+does not run: .*front matter/)
+  })
+})
+
+describe('a file the manager writes', () => {
+  test('reads back as the same specialist', () => {
+    const text = specialistFile({ thread: LINK, schedule: '0 9 * * *', tools: ['WebSearch', 'mcp__docs__read'], job: 'Check the docs.', by: 'owner', why: 'the owner asked' })
+    assert.ok(typeof text === 'string')
+    const sp = parseSpecialist('docs', text) as { cron: string; tools: string[]; job: string; paused: boolean }
+    assert.deepEqual([sp.cron, sp.tools, sp.job, sp.paused, (sp as any).by, (sp as any).why], ['0 9 * * *', ['WebSearch', 'mcp__docs__read'], 'Check the docs.', false, 'owner', 'the owner asked'])
+    assert.match(specialistFile({ thread: LINK, schedule: '0 9 * * *', tools: [], job: 'x', paused: true, by: 'owner', why: '' }) as string, /^paused: yes$/m)
+  })
+  test('is refused with the reason when it would not run or asks for a tool v1 cannot grant', () => {
+    assert.match((specialistFile({ thread: 'nope', schedule: '0 9 * * *', tools: [], job: 'x', by: 'owner', why: '' }) as { error: string }).error, /thread/)
+    assert.match((specialistFile({ thread: LINK, schedule: '0 9 * * *', tools: ['WebSearch', 'Bash'], job: 'x', by: 'owner', why: '' }) as { error: string }).error, /Bash/)
+    // A newline cannot smuggle a second front matter line in.
+    assert.match((specialistFile({ thread: LINK, schedule: '0 9 * * *\ntools: Bash', tools: [], job: 'x', by: 'owner', why: '' }) as { error: string }).error, /schedule/)
+    assert.match((specialistFile({ thread: LINK, schedule: '0 9 * * *', tools: ['WebSearch\npaused: no'], job: 'x', by: 'owner', why: '' }) as { error: string }).error, /tool/)
+  })
+})
+
+describe('the grant cap on a specialist Kage makes on its own', () => {
+  const make = (by: 'owner' | 'kage', tools: string[]) => specialistFile({ thread: LINK, schedule: '0 9 * * *', tools, job: 'x', by, why: 'a daily check' })
+  test('gets the default web tools only; the owner may grant an MCP tool', () => {
+    assert.equal(typeof make('kage', ['WebSearch', 'WebFetch']), 'string')
+    assert.match((make('kage', ['mcp__docs__read']) as { error: string }).error, /owner/)
+    assert.equal(typeof make('owner', ['mcp__docs__read']), 'string')
+  })
+  test('a hand-written file with no by line is the owner\'s', () => {
+    assert.equal((parseSpecialist('x', file(`thread: ${LINK}\nschedule: 0 9 * * *`)) as { by: string }).by, 'owner')
+    assert.equal((parseSpecialist('x', file(`thread: ${LINK}\nschedule: 0 9 * * *\nby: kage`)) as { by: string }).by, 'kage')
+  })
+})
+
+describe('the last report', () => {
+  const now = new Date(2026, 10, 14, 15, 0).getTime()
+  const files = [{ name: 'deploys', text: file(`thread: ${LINK}\nschedule: 0 9 * * *`) }, { name: 'quiet', text: file(`thread: ${LINK}\nschedule: 0 9 * * *`) }]
+  const reports = `${new Date(2026, 10, 14, 9).toISOString()}\tdeploys\t3 deploys, all green\t\n${new Date(2026, 10, 14, 10).toISOString()}\tdeploys\tcould not read the log\tread access to the deploy log\n`
+  const rows = specialistRows(files, { runs: '', costs: '', reports, now })
+  test('is the newest row of the reports ledger for that specialist', () => {
+    assert.deepEqual(rows[0]!.result, { at: new Date(2026, 10, 14, 10).getTime(), summary: 'could not read the log', needs: 'read access to the deploy log' })
+    assert.equal(rows[1]!.result, undefined)
+  })
+  test('reads as one line, with what it needs first', () => {
+    assert.equal(resultLine(rows[0]!, now), '10:00 needs: read access to the deploy log (could not read the log)')
+    assert.equal(resultLine(rows[1]!, now), 'no report yet')
   })
 })

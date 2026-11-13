@@ -9,7 +9,9 @@ import { spendSince } from './ledgers.ts'
 // A specialist's name, which is also its file name: no dots or slashes, so it never leaves the folder.
 export const NAME = /^[a-z][a-z0-9-]{0,30}$/
 
-export type Specialist = { name: string; key: string; link: string; cron: string; tools: string[]; job: string; paused: boolean }
+// Who made it, from its file: the owner (by hand, or by asking Kage) or Kage on its own. A hand-written file is the owner's.
+export type Maker = 'owner' | 'kage'
+export type Specialist = { name: string; key: string; link: string; cron: string; tools: string[]; job: string; paused: boolean; by: Maker; why: string }
 
 // Flat front matter (key: value lines between --- lines), then the job.
 export function parseSpecialist(name: string, text: string): Specialist | { error: string } {
@@ -25,7 +27,8 @@ export function parseSpecialist(name: string, text: string): Specialist | { erro
   const job = m[2]!.trim()
   if (!job) return { error: 'the job, below the front matter, is empty' }
   const tools = (head.get('tools') ?? '').split(',').map(t => t.trim()).filter(Boolean)
-  return { name, key: `${thread}#side-spec-${name}`, link, cron, tools, job, paused: isPaused(head.get('paused')) }
+  return { name, key: `${thread}#side-spec-${name}`, link, cron, tools, job, paused: isPaused(head.get('paused')),
+    by: head.get('by') === 'kage' ? 'kage' : 'owner', why: head.get('why') ?? '' }
 }
 
 // Fails closed: any value but none, no or false pauses it, so a typo never starts a specialist.
@@ -49,9 +52,32 @@ paused: yes
 Say what to check, where, and what to post in the thread. For example: every weekday at 9, read https://status.example.com and post a three-line summary.
 `
 
-export type SpecialistRow = { name: string; state: 'runs' | 'paused' | 'broken'; error?: string; key?: string; link?: string; cron?: string; tools: string[]; lastRun?: number; next?: number; costToday: number }
-// One row per file for kage list, kage top and the manager. runs and costs are the ledgers (core/ledgers.ts).
-export function specialistRows(files: { name: string; text: string }[], o: { runs: string; costs: string; now: number }): SpecialistRow[] {
+// What a specialist made on its own may be granted: the v1 web tools, never an MCP tool. Only the owner widens it.
+export const DEFAULT_GRANT = ['WebSearch', 'WebFetch']
+
+// The file the manager's tool writes. Refused with the reason when it would not run, would be granted a tool v1
+// cannot grant, or Kage made it and asks for more than DEFAULT_GRANT.
+export function specialistFile(f: { thread: string; schedule: string; tools: string[]; job: string; by: Maker; why: string; paused?: boolean }): string | { error: string } {
+  // One line each, so no value can add a front matter line of its own (a second tools or paused line).
+  for (const [k, v] of Object.entries({ thread: f.thread, schedule: f.schedule, why: f.why, tool: f.tools.join(',') })) if (/[\r\n]/.test(v)) return { error: `the ${k} must be one line` }
+  const bad = f.tools.find(t => !grantable(t))
+  if (bad) return { error: `a specialist can be granted only web and MCP tools, not ${bad}. A wider grant is the owner's call.` }
+  const wide = f.by === 'kage' && f.tools.find(t => !DEFAULT_GRANT.includes(t))
+  if (wide) return { error: `a specialist Kage makes on its own gets only ${DEFAULT_GRANT.join(' and ')}, not ${wide}. Ask the owner to grant it.` }
+  const text = `---\nthread: ${f.thread}\nschedule: ${f.schedule}\ntools: ${f.tools.join(', ')}\nby: ${f.by}\nwhy: ${f.why}\n${f.paused ? 'paused: yes\n' : ''}---\n${f.job.trim()}\n`
+  const sp = parseSpecialist('check', text)
+  return 'error' in sp ? sp : text
+}
+
+export type Report = { at: number; summary: string; needs?: string }
+export type SpecialistRow = { name: string; state: 'runs' | 'paused' | 'broken'; error?: string; key?: string; link?: string; cron?: string; tools: string[]; lastRun?: number; next?: number; costToday: number; result?: Report; by?: Maker; why?: string }
+// One row per file for kage list, kage top and the manager. runs, costs and reports are the ledgers (core/ledgers.ts).
+export function specialistRows(files: { name: string; text: string }[], o: { runs: string; costs: string; reports?: string; now: number }): SpecialistRow[] {
+  const results = new Map<string, Report>()
+  for (const l of (o.reports ?? '').split('\n')) {
+    const [when = '', name = '', summary = '', needs = ''] = l.split('\t')
+    if (name) results.set(name, { at: Date.parse(when), summary, ...(needs && { needs }) })
+  }
   const spent = new Map(spendSince(o.costs, new Date(o.now).setHours(0, 0, 0, 0)).map(s => [s.key, s.usd]))
   const last = new Map<string, number>()
   for (const l of o.runs.split('\n')) {
@@ -65,6 +91,7 @@ export function specialistRows(files: { name: string; text: string }[], o: { run
     return {
       name: sp.name, state: sp.paused ? 'paused' : 'runs', key: sp.key, link: sp.link, cron: sp.cron, tools: sp.tools,
       ...(last.has(sp.name) && { lastRun: last.get(sp.name) }), ...(next !== undefined && { next }), costToday: spent.get(sp.key) ?? 0,
+      ...(results.has(sp.name) && { result: results.get(sp.name) }), by: sp.by, why: sp.why,
     }
   })
 }
@@ -75,9 +102,12 @@ export function rowLine(r: SpecialistRow, now: number) {
     `next ${whenLabel(r.next, now)}`.padEnd(14), `$${r.costToday.toFixed(2)} today`].join(' ')
 }
 
+export const resultLine = (r: SpecialistRow, now: number) => !r.result ? 'no report yet'
+  : `${clockTime(r.result.at, now)} ${r.result.needs ? `needs: ${r.result.needs} (${r.result.summary})` : r.result.summary}`
+
 // Of Kage's own tools, a specialist has only those for its thread, whatever its grant says: the rest act as the
 // owner (message_people, away), outlive the run (schedule) or need the owner (log_prod_write).
-const THREAD_TOOLS = ['reply', 'edit_message', 'delete_message'].map(t => `mcp__kage__${t}`)
+const THREAD_TOOLS = ['reply', 'edit_message', 'delete_message', 'report'].map(t => `mcp__kage__${t}`)
 // What a grant may name: web tools and outside MCP tools, an allowlist so a new built-in tool stays out. No file,
 // shell or agent tool, granted or not: one could rewrite the specialist's own grant or read the env file with the
 // tokens. ponytail: a file grant needs a sandboxed work folder first.
