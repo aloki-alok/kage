@@ -1,6 +1,7 @@
 // Specialists (#57): one file each in the specialists folder, run on a schedule in a side lane of its thread, at
 // teammate trust, with only the tools its grant names. A specialist approves nothing: what needs approval it says in
 // its thread, where its manager (this Kage) and the human owner read it.
+import { resolve } from 'node:path'
 import { parseCron } from './cron.ts'
 import { slackLinkKey } from './conversations.ts'
 
@@ -30,7 +31,8 @@ const WRITES = ['Write', 'Edit', 'MultiEdit', 'NotebookEdit']
 // writes in Kage's config folder, which holds its own file, the env file and the store.
 export function grantRefusal(tool: string, grant: string[], input: Record<string, unknown> = {}, confDir = '') {
   if (tool === 'Bash') return 'A specialist gets no shell, granted or not: a shell could change its own grant.'
-  const path = String(input.file_path ?? input.notebook_path ?? '')
+  // Resolved, so ../ cannot step into the folder. ponytail: a symlink out of the work folder still could; deny writes everywhere if that bites.
+  const path = resolve(String(input.file_path ?? input.notebook_path ?? ''))
   if (confDir && WRITES.includes(tool) && (path === confDir || path.startsWith(`${confDir}/`))) return `A specialist may not write in Kage's config folder (${confDir}).`
   return THREAD_TOOLS.includes(tool) || (grant.includes(tool) && !tool.startsWith('mcp__kage__')) ? undefined
     : `${tool} is outside this specialist's grant (${grant.join(', ') || 'no tools'}). Say in the thread what you needed: your manager decides.`

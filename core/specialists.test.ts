@@ -39,6 +39,7 @@ describe('the grant', () => {
     assert.match(grantRefusal('Bash', ['Bash']) ?? '', /shell/)
     assert.match(grantRefusal('Write', ['Write'], { file_path: '/conf/specialists/deploys.md' }, '/conf') ?? '', /config/)
     assert.match(grantRefusal('Edit', ['Edit'], { file_path: '/conf/env' }, '/conf') ?? '', /config/)
+    assert.match(grantRefusal('Write', ['Write'], { file_path: '/work/../conf/specialists/x.md' }, '/conf') ?? '', /config/)
     assert.equal(grantRefusal('Write', ['Write'], { file_path: '/work/out.md' }, '/conf'), undefined)
   })
 })
