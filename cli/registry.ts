@@ -1,7 +1,8 @@
 // kage add, kage remove, kage list: who may reach Kage besides the owner (core/registry.ts). The running hub
 // takes a change at once (kage reload), so no session is cut.
 //   kage add <person>              a pasted mention, a Slack member id, an email, a name or an @handle
-//   kage add <app id> <owner>      an agent, and who it answers to: a person, or a listed agent (its manager)
+//   kage add <app id> <owner>      an agent, and who it answers to: a person, or a listed agent (its manager).
+//                                  A pasted mention of the agent in place of its app id also saves its tag, so Kage can address it.
 //   kage remove <person or app id> whoever answers to them goes too
 //   kage list                      add --ids to skip the name lookup
 import { existsSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs'
@@ -47,7 +48,7 @@ async function everyone(): Promise<Person[]> {
 
 // Who the words mean: an app id is an agent; a mention, member id, email, name or @handle is a person.
 // A mention of an app's bot user is that app's agent.
-async function who(query: string): Promise<{ kind: Entry['kind']; id: string; name?: string }> {
+async function who(query: string): Promise<{ kind: Entry['kind']; id: string; name?: string; tag?: string }> {
   const q = query.trim()
   if (kindOf(q) === 'agent') return { kind: 'agent', id: q }
   if (/^[^\s@<]+@[^\s@>]+\.[^\s@>]+$/.test(q)) {
@@ -64,13 +65,13 @@ async function who(query: string): Promise<{ kind: Entry['kind']; id: string; na
   if (!isId) return { kind: 'person', ...p }
   if (cmd === 'remove') return { kind: 'person', id: p.id }   // a listed id goes without asking Slack
   const u = (await must('users.info', { user: p.id })).user
-  if (u.is_bot && kindOf(u.profile?.api_app_id ?? '') === 'agent') return { kind: 'agent', id: u.profile.api_app_id, name: u.real_name }
+  if (u.is_bot && kindOf(u.profile?.api_app_id ?? '') === 'agent') return { kind: 'agent', id: u.profile.api_app_id, name: u.real_name, tag: p.id }   // the mention is how Kage tags it back
   return { kind: 'person', id: p.id, name: u.real_name }
 }
 
 const label = (e: { id: string; name?: string }) => (e.name && e.name !== e.id ? `${e.name} (${e.id})` : e.id)
 const names = new Map<string, string>()
-const line = (e: Entry) => (e.kind === 'person' ? `person ${label({ id: e.id, name: names.get(e.id) })}` : `agent ${e.id}${e.owner ? `, which answers to ${label({ id: e.owner, name: names.get(e.owner) })}` : ''}`)
+const line = (e: Entry) => (e.kind === 'person' ? `person ${label({ id: e.id, name: names.get(e.id) })}` : `agent ${e.id}${e.owner ? `, which answers to ${label({ id: e.owner, name: names.get(e.owner) })}` : ''}${e.tag ? `, tagged as ${e.tag}` : ''}`)
 
 // Write a copy, then swap it in: a crash mid-write never leaves a cut-off token file. Then the hub takes it.
 async function save(next: Entry[]) {
@@ -88,7 +89,7 @@ if (cmd === 'list') {
   if (!now.length) console.log('No one is listed: only you can tag Kage. Add someone: kage add <person>')
   if (args[0] !== '--ids') for (const e of now) if (e.kind === 'person') { const n = await nameOf(e.id); if (n) names.set(e.id, n) }
   const under = (owner: string, depth: number): void => {
-    for (const a of now) if (a.kind === 'agent' && a.owner === owner) { console.log(`${'  '.repeat(depth)}agent ${a.id}`); under(a.id, depth + 1) }
+    for (const a of now) if (a.kind === 'agent' && a.owner === owner) { console.log(`${'  '.repeat(depth)}agent ${a.id}${a.tag ? '' : '  (no tag saved, so Kage cannot address it: add it again by a mention of it)'}`); under(a.id, depth + 1) }
   }
   for (const e of now) if (e.kind === 'person') { console.log(label({ id: e.id, name: names.get(e.id) })); under(e.id, 1) }
   // Everything the tree above did not print: no owner, an owner who is not listed, or a loop made by hand.
@@ -104,7 +105,7 @@ if (cmd === 'list') {
     if (args.length < 2) die(`${label(first)} is an agent, and an agent answers to one owner. Run: kage add ${first.id} <its owner: a person, or a listed agent's app id>`)
     const owner = await who(args.slice(1).join(' '))
     if (owner.name) names.set(owner.id, owner.name)
-    entry = { kind: 'agent', id: first.id, owner: owner.id }
+    entry = { kind: 'agent', id: first.id, owner: owner.id, ...(first.tag && { tag: first.tag }) }
   } else {
     if (oneWord && args.length > 1) die(USAGE)
     entry = { kind: 'person', id: first.id }

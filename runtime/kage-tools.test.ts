@@ -80,6 +80,39 @@ describe("a session's Kage tools", () => {
     assert.ok(s.calls.includes('bot post C1 done'))
     assert.ok(!s.calls.some(c => c.includes('COTHER')))
   })
+  test('a reply to an agent\'s task tags the agent on every part of a split post; a private reply and a person\'s task get no tag', async () => {
+    const s = setup()
+    s.t.onTask({ ...s.task({ fromOwner: false }), agent: { app: 'ATEST0001', tag: 'UAGENT001' } })
+    const long = Array.from({ length: 120 }, (_, i) => `line ${i} ${'x'.repeat(50)}`).join('\n')
+    await s.call('reply', { channel: 'C1', thread_ts: '5.5', text: long, wide: true })
+    const parts = s.posts.filter(p => p.channel === 'C1')
+    assert.ok(parts.length > 1)
+    for (const p of parts) assert.ok(p.text.startsWith('<@UAGENT001> '), p.text.slice(0, 30))
+    await s.call('reply', { channel: 'C1', thread_ts: '5.5', text: 'for the owner only', private: true })
+    assert.equal(s.posts.at(-1)!.text, 'for the owner only')
+    // The next task in the thread is a person's: the tag stops.
+    s.t.onTask(s.task())
+    await s.call('reply', { channel: 'C1', thread_ts: '5.5', text: 'hello' })
+    assert.equal(s.posts.at(-1)!.text, 'hello')
+  })
+  test('a reply that needs no answer says so at its end, once, after the last part', async () => {
+    const s = setup()
+    s.t.onTask({ ...s.task({ fromOwner: false }), agent: { app: 'ATEST0001', tag: 'UAGENT001' } })
+    await s.call('reply', { channel: 'C1', thread_ts: '5.5', text: 'Thanks, got it.', no_reply_needed: true })
+    assert.equal(s.posts.at(-1)!.text, '<@UAGENT001> Thanks, got it.\n_(no reply needed)_')
+    // A long reply splits: only the last part carries the marker, at its very end.
+    const before = s.posts.length
+    const long = Array.from({ length: 120 }, (_, i) => `line ${i} ${'x'.repeat(50)}`).join('\n')
+    await s.call('reply', { channel: 'C1', thread_ts: '5.5', text: long, wide: true, no_reply_needed: true })
+    const parts = s.posts.slice(before)
+    assert.ok(parts.length > 1)
+    assert.deepEqual(parts.map(p => p.text.includes('(no reply needed)')), [...parts.slice(1).map(() => false), true])
+    assert.ok(parts.at(-1)!.text.endsWith('\n_(no reply needed)_'))
+    // An agent with no saved tag cannot be tagged; the marker still goes out.
+    s.t.onTask({ ...s.task({ fromOwner: false, channel: 'C2' }), agent: { app: 'ATEST0002' } })
+    await s.call('reply', { channel: 'C2', thread_ts: '5.5', text: 'ok', no_reply_needed: true })
+    assert.equal(s.posts.at(-1)!.text, 'ok\n_(no reply needed)_')
+  })
   test('the first reply marks the task answered; where the bot is not a member it posts as the owner, marked', async () => {
     const s = setup()
     s.t.onTask(s.task({ channel: 'CPRIV' }))

@@ -12,6 +12,7 @@ export type Task = {
   meta: { channel: string; thread_ts: string; place: string; permalink: string }
   origin: { channel: string; ts: string; thread?: string }   // thread: the Slack thread the message sits in, when it is a reply
   job?: string       // the schedule this run belongs to (runtime/scheduler.ts)
+  agent?: { app: string; tag?: string }   // a listed agent posted it (core/agents.ts); tag: its Slack user id, when the registry has it
   scheduled?: true   // Kage started it itself (a schedule, dream), so it answers no open question
 }
 export type Verdict = { type: 'verdict'; request_id: string; behavior: 'allow' | 'deny' }
