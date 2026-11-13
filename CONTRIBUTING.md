@@ -56,6 +56,7 @@ Write logs to stderr only. In a tmux pane, stdout carries the channel protocol, 
 | `outbound.ts` | What may go out: no crowd pings, no secrets in a thread, Slack-sized parts, code blocks narrow enough for the thread panel. |
 | `guards.ts` | Hook rules: private sources, voice calls, the owner's memory, Slack posts only through Kage's tools. |
 | `ledgers.ts` | Reading the ledgers: questions waiting on the owner, what Kage posted, what turns cost, the daily note. |
+| `specialists.ts` | A specialist file (thread, schedule, grant, job) and the grant check. |
 | `cron.ts` | Cron expressions, which schedules are due, and reading Claude Code's own cron jobs. |
 | `afk.ts` | AFK mode: which threads the stand-in watches, when it posts or phones the owner, and what it may say. |
 | `blocks.ts` | When the safety check stops a turn: the line in the thread, the owner's DM, and whether the thread closes. |
@@ -80,6 +81,7 @@ Write logs to stderr only. In a tmux pane, stdout carries the channel protocol, 
 | `closed-threads.ts` | A thread the safety check stopped: it starts on a new session, and a teammate's stays closed until the owner writes in it. |
 | `hub-lock.ts` | One hub per machine: a listening socket the OS frees when the hub dies. |
 | `hub-log.ts` | The hub log's rotation and the package check, shared by `hub.ts` and the hub. |
+| `specialists.ts` | The specialists folder synced into schedules and grants (#57). |
 | `code-stamp.ts` | When the code changed, so the hub knows to restart into it. |
 
 ## Add a connector

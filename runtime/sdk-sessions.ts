@@ -9,6 +9,7 @@ import { z } from 'zod'
 import { log } from '../config.ts'
 import { senderOf, withoutInvisible, type Sender } from '../core/gate.ts'
 import { ownerMemoryRefusal, privateToolRefusal, slackSendRefusal, voiceToolRefusal } from '../core/guards.ts'
+import { grantRefusal } from '../core/specialists.ts'
 import { approvalPreview } from '../core/preview.ts'
 import type { Dispatcher, Runner } from '../core/sessions.ts'
 import type { sessionTools } from './kage-tools.ts'
@@ -48,6 +49,8 @@ export function sdkSessions(o: {
   // A turn ended, or the session closed: the tasks it leaves behind. limit: it ended on the usage limit or an
   // overload, so it did none of them (runtime/limit-pause.ts).
   onTurn?: (key: string, tasks: Task[], limit?: Limit) => void
+  // A specialist lane (core/specialists.ts): its grant. Only these tools, and it approves nothing.
+  grantOf?: (key: string) => string[] | undefined
   restartMs?: number
 }) {
   const sessions = new Map<string, Session>()
@@ -100,14 +103,21 @@ export function sdkSessions(o: {
         disallowedTools: [...o.options.disallowedTools ?? [], 'CronCreate', 'CronDelete', 'CronList'],
         // Claude Code sends session_state_changed, which busy() reads, only when asked.
         env: { ...env, CLAUDE_CODE_EMIT_SESSION_STATE_EVENTS: '1' },
-        canUseTool: (name, input, x) => ALLOWED.includes(name) ? Promise.resolve({ behavior: 'allow' as const, updatedInput: input }) : ask(key, s, name, x.title ?? x.description ?? '', input, x.signal),
+        // A specialist's grant is its approval, checked first: beyond it, even Kage's tools that act as the owner, it
+        // approves nothing and puts no card in front of the owner. The PreToolUse hook checks the same grant again.
+        canUseTool: (name, input, x) => o.grantOf?.(key)
+          ? Promise.resolve(grantRefusal(name, o.grantOf(key)!, input) ? { behavior: 'deny' as const, message: 'A specialist approves nothing. Say in the thread what you needed and why: your manager decides.' }
+            : { behavior: 'allow' as const, updatedInput: input })
+          : ALLOWED.includes(name) ? Promise.resolve({ behavior: 'allow' as const, updatedInput: input })
+          : ask(key, s, name, x.title ?? x.description ?? '', input, x.signal),
         // The same rules as private-data-guard.ts, in-process. A failed check blocks the call.
         hooks: {
           PreToolUse: [{
             onFailure: 'block',
             hooks: [async input => {
               const i = input as { tool_name: string; tool_input?: Record<string, string> }
-              const reason = privateToolRefusal(i.tool_name, s.sender) ?? voiceToolRefusal(i.tool_name, s.sender) ?? slackSendRefusal(i.tool_name) ?? ownerMemoryRefusal(i.tool_name, i.tool_input ?? {}, o.ownerMemory)
+              const grant = o.grantOf?.(key)
+              const reason = (grant && grantRefusal(i.tool_name, grant, i.tool_input ?? {})) || (privateToolRefusal(i.tool_name, s.sender) ?? voiceToolRefusal(i.tool_name, s.sender) ?? slackSendRefusal(i.tool_name) ?? ownerMemoryRefusal(i.tool_name, i.tool_input ?? {}, o.ownerMemory))
               return reason ? { hookSpecificOutput: { hookEventName: 'PreToolUse', permissionDecision: 'deny', permissionDecisionReason: reason } } : {}
             }],
           }],
