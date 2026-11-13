@@ -67,3 +67,16 @@ export function slackLinkKey(link: string): string | undefined {
   const thread = url.searchParams.get('thread_ts') ?? `${m[2]}.${m[3]}`
   return /^\d+\.\d+$/.test(thread) ? `${m[1]}:${thread}` : undefined
 }
+
+// What kage attach, tell and stop type to name a thread: a Slack link (the thread and its side lanes; a top-level
+// message in a DM with Kage belongs to the one rolling DM session), the exact key, or part of the place.
+export type ThreadRow = { key: string; place: string; chat: string | null; agent_dm: number | null }
+export function matchThreads<R extends ThreadRow>(rows: R[], arg: string): R[] {
+  const linked = slackLinkKey(arg)
+  if (linked) {
+    const own = rows.filter(r => r.key === linked || r.key.startsWith(`${linked}#`))
+    return own.length ? own : rows.filter(r => r.agent_dm && linked.startsWith(`${r.chat}:`))
+  }
+  const want = arg.trim().toLowerCase()
+  return want ? rows.filter(r => r.key === arg.trim() || r.place.toLowerCase().includes(want)) : []
+}

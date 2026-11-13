@@ -9,8 +9,7 @@ import { spawn, spawnSync } from 'node:child_process'
 import { existsSync, readFileSync, rmSync } from 'node:fs'
 import { connect, type Socket } from 'node:net'
 import { DIR } from './home.ts'
-import { slackLinkKey } from '../core/conversations.ts'
-import { DatabaseSync } from 'node:sqlite'
+import { pickThread } from './pick-thread.ts'
 
 const HOME = process.env.HOME!
 // Resume from the hub's working folder: Claude Code finds a session's transcript by folder.
@@ -18,31 +17,7 @@ const CWD = process.env.KAGE_CWD || HOME
 const SOCK = `${DIR}/router.sock`
 if (!existsSync(`${DIR}/kage.db`) || !existsSync(SOCK)) { console.error('Kage is not running: start it with kage start'); process.exit(1) }
 
-const db = new DatabaseSync(`${DIR}/kage.db`, { readOnly: true })
-const rows = db.prepare(`select s.key, coalesce(c.place, s.key) as place, c.chat, c.agent_dm from sessions s
-  left join conversations c using (key) order by c.last_seen desc nulls last`).all() as { key: string; place: string; chat: string | null; agent_dm: number | null }[]
-const arg = process.argv.slice(2).join(' ')
-const want = arg.toLowerCase()
-const linked = slackLinkKey(arg)
-let found = want ? rows.filter(r => r.key === arg || r.place.toLowerCase().includes(want)) : []
-if (linked) {
-  // The thread's own session and its side lanes. A top-level message in the DM with Kage belongs to the one rolling DM session.
-  found = rows.filter(r => r.key === linked || r.key.startsWith(`${linked}#`))
-  if (!found.length) found = rows.filter(r => r.agent_dm && linked.startsWith(`${r.chat}:`))
-  if (!found.length) { console.error(`Kage has no session for that thread (${linked}). Tag Kage in the thread to start one, or run kage attach to pick from the list.`); process.exit(1) }
-}
-if (found.length !== 1) {
-  const list = (found.length ? found : rows).slice(0, 20)
-  console.error(want ? `${found.length} threads match "${arg}". Pick one (newest first):` : 'Pick a thread (newest first):')
-  list.forEach((r, i) => console.error(`  ${String(i + 1).padStart(2)}. ${r.place}   (${r.key})`))
-  if (!process.stdin.isTTY) process.exit(1)
-  process.stderr.write('Number: ')
-  const n = Number(await new Promise<string>(r => process.stdin.once('data', b => r(String(b).trim()))))
-  process.stdin.pause()
-  if (!list[n - 1]) { console.error('No such number.'); process.exit(1) }
-  found = [list[n - 1]!]
-}
-const { key, place } = found[0]!
+const { key, place } = await pickThread(process.argv.slice(2).join(' '))
 
 const WHY = {
   unknown: 'Kage has no session for it',

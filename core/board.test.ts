@@ -1,6 +1,6 @@
 import { describe, test } from 'node:test'
 import assert from 'node:assert/strict'
-import { ago, boardRows, nextRuns, watchingNext, whenLabel, type Live, clockTime, limitLine, pauseLine } from './board.ts'
+import { ago, boardRows, nextRuns, watchingNext, whenLabel, type Live, clockTime, limitLine, pauseLine, stopLine } from './board.ts'
 import type { Schedule } from './cron.ts'
 
 const MIN = 60_000, HOUR = 60 * MIN, DAY = 24 * HOUR
@@ -131,5 +131,16 @@ describe('what the usage limit cost since the hub started', () => {
     assert.equal(limitLine({ limitHits: 2, held: 5, replays: 4, replayFailures: 1 }), 'Usage limit since the hub started: 2 hits, 5 held, 4 replayed, 1 replay failed.')
     assert.equal(limitLine({ limitHits: 0, held: 0, replays: 0, replayFailures: 0 }), undefined)
     assert.equal(limitLine(undefined), undefined)
+  })
+})
+
+describe('the answer to a stop', () => {
+  test('it says when the session ends, what was let go, and which schedules keep running', () => {
+    assert.equal(stopLine({ ok: true, ending: true, dropped: 0 }, []), 'Stopping after the current turn. The next tag starts it again.')
+    assert.equal(stopLine({ ok: true, cut: 'busy', dropped: 2 }, ['daily report', 'watch the deploy']),
+      'Stopped now: the turn in progress was cut. 2 waiting messages were let go. Its 2 schedules keep running: daily report; watch the deploy. The next tag starts it again.')
+    assert.equal(stopLine({ ok: true, cut: 'asking', dropped: 1 }, ['x']),
+      'Stopped now: the approval it waited on was dropped. 1 waiting message was let go. Its schedule keeps running: x. The next tag starts it again.')
+    assert.equal(stopLine({ refused: 'closed' }, ['x']), 'No session runs in this thread. Its schedule keeps running: x.')
   })
 })

@@ -22,7 +22,10 @@ const WAITING = 'hourglass_flowing_sand'
 const FAILED = 'warning'
 
 export type Hub = {
-  deliver(c: Conversation, task: Task, place: string, lane?: Lane): Delivery
+  // by: the Slack user who wrote it, so the hub knows who started a new thread.
+  deliver(c: Conversation, task: Task, place: string, lane?: Lane, by?: string): Delivery
+  // "@kage stop" in a thread: the answer to post there. by: who asked; the hub decides if they may.
+  stop(c: Conversation, cut: boolean, by: string): string
   verdict(requestId: string, behavior: 'allow' | 'deny'): boolean
   status(): string
   // Someone other than the owner wrote without starting a task: wakes the reply watches on that conversation (runtime/scheduler.ts).
@@ -136,6 +139,11 @@ export async function connectSlack(o: { dir: string; appToken: string; bot: WebC
       react(m.channel, m.ts, PICKED_UP)
       return void notifyOwner(o.hub.status())
     }
+    if (t.kind === 'stop') {
+      react(m.channel, m.ts, PICKED_UP)
+      const text = o.hub.stop(slackConversation(m, ids.botDm), t.now, m.user!)
+      return void bot.chat.postMessage({ channel: m.channel, thread_ts: m.thread_ts ?? m.ts, text }).catch(e => log('could not answer a stop', e?.data?.error ?? e))
+    }
     // An agent over its turn limit with Kage: dropped like any refusal, and the owner hears of it once an hour at most.
     const loop = t.agent && loops.turn(t.agent, thread, Date.now())
     if (t.agent && loop) {
@@ -173,7 +181,7 @@ export async function connectSlack(o: { dir: string; appToken: string; bot: WebC
     // A side task gets a lane of its own on the same conversation.
     const r = asked
       ? o.hub.deliver(asked, task, place)
-      : o.hub.deliver(slackConversation(m, ids.botDm), task, t.side ? `${place} (side)` : place, t.side ? `side-${m.ts}` : 'main')
+      : o.hub.deliver(slackConversation(m, ids.botDm), task, t.side ? `${place} (side)` : place, t.side ? `side-${m.ts}` : 'main', m.user)
     if (r === 'queued' || r === 'held') react(m.channel, m.ts, WAITING)
     if (r === 'failed') failed(task)
   }

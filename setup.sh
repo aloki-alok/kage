@@ -18,7 +18,7 @@ Set up|doctor||Check every part, and print the command that fixes each problem|k
 Set up|link||Put the kage command on your PATH (~/.local/bin/kage)|./setup.sh link
 Set up|service|on or off|Let macOS or Linux keep Kage running: back after a crash, a reboot or a login|kage service on
 Run|start||Start Kage in the background (turns the service on the first time)|kage start
-Run|stop|[--cut-running]|Stop Kage once every running turn ends (new messages wait), or now with --cut-running|kage stop
+Run|stop|[thread] [--now or --cut-running]|Stop Kage once every running turn ends, or now with --cut-running. With a thread (link, place or key): end only its session, after its turn or --now|kage stop support
 Run|restart|[--cut-running]|Restart the hub once every running turn ends; new messages wait and run after it|kage restart
 Run|reload||Read the settings file again with no restart: who may tag Kage changes at once|kage reload
 Run|status||One look at every session and what it is doing|kage status
@@ -297,7 +297,8 @@ case "${1:-}" in
   service) ./service.sh "${2:-}" ;;
   run) exec node hub.ts ;;
   start) cmd_start ;;
-  stop) cmd_stop "${@:2}" ;;
+  # A thread (any word that is not a flag) or --now: one session (cli/stop.ts). Otherwise the whole hub.
+  stop) if [[ " ${*:2} " == *" --now "* ]] || { [[ $# -gt 1 ]] && printf '%s\n' "${@:2}" | grep -qv '^--'; }; then node cli/stop.ts "${@:2}"; else cmd_stop "${@:2}"; fi ;;
   restart) cmd_restart "${@:2}" ;;
   reload) node cli/reload.ts ;;
   status) cmd_status ;;

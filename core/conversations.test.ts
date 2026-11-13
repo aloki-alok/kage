@@ -1,6 +1,6 @@
 import { describe, test } from 'node:test'
 import assert from 'node:assert/strict'
-import { parseSessionKey, placeFor, sessionKey, slackConversation, slackLinkKey, type Conversation } from './conversations.ts'
+import { matchThreads, parseSessionKey, placeFor, sessionKey, slackConversation, slackLinkKey, type Conversation } from './conversations.ts'
 
 const DM = 'DBOT00001'
 
@@ -86,4 +86,25 @@ describe('the session key a pasted Slack link points at', () => {
       assert.equal(slackLinkKey(s), undefined, s)
     }
   })
+})
+
+describe('finding a thread by what you typed, for kage attach, tell and stop', () => {
+  const rows = [
+    { key: 'CTEST1:1700000000.123456', place: '#support', chat: 'CTEST1', agent_dm: null },
+    { key: 'CTEST1:1700000000.123456#side-1', place: '#support (side)', chat: 'CTEST1', agent_dm: null },
+    { key: 'CTEST2:1700000001.000001', place: '#Deploys', chat: 'CTEST2', agent_dm: null },
+    { key: 'dm', place: 'DM with Kage', chat: 'DTEST1', agent_dm: 1 },
+  ]
+  test('by part of the place, any case, or by the exact key', () => {
+    assert.deepEqual(matchThreads(rows, 'deploys').map(r => r.key), ['CTEST2:1700000001.000001'])
+    assert.deepEqual(matchThreads(rows, 'support').length, 2)
+    assert.deepEqual(matchThreads(rows, 'dm').map(r => r.key), ['dm'])
+  })
+  test('by a Slack link: the thread and its side lanes; a top-level DM message finds the one DM session', () => {
+    assert.deepEqual(matchThreads(rows, 'https://test.slack.com/archives/CTEST1/p1700000000123456').map(r => r.key),
+      ['CTEST1:1700000000.123456', 'CTEST1:1700000000.123456#side-1'])
+    assert.deepEqual(matchThreads(rows, 'https://test.slack.com/archives/DTEST1/p1700000009000000').map(r => r.key), ['dm'])
+    assert.deepEqual(matchThreads(rows, 'https://test.slack.com/archives/CTEST9/p1700000009000000'), [])
+  })
+  test('nothing typed matches nothing', () => assert.deepEqual(matchThreads(rows, ''), []))
 })
