@@ -25,7 +25,7 @@ describe('who can drive the agent', () => {
   test('a trusted app posting as a teammate is a teammate task; never as the owner or an outsider', () => {
     const withApp = { ...ids, apps: ['ATEST0001'] }
     const appPost = (o: Record<string, unknown>) => msg({ client_msg_id: undefined, bot_id: 'BTEST0001', app_id: 'ATEST0001', ...o })
-    assert.deepEqual(classify(appPost({ user: MATE, text: `*Agent:* <@${BOT}> pull forms` }), withApp), { kind: 'task', text: '*Agent:* pull forms' })
+    assert.deepEqual(classify(appPost({ user: MATE, text: `*Agent:* <@${BOT}> pull forms` }), withApp), { kind: 'task', text: '*Agent:* pull forms', agent: 'ATEST0001' })
     assert.deepEqual(classify(appPost({ user: OWNER, text: `<@${BOT}> deploy prod` }), withApp), { kind: 'drop', reason: 'not-proven' })
     assert.deepEqual(classify(appPost({ user: OWNER, channel: DM, text: 'yes abcde' }), withApp), { kind: 'drop', reason: 'not-proven' })
     assert.deepEqual(classify(appPost({ user: 'UOTHER', text: `<@${BOT}> hi` }), withApp), { kind: 'drop', reason: 'not-listed' })
@@ -36,12 +36,33 @@ describe('who can drive the agent', () => {
   test('an agent tied to one person counts only with that person\'s token; one owned by another agent does not count yet', () => {
     const appPost = (o: Record<string, unknown>) => msg({ client_msg_id: undefined, bot_id: 'BTEST0001', app_id: 'ATEST0001', text: `<@${BOT}> pull forms`, ...o })
     const two = { ...ids, teammates: [MATE, 'UMATE0002'] }
-    assert.deepEqual(classify(appPost({ user: MATE }), { ...two, apps: [`ATEST0001:${MATE}`] }), { kind: 'task', text: 'pull forms' })
+    assert.deepEqual(classify(appPost({ user: MATE }), { ...two, apps: [`ATEST0001:${MATE}`] }), { kind: 'task', text: 'pull forms', agent: 'ATEST0001' })
     assert.deepEqual(classify(appPost({ user: 'UMATE0002' }), { ...two, apps: [`ATEST0001:${MATE}`] }), { kind: 'drop', reason: 'not-proven' })
     // Listed before owners existed: any listed teammate's token, as before.
-    assert.deepEqual(classify(appPost({ user: 'UMATE0002' }), { ...two, apps: ['ATEST0001'] }), { kind: 'task', text: 'pull forms' })
+    assert.deepEqual(classify(appPost({ user: 'UMATE0002' }), { ...two, apps: ['ATEST0001'] }), { kind: 'task', text: 'pull forms', agent: 'ATEST0001' })
     assert.deepEqual(classify(appPost({ user: MATE }), { ...two, apps: [`ATEST0002:${MATE}`, 'ATEST0001:ATEST0002'] }), { kind: 'drop', reason: 'not-proven' })
     assert.deepEqual(classify(appPost({ user: MATE }), { ...two, apps: ['ATEST0001:'] }), { kind: 'drop', reason: 'not-proven' })
+  })
+  test('an agent\'s post that says no reply is needed starts no task; the same words from a person do', () => {
+    const two = { ...ids, apps: [`ATEST0001:${MATE}`] }
+    const appPost = (text: string) => msg({ user: MATE, client_msg_id: undefined, bot_id: 'BTEST0001', app_id: 'ATEST0001', text })
+    assert.deepEqual(classify(appPost(`<@${BOT}> thanks, got it _(no reply needed)_`), two), { kind: 'drop', reason: 'no-reply-needed' })
+    assert.deepEqual(classify(msg({ user: MATE, text: `<@${BOT}> run it (no reply needed)` }), two), { kind: 'task', text: 'run it (no reply needed)' })
+  })
+  test('an agent can never approve: not with its owner\'s token, not as the owner, not in the DM, not under a card', () => {
+    const two = { ...ids, apps: [`ATEST0001:${MATE}`, 'ATEST0009'] }
+    const appPost = (o: Record<string, unknown>) => msg({ client_msg_id: undefined, bot_id: 'BTEST0001', app_id: 'ATEST0001', ...o })
+    for (const text of ['yes abcde', `<@${BOT}> yes abcde`, 'yes', 'approve']) {
+      for (const card of [undefined, 'abcde']) {
+        for (const where of [{ channel: DM }, { channel: 'C1' }]) {
+          for (const who of [{ user: OWNER }, { user: MATE }, { user: OWNER, app_id: 'ATEST0009' }]) {
+            const t = classify(appPost({ ...where, ...who, text }), two, card)
+            assert.ok(t.kind === 'drop' || t.kind === 'task', `${text} ${JSON.stringify({ ...where, ...who })}: ${t.kind}`)
+            if (t.kind === 'task') assert.equal(t.agent, 'ATEST0001')
+          }
+        }
+      }
+    }
   })
   test('edits, joins and bot messages are dropped', () => {
     for (const subtype of ['message_changed', 'channel_join', 'bot_message']) {

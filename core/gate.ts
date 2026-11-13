@@ -1,4 +1,5 @@
 // Who may drive Kage and what Claude reads: the sender gate, the task line, quoting, teammates.
+import { needsNoReply } from './agents.ts'
 import { agentTag, filesTag, postedByTrustedApp, typedByPerson, type SlackMessage } from './slack-message.ts'
 
 // owner: the person whose user token hears messages. bot: the app's bot user.
@@ -13,7 +14,8 @@ export const validName = (name: string) => /^[a-z][a-z0-9-]{1,20}$/.test(name)
 // side: run it in its own session, beside the thread's (which may be busy with something else).
 // status: the owner asks the hub what is running; no session reads it.
 export type Trigger =
-  | { kind: 'task'; text: string; side?: true }
+  // agent: the Slack app id of the listed agent that posted it, with its owner's token.
+  | { kind: 'task'; text: string; side?: true; agent?: string }
   | { kind: 'status' }
   // card: the owner wrote something other than yes or no in an approval card's thread.
   | { kind: 'card'; request_id: string }
@@ -25,6 +27,8 @@ export const DROPS = {
   'not-tagged': 'it does not tag Kage',
   'not-listed': 'the sender is not the owner or a listed teammate',
   'not-proven': 'an app posted it or it is an edit, so no listed person typed it',
+  'no-reply-needed': 'an agent posted it and marked it as needing no answer',
+  loop: 'the agent is over its turn limit with Kage',
 } as const
 export type Drop = keyof typeof DROPS
 const drop = (reason: Drop): Trigger => ({ kind: 'drop', reason })
@@ -32,10 +36,10 @@ const drop = (reason: Drop): Trigger => ({ kind: 'drop', reason })
 // Only the exact "side:" counts, so "side effects of ..." stays a normal task. Owner only, so a
 // teammate can't open extra sessions and push the owner's out.
 const SIDE_RE = /^side:\s*/i
-const task = (text: string, isOwner: boolean, files: string): Trigger => {
+const task = (text: string, isOwner: boolean, files: string, agent?: string): Trigger => {
   if (isOwner && /^status$/i.test(text)) return { kind: 'status' }
   const side = isOwner ? SIDE_RE.exec(text) : null
-  return side ? { kind: 'task', text: text.slice(side[0].length) + files, side: true } : { kind: 'task', text: text + files }
+  return side ? { kind: 'task', text: text.slice(side[0].length) + files, side: true } : { kind: 'task', text: text + files, ...(agent && { agent }) }
 }
 
 // Claude Code's request ids: five lowercase letters without "l".
@@ -55,6 +59,10 @@ export function classify(m: SlackMessage, ids: Ids, card?: string): Trigger {
   // The gate: a message the owner (or a listed teammate) typed in a Slack client.
   if (!isOwner && !ids.teammates.includes(m.user ?? '')) return drop('not-listed')
   if (!typedByPerson(m) && (isOwner || !postedByTrustedApp(m, ids.apps ?? []))) return drop('not-proven')
+  // Past the two lines above, a post no person typed came from a listed agent. It is never the owner's, so it
+  // never reaches the approval rules below.
+  const agent = typedByPerson(m) ? undefined : m.app_id
+  if (agent && needsNoReply(raw)) return drop('no-reply-needed')
   const text = raw.replace(tag, '').trim()
   if (inDm) {
     // Approvals count only in the private DM, where the prompts are sent. Slack keeps the
@@ -75,7 +83,7 @@ export function classify(m: SlackMessage, ids: Ids, card?: string): Trigger {
     }
     return task(text, true, filesTag(m))
   }
-  return task(text, isOwner, filesTag(m))
+  return task(text, isOwner, filesTag(m), agent)
 }
 
 // Other people's words go to Claude quoted and labelled by Slack id (names can be
