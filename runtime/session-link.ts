@@ -3,6 +3,7 @@
 import { chmodSync, mkdirSync, readdirSync, readFileSync, rmSync, unlinkSync, writeFileSync } from 'node:fs'
 import { createServer } from 'node:net'
 import { dirname, join } from 'node:path'
+import type { LimitCounts } from '../core/board.ts'
 import type { Dispatcher } from '../core/sessions.ts'
 import type { Reloaded } from '../core/settings.ts'
 import { log } from '../config.ts'
@@ -46,6 +47,9 @@ export function listenForSessions(path: string, d: Dispatcher<ToSession>, o: Rep
   tell?: (key: string, text: string) => { ok: true; held?: true } | { refused: string }
   // kage reload: read the settings file again (core/settings.ts).
   reload?: () => Reloaded
+  // The usage-limit pause, when one is on (runtime/limit-pause.ts): kage status and kage list show it.
+  paused?: () => { until: number; held: number } | undefined
+  limitCounts?: () => LimitCounts
 }) {
   try { unlinkSync(path) } catch {}
   const dir = dirname(path)
@@ -85,7 +89,9 @@ export function listenForSessions(path: string, d: Dispatcher<ToSession>, o: Rep
           sock.write(JSON.stringify({ type: 'hold', ...r }) + '\n')
         } else if (m.type === 'board' && !key && !held) {
           // The console's view of live state, which exists only in this process.
-          sock.write(JSON.stringify({ type: 'board', ...d.status(Date.now()) }) + '\n')
+          const paused = o.paused?.()
+          const limitCounts = o.limitCounts?.()
+          sock.write(JSON.stringify({ type: 'board', ...d.status(Date.now()), ...(paused && { paused }), ...(limitCounts && { limitCounts }) }) + '\n')
         } else if (m.type === 'reload' && !key && !held) {
           // It only reads the file that already decides the next start, so it gives a session no new power.
           sock.write(JSON.stringify({ type: 'reload', ...(o.reload?.() ?? { refused: 'this hub cannot reload' }) }) + '\n')

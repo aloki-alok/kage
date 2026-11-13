@@ -1,6 +1,6 @@
 import { describe, test } from 'node:test'
 import assert from 'node:assert/strict'
-import { ago, boardRows, nextRuns, watchingNext, whenLabel, type Live } from './board.ts'
+import { ago, boardRows, nextRuns, watchingNext, whenLabel, type Live, clockTime, limitLine, pauseLine } from './board.ts'
 import type { Schedule } from './cron.ts'
 
 const MIN = 60_000, HOUR = 60 * MIN, DAY = 24 * HOUR
@@ -103,5 +103,31 @@ describe('next run per thread', () => {
       sched({ id: 'bad', cron: 'nonsense' }),
     ], NOW)
     assert.equal(m.size, 0)
+  })
+})
+
+describe('the usage-limit pause, as kage status and kage list show it', () => {
+  test('one line with the reset time and how many messages are held', () => {
+    const at = new Date(2026, 10, 3, 18, 5).getTime()
+    assert.equal(pauseLine({ until: at, held: 3 }, at - 3600_000), 'Paused by the usage limit until 18:05. 3 messages are held, and they run then.')
+    assert.equal(pauseLine({ until: at, held: 1 }, at - 3600_000), 'Paused by the usage limit until 18:05. 1 message is held, and it runs then.')
+    assert.equal(pauseLine({ until: at, held: 0 }, at - 3600_000), 'Paused by the usage limit until 18:05. No message is held.')
+  })
+})
+
+describe('a reset time for a person', () => {
+  test('a reset on another day names the day, so a weekly limit does not read as today', () => {
+    const now = new Date(2026, 10, 3, 18, 5).getTime()
+    assert.equal(clockTime(now + 30 * 60_000, now), '18:35')
+    assert.equal(clockTime(new Date(2026, 10, 6, 9, 0).getTime(), now), 'Fri 6 Nov 09:00')
+    assert.equal(clockTime(new Date(2026, 10, 4, 0, 30).getTime(), now), 'Wed 4 Nov 00:30')
+  })
+})
+
+describe('what the usage limit cost since the hub started', () => {
+  test('one line with the four counts, and nothing when the limit never hit', () => {
+    assert.equal(limitLine({ limitHits: 2, held: 5, replays: 4, replayFailures: 1 }), 'Usage limit since the hub started: 2 hits, 5 held, 4 replayed, 1 replay failed.')
+    assert.equal(limitLine({ limitHits: 0, held: 0, replays: 0, replayFailures: 0 }), undefined)
+    assert.equal(limitLine(undefined), undefined)
   })
 })

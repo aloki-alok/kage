@@ -7,7 +7,8 @@
 import { existsSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs'
 import { findPeople, type Person } from '../core/gate.ts'
 import { add, kindOf, ownerPerson, registryIn, remove, withRegistry, type Entry } from '../core/registry.ts'
-import { ENV_FILE } from './home.ts'
+import { pauseLine, type Live } from '../core/board.ts'
+import { askHub, ENV_FILE } from './home.ts'
 import { reload, said } from './reload.ts'
 
 const die = (msg: string): never => { console.error(msg); process.exit(1) }
@@ -81,6 +82,9 @@ async function save(next: Entry[]) {
 }
 
 if (cmd === 'list') {
+  // A pause holds what listed people send, so the list says so first.
+  const board = await askHub<Live>({ type: 'board' }).catch(() => undefined)
+  if (board?.paused) console.log(pauseLine(board.paused))
   if (!now.length) console.log('No one is listed: only you can tag Kage. Add someone: kage add <person>')
   if (args[0] !== '--ids') for (const e of now) if (e.kind === 'person') { const n = await nameOf(e.id); if (n) names.set(e.id, n) }
   const under = (owner: string, depth: number): void => {

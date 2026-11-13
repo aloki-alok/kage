@@ -31,7 +31,9 @@ create table if not exists inbox (
   source text primary key,       -- slack:<channel>:<ts>, github:<delivery>, mail:<message-id>, wa:<id>
   connector text not null,
   at integer not null,
-  payload text                   -- the raw event until it is handled, then null: other people's text does not stay
+  payload text,                  -- the raw event until it is handled, then null: other people's text does not stay
+  delivered integer not null default 0,   -- 1: a session has it and its turn has not ended (runtime/limit-pause.ts)
+  held_until integer             -- set: its turn hit the usage limit, or it came in the pause; it replays at this time
 );
 -- What a connector keeps across a restart, one JSON value per name: afk, github-threads, mail-threads.
 create table if not exists state (
@@ -70,6 +72,10 @@ export function openStore(path: string) {
   // The ledger table in this file has other writers (tmux panes, runtime/ledger.ts): wait for their lock, don't fail.
   db.exec('pragma journal_mode = wal; pragma busy_timeout = 5000')
   db.exec(SCHEMA)
+  // A store from before the usage-limit pause gains its two inbox columns. Older code ignores them.
+  const inboxCols = new Set((db.prepare('pragma table_info(inbox)').all() as { name: string }[]).map(c => c.name))
+  if (!inboxCols.has('delivered')) db.exec('alter table inbox add column delivered integer not null default 0')
+  if (!inboxCols.has('held_until')) db.exec('alter table inbox add column held_until integer')
   const upsertConversation = db.prepare(`insert into conversations (key, connector, chat, thread, kind, agent_dm, place, first_seen, last_seen)
     values (?, ?, ?, ?, ?, ?, ?, ?, ?)
     on conflict (key) do update set place = excluded.place, last_seen = max(last_seen, excluded.last_seen)`)
@@ -154,11 +160,23 @@ export function openStore(path: string) {
     },
     has: (source: string) => db.prepare('select 1 from inbox where source = ?').get(source) !== undefined,
     handled(source: string) { db.prepare('update inbox set payload = null where source = ?').run(source) },
-    // Messages taken but never handled: a crash came between the ack and the task. Ones older than
-    // `since` are let go (a reply hours late does more harm than none), so they never come back.
+    // A session took the message. Its text stays until the turn ends, so a turn that hits the usage limit can replay it.
+    // false: no such message with its text still here.
+    delivered: (source: string) => Number(db.prepare('update inbox set delivered = 1 where source = ? and payload is not null').run(source).changes) > 0,
+    // Held by the usage limit until `until` (runtime/limit-pause.ts). false: no such message with its text still here.
+    hold: (source: string, until: number) => Number(db.prepare('update inbox set held_until = ? where source = ? and payload is not null').run(until, source).changes) > 0,
+    held(): { source: string; connector: string; payload: string; at: number; until: number }[] {
+      return (db.prepare('select source, connector, payload, at, held_until from inbox where payload is not null and held_until is not null order by at').all() as Record<string, any>[])
+        .map(r => ({ source: r.source, connector: r.connector, payload: r.payload, at: Number(r.at), until: Number(r.held_until) }))
+    },
+    // The hold is over: the message is about to replay, as one just taken.
+    release(source: string) { db.prepare('update inbox set held_until = null, delivered = 0 where source = ?').run(source) },
+    // At the start: messages taken but never delivered (a crash came between the ack and the task). Ones older
+    // than `since` are let go (a reply hours late does more harm than none), so they never come back. One a
+    // session had when the hub stopped is let go too: its turn may be half done. A held one waits for its reset time.
     unhandled(since: number): { source: string; connector: string; payload: string; at: number }[] {
-      db.prepare('update inbox set payload = null where payload is not null and at < ?').run(since)
-      return (db.prepare('select source, connector, payload, at from inbox where payload is not null order by at').all() as Record<string, any>[])
+      db.prepare('update inbox set payload = null where payload is not null and held_until is null and (at < ? or delivered = 1)').run(since)
+      return (db.prepare('select source, connector, payload, at from inbox where payload is not null and held_until is null order by at').all() as Record<string, any>[])
         .map(r => ({ source: r.source, connector: r.connector, payload: r.payload, at: Number(r.at) }))
     },
     // Redeliveries come within minutes (Slack) or days (SQS, GitHub's manual redeliver), so a week of ids is enough.

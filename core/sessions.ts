@@ -89,10 +89,13 @@ export class Dispatcher<M> {
 
   // A connector ends a conversation of its own (a voice call hung up): close its session now so the
   // slot is free at once, and forget a task waiting for one. Its id stays, so it could resume.
-  end(key: string) {
+  // Returns the tasks it forgot, which no session read, for a caller that keeps them (runtime/limit-pause.ts).
+  end(key: string): M[] {
     if (this.#live.has(key)) this.#close(key)
+    const unread = this.#pending.get(key) ?? []
     this.#pending.delete(key)
     this.#waiting = this.#waiting.filter(k => k !== key)
+    return unread
   }
 
   // end, and the next task starts a new conversation: the old one can't be resumed (the safety check flagged it).

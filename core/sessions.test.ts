@@ -466,3 +466,11 @@ describe('switching runtime without closing the panes that run', () => {
     assert.deepEqual(calls, ['sdk start B', 'pane stop A', 'sdk start A', 'sdk stop A'])
   })
 })
+
+test('ending a thread hands back the tasks it still held for a session that had not read them', () => {
+  const d = new Dispatcher<string>({ start: () => {}, stop: () => {}, lastActivity: () => 0, busy: () => false }, { max: 1, idleMs: 9e9, connectMs: 9e9, evictMs: 0, newId: () => 'id' })
+  d.task('A', 'one', 0)       // starting, not connected yet
+  d.task('A', 'two', 1)
+  assert.deepEqual(d.end('A'), ['one', 'two'])
+  assert.deepEqual(d.end('A'), [])
+})

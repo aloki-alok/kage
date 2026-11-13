@@ -44,7 +44,7 @@ export function scheduler(o: {
       type: 'task', fromOwner, content,
       meta: { channel: c.conversation.chat, thread_ts: c.conversation.thread ?? '', place: c.place, permalink: '' },
       origin: { channel: c.conversation.chat, ts: '' },
-      scheduled: true,
+      scheduled: true, job: s.id,
     }
     if (o.deliver(s.key, task) === 'failed') o.failed(task)
   }

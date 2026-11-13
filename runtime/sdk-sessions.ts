@@ -12,6 +12,7 @@ import { ownerMemoryRefusal, privateToolRefusal, slackSendRefusal, voiceToolRefu
 import { approvalPreview } from '../core/preview.ts'
 import type { Dispatcher, Runner } from '../core/sessions.ts'
 import type { sessionTools } from './kage-tools.ts'
+import type { Limit } from './limit-pause.ts'
 import type { Task, ToSession } from './protocol.ts'
 
 type Kage = ReturnType<typeof sessionTools>
@@ -44,6 +45,9 @@ export function sdkSessions(o: {
   onStart?: () => void                            // a new id may have been minted: save the map
   onResult?: (key: string, totalUsd: number, resumed: boolean) => void   // a turn ended: the session's running cost so far
   onBlocked?: (key: string, turn: Task[], category: string | null) => void   // the safety check stopped a turn (core/blocks.ts)
+  // A turn ended, or the session closed: the tasks it leaves behind. limit: it ended on the usage limit or an
+  // overload, so it did none of them (runtime/limit-pause.ts).
+  onTurn?: (key: string, tasks: Task[], limit?: Limit) => void
   restartMs?: number
 }) {
   const sessions = new Map<string, Session>()
@@ -128,6 +132,8 @@ export function sdkSessions(o: {
     void (async () => {
       let sawState = false
       let blocked = false   // once per turn: a new CLI sends the system event and the refused assistant frame
+      let limit: Limit['kind'] | undefined   // this turn's top-level answer was the usage limit or an overload
+      let resetsAt: number | undefined       // the reset time Claude last gave with a rejection
       try {
         for await (const m of q as AsyncIterable<SDKMessage>) {
           s.last = Date.now()
@@ -141,11 +147,35 @@ export function sdkSessions(o: {
             blocked = true
             o.onBlocked?.(key, s.turn.map(x => x.task), (m.type === 'system' && m.subtype === 'model_refusal_no_fallback' && m.api_refusal_category) || null)
           }
-          // A task sent mid-turn may be read by the next turn instead, so it stays one turn longer.
-          if (m.type === 'result') { blocked = false; s.turn = s.turn.filter(x => x.mid).map(x => ({ ...x, mid: false })); o.onResult?.(key, m.total_cost_usd, resumed) }
+          // Seconds from Claude Code; ms is accepted too.
+          if (m.type === 'rate_limit_event' && m.rate_limit_info.status === 'rejected' && m.rate_limit_info.resetsAt) resetsAt = m.rate_limit_info.resetsAt < 1e12 ? m.rate_limit_info.resetsAt * 1000 : m.rate_limit_info.resetsAt
+          // The last top-level answer decides: after a limit, Claude Code may try again and get a real one.
+          if (m.type === 'assistant' && !m.parent_tool_use_id) limit = m.error === 'rate_limit' || m.error === 'overloaded' ? m.error : undefined
+          if (m.type === 'result' && m.is_error && !limit) {
+            // An older CLI marks no assistant message: the HTTP status on the result says the same.
+            const status = 'api_error_status' in m ? m.api_error_status : undefined
+            limit = status === 429 ? 'rate_limit' : status === 529 ? 'overloaded' : undefined
+          }
+          if (m.type === 'result' && limit) {
+            // The turn did nothing, and a task sent mid-turn would only hit the limit too: all of them go back.
+            const tasks = s.turn.map(x => x.task)
+            s.turn = []
+            blocked = false
+            o.onTurn?.(key, tasks, { kind: limit, ...(limit === 'rate_limit' && resetsAt && { until: resetsAt }) })
+            limit = undefined
+          } else if (m.type === 'result') {
+            // A task sent mid-turn may be read by the next turn instead, so it stays one turn longer.
+            blocked = false
+            const done = s.turn.filter(x => !x.mid).map(x => x.task)
+            s.turn = s.turn.filter(x => x.mid).map(x => ({ ...x, mid: false }))
+            if (done.length) o.onTurn?.(key, done)
+            o.onResult?.(key, m.total_cost_usd, resumed)
+          }
           if (m.type === 'result' && !sawState) s.state = 'idle'
         }
       } catch (e) { log('session ended', key, e) }
+      // The process went away on the limit before it sent a result: its tasks go back the same way.
+      if (limit && s.turn.length) o.onTurn?.(key, s.turn.splice(0).map(x => x.task), { kind: limit, ...(limit === 'rate_limit' && resetsAt && { until: resetsAt }) })
       // The Claude process is gone: its open approvals go with it. Unless the dispatcher closed it,
       // it comes back on the same conversation, like the shell loop in a tmux pane, and takes the
       // tasks this process never read.
@@ -194,6 +224,8 @@ export function sdkSessions(o: {
       const s = sessions.get(key)
       if (!s) return
       s.stopped = true
+      // Closed with tasks in hand: nothing waits for their turn any more.
+      if (s.turn.length) o.onTurn?.(key, s.turn.splice(0).map(x => x.task))
       denyAll(s)
       s.run?.inbox.close()
       s.run?.q.close()

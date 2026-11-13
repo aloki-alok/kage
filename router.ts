@@ -20,6 +20,7 @@ import { connectVoice } from './connectors/voice.ts'
 import { startWhatsApp } from './connectors/whatsapp-link.ts'
 import { parseCommands } from './core/commands.ts'
 import { memoryDirs } from './core/guards.ts'
+import { limitLine, pauseLine } from './core/board.ts'
 import { placeFor, sessionKey, type Conversation, type Lane } from './core/conversations.ts'
 import { senderOf } from './core/gate.ts'
 import { dailyDue, lastTotals, openWaiting, staleWaiting, turnCost } from './core/ledgers.ts'
@@ -33,6 +34,7 @@ import { scheduler } from './runtime/scheduler.ts'
 import { runJobs } from './runtime/jobs.ts'
 import { snapshotMemory } from './runtime/memory-snapshot.ts'
 import { sdkSessions } from './runtime/sdk-sessions.ts'
+import { limitPause } from './runtime/limit-pause.ts'
 import { listenForSessions, restoreHolds, routeReply } from './runtime/session-link.ts'
 import { openStore, type Inbox } from './runtime/store.ts'
 import { openLedgers } from './runtime/ledger.ts'
@@ -63,15 +65,23 @@ store.importState({ afk: `${DIR}/afk.json`, 'github-threads': `${DIR}/github-thr
 const ledgers = openLedgers(DIR)
 const placeOf = (key: string) => placeFor(k => store.conversation(k)?.place, key)
 // Every connector writes what it hears here before acknowledging it (runtime/store.ts, the inbox).
-const inbox: Inbox = { take: (source, connector, payload) => store.take(source, connector, payload, Date.now()), handled: source => store.handled(source), has: source => store.has(source) }
+// A message a session took stays until its turn ends: a turn that hits the usage limit replays it (runtime/limit-pause.ts).
+const inbox: Inbox = { take: (source, connector, payload) => store.take(source, connector, payload, Date.now()), handled: source => limits.handled(source), has: source => store.has(source) }
 
 // Connectors hand the hub a conversation; the hub alone turns it into a session key.
 const deliver = (c: Conversation, task: Task, place: string, lane: Lane = 'main') => {
   const key = sessionKey(c, { lane })
   store.seen(key, c, place, Date.now())
+  return toSession(key, task)
+}
+// Every task on its way to a session. Paused by the usage limit: it is held for the reset, and no session starts.
+const toSession = (key: string, task: Task) => {
   if (closedTo(key, task)) return 'sent'
+  if (limits.hold(key, task, Date.now())) return 'held'
   noteTrust(key, task)
-  return d.task(key, task, Date.now())
+  const r = d.task(key, task, Date.now())
+  if (r !== 'failed') limits.delivered(key, task)
+  return r
 }
 // A thread the safety check stopped starts over, closed to teammates until the owner writes (runtime/closed-threads.ts).
 const { blocked, closedTo } = closedThreads({
@@ -165,6 +175,7 @@ const sdk = sdkLib ? sdkSessions({
     ledgers.add('costs', [key, String(usd), String(total)])
   },
   onBlocked: blocked,
+  onTurn: (key, tasks, limit) => limits.turn(key, tasks, limit, Date.now()),
 }) : undefined
 if (sdk) mkdirSync(MEM.own, { recursive: true })
 
@@ -182,6 +193,20 @@ const d: Dispatcher<ToSession> = new Dispatcher<ToSession>(runner, {
   max: MAX, idleMs: IDLE_MIN * 60_000, connectMs: (CLAUDE.includes('development-channels') ? 30 : 3) * 60_000,
   evictMs: 2 * 60_000, newId: randomUUID, saved,
 })
+// The usage-limit pause: a turn that ends on the limit keeps its message and replays it at the reset (runtime/limit-pause.ts).
+const limits = limitPause({
+  store, log,
+  tellOwner: text => void slack.notifyOwner(text),
+  end: key => d.end(key).filter(m => m.type === 'task'),
+  // A tmux pane reports no turn end, so its messages are handled at delivery, as before.
+  defers: key => !!sdk && !onPane.has(key),
+  notice: (t, text) => void bot.chat.postMessage({ channel: t.meta.channel, ...(t.meta.thread_ts && { thread_ts: t.meta.thread_ts }), text }).then(
+    r => ledgers.add('posted', [t.meta.channel, r.ts!, 'bot', `${t.meta.channel}:${t.meta.thread_ts}`]),
+    e => log('could not post the pause notice', t.meta.place, e?.data?.error ?? e)),
+  replay: r => replayOf(r.connector)?.(r.source, r.payload) ?? Promise.reject(new Error(`no ${r.connector} connector to replay through`)),
+  redeliver: (key, task) => { if (toSession(key, task) === 'failed') failed(task) },
+})
+limits.restore()
 // Panes still running from before this hub restarted keep working.
 d.adopt(Object.keys(saved).filter(k => runningAtStart.has(saved[k]!)), Date.now())
 // Threads still open in a terminal (kage attach) stay held: before any connector can deliver a task.
@@ -189,7 +214,7 @@ restoreHolds(DIR, d, Date.now())
 // Schedules live in the store and run as tasks in their thread (runtime/scheduler.ts).
 const schedules = scheduler({
   store, failed,
-  deliver: (key, task) => { if (closedTo(key, task)) return 'sent'; noteTrust(key, task); return d.task(key, task, Date.now()) },
+  deliver: toSession,
   ready: key => d.ready(key),
   trusted: key => store.trust(key) === true,
   ran: j => ledgers.add('runs', [j.id, j.key]),
@@ -218,7 +243,10 @@ function status(): string {
   const min = (ms: number) => `${Math.round(ms / 60_000)} min`
   const lines = s.live.map(l => `• ${placeOf(l.key)}: ${l.state}${l.state === 'quiet' ? ` for ${min(l.quietMs)}` : ''}`)
   const open = openWaiting(ledgers.text('waiting')).length
+  const paused = limits.paused()
   return [
+    ...(paused ? [`*${pauseLine(paused)}*`] : []),
+    ...[limitLine(limits.counts)].filter((l): l is string => !!l),
     `*${s.live.length} of ${MAX} sessions*${s.waiting.length ? `, ${s.waiting.length} waiting for a slot` : ''}`,
     ...lines,
     ...s.waiting.map(k => `• ${placeOf(k)}: waiting for a slot`),
@@ -254,7 +282,7 @@ const DREAMT = `${DIR}/dream-sent`
 const PROJECT = claudeProject(process.cwd())   // both runners start sessions in the hub's folder
 function dream(now: number) {
   const last = Number(readFile(DREAMT).trim()) || undefined
-  if (!dreamDue(now, last, d.quietEverywhere(now))) return
+  if (limits.paused() || !dreamDue(now, last, d.quietEverywhere(now))) return   // a dream in the pause would only hit the limit
   const snap = snapshotMemory(MEM.own, now)
   // At most a day back, so a Mac that slept through a few nights is not handed a week of threads.
   const since = Math.max(last ?? 0, now - 24 * 3600_000)
@@ -314,6 +342,7 @@ const whatsapp = env.KAGE_WHATSAPP !== 'off' && existsSync(`${DIR}/waha/.env`) ?
 // chat or a scheduled run (it has no message to mark).
 function failed(m: ToSession) {
   if (m.type !== 'task') return
+  limits.turn('', [m], undefined, Date.now())   // no turn will end for it: its inbox message is done
   log('could not deliver to a session:', m.meta.place, m.origin.ts, `(attach: tmux attach -t ${NAME})`)
   if (!m.origin.ts) void slack.notifyOwner(`Could not start a session for a scheduled run in ${m.meta.place}.`)
   else if (m.origin.channel === 'email' || m.origin.channel === 'whatsapp' || m.origin.channel === 'voice') void slack.notifyOwner(`Could not start a session for ${m.meta.place}.`)
@@ -339,6 +368,7 @@ function selfUpdate(now: number) {
 runJobs([
   { name: 'schedules', every: 20_000, run: now => schedules.tick(now) },
   { name: 'sweep', every: 60_000, run: now => d.sweep(now).forEach(failed) },
+  { name: 'limit pause', every: 20_000, run: now => limits.tick(now) },
   { name: 'daily note', every: 10 * 60_000, run: dailyNote },
   { name: 'self-update', every: 60_000, run: selfUpdate },
   { name: 'dream', every: 10 * 60_000, run: dream },
@@ -353,12 +383,19 @@ const replies = {
     void slack.notifyOwner(`Email reply failed for ${placeOf(key)}: ${e}`)
   }),
 }
+// How a stored message runs again: through its own connector, as if just heard.
+function replayOf(connector: string): ((source: string, payload: string) => Promise<unknown>) | undefined {
+  return ({ slack: slack.replay, github: github?.replay, whatsapp: whatsapp?.replay } as Record<string, ((source: string, payload: string) => Promise<unknown>) | undefined>)[connector]
+}
 // kage tell: the owner's words into a thread, typed on this machine. Same shape as a scheduled run (runtime/scheduler.ts).
 function tell(key: string, text: string): { ok: true; held?: true } | { refused: string } {
   const c = store.conversation(key)
   if (!c) return { refused: 'no thread with that key' }
   // ponytail: Slack only, like schedules; email and WhatsApp tasks need their connector's own meta, add when wanted.
   if (c.conversation.connector !== 'slack') return { refused: 'tell works on Slack threads only for now' }
+  // Typed words have no inbox message to replay, so they are refused instead of lost.
+  const paused = limits.paused()
+  if (paused) return { refused: `Kage is paused by the usage limit, so it would be lost. ${pauseLine(paused)} Tell it again after that` }
   const task: Task = {
     type: 'task', fromOwner: true, content: `From the owner, typed in the terminal: ${text}`,
     meta: { channel: c.conversation.chat, thread_ts: c.conversation.thread ?? '', place: c.place, permalink: '' },
@@ -373,7 +410,7 @@ function tell(key: string, text: string): { ok: true; held?: true } | { refused:
 }
 // kage reload: a changed allow list applies to the next message, with no restart and no turn cut (core/settings.ts).
 const reload = reloader({ boot: env, read: () => readFileSync(ENV_FILE, 'utf8'), apply: slack.allow, log })
-listenForSessions(`${DIR}/router.sock`, d, { ...replies, failed, schedules, tell, reload, callCode: voice?.issueCode })
+listenForSessions(`${DIR}/router.sock`, d, { ...replies, failed, schedules, tell, reload, paused: limits.paused, limitCounts: () => limits.counts, callCode: voice?.issueCode })
 
 await slack.start()
 // Messages the last run took but never handled (it died in between) run now. Older than 10 minutes, they are let go.
@@ -381,9 +418,8 @@ await slack.start()
 store.prune(Date.now() - 7 * 86_400_000)
 const missed = store.unhandled(Date.now() - 10 * 60_000)
 if (missed.length) log(`replaying ${missed.length} message${missed.length === 1 ? '' : 's'} the last run heard but never handled`)
-const replayers: Record<string, ((source: string, payload: string) => Promise<unknown>) | undefined> = { slack: slack.replay, github: github?.replay, whatsapp: whatsapp?.replay }
 for (const r of missed) {
-  const replay = replayers[r.connector]
+  const replay = replayOf(r.connector)
   if (replay) void replay(r.source, r.payload).catch(e => log('replay failed', r.source, e))
   else { log('cannot replay', r.source, '(its connector is off)'); store.handled(r.source) }
 }
