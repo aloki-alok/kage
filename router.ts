@@ -196,6 +196,7 @@ const d: Dispatcher<ToSession> = new Dispatcher<ToSession>(runner, {
 // The usage-limit pause: a turn that ends on the limit keeps its message and replays it at the reset (runtime/limit-pause.ts).
 const limits = limitPause({
   store, log,
+  tellOwner: text => void slack.notifyOwner(text),
   end: key => d.end(key).filter(m => m.type === 'task'),
   // A tmux pane reports no turn end, so its messages are handled at delivery, as before.
   defers: key => !!sdk && !onPane.has(key),

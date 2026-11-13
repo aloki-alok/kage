@@ -17,7 +17,7 @@ const run = (job: string, channel = 'C1', thread = '5.5'): Task => ({
 // A hub around the pause: a real store, and lists of what the pause asked the hub to do.
 function hub() {
   const store = openStore(':memory:')
-  const notices: string[] = [], ended: string[] = [], replayed: string[] = [], redelivered: string[] = [], logged: string[] = []
+  const notices: string[] = [], toldOwner: string[] = [], ended: string[] = [], replayed: string[] = [], redelivered: string[] = [], logged: string[] = []
   let failReplay = false
   const pendingAtEnd: Task[] = []   // tasks the dispatcher still had for the thread when its session closed
   const p = limitPause({
@@ -27,6 +27,7 @@ function hub() {
     replay: async r => { if (failReplay) throw new Error('slack down'); replayed.push(`${r.source} ${r.payload}`) },
     redeliver: (key, task) => redelivered.push(`${key} ${task.job}`),
     log: (...a) => logged.push(a.join(' ')),
+    tellOwner: text => toldOwner.push(text),
   })
   // What a connector and the hub do with one Slack message: take it, deliver it (or hold it), then call handled.
   const hear = (key: string, t: Task, now: number, payload = `event ${t.origin.ts}`) => {
@@ -37,7 +38,7 @@ function hub() {
     p.handled(source)
     return held
   }
-  return { store, p, notices, ended, replayed, redelivered, logged, hear, pendingAtEnd, failReplays: () => { failReplay = true } }
+  return { store, p, notices, toldOwner, ended, replayed, redelivered, logged, hear, pendingAtEnd, failReplays: () => { failReplay = true } }
 }
 
 describe('a turn that ends on the usage limit', () => {
@@ -158,7 +159,7 @@ describe('a turn that ends on the usage limit', () => {
   })
   test('a session whose runner reports no turn end is not waited for: its message is handled at delivery, as before', () => {
     const store = openStore(':memory:')
-    const p = limitPause({ store, notice: () => {}, end: () => {}, replay: async () => {}, redeliver: () => {}, log: () => {}, defers: key => key !== 'pane' })
+    const p = limitPause({ store, notice: () => {}, end: () => {}, replay: async () => {}, redeliver: () => {}, log: () => {}, tellOwner: () => {}, defers: key => key !== 'pane' })
     store.take('slack:C1:7.7', 'slack', 'event', 0)
     p.delivered('pane', slackTask('7.7'))
     p.handled('slack:C1:7.7')
@@ -171,7 +172,7 @@ describe('a turn that ends on the usage limit', () => {
     h.hear('C1:5.5', t, 0)
     h.p.turn('C1:5.5', [t], { kind: 'rate_limit', until: 55 * MIN }, 1000)
     const replayed: string[] = []
-    const again = limitPause({ store: h.store, notice: () => {}, end: () => {}, replay: async r => { replayed.push(r.source) }, redeliver: () => {}, log: () => {} })
+    const again = limitPause({ store: h.store, notice: () => {}, end: () => {}, replay: async r => { replayed.push(r.source) }, redeliver: () => {}, log: () => {}, tellOwner: () => {} })
     assert.deepEqual(h.store.unhandled(30 * MIN), [])   // the start's own replay leaves a held message alone, however old
     again.restore()
     assert.deepEqual(again.paused(), { until: 55 * MIN, held: 1 })
@@ -218,5 +219,9 @@ describe('a turn that ends on the usage limit', () => {
     assert.equal(h.store.held().length, 0)
     assert.equal(h.store.delivered('slack:C1:7.7'), false)
     assert.equal(h.p.paused(), undefined)
+    // Let go is not lost silently: the owner hears once, with each message that did not come back.
+    assert.equal(h.toldOwner.length, 1)
+    assert.match(h.toldOwner[0]!, /slack:C1:7\.7/)
+    assert.match(h.toldOwner[0]!, /slack:C1:8\.8/)
   })
 })

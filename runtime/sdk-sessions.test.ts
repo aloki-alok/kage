@@ -448,7 +448,7 @@ test('the usage limit, whole: no post but the notice, the inbox message kept, an
   const dir = mkdtempSync(join(tmpdir(), 'kage-sdk-'))
   let d!: Dispatcher<ToSession>
   const limits = limitPause({
-    store, log: () => {}, time: () => '18:05',
+    store, log: () => {}, tellOwner: () => {}, time: () => '18:05',
     end: key => d.end(key).filter(m => m.type === 'task'),
     notice: (_t, text) => posts.push(text),
     replay: async r => { replayed.push(r.payload) },

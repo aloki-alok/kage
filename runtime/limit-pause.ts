@@ -21,6 +21,7 @@ export function limitPause(o: {
   replay: (row: { source: string; connector: string; payload: string }) => Promise<unknown>
   redeliver: (key: string, task: Task) => void         // a scheduled run, again
   log: (...a: unknown[]) => void
+  tellOwner: (text: string) => void                    // a DM to the owner
   // false for a session whose runner reports no turn end (a tmux pane): its messages are handled at delivery.
   defers?: (key: string) => boolean
   time?: (at: number, now: number) => string
@@ -84,6 +85,7 @@ export function limitPause(o: {
       until = undefined
       const rows = o.store.held()
       o.log(`the pause is over: replaying ${rows.length} held message${rows.length === 1 ? '' : 's'} and ${owed.size} scheduled run${owed.size === 1 ? '' : 's'}`)
+      const lost: string[] = []
       for (const r of rows) {
         o.store.release(r.source)
         open.delete(r.source)
@@ -92,8 +94,10 @@ export function limitPause(o: {
           counts.replayFailures++
           o.log('replay failed', r.source, e)
           o.store.handled(r.source)
+          lost.push(r.source)
         }
       }
+      if (lost.length) o.tellOwner(`After the usage limit, ${lost.length} held message${lost.length === 1 ? '' : 's'} could not be resumed: ${lost.join(', ')}. Ask again in ${lost.length === 1 ? 'its thread' : 'their threads'}.`)
       for (const [job, { key, task }] of [...owed]) { owed.delete(job); counts.replays++; o.redeliver(key, task) }
     },
   }
