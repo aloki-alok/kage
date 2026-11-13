@@ -4,7 +4,7 @@ import { agentTag, filesTag, postedByTrustedApp, typedByPerson, type SlackMessag
 // owner: the person whose user token hears messages. bot: the app's bot user.
 // botDm: the owner's DM with the bot. name: the word typed after "@" (e.g. kage).
 // teammates: Slack ids the owner lets start tasks by tagging, only where the owner is too.
-// apps: Slack app ids of teammates' own agents; their posts count as that teammate's, never the owner's.
+// apps: listed agents, as "<app id>" or "<app id>:<owner id>" (core/registry.ts); their posts count as a teammate's, never the owner's.
 export type Ids = { owner: string; bot: string; botDm: string; name: string; teammates: string[]; apps?: string[]; team?: string }
 
 // The name goes into a regex and a Slack mention, so it stays a short plain word.
@@ -127,19 +127,6 @@ export function findPeople(people: Person[], query: string): { id: string; name:
     .filter(p => [p.name, p.profile?.display_name, p.real_name].some(s => s && s.toLowerCase() === q)
       || (!q.includes(' ') && first(p.real_name) === q))
     .map(p => ({ id: p.id, name: p.real_name || p.name || p.id }))
-}
-
-// Read the way config.ts reads the env file: optional indent, spaces and quotes.
-const TEAMMATES_LINE = /^\s*KAGE_TEAMMATES\s*=\s*["']?(.*?)["']?\s*$/
-export const teammatesIn = (env: string) =>
-  (env.split('\n').map(l => TEAMMATES_LINE.exec(l)?.[1]).findLast(v => v !== undefined) ?? '')
-    .split(',').map(s => s.trim()).filter(Boolean)
-
-// The env file with its KAGE_TEAMMATES line set to these ids; every other line stays as it was.
-export function withTeammates(env: string, ids: string[]): string {
-  const rest = env.replace(/\n+$/, '').split('\n').filter(l => !TEAMMATES_LINE.test(l))
-  const unique = [...new Set(ids)]
-  return [...rest, ...(unique.length ? [`KAGE_TEAMMATES=${unique.join(',')}`] : [])].join('\n') + '\n'
 }
 
 // Who a task counts as. Email never counts as the owner, whatever the task says: anyone may be behind

@@ -133,12 +133,13 @@ Slack is the main channel. Email, voice calls and GitHub events (reviews, failed
 ### Let a teammate tag it
 
 ```sh
-kage teammate add priya      # a name, @handle, Slack member id, or a pasted mention
-kage teammate remove priya
-kage teammate list
+kage add priya               # a name, @handle, email, Slack member id, or a pasted mention
+kage add A0123ABC priya      # priya's own agent, by its Slack app id; it adds priya too
+kage remove priya            # her agents go with her
+kage list
 ```
 
-It finds the person in your workspace, updates `~/.config/kage/env`, and restarts the hub, which takes about 10 seconds. Open sessions resume on their next tag. If a name matches two people, it lists both with their ids, so you can pick one.
+It finds the person in your workspace and updates `~/.config/kage/env`. The running hub takes the change at once: no restart, and no session is cut. A Kage session cannot run `kage add` or `kage remove`: you run them in your own terminal. If a name matches two people, it lists both with their ids, so you can pick one.
 
 A teammate can tag `@kage` only in a conversation you are also in, because Kage hears Slack through your account. Their tasks run in your session, with two limits:
 

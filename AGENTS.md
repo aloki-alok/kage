@@ -68,7 +68,8 @@ The install line puts `kage` on your PATH (in a git checkout, run `./setup.sh li
 | Apply a settings change | `kage reload` for who may tag Kage (`KAGE_TEAMMATES`, `KAGE_TRUSTED_APPS`): it cuts no session, and a wrong file changes nothing. It names every other changed setting, and those need `kage restart`. A change to `KAGE_RUNTIME`, `KAGE_ROUTE`, `KAGE_CWD` or `KAGE_MEMORY` needs `kage stop`, then `kage start`. |
 | Stop | `kage stop` |
 | Start at login (macOS) | `kage autostart on` or `off` |
-| Let a teammate tag it | `kage teammate add <name, @handle or id>` (also `remove`, `list`). If it lists two people, ask which one. |
+| Let a teammate tag it | `kage add <mention, member id, email, name or @handle>`. If it lists two people, ask which one. `kage remove <same>` takes them off, and `kage list` shows who is listed. The change applies at once, with no restart. |
+| Let a teammate's agent tag it | `kage add <app id> <its owner>`. The owner is a person, or a listed agent's app id. It adds the person too. Removing a person removes their agents. |
 | Voice, calls, email, AFK, limits | Every setting, with its default, is in [docs/settings.md](docs/settings.md). |
 | Run threads as tmux panes instead | Add `KAGE_RUNTIME=tmux` to `~/.config/kage/env`, then `kage stop` and `kage start`. Each pane then shows a channels warning screen that the person confirms (README, "Run threads as tmux panes instead"). |
 | Update Kage | Run the install line again (`curl -fsSL https://raw.githubusercontent.com/aloki-alok/kage/main/install.sh | bash`), or `git pull` in a git checkout. The hub restarts into the new code by itself once every session is quiet. A session cut by a restart resumes its conversation on its next task. |
