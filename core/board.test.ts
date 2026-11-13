@@ -1,6 +1,6 @@
 import { describe, test } from 'node:test'
 import assert from 'node:assert/strict'
-import { ago, boardRows, nextRuns, watchingNext, whenLabel, type Live } from './board.ts'
+import { ago, boardRows, nextRuns, watchingNext, whenLabel, type Live, clockTime, pauseLine } from './board.ts'
 import type { Schedule } from './cron.ts'
 
 const MIN = 60_000, HOUR = 60 * MIN, DAY = 24 * HOUR
@@ -103,5 +103,14 @@ describe('next run per thread', () => {
       sched({ id: 'bad', cron: 'nonsense' }),
     ], NOW)
     assert.equal(m.size, 0)
+  })
+})
+
+describe('the usage-limit pause, as kage status and kage list show it', () => {
+  test('one line with the reset time and how many messages are held', () => {
+    const at = new Date(2026, 10, 3, 18, 5).getTime()
+    assert.equal(pauseLine({ until: at, held: 3 }, at - 3600_000), 'Paused by the usage limit until 18:05. 3 messages are held, and they run then.')
+    assert.equal(pauseLine({ until: at, held: 1 }, at - 3600_000), 'Paused by the usage limit until 18:05. 1 message is held, and it runs then.')
+    assert.equal(pauseLine({ until: at, held: 0 }, at - 3600_000), 'Paused by the usage limit until 18:05. No message is held.')
   })
 })

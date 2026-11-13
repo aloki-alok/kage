@@ -10,7 +10,7 @@ import { existsSync, readFileSync, statSync } from 'node:fs'
 import { connect, type Socket } from 'node:net'
 import { DIR } from './home.ts'
 import { DatabaseSync } from 'node:sqlite'
-import { ago, boardRows, nextRuns, watchingNext, whenLabel, type Live, type Row, type State } from '../core/board.ts'
+import { ago, boardRows, nextRuns, pauseLine, watchingNext, whenLabel, type Live, type Row, type State } from '../core/board.ts'
 import { filterRows, hit, layout, moreLine, STRING, type Layout } from '../core/loom.ts'
 import { newLines, transcriptLine } from '../core/transcript.ts'
 import { HERO_BIG, HERO_SMALL } from '../core/hero.ts'
@@ -442,6 +442,7 @@ if (ONCE) {
   // Piped (a script, a Kage session): one plain line per open thread instead of the picture.
   if (process.stdout.isTTY) console.log(toText().join('\n'))
   else for (const r of board.filter(r => r.state !== 'closed')) console.log([r.label, r.place, r.next ? `next ${whenLabel(r.next, Date.now())}` : `${ago(r.ageMs)} ago`].join('\t'))
+  if (live?.paused) console.log(pauseLine(live.paused))
   process.exit(0)
 }
 

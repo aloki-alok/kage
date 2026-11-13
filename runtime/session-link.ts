@@ -46,6 +46,8 @@ export function listenForSessions(path: string, d: Dispatcher<ToSession>, o: Rep
   tell?: (key: string, text: string) => { ok: true; held?: true } | { refused: string }
   // kage reload: read the settings file again (core/settings.ts).
   reload?: () => Reloaded
+  // The usage-limit pause, when one is on (runtime/limit-pause.ts): kage status and kage list show it.
+  paused?: () => { until: number; held: number } | undefined
 }) {
   try { unlinkSync(path) } catch {}
   const dir = dirname(path)
@@ -85,7 +87,8 @@ export function listenForSessions(path: string, d: Dispatcher<ToSession>, o: Rep
           sock.write(JSON.stringify({ type: 'hold', ...r }) + '\n')
         } else if (m.type === 'board' && !key && !held) {
           // The console's view of live state, which exists only in this process.
-          sock.write(JSON.stringify({ type: 'board', ...d.status(Date.now()) }) + '\n')
+          const paused = o.paused?.()
+          sock.write(JSON.stringify({ type: 'board', ...d.status(Date.now()), ...(paused && { paused }) }) + '\n')
         } else if (m.type === 'reload' && !key && !held) {
           // It only reads the file that already decides the next start, so it gives a session no new power.
           sock.write(JSON.stringify({ type: 'reload', ...(o.reload?.() ?? { refused: 'this hub cannot reload' }) }) + '\n')

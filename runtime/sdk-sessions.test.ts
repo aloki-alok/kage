@@ -10,6 +10,8 @@ import { sessionTools } from './kage-tools.ts'
 import type { Task, ToSession } from './protocol.ts'
 import { openLedgers } from './ledger.ts'
 import { sdkSessions } from './sdk-sessions.ts'
+import { limitPause } from './limit-pause.ts'
+import { openStore } from './store.ts'
 
 // A fake Agent SDK: each query() records its options and the user messages it reads, and the test
 // pushes SDK messages out of it. Its handshake completes unless silent, and then it says nothing
@@ -53,6 +55,7 @@ function setup(o: { transcript?: boolean; silent?: boolean; dmFails?: boolean } 
   const sdk = fakeSdk(o)
   const results: [string, number, boolean][] = []
   const blocks: [string, string[], string | null][] = []
+  const turns: [string, string[], object | undefined][] = []
   const posts: string[] = []
   const slack = {
     chat: { postMessage: async (a: { channel: string; text: string }) => {
@@ -79,6 +82,7 @@ function setup(o: { transcript?: boolean; silent?: boolean; dmFails?: boolean } 
     restartMs: 10,
     onResult: (key, total, resumed) => { results.push([key, total, resumed]) },
     onBlocked: (key, turn, category) => { blocks.push([key, turn.map(t => t.content), category]) },
+    onTurn: (key, tasks, limit) => { turns.push([key, tasks.map(t => t.content), limit]) },
   })
   let n = 0
   d = new Dispatcher<ToSession>(s.runner, { max: 2, idleMs: 60_000, connectMs: 60_000, evictMs: 1, newId: () => ID.slice(0, -1) + n++ })
@@ -88,7 +92,7 @@ function setup(o: { transcript?: boolean; silent?: boolean; dmFails?: boolean } 
     origin: { channel: o.channel ?? 'C1', ts: '5.5' },
   })
   const idOf = (text: string) => /`yes ([a-km-z]{5})`/.exec(text)![1]!
-  return { sdk, posts, d, s, task, idOf, results, blocks, call, servers }
+  return { sdk, posts, d, s, task, idOf, results, blocks, turns, call, servers }
 }
 
 describe('Kage sessions on the Agent SDK', () => {
@@ -109,6 +113,59 @@ describe('Kage sessions on the Agent SDK', () => {
       assert.equal(o.env.CLAUDE_CODE_EMIT_SESSION_STATE_EVENTS, '1')   // without it "idle" never comes and the slot never frees
       assert.equal(o.cwd, '/home')
     } finally { delete process.env.KAGE_THREAD }
+  })
+  test('a turn that ends on the usage limit reports its tasks and the reset time, and posts nothing', async () => {
+    const t = setup()
+    t.d.task('C1:5.5', t.task({ content: 'Task from Sam: one' }), 0)
+    await tick()
+    const run = t.sdk.runs[0]!
+    t.d.task('C1:5.5', t.task({ content: 'Task from Sam: two, sent mid-turn' }), 1)
+    run.emit({ type: 'rate_limit_event', rate_limit_info: { status: 'rejected', resetsAt: 1_800_000_000 } })
+    run.emit({ type: 'assistant', parent_tool_use_id: null, error: 'rate_limit', message: { stop_reason: 'stop_sequence', content: [] } })
+    run.emit({ type: 'result', total_cost_usd: 0, is_error: true })
+    await tick()
+    // Both tasks: the one sent mid-turn was not read either.
+    assert.deepEqual(t.turns, [['C1:5.5', ['Task from Sam: one', 'Task from Sam: two, sent mid-turn'], { kind: 'rate_limit', until: 1_800_000_000_000 }]])
+    assert.deepEqual(t.posts, [])
+    // Closing the session afterwards reports nothing more for those tasks.
+    t.d.end('C1:5.5')
+    assert.equal(t.turns.length, 1)
+  })
+  test('an overload, or a result with status 429 or 529 and no marked message, is a limit too; a subagent\'s is not', async () => {
+    for (const [msgs, limit] of [
+      [[{ type: 'assistant', parent_tool_use_id: null, error: 'overloaded', message: { content: [] } }, { type: 'result', total_cost_usd: 0 }], { kind: 'overloaded' }],
+      [[{ type: 'result', total_cost_usd: 0, is_error: true, api_error_status: 429 }], { kind: 'rate_limit' }],
+      [[{ type: 'result', total_cost_usd: 0, is_error: true, api_error_status: 529 }], { kind: 'overloaded' }],
+      [[{ type: 'assistant', parent_tool_use_id: 'toolu_1', error: 'rate_limit', message: { content: [] } }, { type: 'result', total_cost_usd: 1 }], undefined],
+      [[{ type: 'rate_limit_event', rate_limit_info: { status: 'allowed_warning', resetsAt: 1_800_000_000 } }, { type: 'result', total_cost_usd: 1 }], undefined],
+    ] as const) {
+      const t = setup()
+      t.d.task('C1:5.5', t.task(), 0)
+      await tick()
+      for (const m of msgs) t.sdk.runs[0]!.emit(m)
+      await tick()
+      assert.deepEqual(t.turns, [['C1:5.5', ['Task from Sam: hi'], limit]], JSON.stringify(msgs))
+    }
+  })
+  test('a Claude process that exits on the limit before any result still reports its tasks as limited', async () => {
+    const t = setup()
+    t.d.task('C1:5.5', t.task(), 0)
+    await tick()
+    t.sdk.runs[0]!.emit({ type: 'assistant', parent_tool_use_id: null, error: 'rate_limit', message: { content: [] } })
+    t.sdk.runs[0]!.end()
+    await tick()
+    assert.deepEqual(t.turns, [['C1:5.5', ['Task from Sam: hi'], { kind: 'rate_limit' }]])
+  })
+  test('a turn that ends well reports the tasks it read; one sent mid-turn waits for the next turn; a closed session reports the rest', async () => {
+    const t = setup()
+    t.d.task('C1:5.5', t.task({ content: 'Task from Sam: one' }), 0)
+    await tick()
+    t.d.task('C1:5.5', t.task({ content: 'Task from Sam: two' }), 1)
+    t.sdk.runs[0]!.emit({ type: 'result', total_cost_usd: 1 })
+    await tick()
+    assert.deepEqual(t.turns, [['C1:5.5', ['Task from Sam: one'], undefined]])
+    t.d.end('C1:5.5')
+    assert.deepEqual(t.turns[1], ['C1:5.5', ['Task from Sam: two'], undefined])
   })
   test('a thread with a transcript resumes it', () => {
     const t = setup({ transcript: true })
@@ -376,4 +433,64 @@ describe('Kage sessions on the Agent SDK', () => {
     assert.ok(shape.safeParse({ model: 'fable' }).success)
     assert.ok(!shape.safeParse({ model: 'claude-fable-5-2' }).success)
   })
+})
+
+// Issue 62, end to end below the connectors: a runtime that answers with the limit error, the dispatcher, the pause and a real store.
+test('the usage limit, whole: no post but the notice, the inbox message kept, and a replay once the clock passes the reset', async () => {
+  const sdk = fakeSdk()
+  const store = openStore(':memory:')
+  const posts: string[] = [], replayed: string[] = []
+  const slack = { chat: { postMessage: async (a: { text: string }) => { posts.push(a.text); return { ts: '9.1' } } }, reactions: { add: async () => {} }, users: { info: async () => ({}) } }
+  const dir = mkdtempSync(join(tmpdir(), 'kage-sdk-'))
+  let d!: Dispatcher<ToSession>
+  const limits = limitPause({
+    store, log: () => {}, time: () => '18:05',
+    end: key => d.end(key),
+    notice: (_t, text) => posts.push(text),
+    replay: async r => { replayed.push(r.payload) },
+    redeliver: () => {},
+  })
+  const s = sdkSessions({
+    sdk: { query: sdk.query as any, createSdkMcpServer, tool }, hub: () => d,
+    tools: (_key, send) => sessionTools({ title: 'Kage', bot: slack as any, user: slack as any, botDm: () => 'DBOT', dir, ledgers: openLedgers(dir), send, memory: { own: '/own', owner: '/owner' } }),
+    hasTranscript: () => false, toHub: () => {}, options: { cwd: '/home' }, ownerMemory: '/owner', restartMs: 10,
+    onTurn: (key, tasks, limit) => limits.turn(key, tasks, limit, 1000),
+  })
+  d = new Dispatcher<ToSession>(s.runner, { max: 2, idleMs: 60_000, connectMs: 60_000, evictMs: 1, newId: () => ID })
+  // What the hub does with one Slack message (router.ts toSession, then the connector's handled).
+  const hear = (ts: string, now: number) => {
+    const task: Task = { type: 'task', content: `Task from Sam: ${ts}`, fromOwner: true, meta: { channel: 'C1', thread_ts: '5.5', place: '#general', permalink: '' }, origin: { channel: 'C1', ts } }
+    store.take(`slack:C1:${ts}`, 'slack', `original event ${ts}`, now)
+    const r = limits.hold('C1:5.5', task, now) ? 'held' : d.task('C1:5.5', task, now)
+    if (r !== 'held' && r !== 'failed') limits.delivered('C1:5.5', task)
+    limits.handled(`slack:C1:${ts}`)
+    return r
+  }
+  assert.equal(hear('7.7', 0), 'starting')
+  await tick()
+  const run = sdk.runs[0]!
+  assert.equal(run.said.length, 1)
+  run.emit({ type: 'rate_limit_event', rate_limit_info: { status: 'rejected', resetsAt: 3600 } })
+  run.emit({ type: 'assistant', parent_tool_use_id: null, error: 'rate_limit', message: { content: [] } })
+  run.emit({ type: 'result', total_cost_usd: 0, is_error: true })
+  await tick()
+  assert.deepEqual(posts, ["Paused by the usage limit until 18:05. I'll pick this up then."])
+  assert.deepEqual(store.held().map(r => [r.source, r.payload, r.until]), [['slack:C1:7.7', 'original event 7.7', 3_600_000]])
+  assert.equal(run.closed, true)                 // the session is closed, so nothing more is read into the limit
+  // A new message in the pause: held, no session, no second notice.
+  assert.equal(hear('8.8', 2000), 'held')
+  await tick(30)
+  assert.equal(sdk.runs.length, 1)
+  assert.equal(posts.length, 1)
+  await limits.tick(3_599_999)
+  assert.deepEqual(replayed, [])
+  await limits.tick(3_600_000)
+  assert.deepEqual(replayed, ['original event 7.7', 'original event 8.8'])
+  // The replayed message runs, its turn ends well, and only then its text leaves the store.
+  assert.equal(hear('7.7', 3_600_001), 'starting')
+  await tick()
+  sdk.runs[1]!.emit({ type: 'result', total_cost_usd: 1 })
+  await tick()
+  assert.deepEqual(store.unhandled(-1).map(r => r.source), ['slack:C1:8.8'])
+  assert.equal(posts.length, 1)
 })

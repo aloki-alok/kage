@@ -73,6 +73,7 @@ Write logs to stderr only. In a tmux pane, stdout carries the channel protocol, 
 | `store.ts` | One SQLite file: conversations, their sessions, schedules, trust, the inbox of every message heard, and what connectors keep across a restart (AFK, GitHub and mail threads). The hub is the only writer of these tables. Old `.json` files move in once. |
 | `ledger.ts` | The ledgers (waiting, posted, prod-actions, costs, runs, commands) as rows in that file. The hub and every pane write them. Old `.tsv` files move in once. |
 | `scheduler.ts` | Runs due schedules as tasks in their thread. |
+| `limit-pause.ts` | The usage-limit pause: a turn that ends on the limit keeps its inbox message, its thread gets one notice, and the message replays at the reset. |
 | `closed-threads.ts` | A thread the safety check stopped: it starts on a new session, and a teammate's stays closed until the owner writes in it. |
 | `code-stamp.ts` | When the code changed, so the hub knows to restart into it. |
 

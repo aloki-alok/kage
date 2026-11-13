@@ -66,6 +66,7 @@ The install line puts `kage` on your PATH (in a git checkout, run `./setup.sh li
 | Tell a thread something, as you | `kage tell <place> <message>`. Its session takes it after the current turn and answers in the thread. |
 | The hub log | `kage logs`. A tag that Kage refused shows as a `dropped` line with the thread, the sender and the reason. |
 | Apply a settings change | `kage reload` for who may tag Kage (`KAGE_TEAMMATES`, `KAGE_TRUSTED_APPS`): it cuts no session, and a wrong file changes nothing. It names every other changed setting, and those need `kage restart`. A change to `KAGE_RUNTIME`, `KAGE_ROUTE`, `KAGE_CWD` or `KAGE_MEMORY` needs `kage stop`, then `kage start`. |
+| See a usage-limit pause | `kage status` and `kage list` say when Claude's usage limit paused Kage, when it resets, and how many messages are held. Each thread got one line about it. Held messages run by themselves at the reset. |
 | Stop | `kage stop` |
 | Start at login (macOS) | `kage autostart on` or `off` |
 | Let a teammate tag it | `kage add <mention, member id, email, name or @handle>`. If it lists two people, ask which one. `kage remove <same>` takes them off, and `kage list` shows who is listed. The change applies at once, with no restart. |

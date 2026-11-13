@@ -1,32 +1,14 @@
 #!/usr/bin/env node
 // kage reload: the running hub reads the settings file again. A changed allow list (KAGE_TEAMMATES,
 // KAGE_TRUSTED_APPS) applies to the next message, and no session is cut. A wrong file changes nothing.
-import { existsSync } from 'node:fs'
-import { connect } from 'node:net'
 import { fileURLToPath } from 'node:url'
 import type { Reloaded } from '../core/settings.ts'
-import { DIR } from './home.ts'
+import { askHub } from './home.ts'
 
-// Asks the hub over its socket. Rejects when no hub answers within 5 s (a hub from before this command stays silent).
-export function reload(): Promise<Reloaded> {
-  const SOCK = `${DIR}/router.sock`
-  return new Promise((res, rej) => {
-    const down = () => rej(new Error('Kage is not running, so the file is read at the next kage start.'))
-    if (!existsSync(SOCK)) return down()
-    const s = connect(SOCK)
-    let buf = ''
-    s.setTimeout(5000, () => { s.destroy(); rej(new Error('The hub did not answer. It may run older code: kage restart applies the file.')) })
-    s.on('connect', () => s.write(JSON.stringify({ type: 'reload' }) + '\n'))
-    s.on('data', b => {
-      buf += b
-      const i = buf.indexOf('\n')
-      if (i < 0) return
-      s.destroy()
-      res(JSON.parse(buf.slice(0, i)) as Reloaded)
-    })
-    s.on('error', down)
-  })
-}
+// Asks the hub over its socket. Rejects with a line for a person when no hub answers.
+export const reload = () => askHub<Reloaded>({ type: 'reload' }).catch((e: Error) => {
+  throw new Error(e.message === 'silent' ? 'The hub did not answer. It may run older code: kage restart applies the file.' : 'Kage is not running, so the file is read at the next kage start.')
+})
 
 // What the hub answered, as lines for a person.
 export function said(r: Reloaded): string[] {

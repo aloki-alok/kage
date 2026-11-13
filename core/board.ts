@@ -8,7 +8,19 @@ export type Live = {
   waiting: string[]
   held: string[]
   max: number
+  paused?: Pause
 }
+// The usage-limit pause (runtime/limit-pause.ts): when it ends, and how many messages wait for that.
+export type Pause = { until: number; held: number }
+// A time for a person: the clock time, with the day when it is not today.
+export function clockTime(at: number, now: number): string {
+  const d = new Date(at)
+  const time = d.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })
+  return d.toDateString() === new Date(now).toDateString() ? time : `${d.toLocaleDateString('en-GB', { weekday: 'short' })} ${d.getDate()} ${d.toLocaleDateString('en-GB', { month: 'short' })} ${time}`
+}
+export const pauseLine = (p: Pause, now = Date.now()) =>
+  `Paused by the usage limit until ${clockTime(p.until, now)}. ${
+    p.held === 0 ? 'No message is held.' : p.held === 1 ? '1 message is held, and it runs then.' : `${p.held} messages are held, and they run then.`}`
 export type Known = { key: string; place: string; lastSeen: number; connector: string }
 export type State = 'asking' | 'working' | 'starting' | 'watching' | 'queued' | 'held' | 'quiet' | 'closed'
 export type Row = { key: string; place: string; connector: string; state: State; label: string; ageMs: number; next?: number }
