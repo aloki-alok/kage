@@ -109,8 +109,6 @@ export async function connectSlack(o: { dir: string; appToken: string; bot: WebC
     // AFK sees every message: it watches threads that mention the owner, and mutes threads the owner types in.
     afk?.heard(m)
     const thread = `${m.channel}:${m.thread_ts ?? m.ts}`
-    // A person wrote here: an exchange with an agent in this thread starts over (core/agents.ts).
-    if (typedByPerson(m)) loops.person(thread)
     const t = classify(m, ids, cardOf(m))
     if (t.kind === 'drop') {
       // The one place a refusal is logged. Untagged talk is nearly all the hub hears, and would push everything else out of the log.
@@ -122,6 +120,9 @@ export async function connectSlack(o: { dir: string; appToken: string; bot: WebC
       }
       return
     }
+    // A listed person wrote here: an exchange with an agent in this thread starts over (core/agents.ts).
+    // Only a message that passed the gate counts, so an unlisted person cannot reset the count.
+    if (typedByPerson(m)) loops.person(thread)
     // Answers to a card go under the card, so the owner sees what happened to their yes.
     const underCard = (text: string) => bot.chat.postMessage({ channel: m.channel, thread_ts: m.thread_ts ?? m.ts, text }).catch(() => {})
     if (t.kind === 'verdict') {

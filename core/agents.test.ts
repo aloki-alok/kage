@@ -12,6 +12,11 @@ describe('a post addressed to an agent', () => {
   test('a part that opens a code block gets the tag on its own line, so the block still renders', () => {
     assert.deepEqual(addressed(['```\nrow 1\n```', 'text'], 'UAGENT001'), ['<@UAGENT001>\n```\nrow 1\n```', '<@UAGENT001> text'])
   })
+  test('a tag inside code does not count, because Slack sends no mention from code', () => {
+    assert.deepEqual(addressed(['```\n<@UAGENT001> row\n```'], 'UAGENT001'), ['<@UAGENT001>\n```\n<@UAGENT001> row\n```'])
+    assert.deepEqual(addressed(['run `<@UAGENT001>` here'], 'UAGENT001'), ['<@UAGENT001> run `<@UAGENT001>` here'])
+    assert.deepEqual(addressed(['```\nx\n``` then <@UAGENT001>'], 'UAGENT001'), ['```\nx\n``` then <@UAGENT001>'])
+  })
   test('a tag for someone else does not count', () => {
     assert.deepEqual(addressed(['<@UAGENT002> hi'], 'UAGENT001'), ['<@UAGENT001> <@UAGENT002> hi'])
   })
@@ -51,8 +56,9 @@ describe('the loop guard between Kage and one agent', () => {
     for (let i = 0; i < 20; i++) assert.equal(g.turn('ATEST0001', `C1:${i}`, i * 1000), undefined)
     assert.match(g.turn('ATEST0001', 'C1:99', 20_000) ?? '', /20 turns in 60 s/)
     assert.equal(g.turn('ATEST0002', 'C1:98', 20_000), undefined)   // another agent has its own count
-    // A dropped turn is not counted. The first turn leaves the window at 60 s, so one more fits.
-    assert.equal(g.turn('ATEST0001', 'C1:97', 60_001), undefined)
+    // A dropped turn is not counted. The first turn leaves the window at exactly 60 s, so one more fits then, not a ms before.
+    assert.ok(g.turn('ATEST0001', 'C1:95', 59_999))
+    assert.equal(g.turn('ATEST0001', 'C1:97', 60_000), undefined)
     assert.ok(g.turn('ATEST0001', 'C1:96', 60_002))
   })
   test('the owner is told once per agent and hour, not once per dropped message', () => {

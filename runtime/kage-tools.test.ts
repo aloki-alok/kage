@@ -100,6 +100,14 @@ describe("a session's Kage tools", () => {
     s.t.onTask({ ...s.task({ fromOwner: false }), agent: { app: 'ATEST0001', tag: 'UAGENT001' } })
     await s.call('reply', { channel: 'C1', thread_ts: '5.5', text: 'Thanks, got it.', no_reply_needed: true })
     assert.equal(s.posts.at(-1)!.text, '<@UAGENT001> Thanks, got it.\n_(no reply needed)_')
+    // A long reply splits: only the last part carries the marker, at its very end.
+    const before = s.posts.length
+    const long = Array.from({ length: 120 }, (_, i) => `line ${i} ${'x'.repeat(50)}`).join('\n')
+    await s.call('reply', { channel: 'C1', thread_ts: '5.5', text: long, wide: true, no_reply_needed: true })
+    const parts = s.posts.slice(before)
+    assert.ok(parts.length > 1)
+    assert.deepEqual(parts.map(p => p.text.includes('(no reply needed)')), [...parts.slice(1).map(() => false), true])
+    assert.ok(parts.at(-1)!.text.endsWith('\n_(no reply needed)_'))
     // An agent with no saved tag cannot be tagged; the marker still goes out.
     s.t.onTask({ ...s.task({ fromOwner: false, channel: 'C2' }), agent: { app: 'ATEST0002' } })
     await s.call('reply', { channel: 'C2', thread_ts: '5.5', text: 'ok', no_reply_needed: true })
