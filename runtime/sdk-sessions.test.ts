@@ -351,6 +351,9 @@ describe('Kage sessions on the Agent SDK', () => {
     assert.match((await run('Bash')).hookSpecificOutput.permissionDecisionReason, /no shell/)
     // A granted tool runs: the grant is the approval.
     assert.equal((await o.canUseTool('Read', { file_path: '/x' }, { signal: signal() })).behavior, 'allow')
+    // Two layers: Kage's tools that act as the owner are denied here too, not only by the hook.
+    assert.equal((await o.canUseTool('mcp__kage__message_people', {}, { signal: signal() })).behavior, 'deny')
+    assert.equal((await o.canUseTool('mcp__kage__reply', { text: 'hi' }, { signal: signal() })).behavior, 'allow')
     const asked = await o.canUseTool('WebFetch', { url: 'https://example.com' }, { signal: signal() })
     assert.equal(asked.behavior, 'deny')
     assert.match(asked.message, /approves nothing/)

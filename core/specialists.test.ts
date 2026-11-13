@@ -1,5 +1,8 @@
 import { describe, test } from 'node:test'
 import assert from 'node:assert/strict'
+import { mkdtempSync, symlinkSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { basename, dirname, join } from 'node:path'
 import { grantRefusal, parseSpecialist } from './specialists.ts'
 
 const file = (head: string, body = 'Post a summary of the deploy log.') => `---\n${head}\n---\n${body}\n`
@@ -35,11 +38,18 @@ describe('the grant', () => {
       assert.match(grantRefusal(t, []) ?? '', /grant/, t)
     for (const t of ['mcp__kage__reply', 'mcp__kage__edit_message', 'mcp__kage__delete_message']) assert.equal(grantRefusal(t, []), undefined, t)
   })
-  test('it can never widen its own grant: no shell, and no writes in Kage\'s config folder', () => {
+  test('it can never widen its own grant or read secrets: no shell, no writes, no reads in Kage\'s config folder', () => {
+    const conf = mkdtempSync(join(tmpdir(), 'kage-conf-'))
+    const work = mkdtempSync(join(tmpdir(), 'kage-work-'))
+    symlinkSync(conf, join(work, 'link'))
     assert.match(grantRefusal('Bash', ['Bash']) ?? '', /shell/)
-    assert.match(grantRefusal('Write', ['Write'], { file_path: '/conf/specialists/deploys.md' }, '/conf') ?? '', /config/)
-    assert.match(grantRefusal('Edit', ['Edit'], { file_path: '/conf/env' }, '/conf') ?? '', /config/)
-    assert.match(grantRefusal('Write', ['Write'], { file_path: '/work/../conf/specialists/x.md' }, '/conf') ?? '', /config/)
-    assert.equal(grantRefusal('Write', ['Write'], { file_path: '/work/out.md' }, '/conf'), undefined)
+    for (const t of ['Write', 'Edit', 'MultiEdit', 'NotebookEdit']) assert.match(grantRefusal(t, [t], { file_path: join(work, 'out.md') }, conf) ?? '', /write/, t)
+    assert.match(grantRefusal('Read', ['Read'], { file_path: join(conf, 'env') }, conf) ?? '', /config/)
+    assert.match(grantRefusal('Read', ['Read'], { file_path: join(work, '..', basename(conf), 'env') }, conf) ?? '', /config/)
+    assert.match(grantRefusal('Read', ['Read'], { file_path: join(work, 'link', 'env') }, conf) ?? '', /config/)
+    assert.match(grantRefusal('Grep', ['Grep'], { pattern: 'x' }, conf) ?? '', /config/)          // no path: the work folder, which may hold it
+    assert.match(grantRefusal('Grep', ['Grep'], { pattern: 'x', path: dirname(conf) }, conf) ?? '', /config/)
+    assert.equal(grantRefusal('Read', ['Read'], { file_path: join(work, 'notes.md') }, conf), undefined)
+    assert.equal(grantRefusal('Grep', ['Grep'], { pattern: 'x', path: work }, conf), undefined)
   })
 })

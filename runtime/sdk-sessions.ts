@@ -104,10 +104,12 @@ export function sdkSessions(o: {
         disallowedTools: [...o.options.disallowedTools ?? [], 'CronCreate', 'CronDelete', 'CronList'],
         // Claude Code sends session_state_changed, which busy() reads, only when asked.
         env: { ...env, CLAUDE_CODE_EMIT_SESSION_STATE_EVENTS: '1' },
-        canUseTool: (name, input, x) => ALLOWED.includes(name) ? Promise.resolve({ behavior: 'allow' as const, updatedInput: input })
-          // A specialist's grant is its approval; beyond it, it approves nothing and puts no card in front of the owner.
-          : o.grantOf?.(key) ? Promise.resolve(o.grantOf(key)!.includes(name) ? { behavior: 'allow' as const, updatedInput: input }
-            : { behavior: 'deny' as const, message: 'A specialist approves nothing. Say in the thread what you needed and why: your manager decides.' })
+        // A specialist's grant is its approval, checked first: beyond it, even Kage's tools that act as the owner, it
+        // approves nothing and puts no card in front of the owner. The PreToolUse hook checks the same grant again.
+        canUseTool: (name, input, x) => o.grantOf?.(key)
+          ? Promise.resolve(grantRefusal(name, o.grantOf(key)!, input, o.confDir) ? { behavior: 'deny' as const, message: 'A specialist approves nothing. Say in the thread what you needed and why: your manager decides.' }
+            : { behavior: 'allow' as const, updatedInput: input })
+          : ALLOWED.includes(name) ? Promise.resolve({ behavior: 'allow' as const, updatedInput: input })
           : ask(key, s, name, x.title ?? x.description ?? '', input, x.signal),
         // The same rules as private-data-guard.ts, in-process. A failed check blocks the call.
         hooks: {

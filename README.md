@@ -93,7 +93,7 @@ tools: Read, Grep, WebFetch
 Every weekday at 9, read yesterday's deploy log and post a three-line summary in this thread.
 ```
 
-It runs on its schedule beside the thread's own session and posts in the thread. It has only the tools in `tools`, and teammate trust. It never gets a shell or writes in Kage's config folder, so it cannot change its own grant. It approves nothing: when it needs a decision or another tool, it says so in the thread, and you decide there. A new, changed or deleted file applies within a minute, and `kage schedules` shows its runs. Specialists need the default runtime, not tmux panes.
+It runs on its schedule beside the thread's own session and posts in the thread. It has only the tools in `tools`, and teammate trust. It never gets a shell, writes no files, and reads nothing in Kage's config folder, so it cannot change its own grant or read your tokens. Give read tools an explicit path. It approves nothing: when it needs a decision or another tool, it says so in the thread, and you decide there. A new, changed or deleted file applies within a minute, and `kage schedules` shows its runs. Specialists need the default runtime, not tmux panes.
 
 ### Run threads as tmux panes instead
 
