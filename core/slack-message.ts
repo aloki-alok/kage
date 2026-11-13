@@ -26,6 +26,11 @@ const TYPED_SUBTYPES = new Set([undefined, 'thread_broadcast', 'file_share'])
 export const typedByPerson = (m: SlackMessage) =>
   !m.bot_id && !m.app_id && !!m.client_msg_id && TYPED_SUBTYPES.has(m.subtype)
 
+// A teammate's own agent (KAGE_TRUSTED_APPS) posting with that teammate's token: it has an app_id
+// and no client_msg_id. The gate still checks the user id, and never lets it act as the owner.
+export const postedByTrustedApp = (m: SlackMessage, apps: string[]) =>
+  !!m.app_id && apps.includes(m.app_id) && TYPED_SUBTYPES.has(m.subtype)
+
 // A Slack mention of the bot, or "@name" typed as plain text (works whatever the bot's display name is).
 // One optional space after it is part of the match, so removing the tag leaves no gap.
 export const agentTag = (bot: string, name: string) =>

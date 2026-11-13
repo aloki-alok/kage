@@ -1,10 +1,11 @@
 // Who may drive Kage and what Claude reads: the sender gate, the task line, quoting, teammates.
-import { agentTag, filesTag, typedByPerson, type SlackMessage } from './slack-message.ts'
+import { agentTag, filesTag, postedByTrustedApp, typedByPerson, type SlackMessage } from './slack-message.ts'
 
 // owner: the person whose user token hears messages. bot: the app's bot user.
 // botDm: the owner's DM with the bot. name: the word typed after "@" (e.g. kage).
 // teammates: Slack ids the owner lets start tasks by tagging, only where the owner is too.
-export type Ids = { owner: string; bot: string; botDm: string; name: string; teammates: string[]; team?: string }
+// apps: Slack app ids of teammates' own agents; their posts count as that teammate's, never the owner's.
+export type Ids = { owner: string; bot: string; botDm: string; name: string; teammates: string[]; apps?: string[]; team?: string }
 
 // The name goes into a regex and a Slack mention, so it stays a short plain word.
 export const validName = (name: string) => /^[a-z][a-z0-9-]{1,20}$/.test(name)
@@ -38,7 +39,7 @@ export function classify(m: SlackMessage, ids: Ids, card?: string): Trigger {
   // The gate: a message the owner (or a listed teammate) typed in a Slack client.
   const isOwner = m.user === ids.owner
   if (!isOwner && !ids.teammates.includes(m.user ?? '')) return null
-  if (!typedByPerson(m)) return null
+  if (!typedByPerson(m) && (isOwner || !postedByTrustedApp(m, ids.apps ?? []))) return null
   const tag = agentTag(ids.bot, ids.name)
   const raw = m.text ?? ''
   const tagged = tag.test(raw)

@@ -17,6 +17,7 @@ grep -rhoE 'KAGE_[A-Z_]+' --include=*.ts --include=*.sh . --exclude-dir=node_mod
 | `SLACK_BOT_TOKEN` | required | The `xoxb-` token Kage posts with. |
 | `KAGE_NAME` | `kage` | The word you tag (`@kage`), the tmux session name, and the label on posts. |
 | `KAGE_TEAMMATES` | empty | Slack user ids, comma separated, who may also tag Kage. Use `kage teammate add`. |
+| `KAGE_TRUSTED_APPS` | empty | Slack app ids, comma separated, of teammates' own agents. A tagged post from one of these apps, made with a teammate's token, counts as that teammate's task. It never counts as the owner's. |
 
 ## Sessions
 

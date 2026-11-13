@@ -39,7 +39,7 @@ import { claudeProject, tmuxPanes } from './runtime/tmux-panes.ts'
 import { codeStamp } from './runtime/code-stamp.ts'
 import { closedThreads } from './runtime/closed-threads.ts'
 
-const { ENV_FILE, NAME, Title, TEAMMATES, env, need, bot, user } = load()
+const { ENV_FILE, NAME, Title, TEAMMATES, TRUSTED_APPS, env, need, bot, user } = load()
 const DIR = dirname(ENV_FILE)
 const THREADS = `${DIR}/threads.json`
 // start.sh sets the command that starts Claude Code with the kage channel.
@@ -97,7 +97,7 @@ function phoneOwner(reason: string): Promise<string> {
   return new Promise(res => { p.on('error', e => res(String(e))); p.on('close', code => { clearTimeout(timer); res(code === 0 ? '' : `dialer exited ${code ?? 'on timeout'}`) }) })
 }
 const slack = await connectSlack({
-  dir: DIR, appToken: need('SLACK_APP_TOKEN'), bot, user, name: NAME, title: Title, teammates: TEAMMATES,
+  dir: DIR, appToken: need('SLACK_APP_TOKEN'), bot, user, name: NAME, title: Title, teammates: TEAMMATES, apps: TRUSTED_APPS,
   hub: { deliver, verdict: (id, behavior) => d.verdict(id, { type: 'verdict', request_id: id, behavior }), status, heard: m => schedules.heard(m),
     posted: () => ledgers.text('posted'), ...inbox },
   // AFK mode is on unless KAGE_AFK=off. Its stand-in reads the owner's memory, read only.

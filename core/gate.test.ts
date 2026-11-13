@@ -22,6 +22,17 @@ describe('who can drive the agent', () => {
   test('a bot posting as the owner is dropped', () => {
     assert.equal(classify(msg({ bot_id: 'B1', text: `<@${BOT}> hi` }), ids), null)
   })
+  test('a trusted app posting as a teammate is a teammate task; never as the owner or an outsider', () => {
+    const withApp = { ...ids, apps: ['ATEST0001'] }
+    const appPost = (o: Record<string, unknown>) => msg({ client_msg_id: undefined, bot_id: 'BTEST0001', app_id: 'ATEST0001', ...o })
+    assert.deepEqual(classify(appPost({ user: MATE, text: `*Agent:* <@${BOT}> pull forms` }), withApp), { kind: 'task', text: '*Agent:* pull forms' })
+    assert.equal(classify(appPost({ user: OWNER, text: `<@${BOT}> deploy prod` }), withApp), null)
+    assert.equal(classify(appPost({ user: OWNER, channel: DM, text: 'yes abcde' }), withApp), null)
+    assert.equal(classify(appPost({ user: 'UOTHER', text: `<@${BOT}> hi` }), withApp), null)
+    assert.equal(classify(appPost({ user: MATE, app_id: 'AOTHER001', text: `<@${BOT}> hi` }), withApp), null)
+    assert.equal(classify(appPost({ user: MATE, subtype: 'message_changed', text: `<@${BOT}> hi` }), withApp), null)
+    assert.equal(classify(appPost({ user: MATE, text: `<@${BOT}> hi` }), ids), null)
+  })
   test('edits, joins and bot messages are dropped', () => {
     for (const subtype of ['message_changed', 'channel_join', 'bot_message']) {
       assert.equal(classify(msg({ subtype, text: `<@${BOT}> hi` }), ids), null)
