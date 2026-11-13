@@ -41,6 +41,7 @@ import { openLedgers } from './runtime/ledger.ts'
 import { claudeProject, tmuxPanes } from './runtime/tmux-panes.ts'
 import { codeStamp } from './runtime/code-stamp.ts'
 import { askHub } from './cli/home.ts'
+import { hubLock } from './runtime/hub-lock.ts'
 import { closedThreads } from './runtime/closed-threads.ts'
 
 const { ENV_FILE, NAME, Title, TEAMMATES, TRUSTED_APPS, env, need, bot, user } = load()
@@ -52,8 +53,13 @@ if (await askHub({ type: 'board' }, 2000).then(() => true, () => false)) {
   log('another hub is running and answers on its socket, so this one exits')
   process.exit(0)
 }
+// Two hubs started at the same moment both find no answer, so the lock decides (runtime/hub-lock.ts).
+if (!await hubLock(`${DIR}/hub.lock`)) {
+  log('another hub holds the hub lock, so this one exits')
+  process.exit(0)
+}
 const THREADS = `${DIR}/threads.json`
-// run.sh sets the command that starts Claude Code with the kage channel.
+// hub.ts sets the command that starts Claude Code with the kage channel.
 const CLAUDE = process.env.KAGE_CLAUDE || (log('KAGE_CLAUDE is not set: start Kage with kage start'), process.exit(1))
 // A Mac stays awake while the hub runs. caffeinate -i stops idle sleep only: with the lid closed, Kage is offline.
 if (process.platform === 'darwin') spawn('caffeinate', ['-i', '-w', String(process.pid)], { stdio: 'ignore' }).on('error', () => {}).unref()
@@ -366,9 +372,20 @@ function failed(m: ToSession) {
 // Compared to the boot stamp, not the clock, so a file with a future time cannot restart the hub over and over.
 const CODE = dirname(fileURLToPath(import.meta.url))
 const BOOT_CODE = codeStamp(CODE)
+let npmFailedFor = 0   // the code stamp whose npm ci failed: not tried again until the code moves
 function selfUpdate(now: number) {
   const code = codeStamp(CODE)
   if (code && code !== BOOT_CODE && now - code > 10_000 && d.quietEverywhere(now)) {
+    // New code may need new packages: npm stamps node_modules/.package-lock.json on each install.
+    const stale = () => { try { return statSync(`${CODE}/package-lock.json`).mtimeMs >= statSync(`${CODE}/node_modules/.package-lock.json`).mtimeMs } catch { return true } }
+    if (stale()) {
+      if (npmFailedFor === code) return
+      try { execFileSync('npm', ['ci', '--no-audit', '--no-fund', '--loglevel=error'], { cwd: CODE, stdio: ['ignore', 'inherit', 'inherit'] }) } catch {
+        npmFailedFor = code
+        log('npm ci failed for the newer code, so the hub stays on the code it runs. Run npm ci in', CODE)
+        return
+      }
+    }
     log('newer code is in place and every session is quiet: restarting into it')
     process.exit(75)
   }
