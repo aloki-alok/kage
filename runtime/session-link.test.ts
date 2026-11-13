@@ -266,3 +266,25 @@ test('kage restart and stop ask the hub to drain, and hear which threads they wa
   assert.deepEqual(await ask(), { type: 'quiesce', waiting: [] })
   assert.equal(asked, 2)
 })
+
+test('kage stop <thread> asks the hub to end one session, after its turn or now', async t => {
+  const d = new Dispatcher<ToSession>(
+    { start: () => {}, stop: () => {}, lastActivity: () => 0, busy: () => false },
+    { max: 2, idleMs: 9e9, connectMs: 9e9, evictMs: 0, newId: () => 'id1' },
+  )
+  const sock = join(mkdtempSync(join(tmpdir(), 'kage-link-')), 's.sock')
+  const server = listenForSessions(sock, d, { mail: () => {}, wa: () => {}, voice: () => {}, failed: () => {}, schedules: { add: () => undefined, remove: () => {} }, end: (key, cut) => `${key} cut=${cut}` })
+  t.after(() => server.close())
+  await until(() => server.listening)
+  const ask = async (m: object) => {
+    const c = connect(sock)
+    let reply = ''
+    c.on('data', b => { reply += b })
+    c.write(JSON.stringify(m) + '\n')
+    await until(() => reply.includes('\n'))
+    c.destroy()
+    return JSON.parse(reply || 'null')
+  }
+  assert.deepEqual(await ask({ type: 'end', key: 'C1:5.5' }), { type: 'end', text: 'C1:5.5 cut=false' })
+  assert.deepEqual(await ask({ type: 'end', key: 'C1:5.5', cut: true }), { type: 'end', text: 'C1:5.5 cut=true' })
+})

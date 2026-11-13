@@ -20,9 +20,9 @@ import { connectVoice } from './connectors/voice.ts'
 import { startWhatsApp } from './connectors/whatsapp-link.ts'
 import { parseCommands } from './core/commands.ts'
 import { memoryDirs } from './core/guards.ts'
-import { limitLine, pauseLine } from './core/board.ts'
+import { limitLine, pauseLine, stopLine } from './core/board.ts'
 import { placeFor, sessionKey, type Conversation, type Lane } from './core/conversations.ts'
-import { senderOf } from './core/gate.ts'
+import { mayStop, senderOf } from './core/gate.ts'
 import { dailyDue, lastTotals, openWaiting, staleWaiting, turnCost } from './core/ledgers.ts'
 import { dreamDue, dreamTask, threadsSince } from './core/dream.ts'
 import { retro, retroDue } from './core/retro.ts'
@@ -86,10 +86,33 @@ const placeOf = (key: string) => placeFor(k => store.conversation(k)?.place, key
 const inbox: Inbox = { take: (source, connector, payload) => store.take(source, connector, payload, Date.now()), handled: source => limits.handled(source), has: source => store.has(source) }
 
 // Connectors hand the hub a conversation; the hub alone turns it into a session key.
-const deliver = (c: Conversation, task: Task, place: string, lane: Lane = 'main') => {
+// Who started each thread, for "@kage stop": a teammate may stop only a thread their own task started.
+// ponytail: in memory, so after a hub restart only the owner can stop a thread; move to the store if teammates need more.
+const starters = new Map<string, string>()
+const deliver = (c: Conversation, task: Task, place: string, lane: Lane = 'main', by?: string) => {
   const key = sessionKey(c, { lane })
+  if (by && !d.saved()[key] && !starters.has(key)) starters.set(key, by)
   store.seen(key, c, place, Date.now())
   return toSession(key, task)
+}
+// kage stop <thread> and "@kage stop": end a thread's session and its side lanes, after their turn or now.
+// Messages no session read are let go.
+function stopThread(key: string, cut: boolean): string {
+  const now = Date.now()
+  const end = (k: string) => {
+    const r = d.endThread(k, now, cut)
+    const dropped = 'ok' in r ? r.dropped.filter((m): m is Task => m.type === 'task') : []
+    if (dropped.length) limits.turn(k, dropped, undefined, now)
+    return { r, dropped: dropped.length }
+  }
+  const lanes = Object.keys(d.saved()).filter(k => k.startsWith(`${key}#`)).map(end).filter(l => 'ok' in l.r)
+  const { r, dropped } = end(key)
+  const let_go = dropped + lanes.reduce((n, l) => n + l.dropped, 0)
+  const laneEnding = lanes.some(l => 'ok' in l.r && l.r.ending)
+  // Only side lanes ran: the answer is theirs. A lane still in its turn makes it "after the current turn".
+  const main = 'ok' in r ? { ...r, ...(laneEnding && { ending: true as const }), dropped: let_go }
+    : lanes.length ? { ok: true as const, ...(laneEnding && { ending: true as const }), dropped: let_go } : r
+  return stopLine(main, schedules.list(key).map(s => s.prompt.slice(0, 60)), lanes.length)
 }
 // Every task on its way to a session. Paused by the usage limit: it is held for the reset, and no session starts.
 const toSession = (key: string, task: Task) => {
@@ -126,7 +149,10 @@ function phoneOwner(reason: string): Promise<string> {
 }
 const slack = await connectSlack({
   dir: DIR, appToken: need('SLACK_APP_TOKEN'), bot, user, name: NAME, title: Title, teammates: TEAMMATES, apps: TRUSTED_APPS,
-  hub: { deliver, verdict: (id, behavior) => d.verdict(id, { type: 'verdict', request_id: id, behavior }), status, heard: m => schedules.heard(m),
+  hub: { deliver, stop: (c, cut, by) => {
+      const key = sessionKey(c, { lane: 'main' })
+      return mayStop(by, slack.ids.owner, starters, key) ? stopThread(key, cut) : 'Only the owner, or the teammate whose task started this thread, can stop it.'
+    }, verdict: (id, behavior) => d.verdict(id, { type: 'verdict', request_id: id, behavior }), status, heard: m => schedules.heard(m),
     posted: () => ledgers.text('posted'), ...inbox },
   // AFK mode is on unless KAGE_AFK=off. Its stand-in reads the owner's memory, read only.
   afk: env.KAGE_AFK === 'off' ? undefined : { memory: memoryDirs(process.env.HOME!, ENV_FILE, env).owner, model: env.KAGE_AFK_MODEL || 'sonnet', saved: store, call: phoneOwner },
@@ -443,6 +469,7 @@ const reload = reloader({ boot: env, read: () => readFileSync(ENV_FILE, 'utf8'),
 listenForSessions(`${DIR}/router.sock`, d, { ...replies, failed, schedules, tell, reload, paused: () => limits.paused(), limitCounts: () => limits.counts,
   // kage restart and stop: a drain renewed by each ask. A turn that just ended does not hold them up: its follow-up
   // waits too. Nor does a thread open in a terminal: kage attach holds it again after the restart.
+  end: (key, cut) => stopThread(key, cut),
   quiesce: () => { const now = Date.now(); limits.drain(now); return d.unquiet(now).filter(u => u.why !== 'just active' && u.why !== 'open in a terminal') }, callCode: voice?.issueCode })
 
 await slack.start()

@@ -52,6 +52,8 @@ export function listenForSessions(path: string, d: Dispatcher<ToSession>, o: Rep
   limitCounts?: () => LimitCounts
   // kage restart and kage stop: take no new turns for a while, and name each thread still running.
   quiesce?: () => { key: string; why: string }[]
+  // kage stop <thread>: end one session after its turn, or now; the answer to print.
+  end?: (key: string, cut: boolean) => string
 }) {
   try { unlinkSync(path) } catch {}
   const dir = dirname(path)
@@ -94,6 +96,8 @@ export function listenForSessions(path: string, d: Dispatcher<ToSession>, o: Rep
           const paused = o.paused?.()
           const limitCounts = o.limitCounts?.()
           sock.write(JSON.stringify({ type: 'board', ...d.status(Date.now()), ...(paused && { paused }), ...(limitCounts && { limitCounts }) }) + '\n')
+        } else if (m.type === 'end' && !key && !held && o.end && typeof m.key === 'string') {
+          sock.write(JSON.stringify({ type: 'end', text: o.end(m.key, (m as { cut?: unknown }).cut === true) }) + '\n')
         } else if (m.type === 'quiesce' && !key && !held && o.quiesce) {
           sock.write(JSON.stringify({ type: 'quiesce', waiting: o.quiesce() }) + '\n')
         } else if (m.type === 'reload' && !key && !held) {

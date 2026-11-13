@@ -5,8 +5,8 @@
 //   kage tell "pr review" hold the merge        quote a place with spaces
 import { existsSync } from 'node:fs'
 import { connect } from 'node:net'
-import { DatabaseSync } from 'node:sqlite'
 import { DIR } from './home.ts'
+import { pickThread } from './pick-thread.ts'
 
 const SOCK = `${DIR}/router.sock`
 if (process.env.KAGE_CLAUDE) { console.error('This shell runs inside Kage: a session cannot speak as the owner.'); process.exit(1) }
@@ -15,23 +15,7 @@ const [arg = '', ...words] = process.argv.slice(2)
 const text = words.join(' ').trim()
 if (!arg || !text) { console.error('Usage: kage tell <place> <message>'); process.exit(1) }
 
-// Same lookup as kage attach (cli/attach.ts): newest first, by key or by part of the place.
-const db = new DatabaseSync(`${DIR}/kage.db`, { readOnly: true })
-const rows = db.prepare(`select s.key, coalesce(c.place, s.key) as place from sessions s
-  left join conversations c using (key) order by c.last_seen desc nulls last`).all() as { key: string; place: string }[]
-let found = rows.filter(r => r.key === arg || r.place.toLowerCase().includes(arg.toLowerCase()))
-if (found.length !== 1) {
-  const list = (found.length ? found : rows).slice(0, 20)
-  console.error(`${found.length} threads match "${arg}". Pick one (newest first):`)
-  list.forEach((r, i) => console.error(`  ${String(i + 1).padStart(2)}. ${r.place}   (${r.key})`))
-  if (!process.stdin.isTTY) process.exit(1)
-  process.stderr.write('Number: ')
-  const n = Number(await new Promise<string>(r => process.stdin.once('data', b => r(String(b).trim()))))
-  process.stdin.pause()
-  if (!list[n - 1]) { console.error('No such number.'); process.exit(1) }
-  found = [list[n - 1]!]
-}
-const { key, place } = found[0]!
+const { key, place } = await pickThread(arg)
 
 const s = connect(SOCK)
 let buf = ''

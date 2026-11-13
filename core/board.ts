@@ -100,3 +100,18 @@ export function nextRuns(all: Schedule[], now: number): Map<string, number> {
   }
   return out
 }
+
+// The answer to "@kage stop" and kage stop <thread>. jobs: what each schedule in the thread does.
+// lanes: side lanes of the thread that stopped with it.
+export function stopLine(r: { ok: true; ending?: true; asking?: true; cut?: 'busy' | 'asking'; dropped: number } | { refused: 'closed' }, jobs: string[], lanes = 0) {
+  const n = jobs.length
+  const kept = !n ? '' : ` ${n === 1 ? 'Its schedule keeps' : `Its ${n} schedules keep`} running: ${jobs.join('; ')}.`
+  if ('refused' in r) return `No session runs in this thread.${kept}`
+  const what = r.asking ? 'It waits on an approval, so it stops once that is answered. stop now cuts it.'
+    : r.ending ? 'Stopping after the current turn.'
+    : r.cut === 'busy' ? 'Stopped now: the turn in progress was cut.'
+    : r.cut === 'asking' ? 'Stopped now: the approval it waited on was dropped.' : 'Stopped.'
+  const let_go = !r.dropped ? '' : r.dropped === 1 ? ' 1 waiting message was let go.' : ` ${r.dropped} waiting messages were let go.`
+  const side = !lanes ? '' : lanes === 1 ? ' Its side lane stops too.' : ` Its ${lanes} side lanes stop too.`
+  return `${what}${let_go}${side}${kept} The next tag starts it again.`
+}
