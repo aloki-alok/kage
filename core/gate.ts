@@ -17,6 +17,8 @@ export type Trigger =
   // agent: the Slack app id of the listed agent that posted it, with its owner's token.
   | { kind: 'task'; text: string; side?: true; agent?: string }
   | { kind: 'status' }
+  // stop: end the thread's session after its turn, or now. Who may is the connector's call: it knows who started the thread.
+  | { kind: 'stop'; now: boolean }
   // card: the owner wrote something other than yes or no in an approval card's thread.
   | { kind: 'card'; request_id: string }
   | { kind: 'verdict'; request_id: string; behavior: 'allow' | 'deny' }
@@ -38,6 +40,9 @@ const drop = (reason: Drop): Trigger => ({ kind: 'drop', reason })
 const SIDE_RE = /^side:\s*/i
 const task = (text: string, isOwner: boolean, files: string, agent?: string): Trigger => {
   if (isOwner && /^status$/i.test(text)) return { kind: 'status' }
+  // An agent can never stop a thread: its "stop" stays a plain task.
+  const stop = agent ? null : /^stop( now)?$/i.exec(text.trim())
+  if (stop) return { kind: 'stop', now: !!stop[1] }
   const side = isOwner ? SIDE_RE.exec(text) : null
   return side ? { kind: 'task', text: text.slice(side[0].length) + files, side: true } : { kind: 'task', text: text + files, ...(agent && { agent }) }
 }

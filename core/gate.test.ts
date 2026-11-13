@@ -114,6 +114,14 @@ describe('what starts a task', () => {
     assert.deepEqual(classify(msg({ channel: DM, text: `<@${BOT}> what is open?` }), ids),
       { kind: 'task', text: 'what is open?' })
   })
+  test('"stop" and "stop now" end the thread\'s session, from the owner or a teammate; an agent\'s "stop" is a plain task', () => {
+    assert.deepEqual(classify(msg({ text: `<@${BOT}> stop` }), ids), { kind: 'stop', now: false })
+    assert.deepEqual(classify(msg({ text: `<@${BOT}>  Stop NOW ` }), ids), { kind: 'stop', now: true })
+    assert.deepEqual(classify(msg({ user: MATE, text: '@kage stop' }), ids), { kind: 'stop', now: false })
+    assert.deepEqual(classify(msg({ text: '@kage stop the deploy' }), ids), { kind: 'task', text: 'stop the deploy' })
+    const agentPost = msg({ user: MATE, client_msg_id: undefined, bot_id: 'BTEST0001', app_id: 'ATEST0001', text: `<@${BOT}> stop` })
+    assert.deepEqual(classify(agentPost, { ...ids, apps: ['ATEST0001'] }), { kind: 'task', text: 'stop', agent: 'ATEST0001' })
+  })
   test('"status" from the owner asks the hub, not a session; from a teammate it is a plain task', () => {
     assert.deepEqual(classify(msg({ text: `<@${BOT}> status` }), ids), { kind: 'status' })
     assert.deepEqual(classify(msg({ channel: DM, text: ' Status ' }), ids), { kind: 'status' })
