@@ -37,6 +37,7 @@ export class Dispatcher<M> {
   #waiting: string[] = []
   #held = new Set<string>()          // threads the owner took into a terminal: their tasks wait
   #midTurn = new Map<string, M[]>()  // tasks sent while the session was busy: queued, maybe never read
+  #ending = new Set<string>()        // threads told to stop: closed at the first sweep after their turn
   #perms = new Map<string, string>()
   #startedAt = new Map<string, number>()
 
@@ -58,6 +59,7 @@ export class Dispatcher<M> {
   // 'failed': the session could not start; the task was not kept.
   task(key: string, msg: M, now: number): Delivery {
     this.#touched.set(key, now)
+    this.#ending.delete(key)   // a new message after a stop wants the thread again
     const send = this.#conns.get(key)
     if (send) {
       // A task to a quiet session starts a turn, so it reaches the transcript; one sent mid-turn waits in a queue.
@@ -161,6 +163,20 @@ export class Dispatcher<M> {
     return { ok: true }
   }
 
+  // kage stop <thread> and "@kage stop": end one thread's session once its turn ends, or now (cut). A session that
+  // is starting, asking or mid-turn waits for the next sweep after that; a timed check is not a turn, so it ends now.
+  // Tasks no session read are dropped and returned, so the caller can let their messages go.
+  endThread(key: string, now: number, cut: boolean):
+    { ok: true; ending?: true; cut?: 'busy' | 'asking'; dropped: M[] } | { refused: 'closed' } {
+    const live = this.#live.has(key)
+    if (!live && !this.#waiting.includes(key)) return { refused: 'closed' }
+    const running = !live ? undefined : !this.#conns.has(key) || this.#busyKind(key) === true ? 'busy'
+      : [...this.#perms.values()].includes(key) ? 'asking' : undefined
+    if (running && !cut) { this.#ending.add(key); return { ok: true, ending: true, dropped: [] } }
+    this.#ending.delete(key)
+    return { ok: true, ...(running && { cut: running }), dropped: this.end(key) }
+  }
+
   // The terminal gave the thread back. Tasks that came meanwhile start its session again; the ones
   // that cannot (the session could not start) are returned, so the router can say so.
   release(key: string, now: number): M[] {
@@ -247,6 +263,10 @@ export class Dispatcher<M> {
   sweep(now: number): M[] {
     const dropped: M[] = []
     const asking = new Set(this.#perms.values())
+    for (const k of this.#ending) {
+      if (!this.#live.has(k)) this.#ending.delete(k)
+      else if (this.#conns.has(k) && !asking.has(k) && this.#busyKind(k) !== true) { this.#ending.delete(k); this.end(k) }
+    }
     for (const k of this.#live) {
       const pending = this.#pending.get(k)
       if (pending && !this.#conns.has(k)) {

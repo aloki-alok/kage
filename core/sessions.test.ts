@@ -42,6 +42,41 @@ describe('one Claude session per thread', () => {
     assert.equal(d.hasFreeSlot('C'), false)   // full: starting C would evict a quiet session
     assert.equal(d.hasFreeSlot('A'), true)
   })
+  test('stopping a thread lets its turn finish, then ends the session at the next sweep', () => {
+    const { d, stopped, busy, inbox } = setup()
+    d.task('A', 'a', 0); inbox('A'); busy.add('A')
+    assert.deepEqual(d.endThread('A', 10, false), { ok: true, ending: true, dropped: [] })
+    d.sweep(20)
+    assert.deepEqual(stopped, [])          // still mid-turn
+    busy.delete('A')
+    d.sweep(30)
+    assert.deepEqual(stopped, ['A'])
+  })
+  test('a new task for a thread that is ending keeps its session', () => {
+    const { d, stopped, busy, inbox } = setup()
+    d.task('A', 'a', 0); inbox('A'); busy.add('A')
+    d.endThread('A', 10, false)
+    d.task('A', 'again', 20)
+    busy.delete('A')
+    d.sweep(30)
+    assert.deepEqual(stopped, [])
+  })
+  test('stop now cuts a turn in progress and says what it cut; a quiet session just ends', () => {
+    const { d, stopped, busy, inbox } = setup()
+    d.task('A', 'a', 0); inbox('A'); busy.add('A')
+    assert.deepEqual(d.endThread('A', 10, true), { ok: true, cut: 'busy', dropped: [] })
+    d.task('B', 'b', 0); inbox('B')
+    assert.deepEqual(d.endThread('B', 10, false), { ok: true, dropped: [] })
+    assert.deepEqual(stopped, ['A', 'B'])
+  })
+  test('stopping a thread waiting for a slot drops its task and returns it; an unknown thread is refused', () => {
+    const { d } = setup({ max: 1 })
+    d.task('A', 'a', 0)
+    d.task('B', 'b', 0)                    // A is still starting, so B waits for the slot
+    assert.deepEqual(d.endThread('B', 10, false), { ok: true, dropped: ['b'] })
+    assert.deepEqual(d.status(10).waiting, [])
+    assert.deepEqual(d.endThread('Z', 10, false), { refused: 'closed' })
+  })
   test('end closes only that thread and forgets its waiting task', () => {
     const { d, stopped, inbox } = setup({ max: 1 })
     d.task('A', 'a', 0)
