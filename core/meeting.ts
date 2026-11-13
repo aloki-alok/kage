@@ -28,7 +28,9 @@ export function parseMeeting(raw: unknown): Meeting | undefined {
     else turns.push({ speaker, at: typeof s.start === 'number' && s.start >= 0 ? s.start : undefined, text })
   }
   if (!turns.length) return undefined
-  let lines = turns.map(t => `${t.at === undefined ? '' : `[${clock(t.at)}] `}${t.speaker}: ${t.text}`)
+  // One turn may not take more than half the budget, so the start and end below always keep a line.
+  const cap = (l: string) => l.length > MAX_TRANSCRIPT / 2 ? `${l.slice(0, MAX_TRANSCRIPT / 2 - 10)} (cut)` : l
+  let lines = turns.map(t => cap(`${t.at === undefined ? '' : `[${clock(t.at)}] `}${t.speaker}: ${t.text}`))
   // Too long: keep the start (the agenda) and the end (where decisions land), and say what went.
   if (lines.join('\n').length > MAX_TRANSCRIPT) {
     const half = MAX_TRANSCRIPT / 2

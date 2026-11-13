@@ -52,3 +52,10 @@ test('the task treats every spoken word as data: no channel tag escape, no forge
   assert.match(t, /decisions/i)
   assert.match(t, /Ask before/)
 })
+
+test('one turn longer than the whole budget is cut, so notes never come from an empty transcript', () => {
+  const m = parseMeeting({ segments: [{ speaker: 'A', text: 'y'.repeat(MAX_TRANSCRIPT * 2) }, { speaker: 'B', text: 'last word' }] })!
+  assert.match(m.lines[0]!, /^A: y+ \(cut\)$/)
+  assert.ok(m.lines.join('\n').length <= MAX_TRANSCRIPT + 200)
+  assert.match(m.lines.at(-1)!, /B: last word/)
+})

@@ -372,7 +372,7 @@ const meeting = env.KAGE_MEETING_TOKEN ? connectMeeting({
   post: text => bot.chat.postMessage({ channel: slack.ids.botDm, text }).then(r => r.ts, e => { log('meeting post failed', e); return undefined }),
   deliver: (c, task, place) => deliver(c, task, place),
   notify: text => void slack.notifyOwner(text),
-  perHour: Number(env.KAGE_MEETING_PER_HOUR || 10), inbox,
+  perHour: Number(env.KAGE_MEETING_PER_HOUR || 10), inbox, untake: source => store.untake(source),
 }) : undefined
 void meeting?.listening.then(port => log(`meetings on: 127.0.0.1:${port}/meeting`))
 const email = connectEmail({

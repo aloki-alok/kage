@@ -26,28 +26,30 @@ export function connectMeeting(o: {
   notify: (text: string) => void
   perHour: number
   inbox: Inbox
+  untake: (source: string) => void   // frees a source id, so the same body sent again runs (Store.untake)
+  now?: () => number
 }) {
+  const now = o.now ?? Date.now
   const started: number[] = []
   let capTold = false
+  let chain: Promise<unknown> = Promise.resolve()
 
-  // false: nothing in it to take notes on (the sender is told 400).
-  async function handle(body: string): Promise<boolean> {
+  // done: notes started. bad: nothing to take notes on. retry: not run now, and the same body may come again.
+  async function handle(body: string): Promise<'done' | 'bad' | 'retry'> {
     let raw: unknown
-    try { raw = JSON.parse(body) } catch { return false }
+    try { raw = JSON.parse(body) } catch { return 'bad' }
     const m = parseMeeting(raw)
-    if (!m) return false
-    const now = Date.now()
-    while (started.length && now - started[0]! > 3600_000) started.shift()
+    if (!m) return 'bad'
+    const t = now()
+    while (started.length && t - started[0]! > 3600_000) started.shift()
     if (started.length >= o.perHour) {
-      if (!capTold) o.notify(`More than ${o.perHour} meeting transcripts came in this hour, so I am skipping them until the hour is up. Latest: ${m.title}.`)
+      if (!capTold) o.notify(`More than ${o.perHour} meeting transcripts came in this hour, so I am skipping them. Send "${m.title}" again after the hour is up.`)
       capTold = true
-      return true
+      return 'retry'
     }
-    started.push(now)
-    capTold = false
-    const plain = (t: string) => t.replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;')
+    const plain = (x: string) => x.replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;')
     const thread = await o.post(`*Meeting:* ${plain(m.title)}${m.link ? ` <${m.link}|open>` : ''}`)
-    if (!thread) { o.notify(`Notes for the meeting "${m.title}" could not open a thread here.`); return true }
+    if (!thread) { o.notify(`Notes for the meeting "${m.title}" could not open a thread here. Send it again.`); return 'retry' }
     const place = `Meeting ${m.title}`
     const task: Task = {
       type: 'task', fromOwner: false, content: meetingTask(m),
@@ -55,11 +57,19 @@ export function connectMeeting(o: {
       origin: { channel: o.botDm, ts: thread },
     }
     if (o.deliver({ connector: 'slack', chat: o.botDm, thread, kind: 'dm' }, task, place) === 'failed') o.notify(`Could not start a session for ${place}.`)
-    return true
+    started.push(t)   // only work that ran counts toward the cap
+    capTold = false
+    return 'done'
   }
 
-  const run = async (body: string, source: string) => {
-    try { return await handle(body) } finally { o.inbox.handled(source) }
+  // One transcript at a time, so the cap is exact. Only done work keeps its id: anything else is
+  // untaken, so a resend of the same body runs instead of being taken for a duplicate.
+  const run = (body: string, source: string) => {
+    const next = chain.then(() => handle(body)).then(
+      r => { if (r === 'done') o.inbox.handled(source); else o.untake(source); return r },
+      e => { o.untake(source); throw e })
+    chain = next.catch(() => {})
+    return next
   }
   const server = createServer((req, res) => {
     if (!bearerOk(req.headers.authorization, o.token)) { res.writeHead(401).end(); return }
@@ -78,7 +88,7 @@ export function connectMeeting(o: {
       const source = `meeting:${createHash('sha256').update(body).digest('hex').slice(0, 32)}`
       if (!o.inbox.take(source, 'meeting', body)) { res.writeHead(202).end(); return }
       run(body, source)
-        .then(took => res.writeHead(took ? 202 : 400).end())
+        .then(r => res.writeHead(r === 'bad' ? 400 : 202).end())
         .catch(e => {
           log('meeting transcript failed', e)
           o.notify(`A meeting transcript failed here (${String(e).slice(0, 120)}). Send it again.`)
