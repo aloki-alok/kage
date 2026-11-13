@@ -6,11 +6,14 @@ import { slackLinkKey } from './conversations.ts'
 import { clockTime, whenLabel } from './board.ts'
 import { spendSince } from './ledgers.ts'
 
+// A specialist's name, which is also its file name: no dots or slashes, so it never leaves the folder.
+export const NAME = /^[a-z][a-z0-9-]{0,30}$/
+
 export type Specialist = { name: string; key: string; link: string; cron: string; tools: string[]; job: string; paused: boolean }
 
 // Flat front matter (key: value lines between --- lines), then the job.
 export function parseSpecialist(name: string, text: string): Specialist | { error: string } {
-  if (!/^[a-z][a-z0-9-]{0,30}$/.test(name)) return { error: `the file name "${name}" must be a short lowercase name: letters, digits, dashes` }
+  if (!NAME.test(name)) return { error: `the file name "${name}" must be a short lowercase name: letters, digits, dashes` }
   const m = /^---\n([\s\S]*?)\n---\n?([\s\S]*)$/.exec(text.replace(/\r\n/g, '\n'))
   if (!m) return { error: 'it needs front matter between --- lines: thread, schedule, tools' }
   const head = new Map(m[1]!.split('\n').map(l => /^(\w+):\s*(.*)$/.exec(l.trim())).filter(x => !!x).map(x => [x[1]!, x[2]!.trim()]))
@@ -22,14 +25,17 @@ export function parseSpecialist(name: string, text: string): Specialist | { erro
   const job = m[2]!.trim()
   if (!job) return { error: 'the job, below the front matter, is empty' }
   const tools = (head.get('tools') ?? '').split(',').map(t => t.trim()).filter(Boolean)
-  return { name, key: `${thread}#side-spec-${name}`, link, cron, tools, job, paused: head.get('paused') === 'yes' }
+  return { name, key: `${thread}#side-spec-${name}`, link, cron, tools, job, paused: isPaused(head.get('paused')) }
 }
+
+// Fails closed: any value but none, no or false pauses it, so a typo never starts a specialist.
+const isPaused = (v = '') => !['', 'no', 'false'].includes(v.toLowerCase())
 
 // Pause or resume by the paused line in the front matter, so the file stays the one place a specialist is set.
 export function setPaused(text: string, paused: boolean) {
   const m = /^(---\r?\n)([\s\S]*?\r?\n)(---)/.exec(text)
   if (!m) return text
-  const head = m[2]!.replace(/^paused:.*\r?\n/gm, '')
+  const head = m[2]!.replace(/^\s*paused:.*\r?\n/gm, '')
   return `${m[1]}${head}${paused ? 'paused: yes\n' : ''}${text.slice(m[1]!.length + m[2]!.length)}`
 }
 

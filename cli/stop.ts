@@ -5,13 +5,14 @@ import { existsSync } from 'node:fs'
 import { askHub, DIR } from './home.ts'
 import { pickThread } from './pick-thread.ts'
 import { pauseSpecialist } from '../runtime/specialists.ts'
+import { NAME } from '../core/specialists.ts'
 
 if (process.env.KAGE_CLAUDE) { console.error('This shell runs inside Kage: a session cannot stop a thread. The owner runs kage stop in their own terminal, or writes "@kage stop" in the thread.'); process.exit(1) }
 const args = process.argv.slice(2)
 // A specialist's name wins over a place that contains the same word: kage stop <link> still reaches any thread.
 // It needs no running hub: the hub reads the file when it next runs.
 const name = args.filter(a => a !== '--now').join(' ')
-if (/^[a-z][a-z0-9-]*$/.test(name) && existsSync(`${DIR}/specialists/${name}.md`)) { console.log(pauseSpecialist(`${DIR}/specialists`, name, true)); process.exit(0) }
+if (NAME.test(name) && existsSync(`${DIR}/specialists/${name}.md`)) { console.log(pauseSpecialist(`${DIR}/specialists`, name, true)); process.exit(0) }
 if (!existsSync(`${DIR}/kage.db`) || !existsSync(`${DIR}/router.sock`)) { console.error('Kage is not running: start it with kage start'); process.exit(1) }
 const cut = args.includes('--now')
 const other = args.find(a => a.startsWith('--') && a !== '--now')

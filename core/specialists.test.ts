@@ -53,6 +53,14 @@ describe('pausing a specialist', () => {
     assert.equal((parseSpecialist('x', on) as { paused: boolean }).paused, false)
     assert.equal((parseSpecialist('x', file(`thread: ${LINK}\nschedule: 0 9 * * *\npaused: yes`)) as { paused: boolean }).paused, true)
     assert.equal((parseSpecialist('x', file(`thread: ${LINK}\nschedule: 0 9 * * *\npaused: no`)) as { paused: boolean }).paused, false)
+    assert.equal((parseSpecialist('x', file(`thread: ${LINK}\nschedule: 0 9 * * *\npaused: False`)) as { paused: boolean }).paused, false)
+    // Fails closed: a value it does not know pauses, so a typo never starts one.
+    for (const v of ['true', 'Yes', 'y', 'yes # till monday'])
+      assert.equal((parseSpecialist('x', file(`thread: ${LINK}\nschedule: 0 9 * * *\npaused: ${v}`)) as { paused: boolean }).paused, true, v)
+  })
+  test('an indented paused line is taken out on resume too', () => {
+    const indented = file(`thread: ${LINK}\nschedule: 0 9 * * *\n  paused: yes`)
+    assert.equal((parseSpecialist('x', setPaused(indented, false)) as { paused: boolean }).paused, false)
   })
   test('setPaused writes the line once and takes it out again, leaving the rest of the file as it was', () => {
     const paused = setPaused(on, true)
@@ -85,7 +93,7 @@ describe('the rows kage list, kage top and the manager show', () => {
     { name: 'held', text: file(`thread: ${LINK}\nschedule: 0 9 * * *\npaused: yes`) },
     { name: 'broken', text: 'no front matter' },
   ]
-  const runs = `${at(9)}\tspec-deploys\t${KEY}\n${at(10)}\tother\tC1:1.1\n`
+  const runs = `${at(8)}\tspec-deploys\t${KEY}\n${at(9)}\tspec-deploys\t${KEY}\n${at(10)}\tother\tC1:1.1\n`
   const yesterday = new Date(2026, 10, 13, 22).toISOString()
   const costs = `${yesterday}\t${KEY}\t5\t5\n${at(9, 1)}\t${KEY}\t0.25\t5.25\n${at(9, 2)}\t${KEY}\t0.5\t5.75\n${at(9, 3)}\tC1:1.1\t9\t9\n`
   const rows = specialistRows(files, { runs, costs, now })

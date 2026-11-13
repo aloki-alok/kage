@@ -1,7 +1,7 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { openStore } from './store.ts'
-import { mkdtempSync, readFileSync, writeFileSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { pauseSpecialist, readSpecialists, syncSpecialists } from './specialists.ts'
 
@@ -76,6 +76,8 @@ test('the folder reads as name and text per .md file, and a missing folder as no
   writeFileSync(`${dir}/notes.txt`, 'y')
   assert.deepEqual(readSpecialists(dir), [{ name: 'deploys', text: 'x' }])
   assert.deepEqual(readSpecialists(`${dir}/none`), [])
+  mkdirSync(`${dir}/folder.md`)   // one that cannot be read is left out, not the whole list
+  assert.deepEqual(readSpecialists(dir), [{ name: 'deploys', text: 'x' }])
 })
 
 test('pausing by name rewrites only that file, keeps it, and says when nothing matches', () => {
@@ -87,5 +89,9 @@ test('pausing by name rewrites only that file, keeps it, and says when nothing m
   assert.match(pauseSpecialist(dir, 'deploys', false), /runs again/)
   assert.equal(readFileSync(`${dir}/deploys.md`, 'utf8'), file().text)
   assert.match(pauseSpecialist(dir, 'nobody', true), /no specialist/i)
-  assert.match(pauseSpecialist(dir, '../env', true), /no specialist/i)
+  // A name that steps out of the folder is refused even when the file there exists.
+  mkdirSync(`${dir}/in`)
+  writeFileSync(`${dir}/out.md`, file().text)
+  assert.match(pauseSpecialist(`${dir}/in`, '../out', true), /no specialist/i)
+  assert.equal(readFileSync(`${dir}/out.md`, 'utf8'), file().text)
 })

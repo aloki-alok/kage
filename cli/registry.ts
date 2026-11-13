@@ -10,7 +10,7 @@ import { findPeople, type Person } from '../core/gate.ts'
 import { add, kindOf, ownerPerson, registryIn, remove, withRegistry, type Entry } from '../core/registry.ts'
 import { pauseLine, type Live } from '../core/board.ts'
 import { askHub, DIR, ENV_FILE } from './home.ts'
-import { rowLine, specialistRows, starterFile } from '../core/specialists.ts'
+import { NAME, rowLine, specialistRows, starterFile } from '../core/specialists.ts'
 import { openLedgers } from '../runtime/ledger.ts'
 import { readSpecialists } from '../runtime/specialists.ts'
 import { reload, said } from './reload.ts'
@@ -25,7 +25,7 @@ if (cmd !== 'list' && process.env.KAGE_CLAUDE) die(`This shell runs inside Kage,
 // kage add specialist <name>: a starter file, paused until its owner fills it in (core/specialists.ts).
 if (cmd === 'add' && args[0] === 'specialist') {
   const name = args[1] ?? ''
-  if (args.length !== 2 || !/^[a-z][a-z0-9-]{0,30}$/.test(name)) die('Usage: kage add specialist <name>, a short lowercase name: letters, digits, dashes')
+  if (args.length !== 2 || !NAME.test(name)) die('Usage: kage add specialist <name>, a short lowercase name: letters, digits, dashes')
   const file = `${SPECIALISTS}/${name}.md`
   if (existsSync(file)) die(`${file} already exists. Edit it, or pick another name.`)
   mkdirSync(SPECIALISTS, { recursive: true, mode: 0o700 })

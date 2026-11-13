@@ -3,21 +3,22 @@
 // each minute, so adding, changing or deleting a file applies within a minute.
 import { existsSync, readdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs'
 import { parseSessionKey } from '../core/conversations.ts'
-import { parseSpecialist, setPaused } from '../core/specialists.ts'
+import { NAME, parseSpecialist, setPaused } from '../core/specialists.ts'
 import type { Store } from './store.ts'
 
 // The folder's .md files. A missing folder is none.
 export function readSpecialists(dir: string) {
   let names: string[] = []
   try { names = readdirSync(dir).filter(f => f.endsWith('.md')) } catch {}
-  return names.map(f => ({ name: f.slice(0, -3), text: readFileSync(`${dir}/${f}`, 'utf8') }))
+  // One file that cannot be read (a folder named x.md, a file removed mid-read) is left out, not the whole list.
+  return names.flatMap(f => { try { return [{ name: f.slice(0, -3), text: readFileSync(`${dir}/${f}`, 'utf8') }] } catch { return [] } })
 }
 
 // kage stop <name>, the p key in kage top and the manager's tool: rewrite the paused line, keep the file.
 // The hub's next sync (within a minute) applies it. Returns the line for a person.
 export function pauseSpecialist(dir: string, name: string, paused: boolean): string {
   const file = `${dir}/${name}.md`
-  if (!/^[a-z][a-z0-9-]{0,30}$/.test(name) || !existsSync(file)) return `There is no specialist named "${name}".`
+  if (!NAME.test(name) || !existsSync(file)) return `There is no specialist named "${name}".`
   const text = readFileSync(file, 'utf8')
   const next = setPaused(text, paused)
   if (next === text) return `${name} is already ${paused ? 'paused' : 'running'}.`
