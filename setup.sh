@@ -98,7 +98,7 @@ cmd_stop() {
   if ./service.sh installed; then ./service.sh stop
   elif old_tmux; then tmux kill-session -t "=$NAME"
   else echo "$NAME is not running."; return 0; fi
-  echo "Stopped $NAME. It stays down until kage start. Each thread resumes its conversation on its next tag."
+  echo "Stopped $NAME. It stays down until kage start or the next login (Linux: the next boot). Each thread resumes its conversation on its next tag."
 }
 
 # A change to KAGE_ROUTE, KAGE_RUNTIME, KAGE_CWD or KAGE_MEMORY needs kage stop, then kage start.
@@ -287,7 +287,7 @@ case "${1:-}" in
   doctor) cmd_doctor ;;
   link) mkdir -p ~/.local/bin && ln -sf "$PWD/setup.sh" ~/.local/bin/kage && echo "ok: run kage from anywhere (needs ~/.local/bin on PATH)" ;;
   service) ./service.sh "${2:-}" ;;
-  run) exec ./run.sh ;;
+  run) exec node hub.ts ;;
   start) cmd_start ;;
   stop) cmd_stop "${2:-}" ;;
   restart) cmd_restart "${2:-}" ;;

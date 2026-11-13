@@ -82,7 +82,7 @@ The first start installs the Agent SDK and turns on the service: macOS or Linux 
 
 ### Run threads as tmux panes instead
 
-Add `KAGE_RUNTIME=tmux` to `~/.config/kage/env`, then `kage stop` and `kage start`, to give each thread a Claude Code pane you can watch with `tmux attach -t <name>`. Panes talk to Kage through channels, a research-preview feature: on Team and Enterprise an org Owner turns Channels on under [Organization settings > Claude Code > Channels](https://claude.ai/admin-settings/claude-code). Each new pane shows a warning screen for custom channels until your org approves Kage:
+Add `KAGE_RUNTIME=tmux` to `~/.config/kage/env`, then `kage stop` and `kage start`, to give each thread a Claude Code pane you can watch with `tmux attach -t <name>`. On Linux, systemd stops the panes with the hub on every restart, so a pane resumes its conversation on its next tag. Panes talk to Kage through channels, a research-preview feature: on Team and Enterprise an org Owner turns Channels on under [Organization settings > Claude Code > Channels](https://claude.ai/admin-settings/claude-code). Each new pane shows a warning screen for custom channels until your org approves Kage:
 
 1. An org Owner opens [Claude Code admin settings](https://claude.ai/admin-settings/claude-code), finds managed settings, and adds:
    ```json

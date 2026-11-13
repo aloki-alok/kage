@@ -28,7 +28,7 @@ Write logs to stderr only. In a tmux pane, stdout carries the channel protocol, 
 
 | Folder or file | Holds |
 |---|---|
-| `router.ts` | The hub: wires connectors, the dispatcher, the runner and the store. Its header names the few rules still in it. |
+| `router.ts` | The hub, loaded by `hub.ts`: wires connectors, the dispatcher, the runner and the store. Its header names the few rules still in it. |
 | `server.ts` | For tmux panes only: serves Kage's tools over MCP inside each pane and relays approvals. |
 | `private-data-guard.ts` | The plugin hook (`hooks/hooks.json`) that runs the rules in `core/guards.ts` inside tmux panes. The SDK runner applies the same rules in process. |
 | `config.ts` | Reads the env file and makes the Slack clients. |
@@ -38,7 +38,7 @@ Write logs to stderr only. In a tmux pane, stdout carries the channel protocol, 
 | `cli/` | The commands behind `kage <command>`. They run from source. |
 | `setup.sh` | The `kage` command: setup steps, doctor, start, stop, logs. |
 | `service.sh` | The LaunchAgent (macOS) or systemd user unit (Linux) that keeps the hub running. A non-zero exit restarts it, and exit 0 leaves it down. |
-| `run.sh` | One hub run for the supervisor: packages, `hub.log`, the boot count and the crash-loop DM, then the hub. `start.sh` only forwards old login items to `kage start`. |
+| `hub.ts` | The hub's entry, run by the service: the log file's size, the boot count and the crash-loop DM, then `router.ts`. Node modules only, so a bad pull is still caught. `start.sh` only forwards old login items to `kage start`. |
 | `docs/settings.md` | Every setting in the env file. |
 | `AGENTS.md` | Setup steps for a coding agent. `CLAUDE.md` loads it and this file. |
 | `.claude-plugin/`, `.mcp.json`, `hooks/` | Used only when Kage is installed as a Claude Code plugin (tmux panes on the plugin route). |

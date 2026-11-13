@@ -90,4 +90,4 @@ When it is on, you type `@kage <task>` in any chat to hand Kage a task. The chat
 
 ## Set by Kage itself
 
-`KAGE_CLAUDE` (the command that starts Claude Code) and `KAGE_THREAD` (a pane's session key) are set by `run.sh` and the hub. Do not put them in the env file.
+`KAGE_CLAUDE` (the command that starts Claude Code) and `KAGE_THREAD` (a pane's session key) are set by `hub.ts` and the hub. Do not put them in the env file.

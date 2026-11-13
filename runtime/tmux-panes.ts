@@ -23,7 +23,7 @@ export const claudeProject = (cwd: string) => `${process.env.HOME}/.claude/proje
 export function tmuxPanes(o: {
   name: string
   envFile: string
-  claude: string                              // the command run.sh built, with the kage channel
+  claude: string                              // the command hub.ts built, with the kage channel
   idOf: (key: string) => string | undefined   // the thread's session id
   placeOf: (key: string) => string            // the pane's label
   onStart: () => void                         // a new id may have been minted: save the map
