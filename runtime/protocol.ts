@@ -25,6 +25,7 @@ export type ToSession = Task | Verdict
 // { type: 'stop', ok: true } or { type: 'stop', refused }.
 export type FromSession =
   | { type: 'board' }
+  | { type: 'quiesce' }   // kage restart and stop: the hub drains for 10 s and answers { type: 'quiesce', waiting: [{ key, why }] }
   | { type: 'reload' }   // kage reload: the hub answers { type: 'reload', changed, restart, count } or { type: 'reload', refused }
   | { type: 'callcode' }   // kage call: the hub answers { type: 'callcode', code } or { type: 'callcode', refused }
   | { type: 'stop'; key: string }

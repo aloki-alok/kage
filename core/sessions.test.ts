@@ -423,6 +423,29 @@ describe('one Claude session per thread', () => {
     panes.add('A'); busy.add('A')
     assert.equal(d.quietEverywhere(9_999), false)             // a pane mid-turn could lose a reply in the gap
   })
+  test('unquiet names every thread a restart would wait on, and why', () => {
+    const { d, busy, watching, panes, inbox } = setup({ max: 7, saved: { I: 'old' } })
+    assert.deepEqual(d.unquiet(0), [])
+    d.task('A', 'a', 0); inbox('A'); busy.add('A')
+    d.task('B', 'b', 0); inbox('B'); d.permission('B', 'abcde')
+    d.task('C', 'c', 0)
+    d.task('D', 'd', 0); inbox('D'); watching.add('D')
+    d.task('E', 'e', 9_900); inbox('E')
+    d.task('F', 'f', 0); inbox('F'); watching.add('F'); panes.add('F')   // a pane outlives the hub, check and all
+    d.task('G', 'g', 0); inbox('G')                                      // quiet long enough
+    d.task('H', 'h', 0)                                                  // over max: waits for a slot
+    d.task('I', 'i', 0); inbox('I'); d.hold('I')
+    assert.deepEqual(d.unquiet(10_000), [
+      { key: 'A', why: 'busy' },
+      { key: 'B', why: 'asking' },
+      { key: 'C', why: 'starting' },
+      { key: 'D', why: 'watching' },
+      { key: 'E', why: 'just active' },
+      { key: 'H', why: 'waiting for a slot' },
+      { key: 'I', why: 'open in a terminal' },
+    ])
+    assert.equal(d.quietEverywhere(10_000), false)
+  })
   test('a held thread also blocks a self-restart', () => {
     const { d, inbox } = setup()
     d.task('A', 'a', 0); inbox('A')

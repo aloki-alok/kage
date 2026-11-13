@@ -241,3 +241,28 @@ test('the board says when the usage limit paused Kage, and carries the limit cou
   paused = undefined
   assert.deepEqual(await ask(), { type: 'board', live: [], waiting: [], held: [], max: 2, limitCounts: counts })
 })
+
+test('kage restart and stop ask the hub to drain, and hear which threads they wait on', async t => {
+  const d = new Dispatcher<ToSession>(
+    { start: () => {}, stop: () => {}, lastActivity: () => 0, busy: () => false },
+    { max: 2, idleMs: 9e9, connectMs: 9e9, evictMs: 0, newId: () => 'id1' },
+  )
+  const sock = join(mkdtempSync(join(tmpdir(), 'kage-link-')), 's.sock')
+  const waits = [[{ key: 'C1:5.5', why: 'busy' }], []]
+  let asked = 0
+  const server = listenForSessions(sock, d, { mail: () => {}, wa: () => {}, voice: () => {}, failed: () => {}, schedules: { add: () => undefined, remove: () => {} }, quiesce: () => waits[asked++]! })
+  t.after(() => server.close())
+  await until(() => server.listening)
+  const ask = async () => {
+    const c = connect(sock)
+    let reply = ''
+    c.on('data', b => { reply += b })
+    c.write(JSON.stringify({ type: 'quiesce' }) + '\n')
+    await until(() => reply.includes('\n'))
+    c.destroy()
+    return JSON.parse(reply || 'null')
+  }
+  assert.deepEqual(await ask(), { type: 'quiesce', waiting: [{ key: 'C1:5.5', why: 'busy' }] })
+  assert.deepEqual(await ask(), { type: 'quiesce', waiting: [] })
+  assert.equal(asked, 2)
+})

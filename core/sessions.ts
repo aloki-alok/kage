@@ -3,6 +3,7 @@
 // What happened to a task: handed over, its session starting, waiting for a slot, waiting while the
 // owner has the thread in a terminal, or lost (the session could not start).
 export type Delivery = 'sent' | 'starting' | 'queued' | 'held' | 'failed'
+export type Unquiet = 'busy' | 'asking' | 'starting' | 'watching' | 'just active' | 'waiting for a slot' | 'open in a terminal'
 
 // start/stop run a session (start throws if it can't). lastActivity: when it last wrote
 // its transcript (ms). busy: Claude is mid-turn, which a long tool call can be with no writes; 'watching': idle, kept
@@ -76,11 +77,21 @@ export class Dispatcher<M> {
   // Whether the hub can restart itself without cutting anything off: every session connected, not
   // mid-turn, not asking, and quiet for evictMs; no task waiting for a slot; no thread held by a
   // terminal. An SDK session dies with the hub, so this must be true for it too.
-  quietEverywhere(now: number): boolean {
+  quietEverywhere = (now: number): boolean => this.unquiet(now).length === 0
+
+  // Each thread that keeps quietEverywhere false, and why: what `kage restart` and `kage stop` wait on.
+  unquiet(now: number): { key: string; why: Unquiet }[] {
     const s = this.status(now)
-    // A pane kept only by its timed check outlives the restart, check and all, so it does not block one.
-    return !s.waiting.length && !s.held.length
-      && s.live.every(l => (l.state === 'quiet' || (l.state === 'watching' && this.#runner.outlivesHub?.(l.key))) && l.quietMs >= this.#opts.evictMs)
+    const out: { key: string; why: Unquiet }[] = []
+    for (const l of s.live) {
+      // A pane kept only by its timed check outlives the restart, check and all, so it does not block one.
+      const settled = l.state === 'quiet' || (l.state === 'watching' && this.#runner.outlivesHub?.(l.key))
+      if (!settled) out.push({ key: l.key, why: l.state as Unquiet })
+      else if (l.quietMs < this.#opts.evictMs) out.push({ key: l.key, why: 'just active' })
+    }
+    for (const key of s.waiting) out.push({ key, why: 'waiting for a slot' })
+    for (const key of s.held) out.push({ key, why: 'open in a terminal' })
+    return out
   }
 
   // Whether a task for this thread would start without evicting another session or jumping the

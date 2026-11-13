@@ -18,8 +18,8 @@ Set up|doctor||Check every part, and print the command that fixes each problem|k
 Set up|link||Put the kage command on your PATH (~/.local/bin/kage)|./setup.sh link
 Set up|service|on or off|Let macOS or Linux keep Kage running: back after a crash, a reboot or a login|kage service on
 Run|start||Start Kage in the background (turns the service on the first time)|kage start
-Run|stop||Stop Kage. Open sessions end, and each resumes on its next tag|kage stop
-Run|restart||Restart the hub to pick up a new setting (about 10 s)|kage restart
+Run|stop|[--cut-running]|Stop Kage once every running turn ends (new messages wait), or now with --cut-running|kage stop
+Run|restart|[--cut-running]|Restart the hub once every running turn ends; new messages wait and run after it|kage restart
 Run|reload||Read the settings file again with no restart: who may tag Kage changes at once|kage reload
 Run|status||One look at every session and what it is doing|kage status
 Run|logs|[lines or -f]|The last lines of the hub log (80 unless you say), or -f to follow it|kage logs -f
@@ -70,10 +70,18 @@ unknown() {
   exit 2
 }
 
-# A Kage session runs inside the hub, so stopping the hub from there ends that session mid-turn.
-inside_kage() {
-  [[ -n "${KAGE_CLAUDE:-}" && "${2:-}" != --force ]] || return 0
-  die "This shell runs inside Kage, so kage $1 would end this session too. Run kage $1 --force to do it anyway."
+# Before kage stop or restart: the hub takes no new turns and this waits until every running turn ends,
+# naming each thread (cli/quiet.ts). --cut-running cuts them instead. Inside Kage, --force is needed, and it cuts:
+# waiting would wait on this very session.
+quiet_first() {
+  local cmd=$1 force="" cut="" a; shift
+  for a in "$@"; do case $a in --force) force=1 ;; --cut-running) cut=--cut-running ;; *) die "kage $cmd takes --cut-running, or --force inside Kage." ;; esac; done
+  if [[ -n "${KAGE_CLAUDE:-}" ]]; then
+    [[ -n $force ]] || die "This shell runs inside Kage, so kage $cmd would end this session too. Run kage $cmd --force to do it anyway."
+    cut=--cut-running
+  fi
+  running || return 0
+  node cli/quiet.ts $cut
 }
 
 kage_name() { NAME="$(env_get KAGE_NAME)"; NAME="${NAME:-kage}"; }
@@ -93,8 +101,8 @@ cmd_start() {
 }
 
 cmd_stop() {
-  inside_kage stop "${1:-}"
   kage_name
+  quiet_first stop "$@"
   if ./service.sh installed; then ./service.sh stop
   elif old_tmux; then tmux kill-session -t "=$NAME"
   else echo "$NAME is not running."; return 0; fi
@@ -103,7 +111,7 @@ cmd_stop() {
 
 # A change to KAGE_ROUTE, KAGE_RUNTIME, KAGE_CWD or KAGE_MEMORY needs kage stop, then kage start.
 cmd_restart() {
-  inside_kage restart "${1:-}"
+  quiet_first restart "$@"
   running || { echo "$NAME is not running. Start it: kage start"; return 1; }
   if ./service.sh installed; then ./service.sh restart && echo "Restarted the hub; it is back in about 10 s. Open sessions resume on their next tag."; return; fi
   # The old tmux loop starts the hub again 5 s after it exits.
@@ -289,8 +297,8 @@ case "${1:-}" in
   service) ./service.sh "${2:-}" ;;
   run) exec node hub.ts ;;
   start) cmd_start ;;
-  stop) cmd_stop "${2:-}" ;;
-  restart) cmd_restart "${2:-}" ;;
+  stop) cmd_stop "${@:2}" ;;
+  restart) cmd_restart "${@:2}" ;;
   reload) node cli/reload.ts ;;
   status) cmd_status ;;
   logs) cmd_logs "${2:-}" ;;
