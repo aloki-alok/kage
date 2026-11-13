@@ -34,7 +34,7 @@ export function withList(env: string, name: string, ids: string[]): string {
 }
 
 export const registryIn = (env: string): Entry[] => [
-  ...listIn(env, 'KAGE_TEAMMATES').filter(validUserId).map(id => ({ kind: 'person' as const, id })),
+  ...listIn(env, 'KAGE_TEAMMATES').map(id => ({ kind: 'person' as const, id })),
   ...listIn(env, 'KAGE_TRUSTED_APPS').flatMap(s => { const a = appEntry(s); return a ? [{ kind: 'agent' as const, ...a }] : [] }),
 ]
 
@@ -69,6 +69,7 @@ export function add(entries: Entry[], e: Entry): { entries: Entry[]; added: Entr
   const ownerIsPerson = kindOf(e.owner) === 'person'
   const newOwner: Entry[] = ownerIsPerson && !entries.some(x => x.id === e.owner) ? [{ kind: 'person', id: e.owner }] : []
   if (!ownerIsPerson && !entries.some(x => x.id === e.owner)) return { error: `the owner ${e.owner} is not listed. Add it first.` }
+  if (!ownerIsPerson && e.owner !== had?.id && !ownerPerson(entries, e.owner)) return { error: `the owner ${e.owner} has no owner itself. Tie it to its owner first: kage add ${e.owner} <its owner>` }
   const people = [...entries.filter(x => x.kind === 'person'), ...newOwner]
   const agents = had ? entries.filter(x => x.kind === 'agent').map(x => (x.id === e.id ? e : x)) : [...entries.filter(x => x.kind === 'agent'), e]
   const next = [...people, ...agents]

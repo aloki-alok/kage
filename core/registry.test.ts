@@ -1,7 +1,7 @@
 import { describe, test } from 'node:test'
 import assert from 'node:assert/strict'
 import { spawnSync } from 'node:child_process'
-import { mkdtempSync, readFileSync, writeFileSync } from 'node:fs'
+import { mkdtempSync, readFileSync, statSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -90,7 +90,10 @@ describe('kage add', () => {
     const base = [person('UTEST0001'), agent('ATEST0001', 'UTEST0001')]
     assert.deepEqual(add(base, agent('ATEST0002', 'ATEST0001')), { entries: [...base, agent('ATEST0002', 'ATEST0001')], added: [agent('ATEST0002', 'ATEST0001')] })
     assert.match((add(base, agent('ATEST0002', 'ATEST0404')) as { error: string }).error, /ATEST0404 is not listed/)
-    assert.match((add(base, agent('ATEST0002', 'ATEST0002')) as { error: string }).error, /own/)
+    assert.match((add(base, agent('ATEST0002', 'ATEST0002')) as { error: string }).error, /cannot be its own owner/)
+    // An agent with no owner (listed by hand before owners existed) cannot be a manager until it is tied to someone.
+    const loose = [...base, agent('ATEST0009')]
+    assert.match((add(loose, agent('ATEST0002', 'ATEST0009')) as { error: string }).error, /ATEST0009 has no owner itself/)
   })
   test('an agent listed again takes the new owner: it is tied to one owner', () => {
     const base = [person('UTEST0001'), agent('ATEST0001', 'UTEST0001')]
@@ -145,6 +148,16 @@ describe('kage add and kage remove inside a Kage session', () => {
     const r = run(['list', '--ids'], true)
     assert.equal(r.code, 0)
     assert.match(r.out, /UTEST0001/)
+  })
+  test('the written file is private even when a readable copy was left behind', () => {
+    const file = join(mkdtempSync(join(tmpdir(), 'kage-registry-')), 'env')
+    writeFileSync(file, FILE, { mode: 0o600 })
+    writeFileSync(`${file}.new`, 'left by a crash', { mode: 0o644 })
+    const { KAGE_CLAUDE: _, ...clean } = process.env
+    const r = spawnSync(process.execPath, [cli, 'remove', 'UTEST0001'], { encoding: 'utf8', env: { ...clean, KAGE_ENV: file } })
+    assert.equal(r.status, 0, r.stderr)
+    assert.equal(readFileSync(file, 'utf8'), 'KAGE_NAME=kage\n')
+    assert.equal(statSync(file).mode & 0o777, 0o600)
   })
   test('outside a session, removing by id needs no Slack and writes the file', () => {
     const r = run(['remove', 'UTEST0001'], false)

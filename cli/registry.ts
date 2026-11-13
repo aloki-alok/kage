@@ -4,9 +4,9 @@
 //   kage add <app id> <owner>      an agent, and who it answers to: a person, or a listed agent (its manager)
 //   kage remove <person or app id> whoever answers to them goes too
 //   kage list                      add --ids to skip the name lookup
-import { existsSync, readFileSync, renameSync, writeFileSync } from 'node:fs'
+import { existsSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs'
 import { findPeople, type Person } from '../core/gate.ts'
-import { add, kindOf, registryIn, remove, withRegistry, type Entry } from '../core/registry.ts'
+import { add, kindOf, ownerPerson, registryIn, remove, withRegistry, type Entry } from '../core/registry.ts'
 import { ENV_FILE } from './home.ts'
 import { reload, said } from './reload.ts'
 
@@ -73,7 +73,9 @@ const line = (e: Entry) => (e.kind === 'person' ? `person ${label({ id: e.id, na
 
 // Write a copy, then swap it in: a crash mid-write never leaves a cut-off token file. Then the hub takes it.
 async function save(next: Entry[]) {
-  writeFileSync(`${ENV_FILE}.new`, withRegistry(env, next), { mode: 0o600 })
+  // The mode applies only to a file this call creates, so a copy left behind goes first.
+  rmSync(`${ENV_FILE}.new`, { force: true })
+  writeFileSync(`${ENV_FILE}.new`, withRegistry(env, next), { mode: 0o600, flag: 'wx' })
   renameSync(`${ENV_FILE}.new`, ENV_FILE)
   try { for (const l of said(await reload())) console.log(l) } catch (e) { console.log((e as Error).message) }
 }
@@ -85,8 +87,9 @@ if (cmd === 'list') {
     for (const a of now) if (a.kind === 'agent' && a.owner === owner) { console.log(`${'  '.repeat(depth)}agent ${a.id}`); under(a.id, depth + 1) }
   }
   for (const e of now) if (e.kind === 'person') { console.log(label({ id: e.id, name: names.get(e.id) })); under(e.id, 1) }
-  const loose = now.filter(e => e.kind === 'agent' && !now.some(o => o.id === e.owner))
-  if (loose.length) console.log(`Agents with no listed owner (they count with any listed person's token): ${loose.map(e => e.id).join(', ')}\n  Tie one to its owner: kage add <app id> <owner>`)
+  // Everything the tree above did not print: no owner, an owner who is not listed, or a loop made by hand.
+  const loose = now.filter(e => e.kind === 'agent' && !ownerPerson(now, e.id))
+  if (loose.length) console.log(`Agents not tied to a listed person: ${loose.map(e => e.id).join(', ')}\n  One with no owner counts with any listed person's token. Tie one to its owner: kage add <app id> <owner>`)
 } else if (cmd === 'add' && args.length) {
   // An id or a mention is one word, and may be an agent followed by its owner. Anything else is a person's name, of one or more words.
   const oneWord = kindOf(args[0]!) === 'agent' || /^<?@?[UW][A-Z0-9]{2,}>?$/.test(args[0]!)
