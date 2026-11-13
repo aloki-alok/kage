@@ -45,7 +45,8 @@ export function limitPause(o: {
     else if (t.scheduled && t.job) owed.set(t.job, { key, task: t })
     else return false
     counts.held++
-    if (now >= drainUntil && until! - (told.get(key) ?? -Infinity) > 30 * 60_000) {
+    // Only a real limit that outlasts any drain is worth a notice: a drain, or one that lapsed before the tick, says nothing.
+    if (until! > Math.max(drainUntil, now) && until! - (told.get(key) ?? -Infinity) > 30 * 60_000) {
       told.set(key, until!)
       const at = (o.time ?? clockTime)(until!, now)
       o.notice(t, limit.kind === 'overloaded' ? `Paused: Claude is overloaded. I'll try again at ${at}.` : `Paused by the usage limit until ${at}. I'll pick this up then.`)

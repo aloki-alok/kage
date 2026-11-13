@@ -10,10 +10,12 @@ export async function waitForQuiet(o: {
   cut: boolean                    // --cut-running: drain once, then cut what runs
 }): Promise<'quiet' | 'cut' | 'down'> {
   const seen = new Set<string>()
-  for (;;) {
+  for (let first = true; ; first = false) {
     let waits: Wait[]
     try { waits = await o.ask() } catch (e) {
       if ((e as Error).message === 'down') return 'down'
+      // Only a first ask with no answer means a hub from before the drain. Later, the hub is just slow: ask again.
+      if (!first) { await o.sleep(2000); continue }
       o.say('This hub is older and cannot wait for running turns, so they are cut.')
       return 'cut'
     }

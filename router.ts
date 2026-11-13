@@ -441,8 +441,9 @@ function tell(key: string, text: string): { ok: true; held?: true } | { refused:
 // kage reload: a changed allow list applies to the next message, with no restart and no turn cut (core/settings.ts).
 const reload = reloader({ boot: env, read: () => readFileSync(ENV_FILE, 'utf8'), apply: slack.allow, log })
 listenForSessions(`${DIR}/router.sock`, d, { ...replies, failed, schedules, tell, reload, paused: () => limits.paused(), limitCounts: () => limits.counts,
-  // kage restart and stop: a drain renewed by each ask. A turn that just ended does not hold them up: its follow-up waits too.
-  quiesce: () => { const now = Date.now(); limits.drain(now); return d.unquiet(now).filter(u => u.why !== 'just active') }, callCode: voice?.issueCode })
+  // kage restart and stop: a drain renewed by each ask. A turn that just ended does not hold them up: its follow-up
+  // waits too. Nor does a thread open in a terminal: kage attach holds it again after the restart.
+  quiesce: () => { const now = Date.now(); limits.drain(now); return d.unquiet(now).filter(u => u.why !== 'just active' && u.why !== 'open in a terminal') }, callCode: voice?.issueCode })
 
 await slack.start()
 // Messages the last run took but never handled (it died in between) run now. Older than 10 minutes, they are let go.

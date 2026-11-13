@@ -257,4 +257,19 @@ describe('a drain before kage restart or kage stop', () => {
     await h.p.tick(13_000)
     assert.deepEqual(h.replayed, [])
   })
+  test('a turn that hits the usage limit while a drain waits still tells its thread', () => {
+    const h = hub()
+    const t = slackTask('7.7')
+    h.hear('C1:5.5', t, 0)              // its turn was running when the drain began
+    h.p.drain(500)
+    h.p.turn('C1:5.5', [t], { kind: 'rate_limit', until: 55 * MIN }, 1000)
+    assert.equal(h.notices.length, 1)
+    assert.match(h.notices[0]!, /usage limit until t\+55/)
+  })
+  test('a message after a lapsed drain, before the tick clears it, gets no false usage-limit notice', () => {
+    const h = hub()
+    h.p.drain(0)
+    h.hear('C1:5.5', slackTask('7.7'), 12_000)   // the lease ended at 10 s; the tick has not run
+    assert.deepEqual(h.notices, [])
+  })
 })

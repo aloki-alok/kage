@@ -30,3 +30,8 @@ test('no hub running means nothing to wait for; an older hub that cannot drain i
   assert.equal(old.r, 'cut')
   assert.match(old.said[0]!, /cannot wait/)
 })
+test('a missed answer after a good one is a slow hub, not an old one: it asks again instead of cutting', async () => {
+  const { r, said } = await run([[{ key: 'C1:5.5', why: 'busy' }], new Error('silent'), []])
+  assert.equal(r, 'quiet')
+  assert.ok(!said.some(l => /cannot wait/.test(l)))
+})
