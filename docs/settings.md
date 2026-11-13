@@ -24,8 +24,8 @@ grep -rhoE 'KAGE_[A-Z_]+' --include=*.ts --include=*.sh . --exclude-dir=node_mod
 | Setting | Default | Effect |
 |---|---|---|
 | `KAGE_MAX_SESSIONS` | `4` | Sessions that run at once. A tag over the limit gets ⏳. |
-| `KAGE_MAX_SPECIALISTS` | `10` | Specialists that may run on this install. Past it, by name order, one runs nothing, and Kage cannot make a new one. |
-| `KAGE_SPECIALIST_DAILY_USD` | `2` | What one specialist may spend in a day. At the cap it is paused (its file says so), and you get a DM and a waiting line. It stays paused until you resume it. |
+| `KAGE_MAX_SPECIALISTS` | `10` | Specialists that may run on this install. Past it, by name order, one runs nothing. Kage makes no new one while this many files exist, paused ones included. |
+| `KAGE_SPECIALIST_DAILY_USD` | `2` | What one specialist may spend in a day. At the cap it is paused (its file says so), and you get a DM and a waiting line. It stays paused until you resume it, and from then it counts only what it spends after the resume. |
 | `KAGE_IDLE_MINUTES` | `30` | A quiet session closes after this long. Its next tag resumes it. |
 | `KAGE_RUNTIME` | SDK | `tmux` runs each thread as a Claude Code pane instead of an Agent SDK session in the hub. |
 | `KAGE_ROUTE` | `dev` | With `KAGE_RUNTIME=tmux` only. `plugin` starts panes with no warning screen, once your org approves the channel. |

@@ -39,6 +39,10 @@ export type Hub = {
 // Into the inbox before the ack: Slack sends again only what was not acked, so a crash after the
 // write is replayed from the store on the next start (router.ts), and a redelivery runs once.
 // A failed write throws before the ack, so Slack sends the event again.
+// The owner typed in a thread with no tag: a note for the specialists working there. Nobody else's words steer one.
+export const ownerNote = (m: SlackMessage, ids: { owner: string; botDm: string }, reason: string) =>
+  reason === 'not-tagged' && typedByPerson(m) && m.user === ids.owner && m.channel !== ids.botDm && !!m.thread_ts && m.thread_ts !== m.ts
+
 export async function intake(m: SlackMessage, ack: () => Promise<void>, hub: Pick<Hub, 'take'>, hear: (m: SlackMessage, source: string) => Promise<void>) {
   // No channel or ts gives no id to catch a repeat by: such an event runs as heard, unrecorded.
   const source = m.channel && m.ts ? `slack:${m.channel}:${m.ts}` : undefined
@@ -124,7 +128,7 @@ export async function connectSlack(o: { dir: string; appToken: string; bot: WebC
         o.hub.heard({ chat: m.channel, ...(m.thread_ts && { thread: m.thread_ts }), quoted })
       }
       // The owner's untagged reply in a thread: a specialist working there reads it on its next run (runtime/specialists.ts).
-      if (t.reason === 'not-tagged' && typedByPerson(m) && m.user === ids.owner && m.channel !== ids.botDm && m.thread_ts && m.thread_ts !== m.ts) o.hub.ownerWrote?.(m.channel, m.thread_ts, m.text ?? '')
+      if (ownerNote(m, ids, t.reason)) o.hub.ownerWrote?.(m.channel, m.thread_ts!, m.text ?? '')
       return
     }
     // A listed person wrote here: an exchange with an agent in this thread starts over (core/agents.ts).

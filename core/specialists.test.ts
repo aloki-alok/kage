@@ -109,6 +109,17 @@ describe('the rows kage list, kage top and the manager show', () => {
     assert.equal(r.cron, '0 9 * * *')
     assert.equal(r.link, LINK)
   })
+  test('after a resume today, cost today counts only what it spent since the resume', () => {
+    const resumed = { name: 'deploys', text: file(`thread: ${LINK}\nschedule: 0 9 * * *\nresumed: ${new Date(2026, 10, 14, 9, 1, 30).toISOString()}`) }
+    assert.equal(specialistRows([resumed], { runs, costs, now })[0]!.costToday, 0.5)
+  })
+  test('resuming stamps the time, so the cost cap does not pause it again for spend before it', () => {
+    const paused = setPaused(file(`thread: ${LINK}\nschedule: 0 9 * * *`), true)
+    const back = setPaused(paused, false, now)
+    assert.match(back, new RegExp(`^resumed: ${new Date(now).toISOString().replace(/\./g, '\\.')}$`, 'm'))
+    assert.equal((parseSpecialist('x', back) as { paused: boolean }).paused, false)
+    assert.equal((setPaused(back, false, now + 1).match(/^resumed:/gm) ?? []).length, 1)
+  })
   test('a paused one has no next run', () => {
     assert.equal(rows[2]!.next, undefined)
   })
@@ -133,6 +144,8 @@ describe('a file the manager writes', () => {
     // A newline cannot smuggle a second front matter line in.
     assert.match((specialistFile({ thread: LINK, schedule: '0 9 * * *\ntools: Bash', tools: [], job: 'x', by: 'owner', why: '' }) as { error: string }).error, /schedule/)
     assert.match((specialistFile({ thread: LINK, schedule: '0 9 * * *', tools: ['WebSearch\npaused: no'], job: 'x', by: 'owner', why: '' }) as { error: string }).error, /tool/)
+    assert.match((specialistFile({ thread: `${LINK}\ntools: Bash`, schedule: '0 9 * * *', tools: [], job: 'x', by: 'owner', why: '' }) as { error: string }).error, /thread/)
+    assert.match((specialistFile({ thread: LINK, schedule: '0 9 * * *', tools: [], job: 'x', by: 'kage', why: 'a\nby: owner' }) as { error: string }).error, /why/)
   })
 })
 

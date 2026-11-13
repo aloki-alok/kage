@@ -11,7 +11,7 @@ export const NAME = /^[a-z][a-z0-9-]{0,30}$/
 
 // Who made it, from its file: the owner (by hand, or by asking Kage) or Kage on its own. A hand-written file is the owner's.
 export type Maker = 'owner' | 'kage'
-export type Specialist = { name: string; key: string; link: string; cron: string; tools: string[]; job: string; paused: boolean; by: Maker; why: string }
+export type Specialist = { name: string; key: string; link: string; cron: string; tools: string[]; job: string; paused: boolean; by: Maker; why: string; resumed?: number }
 
 // Flat front matter (key: value lines between --- lines), then the job.
 export function parseSpecialist(name: string, text: string): Specialist | { error: string } {
@@ -28,17 +28,21 @@ export function parseSpecialist(name: string, text: string): Specialist | { erro
   if (!job) return { error: 'the job, below the front matter, is empty' }
   const tools = (head.get('tools') ?? '').split(',').map(t => t.trim()).filter(Boolean)
   return { name, key: `${thread}#side-spec-${name}`, link, cron, tools, job, paused: isPaused(head.get('paused')),
-    by: head.get('by') === 'kage' ? 'kage' : 'owner', why: head.get('why') ?? '' }
+    by: head.get('by') === 'kage' ? 'kage' : 'owner', why: head.get('why') ?? '',
+    ...(Date.parse(head.get('resumed') ?? '') >= 0 && { resumed: Date.parse(head.get('resumed')!) }) }
 }
 
 // Fails closed: any value but none, no or false pauses it, so a typo never starts a specialist.
 const isPaused = (v = '') => !['', 'no', 'false'].includes(v.toLowerCase())
 
 // Pause or resume by the paused line in the front matter, so the file stays the one place a specialist is set.
-export function setPaused(text: string, paused: boolean) {
+// now: a resume also stamps its time, so the daily cost cap counts only what it spends after it.
+export function setPaused(text: string, paused: boolean, now?: number) {
   const m = /^(---\r?\n)([\s\S]*?\r?\n)(---)/.exec(text)
   if (!m) return text
-  const head = m[2]!.replace(/^\s*paused:.*\r?\n/gm, '')
+  if (!paused && !/^\s*paused:/m.test(m[2]!)) return text
+  let head = m[2]!.replace(/^\s*paused:.*\r?\n/gm, '')
+  if (!paused && now !== undefined) head = `${head.replace(/^\s*resumed:.*\r?\n/gm, '')}resumed: ${new Date(now).toISOString()}\n`
   return `${m[1]}${head}${paused ? 'paused: yes\n' : ''}${text.slice(m[1]!.length + m[2]!.length)}`
 }
 
@@ -70,6 +74,7 @@ export function specialistFile(f: { thread: string; schedule: string; tools: str
 }
 
 export type Report = { at: number; summary: string; needs?: string }
+// costToday: since midnight, or since its last resume today.
 export type SpecialistRow = { name: string; state: 'runs' | 'paused' | 'broken'; error?: string; key?: string; link?: string; cron?: string; tools: string[]; lastRun?: number; next?: number; costToday: number; result?: Report; by?: Maker; why?: string }
 // One row per file for kage list, kage top and the manager. runs, costs and reports are the ledgers (core/ledgers.ts).
 export function specialistRows(files: { name: string; text: string }[], o: { runs: string; costs: string; reports?: string; now: number }): SpecialistRow[] {
@@ -78,7 +83,7 @@ export function specialistRows(files: { name: string; text: string }[], o: { run
     const [when = '', name = '', summary = '', needs = ''] = l.split('\t')
     if (name) results.set(name, { at: Date.parse(when), summary, ...(needs && { needs }) })
   }
-  const spent = new Map(spendSince(o.costs, new Date(o.now).setHours(0, 0, 0, 0)).map(s => [s.key, s.usd]))
+  const midnight = new Date(o.now).setHours(0, 0, 0, 0)
   const last = new Map<string, number>()
   for (const l of o.runs.split('\n')) {
     const [when = '', id = ''] = l.split('\t')
@@ -90,7 +95,7 @@ export function specialistRows(files: { name: string; text: string }[], o: { run
     const next = sp.paused ? undefined : nextRun(sp.cron, new Date(o.now), 366 * 24 * 3600_000)?.getTime()
     return {
       name: sp.name, state: sp.paused ? 'paused' : 'runs', key: sp.key, link: sp.link, cron: sp.cron, tools: sp.tools,
-      ...(last.has(sp.name) && { lastRun: last.get(sp.name) }), ...(next !== undefined && { next }), costToday: spent.get(sp.key) ?? 0,
+      ...(last.has(sp.name) && { lastRun: last.get(sp.name) }), ...(next !== undefined && { next }), costToday: spendSince(o.costs, Math.max(midnight, sp.resumed ?? 0)).find(s => s.key === sp.key)?.usd ?? 0,
       ...(results.has(sp.name) && { result: results.get(sp.name) }), by: sp.by, why: sp.why,
     }
   })

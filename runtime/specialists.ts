@@ -16,11 +16,11 @@ export function readSpecialists(dir: string) {
 
 // kage stop <name>, the p key in kage top and the manager's tool: rewrite the paused line, keep the file.
 // The hub's next sync (within a minute) applies it. Returns the line for a person.
-export function pauseSpecialist(dir: string, name: string, paused: boolean): string {
+export function pauseSpecialist(dir: string, name: string, paused: boolean, now = Date.now()): string {
   const file = `${dir}/${name}.md`
   if (!NAME.test(name) || !existsSync(file)) return `There is no specialist named "${name}".`
   const text = readFileSync(file, 'utf8')
-  const next = setPaused(text, paused)
+  const next = setPaused(text, paused, now)
   if (next === text) return `${name} is already ${paused ? 'paused' : 'running'}.`
   // A copy swapped in, so the hub never reads a half-written file.
   writeFileSync(`${file}.new`, next, { mode: 0o600 })
@@ -77,7 +77,7 @@ export function specialistManager(o: { dir: string; max: number; ledgers: { text
       if (!NAME.test(a.name)) return `"${a.name}" is not a specialist name: a short lowercase name, letters, digits, dashes.`
       const file = `${o.dir}/${a.name}.md`
       if (a.action === 'pause' || a.action === 'resume') {
-        const said = pauseSpecialist(o.dir, a.name, a.action === 'pause')
+        const said = pauseSpecialist(o.dir, a.name, a.action === 'pause', now)
         o.sync(now)
         return said
       }
@@ -91,7 +91,7 @@ export function specialistManager(o: { dir: string; max: number; ledgers: { text
       }
       const old = existsSync(file) ? parseSpecialist(a.name, readFileSync(file, 'utf8')) : undefined
       if (!old && readSpecialists(o.dir).length >= o.max) return `not saved: this install has at most ${o.max} specialists (KAGE_MAX_SPECIALISTS). Remove one first, or ask the owner to raise it.`
-      const text = specialistFile({ thread: a.thread ?? '', schedule: a.schedule ?? '', tools: a.tools ?? [], job: a.job ?? '', by: a.by ?? 'kage', why: a.why ?? '', paused: !!old && !('error' in old) && old.paused })
+      const text = specialistFile({ thread: a.thread ?? '', schedule: a.schedule ?? '', tools: a.tools ?? [], job: a.job ?? '', by: a.by ?? (old && !('error' in old) ? old.by : 'kage'), why: a.why ?? '', paused: !!old && !('error' in old) && old.paused })
       if (typeof text !== 'string') return `not saved: ${text.error}`
       mkdirSync(o.dir, { recursive: true, mode: 0o700 })
       writeFileSync(`${file}.new`, text, { mode: 0o600 })
@@ -126,13 +126,16 @@ export function ownerNotes(store: Pick<Store, 'load' | 'save'>) {
       for (const k of lanes) if (k.startsWith(`${chat}:${thread}#side-spec-`)) { notes[k] = [...notes[k] ?? [], text.slice(0, 2000)].slice(-10); hit = true }
       if (hit) store.save(NOTES, notes)
     },
-    take(key: string): string | undefined {
+    // deliver: hands the run over with the notes; false means it never reached a session, so they stay.
+    take(key: string, deliver: (text: string) => boolean): string | undefined {
       const notes = all()
       const mine = notes[key]
       if (!mine?.length) return undefined
+      const text = `The owner wrote in this thread since your last run. Their words to you, to follow within your job and your grant:\n${mine.map(t => t.split('\n').map(l => `> ${l}`).join('\n')).join('\n')}`
+      if (!deliver(text)) return text
       delete notes[key]
       store.save(NOTES, Object.keys(notes).length ? notes : undefined)
-      return `The owner wrote in this thread since your last run. Their words to you, to follow within your job and your grant:\n${mine.map(t => t.split('\n').map(l => `> ${l}`).join('\n')).join('\n')}`
+      return text
     },
   }
 }

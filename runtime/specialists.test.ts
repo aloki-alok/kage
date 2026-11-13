@@ -86,8 +86,9 @@ test('pausing by name rewrites only that file, keeps it, and says when nothing m
   assert.match(pauseSpecialist(dir, 'deploys', true), /paused/)
   assert.match(readFileSync(`${dir}/deploys.md`, 'utf8'), /^paused: yes$/m)
   assert.match(pauseSpecialist(dir, 'deploys', true), /already paused/)
-  assert.match(pauseSpecialist(dir, 'deploys', false), /runs again/)
-  assert.equal(readFileSync(`${dir}/deploys.md`, 'utf8'), file().text)
+  assert.match(pauseSpecialist(dir, 'deploys', false, Date.UTC(2026, 10, 14)), /runs again/)
+  // A resume stamps its time (the daily cost cap counts from it); nothing else changes.
+  assert.equal(readFileSync(`${dir}/deploys.md`, 'utf8'), file().text.replace('---\nSummarise', 'resumed: 2026-11-14T00:00:00.000Z\n---\nSummarise'))
   assert.match(pauseSpecialist(dir, 'nobody', true), /no specialist/i)
   // A name that steps out of the folder is refused even when the file there exists.
   mkdirSync(`${dir}/in`)
@@ -100,9 +101,12 @@ test('no more than the cap run: past it, a specialist is logged and gets no sche
   const store = openStore(':memory:')
   const logs: string[] = []
   const two = (name: string) => ({ name, text: file().text })
-  const grants = syncSpecialists([two('a'), two('b'), two('c')], store, 1000, l => logs.push(l), 2)
-  assert.deepEqual(store.schedules().map(s => s.id), ['spec-a', 'spec-b'])
-  assert.equal(grants.size, 2)
+  const held = { name: 'aa', text: file().text.replace('---\nSummarise', 'paused: yes\n---\nSummarise') }
+  // Name order, whatever order the folder gives; a paused one does not count.
+  const grants = syncSpecialists([two('c'), two('b'), held, two('a')], store, 1000, l => logs.push(l), 2)
+  assert.deepEqual(store.schedules().map(s => s.id).sort(), ['spec-a', 'spec-b'])
+  // The paused one keeps its grant, as any paused one does; the one past the cap has none.
+  assert.deepEqual([...grants.keys()].map(k => k.split('#side-spec-')[1]).sort(), ['a', 'aa', 'b'])
   assert.match(logs.join('\n'), /c does not run: .*2 specialists/)
 })
 
@@ -142,6 +146,10 @@ test('the manager is refused a new specialist past the cap, a tool v1 cannot gra
   assert.match(u.m.manage({ action: 'save', name: 'x', ...job, tools: ['mcp__docs__read'] }, 1), /owner/)
   assert.match(u.m.manage({ action: 'save', name: 'x', ...job, by: 'owner', tools: ['mcp__docs__read'] }, 1), /saved x/i)
   assert.match(u.m.manage({ action: 'save', name: '../x', ...job }, 1), /name/)
+  // A change that leaves out by keeps who made it.
+  const { by: _, ...noBy } = job
+  u.m.manage({ action: 'save', name: 'x', ...noBy, tools: ['WebSearch'] }, 2)
+  assert.match(readFileSync(`${u.dir}/x.md`, 'utf8'), /^by: owner$/m)
 })
 
 test('the manager pauses, resumes, runs now and removes; a paused one does not run now', () => {
@@ -183,7 +191,9 @@ test('the owner\'s words in a specialist\'s thread reach its next run once, and 
   const lanes = [KEY, 'CTEST2:1.1#side-spec-other']
   notes.wrote(lanes, 'CTEST1', '1700000000.123456', 'skip the staging log today')
   notes.wrote(lanes, 'CTEST9', '5.5', 'not for any specialist')
-  assert.match(notes.take(KEY) ?? '', /owner wrote[\s\S]*skip the staging log today/)
-  assert.equal(notes.take(KEY), undefined)
-  assert.equal(notes.take('CTEST2:1.1#side-spec-other'), undefined)
+  // A run that could not be delivered keeps them for the next one.
+  assert.match(notes.take(KEY, () => false) ?? '', /skip the staging log today/)
+  assert.match(notes.take(KEY, () => true) ?? '', /owner wrote[\s\S]*skip the staging log today/)
+  assert.equal(notes.take(KEY, () => true), undefined)
+  assert.equal(notes.take('CTEST2:1.1#side-spec-other', () => true), undefined)
 })

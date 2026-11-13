@@ -1,6 +1,6 @@
 import { describe, test } from 'node:test'
 import assert from 'node:assert/strict'
-import { intake } from './slack.ts'
+import { intake, ownerNote } from './slack.ts'
 import type { SlackMessage } from '../core/slack-message.ts'
 
 const msg = { type: 'message', channel: 'CTEST1', ts: '5.5', user: 'UTEST1', text: 'hi' } as SlackMessage
@@ -26,5 +26,21 @@ describe('a Slack event reaches the inbox before Slack is told it arrived', () =
     const bare = { type: 'message', subtype: 'message_changed' } as unknown as SlackMessage
     for (let i = 0; i < 2; i++) await intake(bare, async () => {}, { take: () => assert.fail('nothing to record') }, async () => { heard++ })
     assert.equal(heard, 2)
+  })
+})
+
+describe('the owner\'s untagged reply in a thread is a note for its specialists; nobody else\'s is', () => {
+  const ids = { owner: 'UOWNER', botDm: 'DBOT' }
+  const m = (o: Record<string, unknown>) => ({ type: 'message', channel: 'C1', ts: '2.2', thread_ts: '1.1', user: 'UOWNER', text: 'skip staging', client_msg_id: 'x', ...o }) as never
+  test('the owner, typed, in a thread', () => {
+    assert.equal(ownerNote(m({}), ids, 'not-tagged'), true)
+  })
+  test('not a teammate, not a tagged task, not the DM, not a top-level message, not a bot post', () => {
+    assert.equal(ownerNote(m({ user: 'UMATE' }), ids, 'not-tagged'), false)
+    assert.equal(ownerNote(m({}), ids, 'not-listed'), false)
+    assert.equal(ownerNote(m({ channel: 'DBOT' }), ids, 'not-tagged'), false)
+    assert.equal(ownerNote(m({ thread_ts: undefined }), ids, 'not-tagged'), false)
+    assert.equal(ownerNote(m({ thread_ts: '2.2' }), ids, 'not-tagged'), false)
+    assert.equal(ownerNote(m({ client_msg_id: undefined, bot_id: 'B1' }), ids, 'not-tagged'), false)
   })
 })

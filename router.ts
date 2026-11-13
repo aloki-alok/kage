@@ -290,9 +290,11 @@ restoreHolds(DIR, d, Date.now())
 const schedules = scheduler({
   store, failed,
   // A specialist's run carries what the owner wrote in its thread since its last one.
+  // The notes stay when the run never reached a session.
   deliver: (key, task) => {
-    const said = key.includes('#side-spec-') ? notes.take(key) : undefined
-    return toSession(key, said ? { ...task, content: `${task.content}\n\n${said}` } : task)
+    let r: ReturnType<typeof toSession> | undefined
+    if (key.includes('#side-spec-')) notes.take(key, said => (r = toSession(key, { ...task, content: `${task.content}\n\n${said}` })) !== 'failed')
+    return r ?? toSession(key, task)
   },
   ready: key => d.ready(key),
   trusted: key => store.trust(key) === true,
