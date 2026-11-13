@@ -51,7 +51,7 @@ const tick = (ms = 5) => new Promise(r => setTimeout(r, ms))
 const ID = '11111111-1111-4111-8111-111111111111'
 const signal = () => new AbortController().signal
 
-function setup(o: { transcript?: boolean; silent?: boolean; dmFails?: boolean } = {}) {
+function setup(o: { transcript?: boolean; silent?: boolean; dmFails?: boolean; grants?: Record<string, string[]> } = {}) {
   const sdk = fakeSdk(o)
   const results: [string, number, boolean][] = []
   const blocks: [string, string[], string | null][] = []
@@ -78,6 +78,7 @@ function setup(o: { transcript?: boolean; silent?: boolean; dmFails?: boolean } 
     hasTranscript: () => o.transcript ?? false,
     toHub: () => {},
     options: { cwd: '/home', settingSources: ['user'] },
+    grantOf: key => o.grants?.[key],
     ownerMemory: '/owner',
     restartMs: 10,
     onResult: (key, total, resumed) => { results.push([key, total, resumed]) },
@@ -337,6 +338,20 @@ describe('Kage sessions on the Agent SDK', () => {
     t.d.task('C1:5.5', t.task(), 1)
     await tick()
     assert.deepEqual(await run('mcp__claude_ai_Gmail__search'), {})
+  })
+  test('a specialist lane gets only its grant, and approves nothing: a call that would ask is denied', async () => {
+    const t = setup({ grants: { 'C1:5.5#side-spec-deploys': ['Read'] } })
+    t.d.task('C1:5.5#side-spec-deploys', t.task(), 0)   // even an owner-trust task: the grant still holds
+    await tick()
+    const o = t.sdk.runs[0]!.options
+    const run = (tool_name: string) => o.hooks.PreToolUse[0].hooks[0]({ hook_event_name: 'PreToolUse', tool_name, tool_input: {} }, undefined, { signal: signal() })
+    assert.deepEqual(await run('Read'), {})
+    assert.deepEqual(await run('mcp__kage__reply'), {})
+    assert.match((await run('Bash')).hookSpecificOutput.permissionDecisionReason, /outside this specialist's grant/)
+    const asked = await o.canUseTool('Read', { file_path: '/x' }, { signal: signal() })
+    assert.equal(asked.behavior, 'deny')
+    assert.match(asked.message, /approves nothing/)
+    assert.deepEqual(t.posts, [])                  // no approval card reaches the owner
   })
   // A call that brought back the owner's one-time code is the owner (core/gate.ts senderOf), so only a stranger's call is limited.
   test("on a stranger's voice call the hook allows only the reply tool", async () => {

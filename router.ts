@@ -8,7 +8,7 @@
 // server.ts is the other end for tmux panes only: the Kage channel inside each pane's Claude Code.
 import { execFileSync, spawn } from 'node:child_process'
 import { randomUUID } from 'node:crypto'
-import { existsSync, mkdirSync, readFileSync, renameSync, statSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, readdirSync, readFileSync, renameSync, statSync, writeFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { dirname } from 'node:path'
 import { load, log } from './config.ts'
@@ -40,6 +40,7 @@ import { openStore, type Inbox } from './runtime/store.ts'
 import { openLedgers } from './runtime/ledger.ts'
 import { claudeProject, tmuxPanes } from './runtime/tmux-panes.ts'
 import { codeStamp } from './runtime/code-stamp.ts'
+import { syncSpecialists } from './runtime/specialists.ts'
 import { askHub } from './cli/home.ts'
 import { hubLock } from './runtime/hub-lock.ts'
 import { npmCi, packagesStale, rotate } from './runtime/hub-log.ts'
@@ -167,6 +168,18 @@ const sdkLib = env.KAGE_RUNTIME === 'tmux' ? undefined : await (async () => ({
 })
 // What each turn cost (core/ledgers.ts): `kage cost` reads it.
 const costTotals = lastTotals(ledgers.text('costs'))
+// Specialists (#57): one file each in the specialists folder, synced at start and each minute. Each runs on its
+// schedule in a side lane of its thread, at teammate trust, with only its grant, and approves nothing.
+let grants = new Map<string, string[]>()
+// Only the SDK runner enforces a grant, so with tmux panes no specialist runs: their schedules are removed.
+const specialists = (now: number) => {
+  const dir = `${DIR}/specialists`
+  let names: string[] = []
+  try { names = readdirSync(dir).filter(f => f.endsWith('.md')) } catch {}
+  if (!sdk && names.length) { if (!specialistsRefused) log('specialists need the Agent SDK runner (not KAGE_RUNTIME=tmux), so none runs'); specialistsRefused = true; names = [] }
+  grants = syncSpecialists(names.map(f => ({ name: f.slice(0, -3), text: readFileSync(`${dir}/${f}`, 'utf8') })), store, now, log)
+}
+let specialistsRefused = false
 const sdk = sdkLib ? sdkSessions({
   sdk: sdkLib.lib,
   hub: () => d,
@@ -193,8 +206,10 @@ const sdk = sdkLib ? sdkSessions({
   },
   onBlocked: blocked,
   onTurn: (key, tasks, limit) => limits.turn(key, tasks, limit, Date.now()),
+  grantOf: key => grants.get(key),
 }) : undefined
 if (sdk) mkdirSync(MEM.own, { recursive: true })
+specialists(Date.now())
 
 // A thread whose transcript is gone has nothing to resume, so it leaves the store. A pane that just
 // started has no transcript yet, so running panes are kept.
@@ -401,6 +416,7 @@ runJobs([
   { name: 'self-update', every: 60_000, run: selfUpdate },
   // hub.ts rotates the log at each start; a hub that runs for weeks rotates it here.
   { name: 'hub-log', every: 3_600_000, run: () => rotate(`${DIR}/hub.log`) },
+  { name: 'specialists', every: 60_000, run: specialists },
   { name: 'dream', every: 10 * 60_000, run: dream },
   { name: 'retro', every: 10 * 60_000, run: weeklyRetro },
 ])

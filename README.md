@@ -80,6 +80,21 @@ The first start installs the Agent SDK and turns on the service: macOS or Linux 
 | Give sessions your shell exports | Put them in `~/.config/kage/session.env` (mode 600), then `kage restart`. Sessions see only the service's environment, not your shell's. |
 | Use another supervisor (Docker, runit) | Have it run `kage run`: a non-zero exit means restart it, exit 0 means leave it down. Docker needs `--init`. |
 
+### Give a recurring job to a specialist
+
+A specialist is one file in `~/.config/kage/specialists/`, named after it (`deploys.md`):
+
+```markdown
+---
+thread: https://example.slack.com/archives/C0123ABC/p1700000000123456
+schedule: 0 9 * * 1-5
+tools: Read, Grep, WebFetch
+---
+Every weekday at 9, read yesterday's deploy log and post a three-line summary in this thread.
+```
+
+It runs on its schedule beside the thread's own session and posts in the thread. It has only the tools in `tools`, and teammate trust. It approves nothing: when it needs a decision or another tool, it says so in the thread, and you decide there. A new, changed or deleted file applies within a minute, and `kage schedules` shows its runs. Specialists need the default runtime, not tmux panes.
+
 ### Run threads as tmux panes instead
 
 Add `KAGE_RUNTIME=tmux` to `~/.config/kage/env`, then `kage stop` and `kage start`, to give each thread a Claude Code pane you can watch with `tmux attach -t <name>`. On Linux, systemd stops the panes with the hub on every restart, so a pane resumes its conversation on its next tag. Panes talk to Kage through channels, a research-preview feature: on Team and Enterprise an org Owner turns Channels on under [Organization settings > Claude Code > Channels](https://claude.ai/admin-settings/claude-code). Each new pane shows a warning screen for custom channels until your org approves Kage:

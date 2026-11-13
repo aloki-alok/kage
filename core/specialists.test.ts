@@ -8,7 +8,7 @@ const LINK = 'https://test.slack.com/archives/CTEST1/p1700000000123456'
 describe('a specialist file', () => {
   test('gives its thread lane, schedule, grant and job', () => {
     assert.deepEqual(parseSpecialist('deploys', file(`thread: ${LINK}\nschedule: 0 9 * * 1-5\ntools: Read, Grep,WebFetch`)), {
-      name: 'deploys', key: 'CTEST1:1700000000.123456#spec-deploys', cron: '0 9 * * 1-5', tools: ['Read', 'Grep', 'WebFetch'], job: 'Post a summary of the deploy log.',
+      name: 'deploys', key: 'CTEST1:1700000000.123456#side-spec-deploys', cron: '0 9 * * 1-5', tools: ['Read', 'Grep', 'WebFetch'], job: 'Post a summary of the deploy log.',
     })
   })
   test('no tools line grants no tools', () => {

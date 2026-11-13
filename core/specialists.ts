@@ -19,7 +19,7 @@ export function parseSpecialist(name: string, text: string): Specialist | { erro
   const job = m[2]!.trim()
   if (!job) return { error: 'the job, below the front matter, is empty' }
   const tools = (head.get('tools') ?? '').split(',').map(t => t.trim()).filter(Boolean)
-  return { name, key: `${thread}#spec-${name}`, cron, tools, job }
+  return { name, key: `${thread}#side-spec-${name}`, cron, tools, job }
 }
 
 // The grant only shrinks: a tool outside it is denied. Kage's own tools stay, so it can answer in its thread.
