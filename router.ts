@@ -8,7 +8,7 @@
 // server.ts is the other end for tmux panes only: the Kage channel inside each pane's Claude Code.
 import { execFileSync, spawn } from 'node:child_process'
 import { randomUUID } from 'node:crypto'
-import { existsSync, mkdirSync, readdirSync, readFileSync, renameSync, statSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, readFileSync, renameSync, statSync, writeFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { dirname } from 'node:path'
 import { load, log } from './config.ts'
@@ -40,7 +40,7 @@ import { openStore, type Inbox } from './runtime/store.ts'
 import { openLedgers } from './runtime/ledger.ts'
 import { claudeProject, tmuxPanes } from './runtime/tmux-panes.ts'
 import { codeStamp } from './runtime/code-stamp.ts'
-import { syncSpecialists } from './runtime/specialists.ts'
+import { readSpecialists, syncSpecialists } from './runtime/specialists.ts'
 import { askHub } from './cli/home.ts'
 import { hubLock } from './runtime/hub-lock.ts'
 import { npmCi, packagesStale, rotate } from './runtime/hub-log.ts'
@@ -199,11 +199,9 @@ const costTotals = lastTotals(ledgers.text('costs'))
 let grants = new Map<string, string[]>()
 // Only the SDK runner enforces a grant, so with tmux panes no specialist runs: their schedules are removed.
 const specialists = (now: number) => {
-  const dir = `${DIR}/specialists`
-  let names: string[] = []
-  try { names = readdirSync(dir).filter(f => f.endsWith('.md')) } catch {}
-  if (!sdk && names.length) { if (!specialistsRefused) log('specialists need the Agent SDK runner (not KAGE_RUNTIME=tmux), so none runs'); specialistsRefused = true; names = [] }
-  grants = syncSpecialists(names.map(f => ({ name: f.slice(0, -3), text: readFileSync(`${dir}/${f}`, 'utf8') })), store, now, log)
+  let files = readSpecialists(`${DIR}/specialists`)
+  if (!sdk && files.length) { if (!specialistsRefused) log('specialists need the Agent SDK runner (not KAGE_RUNTIME=tmux), so none runs'); specialistsRefused = true; files = [] }
+  grants = syncSpecialists(files, store, now, log)
 }
 let specialistsRefused = false
 const sdk = sdkLib ? sdkSessions({

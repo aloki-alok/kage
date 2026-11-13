@@ -83,7 +83,7 @@ The first start installs the Agent SDK and turns on the service: macOS or Linux 
 
 ### Give a recurring job to a specialist
 
-A specialist is one file in `~/.config/kage/specialists/`, named after it (`deploys.md`):
+A specialist is one file in `~/.config/kage/specialists/`, named after it (`deploys.md`). `kage add specialist deploys` writes a starter file, paused until you fill it in:
 
 ```markdown
 ---
@@ -95,6 +95,8 @@ Every weekday at 9, check https://status.example.com and post a three-line summa
 ```
 
 It runs on its schedule beside the thread's own session and posts in the thread. It has only the tools in `tools`, and teammate trust. Only web tools and outside MCP tools can be granted. It never gets a file, shell or agent tool, so it cannot change its own grant or read your tokens. WebFetch reaches http and https only. An MCP tool you grant by its full name runs with that tool's own reach. It approves nothing: when it needs a decision or another tool, it says so in the thread, and you decide there. A new, changed or deleted file applies within a minute, and `kage schedules` shows its runs. Specialists need the default runtime, not tmux panes.
+
+`kage list` shows each specialist: its schedule, last and next run, and what it spent today. `kage stop deploys` pauses it by adding `paused: yes` to its file. Take that line out to run it again.
 
 ### Run threads as tmux panes instead
 

@@ -5,19 +5,34 @@
 //                                  A pasted mention of the agent in place of its app id also saves its tag, so Kage can address it.
 //   kage remove <person or app id> whoever answers to them goes too
 //   kage list                      add --ids to skip the name lookup
-import { existsSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs'
 import { findPeople, type Person } from '../core/gate.ts'
 import { add, kindOf, ownerPerson, registryIn, remove, withRegistry, type Entry } from '../core/registry.ts'
 import { pauseLine, type Live } from '../core/board.ts'
-import { askHub, ENV_FILE } from './home.ts'
+import { askHub, DIR, ENV_FILE } from './home.ts'
+import { NAME, rowLine, specialistRows, starterFile } from '../core/specialists.ts'
+import { openLedgers } from '../runtime/ledger.ts'
+import { readSpecialists } from '../runtime/specialists.ts'
 import { reload, said } from './reload.ts'
 
+const SPECIALISTS = `${DIR}/specialists`
 const die = (msg: string): never => { console.error(msg); process.exit(1) }
 const [cmd = '', ...args] = process.argv.slice(2)
 const USAGE = 'Usage: kage add <person> | kage add <app id> <owner> | kage remove <person or app id> | kage list'
 if (!['add', 'remove', 'list'].includes(cmd)) die(USAGE)
 // Before anything is read: a session, whoever's task it runs, never changes who reaches Kage.
 if (cmd !== 'list' && process.env.KAGE_CLAUDE) die(`This shell runs inside Kage, and a session cannot change who reaches Kage. The owner runs kage ${cmd} in their own terminal.`)
+// kage add specialist <name>: a starter file, paused until its owner fills it in (core/specialists.ts).
+if (cmd === 'add' && args[0] === 'specialist') {
+  const name = args[1] ?? ''
+  if (args.length !== 2 || !NAME.test(name)) die('Usage: kage add specialist <name>, a short lowercase name: letters, digits, dashes')
+  const file = `${SPECIALISTS}/${name}.md`
+  if (existsSync(file)) die(`${file} already exists. Edit it, or pick another name.`)
+  mkdirSync(SPECIALISTS, { recursive: true, mode: 0o700 })
+  writeFileSync(file, starterFile(), { mode: 0o600, flag: 'wx' })
+  console.log(`Wrote ${file}, paused.\nFill in its thread, schedule, tools and job, then take out the paused line (or press p on it in kage top). It runs within a minute.`)
+  process.exit(0)
+}
 if (!existsSync(ENV_FILE)) die(`No settings file at ${ENV_FILE}. Run kage setup first.`)
 const env = readFileSync(ENV_FILE, 'utf8')
 const now = registryIn(env)
@@ -95,6 +110,15 @@ if (cmd === 'list') {
   // Everything the tree above did not print: no owner, an owner who is not listed, or a loop made by hand.
   const loose = now.filter(e => e.kind === 'agent' && !ownerPerson(now, e.id))
   if (loose.length) console.log(`Agents not tied to a listed person: ${loose.map(e => e.id).join(', ')}\n  One with no owner counts with any listed person's token. Tie one to its owner: kage add <app id> <owner>`)
+  // Kage's own specialists: it manages them, and they answer to it.
+  const files = readSpecialists(SPECIALISTS)
+  if (files.length) {
+    const ledgers = openLedgers(DIR)
+    const t = Date.now()
+    console.log(`\nSpecialists Kage manages (${files.length}):`)
+    for (const r of specialistRows(files, { runs: ledgers.text('runs'), costs: ledgers.text('costs'), now: t })) console.log(`  ${rowLine(r, t)}`)
+    ledgers.close()
+  }
 } else if (cmd === 'add' && args.length) {
   // An id or a mention is one word, and may be an agent followed by its owner. Anything else is a person's name, of one or more words.
   const oneWord = kindOf(args[0]!) === 'agent' || /^<?@?[UW][A-Z0-9]{2,}>?$/.test(args[0]!)
