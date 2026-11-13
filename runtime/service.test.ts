@@ -22,6 +22,8 @@ function kageCopy() {
   const dir = join(root, 'code'), conf = join(root, 'conf'), work = join(root, 'work')
   for (const d of [dir, conf, work, join(dir, 'node_modules')]) mkdirSync(d, { recursive: true })
   for (const f of ['hub.ts', 'service.sh']) copyFileSync(join(REPO, f), join(dir, f))
+  mkdirSync(join(dir, 'runtime'))
+  copyFileSync(join(REPO, 'runtime/hub-log.ts'), join(dir, 'runtime/hub-log.ts'))
   writeFileSync(join(dir, 'router.ts'), FAKE_HUB)
   // The packages are current: the lock is older than npm's stamp.
   writeFileSync(join(dir, 'package-lock.json'), '{}')
@@ -93,6 +95,22 @@ describe('hub.ts: one hub run, with its log, its boot count and a crash-loop DM'
     const text = new URLSearchParams(calls.find(c => c.path === '/chat.postMessage')!.body).get('text')!
     assert.match(text, /ERR_INVALID_TYPESCRIPT_SYNTAX|SyntaxError/)
     assert.doesNotMatch(text, /^\s*at /m)
+    rmSync(k.root, { recursive: true })
+  })
+
+  test('a hub whose packages are behind the lock runs npm ci once and exits 75, and the next start loads', async () => {
+    const k = kageCopy()
+    writeFileSync(join(k.dir, 'router.ts'), `import 'fakepkg'; console.log('loaded after npm ci')`)
+    const later = new Date(Date.now() + 5000)
+    utimesSync(join(k.dir, 'package-lock.json'), later, later)   // the lock moved: packages are behind
+    // A stand-in npm that installs the one package and stamps the install, as npm ci does.
+    const bin = join(k.root, 'bin')
+    mkdirSync(bin)
+    writeFileSync(join(bin, 'npm'), `#!/bin/sh\nmkdir -p node_modules/fakepkg && echo '{"name":"fakepkg","main":"i.js"}' > node_modules/fakepkg/package.json && : > node_modules/fakepkg/i.js && touch node_modules/.package-lock.json && echo "npm $*"\n`, { mode: 0o755 })
+    assert.equal(await hub(k, { PATH: `${bin}:${process.env.PATH}` }), 75)   // the supervisor starts it again
+    assert.equal(await hub(k, { PATH: `${bin}:${process.env.PATH}` }), 0)
+    assert.match(logOf(k), /behind package-lock\.json[\s\S]*npm ci --no-audit[\s\S]*loaded after npm ci/)
+    assert.equal(logOf(k).match(/npm ci --no-audit/g)?.length, 1)
     rmSync(k.root, { recursive: true })
   })
 

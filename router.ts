@@ -42,6 +42,7 @@ import { claudeProject, tmuxPanes } from './runtime/tmux-panes.ts'
 import { codeStamp } from './runtime/code-stamp.ts'
 import { askHub } from './cli/home.ts'
 import { hubLock } from './runtime/hub-lock.ts'
+import { npmCi, packagesStale, rotate } from './runtime/hub-log.ts'
 import { closedThreads } from './runtime/closed-threads.ts'
 
 const { ENV_FILE, NAME, Title, TEAMMATES, TRUSTED_APPS, env, need, bot, user } = load()
@@ -377,10 +378,9 @@ function selfUpdate(now: number) {
   const code = codeStamp(CODE)
   if (code && code !== BOOT_CODE && now - code > 10_000 && d.quietEverywhere(now)) {
     // New code may need new packages: npm stamps node_modules/.package-lock.json on each install.
-    const stale = () => { try { return statSync(`${CODE}/package-lock.json`).mtimeMs >= statSync(`${CODE}/node_modules/.package-lock.json`).mtimeMs } catch { return true } }
-    if (stale()) {
+    if (packagesStale(CODE)) {
       if (npmFailedFor === code) return
-      try { execFileSync('npm', ['ci', '--no-audit', '--no-fund', '--loglevel=error'], { cwd: CODE, stdio: ['ignore', 'inherit', 'inherit'] }) } catch {
+      try { npmCi(CODE) } catch {
         npmFailedFor = code
         log('npm ci failed for the newer code, so the hub stays on the code it runs. Run npm ci in', CODE)
         return
@@ -398,6 +398,8 @@ runJobs([
   { name: 'limit pause', every: 20_000, run: now => limits.tick(now) },
   { name: 'daily note', every: 10 * 60_000, run: dailyNote },
   { name: 'self-update', every: 60_000, run: selfUpdate },
+  // hub.ts rotates the log at each start; a hub that runs for weeks rotates it here.
+  { name: 'hub-log', every: 3_600_000, run: () => rotate(`${DIR}/hub.log`) },
   { name: 'dream', every: 10 * 60_000, run: dream },
   { name: 'retro', every: 10 * 60_000, run: weeklyRetro },
 ])

@@ -2,8 +2,9 @@
 // It uses only Node's own modules and loads router.ts last, so a bad pull that breaks the hub's code or its
 // packages is still caught here: logged, counted, and after 3 starts in 10 minutes sent to the owner as a DM.
 // The supervisor's rule: a non-zero exit restarts the hub, and exit 0 (kage stop, a second hub) leaves it down.
-import { copyFileSync, existsSync, mkdirSync, readFileSync, statSync, truncateSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
+import { npmCi, packagesStale, rotate } from './runtime/hub-log.ts'
 
 const DIR = import.meta.dirname
 const ENV_FILE = process.env.KAGE_ENV || `${process.env.HOME}/.config/kage/env`
@@ -13,13 +14,6 @@ const say = (line: string) => console.error(`${new Date().toISOString()} hub.ts:
 // The env file's last line for a key wins, as in the hub's own parser.
 const envValue = (text: string, key: string) =>
   text.split('\n').filter(l => l.startsWith(`${key}=`)).map(l => l.slice(key.length + 1)).at(-1)
-
-// The supervisor appends to hub.log and keeps it open, so the hub copies it aside and empties it in place.
-function rotate(log: string, max = 10 * 1024 * 1024) {
-  try { if (statSync(log).size <= max) return } catch { return }
-  copyFileSync(log, `${log}.1`)
-  truncateSync(log, 0)
-}
 
 // Starts in the last day stay in the file, for the doctor. Returns how many fell in the last 10 minutes.
 function countBoot(file: string, now: number): number {
@@ -93,7 +87,11 @@ function claudeCommand(env: string, mem: string) {
   process.chdir(process.env.KAGE_CWD || process.env.HOME!)
   try { await import('./router.ts') } catch (e) {
     console.error(e)
-    say('the hub could not load: a bad pull, or packages out of date (npm ci)')
-    process.exit(1)
+    // An npm ci that failed or stopped midway leaves the packages behind the lock: install them, then exit 75 so the
+    // supervisor starts a fresh process. Node keeps a failed lookup for the life of this one.
+    if (!packagesStale(DIR)) { say('the hub could not load: read the error above'); process.exit(1) }
+    say('the hub could not load and its packages are behind package-lock.json: running npm ci, then restarting')
+    try { npmCi(DIR) } catch { say(`npm ci failed: run it in ${DIR} and read the error`); process.exit(1) }
+    process.exit(75)
   }
 }
