@@ -9,7 +9,12 @@ export type Live = {
   held: string[]
   max: number
   paused?: Pause
+  limitCounts?: LimitCounts
 }
+// Counted by the usage-limit pause since the hub started.
+export type LimitCounts = { limitHits: number; held: number; replays: number; replayFailures: number }
+export const limitLine = (c?: LimitCounts) =>
+  c?.limitHits ? `Usage limit since the hub started: ${c.limitHits} hit${c.limitHits === 1 ? '' : 's'}, ${c.held} held, ${c.replays} replayed, ${c.replayFailures} replay${c.replayFailures === 1 ? '' : 's'} failed.` : undefined
 // The usage-limit pause (runtime/limit-pause.ts): when it ends, and how many messages wait for that.
 export type Pause = { until: number; held: number }
 // A time for a person: the clock time, with the day when it is not today.

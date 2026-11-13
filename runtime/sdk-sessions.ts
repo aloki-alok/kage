@@ -149,7 +149,8 @@ export function sdkSessions(o: {
           }
           // Seconds from Claude Code; ms is accepted too.
           if (m.type === 'rate_limit_event' && m.rate_limit_info.status === 'rejected' && m.rate_limit_info.resetsAt) resetsAt = m.rate_limit_info.resetsAt < 1e12 ? m.rate_limit_info.resetsAt * 1000 : m.rate_limit_info.resetsAt
-          if (m.type === 'assistant' && !m.parent_tool_use_id && (m.error === 'rate_limit' || m.error === 'overloaded')) limit = m.error
+          // The last top-level answer decides: after a limit, Claude Code may try again and get a real one.
+          if (m.type === 'assistant' && !m.parent_tool_use_id) limit = m.error === 'rate_limit' || m.error === 'overloaded' ? m.error : undefined
           if (m.type === 'result' && m.is_error && !limit) {
             // An older CLI marks no assistant message: the HTTP status on the result says the same.
             const status = 'api_error_status' in m ? m.api_error_status : undefined

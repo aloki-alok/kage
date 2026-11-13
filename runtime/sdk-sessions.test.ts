@@ -138,6 +138,10 @@ describe('Kage sessions on the Agent SDK', () => {
       [[{ type: 'result', total_cost_usd: 0, is_error: true, api_error_status: 529 }], { kind: 'overloaded' }],
       [[{ type: 'assistant', parent_tool_use_id: 'toolu_1', error: 'rate_limit', message: { content: [] } }, { type: 'result', total_cost_usd: 1 }], undefined],
       [[{ type: 'rate_limit_event', rate_limit_info: { status: 'allowed_warning', resetsAt: 1_800_000_000 } }, { type: 'result', total_cost_usd: 1 }], undefined],
+      // A warning's reset time is not the reset of a rejection.
+      [[{ type: 'rate_limit_event', rate_limit_info: { status: 'allowed_warning', resetsAt: 1_800_000_000 } }, { type: 'assistant', parent_tool_use_id: null, error: 'rate_limit', message: { content: [] } }, { type: 'result', total_cost_usd: 0 }], { kind: 'rate_limit' }],
+      // Claude Code tried again and the answer came: the turn did its work.
+      [[{ type: 'assistant', parent_tool_use_id: null, error: 'overloaded', message: { content: [] } }, { type: 'assistant', parent_tool_use_id: null, message: { content: [] } }, { type: 'result', total_cost_usd: 1 }], undefined],
     ] as const) {
       const t = setup()
       t.d.task('C1:5.5', t.task(), 0)
@@ -445,7 +449,7 @@ test('the usage limit, whole: no post but the notice, the inbox message kept, an
   let d!: Dispatcher<ToSession>
   const limits = limitPause({
     store, log: () => {}, time: () => '18:05',
-    end: key => d.end(key),
+    end: key => d.end(key).filter(m => m.type === 'task'),
     notice: (_t, text) => posts.push(text),
     replay: async r => { replayed.push(r.payload) },
     redeliver: () => {},

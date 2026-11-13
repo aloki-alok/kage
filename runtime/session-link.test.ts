@@ -217,14 +217,15 @@ test('kage reload: the socket answers with what the hub did with the settings fi
   assert.equal(asked, 2)
 })
 
-test('the board says when the usage limit paused Kage, and says nothing of it otherwise', async t => {
+test('the board says when the usage limit paused Kage, and carries the limit counts', async t => {
   const d = new Dispatcher<ToSession>(
     { start: () => {}, stop: () => {}, lastActivity: () => 0, busy: () => false },
     { max: 2, idleMs: 9e9, connectMs: 9e9, evictMs: 0, newId: () => 'id1' },
   )
   const sock = join(mkdtempSync(join(tmpdir(), 'kage-link-')), 's.sock')
   let paused: { until: number; held: number } | undefined = { until: 5000, held: 2 }
-  const server = listenForSessions(sock, d, { mail: () => {}, wa: () => {}, voice: () => {}, failed: () => {}, schedules: { add: () => undefined, remove: () => {} }, paused: () => paused })
+  const counts = { limitHits: 1, held: 2, replays: 0, replayFailures: 0 }
+  const server = listenForSessions(sock, d, { mail: () => {}, wa: () => {}, voice: () => {}, failed: () => {}, schedules: { add: () => undefined, remove: () => {} }, paused: () => paused, limitCounts: () => counts })
   t.after(() => server.close())
   await until(() => server.listening)
   const ask = async () => {
@@ -236,7 +237,7 @@ test('the board says when the usage limit paused Kage, and says nothing of it ot
     c.destroy()
     return JSON.parse(reply || 'null')
   }
-  assert.deepEqual(await ask(), { type: 'board', live: [], waiting: [], held: [], max: 2, paused: { until: 5000, held: 2 } })
+  assert.deepEqual(await ask(), { type: 'board', live: [], waiting: [], held: [], max: 2, paused: { until: 5000, held: 2 }, limitCounts: counts })
   paused = undefined
-  assert.deepEqual(await ask(), { type: 'board', live: [], waiting: [], held: [], max: 2 })
+  assert.deepEqual(await ask(), { type: 'board', live: [], waiting: [], held: [], max: 2, limitCounts: counts })
 })

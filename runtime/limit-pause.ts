@@ -16,7 +16,8 @@ const sourceOf = (t: Task) => (t.origin.ts && !t.scheduled ? `slack:${t.origin.c
 export function limitPause(o: {
   store: Pick<Store, 'delivered' | 'hold' | 'held' | 'release' | 'handled'>
   notice: (task: Task, text: string) => void           // one line in the task's thread, as the bot
-  end: (key: string) => void                           // close the session, so it reads nothing more into the limit
+  // Close the session, so it reads nothing more into the limit. Returns the tasks it had not read yet.
+  end: (key: string) => Task[] | void
   replay: (row: { source: string; connector: string; payload: string }) => Promise<unknown>
   redeliver: (key: string, task: Task) => void         // a scheduled run, again
   log: (...a: unknown[]) => void
@@ -26,7 +27,9 @@ export function limitPause(o: {
 }) {
   let until: number | undefined
   const open = new Set<string>()                              // inbox ids that wait for their turn to end
-  const told = new Set<string>()                              // threads told about this pause
+  // Thread -> the reset time it was told. Told again only for a reset more than 30 minutes later, so a
+  // retry every 15 minutes with no known reset does not post every time.
+  const told = new Map<string, number>()
   // ponytail: scheduled runs wait in memory, so a hub restart in the pause drops them. A recurring one runs at its next time.
   const owed = new Map<string, { key: string; task: Task }>() // job id -> the one run it gets at the reset
   const counts = { limitHits: 0, held: 0, replays: 0, replayFailures: 0 }
@@ -35,11 +38,11 @@ export function limitPause(o: {
   function keep(key: string, t: Task, limit: Limit, now: number): boolean {
     const source = sourceOf(t)
     if (source && o.store.hold(source, until!)) open.add(source)
-    else if (t.scheduled && t.job) { if (owed.has(t.job)) return true; owed.set(t.job, { key, task: t }) }
+    else if (t.scheduled && t.job) owed.set(t.job, { key, task: t })
     else return false
     counts.held++
-    if (!told.has(key)) {
-      told.add(key)
+    if (until! - (told.get(key) ?? -Infinity) > 30 * 60_000) {
+      told.set(key, until!)
       const at = (o.time ?? clockTime)(until!, now)
       o.notice(t, limit.kind === 'overloaded' ? `Paused: Claude is overloaded. I'll try again at ${at}.` : `Paused by the usage limit until ${at}. I'll pick this up then.`)
     }
@@ -72,8 +75,8 @@ export function limitPause(o: {
       kind = limit.kind
       until = Math.max(until ?? 0, limit.until && limit.until > now ? limit.until : now + RETRY[limit.kind])
       o.log(`${limit.kind === 'overloaded' ? 'overload' : 'usage limit'} hit in ${key}: paused until ${new Date(until).toISOString()}, ${tasks.length} task${tasks.length === 1 ? '' : 's'} held`)
-      for (const t of tasks) if (!keep(key, t, limit, now)) o.log('cannot hold a task with no inbox message', key, t.meta.place)
-      o.end(key)
+      // The session closes first: what the dispatcher still had for it was never read, and is held with the rest.
+      for (const t of [...tasks, ...o.end(key) ?? []]) if (!keep(key, t, limit, now)) o.log('cannot hold a task with no inbox message', key, t.meta.place)
     },
     // At the reset time: held messages replay oldest first, then each owed scheduled run once.
     async tick(now: number) {
@@ -85,11 +88,10 @@ export function limitPause(o: {
         o.store.release(r.source)
         open.delete(r.source)
         try { await o.replay(r); counts.replays++ } catch (e) {
+          // Its connector is off or the event is unreadable, so a later try would fail the same way: it is let go.
           counts.replayFailures++
           o.log('replay failed', r.source, e)
-          // Kept for another try. The pause comes back, so it replays in order with the rest.
-          until = now + RETRY.overloaded
-          if (o.store.hold(r.source, until)) open.add(r.source)
+          o.store.handled(r.source)
         }
       }
       for (const [job, { key, task }] of [...owed]) { owed.delete(job); counts.replays++; o.redeliver(key, task) }

@@ -20,7 +20,7 @@ import { connectVoice } from './connectors/voice.ts'
 import { startWhatsApp } from './connectors/whatsapp-link.ts'
 import { parseCommands } from './core/commands.ts'
 import { memoryDirs } from './core/guards.ts'
-import { pauseLine } from './core/board.ts'
+import { limitLine, pauseLine } from './core/board.ts'
 import { placeFor, sessionKey, type Conversation, type Lane } from './core/conversations.ts'
 import { senderOf } from './core/gate.ts'
 import { dailyDue, lastTotals, openWaiting, staleWaiting, turnCost } from './core/ledgers.ts'
@@ -196,7 +196,7 @@ const d: Dispatcher<ToSession> = new Dispatcher<ToSession>(runner, {
 // The usage-limit pause: a turn that ends on the limit keeps its message and replays it at the reset (runtime/limit-pause.ts).
 const limits = limitPause({
   store, log,
-  end: key => d.end(key),
+  end: key => d.end(key).filter(m => m.type === 'task'),
   // A tmux pane reports no turn end, so its messages are handled at delivery, as before.
   defers: key => !!sdk && !onPane.has(key),
   notice: (t, text) => void bot.chat.postMessage({ channel: t.meta.channel, ...(t.meta.thread_ts && { thread_ts: t.meta.thread_ts }), text }).then(
@@ -245,6 +245,7 @@ function status(): string {
   const paused = limits.paused()
   return [
     ...(paused ? [`*${pauseLine(paused)}*`] : []),
+    ...[limitLine(limits.counts)].filter((l): l is string => !!l),
     `*${s.live.length} of ${MAX} sessions*${s.waiting.length ? `, ${s.waiting.length} waiting for a slot` : ''}`,
     ...lines,
     ...s.waiting.map(k => `• ${placeOf(k)}: waiting for a slot`),
@@ -408,7 +409,7 @@ function tell(key: string, text: string): { ok: true; held?: true } | { refused:
 }
 // kage reload: a changed allow list applies to the next message, with no restart and no turn cut (core/settings.ts).
 const reload = reloader({ boot: env, read: () => readFileSync(ENV_FILE, 'utf8'), apply: slack.allow, log })
-listenForSessions(`${DIR}/router.sock`, d, { ...replies, failed, schedules, tell, reload, paused: limits.paused, callCode: voice?.issueCode })
+listenForSessions(`${DIR}/router.sock`, d, { ...replies, failed, schedules, tell, reload, paused: limits.paused, limitCounts: () => limits.counts, callCode: voice?.issueCode })
 
 await slack.start()
 // Messages the last run took but never handled (it died in between) run now. Older than 10 minutes, they are let go.

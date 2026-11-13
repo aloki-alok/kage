@@ -19,10 +19,11 @@ function hub() {
   const store = openStore(':memory:')
   const notices: string[] = [], ended: string[] = [], replayed: string[] = [], redelivered: string[] = [], logged: string[] = []
   let failReplay = false
+  const pendingAtEnd: Task[] = []   // tasks the dispatcher still had for the thread when its session closed
   const p = limitPause({
     store, time: at => `t+${at / MIN}`,
     notice: (task, text) => notices.push(`${task.meta.channel}:${task.meta.thread_ts} ${text}`),
-    end: key => ended.push(key),
+    end: key => { ended.push(key); return pendingAtEnd.splice(0) },
     replay: async r => { if (failReplay) throw new Error('slack down'); replayed.push(`${r.source} ${r.payload}`) },
     redeliver: (key, task) => redelivered.push(`${key} ${task.job}`),
     log: (...a) => logged.push(a.join(' ')),
@@ -36,7 +37,7 @@ function hub() {
     p.handled(source)
     return held
   }
-  return { store, p, notices, ended, replayed, redelivered, logged, hear, failReplays: () => { failReplay = true } }
+  return { store, p, notices, ended, replayed, redelivered, logged, hear, pendingAtEnd, failReplays: () => { failReplay = true } }
 }
 
 describe('a turn that ends on the usage limit', () => {
@@ -55,14 +56,13 @@ describe('a turn that ends on the usage limit', () => {
     const h = hub()
     const t = slackTask('7.7')
     h.hear('C1:5.5', t, 0)
-    assert.equal(h.store.unhandled(-1).length, 0)   // delivered: a restart does not run it again
+    assert.equal(h.store.delivered('slack:C1:7.7'), true)    // its text is still there while the turn runs
     h.p.turn('C1:5.5', [t], undefined, 1000)
+    assert.equal(h.store.delivered('slack:C1:7.7'), false)   // and gone once the turn ended, as before
+    assert.equal(h.store.has('slack:C1:7.7'), true)
     assert.deepEqual(h.store.held(), [])
     assert.equal(h.p.paused(), undefined)
     assert.deepEqual(h.notices, [])
-    // Its text is gone from the store, as before.
-    assert.equal(h.store.has('slack:C1:7.7'), true)
-    assert.deepEqual(h.store.unhandled(-1), [])
   })
   test('while paused, a new message is held the same way with no session, and its thread is told once', () => {
     const h = hub()
@@ -162,7 +162,7 @@ describe('a turn that ends on the usage limit', () => {
     store.take('slack:C1:7.7', 'slack', 'event', 0)
     p.delivered('pane', slackTask('7.7'))
     p.handled('slack:C1:7.7')
-    assert.deepEqual(store.unhandled(-1), [])
+    assert.equal(store.delivered('slack:C1:7.7'), false)   // its text is gone at once
     assert.deepEqual(store.held(), [])
   })
   test('a restart inside the pause keeps it: held messages wait for the reset, then replay', async () => {
@@ -180,6 +180,29 @@ describe('a turn that ends on the usage limit', () => {
     await again.tick(55 * MIN)
     assert.deepEqual(replayed, ['slack:C1:7.7'])
   })
+  test('a task the dispatcher still had for the thread when its session closed is held too', () => {
+    const h = hub()
+    const first = slackTask('7.7'), second = slackTask('8.8')
+    h.hear('C1:5.5', first, 0)
+    h.hear('C1:5.5', second, 500)       // delivered, but the session was restarting: the dispatcher kept it
+    h.pendingAtEnd.push(second)
+    h.p.turn('C1:5.5', [first], { kind: 'rate_limit', until: 55 * MIN }, 1000)
+    assert.deepEqual(h.store.held().map(r => r.source), ['slack:C1:7.7', 'slack:C1:8.8'])
+    assert.equal(h.notices.length, 1)
+  })
+  test('a thread is told again in a later pause, even when no turn there ended well in between', async () => {
+    const h = hub()
+    const t = slackTask('7.7')
+    h.hear('C1:5.5', t, 0)
+    h.p.turn('C1:5.5', [t], { kind: 'rate_limit', until: 55 * MIN }, 1000)
+    await h.p.tick(55 * MIN)            // its replay was dropped by the gate, so no turn ran
+    h.p.handled('slack:C1:7.7')
+    const later = slackTask('9.9')
+    h.hear('C1:5.5', later, 300 * MIN)
+    h.p.turn('C1:5.5', [later], { kind: 'rate_limit', until: 360 * MIN }, 301 * MIN)
+    assert.equal(h.notices.length, 2)
+    assert.match(h.notices[1]!, /until t\+360/)
+  })
   test('limit hits, held messages, replays and replay failures are counted', async () => {
     const h = hub()
     const t = slackTask('7.7')
@@ -191,8 +214,9 @@ describe('a turn that ends on the usage limit', () => {
     await h.p.tick(55 * MIN)
     assert.deepEqual(h.p.counts, { limitHits: 1, held: 2, replays: 0, replayFailures: 2 })
     assert.equal(h.logged.filter(l => l.includes('replay failed')).length, 2)
-    // A failed replay keeps its message for the next try, 5 minutes on.
-    assert.equal(h.store.held().length, 2)
-    assert.equal(h.p.paused()!.until, 60 * MIN)
+    // A replay that fails cannot work later either (its connector is off, or the event is unreadable): it is let go, and the pause ends.
+    assert.equal(h.store.held().length, 0)
+    assert.equal(h.store.delivered('slack:C1:7.7'), false)
+    assert.equal(h.p.paused(), undefined)
   })
 })

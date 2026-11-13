@@ -159,7 +159,7 @@ export function openStore(path: string) {
       return Number(db.prepare('insert into inbox (source, connector, at, payload) values (?, ?, ?, ?) on conflict (source) do nothing').run(source, connector, now, payload).changes) > 0
     },
     has: (source: string) => db.prepare('select 1 from inbox where source = ?').get(source) !== undefined,
-    handled(source: string) { db.prepare('update inbox set payload = null, held_until = null where source = ?').run(source) },
+    handled(source: string) { db.prepare('update inbox set payload = null where source = ?').run(source) },
     // A session took the message. Its text stays until the turn ends, so a turn that hits the usage limit can replay it.
     // false: no such message with its text still here.
     delivered: (source: string) => Number(db.prepare('update inbox set delivered = 1 where source = ? and payload is not null').run(source).changes) > 0,
