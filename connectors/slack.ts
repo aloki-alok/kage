@@ -5,7 +5,7 @@ import { SocketModeClient, LogLevel } from '@slack/socket-mode'
 import { appendFileSync, writeFileSync } from 'node:fs'
 import type { WebClient } from '@slack/web-api'
 import { log, logger } from '../config.ts'
-import { classify, plainName, quoteMessage, taskLine, type Ids } from '../core/gate.ts'
+import { classify, DROPS, plainName, quoteMessage, taskLine, type Ids } from '../core/gate.ts'
 import { filesTag, typedByPerson, type SlackMessage } from '../core/slack-message.ts'
 import { parseSessionKey, sessionKey, slackConversation, type Conversation, type Lane } from '../core/conversations.ts'
 import { askedFrom, cardAt } from '../core/ledgers.ts'
@@ -107,7 +107,9 @@ export async function connectSlack(o: { dir: string; appToken: string; bot: WebC
     // AFK sees every message: it watches threads that mention the owner, and mutes threads the owner types in.
     afk?.heard(m)
     const t = classify(m, ids, cardOf(m))
-    if (!t) {
+    if (t.kind === 'drop') {
+      // The one place a refusal is logged. Untagged talk is nearly all the hub hears, and would push everything else out of the log.
+      if (t.reason !== 'not-tagged') log(`dropped ${m.channel}:${m.thread_ts ?? m.ts} from ${m.user ?? 'no user'}${m.app_id ? ` (app ${m.app_id})` : ''}: ${t.reason}, ${DROPS[t.reason]}`)
       // The owner answering in person needs no watch to run as well.
       if (typedByPerson(m) && m.channel !== ids.botDm && m.user !== ids.owner) {
         const quoted = quoteMessage({ user: m.user, ts: m.ts, text: m.text, client_msg_id: m.client_msg_id }, ids.owner, { bot: ids.bot, title: o.title })

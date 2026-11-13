@@ -14,36 +14,36 @@ const msg = (o: Record<string, unknown>) =>
 
 describe('who can drive the agent', () => {
   test('a tag from someone else is dropped', () => {
-    assert.equal(classify(msg({ user: 'UOTHER', text: `<@${BOT}> deploy prod` }), ids), null)
+    assert.deepEqual(classify(msg({ user: 'UOTHER', text: `<@${BOT}> deploy prod` }), ids), { kind: 'drop', reason: 'not-listed' })
   })
   test('a DM to the bot from someone else is dropped', () => {
-    assert.equal(classify(msg({ user: 'UOTHER', channel: DM, text: 'run this' }), ids), null)
+    assert.deepEqual(classify(msg({ user: 'UOTHER', channel: DM, text: 'run this' }), ids), { kind: 'drop', reason: 'not-tagged' })
   })
   test('a bot posting as the owner is dropped', () => {
-    assert.equal(classify(msg({ bot_id: 'B1', text: `<@${BOT}> hi` }), ids), null)
+    assert.deepEqual(classify(msg({ bot_id: 'B1', text: `<@${BOT}> hi` }), ids), { kind: 'drop', reason: 'not-proven' })
   })
   test('a trusted app posting as a teammate is a teammate task; never as the owner or an outsider', () => {
     const withApp = { ...ids, apps: ['ATEST0001'] }
     const appPost = (o: Record<string, unknown>) => msg({ client_msg_id: undefined, bot_id: 'BTEST0001', app_id: 'ATEST0001', ...o })
     assert.deepEqual(classify(appPost({ user: MATE, text: `*Agent:* <@${BOT}> pull forms` }), withApp), { kind: 'task', text: '*Agent:* pull forms' })
-    assert.equal(classify(appPost({ user: OWNER, text: `<@${BOT}> deploy prod` }), withApp), null)
-    assert.equal(classify(appPost({ user: OWNER, channel: DM, text: 'yes abcde' }), withApp), null)
-    assert.equal(classify(appPost({ user: 'UOTHER', text: `<@${BOT}> hi` }), withApp), null)
-    assert.equal(classify(appPost({ user: MATE, app_id: 'AOTHER001', text: `<@${BOT}> hi` }), withApp), null)
-    assert.equal(classify(appPost({ user: MATE, subtype: 'message_changed', text: `<@${BOT}> hi` }), withApp), null)
-    assert.equal(classify(appPost({ user: MATE, text: `<@${BOT}> hi` }), ids), null)
+    assert.deepEqual(classify(appPost({ user: OWNER, text: `<@${BOT}> deploy prod` }), withApp), { kind: 'drop', reason: 'not-proven' })
+    assert.deepEqual(classify(appPost({ user: OWNER, channel: DM, text: 'yes abcde' }), withApp), { kind: 'drop', reason: 'not-proven' })
+    assert.deepEqual(classify(appPost({ user: 'UOTHER', text: `<@${BOT}> hi` }), withApp), { kind: 'drop', reason: 'not-listed' })
+    assert.deepEqual(classify(appPost({ user: MATE, app_id: 'AOTHER001', text: `<@${BOT}> hi` }), withApp), { kind: 'drop', reason: 'not-proven' })
+    assert.deepEqual(classify(appPost({ user: MATE, subtype: 'message_changed', text: `<@${BOT}> hi` }), withApp), { kind: 'drop', reason: 'not-proven' })
+    assert.deepEqual(classify(appPost({ user: MATE, text: `<@${BOT}> hi` }), ids), { kind: 'drop', reason: 'not-proven' })
   })
   test('edits, joins and bot messages are dropped', () => {
     for (const subtype of ['message_changed', 'channel_join', 'bot_message']) {
-      assert.equal(classify(msg({ subtype, text: `<@${BOT}> hi` }), ids), null)
+      assert.deepEqual(classify(msg({ subtype, text: `<@${BOT}> hi` }), ids), { kind: 'drop', reason: 'not-proven' })
     }
   })
   test('an app posting with the owner token is dropped (no client_msg_id)', () => {
-    assert.equal(classify(msg({ client_msg_id: undefined, text: `<@${BOT}> run X` }), ids), null)
-    assert.equal(classify(msg({ client_msg_id: undefined, channel: DM, text: 'yes abcde' }), ids), null)
+    assert.deepEqual(classify(msg({ client_msg_id: undefined, text: `<@${BOT}> run X` }), ids), { kind: 'drop', reason: 'not-proven' })
+    assert.deepEqual(classify(msg({ client_msg_id: undefined, channel: DM, text: 'yes abcde' }), ids), { kind: 'drop', reason: 'not-proven' })
   })
   test('a message carrying an app_id is dropped even with client_msg_id', () => {
-    assert.equal(classify(msg({ app_id: 'A1', text: `<@${BOT}> run X` }), ids), null)
+    assert.deepEqual(classify(msg({ app_id: 'A1', text: `<@${BOT}> run X` }), ids), { kind: 'drop', reason: 'not-proven' })
   })
 })
 
@@ -71,13 +71,13 @@ describe('what starts a task', () => {
   test('the typed tag follows the configured name', () => {
     const other = { ...ids, name: 'igris' }
     assert.deepEqual(classify(msg({ text: '@igris go' }), other), { kind: 'task', text: 'go' })
-    assert.equal(classify(msg({ text: '@kage go' }), other), null)
+    assert.deepEqual(classify(msg({ text: '@kage go' }), other), { kind: 'drop', reason: 'not-tagged' })
   })
   test('the name inside a word, an email or a longer handle is not a tag', () => {
-    assert.equal(classify(msg({ text: 'mail me@kage.dev or @kagerou or @kage-prod' }), ids), null)
+    assert.deepEqual(classify(msg({ text: 'mail me@kage.dev or @kagerou or @kage-prod' }), ids), { kind: 'drop', reason: 'not-tagged' })
   })
   test('owner message without a tag outside the DM is ignored', () => {
-    assert.equal(classify(msg({ text: 'just chatting' }), ids), null)
+    assert.deepEqual(classify(msg({ text: 'just chatting' }), ids), { kind: 'drop', reason: 'not-tagged' })
   })
   test('any owner DM to the bot is a task, tag stripped', () => {
     assert.deepEqual(classify(msg({ channel: DM, text: `<@${BOT}> what is open?` }), ids),
@@ -109,16 +109,16 @@ describe('teammates the owner listed', () => {
       { kind: 'task', text: 'check prod health' })
   })
   test("a teammate's message without a tag is ignored", () => {
-    assert.equal(classify(msg({ user: MATE, text: 'just chatting' }), ids), null)
+    assert.deepEqual(classify(msg({ user: MATE, text: 'just chatting' }), ids), { kind: 'drop', reason: 'not-tagged' })
   })
   test('a teammate cannot approve a prompt, even in the DM', () => {
-    assert.equal(classify(msg({ user: MATE, channel: DM, text: 'yes abcde' }), ids), null)
+    assert.deepEqual(classify(msg({ user: MATE, channel: DM, text: 'yes abcde' }), ids), { kind: 'drop', reason: 'not-tagged' })
   })
   test('an app posting as a teammate is dropped', () => {
-    assert.equal(classify(msg({ user: MATE, client_msg_id: undefined, text: `<@${BOT}> run X` }), ids), null)
+    assert.deepEqual(classify(msg({ user: MATE, client_msg_id: undefined, text: `<@${BOT}> run X` }), ids), { kind: 'drop', reason: 'not-proven' })
   })
   test('nobody else gets in when the list is empty', () => {
-    assert.equal(classify(msg({ user: MATE, text: `<@${BOT}> run X` }), { ...ids, teammates: [] }), null)
+    assert.deepEqual(classify(msg({ user: MATE, text: `<@${BOT}> run X` }), { ...ids, teammates: [] }), { kind: 'drop', reason: 'not-listed' })
   })
 })
 
@@ -140,7 +140,7 @@ describe('approvals', () => {
     }
   })
   test('a verdict from someone else is dropped', () => {
-    assert.equal(classify(msg({ user: 'UOTHER', channel: DM, text: 'yes abcde' }), ids), null)
+    assert.deepEqual(classify(msg({ user: 'UOTHER', channel: DM, text: 'yes abcde' }), ids), { kind: 'drop', reason: 'not-tagged' })
   })
   test('a verdict pasted as code still counts', () => {
     assert.deepEqual(classify(msg({ channel: DM, text: '`yes nxtta`' }), ids),
@@ -170,7 +170,7 @@ describe('replies in an approval card thread', () => {
     }
   })
   test('a teammate still cannot approve in a card thread', () => {
-    assert.equal(reply('yes', { user: MATE }), null)
+    assert.deepEqual(reply('yes', { user: MATE }), { kind: 'drop', reason: 'not-tagged' })
   })
   test('without a card, a thread reply in the DM stays a task', () => {
     assert.equal(classify(msg({ channel: DM, thread_ts: '9.9', text: 'yes merge it' }), ids)?.kind, 'task')
