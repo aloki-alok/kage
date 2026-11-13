@@ -1,8 +1,5 @@
 import { describe, test } from 'node:test'
 import assert from 'node:assert/strict'
-import { mkdtempSync, symlinkSync } from 'node:fs'
-import { tmpdir } from 'node:os'
-import { basename, dirname, join } from 'node:path'
 import { grantRefusal, parseSpecialist } from './specialists.ts'
 
 const file = (head: string, body = 'Post a summary of the deploy log.') => `---\n${head}\n---\n${body}\n`
@@ -29,8 +26,8 @@ describe('a specialist file', () => {
 
 describe('the grant', () => {
   test('a tool outside the grant is refused; Kage\'s own tools for its thread are always there', () => {
-    assert.equal(grantRefusal('Read', ['Read']), undefined)
-    assert.match(grantRefusal('Bash', ['Read']) ?? '', /grant/)
+    assert.equal(grantRefusal('WebSearch', ['WebSearch']), undefined)
+    assert.match(grantRefusal('WebSearch', ['WebFetch']) ?? '', /grant/)
     assert.equal(grantRefusal('mcp__kage__reply', []), undefined)
     assert.match(grantRefusal('mcp__other__thing', []) ?? '', /grant/)
     // Only the tools for its own thread: never the ones that act as the owner or outlive the run.
@@ -38,18 +35,12 @@ describe('the grant', () => {
       assert.match(grantRefusal(t, []) ?? '', /grant/, t)
     for (const t of ['mcp__kage__reply', 'mcp__kage__edit_message', 'mcp__kage__delete_message']) assert.equal(grantRefusal(t, []), undefined, t)
   })
-  test('it can never widen its own grant or read secrets: no shell, no writes, no reads in Kage\'s config folder', () => {
-    const conf = mkdtempSync(join(tmpdir(), 'kage-conf-'))
-    const work = mkdtempSync(join(tmpdir(), 'kage-work-'))
-    symlinkSync(conf, join(work, 'link'))
-    assert.match(grantRefusal('Bash', ['Bash']) ?? '', /shell/)
-    for (const t of ['Write', 'Edit', 'MultiEdit', 'NotebookEdit']) assert.match(grantRefusal(t, [t], { file_path: join(work, 'out.md') }, conf) ?? '', /write/, t)
-    assert.match(grantRefusal('Read', ['Read'], { file_path: join(conf, 'env') }, conf) ?? '', /config/)
-    assert.match(grantRefusal('Read', ['Read'], { file_path: join(work, '..', basename(conf), 'env') }, conf) ?? '', /config/)
-    assert.match(grantRefusal('Read', ['Read'], { file_path: join(work, 'link', 'env') }, conf) ?? '', /config/)
-    assert.match(grantRefusal('Grep', ['Grep'], { pattern: 'x' }, conf) ?? '', /config/)          // no path: the work folder, which may hold it
-    assert.match(grantRefusal('Grep', ['Grep'], { pattern: 'x', path: dirname(conf) }, conf) ?? '', /config/)
-    assert.equal(grantRefusal('Read', ['Read'], { file_path: join(work, 'notes.md') }, conf), undefined)
-    assert.equal(grantRefusal('Grep', ['Grep'], { pattern: 'x', path: work }, conf), undefined)
+  test('no file or shell tool, granted or not, so it cannot change its grant or read the tokens; web fetches only over http(s)', () => {
+    for (const t of ['Bash', 'Read', 'Grep', 'Glob', 'LS', 'NotebookRead', 'Write', 'Edit', 'MultiEdit', 'NotebookEdit'])
+      assert.match(grantRefusal(t, [t], { file_path: '/tmp/x' }) ?? '', /no file or shell/, t)
+    assert.equal(grantRefusal('WebFetch', ['WebFetch'], { url: 'https://example.com' }), undefined)
+    assert.match(grantRefusal('WebFetch', ['WebFetch'], { url: 'file:///etc/hosts' }) ?? '', /http/)
+    assert.match(grantRefusal('WebFetch', ['WebFetch'], { url: 'FILE:///etc/hosts' }) ?? '', /http/)
   })
+
 })

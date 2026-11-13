@@ -1,8 +1,6 @@
 // Specialists (#57): one file each in the specialists folder, run on a schedule in a side lane of its thread, at
 // teammate trust, with only the tools its grant names. A specialist approves nothing: what needs approval it says in
 // its thread, where its manager (this Kage) and the human owner read it.
-import { realpathSync } from 'node:fs'
-import { basename, dirname, join, resolve } from 'node:path'
 import { parseCron } from './cron.ts'
 import { slackLinkKey } from './conversations.ts'
 
@@ -27,23 +25,15 @@ export function parseSpecialist(name: string, text: string): Specialist | { erro
 // Of Kage's own tools, a specialist has only those for its thread, whatever its grant says: the rest act as the
 // owner (message_people, away), outlive the run (schedule) or need the owner (log_prod_write).
 const THREAD_TOOLS = ['reply', 'edit_message', 'delete_message'].map(t => `mcp__kage__${t}`)
-const WRITES = ['Write', 'Edit', 'MultiEdit', 'NotebookEdit']
-const READS: Record<string, string> = { Read: 'file_path', Grep: 'path', Glob: 'path', LS: 'path' }
-// The real path, through symlinks; for a file not there yet, its folder's real path.
-const real = (p: string): string => { try { return realpathSync(p) } catch { const up = dirname(p); return up === p ? p : join(real(up), basename(p)) } }
-// Whether a read there could reach Kage's config folder: inside it, or a folder that holds it.
-const reaches = (p: string, conf: string) => { const a = real(resolve(p)), c = real(conf); return a === c || a.startsWith(`${c}/`) || c.startsWith(`${a}/`) }
+// No file or shell tool, granted or not: a path check missed case, ~ and glob tricks, and a file tool could rewrite the
+// specialist's own grant or read the env file with the tokens. ponytail: v1 grants web and MCP tools only; a file
+// grant needs a sandboxed work folder first.
+const FILE_TOOLS = ['Bash', 'BashOutput', 'KillShell', 'Read', 'Grep', 'Glob', 'LS', 'NotebookRead', 'Write', 'Edit', 'MultiEdit', 'NotebookEdit']
 
-// The grant only shrinks: a tool outside it is denied. A specialist can never widen it or read secrets: no shell, no
-// writes, and no reads that reach Kage's config folder (its own file, the env file with the tokens, the store).
-export function grantRefusal(tool: string, grant: string[], input: Record<string, unknown> = {}, confDir = '') {
-  if (tool === 'Bash') return 'A specialist gets no shell, granted or not: a shell could change its own grant.'
-  if (WRITES.includes(tool)) return 'A specialist writes no files in v1, granted or not: it posts what it makes in its thread.'
-  if (confDir && tool in READS) {
-    const p = input[READS[tool]!]
-    if (typeof p !== 'string' || !p) return `${tool} needs an explicit path for a specialist, outside Kage's config folder.`
-    if (reaches(p, confDir)) return `A specialist may not read in Kage's config folder (${confDir}).`
-  }
+// The grant only shrinks: a tool outside it is denied.
+export function grantRefusal(tool: string, grant: string[], input: Record<string, unknown> = {}) {
+  if (FILE_TOOLS.includes(tool)) return `A specialist gets no file or shell tool (${tool}), granted or not. Say in the thread what you needed: your manager decides.`
+  if (tool === 'WebFetch' && !/^https?:\/\//i.test(String(input.url ?? ''))) return 'A specialist fetches only http and https addresses.'
   return THREAD_TOOLS.includes(tool) || (grant.includes(tool) && !tool.startsWith('mcp__kage__')) ? undefined
     : `${tool} is outside this specialist's grant (${grant.join(', ') || 'no tools'}). Say in the thread what you needed: your manager decides.`
 }

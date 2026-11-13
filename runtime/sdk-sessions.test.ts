@@ -340,17 +340,17 @@ describe('Kage sessions on the Agent SDK', () => {
     assert.deepEqual(await run('mcp__claude_ai_Gmail__search'), {})
   })
   test('a specialist lane gets only its grant, and approves nothing: a call that would ask is denied', async () => {
-    const t = setup({ grants: { 'C1:5.5#side-spec-deploys': ['Read'] } })
+    const t = setup({ grants: { 'C1:5.5#side-spec-deploys': ['WebSearch'] } })
     t.d.task('C1:5.5#side-spec-deploys', t.task(), 0)   // even an owner-trust task: the grant still holds
     await tick()
     const o = t.sdk.runs[0]!.options
     const run = (tool_name: string) => o.hooks.PreToolUse[0].hooks[0]({ hook_event_name: 'PreToolUse', tool_name, tool_input: {} }, undefined, { signal: signal() })
-    assert.deepEqual(await run('Read'), {})
+    assert.deepEqual(await run('WebSearch'), {})
     assert.deepEqual(await run('mcp__kage__reply'), {})
-    assert.match((await run('WebFetch')).hookSpecificOutput.permissionDecisionReason, /outside this specialist's grant/)
-    assert.match((await run('Bash')).hookSpecificOutput.permissionDecisionReason, /no shell/)
+    assert.match((await run('mcp__other__thing')).hookSpecificOutput.permissionDecisionReason, /outside this specialist's grant/)
+    assert.match((await run('Bash')).hookSpecificOutput.permissionDecisionReason, /no file or shell/)
     // A granted tool runs: the grant is the approval.
-    assert.equal((await o.canUseTool('Read', { file_path: '/x' }, { signal: signal() })).behavior, 'allow')
+    assert.equal((await o.canUseTool('WebSearch', { query: 'x' }, { signal: signal() })).behavior, 'allow')
     // Two layers: Kage's tools that act as the owner are denied here too, not only by the hook.
     assert.equal((await o.canUseTool('mcp__kage__message_people', {}, { signal: signal() })).behavior, 'deny')
     assert.equal((await o.canUseTool('mcp__kage__reply', { text: 'hi' }, { signal: signal() })).behavior, 'allow')

@@ -88,12 +88,12 @@ A specialist is one file in `~/.config/kage/specialists/`, named after it (`depl
 ---
 thread: https://example.slack.com/archives/C0123ABC/p1700000000123456
 schedule: 0 9 * * 1-5
-tools: Read, Grep, WebFetch
+tools: WebFetch, WebSearch
 ---
-Every weekday at 9, read yesterday's deploy log and post a three-line summary in this thread.
+Every weekday at 9, check https://status.example.com and post a three-line summary in this thread.
 ```
 
-It runs on its schedule beside the thread's own session and posts in the thread. It has only the tools in `tools`, and teammate trust. It never gets a shell, writes no files, and reads nothing in Kage's config folder, so it cannot change its own grant or read your tokens. Give read tools an explicit path. It approves nothing: when it needs a decision or another tool, it says so in the thread, and you decide there. A new, changed or deleted file applies within a minute, and `kage schedules` shows its runs. Specialists need the default runtime, not tmux panes.
+It runs on its schedule beside the thread's own session and posts in the thread. It has only the tools in `tools`, and teammate trust. It never gets a file or shell tool, granted or not, so it cannot change its own grant or read your tokens. WebFetch reaches http and https only. An MCP tool you grant by its full name runs with that tool's own reach. It approves nothing: when it needs a decision or another tool, it says so in the thread, and you decide there. A new, changed or deleted file applies within a minute, and `kage schedules` shows its runs. Specialists need the default runtime, not tmux panes.
 
 ### Run threads as tmux panes instead
 

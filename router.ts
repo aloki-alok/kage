@@ -208,7 +208,6 @@ const sdk = sdkLib ? sdkSessions({
   onTurn: (key, tasks, limit) => limits.turn(key, tasks, limit, Date.now()),
   // A lane whose file is gone keeps no tools, rather than falling back to approval cards.
   grantOf: key => grants.get(key) ?? (key.includes('#side-spec-') ? [] : undefined),
-  confDir: DIR,
 }) : undefined
 if (sdk) mkdirSync(MEM.own, { recursive: true })
 specialists(Date.now())
