@@ -10,7 +10,7 @@ import { findPeople, type Person } from '../core/gate.ts'
 import { add, kindOf, ownerPerson, registryIn, remove, withRegistry, type Entry } from '../core/registry.ts'
 import { pauseLine, type Live } from '../core/board.ts'
 import { askHub, DIR, ENV_FILE } from './home.ts'
-import { NAME, rowLine, specialistRows, starterFile } from '../core/specialists.ts'
+import { NAME, resultLine, rowLine, specialistRows, starterFile } from '../core/specialists.ts'
 import { openLedgers } from '../runtime/ledger.ts'
 import { readSpecialists } from '../runtime/specialists.ts'
 import { reload, said } from './reload.ts'
@@ -116,7 +116,7 @@ if (cmd === 'list') {
     const ledgers = openLedgers(DIR)
     const t = Date.now()
     console.log(`\nSpecialists Kage manages (${files.length}):`)
-    for (const r of specialistRows(files, { runs: ledgers.text('runs'), costs: ledgers.text('costs'), now: t })) console.log(`  ${rowLine(r, t)}`)
+    for (const r of specialistRows(files, { runs: ledgers.text('runs'), costs: ledgers.text('costs'), reports: ledgers.text('reports'), now: t })) console.log(`  ${rowLine(r, t)}${r.state === 'broken' ? '' : `\n    made by ${r.by === 'kage' ? 'Kage' : 'you'}${r.why ? `: ${r.why}` : ''}. Last report: ${resultLine(r, t)}`}`)
     ledgers.close()
   }
 } else if (cmd === 'add' && args.length) {

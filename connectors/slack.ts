@@ -30,6 +30,8 @@ export type Hub = {
   status(): string
   // Someone other than the owner wrote without starting a task: wakes the reply watches on that conversation (runtime/scheduler.ts).
   heard(m: { chat: string; thread?: string; quoted: string }): void
+  // The owner wrote in a thread without a tag: notes for the specialists working there.
+  ownerWrote?(chat: string, thread: string, text: string): void
   // The posted ledger: every message Kage posted, with the thread whose task posted it (runtime/kage-tools.ts).
   posted(): string
 } & Inbox
@@ -121,6 +123,8 @@ export async function connectSlack(o: { dir: string; appToken: string; bot: WebC
         const quoted = quoteMessage({ user: m.user, ts: m.ts, text: m.text, client_msg_id: m.client_msg_id }, ids.owner, { bot: ids.bot, title: o.title })
         o.hub.heard({ chat: m.channel, ...(m.thread_ts && { thread: m.thread_ts }), quoted })
       }
+      // The owner's untagged reply in a thread: a specialist working there reads it on its next run (runtime/specialists.ts).
+      if (t.reason === 'not-tagged' && typedByPerson(m) && m.user === ids.owner && m.channel !== ids.botDm && m.thread_ts && m.thread_ts !== m.ts) o.hub.ownerWrote?.(m.channel, m.thread_ts, m.text ?? '')
       return
     }
     // A listed person wrote here: an exchange with an agent in this thread starts over (core/agents.ts).

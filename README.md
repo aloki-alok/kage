@@ -96,7 +96,9 @@ Every weekday at 9, check https://status.example.com and post a three-line summa
 
 It runs on its schedule beside the thread's own session and posts in the thread. It has only the tools in `tools`, and teammate trust. Only web tools and outside MCP tools can be granted. It never gets a file, shell or agent tool, so it cannot change its own grant or read your tokens. WebFetch reaches http and https only. An MCP tool you grant by its full name runs with that tool's own reach. It approves nothing: when it needs a decision or another tool, it says so in the thread, and you decide there. A new, changed or deleted file applies within a minute, and `kage schedules` shows its runs. Specialists need the default runtime, not tmux panes.
 
-`kage list` shows each specialist: its schedule, last and next run, and what it spent today. `kage stop deploys` pauses it by adding `paused: yes` to its file. Take that line out to run it again.
+Kage manages its specialists. Ask it in Slack to make, pause, resume, run or remove one, or how they are doing. It also makes one on its own for a recurring job that needs only web search and fetch, and tells you in the thread. A specialist Kage makes on its own gets only WebSearch and WebFetch. Each run ends with a one-line report to Kage. When a run needs something it cannot do, it posts that in its thread and it goes on your waiting list. Your own reply in a specialist's thread, with no tag, reaches its next run. At most 10 specialists run, and one that spends $2 in a day is paused (`KAGE_MAX_SPECIALISTS` and `KAGE_SPECIALIST_DAILY_USD` in [docs/settings.md](docs/settings.md)).
+
+`kage list` shows each specialist: its schedule, last and next run, what it spent today, who made it and why, and its last report. `kage stop deploys` pauses it by adding `paused: yes` to its file. Take that line out to run it again.
 
 ### Run threads as tmux panes instead
 

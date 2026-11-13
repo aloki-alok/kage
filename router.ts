@@ -40,7 +40,8 @@ import { openStore, type Inbox } from './runtime/store.ts'
 import { openLedgers } from './runtime/ledger.ts'
 import { claudeProject, tmuxPanes } from './runtime/tmux-panes.ts'
 import { codeStamp } from './runtime/code-stamp.ts'
-import { readSpecialists, syncSpecialists } from './runtime/specialists.ts'
+import { costCap, ownerNotes, readSpecialists, specialistManager, syncSpecialists } from './runtime/specialists.ts'
+import { specialistRows } from './core/specialists.ts'
 import { askHub } from './cli/home.ts'
 import { hubLock } from './runtime/hub-lock.ts'
 import { npmCi, packagesStale, rotate } from './runtime/hub-log.ts'
@@ -154,7 +155,7 @@ const slack = await connectSlack({
       const key = sessionKey(c, { lane: 'main' })
       return mayStop(by, slack.ids.owner, starters, key) ? stopThread(key, cut) : 'Only the owner, or the teammate whose task started this thread, can stop it.'
     }, verdict: (id, behavior) => d.verdict(id, { type: 'verdict', request_id: id, behavior }), status, heard: m => schedules.heard(m),
-    posted: () => ledgers.text('posted'), ...inbox },
+    posted: () => ledgers.text('posted'), ownerWrote: (chat, thread, text) => notes.wrote(grants.keys(), chat, thread, text), ...inbox },
   // AFK mode is on unless KAGE_AFK=off. Its stand-in reads the owner's memory, read only.
   afk: env.KAGE_AFK === 'off' ? undefined : { memory: memoryDirs(process.env.HOME!, ENV_FILE, env).owner, model: env.KAGE_AFK_MODEL || 'sonnet', saved: store, call: phoneOwner },
 })
@@ -197,12 +198,27 @@ const costTotals = lastTotals(ledgers.text('costs'))
 // Specialists (#57): one file each in the specialists folder, synced at start and each minute. Each runs on its
 // schedule in a side lane of its thread, at teammate trust, with only its grant, and approves nothing.
 let grants = new Map<string, string[]>()
+const SPECIALISTS = `${DIR}/specialists`
+const MAX_SPECIALISTS = Number(env.KAGE_MAX_SPECIALISTS || 10)
+const SPECIALIST_USD = Number(env.KAGE_SPECIALIST_DAILY_USD || 2)
 // Only the SDK runner enforces a grant, so with tmux panes no specialist runs: their schedules are removed.
+// A specialist over its daily cost cap is paused and flagged first, so this sync already drops its schedule.
 const specialists = (now: number) => {
-  let files = readSpecialists(`${DIR}/specialists`)
+  let files = readSpecialists(SPECIALISTS)
   if (!sdk && files.length) { if (!specialistsRefused) log('specialists need the Agent SDK runner (not KAGE_RUNTIME=tmux), so none runs'); specialistsRefused = true; files = [] }
-  grants = syncSpecialists(files, store, now, log)
+  const rows = specialistRows(files, { runs: ledgers.text('runs'), costs: ledgers.text('costs'), now })
+  if (costCap(SPECIALISTS, rows, SPECIALIST_USD, (name, why) => {
+    const r = rows.find(x => x.name === name)!
+    ledgers.add('reports', [name, why, 'the owner to resume it, or a higher KAGE_SPECIALIST_DAILY_USD'])
+    ledgers.add('waiting', ['open', r.key!.split('#')[0]!, r.link ?? '', `specialist ${name} ${why}`])
+    log(`specialist ${name} ${why}`)
+    void slack.notifyOwner(`Specialist *${name}* is ${why}. Resume it with kage top or by asking ${Title}.`)
+  }).length) files = readSpecialists(SPECIALISTS)
+  grants = syncSpecialists(files, store, now, log, MAX_SPECIALISTS)
 }
+// The manager's side, for Kage's owner sessions (runtime/kage-tools.ts), and the owner's notes to a specialist.
+const manager = specialistManager({ dir: SPECIALISTS, max: MAX_SPECIALISTS, ledgers, sync: specialists, runNow: (id, now) => schedules.runNow(id, now) })
+const notes = ownerNotes(store)
 let specialistsRefused = false
 const sdk = sdkLib ? sdkSessions({
   sdk: sdkLib.lib,
@@ -211,6 +227,8 @@ const sdk = sdkLib ? sdkSessions({
     title: Title, bot, user, botDm: () => slack.ids.botDm, dir: DIR, ledgers, send, memory: MEM,
     schedules: { add: j => schedules.add(key, j, Date.now()), remove: id => schedules.remove(key, id), list: () => schedules.list(key) },
     afk: slack.afk?.command,
+    specialist: key.split('#side-spec-')[1],
+    specialists: { list: () => manager.list(Date.now()), manage: a => manager.manage(a, Date.now()) },
   }),
   hasTranscript: tmux.hasTranscript,
   toHub: (key, m) => routeReply(key, m, replies),
@@ -271,7 +289,11 @@ restoreHolds(DIR, d, Date.now())
 // Schedules live in the store and run as tasks in their thread (runtime/scheduler.ts).
 const schedules = scheduler({
   store, failed,
-  deliver: toSession,
+  // A specialist's run carries what the owner wrote in its thread since its last one.
+  deliver: (key, task) => {
+    const said = key.includes('#side-spec-') ? notes.take(key) : undefined
+    return toSession(key, said ? { ...task, content: `${task.content}\n\n${said}` } : task)
+  },
   ready: key => d.ready(key),
   trusted: key => store.trust(key) === true,
   ran: j => ledgers.add('runs', [j.id, j.key]),
