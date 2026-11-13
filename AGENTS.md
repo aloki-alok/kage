@@ -65,7 +65,7 @@ The install line puts `kage` on your PATH (in a git checkout, run `./setup.sh li
 | The hub log | `kage logs`, or `kage logs -f` to follow it. A tag that Kage refused shows as a `dropped` line with the thread, the sender and the reason. |
 | Apply a settings change | `kage reload` for who may tag Kage (`KAGE_TEAMMATES`, `KAGE_TRUSTED_APPS`): it cuts no session, and a wrong file changes nothing. It names every other changed setting, and those need `kage restart`. A change to `KAGE_RUNTIME`, `KAGE_ROUTE`, `KAGE_CWD` or `KAGE_MEMORY` needs `kage stop`, then `kage start`. |
 | See a usage-limit pause | `kage status` and `kage list` say when Claude's usage limit paused Kage, when it resets, and how many messages are held. Each thread got one line about it. Held messages run by themselves at the reset. |
-| Stop | `kage stop`. It stays down until `kage start`. |
+| Stop or restart | `kage stop` or `kage restart`. New messages wait, and it acts once every running turn ends, naming each thread it waits on. New messages run after a restart. `--cut-running` acts now and names what it cuts. A stop stays down until `kage start`. |
 | Stop it starting by itself | `kage service off`, and `kage service on` to undo it. |
 | Give sessions shell exports | Put them in `~/.config/kage/session.env` (mode 600), then `kage restart`. |
 | Let a teammate tag it | `kage add <mention, member id, email, name or @handle>`. If it lists two people, ask which one. `kage remove <same>` takes them off, and `kage list` shows who is listed. The change applies at once, with no restart. |
@@ -74,7 +74,7 @@ The install line puts `kage` on your PATH (in a git checkout, run `./setup.sh li
 | Run threads as tmux panes instead | Add `KAGE_RUNTIME=tmux` to `~/.config/kage/env`, then `kage stop` and `kage start`. Each pane then shows a channels warning screen that the person confirms (README, "Run threads as tmux panes instead"). |
 | Update Kage | Run the install line again (`curl -fsSL https://raw.githubusercontent.com/aloki-alok/kage/main/install.sh | bash`), or `git pull` in a git checkout. The hub restarts into the new code by itself once every session is quiet. A session cut by a restart resumes its conversation on its next task. |
 
-Never run `kage stop` or `kage restart` from inside a Kage session: it ends that session too. The command refuses unless you add `--force`.
+Never run `kage stop` or `kage restart` from inside a Kage session: it ends that session too. The command refuses unless you add `--force`, which cuts every running turn, this session's too.
 
 The token file is `~/.config/kage/env` (mode 600). Never print it, copy it or commit it.
 

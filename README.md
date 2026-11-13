@@ -75,7 +75,7 @@ The first start installs the Agent SDK and turns on the service: macOS or Linux 
 | See what each thread spent | `kage cost`, or `kage cost 7` for a week |
 | Undo the weekly memory tidy | `kage dream undo` |
 | Pick up a changed setting | `kage reload` for who may tag Kage: no session is cut. `kage restart` for any other setting. |
-| Stop it | `kage stop`. It stays down until `kage start`. Each thread resumes its conversation on its next tag. |
+| Stop it | `kage stop`. New messages wait, and it stops once every running turn ends, naming each thread it waits on. `--cut-running` stops now. It stays down until `kage start`. Each thread resumes its conversation on its next tag. |
 | Stop it starting by itself | `kage service off`. `kage service on` turns it back on. |
 | Give sessions your shell exports | Put them in `~/.config/kage/session.env` (mode 600), then `kage restart`. Sessions see only the service's environment, not your shell's. |
 | Use another supervisor (Docker, runit) | Have it run `kage run`: a non-zero exit means restart it, exit 0 means leave it down. Docker needs `--init`. |
