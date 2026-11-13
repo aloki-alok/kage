@@ -15,6 +15,7 @@ import { openWaiting, postedBy } from '../core/ledgers.ts'
 import type { Ledgers } from './ledger.ts'
 import { findSecret, layoutRefusal, safeReply, secretRefusal, splitForSlack } from '../core/outbound.ts'
 import type { Task } from './protocol.ts'
+import type { Manage } from './specialists.ts'
 
 // The reaction each kind of reply leaves on the task message. An ack leaves none: 🥷 already says "picked up".
 // Ninja set, picked by the owner: 📜 a scroll back to you (waits on your answer), 🗡️ a quick strike, ⚔️ the task done.
@@ -38,6 +39,10 @@ export function sessionTools(o: {
   schedules?: { add(j: Pick<Schedule, 'id' | 'cron' | 'prompt' | 'recurring'>): string | void | Promise<string | void>; remove(id: string): void; list(): Schedule[] }
   // AFK on or off in the hub; resolves the line for the owner. Absent: AFK mode is off.
   afk?: (c: AfkCommand) => Promise<string>
+  // This session is the lane of this specialist (core/specialists.ts): it gets the report tool and none of the manager's.
+  specialist?: string
+  // The manager's side in the hub (runtime/specialists.ts). Absent: specialists are off (tmux panes).
+  specialists?: { list(): string; manage(a: Manage): string }
 }) {
   const { title: Title, bot, user } = o
   // send_file sends only what was written in the thread's own folder: not any file on the disk, and
@@ -363,6 +368,61 @@ export function sessionTools(o: {
       return { text: await afk({ kind: 'back' }) }
     },
   })
+  // A specialist reports to its manager: one line per run, and what it needs, which also goes in its thread and on
+  // the waiting list, so the owner sees it. It still approves nothing.
+  const name = o.specialist
+  if (name) tools.push({
+    name: 'report',
+    description: 'End every run with this: one line for your manager on what you found or did. If the job needed something you could not do (a tool, an access, a decision), put it in needs: it is posted in this thread and flagged for your manager and the owner.',
+    shape: {
+      channel: s.describe('channel attribute from the task tag'),
+      thread_ts: s.describe('thread_ts attribute from the task tag'),
+      summary: s.describe('one line: what this run found or did'),
+      needs: s.optional().describe('what you could not do and need from your manager, in one line; leave out when nothing'),
+    },
+    async run(args) {
+      const a = args as { channel: string; thread_ts: string; summary: string; needs?: string }
+      const key = `${a.channel}:${a.thread_ts}`
+      if (!ownerTask.has(key)) return { isError: true, text: 'refused: report from your own thread only' }
+      const needs = a.needs?.trim() ?? ''
+      append('reports', [name, a.summary, needs])
+      if (!needs) return { text: 'reported' }
+      await post(key, a.channel, a.thread_ts, `*${name} needs:* ${needs}`)
+      append('waiting', ['open', key, links.get(key) ?? key, `${name} needs: ${needs}`])
+      return { text: 'reported, and what you need is posted in the thread for your manager and the owner' }
+    },
+  })
+  // The manager's tools: Kage creates and runs its specialists. Owner tasks only, like away.
+  const team = o.specialists
+  if (team && !name) tools.push({
+    name: 'specialists',
+    description: 'List your specialists: state, schedule, last and next run, cost today, who made each and why, and its last report (with what it needs, if anything). Owner tasks only.',
+    shape: { channel: s.describe('channel attribute from the task tag'), thread_ts: s.describe('thread_ts attribute from the task tag') },
+    async run(args) {
+      if (!ownerOnly(args)) return { isError: true, text: 'only the owner\'s task can see the specialists' }
+      return { text: team.list() }
+    },
+  }, {
+    name: 'manage_specialist',
+    description: 'Create or change (save), pause, resume, run now, or remove a specialist: a recurring job that runs on its own schedule in its thread, with only the tools you grant, and reports to you. save needs name, thread (a Slack message link), schedule (5-field cron), tools, job, by and why. Owner tasks only.',
+    shape: {
+      channel: s.describe('channel attribute from the task tag'),
+      thread_ts: s.describe('thread_ts attribute from the task tag'),
+      action: z.enum(['save', 'pause', 'resume', 'run', 'remove']),
+      name: s.describe('short lowercase name: letters, digits, dashes'),
+      thread: s.optional().describe('save: the Slack link of the thread it posts in'),
+      schedule: s.optional().describe('save: a 5-field cron in local time, e.g. "0 9 * * 1-5"'),
+      tools: z.array(s).optional().describe('save: its grant. WebSearch and WebFetch, or an outside MCP tool by full name when the owner asked for it'),
+      job: s.optional().describe('save: what to do on each run, complete on its own'),
+      by: z.enum(['owner', 'kage']).optional().describe('save: owner when the owner asked for this specialist, kage when you decided to make it'),
+      why: s.optional().describe('save: one line on why it exists'),
+    },
+    async run(args) {
+      if (!ownerOnly(args)) return { isError: true, text: 'only the owner\'s task can manage specialists' }
+      const { channel: _c, thread_ts: _t, ...a } = args as Manage & { channel: string; thread_ts: string }
+      return { text: team.manage(a) }
+    },
+  })
   const pingIn = (channel: string) => [...ownerTask].some(([k, owner]) => owner && k.startsWith(`${channel}:`))
 
   return {
@@ -416,6 +476,7 @@ function instructions(Title: string, MEM: { own: string; owner: string }) {
     'If a reply asks a question or offers something and the work waits on the answer, pass waiting with one line naming it. When asked what is waiting, call the waiting tool and answer with its list.',
     'To tell people something in Slack ("tell X and Y", "let Z know"), use message_people with the people the task names. Add everyone in the task\'s channel only when the task says so ("everyone here"). Find their ids with the Slack user search. Write one message that stands alone: what and when. The tool signs it "<name>, via ' + Title + '": when the owner passes on someone else\'s news, pass from with that person\'s id, and never write "From X:" yourself. Then reply in the task thread with the link. Use message_people only to pass on the asker\'s own news (a meeting time, a status). Anything that would commit the owner (agreeing, money, a deadline, an opinion) goes as a Slack draft in that group DM for the owner to send.',
     'For a repeating check or a later reminder, use the schedule tool: it survives restarts and runs until unschedule. CronCreate is off here because its jobs die with this session. A run arrives as "Scheduled run of job <id> ...": do what its prompt says, and post only what the prompt asks for.',
+    'You manage specialists: recurring jobs that run on their own schedule in a thread and report to you (specialists and manage_specialist, on the owner\'s tasks). When an owner task is recurring (a watch, a monitor, "check X every N", or a schedule you already run in a thread) and the job needs only web search and fetch, make a specialist for it instead of doing it in this session: manage_specialist save with by=kage and a one-line why, then unschedule the old schedule if there was one. Then tell the owner in one line in the thread where it was decided: "Made specialist <name>: <job>, <when>. Say remove <name> to stop it." A job that needs more (files, shell, the database, an MCP tool) stays on the schedule tool unless the owner grants it. One-off tasks stay in this session. When the owner asks how your specialists are doing, or a run needs something, read specialists and act on what they need.',
     'After each change you make to production for a task (deploy, restart, DB write, prod config), call log_prod_write once.',
     'Answer in the thread by default, including normal work details like logs, numbers and code. Use private=true (the owner\'s DM) only for something that must never be visible in a channel: secrets, passwords, tokens, keys, or a person\'s private data.',
     'Never post anywhere else in Slack unless the task asks for it.',
