@@ -1,6 +1,6 @@
 # Settings
 
-Every setting lives in `~/.config/kage/env` (mode 600), one `NAME=value` per line. Apply a change with `kage restart`. A change to `KAGE_RUNTIME`, `KAGE_ROUTE`, `KAGE_CWD` or `KAGE_MEMORY` needs `kage stop`, then `kage start`. `KAGE_ENV` points Kage at a different file, which is how one machine runs two Kages.
+Every setting lives in `~/.config/kage/env` (mode 600), one `NAME=value` per line. Apply a change to `KAGE_TEAMMATES` or `KAGE_TRUSTED_APPS` with `kage reload`: it cuts no session, and a file with a wrong line changes nothing. Apply any other change with `kage restart`. `kage reload` names the changed settings that still wait for one. A change to `KAGE_RUNTIME`, `KAGE_ROUTE`, `KAGE_CWD` or `KAGE_MEMORY` needs `kage stop`, then `kage start`. `KAGE_ENV` points Kage at a different file, which is how one machine runs two Kages.
 
 To list every setting the code reads:
 

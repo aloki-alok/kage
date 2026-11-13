@@ -216,5 +216,7 @@ export async function connectSlack(o: { dir: string; appToken: string; bot: WebC
 
   // A message the last run took but never handled, from the inbox. It runs as if just heard.
   const replay = (source: string, payload: string) => hear(JSON.parse(payload) as SlackMessage, source)
-  return { ids, ownerName, botUser: botAuth.user, socket, failed, notifyOwner, placeOf, afk, replay, start: () => socket.start() }
+  // kage reload: the gate reads both lists from ids on every message, so the next message sees the new ones.
+  const allow = (l: { teammates: string[]; apps: string[] }) => { ids.teammates = l.teammates; ids.apps = l.apps }
+  return { ids, ownerName, botUser: botAuth.user, socket, failed, notifyOwner, placeOf, afk, replay, allow, start: () => socket.start() }
 }

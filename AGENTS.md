@@ -65,7 +65,7 @@ The install line puts `kage` on your PATH (in a git checkout, run `./setup.sh li
 | Work in a thread's session yourself | `kage attach '<link>'` with the thread's Slack link ("Copy link" on any message in it). Keep the quotes, because the link holds `?` and `&`. Or `kage attach <place>`. It takes the session at once: a turn in progress stops, as with Esc. New tasks for it wait until you quit. When several threads share a place, attach by the link, or by the key it lists. |
 | Tell a thread something, as you | `kage tell <place> <message>`. Its session takes it after the current turn and answers in the thread. |
 | The hub log | `kage logs`. A tag that Kage refused shows as a `dropped` line with the thread, the sender and the reason. |
-| Restart after a settings change | `kage restart`. A change to `KAGE_RUNTIME`, `KAGE_ROUTE`, `KAGE_CWD` or `KAGE_MEMORY` needs `kage stop`, then `kage start`. |
+| Apply a settings change | `kage reload` for who may tag Kage (`KAGE_TEAMMATES`, `KAGE_TRUSTED_APPS`): it cuts no session, and a wrong file changes nothing. It names every other changed setting, and those need `kage restart`. A change to `KAGE_RUNTIME`, `KAGE_ROUTE`, `KAGE_CWD` or `KAGE_MEMORY` needs `kage stop`, then `kage start`. |
 | Stop | `kage stop` |
 | Start at login (macOS) | `kage autostart on` or `off` |
 | Let a teammate tag it | `kage teammate add <name, @handle or id>` (also `remove`, `list`). If it lists two people, ask which one. |

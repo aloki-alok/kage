@@ -26,6 +26,7 @@ import { dailyDue, lastTotals, openWaiting, staleWaiting, turnCost } from './cor
 import { dreamDue, dreamTask, threadsSince } from './core/dream.ts'
 import { retro, retroDue } from './core/retro.ts'
 import { Dispatcher, mixRunners } from './core/sessions.ts'
+import { reloader } from './core/settings.ts'
 import type { Task, ToSession } from './runtime/protocol.ts'
 import { sessionTools } from './runtime/kage-tools.ts'
 import { scheduler } from './runtime/scheduler.ts'
@@ -370,7 +371,9 @@ function tell(key: string, text: string): { ok: true; held?: true } | { refused:
   if (r === 'failed') { failed(task); return { refused: 'could not start a session there' } }
   return r === 'held' ? { ok: true, held: true } : { ok: true }
 }
-listenForSessions(`${DIR}/router.sock`, d, { ...replies, failed, schedules, tell, callCode: voice?.issueCode })
+// kage reload: a changed allow list applies to the next message, with no restart and no turn cut (core/settings.ts).
+const reload = reloader({ boot: env, read: () => readFileSync(ENV_FILE, 'utf8'), apply: slack.allow, log })
+listenForSessions(`${DIR}/router.sock`, d, { ...replies, failed, schedules, tell, reload, callCode: voice?.issueCode })
 
 await slack.start()
 // Messages the last run took but never handled (it died in between) run now. Older than 10 minutes, they are let go.

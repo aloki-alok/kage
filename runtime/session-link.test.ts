@@ -191,3 +191,28 @@ test('a voice reply goes only to a voice conversation, and a mail or WhatsApp re
   routeReply('voice:abc', { type: 'mail', text: 'x' }, o)
   assert.deepEqual(got, ['voice voice:abc hi'])
 })
+
+test('kage reload: the socket answers with what the hub did with the settings file', async t => {
+  const d = new Dispatcher<ToSession>(
+    { start: () => {}, stop: () => {}, lastActivity: () => 0, busy: () => false },
+    { max: 2, idleMs: 9e9, connectMs: 9e9, evictMs: 0, newId: () => 'id1' },
+  )
+  const sock = join(mkdtempSync(join(tmpdir(), 'kage-link-')), 's.sock')
+  const answers = [{ changed: ['KAGE_TEAMMATES: added UTEST0002'], restart: ['KAGE_NAME'], count: 1 }, { refused: 'KAGE_TEAMMATES has "priya"' }]
+  let asked = 0
+  const server = listenForSessions(sock, d, { mail: () => {}, wa: () => {}, voice: () => {}, failed: () => {}, schedules: { add: () => undefined, remove: () => {} }, reload: () => answers[asked++]! })
+  t.after(() => server.close())
+  await until(() => server.listening)
+  const ask = async () => {
+    const c = connect(sock)
+    let reply = ''
+    c.on('data', b => { reply += b })
+    c.write(JSON.stringify({ type: 'reload' }) + '\n')
+    await until(() => reply.includes('\n'))
+    c.destroy()
+    return JSON.parse(reply || 'null')
+  }
+  assert.deepEqual(await ask(), { type: 'reload', changed: ['KAGE_TEAMMATES: added UTEST0002'], restart: ['KAGE_NAME'], count: 1 })
+  assert.deepEqual(await ask(), { type: 'reload', refused: 'KAGE_TEAMMATES has "priya"' })
+  assert.equal(asked, 2)
+})
