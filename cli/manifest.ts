@@ -29,6 +29,10 @@ const manifest = {
         'users.profile:read', 'users.profile:write',
         // message_people opens the group DM of you and the people a task names.
         'im:write', 'mpim:write',
+        // Sessions open files people attach in a thread.
+        'files:read',
+        // Sessions search Slack for the same subject in other channels before they answer.
+        'search:read',
       ],
     },
   },
