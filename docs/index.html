@@ -4,7 +4,7 @@
 <meta name="description" content="How Kage works: one hub on your machine, a Claude Code session per conversation, and trust that comes from proof.">
 <link rel="icon" href="../favicon.svg" type="image/svg+xml">
 <link rel="preconnect" href="https://fonts.googleapis.com">
-<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Instrument+Serif&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
 <style>
 :root{--paper:#f2efe9;--panel:#e9e5dd;--ink:#16140f;--ink2:#47423a;--mid:#6d675e;--line:#d8d2c7;--line2:#e3ded5;--you:#ff4f00;--code:#ebe7df;
 --serif:"Departure Mono","JetBrains Mono",monospace;--sans:"JetBrains Mono",ui-monospace,Menlo,monospace;--mono:"JetBrains Mono",ui-monospace,Menlo,monospace;--h1w:600;--h1s:.86;--ease:cubic-bezier(.19,1,.22,1)}
@@ -20,7 +20,9 @@ a{color:inherit}
 header{position:sticky;top:0;z-index:5;background:color-mix(in srgb,var(--paper) 90%,transparent);backdrop-filter:blur(8px)}
 .bar{display:grid;grid-template-columns:var(--rail) 1fr auto;align-items:center;height:64px;padding:0 36px;gap:0 56px;max-width:var(--page);margin:0 auto}
 .logo{display:flex;align-items:baseline;gap:10px;text-decoration:none}
-.logo .w{font:400 24px/1 var(--serif);letter-spacing:-.02em}
+/* Kage's cast mark, as on the landing page: the word and its shadow */
+.cast{position:relative;display:inline-block;line-height:1;white-space:nowrap;font:400 30px "Instrument Serif","Times New Roman",serif}
+.cast .shadow{position:absolute;left:0;top:0;pointer-events:none;transform-origin:0 82%;transform:scaleY(-.55) skewX(-52deg);opacity:.35;-webkit-mask-image:linear-gradient(to bottom,transparent 5%,#000 90%);mask-image:linear-gradient(to bottom,transparent 5%,#000 90%)}
 .logo .t{font:500 11px var(--mono);color:var(--mid);letter-spacing:.08em}
 .keys{display:flex;gap:40px;font:500 12px var(--mono);letter-spacing:.06em}
 .keys a{text-decoration:none;color:var(--ink2)}.keys a:hover{color:var(--ink)}
@@ -95,7 +97,7 @@ pre code{background:none;padding:0}
 @media (max-width:980px){:root{--rail:0px}.grid{grid-template-columns:1fr;gap:0;padding:0 16px}nav.tree,.hero>.sp{display:none}.bar{grid-template-columns:1fr auto;padding:0 16px}.keys{display:none}.meta{grid-template-columns:1fr 1fr;gap:14px 24px}}
 </style></head><body>
 <header><div class="bar">
- <a class="logo" href="../"><span class="w">kage</span><span class="t">DOCS</span></a>
+ <a class="logo" href="../"><span class="cast" aria-label="kage">kage<span class="shadow" aria-hidden="true">kage</span></span><span class="t">DOCS</span></a>
  <div class="keys"><a href="../"><b>[H]</b>HOME</a><a href="#how-kage-works" class="on"><b>[D]</b>DOCS</a><a href="https://github.com/aloki-alok/kage"><b>[G]</b>GITHUB</a></div>
  <div class="tools"><button class="btn" id="sbtn">Search<kbd>/</kbd></button><button class="btn" id="theme" title="Theme (T)">Theme</button></div>
 </div></header>
