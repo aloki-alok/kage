@@ -152,6 +152,13 @@ test('the manager is refused a new kagelet past the cap, a tool v1 cannot grant,
   assert.match(readFileSync(`${u.dir}/x.md`, 'utf8'), /^by: owner$/m)
 })
 
+test('the manager never grants db_read, even when it says the owner asked: only the owner writes it in the file', () => {
+  const t = manager()
+  assert.match(t.m.manage({ action: 'save', name: 'calls', ...job, by: 'owner', tools: ['db_read'] }, 1), /not saved: only the owner grants db_read/)
+  assert.match(t.m.manage({ action: 'save', name: 'calls', ...job, by: 'kage', tools: ['WebSearch', 'db_read'] }, 1), /not saved: only the owner grants db_read/)
+  assert.equal(readKagelets(t.dir).length, 0)
+})
+
 test('the manager pauses, resumes, runs now and removes; a paused one does not run now', () => {
   const t = manager()
   t.m.manage({ action: 'save', name: 'status', ...job }, 1)

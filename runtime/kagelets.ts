@@ -3,7 +3,7 @@
 // each minute, so adding, changing or deleting a file applies within a minute.
 import { existsSync, mkdirSync, readdirSync, readFileSync, renameSync, unlinkSync, writeFileSync } from 'node:fs'
 import { parseSessionKey } from '../core/conversations.ts'
-import { NAME, parseKagelet, resultLine, rowLine, setPaused, kageletFile, kageletRows, type Maker, type KageletRow } from '../core/kagelets.ts'
+import { DB_READ, NAME, parseKagelet, resultLine, rowLine, setPaused, kageletFile, kageletRows, type Maker, type KageletRow } from '../core/kagelets.ts'
 import type { Store } from './store.ts'
 
 // The kagelets folder. Only the hub (log given) moves one from before the rename (specialists/) here, once: a kage
@@ -107,6 +107,8 @@ export function kageletManager(o: { dir: string; max: number; ledgers: { text(na
         o.sync(now)
         return o.runNow(`kagelet-${a.name}`, now) ?? `${a.name} is running now. Its report shows in the list when it ends.`
       }
+      // The database grant is the owner's alone: Kage cannot add it, even saying the owner asked.
+      if (a.tools?.includes(DB_READ)) return `not saved: only the owner grants ${DB_READ}, by writing it in the kagelet file by hand.`
       const old = existsSync(file) ? parseKagelet(a.name, readFileSync(file, 'utf8')) : undefined
       if (!old && readKagelets(o.dir).length >= o.max) return `not saved: this install has at most ${o.max} kagelets (KAGE_MAX_KAGELETS). Remove one first, or ask the owner to raise it.`
       const text = kageletFile({ thread: a.thread ?? '', schedule: a.schedule ?? '', tools: a.tools ?? [], job: a.job ?? '', by: a.by ?? (old && !('error' in old) ? old.by : 'kage'), why: a.why ?? '', paused: !!old && !('error' in old) && old.paused })

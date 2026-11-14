@@ -3,6 +3,7 @@
 // SDK session can serve them in-process. One instance per session.
 import type { WebClient } from '@slack/web-api'
 import { randomBytes } from 'node:crypto'
+import { execFile } from 'node:child_process'
 import { mkdirSync, readFileSync, realpathSync, statSync } from 'node:fs'
 import { basename, extname } from 'node:path'
 import { z } from 'zod'
@@ -10,6 +11,7 @@ import { log } from '../config.ts'
 import { awayCommand, type AfkCommand } from '../core/afk.ts'
 import { nextRun, parseCron, REPLY, type Schedule } from '../core/cron.ts'
 import { addressed, NO_REPLY } from '../core/agents.ts'
+import { readOnlyQuery } from '../core/db-read.ts'
 import { plainName, teammateOf } from '../core/gate.ts'
 import { openWaiting, postedBy } from '../core/ledgers.ts'
 import type { Ledgers } from './ledger.ts'
@@ -41,6 +43,8 @@ export function sessionTools(o: {
   afk?: (c: AfkCommand) => Promise<string>
   // This session is the lane of this kagelet (core/kagelets.ts): it gets the report tool and none of the manager's.
   kagelet?: string
+  // KAGE_DB_READ_COMMAND, for a kagelet granted db_read (core/db-read.ts). Absent: the tool does not exist.
+  dbRead?: { command: string; maxRows: number; timeoutMs?: number }
   // The manager's side in the hub (runtime/kagelets.ts). Absent: kagelets are off (tmux panes).
   kagelets?: { list(): string; manage(a: Manage): string }
 }) {
@@ -392,6 +396,34 @@ export function sessionTools(o: {
       return { text: 'reported, and what you need is posted in the thread for your manager and the owner' }
     },
   })
+  // db_read: one read through the owner's own read command, for a kagelet the owner granted it (the grant check
+  // is core/kagelets.ts). The ledger keeps who, how many lines, how long and the outcome, never the rows.
+  const db = o.dbRead
+  if (name && db) tools.push({
+    name: 'db_read',
+    description: 'Run one read-only SQL query (SELECT or WITH ... SELECT, PostgreSQL) and get the rows back. One statement, no writes, no row locks, no backslashes or dollar quotes. Rows are capped, so aggregate in SQL instead of reading raw rows.',
+    shape: { sql: s.describe('one SELECT or WITH ... SELECT statement') },
+    async run(args) {
+      const started = Date.now()
+      const done = (lines: number, outcome: string) => append('db-reads', [name, String(lines), `${Date.now() - started}ms`, outcome])
+      const q = readOnlyQuery(String(args.sql ?? ''), db.maxRows)
+      if ('refused' in q) { done(0, `refused: ${q.refused}`); return { isError: true, text: `refused: ${q.refused}` } }
+      // ponytail: the timeout stops sh; a command that hands the query to a child (ssh, a pipe) may outlive it. Keep the server-side statement_timeout in the read command.
+      const timeout = db.timeoutMs ?? 30_000
+      // The query is $1 of the shell, never part of the command line, so its text is not shell code.
+      const r = await new Promise<{ out: string; err?: string }>(res => execFile('/bin/sh', ['-c', `${db.command} "$1"`, 'db_read', q.sql],
+        { timeout, maxBuffer: 4 << 20, encoding: 'utf8' },
+        (e, out, stderr) => res(e ? { out, err: (e as { killed?: boolean }).killed ? `the query took longer than ${timeout / 1000} s`
+          // Never String(e): it quotes the command line, which may hold a host or a password.
+          : (stderr.trim() || `the read command exited with ${(e as { code?: unknown }).code}`).slice(0, 500) } : { out })))
+      if (r.err) { done(0, `failed: ${r.err.split('\n')[0]}`); return { isError: true, text: `db_read failed: ${r.err}` } }
+      const lines = r.out.split('\n').filter(l => l.trim()).length
+      done(lines, 'ok')
+      const LIMIT = 20_000
+      const text = r.out.length > LIMIT ? `${r.out.slice(0, LIMIT)}\n(cut at ${LIMIT} characters: aggregate in SQL to see it all)` : r.out
+      return { text: `${text || '(no rows)'}${lines >= db.maxRows ? `\n(may be capped at ${db.maxRows} rows)` : ''}` }
+    },
+  })
   // The manager's tools: Kage creates and runs its kagelets. Owner tasks only, like away.
   const team = o.kagelets
   if (team && !name) tools.push({
@@ -476,7 +508,7 @@ function instructions(Title: string, MEM: { own: string; owner: string }) {
     'If a reply asks a question or offers something and the work waits on the answer, pass waiting with one line naming it. When asked what is waiting, call the waiting tool and answer with its list.',
     'To tell people something in Slack ("tell X and Y", "let Z know"), use message_people with the people the task names. Add everyone in the task\'s channel only when the task says so ("everyone here"). Find their ids with the Slack user search. Write one message that stands alone: what and when. The tool signs it "<name>, via ' + Title + '": when the owner passes on someone else\'s news, pass from with that person\'s id, and never write "From X:" yourself. Then reply in the task thread with the link. Use message_people only to pass on the asker\'s own news (a meeting time, a status). Anything that would commit the owner (agreeing, money, a deadline, an opinion) goes as a Slack draft in that group DM for the owner to send.',
     'For a repeating check or a later reminder, use the schedule tool: it survives restarts and runs until unschedule. CronCreate is off here because its jobs die with this session. A run arrives as "Scheduled run of job <id> ...": do what its prompt says, and post only what the prompt asks for.',
-    'You manage kagelets: recurring jobs that run on their own schedule in a thread and report to you (kagelets and manage_kagelet, on the owner\'s tasks). When an owner task is recurring (a watch, a monitor, "check X every N", or a schedule you already run in a thread) and the job needs only web search and fetch, make a kagelet for it instead of doing it in this session: manage_kagelet save with by=kage and a one-line why, then unschedule the old schedule if there was one. Then tell the owner in one line in the thread where it was decided: "Made kagelet <name>: <job>, <when>. Say remove <name> to stop it." A job that needs more (files, shell, the database, an MCP tool) stays on the schedule tool unless the owner grants it. One-off tasks stay in this session. When the owner asks how your kagelets are doing, or a run needs something, read kagelets and act on what they need.',
+    'You manage kagelets: recurring jobs that run on their own schedule in a thread and report to you (kagelets and manage_kagelet, on the owner\'s tasks). When an owner task is recurring (a watch, a monitor, "check X every N", or a schedule you already run in a thread) and the job needs only web search and fetch, make a kagelet for it instead of doing it in this session: manage_kagelet save with by=kage and a one-line why, then unschedule the old schedule if there was one. Then tell the owner in one line in the thread where it was decided: "Made kagelet <name>: <job>, <when>. Say remove <name> to stop it." A job that needs more (files, shell, the database, an MCP tool) stays on the schedule tool unless the owner grants it. Only the owner grants db_read, by hand in the kagelet file: never put it in manage_kagelet. One-off tasks stay in this session. When the owner asks how your kagelets are doing, or a run needs something, read kagelets and act on what they need.',
     'After each change you make to production for a task (deploy, restart, DB write, prod config), call log_prod_write once.',
     'Answer in the thread by default, including normal work details like logs, numbers and code. Use private=true (the owner\'s DM) only for something that must never be visible in a channel: secrets, passwords, tokens, keys, or a person\'s private data.',
     'Never post anywhere else in Slack unless the task asks for it.',

@@ -27,6 +27,8 @@ export function parseKagelet(name: string, text: string): Kagelet | { error: str
   const job = m[2]!.trim()
   if (!job) return { error: 'the job, below the front matter, is empty' }
   const tools = (head.get('tools') ?? '').split(',').map(t => t.trim()).filter(Boolean)
+  // Checked on every read, so a file that says by: kage cannot hold it even when written by hand.
+  if (head.get('by') === 'kage' && tools.includes(DB_READ)) return { error: `a kagelet Kage made on its own cannot hold ${DB_READ}: only the owner grants it` }
   return { name, key: `${thread}#side-kagelet-${name}`, link, cron, tools, job, paused: isPaused(head.get('paused')),
     by: head.get('by') === 'kage' ? 'kage' : 'owner', why: head.get('why') ?? '',
     ...(Date.parse(head.get('resumed') ?? '') >= 0 && { resumed: Date.parse(head.get('resumed')!) }) }
@@ -56,6 +58,9 @@ paused: yes
 Say what to check, where, and what to post in the thread. For example: every weekday at 9, read https://status.example.com and post a three-line summary.
 `
 
+// The grant name for the database tool (runtime/kage-tools.ts). Only the owner grants it, by hand in the file.
+export const DB_READ = 'db_read'
+
 // What a kagelet made on its own may be granted: the v1 web tools, never an MCP tool. Only the owner widens it.
 export const DEFAULT_GRANT = ['WebSearch', 'WebFetch']
 
@@ -65,7 +70,7 @@ export function kageletFile(f: { thread: string; schedule: string; tools: string
   // One line each, so no value can add a front matter line of its own (a second tools or paused line).
   for (const [k, v] of Object.entries({ thread: f.thread, schedule: f.schedule, why: f.why, tool: f.tools.join(',') })) if (/[\r\n]/.test(v)) return { error: `the ${k} must be one line` }
   const bad = f.tools.find(t => !grantable(t))
-  if (bad) return { error: `a kagelet can be granted only web and MCP tools, not ${bad}. A wider grant is the owner's call.` }
+  if (bad) return { error: `a kagelet can be granted only web tools, MCP tools and ${DB_READ}, not ${bad}. A wider grant is the owner's call.` }
   const wide = f.by === 'kage' && f.tools.find(t => !DEFAULT_GRANT.includes(t))
   if (wide) return { error: `a kagelet Kage makes on its own gets only ${DEFAULT_GRANT.join(' and ')}, not ${wide}. Ask the owner to grant it.` }
   const text = `---\nthread: ${f.thread}\nschedule: ${f.schedule}\ntools: ${f.tools.join(', ')}\nby: ${f.by}\nwhy: ${f.why}\n${f.paused ? 'paused: yes\n' : ''}---\n${f.job.trim()}\n`
@@ -118,11 +123,12 @@ const THREAD_TOOLS = ['reply', 'edit_message', 'delete_message', 'report'].map(t
 // What a grant may name: web tools and outside MCP tools, an allowlist so a new built-in tool stays out. No file,
 // shell or agent tool, granted or not: one could rewrite the kagelet's own grant or read the env file with the
 // tokens. ponytail: a file grant needs a sandboxed work folder first.
-const grantable = (t: string) => t === 'WebFetch' || t === 'WebSearch' || (t.startsWith('mcp__') && !t.startsWith('mcp__kage__') && !t.startsWith('mcp__plugin_kage_'))
+const grantable = (t: string) => t === DB_READ || t === 'WebFetch' || t === 'WebSearch' || (t.startsWith('mcp__') && !t.startsWith('mcp__kage__') && !t.startsWith('mcp__plugin_kage_'))
 
 // The grant only shrinks: a tool outside it is denied.
 export function grantRefusal(tool: string, grant: string[], input: Record<string, unknown> = {}) {
   if (THREAD_TOOLS.includes(tool)) return undefined
+  if (tool === `mcp__kage__${DB_READ}`) return grant.includes(DB_READ) ? undefined : `${DB_READ} is outside this kagelet's grant. Only the owner grants it.`
   if (!grantable(tool)) return `A kagelet can be granted only web and MCP tools, not ${tool}. Say in the thread what you needed: your manager decides.`
   if (tool === 'WebFetch' && !/^https?:\/\//i.test(String(input.url ?? ''))) return 'A kagelet fetches only http and https addresses.'
   return grant.includes(tool) ? undefined

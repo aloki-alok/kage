@@ -24,6 +24,21 @@ describe('a kagelet file', () => {
   })
 })
 
+describe('the db_read grant', () => {
+  test('db_read runs only where the grant names it', () => {
+    assert.equal(grantRefusal('mcp__kage__db_read', ['db_read']), undefined)
+    assert.match(grantRefusal('mcp__kage__db_read', ['WebSearch']) ?? '', /grant/)
+    assert.match(grantRefusal('mcp__kage__db_read', []) ?? '', /grant/)
+  })
+  test('the owner may grant it; a kagelet Kage makes on its own never holds it, written by the tool or by hand', () => {
+    const f = { thread: LINK, schedule: '0 9 * * *', job: 'Count failed calls.', why: 'watch' }
+    assert.equal(typeof kageletFile({ ...f, tools: ['db_read'], by: 'owner' }), 'string')
+    assert.match((kageletFile({ ...f, tools: ['db_read'], by: 'kage' }) as { error: string }).error, /db_read/)
+    assert.match((parseKagelet('x', file(`thread: ${LINK}\nschedule: 0 9 * * *\ntools: db_read\nby: kage`)) as { error: string }).error, /db_read/)
+    assert.deepEqual((parseKagelet('x', file(`thread: ${LINK}\nschedule: 0 9 * * *\ntools: db_read`)) as { tools: string[] }).tools, ['db_read'])
+  })
+})
+
 describe('the grant', () => {
   test('a tool outside the grant is refused; Kage\'s own tools for its thread are always there', () => {
     assert.equal(grantRefusal('WebSearch', ['WebSearch']), undefined)
