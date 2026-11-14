@@ -9,7 +9,7 @@ import { randomBytes } from 'node:crypto'
 import { spawn, spawnSync } from 'node:child_process'
 import { fileURLToPath } from 'node:url'
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
-import { addBrowserLines, extensionId, HOST, hostBrowsers, hostManifest } from '../core/browser-pair.ts'
+import { addBrowserAgainLines, addBrowserLines, addBrowserPlan, extensionId, HOST, hostBrowsers, hostManifest } from '../core/browser-pair.ts'
 import { findPeople, type Person } from '../core/gate.ts'
 import { add, kindOf, ownerPerson, remove, type Entry } from '../core/registry.ts'
 import { registryOf, withRegistry } from '../core/config.ts'
@@ -39,13 +39,15 @@ if (cmd === 'add' && args[0] === 'kagelet') {
   console.log(`Wrote ${file}, paused.\nFill in its thread, schedule, tools and job, then run kage start ${name}. It runs within a minute.`)
   process.exit(0)
 }
-// kage add browser: turn Kage in Chrome on (#114). A new token each time, so running it again also cuts off an
-// extension that had the old one. It also registers the pairing helper (core/browser-pair.ts) with each Chromium
+// kage add browser: turn Kage in Chrome on (#114). Run again on a paired install, it changes nothing
+// (addBrowserPlan); --reinstall makes a new token, which also cuts off an extension that had the old one. It also registers the pairing helper (core/browser-pair.ts) with each Chromium
 // browser here, so the extension fetches the token itself. The token prints only with --show-token, or when no browser was found to pair.
 if (cmd === 'add' && args[0] === 'browser') {
   if (!settingsExist()) die(`No settings in ${DIR}. Run kage setup first.`)
-  const token = randomBytes(24).toString('hex')
-  updateSecrets(ENV_FILE, s => ({ ...s, browserToken: token }))
+  const plan = addBrowserPlan({ hasToken: !!readSettings(ENV_FILE).secrets.browserToken, reinstall: args.includes('--reinstall') })
+  if (!plan.newToken && !args.includes('--show-token')) { console.log(addBrowserAgainLines().join('\n')); process.exit(0) }
+  const token = plan.newToken ? randomBytes(24).toString('hex') : readSettings(ENV_FILE).secrets.browserToken!
+  if (plan.newToken) updateSecrets(ENV_FILE, s => ({ ...s, browserToken: token }))
   const ext = fileURLToPath(new URL('../extension', import.meta.url))
   const id = extensionId(JSON.parse(readFileSync(`${ext}/manifest.json`, 'utf8')).key)
   // Chrome starts the helper with a bare PATH, so the wrapper names this node and this checkout outright.
@@ -62,10 +64,11 @@ if (cmd === 'add' && args[0] === 'browser') {
   // What a script can do for Load unpacked: open the page, copy the path, show the folder. Each may fail on a bare machine.
   const run = (cmd: string, a: string[], input?: string) => spawnSync(cmd, a, { input, stdio: ['pipe', 'ignore', 'ignore'], timeout: 5000 }).status === 0
   const mac = process.platform === 'darwin'
+  if (!plan.open) { console.log(`Token: ${token}`); process.exit(0) }
   const opened = mac ? run('open', ['-a', 'Google Chrome', 'chrome://extensions']) : ['google-chrome', 'chromium', 'brave-browser', 'microsoft-edge'].some(b => run('which', [b]) && (spawn(b, ['chrome://extensions'], { detached: true, stdio: 'ignore' }).unref(), true))
-  const copied = mac ? run('pbcopy', [], ext) : [['wl-copy', []], ['xclip', ['-selection', 'clipboard']], ['xsel', ['-b', '-i']]].some(([c, a]) => run(c as string, a as string[], ext))
-  run(mac ? 'open' : 'xdg-open', [ext])
-  console.log(addBrowserLines({ names: found.map(b => b.name), ext, token, showToken: args.includes('--show-token'), platform: process.platform, opened, copied }).join('\n'))
+  // Finder with the folder highlighted in its parent, ready to drag onto the Extensions page.
+  const revealed = mac && run('open', ['-R', ext])
+  console.log(addBrowserLines({ names: found.map(b => b.name), ext, token, showToken: args.includes('--show-token'), platform: process.platform, opened, revealed }).join('\n'))
   process.exit(0)
 }
 if (!settingsExist()) die(`No settings in ${DIR}. Run kage setup first.`)

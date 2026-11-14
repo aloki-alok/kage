@@ -2,7 +2,7 @@ import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { createHash } from 'node:crypto'
 import { readFileSync } from 'node:fs'
-import { addBrowserLines, extensionId, frame, HOST, hostBrowsers, hostManifest, unframe } from '../browser-pair.ts'
+import { addBrowserAgainLines, addBrowserLines, addBrowserPlan, extensionId, frame, HOST, hostBrowsers, hostManifest, unframe } from '../browser-pair.ts'
 
 test('the extension id is the first 16 bytes of the key hash, written in the letters a to p', () => {
   const key = Buffer.from('a public key, as DER').toString('base64')
@@ -62,22 +62,22 @@ test('each browser is listed by its real name, not by a folder in its path', () 
   assert.deepEqual(hostBrowsers('linux', '/home/t', p => p === '/home/t/.config/google-chrome').map(b => b.name), ['Chrome'])
 })
 
-const base = { names: ['Chrome', 'Brave'], ext: '/opt/kage/extension', token: 'tok-fake', showToken: false, platform: 'darwin', opened: true, copied: true }
+const base = { names: ['Chrome', 'Brave'], ext: '/opt/kage/extension', token: 'tok-fake', showToken: false, platform: 'darwin', opened: true, revealed: true }
 
 test('a paired browser gets only the steps Chrome leaves, and no token', () => {
   const out = addBrowserLines(base).join('\n')
   assert.match(out, /Pairing is set up for Chrome, Brave/)
   assert.match(out, /Developer mode/)
-  assert.match(out, /Load unpacked/)
-  assert.match(out, /Cmd\+Shift\+G/)
+  assert.match(out, /[Dd]rag the highlighted extension folder from the Finder window onto the Extensions page/)
+  assert.doesNotMatch(out, /Cmd\+Shift\+G/)
   assert.doesNotMatch(out, /tok-fake|kage restart|opt\/kage/)
 })
 
 test('when the page or the clipboard did not work, the steps name the page and the path', () => {
-  const out = addBrowserLines({ ...base, opened: false, copied: false, platform: 'linux' }).join('\n')
+  const out = addBrowserLines({ ...base, opened: false, revealed: false, platform: 'linux' }).join('\n')
   assert.match(out, /open chrome:\/\/extensions/)
-  assert.match(out, /\/opt\/kage\/extension/)
-  assert.doesNotMatch(out, /Cmd\+Shift\+G/)
+  assert.match(out, /go to \/opt\/kage, click the extension folder once, then click Select/)
+  assert.match(out, /Load unpacked/)
 })
 
 test('--show-token prints the token, and a machine with no browser to pair needs it', () => {
@@ -85,4 +85,15 @@ test('--show-token prints the token, and a machine with no browser to pair needs
   const none = addBrowserLines({ ...base, names: [] }).join('\n')
   assert.match(none, /tok-fake/)
   assert.match(none, /no Chromium browser/i)
+})
+
+test('run again with a token saved, it keeps the token, opens nothing, and names the reload click', () => {
+  assert.deepEqual(addBrowserPlan({ hasToken: true, reinstall: false }), { newToken: false, open: false })
+  assert.deepEqual(addBrowserPlan({ hasToken: true, reinstall: true }), { newToken: true, open: true })
+  assert.deepEqual(addBrowserPlan({ hasToken: false, reinstall: false }), { newToken: true, open: true })
+  const again = addBrowserAgainLines().join('\n')
+  assert.match(again, /already set up/)
+  assert.match(again, /chrome:\/\/extensions/)
+  assert.match(again, /--reinstall/)
+  assert.doesNotMatch(again, /Load unpacked, press|Developer mode/)
 })
