@@ -3,6 +3,7 @@
 // matters, and phones the owner for a P0. The owner's own session turns it on and off with the away
 // and back tools (runtime/kage-tools.ts). Tags of Kage still go through the gate as before.
 // connectors/slack-afk.ts does the I/O.
+import type { Urgency } from './jev.ts'
 import { agentTag, typedByPerson, type SlackMessage } from './slack-message.ts'
 
 export type AfkCommand = { kind: 'afk'; minutes?: number; at?: { h: number; m: number }; note: string } | { kind: 'back' }
@@ -10,7 +11,7 @@ export type AfkCommand = { kind: 'afk'; minutes?: number; at?: { h: number; m: n
 // Thread keys are channel, or channel:thread_ts (not session keys).
 // One away period. replies: stand-in posts per thread. muted: threads the owner typed in.
 // watch: threads someone mentioned the owner in. pings: one line per watched thread, the latest.
-export type Urgency = 'p0' | 'high' | 'normal' | 'low'
+export type { Urgency } from './jev.ts'
 export type Ping = { key: string; when: number; who: string; place: string; link: string; note: string; waits: boolean; urgency: Urgency }
 // mentions: counted mentions, at most one per BURST from lastMention (when the last one counted).
 export type Watch = { channel: string; thread_ts?: string; mentions: number; lastMention?: number; called?: boolean }
@@ -127,6 +128,15 @@ export function parseTriage(out: string): { urgency: Urgency; note: string; wait
   const reply = m[4]!.trim()
   return { urgency: m[1]!.toLowerCase() as Urgency, note: m[2]!.trim(), waits: m[3]!.toLowerCase() === 'yes', reply: /^none\.?$/i.test(reply) ? '' : reply }
 }
+
+// The usual replies, from templates: Claude writes one only for a question the owner's notes can answer (standInPrompt).
+export function standInReply(urgency: Urgency, o: { owner: string; until: string; title: string }): string {
+  if (urgency === 'low') return ''
+  return `${o.owner} is away until ${o.until}. I noted this and ${urgency === 'p0' ? 'I am calling them now' : 'will make sure they see it'}.`
+}
+
+// The owner's line for a thread: who wrote, and the newest message cut short.
+export const noteOf = (who: string, text: string) => `${who}: ${text.replace(/\s+/g, ' ').trim()}`.slice(0, 140)
 
 const oneLine = (t: string) => t.replace(/\s+/g, ' ').trim()
 

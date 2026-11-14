@@ -1,6 +1,6 @@
 import { describe, test } from 'node:test'
 import assert from 'node:assert/strict'
-import { jevCheck, jevTriage } from '../jev.ts'
+import { jevAfk, jevCheck, jevTriage } from '../jev.ts'
 import { JEV_URL, type JevConfig } from '../../core/jev.ts'
 
 const config: JevConfig = { key: 'apikey_secret', model: 'jev-latest', threshold: 0.5, agents: ['A0AGENT01'] }
@@ -103,5 +103,25 @@ describe('intake triage of a tagged message', () => {
     clearTimeout(alive)
     assert.equal(v.pick, 'session')
     assert.match(events[0]!, /TimeoutError/)
+  })
+})
+
+describe('AFK triage with Jev', () => {
+  const ok = { answers: { urgency: { type: 'choice', choice: 'high', confidence: 1, probabilities: { high: 0.9 } }, waits: { type: 'noul', noul: 0.9 }, lookup: { type: 'noul', noul: 0.1 } } }
+  const input = { owner: 'Sam', place: '#eng', from: 'Maya', convo: 'Maya: the build is red' }
+  test('it returns urgency, waits and lookup, and sends the key in the header only', async () => {
+    const { f, calls } = answering(200, ok)
+    assert.deepEqual(await jevAfk(config, { fetch: f })(input), { urgency: 'high', waits: true, lookup: false })
+    assert.equal((calls[0]!.init.headers as Record<string, string>).Authorization, 'Bearer apikey_secret')
+    assert.ok(!String(calls[0]!.init.body).includes('apikey_secret'))
+  })
+  test('an error, a bad answer or a timeout gives undefined, so the Claude triage runs instead', async () => {
+    assert.equal(await jevAfk(config, { fetch: answering(500, {}).f })(input), undefined)
+    assert.equal(await jevAfk(config, { fetch: answering(200, { answers: {} }).f })(input), undefined)
+    const slow = ((_: string, init: RequestInit) => new Promise((_r, reject) =>
+      init.signal!.addEventListener('abort', () => reject(init.signal!.reason)))) as unknown as typeof fetch
+    const alive = setTimeout(() => {}, 1000)
+    assert.equal(await jevAfk(config, { fetch: slow, timeoutMs: 20 })(input), undefined)
+    clearTimeout(alive)
   })
 })

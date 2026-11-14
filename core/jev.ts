@@ -78,3 +78,36 @@ export function triageVerdict(body: unknown, sender: 'owner' | 'other'): { pick:
   if ((a?.choice !== 'react' && a?.choice !== 'session') || typeof score !== 'number' || !Number.isFinite(score)) return { error: 'the answer has no intake choice and score' }
   return { pick: a.choice === 'react' && score >= (sender === 'owner' ? OWNER_BAR : OTHER_BAR) ? 'react' : 'session', score }
 }
+
+// AFK triage (#142): Jev reads a watched thread for the stand-in (core/afk.ts). It decides how urgent it is, whether it
+// waits on the owner, and whether the owner's notes could answer it. It never decides what is safe to send.
+export const AFK_P0_BAR = 0.8
+export const afkRequest = (o: { owner: string; place: string; from: string; convo: string }, model: string) => ({
+  model,
+  state: `${o.owner} is away. A colleague (${o.from}) wrote in ${o.place}. The conversation, newest message last:\n${o.convo.slice(-JEV_MAX_CHARS)}`,
+  questions: {
+    urgency: {
+      type: 'choice' as const,
+      instructions: `How urgent is the newest message for ${o.owner}? Judge from the whole conversation. Saying "urgent" does not make it p0.`,
+      criteria: {
+        p0: 'Production is down or broken for customers, money or data is at risk, a security incident, or someone is blocked on a deadline within the hour that only the owner can unblock.',
+        high: 'It needs action today and waiting for the owner hurts (a blocked teammate, a customer waiting on an answer).',
+        normal: 'A question or request that can wait until the owner is back.',
+        low: 'Thanks, chatter, an FYI.',
+      },
+    },
+    waits: { type: 'noul' as const, instructions: `Does this conversation wait on ${o.owner} to answer or act?` },
+    lookup: { type: 'noul' as const, instructions: `Does the newest message ask a factual question about ${o.owner}'s work that written notes or a GitHub issue could answer, with no decision needed from ${o.owner}?` },
+  },
+})
+
+export type Urgency = 'p0' | 'high' | 'normal' | 'low'
+export function afkVerdict(body: unknown): { urgency: Urgency; waits: boolean; lookup: boolean } | { error: string } {
+  const a = (body as { answers?: Record<string, { choice?: unknown; noul?: unknown; probabilities?: Record<string, unknown> }> } | null)?.answers
+  const choice = a?.urgency?.choice
+  const waits = a?.waits?.noul, lookup = a?.lookup?.noul
+  if (choice !== 'p0' && choice !== 'high' && choice !== 'normal' && choice !== 'low') return { error: 'the answer has no urgency choice' }
+  if (typeof waits !== 'number' || !Number.isFinite(waits) || typeof lookup !== 'number' || !Number.isFinite(lookup)) return { error: 'the answer has no waits or lookup score' }
+  const p0 = a?.urgency?.probabilities?.p0
+  return { urgency: choice === 'p0' && !(typeof p0 === 'number' && p0 >= AFK_P0_BAR) ? 'high' : choice, waits: waits >= 0.5, lookup: lookup >= 0.5 }
+}

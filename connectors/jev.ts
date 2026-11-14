@@ -1,7 +1,8 @@
 // The Jev call (rules in core/jev.ts). It fails open: on a timeout, an HTTP error or an answer it cannot read, the
 // post is answered as before, and the loop guard (core/agents.ts) still caps an agent's turns. The log carries the
 // score and the reason only, never the key or the post.
-import { JEV_URL, jevChecks, jevRequest, jevVerdict, triageRequest, triageSkips, triageVerdict, type JevConfig } from '../core/jev.ts'
+import { log } from '../config.ts'
+import { JEV_URL, afkRequest, afkVerdict, jevChecks, jevRequest, jevVerdict, triageRequest, triageSkips, triageVerdict, type JevConfig, type Urgency } from '../core/jev.ts'
 
 export type JevCheck = (app: string, text: string) => Promise<{ reply: boolean; why: string }>
 
@@ -52,6 +53,28 @@ export function jevTriage(c: JevConfig, emit: (who: string, detail: string) => v
       return done(v.pick, `${sender} react ${v.score.toFixed(2)}`)
     } catch (e) {
       return done('session', `jev failed (${(e as Error).name})`)
+    }
+  }
+}
+
+export type JevAfk = (o: { owner: string; place: string; from: string; convo: string }) => Promise<{ urgency: Urgency; waits: boolean; lookup: boolean } | undefined>
+
+// The AFK stand-in's triage (rules in core/jev.ts). Undefined on any failure: the caller falls back to the Claude triage, so a P0 is never lost to a Jev outage.
+export function jevAfk(c: JevConfig, o: { fetch?: typeof fetch; timeoutMs?: number } = {}): JevAfk {
+  const go = o.fetch ?? fetch
+  return async input => {
+    try {
+      const r = await go(JEV_URL, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${c.key}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify(afkRequest(input, c.model)),
+        signal: AbortSignal.timeout(o.timeoutMs ?? 8000),
+      })
+      const v = r.ok ? afkVerdict(await r.json()) : { error: `HTTP ${r.status}` }
+      if ('error' in v) return void log(`afk: jev ${v.error}, using the Claude triage`)
+      return v
+    } catch (e) {
+      return void log(`afk: jev failed (${(e as Error).name}), using the Claude triage`)
     }
   }
 }
