@@ -175,6 +175,16 @@ describe('what the hub needs to run', () => {
     assert.match((checkSettings({ version: 1 }, { slack: { app: 'a', bot: 'b' } }) as { error: string }).error, /slack\.user/)
     assert.match((checkSettings({ version: 1, name: 'Not A Name' }, secrets) as { error: string }).error, /name/)
   })
+  test('a value the hub would exit or crash on is refused: a quote in a path, a port out of range', () => {
+    const bad = (c: object) => (checkSettings({ version: 1, ...c } as Config, secrets) as { error: string }).error
+    assert.match(bad({ harness: { memory: '/tmp/it\'s' } }), /harness\.memory/)
+    assert.match(bad({ harness: { ownerMemory: '/tmp/a"b' } }), /harness\.ownerMemory/)
+    assert.match(bad({ harness: { cwd: '/tmp/a\\b' } }), /harness\.cwd/)
+    assert.match(bad({ connectors: { whatsapp: { memory: "/tmp/x'y" } } }), /whatsapp\.memory/)
+    for (const [k, port] of [['voice', 0], ['github', 70000], ['meeting', -1], ['browser', 8791.5]] as const) assert.match(bad({ connectors: { [k]: { port } } }), new RegExp(`connectors\\.${k}\\.port`), k)
+    assert.match(bad({ connectors: { whatsapp: { hookPort: 99999 } } }), /whatsapp\.hookPort/)
+    assert.ok(!('error' in checkSettings({ version: 1, harness: { memory: '~/mem dir' }, connectors: { voice: { port: 8790 } } } as Config, secrets)))
+  })
   test('a wrong people entry is refused by the schema, and an agent owner who is not a person or an agent too', () => {
     assert.throws(() => Config.parse({ version: 1, people: { teammates: ['priya'] } }), /teammates/)
     assert.throws(() => Config.parse({ version: 1, people: { agents: [{ app: 'ATEST0001', owner: 'priya' }] } }), /agents/)

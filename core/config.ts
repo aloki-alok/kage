@@ -197,6 +197,12 @@ export const tilde = (p: string, home: string) => (p === '~' ? home : p.startsWi
 // connector takes ("<app>:<owner>:<tag>"). The schema already refused a wrong list entry, so nothing else is checked here.
 export function checkSettings(c: Config, s: Secrets): { name: string; teammates: string[]; apps: string[] } | { error: string } {
   for (const [path, v] of [['slack.app', s.slack?.app], ['slack.user', s.slack?.user], ['slack.bot', s.slack?.bot]] as const) if (!v) return { error: `${path} is missing in secrets.json` }
+  // What hub.ts and the listeners would exit or crash on, so a bad value is refused before it is the file the hub restarts on.
+  for (const [path, v] of [['harness.memory', c.harness?.memory], ['harness.ownerMemory', c.harness?.ownerMemory], ['harness.cwd', c.harness?.cwd], ['connectors.whatsapp.memory', c.connectors?.whatsapp?.memory]] as const)
+    if (v && /['"\\]/.test(v)) return { error: `${path} must not hold a quote or a backslash` }
+  const k = c.connectors
+  for (const [path, v] of [['voice.port', k?.voice?.port], ['github.port', k?.github?.port], ['meeting.port', k?.meeting?.port], ['browser.port', k?.browser?.port], ['whatsapp.hookPort', k?.whatsapp?.hookPort]] as const)
+    if (v != null && !(Number.isInteger(v) && v >= 1 && v <= 65535)) return { error: `connectors.${path} must be a port from 1 to 65535` }
   const name = (c.name || 'kage').toLowerCase()
   if (!validName(name)) return { error: `name "${name}" must be a short lowercase word (letters, digits, dashes)` }
   return { name, teammates: c.people?.teammates ?? [], apps: (c.people?.agents ?? []).map(agentLine) }
