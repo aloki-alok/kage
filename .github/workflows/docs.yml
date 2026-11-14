@@ -1,0 +1,30 @@
+name: docs
+# Rebuilds the docs site from docs/concepts on every merge that changes it, and pushes it to gh-pages under docs/.
+on:
+  push:
+    branches: [main]
+    paths: ['docs/concepts/**', 'docs/site/**', '.github/workflows/docs.yml']
+  workflow_dispatch:
+permissions:
+  contents: write
+concurrency: docs
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/checkout@v7
+        with:
+          ref: gh-pages
+          path: pages
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22.18
+      - run: node docs/site/build.mjs docs/concepts pages/docs/index.html
+      - name: Push to gh-pages if anything changed
+        working-directory: pages
+        run: |
+          git add docs
+          git diff --cached --quiet && exit 0
+          git -c user.name=github-actions -c user.email=41898282+github-actions[bot]@users.noreply.github.com commit -m "Docs from ${GITHUB_SHA::7}"
+          git push
