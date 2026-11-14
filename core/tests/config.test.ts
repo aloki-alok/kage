@@ -1,7 +1,8 @@
 import { describe, test } from 'node:test'
 import assert from 'node:assert/strict'
 import { execSync } from 'node:child_process'
-import { ALIASES, Config, diff, fromEnv, KEYS, NOT_SETTINGS, toEnv, unknownNames } from '../config.ts'
+import { readFileSync } from 'node:fs'
+import { ALIASES, checkSettings, Config, diff, fromEnv, KEYS, NOT_SETTINGS, toEnv, unknownNames } from '../config.ts'
 import { parseEnv } from '../settings.ts'
 
 // One line for every setting in the table, with fake values. Canonical forms: the shape toEnv writes.
@@ -126,6 +127,11 @@ describe('importing an env file', () => {
 })
 
 describe('the schema', () => {
+  test('a cost cap that is not a number of dollars, or a slash command that is not a name and an absolute path, is refused', () => {
+    for (const bad of ['two', -1, Number.NaN]) assert.throws(() => Config.parse({ version: 1, kagelets: { dailyUsd: bad } }), /dailyUsd/, String(bad))
+    for (const bad of [{ lookup: '/opt/x.mjs' }, { '/lookup': 'relative.mjs' }]) assert.throws(() => Config.parse({ version: 1, connectors: { commands: bad } }), /commands/, JSON.stringify(bad))
+    assert.deepEqual(fromEnv({ KAGE_KAGELET_DAILY_USD: 'two' }).config.unknown, { KAGE_KAGELET_DAILY_USD: 'two' })
+  })
   test('a typo in a key is refused with its name', () => {
     assert.throws(() => Config.parse({ version: 1, harness: { maxSesion: 6 } }), /maxSesion/)
   })
@@ -156,5 +162,34 @@ describe('people and the registry', () => {
     assert.deepEqual(registryOf(c), entries)
     assert.equal(c.name, 'kage')
     assert.equal(toEnv(c, {}).KAGE_TRUSTED_APPS, 'ATEST0001:UTEST0001:UTEST0003,ATEST0009')
+  })
+})
+
+describe('what the hub needs to run', () => {
+  const secrets = { slack: { app: 'xapp-fake', user: 'xoxp-fake', bot: 'xoxb-fake' } }
+  test('a good config gives the name and both people lists, an agent as app:owner:tag', () => {
+    const config = Config.parse({ version: 1, people: { teammates: ['UTEST0001'], agents: [{ app: 'ATEST0001', owner: 'UTEST0001', tag: 'UTEST0003' }, { app: 'ATEST0009' }] } })
+    assert.deepEqual(checkSettings(config, secrets), { name: 'kage', teammates: ['UTEST0001'], apps: ['ATEST0001:UTEST0001:UTEST0003', 'ATEST0009'] })
+  })
+  test('a missing token is refused by its path, and a bad name by itself', () => {
+    assert.match((checkSettings({ version: 1 }, { slack: { app: 'a', bot: 'b' } }) as { error: string }).error, /slack\.user/)
+    assert.match((checkSettings({ version: 1, name: 'Not A Name' }, secrets) as { error: string }).error, /name/)
+  })
+  test('a wrong people entry is refused by the schema, and an agent owner who is not a person or an agent too', () => {
+    assert.throws(() => Config.parse({ version: 1, people: { teammates: ['priya'] } }), /teammates/)
+    assert.throws(() => Config.parse({ version: 1, people: { agents: [{ app: 'ATEST0001', owner: 'priya' }] } }), /agents/)
+    assert.throws(() => Config.parse({ version: 1, people: { agents: [{ app: 'UTEST0001' }] } }), /agents/)
+  })
+})
+
+describe('docs/settings.md', () => {
+  // Regenerate the key list with the command at the top of the page.
+  test('names exactly the keys in the table, one row each', () => {
+    const docs = readFileSync(new URL('../../docs/settings.md', import.meta.url), 'utf8')
+    const listed = docs.split('\n').filter(l => l.startsWith('| `')).flatMap(l => [...l.split('|')[1]!.matchAll(/`([^`]+)`/g)].map(m => m[1]!))
+    const keys = KEYS.map(k => k.path)
+    assert.deepEqual(keys.filter(k => !listed.includes(k)), [], 'in the table, missing from the docs')
+    assert.deepEqual(listed.filter(k => !keys.includes(k)), [], 'in the docs, missing from the table')
+    assert.equal(new Set(listed).size, listed.length, 'a key listed twice')
   })
 })

@@ -3,8 +3,8 @@
 // hears of it once, and the last good settings stay. Each decision is one event with key names only, never values.
 import { watch } from 'node:fs'
 import { basename } from 'node:path'
-import { diff, registryOf, toEnv, type Config, type Secrets } from '../core/config.ts'
-import { checkEnv, type AllowLists, type Reloaded } from '../core/settings.ts'
+import { checkSettings, diff, registryOf, type Config, type Secrets } from '../core/config.ts'
+import type { AllowLists, Reloaded } from '../core/settings.ts'
 import { files, readSettings } from './config-files.ts'
 
 export type Settings = { config: Config; secrets: Secrets }
@@ -30,7 +30,7 @@ export function configWatcher(o: {
     count++
     let next: Settings
     try { next = readSettings(o.envFile) } catch (e) { return refuse((e as Error).message, (e as { keys?: string[] }).keys ?? []) }
-    const ok = checkEnv(toEnv(next.config, next.secrets))
+    const ok = checkSettings(next.config, next.secrets)
     if ('error' in ok) return refuse(ok.error, [])
     told = ''
     const live = (Object.keys(lists(last)) as Key[]).filter(k => JSON.stringify(lists(last)[k]) !== JSON.stringify(lists(next)[k]))

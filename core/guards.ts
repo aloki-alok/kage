@@ -95,9 +95,9 @@ export function protectConfig(envFile: string, codeDir: string, home = process.e
 const CLOSED_WRITE = `Settings and token files are closed to every session: only the owner's own terminal changes them (kage set). Say what you wanted changed, and the owner runs it.`
 // Kage's own memory (hub.ts points autoMemoryDirectory at it) and the owner's, which is the
 // memory of the home folder project in Claude Code.
-export const memoryDirs = (home: string, envFile: string, env: Record<string, string | undefined>) => ({
-  own: env.KAGE_MEMORY || `${dirname(envFile)}/memory`,
-  owner: env.KAGE_OWNER_MEMORY || `${home}/.claude/projects/${home.replace(/[^A-Za-z0-9]/g, '-')}/memory`,
+export const memoryDirs = (home: string, envFile: string, harness: { memory?: string | null; ownerMemory?: string | null } = {}) => ({
+  own: harness.memory || `${dirname(envFile)}/memory`,
+  owner: harness.ownerMemory || `${home}/.claude/projects/${home.replace(/[^A-Za-z0-9]/g, '-')}/memory`,
 })
 // Kage keeps its own memory; in the owner's it may write only notes about people (user_*.md) and
 // edit the index that lists them. ponytail: covers the file tools, not a shell redirect into the

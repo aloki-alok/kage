@@ -1,9 +1,9 @@
 import { describe, test } from 'node:test'
 import assert from 'node:assert/strict'
-import { commandRequest, parseCommands } from '../commands.ts'
+import { commandRequest } from '../commands.ts'
 
 describe('local slash commands', () => {
-  const commands = parseCommands('/lookup=/opt/tc.mjs')
+  const commands = new Map([['/lookup', '/opt/tc.mjs']])
   const req = (o: Record<string, unknown> = {}) =>
     ({ team_id: 'TOURS', user_id: 'UANY', command: '/lookup', text: '9000000001 +919000000002', ...o })
   const opts = { team: 'TOURS', commands }
@@ -38,9 +38,4 @@ describe('local slash commands', () => {
     const r = commandRequest(req({ text }), opts)
     assert.ok(r.ok && r.numbers.length === 150)
   })
-  test('a bad KAGE_COMMANDS entry stops the start', () => {
-    for (const bad of ['lookup=/opt/tc.mjs', '/lookup=relative.mjs', '/lookup'])
-      assert.throws(() => parseCommands(bad), bad)
-  })
-  test('no KAGE_COMMANDS means no commands', () => assert.equal(parseCommands('').size, 0))
 })

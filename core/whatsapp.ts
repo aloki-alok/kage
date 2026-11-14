@@ -1,7 +1,7 @@
 // Hard rules for the owner's personal WhatsApp. Kage listens to every chat but acts in only two ways:
 // 1. owner-task: the owner typed "@kage ..." (any chat). Goes to their normal Kage session.
 // 2. stand-in: someone writes in a chat the owner armed. A separate Claude that can only read the
-//    notes folder the owner wrote for it (KAGE_WA_MEMORY), plus that chat's history, answers as them.
+//    notes folder the owner wrote for it (connectors.whatsapp.memory), plus that chat's history, answers as them.
 //    Nobody else's words ever reach a session that has other tools, except as quoted data inside a
 //    task the owner started.
 // Everything else is stored and ignored.
@@ -69,7 +69,7 @@ export function waTaskContent(ask: string, place: string, chat: string, history:
 }
 
 // The stand-in that answers in an armed chat. It runs in the owner's notes folder for it
-// (KAGE_WA_MEMORY) with read-only tools, no MCP, no settings and no CLAUDE.md (connectors/whatsapp.ts).
+// (connectors.whatsapp.memory) with read-only tools, no MCP, no settings and no CLAUDE.md (connectors/whatsapp.ts).
 export function standInPrompt(brief: string, history: WaLine[], name: string, owner: string): { system: string; prompt: string } {
   const system = [
     `You are writing WhatsApp messages as ${owner}, from their own phone, while they are busy. Reply as them: first person, their tone, usually one or two short lines, plain text. Output only the message itself: no reasoning, no notes, no quotes around it.`,

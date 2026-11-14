@@ -9,7 +9,7 @@
 import { spawnSync } from 'node:child_process'
 import { existsSync, readFileSync, statSync } from 'node:fs'
 import { connect, type Socket } from 'node:net'
-import { askHub, CWD, DIR, settingsEnv } from './home.ts'
+import { askHub, CWD, DIR, settings } from './home.ts'
 import { DatabaseSync } from 'node:sqlite'
 import { ago, boardRows, nextRuns, limitLine, pauseLine, watchingNext, whenLabel, type Live, type Row, type State } from '../core/board.ts'
 import { filterRows, hit, layout, moreLine, STRING, type Layout } from '../core/loom.ts'
@@ -57,7 +57,7 @@ let suspended = false
 let L: Layout | undefined            // the layout of the last frame, for mouse hits
 let panel = false, pick = 0, confirmRemove = ''
 let kagelets: KageletRow[] = [], kageletsAt = 0, kageletsFailed = '', chains: string[] = []
-const CAP = dailyCap(settingsEnv())
+const CAP = dailyCap(settings().config.kagelets)
 const KAGELETS = kageletsDir(DIR)
 
 const mtime = (id: string) => { try { return statSync(`${PROJECT}/${id}.jsonl`).mtimeMs } catch { return 0 } }

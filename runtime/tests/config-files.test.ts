@@ -3,7 +3,7 @@ import assert from 'node:assert/strict'
 import { existsSync, mkdtempSync, readdirSync, readFileSync, statSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { hasSettings, importLegacy, readEnv, readSettings, sweepImported, updateConfig, updateSecrets } from '../config-files.ts'
+import { hasSettings, importLegacy, readSettings, sweepImported, updateConfig, updateSecrets } from '../config-files.ts'
 
 const ENV = 'KAGE_NAME=kagetest\nKAGE_MAX_SESSIONS=6\nKAGE_TEAMMATES=UTEST0001\nSLACK_APP_TOKEN=xapp-fake\nSLACK_USER_TOKEN=xoxp-fake\nSLACK_BOT_TOKEN=xoxb-fake\nKAGE_ODD_TOKEN=xoxb-secret-fake\n'
 const world = (text = ENV) => {
@@ -26,7 +26,7 @@ describe('the first start imports the env file', () => {
     assert.ok(!config.includes('xox'), 'no token in config.json')
     assert.deepEqual(JSON.parse(config).unknown, { KAGE_ODD_TOKEN: null })
     assert.equal(JSON.parse(readFileSync(join(w.dir, 'secrets.json'), 'utf8')).slack.bot, 'xoxb-fake')
-    assert.equal(readEnv(w.env).KAGE_MAX_SESSIONS, '6')
+    assert.equal(readSettings(w.env).config.harness?.maxSessions, 6)
   })
   test('a second start does nothing, and a config.json that exists is never overwritten', () => {
     const w = world()
@@ -46,10 +46,10 @@ describe('the first start imports the env file', () => {
   })
   test('before the import, the env file reads the same as after, and nothing is written', () => {
     const w = world()
-    const before = readEnv(w.env)
+    const before = readSettings(w.env)
     assert.deepEqual(readdirSync(w.dir), ['env'])
     importLegacy(w.env)
-    assert.deepEqual(readEnv(w.env), before)
+    assert.deepEqual(readSettings(w.env), before)
   })
   test('with no settings at all, reading says to run setup', () => {
     const w = world('')
@@ -73,11 +73,19 @@ describe('changing the files', () => {
     const w = world()
     updateConfig(w.env, c => ({ ...c, harness: { ...c.harness, maxSessions: 9 } }))
     updateSecrets(w.env, s => ({ ...s, browserToken: 'browser-fake' }))
-    const env = readEnv(w.env)
-    assert.equal(env.KAGE_MAX_SESSIONS, '9')
-    assert.equal(env.KAGE_BROWSER_TOKEN, 'browser-fake')
-    assert.equal(env.SLACK_BOT_TOKEN, 'xoxb-fake')
+    const { config, secrets } = readSettings(w.env)
+    assert.equal(config.harness?.maxSessions, 9)
+    assert.equal(secrets.browserToken, 'browser-fake')
+    assert.equal(secrets.slack?.bot, 'xoxb-fake')
     assert.equal(mode(join(w.dir, 'secrets.json')), 0o600)
+  })
+  test('a token pasted into the teammates list is refused by its place, and its text never reaches the message', () => {
+    const w = world('')
+    writeFileSync(join(w.dir, 'config.json'), JSON.stringify({ version: 1, people: { teammates: ['UTEST0001', 'xoxp-0000-pasted-on-the-wrong-line'] } }))
+    let msg = ''
+    try { readSettings(w.env) } catch (e) { msg = (e as Error).message }
+    assert.match(msg, /people\.teammates\.1/)
+    assert.ok(!msg.includes('xoxp-0000'))
   })
   test('a bad config.json is refused with the key named and no value in the message', () => {
     const w = world('')

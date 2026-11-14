@@ -3,7 +3,7 @@
 // service units that set it keep working: the folder is its dirname.
 import { existsSync, readdirSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
-import { Config, fromEnv, Secrets, toEnv, type Env } from '../core/config.ts'
+import { Config, fromEnv, Secrets } from '../core/config.ts'
 import { parseEnv } from '../core/settings.ts'
 
 export const files = (envFile: string) => ({ dir: dirname(envFile), config: join(dirname(envFile), 'config.json'), secrets: join(dirname(envFile), 'secrets.json'), legacy: envFile })
@@ -83,9 +83,6 @@ export function readSettings(envFile: string): { config: Config; secrets: Secret
   }
   return { config: parse(Config, f.config), secrets: existsSync(f.secrets) ? parse(Secrets, f.secrets) : {} }
 }
-
-// ponytail: the hub still reads a flat env built from the files, so the readers do not all change at once.
-export const readEnv = (envFile: string): Env => { const s = readSettings(envFile); return toEnv(s.config, s.secrets) }
 
 // Read, change, write one file. An env file waiting to be imported goes in first, so a change is never lost to it.
 // KAGE_SESSION is set on every session (SDK and tmux) and KAGE_THREAD on a pane: a session never changes the files from its shell.

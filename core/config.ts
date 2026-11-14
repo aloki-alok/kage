@@ -1,6 +1,7 @@
 // Kage's settings as typed data: config.json (settings) and secrets.json (tokens), and the fixed table that
 // moves a flat env file into them and back. Pure: the files are read and written in runtime/config-files.ts.
 import { z } from 'zod'
+import { validName } from './gate.ts'
 import { appEntry, validUserId, type Entry } from './registry.ts'
 
 export type Env = Record<string, string>
@@ -36,7 +37,7 @@ export const Config = z.strictObject({
     meeting: z.strictObject({ port: count, perHour: count }).optional(),
     browser: z.strictObject({ port: count, block: strings }).optional(),
     whatsapp: z.strictObject({ on: yes, memory: text, model: text, wahaUrl: text, hookHost: text, hookPort: count }).optional(),
-    commands: z.record(z.string(), z.string()).optional(),
+    commands: z.record(z.string().regex(/^\/[a-z][a-z0-9-]{1,30}$/), z.string().regex(/^\/\S+$/)).optional(),
   }).optional(),
   // Env lines the table does not know. A secret-looking one keeps only its name here (null) and its value in secrets.json.
   unknown: z.record(z.string(), z.string().nullable()).optional(),
@@ -54,7 +55,7 @@ export const Secrets = z.strictObject({
 export type Secrets = z.infer<typeof Secrets>
 
 type Agent = { app: string; owner?: string; tag?: string }
-const agentLine = (a: Agent) => [a.app, a.owner, a.tag].filter(x => x !== undefined).join(':')
+export const agentLine = (a: Agent) => [a.app, a.owner, a.tag].filter(x => x !== undefined).join(':')
 
 // How one env value becomes JSON and back. read gives undefined for a value that does not fit, and the line then goes to "unknown".
 type Codec = { read: (v: string) => unknown; write: (x: any) => string }
@@ -191,3 +192,12 @@ export const withRegistry = (c: Config, entries: Entry[]): Config => ({
 
 // "~" and "~/x" in a path setting, as the home folder.
 export const tilde = (p: string, home: string) => (p === '~' ? home : p.startsWith('~/') ? home + p.slice(1) : p)
+
+// What the hub needs to run: the three Slack tokens, a valid name, and the people lists as the strings the Slack
+// connector takes ("<app>:<owner>:<tag>"). The schema already refused a wrong list entry, so nothing else is checked here.
+export function checkSettings(c: Config, s: Secrets): { name: string; teammates: string[]; apps: string[] } | { error: string } {
+  for (const [path, v] of [['slack.app', s.slack?.app], ['slack.user', s.slack?.user], ['slack.bot', s.slack?.bot]] as const) if (!v) return { error: `${path} is missing in secrets.json` }
+  const name = (c.name || 'kage').toLowerCase()
+  if (!validName(name)) return { error: `name "${name}" must be a short lowercase word (letters, digits, dashes)` }
+  return { name, teammates: c.people?.teammates ?? [], apps: (c.people?.agents ?? []).map(agentLine) }
+}
