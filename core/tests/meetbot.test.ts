@@ -1,6 +1,6 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { askOf, askTask, meetLink, parseSegments } from '../meetbot.ts'
+import { askOf, askTask, meetCall, meetKey, meetLink, parseSegments, sameQuestion } from '../meetbot.ts'
 
 test('a Meet link is kept only for meet.google.com codes, in one canonical form', () => {
   assert.equal(meetLink('https://meet.google.com/abc-defg-hij'), 'https://meet.google.com/abc-defg-hij')
@@ -52,4 +52,18 @@ test('the task for a spoken question carries the recent lines as quoted data', (
   assert.match(t, /\n> Kim: I own the &lt;channel> deploy\n/)
   assert.match(t, /thread_ts "voice:meet-abc-defg-hij"/)
   assert.doesNotMatch(t.split('\n').slice(1).join('\n'), /^[^>].*Kim:/m)   // no line of the call ever starts a line of the task
+})
+
+test("a caption rewrite of an asked question counts as the same question; a new one, or a short one, does not", () => {
+  assert.equal(sameQuestion('Kage, what is the status of the launch?', 'Kage, what is the status of the launch'), true)
+  assert.equal(sameQuestion('kage what is the status of the launch today', 'Kage, what is the status of the launch'), true)
+  assert.equal(sameQuestion('Kage, and the budget?', 'Kage, what is the status of the launch'), false)
+  assert.equal(sameQuestion('Kage, what is the status of the launch', 'Kage?'), false)   // "Kage?" then a real question
+})
+
+test('a meeting session key and its call id go both ways, and a phone call key is not a meeting', () => {
+  assert.equal(meetKey('abc-defg-hij'), 'voice:meet-abc-defg-hij')
+  assert.equal(meetCall('voice:meet-abc-defg-hij'), 'abc-defg-hij')
+  assert.equal(meetCall('voice:3f2a9c1e-0000-4000-8000-000000000000'), undefined)
+  assert.equal(meetCall('voice:meet-'), undefined)
 })

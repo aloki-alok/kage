@@ -16,7 +16,7 @@ async function setup(perHour = 100, pollMs = 2000) {
   let ts = 100
   const ended: string[] = []
   const m = connectMeeting({
-    token: TOKEN, port: 0, botDm: 'DB', perHour, pollMs, name: 'kage', end: key => void ended.push(key), notify: t => void told.push(t), now: () => clock,
+    token: TOKEN, port: 0, botDm: 'DB', perHour, pollMs, name: 'kage', askWaitMs: 50, end: key => void ended.push(key), notify: t => void told.push(t), now: () => clock,
     untake: s => store.untake(s),
     inbox: { take: (s, c, p) => store.take(s, c, p, Date.now()), handled: s => store.handled(s), has: s => store.has(s) },
     post: async text => { posts.push(text); return String(ts++) },
@@ -146,6 +146,7 @@ test('a join is refused for anything but a Meet link, and nothing is queued', as
   } finally { t.m.close() }
 })
 
+const sleep = (ms: number) => new Promise(r => setTimeout(r, ms))
 const lines = (...l: [string, string][]) => JSON.stringify({ call: 'abc-defg-hij', segments: l.map(([speaker, text]) => ({ speaker, text })) })
 
 test('a line that names Kage starts one voice-limited session for the call; other lines only add context', async () => {
@@ -155,6 +156,7 @@ test('a line that names Kage starts one voice-limited session for the call; othe
     assert.equal((await post(lines(['Kim', 'I own the deploy.']))).status, 200)
     assert.equal(t.tasks.length, 0)
     assert.equal((await post(lines(['Jane', 'Kage, who owns the deploy?']))).status, 200)
+    await sleep(120)
     assert.equal(t.tasks.length, 1)
     const task = t.tasks[0]!
     assert.deepEqual([task.key, task.fromOwner, task.channel], ['voice:meet-abc-defg-hij', false, 'voice'])
@@ -162,6 +164,7 @@ test('a line that names Kage starts one voice-limited session for the call; othe
     assert.match(task.content, /^> Kim: I own the deploy\.$/m)
     // While that question waits, another one is not started on top of it.
     await post(lines(['Jane', 'Kage, are you there?']))
+    await sleep(120)
     assert.equal(t.tasks.length, 1)
     assert.equal((await post(lines(['Jane', 'x']), 'Bearer nope')).status, 401)
     assert.equal((await post('{"segments":[]}')).status, 400)
@@ -173,11 +176,13 @@ test("the session's reply reaches the bot as a say command for its call, and the
   try {
     await t.bot('/meetbot/next?after=0')
     await t.bot('/meetbot/segments', { method: 'POST', body: lines(['Jane', 'Kage, ping']) })
+    await sleep(120)
     assert.equal(t.m.say('voice:meet-abc-defg-hij', 'Pong.'), true)
     const r = await t.bot('/meetbot/next?after=0')
     assert.deepEqual((await r.json() as { op: string; call: string; text: string }[]).map(c => [c.op, c.call, c.text]), [['say', 'abc-defg-hij', 'Pong.']])
     assert.equal(t.m.say('voice:some-phone-call', 'x'), false)   // not a meeting: the phone connector's
     await t.bot('/meetbot/segments', { method: 'POST', body: lines(['Jane', 'Kage, again']) })
+    await sleep(120)
     assert.equal(t.tasks.length, 2)
   } finally { t.m.close() }
 })
@@ -186,10 +191,34 @@ test('when the bot says the call ended, its live session ends and a new question
   const t = await setup()
   try {
     await t.bot('/meetbot/segments', { method: 'POST', body: lines(['Jane', 'Kage, ping']) })
+    await sleep(120)
     assert.equal((await t.bot('/meetbot/ended', { method: 'POST', body: '{"call":"abc-defg-hij"}' })).status, 200)
     assert.deepEqual(t.ended, ['voice:meet-abc-defg-hij'])
     assert.equal((await t.bot('/meetbot/ended', { method: 'POST', body: '{"call":"../x"}' })).status, 400)
     await t.bot('/meetbot/segments', { method: 'POST', body: lines(['Jane', 'Kage, again']) })
+    await sleep(120)
     assert.equal(t.tasks.length, 2)   // the old question no longer blocks
+  } finally { t.m.close() }
+})
+
+test('a question split across caption lines is asked once, whole, and its later rewrite is not asked again', async () => {
+  const t = await setup()
+  try {
+    const post = (...l: [string, string][]) => t.bot('/meetbot/segments', { method: 'POST', body: lines(...l) })
+    await post(['Jane', 'Kage, what is'])
+    await sleep(20)
+    await post(['Kim', 'hm'], ['Jane', 'the status of the launch'])
+    assert.equal(t.tasks.length, 0)   // still listening for the rest of the question
+    await sleep(120)
+    assert.equal(t.tasks.length, 1)
+    assert.match(t.tasks[0]!.content, /"Kage, what is the status of the launch"/)
+    t.m.say('voice:meet-abc-defg-hij', 'On track.')
+    // Meet rewrites the caption block, so the bot sends the whole line again: the same question, already answered.
+    await post(['Jane', 'Kage, what is the status of the launch?'])
+    await sleep(120)
+    assert.equal(t.tasks.length, 1)
+    await post(['Jane', 'Kage, and the budget?'])
+    await sleep(120)
+    assert.equal(t.tasks.length, 2)
   } finally { t.m.close() }
 })

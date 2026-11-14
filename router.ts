@@ -22,6 +22,7 @@ import { connectGithub } from './connectors/github.ts'
 import { connectMeeting } from './connectors/meeting.ts'
 import { connectBrowser } from './connectors/browser.ts'
 import { blockList, unreadableBlocks } from './core/browser.ts'
+import { meetCall } from './core/meetbot.ts'
 import { connectVoice } from './connectors/voice.ts'
 import { startWhatsApp } from './connectors/whatsapp.ts'
 import { memoryDirs, protectConfig } from './core/guards.ts'
@@ -495,7 +496,7 @@ const meeting = secrets.meetingToken ? connectMeeting({
   deliver: (c, task, place) => deliver(c, task, place),
   notify: text => void slack.notifyOwner(text),
   perHour: conn.meeting?.perHour || 10, inbox, untake: source => store.untake(source), name: NAME,
-  end: key => { if (key.startsWith('voice:meet-')) d.end(key) },   // only the call's own session
+  end: key => { if (meetCall(key)) d.end(key) },   // only the call's own session
 }) : undefined
 void meeting?.listening.then(port => log(`meetings on: 127.0.0.1:${port}/meeting`))
 const email = connectEmail({
