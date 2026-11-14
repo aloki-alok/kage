@@ -12,7 +12,7 @@ import { chromium, type Page } from 'playwright-core'
 // What the hub sends (connectors/meeting.ts): go to a call, or speak an answer in it.
 export type Cmd = { seq: number; op: 'join'; link: string } | { seq: number; op: 'say'; call: string; text: string }
 export type Seg = { speaker: string; text: string; start: number; self?: boolean }
-type Settings = { hub: string; name: string; consent: string; chrome?: string; profile: string; token: string; speak?: string }
+type Settings = { hub: string; name: string; consent: string; chrome?: string; profile: string; token: string; speak?: string; window?: boolean }
 
 const log = (...a: unknown[]) => console.error(new Date().toISOString(), ...a)
 const sleep = (ms: number) => new Promise(r => setTimeout(r, ms))
@@ -22,13 +22,14 @@ export function settings(dir = join(homedir(), '.config', 'kage-meetbot')): Sett
   const read = (f: string) => { try { return JSON.parse(readFileSync(join(dir, f), 'utf8')) as Record<string, unknown> } catch { return {} } }
   const c = read('config.json'), s = read('secrets.json')
   const str = (v: unknown, d = '') => typeof v === 'string' && v.trim() ? v.trim() : d
-  const hub = str(c.hub).replace(/\/+$/, '')
+  // The hub passes its own address and token when it runs the bot as its child (router.ts meetbot).
+  const hub = str(process.env.KAGE_MEETBOT_HUB || c.hub).replace(/\/+$/, '')
   if (!/^https?:\/\/[^\s/]+$/.test(hub)) throw new Error(`config.json: hub must be the hub's address, like http://my-mac:8790 (got "${hub}")`)
-  const token = str(s.meetingToken)
+  const token = str(process.env.KAGE_MEETBOT_TOKEN || s.meetingToken)
   if (!token) throw new Error('secrets.json: meetingToken is missing (the same token as the hub\'s meetingToken)')
   const name = str(c.name, 'Kage (notes)')
   return {
-    hub, token, name, chrome: str(c.chrome) || undefined, profile: str(c.profile, join(dir, 'chromium')), speak: str(c.speak) || undefined,
+    hub, token, name, chrome: str(c.chrome) || undefined, profile: str(c.profile, join(dir, 'chromium')), speak: str(c.speak) || undefined, window: c.window === true,
     consent: str(c.consent, `${name} is taking notes for the meeting, and answers out loud when you say ${name.split(' ')[0]}.`),
   }
 }
@@ -161,9 +162,12 @@ async function main() {
 }
 
 async function runCall(s: Settings, h: ReturnType<typeof hub>, link: string, call: { call: string; said: string[] }) {
+  // Chrome's new headless mode, with no window on the owner's screen. Meet turned away the old headless mode,
+  // and the user agent names HeadlessChrome, so it reads as the plain Chrome it is. "window": true shows it.
+  const ua = s.window ? undefined : `Mozilla/5.0 (${process.platform === 'darwin' ? 'Macintosh; Intel Mac OS X 10_15_7' : 'X11; Linux x86_64'}) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/${chromium.version?.() ?? '140.0.0.0'} Safari/537.36`
   const ctx = await chromium.launchPersistentContext(s.profile, {
-    headless: false, executablePath: s.chrome, viewport: { width: 1280, height: 800 },
-    args: ['--use-fake-ui-for-media-stream', '--autoplay-policy=no-user-gesture-required', '--disable-blink-features=AutomationControlled'],
+    headless: !s.window, executablePath: s.chrome, viewport: { width: 1280, height: 800 }, ...(ua && { userAgent: ua }),
+    args: ['--use-fake-ui-for-media-stream', '--autoplay-policy=no-user-gesture-required', '--disable-blink-features=AutomationControlled', ...(s.window ? [] : ['--headless=new'])],
     ignoreDefaultArgs: ['--enable-automation'],
   })
   let all: Seg[] = []

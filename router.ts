@@ -6,7 +6,7 @@
 // Still here: thread trust (noteTrust), how each connector shows a failure (failed), the daily
 // "still waiting" note, the self-restart into a newer build, and the auto-update that pulls one.
 // server.ts is the other end for tmux panes only: the Kage channel inside each pane's Claude Code.
-import { execFile, execFileSync, spawn } from 'node:child_process'
+import { execFile, execFileSync, spawn, type ChildProcess } from 'node:child_process'
 import { canPushToKage } from './runtime/repo-access.ts'
 import { randomUUID } from 'node:crypto'
 import { existsSync, mkdirSync, readFileSync, renameSync, rmSync, statSync, writeFileSync } from 'node:fs'
@@ -498,7 +498,19 @@ const meeting = secrets.meetingToken ? connectMeeting({
   perHour: conn.meeting?.perHour || 10, inbox, untake: source => store.untake(source), name: NAME,
   end: key => { if (meetCall(key)) d.end(key) },   // only the call's own session
 }) : undefined
-void meeting?.listening.then(port => log(`meetings on: 127.0.0.1:${port}/meeting`))
+void meeting?.listening.then(port => { log(`meetings on: 127.0.0.1:${port}/meeting`); if (existsSync(`${CODE}/meetbot/node_modules`)) meetbot(port) })
+// The meeting bot runs as the hub's child when it is installed in this checkout (meetbot/node_modules): it waits
+// for a join and opens a headless browser only for a call. It restarts after a crash and ends with the hub.
+// A bot on another machine still works the same way, from its own config (meetbot/README.md).
+function meetbot(port: number) {
+  const child: ChildProcess = spawn(process.execPath, ['bot.ts'], { cwd: `${CODE}/meetbot`, stdio: ['ignore', 'pipe', 'pipe'],
+    env: { ...process.env, KAGE_MEETBOT_HUB: `http://127.0.0.1:${port}`, KAGE_MEETBOT_TOKEN: secrets.meetingToken ?? "" } })
+  const lines = (b: Buffer) => { for (const l of b.toString().split('\n')) if (l.trim()) log(`meetbot: ${l.replace(/^\S+Z /, '')}`) }
+  child.stdout?.on('data', lines)
+  child.stderr?.on('data', lines)
+  child.on('exit', (code: number | null) => { log(`meetbot exited (${code}), starting it again in 10 s`); setTimeout(() => meetbot(port), 10_000).unref() })
+  process.once('exit', () => { child.kill() })
+}
 const email = connectEmail({
   mail: { ...conn.email, accessKeyId: secrets.aws?.accessKeyId, secretAccessKey: secrets.aws?.secretAccessKey }, saved: store, name: NAME, deliver, inbox,
   failed: task => void slack.notifyOwner(`Could not start a session for ${task.meta.place}.`),
