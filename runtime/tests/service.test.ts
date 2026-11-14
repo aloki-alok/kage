@@ -157,7 +157,7 @@ describe('hub.ts: one hub run, with its log, its boot count and a crash-loop DM'
     rmSync(k.root, { recursive: true })
   })
 
-  test('the first start imports the env file, runs in harness.cwd, and later starts delete an import older than 7 days', async () => {
+  test('the first start imports the env file, runs in harness.cwd, and leaves an old import for the router to sweep once Slack connects', async () => {
     const k = kageCopy()
     writeFileSync(join(k.envFile), readFileSync(k.envFile, 'utf8') + `KAGE_CWD=${k.work}\n`)
     const old = join(k.conf, 'env.imported-20200101T000000Z')
@@ -166,7 +166,7 @@ describe('hub.ts: one hub run, with its log, its boot count and a crash-loop DM'
     assert.ok(existsSync(join(k.conf, 'config.json')) && existsSync(join(k.conf, 'secrets.json')))
     assert.ok(!existsSync(k.envFile))
     assert.ok(readdirSync(k.conf).some(f => /^env\.imported-\d{8}T\d{6}Z$/.test(f)), 'the env file was renamed')
-    assert.ok(!existsSync(old), 'an old import is deleted on a clean start')
+    assert.ok(existsSync(old), 'the hub itself does not sweep: a crash loop would delete it, so the router does it after Slack connects')
     assert.ok(logOf(k).includes(`fake hub up in ${realpathSync(k.work)}`))
     await hub(k)
     assert.ok(logOf(k).includes(`fake hub up in ${realpathSync(k.work)}`))
