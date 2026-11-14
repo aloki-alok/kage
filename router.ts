@@ -6,7 +6,8 @@
 // Still here: thread trust (noteTrust), how each connector shows a failure (failed), the daily
 // "still waiting" note, the self-restart into a newer build, and the auto-update that pulls one.
 // server.ts is the other end for tmux panes only: the Kage channel inside each pane's Claude Code.
-import { execFileSync, spawn } from 'node:child_process'
+import { execFile, execFileSync, spawn } from 'node:child_process'
+import { canPushToKage } from './runtime/repo-access.ts'
 import { randomUUID } from 'node:crypto'
 import { existsSync, mkdirSync, readFileSync, renameSync, rmSync, statSync, writeFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
@@ -284,6 +285,8 @@ const sdk = sdkLib ? sdkSessions({
   options: {
     cwd: process.cwd(),
     settingSources: ['user', 'project', 'local'],
+    // The shipped skills (skills/ at the repo root) load in every session, as kage:<name>, whatever the owner has installed.
+    plugins: [{ type: 'local' as const, path: dirname(fileURLToPath(import.meta.url)) }],
     settings: { autoMemoryDirectory: MEM.own },
     pathToClaudeCodeExecutable: sdkLib.claude,
   },
@@ -411,7 +414,9 @@ async function weeklyRetro(now: number) {
 // tidies its own memory (core/dream.ts). A side lane of the bot DM, so the DM's own conversation is
 // untouched. The hub snapshots the memory first, so `kage dream undo` restores it whatever the dream did.
 const DREAMT = `${DIR}/dream-sent`
-function dream(now: number) {
+// Asked once: push access to the Kage repo is what makes this the repo owner's hub (runtime/repo-access.ts).
+const OWNS_REPO = canPushToKage(args => new Promise((ok, no) => execFile('gh', args, { timeout: 15_000 }, (e, out) => e ? no(e) : ok(out))))
+async function dream(now: number) {
   const last = Number(readFile(DREAMT).trim()) || undefined
   if (limits.paused() || !dreamDue(now, last, d.quietEverywhere(now))) return   // a dream in the pause would only hit the limit
   const snap = snapshotMemory(MEM.own, now)
@@ -422,7 +427,7 @@ function dream(now: number) {
     .map(t => ({ place: placeOf(t.key), file: file(t.id) }))
   const c: Conversation = { connector: 'slack', chat: slack.ids.botDm, kind: 'dm', agentDm: true }
   const task: Task = {
-    type: 'task', fromOwner: true, content: dreamTask(MEM, threads, new Date(since).toISOString()),
+    type: 'task', fromOwner: true, content: dreamTask(MEM, threads, new Date(since).toISOString(), { dir: `${CODE}/skills`, pr: await OWNS_REPO }),
     meta: { channel: slack.ids.botDm, thread_ts: '', place: `DM with ${Title} (dream)`, permalink: '' },
     origin: { channel: slack.ids.botDm, ts: '' },
     scheduled: true,

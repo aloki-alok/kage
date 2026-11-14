@@ -54,6 +54,7 @@ Write logs to stderr only. In a tmux pane, stdout carries the channel protocol, 
 | `docs/settings.md` | Every setting in the env file. |
 | `AGENTS.md` | Setup steps for a coding agent. `CLAUDE.md` loads it and this file. |
 | `extension/` | Kage's Chrome extension (#114): plain JS, no build. It polls the hub (`connectors/browser.ts`), reads tabs, and acts in them through Chrome's debugger, one action at a time, after the owner's yes. |
+| `skills/` | Skills every Kage session loads (the router passes the repo as a plugin, `router.ts`). Generic lessons only: no names, ids, customers, dates or quotes. |
 | `.claude-plugin/`, `.mcp.json`, `hooks/` | Used only when Kage is installed as a Claude Code plugin (tmux panes on the plugin route). |
 
 ### core/
