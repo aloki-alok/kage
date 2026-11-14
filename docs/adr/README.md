@@ -1,0 +1,20 @@
+# Architecture decisions
+
+Each file records one rule Kage follows, why, and how it is checked. Read the ones that bind the code you change. The skill `.claude/skills/kage-change-code/SKILL.md` says which.
+
+| ADR | Decision | Status |
+|---|---|---|
+| [0001](0001-core-is-pure.md) | `core/` holds pure rules | Accepted, with known debt |
+| [0002](0002-connectors-build-tasks.md) | Connectors build a `Task`. Core decides who may drive Kage | Accepted |
+| [0003](0003-hub-writes-the-store.md) | The hub is the only writer of the store | Accepted |
+| [0004](0004-only-typed-owner-messages-are-owner.md) | Only a message the owner typed counts as the owner | Accepted |
+| [0005](0005-ceiling-per-sender.md) | One ceiling per kind of sender, enforced by the harness where it can | Accepted, not yet built |
+| [0006](0006-config-and-secrets-files.md) | Settings in `config.json`, tokens in `secrets.json` | Accepted, in progress |
+| [0007](0007-tests-beside-code.md) | Tests live in `<folder>/tests/` | Accepted |
+| [0008](0008-auto-update-follows-stable.md) | Auto-update follows the `stable` tag | Accepted |
+| [0009](0009-posts-go-through-kage-tools.md) | Every post goes through Kage's tools and the outbound checks | Accepted |
+| [0010](0010-event-log-keeps-no-content.md) | The event log stores what happened, never what was said | Accepted |
+
+## Format
+
+Status, Context, Decision, Consequences, How it is checked. Add the next number. To change a decision, add a new ADR and mark the old one `Superseded by NNNN`.
