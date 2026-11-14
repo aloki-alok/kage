@@ -1,6 +1,6 @@
 import { describe, test } from 'node:test'
 import assert from 'node:assert/strict'
-import { askedFrom, cardAt, dailyDue, grantsLine, lastTotals, openWaiting, postedBy, spendSince, staleWaiting, tsvRow, turnCost } from '../ledgers.ts'
+import { trailEvent, trailLine, askedFrom, cardAt, dailyDue, grantsLine, lastTotals, openWaiting, postedBy, spendSince, staleWaiting, tsvRow, turnCost } from '../ledgers.ts'
 
 
 describe('the daily note of what waits on the owner', () => {
@@ -125,4 +125,14 @@ describe('the cost ledger', () => {
     ].join('')
     assert.deepEqual(spendSince(tsv, Date.parse('2026-11-05T00:00:00Z')), [{ key: 'C1:1.1', usd: 0.75, turns: 2 }, { key: 'dm', usd: 0.2, turns: 1 }])
   })
+})
+
+test('each ledger row and event reads as one plain line in the hub log', () => {
+  assert.equal(trailLine('costs', ['C1:5.5', '0.25', '0.75']), 'cost C1:5.5: $0.25 this turn, $0.75 so far')
+  assert.equal(trailLine('posted', ['C1', '1.1', 'bot', 'C1:5.5']), 'posted in C1 for C1:5.5 (bot)')
+  assert.equal(trailLine('waiting', ['open', 'C1:5.5', 'link', 'which db?']), 'waiting on the owner in C1:5.5: which db?')
+  assert.equal(trailLine('waiting', ['answered', 'C1:5.5', '', '']), 'answered in C1:5.5')
+  assert.equal(trailLine('runs', ['j1', 'C1:5.5']), 'runs: j1 · C1:5.5')
+  assert.equal(trailEvent({ kind: 'run.end', who: 'C1:5.5', detail: '$0.52, no report' }), 'run.end C1:5.5: $0.52, no report')
+  assert.ok(trailLine('reports', ['x', 'y'.repeat(1000)]).length <= 300)
 })

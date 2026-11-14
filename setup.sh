@@ -24,7 +24,7 @@ Run|restart|[--cut-running]|Restart the hub once every running turn ends; new me
 Run|reload||Read the settings files again with no restart: who may tag Kage changes at once|kage reload
 Run|set|key value|Change one setting in config.json, such as harness.maxSessions. A list is JSON|kage set harness.maxSessions 6
 Run|status||One look at every session and what it is doing|kage status
-Run|logs|[lines, -f or kagelet]|The last lines of the hub log (80 unless you say), or -f to follow it. With a kagelet: its last runs, newest first, with cost, ok or failed, and its report|kage logs -f
+Run|logs|[lines, -f or kagelet]|The last lines of the hub log (80 unless you say), or -f to follow it live, with the steps of every session (tools, replies). With a kagelet: its last runs, newest first, with cost, ok or failed, and its report|kage logs -f
 Run|run||Run the hub in the foreground for a supervisor other than launchd or systemd (Docker: --init); output goes to kage logs|kage run
 Run|cost|[days]|What each thread spent, most first (1 day unless you say)|kage cost 7
 Run|release|[--dry-run]|Tag the next version on main, publish its notes and move the stable tag that installs follow (repo admin only). --dry-run prints the version and notes and changes nothing|kage release --dry-run
@@ -150,7 +150,8 @@ cmd_version() {
 
 cmd_logs() {
   kage_name
-  if [[ "${1:-}" == -f ]]; then [[ -f $LOG ]] || die "No hub log yet: $LOG"; exec tail -n 40 -f "$LOG"; fi
+  # -f: the hub log and every session's steps (tools, replies) in one live stream (cli/watch.ts --hub).
+  if [[ "${1:-}" == -f ]]; then [[ -f $LOG ]] || die "No hub log yet: $LOG"; exec node cli/watch.ts --hub "${@:2}"; fi
   local n="${1:-80}"; [[ $n =~ ^[0-9]+$ ]] || die "kage logs takes a number of lines, like kage logs 200, or -f to follow"
   if [[ -f $LOG ]]; then tail -n "$n" "$LOG"; return; fi
   # A hub from start.sh logs only to its tmux window, about 2,000 lines; the blank rows below the last line are dropped.

@@ -102,7 +102,7 @@ const ssm = ssmRelay({ path: SSM_SOCK, trusted: key => store.relayOk(key), log }
 // What connectors keep across a restart, in the same file. The old JSON files move in once.
 store.importState({ afk: `${DIR}/afk.json`, 'github-threads': `${DIR}/github-threads.json`, 'mail-threads': `${DIR}/mail-threads.json` })
 // What Kage posted, waits on, spent and ran, in the same file (runtime/ledger.ts). Old .tsv files move in once.
-const ledgers = openLedgers(DIR)
+const ledgers = openLedgers(DIR, undefined, line => log(line))
 // The event log (core/events.ts): each run of a session or kagelet, and what it did, on one trace.
 const runs = runEvents(ledgers, randomUUID)
 const placeOf = (key: string) => placeFor(k => store.conversation(k)?.place, key)
@@ -118,6 +118,7 @@ const deliver = (c: Conversation, task: Task, place: string, lane: Lane = 'main'
   const key = sessionKey(c, { lane })
   if (by && !d.saved()[key] && !starters.has(key)) starters.set(key, by)
   store.seen(key, c, place, Date.now())
+  log(`task for ${place} (${key}): ${task.fromOwner ? 'from the owner' : 'not from the owner'}${task.scheduled ? ', scheduled' : ''}, ${d.saved()[key] ? 'resumes its session' : 'new session'}`)
   return toSession(key, task)
 }
 // kage stop <thread> and "@kage stop": end a thread's session and its side lanes, after their turn or now.

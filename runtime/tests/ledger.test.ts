@@ -7,6 +7,13 @@ import { openLedgers, runEvents } from '../ledger.ts'
 const dir = () => mkdtempSync(`${tmpdir()}/kage-ledger-`)
 
 describe('the ledgers live in kage.db, and read back as the TSV text the parsers already know', () => {
+  test('the hub hears every row and event as a log line', () => {
+    const lines: string[] = []
+    const l = openLedgers(dir(), undefined, s => lines.push(s))
+    l.add('costs', ['C1:5.5', '0.25', '0.75'])
+    l.event({ kind: 'run.start', who: 'C1:5.5', trace: 't', detail: 'task' })
+    assert.deepEqual(lines, ['cost C1:5.5: $0.25 this turn, $0.75 so far', 'run.start C1:5.5: task'])
+  })
   test('a row added is read back as one TSV line, stamped with its time, in order, per ledger', () => {
     const d = dir()
     const l = openLedgers(d, () => '2026-11-09T00:00:00.000Z')

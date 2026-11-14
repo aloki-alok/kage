@@ -5,7 +5,7 @@
 import { existsSync, readdirSync, readFileSync, renameSync } from 'node:fs'
 import { DatabaseSync } from 'node:sqlite'
 import { log } from '../config.ts'
-import { lastTotals, tsvRow, turnCost } from '../core/ledgers.ts'
+import { lastTotals, trailEvent, trailLine, tsvRow, turnCost } from '../core/ledgers.ts'
 import { eventRow, whoOf, type EventKind, type KageEvent } from '../core/events.ts'
 import { COST_FLAG } from '../core/kagelets.ts'
 
@@ -13,7 +13,8 @@ export type LedgerName = 'waiting' | 'posted' | 'prod-actions' | 'costs' | 'runs
 const NAMES: LedgerName[] = ['waiting', 'posted', 'prod-actions', 'costs', 'runs', 'commands', 'reports', 'db-reads', 'grants']
 export type Ledgers = ReturnType<typeof openLedgers>
 
-export function openLedgers(dir: string, now = () => new Date().toISOString()) {
+// trail: the hub passes its log, so every row and event is a line in hub.log too. Panes pass none.
+export function openLedgers(dir: string, now = () => new Date().toISOString(), trail?: (line: string) => void) {
   const db = new DatabaseSync(`${dir}/kage.db`)
   db.exec('pragma journal_mode = wal; pragma busy_timeout = 5000')
   db.exec(`create table if not exists ledger (
@@ -61,11 +62,13 @@ export function openLedgers(dir: string, now = () => new Date().toISOString()) {
   const event = (e: Parameters<typeof eventRow>[0]) => {
     const r = eventRow(e)
     try { insertEvent.run(now(), r.kind, r.who, r.trace, r.chain, r.detail, r.transcript) } catch (err) { log('event write failed', e.kind, err) }
+    trail?.(trailEvent(r))
   }
   return {
     // A ledger is a side record: a failed write is logged, never allowed to block a task or a reply.
     add(name: LedgerName, cells: string[]) {
       try { insert.run(name, now(), JSON.stringify(cells.map(c => c.replace(/[\t\r\n]+/g, ' ')))) } catch (e) { log('ledger write failed', name, e) }
+      trail?.(trailLine(name, cells.map(c => c.replace(/[\t\r\n]+/g, ' '))))
       // Every grants row is an event too, from whichever process wrote it: read (Kage's grant), granted (a card),
       // standing (a standing approval), revoked or refused. A row from before tiers has no tools cell: it was db_read.
       // So is the hub's cost flag (cost:<name>).
