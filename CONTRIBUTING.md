@@ -4,11 +4,13 @@
 
 ```sh
 npm ci              # once
-npm test            # every *.test.ts under core/, connectors/ and runtime/
+npm test            # every *.test.ts under core/, connectors/, runtime/, cli/ and tests/
 npm run typecheck   # tsc --noEmit
 ```
 
 Tests live in a `tests/` folder inside the folder of the code they test: `core/gate.ts` is tested by `core/tests/gate.test.ts`.
+
+`tests/structure.test.ts` checks the layout itself (ADR 0014): `core/` stays pure, nothing below the root imports a root file, no source file passes 300 lines, every `core/` and `runtime/` file is in the tables below, and no `core/` export goes unused. Each rule lists today's breaks as debt that may only shrink. The skill `.claude/skills/kage-change-code` has the rest of the clean-code rules.
 
 The rules Kage follows, and why, are in [`docs/adr/`](docs/adr/). Read the ones that bind your change before you write code.
 
@@ -57,6 +59,7 @@ Write logs to stderr only. In a tmux pane, stdout carries the channel protocol, 
 | `service.sh` | The LaunchAgent (macOS) or systemd user unit (Linux) that keeps the hub running. A non-zero exit restarts it, and exit 0 leaves it down. |
 | `hub.ts` | The hub's entry, run by the service: the log file's size, the boot count and the crash-loop DM, then `router.ts`. Node modules only, so a bad pull is still caught. `start.sh` only forwards old login items to `kage start`. |
 | `docs/adr/` | One file per architecture decision: the rule, why, and how it is checked. |
+| `tests/` | Tests of the repo as a whole: `structure.test.ts` (ADR 0014). |
 | `docs/settings.md` | Every setting in the env file. |
 | `AGENTS.md` | Setup steps for a coding agent. `CLAUDE.md` loads it and this file. |
 | `extension/` | Kage's Chrome extension (#114): plain JS, no build. It polls the hub (`connectors/browser.ts`), reads tabs, and acts in them through Chrome's debugger, one action at a time; a major step waits for the owner's yes (core/browser-act.ts majorAct). |
