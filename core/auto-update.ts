@@ -11,7 +11,7 @@ export function nextStep(c: Checkout): Step {
   if (!c.git) return { skip: 'not a git checkout' }
   if (c.branch !== 'main') return { skip: `on branch ${c.branch}, not main` }
   if (c.dirty) return { skip: 'the checkout has uncommitted changes' }
-  if (c.fetchError !== undefined) return { skip: `git fetch failed: ${c.fetchError}` }
+  if (c.fetchError !== undefined) return { skip: `could not reach origin: ${c.fetchError}` }
   if (c.stable === false) return { skip: 'origin has no stable tag yet' }
   if (c.ahead === undefined || c.behind === undefined) return 'fetch'
   if (c.ahead > 0) return { skip: `main has ${c.ahead} commit${c.ahead === 1 ? '' : 's'} that the stable tag lacks` }

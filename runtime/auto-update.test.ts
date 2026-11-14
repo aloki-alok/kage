@@ -99,7 +99,7 @@ test('another branch, or an origin that cannot be reached, does nothing', async 
   git(local, 'checkout', '-q', 'main')
   git(local, 'remote', 'set-url', 'origin', join(origin, 'gone'))
   const r = await pullMain(local)
-  assert.ok(typeof r === 'object' && r.skip.startsWith('git fetch failed: '), JSON.stringify(r))
+  assert.ok(typeof r === 'object' && r.skip.startsWith('could not reach origin: '), JSON.stringify(r))
 })
 
 test('a folder with no .git of its own is not a checkout, even inside one', async () => {
