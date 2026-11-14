@@ -1,15 +1,22 @@
 // Kage in Chrome (#114): what a session may see of the owner's browser. The owner's own tabs carry their logins,
 // so a page's words reach Claude only as quoted data, and a site on the owner's block list never reaches it.
 
-// KAGE_BROWSER_BLOCK: hosts, comma-separated. A host also blocks its subdomains.
-export const blockList = (s: string) => s.split(',').map(h => h.trim().toLowerCase()).filter(Boolean)
+// KAGE_BROWSER_BLOCK: hosts, comma-separated. A host also blocks its subdomains. Each entry is read the way the
+// browser reads an address (punycode, no trailing dot), and may be written as a URL or as *.host.
+const hostOf = (entry: string) => {
+  const h = entry.trim().replace(/^\*\./, '')
+  try { return new URL(h.includes('://') ? h : `http://${h}`).hostname.replace(/\.+$/, '') || undefined } catch { return undefined }
+}
+export const blockList = (s: string) => s.split(',').filter(e => e.trim()).flatMap(e => hostOf(e) ?? [])
+// Entries that are no host at all, for the hub to name at start: a block that silently matches nothing is worse than none.
+export const unreadableBlocks = (s: string) => s.split(',').filter(e => e.trim() && !hostOf(e)).map(e => e.trim())
 
 // Only http and https pages are readable: chrome://, file:// and extension pages are the browser's or the disk's.
 export function blockedSite(url: string, list: string[]) {
   let u: URL
   try { u = new URL(url) } catch { return true }
   if (u.protocol !== 'http:' && u.protocol !== 'https:') return true
-  const host = u.hostname.toLowerCase()
+  const host = u.hostname.toLowerCase().replace(/\.+$/, '')
   return list.some(h => host === h || host.endsWith(`.${h}`))
 }
 

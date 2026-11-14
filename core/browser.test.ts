@@ -41,3 +41,10 @@ test('refuses a page that landed on a blocked site, whatever tab it was asked fo
   assert.match(out, /^refused/)
   assert.doesNotMatch(out, /secret/)
 })
+
+test('a trailing dot, punycode, or a list entry written as a URL or with a wildcard still blocks', () => {
+  const list = blockList('Bänk.de, https://mail.example.org/inbox, *.corp.com, ex.com.')
+  assert.deepEqual(list, ['xn--bnk-qla.de', 'mail.example.org', 'corp.com', 'ex.com'])
+  for (const u of ['https://bank.example.com./', 'https://bänk.de/', 'https://mail.example.org/', 'https://x.corp.com/', 'https://ex.com/'])
+    assert.equal(blockedSite(u, [...list, 'bank.example.com']), true, u)
+})
