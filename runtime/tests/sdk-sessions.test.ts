@@ -361,6 +361,17 @@ describe('Kage sessions on the Agent SDK', () => {
     assert.equal((await use({ command: 'ls' })).behavior, 'deny')
     assert.equal(t.posts.length, 2)
   })
+  test('a stored yes is spent even when no turn is open', async () => {
+    const t = setup({ deferred: true })
+    t.d.task('C1:5.5', t.task(), 0)
+    await tick()
+    t.sdk.runs[0]!.emit({ type: 'result', total_cost_usd: 0 })
+    await tick()
+    t.approvals.add({ id: 'abcde', key: 'C1:5.5', tool: 'Bash', input: { command: 'ls' }, task: t.task() }, Date.now())
+    t.approvals.answer('abcde', 'allow', Date.now())
+    const r = await Promise.race([t.sdk.runs[0]!.options.canUseTool('Bash', { command: 'ls' }, { signal: signal() }), tick(30).then(() => ({ behavior: 'held on the owner' }))])
+    assert.equal(r.behavior, 'allow')
+  })
   test("an approval goes to the owner's DM and their yes or no reaches only the session that asked", async () => {
     const t = setup()
     t.d.task('C1:5.5', t.task(), 0)

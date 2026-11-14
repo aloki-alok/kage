@@ -138,6 +138,7 @@ export function sdkSessions(o: {
           // its own card, so the owner gets one, not two. A revoke only takes access away, so it needs none (the tool
           // still takes it from the owner's task only).
           : ALLOWED.includes(name) || (name === 'mcp__kage__manage_kagelet' && (input.action === 'save' || input.action === 'revoke')) ? Promise.resolve({ behavior: 'allow' as const, updatedInput: input })
+          : o.deferred?.take(key, name, input, Date.now()) ? Promise.resolve({ behavior: 'allow' as const, updatedInput: input })
           : o.deferred && s.turn.length ? defer(key, s, name, x.title ?? x.description ?? '', input)
           : ask(key, s, name, x.title ?? x.description ?? '', input, x.signal),
         // The same rules as private-data-guard.ts, in-process. A failed check blocks the call.
@@ -258,7 +259,6 @@ export function sdkSessions(o: {
   // slot frees. The owner's yes (router.ts) starts a turn that retries the same call, which passes once.
   async function defer(key: string, s: Session, tool: string, description: string, input: Record<string, unknown>) {
     const store = o.deferred!
-    if (store.take(key, tool, input, Date.now())) return { behavior: 'allow' as const, updatedInput: input }
     const id = requestId()
     try { await s.kage.askOwner({ id, tool, description, preview: approvalPreview(tool, input) }) } catch (e: any) {
       log('permission prompt failed', e?.data?.error ?? e)

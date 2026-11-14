@@ -42,7 +42,7 @@ import { scheduler } from './runtime/scheduler.ts'
 import { runJobs } from './runtime/jobs.ts'
 import { snapshotMemory } from './runtime/memory-snapshot.ts'
 import { sdkSessions } from './runtime/sdk-sessions.ts'
-import { deferredApprovals } from './runtime/deferred-approvals.ts'
+import { answerDeferred, deferredApprovals } from './runtime/deferred-approvals.ts'
 import { limitPause } from './runtime/limit-pause.ts'
 import { ssmRelay } from './runtime/ssm-relay.ts'
 import { ssmEligible } from './core/ssm.ts'
@@ -101,13 +101,7 @@ COMMANDS = new Map(Object.entries(conn.commands ?? {}))
 const store = openStore(`${DIR}/kage.db`)
 // A card that waited outside its session (#177): the owner's answer starts a turn in that thread, which retries the call or drops it.
 const deferred = deferredApprovals(store)
-const answerDeferred = (id: string, behavior: 'allow' | 'deny') => {
-  const c = deferred.answer(id, behavior, Date.now())
-  if (!c) return false
-  const text = behavior === 'allow' ? `The owner said yes to the card for ${c.tool}. Run that same call again now, with the same input.` : `The owner said no to the card for ${c.tool}. Do not run it. Tell the thread you stopped.`
-  if (toSession(c.key, { ...c.task, content: `Approval answer: ${text}` }) === 'failed') failed(c.task)
-  return true
-}
+const answerCard = (id: string, behavior: 'allow' | 'deny') => answerDeferred(deferred, (key, task) => { if (toSession(key, task) === 'failed') failed(task) }, id, behavior, Date.now())
 const SSM_SOCK = `${DIR}/ssm.sock`
 const ssm = ssmRelay({ path: SSM_SOCK, trusted: key => store.relayOk(key), log })
 // What connectors keep across a restart, in the same file. The old JSON files move in once.
@@ -198,7 +192,7 @@ const slack = await connectSlack({
   hub: { deliver, stop: (c, cut, by) => {
       const key = sessionKey(c, { lane: 'main' })
       return mayStop(by, slack.ids.owner, starters, key) ? stopThread(key, cut) : 'Only the owner, or the teammate whose task started this thread, can stop it.'
-    }, verdict: (id, behavior) => d.verdict(id, { type: 'verdict', request_id: id, behavior }) || answerDeferred(id, behavior), status, heard: m => schedules.heard(m),
+    }, verdict: (id, behavior) => d.verdict(id, { type: 'verdict', request_id: id, behavior }) || answerCard(id, behavior), status, heard: m => schedules.heard(m),
     posted: () => ledgers.text('posted'), ownerWrote: (chat, thread, text) => { for (const k of notes.wrote(grants.keys(), chat, thread, text)) runs.emit(k, 'owner-note', `${text.length} characters`) }, ...inbox },
   // AFK mode is on unless afk.on is false. Its stand-in reads the owner's memory, read only.
   jev: jev && !('error' in jev) ? jevCheck(jev) : undefined,
