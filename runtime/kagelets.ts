@@ -414,7 +414,9 @@ export function kageletRoutes(o: {
       for (const t of tasks) if (t.handoff) o.store.messageState(t.handoff.message, done ? 'read' : 'queued')
     },
     // At the start: a message no turn finished (the hub stopped first) waits again.
+    // Its hour counts from this start: no run could take it while the hub was down, and a pause's reset died with it.
     replay(now: number) {
+      resumed = now
       for (const u of o.store.unread()) if (u.state === 'delivered') o.store.messageState(u.message.messageId, 'queued')
       pump(now)
     },
