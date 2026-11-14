@@ -59,8 +59,8 @@ describe('the kagelets panel in kage top', () => {
     assert.match(String(capError({ KAGE_KAGELET_CHAIN_USD: 'five' })), /KAGE_KAGELET_CHAIN_USD/)
     assert.equal(capError({ KAGE_KAGELET_DAILY_USD: '2', KAGE_KAGELET_TOTAL_DAILY_USD: '' }), undefined)
   })
-  test('a db_read grant by the standing approval shows on its line, within 100 columns', () => {
-    const standing = kageletRows([{ name: 'spender-sixteen1', text: file('by: kage\ntools: db_read\ngranted: db_read by standing approval, 2026-01-02T00:00:00.000Z') }], { runs: '', costs: '', now })
+  test('a tool held by a standing approval shows on its line, within 100 columns', () => {
+    const standing = kageletRows([{ name: 'spender-sixteen1', text: file('by: kage\ntools: mcp__gmail__send\nstanding: mcp__gmail__send') }], { runs: '', costs: '', now })
     const [line] = panelLines(standing, now, 2)
     assert.match(line!.main, /by Kage, standing$/)
     assert.ok(line!.main.length <= 94, line!.main)
@@ -68,7 +68,7 @@ describe('the kagelets panel in kage top', () => {
 })
 
 describe('the panel keys', () => {
-  test('r runs now, p pauses, u resumes, x removes, v revokes the standing db_read approval; nothing saves a file', () => {
+  test('r runs now, p pauses, u resumes, x removes, v revokes the standing approval of each tool the kagelet holds by one; nothing saves a file', () => {
     assert.deepEqual(PANEL_KEYS, { r: 'run', p: 'pause', u: 'resume', x: 'remove', v: 'revoke' })
   })
   test('the hub answer becomes one line; a hub that is down or silent is said plainly', () => {
