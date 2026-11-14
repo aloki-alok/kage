@@ -190,7 +190,7 @@ test('kage top runs, pauses, resumes and removes a kagelet through the manager; 
   d.task('B', task('b'), 0)
   d.connect('B', () => {})
   const done: string[] = []
-  const kagelet = (action: string, name: string) => { done.push(`${action} ${name}`); return `${name}: ${action} done` }
+  const kagelet = async (action: string, name: string) => { done.push(`${action} ${name}`); return `${name}: ${action} done` }
   const sock = join(mkdtempSync(join(tmpdir(), 'kage-link-')), 's.sock')
   const server = listenForSessions(sock, d, { mail: () => {}, wa: () => {}, voice: () => {}, failed: () => {}, schedules: { add: () => undefined, remove: () => {} }, kagelet })
   await until(() => server.listening)
@@ -204,11 +204,13 @@ test('kage top runs, pauses, resumes and removes a kagelet through the manager; 
     c.end()
     return r ? JSON.parse(r) : undefined
   }
-  for (const action of ['run', 'pause', 'resume', 'remove']) assert.deepEqual(await ask({ type: 'kagelet', action, name: 'deploys' }), { type: 'kagelet', text: `deploys: ${action} done` })
-  assert.deepEqual(await ask({ type: 'kagelet', action: 'save', name: 'deploys' }), { type: 'kagelet', refused: 'kage top runs, pauses, resumes or removes a kagelet, not save' })
-  await ask({ type: 'kagelet', action: 'remove', name: 'deploys' }, 'B')
-  assert.deepEqual(done, ['run deploys', 'pause deploys', 'resume deploys', 'remove deploys'])
-  server.close()
+  // finally: an open server keeps the test process alive, so a failed assertion would hang instead of failing.
+  try {
+    for (const action of ['run', 'pause', 'resume', 'remove']) assert.deepEqual(await ask({ type: 'kagelet', action, name: 'deploys' }), { type: 'kagelet', text: `deploys: ${action} done` })
+    assert.deepEqual(await ask({ type: 'kagelet', action: 'save', name: 'deploys' }), { type: 'kagelet', refused: 'kage top runs, pauses, resumes or removes a kagelet, not save' })
+    await ask({ type: 'kagelet', action: 'remove', name: 'deploys' }, 'B')
+    assert.deepEqual(done, ['run deploys', 'pause deploys', 'resume deploys', 'remove deploys'])
+  } finally { server.close() }
 })
 
 test('a voice reply goes only to a voice conversation, and a mail or WhatsApp reply never does', () => {

@@ -1,7 +1,7 @@
 import { describe, test } from 'node:test'
 import assert from 'node:assert/strict'
 import { kageletRows } from './kagelets.ts'
-import { actionLine, dailyCap, kageletRuns, PANEL_KEYS, panelLines, runLine, shownState } from './kagelet-view.ts'
+import { actionLine, CAP_PAUSE, dailyCap, kageletRuns, PANEL_KEYS, panelLines, runLine, shownState } from './kagelet-view.ts'
 
 const LINK = 'https://test.slack.com/archives/CTEST1/p1700000000123456'
 const KEY = 'CTEST1:1700000000.123456#side-kagelet-deploys'
@@ -20,12 +20,17 @@ describe('the kagelets panel in kage top', () => {
   const reports = `${at(9, 5)}\tdeploys\tall green\t\n`
   const rows = kageletRows(files, { runs: `${at(9)}\tkagelet-deploys\t${KEY}\n`, costs, reports, now })
 
-  test('each kagelet reads running, paused, broken or over cap', () => {
-    assert.deepEqual(rows.map(r => [r.name, shownState(r, 2)]), [['broken', 'broken'], ['deploys', 'running'], ['held', 'paused'], ['spender', 'over cap']])
+  test('each kagelet reads on, paused, broken or over cap', () => {
+    assert.deepEqual(rows.map(r => [r.name, shownState(r, 2)]), [['broken', 'broken'], ['deploys', 'on'], ['held', 'paused'], ['spender', 'over cap']])
+  })
+  test('cost exactly at the cap is over cap', () => {
+    const deploys = rows.find(r => r.name === 'deploys')!
+    assert.equal(shownState(deploys, 0.4), 'over cap')
+    assert.equal(shownState(deploys, 0.41), 'on')
   })
   test('a line shows its state, last and next run, cost against the cap and who made it; the next line its report', () => {
     const [broken, deploys, held] = panelLines(rows, now, 2)
-    assert.match(deploys!.main, /^deploys +running +last 09:00 +next Sun 09:00 +\$0\.40 of \$2\.00 +by Kage$/)
+    assert.match(deploys!.main, /^deploys +on +last 09:00 +next Sun 09:00 +\$0\.40 of \$2\.00 +by Kage$/)
     assert.equal(deploys!.report, '09:05 all green')
     assert.match(held!.main, /paused .*last never .*next - .*by owner$/)
     assert.equal(held!.report, 'no report yet')
@@ -47,10 +52,12 @@ describe('the panel keys', () => {
     assert.deepEqual(PANEL_KEYS, { r: 'run', p: 'pause', u: 'resume', x: 'remove' })
   })
   test('the hub answer becomes one line; a hub that is down or silent is said plainly', () => {
-    assert.equal(actionLine({ text: 'deploys is paused within a minute.' }, true), 'deploys is paused within a minute.')
-    assert.equal(actionLine({ refused: 'no such action' }, true), 'The hub refused: no such action.')
+    assert.equal(actionLine({ type: 'kagelet', text: 'deploys is paused within a minute.' }, true), 'deploys is paused within a minute.')
+    assert.equal(actionLine({ type: 'kagelet', refused: 'no such action' }, true), 'The hub refused: no such action.')
     assert.match(actionLine(undefined, false), /^Kage is not running, so it cannot act on kagelets\. Start it with kage start\.$/)
     assert.match(actionLine(undefined, true), /does not answer.*kage restart/)
+    // A reply to another question (an older hub answered late) is not this action's answer.
+    assert.match(actionLine({ type: 'board', text: 'x' }, true), /does not answer/)
   })
 })
 
@@ -69,6 +76,21 @@ describe('kage logs <kagelet>', () => {
   test('the latest run with no report yet, under an hour old, is still running', () => {
     const r = kageletRuns('deploys', KEY, { runs: `${at(14, 30)}\tkagelet-deploys\t${KEY}\n`, costs: '', reports: '' }, now)
     assert.equal(r[0]!.status, 'running')
+  })
+  test('the latest run with no report, over an hour old, failed', () => {
+    const r = kageletRuns('deploys', KEY, { runs: `${at(13, 59)}\tkagelet-deploys\t${KEY}\n`, costs: '', reports: '' }, now)
+    assert.equal(r[0]!.status, 'failed')
+  })
+  test('the last report in a run wins over the first', () => {
+    const r = kageletRuns('deploys', KEY, { runs: `${at(9)}\tkagelet-deploys\t${KEY}\n`, costs: '', reports: `${at(9, 1)}\tdeploys\tfirst\t\n${at(9, 2)}\tdeploys\tsecond\t\n` }, now)
+    assert.equal(r[0]!.report, 'second')
+  })
+  test('a run the hub paused for cost reads "paused for cost", not ok', () => {
+    const cap = `${CAP_PAUSE} $2.10 today, at or over its daily cap of $2.00 (KAGE_KAGELET_DAILY_USD)`
+    const r = kageletRuns('deploys', KEY, { runs: `${at(9)}\tkagelet-deploys\t${KEY}\n`, costs: '', reports: `${at(9, 1)}\tdeploys\tall green\t\n${at(9, 2)}\tdeploys\t${cap}\tthe owner to resume it\n` }, now)
+    assert.equal(r[0]!.status, 'paused for cost')
+    assert.equal(r[0]!.report, cap)
+    assert.match(runLine(r[0]!, now), /^09:00 +\$0\.00 +paused for cost +paused: it spent/)
   })
   test('a line reads time, cost, status, report', () => {
     assert.match(runLine(list[0]!, now), /^14:55 +\$0\.05 +ok +needs: the staging password/)

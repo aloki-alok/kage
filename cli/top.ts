@@ -9,7 +9,7 @@
 import { spawnSync } from 'node:child_process'
 import { existsSync, readFileSync, statSync } from 'node:fs'
 import { connect, type Socket } from 'node:net'
-import { DIR, ENV_FILE } from './home.ts'
+import { askHub, DIR, ENV_FILE } from './home.ts'
 import { DatabaseSync } from 'node:sqlite'
 import { ago, boardRows, nextRuns, limitLine, pauseLine, watchingNext, whenLabel, type Live, type Row, type State } from '../core/board.ts'
 import { filterRows, hit, layout, moreLine, STRING, type Layout } from '../core/loom.ts'
@@ -167,8 +167,11 @@ function hub(): Socket | undefined {
 const ask = (m: object) => new Promise<any>(resolve => {
   const s = hub()
   if (!s) return resolve(undefined)
-  const t = setTimeout(() => resolve(undefined), 3000)
-  waiters.push(r => { clearTimeout(t); resolve(r) })
+  // An older hub never answers a question it does not know: drop its slot, or every later answer lands one late.
+  // A late answer can still land on the next slot, so each caller checks the answer's type.
+  const w = (r: any) => { clearTimeout(t); resolve(r) }
+  const t = setTimeout(() => { waiters = waiters.filter(x => x !== w); resolve(undefined) }, 3000)
+  waiters.push(w)
   s.write(JSON.stringify(m) + '\n')
 })
 async function pollHub() {
@@ -420,7 +423,7 @@ function detail(l: Layout, t: number, now: number, byKey: Map<string, Row>) {
   put(right - keys.length - 2, y1 - 1, keys, 'm')
 }
 
-const SHOWN_TONE: Record<string, string> = { running: 'w', paused: 'm', broken: 'R', 'over cap': 'G' }
+const SHOWN_TONE: Record<string, string> = { on: 'w', paused: 'm', broken: 'R', 'over cap': 'G' }
 // The kagelets: two lines each, the state line and its last report, across the whole width.
 function kageletPanel(now: number) {
   const x0 = 2, right = W - 3, y0 = 4, y1 = H - 3, w = right - x0
@@ -513,7 +516,7 @@ const placeOf = (key: string) => known.find(k => k.key === key)?.place ?? key
 
 async function cut(key: string) {
   const r = await ask({ type: 'stop', key })
-  if (!r) say(`Cannot cut ${placeOf(key)}: the hub does not answer.`)
+  if (r?.type !== 'stop') say(`Cannot cut ${placeOf(key)}: the hub does not answer.`)
   else if (r.ok) say(`Cut ${placeOf(key)}. It spins up again on its next task.`)
   // The hub says 'busy' for a watching session too; the row knows which it is.
   else say(`Cannot cut ${placeOf(key)}: ${r.refused === 'busy' && live?.live.find(l => l.key === key)?.state === 'watching' ? 'a timed check is running in it' : CUT_WHY[r.refused as keyof typeof CUT_WHY] ?? r.refused}.`)
@@ -537,8 +540,11 @@ function attach(r: Row) {
   } else back()
 }
 
+// Its own connection, so a slow answer never trades places with the board poll on the shared one.
 async function act(action: PanelAction, name: string) {
-  say(actionLine(await ask({ type: 'kagelet', action, name }), !!live))
+  let up = true
+  const r = await askHub<{ type?: string; text?: string; refused?: string }>({ type: 'kagelet', action, name }).catch((e: Error) => { up = e.message !== 'down'; return undefined })
+  say(actionLine(r, up && !!live))
   readKageletRows(Date.now())
 }
 
