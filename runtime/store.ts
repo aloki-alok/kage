@@ -5,6 +5,7 @@ import { existsSync, readFileSync, renameSync } from 'node:fs'
 import { DatabaseSync } from 'node:sqlite'
 import { parseSessionKey, type Conversation } from '../core/conversations.ts'
 import type { Schedule } from '../core/cron.ts'
+import type { KageletMessage, MessageState } from '../core/kagelet-message.ts'
 
 const SCHEMA = `
 create table if not exists conversations (
@@ -39,6 +40,15 @@ create table if not exists inbox (
 create table if not exists state (
   name text primary key,
   value text not null
+);
+-- Every message one kagelet sends another (#93, core/kagelet-message.ts), written before it is delivered, so a
+-- crash replays it. The text goes once it is read or failed, like the inbox's payload.
+create table if not exists messages (
+  message_id text primary key,   -- the dedupe key: the same id is never stored twice
+  at integer not null, sender text not null, recipient text not null,
+  state text not null,           -- queued, delivered, read, failed
+  why text not null default '',  -- why it failed
+  envelope text not null         -- the message as JSON
 );
 create table if not exists trust (
   key text primary key,          -- a thread is owner-trusted while every task it got came from the owner
@@ -83,6 +93,16 @@ export function openStore(path: string) {
     values (?, ?, ?, ?, ?, ?, ?, ?, ?) on conflict (key) do nothing`)
   const upsertSession = db.prepare('insert into sessions (key, claude_id) values (?, ?) on conflict (key) do update set claude_id = excluded.claude_id')
   const insertSession = db.prepare('insert into sessions (key, claude_id) values (?, ?) on conflict (key) do nothing')
+  const dropText = (id: string) => {
+    const r = db.prepare('select envelope from messages where message_id = ?').get(id) as { envelope: string } | undefined
+    if (!r) return
+    const m = JSON.parse(r.envelope) as KageletMessage
+    db.prepare('update messages set envelope = ? where message_id = ?').run(JSON.stringify({ ...m, parts: m.parts.map(p => p.kind === 'text' ? { ...p, text: '' } : p) }), id)
+  }
+  const messageState = (id: string, state: MessageState, why = '') => {
+    db.prepare('update messages set state = ?, why = ? where message_id = ?').run(state, why, id)
+    if (state === 'read' || state === 'failed') dropText(id)
+  }
   const row = (c: Conversation) => [c.connector, c.chat, c.thread ?? null, c.kind, c.agentDm ? 1 : 0] as const
 
   return {
@@ -182,7 +202,26 @@ export function openStore(path: string) {
         .map(r => ({ source: r.source, connector: r.connector, payload: r.payload, at: Number(r.at) }))
     },
     // Redeliveries come within minutes (Slack) or days (SQS, GitHub's manual redeliver), so a week of ids is enough.
-    prune(before: number) { db.prepare('delete from inbox where payload is null and at < ?').run(before) },
+    // A week of kagelet messages too.
+    prune(before: number) {
+      db.prepare('delete from inbox where payload is null and at < ?').run(before)
+      db.prepare('delete from messages where at < ?').run(before)
+    },
+    // false: this messageId is stored already.
+    putMessage(m: KageletMessage, now: number) {
+      return db.prepare("insert into messages (message_id, at, sender, recipient, state, envelope) values (?, ?, ?, ?, 'queued', ?) on conflict (message_id) do nothing")
+        .run(m.messageId, now, m.from, m.to, JSON.stringify(m)).changes > 0
+    },
+    messageState,
+    // The recipient's run ended: what it was delivered is read.
+    readBy(name: string) {
+      for (const r of db.prepare("select message_id from messages where recipient = ? and state = 'delivered'").all(name) as { message_id: string }[]) messageState(r.message_id, 'read')
+    },
+    // Queued or delivered and not yet read: what a start replays, at least once.
+    unread(): { message: KageletMessage; state: MessageState; at: number }[] {
+      return (db.prepare("select envelope, state, at from messages where state in ('queued', 'delivered') order by at").all() as Record<string, any>[])
+        .map(r => ({ message: JSON.parse(r.envelope), state: r.state, at: Number(r.at) }))
+    },
     load(name: string): unknown {
       const r = db.prepare('select value from state where name = ?').get(name) as { value: string } | undefined
       return r && JSON.parse(r.value)
@@ -206,3 +245,9 @@ export function openStore(path: string) {
     close: () => db.close(),
   }
 }
+
+// One kagelet's messages, sent or received, newest first: for kage logs, from a read-only handle.
+export const kageletMessages = (db: DatabaseSync, name: string, limit = 20) =>
+  (db.prepare('select at, sender, recipient, state, why, envelope from messages where sender = ? or recipient = ? order by at desc limit ?').all(name, name, limit) as Record<string, any>[])
+    .map(r => ({ at: Number(r.at), from: r.sender as string, to: r.recipient as string, state: r.state as MessageState, why: r.why as string,
+      text: ((JSON.parse(r.envelope) as KageletMessage).parts.find(p => p.kind === 'text') as { text: string } | undefined)?.text ?? '' }))

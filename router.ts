@@ -560,6 +560,8 @@ if (updated) { log(updated); void slack.notifyOwner(updated).then(sent => { if (
 // Messages the last run took but never handled (it died in between) run now. Older than 10 minutes, they are let go.
 // Email needs no replay: SQS resends a mail until it is deleted after handling.
 store.prune(Date.now() - 7 * 86_400_000)
+// Kagelet messages the last run stored but no run read go again (runtime/kagelets.ts kageletRoutes).
+routes.replay(Date.now())
 const missed = store.unhandled(Date.now() - 10 * 60_000)
 if (missed.length) log(`replaying ${missed.length} message${missed.length === 1 ? '' : 's'} the last run heard but never handled`)
 for (const r of missed) {

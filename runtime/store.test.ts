@@ -3,7 +3,7 @@ import assert from 'node:assert/strict'
 import { existsSync, mkdtempSync, readdirSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { DatabaseSync } from 'node:sqlite'
-import { openStore } from './store.ts'
+import { kageletMessages, openStore } from './store.ts'
 
 const DM = 'DBOT00001'
 
@@ -211,5 +211,25 @@ describe('saved state: what a connector keeps across a restart (AFK, GitHub and 
     s.importState({ 'mail-threads': `${dir}/mail-threads.json` })
     assert.equal(s.load('mail-threads'), undefined)
     assert.equal(existsSync(`${dir}/mail-threads.json`), true)
+  })
+})
+
+describe('kagelet messages (#93): stored before delivery, one row per messageId', () => {
+  const m = (id: string, to = 'edit') => ({ messageId: id, contextId: 'c1', taskId: 't1', traceId: 't1', from: 'make', to, role: 'agent' as const, parts: [{ kind: 'text' as const, text: 'the cut' }], hops: 1 })
+  test('a messageId is stored once; its state moves on, and its text goes once it is read or failed', () => {
+    const dir = mkdtempSync(`${tmpdir()}/kage-store-`)
+    const s = openStore(`${dir}/kage.db`)
+    assert.equal(s.putMessage(m('m1'), 1000), true)
+    assert.equal(s.putMessage(m('m1'), 2000), false)   // a redelivery of the same id is a duplicate
+    s.putMessage(m('m2', 'upload'), 1500)
+    assert.deepEqual(s.unread().map(u => [u.message.messageId, u.state, u.at]), [['m1', 'queued', 1000], ['m2', 'queued', 1500]])
+    s.messageState('m1', 'delivered')
+    s.messageState('m2', 'failed', 'upload is paused')
+    assert.deepEqual(s.unread().map(u => [u.message.messageId, u.state]), [['m1', 'delivered']])
+    s.readBy('edit')
+    assert.deepEqual(s.unread(), [])
+    const ro = new DatabaseSync(`${dir}/kage.db`, { readOnly: true })
+    assert.deepEqual(kageletMessages(ro, 'make').map(r => [r.from, r.to, r.state, r.why, r.text]), [['make', 'upload', 'failed', 'upload is paused', ''], ['make', 'edit', 'read', '', '']])
+    assert.deepEqual(kageletMessages(ro, 'upload').length, 1)
   })
 })

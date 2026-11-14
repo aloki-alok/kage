@@ -4,10 +4,11 @@ import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { mkdirSync, mkdtempSync } from 'node:fs'
 import { tmpdir } from 'node:os'
-import { openStore } from './store.ts'
+import { kageletMessages, openStore } from './store.ts'
 import { openLedgers, runEvents } from './ledger.ts'
 import { scheduler } from './scheduler.ts'
 import { kageletManager, kageletRoutes, readKagelets, syncKagelets } from './kagelets.ts'
+import { DatabaseSync } from 'node:sqlite'
 import { chainLine, chainViews } from '../core/events.ts'
 import type { Task } from './protocol.ts'
 
@@ -20,7 +21,7 @@ function hub(o: { chainUsd?: number; capUsd?: number } = {}) {
   const kagelets = `${dir}/kagelets`, work = `${dir}/files`
   mkdirSync(work)
   let n = 0
-  const store = openStore(':memory:')
+  const store = openStore(`${dir}/kage.db`)
   const ledgers = openLedgers(dir, () => new Date(NINE + n * 1000).toISOString())
   const runs = runEvents(ledgers, () => `t${++n}`)
   const tasks: [string, Task][] = []
@@ -42,7 +43,7 @@ function hub(o: { chainUsd?: number; capUsd?: number } = {}) {
   const save = (name: string, f: { schedule?: string; after?: string }) =>
     manager.manage({ action: 'save', name, thread: LINK, schedule: f.schedule ?? '', ...(f.after && { after: f.after }), tools: ['WebFetch'], job: `Job of ${name}.`, by: 'owner', why: 'w' }, NINE - 60_000)
   const chains = () => chainViews(ledgers.events('2026-11-14')).map(chainLine)
-  return { store, ledgers, runs, tasks, schedules, routes, step, save, chains, work, manager }
+  return { dir, store, ledgers, runs, tasks, schedules, routes, step, save, chains, work, manager, deliver, kagelets }
 }
 
 async function abc(o?: { chainUsd?: number }) {
@@ -61,12 +62,12 @@ test('a > b > c: each output starts the next run as its input, with no Kage turn
   h.step('a', { output: 'https://example.com/video-1' })
   assert.deepEqual(h.tasks.map(([k]) => k), [keyOf('a'), keyOf('b')])
   const [, b] = h.tasks[1]!
-  assert.match(b.content, /Job of b\.[\s\S]*Input from kagelet a[\s\S]*https:\/\/example\.com\/video-1/)
+  assert.match(b.content, /Job of b\.[\s\S]*From kagelet a[\s\S]*https:\/\/example\.com\/video-1/)
   assert.equal(b.fromOwner, false)
   assert.equal(b.chain, 't1')                       // the chain is named after the run that started it
   assert.deepEqual(h.chains(), ['a > b  running'])
   h.step('b', { output: 'trimmed: https://example.com/video-1-cut' })
-  assert.match(h.tasks[2]![1].content, /Input from kagelet b[\s\S]*video-1-cut/)
+  assert.match(h.tasks[2]![1].content, /From kagelet b[\s\S]*video-1-cut/)
   h.step('c', { output: 'uploaded' })
   assert.equal(h.tasks.length, 3)                   // c has no kagelet after it
   assert.deepEqual(h.chains(), ['a > b > c  done'])
@@ -137,16 +138,16 @@ test('a kagelet messages another: it wakes its next run with the text; the loop 
   await h.save('b', { schedule: '0 10 * * *' })
   h.schedules.tick(NINE)
   assert.equal(h.routes.message(keyOf('a'), 'b', 'Can you check video-1?'), 'sent to b')
-  assert.match(h.tasks[1]![1].content, /Job of b\.[\s\S]*Message from kagelet a[\s\S]*Can you check video-1\?/)
+  assert.match(h.tasks[1]![1].content, /Job of b\.[\s\S]*From kagelet a[\s\S]*Can you check video-1\?/)
   const chain = h.tasks[1]![1].chain
   assert.equal(chain, 't1')
   // b answers, a answers, b answers: hops 2, 3, 4. The fifth is refused.
   assert.equal(h.routes.message(keyOf('b'), 'a', 'checked'), 'sent to a')
   assert.equal(h.routes.message(keyOf('a'), 'b', 'thanks'), 'sent to b')
   assert.equal(h.routes.message(keyOf('b'), 'a', 'welcome'), 'sent to a')
-  assert.match(h.routes.message(keyOf('a'), 'b', 'bye'), /not sent: .*4 hops/)
+  assert.match(h.routes.message(keyOf('a'), 'b', 'bye'), /not sent: 5 hops with no person or schedule in between \(the limit is 4\)/)
   assert.equal(h.tasks.length, 5)
-  assert.deepEqual(h.chains(), ['a > b > a > b > a > b  stopped before b: 4 hops with no person or schedule in between (the limit is 4)'])
+  assert.deepEqual(h.chains(), ['a > b > a > b > a > b  stopped before b: 5 hops with no person or schedule in between (the limit is 4)'])
   // A new run from the schedule is new input: a fresh chain.
   h.step('a')
   h.schedules.tick(NINE + 24 * 3600_000)
@@ -165,4 +166,44 @@ test('a message goes only to another kagelet of this install, with a file only f
   assert.equal(h.routes.message(keyOf('a'), 'b', 'the cut', `${h.work}/cut.mp4`), 'sent to b')
   assert.match(h.tasks.at(-1)![1].content, /File: .*cut\.mp4/)
   assert.match(h.ledgers.events('2026-11-14').filter(e => e.kind === 'handoff').at(-1)!.detail, /^to b, file: ok$/)
+})
+
+test('a message is one envelope stored before delivery: a hub that stops before its reader ends delivers it again, then it is read', async () => {
+  const h = hub()
+  await h.save('a', { schedule: '0 9 * * *' })
+  await h.save('b', { schedule: '0 10 * * *' })
+  h.schedules.tick(NINE)
+  h.routes.message(keyOf('a'), 'b', 'the cut', `${h.work}/cut.mp4`, NINE)
+  const ro = new DatabaseSync(`${h.dir}/kage.db`, { readOnly: true })
+  const [m] = h.store.unread()
+  // The A2A field names, our hops and trace.
+  assert.deepEqual(Object.keys(m!.message).sort(), ['contextId', 'from', 'hops', 'messageId', 'parts', 'role', 'taskId', 'to', 'traceId'])
+  assert.deepEqual([m!.state, m!.message.contextId, m!.message.taskId, m!.message.hops, m!.message.parts], ['delivered', 't1', 't1', 1, [{ kind: 'text', text: 'the cut' }, { kind: 'file', path: `${h.work}/cut.mp4` }]])
+  // The hub stops before b's run ends. The next hub delivers it again, with its id, so b can tell a repeat.
+  const next = kageletRoutes({ dir: h.kagelets, workDir: h.work, store: h.store, ledgers: h.ledgers, runs: runEvents(h.ledgers, () => 'r1'), deliver: h.deliver, capUsd: 2, chainUsd: 5, log: () => {} })
+  next.replay(NINE + 60_000)
+  assert.equal(h.tasks.length, 3)
+  assert.match(h.tasks[2]![1].content, new RegExp(`message ${m!.message.messageId}`))
+  assert.equal(h.tasks[2]![1].chain, 't1')
+  h.step('b')
+  assert.deepEqual(kageletMessages(ro, 'b').map(r => [r.from, r.to, r.state, r.text]), [['a', 'b', 'read', '']])
+  next.replay(NINE + 120_000)
+  assert.equal(h.tasks.length, 3)                   // read: never again
+})
+
+test('a stored message older than an hour at the start fails instead of running late; a refused one is failed with why', async () => {
+  const h = hub()
+  await h.save('a', { schedule: '0 9 * * *' })
+  await h.save('b', { schedule: '0 10 * * *' })
+  h.schedules.tick(NINE)
+  h.routes.message(keyOf('a'), 'b', 'late', '', NINE)
+  h.routes.replay(NINE + 2 * 3_600_000)
+  assert.equal(h.tasks.length, 2)
+  await h.manager.manage({ action: 'pause', name: 'b' }, NINE)
+  assert.match(h.routes.message(keyOf('a'), 'b', 'are you there'), /not sent: b is paused/)
+  const ro = new DatabaseSync(`${h.dir}/kage.db`, { readOnly: true })
+  assert.deepEqual(kageletMessages(ro, 'a').map(r => [r.state, r.why]), [
+    ['failed', 'b is paused'],
+    ['failed', 'the hub was down for more than an hour after it was sent'],
+  ])
 })
