@@ -549,6 +549,40 @@ export function sessionTools(o: {
       },
     })
   }
+  // The owner's own task may have Kage post where no task came from (a channel it just made, an announcement),
+  // so no session needs the bot token itself. Bot only: never the owner's account, never a kagelet.
+  if (!name) tools.push({
+    name: 'post_as_kage',
+    description: `Post as ${Title} in a channel the owner names, when their own task asks for it: a channel ${Title} made or works in, top level or in a thread there. For the task's own thread use reply.`,
+    shape: {
+      channel: s.describe('channel attribute from the task tag'),
+      thread_ts: s.describe('thread_ts attribute from the task tag'),
+      to: s.describe('the channel id (C...) to post in'),
+      to_thread_ts: s.optional().describe('a thread in that channel to post in; leave out for a top-level post'),
+      text: s.describe('Slack mrkdwn text'),
+    },
+    async run(args) {
+      const a = args as { channel: string; thread_ts: string; to: string; to_thread_ts?: string; text: string }
+      // An agent may post with the owner's token, and an owner-verified call still has anyone listening in: neither counts.
+      if (!ownerOnly(a) || a.channel === 'voice' || agents.get(`${a.channel}:${a.thread_ts}`)) return { isError: true, text: "refused: only the owner's own task may post where no task came from" }
+      if (!/^[CG][A-Z0-9]+$/.test(a.to)) return { isError: true, text: 'refused: name the channel by its id (C...)' }
+      if (!a.text.trim()) return { isError: true, text: 'refused: the text is empty' }
+      const no = secretRefusal(a.text, { fromOwner: true }) ?? layoutRefusal(a.text)
+      if (no) return { isError: true, text: no }
+      const sent: string[] = []
+      try {
+        for (const part of splitForSlack(safeReply(a.text).trim())) {
+          const r = await bot.chat.postMessage({ channel: a.to, thread_ts: a.to_thread_ts, text: part, unfurl_links: false })
+          append('posted', [a.to, r.ts!, 'bot', `${a.channel}:${a.thread_ts}`])
+          sent.push(r.ts!)
+        }
+      } catch (e: any) {
+        if (['not_in_channel', 'channel_not_found'].includes(e?.data?.error)) return { isError: true, text: `not sent: ${Title} is not a member of ${a.to}. Ask the owner to /invite @${Title.toLowerCase()} there.` }
+        throw e
+      }
+      return { text: `posted as ${Title} in channel ${a.to}, ts ${sent.join(', ')}` }
+    },
+  })
   const pingIn = (channel: string) => [...ownerTask].some(([k, owner]) => owner && k.startsWith(`${channel}:`))
 
   return {
