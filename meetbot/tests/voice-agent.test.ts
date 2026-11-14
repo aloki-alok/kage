@@ -57,10 +57,11 @@ async function setup(t: TestContext, ownerCode?: string) {
   await ctx.addInitScript({ path: PAGE_JS })
   const page = await ctx.newPage()
   page.setDefaultTimeout(5000)
+  const logs: string[] = []
   let stop = false, finished = false
   const done = attend(page, `http://127.0.0.1:${port}/meet`, {
     name: 'Kage (test)', consent: 'Test call.', heard: () => {}, stop: () => stop,
-    voice: (pg, ended) => bridge(pg, { api: `http://127.0.0.1:${port}`, key: 'test-key', agent: 42, ownerCode }, () => {}, ended),
+    voice: (pg, ended) => bridge(pg, { api: `http://127.0.0.1:${port}`, key: 'test-key', agent: 42, ownerCode }, (...a) => logs.push(a.join(' ')), ended),
   }).finally(() => { finished = true })
   // Observe failures at once, including when an assertion exits before attend finishes.
   void done.catch(() => {})
@@ -81,7 +82,7 @@ async function setup(t: TestContext, ownerCode?: string) {
   await page.waitForFunction(() => (window as any).fake.sent.length === 1)
   await until(() => !!socket, 'the bot connected to the fake voice agent')
   const send = (event: string, payload?: string) => socket!.send(JSON.stringify({ event, ...(payload && { media: { payload } }) }))
-  return { page, creates, audio, send, done, finished: () => finished }
+  return { page, creates, audio, send, socket: () => socket!, logs, done, finished: () => finished }
 }
 
 test('the voice session create body carries the agent and owner code', { timeout: 15_000 }, async t => {
@@ -131,4 +132,12 @@ test('end_call makes the bot click Leave and finish the call', { timeout: 15_000
   await s.page.waitForFunction(() => document.querySelector('#ended:not(.hide)'))
   await until(s.finished, 'attend finished after the agent hung up')
   await s.done
+})
+
+test("the log names each voice agent event but never a caller's words (ADR 0010)", { timeout: 15_000 }, async t => {
+  const s = await setup(t)
+  s.send('user', 'my card number is secret-words')
+  s.socket().send(JSON.stringify({ event: 'partial_text', text: 'more secret-words' }))
+  await until(() => s.logs.some(l => l.includes('partial_text')), 'the unknown event is logged by its type')
+  assert.ok(s.logs.every(l => !l.includes('secret-words')), s.logs.join('\n'))
 })
