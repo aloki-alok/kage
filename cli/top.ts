@@ -17,7 +17,8 @@ import { newLines, transcriptLine } from '../core/transcript.ts'
 import { HERO_BIG, HERO_SMALL } from '../core/hero.ts'
 import { schedulesIn } from '../runtime/store.ts'
 import { actionLine, dailyCap, PANEL_KEYS, panelLines, shownState, type PanelAction } from '../core/kagelet-view.ts'
-import { DB_READ, kageletRows, type KageletRow } from '../core/kagelets.ts'
+import { kageletRows, type KageletRow } from '../core/kagelets.ts'
+import { kageletTier } from '../core/access.ts'
 import { parseEnv } from '../core/settings.ts'
 import { kageletsDir, readKagelets } from '../runtime/kagelets.ts'
 import { eventsOn, ledgerText } from '../runtime/ledger.ts'
@@ -571,7 +572,13 @@ async function onKey(k: string) {
     else if (k === '\x1b' || k === 'l') panel = false
     else if (k === '\x1b[A' || k === 'k') pick = Math.max(0, pick - 1)
     else if (k === '\x1b[B' || k === 'j') pick = Math.min(kagelets.length - 1, pick + 1)
-    else if (action && name) { if (action === 'remove') confirmRemove = name; else await act(action, action === 'revoke' ? DB_READ : name) }
+    else if (action && name) {
+      if (action === 'remove') confirmRemove = name
+      // One revoke per write tool it holds, the one whose card made the approval too: each ends that tool's standing
+      // approval and takes it from every kagelet that got it so. The hub says when a tool has none.
+      else if (action === 'revoke') { const tools = (kagelets[pick]?.tools ?? []).filter(t => kageletTier(t) === 'write'); if (!tools.length) say(`${name} holds no write tool, so no standing approval.`); for (const t of tools) await act('revoke', t) }
+      else await act(action, name)
+    }
     return
   }
   if (searching) {

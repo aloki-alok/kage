@@ -38,7 +38,7 @@ export function panelLines(rows: KageletRow[], now: number, cap?: number) {
 }
 
 // The actions the panel may ask the hub for. Saving a file stays with Kage and the owner's editor.
-// revoke: the standing db_read approval (#96), whichever row is picked.
+// revoke: the standing approval of each tool the picked kagelet holds by one, for every kagelet.
 export type PanelAction = 'run' | 'pause' | 'resume' | 'remove' | 'revoke'
 export const PANEL_KEYS: Record<string, PanelAction> = { r: 'run', p: 'pause', u: 'resume', x: 'remove', v: 'revoke' }
 

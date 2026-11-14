@@ -66,11 +66,12 @@ export function openLedgers(dir: string, now = () => new Date().toISOString()) {
     // A ledger is a side record: a failed write is logged, never allowed to block a task or a reply.
     add(name: LedgerName, cells: string[]) {
       try { insert.run(name, now(), JSON.stringify(cells.map(c => c.replace(/[\t\r\n]+/g, ' ')))) } catch (e) { log('ledger write failed', name, e) }
-      // Every grants row (only db_read is granted) is an event too, from whichever process wrote it: granted (a
-      // card), standing (a standing approval, #96), revoked or refused. So is the hub's cost flag (cost:<name>).
+      // Every grants row is an event too, from whichever process wrote it: read (Kage's grant), granted (a card),
+      // standing (a standing approval), revoked or refused. A row from before tiers has no tools cell: it was db_read.
+      // So is the hub's cost flag (cost:<name>).
       if (name === 'grants') {
-        const [who = '', status = '', why = ''] = cells
-        event({ kind: status === 'granted' || status === 'standing' ? 'grant' : status === 'revoked' ? 'revoke' : 'refusal', who, trace: '', detail: `db_read${status === 'standing' || status === 'revoked' ? ` ${status}` : ''}: ${why}` })
+        const [who = '', status = '', why = '', tools = 'db_read'] = cells
+        event({ kind: ['read', 'granted', 'standing'].includes(status) ? 'grant' : status === 'revoked' ? 'revoke' : 'refusal', who, trace: '', detail: `${tools}${['read', 'standing', 'revoked'].includes(status) ? ` ${status}` : ''}: ${why}` })
       }
       if (name === 'reports' && cells[0]?.startsWith(COST_FLAG)) event({ kind: 'cost-flag', who: cells[0].slice(COST_FLAG.length), trace: '', detail: cells[1] ?? '' })
     },

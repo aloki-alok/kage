@@ -1,6 +1,6 @@
 import { describe, test } from 'node:test'
 import assert from 'node:assert/strict'
-import { askedFrom, cardAt, dailyDue, lastTotals, openWaiting, postedBy, spendSince, staleWaiting, tsvRow, turnCost } from './ledgers.ts'
+import { askedFrom, cardAt, dailyDue, grantsLine, lastTotals, openWaiting, postedBy, spendSince, staleWaiting, tsvRow, turnCost } from './ledgers.ts'
 
 
 describe('the daily note of what waits on the owner', () => {
@@ -18,6 +18,19 @@ describe('the daily note of what waits on the owner', () => {
     assert.equal(dailyDue(now, undefined), '2026-11-04')
     assert.equal(dailyDue(now, '2026-11-04'), undefined)
     assert.equal(dailyDue(now, '2026-11-03'), '2026-11-04')
+  })
+  test('one line names the kagelet grants made with no card the day before: Kage\'s read grants and standing approvals', () => {
+    const rows = [
+      tsvRow(['2026-11-03T04:59:00Z', 'early', 'read', 'w', 'WebSearch']),
+      tsvRow(['2026-11-03T09:00:00Z', 'calls', 'read', 'w', 'WebSearch, db_read']),
+      tsvRow(['2026-11-03T10:00:00Z', 'calls', 'granted', 'w', 'mcp__gmail__send']),
+      tsvRow(['2026-11-03T11:00:00Z', 'mailer', 'standing', 'w', 'mcp__gmail__send']),
+      tsvRow(['2026-11-03T12:00:00Z', 'x', 'refused', 'w', 'Bash']),
+      tsvRow(['2026-11-04T05:01:00Z', 'late', 'read', 'w', 'WebFetch']),
+    ].join('')
+    assert.equal(grantsLine(rows, Date.parse('2026-11-03T05:00:00Z'), Date.parse('2026-11-04T05:00:00Z')),
+      '*Kagelet grants with no card*: calls got WebSearch, db_read (read); mailer got mcp__gmail__send (your standing yes). To end a write tool\'s standing yes: v in kage top, or ask me. A read grant ends when the kagelet is saved without it or removed.')
+    assert.equal(grantsLine(rows, Date.parse('2026-11-05T05:00:00Z'), Date.parse('2026-11-06T05:00:00Z')), undefined)
   })
 })
 

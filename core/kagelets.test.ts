@@ -1,14 +1,14 @@
 import { describe, test } from 'node:test'
 import assert from 'node:assert/strict'
-import { budgetLeft, capCheck, chainErrors, costFlags, grantRefusal, parseKagelet, resultLine, revokeStanding, rowLine, setPaused, kageletFile, kageletRows, standingApplies, starterFile, type Kagelet, type KageletRow, type Standing } from './kagelets.ts'
+import { budgetLeft, capCheck, chainErrors, costFlags, grantRefusal, parseKagelet, resultLine, revokeStanding, rowLine, setPaused, kageletFile, kageletRows, starterFile, type Kagelet, type KageletRow } from './kagelets.ts'
 
 const file = (head: string, body = 'Post a summary of the deploy log.') => `---\n${head}\n---\n${body}\n`
 const LINK = 'https://test.slack.com/archives/CTEST1/p1700000000123456'
 
 describe('a kagelet file', () => {
   test('gives its thread lane, schedule, grant and job', () => {
-    assert.deepEqual(parseKagelet('deploys', file(`thread: ${LINK}\nschedule: 0 9 * * 1-5\ntools: Read, Grep,WebFetch`)), {
-      name: 'deploys', key: 'CTEST1:1700000000.123456#side-kagelet-deploys', link: LINK, cron: '0 9 * * 1-5', tools: ['Read', 'Grep', 'WebFetch'], job: 'Post a summary of the deploy log.', paused: false, by: 'owner', why: '',
+    assert.deepEqual(parseKagelet('deploys', file(`thread: ${LINK}\nschedule: 0 9 * * 1-5\ntools: WebSearch,  WebFetch`)), {
+      name: 'deploys', key: 'CTEST1:1700000000.123456#side-kagelet-deploys', link: LINK, cron: '0 9 * * 1-5', tools: ['WebSearch', 'WebFetch'], job: 'Post a summary of the deploy log.', paused: false, by: 'owner', why: '',
     })
   })
   test('no tools line grants no tools', () => {
@@ -22,6 +22,14 @@ describe('a kagelet file', () => {
     assert.match((parseKagelet('x', file(`thread: ${LINK}\nschedule: 0 9 * * *`, '  ')) as { error: string }).error, /job/)
     assert.match((parseKagelet('Bad Name', file(`thread: ${LINK}\nschedule: 0 9 * * *`)) as { error: string }).error, /name/)
   })
+  test('a file that names an act tool is broken, with the reason, so it shows as broken, not running', () => {
+    for (const t of ['Bash', 'mcp__stripe__create_refund']) {
+      const k = parseKagelet('x', file(`thread: ${LINK}\nschedule: 0 9 * * *\ntools: WebSearch, ${t}`)) as { error: string }
+      assert.match(k.error ?? '', new RegExp(`never holds ${t}`), t)
+    }
+    const [row] = kageletRows([{ name: 'x', text: file(`thread: ${LINK}\nschedule: 0 9 * * *\ntools: mcp__db__execute_sql`) }], { runs: '', costs: '', now: 0 })
+    assert.deepEqual([row!.state, /never holds/.test(row!.error ?? '')], ['broken', true])
+  })
 })
 
 describe('the db_read grant', () => {
@@ -30,18 +38,15 @@ describe('the db_read grant', () => {
     assert.match(grantRefusal('mcp__kage__db_read', ['WebSearch']) ?? '', /grant/)
     assert.match(grantRefusal('mcp__kage__db_read', []) ?? '', /grant/)
   })
-  test('the tool writes it only with the owner\'s approval, which the file records; by hand, the owner needs none', () => {
+  test('db_read is a read tool: Kage writes it with no card, and a file from before with its granted line still holds it', () => {
     const f = { thread: LINK, schedule: '0 9 * * *', job: 'Count failed calls.', why: 'watch' }
-    for (const by of ['owner', 'kage'] as const) assert.match((kageletFile({ ...f, tools: ['db_read'], by }) as { error: string }).error, /db_read/)
-    const text = kageletFile({ ...f, tools: ['WebSearch', 'db_read'], by: 'kage', granted: Date.UTC(2026, 0, 2) }) as string
-    assert.match(text, /^granted: db_read by the owner, 2026-01-02T00:00:00\.000Z$/m)
-    const k = parseKagelet('x', text) as { tools: string[]; granted?: number }
-    assert.deepEqual([k.tools, k.granted], [['WebSearch', 'db_read'], Date.UTC(2026, 0, 2)])
-    // Without db_read, no grant line.
-    assert.doesNotMatch(kageletFile({ ...f, tools: ['WebSearch'], by: 'kage', granted: 1 }) as string, /granted/)
-    assert.match((parseKagelet('x', file(`thread: ${LINK}\nschedule: 0 9 * * *\ntools: db_read\nby: kage`)) as { error: string }).error, /db_read/)
-    assert.match((parseKagelet('x', file(`thread: ${LINK}\nschedule: 0 9 * * *\ntools: db_read\nby: kage\ngranted: db_read by the owner, not a time`)) as { error: string }).error, /db_read/)
-    assert.deepEqual((parseKagelet('x', file(`thread: ${LINK}\nschedule: 0 9 * * *\ntools: db_read`)) as { tools: string[] }).tools, ['db_read'])
+    const text = kageletFile({ ...f, tools: ['WebSearch', 'db_read'], by: 'kage' }) as string
+    assert.deepEqual((parseKagelet('x', text) as Kagelet).tools, ['WebSearch', 'db_read'])
+    assert.doesNotMatch(text, /granted|standing/)
+    for (const old of ['granted: db_read by the owner, 2026-01-02T00:00:00.000Z', 'granted: db_read by standing approval, 2026-01-02T00:00:00.000Z']) {
+      const k = parseKagelet('x', file(`thread: ${LINK}\nschedule: 0 9 * * *\ntools: db_read\nby: kage\n${old}`)) as Kagelet
+      assert.deepEqual([k.tools, k.standing], [['db_read'], undefined], old)
+    }
   })
 })
 
@@ -59,14 +64,16 @@ describe('the grant', () => {
   test('ToolSearch is always there, since a granted tool may load deferred; what it loads still passes the grant', () => {
     assert.equal(grantRefusal('ToolSearch', ['WebFetch'], { query: 'select:WebFetch' }), undefined)
     assert.equal(grantRefusal('WebFetch', ['WebFetch'], { url: 'https://example.com' }), undefined)
-    assert.match(grantRefusal('Bash', ['WebFetch']) ?? '', /only web and MCP tools/)
-    assert.match(grantRefusal('Agent', ['WebFetch']) ?? '', /only web and MCP tools/)
+    assert.match(grantRefusal('Bash', ['WebFetch']) ?? '', /never holds/)
+    assert.match(grantRefusal('Agent', ['WebFetch']) ?? '', /never holds/)
     assert.match(grantRefusal('WebSearch', ['WebFetch']) ?? '', /grant/)
   })
   test('only web and outside MCP tools can be granted, so no file, shell or agent tool ever runs; web fetches only over http(s)', () => {
     for (const t of ['Bash', 'Read', 'Grep', 'Glob', 'LS', 'NotebookRead', 'Write', 'Edit', 'MultiEdit', 'NotebookEdit', 'Monitor', 'PowerShell', 'Skill', 'Agent', 'Task', 'mcp__plugin_kage_kage__reply'])
-      assert.match(grantRefusal(t, [t], { file_path: '/tmp/x' }) ?? '', /only web and MCP tools/, t)
+      assert.match(grantRefusal(t, [t], { file_path: '/tmp/x' }) ?? '', /never holds/, t)
     assert.equal(grantRefusal('mcp__claude_ai_Docs__read', ['mcp__claude_ai_Docs__read']), undefined)
+    // An act tool is refused even when a hand-written file names it.
+    assert.match(grantRefusal('mcp__stripe__create_refund', ['mcp__stripe__create_refund']) ?? '', /never holds/)
     assert.equal(grantRefusal('WebFetch', ['WebFetch'], { url: 'https://example.com' }), undefined)
     assert.match(grantRefusal('WebFetch', ['WebFetch'], { url: 'file:///etc/hosts' }) ?? '', /http/)
     assert.match(grantRefusal('WebFetch', ['WebFetch'], { url: 'FILE:///etc/hosts' }) ?? '', /http/)
@@ -177,14 +184,18 @@ describe('a file the manager writes', () => {
   })
 })
 
-describe('a tool beyond the default web tools', () => {
+describe('a write tool, and an act tool', () => {
   const make = (by: 'owner' | 'kage', tools: string[], approved?: true) => kageletFile({ thread: LINK, schedule: '0 9 * * *', tools, job: 'x', by, why: 'a daily check', ...approved && { approved } })
-  test('needs the owner\'s yes on a card, whoever the file says made it', () => {
-    assert.equal(typeof make('kage', ['WebSearch', 'WebFetch']), 'string')
+  test('read tools need no yes; a write tool needs the owner\'s, whoever the file says made it', () => {
+    assert.equal(typeof make('kage', ['WebSearch', 'WebFetch', 'db_read']), 'string')
+    assert.match((make('kage', ['mcp__docs__search']) as { error: string }).error, /owner/)
     for (const by of ['owner', 'kage'] as const) assert.match((make(by, ['mcp__gmail__send']) as { error: string }).error, /owner/)
     assert.equal(typeof make('kage', ['mcp__gmail__send'], true), 'string')
     // A comma or space in one name would read back as two tools, one the card never named.
     for (const t of ['mcp__a__b,db_read', 'mcp__a__b db_read']) assert.match((make('owner', [t], true) as { error: string }).error, /tool name/)
+  })
+  test('an act tool is refused even with a yes: the kagelet says what it needs, and Kage asks the owner each time', () => {
+    for (const t of ['mcp__stripe__create_refund', 'Bash', 'mcp__kage__message_people']) assert.match((make('kage', [t], true) as { error: string }).error, /never holds/, t)
   })
   test('a hand-written file with no by line is the owner\'s', () => {
     assert.equal((parseKagelet('x', file(`thread: ${LINK}\nschedule: 0 9 * * *`)) as { by: string }).by, 'owner')
@@ -215,37 +226,25 @@ describe('a run ledger row from before the rename', () => {
   })
 })
 
-describe('a standing approval (#96)', () => {
-  const f = { thread: LINK, schedule: '0 9 * * *', job: 'Count failed calls.', why: 'watch', by: 'kage' as const }
-  const yes: Standing = { tool: 'db_read', command: 'hash-a', at: 1 }
-  test('covers the same tool through the same read command, from the owner\'s session only', () => {
-    assert.equal(standingApplies(yes, { tool: 'db_read', command: 'hash-a', owner: true }), true)
-    assert.equal(standingApplies(undefined, { tool: 'db_read', command: 'hash-a', owner: true }), false)
-    // A different read command, a teammate's session, or another tool still needs the owner.
-    assert.equal(standingApplies(yes, { tool: 'db_read', command: 'hash-b', owner: true }), false)
-    assert.equal(standingApplies(yes, { tool: 'db_read', command: 'hash-a', owner: false }), false)
-    assert.equal(standingApplies(yes, { tool: 'mcp__mail__send', command: 'hash-a', owner: true }), false)
-    assert.equal(standingApplies({ ...yes, tool: 'mcp__mail__send' }, { tool: 'mcp__mail__send', command: 'hash-a', owner: true }), false)
+describe('a standing approval, per write tool', () => {
+  const f = { thread: LINK, schedule: '0 9 * * *', job: 'Mail the summary.', why: 'watch', by: 'kage' as const, approved: true }
+  test('the file names the write tools it holds by standing approval, and only tools it holds', () => {
+    const text = kageletFile({ ...f, tools: ['WebSearch', 'mcp__gmail__send', 'mcp__notion__update_page'], standing: ['mcp__gmail__send'] }) as string
+    assert.match(text, /^standing: mcp__gmail__send$/m)
+    assert.deepEqual((parseKagelet('x', text) as Kagelet).standing, ['mcp__gmail__send'])
+    assert.equal((parseKagelet('x', kageletFile({ ...f, tools: ['mcp__gmail__send'] }) as string) as Kagelet).standing, undefined)
+    assert.equal((parseKagelet('x', file(`thread: ${LINK}\nschedule: 0 9 * * *\ntools: WebSearch\nstanding: mcp__gmail__send`)) as Kagelet).standing, undefined)
   })
-  test('a grant it gave reads back as standing; the owner\'s card yes does not', () => {
-    const auto = kageletFile({ ...f, tools: ['WebSearch', 'db_read'], granted: Date.UTC(2026, 0, 2), standing: true }) as string
-    assert.match(auto, /^granted: db_read by standing approval, 2026-01-02T00:00:00\.000Z$/m)
-    assert.deepEqual([(parseKagelet('x', auto) as Kagelet).standing, (parseKagelet('x', auto) as Kagelet).tools], [true, ['WebSearch', 'db_read']])
-    const card = kageletFile({ ...f, tools: ['db_read'], granted: 1 }) as string
-    assert.equal((parseKagelet('x', card) as Kagelet).standing, undefined)
-  })
-  test('revoking takes db_read out of every kagelet that got it by the standing approval, and leaves the rest', () => {
-    const auto = kageletFile({ ...f, tools: ['WebSearch', 'db_read'], granted: 1, standing: true }) as string
-    const card = kageletFile({ ...f, tools: ['db_read'], granted: 1 }) as string
-    const web = kageletFile({ ...f, tools: ['WebSearch'] }) as string
-    const out = revokeStanding([{ name: 'a', text: auto }, { name: 'b', text: card }, { name: 'c', text: web }, { name: 'd', text: auto.replace('WebSearch, ', '') }])
-    assert.deepEqual(out.map(o => o.name), ['a', 'd'])
-    for (const o of out) {
-      const k = parseKagelet(o.name, o.text) as Kagelet
-      assert.ok(!('error' in k), o.text)
-      assert.deepEqual([k.tools.includes('db_read'), k.granted, k.standing, k.job], [false, undefined, undefined, 'Count failed calls.'])
-    }
-    assert.deepEqual((parseKagelet('a', out[0]!.text) as Kagelet).tools, ['WebSearch'])
+  test('revoking one tool takes it from every kagelet that holds it by standing approval, and leaves the rest', () => {
+    const both = kageletFile({ ...f, tools: ['WebSearch', 'mcp__gmail__send', 'mcp__notion__update_page'], standing: ['mcp__gmail__send', 'mcp__notion__update_page'] }) as string
+    const card = kageletFile({ ...f, tools: ['mcp__gmail__send'] }) as string
+    const one = kageletFile({ ...f, tools: ['mcp__gmail__send'], standing: ['mcp__gmail__send'] }) as string
+    const out = revokeStanding([{ name: 'a', text: both }, { name: 'b', text: card }, { name: 'c', text: one }], 'mcp__gmail__send')
+    assert.deepEqual(out.map(o => o.name), ['a', 'c'])
+    const a = parseKagelet('a', out[0]!.text) as Kagelet, c = parseKagelet('c', out[1]!.text) as Kagelet
+    assert.deepEqual([a.tools, a.standing, a.job], [['WebSearch', 'mcp__notion__update_page'], ['mcp__notion__update_page'], 'Mail the summary.'])
+    assert.deepEqual([c.tools, c.standing], [[], undefined])
+    assert.doesNotMatch(out[1]!.text, /standing/)
   })
 })
 

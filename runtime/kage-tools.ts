@@ -19,7 +19,6 @@ import type { Ledgers } from './ledger.ts'
 import { findSecret, layoutRefusal, safeReply, secretRefusal, splitForSlack } from '../core/outbound.ts'
 import type { Task } from './protocol.ts'
 import type { AskOwner, Manage } from './kagelets.ts'
-import { DB_READ } from '../core/kagelets.ts'
 import type { EventKind } from '../core/events.ts'
 
 // The reaction each kind of reply leaves on the task message. An ack leaves none: 🥷 already says "picked up".
@@ -473,28 +472,28 @@ export function sessionTools(o: {
     },
   }, {
     name: 'manage_kagelet',
-    description: 'Create or change (save), pause, resume, run now, or remove a kagelet: a recurring job that runs on its own schedule in its thread, with only the tools you grant, and reports to you. save needs name, thread (a Slack message link), schedule (5-field cron) or after (the kagelet whose output starts it), tools, job and why. A tool beyond WebSearch and WebFetch is saved only on the owner\'s yes to a card. revoke with name db_read when the owner says to revoke the standing db_read approval: it takes db_read from every kagelet that got it with no card. Owner tasks only.',
+    description: 'Create or change (save), pause, resume, run now, or remove a kagelet: a recurring job that runs on its own schedule in its thread, with only the tools you grant, and reports to you. save needs name, thread (a Slack message link), schedule (5-field cron) or after (the kagelet whose output starts it), tools, job and why. Read tools (WebSearch, WebFetch, db_read) are yours to grant. Every MCP tool is a write tool unless it is act: it needs the owner\'s yes on a card the first time; that yes stands for later kagelets. An act tool (prod, money, customers, access, deletes) is never a kagelet\'s. revoke with name set to a tool when the owner says to revoke its standing approval: it takes that tool from every kagelet that got it with no card. Owner tasks only.',
     shape: {
       channel: s.describe('channel attribute from the task tag'),
       thread_ts: s.describe('thread_ts attribute from the task tag'),
       action: z.enum(['save', 'pause', 'resume', 'run', 'remove', 'revoke']),
-      name: s.describe('short lowercase name: letters, digits, dashes. For revoke: db_read'),
+      name: s.describe('short lowercase name: letters, digits, dashes. For revoke: the tool, e.g. mcp__gmail__send'),
       thread: s.optional().describe('save: the Slack link of the thread it posts in'),
       schedule: s.optional().describe('save: a 5-field cron in local time, e.g. "0 9 * * 1-5"'),
       after: s.optional().describe('save: the kagelet whose report output starts this one, as a chain step (at most 5 deep, no cycles); schedule may then be left out'),
-      tools: z.array(s).optional().describe('save: its grant. WebSearch and WebFetch, or with the owner\'s yes on a card an outside MCP tool by full name or db_read'),
-      read_command: s.optional().describe('save with db_read: the owner\'s command that runs one read-only query, given as its last argument. Leave out to keep the one already approved for this kagelet'),
+      tools: z.array(s).optional().describe('save: its grant, by full tool name: WebSearch, WebFetch, db_read, outside MCP tools'),
+      read_command: s.optional().describe('save with db_read and no KAGE_DB_READ_COMMAND: one of the read commands the owner already approved. Leave out to keep this kagelet\'s own'),
       job: s.optional().describe('save: what to do on each run, complete on its own'),
       why: s.optional().describe('save: one line on why it exists'),
     },
     async run(args) {
       const { channel: _c, thread_ts: _t, ...a } = args as Manage & { channel: string; thread_ts: string }
       if (!ownerOnly(args)) {
-        if (a.tools?.includes(DB_READ)) { append('grants', [a.name, 'refused', 'not the owner\'s task']); log(`kagelet ${a.name}: ${DB_READ} refused: not the owner's task`) }
+        if (a.tools?.length) { append('grants', [a.name, 'refused', 'not the owner\'s task', a.tools.join(', ')]); log(`kagelet ${a.name}: ${a.tools.join(', ')} refused: not the owner's task`) }
         return { isError: true, text: 'only the owner\'s task can manage kagelets' }
       }
       const approve = o.approve
-      return { text: await team.manage(a, approve && (card => approve('grant_kagelet', `Grant kagelet ${card.kagelet}: ${card.tools}.${card.read_command ? ` The read command is this kagelet's own. Your yes to it stands: a later kagelet that asks for ${DB_READ} alone through this same command gets it with no card, and you get a DM each time, until you revoke it (v in kage top, or ask).` : ''}`, card))) }
+      return { text: await team.manage(a, approve && (card => approve('grant_kagelet', `Grant kagelet ${card.kagelet}: ${card.tools}. Your yes stands: a later kagelet that asks for ${card.tools} gets it with no card, until you revoke it (v in kage top, or ask). Your daily note lists each grant made with no card.`, card))) }
     },
   })
   const pingIn = (channel: string) => [...ownerTask].some(([k, owner]) => owner && k.startsWith(`${channel}:`))
@@ -550,7 +549,7 @@ function instructions(Title: string, MEM: { own: string; owner: string }) {
     'If a reply asks a question or offers something and the work waits on the answer, pass waiting with one line naming it. When asked what is waiting, call the waiting tool and answer with its list.',
     'To tell people something in Slack ("tell X and Y", "let Z know"), use message_people with the people the task names. Add everyone in the task\'s channel only when the task says so ("everyone here"). Find their ids with the Slack user search. Write one message that stands alone: what and when. The tool signs it "<name>, via ' + Title + '": when the owner passes on someone else\'s news, pass from with that person\'s id, and never write "From X:" yourself. Then reply in the task thread with the link. Use message_people only to pass on the asker\'s own news (a meeting time, a status). Anything that would commit the owner (agreeing, money, a deadline, an opinion) goes as a Slack draft in that group DM for the owner to send.',
     'For a repeating check or a later reminder, use the schedule tool: it survives restarts and runs until unschedule. CronCreate is off here because its jobs die with this session. A run arrives as "Scheduled run of job <id> ...": do what its prompt says, and post only what the prompt asks for.',
-    'You manage kagelets: recurring jobs that run on their own schedule in a thread and report to you (kagelets and manage_kagelet, on the owner\'s tasks). When an owner task is recurring (a watch, a monitor, "check X every N", or a schedule you already run in a thread) and the job needs only web search and fetch, make a kagelet for it instead of doing it in this session: manage_kagelet save with a one-line why, then unschedule the old schedule if there was one. Then tell the owner in one line in the thread where it was decided: "Made kagelet <name>: <job>, <when>. Say remove <name> to stop it." A job that needs the database gets db_read: put it in tools with read_command, the owner\'s read command from their setup (a script path, say). The first time, the owner gets a card with the kagelet, its job and the command, and only their yes saves it. That yes stands: a later db_read grant through the same command saves with no card, is logged, and the owner gets a DM. A different command gets a card again. Each kagelet keeps its own read command. When the owner says to revoke it, call manage_kagelet revoke with name db_read. An MCP tool takes the owner\'s yes on a card every time it is saved. A job that needs files or shell stays on the schedule tool. One-off tasks stay in this session. When the owner asks how your kagelets are doing, or a run needs something, read kagelets and act on what they need.',
+    'You manage kagelets: recurring jobs that run on their own schedule in a thread and report to you (kagelets and manage_kagelet, on the owner\'s tasks). When an owner task is recurring (a watch, a monitor, "check X every N", or a schedule you already run in a thread) and the job needs only web search and fetch, make a kagelet for it instead of doing it in this session: manage_kagelet save with a one-line why, then unschedule the old schedule if there was one. Then tell the owner in one line in the thread where it was decided: "Made kagelet <name>: <job>, <when>. Say remove <name> to stop it." You approve for your kagelets by tier, decided in code. Read tools (WebSearch, WebFetch, db_read) you grant at save with no card. db_read reads through the install\'s own read command (KAGE_DB_READ_COMMAND, or one the owner approved before, named in read_command): a kagelet never brings a new one. Every MCP tool that is not act is a write tool, a reading one too: it asks the owner on a card the first time, and that yes stands for every later kagelet that asks for the same tool. The owner sees the no-card grants in their daily note. An act tool (prod, money, customers, access, deletes) is never a kagelet\'s: the kagelet reports what it needs, and you ask the owner each time. When the owner says to revoke a tool, call manage_kagelet revoke with name set to that tool. A job that needs files or shell stays on the schedule tool. One-off tasks stay in this session. When the owner asks how your kagelets are doing, or a run needs something, read kagelets and act on what they need.',
     'After each change you make to production for a task (deploy, restart, DB write, prod config), call log_prod_write once.',
     'Answer in the thread by default, including normal work details like logs, numbers and code. Use private=true (the owner\'s DM) only for something that must never be visible in a channel: secrets, passwords, tokens, keys, or a person\'s private data.',
     'Never post anywhere else in Slack unless the task asks for it.',
