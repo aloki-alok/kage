@@ -48,7 +48,7 @@ const sec = z.string().nullable().optional()
 export const Secrets = z.strictObject({
   slack: z.strictObject({ app: sec, user: sec, bot: sec }).optional(),
   aws: z.strictObject({ accessKeyId: sec, secretAccessKey: sec }).optional(),
-  voiceToken: sec, githubSecret: sec, meetingToken: sec, browserToken: sec, jevKey: sec,
+  voiceToken: sec, githubSecret: sec, meetingToken: sec, browserToken: sec, jevKey: sec, cartesiaKey: sec,
   // Values of env lines the table does not know and whose names look like secrets: kept, never dropped.
   unknown: z.record(z.string(), z.string()).optional(),
 })

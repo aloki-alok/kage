@@ -504,7 +504,7 @@ void meeting?.listening.then(port => { log(`meetings on: 127.0.0.1:${port}/meeti
 // A bot on another machine still works the same way, from its own config (meetbot/README.md).
 function meetbot(port: number) {
   const child: ChildProcess = spawn(process.execPath, ['bot.ts'], { cwd: `${CODE}/meetbot`, stdio: ['ignore', 'pipe', 'pipe'],
-    env: { ...process.env, KAGE_MEETBOT_HUB: `http://127.0.0.1:${port}`, KAGE_MEETBOT_TOKEN: secrets.meetingToken ?? "" } })
+    env: { ...process.env, KAGE_MEETBOT_HUB: `http://127.0.0.1:${port}`, KAGE_MEETBOT_TOKEN: secrets.meetingToken ?? "", KAGE_MEETBOT_CARTESIA: secrets.cartesiaKey ?? "" } })
   const lines = (b: Buffer) => { for (const l of b.toString().split('\n')) if (l.trim()) log(`meetbot: ${l.replace(/^\S+Z /, '')}`) }
   child.stdout?.on('data', lines)
   child.stderr?.on('data', lines)
