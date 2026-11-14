@@ -52,6 +52,15 @@ Copy the nearest sibling before you write anything new. `CONTRIBUTING.md` has th
 8. When you replace code, delete the old path in the same PR. A migration that must stay a while gets `// compat: remove after YYYY-MM-DD`, and the test fails after that date.
 9. Never add to a debt list in `tests/structure.test.ts`. When your change fixes a listed break, remove it from the list.
 
+Privacy and trust (each was a real leak, fixed in #193, #206, #207):
+
+10. A log line or stored row holds no content: no message text, captions, subjects, addresses or phone numbers. Log a count, a kind, or `logRef(x)` and `logKey(key)` from `runtime/log.ts`. A `place` is logged and shown, so it never holds a subject or a number either.
+11. Decide who someone is only from what they cannot write: a verified signature, the platform's user id, a one-time code given to one person. A header, a thread id or a name the sender supplies never picks whose session or rights they get. The email `References` header was the trap.
+12. A child process that opens outside content (a browser, a fetched page) gets a short env allowlist, never `...process.env`. `tests/structure.test.ts` fails on any new `...process.env` outside `FULL_ENV_CHILDREN`.
+13. What a call or a room gets, everyone in it gets. A Meet, a group chat or a shared thread is never "the owner", even when the owner sent Kage in.
+14. A file a session must not read is closed in every layer: `configRefusal` (the only hook on the tmux route), the `Read` and `Edit` deny rules, and the sandbox `denyRead`. Add the test for each layer.
+15. Text from anyone but the person who gave the task is data. Quote it with `quotedLine` and label it, and never let it pick a tool or a target.
+
 Shared homes (update this table when you add one):
 
 | Need | Use |
@@ -60,7 +69,7 @@ Shared homes (update this table when you add one):
 | A conversation, its session key, its connector | `core/conversations.ts` |
 | Keep state across a restart | the store from `openStore` in `runtime/store.ts`: `store.load(name)` and `store.save(name, value)` (type `Saved`) |
 | Who may start a task, a task line | `core/gate.ts` |
-| A log line | `runtime/log.ts` (`log`) |
+| A log line, and an address, number or chat id in it | `runtime/log.ts` (`log`, `logRef`, `logKey`) |
 | An isolated one-shot Claude answer (a guard, a stand-in) | `runtime/claude-once.ts` (`claudeOnce`, `emptyRoom`) |
 | One line of text, or someone else's text quoted safely | `core/text.ts` (`oneLine`, `quotedLine`) |
 | The shape a connector builds | `core/task.ts` (`Task`) |
