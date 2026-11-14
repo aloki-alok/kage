@@ -150,7 +150,7 @@ export function kageletManager(o: { dir: string; max: number; ledgers: { text(na
       }
       const old = existsSync(file) ? parseKagelet(a.name, readFileSync(file, 'utf8')) : undefined
       if (!old && readKagelets(o.dir).length >= o.max) return refuse(`this install has at most ${o.max} kagelets (KAGE_MAX_KAGELETS). Remove one first, or ask the owner to raise it.`)
-      const fileText = (standing = false) => kageletFile({ thread: a.thread ?? '', schedule: a.schedule ?? '', tools: a.tools ?? [], job: a.job ?? '', by: a.by ?? (old && !('error' in old) ? old.by : 'kage'), why: a.why ?? '', paused: !!old && !('error' in old) && old.paused, ...(db && { granted: now, standing }) })
+      const fileText = (standing = false, granted = now) => kageletFile({ thread: a.thread ?? '', schedule: a.schedule ?? '', tools: a.tools ?? [], job: a.job ?? '', by: a.by ?? (old && !('error' in old) ? old.by : 'kage'), why: a.why ?? '', paused: !!old && !('error' in old) && old.paused, ...(db && { granted, standing }) })
       let text = fileText()
       if (typeof text !== 'string') return refuse(text.error)
       if (db) {
@@ -168,7 +168,9 @@ export function kageletManager(o: { dir: string; max: number; ledgers: { text(na
         const card = { kagelet: a.name, read_command: o.envCommand ? 'KAGE_DB_READ_COMMAND, as set in the settings file' : command, job: (a.job ?? '').trim().split('\n')[0]!.slice(0, 300) }
         if (!standing && !await ask(card)) return refuse(`the owner did not approve ${DB_READ}`)
         if (standing) {
-          text = fileText(true) as string
+          // A kagelet the owner approved on its own card keeps that grant when saved again, so a revoke leaves it.
+          const card = old && !('error' in old) && old.granted !== undefined && !old.standing ? old.granted : undefined
+          text = fileText(card === undefined, card ?? now) as string
           o.ledgers.add('grants', [a.name, 'standing', `the owner's standing approval of ${new Date(yes!.at).toISOString()} covers ${DB_READ} through the same read command`])
           o.log(`kagelet ${a.name}: ${DB_READ} granted by the standing approval`)
         } else {

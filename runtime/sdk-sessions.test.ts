@@ -348,7 +348,8 @@ describe('Kage sessions on the Agent SDK', () => {
     assert.equal((await t.sdk.runs[0]!.options.canUseTool('mcp__kage__manage_kagelet', { action: 'save', tools: ['db_read'] }, { signal: signal() })).behavior, 'allow')
     assert.equal(t.posts.length, posts)
     // Revoking only takes access away: the owner's word in chat is enough, with no card.
-    assert.equal((await t.sdk.runs[0]!.options.canUseTool('mcp__kage__manage_kagelet', { action: 'revoke', name: 'db_read' }, { signal: signal() })).behavior, 'allow')
+    // Raced against a tick: a card here would wait for an answer forever, and the test would hang instead of failing.
+    assert.equal(await Promise.race([t.sdk.runs[0]!.options.canUseTool('mcp__kage__manage_kagelet', { action: 'revoke', name: 'db_read' }, { signal: signal() }).then((r: { behavior: string }) => r.behavior), tick(50).then(() => 'card')]), 'allow')
     assert.equal(t.posts.length, posts)
     void t.sdk.runs[0]!.options.canUseTool('mcp__kage__manage_kagelet', { action: 'save', tools: ['WebSearch'] }, { signal: signal() })
     await tick()

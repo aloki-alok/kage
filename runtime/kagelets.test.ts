@@ -213,11 +213,15 @@ test('after the owner\'s yes, a later db_read save through the same command need
   const t = manager(), y = owner(true)
   await t.m.manage({ action: 'save', name: 'calls', ...calls }, 1, y.ask)
   assert.match(await t.m.manage({ action: 'save', name: 'other', ...calls }, Date.UTC(2026, 0, 3), y.ask), /saved other/)
-  // Saved again: no card either.
+  assert.match(readFileSync(`${t.dir}/other.md`, 'utf8'), /^granted: db_read by standing approval, 2026-01-03T00:00:00\.000Z$/m)
+  // Saved again: no card either, and the grant the owner gave on its own card stays theirs, so a revoke keeps it.
   assert.match(await t.m.manage({ action: 'save', name: 'calls', ...calls, schedule: '0 10 * * *' }, 5, y.ask), /saved calls/)
   assert.equal(y.cards.length, 1)
-  assert.match(readFileSync(`${t.dir}/other.md`, 'utf8'), /^granted: db_read by standing approval, 2026-01-03T00:00:00\.000Z$/m)
-  assert.deepEqual(t.grants.map(g => g.slice(0, 2)), [['calls', 'granted'], ['other', 'standing'], ['calls', 'standing']])
+  assert.match(readFileSync(`${t.dir}/calls.md`, 'utf8'), /^granted: db_read by the owner, 1970-01-01T00:00:00\.001Z$/m)
+  await t.m.manage({ action: 'revoke', name: 'db_read' }, 6)
+  assert.match(readFileSync(`${t.dir}/calls.md`, 'utf8'), /^tools: WebSearch, db_read$/m)
+  assert.doesNotMatch(readFileSync(`${t.dir}/other.md`, 'utf8'), /db_read/)
+  assert.deepEqual(t.grants.map(g => g.slice(0, 2)), [['calls', 'granted'], ['other', 'standing'], ['calls', 'standing'], ['other', 'revoked']])
   assert.match(t.grants[1]![2]!, /standing approval.*same read command/)
   assert.match(t.logs.join('\n'), /kagelet other: db_read granted by the standing approval/)
   assert.doesNotMatch(JSON.stringify(t.grants) + t.logs.join('') + JSON.stringify(t.store.load('standing-approvals')), /read-sql/)

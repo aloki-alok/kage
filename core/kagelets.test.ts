@@ -263,6 +263,8 @@ describe('the cost caps (#96)', () => {
     assert.match(r.pause[0]!.why, /^paused: it spent \$1\.50 today.*together spent \$10\.40.*total daily cap of \$10\.00 \(KAGE_KAGELET_TOTAL_DAILY_USD\)/)
     assert.deepEqual(r.tell.map(t => t.id), ['total'])
     assert.deepEqual(capCheck(rows, caps, ['total'], 'Kage').tell, [])
+    // Exactly at it pauses too.
+    assert.deepEqual(capCheck([row('a', 4), row('b', 6)], caps, [], 'Kage').pause.map(p => p.name), ['a', 'b'])
     // Below it, nothing pauses.
     assert.deepEqual(capCheck([row('a', 1), row('b', 1)], caps, [], 'Kage').pause, [])
   })
