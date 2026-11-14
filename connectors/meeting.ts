@@ -32,6 +32,7 @@ export function connectMeeting(o: {
   untake: (source: string) => void   // frees a source id, so the same body sent again runs (Store.untake)
   name?: string      // the word that wakes Kage in a call (the Slack name); no name, no live answers
   end?: (key: string) => void   // a call is over: end its live session (Dispatcher.end)
+  code?: () => string | undefined   // a one-time owner code per join (voice issueCode): only the owner sends Kage in
   askWaitMs?: number   // how long a question that names Kage waits for the rest of it
   pollMs?: number    // how long one bot poll is held open with nothing to send
   staleMs?: number   // with no poll for this long, the bot counts as gone
@@ -77,7 +78,7 @@ export function connectMeeting(o: {
   }
   // Commands for the bot. Each has a seq, and a poll asks for those after the last it saw, so a poll whose
   // answer was lost gets the same commands again. The seq starts at the clock, so it still grows after a restart.
-  type Cmd = { seq: number; at: number } & ({ op: 'join'; link: string } | { op: 'say'; call: string; text: string })
+  type Cmd = { seq: number; at: number } & ({ op: 'join'; link: string; code?: string } | { op: 'say'; call: string; text: string })
   const cmds: Cmd[] = []
   let seq = now()
   let waiter: { res: ServerResponse; after: number; timer: NodeJS.Timeout } | undefined
@@ -99,10 +100,11 @@ export function connectMeeting(o: {
     const url = meetLink(link)
     if (!url) return 'not a Google Meet link (https://meet.google.com/abc-defg-hij)'
     if (!waiter && now() - lastPoll >= staleMs) return 'the meeting bot is not connected: start it on its machine and check it can reach this hub'
-    queue({ op: 'join', link: url })
+    const code = o.code?.()
+    queue({ op: 'join', link: url, ...(code && { code }) })
     return ''
   }
-  const queue = (c: { op: 'join'; link: string } | { op: 'say'; call: string; text: string }) => {
+  const queue = (c: { op: 'join'; link: string; code?: string } | { op: 'say'; call: string; text: string }) => {
     cmds.push({ ...c, seq: seq = Math.max(seq + 1, now()), at: now() })
     cmds.splice(0, cmds.length - 20)
     answer()

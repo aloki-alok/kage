@@ -8,9 +8,10 @@ import { homedir } from 'node:os'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { chromium, type Page } from 'playwright-core'
+import { bridge, type Pipeline } from './voice-agent.ts'
 
 // What the hub sends (connectors/meeting.ts): go to a call, or speak an answer in it.
-export type Cmd = { seq: number; op: 'join'; link: string } | { seq: number; op: 'say'; call: string; text: string }
+export type Cmd = { seq: number; op: 'join'; link: string; code?: string } | { seq: number; op: 'say'; call: string; text: string }
 export type Seg = { speaker: string; text: string; start: number; self?: boolean }
 type Settings = { hub: string; name: string; consent: string; chrome?: string; profile: string; token: string; speak?: string; window?: boolean; voice?: string }
 
@@ -43,11 +44,13 @@ export async function attend(page: Page, link: string, o: {
   admitMs?: number   // how long to wait for the host to let Kage in
   aloneMs?: number   // with nobody else in the call this long, Kage leaves
   stop?: () => boolean
+  voice?: (page: Page, ended: () => void) => Promise<() => void>   // a voice agent hears and speaks (voice-agent.ts); captions still make the notes
 }): Promise<Seg[]> {
   const admitMs = o.admitMs ?? 10 * 60_000, aloneMs = o.aloneMs ?? 2 * 60_000
   const k = <T>(fn: string, arg?: unknown) => page.evaluate(([f, a]) => (window as any).__kage[f as string](a), [fn, arg] as const) as Promise<T>
   const mark = (kind: string) => k<boolean>('mark', kind)
-  const click = async (kind: string) => (await mark(kind)) && (await page.click(`[data-kage="${kind}"]`), true)
+  // Meet redraws controls often; a click on a replaced control gives up in 3 s and the caller's loop marks it again.
+  const click = async (kind: string) => (await mark(kind)) && page.click(`[data-kage="${kind}"]`, { timeout: 3000 }).then(() => true, () => false)
   const until = async (what: () => Promise<boolean>, ms: number) => { for (const end = Date.now() + ms; Date.now() < end; await sleep(500)) if (await what()) return true; return false }
 
   await page.goto(link, { waitUntil: 'domcontentloaded' })
@@ -57,7 +60,7 @@ export async function attend(page: Page, link: string, o: {
   if (await mark('name')) await page.fill('[data-kage="name"]', o.name)
   if (!await until(async () => (await click('blocker'), click('join')), 30_000)) {
     const d = await k<string>('dialog')
-    throw new Error(d ? `a Meet popup is in the way: ${d}` : 'no join button on the Meet page')
+    throw new Error(d ? `a Meet popup is in the way: ${d}` : `no join button on the Meet page; buttons: ${await k<string>('buttons')}`)
   }
   log('asked to join', link)
   const admitted = await until(async () => {
@@ -68,6 +71,9 @@ export async function attend(page: Page, link: string, o: {
   }, admitMs)
   if (!admitted) throw new Error('nobody let Kage in')
   log('in the call')
+  await k('face', `data:image/jpeg;base64,${readFileSync(new URL('../docs/kage-avatar.jpg', import.meta.url)).toString('base64')}`).catch(() => {})
+  let agentGone = false
+  const hangUp = o.voice ? await o.voice(page, () => { agentGone = true }).catch(e => { log('voice agent not connected, using captions:', String(e)); return undefined }) : undefined
 
   const chat = async (text: string) => {
     if (!await until(async () => (await mark('chatBox')) || (await click('chatOpen'), false), 10_000)) return false
@@ -78,6 +84,7 @@ export async function attend(page: Page, link: string, o: {
   // The consent line, before anything is heard.
   if (!await chat(o.consent)) log('no chat box: the consent line was not posted')
   await click('micOn')   // Meet may let a guest in muted
+  await click('camOn')   // the camera is Kage's drawn tile (page.js), never a real one
   if (!await click('captionsOn')) await page.keyboard.press('c')   // Meet's shortcut for captions
 
   const all: Seg[] = []
@@ -87,11 +94,14 @@ export async function attend(page: Page, link: string, o: {
     await sleep(1000)
     if (page.isClosed()) break
     for (const text of o.said?.splice(0) ?? []) {
+      if (hangUp) { log('the voice agent speaks in this call; not saying:', text.slice(0, 80)); continue }
       let spoken = false
       log('saying:', text.slice(0, 120))
       if (o.speak) try { await k('say', (await o.speak(text)).toString('base64')); spoken = true } catch (e) { log('speaking failed, posting in chat:', String(e)) }
       if (!spoken) await chat(text).catch(() => false)
     }
+    if (hangUp && await click('micOn').catch(() => false)) log('was muted, unmuted')
+    if (await click('camOn').catch(() => false)) log('tile on')   // Kage's drawn tile, never a real camera   // Meet mutes joiners; the agent needs the mic
     const lines = await k<{ speaker: string; text: string }[]>('settled').catch(() => [])
     if (lines.length) {
       // Meet labels the bot's own speech "You"; it is kept for the notes and marked, so it never wakes Kage.
@@ -104,11 +114,14 @@ export async function attend(page: Page, link: string, o: {
       captionsChecked = true
       log(await k<boolean>('captionsShown') ? 'captions are on, nobody has spoken yet' : 'no captions on the page after 20 s: Meet may have moved its captions')
     }
+    if (agentGone) { log('the voice agent hung up, leaving'); await click('leave'); break }
     const s = await k<string>('state').catch(() => 'ended')
     if (s === 'ended' || s === 'refused') break
     if (await k<number>('others').catch(() => -1) !== 0) lastCompany = Date.now()
     else if (Date.now() - lastCompany >= aloneMs) { log('alone in the call, leaving'); await click('leave').catch(() => {}); break }
   }
+  if (o.stop?.()) await click('leave')   // leave the seat, or Meet holds it and the next join sees "Switch here"
+  hangUp?.()
   log('call over', all.length, 'lines')
   return all
 }
@@ -158,6 +171,14 @@ export const speaker = (cmd: string) => (text: string) => new Promise<Buffer>((o
   p.stdin.end(text)
 })
 
+// The hub passes a voice agent (KAGE_MEETBOT_PIPELINE: {"api","agent"}) and its API key, or nothing.
+function pipeline(): Pipeline | undefined {
+  const key = process.env.KAGE_MEETBOT_PIPELINE_KEY
+  let c: { api?: unknown; agent?: unknown } = {}
+  try { c = JSON.parse(process.env.KAGE_MEETBOT_PIPELINE ?? '{}') } catch {}
+  return key && typeof c.api === 'string' && Number.isInteger(c.agent) ? { api: c.api, key, agent: c.agent as number } : undefined
+}
+
 // The poll loop never waits on a call, so answers reach the call while it runs. One call at a time:
 // a join that comes during a call is dropped, with a log line.
 async function main() {
@@ -176,25 +197,27 @@ async function main() {
       if (current) { log('already in a call, not joining', c.link); continue }
       const call = { call: callId(c.link), said: [] as string[] }
       current = call
-      void runCall(s, h, c.link, call).finally(() => { current = undefined })
+      void runCall(s, h, c.link, call, c.code).finally(() => { current = undefined })
     }
   }
 }
 
-async function runCall(s: Settings, h: ReturnType<typeof hub>, link: string, call: { call: string; said: string[] }) {
+async function runCall(s: Settings, h: ReturnType<typeof hub>, link: string, call: { call: string; said: string[] }, ownerCode?: string) {
   // Chrome's new headless mode, with no window on the owner's screen. Meet turned away the old headless mode,
   // and the user agent names HeadlessChrome, so it reads as the plain Chrome it is. "window": true shows it.
   const ua = s.window ? undefined : `Mozilla/5.0 (${process.platform === 'darwin' ? 'Macintosh; Intel Mac OS X 10_15_7' : 'X11; Linux x86_64'}) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/${chromium.version?.() ?? '140.0.0.0'} Safari/537.36`
   const ctx = await chromium.launchPersistentContext(s.profile, {
     headless: !s.window, executablePath: s.chrome, viewport: { width: 1280, height: 800 }, ...(ua && { userAgent: ua }),
     args: ['--use-fake-ui-for-media-stream', '--use-fake-device-for-media-stream', '--autoplay-policy=no-user-gesture-required', '--disable-blink-features=AutomationControlled', ...(s.window ? [] : ['--headless=new'])],
-    ignoreDefaultArgs: ['--enable-automation'],
+    ignoreDefaultArgs: ['--enable-automation'], handleSIGTERM: false, handleSIGINT: false,   // the bot leaves the call itself
   })
   let all: Seg[] = []
   try {
+    await ctx.grantPermissions(['microphone', 'camera'], { origin: 'https://meet.google.com' })   // else Meet asks, and joins muted
     await ctx.addInitScript({ path: PAGE_JS })
     const page = ctx.pages()[0] ?? await ctx.newPage()
-    all = await attend(page, link, { name: s.name, consent: s.consent, said: call.said, speak: s.speak ? speaker(s.speak) : process.env.KAGE_MEETBOT_CARTESIA ? cartesia(process.env.KAGE_MEETBOT_CARTESIA, s.voice) : undefined, heard: segs => h.lines(call.call, segs) })
+    const pl = pipeline(), p = pl && { ...pl, ownerCode }
+    all = await attend(page, link, { voice: p && ((pg, ended) => bridge(pg, p, log, ended)), name: s.name, consent: s.consent, said: call.said, speak: s.speak ? speaker(s.speak) : process.env.KAGE_MEETBOT_CARTESIA ? cartesia(process.env.KAGE_MEETBOT_CARTESIA, s.voice) : undefined, heard: segs => h.lines(call.call, segs) })
   } catch (e) { log('call failed:', String(e)) } finally { await ctx.close().catch(() => {}) }
   await h.ended(call.call, link, all).catch(e => log('notes not sent:', String(e)))
 }
