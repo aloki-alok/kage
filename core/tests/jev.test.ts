@@ -1,6 +1,6 @@
 import { describe, test } from 'node:test'
 import assert from 'node:assert/strict'
-import { JEV_MAX_CHARS, OTHER_BAR, OWNER_BAR, TRIAGE_MAX_CHARS, jevChecks, jevConfig, jevRequest, jevVerdict, triageRequest, triageSkips, triageVerdict } from '../jev.ts'
+import { afkRequest, afkVerdict, JEV_MAX_CHARS, OTHER_BAR, OWNER_BAR, TRIAGE_MAX_CHARS, jevChecks, jevConfig, jevRequest, jevVerdict, triageRequest, triageSkips, triageVerdict } from '../jev.ts'
 
 describe('the Jev settings', () => {
   test('no key leaves Jev off', () => {
@@ -97,5 +97,35 @@ describe('Jev\'s intake answer', () => {
   test('an answer it cannot read is an error, so the caller starts a session', () => {
     for (const b of [null, {}, { answers: {} }, answer('ignore', 1), { answers: { intake: { choice: 'react' } } }, answer('react', Number.NaN)])
       assert.ok('error' in triageVerdict(b, 'other'), JSON.stringify(b))
+  })
+})
+
+describe('the AFK question', () => {
+  test('urgency is a choice of four, and waiting on the owner and a lookup are yes/no scores', () => {
+    const r = afkRequest({ owner: 'Sam', place: '#eng', from: 'Maya', convo: 'hello' }, 'jev-latest')
+    assert.equal(r.questions.urgency.type, 'choice')
+    assert.deepEqual(Object.keys(r.questions.urgency.criteria), ['p0', 'high', 'normal', 'low'])
+    assert.equal(r.questions.waits.type, 'noul')
+    assert.equal(r.questions.lookup.type, 'noul')
+    assert.match(r.state, /Sam is away/)
+    assert.equal(afkRequest({ owner: 'Sam', place: 'x', from: 'y', convo: 'z'.repeat(JEV_MAX_CHARS * 2) }, 'm').state.length < JEV_MAX_CHARS + 400, true)
+  })
+})
+
+describe('Jev\'s AFK answer', () => {
+  const answer = (choice: string, top: number, waits: unknown = 0.9, lookup: unknown = 0.1) => ({ answers: {
+    urgency: { type: 'choice', choice, confidence: 1, probabilities: { [choice]: top } },
+    waits: { type: 'noul', noul: waits }, lookup: { type: 'noul', noul: lookup } } })
+  test('the choice gives the urgency, and the scores give waits and lookup at 0.5', () => {
+    assert.deepEqual(afkVerdict(answer('high', 0.9, 0.9, 0.1)), { urgency: 'high', waits: true, lookup: false })
+    assert.deepEqual(afkVerdict(answer('low', 0.9, 0.2, 0.7)), { urgency: 'low', waits: false, lookup: true })
+  })
+  test('a p0 needs high probability, else it is high: a wrong p0 wakes the owner', () => {
+    assert.equal((afkVerdict(answer('p0', 0.95)) as { urgency: string }).urgency, 'p0')
+    assert.equal((afkVerdict(answer('p0', 0.6)) as { urgency: string }).urgency, 'high')
+  })
+  test('an answer it cannot read is an error, so the caller uses the Claude triage', () => {
+    for (const b of [null, {}, answer('urgent', 1), answer('low', 1, 'x'), answer('low', 1, 0.5, Number.NaN), { answers: { urgency: { choice: 'low' } } }])
+      assert.ok('error' in afkVerdict(b), JSON.stringify(b))
   })
 })
