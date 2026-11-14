@@ -133,8 +133,7 @@ export function sessionTools(o: {
     let parts = splitForSlack(safeReply(text).trim() || '(empty reply)')
     if (to.noReply) parts[parts.length - 1] += `\n${NO_REPLY}`
     if (to.tag) parts = addressed(parts, to.tag)
-    let via = Title
-    const sent: string[] = []
+    let via = Title, sent: string[] = []
     for (const part of parts) {
       const r = await postAsKage(o, channel, thread_ts, part)
       append('posted', [channel, r.ts, r.by, key])
@@ -191,11 +190,12 @@ export function sessionTools(o: {
       owner_asked: z.boolean().optional().describe('true only when the owner\'s own task line asks to post this secret in the thread. Ignored on a teammate\'s task.'),
       waiting: s.optional().describe('If this reply asks a question or offers something and the work waits on the answer: one line naming what waits ("Open a PR for lock_id?"). It stays on the waiting list until this thread gets a new task, even when the reply is private.'),
       wide: z.boolean().optional().describe('true only for a log or code where wrapped lines are fine. Never for a table.'),
-      no_reply_needed: z.boolean().optional().describe('true when this reply answers another agent and you expect nothing back (a final answer, a thanks). It ends the post with "(no reply needed)", and the other agent then stays quiet.'),
+      tag_agent: z.boolean().optional().describe('On a task another agent posted: true only when that agent must read this post (the answer to its ask, or a question to it). An agent hears only posts that tag it, so acks, progress and thanks stay untagged.'),
+      no_reply_needed: z.boolean().optional().describe('With tag_agent, when you expect nothing back (a final answer). It ends the post with "(no reply needed)", and the other agent stays quiet.'),
       mark: z.enum(['ack', 'question', 'answer', 'done']).optional().describe('What this reply is, shown as a reaction on the task message: ack ("On it", no reaction), question (you need their answer to go on), answer (a quick question answered), done (the task is finished). Leave it out only on the reply that finishes the task.'),
     },
     async run(args) {
-      const a = args as { channel: string; thread_ts: string; text: string; private?: boolean; owner_asked?: boolean; waiting?: string; mark?: keyof typeof MARKS; wide?: boolean; no_reply_needed?: boolean }
+      const a = args as { channel: string; thread_ts: string; text: string; private?: boolean; owner_asked?: boolean; waiting?: string; mark?: keyof typeof MARKS; wide?: boolean; tag_agent?: boolean; no_reply_needed?: boolean }
       const key = `${a.channel}:${a.thread_ts}`
       // A reply goes back where a task came from, never to a channel picked from the conversation.
       if (!a.private && !taskChannels.has(a.channel)) return { isError: true, text: 'refused: no task came from that channel; use private=true' }
@@ -213,7 +213,7 @@ export function sessionTools(o: {
       }
       const layout = layoutRefusal(a.text, a)
       if (layout) return { isError: true, text: layout }
-      const { via, where: at } = a.private ? await post(key, o.botDm(), dmThread.get(key), a.text) : await post(key, a.channel, a.thread_ts, a.text, { tag: agents.get(key)?.tag, noReply: a.no_reply_needed })
+      const { via, where: at } = a.private ? await post(key, o.botDm(), dmThread.get(key), a.text) : await post(key, a.channel, a.thread_ts, a.text, a.tag_agent ? { tag: agents.get(key)?.tag, noReply: a.no_reply_needed } : {})
       // A question keeps the task open, so its final reply still marks the task.
       const emoji = MARKS[a.mark ?? 'done']
       if (emoji) {
