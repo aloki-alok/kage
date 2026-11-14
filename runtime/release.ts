@@ -51,20 +51,30 @@ export async function release(root: string, dryRun: boolean): Promise<Release> {
   const last = (await sh(root, 'git', 'tag', '--list', 'v*', '--sort=-v:refname')).split('\n')[0] || undefined
   // ponytail: with no earlier release the notes list the last 30 merges, not all history.
   const titles = (await sh(root, 'git', 'log', '--first-parent', '--format=%s', ...last ? [`${last}..HEAD`] : ['-30'])).split('\n').filter(Boolean)
-  const plan = releasePlan(JSON.parse(readFileSync(join(root, 'package.json'), 'utf8')).version, titles)
+  // A run that died after pushing its release commit left package.json bumped: finish that release, never bump twice.
+  const pkg: string = JSON.parse(readFileSync(join(root, 'package.json'), 'utf8')).version
+  const resume = (await sh(root, 'git', 'log', '-1', '--format=%s')) === `Release v${pkg}` && await tryOut(root, 'git', 'rev-parse', '-q', '--verify', `refs/tags/v${pkg}`) === undefined
+  const plan = releasePlan(pkg, titles)
   if (!plan) return { problems: [...problems, `nothing merged since ${last}`] }
-  const tag = `v${plan.version}`
+  const version = resume ? pkg : plan.version
+  const tag = `v${version}`
   if (await tryOut(root, 'git', 'rev-parse', '-q', '--verify', `refs/tags/${tag}`) !== undefined) problems.push(`the tag ${tag} already exists`)
   const origin = await tryOut(root, 'git', 'remote', 'get-url', 'origin') ?? ''
   const link = last ? compareUrl(origin, last, tag) : undefined
   const notes = plan.notes + (link ? `\n\nFull changes: ${link}` : '')
-  if (dryRun || problems.length) return { version: plan.version, notes, problems }
+  if (dryRun || problems.length) return { version, notes, problems }
 
-  // Each step is safe to see fail: a failed push of main drops the release commit again, and the stable tag moves last.
-  writeVersion(root, plan.version)
-  await sh(root, 'git', 'commit', '-q', '-m', `Release ${tag}`, '--', 'package.json', 'package-lock.json', '.claude-plugin/plugin.json')
-  try { await sh(root, 'git', 'push', '-q', 'origin', 'main') }
-  catch (e) { await sh(root, 'git', 'reset', '-q', '--hard', 'HEAD~1'); throw e }
+  // A failed push of main drops the release commit again. After it, a failed step is finished by the next run (resume above).
+  if (!resume) {
+    writeVersion(root, version)
+    await sh(root, 'git', 'commit', '-q', '-m', `Release ${tag}`, '--', 'package.json', 'package-lock.json', '.claude-plugin/plugin.json')
+    try { await sh(root, 'git', 'push', '-q', 'origin', 'main') }
+    catch (e) {
+      await sh(root, 'git', 'fetch', '-q', 'origin', 'main')   // a push that landed but timed out must not be dropped
+      if (await sh(root, 'git', 'rev-parse', 'HEAD') !== await sh(root, 'git', 'rev-parse', 'origin/main')) await sh(root, 'git', 'reset', '-q', '--hard', 'HEAD~1')
+      throw e
+    }
+  }
   await sh(root, 'git', 'tag', '-a', tag, '-m', tag)
   await sh(root, 'git', 'push', '-q', 'origin', `refs/tags/${tag}`)
   await sh(root, 'git', 'update-ref', 'refs/tags/stable', 'HEAD')   // a lightweight tag, whatever the user's git config says
@@ -72,7 +82,7 @@ export async function release(root: string, dryRun: boolean): Promise<Release> {
   const file = join(mkdtempSync(join(tmpdir(), 'kage-release-')), 'notes.md')
   writeFileSync(file, notes)
   const url = await sh(root, 'gh', 'release', 'create', tag, '--verify-tag', '--title', tag, '--notes-file', file)
-  return { version: plan.version, notes, problems, url }
+  return { version, notes, problems, url }
 }
 
 // The hub's daily check (router.ts): release when main is ahead of `stable` and the soak gate passes. A skip is

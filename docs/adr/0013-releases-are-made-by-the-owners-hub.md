@@ -19,6 +19,8 @@ Only the repo admin's hub does this. The hub asks `gh repo view --json viewerPer
 - A merge reaches installs in about 24 hours after the owner's hub runs it, with no human step.
 - Any hub restart restarts the 24 hours, so a repo that merges more than daily never releases by itself. `kage release` is the owner's override.
 - The release commit changes only version files, so CI on it is not awaited before `stable` moves.
+- The hub's own checkout must sit on `main`, level with `origin/main`: the owner pulls main by hand (the ship skill does), because the hub follows `stable` only when it is behind it.
+- A release that fails after its push is finished by `kage release` (before the tag) or by `gh release create` (after it). The hub DMs the owner when that happens.
 - Releases are unsigned (#58). A hub that can push to the repo can move `stable`.
 
 ## How it is checked

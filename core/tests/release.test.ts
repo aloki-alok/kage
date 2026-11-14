@@ -38,6 +38,13 @@ describe('releasePlan', () => {
     const p = releasePlan('0.3.0', ['Merge pull request #131 from acme/kage-x', 'Bump the all group with 7 updates (#61)', 'Fix a stuck thread (#151)'])!
     assert.equal(p.notes, '## Fixed\n- Fix a stuck thread (#151)')
   })
+  test('a new feature that mentions skills, docs or bugs is still new', () => {
+    assert.equal(releasePlan('0.3.0', ['Add skills to kagelets (#1)'])!.version, '0.4.0')
+    assert.equal(releasePlan('0.3.0', ['Add a bug report command (#2)'])!.version, '0.4.0')
+  })
+  test('a release commit is internal', () => {
+    assert.equal(releasePlan('0.3.0', ['Release v0.3.0'])!.notes, 'Internal changes only.')
+  })
   test('no merges gives no release', () => {
     assert.equal(releasePlan('0.3.0', []), undefined)
   })

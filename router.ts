@@ -560,7 +560,8 @@ async function autoUpdate() {
 
 // The owner's hub makes the release that other installs follow (ADR 0013), daily. A skip logs one line and DMs nothing.
 async function autoRelease(now: number) {
-  const r = await releaseIfSoaked(CODE, DIR, VERSION, now)
+  const r = await releaseIfSoaked(CODE, DIR, VERSION, now).catch(e => ({ skip: `failed: ${e}`, broke: true }))
+  if ('broke' in r) void slack.notifyOwner(`Kage's daily release stopped part way: ${r.skip}. kage release finishes it.`)
   if ('skip' in r) return log(`auto-release did nothing: ${r.skip}`)
   log(`auto-release made v${r.version}`)
   void slack.notifyOwner(`Released Kage v${r.version}. <${r.url}|Release notes>`)

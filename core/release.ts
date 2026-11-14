@@ -5,10 +5,9 @@ type Kind = 'new' | 'fixed' | 'other' | 'internal'
 
 // Titles are plain sentences, so the first words decide. Internal work (docs, tests, ADRs, skills) is left out of the notes.
 function kind(title: string): Kind {
-  if (/^(merge|bump)\b/i.test(title)) return 'internal'
-  if (/\b(adrs?|docs?|ci|tests?|refactor|skill|contributing)\b/i.test(title)) return 'internal'
-  if (/^(fix|fixes|fixed|stop|refuse)\b|\b(fix|fixes|fixed|refuse|refuses|bug)\b/i.test(title)) return 'fixed'
+  if (/^(merge|bump|release|docs?|ci|tests?|refactor|chore)\b|\badrs?\b/i.test(title)) return 'internal'
   if (/^(add|adds|new|let|allow|support)\b/i.test(title)) return 'new'
+  if (/^(fix|fixes|fixed|stop)\b|\b(fix|fixes|fixed|refuse|refuses)\b/i.test(title)) return 'fixed'
   return 'other'
 }
 
