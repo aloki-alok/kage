@@ -103,6 +103,8 @@ on() {
       mkdir -p "$(dirname "$PLIST")"
       plist_text >"$PLIST"
       launchctl bootout "$GUI/$LABEL" 2>/dev/null || true
+      # bootout returns before launchd lets go of the label, and a bootstrap in that gap fails with "5: Input/output error".
+      for _ in {1..50}; do launchctl print "$GUI/$LABEL" >/dev/null 2>&1 || break; sleep 0.2; done
       launchctl bootstrap "$GUI" "$PLIST"
       echo "On: macOS keeps $NAME running and starts it at login (LaunchAgent $LABEL)."
       remove_old_login_item ;;

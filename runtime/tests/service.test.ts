@@ -227,6 +227,27 @@ describe('service.sh: the unit the OS supervises', () => {
     assert.equal((await sh([join(k.dir, 'service.sh'), 'stale'], env)).code, 1)
     rmSync(k.root, { recursive: true })
   })
+  test('on, over a loaded LaunchAgent, waits for launchd to let go of the label before it loads the new one', async () => {
+    const k = kageCopy()
+    const bin = join(k.root, 'bin'), ld = join(k.root, 'ld')
+    mkdirSync(bin); mkdirSync(ld)
+    writeFileSync(join(bin, 'uname'), '#!/bin/bash\necho Darwin\n', { mode: 0o755 })
+    // Like launchd: bootout returns at once, the label stays loaded a few prints longer, and a bootstrap meanwhile fails with 5.
+    writeFileSync(join(bin, 'launchctl'), `#!/bin/bash
+s='${ld}'
+case "$1" in
+  print) [[ -f $s/loaded ]] || exit 113; n=$(cat $s/loaded); [[ $n == up ]] && exit 0
+         if (( n > 0 )); then echo $((n-1)) >$s/loaded; else rm $s/loaded; fi; exit 0 ;;
+  bootout) [[ -f $s/loaded ]] && echo 3 >$s/loaded; exit 0 ;;
+  bootstrap) [[ -f $s/loaded ]] && { echo 'Bootstrap failed: 5: Input/output error' >&2; exit 5; }; echo up >$s/loaded ;;
+esac
+`, { mode: 0o755 })
+    writeFileSync(join(ld, 'loaded'), 'up')
+    const r = await sh([join(k.dir, 'service.sh'), 'on'], { KAGE_ENV: k.envFile, KAGE_CWD: k.work, HOME: k.root, PATH: `${bin}:${dirname(process.execPath)}:/usr/bin:/bin` })
+    assert.equal(r.code, 0, r.out)
+    assert.equal(readFileSync(join(ld, 'loaded'), 'utf8').trim(), 'up')
+    rmSync(k.root, { recursive: true })
+  })
   test('a wrong command is refused with the usage line', async () => {
     const k = kageCopy()
     const r = await sh([join(k.dir, 'service.sh'), 'sideways'], { KAGE_ENV: k.envFile, HOME: k.root })
