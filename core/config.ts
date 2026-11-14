@@ -215,7 +215,7 @@ export function checkSettings(c: Config, s: Secrets): { name: string; teammates:
 // What a session may change through set_setting. safe: applies at once. power: grants reach or runs code, so the owner says yes
 // on a card first. never: not settable that way. A key not listed is power, so a new key starts closed.
 const SAFE = [/^kagelets\.(max|dailyUsd|totalDailyUsd|chainUsd)$/, /^afk\.(on|model)$/, /^jev\.(threshold|model)$/,
-  /^connectors\.(voice|github|meeting|browser|whatsapp)\.(port|max|perHour|hookPort)$/, /^connectors\.browser\.block$/, /^connectors\.whatsapp\.model$/]
+  /^connectors\.(voice|github|meeting|browser|whatsapp)\.(port|max|perHour|hookPort)$/, /^connectors\.whatsapp\.model$/]
 export function settingTier(key: string): 'safe' | 'power' | 'never' {
   const parts = key.split('.')
   if (!key || parts.some(p => !p || ['__proto__', 'constructor', 'prototype'].includes(p)) || ['secrets', 'version', 'unknown'].includes(parts[0]!)) return 'never'

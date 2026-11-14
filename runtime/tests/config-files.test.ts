@@ -3,7 +3,7 @@ import assert from 'node:assert/strict'
 import { existsSync, mkdtempSync, readdirSync, readFileSync, statSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { hasSettings, importLegacy, readSettings, sweepImported, updateConfig, updateSecrets } from '../config-files.ts'
+import { hasSettings, importLegacy, setKey, readSettings, sweepImported, updateConfig, updateSecrets } from '../config-files.ts'
 
 const ENV = 'KAGE_NAME=kagetest\nKAGE_MAX_SESSIONS=6\nKAGE_TEAMMATES=UTEST0001\nSLACK_APP_TOKEN=xapp-fake\nSLACK_USER_TOKEN=xoxp-fake\nSLACK_BOT_TOKEN=xoxb-fake\nKAGE_ODD_TOKEN=xoxb-secret-fake\n'
 const world = (text = ENV) => {
@@ -130,6 +130,7 @@ describe('a session may not change the settings by this code either', () => {
       try {
         assert.throws(() => updateConfig(w.env, c => ({ ...c, name: 'x' })), /terminal/)
         assert.throws(() => updateSecrets(w.env, s => ({ ...s, browserToken: 'x' })), /terminal/)
+        assert.throws(() => setKey(w.env, 'afk.model', 'sonnet'), /terminal/)
       } finally { delete process.env[marker] }
     }
     assert.equal(readFileSync(join(w.dir, 'config.json'), 'utf8'), before)

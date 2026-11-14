@@ -23,6 +23,7 @@ import type { Task } from './protocol.ts'
 import type { AskOwner, Manage } from './kagelets.ts'
 import type { EventKind } from '../core/events.ts'
 import { settingTier } from '../core/config.ts'
+import { slackPlain } from '../core/outbound.ts'
 
 // The reaction each kind of reply leaves on the task message. An ack leaves none: 🥷 already says "picked up".
 // Ninja set, picked by the owner: 📜 a scroll back to you (waits on your answer), 🗡️ a quick strike, ⚔️ the task done.
@@ -648,6 +649,8 @@ export function sessionTools(o: {
     async run(args) {
       const a = args as { channel: string; thread_ts: string; key: string; value: unknown }
       if (!ownerOnly(a) || a.channel === 'voice' || agents.get(`${a.channel}:${a.thread_ts}`)) return { isError: true, text: "refused: only the owner's own task may change a setting" }
+      // Lower catches more of an agent's posts as risky, so a session may not loosen it past 0.3.
+      if (a.key === 'jev.threshold' && !(typeof a.value === 'number' && a.value >= 0.3)) return { isError: true, text: 'refused: jev.threshold must be a number of 0.3 or more' }
       const tier = settingTier(a.key)
       if (tier === 'never') return { isError: true, text: `refused: ${a.key} is not a setting a session may change` }
       if (tier === 'power') {
@@ -717,11 +720,13 @@ export function sessionTools(o: {
     // Ask the owner, in their DM, to approve one tool call. Rejects when the prompt did not post.
     async askOwner(p: { id: string; tool: string; description: string; preview: string }) {
       const MAX = 2500
+      // The description may carry a model's words: cap it, and defuse <url|text> so a link cannot rename what is approved.
+      const description = slackPlain(p.description.length > 400 ? `${p.description.slice(0, 400)}...` : p.description)
       const preview = p.preview.replaceAll('```', "'''")
       const cut = preview.length > MAX ? `${preview.slice(0, MAX)}\n... ${preview.length - MAX} more chars NOT shown. Deny unless you checked it in the terminal.` : preview
       const r = await bot.chat.postMessage({
         channel: o.botDm(),
-        text: `*Approve?* ${p.tool.replace(/^mcp__(.+__)?/, '').replaceAll('_', ' ')} · ${where}${p.description ? `\n${p.description}` : ''}\n\`\`\`${cut}\`\`\`\nReply \`yes ${p.id}\` or \`no ${p.id}\``,
+        text: `*Approve?* ${p.tool.replace(/^mcp__(.+__)?/, '').replaceAll('_', ' ')} · ${where}${description ? `\n${description}` : ''}\n\`\`\`${cut}\`\`\`\nReply \`yes ${p.id}\` or \`no ${p.id}\``,
       })
       // The owner's yes under this message counts only because of this row (cardAt in core/ledgers.ts).
       append('posted', [o.botDm(), r.ts!, 'card', p.id])

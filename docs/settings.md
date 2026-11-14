@@ -14,7 +14,7 @@ node -e "import('./core/config.ts').then(m => console.log(m.KEYS.map(k => k.path
 
 ## Who may change a setting
 
-Only your own terminal runs `kage set`: it refuses inside a Kage session. No session reads `secrets.json` or an env file, and none writes `config.json`. In your own task, a session changes a setting with `set_setting`. Limits, models, AFK, Jev thresholds, ports and the browser block list apply at once. People, any `command`, a connector turned on, and every `harness` key wait for your yes on a card. Tokens cannot be set that way.
+Only your own terminal runs `kage set`: it refuses inside a Kage session. No session reads `secrets.json` or an env file, and none writes `config.json`. In your own task, a session changes a setting with `set_setting`. Limits, models, AFK, Jev thresholds (0.3 or more) and ports (1024 to 65535) apply at once. People, any `command`, a connector turned on, the browser block list, and every `harness` key wait for your yes on a card. Tokens cannot be set that way.
 
 ## Slack and identity
 
