@@ -4,13 +4,12 @@
 // {event:"media"} out, {event:"clear"} when someone cuts in, {event:"end_call"} when the agent hangs up).
 import type { Page } from 'playwright-core'
 
-// ownerCode: the hub's one-time code when the owner sent Kage in; the agent hands it to ask_kage, as on a phone call.
-export type Pipeline = { api: string; key: string; agent: number; ownerCode?: string }
+export type Pipeline = { api: string; key: string; agent: number }
 
 export async function bridge(page: Page, p: Pipeline, log: (...a: unknown[]) => void, ended = () => {}): Promise<() => void> {
   const r = await fetch(`${p.api}/api/v1/sessions/create`, {
     method: 'POST', headers: { authorization: `Bearer ${p.key}`, 'content-type': 'application/json' },
-    body: JSON.stringify({ type: 'voice', agent_id: p.agent, ...(p.ownerCode && { custom_variables: { owner_code: p.ownerCode }, call_context: { owner_code: p.ownerCode } }) }),
+    body: JSON.stringify({ type: 'voice', agent_id: p.agent }),
   })
   const j = await r.json().catch(() => ({})) as { ws_url?: string; data?: { ws_url?: string } }
   const url = j.ws_url ?? j.data?.ws_url

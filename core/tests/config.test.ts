@@ -66,7 +66,6 @@ KAGE_GITHUB_SECRET=gh-fake
 KAGE_MEETING_TOKEN=meet-fake
 KAGE_BROWSER_TOKEN=browser-fake
 JEV_API_KEY=jev-fake
-KAGE_CARTESIA_KEY=cartesia-fake
 KAGE_VOICE_AGENT_KEY=voice-agent-fake
 `
 

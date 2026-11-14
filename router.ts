@@ -511,7 +511,6 @@ const meeting = secrets.meetingToken ? connectMeeting({
   notify: text => void slack.notifyOwner(text),
   perHour: conn.meeting?.perHour || 10, inbox, untake: source => store.untake(source), name: NAME,
   end: key => { if (meetCall(key)) d.end(key) },   // only the call's own session
-  code: () => voice?.issueCode(),   // voice is made below; a join only happens later, from a session
 }) : undefined
 void meeting?.listening.then(port => { log(`meetings on: 127.0.0.1:${port}/meeting`); if (existsSync(`${CODE}/meetbot/node_modules`)) meetbot(port) })
 // The meeting bot runs as the hub's child when it is installed in this checkout (meetbot/node_modules): it waits
@@ -519,7 +518,7 @@ void meeting?.listening.then(port => { log(`meetings on: 127.0.0.1:${port}/meeti
 // A bot on another machine still works the same way, from its own config (meetbot/README.md).
 function meetbot(port: number) {
   const child: ChildProcess = spawn(process.execPath, ['bot.ts'], { cwd: `${CODE}/meetbot`, stdio: ['ignore', 'pipe', 'pipe'],
-    env: { ...Object.fromEntries(['PATH', 'HOME', 'TMPDIR', 'LANG', 'DISPLAY', 'XDG_RUNTIME_DIR', 'PLAYWRIGHT_BROWSERS_PATH'].flatMap(k => (process.env[k] ? [[k, process.env[k]]] : []))), KAGE_MEETBOT_HUB: `http://127.0.0.1:${port}`, KAGE_MEETBOT_TOKEN: secrets.meetingToken ?? "", KAGE_MEETBOT_CARTESIA: secrets.cartesiaKey ?? "", KAGE_MEETBOT_PIPELINE: conn.meeting?.agentApi && conn.meeting.agentId ? JSON.stringify({ api: conn.meeting.agentApi, agent: conn.meeting.agentId }) : "", KAGE_MEETBOT_PIPELINE_KEY: secrets.voiceAgentKey ?? "" } })
+    env: { ...Object.fromEntries(['PATH', 'HOME', 'TMPDIR', 'LANG', 'DISPLAY', 'XDG_RUNTIME_DIR', 'PLAYWRIGHT_BROWSERS_PATH'].flatMap(k => (process.env[k] ? [[k, process.env[k]]] : []))), KAGE_MEETBOT_HUB: `http://127.0.0.1:${port}`, KAGE_MEETBOT_TOKEN: secrets.meetingToken ?? "", KAGE_MEETBOT_PIPELINE: conn.meeting?.agentApi && conn.meeting.agentId ? JSON.stringify({ api: conn.meeting.agentApi, agent: conn.meeting.agentId }) : "", KAGE_MEETBOT_PIPELINE_KEY: secrets.voiceAgentKey ?? "" } })
   const lines = (b: Buffer) => { for (const l of b.toString().split('\n')) if (l.trim()) log(`meetbot: ${l.replace(/^\S+Z /, '')}`) }
   child.stdout?.on('data', lines)
   child.stderr?.on('data', lines)
