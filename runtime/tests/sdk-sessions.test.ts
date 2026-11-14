@@ -6,6 +6,7 @@ import { join } from 'node:path'
 import { createSdkMcpServer, tool } from '@anthropic-ai/claude-agent-sdk'
 import { z } from 'zod'
 import { Dispatcher } from '../../core/sessions.ts'
+import { cardAt } from '../../core/ledgers.ts'
 import { sessionTools } from '../kage-tools.ts'
 import type { Task, ToSession } from '../protocol.ts'
 import { costRecorder, openLedgers, runEvents } from '../ledger.ts'
@@ -33,7 +34,7 @@ function setup(o: { transcript?: boolean; silent?: boolean; dmFails?: boolean; g
     chat: { postMessage: async (a: { channel: string; text: string }) => {
       if (o.dmFails) throw new Error('slack down')
       posts.push(a.text)
-      return { ts: '9.1' }
+      return { ts: `9.${posts.length}` }
     } },
     reactions: { add: async () => {} },
     users: { info: async () => ({}) },
@@ -70,7 +71,8 @@ function setup(o: { transcript?: boolean; silent?: boolean; dmFails?: boolean; g
     meta: { channel: o.channel ?? 'C1', thread_ts: '5.5', place: o.place ?? '#general', permalink: 'https://x/p' },
     origin: { channel: o.channel ?? 'C1', ts: '5.5' },
   })
-  const idOf = (text: string) => /`yes ([a-km-z]{5})`/.exec(text)![1]!
+  // The card's request id, read from the ledger row the hub keeps for the card's message (the text carries no code).
+  const idOf = (text: string) => cardAt(openLedgers(dir).text('posted'), 'DBOT', `9.${posts.lastIndexOf(text) + 1}`)!
   return { sdk, posts, d, s, task, idOf, results, blocks, turns, call, servers, tools }
 }
 
@@ -314,6 +316,8 @@ describe('Kage sessions on the Agent SDK', () => {
     assert.equal(t.d.verdict('zzzzz', { type: 'verdict', request_id: 'zzzzz', behavior: 'allow' }), false)
     assert.equal(t.d.verdict(id, { type: 'verdict', request_id: id, behavior: 'allow' }), true)
     assert.deepEqual(await ask, { behavior: 'allow', updatedInput: { command: 'ls' } })
+    // #74: a card that got its answer ignores a later one, and the other card is untouched.
+    assert.equal(t.d.verdict(id, { type: 'verdict', request_id: id, behavior: 'deny' }), false)
     assert.equal(await Promise.race([other, tick(20).then(() => 'pending')]), 'pending')
     const id2 = t.idOf(t.posts.at(-1)!)
     t.d.verdict(id2, { type: 'verdict', request_id: id2, behavior: 'deny' })

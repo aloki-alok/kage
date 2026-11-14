@@ -261,6 +261,9 @@ describe("a session's Kage tools", () => {
     const ts = '9.1'   // the fake Slack's first post
     assert.equal(s.posts.at(-1)!.channel, 'DBOT')
     assert.equal(cardAt(s.ledgers.text('posted'), 'DBOT', ts), 'aekbe')
+    // #74: the card carries no code. The owner answers by replying in its thread.
+    assert.match(s.posts.at(-1)!.text, /Reply `yes` or `no` in this thread/)
+    assert.doesNotMatch(s.posts.at(-1)!.text, /aekbe/)
     assert.equal((await s.call('edit_message', { channel: 'DBOT', ts, text: 'Approve? harmless' })).isError, true)
     assert.equal((await s.call('delete_message', { channel: 'DBOT', ts })).isError, true)
   })

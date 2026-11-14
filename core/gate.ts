@@ -47,8 +47,6 @@ const task = (text: string, isOwner: boolean, files: string, agent?: string): Tr
   return side ? { kind: 'task', text: text.slice(side[0].length) + files, side: true } : { kind: 'task', text: text + files, ...(agent && { agent }) }
 }
 
-// Claude Code's request ids: five lowercase letters without "l".
-const VERDICT_RE = /^\s*(y|yes|n|no)\s+([a-km-z]{5})\s*$/i
 // Inside a card's thread the card names the request, so the first word alone decides.
 const CARD_YES = /^(y|yes|ok|okay|sure|approve|approved|go)\b/i
 const CARD_NO = /^(n|no|deny|stop|cancel)\b/i
@@ -71,20 +69,12 @@ export function classify(m: SlackMessage, ids: Ids, card?: string): Trigger {
   const text = raw.replace(tag, '').trim()
   if (inDm) {
     // Approvals count only in the private DM, where the prompts are sent. Slack keeps the
-    // backticks when the owner pastes the card's `yes abcde`.
+    // backticks when the owner pastes code.
     const plain = text.replaceAll('`', '').trim()
     if (card) {
       // Never a task: a new session for this thread would ask for the same tool call again.
       const behavior = CARD_YES.test(plain) ? 'allow' : CARD_NO.test(plain) ? 'deny' : null
       return behavior ? { kind: 'verdict', request_id: card, behavior } : { kind: 'card', request_id: card }
-    }
-    const v = VERDICT_RE.exec(plain)
-    if (v) {
-      return {
-        kind: 'verdict',
-        request_id: v[2]!.toLowerCase(),
-        behavior: v[1]!.toLowerCase().startsWith('y') ? 'allow' : 'deny',
-      }
     }
     return task(text, true, filesTag(m))
   }

@@ -208,8 +208,8 @@ sequenceDiagram
     participant K as Kage hub
     participant S as Your DM with Kage
     C->>K: permission request "abcde": Bash git push
-    K->>S: Approve? Bash: git push origin fix/x ... Reply "yes abcde" or "no abcde"
-    S->>K: yes abcde
+    K->>S: Approve? Bash: git push origin fix/x ... Reply yes or no in this thread
+    S->>K: yes (in the card thread)
     K->>C: allow abcde
     Note over C: the command runs
 ```

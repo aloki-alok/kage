@@ -92,7 +92,7 @@ describe('what starts a task', () => {
       { kind: 'task', text: 'see this [files: image.png, leads.csv]' })
   })
   test('a file does not turn an approval into a task', () => {
-    assert.deepEqual(classify(msg({ channel: DM, files: [{ name: 'a.png' }], text: 'yes abcde' }), ids),
+    assert.deepEqual(classify(msg({ channel: DM, thread_ts: '9.9', files: [{ name: 'a.png' }], text: 'yes' }), ids, 'abcde'),
       { kind: 'verdict', request_id: 'abcde', behavior: 'allow' })
   })
   test('the name typed as plain "@name" also counts', () => {
@@ -162,28 +162,16 @@ describe('teammates the owner listed', () => {
 })
 
 describe('approvals', () => {
-  test('yes <id> in the DM is an allow verdict', () => {
-    assert.deepEqual(classify(msg({ channel: DM, text: 'Yes abcde' }), ids),
-      { kind: 'verdict', request_id: 'abcde', behavior: 'allow' })
-  })
-  test('n <id> in the DM is a deny verdict', () => {
-    assert.deepEqual(classify(msg({ channel: DM, text: 'n qwert' }), ids),
-      { kind: 'verdict', request_id: 'qwert', behavior: 'deny' })
+  test('a top-level "yes <code>" in the DM is a task, never a verdict (#74)', () => {
+    for (const text of ['Yes abcde', 'n qwert', '`yes nxtta`']) {
+      assert.equal(classify(msg({ channel: DM, text }), ids)?.kind, 'task', text)
+    }
   })
   test('a verdict outside the DM does not approve anything', () => {
     assert.deepEqual(classify(msg({ text: `<@${BOT}> yes abcde` }), ids), { kind: 'task', text: 'yes abcde' })
   })
-  test('a malformed id is a task, not a verdict', () => {
-    for (const text of ['yes abcd', 'yes abcdef', 'yes ablde']) {
-      assert.equal(classify(msg({ channel: DM, text }), ids)?.kind, 'task')
-    }
-  })
-  test('a verdict from someone else is dropped', () => {
+  test('a message from someone else is dropped', () => {
     assert.deepEqual(classify(msg({ user: 'UOTHER', channel: DM, text: 'yes abcde' }), ids), { kind: 'drop', reason: 'not-tagged' })
-  })
-  test('a verdict pasted as code still counts', () => {
-    assert.deepEqual(classify(msg({ channel: DM, text: '`yes nxtta`' }), ids),
-      { kind: 'verdict', request_id: 'nxtta', behavior: 'allow' })
   })
 })
 
@@ -206,6 +194,15 @@ describe('replies in an approval card thread', () => {
   test('anything else there never starts a task', () => {
     for (const text of ['wtf is going on ?', 'yesterday it worked', 'not sure']) {
       assert.deepEqual(reply(text), { kind: 'card', request_id: card }, text)
+    }
+  })
+  test('under a card the first word decides and a pasted code is ignored: yes with an older card\'s code answers this card (#74)', () => {
+    assert.deepEqual(reply('yes vbhio'), { kind: 'verdict', request_id: card, behavior: 'allow' })
+    assert.deepEqual(reply('no vbhio'), { kind: 'verdict', request_id: card, behavior: 'deny' })
+  })
+  test('under a card, only the owner\'s own typed reply answers: not an edit, a bot, an app post or a teammate', () => {
+    for (const o of [{ subtype: 'message_changed' }, { bot_id: 'B1' }, { app_id: 'A0TEST1' }, { client_msg_id: undefined }, { user: MATE }]) {
+      assert.equal(reply('yes', o).kind, 'drop', JSON.stringify(o))
     }
   })
   test('a teammate still cannot approve in a card thread', () => {
