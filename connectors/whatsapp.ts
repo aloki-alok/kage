@@ -3,7 +3,7 @@
 import { spawn } from 'node:child_process'
 import { createHmac, timingSafeEqual } from 'node:crypto'
 import { mkdirSync, readFileSync } from 'node:fs'
-import { createServer } from 'node:http'
+import { createServer, type RequestListener } from 'node:http'
 import { log } from '../config.ts'
 import type { Inbox } from '../runtime/store.ts'
 import { findSecret } from '../core/outbound.ts'
@@ -26,11 +26,47 @@ export function wahaIntake(body: string, inbox: Inbox): { source?: string; paylo
   return { source, payload: e.payload }
 }
 
+const signed = (hmac: string, body: Buffer, given: string) => {
+  const want = Buffer.from(createHmac('sha512', hmac).update(body).digest('hex'))
+  const got = Buffer.from(given)
+  return want.length === got.length && timingSafeEqual(want, got)
+}
+
+// The webhook handler. The port may face a container VM (KAGE_WA_HOOK_HOST=0.0.0.0), so the HMAC is the only
+// gate: method, path and the signature header are checked before one byte is read (a scanner costs nothing),
+// then the HMAC on the full body (a caller with a header can still make the hub buffer up to MAX_BODY, so the
+// server drops slow bodies after 10 s), then the inbox take before the 200.
+export function wahaHandler(hmac: string, inbox: Inbox, run: (p: WahaPayload, source?: string) => unknown, max = MAX_BODY): RequestListener {
+  if (!hmac) throw new Error('the WAHA webhook needs an HMAC key')
+  return (req, res) => {
+    const given = req.headers['x-webhook-hmac']
+    if (req.method !== 'POST' || req.url !== '/waha') { res.writeHead(404).end(); return }
+    if (typeof given !== 'string' || !given) { res.writeHead(401).end(); return }
+    const chunks: Buffer[] = []
+    let size = 0
+    req.on('data', c => {
+      size += c.length
+      if (size > max) { res.writeHead(413).end(); req.destroy(); return }
+      chunks.push(c)
+    })
+    req.on('end', () => {
+      if (size > max) return
+      const body = Buffer.concat(chunks)
+      if (!signed(hmac, body, given)) { res.writeHead(401).end(); return }
+      let got: ReturnType<typeof wahaIntake>
+      try { got = wahaIntake(body.toString(), inbox) } catch (err) { log('whatsapp bad event', err); res.writeHead(400).end(); return }
+      res.writeHead(200).end()
+      if (got) void run(got.payload, got.source)
+    })
+  }
+}
+
 export function startWhatsApp(o: { dir: string; name: string; owner: string; env: Record<string, string>; memory: string; inbox: Inbox; onTask: (t: WaTask) => void; notify: (text: string) => void }) {
   const waha = Object.fromEntries(readFileSync(`${o.dir}/waha/.env`, 'utf8').split('\n').filter(l => l.includes('='))
     .map(l => [l.slice(0, l.indexOf('=')), l.slice(l.indexOf('=') + 1)]))
   const URL = o.env.KAGE_WAHA_URL || 'http://127.0.0.1:3198'
-  const HMAC = waha.WHATSAPP_HOOK_HMAC_KEY!
+  const HMAC = waha.WHATSAPP_HOOK_HMAC_KEY
+  if (!HMAC) throw new Error('waha/.env has no WHATSAPP_HOOK_HMAC_KEY: the webhook would have no secret')
   const MODEL = o.env.KAGE_WA_MODEL || 'sonnet'
   // An empty folder for the guard, so its Claude finds no CLAUDE.md or project memory.
   const ROOM = `${o.dir}/standin`
@@ -112,33 +148,13 @@ export function startWhatsApp(o: { dir: string; name: string; owner: string; env
 
   // A failed event stays unhandled, so the next start tries it again.
   const run = (p: WahaPayload, source?: string) => onEvent(p).then(() => { if (source) o.inbox.handled(source) }, err => log('whatsapp event failed', err))
-  const signed = (body: Buffer, given?: string) => {
-    if (!given) return false
-    const want = Buffer.from(createHmac('sha512', HMAC).update(body).digest('hex'))
-    const got = Buffer.from(given)
-    return want.length === got.length && timingSafeEqual(want, got)
-  }
   // Localhost by default. A WAHA container that reaches the host through a VM gateway needs
   // KAGE_WA_HOOK_HOST=0.0.0.0: then only the HMAC guards it, so keep the port off the internet.
   const HOST = o.env.KAGE_WA_HOOK_HOST || '127.0.0.1'
   const PORT = Number(o.env.KAGE_WA_HOOK_PORT || 3199)
-  createServer((req, res) => {
-    const chunks: Buffer[] = []
-    let size = 0
-    req.on('data', c => {
-      size += c.length
-      if (size > MAX_BODY) { res.writeHead(413).end(); req.destroy(); return }
-      chunks.push(c)
-    })
-    req.on('end', () => {
-      const body = Buffer.concat(chunks)
-      if (req.method !== 'POST' || req.url !== '/waha' || !signed(body, req.headers['x-webhook-hmac'] as string | undefined)) { res.writeHead(401).end(); return }
-      let got: ReturnType<typeof wahaIntake>
-      try { got = wahaIntake(body.toString(), o.inbox) } catch (err) { log('whatsapp bad event', err); res.writeHead(400).end(); return }
-      res.writeHead(200).end()
-      if (got) void run(got.payload, got.source)
-    })
-  }).listen(PORT, HOST, () => log(`whatsapp on: listening on ${HOST}:${PORT}`))
+  const server = createServer(wahaHandler(HMAC, o.inbox, run))
+  server.requestTimeout = 10_000
+  server.listen(PORT, HOST, () => log(`whatsapp on: listening on ${HOST}:${PORT}`))
 
   return {
     // A session can send only to its own chat: the key names it.
