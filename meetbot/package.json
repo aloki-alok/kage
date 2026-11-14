@@ -1,0 +1,10 @@
+{
+  "name": "kage-meetbot",
+  "description": "Kage's meeting bot: joins a Google Meet in its own Chromium and talks to the owner's Kage hub.",
+  "license": "PolyForm-Noncommercial-1.0.0",
+  "type": "module",
+  "private": true,
+  "engines": { "node": ">=22.18" },
+  "scripts": { "start": "node bot.ts" },
+  "dependencies": { "playwright-core": "1.60.0" }
+}

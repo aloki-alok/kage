@@ -60,6 +60,7 @@ Write logs to stderr only. In a tmux pane, stdout carries the channel protocol, 
 | `docs/settings.md` | Every setting in the env file. |
 | `AGENTS.md` | Setup steps for a coding agent. `CLAUDE.md` loads it and this file. |
 | `extension/` | Kage's Chrome extension (#114): plain JS, no build. It polls the hub (`connectors/browser.ts`), reads tabs, and acts in them through Chrome's debugger, one action at a time, after the owner's yes. |
+| `meetbot/` | Kage's meeting bot (#63): its own package, run on any machine with a screen or Xvfb. It drives its own Chromium into a Google Meet and talks to the hub at the meeting webhook (`connectors/meeting.ts`). All of Meet's page knowledge is `meetbot/page.js`. |
 | `skills/` | Skills every Kage session loads (the router passes the repo as a plugin, `router.ts`). Generic lessons only: no names, ids, customers, dates or quotes. |
 | `.claude-plugin/`, `.mcp.json`, `hooks/` | Used only when Kage is installed as a Claude Code plugin (tmux panes on the plugin route). |
 
@@ -87,6 +88,7 @@ Write logs to stderr only. In a tmux pane, stdout carries the channel protocol, 
 | `db-read.ts` | The check a `db_read` query passes: one read statement, capped. |
 | `browser.ts` | What a session may see of the owner's Chrome (#114): the block list, tabs shown by id, and a page's text quoted as data. |
 | `browser-act.ts` | Acting in the owner's Chrome: a page's controls as refs (labels quoted as data), which actions and keys are allowed, and the approval card's line, named from the page. |
+| `meetbot.ts` | Kage's meeting bot (#63): which Meet links it may open, and the caption lines it posts, kept as data. |
 | `browser-pair.ts` | Pairing the Chrome extension with no paste: its fixed id, the helper's folder in each Chromium browser, and Chrome's message framing. `cli/browser-pair.ts` is the helper Chrome starts. |
 | `slack-scopes.ts` | The bot and user scopes the Slack app needs (the manifest writes them), which a granted list lacks, the doctor's lines, and whether the owner is told of a missing set. `runtime/slack-scopes.ts` asks Slack, and `cli/slack.ts` is `kage slack upgrade` (it names the scopes to add in the app's manifest page), and `cli/doctor/scopes.ts` is the doctor line. |
 | `slack-files.ts` | Files attached to a Slack task: which the hub downloads (not canvases or quip docs, 25 MB each, 10 per task), the saved name, and the lines that list them in the task text. `runtime/slack-files.ts` downloads them with the user token into the thread's files folder. |
