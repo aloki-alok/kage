@@ -1,6 +1,6 @@
 # 0012. A specialist kagelet ships with its own skill
 
-Status: Accepted, applies from the meeting bot (#63) on
+Status: Accepted, applies from the meeting bot on
 
 ## Context
 
