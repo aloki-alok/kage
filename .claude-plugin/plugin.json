@@ -1,8 +1,18 @@
 {
   "name": "kage",
   "version": "0.3.0",
-  "description": "Tag your own Claude Code session from anywhere in Slack.",
-  "author": { "name": "Alok", "url": "https://github.com/aloki-alok" },
+  "description": "Your own Claude Code, reachable from Slack, WhatsApp, email, phone calls, meetings and your browser. It works on your machine with your setup and answers where you asked.",
+  "author": {
+    "name": "Alok Ranjan",
+    "url": "https://github.com/aloki-alok"
+  },
   "repository": "https://github.com/aloki-alok/kage",
-  "license": "MIT"
+  "license": "PolyForm-Noncommercial-1.0.0",
+  "homepage": "https://github.com/aloki-alok/kage",
+  "keywords": [
+    "slack",
+    "channels",
+    "remote",
+    "agent"
+  ]
 }

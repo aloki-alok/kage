@@ -1,8 +1,18 @@
 {
   "name": "kage",
-  "description": "Kage: a Slack channel for Claude Code",
-  "owner": { "name": "Alok", "url": "https://github.com/aloki-alok" },
+  "description": "Kage: your own Claude Code, wherever you are",
+  "owner": { "name": "Alok Ranjan", "url": "https://github.com/aloki-alok" },
   "plugins": [
-    { "name": "kage", "source": "./", "description": "Tag your own Claude Code session from anywhere in Slack." }
+    {
+      "name": "kage",
+      "source": "./",
+      "description": "Your own Claude Code, reachable from Slack, WhatsApp, email, phone calls, meetings and your browser. It works on your machine with your setup and answers where you asked.",
+      "category": "productivity",
+      "keywords": ["slack", "channels", "remote", "agent"],
+      "homepage": "https://github.com/aloki-alok/kage",
+      "repository": "https://github.com/aloki-alok/kage",
+      "license": "PolyForm-Noncommercial-1.0.0",
+      "author": { "name": "Alok Ranjan", "url": "https://github.com/aloki-alok" }
+    }
   ]
 }

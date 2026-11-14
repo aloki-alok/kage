@@ -250,4 +250,6 @@ The code map, the tests and the build are in [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## License
 
-MIT. See [LICENSE](LICENSE).
+Free for personal, research, hobby and other noncommercial use, under the [PolyForm Noncommercial License 1.0.0](LICENSE). Commercial use needs a separate license: open an issue to ask.
+
+Releases before this change stay under MIT, and so do the files listed in [LICENSE-MIT](LICENSE-MIT).
