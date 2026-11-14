@@ -23,6 +23,8 @@ import type { Task } from './protocol.ts'
 import type { AskOwner, Manage } from './kagelets.ts'
 import type { kageletMemory } from './kagelet-memory.ts'
 import type { EventKind } from '../core/events.ts'
+import { settingTier } from '../core/config.ts'
+import { slackPlain } from '../core/outbound.ts'
 
 // The reaction each kind of reply leaves on the task message. An ack leaves none: 🥷 already says "picked up".
 // Ninja set, picked by the owner: 📜 a scroll back to you (waits on your answer), 🗡️ a quick strike, ⚔️ the task done.
@@ -69,11 +71,13 @@ export function sessionTools(o: {
   dbRead?: { command: () => string | undefined; maxRows: number; timeoutMs?: number }
   // The manager's side in the hub (runtime/kagelets.ts). Absent: kagelets are off (tmux panes).
   kagelets?: { list(): string; manage(a: Manage, ask?: AskOwner): Promise<string> }
+  // Changes one config.json key (runtime/config-files.ts setKey), and throws why when the settings refuse the value. Absent: no set_setting tool.
+  settings?: { set(key: string, value: unknown): void }
   // Put an approval card in front of the owner and wait: true only on their yes. Absent: no card (tmux panes).
   approve?: (tool: string, description: string, input: Record<string, unknown>) => Promise<boolean>
   // The event log, on this session's current run (runtime/ledger.ts runEvents). Absent: tmux panes.
   event?: (kind: EventKind, detail: string) => void
-  // The owner's Chrome, through Kage's extension (connectors/browser.ts). Absent: KAGE_BROWSER_TOKEN is not set.
+  // The owner's Chrome, through Kage's extension (connectors/browser.ts). Absent: browserToken is not set.
   browser?: { call(op: string, args: Record<string, unknown>): Promise<unknown>; block: string[] }
   // A kagelet's report and messages, for the hub's chain router (runtime/kagelets.ts kageletRoutes).
   onReport?: (r: { needs: string; output: string }) => void
@@ -529,7 +533,7 @@ export function sessionTools(o: {
       schedule: s.optional().describe('save: a 5-field cron in local time, e.g. "0 9 * * 1-5"'),
       after: s.optional().describe('save: the kagelet whose report output starts this one, as a chain step (at most 5 deep, no cycles); schedule may then be left out'),
       tools: z.array(s).optional().describe('save: its grant, by full tool name: WebSearch, WebFetch, db_read, outside MCP tools'),
-      read_command: s.optional().describe('save with db_read and no KAGE_DB_READ_COMMAND: one of the read commands the owner already approved. Leave out to keep this kagelet\'s own'),
+      read_command: s.optional().describe('save with db_read and no kagelets.dbRead.command: one of the read commands the owner already approved. Leave out to keep this kagelet\'s own'),
       job: s.optional().describe('save: what to do on each run, complete on its own'),
       why: s.optional().describe('save: one line on why it exists'),
       model: s.optional().describe('save: sonnet (the default, leave out), or opus, haiku, fable, for a job that needs it. Leave out to keep the kagelet\'s own'),
@@ -674,6 +678,33 @@ export function sessionTools(o: {
       },
     })
   }
+  // The owner's own task may change a setting here, and no other tool changes config.json: the file tools are closed to every session
+  // (core/guards.ts protectConfig). A safe key applies; one that grants power waits for the owner's yes on a card.
+  if (!name && o.settings) tools.push({
+    name: 'set_setting',
+    description: `Change one ${Title} setting when the owner's own task asks for it: key is the dotted path in config.json (kagelets.dailyUsd, afk.model, connectors.voice.port) and value is JSON. Limits, models, AFK, Jev thresholds, ports and the browser block list apply at once. Anything that grants power (people, a command, a connector on, harness) puts a card in front of the owner first, and nothing changes without their yes. Tokens are never settable.`,
+    shape: {
+      channel: s.describe('channel attribute from the task tag'),
+      thread_ts: s.describe('thread_ts attribute from the task tag'),
+      key: s.describe('the dotted config.json key'),
+      value: z.unknown().describe('the new value, as JSON'),
+    },
+    async run(args) {
+      const a = args as { channel: string; thread_ts: string; key: string; value: unknown }
+      if (!ownerOnly(a) || a.channel === 'voice' || agents.get(`${a.channel}:${a.thread_ts}`)) return { isError: true, text: "refused: only the owner's own task may change a setting" }
+      // Lower catches more of an agent's posts as risky, so a session may not loosen it past 0.3.
+      if (a.key === 'jev.threshold' && !(typeof a.value === 'number' && a.value >= 0.3)) return { isError: true, text: 'refused: jev.threshold must be a number of 0.3 or more' }
+      const tier = settingTier(a.key)
+      if (tier === 'never') return { isError: true, text: `refused: ${a.key} is not a setting a session may change` }
+      if (tier === 'power') {
+        if (!o.approve) return { isError: true, text: `refused: ${a.key} needs the owner's yes on a card, and this session cannot show one. The owner runs kage set in their own terminal.` }
+        if (!await o.approve('set_setting', `Change ${a.key} to ${JSON.stringify(a.value)}. This setting grants reach or runs code, so it needs your yes.`, { key: a.key, value: a.value })) return { isError: true, text: `The owner said no. ${a.key} is unchanged.` }
+      }
+      try { o.settings!.set(a.key, a.value) } catch (e) { return { isError: true, text: `not changed: ${(e as Error).message}` } }
+      o.event?.('tool', `set_setting ${a.key}`)
+      return { text: `Set ${a.key}. The hub applies it now, or restarts once every session is quiet.` }
+    },
+  })
   // The owner's own task may have Kage post where no task came from (a channel it just made, an announcement),
   // so no session needs the bot token itself. Bot only: never the owner's account, never a kagelet.
   if (!name && !o.dreaming) tools.push({
@@ -732,11 +763,13 @@ export function sessionTools(o: {
     // Ask the owner, in their DM, to approve one tool call. Rejects when the prompt did not post.
     async askOwner(p: { id: string; tool: string; description: string; preview: string }) {
       const MAX = 2500
+      // The description may carry a model's words: cap it, and defuse <url|text> so a link cannot rename what is approved.
+      const description = slackPlain((p.description.length > 400 ? `${p.description.slice(0, 400)}...` : p.description).replaceAll('```', "'''").replace(/\s*\n\s*/g, ' '))
       const preview = p.preview.replaceAll('```', "'''")
       const cut = preview.length > MAX ? `${preview.slice(0, MAX)}\n... ${preview.length - MAX} more chars NOT shown. Deny unless you checked it in the terminal.` : preview
       const r = await bot.chat.postMessage({
         channel: o.botDm(),
-        text: `*Approve?* ${p.tool.replace(/^mcp__(.+__)?/, '').replaceAll('_', ' ')} · ${where}${p.description ? `\n${p.description}` : ''}\n\`\`\`${cut}\`\`\`\nReply \`yes\` or \`no\` in this thread`,
+        text: `*Approve?* ${p.tool.replace(/^mcp__(.+__)?/, '').replaceAll('_', ' ')} · ${where}${description ? `\n${description}` : ''}\n\`\`\`${cut}\`\`\`\nReply \`yes\` or \`no\` in this thread`,
       })
       // The owner's yes under this message counts only because of this row (cardAt in core/ledgers.ts).
       append('posted', [o.botDm(), r.ts!, 'card', p.id])
@@ -761,7 +794,7 @@ function instructions(Title: string, MEM: { own: string; owner: string }) {
     'If a reply asks a question or offers something and the work waits on the answer, pass waiting with one line naming it. When asked what is waiting, call the waiting tool and answer with its list.',
     'To tell people something in Slack ("tell X and Y", "let Z know"), use message_people with the people the task names. Add everyone in the task\'s channel only when the task says so ("everyone here"). Find their ids with the Slack user search. Write one message that stands alone: what and when. The tool signs it "<name>, via ' + Title + '": when the owner passes on someone else\'s news, pass from with that person\'s id, and never write "From X:" yourself. Then reply in the task thread with the link. Use message_people only to pass on the asker\'s own news (a meeting time, a status). Anything that would commit the owner (agreeing, money, a deadline, an opinion) goes as a Slack draft in that group DM for the owner to send.',
     'For a repeating check or a later reminder, use the schedule tool: it survives restarts and runs until unschedule. CronCreate is off here because its jobs die with this session. A run arrives as "Scheduled run of job <id> ...": do what its prompt says, and post only what the prompt asks for.',
-    'You manage kagelets: recurring jobs that run on their own schedule in a thread and report to you (kagelets and manage_kagelet, on the owner\'s tasks). When an owner task is recurring (a watch, a monitor, "check X every N", or a schedule you already run in a thread) and the job needs only web search and fetch, make a kagelet for it instead of doing it in this session: manage_kagelet save with a one-line why, then unschedule the old schedule if there was one. Then tell the owner in one line in the thread where it was decided: "Made kagelet <name>: <job>, <when>. Say remove <name> to stop it." You approve for your kagelets by tier, decided in code. Read tools (WebSearch, WebFetch, db_read) you grant at save with no card. db_read reads through the install\'s own read command (KAGE_DB_READ_COMMAND, or one the owner approved before, named in read_command): a kagelet never brings a new one. Every MCP tool that is not act is a write tool, a reading one too: it asks the owner on a card the first time, and that yes stands for every later kagelet that asks for the same tool. The owner sees the no-card grants in their daily note. An act tool (prod, money, customers, access, deletes) is never a kagelet\'s: the kagelet reports what it needs, and you ask the owner each time. When the owner says to revoke a tool, call manage_kagelet revoke with name set to that tool. A job that needs files or shell stays on the schedule tool. One-off tasks stay in this session. When the owner asks how your kagelets are doing, or a run needs something, read kagelets and act on what they need.',
+    'You manage kagelets: recurring jobs that run on their own schedule in a thread and report to you (kagelets and manage_kagelet, on the owner\'s tasks). When an owner task is recurring (a watch, a monitor, "check X every N", or a schedule you already run in a thread) and the job needs only web search and fetch, make a kagelet for it instead of doing it in this session: manage_kagelet save with a one-line why, then unschedule the old schedule if there was one. Then tell the owner in one line in the thread where it was decided: "Made kagelet <name>: <job>, <when>. Say remove <name> to stop it." You approve for your kagelets by tier, decided in code. Read tools (WebSearch, WebFetch, db_read) you grant at save with no card. db_read reads through the install\'s own read command (kagelets.dbRead.command, or one the owner approved before, named in read_command): a kagelet never brings a new one. Every MCP tool that is not act is a write tool, a reading one too: it asks the owner on a card the first time, and that yes stands for every later kagelet that asks for the same tool. The owner sees the no-card grants in their daily note. An act tool (prod, money, customers, access, deletes) is never a kagelet\'s: the kagelet reports what it needs, and you ask the owner each time. When the owner says to revoke a tool, call manage_kagelet revoke with name set to that tool. A job that needs files or shell stays on the schedule tool. One-off tasks stay in this session. When the owner asks how your kagelets are doing, or a run needs something, read kagelets and act on what they need.',
     'After each change you make to production for a task (deploy, restart, DB write, prod config), call log_prod_write once.',
     'Answer in the thread by default, including normal work details like logs, numbers and code. Use private=true (the owner\'s DM) only for something that must never be visible in a channel: secrets, passwords, tokens, keys, or a person\'s private data.',
     'Never post anywhere else in Slack unless the task asks for it.',

@@ -282,7 +282,7 @@ describe('the cost caps (#96)', () => {
   test('a kagelet at its own cap pauses, with a DM each time', () => {
     const r = capCheck([row('dear', 2), row('cheap', 0.4), row('held', 5, 'paused')], caps, [], 'Kage')
     assert.deepEqual(r.pause.map(p => p.name), ['dear'])
-    assert.match(r.pause[0]!.why, /^paused: it spent \$2\.00 today, at or over its daily cap of \$2\.00 \(KAGE_KAGELET_DAILY_USD\)$/)
+    assert.match(r.pause[0]!.why, /^paused: it spent \$2\.00 today, at or over its daily cap of \$2\.00 \(kagelets\.dailyUsd\)$/)
     assert.deepEqual(r.tell.map(t => t.id), [undefined])
     assert.match(r.tell[0]!.text, /dear.*Kage/)
   })
@@ -290,7 +290,7 @@ describe('the cost caps (#96)', () => {
     const rows = [row('a', 1.5), row('b', 1.9), row('c', 7, 'paused'), row('d', 0, 'broken')]
     const r = capCheck(rows, caps, [], 'Kage')
     assert.deepEqual(r.pause.map(p => p.name), ['a', 'b'])
-    assert.match(r.pause[0]!.why, /^paused: it spent \$1\.50 today.*together spent \$10\.40.*total daily cap of \$10\.00 \(KAGE_KAGELET_TOTAL_DAILY_USD\)/)
+    assert.match(r.pause[0]!.why, /^paused: it spent \$1\.50 today.*together spent \$10\.40.*total daily cap of \$10\.00 \(kagelets\.totalDailyUsd\)/)
     assert.deepEqual(r.tell.map(t => t.id), ['total'])
     assert.deepEqual(capCheck(rows, caps, ['total'], 'Kage').tell, [])
     // Exactly at it pauses too.

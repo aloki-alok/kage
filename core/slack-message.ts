@@ -28,7 +28,7 @@ const TYPED_SUBTYPES = new Set([undefined, 'thread_broadcast', 'file_share'])
 export const typedByPerson = (m: SlackMessage) =>
   !m.bot_id && !m.app_id && !!m.client_msg_id && TYPED_SUBTYPES.has(m.subtype)
 
-// A listed agent (KAGE_TRUSTED_APPS, core/registry.ts) posting with a teammate's token: it has an app_id
+// A listed agent (people.agents, core/registry.ts) posting with a teammate's token: it has an app_id
 // and no client_msg_id. The gate still checks the user id, and never lets it act as the owner. An agent tied
 // to a person counts only with that person's token. One with no owner was listed before owners existed, and
 // counts with any listed teammate's. One owned by another agent does not count here.

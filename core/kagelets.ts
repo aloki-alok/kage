@@ -201,7 +201,7 @@ export function revokeStanding(files: { name: string; text: string }[], tool: st
 }
 
 // The cost caps (#96), checked on the hub's job loop. A row's costToday counts since midnight or its resume.
-// each: KAGE_KAGELET_DAILY_USD, one kagelet. total: KAGE_KAGELET_TOTAL_DAILY_USD, all of them together. Both are
+// each: kagelets.dailyUsd, one kagelet. total: kagelets.totalDailyUsd, all of them together. Both are
 // off unless set: Kage may run on a flat subscription, where spend is watched (costFlags), not capped.
 export type Caps = { each?: number; total?: number }
 const usd = (n: number) => `$${n.toFixed(2)}`
@@ -217,13 +217,13 @@ export function capCheck(rows: KageletRow[], caps: Caps, sent: string[], title: 
   const tell: { id?: string; text: string }[] = []
   for (const r of runs) {
     if (caps.each !== undefined && r.costToday >= caps.each) {
-      const why = `${CAP_PAUSE} ${usd(r.costToday)} today, at or over its daily cap of ${usd(caps.each)} (KAGE_KAGELET_DAILY_USD)`
+      const why = `${CAP_PAUSE} ${usd(r.costToday)} today, at or over its daily cap of ${usd(caps.each)} (kagelets.dailyUsd)`
       pause.push({ name: r.name, why })
       tell.push({ text: `Kagelet *${r.name}* is ${why}. Resume it with kage top or by asking ${title}.` })
-    } else if (allOver) pause.push({ name: r.name, why: `${CAP_PAUSE} ${usd(r.costToday)} today, and all kagelets together spent ${usd(total)}, at or over the total daily cap of ${usd(caps.total!)} (KAGE_KAGELET_TOTAL_DAILY_USD)` })
+    } else if (allOver) pause.push({ name: r.name, why: `${CAP_PAUSE} ${usd(r.costToday)} today, and all kagelets together spent ${usd(total)}, at or over the total daily cap of ${usd(caps.total!)} (kagelets.totalDailyUsd)` })
     else if (caps.each !== undefined && r.costToday >= 0.8 * caps.each) tell.push({ id: r.name, text: `Kagelet *${r.name}* spent ${usd(r.costToday)} today, 80% of its daily cap of ${usd(caps.each)}. At the cap it pauses.` })
   }
-  if (allOver) tell.push({ id: 'total', text: `Every kagelet is paused: together they spent ${usd(total)} today, at or over the total daily cap of ${usd(caps.total!)} (KAGE_KAGELET_TOTAL_DAILY_USD). A cap raise is yours, in the settings file.` })
+  if (allOver) tell.push({ id: 'total', text: `Every kagelet is paused: together they spent ${usd(total)} today, at or over the total daily cap of ${usd(caps.total!)} (kagelets.totalDailyUsd). A cap raise is yours, in the settings file.` })
   else if (runs.length && caps.total !== undefined && total >= 0.8 * caps.total) tell.push({ id: 'total-80', text: `Kagelets together spent ${usd(total)} today, 80% of the total daily cap of ${usd(caps.total)}. At the cap every kagelet pauses.` })
   return { pause, tell: tell.filter(t => !t.id || !sent.includes(t.id)) }
 }

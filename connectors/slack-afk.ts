@@ -26,7 +26,7 @@ export function startAfk(o: {
   contextOf: (m: SlackMessage) => Promise<string>
   placeOf: (channel: string) => Promise<string>
   nameOf: (id?: string) => Promise<string>
-  // Phones the owner (KAGE_CALL_COMMAND); resolves '' once the call is placed, else why not.
+  // Phones the owner (connectors.call.command); resolves '' once the call is placed, else why not.
   call?: (reason: string) => Promise<string>
   // Jev's triage (connectors/jev.ts); absent means the Claude stand-in triages every message.
   jev?: JevAfk
@@ -64,7 +64,7 @@ export function startAfk(o: {
     const set = await setStatus({ status_text: ours, status_emoji: EMOJI, status_expiration: Math.floor(until / 1000) })
       .then(() => '', (e: any) => ` Could not set your status (${e?.data?.error ?? e}). Add users.profile:read and users.profile:write under User Token Scopes on the app's OAuth page, reinstall it, then try again.`)
     log('afk on until', new Date(until).toISOString())
-    return `AFK on until ${when(until, tz)}. I watch threads that mention you and stay quiet unless you're mentioned again or it's urgent. A P0 gets a phone call${o.call ? '' : ' (no KAGE_CALL_COMMAND set, so a DM instead)'}.${set}`
+    return `AFK on until ${when(until, tz)}. I watch threads that mention you and stay quiet unless you're mentioned again or it's urgent. A P0 gets a phone call${o.call ? '' : ' (no connectors.call.command set, so a DM instead)'}.${set}`
   }
 
   // Resolves the summary for the owner.
@@ -158,7 +158,7 @@ export function startAfk(o: {
     save()
     log('afk triage', key, out.urgency, act)
     // Not awaited: the dialer must not hold up the reply or the thread's next triage.
-    if (act.call) void (o.call ? o.call(`${who} in ${place}: ${out.note}`).catch(e => String(e)) : Promise.resolve('no KAGE_CALL_COMMAND'))
+    if (act.call) void (o.call ? o.call(`${who} in ${place}: ${out.note}`).catch(e => String(e)) : Promise.resolve('no connectors.call.command'))
       .then(no => o.notify(`:rotating_light: P0 from ${who} in ${where}: ${out.note}\n${no ? `Could not phone you (${no}).` : 'Calling you now.'}`))
     if (!act.post || !out.reply) return
     const g = afkGuardPrompt(all, out.reply)

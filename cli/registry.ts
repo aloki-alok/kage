@@ -7,13 +7,14 @@
 //   kage list                      add --ids to skip the name lookup
 import { randomBytes } from 'node:crypto'
 import { fileURLToPath } from 'node:url'
-import { existsSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs'
-import { setEnvLine } from '../core/browser.ts'
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { extensionId, HOST, hostDirs, hostManifest } from '../core/browser-pair.ts'
 import { findPeople, type Person } from '../core/gate.ts'
-import { add, kindOf, ownerPerson, registryIn, remove, withRegistry, type Entry } from '../core/registry.ts'
+import { add, kindOf, ownerPerson, remove, type Entry } from '../core/registry.ts'
+import { registryOf, withRegistry } from '../core/config.ts'
+import { readSettings, updateConfig, updateSecrets } from '../runtime/config-files.ts'
 import { pauseLine, type Live } from '../core/board.ts'
-import { askHub, DIR, ENV_FILE } from './home.ts'
+import { askHub, DIR, ENV_FILE, settingsExist } from './home.ts'
 import { NAME, resultLine, rowLine, kageletRows, starterFile } from '../core/kagelets.ts'
 import { openLedgers } from '../runtime/ledger.ts'
 import { kageletsDir, readKagelets } from '../runtime/kagelets.ts'
@@ -41,10 +42,9 @@ if (cmd === 'add' && args[0] === 'kagelet') {
 // extension that had the old one. It also registers the pairing helper (core/browser-pair.ts) with each Chromium
 // browser here, so the extension fetches the token itself. The token is printed too, for a browser it missed.
 if (cmd === 'add' && args[0] === 'browser') {
-  if (!existsSync(ENV_FILE)) die(`No settings file at ${ENV_FILE}. Run kage setup first.`)
+  if (!settingsExist()) die(`No settings in ${DIR}. Run kage setup first.`)
   const token = randomBytes(24).toString('hex')
-  writeFileSync(`${ENV_FILE}.new`, setEnvLine(readFileSync(ENV_FILE, 'utf8'), 'KAGE_BROWSER_TOKEN', token), { mode: 0o600 })
-  renameSync(`${ENV_FILE}.new`, ENV_FILE)
+  updateSecrets(ENV_FILE, s => ({ ...s, browserToken: token }))
   const ext = fileURLToPath(new URL('../extension', import.meta.url))
   const id = extensionId(JSON.parse(readFileSync(`${ext}/manifest.json`, 'utf8')).key)
   // Chrome starts the helper with a bare PATH, so the wrapper names this node and this checkout outright.
@@ -68,17 +68,17 @@ if (cmd === 'add' && args[0] === 'browser') {
     '4. In Slack, ask Kage: "what tabs do I have open?"',
     '',
     `If the icon asks for a token, paste: ${token}`,
-    'Sites Kage must never read: add KAGE_BROWSER_BLOCK=bank.example.com,1password.com to the settings file.',
+    `Sites Kage must never read: run kage set connectors.browser.block '["bank.example.com","1password.com"]'`,
   ].join('\n'))
   process.exit(0)
 }
-if (!existsSync(ENV_FILE)) die(`No settings file at ${ENV_FILE}. Run kage setup first.`)
-const env = readFileSync(ENV_FILE, 'utf8')
-const now = registryIn(env)
+if (!settingsExist()) die(`No settings in ${DIR}. Run kage setup first.`)
+const { config, secrets } = (() => { try { return readSettings(ENV_FILE) } catch (e) { return die((e as Error).message) } })()
+const now = registryOf(config)
 
 async function slack(method: string, params: Record<string, string>) {
-  const token = /^SLACK_USER_TOKEN=(.*)$/m.exec(env)?.[1]
-  if (!token) die(`No SLACK_USER_TOKEN in ${ENV_FILE}. Run kage save first.`)
+  const token = secrets.slack?.user
+  if (!token) die(`No Slack user token saved in ${DIR}. Run kage save first.`)
   const r = await fetch(`https://slack.com/api/${method}?${new URLSearchParams(params)}`, { headers: { Authorization: `Bearer ${token}` } })
   return await r.json() as { ok: boolean; error?: string } & Record<string, any>
 }
@@ -127,12 +127,9 @@ const label = (e: { id: string; name?: string }) => (e.name && e.name !== e.id ?
 const names = new Map<string, string>()
 const line = (e: Entry) => (e.kind === 'person' ? `person ${label({ id: e.id, name: names.get(e.id) })}` : `agent ${e.id}${e.owner ? `, which answers to ${label({ id: e.owner, name: names.get(e.owner) })}` : ''}${e.tag ? `, tagged as ${e.tag}` : ''}`)
 
-// Write a copy, then swap it in: a crash mid-write never leaves a cut-off token file. Then the hub takes it.
+// config.json is written whole (runtime/config-files.ts), then the hub takes it.
 async function save(next: Entry[]) {
-  // The mode applies only to a file this call creates, so a copy left behind goes first.
-  rmSync(`${ENV_FILE}.new`, { force: true })
-  writeFileSync(`${ENV_FILE}.new`, withRegistry(env, next), { mode: 0o600, flag: 'wx' })
-  renameSync(`${ENV_FILE}.new`, ENV_FILE)
+  updateConfig(ENV_FILE, c => withRegistry(c, next))
   try { for (const l of said(await reload())) console.log(l) } catch (e) { console.log((e as Error).message) }
 }
 

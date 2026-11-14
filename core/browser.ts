@@ -1,7 +1,7 @@
 // Kage in Chrome (#114): what a session may see of the owner's browser. The owner's own tabs carry their logins,
 // so a page's words reach Claude only as quoted data, and a site on the owner's block list never reaches it.
 
-// KAGE_BROWSER_BLOCK: hosts, comma-separated. A host also blocks its subdomains. Each entry is read the way the
+// connectors.browser.block: hosts, comma-separated. A host also blocks its subdomains. Each entry is read the way the
 // browser reads an address (punycode, no trailing dot), and may be written as a URL or as *.host.
 const hostOf = (entry: string) => {
   const h = entry.trim().replace(/^\*\./, '')
@@ -39,16 +39,4 @@ export function pageResult(p: Page, list: string[], max: number) {
     ...text.split('\n').map(l => `> ${l}`),
     ...p.text.length > max ? [`(cut at ${max} characters of ${p.text.length})`] : [],
   ].join('\n')
-}
-
-// kage add browser: the env file with one setting set where it stands (or added at the end), every other
-// line, blank line and comment kept, in the file's own line endings.
-export function setEnvLine(env: string, key: string, value: string) {
-  const eol = env.includes('\r\n') ? '\r\n' : '\n'
-  const lines = env.split(/\r?\n/)
-  if (lines.at(-1) === '') lines.pop()
-  const line = `${key}=${value}`
-  const at = lines.findIndex(l => l.startsWith(`${key}=`))
-  const kept = at < 0 ? [...lines, line] : lines.map((l, i) => i === at ? line : l).filter((l, i) => i <= at || !l.startsWith(`${key}=`))
-  return kept.join(eol) + eol
 }

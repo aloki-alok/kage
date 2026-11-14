@@ -4,9 +4,16 @@ import { connect } from 'node:net'
 import { dirname } from 'node:path'
 import { DatabaseSync } from 'node:sqlite'
 import { placeFor } from '../core/conversations.ts'
+import { tilde } from '../core/config.ts'
+import { hasSettings, readSettings } from '../runtime/config-files.ts'
 
 export const ENV_FILE = process.env.KAGE_ENV || `${process.env.HOME}/.config/kage/env`
 export const DIR = dirname(ENV_FILE)
+export const settingsExist = () => hasSettings(ENV_FILE)
+// The settings, or empty ones when there are none yet (a command that only wants to know a switch).
+export const settings = () => { try { return readSettings(ENV_FILE) } catch { return { config: { version: 1 as const }, secrets: {} } } }
+// The folder sessions start in, as the hub chdirs to it (hub.ts).
+export const CWD = tilde(settings().config.harness?.cwd || process.env.KAGE_CWD || process.env.HOME!, process.env.HOME!)
 
 // Session key to a readable place ("#telephony"), read from the hub's store.
 export function placeNamer(): (key: string) => string {

@@ -1,9 +1,10 @@
 import { describe, test } from 'node:test'
 import assert from 'node:assert/strict'
-import { mkdirSync, mkdtempSync, symlinkSync, writeFileSync } from 'node:fs'
+import { execFileSync } from 'node:child_process'
+import { mkdirSync, mkdtempSync, readFileSync, realpathSync, symlinkSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { configRefusal, ownerMemoryRefusal, privateToolRefusal, slackSendRefusal, voiceToolRefusal } from '../guards.ts'
+import { configRefusal, protectConfig, ownerMemoryRefusal, privateToolRefusal, slackSendRefusal, voiceToolRefusal } from '../guards.ts'
 
 
 describe('private sources on a teammate task', () => {
@@ -105,9 +106,23 @@ describe("the token file on a task the owner did not send (#117)", () => {
       no('Bash', { command: 'ls ~/.config/kage/' }, s)
     }
   })
-  test('the owner keeps it: posting as the bot and the Slack read fallback source the env file', () => {
-    yes('Bash', { command: 'source ~/.config/kage/env && curl ...' }, 'owner')
-    yes('Read', { file_path: ENV }, 'owner')
+  test('no session reads the token files, the owner included, even behind a ".." or a relative path', () => {
+    for (const s of ['owner', 'teammate']) {
+      no('Bash', { command: 'source ~/.config/kage/env && curl ...' }, s)
+      no('Read', { file_path: ENV }, s)
+      no('Read', { file_path: '/home/o/.config/kage/secrets.json' }, s)
+      no('Read', { file_path: '~/.config/kage/env.imported-20261114T101500Z' }, s)
+      no('Bash', { command: 'grep slack .config/kage/secrets.json' }, s)
+      no('Bash', { command: 'cat ~/.config/kage/files/../secrets.json' }, s)
+      no('Edit', { file_path: '/home/o/.config/kage/env.new' }, s)
+    }
+    no('Grep', { pattern: 'xox', path: '/home/o/.config/kage' }, 'owner')
+  })
+  test('the owner may read and edit config.json and the folder listing', () => {
+    yes('Read', { file_path: '/home/o/.config/kage/config.json' }, 'owner')
+    yes('Read', { file_path: '/home/o/.config/kage/./config.json' }, 'owner')
+    yes('Read', { file_path: '/home/o/.config/kage/session.env' }, 'owner')
+    yes('Grep', { pattern: 'x', path: '/home/o/.config/kage/config.json' }, 'owner')
   })
   test('other files and commands are fine for a teammate', () => {
     yes('Read', { file_path: '/home/o/kage/README.md' }, 'teammate')
@@ -124,5 +139,74 @@ describe("the token file on a task the owner did not send (#117)", () => {
     yes('Write', { file_path: '~/.config/kage/memory/x.md', content: 'the env file is ~/.config/kage/env' }, 'teammate')
     // A neighbour folder is not it.
     yes('Read', { file_path: '/home/o/.config/kage-x/notes.md' }, 'teammate')
+  })
+})
+
+describe('the token files behind every path form, and config.json closed to writes (#116 review)', () => {
+  const ENV = '/home/o/.config/kage/env', HOME = '/home/o'
+  const no = (tool: string, input: Record<string, unknown>, sender: string | undefined) =>
+    assert.match(configRefusal(tool, input, sender, ENV, HOME) ?? '', /owner|closed/, `${tool} ${JSON.stringify(input)} ${sender}`)
+  test('the owner cannot reach secrets.json or env* by ./, //, cd, a glob, or a search of the folder', () => {
+    no('Read', { file_path: '/home/o/.config/kage/./secrets.json' }, 'owner')
+    no('Read', { file_path: '/home/o/.config//kage//secrets.json' }, 'owner')
+    no('Read', { file_path: '/home/o/.config/kage/env.new' }, 'owner')
+    no('Bash', { command: 'cd ~/.config/kage && cat secrets.json' }, 'owner')
+    no('Bash', { command: 'cat ~/.config/kage/*' }, 'owner')
+    no('Bash', { command: 'cat ~/.config/kage/sec*' }, 'owner')
+    no('Bash', { command: 'cat ~/.config/kage/./secrets.json' }, 'owner')
+    no('Bash', { command: 'cat "$HOME/.config//kage/secrets.json"' }, 'owner')
+    no('Glob', { pattern: '*', path: '/home/o/.config/kage' }, 'owner')
+    no('Glob', { pattern: '/home/o/.config/kage/*' }, 'owner')
+    no('Grep', { pattern: 'xox', path: '/home/o/.config/kage/.' }, 'owner')
+    no('Read', { file_path: '/home/o/.config/kage/s*.json' }, 'owner')
+  })
+  test('no session writes config.json, secrets.json or an env file by any tool', () => {
+    for (const s of ['owner', 'teammate', undefined]) {
+      no('Edit', { file_path: '/home/o/.config/kage/config.json' }, s)
+      no('Write', { file_path: '~/.config/kage/./config.json', content: '{}' }, s)
+      no('MultiEdit', { file_path: '/home/o/.config//kage/config.json', edits: [] }, s)
+      no('Bash', { command: 'echo {} > ~/.config/kage/config.json' }, s)
+    }
+  })
+})
+
+describe('protectConfig: what the sandbox and the file rules close', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'kage-protect-'))
+  const code = mkdtempSync(join(tmpdir(), 'kage-code-'))
+  for (const f of ['config.json', 'secrets.json', 'afk.json', 'hub.log']) writeFileSync(join(dir, f), '')
+  for (const d of ['files', 'memory', 'sender']) mkdirSync(join(dir, d))
+  const w = protectConfig(`${dir}/env`, code, '/home/o')
+  const real = (p: string) => realpathSync(p)
+  test('a shell may not write anything in the config folder but files/ and memory/, whether or not it exists yet', () => {
+    const deny = w.sandbox.filesystem.denyWrite
+    for (const n of ['session.env', 'kagelets', 'specialists', 'config.json*', 'secrets.json*', 'env*', 'afk.json', 'hub.log', 'sender']) assert.ok(deny.includes(`${real(dir)}/${n}`), n)
+    for (const n of ['files', 'memory']) assert.ok(!deny.some(d => d === `${real(dir)}/${n}` || d === real(dir)), n)
+  })
+  test('a name the hub reads when it is absent (crons-import.json, waha, threads.json) cannot be created, though the folder lacks it now', () => {
+    const deny = w.sandbox.filesystem.denyWrite
+    for (const n of ['crons-import.json*', 'waha', 'threads.json*', 'afk.json*', 'github-threads.json*', 'mail-threads.json*', 'kage.db*', 'hub.lock', 'router.sock']) assert.ok(deny.includes(`${real(dir)}/${n}`), n)
+  })
+  test('every name the code builds under the config folder with ${DIR}/, ${CONF}/ or ${o.dir}/ is on that list or is files/ or memory/', () => {
+    const root = new URL('../../', import.meta.url).pathname
+    const names = w.sandbox.filesystem.denyWrite.map(d => d.split('/').pop()!)
+    const covered = (n: string) => names.some(d => d === n || (d.endsWith('*') && n.startsWith(d.slice(0, -1))))
+    const seen = new Set<string>()
+    for (const f of execFileSync('git', ['ls-files', '*.ts', '*.sh'], { cwd: root, encoding: 'utf8' }).split('\n').filter(f => f && !f.includes('tests/'))) {
+      for (const m of readFileSync(join(root, f), 'utf8').matchAll(/\$\{(?:DIR|CONF|o\.dir)\}\/([A-Za-z0-9_.*-]+)/g)) seen.add(m[1]!.replace(/\.$/, ''))
+    }
+    // Names under the code folder, or kept open on purpose.
+    const open = new Set(['files', 'memory', 'server.ts', 'node_modules', 'package-lock.json', 'browser-pair.sh', 'version', 'status', 'standin'])
+    const missing = [...seen].filter(n => !covered(n) && !open.has(n))
+    assert.deepEqual(missing, [], 'add these to CONFIG_NAMES in core/guards.ts, or to the open list here if a session needs to write them')
+  })
+  test('the hub code folder and the files the OS reads at login are closed to writes too', () => {
+    const deny = w.sandbox.filesystem.denyWrite
+    assert.ok(deny.includes(real(code)))
+    assert.ok(deny.includes('/home/o/Library/LaunchAgents') && deny.includes('/home/o/.config/systemd'))
+  })
+  test('the file rules use Edit, which covers Write, and the sandbox must start', () => {
+    assert.ok(w.permissions.deny.every(r => !r.startsWith('Write(')))
+    assert.ok(w.permissions.deny.includes(`Edit(/${real(dir)}/config.json)`))
+    assert.equal(w.sandbox.failIfUnavailable, true)
   })
 })

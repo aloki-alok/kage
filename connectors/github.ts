@@ -1,8 +1,8 @@
 // GitHub connector: a webhook wakes Kage when a GitHub event is the owner's business (core/github.ts).
 // Each pull request or issue gets one thread in the owner's DM with Kage, so the work and any reply
 // happen in Slack like every other task, and the owner answers there in person. The event's text was
-// written by other people, so the task runs at teammate trust. Off unless KAGE_GITHUB_SECRET and
-// KAGE_GITHUB_LOGIN are set. Reach it through a tunnel to 127.0.0.1:<port>/github.
+// written by other people, so the task runs at teammate trust. Off unless githubSecret and
+// connectors.github.login are set. Reach it through a tunnel to 127.0.0.1:<port>/github.
 import { createServer } from 'node:http'
 import type { AddressInfo } from 'node:net'
 import { log } from '../config.ts'
