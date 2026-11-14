@@ -2,7 +2,7 @@
 // with every failure and a failed reconnect start can leave it down for good, with the hub up and
 // deaf. Only the connection state counts: a quiet workspace at night is not a dead socket.
 
-export type SocketVerdict = 'ok' | 'wait' | 'restart' | 'restart and tell'
+type SocketVerdict = 'ok' | 'wait' | 'restart' | 'restart and tell'
 
 export function socketWatch(o: { downMs: number }) {
   let up = false

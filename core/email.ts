@@ -27,7 +27,7 @@ export type MailConfig = {
   selector?: string   // the DKIM selector of the senders' mail provider
 }
 
-export type MailTask = { key: string; sender: 'owner' | 'teammate'; ask: string; quoted: string } | { drop: string }
+type MailTask = { key: string; sender: 'owner' | 'teammate'; ask: string; quoted: string } | { drop: string }
 
 const lower = (a: string) => a.trim().toLowerCase()
 const domainOf = (a: string) => lower(a).split('@')[1] ?? ''

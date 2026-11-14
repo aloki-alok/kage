@@ -8,7 +8,7 @@ import type { Task } from './task.ts'
 export const OFF_LIMITS = "This is off-limits for me, so I won't continue this conversation."
 export const OWNER_BLOCKED = 'The safety check stopped my answer here, so I dropped it. Message me in this thread to start fresh.'
 
-export type BlockPlan = { reply?: string; dm?: string; close: boolean }
+type BlockPlan = { reply?: string; dm?: string; close: boolean }
 
 // A thread line only answers a Slack message: a schedule has none, and email, WhatsApp and voice reply in their own way.
 export const answersInThread = (t: Task) => !!t.origin.ts && !['email', 'whatsapp', 'voice'].includes(t.meta.channel)

@@ -16,7 +16,7 @@ ADR 0001 and the CONTRIBUTING code map were written down but checked by hand, so
 | `runtime/` and `connectors/` never import a root file | the root files wire the hub; a module below them must not reach up |
 | A source file is 300 lines or fewer | one file, one job; a long file is where unrelated jobs pile up |
 | Every `core/` and `runtime/` file is in the CONTRIBUTING code map | a newcomer, human or agent, finds code from the map |
-| Every `core/` export has a user in another source file | a dead export reads like an API someone depends on |
+| A `core/` export is used by another file (a shell script counts), or by its own file and a test that drives it | an export nobody needs reads like an API someone depends on, and code only a test calls is dead |
 | `compat: remove after YYYY-MM-DD` code is gone by its date | migrations end; old paths do not stay forever |
 
 Each rule lists today's breaks as debt by name. A new break fails. A fixed break that is still listed also fails, so the list only shrinks. A long file may not grow past its listed size.

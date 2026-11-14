@@ -54,7 +54,7 @@ export function untilOf(c: Extract<AfkCommand, { kind: 'afk' }>, now: number, tz
   return target > now ? target : target + 24 * 3600_000
 }
 
-export type AfkAction =
+type AfkAction =
   | { kind: 'ignore' }
   | { kind: 'mute'; key: string }
   | { kind: 'triage'; key: string; channel: string; thread_ts?: string; mentioned: boolean }

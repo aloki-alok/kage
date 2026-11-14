@@ -3,7 +3,7 @@
 const TARGET = /^(i|mi)-[0-9a-f]{8,17}$/
 const REGION = /^[a-z]{2}(-[a-z]+)+-\d{1,2}$/
 
-export type Relay = { token: string; target: string; port: number; region: string | undefined }
+type Relay = { token: string; target: string; port: number; region: string | undefined }
 
 export function relayHeader(line: string): Relay | { error: string } {
   const [token, target, p, region, ...rest] = line.trim().split(/ +/)

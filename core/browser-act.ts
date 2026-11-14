@@ -80,7 +80,7 @@ const MAJOR = /\b(pay|buy|purchas|order|checkout|subscrib|unsubscrib|upgrad|dele
 // A label that names no action (a bare OK on a confirm dialog, an icon with no name) could be anything.
 const GENERIC = /^(ok|okay|yes|continue|proceed|done|accept|agree|got it|i understand.*|\W*)$/i
 const SENDS = /\b(message|reply|comment|compose|chat|email)\b/i
-export type ActContext = { openHosts?: string[]; typed?: string[] }
+type ActContext = { openHosts?: string[]; typed?: string[] }
 export function majorAct(a: Act, el?: Element, ctx: ActContext = {}): string | undefined {
   if (a.action === 'navigate' || a.action === 'open') {
     // Page text can steer Kage to an address that carries what it read: leaving for a site no tab has open asks.

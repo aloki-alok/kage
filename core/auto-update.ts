@@ -71,7 +71,7 @@ export function soakRuns(boots: Boot[], crashes: number[]): Run[] {
 // The newest commit that completed a clean 24-hour run and is ahead of the stable tag (ahead says which). It may be
 // older than what the hub runs now. With none, the fail line names the next candidate and when its gate opens.
 // doctorOk is read last by the caller, since it is slow: pass true first to learn whether it is needed.
-export type Gate = { ok: true; sha: string } | { fail: string; sha?: string; opensAt?: number }
+type Gate = { ok: true; sha: string } | { fail: string; sha?: string; opensAt?: number }
 export function soakGate(s: { boots: Boot[]; crashes: number[]; now: number; doctorOk: boolean; ahead: (sha: string) => boolean }): Gate {
   const runs = soakRuns(s.boots, s.crashes)
   if (!runs.length) return { fail: 'no hub start is recorded yet' }

@@ -62,7 +62,7 @@ export function splitForSlack(text: string, max = 3500): string[] {
 
 // A thread panel fits about 64 characters of Slack's code font. A longer row wraps, and its last
 // column lands under the row as if it were the next row (measured 2026-11-05: Monaco 12px, 500 px).
-export const CODE_WIDTH = 60
+const CODE_WIDTH = 60
 export function layoutRefusal(text: string, o: { wide?: boolean } = {}): string | undefined {
   if (o.wide) return
   const rows = text.split(FENCE).filter((_, i) => i % 2 === 1).flatMap(b => b.split('\n'))

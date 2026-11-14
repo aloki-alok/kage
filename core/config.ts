@@ -60,7 +60,7 @@ export const Secrets = z.strictObject({
 export type Secrets = z.infer<typeof Secrets>
 
 type Agent = { app: string; owner?: string; tag?: string }
-export const agentLine = (a: Agent) => [a.app, a.owner, a.tag].filter(x => x !== undefined).join(':')
+const agentLine = (a: Agent) => [a.app, a.owner, a.tag].filter(x => x !== undefined).join(':')
 
 // How one env value becomes JSON and back. read gives undefined for a value that does not fit, and the line then goes to "unknown".
 type Codec = { read: (v: string) => unknown; write: (x: any) => string }

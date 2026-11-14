@@ -23,7 +23,7 @@ export const fromWaha = (p: WahaPayload): WaMessage => ({
 
 // One chat the owner armed: until (ms) and how many stand-in replies it has sent since.
 export type Arming = { until: number; replies: number }
-export type WaAction =
+type WaAction =
   | { kind: 'ignore' }
   | { kind: 'owner-task'; chat: string; text: string }
   | { kind: 'disarm'; chat: string; why: 'owner typed' | 'limit' }
@@ -54,7 +54,7 @@ export function decideWhatsApp(m: WaMessage, armed: ReadonlyMap<string, Arming>,
 // A message as both sides read it. One line each, so nobody can forge a line from the owner.
 export type WaLine = { fromMe: boolean; text: string }
 const oneLine = (t: string) => t.replace(/\s+/g, ' ').trim()
-export const hasTag = (text: string, name: string) => tagFor(name).test(text)
+const hasTag = (text: string, name: string) => tagFor(name).test(text)
 
 // The task for the owner's own session. Their ask is the only instruction; the chat is quoted data.
 export function waTaskContent(ask: string, place: string, chat: string, history: WaLine[], name: string, owner: string): string {

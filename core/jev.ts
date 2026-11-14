@@ -7,7 +7,7 @@ import { appEntry } from './registry.ts'
 export const JEV_URL = 'https://api.typesafe.ai/v1/systemone'
 // What Jev reads at most of one post. A longer post is cut, never skipped.
 export const JEV_MAX_CHARS = 4000
-export const QUESTION = 'Does this message ask the recipient to do something or answer a question, rather than only acknowledging, thanking or reporting that something is done?'
+const QUESTION = 'Does this message ask the recipient to do something or answer a question, rather than only acknowledging, thanking or reporting that something is done?'
 
 // agents: the app ids Jev checks, or 'all' for every listed agent. threshold: the needs-reply score (0 to 1) a post needs to start a task.
 export type JevConfig = { key: string; model: string; threshold: number; agents: 'all' | string[] }
@@ -80,7 +80,7 @@ export function triageVerdict(body: unknown, sender: 'owner' | 'other'): { pick:
 
 // AFK triage (#142): Jev reads a watched thread for the stand-in (core/afk.ts). It decides how urgent it is, whether it
 // waits on the owner, and whether the owner's notes could answer it. It never decides what is safe to send.
-export const AFK_P0_BAR = 0.8
+const AFK_P0_BAR = 0.8
 export const afkRequest = (o: { owner: string; place: string; from: string; convo: string }, model: string) => ({
   model,
   state: `${o.owner} is away. A colleague (${o.from}) wrote in ${o.place}. The conversation, newest message last:\n${o.convo.slice(-JEV_MAX_CHARS)}`,

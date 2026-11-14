@@ -13,7 +13,7 @@ export const validName = (name: string) => /^[a-z][a-z0-9-]{1,20}$/.test(name)
 
 // side: run it in its own session, beside the thread's (which may be busy with something else).
 // status: the owner asks the hub what is running; no session reads it.
-export type Trigger =
+type Trigger =
   // agent: the Slack app id of the listed agent that posted it, with its owner's token.
   | { kind: 'task'; text: string; side?: true; agent?: string }
   | { kind: 'status' }
@@ -32,7 +32,7 @@ export const DROPS = {
   'no-reply-needed': 'an agent posted it and marked it as needing no answer',
   loop: 'the agent is over its turn limit with Kage',
 } as const
-export type Drop = keyof typeof DROPS
+type Drop = keyof typeof DROPS
 const drop = (reason: Drop): Trigger => ({ kind: 'drop', reason })
 
 // Only the exact "side:" counts, so "side effects of ..." stays a normal task. Owner only, so a

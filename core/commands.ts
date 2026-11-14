@@ -2,7 +2,7 @@
 // these itself for anyone in the workspace, without a Claude session. The only thing a caller
 // controls is a list of phone numbers, so the script is the whole of what they can run.
 export type CommandRequest = { team_id?: string; user_id?: string; command?: string; text?: string }
-export type CommandResult = { ok: true; script: string; numbers: string[] } | { ok: false; reply: string }
+type CommandResult = { ok: true; script: string; numbers: string[] } | { ok: false; reply: string }
 
 export function commandRequest(r: CommandRequest, o: { team: string; commands: Map<string, string> }): CommandResult {
   if (r.team_id !== o.team) return { ok: false, reply: 'This command works only for people in this workspace.' }

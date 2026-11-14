@@ -74,7 +74,7 @@ export function moreLine(rest: { connector: string }[]): string {
 }
 
 // How a state's string looks. The console animates each kind.
-export type Tone = 'red' | 'gold' | 'white' | 'muted' | 'dim'
+type Tone = 'red' | 'gold' | 'white' | 'muted' | 'dim'
 export const STRING: Record<State, { kind: 'pulse' | 'blink' | 'drift' | 'dotted' | 'grow' | 'cut' | 'none'; tone: Tone; glyph: string }> = {
   working: { kind: 'pulse', tone: 'red', glyph: '●' },
   asking: { kind: 'blink', tone: 'gold', glyph: '◆' },

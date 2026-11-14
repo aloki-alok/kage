@@ -28,7 +28,7 @@ export function dayEvents(events: KageEvent[], day: string): { who: string; chai
 // "failed, <why>" when the hub would not start it, or "stopped: <why>" when a step ended the chain.
 export const handoffDetail = (to: string, kind: string, failed?: string) => `to ${to}, ${kind}: ${failed ? `failed, ${failed}` : 'ok'}`
 // One chain as the panel, kage logs and the manager show it: a > b > c and where it stopped.
-export type ChainView = { chain: string; steps: string[]; state: string }
+type ChainView = { chain: string; steps: string[]; state: string }
 export function chainViews(events: KageEvent[]): ChainView[] {
   const chains = new Map<string, ChainView & { ended: Set<string> }>()
   for (const e of [...events].sort((a, b) => a.at.localeCompare(b.at))) {
