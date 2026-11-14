@@ -166,7 +166,7 @@ export const resultLine = (r: KageletRow, now: number) => !r.result ? 'no report
 // Of Kage's own tools, a kagelet has only those for its thread and message_kagelet (to its own install), whatever its grant says: the rest act as the
 // owner (message_people, away), outlive the run (schedule) or need the owner (log_prod_write).
 // ToolSearch too: it only loads a deferred tool's schema, and the tool it loads still passes this check.
-const THREAD_TOOLS = [...['reply', 'edit_message', 'delete_message', 'report', 'message_kagelet'].map(t => `mcp__kage__${t}`), 'ToolSearch']
+const THREAD_TOOLS = [...['reply', 'edit_message', 'delete_message', 'report', 'message_kagelet', 'propose_memory'].map(t => `mcp__kage__${t}`), 'ToolSearch']
 // What a grant may name: no act tool (core/access.ts), so no file, shell or agent tool: one could rewrite the
 // kagelet's own grant or read the env file with the tokens. ponytail: a file grant needs a sandboxed work folder first.
 const WEB_TOOLS = ['WebFetch', 'WebSearch']

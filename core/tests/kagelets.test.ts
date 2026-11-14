@@ -40,6 +40,10 @@ describe('a kagelet file', () => {
     assert.match((parseKagelet('x', file(`thread: ${LINK}\nschedule: 0 9 * * *`, '  ')) as { error: string }).error, /job/)
     assert.match((parseKagelet('Bad Name', file(`thread: ${LINK}\nschedule: 0 9 * * *`)) as { error: string }).error, /name/)
   })
+  test('a dream\'s proposal tool is a thread tool: the grant never has to name it, and the tool call stays inside the grant', () => {
+    assert.equal(grantRefusal('mcp__kage__propose_memory', []), undefined)
+    assert.match(grantRefusal('Write', []) ?? '', /never holds/)
+  })
   test('a file that names an act tool is broken, with the reason, so it shows as broken, not running', () => {
     for (const t of ['Bash', 'mcp__stripe__create_refund']) {
       const k = parseKagelet('x', file(`thread: ${LINK}\nschedule: 0 9 * * *\ntools: WebSearch, ${t}`)) as { error: string }
