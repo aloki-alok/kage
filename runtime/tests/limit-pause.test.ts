@@ -6,7 +6,7 @@ import { openStore } from '../store.ts'
 
 const MIN = 60_000
 const slackTask = (ts: string, channel = 'C1', thread = '5.5'): Task => ({
-  type: 'task', content: `Task from Sam: ${ts}`, fromOwner: true,
+  type: 'task', content: `Task from Sam: ${ts}`, fromOwner: false,
   meta: { channel, thread_ts: thread, place: '#general', permalink: '' }, origin: { channel, ts },
 })
 const run = (job: string, channel = 'C1', thread = '5.5'): Task => ({
@@ -95,6 +95,19 @@ describe('a turn that ends on the usage limit', () => {
     assert.equal(h.hear('C1:5.5', first, 56 * MIN), false)
     await h.p.tick(56 * MIN)
     assert.equal(h.replayed.length, 3)   // nothing replays twice
+  })
+  test("the owner's new message tries again in a pause, and a turn that gets through ends the pause and replays the rest", async () => {
+    const h = hub()
+    const first = slackTask('7.7')
+    h.hear('C1:5.5', first, 0)
+    h.p.turn('C1:5.5', [first], { kind: 'rate_limit', until: 7 * 24 * 60 * MIN }, 1000)
+    const mine = { ...slackTask('8.8', 'C2', '1.1'), fromOwner: true }
+    assert.equal(h.p.hold('C2:1.1', mine, 2000), false)   // the owner's message runs
+    assert.equal(h.p.hold('C2:1.1', { ...mine, scheduled: true, job: 'j' }, 2000), true)   // a scheduled run waits
+    await h.p.turn('C2:1.1', [mine], undefined, 3000, true)
+    await new Promise(r => setImmediate(r))
+    assert.equal(h.p.paused(), undefined)
+    assert.deepEqual(h.replayed, ['slack:C1:7.7 event 7.7'])
   })
   test('a replayed turn that hits the limit again is held again, and its thread is not told a second time', async () => {
     const h = hub()
