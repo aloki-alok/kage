@@ -233,3 +233,20 @@ describe('kagelet messages (#93): stored before delivery, one row per messageId'
     assert.deepEqual(kageletMessages(ro, 'upload').length, 1)
   })
 })
+
+test('the relay allow list is kept by key, and a thread passes when trusted or listed', () => {
+  const s = openStore(':memory:')
+  assert.deepEqual(s.relayAllowed(), [])
+  assert.equal(s.relayOk('C1:5.5'), false)
+  s.setRelayAllow('C1:5.5', true)
+  s.setRelayAllow('C1:5.5', true)                       // twice changes nothing
+  s.setTrust('C1:5.5', false)                           // a teammate task never removes the listing
+  assert.deepEqual(s.relayAllowed(), ['C1:5.5'])
+  assert.equal(s.relayOk('C1:5.5'), true)
+  assert.equal(s.relayOk('C1:5.5#side-x'), false)       // exact key only: a lane is not the thread
+  s.setTrust('C2:5.5', true)
+  assert.equal(s.relayOk('C2:5.5'), true)               // trust alone still passes
+  s.setRelayAllow('C1:5.5', false)
+  assert.equal(s.relayOk('C1:5.5'), false)
+  assert.deepEqual(s.relayAllowed(), [])
+})

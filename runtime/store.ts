@@ -54,6 +54,9 @@ create table if not exists messages (
 create table if not exists trust (
   key text primary key,          -- a thread is owner-trusted while every task it got came from the owner
   owner_only integer not null
+);
+create table if not exists relay_allow (
+  key text primary key           -- a thread the owner approved for the SSM relay (#161), whatever its trust
 );`
 
 export type Store = ReturnType<typeof openStore>
@@ -167,6 +170,15 @@ export function openStore(path: string) {
     trust(key: string): boolean | undefined {
       const r = db.prepare('select owner_only from trust where key = ?').get(key) as { owner_only: number } | undefined
       return r && r.owner_only === 1
+    },
+    // The SSM relay's allow list: threads the owner approved with kage relay allow. Exact keys, so a lane is never covered by its thread.
+    relayAllowed: (): string[] => (db.prepare('select key from relay_allow order by key').all() as { key: string }[]).map(r => r.key),
+    setRelayAllow(key: string, on: boolean) {
+      if (on) db.prepare('insert into relay_allow (key) values (?) on conflict (key) do nothing').run(key)
+      else db.prepare('delete from relay_allow where key = ?').run(key)
+    },
+    relayOk(key: string): boolean {
+      return this.trust(key) === true || db.prepare('select 1 from relay_allow where key = ?').get(key) !== undefined
     },
     // A task reached the thread. It stays owner-trusted only while every task came from the owner.
     // `known`: the thread had a session before trust was recorded, so its history is unknown.

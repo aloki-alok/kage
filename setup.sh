@@ -37,6 +37,7 @@ People|add|<person>, <app id> <owner>, kagelet <name> or browser|Let a person ta
 People|remove|<person or app id>|Take a person or an agent off the list; whoever answers to them goes too|kage remove priya
 People|list||Who may tag Kage besides you: each person, with their agents under them. Then the kagelets Kage manages: schedule, last and next run, cost today|kage list
 People|tell|<place> <message>|Tell a thread something as you; its session takes it after the current turn|kage tell support use the staging db
+People|relay|allow <place or key>, deny <same> or list|Let one thread use the SSM relay (ssh to hosts behind AWS SSM) though a teammate asked for its work. list shows who may|kage relay allow prod-monitor
 People|call||Kage phones you, and the call can do anything you can (needs KAGE_CALL_COMMAND)|kage call'
 
 cmd_help() {
@@ -286,6 +287,7 @@ case "${1:-}" in
   watch) node cli/watch.ts "${@:2}" ;;
   attach) node cli/attach.ts "${@:2}" ;;
   tell) node cli/tell.ts "${@:2}" ;;
+  relay) node cli/relay.ts "${@:2}" ;;
   add) node cli/registry.ts "$@" ;;
   remove) node cli/registry.ts "$@" ;;
   list) node cli/registry.ts "$@" ;;

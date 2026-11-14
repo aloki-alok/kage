@@ -6,6 +6,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { execFile } from 'node:child_process'
 import { ssmRelay } from '../ssm-relay.ts'
+import { openStore } from '../store.ts'
 
 const ID = 'i-0123456789abcdef0'
 const logs: string[] = []
@@ -76,6 +77,23 @@ describe('the SSM relay', () => {
     const c = await client(t.sock, `${token} ${ID} 22`)
     assert.match(await c.until(/\n/), /^error: /)
     assert.equal(t.args(), '')
+  })
+  test('a listed teammate thread gets a token and passes at connect, deny removes both, an unlisted one and a kagelet lane are refused', async () => {
+    const store = openStore(':memory:')
+    store.setTrust('C9:1.1', false)
+    const t = setup({ trusted: k => store.relayOk(k) })
+    assert.equal(t.relay.issue('C9:1.1'), undefined)               // teammate thread, not listed
+    store.setRelayAllow('C9:1.1', true)
+    assert.equal(t.relay.issue('C9:1.1#side-kagelet-mon'), undefined)   // a lane of a listed thread
+    const token = t.relay.issue('C9:1.1')!
+    assert.ok(token)
+    const ok = await client(t.sock, `${token} ${ID} 22`)
+    assert.match(await ok.until(/^ok\n/), /^ok\n/)
+    ok.s.end()
+    store.setRelayAllow('C9:1.1', false)
+    assert.equal(t.relay.issue('C9:1.1'), undefined)               // no new token
+    const c = await client(t.sock, `${token} ${ID} 22`)            // the old token fails at connect
+    assert.match(await c.until(/\n/), /^error: /)
   })
   test('a dropped session token stops working', async () => {
     const t = setup()
