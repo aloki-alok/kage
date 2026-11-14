@@ -669,7 +669,7 @@ describe("acting in the owner's browser", () => {
       const url = o.urlNow?.() ?? o.url ?? 'https://mail.example.com/compose'
       if (op === 'snapshot') return { title: 'Compose', url, elements: [{ ref: 2, role: 'button', name: 'Send' }] }
       if (op === 'describe') return { url, el: args.ref === 2 ? { ref: 2, role: o.role?.() ?? 'button', name: o.label?.() ?? 'Send' } : undefined, focused: { ref: 4, role: 'searchbox', name: 'Search' } }
-      if (op === 'screenshot') return { url, png: PNG }
+      if (op === 'screenshot' || op === 'crop') return { url, png: PNG }
       o.acted?.push(args)
       return { url }
     },
@@ -699,6 +699,8 @@ describe("acting in the owner's browser", () => {
     assert.ok(yes.events.includes('tool browser_act click mail.example.com ok'), yes.events.join('|'))
     // The owner sees the page before deciding: its screenshot goes to their DM with Kage, never to the thread.
     assert.ok(yes.calls.some(c => /^bot file DBOT .*\.png$/.test(c)), yes.calls.join('|'))
+    // For a control, the picture is the control itself as the screen draws it, since CSS can draw text the DOM lacks.
+    assert.ok(asked.includes('crop'), asked.join(','))
     const asked2: string[] = []
     const no = setupAct({ asked: asked2 }, asking(false, []))
     const r2 = await no.call('browser_act', { ...at, action: 'click', ref: 2 })

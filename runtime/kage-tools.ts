@@ -598,7 +598,8 @@ export function sessionTools(o: {
           // a background tab cannot be captured, and the card alone still names the site and the control.
           if (act.action !== 'open') {
             try {
-              const shot = await browser.call('screenshot', { tabId }) as { url: string; png: string }
+              // For a control, the picture is that control as the screen draws it: CSS can draw text the DOM lacks.
+              const shot = await browser.call('ref' in act ? 'crop' : 'screenshot', { tabId, ...'ref' in act && { ref: act.ref } }) as { url: string; png: string }
               const png = /^data:image\/png;base64,(.+)$/.exec(shot.png)?.[1]
               if (png && !blockedSite(shot.url, browser.block)) await bot.filesUploadV2({ channel_id: o.botDm(), file: Buffer.from(png, 'base64'), filename: `kage-before-${act.action}.png` })
             } catch { /* no picture: the card goes anyway */ }

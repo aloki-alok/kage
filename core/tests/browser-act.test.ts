@@ -47,3 +47,9 @@ test('a label cannot carry Slack links, code fences, or hidden characters onto t
   assert.doesNotMatch(card, /[<>`\u202E\u200B]/)
   assert.match(card, /^mail\.example\.com: click button "Send &lt;https:\/\/evil\.example\|ok&gt; '''x''' evil"$/)
 })
+
+test('a link says on the card and in the snapshot which site it opens', () => {
+  const el = { ref: 5, role: 'link', name: 'Unsubscribe', to: 'evil.example' }
+  assert.match(actCard({ action: 'click', ref: 5 }, { url: 'https://mail.example.com/', el }), /^mail\.example\.com: click link "Unsubscribe" \(opens evil\.example\)$/)
+  assert.match(elementsResult(page([el]), []), /^\[5\] link "Unsubscribe" -> evil\.example$/m)
+})
