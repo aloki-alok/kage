@@ -150,7 +150,7 @@ export function connectMeeting(o: {
       meta: { channel: 'voice', thread_ts: key, place, permalink: `https://meet.google.com/${call}` },
       origin: { channel: 'voice', ts: key },
     }
-    log('meeting question', call, `${c.recent.at(-1)?.speaker ?? 'someone'}:`, q.slice(0, 160))
+    log('meeting question in', call, `(${q.length} chars)`)
     c.asked = now()
     c.said = [...c.said, q].slice(-20)
     asks.add(now())
@@ -162,7 +162,7 @@ export function connectMeeting(o: {
     if (!call) return false
     const c = live.get(call)
     if (c) c.asked = 0
-    log('meeting answer', call, text.slice(0, 160))
+    log('meeting answer in', call, `(${text.length} chars)`)
     queue({ op: 'say', call, text: text.slice(0, 2000) })
     return true
   }

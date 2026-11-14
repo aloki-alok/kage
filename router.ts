@@ -13,7 +13,7 @@ import { existsSync, mkdirSync, readFileSync, renameSync, rmSync, statSync, writ
 import { fileURLToPath } from 'node:url'
 import { dirname } from 'node:path'
 import { load } from './config.ts'
-import { log } from './runtime/log.ts'
+import { log, logRef } from './runtime/log.ts'
 import { connectEmail } from './connectors/email.ts'
 import { listenForCommands } from './connectors/slack-commands.ts'
 import { connectSlack } from './connectors/slack.ts'
@@ -515,11 +515,11 @@ const meeting = secrets.meetingToken ? connectMeeting({
 }) : undefined
 void meeting?.listening.then(port => { log(`meetings on: 127.0.0.1:${port}/meeting`); if (existsSync(`${CODE}/meetbot/node_modules`)) meetbot(port) })
 // The meeting bot runs as the hub's child when it is installed in this checkout (meetbot/node_modules): it waits
-// for a join and opens a headless browser only for a call. It restarts after a crash and ends with the hub.
+// for a join and opens a headless browser only for a call, with only what a browser needs (never the hub's tokens). It restarts after a crash and ends with the hub.
 // A bot on another machine still works the same way, from its own config (meetbot/README.md).
 function meetbot(port: number) {
   const child: ChildProcess = spawn(process.execPath, ['bot.ts'], { cwd: `${CODE}/meetbot`, stdio: ['ignore', 'pipe', 'pipe'],
-    env: { ...process.env, KAGE_MEETBOT_HUB: `http://127.0.0.1:${port}`, KAGE_MEETBOT_TOKEN: secrets.meetingToken ?? "", KAGE_MEETBOT_CARTESIA: secrets.cartesiaKey ?? "", KAGE_MEETBOT_PIPELINE: conn.meeting?.agentApi && conn.meeting.agentId ? JSON.stringify({ api: conn.meeting.agentApi, agent: conn.meeting.agentId }) : "", KAGE_MEETBOT_PIPELINE_KEY: secrets.voiceAgentKey ?? "" } })
+    env: { ...Object.fromEntries(['PATH', 'HOME', 'TMPDIR', 'LANG', 'DISPLAY', 'XDG_RUNTIME_DIR', 'PLAYWRIGHT_BROWSERS_PATH'].flatMap(k => (process.env[k] ? [[k, process.env[k]]] : []))), KAGE_MEETBOT_HUB: `http://127.0.0.1:${port}`, KAGE_MEETBOT_TOKEN: secrets.meetingToken ?? "", KAGE_MEETBOT_CARTESIA: secrets.cartesiaKey ?? "", KAGE_MEETBOT_PIPELINE: conn.meeting?.agentApi && conn.meeting.agentId ? JSON.stringify({ api: conn.meeting.agentApi, agent: conn.meeting.agentId }) : "", KAGE_MEETBOT_PIPELINE_KEY: secrets.voiceAgentKey ?? "" } })
   const lines = (b: Buffer) => { for (const l of b.toString().split('\n')) if (l.trim()) log(`meetbot: ${l.replace(/^\S+Z /, '')}`) }
   child.stdout?.on('data', lines)
   child.stderr?.on('data', lines)
@@ -551,7 +551,7 @@ const whatsapp = conn.whatsapp?.on !== false && existsSync(`${DIR}/waha/.env`) ?
       meta: { channel: 'whatsapp', thread_ts: t.chat, place: t.place, permalink: '' },
       origin: { channel: 'whatsapp', ts: t.chat },
     }
-    log('whatsapp task for', t.place)
+    log('whatsapp task in', logRef(t.chat))
     if (deliver({ connector: 'whatsapp', chat: t.chat, kind: 'chat' }, task, t.place) === 'failed') failed(task)
   },
 }) : undefined
@@ -643,7 +643,7 @@ runJobs([
 
 const replies = {
   voice: (key: string, text: string) => { if (!meeting?.say(key, text)) voice?.reply(key, text) },   // voice:meet-<call> is a Meet call (#63)
-  wa: (key: string, text: string) => void whatsapp?.send(key, text).catch(e => log('whatsapp send failed', key, e)),
+  wa: (key: string, text: string) => void whatsapp?.send(key, text).catch(e => log('whatsapp send failed in', logRef(key), e)),
   mail: (key: string, text: string) => void email?.send(key, text).catch(e => {
     log('mail reply failed', key, e)
     void slack.notifyOwner(`Email reply failed for ${placeOf(key)}: ${e}`)
