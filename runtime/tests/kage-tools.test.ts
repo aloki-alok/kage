@@ -608,14 +608,15 @@ describe("the owner's browser", () => {
 
 describe("acting in the owner's browser", () => {
   const PNG = 'data:image/png;base64,iVBORw0KGgo='
-  const chrome = (o: { asked?: string[]; label?: () => string; url?: string } = {}) => ({
+  const chrome = (o: { asked?: string[]; label?: () => string; url?: string; urlNow?: () => string; role?: () => string; acted?: Record<string, unknown>[] } = {}) => ({
     block: ['bank.example.com'],
     async call(op: string, args: Record<string, unknown>) {
       o.asked?.push(op)
-      const url = o.url ?? 'https://mail.example.com/compose'
+      const url = o.urlNow?.() ?? o.url ?? 'https://mail.example.com/compose'
       if (op === 'snapshot') return { title: 'Compose', url, elements: [{ ref: 2, role: 'button', name: 'Send' }] }
-      if (op === 'describe') return { url, el: args.ref === 2 ? { ref: 2, role: 'button', name: o.label?.() ?? 'Send' } : undefined }
+      if (op === 'describe') return { url, el: args.ref === 2 ? { ref: 2, role: o.role?.() ?? 'button', name: o.label?.() ?? 'Send' } : undefined, focused: { ref: 4, role: 'searchbox', name: 'Search' } }
       if (op === 'screenshot') return { url, png: PNG }
+      o.acted?.push(args)
       return { url }
     },
   })
@@ -639,7 +640,7 @@ describe("acting in the owner's browser", () => {
     const yes = setupAct({ asked }, asking(true, cards))
     const r = await yes.call('browser_act', { ...at, action: 'click', ref: 2 })
     assert.equal(r.isError, undefined, r.text)
-    assert.match(cards[0]!, /^Click button "Send" on mail\.example\.com/)
+    assert.match(cards[0]!, /^mail\.example\.com: click button "Send"$/)
     assert.ok(asked.includes('click'))
     assert.ok(yes.events.includes('tool browser_act click mail.example.com ok'), yes.events.join('|'))
     // The owner sees the page before deciding: its screenshot goes to their DM with Kage, never to the thread.
@@ -659,6 +660,24 @@ describe("acting in the owner's browser", () => {
     assert.equal(r.isError, true)
     assert.match(r.text, /changed/)
     assert.ok(!asked.includes('click'))
+  })
+  test('a control that changed its role, or a tab that moved to another site, while the card waited, is not touched', async () => {
+    let role = 'button'
+    const asked: string[] = []
+    const r1 = await setupAct({ asked, role: () => role }, async () => { role = 'link'; return true }).call('browser_act', { ...at, action: 'click', ref: 2 })
+    assert.equal(r1.isError, true)
+    let url = 'https://mail.example.com/compose'
+    const r2 = await setupAct({ asked, urlNow: () => url }, async () => { url = 'https://other.example/'; return true }).call('browser_act', { ...at, action: 'press', key: 'Enter' })
+    assert.equal(r2.isError, true)
+    assert.match(r2.text, /changed/)
+    assert.ok(!asked.includes('click') && !asked.includes('press'), asked.join(','))
+  })
+  test('Enter names the field it lands in, and the extension gets the control it must still find', async () => {
+    const cards: string[] = [], acted: Record<string, unknown>[] = []
+    await setupAct({ acted }, asking(true, cards)).call('browser_act', { ...at, action: 'press', key: 'Enter' })
+    assert.match(cards[0]!, /^mail\.example\.com: press Enter in searchbox "Search"$/)
+    await setupAct({ acted }, asking(true, cards)).call('browser_act', { ...at, action: 'click', ref: 2 })
+    assert.deepEqual(acted.at(-1)!.expect, { host: 'mail.example.com', role: 'button', name: 'Send' })
   })
   test('a blocked site, or a blocked address to go to, is refused with no card', async () => {
     const cards: string[] = []
