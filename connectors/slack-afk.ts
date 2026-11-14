@@ -10,7 +10,7 @@ import { actOn, afkGuardPrompt, decideAfk, MAX_REPLIES, noteMention, notePing, o
 import type { SlackMessage } from '../core/slack-message.ts'
 import { findSecret, safeReply } from '../core/outbound.ts'
 import type { Saved } from '../runtime/store.ts'
-import { guardVerdict } from './whatsapp.ts'
+import { guardVerdict } from '../core/whatsapp.ts'
 
 type Ids = { owner: string; bot: string; botDm: string; name: string; team?: string }
 const EMOJI = ':ninja:'
