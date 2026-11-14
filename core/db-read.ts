@@ -1,5 +1,6 @@
 // db_read: the statement check a kagelet's query passes before the owner's read command runs it. PostgreSQL
-// syntax. It is the second wall: the first is the read-only access the owner's command already has.
+// syntax. It is the second wall: the first is the read-only access the owner's command already has. It reads
+// statements, not functions: nextval, set_config, lo_import, dblink_exec and the like pass, and only that access stops them.
 // Fails closed: whatever this reader and the database could read two ways (backslash escapes, dollar
 // quotes) is refused, not guessed at.
 
@@ -46,7 +47,8 @@ export function readOnlyQuery(sql: string, maxRows: number): { sql: string } | {
   const s = scan(sql)
   if ('refused' in s) return s
   let { code, run } = s
-  if (/\$(\$|[A-Za-z_]\w*\$)/.test(code)) return { refused: 'dollar quotes ($$ or $tag$) are not allowed' }
+  // Any dollar but a $1 parameter: a tag may hold letters of any alphabet ($é$), so none is guessed at.
+  if (/\$(?!\d)/.test(code)) return { refused: 'dollar quotes ($$ or $tag$) are not allowed' }
   // One trailing semicolon ends the statement; any other starts a second one.
   const last = code.trimEnd().length - 1
   if (code[last] === ';') { code = code.slice(0, last); run = run.slice(0, last) }

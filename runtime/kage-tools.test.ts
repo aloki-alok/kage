@@ -460,6 +460,15 @@ describe("a session's Kage tools", () => {
     const b = await big.call('db_read', { sql: 'select 1' })
     assert.ok(b.text.length < 21_000, String(b.text.length))
     assert.match(b.text, /cut at 20000 characters/)
+    const failing = setup({ kagelet: 'calls', dbRead: { command: 'SECRET_HOST=db.example.com false', maxRows: 200 }, dir })
+    const f = await failing.call('db_read', { sql: 'select 1' })
+    assert.match(f.text, /exited with 1/)
+    assert.doesNotMatch(f.text + failing.ledgers.text('db-reads'), /SECRET_HOST/)
+  })
+  test('db_read says when the rows may be capped', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'kage-db-'))
+    const s = setup({ kagelet: 'calls', dbRead: { ...reader(dir), maxRows: 2 }, dir })
+    assert.match((await s.call('db_read', { sql: 'select 1' })).text, /may be capped at 2 rows/)
   })
   test('a kagelet reports one line per run; what it needs is posted in its thread and waits on the owner', async () => {
     const s = setup({ kagelet: 'status' })

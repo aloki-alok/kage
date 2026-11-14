@@ -71,6 +71,8 @@ describe('anything else is refused', () => {
   test('dollar quotes are refused, since a dollar can also sit inside a name', () => {
     no('select $$; delete from t; $$', /dollar/)
     no('select 1 as x$a$; delete from t; select 1 as y$a$', /dollar/)
+    // A tag outside ASCII: the quote inside it would otherwise open a string that hides the second statement.
+    no("select $é$ ' $é$ ) as t; with d as (delete from t returning *) select * from d, (select 1 -- '", /dollar/)
     ok('select * from t where id = $1')
   })
   test('an unclosed string or comment', () => {

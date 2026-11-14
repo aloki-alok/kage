@@ -408,11 +408,14 @@ export function sessionTools(o: {
       const done = (lines: number, outcome: string) => append('db-reads', [name, String(lines), `${Date.now() - started}ms`, outcome])
       const q = readOnlyQuery(String(args.sql ?? ''), db.maxRows)
       if ('refused' in q) { done(0, `refused: ${q.refused}`); return { isError: true, text: `refused: ${q.refused}` } }
+      // ponytail: the timeout stops sh; a command that hands the query to a child (ssh, a pipe) may outlive it. Keep the server-side statement_timeout in the read command.
       const timeout = db.timeoutMs ?? 30_000
       // The query is $1 of the shell, never part of the command line, so its text is not shell code.
       const r = await new Promise<{ out: string; err?: string }>(res => execFile('/bin/sh', ['-c', `${db.command} "$1"`, 'db_read', q.sql],
         { timeout, maxBuffer: 4 << 20, encoding: 'utf8' },
-        (e, out, stderr) => res(e ? { out, err: (e as { killed?: boolean }).killed ? `the query took longer than ${timeout / 1000} s` : (stderr.trim() || String(e)).slice(0, 500) } : { out })))
+        (e, out, stderr) => res(e ? { out, err: (e as { killed?: boolean }).killed ? `the query took longer than ${timeout / 1000} s`
+          // Never String(e): it quotes the command line, which may hold a host or a password.
+          : (stderr.trim() || `the read command exited with ${(e as { code?: unknown }).code}`).slice(0, 500) } : { out })))
       if (r.err) { done(0, `failed: ${r.err.split('\n')[0]}`); return { isError: true, text: `db_read failed: ${r.err}` } }
       const lines = r.out.split('\n').filter(l => l.trim()).length
       done(lines, 'ok')
