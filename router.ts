@@ -36,7 +36,8 @@ import { Dispatcher, mixRunners } from './core/sessions.ts'
 import { readSettings, setKey, sweepImported } from './runtime/config-files.ts'
 import { configWatcher } from './runtime/config-watch.ts'
 import { unknownNames } from './core/config.ts'
-import type { Task, ToSession } from './runtime/protocol.ts'
+import type { Task } from './core/task.ts'
+import type { ToSession } from './runtime/protocol.ts'
 import { postAsKage, sessionTools } from './runtime/kage-tools.ts'
 import { scheduler } from './runtime/scheduler.ts'
 import { runJobs } from './runtime/jobs.ts'
@@ -95,8 +96,7 @@ process.on('unhandledRejection', e => log('unhandled', e))
 // promise only logs: the hub keeps running.
 for (const sig of ['SIGTERM', 'SIGINT', 'SIGHUP'] as const) process.on(sig, () => { log(`stopped by ${sig}`); process.exit(0) })
 process.on('uncaughtException', e => { log('crashed', e); process.exit(1) })
-let COMMANDS: Map<string, string>
-COMMANDS = new Map(Object.entries(conn.commands ?? {}))
+const COMMANDS = new Map<string, string>(Object.entries(conn.commands ?? {}))
 
 // One SQLite file holds every conversation seen and the session working on each (runtime/store.ts).
 const store = openStore(`${DIR}/kage.db`)

@@ -4,7 +4,7 @@
 import { log } from '../config.ts'
 import { answersInThread, blockedTask, OFF_LIMITS, planBlock } from '../core/blocks.ts'
 import { senderOf } from '../core/gate.ts'
-import type { Task } from './protocol.ts'
+import type { Task } from '../core/task.ts'
 import type { Store } from './store.ts'
 
 const CLOSED = 'closed-threads'

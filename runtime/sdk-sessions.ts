@@ -15,7 +15,8 @@ import type { Dispatcher, Runner } from '../core/sessions.ts'
 import type { sessionTools } from './kage-tools.ts'
 import type { deferredApprovals } from './deferred-approvals.ts'
 import type { Limit } from './limit-pause.ts'
-import type { Task, ToSession } from './protocol.ts'
+import type { Task } from '../core/task.ts'
+import type { ToSession } from './protocol.ts'
 
 type Kage = ReturnType<typeof sessionTools>
 export type Sdk = {
@@ -329,8 +330,7 @@ function requestId() {
 type Inbox = AsyncIterable<SDKUserMessage> & { push(m: SDKUserMessage): void; close(): void; drain(): SDKUserMessage[] }
 // The session's input: tasks go in as they arrive, and the query reads them as one long stream.
 function makeInbox(items: SDKUserMessage[] = []): Inbox {
-  let wake: (() => void) | undefined
-  let closed = false
+  let wake: (() => void) | undefined, closed = false
   return {
     push(m) { items.push(m); wake?.() },
     close() { closed = true; wake?.() },

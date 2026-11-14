@@ -16,7 +16,8 @@ import { sdkSessions } from '../sdk-sessions.ts'
 import { limitPause } from '../limit-pause.ts'
 import { fakeSdk } from './fake-sdk.ts'
 import { kageletManager, kageletRoutes, readKagelets, syncKagelets } from '../kagelets.ts'
-import type { Task, ToSession } from '../protocol.ts'
+import type { Task } from '../../core/task.ts'
+import type { ToSession } from '../protocol.ts'
 
 const LINK = 'https://test.slack.com/archives/CTEST1/p1700000000123456'
 const keyOf = (name: string) => `CTEST1:1700000000.123456#side-kagelet-${name}`

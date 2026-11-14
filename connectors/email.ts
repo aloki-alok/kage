@@ -12,7 +12,7 @@ import { log } from '../config.ts'
 import { parseSessionKey, type Conversation } from '../core/conversations.ts'
 import { noChannelTag } from '../core/gate.ts'
 import type { Delivery } from '../core/sessions.ts'
-import type { Task } from '../runtime/protocol.ts'
+import type { Task } from '../core/task.ts'
 import type { Inbox, Saved } from '../runtime/store.ts'
 import { composeReply, emailTaskLine, mailTask, replyTargets, type InboundMail, type MailConfig } from '../core/email.ts'
 

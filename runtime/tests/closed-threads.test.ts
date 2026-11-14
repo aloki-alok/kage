@@ -6,7 +6,7 @@ import { join } from 'node:path'
 import { OFF_LIMITS, OWNER_BLOCKED } from '../../core/blocks.ts'
 import { Dispatcher } from '../../core/sessions.ts'
 import { closedThreads } from '../closed-threads.ts'
-import type { Task } from '../protocol.ts'
+import type { Task } from '../../core/task.ts'
 import { openStore } from '../store.ts'
 
 // The hub's path end to end: a real store and dispatcher, a fake runner, Slack lines and owner DMs recorded.

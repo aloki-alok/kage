@@ -2,7 +2,7 @@
 // whether the thread closes to teammates. A stopped session stays flagged, so the hub also starts the
 // thread on a new session (Dispatcher.reset). Nothing retries on another model: the owner decides.
 import { senderOf, teammateOf } from './gate.ts'
-import type { Task } from '../runtime/protocol.ts'
+import type { Task } from './task.ts'
 
 // Never says who closed it or why, so it gives the asker nothing to work around.
 export const OFF_LIMITS = "This is off-limits for me, so I won't continue this conversation."

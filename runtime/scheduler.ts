@@ -4,7 +4,7 @@
 import { log } from '../config.ts'
 import { dueSchedules, nextRun, parseCron, REPLY, type Schedule } from '../core/cron.ts'
 import type { Delivery } from '../core/sessions.ts'
-import type { Task } from './protocol.ts'
+import type { Task } from '../core/task.ts'
 import type { Store } from './store.ts'
 
 const PER_THREAD = 50

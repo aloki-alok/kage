@@ -5,7 +5,8 @@ import { connect } from 'node:net'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { Dispatcher } from '../../core/sessions.ts'
-import type { Task, ToSession } from '../protocol.ts'
+import type { Task } from '../../core/task.ts'
+import type { ToSession } from '../protocol.ts'
 import { listenForSessions, restoreHolds, routeReply } from '../session-link.ts'
 
 const task = (content: string): Task => ({ type: 'task', content, fromOwner: true, meta: { channel: 'C1', thread_ts: '5.5', place: '#g', permalink: '' }, origin: { channel: 'C1', ts: '5.5' } })

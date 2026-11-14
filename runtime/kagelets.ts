@@ -12,7 +12,7 @@ import { messageInput, parseMessage, type KageletMessage } from '../core/kagelet
 import { kageletTier } from '../core/access.ts'
 import type { Store } from './store.ts'
 import type { Ledgers, runEvents } from './ledger.ts'
-import type { Task } from './protocol.ts'
+import type { Task } from '../core/task.ts'
 import type { Delivery } from '../core/sessions.ts'
 
 // The kagelets folder. Only the hub (log given) moves one from before the rename (specialists/) here, once: a kage

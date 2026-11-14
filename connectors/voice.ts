@@ -15,7 +15,7 @@ import { log } from '../config.ts'
 import type { Conversation } from '../core/conversations.ts'
 import { voiceTaskLine } from '../core/gate.ts'
 import type { Delivery } from '../core/sessions.ts'
-import type { Task } from '../runtime/protocol.ts'
+import type { Task } from '../core/task.ts'
 import { bearerOk, hourCap, readBody } from './webhook.ts'
 
 export const MAX_QUESTION = 600
