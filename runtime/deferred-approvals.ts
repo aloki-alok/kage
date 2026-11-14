@@ -1,7 +1,7 @@
 // Approvals that wait outside a session (#177). A session that needs the owner's yes posts a card and its
 // turn ends, so no slot is held. The card lives here, in the store, so a hub restart keeps it answerable.
 // The first answer wins. A yes is spent by the one retry of the same call, so two yes replies run it once.
-import type { Task } from './protocol.ts'
+import type { Task } from '../core/task.ts'
 import type { Saved } from './store.ts'
 
 const NAME = 'deferred-approvals'

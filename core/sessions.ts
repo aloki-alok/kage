@@ -3,7 +3,7 @@
 // What happened to a task: handed over, its session starting, waiting for a slot, waiting while the
 // owner has the thread in a terminal, or lost (the session could not start).
 export type Delivery = 'sent' | 'starting' | 'queued' | 'held' | 'failed'
-export type Unquiet = 'busy' | 'asking' | 'starting' | 'watching' | 'just active' | 'waiting for a slot' | 'open in a terminal'
+type Unquiet = 'busy' | 'asking' | 'starting' | 'watching' | 'just active' | 'waiting for a slot' | 'open in a terminal'
 
 // start/stop run a session (start throws if it can't). lastActivity: when it last wrote
 // its transcript (ms). busy: Claude is mid-turn, which a long tool call can be with no writes; 'watching': idle, kept

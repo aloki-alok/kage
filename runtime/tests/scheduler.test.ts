@@ -1,7 +1,7 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import type { Delivery } from '../../core/sessions.ts'
-import type { Task } from '../protocol.ts'
+import type { Task } from '../../core/task.ts'
 import { scheduler } from '../scheduler.ts'
 import { openStore } from '../store.ts'
 

@@ -1,7 +1,7 @@
 import { describe, test } from 'node:test'
 import assert from 'node:assert/strict'
 import { OFF_LIMITS, OWNER_BLOCKED, planBlock } from '../blocks.ts'
-import type { Task } from '../../runtime/protocol.ts'
+import type { Task } from '../task.ts'
 
 const task = (o: Partial<Task> & { content?: string } = {}): Task => ({
   type: 'task', fromOwner: false,

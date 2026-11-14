@@ -3,7 +3,7 @@
 // Kagelets are Kage's teammates, so Kage approves for them by tier (runtime/kagelets.ts): it grants read at save
 // with no card, a write takes the owner's first yes for that tool, which then stands for every kagelet, and act is
 // never a kagelet's. Pure lookups: no model call decides a tier.
-export type Verb = 'read' | 'write' | 'act'
+type Verb = 'read' | 'write' | 'act'
 
 // The grant name for the database tool (runtime/kage-tools.ts): a read through the install's own read command.
 export const DB_READ = 'db_read'

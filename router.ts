@@ -12,7 +12,8 @@ import { randomUUID } from 'node:crypto'
 import { existsSync, mkdirSync, readFileSync, renameSync, rmSync, statSync, writeFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { dirname } from 'node:path'
-import { load, log } from './config.ts'
+import { load } from './config.ts'
+import { log } from './runtime/log.ts'
 import { connectEmail } from './connectors/email.ts'
 import { listenForCommands } from './connectors/slack-commands.ts'
 import { connectSlack } from './connectors/slack.ts'
@@ -36,7 +37,8 @@ import { Dispatcher, mixRunners } from './core/sessions.ts'
 import { readSettings, setKey, sweepImported } from './runtime/config-files.ts'
 import { configWatcher } from './runtime/config-watch.ts'
 import { unknownNames } from './core/config.ts'
-import type { Task, ToSession } from './runtime/protocol.ts'
+import type { Task } from './core/task.ts'
+import type { ToSession } from './runtime/protocol.ts'
 import { postAsKage, sessionTools } from './runtime/kage-tools.ts'
 import { scheduler } from './runtime/scheduler.ts'
 import { runJobs } from './runtime/jobs.ts'
@@ -95,8 +97,7 @@ process.on('unhandledRejection', e => log('unhandled', e))
 // promise only logs: the hub keeps running.
 for (const sig of ['SIGTERM', 'SIGINT', 'SIGHUP'] as const) process.on(sig, () => { log(`stopped by ${sig}`); process.exit(0) })
 process.on('uncaughtException', e => { log('crashed', e); process.exit(1) })
-let COMMANDS: Map<string, string>
-COMMANDS = new Map(Object.entries(conn.commands ?? {}))
+const COMMANDS = new Map<string, string>(Object.entries(conn.commands ?? {}))
 
 // One SQLite file holds every conversation seen and the session working on each (runtime/store.ts).
 const store = openStore(`${DIR}/kage.db`)
@@ -258,7 +259,6 @@ let models = new Map<string, string>()   // lane key -> the model its file names
 const KAGELETS = kageletsDir(DIR, log)
 // Each kagelet's own memory and the dream's proposals waiting on Kage (#98). It never reads or writes MEM.
 const kmem = kageletMemory({ dir: KAGELETS, forbid: () => [MEM.own, MEM.owner], event: e => ledgers.event(e), waiting: cells => ledgers.add('waiting', cells) })
-// The names from before the rename still read.
 const MAX_KAGELETS = kl.max || 10
 // Off unless set (#96); a value that does not read as dollars is said once, here.
 const CAPS = { each: dailyCap(kl), total: totalCap(kl), chain: chainCap(kl) }

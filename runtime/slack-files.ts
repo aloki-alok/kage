@@ -1,6 +1,6 @@
 // Saves a task's Slack files into the thread's files folder, with the user token. Sessions have no token to do it.
 import { mkdirSync, writeFileSync } from 'node:fs'
-import { log } from '../config.ts'
+import { log } from './log.ts'
 import { MAX_FILE_BYTES, downloadUrl, fileLines, planFiles, savedName, type Saved, type SlackFile } from '../core/slack-files.ts'
 
 // Returns the lines for the task text: each saved file by path, name, type and size, and what was skipped.

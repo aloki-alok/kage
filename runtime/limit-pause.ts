@@ -3,7 +3,7 @@
 // paused, new messages are held the same way and no session starts. A replay goes through the gate again
 // (the original Slack event), so it runs with the trust of whoever wrote it.
 import { clockTime } from '../core/board.ts'
-import type { Task } from './protocol.ts'
+import type { Task } from '../core/task.ts'
 import type { Store } from './store.ts'
 
 // until: when the limit resets (ms), when Claude said.

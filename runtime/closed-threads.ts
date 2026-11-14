@@ -1,10 +1,10 @@
 // When the safety check stops a turn (core/blocks.ts): the thread starts over on a new session, since the old one
 // stays flagged. A teammate's thread closes to teammates, side lanes included, until the owner writes in it.
 // The closed threads live in the store, so a hub restart keeps them closed.
-import { log } from '../config.ts'
+import { log } from './log.ts'
 import { answersInThread, blockedTask, OFF_LIMITS, planBlock } from '../core/blocks.ts'
 import { senderOf } from '../core/gate.ts'
-import type { Task } from './protocol.ts'
+import type { Task } from '../core/task.ts'
 import type { Store } from './store.ts'
 
 const CLOSED = 'closed-threads'

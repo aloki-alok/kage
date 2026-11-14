@@ -41,14 +41,16 @@ Copy the nearest sibling before you write anything new. `CONTRIBUTING.md` has th
 
 `tests/structure.test.ts` (ADR 0014) enforces the mechanical rules. The rest are judgment, and review checks them.
 
-1. One file, one job, named for that job. If a file passes 300 lines, split it along its jobs before you add to it.
-2. A function does one thing and fits on a screen (about 80 lines). A 6-way `if` on an action becomes one function per action.
-3. Grep before you write a helper: `git grep -n "const <name>\|function <name>"`. Reuse the shared home below. If two files need the same new helper, put it in the shared home in the same PR.
-4. Pass state in explicitly (a context object or arguments). A module-level `Map` needs a line that prunes it.
-5. A list of connectors, tools or channels lives in one table. Never write `['email', 'whatsapp', 'voice']` again in a second file.
-6. A pure decision goes in `core/` with its test, and its I/O wrapper goes in `runtime/` or `connectors/`.
-7. When you replace code, delete the old path in the same PR. A migration that must stay a while gets `// compat: remove after YYYY-MM-DD`, and the test fails after that date.
-8. Never add to a debt list in `tests/structure.test.ts`. When your change fixes a listed break, remove it from the list.
+1. Names say what a thing does, so a reader needs no comment to know it. A file is named for its one job (`transcript-tail.ts`, not `utils.ts`). A function is a verb phrase (`readKagelets`, `planBlock`). A value is a noun for what it holds (`ownerMemoryDir`, not `kmem` or `d`). No made-up words (`realish`), no one-letter names outside a short loop. Rename when you touch a vague name.
+2. One file, one job. If a file passes 300 lines, split it along its jobs before you add to it.
+3. A function does one thing and fits on a screen (about 80 lines). A 6-way `if` on an action becomes one function per action.
+4. Grep before you write a helper: `git grep -n "const <name>\|function <name>"`. Reuse the shared home below. If two files need the same new helper, put it in the shared home in the same PR.
+5. Pass state in explicitly (a context object or arguments). A module-level `Map` needs a line that prunes it.
+   Export only what another file needs. A helper a test drives directly may stay exported.
+6. A list of connectors, tools or channels lives in one table. Never write `['email', 'whatsapp', 'voice']` again in a second file.
+7. A pure decision goes in `core/` with its test, and its I/O wrapper goes in `runtime/` or `connectors/`.
+8. When you replace code, delete the old path in the same PR. A migration that must stay a while gets `// compat: remove after YYYY-MM-DD`, and the test fails after that date.
+9. Never add to a debt list in `tests/structure.test.ts`. When your change fixes a listed break, remove it from the list.
 
 Shared homes (update this table when you add one):
 
@@ -58,6 +60,9 @@ Shared homes (update this table when you add one):
 | A conversation, its session key, its connector | `core/conversations.ts` |
 | Keep state across a restart | the store from `openStore` in `runtime/store.ts`: `store.load(name)` and `store.save(name, value)` (type `Saved`) |
 | Who may start a task, a task line | `core/gate.ts` |
+| A log line | `runtime/log.ts` (`log`) |
+| One line of text, or someone else's text quoted safely | `core/text.ts` (`oneLine`, `quotedLine`) |
+| The shape a connector builds | `core/task.ts` (`Task`) |
 | What may go out | `core/outbound.ts` |
 
 ## 4. Test it

@@ -8,7 +8,7 @@ Kage hears from Slack, email, voice, WhatsApp, GitHub and meetings. If each conn
 
 ## Decision
 
-A connector turns a message into a `Task` (`runtime/protocol.ts:9`) and sets `fromOwner`. The rule that says who may drive Kage lives in `core/`: `core/gate.ts` for Slack, `core/email.ts` and `core/whatsapp.ts` for their channels. A connector never adds an access rule of its own.
+A connector turns a message into a `Task` (`core/task.ts`) and sets `fromOwner`. The rule that says who may drive Kage lives in `core/`: `core/gate.ts` for Slack, `core/email.ts` and `core/whatsapp.ts` for their channels. A connector never adds an access rule of its own.
 
 ## Consequences
 

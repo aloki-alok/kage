@@ -11,7 +11,7 @@ export function signedByGithub(secret: string, body: string, header: string | un
   return got.length === want.length && timingSafeEqual(got, want)
 }
 
-export type GithubEvent = { thread: string; headline: string; quoted: string; url: string }
+type GithubEvent = { thread: string; headline: string; quoted: string; url: string }
 
 type User = { login?: string }
 type Item = { number?: number; title?: string; html_url?: string; body?: string | null; user?: User }

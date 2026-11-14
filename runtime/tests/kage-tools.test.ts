@@ -7,7 +7,7 @@ import { liveCronJobs } from '../../core/cron.ts'
 import { cardAt } from '../../core/ledgers.ts'
 import { openLedgers } from '../ledger.ts'
 import { postAsKage, sessionTools } from '../kage-tools.ts'
-import type { Task } from '../protocol.ts'
+import type { Task } from '../../core/task.ts'
 
 // A fake Slack: records posts, edits, deletes and reactions; the bot is not in channel "CPRIV" and cannot see group DM "GDM".
 function fakeSlack() {

@@ -28,7 +28,7 @@ export const pauseLine = (p: Pause, now = Date.now()) => {
   const held = p.held === 0 ? 'No message is held.' : p.held === 1 ? `1 message is held, and it runs ${when}.` : `${p.held} messages are held, and they run ${when}.`
   return p.draining ? `Stopping for a restart or a stop: new messages wait. ${held}` : `Paused by the usage limit until ${clockTime(p.until, now)}. ${held}`
 }
-export type Known = { key: string; place: string; lastSeen: number; connector: string }
+type Known = { key: string; place: string; lastSeen: number; connector: string }
 export type State = 'asking' | 'working' | 'starting' | 'watching' | 'queued' | 'held' | 'quiet' | 'closed'
 export type Row = { key: string; place: string; connector: string; state: State; label: string; ageMs: number; next?: number }
 

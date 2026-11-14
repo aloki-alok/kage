@@ -3,7 +3,7 @@
 import type { SocketModeClient } from '@slack/socket-mode'
 import type { WebClient } from '@slack/web-api'
 import { execFile } from 'node:child_process'
-import { log } from '../config.ts'
+import { log } from '../runtime/log.ts'
 import { commandRequest, type CommandRequest } from '../core/commands.ts'
 import { splitForSlack } from '../core/outbound.ts'
 import type { Ledgers } from '../runtime/ledger.ts'

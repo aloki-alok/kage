@@ -1,7 +1,7 @@
 import { describe, test } from 'node:test'
 import assert from 'node:assert/strict'
 import { limitPause } from '../limit-pause.ts'
-import type { Task } from '../protocol.ts'
+import type { Task } from '../../core/task.ts'
 import { openStore } from '../store.ts'
 
 const MIN = 60_000

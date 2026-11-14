@@ -5,14 +5,14 @@
 // connectors.github.login are set. Reach it through a tunnel to 127.0.0.1:<port>/github.
 import { createServer } from 'node:http'
 import type { AddressInfo } from 'node:net'
-import { log } from '../config.ts'
+import { log } from '../runtime/log.ts'
 import type { Conversation } from '../core/conversations.ts'
-import { noChannelTag } from '../core/gate.ts'
+import { noChannelTag } from '../core/text.ts'
 import { githubEvent, signedByGithub } from '../core/github.ts'
 import { slackPlain } from '../core/outbound.ts'
 import { hourCap, readBody } from './webhook.ts'
 import type { Delivery } from '../core/sessions.ts'
-import type { Task } from '../runtime/protocol.ts'
+import type { Task } from '../core/task.ts'
 import type { Inbox, Saved } from '../runtime/store.ts'
 
 const MAX_BODY = 1_000_000   // GitHub caps a delivery at 25 MB; the events read here are far smaller

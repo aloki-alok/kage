@@ -4,6 +4,7 @@
 // voiceToolRefusal enforce it. The one exception is a call Kage placed to the owner itself: `kage call`
 // gets a one-time code (issueCode), the dialer hands it to the agent, and the first call that asks with
 // it is the owner for its whole length. Caller ID is never trusted: anyone can fake a number. The reply comes back through replies.voice in router.ts.
+import { oneLine } from '../core/text.ts'
 import { randomBytes, randomUUID } from 'node:crypto'
 import { createServer, type IncomingMessage } from 'node:http'
 import type { AddressInfo } from 'node:net'
@@ -11,11 +12,11 @@ import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
 import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js'
 import { isInitializeRequest } from '@modelcontextprotocol/sdk/types.js'
 import { z } from 'zod'
-import { log } from '../config.ts'
+import { log } from '../runtime/log.ts'
 import type { Conversation } from '../core/conversations.ts'
 import { voiceTaskLine } from '../core/gate.ts'
 import type { Delivery } from '../core/sessions.ts'
-import type { Task } from '../runtime/protocol.ts'
+import type { Task } from '../core/task.ts'
 import { bearerOk, hourCap, readBody } from './webhook.ts'
 
 export const MAX_QUESTION = 600
@@ -26,7 +27,7 @@ const FAILED = 'Kage could not start a session for this call right now. Try agai
 export function ownerVoiceTaskLine(question: string): string {
   return 'Voice task from the owner (a call Kage placed to the owner, verified by a one-time code): do what the owner asks, with your normal tools, approvals and context. '
     + 'Your reply is spoken: answer in one to three short spoken sentences, plain words, no markdown, no links. For long work, say what you are doing and reply when done. '
-    + `The owner's words, as heard: ${JSON.stringify(question.replace(/\s+/g, ' ').trim())}`
+    + `The owner's words, as heard: ${JSON.stringify(oneLine(question))}`
 }
 
 async function readJson(req: IncomingMessage, max = 64 * 1024): Promise<unknown> {

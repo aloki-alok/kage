@@ -13,7 +13,8 @@ import { askHub, CWD, DIR, settings } from './home.ts'
 import { DatabaseSync } from 'node:sqlite'
 import { ago, boardRows, nextRuns, limitLine, pauseLine, watchingNext, whenLabel, type Live, type Row, type State } from '../core/board.ts'
 import { filterRows, hit, layout, moreLine, STRING, type Layout } from '../core/loom.ts'
-import { newLines, transcriptLine } from '../core/transcript.ts'
+import { transcriptLine } from '../core/transcript.ts'
+import { newLines } from '../runtime/transcript-tail.ts'
 import { HERO_BIG, HERO_SMALL } from '../core/hero.ts'
 import { schedulesIn } from '../runtime/store.ts'
 import { actionLine, dailyCap, PANEL_KEYS, panelLines, shownState, type PanelAction } from '../core/kagelet-view.ts'
@@ -40,8 +41,7 @@ let live: Live | undefined           // the hub's answer; undefined when it does
 let liveAt = 0
 let known: Thread[] = []
 let schedules: ReturnType<typeof schedulesIn> = []
-let next = new Map<string, number>()
-let nextAt = 0
+let next = new Map<string, number>(), nextAt = 0
 let board: Row[] = []                // every thread, in look-first order
 let view = { live: [] as Row[], ended: [] as Row[] }   // after the search filter
 

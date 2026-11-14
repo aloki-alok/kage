@@ -6,7 +6,7 @@
 // install needs no SDK.
 import type { createSdkMcpServer, EffortLevel, Options, Query, SDKMessage, SDKUserMessage, tool } from '@anthropic-ai/claude-agent-sdk'
 import { z } from 'zod'
-import { log } from '../config.ts'
+import { log } from './log.ts'
 import { senderOf, withoutInvisible, type Sender } from '../core/gate.ts'
 import { configRefusal, protectConfig, ownerMemoryRefusal, privateToolRefusal, slackSendRefusal, voiceToolRefusal } from '../core/guards.ts'
 import { builtinTools, grantRefusal } from '../core/kagelets.ts'
@@ -15,7 +15,8 @@ import type { Dispatcher, Runner } from '../core/sessions.ts'
 import type { sessionTools } from './kage-tools.ts'
 import type { deferredApprovals } from './deferred-approvals.ts'
 import type { Limit } from './limit-pause.ts'
-import type { Task, ToSession } from './protocol.ts'
+import type { Task } from '../core/task.ts'
+import type { ToSession } from './protocol.ts'
 
 type Kage = ReturnType<typeof sessionTools>
 export type Sdk = {
@@ -329,8 +330,7 @@ function requestId() {
 type Inbox = AsyncIterable<SDKUserMessage> & { push(m: SDKUserMessage): void; close(): void; drain(): SDKUserMessage[] }
 // The session's input: tasks go in as they arrive, and the query reads them as one long stream.
 function makeInbox(items: SDKUserMessage[] = []): Inbox {
-  let wake: (() => void) | undefined
-  let closed = false
+  let wake: (() => void) | undefined, closed = false
   return {
     push(m) { items.push(m); wake?.() },
     close() { closed = true; wake?.() },

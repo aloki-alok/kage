@@ -1,10 +1,10 @@
 // The hub's scheduler: runs each thread's schedules (core/cron.ts) as tasks in that thread. They
 // live in the store, so a hub restart, a closed session or a runtime switch loses none of them;
 // only unschedule ends one (a watch also ends on its own, see WATCH_DAYS).
-import { log } from '../config.ts'
+import { log } from './log.ts'
 import { dueSchedules, nextRun, parseCron, REPLY, type Schedule } from '../core/cron.ts'
 import type { Delivery } from '../core/sessions.ts'
-import type { Task } from './protocol.ts'
+import type { Task } from '../core/task.ts'
 import type { Store } from './store.ts'
 
 const PER_THREAD = 50

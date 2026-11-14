@@ -7,11 +7,13 @@ import { readFileSync } from 'node:fs'
 import { basename } from 'node:path'
 
 const root = new URL('..', import.meta.url).pathname
-const files = execFileSync('git', ['ls-files', '*.ts', '*.js'], { cwd: root, encoding: 'utf8' }).split('\n')
+const files = execFileSync('git', ['ls-files', '--cached', '--others', '--exclude-standard', '*.ts', '*.js'], { cwd: root, encoding: 'utf8' }).split('\n')
   .filter(f => f && !/(^|\/)tests\//.test(f) && !f.startsWith('docs/'))
 const text = new Map(files.map(f => [f, readFileSync(`${root}/${f}`, 'utf8')]))
 // The source without line and block comments, so a rule reads code, not prose about it.
 const code = (f: string) => text.get(f)!.replace(/\/\*[\s\S]*?\*\//g, '').replace(/(^|\s)\/\/.*$/gm, '$1')
+// Shell scripts call core/ too (setup.sh runs node with an import), so they count as users of an export.
+const scripts = execFileSync('git', ['ls-files', '*.sh'], { cwd: root, encoding: 'utf8' }).split('\n').filter(Boolean).map(f => readFileSync(`${root}/${f}`, 'utf8'))
 const lines = (f: string) => text.get(f)!.split('\n').length - 1   // as wc -l counts
 const inDir = (d: string) => files.filter(f => f.startsWith(`${d}/`) && f.endsWith('.ts') && !f.slice(d.length + 1).includes('/'))
 
@@ -20,17 +22,10 @@ const MAX_LINES = 300
 const DEBT = {
   // ADR 0001: core/ does no I/O, reads no environment, sets no timers, and imports only core/.
   impureCore: [
-    'core/guards.ts', 'core/transcript.ts', 'core/blocks.ts',
+    'core/guards.ts',
   ] as string[],
   // runtime/ and connectors/ never import a file in the repo root (router.ts, config.ts, ...).
-  rootImports: [
-    'runtime/closed-threads.ts', 'runtime/jobs.ts', 'runtime/kage-tools.ts',
-    'runtime/ledger.ts', 'runtime/scheduler.ts', 'runtime/sdk-sessions.ts',
-    'runtime/session-link.ts', 'runtime/slack-files.ts', 'runtime/tmux-panes.ts',
-    'connectors/email.ts', 'connectors/github.ts', 'connectors/jev.ts',
-    'connectors/meeting.ts', 'connectors/slack-afk.ts', 'connectors/slack-commands.ts',
-    'connectors/slack.ts', 'connectors/voice.ts', 'connectors/whatsapp.ts',
-  ] as string[],
+  rootImports: [] as string[],
   // A source file over MAX_LINES lines, with the most it may have. Split it; lower the number as it shrinks.
   longFiles: {
     'runtime/kage-tools.ts': 832, 'router.ts': 728, 'cli/top.ts': 624,
@@ -45,20 +40,9 @@ const DEBT = {
     'runtime/hold-keys.ts', 'runtime/jobs.ts', 'runtime/kagelet-memory.ts',
     'runtime/key-proxy.ts', 'runtime/memory-snapshot.ts', 'runtime/repo-access.ts',
   ] as string[],
-  // A core/ export no other source file uses. Tests do not count: un-export it, or delete it with its test.
+  // A core/ export no other file needs: over-exported (drop the export) or dead (only a test uses it: delete both).
   unusedCoreExports: [
-    'core/access.ts Verb', 'core/afk.ts Ping', 'core/afk.ts CALL_GAP', 'core/afk.ts BURST',
-    'core/afk.ts AfkAction', 'core/auto-update.ts Gate', 'core/blocks.ts OWNER_BLOCKED', 'core/blocks.ts BlockPlan',
-    'core/board.ts Known', 'core/browser-act.ts ActContext', 'core/cli-help.ts suggest', 'core/commands.ts CommandResult',
-    'core/config.ts agentLine', 'core/config.ts ALIASES', 'core/config.ts NOT_SETTINGS', 'core/config.ts toEnv',
-    'core/cron.ts cronMatches', 'core/doctor.ts nodeOk', 'core/email.ts MailTask', 'core/email.ts newPart',
-    'core/events.ts dayEvents', 'core/events.ts ChainView', 'core/gate.ts Trigger', 'core/gate.ts Drop',
-    'core/github.ts GithubEvent', 'core/jev.ts JEV_MAX_CHARS', 'core/jev.ts QUESTION', 'core/jev.ts OTHER_BAR',
-    'core/jev.ts OWNER_BAR', 'core/jev.ts TRIAGE_MAX_CHARS', 'core/jev.ts AFK_P0_BAR', 'core/kagelet-message.ts Part',
-    'core/kagelets.ts Maker', 'core/loom.ts Tone', 'core/meeting.ts MAX_TRANSCRIPT', 'core/outbound.ts CODE_WIDTH',
-    'core/registry.ts validAppId', 'core/release.ts Bump', 'core/release.ts bumpVersion', 'core/sessions.ts Unquiet',
-    'core/slack-files.ts MAX_FILES', 'core/socket-watch.ts SocketVerdict', 'core/ssm.ts Relay', 'core/whatsapp.ts WaMessage',
-    'core/whatsapp.ts WaAction', 'core/whatsapp.ts MAX_STAND_IN_REPLIES', 'core/whatsapp.ts hasTag',
+    'core/config.ts NOT_SETTINGS', 'core/config.ts toEnv',   // leave with the old env import (compat PR)
   ] as string[],
 }
 
@@ -90,15 +74,22 @@ test('every core/ and runtime/ file is in the CONTRIBUTING.md code map', () => {
   check('unmapped', [...inDir('core'), ...inDir('runtime')].filter(f => !map.includes(`\`${basename(f)}\``)), DEBT.unmapped)
 })
 
-test('every core/ export is used by another source file', () => {
-  const unused: string[] = []
+test('a core/ export is used outside its file: by another source file, or by its own file and a test', () => {
+  const tests = execFileSync('git', ['ls-files', '--cached', '--others', '--exclude-standard', '*/tests/*.ts'], { cwd: root, encoding: 'utf8' }).split('\n').filter(Boolean)
+  const testText = tests.map(f => readFileSync(`${root}/${f}`, 'utf8'))
   const exported = (f: string) => [
     ...[...code(f).matchAll(/^export (?:async )?(?:function\*?|const|let|class|type|interface) (\w+)/gm)].map(m => m[1]!),
     ...[...code(f).matchAll(/^export (?:type )?\{([^}]*)\}/gm)].flatMap(m => m[1]!.split(',').map(x => x.trim().split(/\s+as\s+/).pop()!).filter(Boolean)),
   ]
+  const unused: string[] = []
   for (const f of inDir('core')) for (const name of exported(f)) {
-    const word = new RegExp(`\\b${name}\\b`)
-    if (!files.some(g => g !== f && word.test(text.get(g)!))) unused.push(`${f} ${name}`)
+    const word = new RegExp(`\\b${name}\\b`, 'g')
+    const elsewhere = files.some(g => g !== f && word.test(text.get(g)!)) || scripts.some(t => word.test(t))
+    const ownUse = (code(f).match(word) ?? []).length > 1
+    const tested = testText.some(t => new RegExp(`\\b${name}\\b`).test(t))
+    // Fine: another file uses it, or its own file does and a test drives it directly.
+    // Over-exported: only its own file uses it (drop the export). Dead: only a test uses it (delete both).
+    if (!elsewhere && !(ownUse && tested)) unused.push(`${f} ${name}`)
   }
   check('unusedCoreExports', unused, DEBT.unusedCoreExports)
 })

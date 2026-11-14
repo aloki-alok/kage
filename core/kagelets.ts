@@ -14,7 +14,7 @@ export { DB_READ }
 export const NAME = /^[a-z][a-z0-9-]{0,30}$/
 
 // Who made it, from its file: Kage's tool wrote it first, or the owner did by hand (no by line). Provenance only.
-export type Maker = 'owner' | 'kage'
+type Maker = 'owner' | 'kage'
 // standing: its write tools held by a standing approval (runtime/kagelets.ts), so a revoke of that tool takes them.
 // after: the kagelet whose output starts this one (#93). cron: '' when it runs only after another.
 export type Kagelet = { name: string; key: string; link: string; cron: string; after?: string; tools: string[]; job: string; paused: boolean; by: Maker; why: string; model: string; modelWhy: string; resumed?: number; standing?: string[] }

@@ -3,7 +3,7 @@
 // hub finds it again after a restart.
 import { execFileSync } from 'node:child_process'
 import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs'
-import { log } from '../config.ts'
+import { log } from './log.ts'
 import { liveCronJobs } from '../core/cron.ts'
 import type { Runner } from '../core/sessions.ts'
 

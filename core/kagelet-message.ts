@@ -2,11 +2,11 @@
 // A2A's Message as of v0.3 on purpose (messageId, contextId, taskId, role, parts with a kind), so a transport
 // between installs can carry it later with no redesign. Today it never leaves this install. hops is ours.
 import { NAME } from './kagelets.ts'
-import { noChannelTag } from './gate.ts'
+import { noChannelTag } from './text.ts'
 
 // ponytail: text only. A thread's files folder also holds what owner sessions wrote there (a prod export, say),
 // so a steered kagelet could pass one on. File parts come back when kagelets get a work folder of their own.
-export type Part = { kind: 'text'; text: string }
+type Part = { kind: 'text'; text: string }
 // contextId: the chain. taskId: the run that sent it, by its trace id in the event log.
 export type KageletMessage = { messageId: string; contextId: string; taskId: string; from: string; to: string; role: 'agent'; parts: Part[]; hops: number }
 // queued: stored, not yet handed to a run. delivered: a run has it. read: that run ended. failed: never delivered.
