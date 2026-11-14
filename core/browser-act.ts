@@ -52,15 +52,22 @@ export function parseAct(a: Record<string, unknown>): Act | { error: string } {
 
 const hostOf = (url: string) => { try { return new URL(url).hostname } catch { return url } }
 
-// The approval card's line. The control is named from the page (el), never from what Kage said it was.
+// Page words on a Slack card: no links or mentions (< >), no code fences, no characters that hide or reorder text.
+const slackSafe = (s: string) => s.replace(/[\u200B-\u200F\u202A-\u202E\u2060-\u2069\uFEFF]/g, '').replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;').replaceAll('`', "'")
+const cq = (s: string) => slackSafe(q(s))
+
+// The approval card's line. The site comes first, so no label can put a fake site in front of the real one, and
+// the control is named from the page (el), never from what Kage said it was.
 export function actCard(a: Act, at: { url: string; el?: Element }) {
-  const site = hostOf(at.url)
-  const el = at.el ? `${at.el.role} ${q(at.el.name)}` : 'an element that is no longer on the page'
-  switch (a.action) {
-    case 'click': return `Click ${el} on ${site}`
-    case 'type': return `Type ${q(a.text)} into ${el} on ${site}`
-    case 'press': return `Press ${a.key} on ${site}`
-    case 'navigate': return `Go from ${site} to ${a.url}`
-    case 'open': return `Open ${a.url} in a new tab, in the Kage group`
-  }
+  const el = at.el ? `${at.el.role} ${cq(at.el.name)}` : 'an element that is no longer on the page'
+  const line = (() => {
+    switch (a.action) {
+      case 'click': return `click ${el}`
+      case 'type': return `type ${cq(a.text)} into ${el}`
+      case 'press': return `press ${a.key}${at.el ? ` in ${el}` : ''}`
+      case 'navigate': return `go to ${slackSafe(a.url)}`
+      case 'open': return `open ${slackSafe(a.url)} in a new tab, in the Kage group`
+    }
+  })()
+  return `${slackSafe(hostOf(at.url))}: ${line}`
 }
