@@ -13,11 +13,14 @@ function setup() {
   writeFileSync(env, ENV, { mode: 0o600 })
   importLegacy(env)
   const seen = { applied: [] as unknown[], events: [] as [ConfigEvent, string[]][], told: [] as string[], restart: [] as boolean[], log: [] as string[] }
+  // Resolves on the first live apply, so a test waits on the watcher's own event and not on a clock.
+  let appliedOnce!: () => void
+  const applied = new Promise<void>(r => { appliedOnce = r })
   const w = configWatcher({
-    envFile: env, boot: readSettings(env), log: l => seen.log.push(l), apply: l => seen.applied.push(l),
+    envFile: env, boot: readSettings(env), log: l => seen.log.push(l), apply: l => { seen.applied.push(l); appliedOnce() },
     event: (k, keys) => seen.events.push([k, keys]), tell: t => seen.told.push(t), restartWanted: y => seen.restart.push(y), debounceMs: 20,
   })
-  return { dir, env, w, seen }
+  return { dir, env, w, seen, applied }
 }
 
 describe('a changed people list applies now', () => {
@@ -78,10 +81,10 @@ describe('a wrong file is refused', () => {
 })
 
 describe('the watcher itself', () => {
-  test('a write to config.json is checked by itself, with no call', async () => {
+  test('a write to config.json is checked by itself, with no call', { timeout: 20_000 }, async () => {
     const t = setup()
     updateConfig(t.env, c => ({ ...c, people: { teammates: ['UTEST0001', 'UTEST0003'], agents: [] } }))
-    for (let i = 0; i < 50 && !t.seen.applied.length; i++) await new Promise(r => setTimeout(r, 40))
+    await t.applied
     assert.deepEqual(t.seen.applied, [{ teammates: ['UTEST0001', 'UTEST0003'], apps: [] }])
     t.w.close()
   })
