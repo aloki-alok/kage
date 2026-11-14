@@ -10,6 +10,7 @@ export const files = (envFile: string) => ({ dir: dirname(envFile), config: join
 export const hasSettings = (envFile: string) => existsSync(files(envFile).config) || existsSync(envFile)
 
 // A failed parse as a line a person reads: the file, the key and what is wrong. Never a value.
+// The error carries the JSON keys that are wrong (names only), for the event log.
 const why = (file: string, e: unknown) => {
   const issues = (e as { issues?: { path: PropertyKey[]; message: string }[] }).issues
   return `${file}: ${issues ? issues.map(i => `${i.path.join('.') || 'the file'}: ${i.message}`).join('; ') : (e as Error).message}`
@@ -22,13 +23,15 @@ function json(text: string): unknown {
     throw new Error(`not valid JSON${line ? ` at line ${line}` : ''}`)
   }
 }
+const keysOf = (e: unknown) => ((e as { issues?: { path: PropertyKey[]; keys?: string[] }[] }).issues ?? []).flatMap(i => (i.keys ?? ['']).map(k => [...i.path, k].filter(Boolean).join('.'))).filter(Boolean)
+const fail = (file: string, e: unknown) => Object.assign(new Error(why(file, e)), { keys: keysOf(e) })
 function parse<T>(schema: { parse: (x: unknown) => T }, file: string): T {
-  try { return schema.parse(json(readFileSync(file, 'utf8'))) } catch (e) { throw new Error(why(file.split('/').pop()!, e)) }
+  try { return schema.parse(json(readFileSync(file, 'utf8'))) } catch (e) { throw fail(file.split('/').pop()!, e) }
 }
 
 // A change checked against the schema before it is written, with the same short message as a bad file.
 function checked<T>(schema: { parse: (x: unknown) => T }, name: string, value: unknown): T {
-  try { return schema.parse(value) } catch (e) { throw new Error(why(name, e)) }
+  try { return schema.parse(value) } catch (e) { throw fail(name, e) }
 }
 
 // Written beside the file, then moved over it: a crash midway leaves the old file whole. Always mode 600.

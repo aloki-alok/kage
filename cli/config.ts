@@ -48,7 +48,7 @@ if (cmd === 'has') {
       return next as Config
     })
   } catch (e) { die(`Not changed: ${(e as Error).message.replace(/^config\.json: /, '')}`) }
-  console.log(`Set ${key}. Run kage restart to apply it.`)
+  console.log(`Set ${key}. The people lists apply at once. Any other key applies by itself once every session is quiet (or run kage restart).`)
 } else if (cmd === 'save') {
   const words = (await new Promise<string>(res => { let t = ''; process.stdin.on('data', d => t += d).on('end', () => res(t)) })).split(/\s+/).filter(Boolean)
   const [app, user, bot] = ['xapp-', 'xoxp-', 'xoxb-'].map(p => words.find(w => w.startsWith(p)))

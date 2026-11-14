@@ -5,7 +5,6 @@ import { appEntry, validUserId } from './registry.ts'
 export type Env = Record<string, string>
 // Who may reach Kage. These two lists are the settings a running hub takes without a restart.
 export type AllowLists = { teammates: string[]; apps: string[] }
-const LISTS = { KAGE_TEAMMATES: 'teammates', KAGE_TRUSTED_APPS: 'apps' } as const
 
 // One NAME=value per line; the last line of a name wins. Indent, spaces around "=" and quotes are dropped.
 export function parseEnv(text: string): Env {
@@ -37,34 +36,5 @@ export function checkEnv(env: Env): ({ name: string } & AllowLists) | { error: s
   return { name, teammates, apps }
 }
 
+// What kage reload answers (runtime/config-watch.ts check).
 export type Reloaded = { changed: string[]; restart: string[]; count: number } | { refused: string }
-
-// kage reload: read the file again and apply the two allow lists. A file that is wrong or unreadable changes
-// nothing. Every other setting was fixed when the hub started, so one that differs from the start is named as
-// needing a restart, each time, until the restart happens. Values never reach the answer or the log: only names and ids.
-export function reloader(o: { boot: Env; read: () => Env; apply: (l: AllowLists) => void; log: (line: string) => void }) {
-  const first = checkEnv(o.boot)
-  let live: AllowLists = 'error' in first ? { teammates: [], apps: [] } : first
-  let count = 0
-  return (): Reloaded => {
-    count++
-    let env: Env
-    try { env = o.read() } catch (e) { return refuse(`the settings file cannot be read (${(e as Error).message})`) }
-    const next = checkEnv(env)
-    if ('error' in next) return refuse(next.error)
-    const changed = Object.entries(LISTS).flatMap(([name, k]) => {
-      const added = next[k].filter(x => !live[k].includes(x)), removed = live[k].filter(x => !next[k].includes(x))
-      const parts = [added.length ? `added ${added.join(', ')}` : '', removed.length ? `removed ${removed.join(', ')}` : ''].filter(Boolean)
-      return parts.length ? [`${name}: ${parts.join(', ')}`] : []
-    })
-    const restart = [...new Set([...Object.keys(o.boot), ...Object.keys(env)])].filter(k => !(k in LISTS) && o.boot[k] !== env[k]).sort()
-    live = { teammates: next.teammates, apps: next.apps }
-    o.apply(live)
-    o.log(`reload ${count}: ${changed.join('; ') || 'no list changed'}${restart.length ? `; needs a restart: ${restart.join(', ')}` : ''}`)
-    return { changed, restart, count }
-  }
-  function refuse(why: string): Reloaded {
-    o.log(`reload ${count} refused: ${why}`)
-    return { refused: why }
-  }
-}

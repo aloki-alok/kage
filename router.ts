@@ -32,8 +32,8 @@ import { dailyDue, grantsLine, openWaiting, staleWaiting } from './core/ledgers.
 import { dreamDue, dreamTask, threadsSince } from './core/dream.ts'
 import { retro, retroDue } from './core/retro.ts'
 import { Dispatcher, mixRunners } from './core/sessions.ts'
-import { reloader } from './core/settings.ts'
-import { readEnv, readSettings, sweepImported } from './runtime/config-files.ts'
+import { readSettings, sweepImported } from './runtime/config-files.ts'
+import { configWatcher } from './runtime/config-watch.ts'
 import { unknownNames } from './core/config.ts'
 import type { Task, ToSession } from './runtime/protocol.ts'
 import { postAsKage, sessionTools } from './runtime/kage-tools.ts'
@@ -57,7 +57,7 @@ import { hubLock } from './runtime/hub-lock.ts'
 import { npmCi, packagesStale, rotate } from './runtime/hub-log.ts'
 import { closedThreads } from './runtime/closed-threads.ts'
 
-const { ENV_FILE, NAME, Title, TEAMMATES, TRUSTED_APPS, env, need, bot, user } = load()
+const { ENV_FILE, NAME, Title, TEAMMATES, TRUSTED_APPS, env, need, bot, user, settings } = load()
 const DIR = dirname(ENV_FILE)
 const CODE = dirname(fileURLToPath(import.meta.url))
 // One hub per machine, checked before the store and Slack: two hubs on one Slack app split its events. A hub
@@ -499,12 +499,14 @@ const BOOT_CODE = codeStamp(CODE)
 // The version of the code this hub runs, read once: kage status and kage doctor show it from this file.
 const VERSION = version(CODE)
 writeFileSync(`${DIR}/version`, `${VERSION}\n`, { mode: 0o600 })
+let configRestart = false   // set by the settings watcher below: restart once every session is quiet
 let npmFailedFor = 0   // the code stamp whose npm ci failed: not tried again until the code moves
 function selfUpdate(now: number) {
   const code = codeStamp(CODE)
-  if (code && code !== BOOT_CODE && now - code > 10_000 && d.quietEverywhere(now) && !limits.paused(now)) {
+  const newCode = code && code !== BOOT_CODE && now - code > 10_000
+  if ((newCode || configRestart) && d.quietEverywhere(now) && !limits.paused(now)) {
     // New code may need new packages: npm stamps node_modules/.package-lock.json on each install.
-    if (packagesStale(CODE)) {
+    if (newCode && packagesStale(CODE)) {
       if (npmFailedFor === code) return
       try { npmCi(CODE) } catch {
         npmFailedFor = code
@@ -512,7 +514,7 @@ function selfUpdate(now: number) {
         return
       }
     }
-    log('newer code is in place and every session is quiet: restarting into it')
+    log(newCode ? 'newer code is in place and every session is quiet: restarting into it' : 'settings changed and every session is quiet: restarting to apply them')
     process.exit(75)
   }
 }
@@ -577,8 +579,14 @@ function tell(key: string, text: string): { ok: true; held?: true } | { refused:
   if (r === 'failed') { failed(task); return { refused: 'could not start a session there' } }
   return r === 'held' ? { ok: true, held: true } : { ok: true }
 }
-// kage reload: a changed allow list applies to the next message, with no restart and no turn cut (core/settings.ts).
-const reload = reloader({ boot: env, read: () => readEnv(ENV_FILE), apply: slack.allow, log })
+// Changed settings (runtime/config-watch.ts): the people lists apply to the next message with no turn cut, any other key
+// restarts the hub once every session is quiet (selfUpdate below), and a wrong file is refused. kage reload runs the same check.
+const watcher = configWatcher({
+  envFile: ENV_FILE, boot: settings, log, apply: slack.allow, tell: text => void slack.notifyOwner(text),
+  event: (kind, keys) => ledgers.event({ kind, who: 'config', trace: '', detail: keys.join(', ') }),
+  restartWanted: yes => { configRestart = yes },
+})
+const reload = watcher.check
 listenForSessions(`${DIR}/router.sock`, d, { ...replies, failed, schedules, tell, reload, paused: () => limits.paused(), limitCounts: () => limits.counts,
   // kage restart and stop: a drain renewed by each ask. A turn that just ended does not hold them up: its follow-up
   // waits too. Nor does a thread open in a terminal: kage attach holds it again after the restart.
