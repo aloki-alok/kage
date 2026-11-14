@@ -145,9 +145,10 @@ export function findPeople(people: Person[], query: string): { id: string; name:
 // Who a task counts as. Email never counts as the owner, whatever the task says: anyone may be behind
 // a mailbox forward. A voice call is the strictest label (see voiceToolRefusal) unless the voice
 // connector flagged it as the owner, which it does only for a call Kage placed (a one-time code).
-export type Sender = 'owner' | 'teammate' | 'voice'
-export const senderOf = (t: { fromOwner: boolean; meta: { channel: string } }): Sender =>
-  t.meta.channel === 'voice' ? (t.fromOwner ? 'owner' : 'voice') : t.fromOwner && t.meta.channel !== 'email' ? 'owner' : 'teammate'
+// agent: a listed agent posted it (core/agents.ts), whoever's token it used. It is never the owner.
+export type Sender = 'owner' | 'teammate' | 'voice' | 'agent'
+export const senderOf = (t: { fromOwner: boolean; meta: { channel: string }; agent?: unknown }): Sender =>
+  t.meta.channel === 'voice' ? (t.fromOwner ? 'owner' : 'voice') : t.agent ? 'agent' : t.fromOwner && t.meta.channel !== 'email' ? 'owner' : 'teammate'
 
 // Characters people never see but Claude reads: Unicode tag letters (whole hidden sentences), zero-width
 // spaces, word joiners, byte-order marks, soft hyphens, direction overrides, filler letters, variation

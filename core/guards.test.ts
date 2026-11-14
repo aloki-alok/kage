@@ -3,7 +3,7 @@ import assert from 'node:assert/strict'
 import { mkdirSync, mkdtempSync, symlinkSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { ownerMemoryRefusal, privateToolRefusal, slackSendRefusal, voiceToolRefusal } from './guards.ts'
+import { agentToolRefusal, ownerMemoryRefusal, privateToolRefusal, slackSendRefusal, voiceToolRefusal } from './guards.ts'
 
 
 describe('private sources on a teammate task', () => {
@@ -61,6 +61,36 @@ describe('tools on a voice call', () => {
   })
   test('other senders are not limited here', () => {
     for (const s of ['owner', 'teammate', undefined]) assert.equal(voiceToolRefusal('Bash', s), undefined)
+  })
+})
+
+describe("an agent's task may read and answer, nothing more", () => {
+  const home = mkdtempSync(join(tmpdir(), 'kage-agent-'))
+  mkdirSync(join(home, '.config/kage'), { recursive: true })
+  writeFileSync(join(home, '.config/kage/env'), 'SLACK_USER_TOKEN=xoxp-secret\n')
+  mkdirSync(join(home, 'work'), { recursive: true })
+  symlinkSync(join(home, '.config/kage/env'), join(home, 'work/notes.txt'))
+  const refuse = (tool: string, input: Record<string, string> = {}) => agentToolRefusal(tool, input, 'agent', home)
+  test('reading files and answering in the thread are allowed', () => {
+    for (const t of ['Read', 'Grep', 'Glob', 'ToolSearch', 'TodoWrite', 'mcp__kage__reply', 'mcp__kage__edit_message', 'mcp__plugin_kage_kage__reply'])
+      assert.equal(refuse(t, { file_path: join(home, 'work/README.md') }), undefined, t)
+  })
+  test('shell, edits, web, other MCP tools, subagents, posting as the owner and schedules are refused before any card', () => {
+    for (const t of ['Bash', 'Edit', 'Write', 'MultiEdit', 'NotebookEdit', 'WebFetch', 'WebSearch', 'Agent', 'Task',
+      'mcp__claude_ai_OmniDimension__dispatchCall', 'mcp__grafana__query_loki_logs', 'mcp__kage__message_people', 'mcp__kage__schedule',
+      'mcp__kage__send_file', 'mcp__kage__delete_message', 'mcp__kage__set_model'])
+      assert.match(refuse(t) ?? '', /only read and answer/, t)
+  })
+  test('a read of a place that holds secrets is refused, through a symlink too', () => {
+    for (const p of ['.config/kage/env', '.ssh/id_ed25519', '.aws/credentials', '.claude/settings.json', 'work/.env', 'work/.env.production', 'work/server.pem', 'work/notes.txt'])
+      assert.match(refuse('Read', { file_path: join(home, p) }) ?? '', /secrets/, p)
+    assert.match(refuse('Grep', { path: join(home, '.aws') }) ?? '', /secrets/)
+    assert.match(refuse('Glob', { pattern: '**/.env*' }) ?? '', /secrets/)
+    assert.match(refuse('Glob', { pattern: '.config/kage/*' }) ?? '', /secrets/)
+    assert.equal(refuse('Grep', { path: join(home, 'work') }), undefined)
+  })
+  test('the owner, a teammate and a voice call are not limited by this rule', () => {
+    for (const s of ['owner', 'teammate', 'voice', undefined]) assert.equal(agentToolRefusal('Bash', {}, s, home), undefined)
   })
 })
 

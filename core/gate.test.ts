@@ -316,6 +316,10 @@ describe('who a task counts as', () => {
     assert.equal(senderOf(t('voice', true)), 'owner')
     assert.equal(senderOf(t('voice', false)), 'voice')
   })
+  test("a listed agent's post is an agent's task, even made with the owner's token", () => {
+    assert.equal(senderOf({ ...t('C1', true), agent: { app: 'A0AGENT01' } }), 'agent')
+    assert.equal(senderOf({ ...t('C1', false), agent: { app: 'A0AGENT01' } }), 'agent')
+  })
 })
 
 describe('invisible text', () => {
