@@ -243,6 +243,16 @@ describe("a session's Kage tools", () => {
     // Sent from the owner's account, so the edit keeps saying it was Kage.
     assert.ok(s.calls.includes('owner edit G-UBO000001,USAM00001 9.1 *Kage:* We meet at 4 pm.'), s.calls.join('\n'))
   })
+  test('a call the owner proved with the one-time code may message people; a stranger on a call may not', async () => {
+    const s = setup()
+    s.t.onTask(s.task({ channel: 'voice', thread_ts: 'voice:own', fromOwner: true }))
+    const r = await s.call('message_people', { channel: 'voice', thread_ts: 'voice:own', users: ['UBO000001'], text: 'The link is ready.' })
+    assert.equal(r.isError, undefined, r.text)
+    assert.ok(s.calls.includes('owner post G-UBO000001 *Kage:* The link is ready.'), s.calls.join('\n'))
+    const t = setup()
+    t.t.onTask(t.task({ channel: 'voice', thread_ts: 'voice:who', fromOwner: false }))
+    assert.equal((await t.call('message_people', { channel: 'voice', thread_ts: 'voice:who', users: ['UBO000001'], text: 'hi' })).isError, true)
+  })
   test("on a teammate's task the asker is always in the group, the message says who asked, and secrets stay out", async () => {
     const s = setup()
     s.t.onTask({ ...s.task({ fromOwner: false }), content: 'Teammate task (USAM00001, Sam, not the owner): tell Bo we meet at 3' })
