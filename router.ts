@@ -43,6 +43,7 @@ import { snapshotMemory } from './runtime/memory-snapshot.ts'
 import { sdkSessions } from './runtime/sdk-sessions.ts'
 import { limitPause } from './runtime/limit-pause.ts'
 import { ssmRelay } from './runtime/ssm-relay.ts'
+import { ssmEligible } from './core/ssm.ts'
 import { listenForSessions, restoreHolds, routeReply } from './runtime/session-link.ts'
 import { openStore, type Inbox } from './runtime/store.ts'
 import { costRecorder, openLedgers, runEvents } from './runtime/ledger.ts'
@@ -97,7 +98,7 @@ COMMANDS = new Map(Object.entries(conn.commands ?? {}))
 // One SQLite file holds every conversation seen and the session working on each (runtime/store.ts).
 const store = openStore(`${DIR}/kage.db`)
 const SSM_SOCK = `${DIR}/ssm.sock`
-const ssm = ssmRelay({ path: SSM_SOCK, trusted: key => store.trust(key) === true, log })
+const ssm = ssmRelay({ path: SSM_SOCK, trusted: key => store.relayOk(key), log })
 // What connectors keep across a restart, in the same file. The old JSON files move in once.
 store.importState({ afk: `${DIR}/afk.json`, 'github-threads': `${DIR}/github-threads.json`, 'mail-threads': `${DIR}/mail-threads.json` })
 // What Kage posted, waits on, spent and ran, in the same file (runtime/ledger.ts). Old .tsv files move in once.
@@ -641,6 +642,17 @@ function tell(key: string, text: string): { ok: true; held?: true } | { refused:
   if (r === 'failed') { failed(task); return { refused: 'could not start a session there' } }
   return r === 'held' ? { ok: true, held: true } : { ok: true }
 }
+// kage relay allow, deny and list: which threads may use the SSM relay beyond the owner-trusted ones. deny cuts the live token too.
+function relay(action: string, key?: string): { ok: true; keys: string[] } | { refused: string } {
+  if (action !== 'list') {
+    if (!key || !ssmEligible(key) || key.includes('#')) return { refused: 'that is not a Slack thread key (lanes are not listed)' }
+    if (action === 'allow' && !store.conversation(key)) return { refused: 'no thread with that key' }
+    store.setRelayAllow(key, action === 'allow')
+    if (action === 'deny') ssm.drop(key)
+    log('relay', action, key)
+  }
+  return { ok: true, keys: store.relayAllowed() }
+}
 // Changed settings (runtime/config-watch.ts): the people lists apply to the next message with no turn cut, any other key
 // restarts the hub once every session is quiet (selfUpdate below), and a wrong file is refused. kage reload runs the same check.
 const watcher = configWatcher({
@@ -649,7 +661,7 @@ const watcher = configWatcher({
   restartWanted: yes => { configRestart = yes },
 })
 const reload = watcher.check
-listenForSessions(`${DIR}/router.sock`, d, { ...replies, failed, schedules, tell, reload, paused: () => limits.paused(), limitCounts: () => limits.counts,
+listenForSessions(`${DIR}/router.sock`, d, { ...replies, failed, schedules, tell, relay, reload, paused: () => limits.paused(), limitCounts: () => limits.counts,
   // kage restart and stop: a drain renewed by each ask. A turn that just ended does not hold them up: its follow-up
   // waits too. Nor does a thread open in a terminal: kage attach holds it again after the restart.
   end: (key, cut) => stopThread(key, cut), kagelet: (action, name) => manager.manage({ action, name }, Date.now()),

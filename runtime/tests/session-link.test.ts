@@ -319,3 +319,33 @@ test('kage stop <thread> asks the hub to end one session, after its turn or now'
   assert.deepEqual(await ask({ type: 'end', key: 'C1:5.5' }), { type: 'end', text: 'C1:5.5 cut=false' })
   assert.deepEqual(await ask({ type: 'end', key: 'C1:5.5', cut: true }), { type: 'end', text: 'C1:5.5 cut=true' })
 })
+
+test('the console lists, allows and denies relay threads, and a session cannot', async () => {
+  const d = new Dispatcher<ToSession>(
+    { start: () => {}, stop: () => {}, lastActivity: () => 0, busy: () => false },
+    { max: 3, idleMs: 9e9, connectMs: 9e9, evictMs: 0, newId: () => 'id1' },
+  )
+  d.task('B', task('b'), 0)
+  d.connect('B', () => {})
+  const calls: string[] = []
+  const relay = (action: string, key?: string) => (calls.push(`${action} ${key ?? ''}`), { ok: true as const, keys: ['A'] })
+  const sock = join(mkdtempSync(join(tmpdir(), 'kage-link-')), 's.sock')
+  const server = listenForSessions(sock, d, { mail: () => {}, wa: () => {}, voice: () => {}, failed: () => {}, schedules: { add: () => undefined, remove: () => {} }, relay })
+  await until(() => server.listening)
+  const ask = async (m: object, hello?: string) => {
+    const c = connect(sock)
+    let r = ''
+    c.on('data', b => { r += b })
+    if (hello) c.write(JSON.stringify({ type: 'hello', key: hello }) + '\n')
+    c.write(JSON.stringify(m) + '\n')
+    await until(() => r.includes('\n'))
+    c.end()
+    return r ? JSON.parse(r) : undefined
+  }
+  assert.deepEqual(await ask({ type: 'relay', action: 'allow', key: 'A' }), { type: 'relay', ok: true, keys: ['A'] })
+  assert.deepEqual(await ask({ type: 'relay', action: 'list' }), { type: 'relay', ok: true, keys: ['A'] })
+  assert.equal((await ask({ type: 'relay', action: 'wipe', key: 'A' })).refused !== undefined, true)
+  await ask({ type: 'relay', action: 'allow', key: 'B' }, 'B')   // a thread's own session may not allow itself
+  assert.deepEqual(calls, ['allow A', 'list '])
+  server.close()
+})

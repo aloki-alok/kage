@@ -65,6 +65,8 @@ A session's shell runs in an OS sandbox. `session-manager-plugin` opens its own 
 
 Only an owner-only Slack thread gets a relay token (`KAGE_SSM_TOKEN`) and the socket path (`KAGE_SSM_SOCK`) in its env. Teammate, agent, email, WhatsApp, voice and kagelet sessions get none, and the hub refuses them. The hub accepts only an instance id (`i-...` or `mi-...`) and a port from 1 to 65535, allows 8 relays at once, and logs the target and the exit of each, never the traffic.
 
+A thread that a teammate asked for work (a schedule a teammate set up, for example) is not owner-only, so it gets no token. To let one such thread use the relay, run `kage relay allow <place or key>` in your own terminal. `kage relay deny <same>` removes it and cuts its live token, and `kage relay list` shows the keys. The list holds exact thread keys, so a lane of a listed thread, a kagelet and every non-Slack session stay refused. The hub checks the list again on every connection. A session that is already running keeps its old env: it gets the token at its next start.
+
 To use it, add one `Match` block per region at the top of `~/.ssh/config`, above the `Host` blocks (ssh keeps the first ProxyCommand it finds). It applies only when `KAGE_SSM_TOKEN` is set, so your own terminal keeps its direct ProxyCommand.
 
 ```sshconfig

@@ -36,6 +36,7 @@ export type FromSession =
   | { type: 'stop'; key: string }
   | { type: 'kagelet'; action: PanelAction; name: string }   // kage top's panel: the hub answers { type: 'kagelet', text } or { type: 'kagelet', refused }
   | { type: 'tell'; key: string; text: string }   // kage tell: the hub answers { type: 'tell', ok: true } or { type: 'tell', refused }
+  | { type: 'relay'; action: 'allow' | 'deny' | 'list'; key?: string }   // kage relay: the hub answers { type: 'relay', ok: true, keys } or { type: 'relay', refused }
   | { type: 'hold'; key: string; pid: number }   // pid: the attach process, which owns the hold
   | { type: 'hello'; key: string }
   | { type: 'permission'; id: string }

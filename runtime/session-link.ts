@@ -46,6 +46,8 @@ export function listenForSessions(path: string, d: Dispatcher<ToSession>, o: Rep
   callCode?: () => string
   // kage tell: the owner's words into one thread, as a task (router.ts decides how).
   tell?: (key: string, text: string) => { ok: true; held?: true } | { refused: string }
+  // kage relay: change or read the SSM relay's allow list (router.ts decides what may be listed).
+  relay?: (action: string, key?: string) => { ok: true; keys: string[] } | { refused: string }
   // kage reload: read the settings file again (core/settings.ts).
   reload?: () => Reloaded
   // The usage-limit pause, when one is on (runtime/limit-pause.ts): kage status and kage list show it.
@@ -115,6 +117,10 @@ export function listenForSessions(path: string, d: Dispatcher<ToSession>, o: Rep
           // core/guards.ts (stops mistakes, not a determined session). kage tell refuses inside a session.
           const r = !m.text.trim() ? { refused: 'empty message' } : o.tell?.(m.key, m.text.trim()) ?? { refused: 'this hub cannot take messages' }
           sock.write(JSON.stringify({ type: 'tell', ...r }) + '\n')
+        } else if (m.type === 'relay' && !key && !held) {
+          // Owner only, like tell: a session's own hello'd socket cannot. Same limit as tell (core/guards.ts).
+          const r = typeof m.action === 'string' && ['allow', 'deny', 'list'].includes(m.action) ? o.relay?.(m.action, typeof m.key === 'string' ? m.key : undefined) ?? { refused: 'this hub has no relay' } : { refused: 'use allow, deny or list' }
+          sock.write(JSON.stringify({ type: 'relay', ...r }) + '\n')
         } else if (m.type === 'kagelet' && !key && !held && typeof m.name === 'string') {
           // Only the panel's actions: saving a kagelet file stays with Kage's tool and the owner's editor.
           const action = (m as { action?: unknown }).action as PanelAction
