@@ -9,7 +9,7 @@ import { z } from 'zod'
 import { log } from '../config.ts'
 import { senderOf, withoutInvisible, type Sender } from '../core/gate.ts'
 import { ownerMemoryRefusal, privateToolRefusal, slackSendRefusal, voiceToolRefusal } from '../core/guards.ts'
-import { grantRefusal } from '../core/kagelets.ts'
+import { DB_READ, grantRefusal } from '../core/kagelets.ts'
 import { approvalPreview } from '../core/preview.ts'
 import type { Dispatcher, Runner } from '../core/sessions.ts'
 import type { sessionTools } from './kage-tools.ts'
@@ -38,7 +38,8 @@ type Session = {
 export function sdkSessions(o: {
   sdk: Sdk
   hub: () => Dispatcher<ToSession>
-  tools: (key: string, send: (m: { type: 'mail' | 'wa' | 'voice'; text: string }) => void) => Kage   // one set per thread
+  // One set per thread. approve: the owner's card from inside a tool, true only on their yes.
+  tools: (key: string, send: (m: { type: 'mail' | 'wa' | 'voice'; text: string }) => void, approve: (tool: string, description: string, input: Record<string, unknown>) => Promise<boolean>) => Kage
   hasTranscript: (id: string) => boolean
   toHub: (key: string, m: { type: 'mail' | 'wa' | 'voice'; text: string }) => void
   options: Options                                 // cwd, settings, settingSources, the claude binary
@@ -108,7 +109,8 @@ export function sdkSessions(o: {
         canUseTool: (name, input, x) => o.grantOf?.(key)
           ? Promise.resolve(grantRefusal(name, o.grantOf(key)!, input) ? { behavior: 'deny' as const, message: 'A kagelet approves nothing. Say in the thread what you needed and why: your manager decides.' }
             : { behavior: 'allow' as const, updatedInput: input })
-          : ALLOWED.includes(name) ? Promise.resolve({ behavior: 'allow' as const, updatedInput: input })
+          // A db_read grant raises its own card from inside the tool (runtime/kagelets.ts), so the owner gets one, not two.
+          : ALLOWED.includes(name) || (name === 'mcp__kage__manage_kagelet' && (input.tools as unknown[] | undefined)?.includes(DB_READ)) ? Promise.resolve({ behavior: 'allow' as const, updatedInput: input })
           : ask(key, s, name, x.title ?? x.description ?? '', input, x.signal),
         // The same rules as private-data-guard.ts, in-process. A failed check blocks the call.
         hooks: {
@@ -223,7 +225,7 @@ export function sdkSessions(o: {
     start(key, id) {
       const s: Session = sessions.get(key) ?? {
         id, state: 'idle', last: 0, stopped: false, asks: new Map(), turn: [],
-        kage: o.tools(key, m => o.toHub(key, m)),
+        kage: o.tools(key, m => o.toHub(key, m), (tool, description, input) => ask(key, s, tool, description, input, new AbortController().signal).then(r => r.behavior === 'allow')),
       }
       Object.assign(s, { id, stopped: false })
       try { open(key, s) } catch (e) { sessions.delete(key); throw e }

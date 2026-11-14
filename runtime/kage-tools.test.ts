@@ -44,7 +44,7 @@ function fakeSlack() {
   return { calls, posts, bot: client('bot'), user: client('owner') }
 }
 
-function setup(o: { hubDown?: boolean; dir?: string; kagelet?: string; dbRead?: { command: string; maxRows: number; timeoutMs?: number } } = {}) {
+function setup(o: { hubDown?: boolean; dir?: string; kagelet?: string; dbRead?: { command: () => string | undefined; maxRows: number; timeoutMs?: number }; approve?: (tool: string, description: string, input: Record<string, unknown>) => Promise<boolean> } = {}) {
   const slack = fakeSlack()
   const dir = o.dir ?? mkdtempSync(join(tmpdir(), 'kage-tools-'))
   const ledgers = openLedgers(dir)
@@ -58,8 +58,8 @@ function setup(o: { hubDown?: boolean; dir?: string; kagelet?: string; dbRead?: 
       list: () => jobs,
     },
     afk: async c => { out.push(`afk ${JSON.stringify(c)}`); return 'AFK on' },
-    kagelet: o.kagelet, dbRead: o.dbRead,
-    kagelets: { list: () => 'the list', manage: a => { out.push(`manage ${JSON.stringify(a)}`); return 'managed' } },
+    kagelet: o.kagelet, dbRead: o.dbRead, approve: o.approve,
+    kagelets: { list: () => 'the list', manage: async (a, ask) => { out.push(`manage ${JSON.stringify(a)}`); return ask ? `asked: ${await ask({ kagelet: a.name, job: 'j', read_command: 'r' })}` : 'managed' } },
   })
   const call = (name: string, args: Record<string, unknown>) => t.tools.find(x => x.name === name)!.run(args)
   const task = (o: Partial<Task['meta']> & { fromOwner?: boolean } = {}): Task => ({
@@ -417,16 +417,44 @@ describe("a session's Kage tools", () => {
     assert.equal(lane.t.tools.some(x => x.name === 'kagelets' || x.name === 'manage_kagelet'), false)
     assert.equal(setup().t.tools.some(x => x.name === 'report'), false)
   })
+  test('manage_kagelet hands the manager the owner\'s card; a teammate\'s task never reaches it, and its db_read ask is logged', async () => {
+    const asked: unknown[] = []
+    const s = setup({ approve: async (tool, description, input) => { asked.push([tool, description, input]); return true } })
+    s.t.onTask(s.task())
+    const save = { channel: 'C1', thread_ts: '5.5', action: 'save', name: 'calls', tools: ['db_read'], read_command: 'r' }
+    assert.equal((await s.call('manage_kagelet', save)).text, 'asked: true')
+    assert.deepEqual(asked, [['grant_db_read', asked[0] && (asked[0] as string[])[1], { kagelet: 'calls', job: 'j', read_command: 'r' }]])
+    assert.match((asked[0] as string[])[1]!, /every kagelet granted db_read/)
+    s.t.onTask(s.task({ fromOwner: false }))
+    assert.equal((await s.call('manage_kagelet', save)).isError, true)
+    assert.equal(asked.length, 1)
+    assert.match(s.ledgers.text('grants'), /\tcalls\trefused\tnot the owner's task/)
+    // Without a card (tmux panes), the manager gets no way to ask.
+    const pane = setup()
+    pane.t.onTask(pane.task())
+    assert.equal((await pane.call('manage_kagelet', save)).text, 'managed')
+  })
   // A stand-in for the owner's read command: prints two rows, and keeps the query it got as its last argument.
   const reader = (dir: string, out = 'id\tcalls\n1\t40\n2\t12\n') => {
     writeFileSync(join(dir, 'read.sh'), `printf '${out}'; for a; do q=$a; done; printf '%s' "$q" > ${join(dir, 'query')}`)
-    return { command: `sh ${join(dir, 'read.sh')} --read-only`, maxRows: 200 }
+    return { command: () => `sh ${join(dir, 'read.sh')} --read-only`, maxRows: 200 }
   }
-  test('db_read exists only in a kagelet lane, and only when the owner set the read command', () => {
+  test('db_read exists only in a kagelet lane', () => {
     const dir = mkdtempSync(join(tmpdir(), 'kage-db-'))
     assert.equal(setup({ kagelet: 'calls', dbRead: reader(dir) }).t.tools.some(x => x.name === 'db_read'), true)
     assert.equal(setup({ kagelet: 'calls' }).t.tools.some(x => x.name === 'db_read'), false)
     assert.equal(setup({ dbRead: reader(dir) }).t.tools.some(x => x.name === 'db_read'), false)
+  })
+  test('db_read reads the command on each call, so a newly approved one applies at once; none set is refused', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'kage-db-'))
+    let command: string | undefined
+    const s = setup({ kagelet: 'calls', dbRead: { command: () => command, maxRows: 200 }, dir })
+    const none = await s.call('db_read', { sql: 'select 1' })
+    assert.equal(none.isError, true)
+    assert.match(none.text, /no read command/)
+    assert.match(s.ledgers.text('db-reads'), /\tcalls\t0\t\d+ms\trefused: no read command/)
+    command = reader(dir).command()
+    assert.match((await s.call('db_read', { sql: 'select 1' })).text, /^id\tcalls/)
   })
   test('db_read runs the capped query as the last argument, returns the rows, and logs the call but never the rows', async () => {
     const dir = mkdtempSync(join(tmpdir(), 'kage-db-'))
@@ -451,16 +479,16 @@ describe("a session's Kage tools", () => {
   })
   test('db_read stops a slow command, and cuts a long answer', async () => {
     const dir = mkdtempSync(join(tmpdir(), 'kage-db-'))
-    const slow = setup({ kagelet: 'calls', dbRead: { command: 'sleep 5; echo', maxRows: 200, timeoutMs: 200 }, dir })
+    const slow = setup({ kagelet: 'calls', dbRead: { command: () => 'sleep 5; echo', maxRows: 200, timeoutMs: 200 }, dir })
     const r = await slow.call('db_read', { sql: 'select 1' })
     assert.equal(r.isError, true)
     assert.match(r.text, /took longer than/)
     assert.match(slow.ledgers.text('db-reads'), /\tfailed: /)
-    const big = setup({ kagelet: 'calls', dbRead: { command: `node -e "console.log('x'.repeat(100000))"`, maxRows: 200 }, dir })
+    const big = setup({ kagelet: 'calls', dbRead: { command: () => `node -e "console.log('x'.repeat(100000))"`, maxRows: 200 }, dir })
     const b = await big.call('db_read', { sql: 'select 1' })
     assert.ok(b.text.length < 21_000, String(b.text.length))
     assert.match(b.text, /cut at 20000 characters/)
-    const failing = setup({ kagelet: 'calls', dbRead: { command: 'SECRET_HOST=db.example.com false', maxRows: 200 }, dir })
+    const failing = setup({ kagelet: 'calls', dbRead: { command: () => 'SECRET_HOST=db.example.com false', maxRows: 200 }, dir })
     const f = await failing.call('db_read', { sql: 'select 1' })
     assert.match(f.text, /exited with 1/)
     assert.doesNotMatch(f.text + failing.ledgers.text('db-reads'), /SECRET_HOST/)

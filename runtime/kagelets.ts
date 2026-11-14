@@ -5,6 +5,7 @@ import { existsSync, mkdirSync, readdirSync, readFileSync, renameSync, unlinkSyn
 import { parseSessionKey } from '../core/conversations.ts'
 import { DB_READ, NAME, parseKagelet, resultLine, rowLine, setPaused, kageletFile, kageletRows, type Maker, type KageletRow } from '../core/kagelets.ts'
 import type { Store } from './store.ts'
+import type { Ledgers } from './ledger.ts'
 
 // The kagelets folder. Only the hub (log given) moves one from before the rename (specialists/) here, once: a kage
 // command that moved it would empty the folder under an old hub still running, which then drops every schedule.
@@ -80,10 +81,19 @@ export function syncKagelets(files: { name: string; text: string }[], store: Pic
   return grants
 }
 
+// The command db_read runs: KAGE_DB_READ_COMMAND wins, else the one the owner approved on Kage's card.
+// Read on each call, so a yes applies with no restart.
+const READ_COMMAND = 'db-read-command'
+export const readCommand = (envCommand: string | undefined, store: Pick<Store, 'load'>) => envCommand || (store.load(READ_COMMAND) as string | undefined)
+
+// The owner's answer to Kage's approval card (runtime/sdk-sessions.ts): true only on their yes.
+export type AskOwner = (card: { kagelet: string; job: string; read_command: string }) => Promise<boolean>
+
 // The manager's side (Kage's owner sessions, runtime/kage-tools.ts): write, pause, run and remove kagelet files.
 // The hub syncs right after a change, so run works at once; the minute sync applies it anyway.
-export type Manage = { action: 'save' | 'pause' | 'resume' | 'run' | 'remove'; name: string; thread?: string; schedule?: string; tools?: string[]; job?: string; by?: Maker; why?: string }
-export function kageletManager(o: { dir: string; max: number; ledgers: { text(name: 'runs' | 'costs' | 'reports'): string }; sync: (now: number) => void; runNow: (id: string, now: number) => string | undefined }) {
+// read_command: the read command Kage proposes with a db_read grant.
+export type Manage = { action: 'save' | 'pause' | 'resume' | 'run' | 'remove'; name: string; thread?: string; schedule?: string; tools?: string[]; job?: string; by?: Maker; why?: string; read_command?: string }
+export function kageletManager(o: { dir: string; max: number; ledgers: { text(name: 'runs' | 'costs' | 'reports'): string } & Pick<Ledgers, 'add'>; sync: (now: number) => void; runNow: (id: string, now: number) => string | undefined; store: Pick<Store, 'load' | 'save'>; envCommand?: string; log: (line: string) => void }) {
   const rows = (now: number) => kageletRows(readKagelets(o.dir), { runs: o.ledgers.text('runs'), costs: o.ledgers.text('costs'), reports: o.ledgers.text('reports'), now })
   return {
     list(now: number): string {
@@ -91,7 +101,8 @@ export function kageletManager(o: { dir: string; max: number; ledgers: { text(na
       if (!all.length) return 'No kagelets yet.'
       return all.map(r => `${rowLine(r, now)}\n  made by ${r.by === 'kage' ? 'Kage' : 'the owner'}${r.why ? `: ${r.why}` : ''}\n  last report: ${resultLine(r, now)}`).join('\n')
     },
-    manage(a: Manage, now: number): string {
+    // ask: the owner's card, needed only to grant db_read.
+    async manage(a: Manage, now: number, ask?: AskOwner): Promise<string> {
       if (!NAME.test(a.name)) return `"${a.name}" is not a kagelet name: a short lowercase name, letters, digits, dashes.`
       const file = `${o.dir}/${a.name}.md`
       if (a.action === 'pause' || a.action === 'resume') {
@@ -107,12 +118,26 @@ export function kageletManager(o: { dir: string; max: number; ledgers: { text(na
         o.sync(now)
         return o.runNow(`kagelet-${a.name}`, now) ?? `${a.name} is running now. Its report shows in the list when it ends.`
       }
-      // The database grant is the owner's alone: Kage cannot add it, even saying the owner asked.
-      if (a.tools?.includes(DB_READ)) return `not saved: only the owner grants ${DB_READ}, by writing it in the kagelet file by hand.`
+      const db = !!a.tools?.includes(DB_READ)
+      // Every db_read save, granted or refused, leaves a ledger row and a log line. Never the command: it may hold a host.
+      const refuse = (why: string) => {
+        if (db) { o.ledgers.add('grants', [a.name, 'refused', why]); o.log(`kagelet ${a.name}: ${DB_READ} refused: ${why}`) }
+        return `not saved: ${why}`
+      }
       const old = existsSync(file) ? parseKagelet(a.name, readFileSync(file, 'utf8')) : undefined
-      if (!old && readKagelets(o.dir).length >= o.max) return `not saved: this install has at most ${o.max} kagelets (KAGE_MAX_KAGELETS). Remove one first, or ask the owner to raise it.`
-      const text = kageletFile({ thread: a.thread ?? '', schedule: a.schedule ?? '', tools: a.tools ?? [], job: a.job ?? '', by: a.by ?? (old && !('error' in old) ? old.by : 'kage'), why: a.why ?? '', paused: !!old && !('error' in old) && old.paused })
-      if (typeof text !== 'string') return `not saved: ${text.error}`
+      if (!old && readKagelets(o.dir).length >= o.max) return refuse(`this install has at most ${o.max} kagelets (KAGE_MAX_KAGELETS). Remove one first, or ask the owner to raise it.`)
+      const text = kageletFile({ thread: a.thread ?? '', schedule: a.schedule ?? '', tools: a.tools ?? [], job: a.job ?? '', by: a.by ?? (old && !('error' in old) ? old.by : 'kage'), why: a.why ?? '', paused: !!old && !('error' in old) && old.paused, ...(db && { granted: now }) })
+      if (typeof text !== 'string') return refuse(text.error)
+      if (db) {
+        // The database grant is the owner's alone: only their yes on the card saves it.
+        if (!ask) return refuse(`only the owner grants ${DB_READ}, and this session cannot ask them`)
+        const command = o.envCommand || a.read_command?.trim() || readCommand(undefined, o.store)
+        if (!command) return refuse(`${DB_READ} needs a read command: pass read_command, the owner's command that runs one read-only query`)
+        if (!await ask({ kagelet: a.name, job: (a.job ?? '').trim().split('\n')[0]!, read_command: command })) return refuse(`the owner did not approve ${DB_READ}`)
+        if (!o.envCommand) o.store.save(READ_COMMAND, command)
+        o.ledgers.add('grants', [a.name, 'granted', 'the owner said yes on the card'])
+        o.log(`kagelet ${a.name}: ${DB_READ} granted by the owner`)
+      }
       mkdirSync(o.dir, { recursive: true, mode: 0o700 })
       writeFileSync(`${file}.new`, text, { mode: 0o600 })
       renameSync(`${file}.new`, file)

@@ -51,7 +51,7 @@ const tick = (ms = 5) => new Promise(r => setTimeout(r, ms))
 const ID = '11111111-1111-4111-8111-111111111111'
 const signal = () => new AbortController().signal
 
-function setup(o: { transcript?: boolean; silent?: boolean; dmFails?: boolean; grants?: Record<string, string[]> } = {}) {
+function setup(o: { transcript?: boolean; silent?: boolean; dmFails?: boolean; grants?: Record<string, string[]>; manager?: boolean } = {}) {
   const sdk = fakeSdk(o)
   const results: [string, number, boolean][] = []
   const blocks: [string, string[], string | null][] = []
@@ -74,7 +74,9 @@ function setup(o: { transcript?: boolean; silent?: boolean; dmFails?: boolean; g
   const s = sdkSessions({
     sdk: { query: sdk.query as any, createSdkMcpServer: (c => { servers.push(c); return createSdkMcpServer(c) }) as typeof createSdkMcpServer, tool },
     hub: () => d,
-    tools: (_key, send) => sessionTools({ title: 'Kage', bot: slack as any, user: slack as any, botDm: () => 'DBOT', dir, ledgers: openLedgers(dir), send, memory: { own: '/own', owner: '/owner' } }),
+    tools: (_key, send, approve) => sessionTools({ title: 'Kage', bot: slack as any, user: slack as any, botDm: () => 'DBOT', dir, ledgers: openLedgers(dir), send, memory: { own: '/own', owner: '/owner' }, approve,
+      // A manager that only asks the card and says the answer.
+      ...o.manager && { kagelets: { list: () => '', manage: async (a, ask) => `yes: ${await ask!({ kagelet: a.name, job: 'Count failed calls.', read_command: '~/bin/read-sql' })}` } } }),
     hasTranscript: () => o.transcript ?? false,
     toHub: () => {},
     options: { cwd: '/home', settingSources: ['user'] },
@@ -313,6 +315,30 @@ describe('Kage sessions on the Agent SDK', () => {
     const id2 = t.idOf(t.posts.at(-1)!)
     t.d.verdict(id2, { type: 'verdict', request_id: id2, behavior: 'deny' })
     assert.equal((await other).behavior, 'deny')
+  })
+  test('a db_read grant gets one card, from the tool, that names the kagelet, its job and the command; only a yes passes', async () => {
+    const t = setup({ manager: true })
+    t.d.task('C1:5.5', t.task(), 0)
+    await tick()
+    // The generic card is skipped for it: the tool raises its own. Any other save still asks.
+    const posts = t.posts.length
+    assert.equal((await t.sdk.runs[0]!.options.canUseTool('mcp__kage__manage_kagelet', { action: 'save', tools: ['db_read'] }, { signal: signal() })).behavior, 'allow')
+    assert.equal(t.posts.length, posts)
+    void t.sdk.runs[0]!.options.canUseTool('mcp__kage__manage_kagelet', { action: 'save', tools: ['WebSearch'] }, { signal: signal() })
+    await tick()
+    assert.equal(t.posts.length, posts + 1)
+    const save = { channel: 'C1', thread_ts: '5.5', action: 'save', name: 'calls', tools: ['db_read'] }
+    const yes = t.call('manage_kagelet', save)
+    await tick()
+    assert.match(t.posts.at(-1)!, /Approve\?\* grant db read[\s\S]*kagelet: calls\njob: Count failed calls\.\nread_command: ~\/bin\/read-sql/)
+    const id = t.idOf(t.posts.at(-1)!)
+    t.d.verdict(id, { type: 'verdict', request_id: id, behavior: 'allow' })
+    assert.equal((await yes).content[0].text, 'yes: true')
+    const no = t.call('manage_kagelet', save)
+    await tick()
+    const id2 = t.idOf(t.posts.at(-1)!)
+    t.d.verdict(id2, { type: 'verdict', request_id: id2, behavior: 'deny' })
+    assert.equal((await no).content[0].text, 'yes: false')
   })
   test('an approval prompt that cannot reach the owner is a no, not a wait', async () => {
     const t = setup({ dmFails: true })
