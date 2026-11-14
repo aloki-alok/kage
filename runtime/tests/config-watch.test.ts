@@ -101,4 +101,13 @@ describe('the watcher itself', () => {
     assert.deepEqual(t.seen.applied, [{ teammates: ['UTEST0001', 'UTEST0003'], apps: [] }])
     t.w.close()
   })
+
+  test('a new browser token (kage add browser) asks for the quiet restart, and no value is logged', () => {
+    const t = setup()
+    updateSecrets(t.env, s => ({ ...s, browserToken: 'browser-token-fake' }))
+    assert.deepEqual((t.w.check() as { restart: string[] }).restart, ['secrets.browserToken'])
+    assert.deepEqual(t.seen.restart, [true])
+    assert.ok(!JSON.stringify([t.seen.events, t.seen.log]).includes('browser-token-fake'))
+    t.w.close()
+  })
 })

@@ -6,9 +6,10 @@
 //   kage remove <person or app id> whoever answers to them goes too
 //   kage list                      add --ids to skip the name lookup
 import { randomBytes } from 'node:crypto'
+import { spawn, spawnSync } from 'node:child_process'
 import { fileURLToPath } from 'node:url'
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
-import { extensionId, HOST, hostDirs, hostManifest } from '../core/browser-pair.ts'
+import { addBrowserLines, extensionId, HOST, hostBrowsers, hostManifest } from '../core/browser-pair.ts'
 import { findPeople, type Person } from '../core/gate.ts'
 import { add, kindOf, ownerPerson, remove, type Entry } from '../core/registry.ts'
 import { registryOf, withRegistry } from '../core/config.ts'
@@ -40,7 +41,7 @@ if (cmd === 'add' && args[0] === 'kagelet') {
 }
 // kage add browser: turn Kage in Chrome on (#114). A new token each time, so running it again also cuts off an
 // extension that had the old one. It also registers the pairing helper (core/browser-pair.ts) with each Chromium
-// browser here, so the extension fetches the token itself. The token is printed too, for a browser it missed.
+// browser here, so the extension fetches the token itself. The token prints only with --show-token, or when no browser was found to pair.
 if (cmd === 'add' && args[0] === 'browser') {
   if (!settingsExist()) die(`No settings in ${DIR}. Run kage setup first.`)
   const token = randomBytes(24).toString('hex')
@@ -53,23 +54,18 @@ if (cmd === 'add' && args[0] === 'browser') {
   const pairer = fileURLToPath(new URL('./browser-pair.ts', import.meta.url))
   if ([ENV_FILE, process.execPath, pairer].some(p => p.includes("'"))) die('A path here holds a quote mark, which the pairing helper cannot name. Move Kage or node to a path without one.')
   writeFileSync(helper, `#!/bin/sh\nKAGE_ENV='${ENV_FILE}' exec '${process.execPath}' '${pairer}'\n`, { mode: 0o700 })
-  const dirs = hostDirs(process.platform, process.env.HOME!, existsSync)
-  for (const d of dirs) {
-    mkdirSync(d, { recursive: true })
-    writeFileSync(`${d}/${HOST}.json`, JSON.stringify(hostManifest(helper, id), null, 2) + '\n')
+  const found = hostBrowsers(process.platform, process.env.HOME!, existsSync)
+  for (const { dir } of found) {
+    mkdirSync(dir, { recursive: true })
+    writeFileSync(`${dir}/${HOST}.json`, JSON.stringify(hostManifest(helper, id), null, 2) + '\n')
   }
-  console.log([
-    `Kage in Chrome is on.${dirs.length ? ` Pairing is set up for ${dirs.map(d => d.split('/').slice(-2, -1)[0]).join(', ')}, so there is nothing to paste.` : ''}`,
-    '',
-    '1. Run kage restart.',
-    '2. In Chrome, open chrome://extensions, turn on Developer mode, click Load unpacked, and pick:',
-    `   ${ext}`,
-    '3. The Kage icon in the toolbar says Connected within a few seconds.',
-    '4. In Slack, ask Kage: "what tabs do I have open?"',
-    '',
-    `If the icon asks for a token, paste: ${token}`,
-    `Sites Kage must never read: run kage set connectors.browser.block '["bank.example.com","1password.com"]'`,
-  ].join('\n'))
+  // What a script can do for Load unpacked: open the page, copy the path, show the folder. Each may fail on a bare machine.
+  const run = (cmd: string, a: string[], input?: string) => spawnSync(cmd, a, { input, stdio: ['pipe', 'ignore', 'ignore'], timeout: 5000 }).status === 0
+  const mac = process.platform === 'darwin'
+  const opened = mac ? run('open', ['-a', 'Google Chrome', 'chrome://extensions']) : ['google-chrome', 'chromium', 'brave-browser', 'microsoft-edge'].some(b => run('which', [b]) && (spawn(b, ['chrome://extensions'], { detached: true, stdio: 'ignore' }).unref(), true))
+  const copied = mac ? run('pbcopy', [], ext) : [['wl-copy', []], ['xclip', ['-selection', 'clipboard']], ['xsel', ['-b', '-i']]].some(([c, a]) => run(c as string, a as string[], ext))
+  run(mac ? 'open' : 'xdg-open', [ext])
+  console.log(addBrowserLines({ names: found.map(b => b.name), ext, token, showToken: args.includes('--show-token'), platform: process.platform, opened, copied }).join('\n'))
   process.exit(0)
 }
 if (!settingsExist()) die(`No settings in ${DIR}. Run kage setup first.`)

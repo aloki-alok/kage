@@ -108,6 +108,7 @@ describe('decisions', () => {
     assert.equal(chromeLine(1_000_000_000_000 - 119_000, 1_000_000_000).kind, 'ok')
     assert.equal(chromeLine(1_000_000_000_000 - 121_000, 1_000_000_000).kind, 'fail')
     assert.equal(chromeLine(0, 1_000_000_000).kind, 'fail')
+    assert.doesNotMatch((chromeLine(0, 1_000_000_000) as { text: string }).text, /paste|prints a new one/)
   })
   test('path note only when kage is not on PATH', () => {
     assert.equal(pathNote(true), undefined)
