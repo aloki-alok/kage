@@ -736,7 +736,7 @@ export function sessionTools(o: {
       const cut = preview.length > MAX ? `${preview.slice(0, MAX)}\n... ${preview.length - MAX} more chars NOT shown. Deny unless you checked it in the terminal.` : preview
       const r = await bot.chat.postMessage({
         channel: o.botDm(),
-        text: `*Approve?* ${p.tool.replace(/^mcp__(.+__)?/, '').replaceAll('_', ' ')} · ${where}${p.description ? `\n${p.description}` : ''}\n\`\`\`${cut}\`\`\`\nReply \`yes ${p.id}\` or \`no ${p.id}\``,
+        text: `*Approve?* ${p.tool.replace(/^mcp__(.+__)?/, '').replaceAll('_', ' ')} · ${where}${p.description ? `\n${p.description}` : ''}\n\`\`\`${cut}\`\`\`\nReply \`yes\` or \`no\` in this thread`,
       })
       // The owner's yes under this message counts only because of this row (cardAt in core/ledgers.ts).
       append('posted', [o.botDm(), r.ts!, 'card', p.id])

@@ -69,6 +69,11 @@ describe('the ledgers', () => {
     assert.equal(cardAt(rows, 'C1', '1.1'), undefined)
     assert.equal(cardAt(rows, 'DBOT', '9.9'), undefined)
   })
+  test('two pending cards: a thread under one card resolves to that card only (#74)', () => {
+    const rows = [tsvRow(['t1', 'DBOT', '1.1', 'card', 'aaaaa']), tsvRow(['t2', 'DBOT', '2.2', 'card', 'bbbbb'])].join('')
+    assert.equal(cardAt(rows, 'DBOT', '1.1'), 'aaaaa')
+    assert.equal(cardAt(rows, 'DBOT', '2.2'), 'bbbbb')
+  })
   test('an answer under a private ask belongs to the thread that asked', () => {
     const rows = [
       tsvRow(['t1', 'DTEST', '5.5', 'bot', 'CTEST:1.1']),        // private ask from a channel thread

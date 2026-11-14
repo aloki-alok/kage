@@ -147,7 +147,7 @@ export async function connectSlack(o: { dir: string; appToken: string; bot: WebC
       log('no running session asked for', t.request_id)
       return void underCard(`Request \`${t.request_id}\` is no longer waiting (its session ended or it was already answered). Tag the original thread again to redo it.`)
     }
-    if (t.kind === 'card') return void underCard(`Reply \`yes\` or \`no\` here to answer request \`${t.request_id}\`.`)
+    if (t.kind === 'card') return void underCard(`Reply \`yes\` or \`no\` here to answer this request.`)
     // Status names the owner's other conversations, so it goes to the owner's DM only, never the thread.
     if (t.kind === 'status') {
       react(m.channel, m.ts, PICKED_UP)
