@@ -1,9 +1,9 @@
 import { describe, test } from 'node:test'
 import assert from 'node:assert/strict'
 import { jevAfk, jevCheck, jevTriage } from '../jev.ts'
-import { JEV_URL, type JevConfig } from '../../core/jev.ts'
+import type { JevConfig } from '../../core/jev.ts'
 
-const config: JevConfig = { key: 'apikey_secret', model: 'jev-latest', threshold: 0.5, agents: ['A0AGENT01'] }
+const config: JevConfig = { key: 'apikey_secret', model: 'jev-latest', threshold: 0.5, agents: ['A0AGENT01'], url: 'https://jev.example.com/v1' }
 const answering = (status: number, body: unknown) => {
   const calls: { url: string; init: RequestInit }[] = []
   const f = (async (url: string, init: RequestInit) => {
@@ -19,7 +19,7 @@ describe('asking Jev about an agent post', () => {
     const v = await jevCheck(config, { fetch: f })('A0AGENT01', 'Done, thanks!')
     assert.equal(v.reply, false)
     assert.match(v.why, /needs_reply 0\.04/)
-    assert.equal(calls[0]!.url, JEV_URL)
+    assert.equal(calls[0]!.url, config.url)
     assert.equal((calls[0]!.init.headers as Record<string, string>).Authorization, 'Bearer apikey_secret')
     assert.ok(!String(calls[0]!.init.body).includes('apikey_secret'))
     assert.ok(!v.why.includes('apikey_secret') && !v.why.includes('Done, thanks'))
@@ -62,7 +62,7 @@ describe('intake triage of a tagged message', () => {
     const { triage, events } = run(f)
     const v = await triage('C1:5.5', 'other', 'thanks, that works', top)
     assert.equal(v.pick, 'react')
-    assert.equal(calls[0]!.url, JEV_URL)
+    assert.equal(calls[0]!.url, config.url)
     assert.equal(JSON.parse(String(calls[0]!.init.body)).questions.intake.type, 'choice')
     assert.deepEqual(events, ['C1:5.5 react: other react 0.97'])
     assert.ok(!events.join().includes('thanks') && !events.join().includes('apikey_secret'))

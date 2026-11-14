@@ -4,6 +4,11 @@ import { z } from 'zod'
 import { validName } from './gate.ts'
 import { appEntry, validUserId, type Entry } from './registry.ts'
 
+// The Claude models a setting or a tool may name, and the one a helper job (AFK, a guard, the dream job, a kagelet) uses when
+// its own model setting is empty. A full id (claude-...) is also accepted where a model is typed into a file.
+export const MODELS = ['fable', 'opus', 'sonnet', 'haiku'] as const
+export const DEFAULT_MODEL = 'sonnet'
+
 export type Env = Record<string, string>
 
 const text = z.string().nullable().optional()
@@ -32,7 +37,7 @@ export const Config = z.strictObject({
   })).optional(),
   autoUpdate: yes,
   afk: z.strictObject({ on: yes, model: text }).optional(),
-  jev: z.strictObject({ agents: strings, threshold: money, model: text }).optional(),
+  jev: z.strictObject({ agents: strings, threshold: money, model: text, url: text }).optional(),
   connectors: z.strictObject({
     email: z.strictObject({ on: yes, address: text, queue: text, ownerEmail: text, region: text, teammateEmails: strings }).optional(),
     voice: z.strictObject({ on: yes, port: count, max: count, perHour: count, model: text }).optional(),

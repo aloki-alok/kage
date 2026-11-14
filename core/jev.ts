@@ -4,16 +4,16 @@
 // owner's and people's posts never go to Jev. The call itself is connectors/jev.ts.
 import { appEntry } from './registry.ts'
 
-export const JEV_URL = 'https://api.typesafe.ai/v1/systemone'
+const JEV_URL = 'https://api.typesafe.ai/v1/systemone'   // jev.url overrides it
 // What Jev reads at most of one post. A longer post is cut, never skipped.
 export const JEV_MAX_CHARS = 4000
 const QUESTION = 'Does this message ask the recipient to do something or answer a question, rather than only acknowledging, thanking or reporting that something is done?'
 
 // agents: the app ids Jev checks, or 'all' for every listed agent. threshold: the needs-reply score (0 to 1) a post needs to start a task.
-export type JevConfig = { key: string; model: string; threshold: number; agents: 'all' | string[] }
+export type JevConfig = { key: string; model: string; threshold: number; agents: 'all' | string[]; url: string }
 
 // From config.json (jev) and secrets.json (jevKey). No key: off (undefined). A wrong setting is an error naming the setting, never the key.
-export function jevConfig(jev: { agents?: string[]; threshold?: number | null; model?: string | null } = {}, jevKey?: string | null): JevConfig | { error: string } | undefined {
+export function jevConfig(jev: { agents?: string[]; threshold?: number | null; model?: string | null; url?: string | null } = {}, jevKey?: string | null): JevConfig | { error: string } | undefined {
   const key = jevKey?.trim()
   if (!key) return undefined
   const threshold = jev.threshold ?? 0.5
@@ -21,7 +21,7 @@ export function jevConfig(jev: { agents?: string[]; threshold?: number | null; m
   const list = jev.agents ?? []
   const bad = list.find(a => a !== 'all' && appEntry(a)?.id !== a)
   if (bad) return { error: `jev.agents has "${bad.slice(0, 20)}", which is not a Slack app id like A0123ABC` }
-  return { key, model: jev.model?.trim() || 'jev-latest', threshold, agents: !list.length || list.includes('all') ? 'all' : list }
+  return { key, model: jev.model?.trim() || 'jev-latest', threshold, agents: !list.length || list.includes('all') ? 'all' : list, url: jev.url?.trim() || JEV_URL }
 }
 
 export const jevChecks = (c: JevConfig, app: string) => c.agents === 'all' || c.agents.includes(app)

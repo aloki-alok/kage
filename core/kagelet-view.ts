@@ -1,7 +1,8 @@
 // What the owner sees of kagelets in a terminal: the panel in kage top, its keys, and kage logs <kagelet>.
 // The actions go to the hub's manager (runtime/kagelets.ts), the same one Kage's own tool uses.
 import { clockTime, whenLabel } from './board.ts'
-import { DEFAULT_MODEL, type KageletRow, type Report } from './kagelets.ts'
+import { DEFAULT_MODEL } from './config.ts'
+import type { KageletRow, Report } from './kagelets.ts'
 
 // The cost caps are off unless set (#96). The schema takes only numbers of dollars at zero or more (core/config.ts).
 type Caps = { dailyUsd?: number | null; totalDailyUsd?: number | null; chainUsd?: number | null }
