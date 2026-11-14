@@ -1,10 +1,10 @@
 // The WhatsApp side of the router: WAHA (a linked device on the owner's own number) posts every
 // message here, signed. core/whatsapp.ts decides; this module does the I/O.
-import { spawn } from 'node:child_process'
 import { createHmac, timingSafeEqual } from 'node:crypto'
 import { mkdirSync, readFileSync } from 'node:fs'
 import { createServer, type RequestListener } from 'node:http'
 import { log } from '../runtime/log.ts'
+import { claudeOnce, emptyRoom } from '../runtime/claude-once.ts'
 import { readBody } from './webhook.ts'
 import type { Inbox } from '../runtime/store.ts'
 import { findSecret } from '../core/outbound.ts'
@@ -62,9 +62,7 @@ export function startWhatsApp(o: { dir: string; name: string; owner: string; wha
   const HMAC = waha.WHATSAPP_HOOK_HMAC_KEY
   if (!HMAC) throw new Error('waha/.env has no WHATSAPP_HOOK_HMAC_KEY: the webhook would have no secret')
   const MODEL = o.whatsapp.model || 'sonnet'
-  // An empty folder for the guard, so its Claude finds no CLAUDE.md or project memory.
-  const ROOM = `${o.dir}/standin`
-  mkdirSync(ROOM, { recursive: true, mode: 0o700 })
+  const ROOM = emptyRoom(o.dir)   // the guard's Claude finds no CLAUDE.md or memory here
   mkdirSync(o.memory, { recursive: true, mode: 0o700 })
 
   const armed = new Map<string, Arming & { brief: string }>()
@@ -83,7 +81,7 @@ export function startWhatsApp(o: { dir: string; name: string; owner: string; wha
   async function send(chat: string, text: string, hist?: WaLine[]) {
     const brief = armed.get(chat)?.brief ?? ''
     const { system, prompt } = guardPrompt(brief, hist ?? await history(chat), text, o.owner)
-    const verdict = findSecret(text) ? { send: false, reason: 'looks like a key or secret' } : guardVerdict(await claude(system, prompt, ROOM, ''))
+    const verdict = findSecret(text) ? { send: false, reason: 'looks like a key or secret' } : guardVerdict(await claudeOnce({ model: MODEL, system, prompt, cwd: ROOM, tools: '' }))
     if (!verdict.send) {
       log('whatsapp message held', chat, verdict.reason)
       o.notify(`Held a WhatsApp message to ${chat.split('@')[0]} (${verdict.reason}). Send it yourself if it is fine:\n${text}`)
@@ -93,20 +91,6 @@ export function startWhatsApp(o: { dir: string; name: string; owner: string; wha
     return 'sent'
   }
   const sendText = (chatId: string, text: string) => api('/api/sendText', { method: 'POST', body: JSON.stringify({ session: 'default', chatId, text }) })
-
-  // No MCP, no settings (so no CLAUDE.md, hooks or allow rules), nothing saved. In -p mode a read
-  // outside cwd is denied (tested 2026-11-03), so read-only tools reach only the folder given.
-  function claude(system: string, prompt: string, cwd: string, tools: string): Promise<string> {
-    return new Promise((resolve, reject) => {
-      const p = spawn('claude', ['-p', '--tools', tools, '--strict-mcp-config', '--setting-sources', '', '--no-session-persistence',
-        '--model', MODEL, '--system-prompt', system], { cwd, stdio: ['pipe', 'pipe', 'pipe'] })
-      let out = ''
-      p.stdout.on('data', c => { out += c })
-      const timer = setTimeout(() => p.kill(), 120_000)
-      p.on('close', code => { clearTimeout(timer); code === 0 ? resolve(out.trim()) : reject(new Error(`claude exited ${code}`)) })
-      p.stdin.end(prompt)
-    })
-  }
 
   // One stand-in reply at a time per chat; messages that land meanwhile get one more pass.
   async function standIn(chat: string) {
@@ -119,7 +103,7 @@ export function startWhatsApp(o: { dir: string; name: string; owner: string; wha
         if (!a) break
         const hist = await history(chat)
         const { system, prompt } = standInPrompt(a.brief, hist, o.name, o.owner)
-        const text = await claude(system, prompt, o.memory, 'Read,Grep,Glob')
+        const text = await claudeOnce({ model: MODEL, system, prompt, cwd: o.memory, tools: 'Read,Grep,Glob' })
         if (!text || !armed.has(chat)) continue
         a.replies++
         log('whatsapp stand-in', await send(chat, text, hist), 'in', chat, `(${a.replies})`)
