@@ -30,7 +30,7 @@ import { retro, retroDue } from './core/retro.ts'
 import { Dispatcher, mixRunners } from './core/sessions.ts'
 import { reloader } from './core/settings.ts'
 import type { Task, ToSession } from './runtime/protocol.ts'
-import { sessionTools } from './runtime/kage-tools.ts'
+import { postAsKage, sessionTools } from './runtime/kage-tools.ts'
 import { scheduler } from './runtime/scheduler.ts'
 import { runJobs } from './runtime/jobs.ts'
 import { snapshotMemory } from './runtime/memory-snapshot.ts'
@@ -139,8 +139,8 @@ const toSession = (key: string, task: Task) => {
 const { blocked, closedTo } = closedThreads({
   store,
   reset: key => d.reset(key),
-  say: (key, t, text) => void bot.chat.postMessage({ channel: t.meta.channel, thread_ts: t.meta.thread_ts, text }).then(
-    r => ledgers.add('posted', [t.meta.channel, r.ts!, 'bot', key]),
+  say: (key, t, text) => void postAsKage({ title: Title, bot, user }, t.meta.channel, t.meta.thread_ts || undefined, text).then(
+    r => ledgers.add('posted', [t.meta.channel, r.ts, r.by, key]),
     e => log('could not post the block line', key, e?.data?.error ?? e)),
   tellOwner: text => void slack.notifyOwner(text),
 })
@@ -293,8 +293,9 @@ const limits = limitPause({
   end: key => d.end(key).filter(m => m.type === 'task'),
   // A tmux pane reports no turn end, so its messages are handled at delivery, as before.
   defers: key => !!sdk && !onPane.has(key),
-  notice: (t, text) => void bot.chat.postMessage({ channel: t.meta.channel, ...(t.meta.thread_ts && { thread_ts: t.meta.thread_ts }), text }).then(
-    r => ledgers.add('posted', [t.meta.channel, r.ts!, 'bot', `${t.meta.channel}:${t.meta.thread_ts}`]),
+  // The route a reply takes, so a group DM or a teammate's DM the bot cannot see still hears it.
+  notice: (t, text) => void postAsKage({ title: Title, bot, user }, t.meta.channel, t.meta.thread_ts || undefined, text).then(
+    r => ledgers.add('posted', [t.meta.channel, r.ts, r.by, `${t.meta.channel}:${t.meta.thread_ts}`]),
     e => log('could not post the pause notice', t.meta.place, e?.data?.error ?? e)),
   replay: r => replayOf(r.connector)?.(r.source, r.payload) ?? Promise.reject(new Error(`no ${r.connector} connector to replay through`)),
   redeliver: (key, task) => { if (toSession(key, task) === 'failed') failed(task) },
@@ -461,6 +462,8 @@ function failed(m: ToSession) {
 // ponytail: a live cron job inside the hub (SDK) counts as busy, so it delays the update; restart by hand then. A pane outlives the hub.
 // The change must be settled for 10s, so a merge still writing files is never picked up half-done.
 // Compared to the boot stamp, not the clock, so a file with a future time cannot restart the hub over and over.
+// Not in a usage-limit pause: the scheduled runs it owes live in memory (runtime/limit-pause.ts), and a hub
+// that held only those would start unpaused and run into the limit again.
 const CODE = dirname(fileURLToPath(import.meta.url))
 const BOOT_CODE = codeStamp(CODE)
 // The version of the code this hub runs, read once: kage status and kage doctor show it from this file.
@@ -469,7 +472,7 @@ writeFileSync(`${DIR}/version`, `${VERSION}\n`, { mode: 0o600 })
 let npmFailedFor = 0   // the code stamp whose npm ci failed: not tried again until the code moves
 function selfUpdate(now: number) {
   const code = codeStamp(CODE)
-  if (code && code !== BOOT_CODE && now - code > 10_000 && d.quietEverywhere(now)) {
+  if (code && code !== BOOT_CODE && now - code > 10_000 && d.quietEverywhere(now) && !limits.paused(now)) {
     // New code may need new packages: npm stamps node_modules/.package-lock.json on each install.
     if (packagesStale(CODE)) {
       if (npmFailedFor === code) return
