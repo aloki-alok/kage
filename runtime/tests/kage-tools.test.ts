@@ -45,7 +45,7 @@ function fakeSlack() {
   return { calls, posts, bot: client('bot'), user: client('owner') }
 }
 
-function setup(o: { hubDown?: boolean; dir?: string; kagelet?: string; dbRead?: { command: () => string | undefined; maxRows: number; timeoutMs?: number }; approve?: (tool: string, description: string, input: Record<string, unknown>) => Promise<boolean>; browser?: { call(op: string, args: Record<string, unknown>): Promise<unknown>; block: string[] } } = {}) {
+function setup(o: { hubDown?: boolean; dir?: string; kagelet?: string; dreaming?: string; dbRead?: { command: () => string | undefined; maxRows: number; timeoutMs?: number }; approve?: (tool: string, description: string, input: Record<string, unknown>) => Promise<boolean>; browser?: { call(op: string, args: Record<string, unknown>): Promise<unknown>; block: string[] } } = {}) {
   const slack = fakeSlack()
   const dir = o.dir ?? mkdtempSync(join(tmpdir(), 'kage-tools-'))
   const ledgers = openLedgers(dir)
@@ -61,7 +61,7 @@ function setup(o: { hubDown?: boolean; dir?: string; kagelet?: string; dbRead?: 
       list: () => jobs,
     },
     afk: async c => { out.push(`afk ${JSON.stringify(c)}`); return 'AFK on' },
-    kagelet: o.kagelet, dbRead: o.dbRead, approve: o.approve, browser: o.browser, event: (kind, detail) => { events.push(`${kind} ${detail}`) },
+    kagelet: o.kagelet, dreaming: o.dreaming, kageletMemory: { propose: (name: string, a: unknown, thread: string) => { out.push(`propose ${name} ${thread} ${JSON.stringify(a)}`); return 'proposed' }, decide: (d: unknown) => { out.push(`decide ${JSON.stringify(d)}`); return 'decided' }, open: () => 'open ones', notes: () => [] } as any, dbRead: o.dbRead, approve: o.approve, browser: o.browser, event: (kind, detail) => { events.push(`${kind} ${detail}`) },
     onReport: r => { routed.push(`report ${JSON.stringify(r)}`) }, message: (to, text) => { routed.push(`message ${to} ${text}`); return `sent to ${to}` },
     kagelets: { list: () => 'the list', manage: async (a, ask) => { out.push(`manage ${JSON.stringify(a)}`); return ask ? `asked: ${await ask({ kagelet: a.name, tools: 'mcp__gmail__send', job: 'j' })}` : 'managed' } },
   })
@@ -422,6 +422,25 @@ describe("a session's Kage tools", () => {
     const lane = setup({ kagelet: 'status' })
     assert.equal(lane.t.tools.some(x => x.name === 'kagelets' || x.name === 'manage_kagelet'), false)
     assert.equal(setup().t.tools.some(x => x.name === 'report'), false)
+  })
+  test('a kagelet\'s dream session has propose_memory for its own kagelet and nothing of the manager\'s; the manager reviews and never proposes', async () => {
+    const dream = setup({ dreaming: 'status' })
+    dream.t.onTask(dream.task({ fromOwner: false }))
+    assert.equal(dream.t.tools.some(x => ['kagelets', 'manage_kagelet', 'review_kagelet_memory', 'report'].includes(x.name)), false)
+    // The kagelet is the lane's, never an argument: a name in the call is not a field.
+    assert.equal('kagelet' in dream.t.tools.find(x => x.name === 'propose_memory')!.shape, false)
+    assert.equal((await dream.call('propose_memory', { channel: 'C1', thread_ts: '5.5', file: 'a.md', text: 't', why: 'w' })).text, 'proposed')
+    assert.deepEqual(dream.out, ['propose status C1:5.5 {"file":"a.md","text":"t","why":"w"}'])
+    assert.equal((await dream.call('propose_memory', { channel: 'C1', thread_ts: '9.9', file: 'a.md', text: 't', why: 'w' })).isError, true)   // not its own thread
+    const m = setup()
+    assert.equal(m.t.tools.some(x => x.name === 'propose_memory'), false)
+    assert.equal(setup({ kagelet: 'status' }).t.tools.some(x => x.name === 'review_kagelet_memory' || x.name === 'propose_memory'), false)
+    m.t.onTask(m.task({ fromOwner: false }))
+    assert.equal((await m.call('review_kagelet_memory', { channel: 'C1', thread_ts: '5.5', action: 'list' })).isError, true)
+    m.t.onTask(m.task())
+    assert.equal((await m.call('review_kagelet_memory', { channel: 'C1', thread_ts: '5.5', action: 'list' })).text, 'open ones')
+    assert.equal((await m.call('review_kagelet_memory', { channel: 'C1', thread_ts: '5.5', action: 'reject', kagelet: 'status', id: 'p1', reason: 'one-off' })).text, 'decided')
+    assert.deepEqual(m.out, ['decide {"kagelet":"status","id":"p1","action":"reject","reason":"one-off"}'])
   })
   test('manage_kagelet hands the manager the owner\'s card, which says the yes stands for the tool; a teammate\'s task never reaches it, and its ask is logged', async () => {
     const asked: unknown[] = []
