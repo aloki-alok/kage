@@ -143,6 +143,8 @@ test('a > b > c: each output starts the next run as its input, with no Kage turn
   // Every run of the chain is on it, the first one too.
   assert.deepEqual(h.ledgers.events('2026-11-14').filter(e => e.kind === 'run.end').map(e => [e.who, e.chain]), [['a', 't1'], ['b', 't1'], ['c', 't1']])
   assert.deepEqual(h.states(), [])                  // each message read by the turn it started
+  // A run a handoff started is a run: kage logs and the panel's last run read it from the runs ledger.
+  assert.deepEqual(h.ledgers.text('runs').split('\n').filter(Boolean).map(l => l.split('\t')[1]), ['kagelet-a', 'kagelet-b', 'kagelet-c'])
 })
 
 // What a kagelet fetched can say anything. The next run reads it as quoted data under its own job (as core/meeting.ts).

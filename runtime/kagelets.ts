@@ -368,6 +368,7 @@ export function kageletRoutes(o: {
     const r = o.deliver(ok.key, ok.task)
     if (r !== 'sent' && r !== 'starting') return 'waits'
     o.store.handed(m.messageId, now)
+    o.ledgers.add('runs', [`kagelet-${m.to}`, ok.key])   // as the scheduler's ran(): kage logs and lastRun read it
     o.ledgers.event({ kind: 'handoff', who: m.from, trace: m.taskId, chain: m.contextId, detail: handoffDetail(m.to, kindOf(m)) })
     return 'sent'
   }
