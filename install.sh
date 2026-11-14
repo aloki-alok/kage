@@ -31,9 +31,11 @@ elif command -v git >/dev/null && [[ -z "${KAGE_TARBALL:-}" ]]; then
   # A clone next to the folder, then its .git moves in: a fresh folder and an old tarball install take the
   # same route, and a tarball install keeps node_modules. A file the tarball had that main dropped stays, unused.
   say "Getting Kage ($REF) with git into $DIR"
-  tmp="$(mktemp -d)"
+  # The clone sits inside the folder, so the move stays on one disk and cannot leave half a .git behind.
+  tmp="$(mktemp -d "$DIR/.kage-clone.XXXXXX")"
+  trap 'rm -rf "$tmp"' EXIT
   git clone -q --depth 1 --no-checkout --branch "$REF" "${KAGE_GIT_URL:-https://github.com/$REPO.git}" "$tmp/kage"
-  mv "$tmp/kage/.git" "$DIR/.git" && rm -rf "$tmp"
+  mv "$tmp/kage/.git" "$DIR/.git"
   git -C "$DIR" reset -q --hard
 else
   say "Downloading Kage ($REF) to $DIR (no git, so it updates only when you run this again)"

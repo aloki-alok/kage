@@ -2,7 +2,7 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { execFileSync } from 'node:child_process'
-import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs'
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { pullMain } from './auto-update.ts'
@@ -34,7 +34,12 @@ function world() {
   execFileSync('git', ['archive', '--format=tar.gz', '--prefix=kage-main/', '-o', join(root, 'main.tar.gz'), 'main'], { cwd: origin })
   const install = (env: Record<string, string> = {}) => execFileSync('/bin/bash', [join(REPO, 'install.sh')], {
     encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'],
-    env: { PATH: `${bin}:${dirname(process.execPath)}:${process.env.PATH}`, HOME: home, KAGE_DIR: dir, KAGE_BIN: bin, KAGE_GIT_URL: origin, ...env },
+    env: {
+      PATH: `${bin}:${dirname(process.execPath)}:${process.env.PATH}`, HOME: home, KAGE_DIR: dir, KAGE_BIN: bin, KAGE_GIT_URL: origin,
+      // A person whose git rebases on pull, with an identity: only --ff-only keeps their own commit from being moved.
+      GIT_AUTHOR_NAME: 't', GIT_AUTHOR_EMAIL: 't@example.com', GIT_COMMITTER_NAME: 't', GIT_COMMITTER_EMAIL: 't@example.com',
+      GIT_CONFIG_COUNT: '1', GIT_CONFIG_KEY_0: 'pull.rebase', GIT_CONFIG_VALUE_0: 'true', ...env,
+    },
   })
   return { root, origin, dir, home, install }
 }
@@ -53,6 +58,7 @@ test('a tarball install run again with git becomes a clean main checkout in plac
   assert.equal(git(w.dir, 'status', '--porcelain', '--untracked-files=no'), '')
   assert.equal(readFileSync(join(w.dir, 'b.ts'), 'utf8'), 'v2')
   assert.equal(readFileSync(join(w.home, '.config/kage/env'), 'utf8'), env)
+  assert.deepEqual(readdirSync(w.dir).filter(f => f.startsWith('.kage-clone')), [])   // no clone left behind
 
   // The hub's own job then pulls the next commit.
   commit(w.origin, 'c.ts', 'v3')
@@ -70,4 +76,5 @@ test('run again on a checkout, it fast-forwards; a checkout with its own edits i
   commit(w.origin, 'c.ts', 'v3')
   assert.throws(() => w.install(), /changes of its own/)
   assert.equal(readFileSync(join(w.dir, 'mine.ts'), 'utf8'), 'local work')
+  assert.equal(git(w.dir, 'log', '-1', '--format=%s'), 'mine.ts')
 })
