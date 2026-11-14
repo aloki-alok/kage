@@ -5,15 +5,15 @@ sequenceDiagram
     participant DM as Owner's private DM
     participant Tool
     Session->>Hub: One tool call and preview
-    Hub->>DM: Approval card with request id
+    Hub->>DM: Approval card
     DM->>Hub: Yes or no in the card thread
-    Hub->>Session: Allow or deny that request id
+    Hub->>Session: Allow or deny that call
     Session->>Tool: Run only after allow
 ```
 
 # Approvals
 
-An approval belongs to one tool call. Its request id connects the private card to the waiting session.
+An approval belongs to one tool call. The card's thread connects the decision to the waiting session, so the owner types no code.
 
 Only the owner can decide. Kage accepts the answer only inside the card's thread in the owner's bot DM.
 

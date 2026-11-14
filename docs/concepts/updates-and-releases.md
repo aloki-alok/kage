@@ -1,6 +1,6 @@
 ```mermaid
 flowchart LR
-    Main[Changes merge to main] --> Soak[Owner hub runs commit for 24 hours]
+    Main[Changes merge to main] --> Soak[Owner hub runs the code for 24 hours]
     Soak --> Gate{Doctor good and no crash-loop alert?}
     Gate -->|No| Wait[No release]
     Gate -->|Yes| Tag[Version commit and tag]
@@ -17,9 +17,11 @@ flowchart LR
 
 A merge to `main` does not update installed hubs. Installations follow the separate `stable` tag.
 
-The repository admin's hub can release a commit after a 24-hour soak. The same commit must run on that hub.
+The repository admin's hub can release code that ran on it for 24 hours. A merge that changes only docs, tests, skill text or the license keeps the clock running. A code change starts it again.
 
-The gate also requires a healthy doctor result and no recent crash-loop alert. A failed gate creates no release.
+The hub releases the newest commit that finished its 24 hours, even if newer code has landed since. It logs the next candidate and when its gate opens every hour. The owner can also run `kage release` to release at once.
+
+The gate also requires a healthy doctor result and no crash loop during the run. A crash loop starts the 24 hours again. A failed gate creates no release.
 
 A release bumps the version files and creates a version tag. It then moves `stable` and publishes the notes.
 

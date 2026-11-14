@@ -30,6 +30,6 @@ flowchart LR
 
 [Voice and calls](voice-and-calls.md) explains caller limits and owner call verification.
 
-[Settings and tokens](settings-and-tokens.md) explains the current settings file and the accepted split in issue #116.
+[Settings and tokens](settings-and-tokens.md) explains where settings and tokens live, and why no session reads the tokens.
 
 [Updates and releases](updates-and-releases.md) explains how tested code reaches installed hubs through `stable`.
