@@ -60,6 +60,8 @@ import { askHub } from './cli/home.ts'
 import { hubLock } from './runtime/hub-lock.ts'
 import { npmCi, packagesStale, rotate } from './runtime/hub-log.ts'
 import { closedThreads } from './runtime/closed-threads.ts'
+import { checkScopes } from './runtime/slack-scopes.ts'
+import { scopeDm } from './core/slack-scopes.ts'
 
 const { ENV_FILE, NAME, Title, TEAMMATES, TRUSTED_APPS, config, secrets, bot, user } = load()
 const { harness = {}, kagelets: kl = {}, afk = {}, connectors: conn = {} } = config
@@ -449,6 +451,7 @@ async function dream(now: number) {
 }
 // Each night a kagelet that ran gets its own dream (#98): a lane with no tool but propose_memory, which reads its notes,
 // its events and its reports, and proposes edits. Nothing applies: Kage reviews each one (review_kagelet_memory).
+const SCOPES_TOLD = 'slack-scopes-told'
 const KDREAMT = 'kagelet-dream-last'
 function kageletDreams(now: number) {
   if (!sdk || limits.paused()) return
@@ -664,6 +667,12 @@ if (unplaced && (existsSync(told) ? readFileSync(told, 'utf8') : '') !== unplace
   void slack.notifyOwner(`Kage moved its settings into config.json. It could not place these old lines, so they sit under "unknown": ${unplaced}. Tell me what each one is for, and I will help place it.`)
     .then(sent => { if (sent) writeFileSync(told, unplaced) })
 }
+// An app keeps the scopes of the manifest it was made from. The owner hears each distinct missing set once (kage slack upgrade fixes it).
+void checkScopes({ user: secrets.slack?.user, bot: secrets.slack?.bot }).then(m => {
+  const { send, told } = scopeDm(m, store.load(SCOPES_TOLD) as string | undefined)
+  if (send) void slack.notifyOwner(send).then(sent => { if (sent) store.save(SCOPES_TOLD, told) })
+  else store.save(SCOPES_TOLD, told)
+}).catch(e => log(`scope check failed: ${e}`))
 // Messages the last run took but never handled (it died in between) run now. Older than 10 minutes, they are let go.
 // Email needs no replay: SQS resends a mail until it is deleted after handling.
 store.prune(Date.now() - 7 * 86_400_000)
