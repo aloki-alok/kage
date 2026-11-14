@@ -48,7 +48,9 @@ const task = (text: string, isOwner: boolean, files: string, agent?: string): Tr
 }
 
 // Inside a card's thread the card names the request, so the first word alone decides.
-const CARD_YES = /^(y|yes|ok|okay|sure|approve|approved|go)\b/i
+// A yes approves unless the rest of the reply hedges or says no ("yes but wait", "ok don't", "go away"): those stay
+// on the card for a plain answer. A no denies on its first word, since a wrong deny is always safe.
+const CARD_YES = /^(y|yes|ok|okay|sure|approve|approved|go)\b(?!.*\b(no|not|don'?t|never|wait|but|stop|cancel|hold|later|after|first|away|until)\b)/i
 const CARD_NO = /^(n|no|deny|stop|cancel)\b/i
 // card: the request id of the approval card this message replies under, if it does.
 export function classify(m: SlackMessage, ids: Ids, card?: string): Trigger {

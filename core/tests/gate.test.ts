@@ -200,6 +200,12 @@ describe('replies in an approval card thread', () => {
     assert.deepEqual(reply('yes vbhio'), { kind: 'verdict', request_id: card, behavior: 'allow' })
     assert.deepEqual(reply('no vbhio'), { kind: 'verdict', request_id: card, behavior: 'deny' })
   })
+  test('a yes with more words after it is not an approval: it stays on the card, so the owner answers plainly', () => {
+    for (const text of ['yes don\'t', 'ok but no', 'go away', 'yes, but run the tests first', 'sure, after lunch'])
+      assert.deepEqual(reply(text), { kind: 'card', request_id: card }, text)
+    for (const text of ['yes', 'Yes!', 'ok.', 'go ahead', 'approve', 'yes vbhio'])
+      assert.deepEqual(reply(text), { kind: 'verdict', request_id: card, behavior: 'allow' }, text)
+  })
   test('under a card, only the owner\'s own typed reply answers: not an edit, a bot, an app post or a teammate', () => {
     for (const o of [{ subtype: 'message_changed' }, { bot_id: 'B1' }, { app_id: 'A0TEST1' }, { client_msg_id: undefined }, { user: MATE }]) {
       assert.equal(reply('yes', o).kind, 'drop', JSON.stringify(o))
