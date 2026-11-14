@@ -130,7 +130,8 @@ const toSession = (key: string, task: Task) => {
   const r = d.task(key, task, Date.now())
   if (r !== 'failed') {
     limits.delivered(key, task)
-    runs.start(key, task.scheduled ? `scheduled ${task.job ?? ''}` : `task from the ${senderOf(task)}`, { fresh: !!task.scheduled })
+    // Only SDK sessions report a turn's end, so a tmux pane gets no run events.
+    if (sdk && !onPane.has(key)) runs.start(key, task.scheduled ? `scheduled ${task.job ?? ''}` : `task from the ${senderOf(task)}`, { fresh: !!task.scheduled })
   }
   return r
 }

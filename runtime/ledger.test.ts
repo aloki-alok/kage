@@ -109,6 +109,21 @@ describe('the event log lives in kage.db beside the ledgers', () => {
   })
 })
 
+describe('pruning runs every hour, so it folds only whole days', () => {
+  test('a cutoff in the middle of a day leaves that day alone; the next day folds it into one row', () => {
+    let at = '2026-10-01T03:00:00.000Z'
+    const l = openLedgers(dir(), () => at)
+    l.event({ kind: 'tool', who: 'a', trace: 't', detail: 'WebSearch' })
+    at = '2026-10-01T20:00:00.000Z'
+    l.event({ kind: 'tool', who: 'a', trace: 't', detail: 'WebSearch' })
+    l.pruneEvents('2026-10-01T10:00:00.000Z')
+    l.pruneEvents('2026-10-01T21:00:00.000Z')
+    assert.deepEqual(l.events('2026-10-01').map(e => e.kind), ['tool', 'tool'])
+    l.pruneEvents('2026-10-02T05:00:00.000Z')
+    assert.deepEqual(l.events('2026-10-01').map(e => [e.kind, e.detail]), [['day-summary', 'tool 2']])
+  })
+})
+
 describe('runs: each event lands on the trace of the run its session is in', () => {
   test('a run starts once, its tool calls and report share its trace, and its end says whether it reported', () => {
     const l = openLedgers(dir(), () => '2026-11-14T09:00:00.000Z')
@@ -123,6 +138,9 @@ describe('runs: each event lands on the trace of the run its session is in', () 
     runs.end(key, '$0.00')                   // no run open: nothing
     runs.start('C1:5.5', 'owner')
     runs.end('C1:5.5', '$0.01')
+    // A task sent mid-turn runs in the next turn, after the first one ended: its calls open a run of their own.
+    runs.emit('C1:5.5', 'tool', 'WebFetch')
+    runs.emit('C1:5.5', 'owner-note', '5 characters')   // a hub event opens none
     assert.deepEqual(l.events('2026-11-14').map(e => [e.kind, e.who, e.trace, e.detail, e.transcript]), [
       ['run.start', 'deploys', 't1', 'scheduled', ''],
       ['tool', 'deploys', 't1', 'WebSearch', ''],
@@ -130,6 +148,9 @@ describe('runs: each event lands on the trace of the run its session is in', () 
       ['run.end', 'deploys', 't1', '$0.10, reported', '/p/s.jsonl'],
       ['run.start', 'C1:5.5', 't2', 'owner', ''],
       ['run.end', 'C1:5.5', 't2', '$0.01, no report', ''],
+      ['run.start', 'C1:5.5', 't3', 'next turn', ''],
+      ['tool', 'C1:5.5', 't3', 'WebFetch', ''],
+      ['owner-note', 'C1:5.5', 't3', '5 characters', ''],
     ])
   })
   test('a scheduled run starts fresh: a run left open (its session cut) ends as cut first', () => {

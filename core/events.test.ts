@@ -22,9 +22,9 @@ test("a day's events, grouped by kagelet and chain, in time order; other days le
   const all = [
     ev('2026-11-13T23:59:00.000Z', 'a'),
     ev('2026-11-14T09:00:02.000Z', 'b', 'c1'),
-    ev('2026-11-14T09:00:00.000Z', 'a', 'c1'),
-    ev('2026-11-14T10:00:00.000Z', 'a'),
     ev('2026-11-14T09:00:01.000Z', 'a', 'c1', 'run.end'),
+    ev('2026-11-14T10:00:00.000Z', 'a'),
+    ev('2026-11-14T09:00:00.000Z', 'a', 'c1'),
     ev('2026-11-15T00:00:00.000Z', 'a'),
   ]
   const g = dayEvents(all, '2026-11-14')

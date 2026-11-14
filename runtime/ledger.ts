@@ -65,7 +65,6 @@ export function openLedgers(dir: string, now = () => new Date().toISOString()) {
     // A ledger is a side record: a failed write is logged, never allowed to block a task or a reply.
     add(name: LedgerName, cells: string[]) {
       try { insert.run(name, now(), JSON.stringify(cells.map(c => c.replace(/[\t\r\n]+/g, ' ')))) } catch (e) { log('ledger write failed', name, e) }
-
       // Every grants row (only db_read is granted) is an event too, from whichever process wrote it.
       if (name === 'grants') event({ kind: cells[1] === 'granted' ? 'grant' : 'refusal', who: cells[0] ?? '', trace: '', detail: `db_read: ${cells[2] ?? ''}` })
     },
@@ -76,8 +75,10 @@ export function openLedgers(dir: string, now = () => new Date().toISOString()) {
     // One UTC day (YYYY-MM-DD), in the order written.
     events: (day: string) => db.prepare('select at, kind, who, trace, chain, detail, transcript from events where at >= ? and at < ? order by id')
       .all(day, `${day}\uffff`).map(r => ({ ...r }) as KageEvent),
-    // Every event before the cutoff folds into one day-summary row per day ("tool 12, run.end 3"), in one transaction.
-    pruneEvents(before: string) {
+    // Every event of a day before the cutoff's folds into one day-summary row per day ("tool 12, run.end 3"), in one transaction.
+    // The cutoff drops to its day's midnight, so an hourly prune never folds part of a day.
+    pruneEvents(cutoff: string) {
+      const before = cutoff.slice(0, 10)
       db.exec('begin immediate')
       try {
         db.prepare(`insert into events (at, kind, who, trace, chain, detail, transcript)
@@ -101,7 +102,9 @@ export const ledgerText = (db: DatabaseSync, name: LedgerName) =>
 // restart cuts every run anyway. fresh: a scheduled run is a run of its own, even when the last one never ended.
 export function runEvents(l: Pick<Ledgers, 'event'>, newId: () => string) {
   const open = new Map<string, { trace: string; chain: string; reported: boolean }>()
-  const emit = (key: string, kind: EventKind, detail: string, transcript = '') => {
+  const emit = (key: string, kind: EventKind, detail: string, transcript = ''): void => {
+    // A task sent mid-turn is read by the next turn, after the first one's end: its first call opens its run.
+    if (!open.has(key) && (kind === 'tool' || kind === 'refusal' || kind === 'report')) start(key, 'next turn')
     const r = open.get(key)
     if (r && kind === 'report') r.reported = true
     l.event({ kind, who: whoOf(key), trace: r?.trace ?? '', chain: r?.chain ?? '', detail, transcript })
@@ -112,13 +115,11 @@ export function runEvents(l: Pick<Ledgers, 'event'>, newId: () => string) {
     emit(key, 'run.end', `${detail}, ${r.reported ? 'reported' : 'no report'}`, transcript)
     open.delete(key)
   }
-  return {
-    emit, end,
-    start(key: string, detail: string, o: { fresh?: boolean; chain?: string } = {}) {
-      if (open.has(key) && !o.fresh) return
-      end(key, 'cut: no result')
-      open.set(key, { trace: newId(), chain: o.chain ?? '', reported: false })
-      emit(key, 'run.start', detail)
-    },
+  function start(key: string, detail: string, o: { fresh?: boolean; chain?: string } = {}) {
+    if (open.has(key) && !o.fresh) return
+    end(key, 'cut: no result')
+    open.set(key, { trace: newId(), chain: o.chain ?? '', reported: false })
+    emit(key, 'run.start', detail)
   }
+  return { start, emit, end }
 }
