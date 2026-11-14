@@ -6,12 +6,12 @@ import { JEV_URL, afkRequest, afkVerdict, jevChecks, jevRequest, jevVerdict, tri
 
 // One POST to Jev. The answer, the HTTP status of a refusal, or the name of the error (a timeout, a body that is not JSON).
 type JevAnswer = { json: unknown } | { status: number } | { failed: string }
-async function jevPost(c: JevConfig, body: unknown, go: typeof fetch, timeoutMs: number): Promise<JevAnswer> {
-  try {
+async function jevPost(c: JevConfig, body: () => unknown, go: typeof fetch, timeoutMs: number): Promise<JevAnswer> {
+  try {   // body is built inside, so a builder that throws still fails open
     const r = await go(JEV_URL, {
       method: 'POST',
       headers: { Authorization: `Bearer ${c.key}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify(body),
+      body: JSON.stringify(body()),
       signal: AbortSignal.timeout(timeoutMs),
     })
     return r.ok ? { json: await r.json() } : { status: r.status }
@@ -26,7 +26,7 @@ export function jevCheck(c: JevConfig, o: { fetch?: typeof fetch; timeoutMs?: nu
   const go = o.fetch ?? fetch
   return async (app, text) => {
     if (!jevChecks(c, app)) return { reply: true, why: 'jev does not check this agent' }
-    const a = await jevPost(c, jevRequest(text, c.model), go, o.timeoutMs ?? 4000)
+    const a = await jevPost(c, () => jevRequest(text, c.model), go, o.timeoutMs ?? 4000)
     if ('failed' in a) return { reply: true, why: `jev failed (${a.failed}), answering anyway` }
     if ('status' in a) return { reply: true, why: `jev answered HTTP ${a.status}, answering anyway` }
     const v = jevVerdict(a.json, c.threshold)
@@ -48,7 +48,7 @@ export function jevTriage(c: JevConfig, emit: (who: string, detail: string) => v
     }
     const skip = triageSkips(text, skips)
     if (skip) return done('session', `no jev call, ${skip}`)
-    const a = await jevPost(c, triageRequest(text, c.model), go, o.timeoutMs ?? 4000)
+    const a = await jevPost(c, () => triageRequest(text, c.model), go, o.timeoutMs ?? 4000)
     if ('failed' in a) return done('session', `jev failed (${a.failed})`)
     if ('status' in a) return done('session', `jev answered HTTP ${a.status}`)
     const v = triageVerdict(a.json, sender)
@@ -63,7 +63,7 @@ export type JevAfk = (o: { owner: string; place: string; from: string; convo: st
 export function jevAfk(c: JevConfig, o: { fetch?: typeof fetch; timeoutMs?: number } = {}): JevAfk {
   const go = o.fetch ?? fetch
   return async input => {
-    const a = await jevPost(c, afkRequest(input, c.model), go, o.timeoutMs ?? 8000)
+    const a = await jevPost(c, () => afkRequest(input, c.model), go, o.timeoutMs ?? 8000)
     if ('failed' in a) return void log(`afk: jev failed (${a.failed}), using the Claude triage`)
     const v = 'status' in a ? { error: `HTTP ${a.status}` } : afkVerdict(a.json)
     if ('error' in v) return void log(`afk: jev ${v.error}, using the Claude triage`)
