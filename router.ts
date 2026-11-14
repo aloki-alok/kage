@@ -48,6 +48,7 @@ import { EVENT_DAYS } from './core/events.ts'
 import { claudeProject, tmuxPanes } from './runtime/tmux-panes.ts'
 import { codeStamp } from './runtime/code-stamp.ts'
 import { clearUpdatedFrom, markUpdatedFrom, pullMain, updatedNote, version } from './runtime/auto-update.ts'
+import { releaseIfSoaked } from './runtime/release.ts'
 import { kageletMemory } from './runtime/kagelet-memory.ts'
 import { dreamInput, dreamsDue, kageletDreamTask } from './core/kagelet-memory.ts'
 import { costCap, kageletDeliver, kageletManager, kageletRoutes, kageletsDir, ownerNotes, readCommand, readKagelets, syncKagelets } from './runtime/kagelets.ts'
@@ -557,6 +558,15 @@ async function autoUpdate() {
   else if (r !== 'current') log(`auto-update did nothing: ${r.skip}`)
 }
 
+// The owner's hub makes the release that other installs follow (ADR 0013), daily. A skip logs one line and DMs nothing.
+async function autoRelease(now: number) {
+  const r = await releaseIfSoaked(CODE, DIR, VERSION, now).catch(e => ({ skip: `failed: ${e}`, broke: true }))
+  if ('broke' in r) void slack.notifyOwner(`Kage's daily release stopped part way: ${r.skip}. kage release finishes it.`)
+  if ('skip' in r) return log(`auto-release did nothing: ${r.skip}`)
+  log(`auto-release made v${r.version}`)
+  void slack.notifyOwner(`Released Kage v${r.version}. <${r.url}|Release notes>`)
+}
+
 // Every timed job of the hub, on one clock (runtime/jobs.ts).
 runJobs([
   // A drain for kage restart or stop starts no scheduled run: one due now runs after the restart.
@@ -566,6 +576,7 @@ runJobs([
   { name: 'daily note', every: 10 * 60_000, run: dailyNote },
   { name: 'self-update', every: 60_000, run: selfUpdate },
   ...env.KAGE_AUTO_UPDATE === 'off' ? [] : [{ name: 'auto-update', every: 6 * 3_600_000, run: autoUpdate }],
+  { name: 'auto-release', every: 24 * 3_600_000, run: autoRelease },
   // hub.ts rotates the log at each start; a hub that runs for weeks rotates it here.
   { name: 'hub-log', every: 3_600_000, run: () => rotate(`${DIR}/hub.log`) },
   { name: 'kagelets', every: 60_000, run: kagelets },
