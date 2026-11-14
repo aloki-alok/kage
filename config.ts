@@ -1,9 +1,9 @@
 // Settings and Slack clients shared by the router and the per-thread sessions.
 import { WebClient, LogLevel } from '@slack/web-api'
-import { readFileSync } from 'node:fs'
 import { inspect } from 'node:util'
 import { repeats } from './core/log-repeats.ts'
-import { checkEnv, parseEnv } from './core/settings.ts'
+import { checkEnv } from './core/settings.ts'
+import { readEnv } from './runtime/config-files.ts'
 
 // In a session, stdout is the MCP pipe: every log line goes to stderr. The time lets one line be matched to another.
 export const log = (...a: unknown[]) => console.error(new Date().toISOString(), '[kage]', ...a)
@@ -22,10 +22,11 @@ export const logger = {
   setName: () => {},
 }
 
-// Tokens live in a private file outside the repo (setup.sh writes it with mode 600).
+// Settings live in config.json, tokens in secrets.json (mode 600), both outside the repo (runtime/config-files.ts).
 export function load() {
   const ENV_FILE = process.env.KAGE_ENV || `${process.env.HOME}/.config/kage/env`
-  const env = parseEnv(readFileSync(ENV_FILE, 'utf8'))
+  let env
+  try { env = readEnv(ENV_FILE) } catch (e) { log((e as Error).message); process.exit(1) }
   // At the start there are no older settings to keep, so a wrong file stops the hub. A reload keeps the old ones (core/settings.ts).
   const ok = checkEnv(env)
   if ('error' in ok) {

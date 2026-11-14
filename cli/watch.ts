@@ -4,14 +4,14 @@
 // with both runtimes (tmux panes and SDK sessions) and never touches a running session.
 //   kage watch [place]     only threads whose place contains [place], e.g. "support"
 import { existsSync, statSync } from 'node:fs'
-import { DIR } from './home.ts'
+import { CWD, DIR } from './home.ts'
 import { DatabaseSync } from 'node:sqlite'
 import { newLines, stepTime, transcriptLine } from '../core/transcript.ts'
 
 const HOME = process.env.HOME!
-// Sessions run in the hub's working folder (hub.ts: KAGE_CWD, else home); Claude Code names the
+// Sessions run in the hub's working folder (hub.ts: harness.cwd, else home); Claude Code names the
 // transcript folder after it.
-const PROJECT = `${HOME}/.claude/projects/${(process.env.KAGE_CWD || HOME).replace(/[^A-Za-z0-9]/g, '-')}`
+const PROJECT = `${HOME}/.claude/projects/${CWD.replace(/[^A-Za-z0-9]/g, '-')}`
 const only = process.argv[2]?.toLowerCase()
 if (!existsSync(`${DIR}/kage.db`)) { console.error(`No ${DIR}/kage.db yet: start Kage first.`); process.exit(1) }
 const db = new DatabaseSync(`${DIR}/kage.db`, { readOnly: true })
@@ -34,7 +34,7 @@ function print(at: number, place: string, step: string) {
   console.log(`  ${paint(MUTED, time(at))}  ${paint(COLOR[label] ?? MUTED, step.slice(0, 5))} ${step.slice(6)}`)
 }
 
-if (!existsSync(PROJECT)) console.error(`No transcripts in ${PROJECT}. If the hub runs in another folder, set KAGE_CWD to it.`)
+if (!existsSync(PROJECT)) console.error(`No transcripts in ${PROJECT}. If the hub runs in another folder, set harness.cwd to it (kage set harness.cwd <folder>).`)
 
 function scan(first: boolean) {
   let all: { id: string; place: string }[]

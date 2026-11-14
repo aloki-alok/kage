@@ -143,3 +143,18 @@ describe('diff', () => {
     assert.deepEqual(diff(a, fromEnv(parseEnv(FULL))), { live: [], restart: [] })
   })
 })
+
+describe('people and the registry', () => {
+  test('entries go into config.people and come back the same', async () => {
+    const { registryOf, withRegistry } = await import('../config.ts')
+    const entries = [
+      { kind: 'person' as const, id: 'UTEST0001' },
+      { kind: 'agent' as const, id: 'ATEST0001', owner: 'UTEST0001', tag: 'UTEST0003' },
+      { kind: 'agent' as const, id: 'ATEST0009' },
+    ]
+    const c = Config.parse(withRegistry({ version: 1, name: 'kage' }, entries))
+    assert.deepEqual(registryOf(c), entries)
+    assert.equal(c.name, 'kage')
+    assert.equal(toEnv(c, {}).KAGE_TRUSTED_APPS, 'ATEST0001:UTEST0001:UTEST0003,ATEST0009')
+  })
+})

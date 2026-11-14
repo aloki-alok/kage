@@ -3,7 +3,7 @@
 import { describe, test, before, after } from 'node:test'
 import assert from 'node:assert/strict'
 import { execFile, spawn } from 'node:child_process'
-import { chmodSync, closeSync, openSync, copyFileSync, mkdirSync, realpathSync, mkdtempSync, readFileSync, rmSync, statSync, utimesSync, writeFileSync } from 'node:fs'
+import { chmodSync, closeSync, openSync, copyFileSync, cpSync, existsSync, mkdirSync, readdirSync, realpathSync, mkdtempSync, readFileSync, rmSync, statSync, symlinkSync, utimesSync, writeFileSync } from 'node:fs'
 import { createServer, type Server } from 'node:http'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
@@ -23,7 +23,11 @@ function kageCopy() {
   for (const d of [dir, conf, work, join(dir, 'node_modules')]) mkdirSync(d, { recursive: true })
   for (const f of ['hub.ts', 'service.sh']) copyFileSync(join(REPO, f), join(dir, f))
   mkdirSync(join(dir, 'runtime'))
-  copyFileSync(join(REPO, 'runtime/hub-log.ts'), join(dir, 'runtime/hub-log.ts'))
+  mkdirSync(join(dir, 'cli'))
+  for (const f of ['hub-log.ts', 'config-files.ts']) copyFileSync(join(REPO, 'runtime', f), join(dir, 'runtime', f))
+  for (const f of ['config.ts', 'home.ts']) copyFileSync(join(REPO, 'cli', f), join(dir, 'cli', f))
+  cpSync(join(REPO, 'core'), join(dir, 'core'), { recursive: true })
+  symlinkSync(join(REPO, 'node_modules/zod'), join(dir, 'node_modules/zod'))
   writeFileSync(join(dir, 'router.ts'), FAKE_HUB)
   // The packages are current: the lock is older than npm's stamp.
   writeFileSync(join(dir, 'package-lock.json'), '{}')
@@ -153,6 +157,22 @@ describe('hub.ts: one hub run, with its log, its boot count and a crash-loop DM'
     rmSync(k.root, { recursive: true })
   })
 
+  test('the first start imports the env file, runs in harness.cwd, and later starts delete an import older than 7 days', async () => {
+    const k = kageCopy()
+    writeFileSync(join(k.envFile), readFileSync(k.envFile, 'utf8') + `KAGE_CWD=${k.work}\n`)
+    const old = join(k.conf, 'env.imported-20200101T000000Z')
+    writeFileSync(old, 'xoxb-old-fake')
+    await hub(k, { KAGE_CWD: '' })
+    assert.ok(existsSync(join(k.conf, 'config.json')) && existsSync(join(k.conf, 'secrets.json')))
+    assert.ok(!existsSync(k.envFile))
+    assert.ok(readdirSync(k.conf).some(f => /^env\.imported-\d{8}T\d{6}Z$/.test(f)), 'the env file was renamed')
+    assert.ok(!existsSync(old), 'an old import is deleted on a clean start')
+    assert.ok(logOf(k).includes(`fake hub up in ${realpathSync(k.work)}`))
+    await hub(k)
+    assert.ok(logOf(k).includes(`fake hub up in ${realpathSync(k.work)}`))
+    rmSync(k.root, { recursive: true })
+  })
+
   test('with no env file it says so and exits 0, so the service stays down instead of looping', async () => {
     const k = kageCopy()
     assert.equal(await hub(k, { KAGE_ENV: join(k.conf, 'missing') }), 0)
@@ -178,12 +198,12 @@ describe('service.sh: the unit the OS supervises', () => {
     assert.ok(out.includes(`<key>StandardOutPath</key><string>${k.conf}/hub.log</string>`))
     assert.ok(out.includes(`<key>WorkingDirectory</key><string>${k.work}</string>`))
     assert.ok(out.includes(`<key>KAGE_ENV</key><string>${k.envFile}</string>`))
-    assert.ok(out.includes(`<key>KAGE_CWD</key><string>${k.work}</string>`))
+    assert.ok(!out.includes('KAGE_CWD'), 'the unit no longer pins the folder: harness.cwd does')
   })
   test('the systemd unit restarts on failure every 10 s with no start limit, in the pinned folder', async () => {
     const { out, k } = await text('unit_text')
     for (const line of ['Restart=on-failure', 'RestartSec=10', 'StartLimitIntervalSec=0', 'WantedBy=default.target',
-      `/node" "${k.dir}/hub.ts"`, 'ExecStart="/', `StandardOutput=append:${k.conf}/hub.log`, `WorkingDirectory=${k.work}`, `"KAGE_ENV=${k.envFile}"`, `"KAGE_CWD=${k.work}"`]) {
+      `/node" "${k.dir}/hub.ts"`, 'ExecStart="/', `StandardOutput=append:${k.conf}/hub.log`, `WorkingDirectory=${k.work}`, `"KAGE_ENV=${k.envFile}"`]) {
       assert.ok(out.split('\n').some(l => l.includes(line)), line)
     }
   })
@@ -191,6 +211,20 @@ describe('service.sh: the unit the OS supervises', () => {
     const k = kageCopy()
     const r = await sh(['-c', `source '${join(k.dir, 'service.sh')}'; unit_text`], { KAGE_ENV: k.envFile, KAGE_CWD: '/tmp/a%b', HOME: k.root })
     assert.ok(r.out.includes('WorkingDirectory=/tmp/a%%b'))
+    rmSync(k.root, { recursive: true })
+  })
+  test('the name and the folder come from config.json, and a unit that still pins KAGE_CWD is called stale', async () => {
+    const k = kageCopy()
+    writeFileSync(join(k.conf, 'config.json'), JSON.stringify({ version: 1, name: 'fromjson', harness: { cwd: k.work } }))
+    const unit = join(k.root, '.config/systemd/user/kage-fromjson.service')
+    mkdirSync(dirname(unit), { recursive: true })
+    const env = { KAGE_ENV: k.envFile, HOME: k.root, XDG_CONFIG_HOME: join(k.root, '.config') }
+    const r = await sh(['-c', `unset KAGE_CWD; source '${join(k.dir, 'service.sh')}'; echo "$NAME $WORK"`], env)
+    assert.equal(r.out.trim(), `fromjson ${k.work}`)
+    writeFileSync(unit, 'Environment="KAGE_ENV=x" "KAGE_CWD=/x"\n')
+    assert.equal((await sh([join(k.dir, 'service.sh'), 'stale'], env)).code, 0)
+    writeFileSync(unit, 'Environment="KAGE_ENV=x"\n')
+    assert.equal((await sh([join(k.dir, 'service.sh'), 'stale'], env)).code, 1)
     rmSync(k.root, { recursive: true })
   })
   test('a wrong command is refused with the usage line', async () => {

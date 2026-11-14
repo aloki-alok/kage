@@ -33,6 +33,8 @@ import { dreamDue, dreamTask, threadsSince } from './core/dream.ts'
 import { retro, retroDue } from './core/retro.ts'
 import { Dispatcher, mixRunners } from './core/sessions.ts'
 import { reloader } from './core/settings.ts'
+import { readEnv, readSettings } from './runtime/config-files.ts'
+import { unknownNames } from './core/config.ts'
 import type { Task, ToSession } from './runtime/protocol.ts'
 import { postAsKage, sessionTools } from './runtime/kage-tools.ts'
 import { scheduler } from './runtime/scheduler.ts'
@@ -575,7 +577,7 @@ function tell(key: string, text: string): { ok: true; held?: true } | { refused:
   return r === 'held' ? { ok: true, held: true } : { ok: true }
 }
 // kage reload: a changed allow list applies to the next message, with no restart and no turn cut (core/settings.ts).
-const reload = reloader({ boot: env, read: () => readFileSync(ENV_FILE, 'utf8'), apply: slack.allow, log })
+const reload = reloader({ boot: env, read: () => readEnv(ENV_FILE), apply: slack.allow, log })
 listenForSessions(`${DIR}/router.sock`, d, { ...replies, failed, schedules, tell, reload, paused: () => limits.paused(), limitCounts: () => limits.counts,
   // kage restart and stop: a drain renewed by each ask. A turn that just ended does not hold them up: its follow-up
   // waits too. Nor does a thread open in a terminal: kage attach holds it again after the restart.
@@ -585,6 +587,13 @@ listenForSessions(`${DIR}/router.sock`, d, { ...replies, failed, schedules, tell
 await slack.start()
 const updated = updatedNote(DIR, CODE, VERSION)
 if (updated) { log(updated); void slack.notifyOwner(updated).then(sent => { if (sent) clearUpdatedFrom(DIR) }) }
+// Env lines the import could not place sit under "unknown" in config.json. The owner hears their names (never values) once per set.
+const unplaced = unknownNames(readSettings(ENV_FILE).config).join(', ')
+const told = `${DIR}/config-unknown-told`
+if (unplaced && (existsSync(told) ? readFileSync(told, 'utf8') : '') !== unplaced) {
+  void slack.notifyOwner(`Kage moved its settings into config.json. It could not place these old lines, so they sit under "unknown": ${unplaced}. Tell me what each one is for, and I will help place it.`)
+    .then(sent => { if (sent) writeFileSync(told, unplaced) })
+}
 // Messages the last run took but never handled (it died in between) run now. Older than 10 minutes, they are let go.
 // Email needs no replay: SQS resends a mail until it is deleted after handling.
 store.prune(Date.now() - 7 * 86_400_000)

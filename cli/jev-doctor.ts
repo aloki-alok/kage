@@ -1,12 +1,11 @@
 // kage doctor's Jev line: checks the Jev settings, then asks Jev about one fixed ack (never a real post).
 // Prints one line. Exit 0 with no output when Jev is off, 0 with the line when it works, 1 on a problem.
-import { readFileSync } from 'node:fs'
-import { parseEnv } from '../core/settings.ts'
+import { readEnv } from '../runtime/config-files.ts'
 import { jevConfig } from '../core/jev.ts'
 import { appEntry } from '../core/registry.ts'
 import { jevCheck } from '../connectors/jev.ts'
 
-const env = parseEnv(readFileSync(process.env.KAGE_ENV || `${process.env.HOME}/.config/kage/env`, 'utf8'))
+const env = readEnv(process.env.KAGE_ENV || `${process.env.HOME}/.config/kage/env`)
 const c = jevConfig(env)
 if (!c) process.exit(0)
 if ('error' in c) { console.log(`jev: ${c.error}`); process.exit(1) }

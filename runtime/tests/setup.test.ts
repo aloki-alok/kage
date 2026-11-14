@@ -3,7 +3,7 @@
 import { describe, test } from 'node:test'
 import assert from 'node:assert/strict'
 import { execFile } from 'node:child_process'
-import { chmodSync, copyFileSync, cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, statSync, writeFileSync } from 'node:fs'
+import { chmodSync, copyFileSync, cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, statSync, symlinkSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 
@@ -18,7 +18,10 @@ function world() {
   const dir = join(root, 'code'), conf = join(root, 'conf'), bin = join(root, 'bin'), home = join(root, 'home')
   for (const d of [dir, conf, bin, home, join(dir, 'cli'), join(dir, 'core')]) mkdirSync(d, { recursive: true })
   copyFileSync(join(REPO, 'setup.sh'), join(dir, 'setup.sh'))
-  copyFileSync(join(REPO, 'cli/manifest.ts'), join(dir, 'cli/manifest.ts'))
+  for (const f of ['manifest.ts', 'config.ts', 'home.ts']) copyFileSync(join(REPO, 'cli', f), join(dir, 'cli', f))
+  mkdirSync(join(dir, 'runtime'))
+  copyFileSync(join(REPO, 'runtime/config-files.ts'), join(dir, 'runtime/config-files.ts'))
+  symlinkSync(join(REPO, 'node_modules'), join(dir, 'node_modules'))
   for (const f of readdirSync(join(REPO, 'core')).filter(f => f.endsWith('.ts'))) cpSync(join(REPO, 'core', f), join(dir, 'core', f))
   const env = join(conf, 'env')
   exe(join(dir, 'service.sh'), `#!/usr/bin/env bash
@@ -61,15 +64,25 @@ describe('kage setup ends with Kage running and connected, not with a list of st
   })
 })
 
-describe('kage save writes the env file whole, private, and keeps the other settings', () => {
-  test('tokens replace the old ones; other lines stay; the file is 600', async () => {
+describe('kage save writes the tokens to secrets.json, private, and keeps the other settings', () => {
+  test('tokens replace the old ones; the name is set; other settings stay; both files are 600', async () => {
     const w = world()
     writeFileSync(w.env, 'KAGE_NAME=old\nSLACK_BOT_TOKEN=xoxb-OLD\nKAGE_TEAMMATES=UTEST2\n', { mode: 0o644 })
     const r = await w.run(['save', 'kagetest'], 'xapp-TEST xoxp-TEST xoxb-TEST\n')
     assert.equal(r.code, 0, r.out)
-    const text = readFileSync(w.env, 'utf8')
-    assert.equal(text, 'KAGE_NAME=kagetest\nSLACK_APP_TOKEN=xapp-TEST\nSLACK_USER_TOKEN=xoxp-TEST\nSLACK_BOT_TOKEN=xoxb-TEST\nKAGE_TEAMMATES=UTEST2\n')
-    assert.equal(statSync(w.env).mode & 0o777, 0o600)
-    assert.deepEqual(readdirSync(w.conf).filter(f => f !== 'env'), [], 'no temp file left behind')
+    const secrets = JSON.parse(readFileSync(join(w.conf, 'secrets.json'), 'utf8'))
+    assert.deepEqual(secrets.slack, { app: 'xapp-TEST', user: 'xoxp-TEST', bot: 'xoxb-TEST' })
+    const config = JSON.parse(readFileSync(join(w.conf, 'config.json'), 'utf8'))
+    assert.equal(config.name, 'kagetest')
+    assert.deepEqual(config.people.teammates, ['UTEST2'])
+    for (const f of ['config.json', 'secrets.json']) assert.equal(statSync(join(w.conf, f)).mode & 0o777, 0o600, f)
+    assert.ok(!r.out.includes('xoxp-TEST'), 'no token in the output')
+    assert.deepEqual(readdirSync(w.conf).filter(f => !f.startsWith('env.imported-') && !['config.json', 'secrets.json'].includes(f)), [], 'no temp file left behind')
+  })
+  test('on a new machine it creates both files from nothing', async () => {
+    const w = world()
+    const r = await w.run(['save', 'kagetest'], 'xapp-TEST xoxp-TEST xoxb-TEST\n')
+    assert.equal(r.code, 0, r.out)
+    assert.equal(JSON.parse(readFileSync(join(w.conf, 'config.json'), 'utf8')).name, 'kagetest')
   })
 })

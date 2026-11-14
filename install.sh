@@ -58,7 +58,7 @@ case ":$PATH:" in
      say "Open a new terminal to type kage, or run: export PATH=\"$BIN:\$PATH\"" ;;
 esac
 
-if [[ -f "${KAGE_ENV:-$HOME/.config/kage/env}" ]]; then
+if [[ -f "${KAGE_ENV:-$HOME/.config/kage/env}" || -f "$(dirname "${KAGE_ENV:-$HOME/.config/kage/env}")/config.json" ]]; then
   say "Kage is up to date. If it is running, kage restart picks up the new code."
 elif [[ -r /dev/tty ]]; then
   say "Setting up"

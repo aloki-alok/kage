@@ -1,7 +1,7 @@
 // Kage's settings as typed data: config.json (settings) and secrets.json (tokens), and the fixed table that
 // moves a flat env file into them and back. Pure: the files are read and written in runtime/config-files.ts.
 import { z } from 'zod'
-import { appEntry, validUserId } from './registry.ts'
+import { appEntry, validUserId, type Entry } from './registry.ts'
 
 export type Env = Record<string, string>
 
@@ -175,3 +175,19 @@ export function diff(before: { config: Config; secrets: Secrets }, after: { conf
   const changed = [...new Set([...a.keys(), ...b.keys()])].filter(k => a.get(k) !== b.get(k)).sort()
   return { live: changed.filter(k => k.startsWith('people.')), restart: changed.filter(k => !k.startsWith('people.')) }
 }
+
+// config.people as the registry's entries and back (core/registry.ts), so kage add and remove edit the JSON.
+export const registryOf = (c: Config): Entry[] => [
+  ...(c.people?.teammates ?? []).map(id => ({ kind: 'person' as const, id })),
+  ...(c.people?.agents ?? []).map(a => ({ kind: 'agent' as const, id: a.app, ...(a.owner && { owner: a.owner }), ...(a.tag && { tag: a.tag }) })),
+]
+export const withRegistry = (c: Config, entries: Entry[]): Config => ({
+  ...c,
+  people: {
+    teammates: [...new Set(entries.filter(e => e.kind === 'person').map(e => e.id))],
+    agents: entries.flatMap(e => (e.kind === 'agent' ? [{ app: e.id, ...(e.owner && { owner: e.owner }), ...(e.tag && { tag: e.tag }) }] : [])),
+  },
+})
+
+// "~" and "~/x" in a path setting, as the home folder.
+export const tilde = (p: string, home: string) => (p === '~' ? home : p.startsWith('~/') ? home + p.slice(1) : p)

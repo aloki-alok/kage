@@ -52,7 +52,7 @@ The rest of this page is for doing it by hand, and for knowing how it works.
 3. A browser tab opens with your Slack app already filled in. Pick your workspace, then click **Next** and **Create**.
 4. Under **Basic Information > App-Level Tokens**, click **Generate**, add the scope `connections:write`, and copy the token (`xapp-...`).
 5. Under **Install App**, click **Install to Workspace**, allow it, and copy both tokens: User OAuth (`xoxp-...`) and Bot (`xoxb-...`).
-6. Paste the three tokens into the setup script. It checks each one with Slack and saves them to `~/.config/kage/env`, readable only by you.
+6. Paste the three tokens into the setup script. It checks each one with Slack and saves them to `~/.config/kage/secrets.json`, readable only by you.
 7. The setup starts Kage and waits for it to connect to Slack. When it says `Connected`, tag `@kage` in any thread. If it does not connect, run `kage doctor`: it names the fix.
 
 ## Start it
@@ -117,7 +117,7 @@ Kagelets work as a team. A file that says `after: make-video` (and needs no `sch
 
 ### Run threads as tmux panes instead
 
-Add `KAGE_RUNTIME=tmux` to `~/.config/kage/env`, then `kage stop` and `kage start`, to give each thread a Claude Code pane you can watch with `tmux attach -t <name>`. On Linux, systemd stops the panes with the hub on every restart, so a pane resumes its conversation on its next tag. Panes talk to Kage through channels, a research-preview feature: on Team and Enterprise an org Owner turns Channels on under [Organization settings > Claude Code > Channels](https://claude.ai/admin-settings/claude-code). Each new pane shows a warning screen for custom channels until your org approves Kage:
+Run `kage set harness.runtime tmux`, then `kage stop` and `kage start`, to give each thread a Claude Code pane you can watch with `tmux attach -t <name>`. On Linux, systemd stops the panes with the hub on every restart, so a pane resumes its conversation on its next tag. Panes talk to Kage through channels, a research-preview feature: on Team and Enterprise an org Owner turns Channels on under [Organization settings > Claude Code > Channels](https://claude.ai/admin-settings/claude-code). Each new pane shows a warning screen for custom channels until your org approves Kage:
 
 1. An org Owner opens [Claude Code admin settings](https://claude.ai/admin-settings/claude-code), finds managed settings, and adds:
    ```json
@@ -129,7 +129,7 @@ Add `KAGE_RUNTIME=tmux` to `~/.config/kage/env`, then `kage stop` and `kage star
    claude plugin marketplace add "$PWD" && claude plugin install kage@kage
    ```
    The plugin's server starts in every Claude Code session, but only the panes Kage opens for its threads take tasks. Your other sessions stay idle.
-3. Add `KAGE_ROUTE=plugin` to `~/.config/kage/env`, run `kage stop`, then `kage start`.
+3. Run `kage set harness.route plugin`, then run `kage stop`, then `kage start`.
 
 Your laptop must be on, awake and online. The hub stops a Mac from idling to sleep with `caffeinate`, but closing the lid still sleeps it unless the Mac is plugged into a display. Tags sent while it sleeps are not picked up later.
 
@@ -151,7 +151,7 @@ Each thread gets its own Claude Code session, so a new tag never interrupts work
 - **Change the model in words.** `@kage use opus at max effort` or `@kage go back to the default model`. It applies to that thread only, from the next step on, and stays until the hub restarts. You and your teammates can ask. Tmux panes don't support it.
 - **Old threads clean themselves up.** Claude Code deletes transcripts after 30 days (its `cleanupPeriodDays` setting). Kage then forgets that thread, and a new tag there starts fresh.
 
-To change the limits, add `KAGE_MAX_SESSIONS=6` or `KAGE_IDLE_MINUTES=15` to `~/.config/kage/env`, then restart Kage. Every setting is in [the settings reference](docs/settings.md).
+To change the limits, run `kage set harness.maxSessions 6` or `kage set harness.idleMinutes 15`, then restart Kage. Every setting is in [the settings reference](docs/settings.md).
 
 ### Schedules and watches
 
@@ -176,7 +176,7 @@ kage remove priya            # her agents go with her
 kage list
 ```
 
-It finds the person in your workspace and updates `~/.config/kage/env`. The running hub takes the change at once: no restart, and no session is cut. A Kage session cannot run `kage add` or `kage remove`: you run them in your own terminal. If a name matches two people, it lists both with their ids, so you can pick one.
+It finds the person in your workspace and updates `~/.config/kage/config.json`. The running hub takes the change at once: no restart, and no session is cut. A Kage session cannot run `kage add` or `kage remove`: you run them in your own terminal. If a name matches two people, it lists both with their ids, so you can pick one.
 
 A teammate can tag `@kage` only in a conversation you are also in, because Kage hears Slack through your account. Their tasks run in your session, with two limits:
 
@@ -225,7 +225,7 @@ Kage gives Slack a path into a session that has everything your laptop has. Thes
 | A message in the thread says "ignore your instructions and..." | Thread messages reach Claude quoted, labelled by Slack ID, and marked as data. Only your own tagged line is the task. |
 | Claude is tricked into posting somewhere else | Replies may only go to a channel or DM a task came from, or to your DM with the bot. `@channel`, `@here` and user mentions are defused. |
 | Claude puts a password or key in a thread | The reply tool checks every thread reply for secret shapes (keys, tokens, a password in code) and sends it back to Claude with a hint to use your DM. The owner can still ask for it in the thread; a teammate's task never can. |
-| Tokens leak | Tokens live in `~/.config/kage/env` with mode `600`, outside the repo. Each person uses their own Slack app and tokens. |
+| Tokens leak | Tokens live in `~/.config/kage/secrets.json` with mode `600`, outside the repo. Each person uses their own Slack app and tokens. |
 
 Kage acts with your full Claude Code permissions. Keep your usual permission settings and guard hooks on, and treat an approval prompt like one in your terminal.
 

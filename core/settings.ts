@@ -42,14 +42,14 @@ export type Reloaded = { changed: string[]; restart: string[]; count: number } |
 // kage reload: read the file again and apply the two allow lists. A file that is wrong or unreadable changes
 // nothing. Every other setting was fixed when the hub started, so one that differs from the start is named as
 // needing a restart, each time, until the restart happens. Values never reach the answer or the log: only names and ids.
-export function reloader(o: { boot: Env; read: () => string; apply: (l: AllowLists) => void; log: (line: string) => void }) {
+export function reloader(o: { boot: Env; read: () => Env; apply: (l: AllowLists) => void; log: (line: string) => void }) {
   const first = checkEnv(o.boot)
   let live: AllowLists = 'error' in first ? { teammates: [], apps: [] } : first
   let count = 0
   return (): Reloaded => {
     count++
     let env: Env
-    try { env = parseEnv(o.read()) } catch (e) { return refuse(`the settings file cannot be read (${(e as Error).message})`) }
+    try { env = o.read() } catch (e) { return refuse(`the settings file cannot be read (${(e as Error).message})`) }
     const next = checkEnv(env)
     if ('error' in next) return refuse(next.error)
     const changed = Object.entries(LISTS).flatMap(([name, k]) => {

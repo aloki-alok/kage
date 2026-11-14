@@ -1,13 +1,12 @@
 #!/usr/bin/env node
 // What Kage spent per thread, from the ledger the hub writes after every turn (core/ledgers.ts).
 //   kage cost [days]
-import { existsSync, readFileSync } from 'node:fs'
-import { DIR, ENV_FILE, placeNamer } from './home.ts'
+import { DIR, placeNamer, settingsEnv } from './home.ts'
 import { spendSince } from '../core/ledgers.ts'
 import { openLedgers } from '../runtime/ledger.ts'
 
 // Only the Agent SDK runner reports what a turn cost. Say so, so empty or old numbers do not read as $0.
-if (/^\s*KAGE_RUNTIME\s*=\s*["']?tmux/m.test(existsSync(ENV_FILE) ? readFileSync(ENV_FILE, 'utf8') : '')) {
+if (settingsEnv().KAGE_RUNTIME === 'tmux') {
   console.log('Threads run as tmux panes (KAGE_RUNTIME=tmux), whose turns are not costed. Only Agent SDK turns are below.\n')
 }
 

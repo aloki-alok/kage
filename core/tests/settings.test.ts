@@ -39,7 +39,7 @@ describe('kage reload', () => {
   const hub = (file: { text: string }) => {
     const applied: { teammates: string[]; apps: string[] }[] = []
     const logged: string[] = []
-    const reload = reloader({ boot: parseEnv(FILE), read: () => file.text, apply: l => applied.push(l), log: l => logged.push(l) })
+    const reload = reloader({ boot: parseEnv(FILE), read: () => parseEnv(file.text), apply: l => applied.push(l), log: l => logged.push(l) })
     return { applied, logged, reload }
   }
   test('a changed list is applied and named, with what was added and removed', () => {
