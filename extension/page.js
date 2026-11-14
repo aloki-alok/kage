@@ -18,15 +18,26 @@ globalThis.__kage ??= (() => {
     if (!ref) { ref = next++; refOf.set(el, ref); byRef.set(ref, new WeakRef(el)) }
     return ref
   }
-  // Seen by a person: laid out, not hidden, not see-through anywhere up the tree.
+  // Seen by a person: laid out, inside the page, not hidden, clipped or see-through anywhere up the tree.
   const shown = el => {
     const r = el.getBoundingClientRect()
     if (r.width < 2 || r.height < 2) return false
+    const doc = document.documentElement
+    if (r.right + scrollX <= 0 || r.bottom + scrollY <= 0 || r.left + scrollX >= doc.scrollWidth || r.top + scrollY >= doc.scrollHeight) return false
     for (let e = el; e && e.nodeType === 1; e = e.parentElement) {
       const st = getComputedStyle(e)
       if (st.display === 'none' || st.visibility === 'hidden' || Number(st.opacity) < 0.1) return false
+      if (st.clipPath && st.clipPath !== 'none') return false
+      if (st.clip && st.clip !== 'auto') return false
     }
     return true
+  }
+  // Text CSS draws or hides (::before or ::after content, zero-size or see-through text) reads differently on
+  // screen than in the DOM, so the card flags it and the owner checks the picture of the control.
+  const styled = el => {
+    const pseudo = ['::before', '::after'].some(p => { const c = getComputedStyle(el, p).content; return c && c !== 'none' && c !== 'normal' && c !== '""' })
+    const st = getComputedStyle(el)
+    return pseudo || parseFloat(st.fontSize) < 4 || st.color === 'transparent' || /rgba\(.*,\s*0\)$/.test(st.color)
   }
   const role = el => el.getAttribute('role') || (el.tagName === 'INPUT' ? INPUT_ROLE[el.type] ?? 'textbox' : TAG_ROLE[el.tagName]) || (el.isContentEditable ? 'textbox' : 'element')
   // The name a person reads. When an aria-label says something else, both show, so a button that reads
@@ -36,8 +47,8 @@ globalThis.__kage ??= (() => {
     const labels = clean([...(el.labels ?? [])].map(l => l.innerText).join(' '))
     const text = clean(el.tagName === 'INPUT' || el.tagName === 'SELECT' || el.tagName === 'TEXTAREA' ? labels : el.innerText) || clean(['submit', 'button', 'reset'].includes(el.type) ? el.value : '')
     const seen = text || clean(el.getAttribute('placeholder') || el.getAttribute('title') || el.getAttribute('alt'))
-    if (aria && seen && aria.toLowerCase() !== seen.toLowerCase()) return `${seen} (labelled "${aria}")`
-    return seen || aria
+    const base = aria && seen && aria.toLowerCase() !== seen.toLowerCase() ? `${seen} (labelled "${aria}")` : seen || aria
+    return styled(el) ? `${base} (styled text: check the picture)` : base
   }
   const secret = el => el.type === 'password' || SECRET_AUTOCOMPLETE.test(el.getAttribute('autocomplete') ?? '') || SECRET_NAME.test(`${el.name ?? ''} ${el.id ?? ''}`)
   const value = (el, r) => {
@@ -53,6 +64,8 @@ globalThis.__kage ??= (() => {
     const d = { ref: refFor(el), role: r, name: name(el) }
     const v = value(el, r)
     if (v !== undefined) d.value = v
+    // Where a link goes, so a card for "Unsubscribe" also says which site it opens.
+    if (el.tagName === 'A' && el.href) { try { d.to = new URL(el.href).hostname } catch { /* not a web address */ } }
     return d
   }
   const find = ref => { const el = byRef.get(Number(ref))?.deref(); return el?.isConnected ? el : undefined }
@@ -92,12 +105,22 @@ globalThis.__kage ??= (() => {
       }
       return { url: location.href, x, y }
     },
-    // Before a key: the same site, and focus still on the control the owner's card named.
+    // Before a key: the same site, and focus still on the control the owner's card named. A key with focus on
+    // nothing named (an iframe, a bare div) is refused: the owner could not see where it would land.
     keyTarget(expect) {
       if (expect && location.hostname !== expect.host) return { refused: 'the tab moved to another site' }
       const f = focusedEl(), d = f ? describe(f) : undefined
-      if (expect && (d?.role !== expect.role || d?.name !== expect.name)) return { refused: 'focus moved since the owner said yes' }
+      if (!d) return { refused: 'no named control has focus, so it is not clear where the key would land: click the field first' }
+      if (expect && (d.role !== expect.role || d.name !== expect.name)) return { refused: 'focus moved since the owner said yes' }
       return { url: location.href }
+    },
+    // The control's box in the viewport, after scrolling it into view, so the extension can crop a picture of it.
+    box(ref) {
+      const el = find(ref)
+      if (!el) return { refused: 'that control is no longer on the page: take a new snapshot' }
+      el.scrollIntoView({ block: 'center', inline: 'center', behavior: 'instant' })
+      const r = el.getBoundingClientRect()
+      return { url: location.href, x: r.left, y: r.top, w: r.width, h: r.height, dpr: devicePixelRatio }
     },
   }
 })()

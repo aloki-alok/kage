@@ -38,8 +38,10 @@ const ops = {
   // expect: the site and control the owner approved. page.js checks them, the view and the hit point in one go.
   async click({ tabId, ref, expect }) {
     const at = ready(await inPage(tabId, 'prepare', [ref, false, expect]))
+    // Press and release only, right after the hit test: a mouse move first would give the page's mousemove
+    // handlers a turn to lay something over the control between the check and the click.
     const base = { x: at.x, y: at.y, button: 'left', clickCount: 1 }
-    await cdp(tabId, [['Input.dispatchMouseEvent', { ...base, type: 'mouseMoved' }], ['Input.dispatchMouseEvent', { ...base, type: 'mousePressed' }], ['Input.dispatchMouseEvent', { ...base, type: 'mouseReleased' }]])
+    await cdp(tabId, [['Input.dispatchMouseEvent', { ...base, type: 'mousePressed' }], ['Input.dispatchMouseEvent', { ...base, type: 'mouseReleased' }]])
     return { url: at.url }
   },
   async type({ tabId, ref, text, expect }) {
@@ -54,6 +56,25 @@ const ops = {
     const k = { key, code: key, windowsVirtualKeyCode: code, nativeVirtualKeyCode: code, ...(key === 'Enter' && { text: '\r' }) }
     await cdp(tabId, [['Input.dispatchKeyEvent', { ...k, type: 'keyDown' }], ['Input.dispatchKeyEvent', { ...k, type: 'keyUp' }]])
     return { url: at.url }
+  },
+  // A picture of one control as the owner's screen shows it, for the approval card: CSS can draw text the DOM
+  // does not hold, so the picture is what the owner checks. Only for the front tab of its window.
+  async crop({ tabId, ref }) {
+    const t = await chrome.tabs.get(Number(tabId))
+    if (!t.active) throw new Error('that tab is not the front tab of its window')
+    const b = ready(await inPage(tabId, 'box', [ref]))
+    const shot = await (await fetch(await chrome.tabs.captureVisibleTab(t.windowId, { format: 'png' }))).blob()
+    const img = await createImageBitmap(shot)
+    const pad = 12, k = b.dpr || 1
+    const sx = Math.max(0, (b.x - pad) * k), sy = Math.max(0, (b.y - pad) * k)
+    const sw = Math.min(img.width - sx, (b.w + 2 * pad) * k), sh = Math.min(img.height - sy, (b.h + 2 * pad) * k)
+    if (sw < 1 || sh < 1) throw new Error('the control is outside the visible part of the tab')
+    const canvas = new OffscreenCanvas(sw, sh)
+    canvas.getContext('2d').drawImage(img, sx, sy, sw, sh, 0, 0, sw, sh)
+    const bytes = new Uint8Array(await (await canvas.convertToBlob({ type: 'image/png' })).arrayBuffer())
+    let bin = ''
+    for (let i = 0; i < bytes.length; i += 0x8000) bin += String.fromCharCode(...bytes.subarray(i, i + 0x8000))
+    return { url: b.url, png: `data:image/png;base64,${btoa(bin)}` }
   },
   async navigate({ tabId, url }) {
     await chrome.tabs.update(Number(tabId), { url })
