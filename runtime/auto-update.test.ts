@@ -34,8 +34,9 @@ test('a clean main fast-forwards to the stable tag, never past it to origin/main
   assert.equal(await pullMain(local), 'pulled')
   assert.equal(git(local, 'rev-parse', 'HEAD'), tagged)
   assert.equal(await pullMain(local), 'current')
-  // The owner moves the tag on: the next run follows it.
-  stable(origin)
+  // The owner moves the tag on, as the documented push does (a lightweight tag): the next run follows it.
+  git(origin, 'tag', '-d', 'stable')
+  git(origin, 'update-ref', 'refs/tags/stable', 'HEAD')
   assert.equal(await pullMain(local), 'pulled')
   assert.equal(git(local, 'rev-parse', 'HEAD'), git(origin, 'rev-parse', 'HEAD'))
 })
