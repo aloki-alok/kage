@@ -72,3 +72,15 @@ export function actCard(a: Act, at: { url: string; el?: Element }) {
   })()
   return `${slackSafe(hostOf(at.url))}: ${line}`
 }
+
+// Which steps wait for the owner's yes: the ones that spend, delete, speak as the owner, grant access or ship.
+// Decided here from the control's own label, never from the model's view, so a page cannot talk Kage out of a card.
+// Everything else (open, navigate, typing, everyday clicks) runs on the owner's task with no card.
+const MAJOR = /\b(pay|payment|buy|purchase|order|checkout|subscribe|upgrade|delete|remove|destroy|revoke|transfer|withdraw|send|post|publish|share|invite|merge|deploy|release|approve|allow|authori[sz]e|install|reinstall|grant|sign|confirm|submit)\b/i
+const SENDS = /\b(message|reply|comment|compose|chat|email)\b/i
+export function majorAct(a: Act, el?: Element): string | undefined {
+  const label = el?.name ?? ''
+  if (a.action === 'click' && MAJOR.test(label)) return `it clicks "${label}"`
+  if (a.action === 'press' && a.key === 'Enter' && (MAJOR.test(label) || SENDS.test(label))) return `Enter in "${label}" may send or submit it`
+  return undefined
+}

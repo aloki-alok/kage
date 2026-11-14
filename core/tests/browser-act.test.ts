@@ -1,6 +1,6 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { actCard, elementsResult, parseAct } from '../browser-act.ts'
+import { actCard, elementsResult, majorAct, parseAct } from '../browser-act.ts'
 
 const page = (els: { ref: number; role: string; name: string; value?: string }[], url = 'https://mail.example.com/compose') => ({ title: 'Compose', url, elements: els })
 
@@ -52,4 +52,17 @@ test('a link says on the card and in the snapshot which site it opens', () => {
   const el = { ref: 5, role: 'link', name: 'Unsubscribe', to: 'evil.example' }
   assert.match(actCard({ action: 'click', ref: 5 }, { url: 'https://mail.example.com/', el }), /^mail\.example\.com: click link "Unsubscribe" \(opens evil\.example\)$/)
   assert.match(elementsResult(page([el]), []), /^\[5\] link "Unsubscribe" -> evil\.example$/m)
+})
+
+test('a step is major when it spends, deletes, sends as the owner, grants access or ships', () => {
+  const el = (name: string) => ({ ref: 1, role: 'button', name })
+  for (const n of ['Pay now', 'Buy', 'Delete project', 'Send', 'Post', 'Allow', 'Reinstall to Workspace', 'Authorize', 'Merge pull request', 'Deploy', 'Invite people', 'Confirm transfer'])
+    assert.ok(majorAct({ action: 'click', ref: 1 }, el(n)), n)
+  for (const n of ['Save Changes', 'Add an OAuth Scope', 'Next', 'Search', 'Settings'])
+    assert.equal(majorAct({ action: 'click', ref: 1 }, el(n)), undefined, n)
+  assert.equal(majorAct({ action: 'open', url: 'https://x.example/' }), undefined)
+  assert.equal(majorAct({ action: 'type', ref: 1, text: 'hi' }, { ref: 1, role: 'textbox', name: 'Message #general' }), undefined)
+  // Enter in a message box sends it as the owner.
+  assert.ok(majorAct({ action: 'press', key: 'Enter' }, { ref: 1, role: 'textbox', name: 'Message #general' }))
+  assert.equal(majorAct({ action: 'press', key: 'Enter' }, { ref: 1, role: 'searchbox', name: 'Search' }), undefined)
 })
