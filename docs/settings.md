@@ -118,6 +118,7 @@ Email is on when `connectors.email.address`, `connectors.email.queue` and `conne
 | Setting | Default | Effect |
 |---|---|---|
 | `voiceToken` | none | secrets.json. Turns voice on: an MCP endpoint with one tool, `ask_kage`, behind `Authorization: Bearer <token>`. |
+| `POST /voice/ended` | same voice port | Send the same Bearer `voiceToken` and JSON with `call_id` or `session_id` set to the MCP session id (or pass the `mcp-session-id` header) when the caller hangs up. Ends that call at once. Unknown or repeated ids do nothing and return 204; a bad token gets 401. |
 | `githubSecret` | none | secrets.json. With `connectors.github.login`, turns GitHub on: a webhook at `127.0.0.1:<port>/github`, checked against this secret. Point a tunnel at it, then add the webhook on a repo (content type JSON, events: pull request reviews, pull requests, issues, issue comments, check suites). |
 | `connectors.github.login` | none | Your GitHub username. Only events that are yours wake Kage: a review on your pull request, failed checks on it, an issue or a review request given to you, a comment that mentions you, from people the repo lists as owner, member or collaborator. Each pull request or issue gets one thread in your DM with Kage. |
 | `connectors.github.port` | `8789` | The local port the GitHub webhook listens on. |

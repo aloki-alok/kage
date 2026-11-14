@@ -144,7 +144,14 @@ export function connectVoice(o: {
     return STILL
   }
 
-  const endCall = (key: string) => { owners.delete(key); if (calls.delete(key)) o.end?.(key) }
+  const endCall = (key: string) => {
+    owners.delete(key)
+    const c = calls.get(key)
+    if (!c) return
+    calls.delete(key)
+    for (const wake of [...c.wake]) wake()
+    o.end?.(key)
+  }
 
   // Drops calls and MCP sessions idle for 3 minutes: their slot, memory and Kage session come back.
   async function sweep() {
@@ -182,6 +189,19 @@ export function connectVoice(o: {
     // Bare 401, no detail, for anything without the exact token.
     if (!bearerOk(req.headers.authorization, token)) { res.writeHead(401).end(); return }
     try {
+      if (req.method === 'POST' && req.url === '/voice/ended') {
+        const body = await readJson(req) as { call_id?: unknown; session_id?: unknown } | null
+        const id = body?.call_id ?? body?.session_id ?? req.headers['mcp-session-id']
+        if (typeof id !== 'string' || !id.trim()) { res.writeHead(400).end(); return }
+        const ended = sessions.get(id)
+        // Remove it before closing: a retry or onclose must never end the call twice.
+        sessions.delete(id)
+        seen.delete(id)
+        endCall(`voice:${id}`)
+        await ended?.close()
+        res.writeHead(204).end()
+        return
+      }
       const sid = req.headers['mcp-session-id']
       let transport = typeof sid === 'string' ? sessions.get(sid) : undefined
       const body = req.method === 'POST' ? await readJson(req) : undefined
