@@ -280,6 +280,12 @@ cmd_doctor() {
   else
     fail "not connected to Slack yet: wait 20 s after start, or run kage logs to see why"
   fi
+  # The same rules as core/auto-update.ts, so a person sees why this install stays on its version.
+  if [[ "$(env_get KAGE_AUTO_UPDATE)" == off ]]; then note "auto-update is off (KAGE_AUTO_UPDATE=off)"
+  elif [[ ! -e .git ]]; then note "no auto-update: not a git checkout. Rerun the install line to make it one"
+  elif [[ "$(git rev-parse --abbrev-ref HEAD 2>/dev/null)" != main ]]; then note "no auto-update: on branch $(git rev-parse --abbrev-ref HEAD 2>/dev/null), not main"
+  elif [[ -n "$(git status --porcelain --untracked-files=no 2>/dev/null)" ]]; then note "no auto-update: the checkout has uncommitted changes"
+  fi
   command -v kage >/dev/null || note "kage is not on your PATH: run ./setup.sh link to type kage <command> anywhere"
   [[ $bad == 0 ]] && echo "All good. Tag @$NAME in Slack to try it." || return 1
 }
