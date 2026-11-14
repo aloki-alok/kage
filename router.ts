@@ -24,7 +24,7 @@ import { connectBrowser } from './connectors/browser.ts'
 import { blockList, unreadableBlocks } from './core/browser.ts'
 import { connectVoice } from './connectors/voice.ts'
 import { startWhatsApp } from './connectors/whatsapp.ts'
-import { memoryDirs } from './core/guards.ts'
+import { memoryDirs, protectConfig } from './core/guards.ts'
 import { limitLine, pauseLine, stopLine } from './core/board.ts'
 import { placeFor, sessionKey, type Conversation, type Lane } from './core/conversations.ts'
 import { mayStop, senderOf } from './core/gate.ts'
@@ -207,6 +207,8 @@ void (async () => {
 
 const tmux = tmuxPanes({
   name: NAME, envFile: ENV_FILE, claude: CLAUDE,
+  settings: () => ({ autoMemoryDirectory: MEM.own, ...protectConfig(ENV_FILE, CODE) }),
+  ssm: { sock: SSM_SOCK, issue: key => ssm.issue(key), drop: key => ssm.drop(key) },
   idOf: key => d.saved()[key],
   placeOf,
   onStart: () => store.saveSessions(d.saved()),
