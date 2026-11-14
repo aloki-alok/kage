@@ -24,7 +24,7 @@ export function compareUrl(origin: string, from: string, to: string): string | u
   return m ? `https://github.com/${m[1]}/${m[2]}/compare/${from}...${to}` : undefined
 }
 
-// The soak gate (ADR 0008, 0012): a commit may become a release only after the owner's hub ran it for 24 hours.
+// The soak gate (ADR 0008, 0013): a commit may become a release only after the owner's hub ran it for 24 hours.
 // lastBootAt and crashDmAt are ms since the epoch. A hub restart for any reason restarts the 24 hours.
 const DAY = 86_400_000
 export type Soak = { candidate: string; running: string; lastBootAt?: number; crashDmAt?: number; doctorOk: boolean; now: number }

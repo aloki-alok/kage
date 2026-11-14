@@ -25,6 +25,7 @@ Run|status||One look at every session and what it is doing|kage status
 Run|logs|[lines, -f or kagelet]|The last lines of the hub log (80 unless you say), or -f to follow it. With a kagelet: its last runs, newest first, with cost, ok or failed, and its report|kage logs -f
 Run|run||Run the hub in the foreground for a supervisor other than launchd or systemd (Docker: --init); output goes to kage logs|kage run
 Run|cost|[days]|What each thread spent, most first (1 day unless you say)|kage cost 7
+Run|release|[--dry-run]|Tag the next version on main, publish its notes and move the stable tag that installs follow (repo admin only). --dry-run prints the version and notes and changes nothing|kage release --dry-run
 Run|dream|undo|Put the memory back to how it was before the last weekly dream|kage dream undo
 Watch|schedules||Every schedule and reply watch, in every thread|kage schedules
 Watch|top||The live console: every thread, its feed, attach and stop, by mouse or keys|kage top
@@ -349,6 +350,7 @@ case "${1:-}" in
   logs) if [[ ${2:-} =~ ^[a-z] ]]; then node cli/kagelet-logs.ts "$2"; else cmd_logs "${2:-}"; fi ;;
   cost) node cli/cost.ts "${@:2}" ;;
   schedules) node cli/schedules.ts ;;
+  release) node cli/release.ts "${@:2}" ;;
   dream) node cli/dream.ts "${@:2}" ;;
   top) node cli/top.ts "${@:2}" ;;
   watch) node cli/watch.ts "${@:2}" ;;
