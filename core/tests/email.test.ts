@@ -33,7 +33,7 @@ describe('who can drive Kage by email', () => {
     assert.equal(t.sender, 'teammate')
   })
   const drops: [string, Partial<InboundMail>, RegExp][] = [
-    ['someone not listed', { from: 'lee@example.com' }, /not allowed/],
+    ['someone not listed', { from: 'lee@example.com' }, /not listed/],
     ['a forged From (DMARC fail)', { verdicts: { ...PASS, dmarc: 'FAIL' } }, /dmarc/],
     ['DMARC gray, e.g. a relay with only its own signature', { verdicts: { ...PASS, dmarc: 'GRAY' } }, /dmarc/],
     ['spam', { verdicts: { ...PASS, spam: 'FAIL' } }, /spam/],
@@ -55,6 +55,16 @@ describe('who can drive Kage by email', () => {
     const t = mailTask(mail({ inReplyTo: undefined, references: [] }), cfg)
     assert.ok(t && 'key' in t)
     assert.equal(t.key, 'mail:<b@mail.gmail.com>')
+  })
+  test('a sender who was not in a known thread starts a new one, though their headers name its root', () => {
+    const prior = mail({ from: 'owner@example.com', to: ['kage@kage.example.com'], cc: ['lee@example.com'] })
+    const known = (k: string) => (k === 'mail:<a@amazonses.com>' ? prior : undefined)
+    const forged = mailTask(mail({ from: 'sam@example.com', messageId: '<s@mail.gmail.com>' }), cfg, known)
+    assert.ok(forged && 'key' in forged)
+    assert.equal(forged.key, 'mail:<s@mail.gmail.com>')
+    const member = mailTask(mail({ from: 'lee@example.com', messageId: '<l@mail.gmail.com>' }), { ...cfg, teammates: ['lee@example.com'] }, known)
+    assert.ok(member && 'key' in member)
+    assert.equal(member.key, 'mail:<a@amazonses.com>')
   })
 })
 
