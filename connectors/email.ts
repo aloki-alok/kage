@@ -8,7 +8,7 @@ import { SendEmailCommand, SESv2Client } from '@aws-sdk/client-sesv2'
 import { dkimVerify } from 'mailauth/lib/dkim/verify.js'
 import { simpleParser, type AddressObject } from 'mailparser'
 import { promises as dns } from 'node:dns'
-import { log } from '../runtime/log.ts'
+import { log, logRef } from '../runtime/log.ts'
 import { parseSessionKey, type Conversation } from '../core/conversations.ts'
 import { noChannelTag } from '../core/text.ts'
 import type { Delivery } from '../core/sessions.ts'
@@ -37,7 +37,7 @@ export function connectEmail(o: {
   const send = startMailbox({
     mail: { ...mail, queue: mail.queue }, saved: o.saved, cfg, inbox: o.inbox,
     onTask(t) {
-      const place = `email: ${t.subject.slice(0, 60)}`
+      const place = `email thread ${logRef(t.key)}`   // a place is logged and shown: never the subject
       const content = [
         emailTaskLine(t.from, t.sender, t.ask),
         `Reply with the reply tool, channel "email" and thread_ts "${t.key}": it goes to the thread's ${cfg.domains[0]} people. Subject: ${noChannelTag(t.subject).replace(/\s+/g, ' ')}`,
@@ -48,12 +48,12 @@ export function connectEmail(o: {
         meta: { channel: 'email', thread_ts: t.key, place, permalink: '' },
         origin: { channel: 'email', ts: t.key },
       }
-      log('mail task from', t.from, 'for', place)
+      log('mail task,', t.sender, logRef(t.key))
       // The mail key is the session key; it reads back into its conversation.
       if (o.deliver(parseSessionKey(t.key)!.conversation, task, place) === 'failed') o.failed(task)
     },
   })
-  log(`email on: ${cfg.self}, owner ${cfg.owner}, teammates ${cfg.teammates.join(',') || 'none'}`)
+  log(`email on: ${cfg.self}, ${cfg.teammates.length} teammates`)
   return { send }
 }
 
@@ -103,8 +103,8 @@ function startMailbox(o: {
     // only after handling (SQS holds the mail until then), so a crash midway gets the mail again.
     const source = `mail:${mail.messageId}`
     if (o.inbox.has(source)) return
-    const t = mailTask(mail, o.cfg)
-    if ('drop' in t) log('mail dropped:', mail.from, JSON.stringify(mail.subject), t.drop)
+    const t = mailTask(mail, o.cfg, k => threads[k]?.mail)
+    if ('drop' in t) log('mail dropped from', logRef(mail.from), t.drop)
     else {
       threads[t.key] = { mail }
       o.saved.save('mail-threads', threads)
@@ -140,6 +140,6 @@ function startMailbox(o: {
       inReplyTo: t.mail.messageId, references: [...t.mail.references, t.mail.messageId], text,
     })
     await ses.send(new SendEmailCommand({ FromEmailAddress: o.cfg.self, Content: { Raw: { Data: Buffer.from(raw) } } }))
-    log('mail sent for', key, 'to', [...to, ...cc].join(','))
+    log('mail sent for', logRef(key), 'to', to.length + cc.length, 'people')
   }
 }

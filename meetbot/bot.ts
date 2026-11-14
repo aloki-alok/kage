@@ -94,9 +94,9 @@ export async function attend(page: Page, link: string, o: {
     await sleep(1000)
     if (page.isClosed()) break
     for (const text of o.said?.splice(0) ?? []) {
-      if (hangUp) { log('the voice agent speaks in this call; not saying:', text.slice(0, 80)); continue }
+      if (hangUp) { log('the voice agent speaks in this call; not saying an answer of', text.length, 'chars'); continue }
       let spoken = false
-      log('saying:', text.slice(0, 120))
+      log('saying an answer of', text.length, 'chars')
       if (o.speak) try { await k('say', (await o.speak(text)).toString('base64')); spoken = true } catch (e) { log('speaking failed, posting in chat:', String(e)) }
       if (!spoken) await chat(text).catch(() => false)
     }
@@ -107,7 +107,7 @@ export async function attend(page: Page, link: string, o: {
       // Meet labels the bot's own speech "You"; it is kept for the notes and marked, so it never wakes Kage.
       const segs = lines.map(l => ({ ...l, ...(l.speaker === 'You' || l.speaker === o.name ? { speaker: o.name, self: true } : {}), start: Math.round((Date.now() - t0) / 1000) }))
       all.push(...segs)
-      for (const l of segs) log('heard', `${l.speaker}:`, l.text.slice(0, 160))
+      log('heard', segs.length, 'caption lines')
       await Promise.resolve(o.heard(segs)).catch(e => log('posting lines failed', String(e)))
     }
     if (!all.length && !captionsChecked && Date.now() - t0 > 20_000) {

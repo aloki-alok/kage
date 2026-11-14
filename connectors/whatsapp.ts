@@ -3,7 +3,7 @@
 import { createHmac, timingSafeEqual } from 'node:crypto'
 import { mkdirSync, readFileSync } from 'node:fs'
 import { createServer, type RequestListener } from 'node:http'
-import { log } from '../runtime/log.ts'
+import { log, logRef } from '../runtime/log.ts'
 import { claudeOnce, emptyRoom } from '../runtime/claude-once.ts'
 import { readBody } from './webhook.ts'
 import type { Inbox } from '../runtime/store.ts'
@@ -83,7 +83,7 @@ export function startWhatsApp(o: { dir: string; name: string; owner: string; wha
     const { system, prompt } = guardPrompt(brief, hist ?? await history(chat), text, o.owner)
     const verdict = findSecret(text) ? { send: false, reason: 'looks like a key or secret' } : guardVerdict(await claudeOnce({ model: MODEL, system, prompt, cwd: ROOM, tools: '' }))
     if (!verdict.send) {
-      log('whatsapp message held', chat, verdict.reason)
+      log('whatsapp message held in', logRef(chat))
       o.notify(`Held a WhatsApp message to ${chat.split('@')[0]} (${verdict.reason}). Send it yourself if it is fine:\n${text}`)
       return 'held'
     }
@@ -106,9 +106,9 @@ export function startWhatsApp(o: { dir: string; name: string; owner: string; wha
         const text = await claudeOnce({ model: MODEL, system, prompt, cwd: o.memory, tools: 'Read,Grep,Glob' })
         if (!text || !armed.has(chat)) continue
         a.replies++
-        log('whatsapp stand-in', await send(chat, text, hist), 'in', chat, `(${a.replies})`)
+        log('whatsapp stand-in', await send(chat, text, hist), 'in', logRef(chat), `(${a.replies})`)
       } while (busy.get(chat))
-    } catch (e) { log('whatsapp stand-in failed', chat, e) } finally { busy.delete(chat) }
+    } catch (e) { log('whatsapp stand-in failed in', logRef(chat), e) } finally { busy.delete(chat) }
   }
 
   async function onEvent(p: WahaPayload) {
@@ -116,11 +116,11 @@ export function startWhatsApp(o: { dir: string; name: string; owner: string; wha
     if (!m.chat) return
     const action = decideWhatsApp(m, armed, o.name, Date.now())
     if (action.kind === 'ignore') return
-    log('whatsapp', action.kind, m.chat)
+    log('whatsapp', action.kind, logRef(m.chat))
     if (action.kind === 'disarm') { armed.delete(action.chat); return }
     if (action.kind === 'stand-in') { void standIn(action.chat); return }
     armed.set(action.chat, { until: Date.now() + ARM_MS, replies: 0, brief: action.text })
-    const place = `WhatsApp ${action.chat.split('@')[0]}`
+    const place = `WhatsApp chat ${logRef(action.chat)}`   // a place is logged and shown: never the number
     o.onTask({ chat: action.chat, place, content: waTaskContent(action.text, place, action.chat, await history(action.chat), o.name, o.owner) })
   }
 

@@ -40,13 +40,15 @@ export function newPart(text: string): string {
     .split('\n').filter(l => !/^\s*>/.test(l)).join('\n').trim()
 }
 
-export function mailTask(m: InboundMail, c: MailConfig): MailTask {
+// known: the last mail Kage took in a thread. The sender writes References, so a thread is resumed only by
+// someone already in it; anyone else starts their own, and cannot read another thread's session.
+export function mailTask(m: InboundMail, c: MailConfig, known: (key: string) => InboundMail | undefined = () => undefined): MailTask {
   for (const v of ['spam', 'virus', 'dmarc'] as const) {
     if (m.verdicts[v] !== 'PASS') return { drop: `${v} verdict ${m.verdicts[v]}` }
   }
   const from = lower(m.from)
   const sender = from === lower(c.owner) ? 'owner' : c.teammates.map(lower).includes(from) ? 'teammate' : undefined
-  if (!sender) return { drop: `${from} is not allowed` }
+  if (!sender) return { drop: 'the sender is not listed' }
   // DMARC passes on any aligned signature, and our own SES can sign as our domain. Only the
   // mail provider's signature proves the person sent it from their mailbox.
   const selector = c.selector ?? 'google'
@@ -55,9 +57,12 @@ export function mailTask(m: InboundMail, c: MailConfig): MailTask {
   }
   const ask = newPart(m.text)
   if (!new RegExp(`@${c.name}\\b`, 'i').test(ask)) return { drop: 'not tagged in the new text' }
-  const root = m.references[0] ?? m.inReplyTo ?? m.messageId
+  const keyOf = (chat: string) => sessionKey({ connector: 'email', chat, kind: 'mail' })
+  const thread = keyOf(m.references[0] ?? m.inReplyTo ?? m.messageId)
+  const prior = known(thread)
+  const key = !prior || [prior.from, ...prior.to, ...prior.cc].map(lower).includes(from) ? thread : keyOf(m.messageId)
   const quoted = m.text.slice(m.text.indexOf(ask) + ask.length).trim()
-  return { key: sessionKey({ connector: 'email', chat: root, kind: 'mail' }), sender, ask, quoted }
+  return { key, sender, ask, quoted }
 }
 
 // Reply-all, kept to our own domains: the sender in To, other participants in Cc.
