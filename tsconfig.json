@@ -11,5 +11,6 @@
     "strict": true,
     "skipLibCheck": true,
     "noUncheckedIndexedAccess": true
-  }
+  },
+  "exclude": ["node_modules", "meetbot"]
 }

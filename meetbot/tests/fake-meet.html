@@ -1,0 +1,54 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Fake Meet</title>
+<!-- A stand-in for Google Meet's page, shaped like the parts page.js reads: the lobby, the waiting screen,
+     the call with participant tiles, chat, captions that grow and get revised, and the end screen.
+     Tests drive it through window.fake. It is not Meet: the live check is a real call. -->
+<style>body { font: 14px sans-serif } .hide { display: none }</style>
+<div id="lobby">
+  <input type="text" aria-label="Your name" placeholder="Your name">
+  <button id="ask"><span>Ask to join</span></button>
+</div>
+<div id="waiting" class="hide">Asking to be let in…</div>
+<div id="call" class="hide">
+  <div data-participant-id="spaces/x/devices/1">Jane</div>
+  <div data-participant-id="spaces/x/devices/2">Kim</div>
+  <div data-participant-id="spaces/x/devices/3" id="me">Kage</div>
+  <button aria-label="Chat with everyone" id="chatbtn">chat</button>
+  <button aria-label="Turn on captions" id="ccbtn">cc</button>
+  <button aria-label="Leave call" id="leave">leave</button>
+  <div id="chat" class="hide"><textarea aria-label="Send a message"></textarea></div>
+  <div id="cc" role="region" aria-label="Captions" class="hide"></div>
+</div>
+<div id="ended" class="hide">You left the meeting</div>
+<script>
+  const $ = s => document.querySelector(s)
+  const show = id => { for (const x of ['lobby', 'waiting', 'call', 'ended']) $('#' + x).classList.toggle('hide', x !== id) }
+  window.fake = { name: '', sent: [], mic: null, admitted: false, captions: false }
+  $('#ask').onclick = async () => {
+    fake.name = $('#lobby input').value
+    // Meet asks for the microphone when it joins; keep what it got to check it is Kage's track.
+    const s = await navigator.mediaDevices.getUserMedia({ audio: true })
+    fake.mic = s.getAudioTracks().length
+    show('waiting')
+  }
+  fake.admit = () => { fake.admitted = true; show('call') }
+  $('#chatbtn').onclick = () => $('#chat').classList.remove('hide')
+  $('#chat textarea').onkeydown = e => { if (e.key === 'Enter') { fake.sent.push(e.target.value); e.target.value = ''; e.preventDefault() } }
+  $('#ccbtn').onclick = () => { fake.captions = true; $('#cc').classList.remove('hide') }
+  $('#leave').onclick = () => show('ended')
+  fake.end = () => show('ended')
+  fake.alone = () => { for (const t of document.querySelectorAll('[data-participant-id]')) if (t.id !== 'me') t.remove() }
+  // A caption block: the speaker's name, then the text, which a later say() on the same block grows or rewrites.
+  fake.say = (speaker, text, block) => {
+    let b = block && document.getElementById(block)
+    if (!b) {
+      b = document.createElement('div')
+      if (block) b.id = block
+      b.innerHTML = '<div><span class="NWpY1d"></span></div><div class="ygicle"></div>'
+      b.querySelector('.NWpY1d').textContent = speaker
+      $('#cc').append(b)
+    }
+    b.querySelector('.ygicle').textContent = text
+  }
+</script>

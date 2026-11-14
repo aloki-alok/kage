@@ -6,7 +6,7 @@ import { openStore } from '../../runtime/store.ts'
 const TOKEN = 'meet-token'
 const body = (title = 'Renewal sync') => JSON.stringify({ title, link: 'https://meet.google.com/abc-defg-hij', segments: [{ speaker: 'Jane', text: 'Kim owns the quote.', start: 3 }] })
 
-async function setup(perHour = 100) {
+async function setup(perHour = 100, pollMs = 2000) {
   const store = openStore(':memory:')
   let clock = Date.now()
   let throwing = false
@@ -14,8 +14,9 @@ async function setup(perHour = 100) {
   const tasks: { key: string; content: string; fromOwner: boolean }[] = []
   const told: string[] = []
   let ts = 100
+  const heard: { call: string; lines: { speaker: string; text: string }[] }[] = []
   const m = connectMeeting({
-    token: TOKEN, port: 0, botDm: 'DB', perHour, notify: t => void told.push(t), now: () => clock,
+    token: TOKEN, port: 0, botDm: 'DB', perHour, pollMs, onLines: (call, lines) => void heard.push({ call, lines }), notify: t => void told.push(t), now: () => clock,
     untake: s => store.untake(s),
     inbox: { take: (s, c, p) => store.take(s, c, p, Date.now()), handled: s => store.handled(s), has: s => store.has(s) },
     post: async text => { posts.push(text); return String(ts++) },
@@ -23,7 +24,9 @@ async function setup(perHour = 100) {
   })
   const port = await m.listening
   const send = (b: string, auth = `Bearer ${TOKEN}`) => fetch(`http://127.0.0.1:${port}/meeting`, { method: 'POST', body: b, headers: { authorization: auth, 'content-type': 'application/json' } })
-  return { m, store, posts, tasks, told, send, later: (ms: number) => { clock += ms }, throwOnDeliver: (on = true) => { throwing = on } }
+  const bot = (path: string, init: RequestInit = {}, auth = `Bearer ${TOKEN}`) =>
+    fetch(`http://127.0.0.1:${port}${path}`, { ...init, headers: { authorization: auth, 'content-type': 'application/json' } })
+  return { m, store, posts, tasks, told, send, bot, heard, later: (ms: number) => { clock += ms }, throwOnDeliver: (on = true) => { throwing = on } }
 }
 
 test('a transcript opens one DM thread per meeting and runs at teammate trust', async () => {
@@ -109,5 +112,49 @@ test('the title in the Slack post cannot ping the channel or forge a link', asyn
   try {
     await t.send(body('<!channel> <https://evil|ok>'))
     assert.doesNotMatch(t.posts[0]!, /<!channel>|<https:\/\/evil/)
+  } finally { t.m.close() }
+})
+
+// The meeting bot (#63): it long-polls for commands and posts caption lines on the same port and token.
+test('a join waits until the bot polls, then reaches it once; a poll after it gets only newer commands', async () => {
+  const t = await setup(100, 300)
+  try {
+    assert.match(t.m.join('https://meet.google.com/abc-defg-hij'), /not connected/)
+    assert.equal((await t.bot('/meetbot/next?after=0')).status, 204)   // nothing to do: the poll ends empty
+    const held = t.bot('/meetbot/next?after=0')
+    await new Promise(r => setTimeout(r, 50))
+    assert.equal(t.m.join('meet.google.com/abc-defg-hij?authuser=0'), '')
+    const r = await held
+    assert.equal(r.status, 200)
+    const cmds = await r.json() as { seq: number; op: string; link: string }[]
+    assert.deepEqual(cmds.map(c => [c.op, c.link]), [['join', 'https://meet.google.com/abc-defg-hij']])
+    assert.equal((await t.bot(`/meetbot/next?after=${cmds[0]!.seq}`)).status, 204)
+    // A bot that lost the answer polls again from its old place and gets the command again.
+    assert.equal((await t.bot('/meetbot/next?after=0')).status, 200)
+    // A join this old is for a call long gone: a restarted bot polling from 0 must not walk into the next meeting on that code.
+    t.later(5 * 60_000 + 1)
+    assert.equal((await t.bot('/meetbot/next?after=0')).status, 204)
+  } finally { t.m.close() }
+})
+
+test('a join is refused for anything but a Meet link, and nothing is queued', async () => {
+  const t = await setup(100, 100)
+  try {
+    await t.bot('/meetbot/next?after=0')
+    assert.match(t.m.join('https://evil.example/abc-defg-hij'), /not a Google Meet link/)
+    assert.equal((await t.bot('/meetbot/next?after=0')).status, 204)
+  } finally { t.m.close() }
+})
+
+test('caption lines from the bot reach the hub; a wrong token or a bad body is refused', async () => {
+  const t = await setup()
+  try {
+    const post = (b: unknown, auth?: string) => t.bot('/meetbot/segments', { method: 'POST', body: JSON.stringify(b) }, auth)
+    assert.equal((await post({ call: 'abc-defg-hij', segments: [{ speaker: 'Jane', text: 'hi  there' }] })).status, 200)
+    assert.deepEqual(t.heard, [{ call: 'abc-defg-hij', lines: [{ speaker: 'Jane', text: 'hi there' }] }])
+    assert.equal((await post({ call: 'abc-defg-hij', segments: [] }, 'Bearer nope')).status, 401)
+    assert.equal((await post({ segments: [] })).status, 400)
+    assert.equal((await t.bot('/meetbot/next?after=0', {}, 'Bearer nope')).status, 401)
+    assert.equal(t.heard.length, 1)
   } finally { t.m.close() }
 })

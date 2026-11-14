@@ -4,12 +4,16 @@
 // its own thread in the owner's DM with Kage, and the owner answers there in person. The words are
 // other people's, so the task runs at teammate trust. Off unless meetingToken is set.
 // This mirrors connectors/github.ts; the bearer token is the voice connector's check.
+// Kage's own meeting bot (#63) uses the same port and token: it long-polls /meetbot/next for commands (join)
+// and posts caption lines to /meetbot/segments while the call runs. The bot only calls out, so the machine it
+// runs on opens no port, and the hub reaches it over nothing but this webhook. Its rules are core/meetbot.ts.
 import { createHash } from 'node:crypto'
-import { createServer } from 'node:http'
+import { createServer, type IncomingMessage, type ServerResponse } from 'node:http'
 import type { AddressInfo } from 'node:net'
 import { log } from '../config.ts'
 import type { Conversation } from '../core/conversations.ts'
 import { meetingTask, parseMeeting } from '../core/meeting.ts'
+import { meetLink, parseSegments, type Line } from '../core/meetbot.ts'
 import type { Delivery } from '../core/sessions.ts'
 import type { Task } from '../runtime/protocol.ts'
 import type { Inbox } from '../runtime/store.ts'
@@ -26,9 +30,13 @@ export function connectMeeting(o: {
   perHour: number
   inbox: Inbox
   untake: (source: string) => void   // frees a source id, so the same body sent again runs (Store.untake)
+  onLines?: (call: string, lines: Line[]) => void   // caption lines the bot heard in a live call
+  pollMs?: number    // how long one bot poll is held open with nothing to send
+  staleMs?: number   // with no poll for this long, the bot counts as gone
   now?: () => number
 }) {
   const now = o.now ?? Date.now
+  const pollMs = o.pollMs ?? 25_000, staleMs = o.staleMs ?? 60_000
   const cap = hourCap(o.perHour)
   let chain: Promise<unknown> = Promise.resolve()
 
@@ -65,8 +73,63 @@ export function connectMeeting(o: {
     chain = next.catch(() => {})
     return next
   }
+  // Commands for the bot. Each has a seq, and a poll asks for those after the last it saw, so a poll whose
+  // answer was lost gets the same commands again. The seq starts at the clock, so it still grows after a restart.
+  type Cmd = { seq: number; at: number; op: 'join'; link: string }
+  const cmds: Cmd[] = []
+  let seq = now()
+  let waiter: { res: ServerResponse; after: number; timer: NodeJS.Timeout } | undefined
+  let lastPoll = -Infinity
+  // A command older than CMD_MS is for a moment that has passed: a bot that restarts and polls from 0 must not
+  // join a call that ended long ago, which on a weekly Meet code is the next meeting.
+  const CMD_MS = 5 * 60_000
+  const newer = (after: number) => cmds.filter(c => c.seq > after && now() - c.at < CMD_MS)
+  const answer = () => {
+    if (!waiter) return
+    const due = newer(waiter.after)
+    if (!due.length) return
+    clearTimeout(waiter.timer)
+    waiter.res.writeHead(200, { 'content-type': 'application/json' }).end(JSON.stringify(due))
+    waiter = undefined
+  }
+  // '' when queued, else why not, in words the owner's session passes on.
+  function join(link: string): string {
+    const url = meetLink(link)
+    if (!url) return 'not a Google Meet link (https://meet.google.com/abc-defg-hij)'
+    if (!waiter && now() - lastPoll >= staleMs) return 'the meeting bot is not connected: start it on its machine and check it can reach this hub'
+    cmds.push({ seq: seq = Math.max(seq + 1, now()), at: now(), op: 'join', link: url })
+    cmds.splice(0, cmds.length - 20)
+    answer()
+    return ''
+  }
+  function botRoute(req: IncomingMessage, res: ServerResponse) {
+    const url = new URL(req.url ?? '/', 'http://hub')
+    if (req.method === 'GET' && url.pathname === '/meetbot/next') {
+      lastPoll = now()
+      if (waiter) { clearTimeout(waiter.timer); waiter.res.writeHead(204).end() }   // a newer poll (a restarted bot) replaces the old
+      const after = Number(url.searchParams.get('after')) || 0
+      waiter = { res, after, timer: setTimeout(() => { if (waiter?.res === res) { waiter = undefined; res.writeHead(204).end() } }, pollMs) }
+      req.on('close', () => { if (waiter?.res === res && !res.writableEnded) { clearTimeout(waiter.timer); waiter = undefined } })
+      answer()
+      return
+    }
+    if (req.method === 'POST' && url.pathname === '/meetbot/segments') {
+      void readBody(req, 1_000_000).then(raw => {
+        if (!raw) { res.writeHead(413).end(); req.destroy(); return }
+        let s: ReturnType<typeof parseSegments>
+        try { s = parseSegments(JSON.parse(raw.toString('utf8'))) } catch { s = undefined }
+        if (!s) { res.writeHead(400).end(); return }
+        if (s.lines.length) o.onLines?.(s.call, s.lines)
+        res.writeHead(200).end()
+      })
+      return
+    }
+    res.writeHead(404).end()
+  }
+
   const server = createServer((req, res) => {
     if (!bearerOk(req.headers.authorization, o.token)) { res.writeHead(401).end(); return }
+    if (req.url?.startsWith('/meetbot/')) { botRoute(req, res); return }
     if (req.method !== 'POST' || req.url !== '/meeting') { res.writeHead(404).end(); return }
     void (async () => {
       const raw = await readBody(req, MAX_BODY)
@@ -86,5 +149,8 @@ export function connectMeeting(o: {
     })()
   })
   const listening = new Promise<number>(ok => server.listen(o.port, '127.0.0.1', () => ok((server.address() as AddressInfo).port)))
-  return { listening, replay: (source: string, body: string) => run(body, source), close: () => server.close() }
+  return {
+    listening, join, replay: (source: string, body: string) => run(body, source),
+    close: () => { if (waiter) { clearTimeout(waiter.timer); waiter.res.writeHead(204).end(); waiter = undefined } server.closeAllConnections(); server.close() },
+  }
 }

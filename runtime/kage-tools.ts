@@ -79,6 +79,7 @@ export function sessionTools(o: {
   event?: (kind: EventKind, detail: string) => void
   // The owner's Chrome, through Kage's extension (connectors/browser.ts). Absent: browserToken is not set.
   browser?: { call(op: string, args: Record<string, unknown>): Promise<unknown>; block: string[] }
+  meetbot?: { join(link: string): string }   // Kage's meeting bot (#63): '' when queued, else why not
   // A kagelet's report and messages, for the hub's chain router (runtime/kagelets.ts kageletRoutes).
   onReport?: (r: { needs: string; output: string }) => void
   message?: (to: string, text: string) => string
@@ -547,6 +548,19 @@ export function sessionTools(o: {
       }
       const approve = o.approve
       return { text: await team.manage(a, approve && (card => approve('grant_kagelet', `Grant kagelet ${card.kagelet}: ${card.tools}. Your yes stands: a later kagelet that asks for ${card.tools} gets it with no card, until you revoke it (v in kage top, or ask). Your daily note lists each grant made with no card.`, card))) }
+    },
+  })
+  // Only the owner's own Slack task sends the bot into a call: never a teammate, an agent, a voice call or a kagelet.
+  const meetbot = o.meetbot
+  if (meetbot && !name && !o.dreaming) tools.push({
+    name: 'meeting_join',
+    description: `Send ${o.title}'s meeting bot into a Google Meet call by its link. It joins under a name that says it takes notes, posts one line in the call's chat, answers out loud when someone says ${o.title}, and the notes come to the owner's DM when the call ends. The host may need to admit it. Owner tasks only.`,
+    shape: { channel: s.describe('channel attribute from the task tag'), thread_ts: s.describe('thread_ts attribute from the task tag'), link: s.describe('the Meet link, https://meet.google.com/abc-defg-hij') },
+    async run(args) {
+      if (!ownerOnly(args) || args.channel === 'voice' || agents.get(`${args.channel}:${args.thread_ts}`)) return { isError: true, text: "refused: only the owner's own task sends the meeting bot" }
+      const why = meetbot.join(String(args.link))
+      o.event?.('tool', `meeting_join ${why ? 'refused' : 'ok'}`)
+      return why ? { isError: true, text: `meeting bot: ${why}` } : { text: 'The meeting bot is joining. Tell the owner the host may need to admit it.' }
     },
   })
   // The owner's browser carries their logins, so only the owner's own task reads it: never a teammate's, an
