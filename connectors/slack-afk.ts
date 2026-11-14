@@ -2,16 +2,14 @@
 // session tools), and Kage sets their status. While they are away, a stand-in watches the threads
 // where colleagues mention them or DM them, posts only when actOn says so, and phones the owner for
 // a P0. It never starts a session: tags of Kage still go through the gate as before.
-import { spawn } from 'node:child_process'
-import { mkdirSync } from 'node:fs'
 import type { WebClient } from '@slack/web-api'
 import { log } from '../runtime/log.ts'
+import { claudeOnce, emptyRoom } from '../runtime/claude-once.ts'
 import { actOn, afkGuardPrompt, decideAfk, MAX_REPLIES, noteMention, noteOf, notePing, outsider, parseTriage, restoreTo, standInPrompt, standInReply, summaryOf, untilOf, type Afk, type AfkCommand, type Status } from '../core/afk.ts'
 import type { SlackMessage } from '../core/slack-message.ts'
-import { findSecret, safeReply } from '../core/outbound.ts'
+import { findSecret, guardVerdict, safeReply } from '../core/outbound.ts'
 import type { Saved } from '../runtime/store.ts'
 import type { JevAfk } from './jev.ts'
-import { guardVerdict } from '../core/whatsapp.ts'
 
 type Ids = { owner: string; bot: string; botDm: string; name: string; team?: string }
 const EMOJI = ':ninja:'
@@ -31,9 +29,7 @@ export function startAfk(o: {
   // Jev's triage (connectors/jev.ts); absent means the Claude stand-in triages every message.
   jev?: JevAfk
 }) {
-  // An empty folder for the guard, so its Claude finds no CLAUDE.md or project memory.
-  const ROOM = `${o.dir}/standin`
-  mkdirSync(ROOM, { recursive: true, mode: 0o700 })
+  const ROOM = emptyRoom(o.dir)   // the guard's Claude finds no CLAUDE.md or memory here
   // Saved so a hub restart stays away; prior is the owner's status before Kage set its own.
   let state = o.saved.load('afk') as (Afk & { tz: string; ours: string; prior?: Status }) | undefined
   if (state) state.watch ??= {}   // saved before threads were watched
@@ -86,19 +82,6 @@ export function startAfk(o: {
   }
   setInterval(() => { if (state && state.until <= Date.now()) void off('time ran out').then(o.notify, e => log('afk end failed', e)) }, 30_000)
 
-  // No MCP, no settings (so no CLAUDE.md, hooks or allow rules), nothing saved. Reads stay in cwd.
-  function claude(system: string, prompt: string, cwd: string, tools: string, allowed = ''): Promise<string> {
-    return new Promise((resolve, reject) => {
-      const p = spawn('claude', ['-p', '--tools', tools, ...(allowed ? ['--allowedTools', allowed] : []), '--strict-mcp-config', '--setting-sources', '',
-        '--no-session-persistence', '--model', o.model, '--system-prompt', system], { cwd, stdio: ['pipe', 'pipe', 'pipe'] })
-      let out = ''
-      p.stdout.on('data', c => { out += c })
-      const timer = setTimeout(() => p.kill(), 120_000)
-      p.on('close', code => { clearTimeout(timer); code === 0 ? resolve(out.trim()) : reject(new Error(`claude exited ${code}`)) })
-      p.stdin.end(prompt)
-    })
-  }
-
   // Kage posts as the bot where it is a member, else with the owner's token, labelled.
   async function post(channel: string, thread_ts: string | undefined, text: string) {
     const body = safeReply(text)
@@ -142,7 +125,7 @@ export function startAfk(o: {
     const j = await o.jev?.({ owner: o.ownerName, place, from: who, convo: all })
     const sp = standInPrompt({ owner: o.ownerName, title: o.title, until, note: before.note, place, from: who, convo: all })
     // With Jev's answer in hand, a failed draft only loses the draft: the urgency and a P0 call still go out.
-    const claudeOut = !j || j.lookup ? await claude(sp.system, sp.prompt, o.memory, 'Read,Grep,Glob,Bash', GH).then(parseTriage, e => { if (!j) throw e; return null }) : null
+    const claudeOut = !j || j.lookup ? await claudeOnce({ model: o.model, system: sp.system, prompt: sp.prompt, cwd: o.memory, tools: 'Read,Grep,Glob,Bash', allowed: GH }).then(parseTriage, e => { if (!j) throw e; return null }) : null
     const out = j
       ? { urgency: j.urgency, waits: j.waits, note: noteOf(who, msg.text ?? ''), reply: claudeOut?.reply || standInReply(j.urgency, { owner: o.ownerName, until, title: o.title }) }
       : claudeOut
@@ -162,7 +145,7 @@ export function startAfk(o: {
       .then(no => o.notify(`:rotating_light: P0 from ${who} in ${where}: ${out.note}\n${no ? `Could not phone you (${no}).` : 'Calling you now.'}`))
     if (!act.post || !out.reply) return
     const g = afkGuardPrompt(all, out.reply)
-    const why = findSecret(out.reply) ? 'looks like a key or secret' : (v => v.send ? '' : v.reason)(guardVerdict(await claude(g.system, g.prompt, ROOM, '')))
+    const why = findSecret(out.reply) ? 'looks like a key or secret' : (v => v.send ? '' : v.reason)(guardVerdict(await claudeOnce({ model: o.model, system: g.system, prompt: g.prompt, cwd: ROOM, tools: '' })))
     const t = state
     if (!t || t.since !== s.since || t.muted.includes(key) || (t.replies[key] ?? 0) >= MAX_REPLIES) return
     if (why) return void await o.notify(`Held a reply to ${who} in ${where} (${why}). Post it yourself if it is fine:\n${out.reply}`)

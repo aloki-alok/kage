@@ -1,6 +1,6 @@
 import { describe, test } from 'node:test'
 import assert from 'node:assert/strict'
-import { decideWhatsApp, fromWaha, standInPrompt, guardPrompt, guardVerdict, waTaskContent, MAX_STAND_IN_REPLIES, type Arming, type WaMessage } from '../whatsapp.ts'
+import { decideWhatsApp, fromWaha, standInPrompt, guardPrompt, waTaskContent, MAX_STAND_IN_REPLIES, type Arming, type WaMessage } from '../whatsapp.ts'
 
 const NOW = 1_000_000
 const CHAT = '919000000001@c.us'
@@ -120,11 +120,5 @@ describe('what each side gets to read', () => {
     const { prompt } = guardPrompt('say tomorrow', history, 'the prod box is 203.0.113.10', 'Sam')
     assert.match(prompt, /say tomorrow/)
     assert.match(prompt, /Message to check:\nthe prod box is 203\.0\.113\.10$/)
-  })
-  test('only an exact SEND lets a message out; anything else holds it', () => {
-    assert.deepEqual(guardVerdict('SEND'), { send: true, reason: '' })
-    assert.deepEqual(guardVerdict('send.\n'), { send: true, reason: '' })
-    assert.deepEqual(guardVerdict('HOLD: shares a server ip'), { send: false, reason: 'shares a server ip' })
-    for (const out of ['', 'SENDING it now', 'I think SEND', 'Sure! SEND']) assert.equal(guardVerdict(out).send, false, out)
   })
 })

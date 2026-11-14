@@ -3,7 +3,7 @@
 // 127.0.0.1:<port>/meeting with `Authorization: Bearer <meetingToken>`. Each meeting gets
 // its own thread in the owner's DM with Kage, and the owner answers there in person. The words are
 // other people's, so the task runs at teammate trust. Off unless meetingToken is set.
-// This mirrors connectors/github.ts; the bearer token is the voice connector's check.
+// The inbox and the hourly cap work as in connectors/github.ts; the token check is bearerOk (connectors/webhook.ts).
 // Kage's own meeting bot (#63) uses the same port and token: it long-polls /meetbot/next for commands (join)
 // and posts caption lines to /meetbot/segments while the call runs. The bot only calls out, so the machine it
 // runs on opens no port, and the hub reaches it over nothing but this webhook. Its rules are core/meetbot.ts.

@@ -91,10 +91,3 @@ export function guardPrompt(brief: string, history: WaLine[], reply: string, own
   const lines = history.slice(-10).map(l => `[${l.fromMe ? owner : 'them'}] ${oneLine(l.text)}`)
   return { system, prompt: `${owner}'s instruction for this chat: ${oneLine(brief) || 'none'}\n\nChat:\n${lines.join('\n')}\n\nMessage to check:\n${oneLine(reply)}` }
 }
-
-// Fails closed: only a first word of exactly SEND lets a message out.
-export function guardVerdict(out: string): { send: boolean; reason: string } {
-  const line = out.trim().split('\n')[0] ?? ''
-  if (/^SEND\.?$/i.test(line.trim())) return { send: true, reason: '' }
-  return { send: false, reason: line.replace(/^HOLD:?\s*/i, '') || 'no verdict' }
-}

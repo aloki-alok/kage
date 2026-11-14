@@ -95,3 +95,11 @@ function splitLines(text: string, max: number): string[] {
 
 // Other people's text going into a Slack message: no <!channel>, fake link or mention gets through.
 export const slackPlain = (t: string) => t.replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;')
+
+// A guard's answer about one message leaving as the owner (WhatsApp, Slack AFK). It fails closed: only a
+// first line of exactly SEND lets the message out.
+export function guardVerdict(out: string): { send: boolean; reason: string } {
+  const line = out.trim().split('\n')[0] ?? ''
+  if (/^SEND\.?$/i.test(line.trim())) return { send: true, reason: '' }
+  return { send: false, reason: line.replace(/^HOLD:?\s*/i, '') || 'no verdict' }
+}
