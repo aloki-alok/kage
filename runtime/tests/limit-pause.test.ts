@@ -33,9 +33,12 @@ function hub() {
   const hear = (key: string, t: Task, now: number, payload = `event ${t.origin.ts}`) => {
     const source = `slack:${t.origin.channel}:${t.origin.ts}`
     store.take(source, 'slack', payload, now)
+    const paused = p.paused(now)
     const held = p.hold(key, t, now)
     if (!held) p.delivered(key, t)
     p.handled(source)
+    // A message let through to try in a pause meets the limit again, as Claude would answer while it is on.
+    if (!held && paused && paused.until > now && !paused.draining) { p.turn(key, [t], { kind: 'rate_limit', until: paused.until }, now); return true }
     return held
   }
   return { store, p, notices, toldOwner, ended, replayed, redelivered, logged, hear, pendingAtEnd, failReplays: () => { failReplay = true } }
@@ -76,7 +79,8 @@ describe('a turn that ends on the usage limit', () => {
     assert.deepEqual(h.store.held().map(r => r.source), ['slack:C1:7.7', 'slack:C1:8.8', 'slack:C1:9.9', 'slack:C2:1.1'])
     assert.deepEqual(h.notices.map(n => n.split(' ')[0]), ['C1:5.5', 'C2:1.1'])   // one per thread, not one per message
     assert.deepEqual(h.p.paused(), { until: 55 * MIN, held: 4 })
-    assert.deepEqual(h.ended, ['C1:5.5'])
+    // Each new message tried once and met the limit, which closes the session it started.
+    assert.deepEqual(h.ended, ['C1:5.5', 'C1:5.5', 'C1:5.5', 'C2:1.1'])
   })
   test('at the reset time, held messages replay oldest first with their original payload, and not before', async () => {
     const h = hub()
@@ -96,13 +100,13 @@ describe('a turn that ends on the usage limit', () => {
     await h.p.tick(56 * MIN)
     assert.equal(h.replayed.length, 3)   // nothing replays twice
   })
-  test("the owner's new message tries again in a pause, and a turn that gets through ends the pause and replays the rest", async () => {
+  test("any new message tries in a pause, a teammate's too, and a turn that gets through ends the pause and replays the rest", async () => {
     const h = hub()
     const first = slackTask('7.7')
     h.hear('C1:5.5', first, 0)
     h.p.turn('C1:5.5', [first], { kind: 'rate_limit', until: 7 * 24 * 60 * MIN }, 1000)
-    const mine = { ...slackTask('8.8', 'C2', '1.1'), fromOwner: true }
-    assert.equal(h.p.hold('C2:1.1', mine, 2000), false)   // the owner's message runs
+    const mine = slackTask('8.8', 'C2', '1.1')   // a teammate's
+    assert.equal(h.p.hold('C2:1.1', mine, 2000), false)   // it runs, to see whether the limit lifted
     assert.equal(h.p.hold('C2:1.1', { ...mine, scheduled: true, job: 'j' }, 2000), true)   // a scheduled run waits
     await h.p.turn('C2:1.1', [mine], undefined, 3000, true)
     await new Promise(r => setImmediate(r))
@@ -203,7 +207,7 @@ describe('a turn that ends on the usage limit', () => {
     const again = limitPause({ store: h.store, notice: (_, text) => notices.push(text), end: () => {}, replay: async () => {}, redeliver: () => {}, log: () => {}, tellOwner: () => {} })
     again.restore()
     h.store.take('slack:C1:8.8', 'slack', 'event 8.8', 20 * MIN)
-    assert.equal(again.hold('C1:5.5', slackTask('8.8'), 20 * MIN), true)
+    assert.equal(again.hold('C1:5.5', slackTask('8.8'), 20 * MIN), false)   // a new message tries once, and says nothing
     assert.equal(again.hold('C1:5.5', run('job1'), 21 * MIN), true)
     assert.deepEqual(notices, [])
     // Another thread was never told, so it is.
@@ -222,7 +226,9 @@ describe('a turn that ends on the usage limit', () => {
     // A lane turn begun before the limit ends well: the thread was still told, so it is not told again.
     h.p.turn('C1:5.5#side-x', [], undefined, 17 * MIN)
     h.store.take('slack:C1:8.8', 'slack', 'event 8.8', 18 * MIN)
-    assert.equal(h.p.hold('C1:5.5', slackTask('8.8'), 18 * MIN), true)
+    h.store.take('slack:C1:9.9', 'slack', 'event 9.9', 18 * MIN)
+    assert.equal(h.p.hold('C1:5.5', slackTask('8.8'), 18 * MIN), false)   // the try
+    assert.equal(h.p.hold('C1:5.5', slackTask('9.9'), 18 * MIN), true)    // held while the try runs
     assert.equal(h.notices.length, 1)
   })
   test('a task the dispatcher still had for the thread when its session closed is held too', () => {
@@ -254,10 +260,11 @@ describe('a turn that ends on the usage limit', () => {
     h.hear('C1:5.5', t, 0)
     h.p.turn('C1:5.5', [t], { kind: 'rate_limit', until: 55 * MIN }, 1000)
     h.hear('C1:5.5', slackTask('8.8'), 2000)
-    assert.deepEqual(h.p.counts, { limitHits: 1, held: 2, replays: 0, replayFailures: 0 })
+    // The new message tried and met the limit again: a second hit.
+    assert.deepEqual(h.p.counts, { limitHits: 2, held: 2, replays: 0, replayFailures: 0 })
     h.failReplays()
     await h.p.tick(55 * MIN)
-    assert.deepEqual(h.p.counts, { limitHits: 1, held: 2, replays: 0, replayFailures: 2 })
+    assert.deepEqual(h.p.counts, { limitHits: 2, held: 2, replays: 0, replayFailures: 2 })
     assert.equal(h.logged.filter(l => l.includes('replay failed')).length, 2)
     // A replay that fails cannot work later either (its connector is off, or the event is unreadable): it is let go, and the pause ends.
     assert.equal(h.store.held().length, 0)

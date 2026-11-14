@@ -66,10 +66,10 @@ export function limitPause(o: {
     return true
   }
   let kind: Limit['kind'] = 'rate_limit'
-  // The limit can lift before the reset Claude named (the owner raised or reset it). The owner's own new message
-  // tries once in the pause, at most every 5 minutes; a turn that gets through ends the pause for everything.
-  const PROBE_MS = 5 * 60_000
-  let probing: string | undefined, lastProbe = -Infinity
+  // The limit can lift before the reset Claude named (the owner raised or reset it). So a new message from anyone
+  // tries at once, one at a time: a turn that gets through ends the pause for everything, and one that hits the
+  // limit is held again. The reset time stays the fallback.
+  let probing: string | undefined
 
   return {
     counts,
@@ -85,9 +85,9 @@ export function limitPause(o: {
     // Before a task goes to a session. true: paused, and the task is held for the reset.
     hold(key: string, t: Task, now: number): boolean {
       if (until === undefined) return false
-      if (t.fromOwner && !t.scheduled && !probing && now >= drainUntil && now - lastProbe >= PROBE_MS) {
-        probing = threadOf(key); lastProbe = now
-        o.log('the owner wrote during the pause: trying once whether the limit lifted')
+      if (!t.scheduled && !probing && now >= drainUntil) {
+        probing = threadOf(key)
+        o.log('a new message in the pause: trying it once to see whether the limit lifted')
         return false
       }
       return keep(key, t, { kind }, now)
