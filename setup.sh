@@ -22,7 +22,7 @@ Run|stop|[thread or kagelet] [--now or --cut-running]|Stop Kage once every runni
 Run|restart|[--cut-running]|Restart the hub once every running turn ends; new messages wait and run after it|kage restart
 Run|reload||Read the settings file again with no restart: who may tag Kage changes at once|kage reload
 Run|status||One look at every session and what it is doing|kage status
-Run|logs|[lines or -f]|The last lines of the hub log (80 unless you say), or -f to follow it|kage logs -f
+Run|logs|[lines, -f or kagelet]|The last lines of the hub log (80 unless you say), or -f to follow it. With a kagelet: its last runs, newest first, with cost, ok or failed, and its report|kage logs -f
 Run|run||Run the hub in the foreground for a supervisor other than launchd or systemd (Docker: --init); output goes to kage logs|kage run
 Run|cost|[days]|What each thread spent, most first (1 day unless you say)|kage cost 7
 Run|dream|undo|Put the memory back to how it was before the last weekly dream|kage dream undo
@@ -321,7 +321,8 @@ case "${1:-}" in
   restart) cmd_restart "${@:2}" ;;
   reload) node cli/reload.ts ;;
   status) cmd_status ;;
-  logs) cmd_logs "${2:-}" ;;
+  # A word that is not a line count or -f: a kagelet's runs (cli/kagelet-logs.ts).
+  logs) if [[ -n ${2:-} && $2 != -f && ! $2 =~ ^[0-9]+$ ]]; then node cli/kagelet-logs.ts "$2"; else cmd_logs "${2:-}"; fi ;;
   cost) node cli/cost.ts "${@:2}" ;;
   schedules) node cli/schedules.ts ;;
   dream) node cli/dream.ts "${@:2}" ;;
