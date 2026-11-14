@@ -5,6 +5,7 @@ import { createHmac, timingSafeEqual } from 'node:crypto'
 import { mkdirSync, readFileSync } from 'node:fs'
 import { createServer, type RequestListener } from 'node:http'
 import { log } from '../config.ts'
+import { readBody } from './webhook.ts'
 import type { Inbox } from '../runtime/store.ts'
 import { findSecret } from '../core/outbound.ts'
 import { decideWhatsApp, fromWaha, guardPrompt, guardVerdict, standInPrompt, waTaskContent, type Arming, type WahaPayload, type WaLine } from '../core/whatsapp.ts'
@@ -42,22 +43,15 @@ export function wahaHandler(hmac: string, inbox: Inbox, run: (p: WahaPayload, so
     const given = req.headers['x-webhook-hmac']
     if (req.method !== 'POST' || req.url !== '/waha') { res.writeHead(404).end(); return }
     if (typeof given !== 'string' || !given) { res.writeHead(401).end(); return }
-    const chunks: Buffer[] = []
-    let size = 0
-    req.on('data', c => {
-      size += c.length
-      if (size > max) { res.writeHead(413).end(); req.destroy(); return }
-      chunks.push(c)
-    })
-    req.on('end', () => {
-      if (size > max) return
-      const body = Buffer.concat(chunks)
+    void (async () => {
+      const body = await readBody(req, max)
+      if (!body) { res.writeHead(413).end(); req.destroy(); return }
       if (!signed(hmac, body, given)) { res.writeHead(401).end(); return }
       let got: ReturnType<typeof wahaIntake>
       try { got = wahaIntake(body.toString(), inbox) } catch (err) { log('whatsapp bad event', err); res.writeHead(400).end(); return }
       res.writeHead(200).end()
       if (got) void run(got.payload, got.source)
-    })
+    })()
   }
 }
 

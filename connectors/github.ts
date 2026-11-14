@@ -9,6 +9,8 @@ import { log } from '../config.ts'
 import type { Conversation } from '../core/conversations.ts'
 import { noChannelTag } from '../core/gate.ts'
 import { githubEvent, signedByGithub } from '../core/github.ts'
+import { slackPlain } from '../core/outbound.ts'
+import { hourCap, readBody } from './webhook.ts'
 import type { Delivery } from '../core/sessions.ts'
 import type { Task } from '../runtime/protocol.ts'
 import type { Inbox, Saved } from '../runtime/store.ts'
@@ -29,8 +31,7 @@ export function connectGithub(o: {
   // for a thread changes to "DM with Kage" once the owner answers in it, and the next event must still find the thread.
   const threads = (o.saved.load('github-threads') ?? {}) as Record<string, string>
   let chain: Promise<unknown> = Promise.resolve()
-  const started: number[] = []   // when each of the last hour's events started work
-  let capTold = false
+  const cap = hourCap(o.perHour)
   const handle = (type: string, body: string) => {
     const next = chain.then(() => handleOne(type, body))
     chain = next.catch(() => {})
@@ -42,17 +43,13 @@ export function connectGithub(o: {
     const e = githubEvent(type, payload, o.login)
     if (!e) return false
     const now = Date.now()
-    while (started.length && now - started[0]! > 3600_000) started.shift()
-    if (started.length >= o.perHour) {
-      if (!capTold) o.notify(`GitHub sent more than ${o.perHour} events this hour, so I am skipping them until the hour is up. Latest: ${e.thread}.`)
-      capTold = true
+    if (cap.full(now)) {
+      if (cap.tell()) o.notify(`GitHub sent more than ${o.perHour} events this hour, so I am skipping them until the hour is up. Latest: ${e.thread}.`)
       return true
     }
-    started.push(now)
-    capTold = false
+    cap.add(now)
     // Titles and logins are other people's text: escaped, so no <!channel> or fake link reaches Slack.
-    const plain = (t: string) => t.replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;')
-    const line = `*GitHub:* ${plain(e.headline)}${/^https:\/\/[^\s<>|]+$/.test(e.url) ? ` <${e.url}|open>` : ''}`
+    const line = `*GitHub:* ${slackPlain(e.headline)}${/^https:\/\/[^\s<>|]+$/.test(e.url) ? ` <${e.url}|open>` : ''}`
     const place = `GitHub ${e.thread}`
     const known = threads[e.thread]
     const ts = await o.post(line, known)
@@ -83,16 +80,10 @@ export function connectGithub(o: {
   }
   const server = createServer((req, res) => {
     if (req.method !== 'POST' || req.url !== '/github') { res.writeHead(404).end(); return }
-    // Bytes first, decoded once: a character split across two chunks must not break the signature.
-    const chunks: Buffer[] = []
-    let size = 0
-    req.on('data', (c: Buffer) => {
-      size += c.length
-      if (size <= MAX_BODY) chunks.push(c)
-      else { res.writeHead(413).end(); req.destroy() }
-    })
-    req.on('end', () => {
-      const body = Buffer.concat(chunks).toString('utf8')
+    void (async () => {
+      const raw = await readBody(req, MAX_BODY)
+      if (!raw) { res.writeHead(413).end(); req.destroy(); return }
+      const body = raw.toString('utf8')
       if (!signedByGithub(o.secret, body, req.headers['x-hub-signature-256'] as string | undefined)) { res.writeHead(401).end(); return }
       // Into the inbox first: GitHub does not resend a delivery by itself, so a hub that dies while
       // handling it replays it from the store on the next start (router.ts). A redelivered id runs once.
@@ -108,7 +99,7 @@ export function connectGithub(o: {
           o.notify(`A GitHub event failed here (${String(e).slice(0, 120)}). It runs again if Kage restarts within 10 minutes; otherwise redeliver it from the webhook's page.`)
           res.writeHead(500).end()
         })
-    })
+    })()
   })
   const listening = new Promise<number>(ok => server.listen(o.port, '127.0.0.1', () => ok((server.address() as AddressInfo).port)))
   // A delivery the last run took but never handled, from the inbox.
