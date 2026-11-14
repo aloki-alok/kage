@@ -4,14 +4,12 @@
 // Both paths need `Authorization: Bearer <browserToken>`. A web page cannot send that header across
 // origins without a preflight, and the preflight gets 401, so no page the owner visits can drive this.
 // What a session may see of a page is core/browser.ts. Off unless browserToken is set.
-import { createHash, randomUUID, timingSafeEqual } from 'node:crypto'
+import { randomUUID } from 'node:crypto'
 import { createServer, type ServerResponse } from 'node:http'
 import type { AddressInfo } from 'node:net'
+import { bearerOk, readBody } from './webhook.ts'
 
 const MAX_BODY = 20_000_000   // a full-page PNG screenshot as base64 fits well under this
-
-const digest = (s: string) => createHash('sha256').update(s).digest()
-const bearerOk = (header: string | undefined, token: string) => timingSafeEqual(digest(header ?? ''), digest(`Bearer ${token}`))
 
 type Cmd = { id: string; op: string; args: unknown }
 
@@ -80,17 +78,11 @@ export function connectBrowser(o: {
       return
     }
     if (req.method !== 'POST' || req.url !== '/browser/result') { res.writeHead(404).end(); return }
-    const chunks: Buffer[] = []
-    let size = 0
-    req.on('data', (c: Buffer) => {
-      size += c.length
-      if (size > MAX_BODY) { res.writeHead(413).end(); req.destroy(); return }
-      chunks.push(c)
-    })
-    req.on('end', () => {
+    void readBody(req, MAX_BODY).then(raw => {
+      if (!raw) { res.writeHead(413).end(); req.destroy(); return }
       if (res.writableEnded) return
       let r: { id?: unknown; ok?: unknown; data?: unknown; error?: unknown }
-      try { r = JSON.parse(Buffer.concat(chunks).toString('utf8')) } catch { res.writeHead(400).end(); return }
+      try { r = JSON.parse(raw.toString('utf8')) } catch { res.writeHead(400).end(); return }
       const p = typeof r.id === 'string' ? pending.get(r.id) : undefined
       // A result after its call timed out has no one waiting.
       if (!p) { res.writeHead(404).end(); return }

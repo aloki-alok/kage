@@ -78,3 +78,19 @@ test('a command whose poll died before the extension read it goes out again on t
   await result({ id: cmd.id, ok: true, data: [] })
   assert.deepEqual(await answer, [])
 })
+
+test('a result without the token gets 401, and one over the size cap gets 413, and neither settles a call', async t => {
+  const { b, url, next } = await hub()
+  t.after(() => b.close())
+  const poll = next()
+  while (!b.connected()) await new Promise(r => setTimeout(r, 5))
+  let settled = false
+  void b.call('read', { tabId: 1 }).then(() => { settled = true }, () => { settled = true })
+  const cmd = await (await poll).json() as { id: string }
+  const body = JSON.stringify({ id: cmd.id, ok: true, data: 'x' })
+  assert.equal((await fetch(`${url}/browser/result`, { method: 'POST', body })).status, 401)
+  const huge = JSON.stringify({ id: cmd.id, ok: true, data: 'x'.repeat(21_000_000) })
+  const r = await fetch(`${url}/browser/result`, { method: 'POST', headers: auth, body: huge }).catch(() => undefined)
+  assert.ok(!r || r.status === 413, String(r?.status))
+  assert.equal(settled, false)
+})
