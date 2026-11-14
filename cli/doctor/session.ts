@@ -1,7 +1,7 @@
 // What a session needs to start: the shell sandbox, the ssh relay, and the Agent SDK (or the tmux plugin route).
 import { accessSync, constants } from 'node:fs'
 import { homedir } from 'node:os'
-import { sandboxLine, sessionLines, sshLine } from '../../core/doctor.ts'
+import { keyLines, sandboxLine, sessionLines, sshLine } from '../../core/doctor.ts'
 import { config, onPath, read, ROOT, runtime, sh, type Group } from './context.ts'
 
 const executable = (f: string) => { try { accessSync(f, constants.X_OK); return true } catch { return false } }
@@ -19,6 +19,7 @@ export const session: Group = async () => {
   return [
     sandboxLine({ platform: process.platform, sandboxExec: executable('/usr/bin/sandbox-exec'), bwrap: onPath('bwrap'), socat: onPath('socat') }),
     ...(ssh ? [ssh] : []),
+    ...keyLines(config.sessionKeys),
     ...sessionLines({ runtime, sdkLoads }),
   ]
 }

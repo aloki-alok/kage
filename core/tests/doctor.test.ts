@@ -1,6 +1,6 @@
 import { test, describe } from 'node:test'
 import assert from 'node:assert/strict'
-import { autoUpdateNote, bootNotes, chromeLine, jevLine, lingerLine, nodeOk, pathNote, render, report, serviceLines, sessionLines, slackLines, sandboxLine, sshLine, tokenLines, toolsLine } from '../doctor.ts'
+import { autoUpdateNote, bootNotes, chromeLine, jevLine, keyLines, lingerLine, nodeOk, pathNote, render, report, serviceLines, sessionLines, slackLines, sandboxLine, sshLine, tokenLines, toolsLine } from '../doctor.ts'
 
 const text = (ls: { kind: string; text: string }[]) => ls.map(l => `${l.kind}:${l.text}`)
 
@@ -53,6 +53,14 @@ describe('decisions', () => {
     assert.equal(sandboxLine({ platform: 'darwin', sandboxExec: false, bwrap: true, socat: true }).kind, 'fail')
     assert.equal(sandboxLine({ platform: 'linux', sandboxExec: false, bwrap: true, socat: false }).kind, 'fail')
     assert.equal(sandboxLine({ platform: 'linux', sandboxExec: false, bwrap: true, socat: true }).kind, 'ok')
+  })
+  test('session keys: one ok line per key, with its name, host and header, and no value', () => {
+    const lines = keyLines({ API_KEY: { host: 'api.example.test', header: 'x-api-key', value: 'fake-secret' } as never, TOKEN_B: { host: 'b.example.test' } })
+    assert.equal(lines.length, 2)
+    assert.match(lines[0]!.text, /API_KEY.*api\.example\.test.*x-api-key/)
+    assert.match(lines[1]!.text, /TOKEN_B.*b\.example\.test.*authorization/)
+    assert.ok(!lines.some(l => l.text.includes('fake-secret')))
+    assert.deepEqual(keyLines(undefined), [])
   })
   test('ssh: an SSM ProxyCommand with no relay is a note, with the relay an ok, with neither nothing', () => {
     const ssm = 'Host i-*\n  ProxyCommand aws ssm start-session --target %h'

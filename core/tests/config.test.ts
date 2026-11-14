@@ -137,6 +137,11 @@ describe('the schema', () => {
     for (const bad of [{ lookup: '/opt/x.mjs' }, { '/lookup': 'relative.mjs' }]) assert.throws(() => Config.parse({ version: 1, connectors: { commands: bad } }), /commands/, JSON.stringify(bad))
     assert.deepEqual(fromEnv({ KAGE_KAGELET_DAILY_USD: 'two' }).config.unknown, { KAGE_KAGELET_DAILY_USD: 'two' })
   })
+  test('a session key names one plain host: a path, a port, a user or an upper-case name is refused (#182)', () => {
+    Config.parse({ version: 1, sessionKeys: { API_KEY: { host: 'api.example.test', header: 'x-api-key', prefix: '' } } })
+    for (const host of ['api.example.test/x', 'api.example.test:443', 'a@b.test', '']) assert.throws(() => Config.parse({ version: 1, sessionKeys: { API_KEY: { host } } }), /sessionKeys/, host)
+    assert.throws(() => Config.parse({ version: 1, sessionKeys: { api_key: { host: 'a.test' } } }), /sessionKeys/)
+  })
   test('a typo in a key is refused with its name', () => {
     assert.throws(() => Config.parse({ version: 1, harness: { maxSesion: 6 } }), /maxSesion/)
   })
