@@ -183,7 +183,7 @@ describe('protectConfig: what the sandbox and the file rules close', () => {
   const real = (p: string) => realpathSync(p)
   test('a shell may not write anything in the config folder but files/ and memory/, whether or not it exists yet', () => {
     const deny = w.sandbox.filesystem.denyWrite
-    for (const n of ['session.env', 'kagelets', 'specialists', 'config.json*', 'secrets.json*', 'env*', 'afk.json', 'hub.log', 'sender']) assert.ok(deny.includes(`${real(dir)}/${n}`), n)
+    for (const n of ['session.env', 'kagelets', 'config.json*', 'secrets.json*', 'env*', 'afk.json', 'hub.log', 'sender']) assert.ok(deny.includes(`${real(dir)}/${n}`), n)
     for (const n of ['files', 'memory']) assert.ok(!deny.some(d => d === `${real(dir)}/${n}` || d === real(dir)), n)
   })
   test('no session reads session.env or the waha key file, though only secrets.json and env* were named before', () => {

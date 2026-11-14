@@ -2,21 +2,8 @@
 import { existsSync, readdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs'
 import { NAME, setPaused } from '../core/kagelets.ts'
 
-// The kagelets folder. Only the hub (log given) moves one from before the rename (specialists/) here, once: a kage
-// command that moved it would empty the folder under an old hub still running, which then drops every schedule.
-// A command reads the old folder where it is. With both there, the new one wins and the hub says so.
-export function kageletsDir(dir: string, log?: (line: string) => void) {
-  const now = `${dir}/kagelets`, old = `${dir}/specialists`
-  if (!existsSync(old)) return now
-  if (!existsSync(now)) {
-    if (!log) return old
-    renameSync(old, now)
-    return now
-  }
-  const left = readKagelets(old).length
-  if (log && left) log(`${old} still holds ${left} file${left === 1 ? '' : 's'}, and ${now} is the folder in use: move them in by hand`)
-  return now
-}
+// The kagelets folder.
+export const kageletsDir = (dir: string) => `${dir}/kagelets`
 
 // The folder's .md files. A missing folder is none.
 export function readKagelets(dir: string) {

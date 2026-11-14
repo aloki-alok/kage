@@ -261,7 +261,7 @@ const sdkLib = harness.runtime === 'tmux' ? undefined : await (async () => ({
 // schedule in a side lane of its thread, at teammate trust, with only its grant, and approves nothing.
 let grants = new Map<string, string[]>()
 let models = new Map<string, string>()   // lane key -> the model its file names
-const KAGELETS = kageletsDir(DIR, log)
+const KAGELETS = kageletsDir(DIR)
 // Each kagelet's own memory and the dream's proposals waiting on Kage (#98). It never reads or writes MEM.
 const kmem = kageletMemory({ dir: KAGELETS, forbid: () => [MEM.own, MEM.owner], event: e => ledgers.event(e), waiting: cells => ledgers.add('waiting', cells) })
 const MAX_KAGELETS = kl.max || 10
@@ -335,8 +335,7 @@ const sdk = sdkLib ? sdkSessions({
   onBlocked: blocked,
   onTurn: (key, tasks, limit, done) => limits.turn(key, tasks, limit, Date.now(), done),
   // A lane whose file is gone keeps no tools, rather than falling back to approval cards.
-  // A lane from before the rename (#side-spec-) gets no tools either.
-  grantOf: key => grants.get(key) ?? (key.includes('#side-kagelet-') || key.includes('#side-spec-') || key.includes('#side-kdream-') ? [] : undefined),
+  grantOf: key => grants.get(key) ?? (key.includes('#side-kagelet-') || key.includes('#side-kdream-') ? [] : undefined),
   onTool: (key, tool, refused) => runs.emit(key, refused ? 'refusal' : 'tool', refused ? `${tool}: ${refused}` : tool),
 }) : undefined
 if (sdk) mkdirSync(MEM.own, { recursive: true })

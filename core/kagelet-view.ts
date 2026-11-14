@@ -51,7 +51,7 @@ export function actionLine(r: { type?: string; text?: string; refused?: string }
 export type Run = { at: number; usd: number; status: 'ok' | 'failed' | 'running' | 'paused for cost'; report: string }
 export function kageletRuns(name: string, key: string, l: { runs: string; costs: string; reports: string }, now: number): Run[] {
   const rows = (tsv: string) => tsv.split('\n').filter(Boolean).map(x => x.split('\t'))
-  const starts = rows(l.runs).filter(([, id]) => id === `kagelet-${name}` || id === `spec-${name}`).map(([t]) => Date.parse(t!)).sort((a, b) => a - b)
+  const starts = rows(l.runs).filter(([, id]) => id === `kagelet-${name}`).map(([t]) => Date.parse(t!)).sort((a, b) => a - b)
   const costs = rows(l.costs).filter(([, k]) => k === key).map(([t, , usd]) => ({ at: Date.parse(t!), usd: Number(usd) }))
   const reports = rows(l.reports).filter(([, n]) => n === name).map(([t, , summary = '', needs]) => ({ at: Date.parse(t!), summary, ...(needs && { needs }) }))
   return starts.map((at, i): Run => {

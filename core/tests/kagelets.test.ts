@@ -240,14 +240,6 @@ describe('the last report', () => {
   })
 })
 
-describe('a run ledger row from before the rename', () => {
-  test('still counts as that kagelet\'s last run', () => {
-    const now = new Date(2026, 10, 14, 15, 0).getTime()
-    const rows = kageletRows([{ name: 'deploys', text: file(`thread: ${LINK}\nschedule: 0 9 * * *`) }], { runs: `${new Date(2026, 10, 14, 9).toISOString()}\tspec-deploys\tC:1.1#side-spec-deploys\n`, costs: '', now })
-    assert.equal(rows[0]!.lastRun, new Date(2026, 10, 14, 9).getTime())
-  })
-})
-
 describe('a standing approval, per write tool', () => {
   const f = { thread: LINK, schedule: '0 9 * * *', job: 'Mail the summary.', why: 'watch', by: 'kage' as const, approved: true }
   test('the file names the write tools it holds by standing approval, and only tools it holds', () => {

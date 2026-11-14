@@ -2,7 +2,7 @@
 // can be only one). It hears through the owner's user token, passes each message through the gate,
 // and turns a tag into a Task for the hub. Reactions on the tagged message show its state.
 import { SocketModeClient, LogLevel } from '@slack/socket-mode'
-import { appendFileSync, writeFileSync } from 'node:fs'
+import { writeFileSync } from 'node:fs'
 import type { WebClient } from '@slack/web-api'
 import { log, logger } from '../runtime/log.ts'
 import { agentNote, loopGuard } from '../core/agents.ts'
@@ -233,12 +233,8 @@ export async function connectSlack(o: { dir: string; appToken: string; userToken
   // Messages in one thread are handled one after another, so a quick follow-up can't overtake.
   const queue = new Map<string, Promise<void>>()
   const socket = new SocketModeClient({ appToken: o.appToken, logger, logLevel: LogLevel.WARN })
-  // ponytail: temporary recorder for canvas mentions (subtype document_mention, comments as
-  // app_mention) until the canvas route is built from real payloads. Delete with that change.
-  const recordCanvas = (kind: string, e: unknown) => {
-    try { appendFileSync(`${o.dir}/canvas-events.jsonl`, JSON.stringify({ kind, at: new Date().toISOString(), e }) + '\n', { mode: 0o600 }) } catch {}
-  }
-  socket.on('app_mention', async ({ event, ack }) => { await ack(); recordCanvas('app_mention', event) })
+  // Kage hears a tag through message events; an app_mention is only acknowledged, so Slack does not resend it.
+  socket.on('app_mention', async ({ ack }) => { await ack() })
   async function hear(m: SlackMessage, source: string) {
     const k = m.channel ? sessionKey(slackConversation(m, ids.botDm)) : ''
     const next = (queue.get(k) ?? Promise.resolve()).then(() => onMessage(m)).catch(e => log('message handling failed', e))
@@ -247,10 +243,7 @@ export async function connectSlack(o: { dir: string; appToken: string; userToken
     if (source) o.hub.handled(source)
     if (queue.get(k) === next) queue.delete(k)
   }
-  socket.on('message', ({ event, ack }) => intake(event as SlackMessage, ack, o.hub, (m, source) => {
-    if ((m as { subtype?: string }).subtype === 'document_mention' || (m as { files?: { filetype?: string }[] }).files?.some(f => f.filetype === 'quip' || f.filetype === 'canvas')) recordCanvas('message', m)
-    return hear(m, source)
-  }))
+  socket.on('message', ({ event, ack }) => intake(event as SlackMessage, ack, o.hub, hear))
 
   // The client reconnects on its own; this catches the times it gives up (core/socket-watch.ts).
   const watch = socketWatch({ downMs: 3 * 60_000 })

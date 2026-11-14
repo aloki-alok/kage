@@ -71,7 +71,7 @@ WantedBy=default.target
 EOF
 }
 
-# The hub that start.sh ran in tmux stops before the service starts: a new hub that finds it answering would exit.
+# compat: remove after 2026-12-15: the hub that start.sh ran in tmux stops before the service starts: a new hub that finds it answering would exit.
 stop_old_tmux() {
   if command -v tmux >/dev/null && tmux has-session -t "=$NAME" 2>/dev/null; then
     tmux kill-session -t "=$NAME" && echo "Stopped the old tmux session $NAME."
