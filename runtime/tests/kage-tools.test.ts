@@ -605,3 +605,96 @@ describe("the owner's browser", () => {
     assert.match(r.text, /not connected/)
   })
 })
+
+describe("acting in the owner's browser", () => {
+  const PNG = 'data:image/png;base64,iVBORw0KGgo='
+  const chrome = (o: { asked?: string[]; label?: () => string; url?: string; urlNow?: () => string; role?: () => string; acted?: Record<string, unknown>[] } = {}) => ({
+    block: ['bank.example.com'],
+    async call(op: string, args: Record<string, unknown>) {
+      o.asked?.push(op)
+      const url = o.urlNow?.() ?? o.url ?? 'https://mail.example.com/compose'
+      if (op === 'snapshot') return { title: 'Compose', url, elements: [{ ref: 2, role: 'button', name: 'Send' }] }
+      if (op === 'describe') return { url, el: args.ref === 2 ? { ref: 2, role: o.role?.() ?? 'button', name: o.label?.() ?? 'Send' } : undefined, focused: { ref: 4, role: 'searchbox', name: 'Search' } }
+      if (op === 'screenshot') return { url, png: PNG }
+      o.acted?.push(args)
+      return { url }
+    },
+  })
+  const asking = (answer: boolean, cards: string[]) => async (_tool: string, description: string) => { cards.push(description); return answer }
+  const setupAct = (o: Parameters<typeof chrome>[0], approve?: (tool: string, description: string, input: Record<string, unknown>) => Promise<boolean>) => {
+    const s = setup({ browser: chrome(o), approve })
+    s.t.onTask(s.task())
+    return s
+  }
+  const at = { channel: 'C1', thread_ts: '5.5', tab: 3 }
+
+  test('a snapshot lists the controls with refs, for the owner only', async () => {
+    const s = setupAct({})
+    assert.match((await s.call('browser_snapshot', at)).text, /^\[2\] button "Send"$/m)
+    const t = setup({ browser: chrome({}) })
+    t.t.onTask(t.task({ fromOwner: false }))
+    assert.equal((await t.call('browser_snapshot', at)).isError, true)
+  })
+  test('a click waits for the owner, whose card names the control as the page labels it, and runs only on yes', async () => {
+    const asked: string[] = [], cards: string[] = []
+    const yes = setupAct({ asked }, asking(true, cards))
+    const r = await yes.call('browser_act', { ...at, action: 'click', ref: 2 })
+    assert.equal(r.isError, undefined, r.text)
+    assert.match(cards[0]!, /^mail\.example\.com: click button "Send"$/)
+    assert.ok(asked.includes('click'))
+    assert.ok(yes.events.includes('tool browser_act click mail.example.com ok'), yes.events.join('|'))
+    // The owner sees the page before deciding: its screenshot goes to their DM with Kage, never to the thread.
+    assert.ok(yes.calls.some(c => /^bot file DBOT .*\.png$/.test(c)), yes.calls.join('|'))
+    const asked2: string[] = []
+    const no = setupAct({ asked: asked2 }, asking(false, []))
+    const r2 = await no.call('browser_act', { ...at, action: 'click', ref: 2 })
+    assert.equal(r2.isError, true)
+    assert.match(r2.text, /said no/)
+    assert.ok(!asked2.includes('click'))
+  })
+  test('a control whose label changed while the card waited is not clicked', async () => {
+    const asked: string[] = []
+    let label = 'Send'
+    const s = setupAct({ asked, label: () => label }, async () => { label = 'Delete all'; return true })
+    const r = await s.call('browser_act', { ...at, action: 'click', ref: 2 })
+    assert.equal(r.isError, true)
+    assert.match(r.text, /changed/)
+    assert.ok(!asked.includes('click'))
+  })
+  test('a control that changed its role, or a tab that moved to another site, while the card waited, is not touched', async () => {
+    let role = 'button'
+    const asked: string[] = []
+    const r1 = await setupAct({ asked, role: () => role }, async () => { role = 'link'; return true }).call('browser_act', { ...at, action: 'click', ref: 2 })
+    assert.equal(r1.isError, true)
+    let url = 'https://mail.example.com/compose'
+    const r2 = await setupAct({ asked, urlNow: () => url }, async () => { url = 'https://other.example/'; return true }).call('browser_act', { ...at, action: 'press', key: 'Enter' })
+    assert.equal(r2.isError, true)
+    assert.match(r2.text, /changed/)
+    assert.ok(!asked.includes('click') && !asked.includes('press'), asked.join(','))
+  })
+  test('Enter names the field it lands in, and the extension gets the control it must still find', async () => {
+    const cards: string[] = [], acted: Record<string, unknown>[] = []
+    await setupAct({ acted }, asking(true, cards)).call('browser_act', { ...at, action: 'press', key: 'Enter' })
+    assert.match(cards[0]!, /^mail\.example\.com: press Enter in searchbox "Search"$/)
+    await setupAct({ acted }, asking(true, cards)).call('browser_act', { ...at, action: 'click', ref: 2 })
+    assert.deepEqual(acted.at(-1)!.expect, { host: 'mail.example.com', role: 'button', name: 'Send' })
+  })
+  test('a blocked site, or a blocked address to go to, is refused with no card', async () => {
+    const cards: string[] = []
+    const s = setupAct({ url: 'https://bank.example.com/pay' }, asking(true, cards))
+    assert.equal((await s.call('browser_act', { ...at, action: 'click', ref: 2 })).isError, true)
+    const t = setupAct({}, asking(true, cards))
+    assert.equal((await t.call('browser_act', { ...at, action: 'navigate', url: 'https://bank.example.com/' })).isError, true)
+    assert.deepEqual(cards, [])
+  })
+  test('with no way to ask the owner, nothing acts', async () => {
+    const asked: string[] = []
+    const s = setupAct({ asked })
+    const r = await s.call('browser_act', { ...at, action: 'click', ref: 2 })
+    assert.equal(r.isError, true)
+    assert.ok(!asked.includes('click'))
+  })
+  test('a kagelet gets no hands in the browser', () => {
+    assert.equal(setup({ kagelet: 'calls', browser: chrome({}) }).t.tools.some(x => x.name === 'browser_act' || x.name === 'browser_snapshot'), false)
+  })
+})
