@@ -29,33 +29,52 @@ export function slackSendRefusal(tool: string): string | undefined {
 // those, the owner's included: Kage's own tools post as the bot, so no session needs a token. The owner's sessions may
 // read config.json. Anyone else's task never touches the folder. Its files/ (each thread's files, for send_file and
 // reports) and memory/ (Kage's own lessons) stay open to every task.
-// ponytail: a path match, so a deliberately hidden path (quotes, globs, a search from a parent folder) gets past;
-// the outbound secret filter (core/outbound.ts) still stops a token from being posted. Upgrade: a sandbox without it.
+// configRefusal is the fallback: a path match cannot stop a shell. protectConfig below is the wall (Claude Code's own
+// permission rules for the file tools, the OS sandbox for the shell), measured in the #105 spike and for #116.
 const CONFIG_TOOLS = new Set(['Read', 'Grep', 'Glob', 'Edit', 'MultiEdit', 'Write', 'NotebookEdit', 'Bash'])
+const CONFIG_WRITES = new Set(['Edit', 'MultiEdit', 'Write', 'NotebookEdit'])
 const NOT_PATHS = new Set(['content', 'old_string', 'new_string', 'new_source', 'description', 'edits'])
+const TOKEN_FILE = /^(?:secrets\.json|env[\w.-]*)$/
 export function configRefusal(tool: string, input: Record<string, unknown>, sender: string | undefined, envFile: string, home = process.env.HOME ?? ''): string | undefined {
   if (!CONFIG_TOOLS.has(tool)) return
   const dir = dirname(envFile)
   // The forms a model types: absolute, the real path, ~, $HOME, and relative to the home folder sessions start in.
   const forms = [...new Set([dir, realish(dir), dir.startsWith(`${home}/`) ? dir.slice(home.length + 1) : ''])].filter(Boolean)
   const esc = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
-  const named = Object.entries(input).filter(([k, v]) => !NOT_PATHS.has(k) && typeof v === 'string').map(([, v]) => v as string)
+  // Each word of each path-like input, with ~ and $HOME expanded and ./, // and .. folded away.
+  const words = Object.entries(input).filter(([k, v]) => !NOT_PATHS.has(k) && typeof v === 'string').map(([, v]) => v as string)
     .map(v => v.replace(/(^|[\s'"=:])~(?=\/)/g, `$1${home}`).replace(/\$\{?HOME\}?/g, home))
+    .flatMap(v => v.split(/[\s'"=:;&|<>()]+/)).filter(Boolean).map(w => posix.normalize(w).replace(/\/$/, ''))
+  // What sits under the config folder: undefined for a word elsewhere, '' for the folder itself, else the path inside it.
+  const inside = (w: string) => { const f = forms.find(f => w === f || w.startsWith(`${f}/`)); return f === undefined ? undefined : w.slice(f.length + 1) }
+  const at = words.map(inside).filter((x): x is string => x !== undefined)
   if (sender === 'owner') {
-    // secrets.json and every env* file (env, env.imported-<time>), also behind a "..". A search of the folder itself reads them too.
-    const word = (v: string) => v.split(/[\s'"=:]+/).map(w => (w.includes('..') ? posix.normalize(w) : w))
-    const token = new RegExp(`(?:${forms.map(esc).join('|')})/(?:secrets\\.json|env[\\w.-]*)`)
-    const folder = new RegExp(`(?:${forms.map(esc).join('|')})/?$`)
-    if (named.some(v => word(v).some(w => token.test(w))) || (tool === 'Grep' && named.some(v => word(v).some(w => folder.test(w)))))
-      return `Kage's token files (secrets.json and the env files) are closed to every session, the owner's too. Kage's own tools post as Kage, so no session needs a token. Use the reply or message_people tool.`
-    return
+    const first = (r: string) => r.split('/')[0]!
+    const closed = `Kage's token files (secrets.json and the env files) are closed to every session, the owner's too. Kage's own tools post as Kage, so no session needs a token. Use the reply or message_people tool.`
+    // A shell can name the folder a hundred ways (cd, a glob, a variable), so it may not name it at all. The sandbox (protectConfig) is the real wall.
+    if (tool === 'Bash') return at.length ? closed : undefined
+    if (CONFIG_WRITES.has(tool)) return at.some(r => first(r) === 'config.json' || TOKEN_FILE.test(first(r))) ? CLOSED_WRITE : undefined
+    return at.some(r => r === '' || r === '.' || /[*?[{]/.test(r) || TOKEN_FILE.test(first(r))) ? closed : undefined
   }
-  // The folder itself, ended by a path or word boundary, unless it goes on into files/ or memory/ with no "..".
-  const hit = (v: string) => forms.some(f => [...v.matchAll(new RegExp(`${esc(f)}(?![\\w.-])(/(?:files|memory)(?=/|$|[\\s'"])[^\\s'"]*)?`, 'g'))]
-    .some(m => !m[1] || m[1].includes('..')))
-  if (!named.some(hit)) return
+  // Another task never touches the folder, except files/ (each thread's files, for send_file and reports) and memory/ (Kage's own lessons).
+  if (!at.some(r => !/^(?:files|memory)(?:\/|$)/.test(r))) return
   return `Kage's config folder holds its tokens, and this task did not come from the owner. Reply that this needs the owner, and stop.`
 }
+// The settings every Kage SDK session starts with. An absolute path in a rule needs "//". Both the typed and the real
+// folder are listed. The shell sandbox denies reading the token files and writing them and config.json (globs, so a .new copy too). Writes elsewhere and the network stay open, as without a sandbox. If the OS cannot sandbox, configRefusal remains.
+export function protectConfig(envFile: string) {
+  const dirs = [...new Set([dirname(envFile), realish(dirname(envFile))])]
+  const tokens = dirs.flatMap(d => [`${d}/secrets.json*`, `${d}/env*`])
+  return {
+    permissions: { deny: dirs.flatMap(d => [`Read(/${d}/secrets.json)`, `Read(/${d}/env*)`, ...['secrets.json', 'env*', 'config.json'].flatMap(f => [`Edit(/${d}/${f})`, `Write(/${d}/${f})`])]) },
+    sandbox: {
+      enabled: true, failIfUnavailable: false, autoAllowBashIfSandboxed: false, allowUnsandboxedCommands: false,
+      network: { allowedDomains: ['*'], allowLocalBinding: true, allowAllUnixSockets: true },
+      filesystem: { allowWrite: ['/'], denyRead: tokens, denyWrite: [...tokens, ...dirs.map(d => `${d}/config.json*`)] },
+    },
+  }
+}
+const CLOSED_WRITE = `Settings and token files are closed to every session: only the owner's own terminal changes them (kage set). Say what you wanted changed, and the owner runs it.`
 // Kage's own memory (hub.ts points autoMemoryDirectory at it) and the owner's, which is the
 // memory of the home folder project in Claude Code.
 export const memoryDirs = (home: string, envFile: string, env: Record<string, string | undefined>) => ({

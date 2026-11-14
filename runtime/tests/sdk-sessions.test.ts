@@ -302,6 +302,17 @@ describe('Kage sessions on the Agent SDK', () => {
     assert.equal(t.s.runner.busy('C1:5.5'), false)
     assert.ok(t.sdk.runs[0]!.options.disallowedTools.includes('CronCreate'))   // why the runner tracks no jobs
   })
+  test('every session starts with the token files and config.json denied to the file tools and the shell sandbox (#116)', async () => {
+    const t = setup()
+    t.d.task('C1:5.5', t.task(), 0)
+    await tick()
+    const o = t.sdk.runs[0]!.options
+    assert.ok(o.settings.permissions.deny.includes('Read(//cfg/secrets.json)'))
+    assert.ok(o.settings.permissions.deny.includes('Read(//cfg/env*)'))
+    assert.ok(o.settings.permissions.deny.includes('Write(//cfg/config.json)'))
+    assert.ok(o.settings.sandbox.filesystem.denyRead.includes('/cfg/secrets.json*'))
+    assert.ok(o.settings.sandbox.filesystem.denyWrite.includes('/cfg/config.json*'))
+  })
   test("an approval goes to the owner's DM and their yes or no reaches only the session that asked", async () => {
     const t = setup()
     t.d.task('C1:5.5', t.task(), 0)

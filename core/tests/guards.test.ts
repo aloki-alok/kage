@@ -119,8 +119,7 @@ describe("the token file on a task the owner did not send (#117)", () => {
   })
   test('the owner may read and edit config.json and the folder listing', () => {
     yes('Read', { file_path: '/home/o/.config/kage/config.json' }, 'owner')
-    yes('Edit', { file_path: '~/.config/kage/config.json' }, 'owner')
-    yes('Bash', { command: 'ls ~/.config/kage/' }, 'owner')
+    yes('Read', { file_path: '/home/o/.config/kage/./config.json' }, 'owner')
     yes('Read', { file_path: '/home/o/.config/kage/session.env' }, 'owner')
     yes('Grep', { pattern: 'x', path: '/home/o/.config/kage/config.json' }, 'owner')
   })
@@ -139,5 +138,33 @@ describe("the token file on a task the owner did not send (#117)", () => {
     yes('Write', { file_path: '~/.config/kage/memory/x.md', content: 'the env file is ~/.config/kage/env' }, 'teammate')
     // A neighbour folder is not it.
     yes('Read', { file_path: '/home/o/.config/kage-x/notes.md' }, 'teammate')
+  })
+})
+
+describe('the token files behind every path form, and config.json closed to writes (#116 review)', () => {
+  const ENV = '/home/o/.config/kage/env', HOME = '/home/o'
+  const no = (tool: string, input: Record<string, unknown>, sender: string | undefined) =>
+    assert.match(configRefusal(tool, input, sender, ENV, HOME) ?? '', /owner|closed/, `${tool} ${JSON.stringify(input)} ${sender}`)
+  test('the owner cannot reach secrets.json or env* by ./, //, cd, a glob, or a search of the folder', () => {
+    no('Read', { file_path: '/home/o/.config/kage/./secrets.json' }, 'owner')
+    no('Read', { file_path: '/home/o/.config//kage//secrets.json' }, 'owner')
+    no('Read', { file_path: '/home/o/.config/kage/env.new' }, 'owner')
+    no('Bash', { command: 'cd ~/.config/kage && cat secrets.json' }, 'owner')
+    no('Bash', { command: 'cat ~/.config/kage/*' }, 'owner')
+    no('Bash', { command: 'cat ~/.config/kage/sec*' }, 'owner')
+    no('Bash', { command: 'cat ~/.config/kage/./secrets.json' }, 'owner')
+    no('Bash', { command: 'cat "$HOME/.config//kage/secrets.json"' }, 'owner')
+    no('Glob', { pattern: '*', path: '/home/o/.config/kage' }, 'owner')
+    no('Glob', { pattern: '/home/o/.config/kage/*' }, 'owner')
+    no('Grep', { pattern: 'xox', path: '/home/o/.config/kage/.' }, 'owner')
+    no('Read', { file_path: '/home/o/.config/kage/s*.json' }, 'owner')
+  })
+  test('no session writes config.json, secrets.json or an env file by any tool', () => {
+    for (const s of ['owner', 'teammate', undefined]) {
+      no('Edit', { file_path: '/home/o/.config/kage/config.json' }, s)
+      no('Write', { file_path: '~/.config/kage/./config.json', content: '{}' }, s)
+      no('MultiEdit', { file_path: '/home/o/.config//kage/config.json', edits: [] }, s)
+      no('Bash', { command: 'echo {} > ~/.config/kage/config.json' }, s)
+    }
   })
 })

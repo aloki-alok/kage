@@ -249,7 +249,7 @@ cmd_doctor() {
     [[ "$(stat -c %a "$tf" 2>/dev/null || stat -f %Lp "$tf")" == 600 ]] && pass "token file is private (600)" || fail "token file: run chmod 600 $tf"
     local k
     for k in app:SLACK_APP_TOKEN user:SLACK_USER_TOKEN bot:SLACK_BOT_TOKEN; do
-      slack_check "$(cfg_get "secrets.slack.${k%%:*}")" >/dev/null 2>&1 && pass "${k##*:} accepted by Slack" || fail "${k##*:}: missing or rejected. Run kage save again"
+      node cli/config.ts check-slack "${k%%:*}" >/dev/null 2>&1 && pass "${k##*:} accepted by Slack" || fail "${k##*:}: missing or rejected. Run kage save again"
     done
     # Jev, the classifier for agent posts (core/jev.ts): only when a Jev key is set. The key stays in secrets.json.
     local jev
@@ -300,7 +300,7 @@ cmd_doctor() {
   elif [[ -z $tag ]]; then note "no auto-update: origin has no stable tag yet, so this install stays on its version"
   fi
   # Kage in Chrome (#114): the hub notes each poll of the extension in browser-seen (router.ts).
-  if [[ -n "$(cfg_get secrets.browserToken)" ]] && running; then
+  if node cli/config.ts has secrets.browserToken 2>/dev/null && running; then
     local seen; seen="$(cat "$(dirname "$ENV_FILE")/browser-seen" 2>/dev/null || echo 0)"
     if (( $(date +%s) - ${seen:-0} / 1000 < 120 )); then pass "Chrome extension connected"
     else fail "Chrome extension not connected: load the extension folder in chrome://extensions and paste the token (kage add browser prints a new one)"; fi

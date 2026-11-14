@@ -8,7 +8,7 @@ import type { createSdkMcpServer, EffortLevel, Options, Query, SDKMessage, SDKUs
 import { z } from 'zod'
 import { log } from '../config.ts'
 import { senderOf, withoutInvisible, type Sender } from '../core/gate.ts'
-import { configRefusal, ownerMemoryRefusal, privateToolRefusal, slackSendRefusal, voiceToolRefusal } from '../core/guards.ts'
+import { configRefusal, protectConfig, ownerMemoryRefusal, privateToolRefusal, slackSendRefusal, voiceToolRefusal } from '../core/guards.ts'
 import { builtinTools, grantRefusal } from '../core/kagelets.ts'
 import { approvalPreview } from '../core/preview.ts'
 import type { Dispatcher, Runner } from '../core/sessions.ts'
@@ -104,10 +104,12 @@ export function sdkSessions(o: {
     const resumed = o.hasTranscript(s.id)
     const budget = o.budgetOf?.(key)
     const grant = o.grantOf?.(key)
+    const walled = protectConfig(o.envFile)
     const q = o.sdk.query({
       prompt: inbox,
       options: {
         ...o.options,
+        settings: { ...(o.options.settings as object), ...walled },
         ...(resumed ? { resume: s.id } : { sessionId: s.id }),
         ...(o.modelOf?.(key) && { model: o.modelOf(key) }),
         ...picks.get(key),
