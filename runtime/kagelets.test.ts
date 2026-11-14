@@ -7,13 +7,13 @@ import { costCap, kageletManager, readCommand, type Manage, kageletsDir, ownerNo
 
 const LINK = 'https://test.slack.com/archives/CTEST1/p1700000000123456'
 const KEY = 'CTEST1:1700000000.123456#side-kagelet-deploys'
-const file = (cron = '0 9 * * 1-5', tools = 'Read') => ({ name: 'deploys', text: `---\nthread: ${LINK}\nschedule: ${cron}\ntools: ${tools}\n---\nSummarise the deploy log.\n` })
+const file = (cron = '0 9 * * 1-5', tools = 'WebFetch') => ({ name: 'deploys', text: `---\nthread: ${LINK}\nschedule: ${cron}\ntools: ${tools}\n---\nSummarise the deploy log.\n` })
 
 test('each kagelet file becomes one recurring schedule in its lane, at teammate trust, with its grant', () => {
   const store = openStore(':memory:')
   const logs: string[] = []
   const grants = syncKagelets([file()], store, 1000, l => logs.push(l))
-  assert.deepEqual([...grants], [[KEY, ['Read']]])
+  assert.deepEqual([...grants], [[KEY, ['WebFetch']]])
   const [s] = store.schedules()
   assert.equal(s!.id, 'kagelet-deploys')
   assert.equal(s!.key, KEY)
@@ -65,7 +65,7 @@ test('a paused kagelet keeps its grant but has no schedule; resumed, it waits fo
   const paused = { name: 'deploys', text: file().text.replace('---\nSummarise', 'paused: yes\n---\nSummarise') }
   const grants = syncKagelets([paused], store, 2000, () => {})
   assert.deepEqual(store.schedules(), [])
-  assert.deepEqual([...grants], [[KEY, ['Read']]])
+  assert.deepEqual([...grants], [[KEY, ['WebFetch']]])
   syncKagelets([file()], store, 3000, () => {})
   assert.equal(store.schedules()[0]!.created, 3000)
 })
@@ -150,12 +150,14 @@ test('the manager is refused a new kagelet past the cap and a tool v1 cannot gra
 
 test('a read tool is Kage\'s to grant: saved with no card, logged once with its tools, and no DM', async () => {
   const u = manager(), o = owner(true)
-  const docs = { ...job, tools: ['WebSearch', 'WebFetch', 'mcp__docs__search'] }
+  const docs = { ...job, tools: ['WebSearch', 'WebFetch'] }
   assert.match(await u.m.manage({ action: 'save', name: 'x', ...docs }, 1, o.ask), /saved x/)
   // Saved again: nothing new granted, so no second row.
   assert.match(await u.m.manage({ action: 'save', name: 'x', ...docs, schedule: '0 10 * * *' }, 2, o.ask), /saved x/)
   assert.deepEqual(o.cards, [])
-  assert.deepEqual(u.grants.map(g => [g[0], g[1], g[3]]), [['x', 'read', 'WebSearch, WebFetch, mcp__docs__search']])
+  assert.deepEqual(u.grants.map(g => [g[0], g[1], g[3]]), [['x', 'read', 'WebSearch, WebFetch']])
+  // An MCP tool whose name only looks still takes the owner's card: its reach is the server's.
+  assert.match(await u.m.manage({ action: 'save', name: 'y', ...job, tools: ['mcp__x__get_thing'] }, 3), /not saved: .*owner/)
 })
 
 test('a write tool asks the owner once; that yes stands for every later kagelet, logged as standing, with no card and no DM', async () => {

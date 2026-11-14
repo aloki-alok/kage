@@ -6,12 +6,8 @@ describe('a kagelet tool\'s tier comes from its name, never from the model', () 
   test('the web tools and db_read are read', () => {
     for (const t of ['WebSearch', 'WebFetch', 'db_read']) assert.equal(kageletTier(t), 'read', t)
   })
-  test('an MCP tool that only looks is read', () => {
-    for (const t of ['mcp__notion__search', 'mcp__claude_ai_Docs__read', 'mcp__gmail__list_messages', 'mcp__linear__getIssue', 'mcp__github__get_pull_request'])
-      assert.equal(kageletTier(t), 'read', t)
-  })
-  test('an MCP tool that sends or changes something internal is write, and so is a name it cannot place', () => {
-    for (const t of ['mcp__gmail__send', 'mcp__notion__update_page', 'mcp__slack__post_message', 'mcp__linear__create_issue', 'mcp__x__get_or_create_label', 'mcp__x__notify', 'mcp__x__find_replace', 'mcp__x__get_upsert'])
+  test('every MCP tool is write unless its name says act, a name that only looks too: its reach is the server\'s, not its name', () => {
+    for (const t of ['mcp__x__get_thing', 'mcp__notion__search', 'mcp__claude_ai_Docs__read', 'mcp__gmail__list_messages', 'mcp__gmail__send', 'mcp__notion__update_page', 'mcp__linear__create_issue', 'mcp__x__notify'])
       assert.equal(kageletTier(t), 'write', t)
   })
   test('prod, money, customers, access and deletes are act, even behind a read verb', () => {

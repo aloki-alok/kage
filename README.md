@@ -100,9 +100,9 @@ Kagelets are Kage's teammates, so Kage approves their tools for you, by tier. Th
 
 | Tier | Tools | Who approves |
 |---|---|---|
-| read | WebSearch, WebFetch, `db_read`, MCP tools whose name only looks (`get_`, `list_`, `search_` and the like) | Kage, at save, with no card. Your daily note lists each new grant. |
-| write | MCP tools that send or change something (Gmail send, a Notion update), and any MCP tool Kage cannot place | You, on a card, the first time a kagelet asks for that tool. Your yes stands for every later kagelet that asks for the same tool, and your daily note lists each grant it covers. |
-| act | Prod, money, customers, access changes and deletes (`delete`, `refund`, `execute_sql`, `invite`, `customers` in the name), and every file, shell or agent tool | Never a kagelet's. The kagelet says what it needs, and Kage asks you each time. |
+| read | WebSearch, WebFetch, `db_read` | Kage, at save, with no card. Your daily note lists each new grant. |
+| write | Every MCP tool not in act, reading ones too (Gmail search, a Notion page read): an MCP tool's reach is its server's, whatever its name says | You, on a card, the first time a kagelet asks for that tool. Your yes stands for every later kagelet that asks for the same tool, and your daily note lists each grant it covers. |
+| act | Prod, money, customers, access changes and deletes (`delete`, `refund`, `execute_sql`, `invite`, `customers` in the name), and every file, shell or agent tool | Never a kagelet's. A file that names one shows as broken in `kage top`, with the reason. The kagelet says what it needs, and Kage asks you each time. |
 
 A kagelet never gets a file, shell or agent tool, so it cannot change its own grant or read your tokens. Each grant and refusal is a row in the `grants` ledger and a line in the hub log, and `kage logs <kagelet>` lists its grants. To revoke a tool's standing approval, press `v` on a kagelet in the kagelets panel of `kage top` (it revokes each write tool that kagelet holds), or ask Kage to revoke it. Revoking takes that tool from every kagelet that got it with no card. A kagelet you approved on its own card keeps it, and the next kagelet that asks for the tool gets a card again.
 

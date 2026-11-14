@@ -37,6 +37,9 @@ export function parseKagelet(name: string, text: string): Kagelet | { error: str
   const tools = (head.get('tools') ?? '').split(',').map(t => t.trim()).filter(Boolean)
   // A file from before tiers may have a granted line for db_read: db_read is read now, so it is left unread.
   const standing = (head.get('standing') ?? '').split(',').map(t => t.trim()).filter(t => tools.includes(t))
+  // Checked on every read, so a hand-written file with an act tool shows as broken, not running with its calls refused.
+  const act = tools.find(t => kageletTier(t) === 'act')
+  if (act) return { error: `a kagelet never holds ${act}: it is an act tool (prod, money, customers, access or a delete) or not a web or MCP tool. The kagelet says in its thread what it needs, and Kage asks the owner each time.` }
   return { name, key: `${thread}#side-kagelet-${name}`, link, cron, ...(after && { after }), tools, job, paused: isPaused(head.get('paused')),
     by: head.get('by') === 'kage' ? 'kage' : 'owner', why: head.get('why') ?? '',
     ...(Date.parse(head.get('resumed') ?? '') >= 0 && { resumed: Date.parse(head.get('resumed')!) }), ...(standing.length && { standing }) }
@@ -66,8 +69,8 @@ paused: yes
 Say what to check, where, and what to post in the thread. For example: every weekday at 9, read https://status.example.com and post a three-line summary.
 `
 
-// The file the manager's tool writes. Refused with the reason when it would not run, holds an act tool
-// (core/access.ts), or holds a write tool with no owner's yes. by is provenance only and never widens a grant: the
+// The file the manager's tool writes. Refused with the reason when it would not run (an act tool, core/access.ts,
+// makes it broken) or holds a write tool with no owner's yes. by is provenance only and never widens a grant: the
 // model steers every save, the owner's sessions too.
 // approved: the owner said yes to its write tools (a card, a standing approval, or a grant it already held).
 // standing: those of its write tools that a standing approval covers.
@@ -77,8 +80,6 @@ export function kageletFile(f: { thread: string; schedule: string; after?: strin
   // A comma or space in one name reads back as two tools, so the card would not name what the file grants.
   const odd = f.tools.find(t => !/^[\w-]+$/.test(t))
   if (odd) return { error: `"${odd}" is not one tool name: letters, digits, _ and - only` }
-  const bad = f.tools.find(t => kageletTier(t) === 'act')
-  if (bad) return { error: `a kagelet never holds ${bad}: it is an act tool (prod, money, customers, access or a delete) or not a web or MCP tool. The kagelet says in its thread what it needs, and Kage asks the owner each time.` }
   const wide = !f.approved && f.tools.find(t => kageletTier(t) === 'write')
   if (wide) return { error: `${wide} needs the owner's yes on Kage's card: it sends or changes something` }
   const standing = (f.standing ?? []).filter(t => f.tools.includes(t))

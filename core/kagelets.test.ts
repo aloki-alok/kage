@@ -7,8 +7,8 @@ const LINK = 'https://test.slack.com/archives/CTEST1/p1700000000123456'
 
 describe('a kagelet file', () => {
   test('gives its thread lane, schedule, grant and job', () => {
-    assert.deepEqual(parseKagelet('deploys', file(`thread: ${LINK}\nschedule: 0 9 * * 1-5\ntools: Read, Grep,WebFetch`)), {
-      name: 'deploys', key: 'CTEST1:1700000000.123456#side-kagelet-deploys', link: LINK, cron: '0 9 * * 1-5', tools: ['Read', 'Grep', 'WebFetch'], job: 'Post a summary of the deploy log.', paused: false, by: 'owner', why: '',
+    assert.deepEqual(parseKagelet('deploys', file(`thread: ${LINK}\nschedule: 0 9 * * 1-5\ntools: WebSearch,  WebFetch`)), {
+      name: 'deploys', key: 'CTEST1:1700000000.123456#side-kagelet-deploys', link: LINK, cron: '0 9 * * 1-5', tools: ['WebSearch', 'WebFetch'], job: 'Post a summary of the deploy log.', paused: false, by: 'owner', why: '',
     })
   })
   test('no tools line grants no tools', () => {
@@ -21,6 +21,14 @@ describe('a kagelet file', () => {
     assert.match((parseKagelet('x', file(`thread: ${LINK}\nschedule: every day`)) as { error: string }).error, /schedule/)
     assert.match((parseKagelet('x', file(`thread: ${LINK}\nschedule: 0 9 * * *`, '  ')) as { error: string }).error, /job/)
     assert.match((parseKagelet('Bad Name', file(`thread: ${LINK}\nschedule: 0 9 * * *`)) as { error: string }).error, /name/)
+  })
+  test('a file that names an act tool is broken, with the reason, so it shows as broken, not running', () => {
+    for (const t of ['Bash', 'mcp__stripe__create_refund']) {
+      const k = parseKagelet('x', file(`thread: ${LINK}\nschedule: 0 9 * * *\ntools: WebSearch, ${t}`)) as { error: string }
+      assert.match(k.error ?? '', new RegExp(`never holds ${t}`), t)
+    }
+    const [row] = kageletRows([{ name: 'x', text: file(`thread: ${LINK}\nschedule: 0 9 * * *\ntools: mcp__db__execute_sql`) }], { runs: '', costs: '', now: 0 })
+    assert.deepEqual([row!.state, /never holds/.test(row!.error ?? '')], ['broken', true])
   })
 })
 
@@ -179,7 +187,8 @@ describe('a file the manager writes', () => {
 describe('a write tool, and an act tool', () => {
   const make = (by: 'owner' | 'kage', tools: string[], approved?: true) => kageletFile({ thread: LINK, schedule: '0 9 * * *', tools, job: 'x', by, why: 'a daily check', ...approved && { approved } })
   test('read tools need no yes; a write tool needs the owner\'s, whoever the file says made it', () => {
-    assert.equal(typeof make('kage', ['WebSearch', 'WebFetch', 'db_read', 'mcp__docs__search']), 'string')
+    assert.equal(typeof make('kage', ['WebSearch', 'WebFetch', 'db_read']), 'string')
+    assert.match((make('kage', ['mcp__docs__search']) as { error: string }).error, /owner/)
     for (const by of ['owner', 'kage'] as const) assert.match((make(by, ['mcp__gmail__send']) as { error: string }).error, /owner/)
     assert.equal(typeof make('kage', ['mcp__gmail__send'], true), 'string')
     // A comma or space in one name would read back as two tools, one the card never named.
