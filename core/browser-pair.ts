@@ -13,12 +13,31 @@ export const extensionId = (keyB64: string) =>
 
 // The per-user folders each Chromium browser reads helpers from, for the browsers whose profile root exists.
 // Windows registers helpers in the registry instead: not handled.
-const ROOTS: Record<string, string[]> = {
-  darwin: ['Google/Chrome', 'Google/Chrome Beta', 'Google/Chrome Canary', 'Chromium', 'BraveSoftware/Brave-Browser', 'Microsoft Edge', 'Arc/User Data', 'Vivaldi'].map(r => `Library/Application Support/${r}`),
-  linux: ['google-chrome', 'google-chrome-beta', 'google-chrome-unstable', 'chromium', 'BraveSoftware/Brave-Browser', 'microsoft-edge', 'vivaldi'].map(r => `.config/${r}`),
+const ROOTS: Record<string, [name: string, root: string][]> = {
+  darwin: [['Chrome', 'Google/Chrome'], ['Chrome Beta', 'Google/Chrome Beta'], ['Chrome Canary', 'Google/Chrome Canary'], ['Chromium', 'Chromium'], ['Brave', 'BraveSoftware/Brave-Browser'], ['Microsoft Edge', 'Microsoft Edge'], ['Arc', 'Arc/User Data'], ['Vivaldi', 'Vivaldi']]
+    .map(([n, r]) => [n!, `Library/Application Support/${r}`]),
+  linux: [['Chrome', 'google-chrome'], ['Chrome Beta', 'google-chrome-beta'], ['Chrome Unstable', 'google-chrome-unstable'], ['Chromium', 'chromium'], ['Brave', 'BraveSoftware/Brave-Browser'], ['Microsoft Edge', 'microsoft-edge'], ['Vivaldi', 'vivaldi']]
+    .map(([n, r]) => [n!, `.config/${r}`]),
 }
-export const hostDirs = (platform: string, home: string, exists: (path: string) => boolean) =>
-  (ROOTS[platform] ?? []).map(r => `${home}/${r}`).filter(exists).map(r => `${r}/NativeMessagingHosts`)
+export const hostBrowsers = (platform: string, home: string, exists: (path: string) => boolean) =>
+  (ROOTS[platform] ?? []).map(([name, r]) => ({ name, root: `${home}/${r}` })).filter(b => exists(b.root)).map(b => ({ name: b.name, dir: `${b.root}/NativeMessagingHosts` }))
+
+// What kage add browser prints: only the steps Chrome leaves to the person. Chrome lets no script install an
+// unpacked extension, so Developer mode and Load unpacked stay. `opened`: the extensions page was opened for them.
+// `copied`: the folder path is on their clipboard. The token shows only with --show-token, or when no browser was paired.
+export function addBrowserLines(f: { names: string[]; ext: string; token: string; showToken: boolean; platform: string; opened: boolean; copied: boolean }): string[] {
+  const paired = f.names.length > 0
+  const key = f.platform === 'darwin' ? 'Cmd+Shift+G' : 'Ctrl+L'
+  return [
+    paired ? `Kage in Chrome is on. Pairing is set up for ${f.names.join(', ')}, so there is nothing to paste. Kage picks up the new token by itself once its sessions are quiet.`
+      : 'Kage in Chrome is on, but no Chromium browser was found to pair. Paste the token below in the Kage toolbar icon after step 2.',
+    '',
+    f.opened ? '1. On the Extensions page that just opened, turn on Developer mode.' : '1. In Chrome, open chrome://extensions and turn on Developer mode.',
+    f.copied ? `2. Click Load unpacked, press ${key}, paste (the folder path is on your clipboard), and press Enter.` : `2. Click Load unpacked and pick this folder: ${f.ext}`,
+    ...(f.showToken || !paired ? ['', `Token: ${f.token}`] : []),
+    `Sites Kage must never read: run kage set connectors.browser.block '["bank.example.com","1password.com"]'`,
+  ]
+}
 
 export const hostManifest = (path: string, id: string) => ({
   name: HOST, description: "Hands Kage's Chrome extension its token", path, type: 'stdio' as const,

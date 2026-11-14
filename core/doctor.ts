@@ -97,6 +97,6 @@ export function autoUpdateNote(f: { off: boolean; git: boolean; branch?: string;
 // The hub notes each poll of the Chrome extension in browser-seen (ms).
 export const chromeLine = (seenMs: number, nowSec: number): Line =>
   nowSec - seenMs / 1000 < 120 ? ok('Chrome extension connected')
-    : fail('Chrome extension not connected: load the extension folder in chrome://extensions and paste the token (kage add browser prints a new one)')
+    : fail('Chrome extension not connected: run kage add browser for the steps to load the extension folder in chrome://extensions')
 
 export const pathNote = (onPath: boolean): Line | undefined => onPath ? undefined : note('kage is not on your PATH: run ./setup.sh link to type kage <command> anywhere')
