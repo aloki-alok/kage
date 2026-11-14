@@ -583,9 +583,12 @@ export function sessionTools(o: {
         if (!ask) return { isError: true, text: "refused: this session cannot ask the owner, and every action in their browser needs their yes" }
         const step = `browser_act ${act.action}`
         try {
-          // The control as the page labels it now: the card shows this, never Kage's own words for it.
-          const ref = 'ref' in act ? act.ref : 0
-          const now = act.action === 'open' ? { url: act.url } : await browser.call('describe', { tabId, ref }) as { url: string; el?: Element }
+          // The control as the page labels it now: the card shows this, never Kage's own words for it. For press,
+          // the control is the one that has focus, which is where the key lands.
+          type Seen = { url: string; el?: Element; focused?: Element }
+          const look = async () => act.action === 'open' ? { url: act.url } as Seen : await browser.call('describe', { tabId, ref: 'ref' in act ? act.ref : 0 }) as Seen
+          const target = (v: Seen) => act.action === 'press' ? v.focused : v.el
+          const now = await look()
           if (blockedSite(now.url, browser.block) || (('url' in act) && blockedSite(act.url, browser.block))) {
             seen(step, 'refused: a blocked site')
             return { isError: true, text: 'refused: that is a site the owner blocked, or not a web page' }
@@ -600,19 +603,23 @@ export function sessionTools(o: {
               if (png && !blockedSite(shot.url, browser.block)) await bot.filesUploadV2({ channel_id: o.botDm(), file: Buffer.from(png, 'base64'), filename: `kage-before-${act.action}.png` })
             } catch { /* no picture: the card goes anyway */ }
           }
-          if (!await ask('browser_act', actCard(act, now), { site: hostOf(now.url), ...act })) {
+          if (!await ask('browser_act', actCard(act, { url: now.url, el: target(now) }), { site: hostOf(now.url), ...act })) {
             seen(step, 'refused: the owner said no')
             return { isError: true, text: 'the owner said no, so nothing was done. Ask them what to do instead.' }
           }
-          // The page may have changed while the card waited: act only on the same control on the same site.
-          if ('ref' in act) {
-            const after = await browser.call('describe', { tabId, ref }) as { url: string; el?: Element }
-            if (hostOf(after.url) !== hostOf(now.url) || after.el?.role !== now.el!.role || after.el?.name !== now.el!.name) {
+          // The page may have changed while the card waited: act only on the same site and the same control.
+          const same = (a?: Element, b?: Element) => a?.role === b?.role && a?.name === b?.name
+          if (act.action !== 'open') {
+            const after = await look()
+            if (hostOf(after.url) !== hostOf(now.url) || blockedSite(after.url, browser.block) || !same(target(after), target(now))) {
               seen(step, 'refused: the page changed')
               return { isError: true, text: 'refused: the control or the site changed while the owner decided, so nothing was done. Take a new snapshot.' }
             }
           }
-          const r = await browser.call(act.action, { ...act, tabId }) as { tabId?: number }
+          // The extension checks this once more inside the page, right before it acts (extension/background.js).
+          const t = target(now)
+          const expect = act.action === 'open' || act.action === 'navigate' ? undefined : { host: hostOf(now.url), role: t?.role, name: t?.name }
+          const r = await browser.call(act.action, { ...act, tabId, expect }) as { tabId?: number }
           seen(step, `${hostOf(act.action === 'open' || act.action === 'navigate' ? act.url : now.url)} ok`)
           return { text: `done${r?.tabId ? `: opened as tab ${r.tabId}` : ''}. Take a new snapshot to see the page now.` }
         } catch (e) { seen(step, 'failed'); return failed(e) }
