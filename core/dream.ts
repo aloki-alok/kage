@@ -18,7 +18,8 @@ export function threadsSince(sessions: Record<string, string>, mtime: (id: strin
     .map(([key, id]) => ({ key, id }))
 }
 
-export function dreamTask(m: { own: string; owner: string }, threads: { place: string; file: string }[], since: string): string {
+// skills: the plugin's skills folder, and whether this hub may open a PR for it (the repo owner's hub only).
+export function dreamTask(m: { own: string; owner: string }, threads: { place: string; file: string }[], since: string, skills?: { dir: string; pr: boolean }): string {
   const read = threads.length
     ? [
         `1. Today's threads. Read what happened in each one after ${since}: the tasks (\`jq -r 'select(.type=="user" and .timestamp>"${since}") | .message.content | if type=="string" then . else (map(select(.type=="text").text) | join("\\n")) end | select(length>0)' <file>\`).`,
@@ -32,6 +33,12 @@ export function dreamTask(m: { own: string; owner: string }, threads: { place: s
     `2. Your memory, ${m.own}: merge notes that say the same thing, and where two disagree keep the newer one. Move a note nobody needed for 30 days into ${m.own}/.archive/ with mv; never delete a file. Keep MEMORY.md in step with the files.`,
     `3. For every new note, move, merge or edit, append one line to ${m.own}/.dream-ledger.tsv: ISO time, action, file, one-line reason.`,
     `4. The owner's memory, ${m.owner}, is read only for you. List files over 20 KB, index lines whose file is missing, and notes that contradict each other.`,
+    ...skills ? [skillStep(skills)] : [],
     '5. Reply here in at most 5 lines: what you learned from the threads, what you changed in your memory, then what the owner should look at in theirs. Nothing changed and nothing found: one line saying so.',
   ].join('\n')
 }
+
+// Kind (a), a lesson true for any owner's Kage, may reach every install through the shipped skills. Kinds (b) and (c) never do.
+const skillStep = (s: { dir: string; pr: boolean }) => s.pr
+  ? `4b. For each new lesson, name its kind: (a) true for any owner's Kage, (b) this owner's preference or people, (c) this owner's work. Only (a) may leave this machine. For an (a) lesson, write it as a general rule with its why in one line, with no names, ids, customers, dates or quotes. Save it to a file and run \`node cli/skill-lesson.ts <file> <the owner's and teammates' first names>\`. If it prints a problem, reword and run it again. Then add it to the skill in ${s.dir} that matches its job, on a new branch of aloki-alok/kage, and run \`gh pr create\` with the rule as the summary. Never merge it. Keep (b) and (c) lessons only in your memory.`
+  : `4b. For each new lesson, name its kind: (a) true for any owner's Kage, (b) this owner's preference or people, (c) this owner's work. Keep every kind only in your own memory. This install does not own Kage's repo, so open no PR.`
