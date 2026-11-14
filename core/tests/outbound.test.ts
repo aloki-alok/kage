@@ -1,6 +1,6 @@
 import { describe, test } from 'node:test'
 import assert from 'node:assert/strict'
-import { findSecret, layoutRefusal, safeReply, secretRefusal, splitForSlack } from '../outbound.ts'
+import { slackPlain, findSecret, layoutRefusal, safeReply, secretRefusal, splitForSlack } from '../outbound.ts'
 
 describe('person mentions over Slack always use the user id, so they highlight', () => {
   test('a person mention stays <@U…> so Slack renders it as a real mention', () => {
@@ -122,5 +122,11 @@ describe('who may put a secret in a thread', () => {
   test('private replies and secret-free text pass', () => {
     assert.equal(secretRefusal(pw, { fromOwner: false, private: true }), undefined)
     assert.equal(secretRefusal('done, rows reset', { fromOwner: false }), undefined)
+  })
+})
+
+describe('slackPlain', () => {
+  test('escapes the three characters Slack treats as markup, so other people\'s text cannot ping or link', () => {
+    assert.equal(slackPlain('<!channel> a & b <https://x.test|y>'), '&lt;!channel&gt; a &amp; b &lt;https://x.test|y&gt;')
   })
 })

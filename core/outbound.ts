@@ -92,3 +92,6 @@ function splitLines(text: string, max: number): string[] {
   parts.push(cur)
   return parts
 }
+
+// Other people's text going into a Slack message: no <!channel>, fake link or mention gets through.
+export const slackPlain = (t: string) => t.replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;')

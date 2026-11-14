@@ -4,7 +4,7 @@
 // voiceToolRefusal enforce it. The one exception is a call Kage placed to the owner itself: `kage call`
 // gets a one-time code (issueCode), the dialer hands it to the agent, and the first call that asks with
 // it is the owner for its whole length. Caller ID is never trusted: anyone can fake a number. The reply comes back through replies.voice in router.ts.
-import { createHash, randomBytes, randomUUID, timingSafeEqual } from 'node:crypto'
+import { randomBytes, randomUUID } from 'node:crypto'
 import { createServer, type IncomingMessage } from 'node:http'
 import type { AddressInfo } from 'node:net'
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
@@ -16,6 +16,7 @@ import type { Conversation } from '../core/conversations.ts'
 import { noChannelTag } from '../core/gate.ts'
 import type { Delivery } from '../core/sessions.ts'
 import type { Task } from '../runtime/protocol.ts'
+import { bearerOk, hourCap, readBody } from './webhook.ts'
 
 export const MAX_QUESTION = 600
 const STILL = 'Kage is still working on it. Ask again in a moment and you will get the answer.'
@@ -37,24 +38,15 @@ export function ownerVoiceTaskLine(question: string): string {
     + `The owner's words, as heard: ${JSON.stringify(question.replace(/\s+/g, ' ').trim())}`
 }
 
-const digest = (s: string) => createHash('sha256').update(s).digest()
-const bearerOk = (header: string | undefined, token: string) =>
-  timingSafeEqual(digest(header ?? ''), digest(`Bearer ${token}`))
-
 async function readJson(req: IncomingMessage, max = 64 * 1024): Promise<unknown> {
-  let n = 0
-  const parts: Buffer[] = []
-  for await (const c of req as AsyncIterable<Buffer>) {
-    if ((n += c.length) > max) throw new Error('too large')
-    parts.push(c)
-  }
-  return JSON.parse(Buffer.concat(parts).toString('utf8'))
+  const body = await readBody(req, max)
+  if (!body) throw new Error('too large')
+  return JSON.parse(body.toString('utf8'))
 }
 
 const BUSY = 'Kage is busy, try again shortly.'
 // A phone agent that hangs up often sends no DELETE, so a call with no ask for this long is over.
 const IDLE_MS = 3 * 60_000
-const HOUR_MS = 3_600_000
 const CODE_MS = 10 * 60_000   // a code not used by a call within this is dead
 const same = ' (That answers your earlier question. Ask your new one again.)'
 
@@ -82,7 +74,7 @@ export function connectVoice(o: {
   // ask returns them: the first reply ends the question, any more are kept for the next ask.
   type Call = { inflight: boolean; answers: string[]; wake: Set<() => void>; last: number; sent: number; noted: boolean }
   const calls = new Map<string, Call>()
-  const started: number[] = []
+  const cap = hourCap(perHour)
   const codes = new Map<string, number>()   // unused one-time codes to their deadline
   const owners = new Set<string>()          // calls (voice:<id>) that came with a code
 
@@ -128,14 +120,13 @@ export function connectVoice(o: {
       // Whether this question may start at all: a new call needs a free call slot and hourly budget,
       // and any start must not evict or jump ahead of another thread.
       if (!c) {
-        while (started.length && started[0]! <= now() - HOUR_MS) started.shift()
-        if (calls.size >= maxCalls || started.length >= perHour) return BUSY
+        if (calls.size >= maxCalls || cap.full(now())) return BUSY
       }
       if (o.slot && !o.slot(key)) return BUSY
       if (!c) {
         c = { inflight: false, answers: [], wake: new Set(), last: now(), sent: 0, noted: false }
         calls.set(key, c)
-        started.push(now())
+        cap.add(now())
       }
       const place = `voice call ${id.slice(0, 8)}`
       const task: Task = {
