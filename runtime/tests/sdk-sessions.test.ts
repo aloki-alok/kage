@@ -595,7 +595,7 @@ test('the usage limit, whole: no post but the notice, the inbox message kept, an
   d = new Dispatcher<ToSession>(s.runner, { max: 2, idleMs: 60_000, connectMs: 60_000, evictMs: 1, newId: () => ID })
   // What the hub does with one Slack message (router.ts toSession, then the connector's handled).
   const hear = (ts: string, now: number) => {
-    const task: Task = { type: 'task', content: `Task from Sam: ${ts}`, fromOwner: true, meta: { channel: 'C1', thread_ts: '5.5', place: '#general', permalink: '' }, origin: { channel: 'C1', ts } }
+    const task: Task = { type: 'task', content: `Task from Sam: ${ts}`, fromOwner: false, meta: { channel: 'C1', thread_ts: '5.5', place: '#general', permalink: '' }, origin: { channel: 'C1', ts } }
     store.take(`slack:C1:${ts}`, 'slack', `original event ${ts}`, now)
     const r = limits.hold('C1:5.5', task, now) ? 'held' : d.task('C1:5.5', task, now)
     if (r !== 'held' && r !== 'failed') limits.delivered('C1:5.5', task)
@@ -613,11 +613,17 @@ test('the usage limit, whole: no post but the notice, the inbox message kept, an
   assert.deepEqual(posts, ["Paused by the usage limit until 18:05. I'll pick this up then."])
   assert.deepEqual(store.held().map(r => [r.source, r.payload, r.until]), [['slack:C1:7.7', 'original event 7.7', 3_600_000]])
   assert.equal(run.closed, true)                 // the session is closed, so nothing more is read into the limit
-  // A new message in the pause: held, no session, no second notice.
-  assert.equal(hear('8.8', 2000), 'held')
+  // A new message in the pause tries once, to see whether the limit lifted. It is still on: the try meets it,
+  // and the message is held with the first, with no second notice.
+  assert.equal(hear('8.8', 2000), 'starting')
+  await tick()
+  const retry = sdk.runs[1]!
+  retry.emit({ type: 'rate_limit_event', rate_limit_info: { status: 'rejected', resetsAt: 3600 } })
+  retry.emit({ type: 'assistant', parent_tool_use_id: null, error: 'rate_limit', message: { content: [] } })
+  retry.emit({ type: 'result', total_cost_usd: 0, is_error: true })
   await tick(30)
-  assert.equal(sdk.runs.length, 1)
   assert.equal(posts.length, 1)
+  assert.deepEqual(store.held().map(r => r.source), ['slack:C1:7.7', 'slack:C1:8.8'])
   await limits.tick(3_599_999)
   assert.deepEqual(replayed, [])
   await limits.tick(3_600_000)
@@ -625,7 +631,7 @@ test('the usage limit, whole: no post but the notice, the inbox message kept, an
   // The replayed message runs, its turn ends well, and only then its text leaves the store.
   assert.equal(hear('7.7', 3_600_001), 'starting')
   await tick()
-  sdk.runs[1]!.emit({ type: 'result', total_cost_usd: 1 })
+  sdk.runs[2]!.emit({ type: 'result', total_cost_usd: 1 })
   await tick()
   assert.deepEqual(store.unhandled(-1).map(r => r.source), ['slack:C1:8.8'])
   assert.equal(posts.length, 1)

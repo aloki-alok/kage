@@ -66,6 +66,10 @@ export function limitPause(o: {
     return true
   }
   let kind: Limit['kind'] = 'rate_limit'
+  // The limit can lift before the reset Claude named (the owner raised or reset it). So a new message from anyone
+  // tries at once, one at a time: a turn that gets through ends the pause for everything, and one that hits the
+  // limit is held again. The reset time stays the fallback.
+  let probing: string | undefined
 
   return {
     counts,
@@ -79,7 +83,15 @@ export function limitPause(o: {
     // After a hub start: messages held before it keep the pause.
     restore() { for (const r of o.store.held()) until = Math.max(until ?? 0, r.until) },
     // Before a task goes to a session. true: paused, and the task is held for the reset.
-    hold: (key: string, t: Task, now: number): boolean => until !== undefined && keep(key, t, { kind }, now),
+    hold(key: string, t: Task, now: number): boolean {
+      if (until === undefined) return false
+      if (!t.scheduled && !probing && now >= drainUntil) {
+        probing = threadOf(key)
+        o.log('a new message in the pause: trying it once to see whether the limit lifted')
+        return false
+      }
+      return keep(key, t, { kind }, now)
+    },
     // A session took the task: its inbox message waits for the turn to end.
     delivered(key: string, t: Task) {
       const source = sourceOf(t)
@@ -92,11 +104,13 @@ export function limitPause(o: {
     turn(key: string, tasks: Task[], limit: Limit | undefined, now: number, done = false) {
       if (!limit) {
         o.settle?.(tasks, done)
+        if (probing === threadOf(key) && until !== undefined) { probing = undefined; o.log('the limit lifted early'); void lift(now) }
         // Only the thread's main session clears it: a lane's turn may have begun before the limit.
         if (key === threadOf(key) && key in told) setTold(key, undefined, now)
         for (const t of tasks) { const s = sourceOf(t); if (s && open.delete(s)) o.store.handled(s) }
         return
       }
+      if (probing === threadOf(key)) probing = undefined
       counts.limitHits++
       kind = limit.kind
       until = Math.max(until ?? 0, limit.until && limit.until > now ? limit.until : now + RETRY[limit.kind])
@@ -108,8 +122,11 @@ export function limitPause(o: {
       for (const t of all) if (!keep(key, t, limit, now) && !t.handoff) o.log('cannot hold a task with no inbox message', key, t.meta.place)
     },
     // At the reset time: held messages replay oldest first, then each owed scheduled run once.
-    async tick(now: number) {
-      if (until === undefined || now < until) return
+    async tick(now: number) { if (until !== undefined && now >= until) await lift(now) },
+  }
+  // The pause ends: held messages replay oldest first, then each owed scheduled run once.
+  async function lift(now: number) {
+    {
       until = undefined
       const rows = o.store.held()
       o.log(`the pause is over: replaying ${rows.length} held message${rows.length === 1 ? '' : 's'} and ${owed.size} scheduled run${owed.size === 1 ? '' : 's'}`)
@@ -127,6 +144,6 @@ export function limitPause(o: {
       }
       if (lost.length) o.tellOwner(`After the usage limit, ${lost.length} held message${lost.length === 1 ? '' : 's'} could not be resumed: ${lost.join(', ')}. Ask again in ${lost.length === 1 ? 'its thread' : 'their threads'}.`)
       for (const [job, { key, task }] of [...owed]) { owed.delete(job); counts.replays++; o.redeliver(key, task) }
-    },
+    }
   }
 }
