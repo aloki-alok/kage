@@ -54,11 +54,13 @@ export function openLedgers(dir: string, now = () => new Date().toISOString()) {
       try { insert.run(name, now(), JSON.stringify(cells.map(c => c.replace(/[\t\r\n]+/g, ' ')))) } catch (e) { log('ledger write failed', name, e) }
     },
     text(name: LedgerName): string {
-      try {
-        return (db.prepare('select at, cells from ledger where name = ? order by id').all(name) as { at: string; cells: string }[])
-          .map(r => tsvRow([r.at, ...JSON.parse(r.cells) as string[]])).join('')
-      } catch (e) { log('ledger read failed', name, e); return '' }
+      try { return ledgerText(db, name) } catch (e) { log('ledger read failed', name, e); return '' }
     },
     close: () => db.close(),
   }
 }
+
+// One ledger as TSV, from any handle on kage.db: kage top and kage logs read it with a read-only one.
+export const ledgerText = (db: DatabaseSync, name: LedgerName) =>
+  (db.prepare('select at, cells from ledger where name = ? order by id').all(name) as { at: string; cells: string }[])
+    .map(r => tsvRow([r.at, ...JSON.parse(r.cells) as string[]])).join('')

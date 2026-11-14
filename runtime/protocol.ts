@@ -1,4 +1,5 @@
 // What the hub and a thread's session say to each other over the local socket, one JSON object per line.
+import type { PanelAction } from '../core/kagelet-view.ts'
 
 // Every connector (Slack, email, WhatsApp, voice) turns what it heard into this one shape. meta goes to Claude as
 // the <channel> tag's attributes; origin is the message to mark when the task is picked up or fails.
@@ -30,6 +31,7 @@ export type FromSession =
   | { type: 'reload' }   // kage reload: the hub answers { type: 'reload', changed, restart, count } or { type: 'reload', refused }
   | { type: 'callcode' }   // kage call: the hub answers { type: 'callcode', code } or { type: 'callcode', refused }
   | { type: 'stop'; key: string }
+  | { type: 'kagelet'; action: PanelAction; name: string }   // kage top's panel: the hub answers { type: 'kagelet', text } or { type: 'kagelet', refused }
   | { type: 'tell'; key: string; text: string }   // kage tell: the hub answers { type: 'tell', ok: true } or { type: 'tell', refused }
   | { type: 'hold'; key: string; pid: number }   // pid: the attach process, which owns the hold
   | { type: 'hello'; key: string }

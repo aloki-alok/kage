@@ -4,6 +4,7 @@
 import { existsSync, mkdirSync, readdirSync, readFileSync, renameSync, unlinkSync, writeFileSync } from 'node:fs'
 import { parseSessionKey } from '../core/conversations.ts'
 import { DB_READ, NAME, parseKagelet, resultLine, rowLine, setPaused, kageletFile, kageletRows, type Maker, type KageletRow } from '../core/kagelets.ts'
+import { CAP_PAUSE } from '../core/kagelet-view.ts'
 import type { Store } from './store.ts'
 import type { Ledgers } from './ledger.ts'
 
@@ -156,7 +157,7 @@ export function costCap(dir: string, rows: KageletRow[], capUsd: number, flag: (
   const over = rows.filter(r => r.state === 'runs' && r.costToday >= capUsd)
   for (const r of over) {
     pauseKagelet(dir, r.name, true)
-    flag(r.name, `paused: it spent $${r.costToday.toFixed(2)} today, at or over its daily cap of $${capUsd.toFixed(2)} (KAGE_KAGELET_DAILY_USD)`)
+    flag(r.name, `${CAP_PAUSE} $${r.costToday.toFixed(2)} today, at or over its daily cap of $${capUsd.toFixed(2)} (KAGE_KAGELET_DAILY_USD)`)
   }
   return over.map(r => r.name)
 }

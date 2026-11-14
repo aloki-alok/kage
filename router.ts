@@ -44,6 +44,7 @@ import { codeStamp } from './runtime/code-stamp.ts'
 import { clearUpdatedFrom, markUpdatedFrom, pullMain, updatedNote, version } from './runtime/auto-update.ts'
 import { costCap, kageletManager, kageletsDir, ownerNotes, readCommand, readKagelets, syncKagelets } from './runtime/kagelets.ts'
 import { kageletRows } from './core/kagelets.ts'
+import { dailyCap } from './core/kagelet-view.ts'
 import { askHub } from './cli/home.ts'
 import { hubLock } from './runtime/hub-lock.ts'
 import { npmCi, packagesStale, rotate } from './runtime/hub-log.ts'
@@ -203,7 +204,7 @@ let grants = new Map<string, string[]>()
 const KAGELETS = kageletsDir(DIR, log)
 // The names from before the rename still read.
 const MAX_KAGELETS = Number(env.KAGE_MAX_KAGELETS || env.KAGE_MAX_SPECIALISTS || 10)
-const KAGELET_USD = Number(env.KAGE_KAGELET_DAILY_USD || env.KAGE_SPECIALIST_DAILY_USD || 2)
+const KAGELET_USD = dailyCap(env)
 // Only the SDK runner enforces a grant, so with tmux panes no kagelet runs: their schedules are removed.
 // A kagelet over its daily cost cap is paused and flagged first, so this sync already drops its schedule.
 const kagelets = (now: number) => {
@@ -534,7 +535,7 @@ const reload = reloader({ boot: env, read: () => readFileSync(ENV_FILE, 'utf8'),
 listenForSessions(`${DIR}/router.sock`, d, { ...replies, failed, schedules, tell, reload, paused: () => limits.paused(), limitCounts: () => limits.counts,
   // kage restart and stop: a drain renewed by each ask. A turn that just ended does not hold them up: its follow-up
   // waits too. Nor does a thread open in a terminal: kage attach holds it again after the restart.
-  end: (key, cut) => stopThread(key, cut),
+  end: (key, cut) => stopThread(key, cut), kagelet: (action, name) => manager.manage({ action, name }, Date.now()),
   quiesce: () => { const now = Date.now(); limits.drain(now); return d.unquiet(now).filter(u => u.why !== 'just active' && u.why !== 'open in a terminal') }, callCode: voice?.issueCode })
 
 await slack.start()
