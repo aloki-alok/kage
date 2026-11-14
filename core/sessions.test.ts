@@ -42,6 +42,16 @@ describe('one Claude session per thread', () => {
     assert.equal(d.hasFreeSlot('C'), false)   // full: starting C would evict a quiet session
     assert.equal(d.hasFreeSlot('A'), true)
   })
+  test('startsNow: like a schedule, a full house still starts a thread when a quiet session can give up its slot', () => {
+    const { d, busy, inbox } = setup({ max: 2 })
+    d.task('A', 'a', 0); inbox('A')
+    d.task('B', 'b', 0); inbox('B')
+    assert.equal(d.startsNow('C', 100), false)   // both just active
+    assert.equal(d.startsNow('C', 1000), true)   // both quiet past evictMs
+    busy.add('A'); busy.add('B')
+    assert.equal(d.startsNow('C', 1000), false)  // both mid-turn
+    assert.equal(d.startsNow('A', 1000), true)   // already live
+  })
   test('stopping a thread lets its turn finish, then ends the session at the next sweep', () => {
     const { d, stopped, busy, inbox } = setup()
     d.task('A', 'a', 0); inbox('A'); busy.add('A')

@@ -100,6 +100,11 @@ export class Dispatcher<M> {
   // queue. A connector that must never push the owner's threads out asks first (voice does).
   hasFreeSlot = (key: string) => this.#live.has(key) || (this.#live.size < this.#opts.max && !this.#waiting.length)
 
+  // Whether a task for this thread starts now rather than queues: an open slot, or a quiet session that gives up its
+  // slot (#admit). What a schedule gets, for work that must not count as started while it only waits.
+  startsNow = (key: string, now: number) => this.#live.has(key)
+    || (!this.#waiting.length && (this.#live.size < this.#opts.max || !!this.#quietest(now)))
+
   // A connector ends a conversation of its own (a voice call hung up): close its session now so the
   // slot is free at once, and forget a task waiting for one. Its id stays, so it could resume.
   // Returns the tasks it forgot, which no session read, for a caller that keeps them (runtime/limit-pause.ts).
