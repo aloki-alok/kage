@@ -45,7 +45,7 @@ function fakeSlack() {
   return { calls, posts, bot: client('bot'), user: client('owner') }
 }
 
-function setup(o: { hubDown?: boolean; dir?: string; kagelet?: string; dbRead?: { command: () => string | undefined; maxRows: number; timeoutMs?: number }; approve?: (tool: string, description: string, input: Record<string, unknown>) => Promise<boolean>; browser?: { call(op: string, args: Record<string, unknown>): Promise<unknown>; block: string[] } } = {}) {
+function setup(o: { settings?: { set(key: string, value: unknown): void }; hubDown?: boolean; dir?: string; kagelet?: string; dbRead?: { command: () => string | undefined; maxRows: number; timeoutMs?: number }; approve?: (tool: string, description: string, input: Record<string, unknown>) => Promise<boolean>; browser?: { call(op: string, args: Record<string, unknown>): Promise<unknown>; block: string[] } } = {}) {
   const slack = fakeSlack()
   const dir = o.dir ?? mkdtempSync(join(tmpdir(), 'kage-tools-'))
   const ledgers = openLedgers(dir)
@@ -61,7 +61,7 @@ function setup(o: { hubDown?: boolean; dir?: string; kagelet?: string; dbRead?: 
       list: () => jobs,
     },
     afk: async c => { out.push(`afk ${JSON.stringify(c)}`); return 'AFK on' },
-    kagelet: o.kagelet, dbRead: o.dbRead, approve: o.approve, browser: o.browser, event: (kind, detail) => { events.push(`${kind} ${detail}`) },
+    kagelet: o.kagelet, settings: o.settings, dbRead: o.dbRead, approve: o.approve, browser: o.browser, event: (kind, detail) => { events.push(`${kind} ${detail}`) },
     onReport: r => { routed.push(`report ${JSON.stringify(r)}`) }, message: (to, text) => { routed.push(`message ${to} ${text}`); return `sent to ${to}` },
     kagelets: { list: () => 'the list', manage: async (a, ask) => { out.push(`manage ${JSON.stringify(a)}`); return ask ? `asked: ${await ask({ kagelet: a.name, tools: 'mcp__gmail__send', job: 'j' })}` : 'managed' } },
   })
@@ -759,5 +759,58 @@ describe("acting in the owner's browser", () => {
   })
   test('a kagelet gets no hands in the browser', () => {
     assert.equal(setup({ kagelet: 'calls', browser: chrome({}) }).t.tools.some(x => x.name === 'browser_act' || x.name === 'browser_snapshot'), false)
+  })
+})
+
+describe('set_setting: the owner changes a setting through Kage, never by writing config.json', () => {
+  const run = (o: { fromOwner?: boolean; channel?: string; agent?: boolean; kagelet?: string; yes?: boolean; noCard?: boolean } = {}) => {
+    const set: [string, unknown][] = [], cards: string[] = []
+    const s = setup({ kagelet: o.kagelet, settings: { set: (k, v) => { set.push([k, v]) } }, approve: o.noCard ? undefined : async (_t, d) => { cards.push(d); return o.yes ?? false } })
+    const base = s.task({ fromOwner: o.fromOwner ?? true, channel: o.channel })
+    s.t.onTask(o.agent ? { ...base, agent: { app: 'ATEST0001' } } : base)
+    return { s, set, cards, call: (key: string, value: unknown) => s.call('set_setting', { channel: o.channel ?? 'C1', thread_ts: '5.5', key, value }) }
+  }
+  test('a safe key applies with no card, and the event names the key only', async () => {
+    const t = run()
+    const r = await t.call('kagelets.dailyUsd', 5)
+    assert.equal(r.isError, undefined)
+    assert.deepEqual(t.set, [['kagelets.dailyUsd', 5]])
+    assert.deepEqual(t.cards, [])
+    assert.ok(t.s.events.some(e => e === 'tool set_setting kagelets.dailyUsd'), t.s.events.join())
+  })
+  test('a power key with no yes changes nothing, and with a yes it applies', async () => {
+    for (const key of ['people.teammates', 'connectors.call.command', 'kagelets.dbRead.command', 'connectors.commands', 'connectors.voice.on', 'harness.maxSessions', 'connectors.whatsapp.hookHost']) {
+      const no = run({ yes: false })
+      const r = await no.call(key, 'x')
+      assert.equal(r.isError, true, key)
+      assert.deepEqual(no.set, [], key)
+      assert.equal(no.cards.length, 1, key)
+      const yes = run({ yes: true })
+      assert.equal((await yes.call(key, 'x')).isError, undefined, key)
+      assert.deepEqual(yes.set, [[key, 'x']], key)
+    }
+  })
+  test('without a card route a power key is refused, and a secret or the schema version is never settable', async () => {
+    const t = run({ noCard: true })
+    assert.equal((await t.call('people.teammates', [])).isError, true)
+    for (const key of ['secrets.slack.bot', 'version', 'unknown', 'unknown.X']) assert.equal((await run({ yes: true }).call(key, 1)).isError, true, key)
+    assert.deepEqual(t.set, [])
+  })
+  test("a teammate's, an agent's, a voice call's task and a kagelet get none", async () => {
+    for (const o of [{ fromOwner: false }, { fromOwner: false, agent: true }, { fromOwner: false, channel: 'voice' }, { channel: 'voice' }, { agent: true }]) {
+      const t = run({ ...o, yes: true })
+      assert.equal((await t.call('kagelets.dailyUsd', 5)).isError, true, JSON.stringify(o))
+      assert.deepEqual(t.set, [], JSON.stringify(o))
+    }
+    const k = setup({ kagelet: 'watch', settings: { set: () => {} } })
+    assert.equal(k.t.tools.some(x => x.name === 'set_setting'), false)
+    assert.equal(setup().t.tools.some(x => x.name === 'set_setting'), false)   // no hub settings route (a tmux pane): no tool
+  })
+  test('a value the settings refuse comes back as an error the session can read', async () => {
+    const s = setup({ settings: { set: () => { throw new Error('connectors.voice.port must be a port from 1 to 65535') } } })
+    s.t.onTask(s.task())
+    const r = await s.call('set_setting', { channel: 'C1', thread_ts: '5.5', key: 'connectors.voice.port', value: 0 })
+    assert.equal(r.isError, true)
+    assert.match(r.text, /port/)
   })
 })

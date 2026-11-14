@@ -2,7 +2,7 @@ import { describe, test } from 'node:test'
 import assert from 'node:assert/strict'
 import { execSync } from 'node:child_process'
 import { readFileSync } from 'node:fs'
-import { ALIASES, checkSettings, Config, diff, fromEnv, KEYS, NOT_SETTINGS, toEnv, unknownNames } from '../config.ts'
+import { ALIASES, checkSettings, settingTier, Config, diff, fromEnv, KEYS, NOT_SETTINGS, toEnv, unknownNames } from '../config.ts'
 import { parseEnv } from '../settings.ts'
 
 // One line for every setting in the table, with fake values. Canonical forms: the shape toEnv writes.
@@ -201,5 +201,17 @@ describe('docs/settings.md', () => {
     assert.deepEqual(keys.filter(k => !listed.includes(k)), [], 'in the table, missing from the docs')
     assert.deepEqual(listed.filter(k => !keys.includes(k)), [], 'in the docs, missing from the table')
     assert.equal(new Set(listed).size, listed.length, 'a key listed twice')
+  })
+})
+
+describe('which keys a session may change on its own', () => {
+  test('limits, models, AFK, Jev thresholds, ports and the browser block list are safe', () => {
+    for (const k of ['kagelets.max', 'kagelets.dailyUsd', 'kagelets.totalDailyUsd', 'kagelets.chainUsd', 'afk.on', 'afk.model', 'jev.threshold', 'jev.model', 'connectors.voice.port', 'connectors.voice.max', 'connectors.github.perHour', 'connectors.browser.block', 'connectors.browser.port', 'connectors.whatsapp.model', 'connectors.whatsapp.hookPort']) assert.equal(settingTier(k), 'safe', k)
+  })
+  test('anything that grants power needs the owner: people, a command, a connector on, harness, and any key not listed', () => {
+    for (const k of ['people.teammates', 'people.agents', 'connectors.call.command', 'kagelets.dbRead.command', 'kagelets.dbRead.maxRows', 'connectors.commands', 'connectors.email.on', 'connectors.voice.on', 'connectors.whatsapp.on', 'connectors.whatsapp.hookHost', 'harness.maxSessions', 'harness.route', 'harness.cwd', 'autoUpdate', 'name', 'connectors.email.address', 'jev.agents']) assert.equal(settingTier(k), 'power', k)
+  })
+  test('secrets, the schema version and unplaced env lines are never settable, and a prototype path is refused', () => {
+    for (const k of ['secrets', 'secrets.slack.bot', 'version', 'unknown', 'unknown.KAGE_X', '__proto__.x', 'harness.__proto__.x', 'constructor.prototype.x', '']) assert.equal(settingTier(k), 'never', k)
   })
 })

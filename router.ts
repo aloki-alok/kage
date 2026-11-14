@@ -31,7 +31,7 @@ import { dailyDue, grantsLine, openWaiting, staleWaiting } from './core/ledgers.
 import { dreamDue, dreamTask, threadsSince } from './core/dream.ts'
 import { retro, retroDue } from './core/retro.ts'
 import { Dispatcher, mixRunners } from './core/sessions.ts'
-import { readSettings, sweepImported } from './runtime/config-files.ts'
+import { readSettings, setKey, sweepImported } from './runtime/config-files.ts'
 import { configWatcher } from './runtime/config-watch.ts'
 import { unknownNames } from './core/config.ts'
 import type { Task, ToSession } from './runtime/protocol.ts'
@@ -270,6 +270,7 @@ const sdk = sdkLib ? sdkSessions({
     title: Title, bot, user, botDm: () => slack.ids.botDm, dir: DIR, ledgers, send, memory: MEM,
     schedules: { add: j => schedules.add(key, j, Date.now()), remove: id => schedules.remove(key, id), list: () => schedules.list(key) },
     afk: slack.afk?.command,
+    settings: { set: (key, value) => setKey(ENV_FILE, key, value) },
     kagelet: key.split('#side-kagelet-')[1],
     browser: browser && { call: browser.call, block: BROWSER_BLOCK },
     dbRead: { command: () => readCommand(kl.dbRead?.command ?? undefined, store, key.split('#side-kagelet-')[1] ?? ''), maxRows: kl.dbRead?.maxRows || 200 },

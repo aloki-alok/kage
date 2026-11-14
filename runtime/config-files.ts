@@ -3,7 +3,7 @@
 // service units that set it keep working: the folder is its dirname.
 import { existsSync, readdirSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
-import { Config, fromEnv, Secrets } from '../core/config.ts'
+import { badValue, Config, fromEnv, Secrets, settingTier } from '../core/config.ts'
 import { parseEnv } from '../core/settings.ts'
 
 export const files = (envFile: string) => ({ dir: dirname(envFile), config: join(dirname(envFile), 'config.json'), secrets: join(dirname(envFile), 'secrets.json'), legacy: envFile })
@@ -99,4 +99,21 @@ export function updateSecrets(envFile: string, change: (s: Secrets) => Secrets) 
   importLegacy(envFile)
   const f = files(envFile)
   write(f.secrets, checked(Secrets, 'secrets.json', change(existsSync(f.secrets) ? parse(Secrets, f.secrets) : {})))
+}
+
+// One config.json key from a dotted path, checked as the hub will read it (the schema, then checkSettings) before the file is written.
+// The watcher sees the write and applies it live or by a quiet restart, as for any edit.
+export function setKey(envFile: string, key: string, value: unknown) {
+  if (settingTier(key) === 'never') throw new Error(`${key} cannot be set this way`)
+  const { config } = readSettings(envFile)
+  const next = structuredClone(config) as Record<string, any>
+  const ks = key.split('.')
+  const last = ks.pop()!
+  let at = next
+  for (const k of ks) at = (at[k] ??= {})
+  at[last] = value
+  const done = checked(Config, 'config.json', next)
+  const bad = badValue(done)
+  if (bad) throw new Error(bad)
+  updateConfig(envFile, () => done)
 }
