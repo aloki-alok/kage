@@ -159,8 +159,8 @@ export function sdkSessions(o: {
             hooks: [async input => {
               const i = input as { tool_name: string; tool_input?: Record<string, string> }
               const grant = o.grantOf?.(key)
-              const path = toolRefusal(i.tool_name, i.tool_input ?? {}, s.sender, o), held = grant && grantRefusal(i.tool_name, grant, i.tool_input ?? {}, o.allowOf?.(key))
-              // Only a grant hold may be let through by the reviewer, never a path guard; allow here, so canUseTool's grant check never sees it.
+              const path = toolRefusal(i.tool_name, i.tool_input ?? {}, s.turn.some(x => senderOf(x.task) === 'agent') ? 'agent' : s.sender, o), held = grant && grantRefusal(i.tool_name, grant, i.tool_input ?? {}, o.allowOf?.(key))
+              // An agent's task anywhere in the turn binds it (a mid-turn task joins the turn). Only a grant hold may be let through by the reviewer, never a path guard; allow here, so canUseTool's grant check never sees it.
               const step = !!held && !path && i.tool_name === 'Bash' && shellGrant(grant!), command = { command: String(i.tool_input?.command ?? '') }
               // The owner's yes is spent first, and a step whose card is open stays the owner's, so no step runs twice. Else the reviewer; else a card (the command only, so a reworded retry still matches).
               const taken = step && !!o.deferred?.take(key, 'Bash', command, Date.now()), wait = step && !taken ? o.deferred?.waiting(key, 'Bash', command, Date.now()) : undefined
