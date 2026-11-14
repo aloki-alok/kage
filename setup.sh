@@ -15,7 +15,7 @@ Set up|check||Check that node 22.18+ and claude are installed (and tmux, for KAG
 Set up|app|[name]|Write the Slack app for the name you tag, and open the link that creates it|kage app kage
 Set up|save|[name]|Paste the three Slack tokens into hidden prompts; each is checked with Slack|kage save
 Set up|doctor||Check every part, and print the command that fixes each problem|kage doctor
-Set up|slack|upgrade|Add the Slack scopes Kage needs and the app lacks: copies the manifest, opens the app page, and waits|kage slack upgrade
+Set up|slack|upgrade|Add the Slack scopes Kage needs and the app lacks: opens the app manifest, names the scopes to add, and waits|kage slack upgrade
 Set up|link||Put the kage command on your PATH (~/.local/bin/kage)|./setup.sh link
 Set up|service|on or off|Let macOS or Linux keep Kage running: back after a crash, a reboot or a login|kage service on
 Run|start|[kagelet]|Start Kage in the background (turns the service on the first time). With a kagelet: run it again after kage stop|kage start

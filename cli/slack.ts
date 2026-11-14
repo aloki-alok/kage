@@ -1,5 +1,6 @@
-// kage slack upgrade: puts the current manifest on the clipboard, opens the app's page, and waits for the new scopes.
+// kage slack upgrade: opens the app's manifest page, names the scopes to add, and waits for the new scopes.
 import { spawnSync } from 'node:child_process'
+import { manifestUrl, upgradeSteps } from '../core/slack-scopes.ts'
 import { authTest, checkScopes } from '../runtime/slack-scopes.ts'
 import { settings } from './home.ts'
 
@@ -13,21 +14,15 @@ if (cmd === 'upgrade') {
   const missing = await checkScopes(tokens)
   if (!missing.bot.length && !missing.user.length) { console.log('ok: the Slack app has every scope'); process.exit(0) }
   // auth.test gives the bot id, and bots.info (users:read, which the bot holds) gives the app id.
-  const botId = (await authTest(tokens.bot!))?.botId
-  const info = botId ? await fetch(`https://slack.com/api/bots.info?bot=${botId}`, { headers: { Authorization: `Bearer ${tokens.bot}` } }).then(r => r.json() as Promise<{ bot?: { app_id?: string } }>).catch(() => undefined) : undefined
+  const auth = await authTest(tokens.bot!)
+  const info = auth?.botId ? await fetch(`https://slack.com/api/bots.info?bot=${auth.botId}`, { headers: { Authorization: `Bearer ${tokens.bot}` } }).then(r => r.json() as Promise<{ bot?: { app_id?: string } }>).catch(() => undefined) : undefined
   const appId = info?.bot?.app_id
-  if (!appId) die('Could not get the app id from Slack. Open https://api.slack.com/apps, pick the app, and paste the manifest under App Manifest.')
-  const manifest = spawnSync(process.execPath, [new URL('./manifest.ts', import.meta.url).pathname], { encoding: 'utf8', env: { ...process.env, KAGE_NAME: config.name || 'kage' } }).stdout
-  const tryRun = (bin: string, args: string[], input?: string) => spawnSync(bin, args, { input, stdio: [input === undefined ? 'ignore' : 'pipe', 'ignore', 'ignore'] }).status === 0
-  const copied = tryRun('pbcopy', [], manifest) || tryRun('wl-copy', [], manifest) || tryRun('xclip', ['-selection', 'clipboard'], manifest)
-  // The manifest editor has no stable deep link (api.slack.com/apps/<id>/app-manifest is a 404), so open the app's page.
-  const url = `https://api.slack.com/apps/${appId}`
+  const team = auth?.teamId
+  if (!appId || !team) die('Could not get the app id from Slack. Open https://api.slack.com/apps, pick the app, click App Manifest, and add the missing scopes to oauth_config.scopes.')
+  const url = manifestUrl(team!, appId!)
+  const tryRun = (bin: string, args: string[]) => spawnSync(bin, args, { stdio: 'ignore' }).status === 0
   tryRun('open', [url]) || tryRun('xdg-open', [url])
-  if (!copied) console.log(`No clipboard tool found. Copy this manifest:\n\n${manifest}\n`)
-  console.log(`1. ${copied ? 'The manifest is on your clipboard. ' : ''}Open ${url} if it did not open.`)
-  console.log('2. Click App Manifest in the left sidebar. Select all the text there, paste the manifest over it, and click Save Changes.')
-  console.log('3. Click "Reinstall to Workspace" in the yellow banner, then click Allow.')
-  console.log('4. If Slack shows new tokens under Install App, run kage save to enter them.')
+  for (const line of upgradeSteps(missing, url)) console.log(line)
   console.log('Waiting for the new scopes (up to 10 minutes)...')
   for (let i = 0; i < 200; i++) {
     await new Promise(r => setTimeout(r, 3000))
