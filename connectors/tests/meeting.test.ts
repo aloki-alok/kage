@@ -6,7 +6,7 @@ import { openStore } from '../../runtime/store.ts'
 const TOKEN = 'meet-token'
 const body = (title = 'Renewal sync') => JSON.stringify({ title, link: 'https://meet.google.com/abc-defg-hij', segments: [{ speaker: 'Jane', text: 'Kim owns the quote.', start: 3 }] })
 
-async function setup(perHour = 100, pollMs = 2000) {
+async function setup(perHour = 100, pollMs = 2000, code?: () => string) {
   const store = openStore(':memory:')
   let clock = Date.now()
   let throwing = false
@@ -17,7 +17,7 @@ async function setup(perHour = 100, pollMs = 2000) {
   const ended: string[] = []
   const m = connectMeeting({
     token: TOKEN, port: 0, botDm: 'DB', perHour, pollMs, name: 'kage', askWaitMs: 50, end: key => void ended.push(key), notify: t => void told.push(t), now: () => clock,
-    untake: s => store.untake(s),
+    untake: s => store.untake(s), code,
     inbox: { take: (s, c, p) => store.take(s, c, p, Date.now()), handled: s => store.handled(s), has: s => store.has(s) },
     post: async text => { posts.push(text); return String(ts++) },
     deliver: (c, task) => { if (throwing) throw new Error('runner down'); tasks.push({ key: c.connector === 'voice' ? `voice:${c.chat}` : `${c.chat}:${c.thread}`, content: task.content, fromOwner: task.fromOwner, channel: task.meta.channel }); return 'sent' },
@@ -134,6 +134,22 @@ test('a join waits until the bot polls, then reaches it once; a poll after it ge
     // A join this old is for a call long gone: a restarted bot polling from 0 must not walk into the next meeting on that code.
     t.later(5 * 60_000 + 1)
     assert.equal((await t.bot('/meetbot/next?after=0')).status, 204)
+  } finally { t.m.close() }
+})
+
+test('each join carries a fresh owner code for the voice agent, so the call reaches Kage as the owner', async () => {
+  let n = 0
+  const t = await setup(100, 300, () => `code-${++n}`)
+  try {
+    const held = t.bot('/meetbot/next?after=0')
+    await new Promise(r => setTimeout(r, 50))
+    assert.equal(t.m.join('https://meet.google.com/abc-defg-hij'), '')
+    const [first] = await (await held).json() as { seq: number; code?: string }[]
+    assert.equal(first!.code, 'code-1')
+    const next = t.bot(`/meetbot/next?after=${first!.seq}`)
+    await new Promise(r => setTimeout(r, 50))
+    assert.equal(t.m.join('https://meet.google.com/abc-defg-hij'), '')
+    assert.equal(((await (await next).json()) as { code?: string }[])[0]!.code, 'code-2')
   } finally { t.m.close() }
 })
 

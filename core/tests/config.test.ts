@@ -44,6 +44,8 @@ KAGE_GITHUB_PORT=9002
 KAGE_GITHUB_PER_HOUR=15
 KAGE_MEETING_PORT=9003
 KAGE_MEETING_PER_HOUR=5
+KAGE_MEETING_AGENT_API=https://voice.example.test
+KAGE_MEETING_AGENT_ID=7
 KAGE_BROWSER_PORT=9004
 KAGE_BROWSER_BLOCK=bank.example.test,vault.example.test
 KAGE_WHATSAPP=off
@@ -64,6 +66,7 @@ KAGE_MEETING_TOKEN=meet-fake
 KAGE_BROWSER_TOKEN=browser-fake
 JEV_API_KEY=jev-fake
 KAGE_CARTESIA_KEY=cartesia-fake
+KAGE_VOICE_AGENT_KEY=voice-agent-fake
 `
 
 describe('importing an env file', () => {
