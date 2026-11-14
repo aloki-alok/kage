@@ -6,15 +6,18 @@ import { slackLinkKey } from './conversations.ts'
 import { clockTime, whenLabel } from './board.ts'
 import { spendSince } from './ledgers.ts'
 import { CAP_PAUSE } from './kagelet-view.ts'
+import { DB_READ, kageletTier } from './access.ts'
+
+export { DB_READ }
 
 // A kagelet's name, which is also its file name: no dots or slashes, so it never leaves the folder.
 export const NAME = /^[a-z][a-z0-9-]{0,30}$/
 
 // Who made it, from its file: Kage's tool wrote it first, or the owner did by hand (no by line). Provenance only.
 export type Maker = 'owner' | 'kage'
-// granted: when the owner approved its db_read on Kage's card (runtime/kagelets.ts). standing: by a standing approval.
+// standing: its write tools held by a standing approval (runtime/kagelets.ts), so a revoke of that tool takes them.
 // after: the kagelet whose output starts this one (#93). cron: '' when it runs only after another.
-export type Kagelet = { name: string; key: string; link: string; cron: string; after?: string; tools: string[]; job: string; paused: boolean; by: Maker; why: string; resumed?: number; granted?: number; standing?: true }
+export type Kagelet = { name: string; key: string; link: string; cron: string; after?: string; tools: string[]; job: string; paused: boolean; by: Maker; why: string; resumed?: number; standing?: string[] }
 
 // Flat front matter (key: value lines between --- lines), then the job.
 export function parseKagelet(name: string, text: string): Kagelet | { error: string } {
@@ -32,13 +35,11 @@ export function parseKagelet(name: string, text: string): Kagelet | { error: str
   const job = m[2]!.trim()
   if (!job) return { error: 'the job, below the front matter, is empty' }
   const tools = (head.get('tools') ?? '').split(',').map(t => t.trim()).filter(Boolean)
-  const grant = GRANTED.exec(head.get('granted') ?? '')
-  const granted = Date.parse(grant?.[2] ?? '')
-  // Checked on every read, so a file that says by: kage cannot hold it even when written by hand.
-  if (head.get('by') === 'kage' && tools.includes(DB_READ) && !(granted >= 0)) return { error: `a kagelet Kage made cannot hold ${DB_READ} without the owner's approval on Kage's card` }
+  // A file from before tiers may have a granted line for db_read: db_read is read now, so it is left unread.
+  const standing = (head.get('standing') ?? '').split(',').map(t => t.trim()).filter(t => tools.includes(t))
   return { name, key: `${thread}#side-kagelet-${name}`, link, cron, ...(after && { after }), tools, job, paused: isPaused(head.get('paused')),
     by: head.get('by') === 'kage' ? 'kage' : 'owner', why: head.get('why') ?? '',
-    ...(Date.parse(head.get('resumed') ?? '') >= 0 && { resumed: Date.parse(head.get('resumed')!) }), ...(granted >= 0 && { granted }), ...(granted >= 0 && grant![1] === 'standing approval' && { standing: true as const }) }
+    ...(Date.parse(head.get('resumed') ?? '') >= 0 && { resumed: Date.parse(head.get('resumed')!) }), ...(standing.length && { standing }) }
 }
 
 // Fails closed: any value but none, no or false pauses it, so a typo never starts a kagelet.
@@ -65,32 +66,23 @@ paused: yes
 Say what to check, where, and what to post in the thread. For example: every weekday at 9, read https://status.example.com and post a three-line summary.
 `
 
-// The grant name for the database tool (runtime/kage-tools.ts). Only the owner grants it: by hand in the file,
-// or by a yes on Kage's card, which the file records as its granted line.
-export const DB_READ = 'db_read'
-const GRANTED = new RegExp(`^${DB_READ} by (the owner|standing approval), (\\S+)$`)
-
-// What the manager's tool may grant on its own: the v1 web tools. Anything more needs the owner's yes on a card.
-export const DEFAULT_GRANT = ['WebSearch', 'WebFetch']
-
-// The file the manager's tool writes. Refused with the reason when it would not run, would be granted a tool v1
-// cannot grant, asks for more than DEFAULT_GRANT with no owner's yes, or holds db_read with no owner's yes.
-// by is provenance only and never widens a grant: the model steers every save, the owner's sessions too.
-// approved: the owner said yes on a card to its tools beyond DEFAULT_GRANT.
-// granted: when the owner said yes to its db_read. standing: that yes was a standing approval, not a card.
-export function kageletFile(f: { thread: string; schedule: string; after?: string; tools: string[]; job: string; by: Maker; why: string; paused?: boolean; approved?: boolean; granted?: number; standing?: boolean }): string | { error: string } {
+// The file the manager's tool writes. Refused with the reason when it would not run, holds an act tool
+// (core/access.ts), or holds a write tool with no owner's yes. by is provenance only and never widens a grant: the
+// model steers every save, the owner's sessions too.
+// approved: the owner said yes to its write tools (a card, a standing approval, or a grant it already held).
+// standing: those of its write tools that a standing approval covers.
+export function kageletFile(f: { thread: string; schedule: string; after?: string; tools: string[]; job: string; by: Maker; why: string; paused?: boolean; approved?: boolean; standing?: string[] }): string | { error: string } {
   // One line each, so no value can add a front matter line of its own (a second tools or paused line).
   for (const [k, v] of Object.entries({ thread: f.thread, schedule: f.schedule, after: f.after ?? '', why: f.why, tool: f.tools.join(',') })) if (/[\r\n]/.test(v)) return { error: `the ${k} must be one line` }
   // A comma or space in one name reads back as two tools, so the card would not name what the file grants.
   const odd = f.tools.find(t => !/^[\w-]+$/.test(t))
   if (odd) return { error: `"${odd}" is not one tool name: letters, digits, _ and - only` }
-  const bad = f.tools.find(t => !grantable(t))
-  if (bad) return { error: `a kagelet can be granted only web tools, MCP tools and ${DB_READ}, not ${bad}. A wider grant is the owner's call.` }
-  const db = f.tools.includes(DB_READ)
-  if (db && f.granted === undefined) return { error: `${DB_READ} needs the owner's yes on Kage's card` }
-  const wide = !f.approved && f.tools.find(t => !DEFAULT_GRANT.includes(t) && t !== DB_READ)
-  if (wide) return { error: `${wide} needs the owner's yes on Kage's card: without it, a kagelet gets only ${DEFAULT_GRANT.join(' and ')}` }
-  const text = `---\nthread: ${f.thread}\n${f.schedule || !f.after ? `schedule: ${f.schedule}\n` : ''}${f.after ? `after: ${f.after}\n` : ''}tools: ${f.tools.join(', ')}\nby: ${f.by}\nwhy: ${f.why}\n${db ? `granted: ${DB_READ} by ${f.standing ? 'standing approval' : 'the owner'}, ${new Date(f.granted!).toISOString()}\n` : ''}${f.paused ? 'paused: yes\n' : ''}---\n${f.job.trim()}\n`
+  const bad = f.tools.find(t => kageletTier(t) === 'act')
+  if (bad) return { error: `a kagelet never holds ${bad}: it is an act tool (prod, money, customers, access or a delete) or not a web or MCP tool. The kagelet says in its thread what it needs, and Kage asks the owner each time.` }
+  const wide = !f.approved && f.tools.find(t => kageletTier(t) === 'write')
+  if (wide) return { error: `${wide} needs the owner's yes on Kage's card: it sends or changes something` }
+  const standing = (f.standing ?? []).filter(t => f.tools.includes(t))
+  const text = `---\nthread: ${f.thread}\n${f.schedule || !f.after ? `schedule: ${f.schedule}\n` : ''}${f.after ? `after: ${f.after}\n` : ''}tools: ${f.tools.join(', ')}\nby: ${f.by}\nwhy: ${f.why}\n${standing.length ? `standing: ${standing.join(', ')}\n` : ''}${f.paused ? 'paused: yes\n' : ''}---\n${f.job.trim()}\n`
   const sp = parseKagelet('check', text)
   return 'error' in sp ? sp : text
 }
@@ -121,7 +113,7 @@ export function chainErrors(ks: { name: string; after?: string; tools?: string[]
 
 export type Report = { at: number; summary: string; needs?: string }
 // costToday: since midnight, or since its last resume today. avg7: its daily average over the 7 days before today.
-export type KageletRow = { name: string; state: 'runs' | 'paused' | 'broken'; error?: string; key?: string; link?: string; cron?: string; after?: string; tools: string[]; lastRun?: number; next?: number; costToday: number; avg7: number; result?: Report; by?: Maker; why?: string; standing?: true }
+export type KageletRow = { name: string; state: 'runs' | 'paused' | 'broken'; error?: string; key?: string; link?: string; cron?: string; after?: string; tools: string[]; lastRun?: number; next?: number; costToday: number; avg7: number; result?: Report; by?: Maker; why?: string; standing?: string[] }
 // One row per file for kage list, kage top and the manager. runs, costs and reports are the ledgers (core/ledgers.ts).
 export function kageletRows(files: { name: string; text: string }[], o: { runs: string; costs: string; reports?: string; now: number }): KageletRow[] {
   const results = new Map<string, Report>()
@@ -149,7 +141,7 @@ export function kageletRows(files: { name: string; text: string }[], o: { runs: 
       name: sp.name, state: sp.paused ? 'paused' : 'runs', key: sp.key, link: sp.link, cron: sp.cron, ...(sp.after && { after: sp.after }), tools: sp.tools,
       ...(last.has(sp.name) && { lastRun: last.get(sp.name) }), ...(next !== undefined && { next }), costToday: spendSince(o.costs, Math.max(midnight, sp.resumed ?? 0)).find(s => s.key === sp.key)?.usd ?? 0,
       avg7: Math.round(((week.find(s => s.key === sp.key)?.usd ?? 0) - (today.find(s => s.key === sp.key)?.usd ?? 0)) / 7 * 1e6) / 1e6,
-      ...(results.has(sp.name) && { result: results.get(sp.name) }), by: sp.by, why: sp.why, ...(sp.standing && { standing: true as const }),
+      ...(results.has(sp.name) && { result: results.get(sp.name) }), by: sp.by, why: sp.why, ...(sp.standing && { standing: sp.standing }),
     }
   })
 }
@@ -167,40 +159,35 @@ export const resultLine = (r: KageletRow, now: number) => !r.result ? 'no report
 // owner (message_people, away), outlive the run (schedule) or need the owner (log_prod_write).
 // ToolSearch too: it only loads a deferred tool's schema, and the tool it loads still passes this check.
 const THREAD_TOOLS = [...['reply', 'edit_message', 'delete_message', 'report', 'message_kagelet'].map(t => `mcp__kage__${t}`), 'ToolSearch']
-// What a grant may name: web tools and outside MCP tools, an allowlist so a new built-in tool stays out. No file,
-// shell or agent tool, granted or not: one could rewrite the kagelet's own grant or read the env file with the
-// tokens. ponytail: a file grant needs a sandboxed work folder first.
+// What a grant may name: no act tool (core/access.ts), so no file, shell or agent tool: one could rewrite the
+// kagelet's own grant or read the env file with the tokens. ponytail: a file grant needs a sandboxed work folder first.
 const WEB_TOOLS = ['WebFetch', 'WebSearch']
 // The built-in tools a kagelet's session loads: its granted web tools and ToolSearch. Claude Code's default set leaves
 // WebFetch out (a subagent stands in for it), so the session names them.
 export const builtinTools = (grant: string[]) => [...grant.filter(t => WEB_TOOLS.includes(t)), 'ToolSearch']
-const grantable = (t: string) => t === DB_READ || t === 'WebFetch' || t === 'WebSearch' || (t.startsWith('mcp__') && !t.startsWith('mcp__kage__') && !t.startsWith('mcp__plugin_kage_'))
 
 // The grant only shrinks: a tool outside it is denied.
 export function grantRefusal(tool: string, grant: string[], input: Record<string, unknown> = {}) {
   if (THREAD_TOOLS.includes(tool)) return undefined
-  if (tool === `mcp__kage__${DB_READ}`) return grant.includes(DB_READ) ? undefined : `${DB_READ} is outside this kagelet's grant. Only the owner grants it.`
-  if (!grantable(tool)) return `A kagelet can be granted only web and MCP tools, not ${tool}. Say in the thread what you needed: your manager decides.`
+  if (tool === `mcp__kage__${DB_READ}`) return grant.includes(DB_READ) ? undefined : `${DB_READ} is outside this kagelet's grant. Say in the thread what you needed: your manager decides.`
+  if (kageletTier(tool) === 'act') return `A kagelet never holds ${tool}, whatever its grant says. Say in the thread what you needed: your manager asks the owner.`
   if (tool === 'WebFetch' && !/^https?:\/\//i.test(String(input.url ?? ''))) return 'A kagelet fetches only http and https addresses.'
   return grant.includes(tool) ? undefined
     : `${tool} is outside this kagelet's grant (${grant.join(', ') || 'no tools'}). Say in the thread what you needed: your manager decides.`
 }
 
-// A standing approval (#96): the owner's yes on a db_read card, kept in kage.db as the tool and a hash of the read
-// command (never the command: it may hold a host or a password). One per tool: a later yes replaces it.
-export type Standing = { tool: string; command: string; at: number }
-// It covers a later db_read grant through the same command, asked in the owner's own session (one that could show
-// the card). Never another tool, another command or a teammate's session, so never a write, a send or a cap raise.
-export const standingApplies = (a: Standing | undefined, r: { tool: string; command: string; owner: boolean }) =>
-  !!a && r.owner && a.tool === DB_READ && r.tool === a.tool && r.command === a.command
+// A standing approval: the owner's first yes on a card for a write tool, kept in kage.db as tool -> when. It covers
+// that tool for every later kagelet until revoked.
+export type Standing = Record<string, number>
 
-// Revoking a standing approval: every file that holds db_read by it, rewritten without db_read and its granted line.
+// Revoking one tool's standing approval: every file that holds that tool by it, rewritten without the tool.
 // A grant the owner gave on its own card stays: that yes was for that kagelet.
-export function revokeStanding(files: { name: string; text: string }[]): { name: string; text: string }[] {
+export function revokeStanding(files: { name: string; text: string }[], tool: string): { name: string; text: string }[] {
   return files.flatMap(f => {
     const k = parseKagelet(f.name, f.text)
-    if ('error' in k || !k.standing) return []
-    const text = f.text.replace(/^[ \t]*granted:.*\r?\n/m, '').replace(/^[ \t]*tools:.*$/m, `tools: ${k.tools.filter(t => t !== DB_READ).join(', ')}`)
+    if ('error' in k || !k.standing?.includes(tool)) return []
+    const left = k.standing.filter(t => t !== tool)
+    const text = f.text.replace(/^[ \t]*standing:.*\r?\n/m, left.length ? `standing: ${left.join(', ')}\n` : '').replace(/^[ \t]*tools:.*$/m, `tools: ${k.tools.filter(t => t !== tool).join(', ')}`)
     return [{ name: f.name, text }]
   })
 }
