@@ -63,7 +63,7 @@ function setup(o: { hubDown?: boolean; dir?: string; kagelet?: string; dbRead?: 
     afk: async c => { out.push(`afk ${JSON.stringify(c)}`); return 'AFK on' },
     kagelet: o.kagelet, dbRead: o.dbRead, approve: o.approve, event: (kind, detail) => { events.push(`${kind} ${detail}`) },
     onReport: r => { routed.push(`report ${JSON.stringify(r)}`) }, message: (to, text) => { routed.push(`message ${to} ${text}`); return `sent to ${to}` },
-    kagelets: { list: () => 'the list', manage: async (a, ask) => { out.push(`manage ${JSON.stringify(a)}`); return ask ? `asked: ${await ask({ kagelet: a.name, tools: 'db_read', job: 'j', read_command: 'r' })}` : 'managed' } },
+    kagelets: { list: () => 'the list', manage: async (a, ask) => { out.push(`manage ${JSON.stringify(a)}`); return ask ? `asked: ${await ask({ kagelet: a.name, tools: 'mcp__gmail__send', job: 'j' })}` : 'managed' } },
   })
   const call = (name: string, args: Record<string, unknown>) => t.tools.find(x => x.name === name)!.run(args)
   const task = (o: Partial<Task['meta']> & { fromOwner?: boolean } = {}): Task => ({
@@ -423,18 +423,18 @@ describe("a session's Kage tools", () => {
     assert.equal(lane.t.tools.some(x => x.name === 'kagelets' || x.name === 'manage_kagelet'), false)
     assert.equal(setup().t.tools.some(x => x.name === 'report'), false)
   })
-  test('manage_kagelet hands the manager the owner\'s card; a teammate\'s task never reaches it, and its db_read ask is logged', async () => {
+  test('manage_kagelet hands the manager the owner\'s card, which says the yes stands for the tool; a teammate\'s task never reaches it, and its ask is logged', async () => {
     const asked: unknown[] = []
     const s = setup({ approve: async (tool, description, input) => { asked.push([tool, description, input]); return true } })
     s.t.onTask(s.task())
-    const save = { channel: 'C1', thread_ts: '5.5', action: 'save', name: 'calls', tools: ['db_read'], read_command: 'r' }
+    const save = { channel: 'C1', thread_ts: '5.5', action: 'save', name: 'calls', tools: ['mcp__gmail__send'] }
     assert.equal((await s.call('manage_kagelet', save)).text, 'asked: true')
-    assert.deepEqual(asked, [['grant_kagelet', asked[0] && (asked[0] as string[])[1], { kagelet: 'calls', tools: 'db_read', job: 'j', read_command: 'r' }]])
-    assert.match((asked[0] as string[])[1]!, /calls: db_read\. The read command is this kagelet's own/)
+    assert.deepEqual(asked, [['grant_kagelet', asked[0] && (asked[0] as string[])[1], { kagelet: 'calls', tools: 'mcp__gmail__send', job: 'j' }]])
+    assert.match((asked[0] as string[])[1]!, /calls: mcp__gmail__send\. Your yes stands: a later kagelet that asks for mcp__gmail__send gets it with no card, until you revoke it/)
     s.t.onTask(s.task({ fromOwner: false }))
     assert.equal((await s.call('manage_kagelet', save)).isError, true)
     assert.equal(asked.length, 1)
-    assert.match(s.ledgers.text('grants'), /\tcalls\trefused\tnot the owner's task/)
+    assert.match(s.ledgers.text('grants'), /\tcalls\trefused\tnot the owner's task\tmcp__gmail__send/)
     // Without a card (tmux panes), the manager gets no way to ask.
     const pane = setup()
     pane.t.onTask(pane.task())

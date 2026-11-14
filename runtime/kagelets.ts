@@ -1,13 +1,14 @@
 // Kagelets (#57): the files in the kagelets folder become recurring schedules in a side lane of their thread,
 // at teammate trust, and the grants the runner enforces (core/kagelets.ts). The hub syncs them at start and
 // each minute, so adding, changing or deleting a file applies within a minute.
-import { createHash, randomUUID } from 'node:crypto'
+import { randomUUID } from 'node:crypto'
 import { existsSync, mkdirSync, readdirSync, readFileSync, renameSync, unlinkSync, writeFileSync } from 'node:fs'
 import { parseSessionKey } from '../core/conversations.ts'
-import { capCheck, chainErrors, COST_FLAG, DB_READ, DEFAULT_GRANT, MAX_CHAIN, NAME, parseKagelet, resultLine, revokeStanding, rowLine, setPaused, kageletFile, kageletRows, standingApplies, type Caps, type Kagelet, type KageletRow, type Standing } from '../core/kagelets.ts'
+import { capCheck, chainErrors, COST_FLAG, DB_READ, MAX_CHAIN, NAME, parseKagelet, resultLine, revokeStanding, rowLine, setPaused, kageletFile, kageletRows, type Caps, type Kagelet, type KageletRow, type Standing } from '../core/kagelets.ts'
 import { chainLine, chainViews, handoffDetail, whoOf } from '../core/events.ts'
 import { loopGuard } from '../core/agents.ts'
 import { messageInput, parseMessage, type KageletMessage } from '../core/kagelet-message.ts'
+import { kageletTier } from '../core/access.ts'
 import type { Store } from './store.ts'
 import type { Ledgers, runEvents } from './ledger.ts'
 import type { Task } from './protocol.ts'
@@ -95,30 +96,34 @@ export function syncKagelets(files: { name: string; text: string }[], store: Pic
   return grants
 }
 
-// The command a kagelet's db_read runs: KAGE_DB_READ_COMMAND wins, else the one the owner approved on that
-// kagelet's own card, so a yes for one never changes another's. Read on each call, so a yes applies with no restart.
+// The command a kagelet's db_read runs: KAGE_DB_READ_COMMAND wins, else the one this kagelet saved with.
+// Read on each call, so a change applies with no restart.
 const READ_COMMANDS = 'db-read-commands'
 // One command for every kagelet, from before each had its own: still read for a kagelet with none, never written.
 const OLD_READ_COMMAND = 'db-read-command'
-// The standing approval (core/kagelets.ts Standing), kept in the store beside the commands.
+// The standing approvals (core/kagelets.ts Standing), kept in the store beside the commands.
 const STANDING = 'standing-approvals'
 const commands = (store: Pick<Store, 'load'>) => (store.load(READ_COMMANDS) ?? {}) as Record<string, string>
 export const readCommand = (envCommand: string | undefined, store: Pick<Store, 'load'>, kagelet: string) =>
   envCommand || commands(store)[kagelet] || (store.load(OLD_READ_COMMAND) as string | undefined)
+const standings = (store: Pick<Store, 'load'>) => (store.load(STANDING) ?? {}) as Standing
 
 // The owner's answer to Kage's approval card (runtime/sdk-sessions.ts): true only on their yes.
-// tools: what the card grants beyond DEFAULT_GRANT. read_command: only with db_read.
-export type AskOwner = (card: { kagelet: string; tools: string; read_command?: string; job: string }) => Promise<boolean>
+// tools: the write tools the card grants.
+export type AskOwner = (card: { kagelet: string; tools: string; job: string }) => Promise<boolean>
 
 // The manager's side (Kage's owner sessions, runtime/kage-tools.ts): write, pause, run and remove kagelet files.
 // The hub syncs right after a change, so run works at once; the minute sync applies it anyway.
-// read_command: the read command Kage proposes with a db_read grant.
-// revoke: name is the tool (db_read), and its standing approval goes (core/kagelets.ts revokeStanding).
+// read_command: names one of the install's read commands for db_read. revoke: name is the tool.
 // No field here says who asked: the model fills every one, so none may widen a grant.
 export type Manage = { action: 'save' | 'pause' | 'resume' | 'run' | 'remove' | 'revoke'; name: string; thread?: string; schedule?: string; after?: string; tools?: string[]; job?: string; why?: string; read_command?: string }
 // tell: a DM to the owner.
 export function kageletManager(o: { dir: string; max: number; ledgers: { text(name: 'runs' | 'costs' | 'reports'): string } & Pick<Ledgers, 'add' | 'events'>; sync: (now: number) => void; runNow: (id: string, now: number) => string | undefined; store: Pick<Store, 'load' | 'save'>; envCommand?: string; log: (line: string) => void; tell: (text: string) => void }) {
+  // Once: the standing approval from before tiers ({ tool, command, at }) covered db_read alone, which is read now.
+  if (typeof (o.store.load(STANDING) as { tool?: unknown } | undefined)?.tool === 'string') o.store.save(STANDING, undefined)
   const rows = (now: number) => kageletRows(readKagelets(o.dir), { runs: o.ledgers.text('runs'), costs: o.ledgers.text('costs'), reports: o.ledgers.text('reports'), now })
+  // A grants row: kagelet, read | granted | standing | refused | revoked, why, the tools. Never a read command.
+  const row = (name: string, status: string, why: string, tools: string[]) => o.ledgers.add('grants', [name, status, why, tools.join(', ')])
   return {
     list(now: number): string {
       const all = rows(now)
@@ -131,22 +136,25 @@ export function kageletManager(o: { dir: string; max: number; ledgers: { text(na
       return [...all.map(r => `${rowLine(r, now)}\n  made by ${r.by === 'kage' ? 'Kage' : 'the owner'}${r.why ? `: ${r.why}` : ''}\n  last report: ${resultLine(r, now)}${flags.has(r.name) ? `\n  cost flag today: ${flags.get(r.name)}` : ''}`),
         ...chains.length ? [`Chains today:\n${chains.join('\n')}`] : []].join('\n')
     },
-    // ask: the owner's card, needed only to grant db_read.
+    // ask: the owner's card, needed only for a write tool no standing approval covers.
     async manage(a: Manage, now: number, ask?: AskOwner): Promise<string> {
       if (a.action === 'revoke') {
         // Files first, the store row last, and the files are read even with no row: a revoke that stopped halfway
         // finishes when run again.
-        const out = a.name === DB_READ ? revokeStanding(readKagelets(o.dir)) : []
-        if (!out.length && (a.name !== DB_READ || !o.store.load(STANDING))) return `There is no standing approval for ${a.name}.`
+        const tool = a.name
+        const yes = standings(o.store)
+        const out = revokeStanding(readKagelets(o.dir), tool)
+        if (!out.length && yes[tool] === undefined) return `There is no standing approval for ${tool}.`
         for (const f of out) {
           writeFileSync(`${o.dir}/${f.name}.md.new`, f.text, { mode: 0o600 })
           renameSync(`${o.dir}/${f.name}.md.new`, `${o.dir}/${f.name}.md`)
-          o.ledgers.add('grants', [f.name, 'revoked', `the owner revoked the standing approval for ${DB_READ}`])
-          o.log(`kagelet ${f.name}: ${DB_READ} revoked with the standing approval`)
+          row(f.name, 'revoked', 'the owner revoked its standing approval', [tool])
+          o.log(`kagelet ${f.name}: ${tool} revoked with the standing approval`)
         }
-        o.store.save(STANDING, undefined)
+        const { [tool]: _, ...rest } = yes
+        o.store.save(STANDING, Object.keys(rest).length ? rest : undefined)
         o.sync(now)
-        return `revoked the standing approval for ${DB_READ}. ${out.length ? `It no longer grants it to ${out.map(f => f.name).join(', ')}.` : 'No kagelet held it by that approval.'} The next ${DB_READ} grant asks the owner on a card.`
+        return `revoked the standing approval for ${tool}. ${out.length ? `It no longer grants it to ${out.map(f => f.name).join(', ')}.` : 'No kagelet held it by that approval.'} The next kagelet that asks for it asks the owner on a card.`
       }
       if (!NAME.test(a.name)) return `"${a.name}" is not a kagelet name: a short lowercase name, letters, digits, dashes.`
       const file = `${o.dir}/${a.name}.md`
@@ -169,69 +177,66 @@ export function kageletManager(o: { dir: string; max: number; ledgers: { text(na
         o.sync(now)
         return o.runNow(`kagelet-${a.name}`, now) ?? `${a.name} is running now. Its report shows in the list when it ends.`
       }
-      // What only the owner grants: every tool beyond DEFAULT_GRANT. The model writes every field of this call, in
-      // the owner's sessions too (thread content can steer one), so none of them can skip the card.
-      const wide = (a.tools ?? []).filter(t => !DEFAULT_GRANT.includes(t))
-      const db = wide.includes(DB_READ)
-      // Every save of a wider grant, granted or refused, leaves a ledger row and a log line. Never the command: it may hold a host.
+      // Kage approves by tier (core/access.ts), from code: the model writes every field of this call, in the
+      // owner's sessions too (thread content can steer one), so none of them can widen a grant.
+      const tools = a.tools ?? []
+      const old = existsSync(file) ? parseKagelet(a.name, readFileSync(file, 'utf8')) : undefined
+      const had = old && !('error' in old) ? old : undefined
+      const fresh = tools.filter(t => !had?.tools.includes(t))
+      // Every refused save that would have granted something new leaves a ledger row and a log line.
       const refuse = (why: string) => {
-        if (wide.length) { o.ledgers.add('grants', [a.name, 'refused', why]); o.log(`kagelet ${a.name}: ${wide.join(', ')} refused: ${why}`) }
+        if (fresh.length) { row(a.name, 'refused', why, fresh); o.log(`kagelet ${a.name}: ${fresh.join(', ')} refused: ${why}`) }
         return `not saved: ${why}`
       }
-      const old = existsSync(file) ? parseKagelet(a.name, readFileSync(file, 'utf8')) : undefined
       if (!old && readKagelets(o.dir).length >= o.max) return refuse(`this install has at most ${o.max} kagelets (KAGE_MAX_KAGELETS). Remove one first, or ask the owner to raise it.`)
       // after: refused when it names a missing kagelet, closes a cycle or goes too deep, with this file in place.
       const others = readKagelets(o.dir).filter(f => f.name !== a.name).map(f => parseKagelet(f.name, f.text)).filter((p): p is Kagelet => !('error' in p))
       // Also refused when it breaks a step after it (a tool taken away that the next step holds).
-      const errors = chainErrors([...others, { name: a.name, ...(a.after && { after: a.after }), tools: a.tools ?? [] }])
+      const errors = chainErrors([...others, { name: a.name, ...(a.after && { after: a.after }), tools }])
       const chained = errors.get(a.name) ?? [...errors].find(([n]) => others.some(x => x.name === n && x.after === a.name))?.[1]
       if (chained) return refuse(chained)
       // Who made it is what the hub knows: a file that exists keeps its maker (a hand-written one is the owner's),
       // and a new one is Kage's, since only Kage's tool writes it.
-      const by = old && !('error' in old) ? old.by : 'kage'
-      // approved: the owner's yes, by card or by standing approval. Checked once with it, so a file that would not
-      // run is refused before any card.
-      const fileText = (approved: boolean, standing = false, granted = now) => kageletFile({ thread: a.thread ?? '', schedule: a.schedule ?? '', ...(a.after && { after: a.after }), tools: a.tools ?? [], job: a.job ?? '', by, why: a.why ?? '', paused: !!old && !('error' in old) && old.paused, approved, ...(db && { granted, standing }) })
+      const by = had ? had.by : 'kage'
+      const fileText = (approved: boolean, standing: string[] = []) => kageletFile({ thread: a.thread ?? '', schedule: a.schedule ?? '', ...(a.after && { after: a.after }), tools, job: a.job ?? '', by, why: a.why ?? '', paused: !!had?.paused, approved, standing })
+      // Checked as if approved first, so an act tool or a file that would not run is refused before any card.
       const valid = fileText(true)
       if (typeof valid !== 'string') return refuse(valid.error)
-      let text = fileText(false)
-      if (wide.length) {
-        if (!ask) return refuse(`only the owner grants ${wide.join(', ')}, and this session cannot ask them`)
-        const command = db ? o.envCommand || a.read_command?.trim() || readCommand(undefined, o.store, a.name) : undefined
-        if (db && !command) return refuse(`${DB_READ} needs a read command: pass read_command, the owner's command that runs one read-only query`)
-        // The owner's earlier yes to this same command stands (#96) for db_read alone: no card, and the reason is
-        // logged. Only a session that could ask (checked above) gets here, so a teammate's never uses it.
-        const hash = command && createHash('sha256').update(command).digest('hex')
-        const yes = o.store.load(STANDING) as Standing | undefined
-        const standing = db && wide.length === 1 && standingApplies(yes, { tool: DB_READ, command: hash!, owner: true })
-        // The command before the job line, so a long job never pushes it past the card's cut. An env command is
-        // named, not shown: it is the one most likely to hold a host or a password.
-        const card = { kagelet: a.name, tools: wide.join(', '), ...(db && { read_command: o.envCommand ? 'KAGE_DB_READ_COMMAND, as set in the settings file' : command! }), job: (a.job ?? '').trim().split('\n')[0]!.slice(0, 300) }
-        if (!standing && !await ask(card)) return refuse(`the owner did not approve ${wide.join(', ')}`)
-        // Read before the save below: whether this kagelet already ran this command.
-        const own = !!o.envCommand || commands(o.store)[a.name] === command
-        if (db && !o.envCommand) o.store.save(READ_COMMANDS, { ...commands(o.store), [a.name]: command! })
-        if (standing) {
-          // A kagelet the owner approved on its own card keeps that grant when saved again with that same command, so
-          // a revoke leaves it. Another command is the standing approval's grant: the card never saw it.
-          const card = own && old && !('error' in old) && old.granted !== undefined && !old.standing ? old.granted : undefined
-          text = fileText(true, card === undefined, card ?? now)
-          o.ledgers.add('grants', [a.name, 'standing', `the owner's standing approval of ${new Date(yes!.at).toISOString()} covers ${DB_READ} through the same read command`])
-          o.log(`kagelet ${a.name}: ${DB_READ} granted by the standing approval`)
-          if (card === undefined) o.tell(`Kagelet *${a.name}* got ${DB_READ} by your standing approval, with no card. To revoke it: press v in the kagelets panel of kage top, or ask me to revoke the standing ${DB_READ} approval.`)
-        } else {
-          text = fileText(true)
-          if (db) o.store.save(STANDING, { tool: DB_READ, command: hash!, at: now } satisfies Standing)
-          o.ledgers.add('grants', [a.name, 'granted', 'the owner said yes on the card'])
-          o.log(`kagelet ${a.name}: ${wide.join(', ')} granted by the owner`)
-        }
+      // db_read reads through a command the install already has: KAGE_DB_READ_COMMAND, else one the owner approved
+      // before (kept in the store). A kagelet never brings a new one.
+      let command: string | undefined
+      if (tools.includes(DB_READ) && !o.envCommand) {
+        const known = [...new Set([...Object.values(commands(o.store)), o.store.load(OLD_READ_COMMAND) as string | undefined].filter((c): c is string => !!c))]
+        command = a.read_command?.trim() || commands(o.store)[a.name] || (known.length === 1 ? known[0] : undefined)
+        if (!known.length) return refuse(`${DB_READ} reads through the install's read command, and none is set: the owner sets KAGE_DB_READ_COMMAND`)
+        if (!command) return refuse(`${DB_READ}: pass read_command, one of the install's read commands`)
+        if (!known.includes(command)) return refuse(`a kagelet never gets a read command the install does not already have: the owner sets KAGE_DB_READ_COMMAND`)
       }
+      // Write tools: one it already held by a card or by hand stays; a standing approval covers the next; the rest
+      // take one card. Only a session that can ask the owner grants a write tool, standing approval or not.
+      const yes = standings(o.store)
+      const writes = tools.filter(t => kageletTier(t) === 'write')
+      const kept = writes.filter(t => had?.tools.includes(t) && !had.standing?.includes(t))
+      const standing = writes.filter(t => !kept.includes(t) && yes[t] !== undefined)
+      const card = writes.filter(t => !kept.includes(t) && yes[t] === undefined)
+      if ((card.length || standing.some(t => fresh.includes(t))) && !ask) return refuse(`only the owner grants ${[...card, ...standing].join(', ')}, and this session cannot ask them`)
+      if (card.length && !await ask!({ kagelet: a.name, tools: card.join(', '), job: (a.job ?? '').trim().split('\n')[0]!.slice(0, 300) })) return refuse(`the owner did not approve ${card.join(', ')}`)
+      const text = fileText(true, standing)
       if (typeof text !== 'string') return refuse(text.error)
+      if (card.length) o.store.save(STANDING, { ...yes, ...Object.fromEntries(card.map(t => [t, now])) })
+      if (command) o.store.save(READ_COMMANDS, { ...commands(o.store), [a.name]: command })
       mkdirSync(o.dir, { recursive: true, mode: 0o700 })
       writeFileSync(`${file}.new`, text, { mode: 0o600 })
       renameSync(`${file}.new`, file)
+      // What it got new, by whose yes. The owner hears of the no-card ones in the daily note (router.ts).
+      const reads = fresh.filter(t => kageletTier(t) === 'read')
+      if (reads.length) row(a.name, 'read', 'read tools: Kage grants them with no card', reads)
+      if (card.length) row(a.name, 'granted', 'the owner said yes on the card, and the yes stands for later kagelets', card)
+      const covered = standing.filter(t => fresh.includes(t))
+      if (covered.length) row(a.name, 'standing', `the owner's standing approval covers it`, covered)
+      if (fresh.length) o.log(`kagelet ${a.name}: ${fresh.join(', ')} granted`)
       o.sync(now)
-      return `saved ${a.name}: ${a.schedule || `after ${a.after}`}, tools ${(a.tools ?? []).join(', ') || 'none'}. It posts in its thread.`
+      return `saved ${a.name}: ${a.schedule || `after ${a.after}`}, tools ${tools.join(', ') || 'none'}. It posts in its thread.`
     },
   }
 }

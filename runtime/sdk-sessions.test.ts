@@ -48,7 +48,7 @@ function setup(o: { transcript?: boolean; silent?: boolean; dmFails?: boolean; g
     hub: () => d,
     tools: (_key, send, approve) => sessionTools({ title: 'Kage', bot: slack as any, user: slack as any, botDm: () => 'DBOT', dir, ledgers: openLedgers(dir), send, memory: { own: '/own', owner: '/owner' }, approve,
       // A manager that only asks the card and says the answer.
-      ...o.manager && { kagelets: { list: () => '', manage: async (a, ask) => `yes: ${await ask!({ kagelet: a.name, tools: 'db_read', read_command: '~/bin/read-sql', job: 'Count failed calls.' })}` } } }),
+      ...o.manager && { kagelets: { list: () => '', manage: async (a, ask) => `yes: ${await ask!({ kagelet: a.name, tools: 'mcp__gmail__send', job: 'Mail the count.' })}` } } }),
     hasTranscript: () => o.transcript ?? false,
     toHub: () => {},
     options: { cwd: '/home', settingSources: ['user'] },
@@ -308,14 +308,14 @@ describe('Kage sessions on the Agent SDK', () => {
     t.d.verdict(id2, { type: 'verdict', request_id: id2, behavior: 'deny' })
     assert.equal((await other).behavior, 'deny')
   })
-  test('a grant beyond the web tools gets one card, from the tool, that names the kagelet, its tools, its job and the command; only a yes passes', async () => {
+  test('a save gets no generic card: the tool decides by tier and raises its own card for a write tool; only a yes passes', async () => {
     const t = setup({ manager: true })
     t.d.task('C1:5.5', t.task(), 0)
     await tick()
-    // The generic card is skipped for it: the tool raises its own. Any other save still asks.
+    // The generic card is skipped for every save: read tools are Kage's to grant, and a write tool gets the tool's own card.
     let posts = t.posts.length
-    assert.equal((await t.sdk.runs[0]!.options.canUseTool('mcp__kage__manage_kagelet', { action: 'save', tools: ['db_read'] }, { signal: signal() })).behavior, 'allow')
-    // Any tool beyond WebSearch and WebFetch gets the tool's own card too.
+    for (const tools of [['db_read'], ['WebSearch'], []])
+      assert.equal(await Promise.race([t.sdk.runs[0]!.options.canUseTool('mcp__kage__manage_kagelet', { action: 'save', tools }, { signal: signal() }).then((r: { behavior: string }) => r.behavior), tick(50).then(() => 'card')]), 'allow', tools.join())
     assert.equal(await Promise.race([t.sdk.runs[0]!.options.canUseTool('mcp__kage__manage_kagelet', { action: 'save', tools: ['WebSearch', 'mcp__gmail__send'] }, { signal: signal() }).then((r: { behavior: string }) => r.behavior), tick(50).then(() => 'card')]), 'allow')
     assert.equal(t.posts.length, posts)
     // Only a save raises the tool's own card: remove or run with a tools field still gets the generic one.
@@ -327,13 +327,10 @@ describe('Kage sessions on the Agent SDK', () => {
     // Raced against a tick: a card here would wait for an answer forever, and the test would hang instead of failing.
     assert.equal(await Promise.race([t.sdk.runs[0]!.options.canUseTool('mcp__kage__manage_kagelet', { action: 'revoke', name: 'db_read' }, { signal: signal() }).then((r: { behavior: string }) => r.behavior), tick(50).then(() => 'card')]), 'allow')
     assert.equal(t.posts.length, posts)
-    void t.sdk.runs[0]!.options.canUseTool('mcp__kage__manage_kagelet', { action: 'save', tools: ['WebSearch'] }, { signal: signal() })
-    await tick()
-    assert.equal(t.posts.length, posts + 1)
-    const save = { channel: 'C1', thread_ts: '5.5', action: 'save', name: 'calls', tools: ['db_read'] }
+    const save = { channel: 'C1', thread_ts: '5.5', action: 'save', name: 'calls', tools: ['mcp__gmail__send'] }
     const yes = t.call('manage_kagelet', save)
     await tick()
-    assert.match(t.posts.at(-1)!, /Approve\?\* grant kagelet[\s\S]*kagelet: calls\ntools: db_read\nread_command: ~\/bin\/read-sql\njob: Count failed calls\./)
+    assert.match(t.posts.at(-1)!, /Approve\?\* grant kagelet[\s\S]*kagelet: calls\ntools: mcp__gmail__send\njob: Mail the count\./)
     const id = t.idOf(t.posts.at(-1)!)
     t.d.verdict(id, { type: 'verdict', request_id: id, behavior: 'allow' })
     assert.equal((await yes).content[0].text, 'yes: true')
@@ -377,7 +374,7 @@ describe('Kage sessions on the Agent SDK', () => {
     assert.deepEqual(await run('WebSearch'), {})
     assert.deepEqual(await run('mcp__kage__reply'), {})
     assert.match((await run('mcp__other__thing')).hookSpecificOutput.permissionDecisionReason, /outside this kagelet's grant/)
-    assert.match((await run('Bash')).hookSpecificOutput.permissionDecisionReason, /only web and MCP tools/)
+    assert.match((await run('Bash')).hookSpecificOutput.permissionDecisionReason, /never holds/)
     // A granted tool runs: the grant is the approval.
     assert.equal((await o.canUseTool('WebSearch', { query: 'x' }, { signal: signal() })).behavior, 'allow')
     // Two layers: Kage's tools that act as the owner are denied here too, not only by the hook.
@@ -411,7 +408,7 @@ describe('Kage sessions on the Agent SDK', () => {
     await hook(0)('WebSearch')
     await hook(0)('Bash')
     await hook(1)('Bash')
-    assert.deepEqual(t.tools.map(([k, tool, refused]) => [k, tool, refused && /only web and MCP tools/.test(refused)]), [
+    assert.deepEqual(t.tools.map(([k, tool, refused]) => [k, tool, refused && /never holds/.test(refused)]), [
       ['C1:5.5#side-kagelet-deploys', 'WebSearch', undefined],
       ['C1:5.5#side-kagelet-deploys', 'Bash', true],
     ])
