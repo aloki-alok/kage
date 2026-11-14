@@ -52,6 +52,8 @@ export function sdkSessions(o: {
   onTurn?: (key: string, tasks: Task[], limit?: Limit) => void
   // A kagelet lane (core/kagelets.ts): its grant. Only these tools, and it approves nothing.
   grantOf?: (key: string) => string[] | undefined
+  // A kagelet lane's tool call, for the event log: the tool's name and why it was refused, never its input.
+  onTool?: (key: string, tool: string, refused?: string) => void
   restartMs?: number
 }) {
   const sessions = new Map<string, Session>()
@@ -120,6 +122,7 @@ export function sdkSessions(o: {
               const i = input as { tool_name: string; tool_input?: Record<string, string> }
               const grant = o.grantOf?.(key)
               const reason = (grant && grantRefusal(i.tool_name, grant, i.tool_input ?? {})) || (privateToolRefusal(i.tool_name, s.sender) ?? voiceToolRefusal(i.tool_name, s.sender) ?? slackSendRefusal(i.tool_name) ?? ownerMemoryRefusal(i.tool_name, i.tool_input ?? {}, o.ownerMemory))
+              if (grant) o.onTool?.(key, i.tool_name, reason || undefined)
               return reason ? { hookSpecificOutput: { hookEventName: 'PreToolUse', permissionDecision: 'deny', permissionDecisionReason: reason } } : {}
             }],
           }],

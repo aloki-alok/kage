@@ -56,6 +56,7 @@ function setup(o: { transcript?: boolean; silent?: boolean; dmFails?: boolean; g
   const results: [string, number, boolean][] = []
   const blocks: [string, string[], string | null][] = []
   const turns: [string, string[], object | undefined][] = []
+  const tools: [string, string, string | undefined][] = []
   const posts: string[] = []
   const slack = {
     chat: { postMessage: async (a: { channel: string; text: string }) => {
@@ -86,6 +87,7 @@ function setup(o: { transcript?: boolean; silent?: boolean; dmFails?: boolean; g
     onResult: (key, total, resumed) => { results.push([key, total, resumed]) },
     onBlocked: (key, turn, category) => { blocks.push([key, turn.map(t => t.content), category]) },
     onTurn: (key, tasks, limit) => { turns.push([key, tasks.map(t => t.content), limit]) },
+    onTool: (key, tool, refused) => { tools.push([key, tool, refused]) },
   })
   let n = 0
   d = new Dispatcher<ToSession>(s.runner, { max: 2, idleMs: 60_000, connectMs: 60_000, evictMs: 1, newId: () => ID.slice(0, -1) + n++ })
@@ -95,7 +97,7 @@ function setup(o: { transcript?: boolean; silent?: boolean; dmFails?: boolean; g
     origin: { channel: o.channel ?? 'C1', ts: '5.5' },
   })
   const idOf = (text: string) => /`yes ([a-km-z]{5})`/.exec(text)![1]!
-  return { sdk, posts, d, s, task, idOf, results, blocks, turns, call, servers }
+  return { sdk, posts, d, s, task, idOf, results, blocks, turns, call, servers, tools }
 }
 
 describe('Kage sessions on the Agent SDK', () => {
@@ -384,6 +386,20 @@ describe('Kage sessions on the Agent SDK', () => {
     assert.equal(asked.behavior, 'deny')
     assert.match(asked.message, /approves nothing/)
     assert.deepEqual(t.posts, [])                  // no approval card reaches the owner
+  })
+  test("each tool call in a kagelet lane is logged with its refusal, if any; other sessions' calls are not", async () => {
+    const t = setup({ grants: { 'C1:5.5#side-kagelet-deploys': ['WebSearch'] } })
+    t.d.task('C1:5.5#side-kagelet-deploys', t.task(), 0)
+    t.d.task('C2:5.5', t.task({ channel: 'C2' }), 0)
+    await tick()
+    const hook = (i: number) => (tool_name: string) => t.sdk.runs[i]!.options.hooks.PreToolUse[0].hooks[0]({ hook_event_name: 'PreToolUse', tool_name, tool_input: {} }, undefined, { signal: signal() })
+    await hook(0)('WebSearch')
+    await hook(0)('Bash')
+    await hook(1)('Bash')
+    assert.deepEqual(t.tools.map(([k, tool, refused]) => [k, tool, refused && /only web and MCP tools/.test(refused)]), [
+      ['C1:5.5#side-kagelet-deploys', 'WebSearch', undefined],
+      ['C1:5.5#side-kagelet-deploys', 'Bash', true],
+    ])
   })
   // A call that brought back the owner's one-time code is the owner (core/gate.ts senderOf), so only a stranger's call is limited.
   test("on a stranger's voice call the hook allows only the reply tool", async () => {
