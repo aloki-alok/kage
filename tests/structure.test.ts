@@ -100,3 +100,11 @@ test('code marked "compat: remove after <date>" is gone by that date', () => {
   const due = files.flatMap(f => [...text.get(f)!.matchAll(/compat: remove after (\d{4}-\d{2}-\d{2})/g)].filter(m => m[1]! < today).map(m => `${f} (${m[1]})`))
   assert.deepEqual(due, [], 'past their removal date: delete the compat code')
 })
+
+// A child process gets the hub's whole environment only when it is trusted with it: git, the doctor, the owner's own
+// call command. Anything that opens outside content (a browser, a fetched page) gets a short allowlist (#207).
+const FULL_ENV_CHILDREN = ['router.ts', 'cli/call.ts', 'cli/doctor/context.ts', 'runtime/release.ts']
+test('only a trusted child process gets ...process.env', () => {
+  const spread = files.filter(f => /\.\.\.process\.env\b/.test(code(f)))
+  assert.deepEqual(spread.filter(f => !FULL_ENV_CHILDREN.includes(f)), [], 'give this child an env allowlist, or add it to FULL_ENV_CHILDREN with the reason')
+})
