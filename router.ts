@@ -24,7 +24,7 @@ import { memoryDirs } from './core/guards.ts'
 import { limitLine, pauseLine, stopLine } from './core/board.ts'
 import { placeFor, sessionKey, type Conversation, type Lane } from './core/conversations.ts'
 import { mayStop, senderOf } from './core/gate.ts'
-import { dailyDue, openWaiting, staleWaiting } from './core/ledgers.ts'
+import { dailyDue, grantsLine, openWaiting, staleWaiting } from './core/ledgers.ts'
 import { dreamDue, dreamTask, threadsSince } from './core/dream.ts'
 import { retro, retroDue } from './core/retro.ts'
 import { Dispatcher, mixRunners } from './core/sessions.ts'
@@ -361,8 +361,12 @@ async function dailyNote(now: number) {
   const today = dailyDue(now, readFile(DAILY).trim() || undefined)
   if (!today) return
   const stale = staleWaiting(ledgers.text('waiting'), now, 24 * 3600_000)
-  const sent = !stale.length || await slack.notifyOwner([`*Still waiting on you (${stale.length})*`,
-    ...stale.map(i => `• ${i.link ? `<${i.link}|${i.what}>` : i.what} (since ${i.when.slice(0, 10)})`)].join('\n'))
+  // The day before this note's 05:00 UTC, so a retried note neither skips nor repeats a grant.
+  const at = Date.parse(`${today}T05:00:00Z`)
+  const noCard = grantsLine(ledgers.text('grants'), at - 24 * 3600_000, at)
+  const parts = [...stale.length ? [[`*Still waiting on you (${stale.length})*`,
+    ...stale.map(i => `• ${i.link ? `<${i.link}|${i.what}>` : i.what} (since ${i.when.slice(0, 10)})`)].join('\n')] : [], ...noCard ? [noCard] : []]
+  const sent = !parts.length || await slack.notifyOwner(parts.join('\n\n'))
   // Marked only once the note went out (or there was nothing to say), so a failed post retries.
   if (sent) writeFileSync(DAILY, today, { mode: 0o600 })
 }

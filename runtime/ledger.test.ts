@@ -81,24 +81,29 @@ describe('the event log lives in kage.db beside the ledgers', () => {
     assert.deepEqual(l.events('2026-11-14'), [{ at: '2026-11-14T09:00:00.000Z', kind: 'run.start', who: 'deploys', trace: 't1', chain: 'c1', detail: 'job kagelet-deploys second line', transcript: '' }])
     assert.equal(l.events('2026-11-15')[0]!.transcript, '/p/s.jsonl')
   })
-  test('every grant row is also an event: a grant, or a refusal with its reason', () => {
+  test('every grant row is also an event, naming its tools: Kage\'s read grant, the owner\'s card, a standing approval, a refusal, a revoke', () => {
     const l = openLedgers(dir(), () => '2026-11-14T09:00:00.000Z')
-    l.add('grants', ['calls', 'granted', 'the owner said yes on the card'])
-    l.add('grants', ['calls', 'refused', "not the owner's task"])
+    l.add('grants', ['calls', 'read', 'read tools: Kage grants them with no card', 'WebSearch, db_read'])
+    l.add('grants', ['calls', 'granted', 'the owner said yes on the card', 'mcp__gmail__send'])
+    l.add('grants', ['other', 'standing', 'the owner\'s standing approval covers it', 'mcp__gmail__send'])
+    l.add('grants', ['calls', 'refused', "not the owner's task", 'mcp__stripe__create_refund'])
+    l.add('grants', ['other', 'revoked', 'the owner revoked its standing approval', 'mcp__gmail__send'])
+    // A row from before tiers has no tools cell: it was db_read.
+    l.add('grants', ['old', 'granted', 'the owner said yes on the card'])
     assert.deepEqual(l.events('2026-11-14').map(e => [e.kind, e.who, e.detail]), [
-      ['grant', 'calls', 'db_read: the owner said yes on the card'],
-      ['refusal', 'calls', "db_read: not the owner's task"],
+      ['grant', 'calls', 'WebSearch, db_read read: read tools: Kage grants them with no card'],
+      ['grant', 'calls', 'mcp__gmail__send: the owner said yes on the card'],
+      ['grant', 'other', 'mcp__gmail__send standing: the owner\'s standing approval covers it'],
+      ['refusal', 'calls', "mcp__stripe__create_refund: not the owner's task"],
+      ['revoke', 'other', 'mcp__gmail__send revoked: the owner revoked its standing approval'],
+      ['grant', 'old', 'db_read: the owner said yes on the card'],
     ])
   })
-  test('a standing grant, a revoke and a cost flag are events too, each with its reason (#96)', () => {
+  test('a cost flag is an event too (#96)', () => {
     const l = openLedgers(dir(), () => '2026-11-14T09:00:00.000Z')
-    l.add('grants', ['other', 'standing', 'the owner\'s standing approval of 2026-11-13T09:00:00.000Z covers db_read through the same read command'])
-    l.add('grants', ['other', 'revoked', 'the owner revoked the standing approval for db_read'])
     l.add('reports', ['cost:other', 'other: spent $0.90 today, over 3x its 7-day average of $0.10', ''])
     l.add('reports', ['other', 'all green', ''])   // a kagelet's own report is the report tool's event, not this one
     assert.deepEqual(l.events('2026-11-14').map(e => [e.kind, e.who, e.detail]), [
-      ['grant', 'other', 'db_read standing: the owner\'s standing approval of 2026-11-13T09:00:00.000Z covers db_read through the same read command'],
-      ['revoke', 'other', 'db_read revoked: the owner revoked the standing approval for db_read'],
       ['cost-flag', 'other', 'other: spent $0.90 today, over 3x its 7-day average of $0.10'],
     ])
   })

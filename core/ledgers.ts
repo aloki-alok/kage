@@ -84,3 +84,12 @@ export function spendSince(tsv: string, since: number): { key: string; usd: numb
   }
   return [...by.values()].sort((a, b) => b.usd - a.usd)
 }
+
+// The daily note's line on kagelet grants (runtime/kagelets.ts) made with no card from `from` up to `to`: Kage's
+// read grants and the owner's standing approvals. The grants ledger: when, kagelet, status, why, tools.
+export function grantsLine(tsv: string, from: number, to: number): string | undefined {
+  const by = { read: 'read', standing: 'your standing yes' } as Record<string, string>
+  const got = tsv.split('\n').map(l => l.split('\t')).filter(([at = '', , status = '']) => by[status] && Date.parse(at) >= from && Date.parse(at) < to)
+    .map(([, name, status, , tools]) => `${name} got ${tools} (${by[status!]})`)
+  return got.length ? `*Kagelet grants with no card*: ${got.join('; ')}. To take one back: v in kage top, or ask me.` : undefined
+}
