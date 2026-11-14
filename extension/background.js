@@ -1,6 +1,7 @@
 // Kage's Chrome extension (#114): polls the owner's own Kage hub for a command, runs it in this browser, and
 // posts the result back. It answers only its own hub, on this machine, with the token from its options.
-// The hub decides what a session may see (core/browser.ts); this side only reads.
+// The hub decides what a session may see and do (core/browser.ts, core/browser-act.ts). Every action that changes a
+// page reaches this side only after the owner's yes on the hub's approval card.
 
 const MAX_TEXT = 300_000   // the hub cuts further; this keeps one huge page from filling the post
 
@@ -27,6 +28,89 @@ const ops = {
     if (shown?.id !== t.id) throw new Error('the owner switched tabs during the capture, so it was thrown away')
     return { url: shown.url ?? '', png }
   },
+  async snapshot({ tabId }) {
+    return ready(await inPage(tabId, 'snapshot'))
+  },
+  // What a ref is right now, and what has focus, for the approval card: the hub names the control from this.
+  async describe({ tabId, ref }) {
+    return ready(await inPage(tabId, 'describe', [ref]))
+  },
+  // expect: the site and control the owner approved. page.js checks them, the view and the hit point in one go.
+  async click({ tabId, ref, expect }) {
+    const at = ready(await inPage(tabId, 'prepare', [ref, false, expect]))
+    // Press and release only, right after the hit test: a mouse move first would give the page's mousemove
+    // handlers a turn to lay something over the control between the check and the click.
+    const base = { x: at.x, y: at.y, button: 'left', clickCount: 1 }
+    await cdp(tabId, [['Input.dispatchMouseEvent', { ...base, type: 'mousePressed' }], ['Input.dispatchMouseEvent', { ...base, type: 'mouseReleased' }]])
+    return { url: at.url }
+  },
+  async type({ tabId, ref, text, expect }) {
+    const at = ready(await inPage(tabId, 'prepare', [ref, true, expect]))
+    await cdp(tabId, [['Input.insertText', { text: String(text) }]])
+    return { url: at.url }
+  },
+  async press({ tabId, key, expect }) {
+    const code = KEYCODES[key]
+    if (!code) throw new Error(`unknown key ${key}`)
+    const at = ready(await inPage(tabId, 'keyTarget', [expect]))
+    const k = { key, code: key, windowsVirtualKeyCode: code, nativeVirtualKeyCode: code, ...(key === 'Enter' && { text: '\r' }) }
+    await cdp(tabId, [['Input.dispatchKeyEvent', { ...k, type: 'keyDown' }], ['Input.dispatchKeyEvent', { ...k, type: 'keyUp' }]])
+    return { url: at.url }
+  },
+  // A picture of one control as the owner's screen shows it, for the approval card: CSS can draw text the DOM
+  // does not hold, so the picture is what the owner checks. Only for the front tab of its window.
+  async crop({ tabId, ref }) {
+    const t = await chrome.tabs.get(Number(tabId))
+    if (!t.active) throw new Error('that tab is not the front tab of its window')
+    const b = ready(await inPage(tabId, 'box', [ref]))
+    const shot = await (await fetch(await chrome.tabs.captureVisibleTab(t.windowId, { format: 'png' }))).blob()
+    const img = await createImageBitmap(shot)
+    const pad = 12, k = b.dpr || 1
+    const sx = Math.max(0, (b.x - pad) * k), sy = Math.max(0, (b.y - pad) * k)
+    const sw = Math.min(img.width - sx, (b.w + 2 * pad) * k), sh = Math.min(img.height - sy, (b.h + 2 * pad) * k)
+    if (sw < 1 || sh < 1) throw new Error('the control is outside the visible part of the tab')
+    const canvas = new OffscreenCanvas(sw, sh)
+    canvas.getContext('2d').drawImage(img, sx, sy, sw, sh, 0, 0, sw, sh)
+    const bytes = new Uint8Array(await (await canvas.convertToBlob({ type: 'image/png' })).arrayBuffer())
+    let bin = ''
+    for (let i = 0; i < bytes.length; i += 0x8000) bin += String.fromCharCode(...bytes.subarray(i, i + 0x8000))
+    return { url: b.url, png: `data:image/png;base64,${btoa(bin)}` }
+  },
+  async navigate({ tabId, url }) {
+    await chrome.tabs.update(Number(tabId), { url })
+    return { url }
+  },
+  async open({ url }) {
+    const tab = await chrome.tabs.create({ url, active: false })
+    await intoKageGroup(tab)
+    return { tabId: tab.id, url }
+  },
+}
+
+const run = async (tabId, func, args = []) => (await chrome.scripting.executeScript({ target: { tabId: Number(tabId) }, func, args }))[0]?.result
+// page.js in the page's isolated world, then one call into it. Its refs live there, out of the page's reach.
+async function inPage(tabId, method, args = []) {
+  await chrome.scripting.executeScript({ target: { tabId: Number(tabId) }, files: ['page.js'] })
+  return run(tabId, (m, a) => globalThis.__kage[m](...a), [method, args])
+}
+const ready = at => { if (!at) throw new Error('the page returned nothing'); if (at.refused) throw new Error(at.refused); return at }
+
+// Real input through the Chrome DevTools Protocol, so a page sees a trusted click or keystroke, as from a person.
+// Attached for one action only: Chrome shows its "is debugging this browser" bar meanwhile, which is the point.
+async function cdp(tabId, steps) {
+  const target = { tabId: Number(tabId) }
+  await chrome.debugger.attach(target, '1.3')
+  try { for (const [method, params] of steps) await chrome.debugger.sendCommand(target, method, params) }
+  finally { await chrome.debugger.detach(target).catch(() => {}) }
+}
+
+const KEYCODES = { Enter: 13, Tab: 9, Escape: 27, Backspace: 8, ArrowUp: 38, ArrowDown: 40, ArrowLeft: 37, ArrowRight: 39, PageUp: 33, PageDown: 34 }
+
+// Kage's own tabs sit in one group named Kage, so the owner sees at a glance what it opened.
+async function intoKageGroup(tab) {
+  const [g] = await chrome.tabGroups.query({ title: 'Kage', windowId: tab.windowId })
+  const groupId = await chrome.tabs.group({ tabIds: [tab.id], ...(g && { groupId: g.id }) })
+  if (!g) await chrome.tabGroups.update(groupId, { title: 'Kage', color: 'grey' })
 }
 
 const settings = () => chrome.storage.local.get({ hub: 'http://127.0.0.1:8791', token: '' })

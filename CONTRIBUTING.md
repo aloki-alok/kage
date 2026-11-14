@@ -10,6 +10,13 @@ npm run typecheck   # tsc --noEmit
 
 Tests live in a `tests/` folder inside the folder of the code they test: `core/gate.ts` is tested by `core/tests/gate.test.ts`.
 
+The Chrome extension (`extension/`) runs in a browser, so `npm test` cannot reach it. Its end-to-end check loads it into Chromium, pairs it the way `kage add browser` does, and attacks it with `extension/tests/e2e/page.html` (forged refs, overlays, mousemove traps, masked secrets). Run it after any change to `extension/`, `connectors/browser.ts` or `core/browser*.ts`:
+
+```sh
+uvx playwright install chromium                                          # once
+uv run --with playwright python extension/tests/e2e/run.py               # 16 checks, exits 1 on a failure
+```
+
 There is no build. Node runs the TypeScript files as they are, so write only syntax it can strip (`erasableSyntaxOnly` in `tsconfig.json` enforces it). A running hub restarts into new code by itself once every session is quiet (`runtime/code-stamp.ts`).
 
 Write logs to stderr only. In a tmux pane, stdout carries the channel protocol, so a stray `console.log` breaks it.
@@ -43,7 +50,7 @@ Write logs to stderr only. In a tmux pane, stdout carries the channel protocol, 
 | `hub.ts` | The hub's entry, run by the service: the log file's size, the boot count and the crash-loop DM, then `router.ts`. Node modules only, so a bad pull is still caught. `start.sh` only forwards old login items to `kage start`. |
 | `docs/settings.md` | Every setting in the env file. |
 | `AGENTS.md` | Setup steps for a coding agent. `CLAUDE.md` loads it and this file. |
-| `extension/` | Kage's Chrome extension (#114): plain JS, no build. It polls the hub (`connectors/browser.ts`) and reads tabs. |
+| `extension/` | Kage's Chrome extension (#114): plain JS, no build. It polls the hub (`connectors/browser.ts`), reads tabs, and acts in them through Chrome's debugger, one action at a time, after the owner's yes. |
 | `.claude-plugin/`, `.mcp.json`, `hooks/` | Used only when Kage is installed as a Claude Code plugin (tmux panes on the plugin route). |
 
 ### core/
@@ -67,6 +74,7 @@ Write logs to stderr only. In a tmux pane, stdout carries the channel protocol, 
 | `access.ts` | The access tiers: whether a kagelet's tool is read, write or act, from its name. |
 | `db-read.ts` | The check a `db_read` query passes: one read statement, capped. |
 | `browser.ts` | What a session may see of the owner's Chrome (#114): the block list, tabs shown by id, and a page's text quoted as data. |
+| `browser-act.ts` | Acting in the owner's Chrome: a page's controls as refs (labels quoted as data), which actions and keys are allowed, and the approval card's line, named from the page. |
 | `browser-pair.ts` | Pairing the Chrome extension with no paste: its fixed id, the helper's folder in each Chromium browser, and Chrome's message framing. `cli/browser-pair.ts` is the helper Chrome starts. |
 | `cron.ts` | Cron expressions, which schedules are due, and reading Claude Code's own cron jobs. |
 | `email.ts` | Email as a way to tag Kage: who may (the provider's DKIM signature, not only DMARC), the ask in the new text, and the reply-all kept to the owner's domains. The SES, S3 and SQS calls are `connectors/email.ts`. |
