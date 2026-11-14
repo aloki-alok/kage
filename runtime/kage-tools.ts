@@ -239,7 +239,8 @@ export function sessionTools(o: {
     async run(args) {
       const a = args as { channel: string; thread_ts: string; users: string[]; text: string; from?: string }
       const key = `${a.channel}:${a.thread_ts}`
-      if (!taskChannels.has(a.channel) || ['email', 'whatsapp', 'voice'].includes(a.channel)) return { isError: true, text: 'refused: only a task from a Slack thread may message people' }
+      // A call counts only when the owner proved it with the one-time code (connectors/voice.ts): a stranger may be talking.
+      if (!taskChannels.has(a.channel) || ['email', 'whatsapp'].includes(a.channel) || (a.channel === 'voice' && !ownerOnly(a))) return { isError: true, text: 'refused: only a task from a Slack thread or the owner\'s own call may message people' }
       // Anyone but the owner gets the tag, even when their task line names no teammate.
       const asker = ownerTask.get(key) === true ? undefined : askers.get(key) ?? { id: '', name: 'A teammate' }
       const ids = [...a.users, ...a.from ? [a.from] : []]
