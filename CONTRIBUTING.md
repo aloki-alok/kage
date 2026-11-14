@@ -91,7 +91,7 @@ Write logs to stderr only. In a tmux pane, stdout carries the channel protocol, 
 | `whatsapp.ts` | The owner's WhatsApp: the owner's tag is the only way in, the armed-chat stand-in, and the guard that reads every message before it leaves as the owner. The WAHA webhook and calls are `connectors/whatsapp.ts`. |
 | `afk.ts` | AFK mode: which threads the stand-in watches, when it posts or phones the owner, and what it may say. |
 | `blocks.ts` | When the safety check stops a turn: the line in the thread, the owner's DM, and whether the thread closes. |
-| `commands.ts` | Local slash commands (`KAGE_COMMANDS`). |
+| `commands.ts` | Local slash commands (`connectors.commands`). |
 | `auto-update.ts` | Whether the hub may move its own checkout to origin's `stable` tag, and the link to what changed. |
 | `preview.ts` | How an approval shows the call it asks about. |
 | `transcript.ts` | Turning a Claude Code transcript line into a line a person can follow. |

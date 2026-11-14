@@ -3,16 +3,16 @@
 // read now, so a new token from kage add browser reaches the extension with no paste. stdout is Chrome's channel:
 // nothing else may be written to it.
 import { frame, unframe } from '../core/browser-pair.ts'
-import { readEnv } from '../runtime/config-files.ts'
+import { readSettings } from '../runtime/config-files.ts'
 
 const ENV_FILE = process.env.KAGE_ENV || `${process.env.HOME}/.config/kage/env`
 
 function answer(): unknown {
-  let env
-  try { env = readEnv(ENV_FILE) } catch { return { error: `no settings in ${ENV_FILE.replace(/\/[^/]*$/, '')}: run kage setup` } }
-  const token = env.KAGE_BROWSER_TOKEN
+  let s
+  try { s = readSettings(ENV_FILE) } catch { return { error: `no settings in ${ENV_FILE.replace(/\/[^/]*$/, '')}: run kage setup` } }
+  const token = s.secrets.browserToken
   if (!token) return { error: 'Kage in Chrome is off: run kage add browser' }
-  return { token, hub: `http://127.0.0.1:${Number(env.KAGE_BROWSER_PORT) || 8791}` }
+  return { token, hub: `http://127.0.0.1:${s.config.connectors?.browser?.port || 8791}` }
 }
 
 const chunks: Buffer[] = []

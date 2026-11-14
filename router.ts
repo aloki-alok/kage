@@ -23,7 +23,6 @@ import { connectBrowser } from './connectors/browser.ts'
 import { blockList, unreadableBlocks } from './core/browser.ts'
 import { connectVoice } from './connectors/voice.ts'
 import { startWhatsApp } from './connectors/whatsapp.ts'
-import { parseCommands } from './core/commands.ts'
 import { memoryDirs } from './core/guards.ts'
 import { limitLine, pauseLine, stopLine } from './core/board.ts'
 import { placeFor, sessionKey, type Conversation, type Lane } from './core/conversations.ts'
@@ -32,8 +31,8 @@ import { dailyDue, grantsLine, openWaiting, staleWaiting } from './core/ledgers.
 import { dreamDue, dreamTask, threadsSince } from './core/dream.ts'
 import { retro, retroDue } from './core/retro.ts'
 import { Dispatcher, mixRunners } from './core/sessions.ts'
-import { reloader } from './core/settings.ts'
-import { readEnv, readSettings, sweepImported } from './runtime/config-files.ts'
+import { readSettings, setKey, sweepImported } from './runtime/config-files.ts'
+import { configWatcher } from './runtime/config-watch.ts'
 import { unknownNames } from './core/config.ts'
 import type { Task, ToSession } from './runtime/protocol.ts'
 import { postAsKage, sessionTools } from './runtime/kage-tools.ts'
@@ -51,13 +50,14 @@ import { codeStamp } from './runtime/code-stamp.ts'
 import { clearUpdatedFrom, markUpdatedFrom, pullMain, updatedNote, version } from './runtime/auto-update.ts'
 import { costCap, kageletDeliver, kageletManager, kageletRoutes, kageletsDir, ownerNotes, readCommand, readKagelets, syncKagelets } from './runtime/kagelets.ts'
 import { budgetLeft, COST_FLAG, costFlags, kageletRows } from './core/kagelets.ts'
-import { capError, chainCap, dailyCap, totalCap } from './core/kagelet-view.ts'
+import { chainCap, dailyCap, totalCap } from './core/kagelet-view.ts'
 import { askHub } from './cli/home.ts'
 import { hubLock } from './runtime/hub-lock.ts'
 import { npmCi, packagesStale, rotate } from './runtime/hub-log.ts'
 import { closedThreads } from './runtime/closed-threads.ts'
 
-const { ENV_FILE, NAME, Title, TEAMMATES, TRUSTED_APPS, env, need, bot, user } = load()
+const { ENV_FILE, NAME, Title, TEAMMATES, TRUSTED_APPS, config, secrets, bot, user } = load()
+const { harness = {}, kagelets: kl = {}, afk = {}, connectors: conn = {} } = config
 const DIR = dirname(ENV_FILE)
 const CODE = dirname(fileURLToPath(import.meta.url))
 // One hub per machine, checked before the store and Slack: two hubs on one Slack app split its events. A hub
@@ -77,15 +77,15 @@ const THREADS = `${DIR}/threads.json`
 const CLAUDE = process.env.KAGE_CLAUDE || (log('KAGE_CLAUDE is not set: start Kage with kage start'), process.exit(1))
 // A Mac stays awake while the hub runs. caffeinate -i stops idle sleep only: with the lid closed, Kage is offline.
 if (process.platform === 'darwin') spawn('caffeinate', ['-i', '-w', String(process.pid)], { stdio: 'ignore' }).on('error', () => {}).unref()
-const MAX = Number(env.KAGE_MAX_SESSIONS || 4)
-const IDLE_MIN = Number(env.KAGE_IDLE_MINUTES || 30)
+const MAX = harness.maxSessions || 4
+const IDLE_MIN = harness.idleMinutes || 30
 process.on('unhandledRejection', e => log('unhandled', e))
 // Every way the hub ends says why in the log: a signal (kage restart or stop), or a crash. An unhandled
 // promise only logs: the hub keeps running.
 for (const sig of ['SIGTERM', 'SIGINT', 'SIGHUP'] as const) process.on(sig, () => { log(`stopped by ${sig}`); process.exit(0) })
 process.on('uncaughtException', e => { log('crashed', e); process.exit(1) })
 let COMMANDS: Map<string, string>
-try { COMMANDS = parseCommands(env.KAGE_COMMANDS || '') } catch (e) { log(String(e)); process.exit(1) }
+COMMANDS = new Map(Object.entries(conn.commands ?? {}))
 
 // One SQLite file holds every conversation seen and the session working on each (runtime/store.ts).
 const store = openStore(`${DIR}/kage.db`)
@@ -159,28 +159,28 @@ const noteTrust = (key: string, t: Task) =>
 // AFK's P0 call, the same route as `kage call` (cli/call.ts): a one-time code, then the dialer.
 // The dialer may pass $KAGE_CALL_REASON to the voice agent. Resolves '' once placed, else why not.
 function phoneOwner(reason: string): Promise<string> {
-  const command = env.KAGE_CALL_COMMAND
-  if (!command) return Promise.resolve('no KAGE_CALL_COMMAND')
-  if (!voice) return Promise.resolve('voice is off (KAGE_VOICE_TOKEN)')
+  const command = conn.call?.command
+  if (!command) return Promise.resolve('no connectors.call.command')
+  if (!voice) return Promise.resolve('voice is off (voiceToken)')
   const p = spawn(command, { shell: true, stdio: 'ignore', env: { ...process.env, KAGE_CALL_CODE: voice.issueCode(), KAGE_CALL_REASON: reason.slice(0, 300) } })
   const timer = setTimeout(() => p.kill(), 60_000)   // a dialer that hangs reports as failed
   return new Promise(res => { p.on('error', e => res(String(e))); p.on('close', code => { clearTimeout(timer); res(code === 0 ? '' : `dialer exited ${code ?? 'on timeout'}`) }) })
 }
 // The Jev classifier for agent posts (core/jev.ts). A wrong setting leaves it off and says why, so Kage still starts.
-const jev = jevConfig(env)
+const jev = jevConfig(config.jev, secrets.jevKey)
 if (jev && 'error' in jev) log(`jev is off: ${jev.error}`)
 else if (jev) log(`jev checks ${jev.agents === 'all' ? 'every listed agent' : jev.agents.join(', ')} at threshold ${jev.threshold}`)
 
 const slack = await connectSlack({
-  dir: DIR, appToken: need('SLACK_APP_TOKEN'), bot, user, name: NAME, title: Title, teammates: TEAMMATES, apps: TRUSTED_APPS,
+  dir: DIR, appToken: secrets.slack!.app!, bot, user, name: NAME, title: Title, teammates: TEAMMATES, apps: TRUSTED_APPS,
   hub: { deliver, stop: (c, cut, by) => {
       const key = sessionKey(c, { lane: 'main' })
       return mayStop(by, slack.ids.owner, starters, key) ? stopThread(key, cut) : 'Only the owner, or the teammate whose task started this thread, can stop it.'
     }, verdict: (id, behavior) => d.verdict(id, { type: 'verdict', request_id: id, behavior }), status, heard: m => schedules.heard(m),
     posted: () => ledgers.text('posted'), ownerWrote: (chat, thread, text) => { for (const k of notes.wrote(grants.keys(), chat, thread, text)) runs.emit(k, 'owner-note', `${text.length} characters`) }, ...inbox },
-  // AFK mode is on unless KAGE_AFK=off. Its stand-in reads the owner's memory, read only.
+  // AFK mode is on unless afk.on is false. Its stand-in reads the owner's memory, read only.
   jev: jev && !('error' in jev) ? jevCheck(jev) : undefined,
-  afk: env.KAGE_AFK === 'off' ? undefined : { memory: memoryDirs(process.env.HOME!, ENV_FILE, env).owner, model: env.KAGE_AFK_MODEL || 'sonnet', saved: store, call: phoneOwner },
+  afk: afk.on === false ? undefined : { memory: memoryDirs(process.env.HOME!, ENV_FILE, harness).owner, model: afk.model || 'sonnet', saved: store, call: phoneOwner },
 })
 
 // threads.json came before the store: move it in once (the "dm" key needs the bot DM's id), then retire it.
@@ -203,23 +203,24 @@ const tmux = tmuxPanes({
   placeOf,
   onStart: () => store.saveSessions(d.saved()),
 })
-// Each thread runs as an Agent SDK session inside this process, unless KAGE_RUNTIME=tmux gives it a
+// Each thread runs as an Agent SDK session inside this process, unless harness.runtime is tmux gives it a
 // tmux pane. A missing SDK package falls back to panes.
 // Panes still running when the hub starts keep their thread (and their CronCreate jobs) until they
 // close; see mixRunners.
-const MEM = memoryDirs(process.env.HOME!, ENV_FILE, env)
+const MEM = memoryDirs(process.env.HOME!, ENV_FILE, harness)
 const PROJECT = claudeProject(process.cwd())   // both runners start sessions in the hub's folder, so transcripts live here
 // What each turn cost (runtime/ledger.ts costRecorder): `kage cost`, the kagelet caps and the cost flags read it.
 const recordCost = costRecorder(ledgers)
 // Kage in Chrome (#114): the owner's own browser, through Kage's extension, for the owner's own tasks only.
 rmSync(`${DIR}/browser-seen`, { force: true })   // a poll the last hub heard says nothing about this one
 let browserSeen = 0   // kage doctor reads browser-seen; written at most every 30 s, since the extension polls about every 25 s
-const browser = env.KAGE_BROWSER_TOKEN ? connectBrowser({ token: env.KAGE_BROWSER_TOKEN, port: Number(env.KAGE_BROWSER_PORT || 8791),
+const browser = secrets.browserToken ? connectBrowser({ token: secrets.browserToken, port: conn.browser?.port || 8791,
   onPoll: at => { if (at - browserSeen >= 30_000) { browserSeen = at; writeFileSync(`${DIR}/browser-seen`, String(at), { mode: 0o600 }) } } }) : undefined
 void browser?.listening.then(port => log(`browser on: 127.0.0.1:${port}/browser`), e => log('browser could not listen', e))
-const BROWSER_BLOCK = blockList(env.KAGE_BROWSER_BLOCK ?? '')
-for (const e of unreadableBlocks(env.KAGE_BROWSER_BLOCK ?? '')) log(`KAGE_BROWSER_BLOCK: "${e}" is not a site, so it blocks nothing`)
-const sdkLib = env.KAGE_RUNTIME === 'tmux' ? undefined : await (async () => ({
+const browserBlock = (conn.browser?.block ?? []).join(',')
+const BROWSER_BLOCK = blockList(browserBlock)
+for (const e of unreadableBlocks(browserBlock)) log(`connectors.browser.block: "${e}" is not a site, so it blocks nothing`)
+const sdkLib = harness.runtime === 'tmux' ? undefined : await (async () => ({
   lib: await import('@anthropic-ai/claude-agent-sdk'),
   // The same pinned Claude Code the panes run, not the copy bundled with the SDK.
   claude: execFileSync('/bin/sh', ['-c', 'command -v claude'], { encoding: 'utf8' }).trim(),
@@ -233,15 +234,14 @@ let grants = new Map<string, string[]>()
 let models = new Map<string, string>()   // lane key -> the model its file names
 const KAGELETS = kageletsDir(DIR, log)
 // The names from before the rename still read.
-const MAX_KAGELETS = Number(env.KAGE_MAX_KAGELETS || env.KAGE_MAX_SPECIALISTS || 10)
+const MAX_KAGELETS = kl.max || 10
 // Off unless set (#96); a value that does not read as dollars is said once, here.
-const CAPS = { each: dailyCap(env), total: totalCap(env), chain: chainCap(env) }
-if (capError(env)) log(capError(env)!)
+const CAPS = { each: dailyCap(kl), total: totalCap(kl), chain: chainCap(kl) }
 // Only the SDK runner enforces a grant, so with tmux panes no kagelet runs: their schedules are removed.
 // A kagelet over its daily cost cap is paused and flagged first, so this sync already drops its schedule.
 const kagelets = (now: number) => {
   let files = readKagelets(KAGELETS)
-  if (!sdk && files.length) { if (!kageletsRefused) log('kagelets need the Agent SDK runner (not KAGE_RUNTIME=tmux), so none runs'); kageletsRefused = true; files = [] }
+  if (!sdk && files.length) { if (!kageletsRefused) log('kagelets need the Agent SDK runner (harness.runtime is not tmux), so none runs'); kageletsRefused = true; files = [] }
   const ran = ledgers.text('runs'), costs = ledgers.text('costs')
   const rows = kageletRows(files, { runs: ran, costs, now })
   // Cost monitoring (#96): one line per kagelet a day in the reports ledger, where Kage reads it, and the event log. No DM.
@@ -257,7 +257,7 @@ const kagelets = (now: number) => {
   models = new Map(rows.filter(r => r.key && r.model && grants.has(r.key)).map(r => [r.key!, r.model!]))
 }
 // The manager's side, for Kage's owner sessions (runtime/kage-tools.ts), and the owner's notes to a kagelet.
-const manager = kageletManager({ dir: KAGELETS, max: MAX_KAGELETS, ledgers, sync: kagelets, runNow: (id, now) => schedules.runNow(id, now), store, envCommand: env.KAGE_DB_READ_COMMAND, log })
+const manager = kageletManager({ dir: KAGELETS, max: MAX_KAGELETS, ledgers, sync: kagelets, runNow: (id, now) => schedules.runNow(id, now), store, envCommand: kl.dbRead?.command ?? undefined, log })
 const notes = ownerNotes(store)
 // Chains and kagelet messages (#93): the hub hands one kagelet's output or message to another, with no Kage turn.
 const routes = kageletRoutes({ dir: KAGELETS, store, ledgers, runs, deliver: (key, task) => toSession(key, task),
@@ -270,9 +270,10 @@ const sdk = sdkLib ? sdkSessions({
     title: Title, bot, user, botDm: () => slack.ids.botDm, dir: DIR, ledgers, send, memory: MEM,
     schedules: { add: j => schedules.add(key, j, Date.now()), remove: id => schedules.remove(key, id), list: () => schedules.list(key) },
     afk: slack.afk?.command,
+    settings: { set: (key, value) => setKey(ENV_FILE, key, value) },
     kagelet: key.split('#side-kagelet-')[1],
     browser: browser && { call: browser.call, block: BROWSER_BLOCK },
-    dbRead: { command: () => readCommand(env.KAGE_DB_READ_COMMAND, store, key.split('#side-kagelet-')[1] ?? ''), maxRows: Number(env.KAGE_DB_READ_MAX_ROWS) || 200 },
+    dbRead: { command: () => readCommand(kl.dbRead?.command ?? undefined, store, key.split('#side-kagelet-')[1] ?? ''), maxRows: kl.dbRead?.maxRows || 200 },
     kagelets: { list: () => manager.list(Date.now()), manage: (a, ask) => manager.manage(a, Date.now(), ask) }, approve,
     event: (kind, detail) => runs.emit(key, kind, detail),
     onReport: r => routes.reported(key, r), message: (to, text) => routes.message(key, to, text),
@@ -429,43 +430,43 @@ function dream(now: number) {
   log('dream starts, memory saved to', snap)
   if (deliver(c, task, task.meta.place, 'side-dream') !== 'failed') writeFileSync(DREAMT, String(now), { mode: 0o600 })
 }
-// GitHub is on when KAGE_GITHUB_SECRET and KAGE_GITHUB_LOGIN are set: a webhook through a tunnel.
-const github = env.KAGE_GITHUB_SECRET && env.KAGE_GITHUB_LOGIN ? connectGithub({
-  saved: store, secret: env.KAGE_GITHUB_SECRET, login: env.KAGE_GITHUB_LOGIN, port: Number(env.KAGE_GITHUB_PORT || 8789), botDm: slack.ids.botDm,
+// GitHub is on when githubSecret and connectors.github.login are set: a webhook through a tunnel.
+const github = secrets.githubSecret && conn.github?.login ? connectGithub({
+  saved: store, secret: secrets.githubSecret, login: conn.github.login, port: conn.github.port || 8789, botDm: slack.ids.botDm,
   post: (text, thread) => bot.chat.postMessage({ channel: slack.ids.botDm, text, ...(thread && { thread_ts: thread }) }).then(r => r.ts, e => { log('github post failed', e); return undefined }),
   deliver: (c, task, place) => deliver(c, task, place),
   notify: text => void slack.notifyOwner(text),
-  perHour: Number(env.KAGE_GITHUB_PER_HOUR || 20), inbox,
+  perHour: conn.github.perHour || 20, inbox,
 }) : undefined
-void github?.listening.then(port => log(`github on: 127.0.0.1:${port}/github for @${env.KAGE_GITHUB_LOGIN}`))
-// Meetings are on when KAGE_MEETING_TOKEN is set: a finished transcript gets notes in its own DM thread.
-const meeting = env.KAGE_MEETING_TOKEN ? connectMeeting({
-  token: env.KAGE_MEETING_TOKEN, port: Number(env.KAGE_MEETING_PORT || 8790), botDm: slack.ids.botDm,
+void github?.listening.then(port => log(`github on: 127.0.0.1:${port}/github for @${conn.github?.login}`))
+// Meetings are on when meetingToken is set: a finished transcript gets notes in its own DM thread.
+const meeting = secrets.meetingToken ? connectMeeting({
+  token: secrets.meetingToken, port: conn.meeting?.port || 8790, botDm: slack.ids.botDm,
   post: text => bot.chat.postMessage({ channel: slack.ids.botDm, text }).then(r => r.ts, e => { log('meeting post failed', e); return undefined }),
   deliver: (c, task, place) => deliver(c, task, place),
   notify: text => void slack.notifyOwner(text),
-  perHour: Number(env.KAGE_MEETING_PER_HOUR || 10), inbox, untake: source => store.untake(source),
+  perHour: conn.meeting?.perHour || 10, inbox, untake: source => store.untake(source),
 }) : undefined
 void meeting?.listening.then(port => log(`meetings on: 127.0.0.1:${port}/meeting`))
 const email = connectEmail({
-  env, saved: store, name: NAME, deliver, inbox,
+  mail: { ...conn.email, accessKeyId: secrets.aws?.accessKeyId, secretAccessKey: secrets.aws?.secretAccessKey }, saved: store, name: NAME, deliver, inbox,
   failed: task => void slack.notifyOwner(`Could not start a session for ${task.meta.place}.`),
 })
-// Voice is on when KAGE_VOICE_TOKEN is set, unless KAGE_VOICE=off. A voice agent reaches it over a tunnel.
+// Voice is on when voiceToken is set, unless connectors.voice.on is false. A voice agent reaches it over a tunnel.
 const voice = connectVoice({
-  env, name: NAME, deliver,
+  voice: { ...conn.voice, token: secrets.voiceToken }, name: NAME, deliver,
   end: key => { if (key.startsWith('voice:')) d.end(key) },   // only the call's own session
   slot: key => d.hasFreeSlot(key),   // a call never evicts or queues ahead of the owner's threads
   failed: task => void slack.notifyOwner(`Could not start a session for ${task.meta.place}.`),
 })
 listenForCommands(slack.socket, { user, team: slack.ids.team!, commands: COMMANDS, ledgers })
 
-// WhatsApp is on when Kage's WAHA config exists, unless KAGE_WHATSAPP=off (the kill switch).
-const whatsapp = env.KAGE_WHATSAPP !== 'off' && existsSync(`${DIR}/waha/.env`) ? startWhatsApp({
-  dir: DIR, name: NAME, owner: slack.ownerName, env, inbox,
+// WhatsApp is on when Kage's WAHA config exists, unless connectors.whatsapp.on is false (the kill switch).
+const whatsapp = conn.whatsapp?.on !== false && existsSync(`${DIR}/waha/.env`) ? startWhatsApp({
+  dir: DIR, name: NAME, owner: slack.ownerName, whatsapp: conn.whatsapp ?? {}, inbox,
   notify: text => void slack.notifyOwner(text),
   // The stand-in reads only this folder: notes the owner wrote for it, never their whole memory.
-  memory: env.KAGE_WA_MEMORY || `${DIR}/wa-notes`,
+  memory: conn.whatsapp?.memory || `${DIR}/wa-notes`,
   onTask(t) {
     const task: Task = {
       type: 'task', content: t.content, fromOwner: true,
@@ -499,12 +500,14 @@ const BOOT_CODE = codeStamp(CODE)
 // The version of the code this hub runs, read once: kage status and kage doctor show it from this file.
 const VERSION = version(CODE)
 writeFileSync(`${DIR}/version`, `${VERSION}\n`, { mode: 0o600 })
+let configRestart = false   // set by the settings watcher below: restart once every session is quiet
 let npmFailedFor = 0   // the code stamp whose npm ci failed: not tried again until the code moves
 function selfUpdate(now: number) {
   const code = codeStamp(CODE)
-  if (code && code !== BOOT_CODE && now - code > 10_000 && d.quietEverywhere(now) && !limits.paused(now)) {
+  const newCode = code && code !== BOOT_CODE && now - code > 10_000
+  if ((newCode || configRestart) && d.quietEverywhere(now) && !limits.paused(now)) {
     // New code may need new packages: npm stamps node_modules/.package-lock.json on each install.
-    if (packagesStale(CODE)) {
+    if (newCode && packagesStale(CODE)) {
       if (npmFailedFor === code) return
       try { npmCi(CODE) } catch {
         npmFailedFor = code
@@ -512,7 +515,7 @@ function selfUpdate(now: number) {
         return
       }
     }
-    log('newer code is in place and every session is quiet: restarting into it')
+    log(newCode ? 'newer code is in place and every session is quiet: restarting into it' : 'settings changed and every session is quiet: restarting to apply them')
     process.exit(75)
   }
 }
@@ -533,7 +536,7 @@ runJobs([
   { name: 'limit pause', every: 20_000, run: now => limits.tick(now) },
   { name: 'daily note', every: 10 * 60_000, run: dailyNote },
   { name: 'self-update', every: 60_000, run: selfUpdate },
-  ...env.KAGE_AUTO_UPDATE === 'off' ? [] : [{ name: 'auto-update', every: 6 * 3_600_000, run: autoUpdate }],
+  ...config.autoUpdate === false ? [] : [{ name: 'auto-update', every: 6 * 3_600_000, run: autoUpdate }],
   // hub.ts rotates the log at each start; a hub that runs for weeks rotates it here.
   { name: 'hub-log', every: 3_600_000, run: () => rotate(`${DIR}/hub.log`) },
   { name: 'kagelets', every: 60_000, run: kagelets },
@@ -577,8 +580,14 @@ function tell(key: string, text: string): { ok: true; held?: true } | { refused:
   if (r === 'failed') { failed(task); return { refused: 'could not start a session there' } }
   return r === 'held' ? { ok: true, held: true } : { ok: true }
 }
-// kage reload: a changed allow list applies to the next message, with no restart and no turn cut (core/settings.ts).
-const reload = reloader({ boot: env, read: () => readEnv(ENV_FILE), apply: slack.allow, log })
+// Changed settings (runtime/config-watch.ts): the people lists apply to the next message with no turn cut, any other key
+// restarts the hub once every session is quiet (selfUpdate below), and a wrong file is refused. kage reload runs the same check.
+const watcher = configWatcher({
+  envFile: ENV_FILE, boot: { config, secrets }, log, apply: slack.allow, tell: text => void slack.notifyOwner(text),
+  event: (kind, keys) => ledgers.event({ kind, who: 'config', trace: '', detail: keys.join(', ') }),
+  restartWanted: yes => { configRestart = yes },
+})
+const reload = watcher.check
 listenForSessions(`${DIR}/router.sock`, d, { ...replies, failed, schedules, tell, reload, paused: () => limits.paused(), limitCounts: () => limits.counts,
   // kage restart and stop: a drain renewed by each ask. A turn that just ended does not hold them up: its follow-up
   // waits too. Nor does a thread open in a terminal: kage attach holds it again after the restart.
