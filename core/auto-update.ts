@@ -24,31 +24,61 @@ export function compareUrl(origin: string, from: string, to: string): string | u
   return m ? `https://github.com/${m[1]}/${m[2]}/compare/${from}...${to}` : undefined
 }
 
-// The soak gate (ADR 0008, 0013): a commit may become a release only after the owner's hub ran it for 24 hours.
-// since (the first boot of the run on this commit, see soakSince) and crashDmAt are ms since the epoch.
+// The soak (ADR 0008, 0013): a commit becomes a release only after it ran 24 hours, unbroken, on the owner's hub.
+// "Ran" is judged by a run: the boots from one commit until a boot on code that differs. Times are ms since the epoch.
 const DAY = 86_400_000
-export type Soak = { candidate: string; running: string; since?: number; crashDmAt?: number; doctorOk: boolean; now: number }
-export function soakGate(s: Soak): { ok: true } | { fail: string } {
-  const run = s.running.trim()
-  if (!run || !s.candidate.startsWith(run)) return { fail: `the hub runs ${run || 'an unknown version'}, not ${s.candidate.slice(0, 7)}` }
-  if (s.since === undefined) return { fail: 'the hub start time is unknown' }
-  const up = s.now - s.since
-  if (up < DAY) return { fail: `the hub has run it for ${Math.floor(up / 3_600_000)} hours, not 24` }
-  if (s.crashDmAt !== undefined && s.now - s.crashDmAt < DAY) return { fail: `a crash-loop DM went out ${Math.floor((s.now - s.crashDmAt) / 3_600_000)} hours ago` }
-  if (!s.doctorOk) return { fail: 'kage doctor is not "All good"' }
-  return { ok: true }
+const TEN_MIN = 600_000
+
+// A boot's commit, and whether the diff from the previous commit touches only files the hub never runs.
+export type Boot = { at: number; sha: string; inert: boolean }
+export type Run = { sha: string; start: number; end?: number; crashed: boolean }
+
+// One table: what the hub never runs. A match is a file whose change cannot alter the hub's behavior.
+const INERT: RegExp[] = [/\.md$/i, /^docs\/(?!.*\.[cm]?[jt]s$)/, /(^|\/)tests\//, /^(\.claude\/)?skills\/.*\.(md|txt)$/, /^LICENSE[\w-]*(\.(md|txt))?$/]
+// Only the version may change in these.
+const VERSION_FILES = /^(package\.json|package-lock\.json|\.claude-plugin\/[^/]+\.json)$/
+
+// Every changed file must be inert. versionOnly says a version file differs in its version alone.
+export const inertChange = (files: { path: string; versionOnly?: boolean }[]) =>
+  files.every(f => VERSION_FILES.test(f.path) ? f.versionOnly === true : INERT.some(r => r.test(f.path)))
+
+const same = (a: string, b: string) => a.startsWith(b) || b.startsWith(a)
+
+// Three boots inside ten minutes is the hub's own crash loop (hub.ts): the time of each boot that makes it so.
+const loops = (boots: Boot[]) => boots.filter((b, i) => i >= 2 && b.at - boots[i - 2]!.at < TEN_MIN).map(b => b.at)
+
+// Runs in time order. A boot on the same commit, or on one that differs only inertly, continues the run and
+// moves its commit forward. A crash voids the run it hits and starts a clean one at that moment, on the same commit.
+export function soakRuns(boots: Boot[], crashes: number[]): Run[] {
+  const events = [...boots.map(b => ({ t: b.at, b })), ...[...new Set([...crashes, ...loops(boots)])].map(t => ({ t, b: undefined }))]
+    .sort((x, y) => x.t - y.t || (x.b ? -1 : 1))
+  const runs: Run[] = []
+  for (const { t, b } of events) {
+    const cur = runs.at(-1)
+    if (!b) {
+      if (!cur) continue
+      Object.assign(cur, { crashed: true, end: t })
+      runs.push({ sha: cur.sha, start: t, crashed: false })
+    } else if (cur && (b.inert || same(cur.sha, b.sha))) cur.sha = b.sha
+    else {
+      if (cur) cur.end = b.at
+      runs.push({ sha: b.sha, start: b.at, crashed: false })
+    }
+  }
+  return runs
 }
 
-// The boots ledger ("<iso time>\t<sha>" per hub start, oldest first): when the unbroken run of boots on `sha` began.
-// A restart on the same commit keeps the clock. A boot on another commit ends the run, so only new code resets it.
-export function soakSince(boots: string, sha: string): number | undefined {
-  let since: number | undefined
-  for (const line of boots.split('\n').filter(Boolean).reverse()) {
-    const [at = '', s = ''] = line.split('\t')
-    if (!s || !(s.startsWith(sha) || sha.startsWith(s))) break
-    const t = Date.parse(at)
-    if (Number.isNaN(t)) break   // a row with no readable time ends the run: the gate then waits
-    since = t
-  }
-  return since
+// The newest commit that completed a clean 24-hour run and is ahead of the stable tag (ahead says which). It may be
+// older than what the hub runs now. With none, the fail line names the next candidate and when its gate opens.
+// doctorOk is read last by the caller, since it is slow: pass true first to learn whether it is needed.
+export type Gate = { ok: true; sha: string } | { fail: string; sha?: string; opensAt?: number }
+export function soakGate(s: { boots: Boot[]; crashes: number[]; now: number; doctorOk: boolean; ahead: (sha: string) => boolean }): Gate {
+  const runs = soakRuns(s.boots, s.crashes)
+  if (!runs.length) return { fail: 'no hub start is recorded yet' }
+  const done = runs.filter(r => !r.crashed && (r.end ?? s.now) - r.start >= DAY && s.ahead(r.sha)).at(-1)
+  if (done) return s.doctorOk ? { ok: true, sha: done.sha } : { fail: 'kage doctor is not "All good"', sha: done.sha }
+  const next = runs.at(-1)!
+  if (!s.ahead(next.sha)) return { fail: 'nothing newer than the stable tag has run on this hub yet' }
+  const opensAt = next.start + DAY
+  return { fail: `the next release candidate is ${next.sha}, its gate opens ${new Date(opensAt).toISOString()}`, sha: next.sha, opensAt }
 }
