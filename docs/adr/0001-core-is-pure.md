@@ -18,4 +18,4 @@ Files in `core/` do no file, network or process I/O. They import nothing from `r
 
 ## How it is checked
 
-Not yet enforced: no lint rule. Check by hand with `grep -nE "from '(node:)?(fs|child_process|net|http|https|os)'|from '\.\./(runtime|connectors|cli)/" core/*.ts`. The three files above are the only hits.
+`tests/structure.test.ts` (ADR 0014) fails `npm test` when a `core/` file does I/O, reads `process.env`, sets a timer, or imports outside `core/`. The files that still do are its `impureCore` debt list.

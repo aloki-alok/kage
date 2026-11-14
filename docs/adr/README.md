@@ -17,6 +17,7 @@ Each file records one rule Kage follows, why, and how it is checked. Read the on
 | [0011](0011-one-place-for-records.md) | Every record of what Kage did lives in one place | Accepted, partly built |
 | [0012](0012-specialist-kagelets-ship-their-own-skill.md) | A specialist kagelet ships with its own skill | Accepted, applies from the meeting bot on |
 | [0013](0013-releases-are-made-by-the-owners-hub.md) | The owner's hub makes releases and moves `stable` | Accepted |
+| [0014](0014-structure-is-a-test.md) | Structure rules are a test, and their debt only shrinks | Accepted |
 
 ## Format
 
