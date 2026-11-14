@@ -568,6 +568,7 @@ export function sessionTools(o: {
   const browser = o.browser
   if (browser && !name && !o.dreaming) {
     const where = { channel: s.describe('channel attribute from the task tag'), thread_ts: s.describe('thread_ts attribute from the task tag') }
+    const typedIn = new Map<string, string[]>()   // thread:tab -> fields Kage typed there since the last major step
     const refused = (args: Record<string, unknown>) => ownerOnly(args) ? undefined : { isError: true as const, text: "refused: only the owner's own task reads their browser" }
     // The event log (#94) keeps the tool, the site and the outcome, never the page's words.
     const seen = (tool: string, outcome: string) => o.event?.('tool', `${tool} ${outcome}`)
@@ -657,7 +658,11 @@ export function sessionTools(o: {
           }
           if ('ref' in act && !now.el) return { isError: true, text: 'that control is no longer on the page: take a new snapshot' }
           // Only a major step waits for a card (core/browser-act.ts majorAct); the rest runs on the owner's task.
-          const major = majorAct(act, target(now))
+          const tabKey = `${args.channel}:${args.thread_ts}:${tabId ?? 'new'}`
+          const openHosts = act.action === 'open' || act.action === 'navigate'
+            ? ((await browser.call('tabs', {})) as Tab[]).map(t => hostOf(t.url)) : []
+          const typed = typedIn.get(tabKey) ?? []
+          const major = majorAct(act, target(now), { openHosts, typed })
           if (major && !ask) return { isError: true, text: `refused: ${major}, which needs the owner's yes, and this session cannot ask them` }
           // A look at the page goes to the owner's DM just before the card, when the tab is in front. Best effort:
           // a background tab cannot be captured, and the card alone still names the site and the control.
@@ -670,7 +675,7 @@ export function sessionTools(o: {
               if (png && !blockedSite(shot.url, browser.block)) { await bot.filesUploadV2({ channel_id: o.botDm(), file: Buffer.from(png, 'base64'), filename: `kage-before-${act.action}.png` }); pictured = true }
             } catch { /* no picture: the card says so */ }
           }
-          const line = actCard(act, { url: now.url, el: target(now) }) + (pictured ? '' : ' (no picture: the tab is not in front, so check it yourself before you say yes)')
+          const line = actCard(act, { url: now.url, el: target(now) }) + (typed.length ? `, after it typed ${typed.join('; ')}` : '') + (pictured ? '' : ' (no picture: the tab is not in front, so check it yourself before you say yes)')
           if (major && !await ask!('browser_act', line, { site: hostOf(now.url), ...act })) {
             seen(step, 'refused: the owner said no')
             return { isError: true, text: 'the owner said no, so nothing was done. Ask them what to do instead.' }
@@ -688,6 +693,9 @@ export function sessionTools(o: {
           const t = target(now)
           const expect = act.action === 'open' || act.action === 'navigate' ? undefined : { host: hostOf(now.url), role: t?.role, name: t?.name }
           const r = await browser.call(act.action, { ...act, tabId, expect }) as { tabId?: number }
+          // What Kage typed shows on the next major card in this tab, and goes once a major step ran.
+          if (act.action === 'type') typedIn.set(tabKey, [...typed, `${t?.name || 'a field'} = "${act.text.slice(0, 80)}"`].slice(-5))
+          else if (major) typedIn.delete(tabKey)
           seen(step, `${hostOf(act.action === 'open' || act.action === 'navigate' ? act.url : now.url)} ok`)
           return { text: `done${r?.tabId ? `: opened as tab ${r.tabId}` : ''}. Take a new snapshot to see the page now.` }
         } catch (e) { seen(step, 'failed'); return failed(e) }
