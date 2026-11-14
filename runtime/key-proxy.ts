@@ -31,7 +31,7 @@ export function keyProxy(o: {
     const m = /^\/([0-9a-f]+)\/([^/?]+)(\/.*)?$/.exec(req.url ?? '')
     const key = m && tokens.get(m[1]!)
     if (!m || !key || !o.trusted(key)) return refuse(403, 'no key access for this session')
-    const host = m[2]!.toLowerCase()
+    const host = m[2]!   // exact match, no case folding: config hosts are lower case
     const name = Object.keys(o.routes).find(n => o.routes[n]!.host === host)
     const value = name && values.get(name)
     if (!name || !value) return refuse(403, `no key is set for ${host}`)
