@@ -13,6 +13,7 @@ import { builtinTools, grantRefusal } from '../core/kagelets.ts'
 import { approvalPreview } from '../core/preview.ts'
 import type { Dispatcher, Runner } from '../core/sessions.ts'
 import type { sessionTools } from './kage-tools.ts'
+import type { deferredApprovals } from './deferred-approvals.ts'
 import type { Limit } from './limit-pause.ts'
 import type { Task, ToSession } from './protocol.ts'
 
@@ -64,6 +65,9 @@ export function sdkSessions(o: {
   modelOf?: (key: string) => string | undefined
   // The SSM relay (runtime/ssm-relay.ts): an owner-only thread's env carries a token and the socket, so its ssh reaches AWS through the hub. issue returns nothing for any other thread.
   ssm?: { sock: string; issue: (key: string) => string | undefined; drop: (key: string) => void }
+  // Approvals that wait outside the session (#177): a card ends the turn instead of holding it, and the owner's yes
+  // starts a new turn that retries the call. Absent: the card holds the session until the owner answers.
+  deferred?: ReturnType<typeof deferredApprovals>
   restartMs?: number
 }) {
   const sessions = new Map<string, Session>()
@@ -134,6 +138,8 @@ export function sdkSessions(o: {
           // its own card, so the owner gets one, not two. A revoke only takes access away, so it needs none (the tool
           // still takes it from the owner's task only).
           : ALLOWED.includes(name) || (name === 'mcp__kage__manage_kagelet' && (input.action === 'save' || input.action === 'revoke')) ? Promise.resolve({ behavior: 'allow' as const, updatedInput: input })
+          : o.deferred?.take(key, name, input, Date.now()) ? Promise.resolve({ behavior: 'allow' as const, updatedInput: input })
+          : o.deferred && s.turn.length ? defer(key, s, name, x.title ?? x.description ?? '', input)
           : ask(key, s, name, x.title ?? x.description ?? '', input, x.signal),
         // The same rules as private-data-guard.ts, in-process. A failed check blocks the call.
         hooks: {
@@ -247,6 +253,19 @@ export function sdkSessions(o: {
         e => { log('permission prompt failed', e?.data?.error ?? e); done('deny') },
       )
     })
+  }
+
+  // The owner's card without the session waiting: the call is refused with an interrupt, so the turn ends and the
+  // slot frees. The owner's yes (router.ts) starts a turn that retries the same call, which passes once.
+  async function defer(key: string, s: Session, tool: string, description: string, input: Record<string, unknown>) {
+    const store = o.deferred!
+    const id = requestId()
+    try { await s.kage.askOwner({ id, tool, description, preview: approvalPreview(tool, input) }) } catch (e: any) {
+      log('permission prompt failed', e?.data?.error ?? e)
+      return { behavior: 'deny' as const, message: 'The owner did not approve this.' }
+    }
+    store.add({ id, key, tool, input, task: s.turn.at(-1)!.task }, Date.now())
+    return { behavior: 'deny' as const, interrupt: true, message: "The owner's card is posted. This turn ends here. When they answer, a new task says so." }
   }
 
   const denyAll = (s: Session) => { for (const done of [...s.asks.values()]) done('deny') }

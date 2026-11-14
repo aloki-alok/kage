@@ -18,12 +18,13 @@ import { sdkSessions } from '../sdk-sessions.ts'
 import { limitPause } from '../limit-pause.ts'
 import { openStore } from '../store.ts'
 import { fakeSdk } from './fake-sdk.ts'
+import { deferredApprovals } from '../deferred-approvals.ts'
 
 const tick = (ms = 5) => new Promise(r => setTimeout(r, ms))
 const ID = '11111111-1111-4111-8111-111111111111'
 const signal = () => new AbortController().signal
 
-function setup(o: { transcript?: boolean; silent?: boolean; dmFails?: boolean; grants?: Record<string, string[]>; manager?: boolean; budgets?: Record<string, number>; models?: Record<string, string>; trusted?: string[]; onResult?: (key: string, total: number, resumed: boolean) => void } = {}) {
+function setup(o: { transcript?: boolean; silent?: boolean; dmFails?: boolean; grants?: Record<string, string[]>; manager?: boolean; budgets?: Record<string, number>; models?: Record<string, string>; trusted?: string[]; deferred?: boolean; onResult?: (key: string, total: number, resumed: boolean) => void } = {}) {
   const sdk = fakeSdk(o)
   const dropped: string[] = []
   const results: [string, number, boolean][] = []
@@ -41,6 +42,7 @@ function setup(o: { transcript?: boolean; silent?: boolean; dmFails?: boolean; g
     users: { info: async () => ({}) },
   }
   const dir = mkdtempSync(join(tmpdir(), 'kage-sdk-'))
+  const approvals = deferredApprovals(openStore(':memory:'))
   const servers: Parameters<typeof createSdkMcpServer>[0][] = []
   // Calls a Kage tool of the newest session the way Claude would.
   const call = (name: string, args: object) => (servers.at(-1)!.tools!.find(x => x.name === name)!.handler as any)(args, {})
@@ -60,6 +62,7 @@ function setup(o: { transcript?: boolean; silent?: boolean; dmFails?: boolean; g
     codeDir: '/code/kage',
     ssm: { sock: '/cfg/ssm.sock', issue: key => o.trusted?.includes(key) ? `tok-${key}` : undefined, drop: key => { dropped.push(key) } },
     restartMs: 10,
+    ...o.deferred && { deferred: approvals },
     onResult: (key, total, resumed) => { results.push([key, total, resumed]); o.onResult?.(key, total, resumed) },
     budgetOf: key => o.budgets?.[key],
     modelOf: key => o.models?.[key],
@@ -76,7 +79,7 @@ function setup(o: { transcript?: boolean; silent?: boolean; dmFails?: boolean; g
   })
   // The card's request id, read from the ledger row the hub keeps for the card's message (the text carries no code).
   const idOf = (text: string) => cardAt(openLedgers(dir).text('posted'), 'DBOT', `9.${posts.lastIndexOf(text) + 1}`)!
-  return { sdk, posts, d, s, task, idOf, results, blocks, turns, call, servers, tools }
+  return { sdk, posts, d, s, task, idOf, approvals, results, blocks, turns, call, servers, tools }
 }
 
 describe('Kage sessions on the Agent SDK', () => {
@@ -340,6 +343,34 @@ describe('Kage sessions on the Agent SDK', () => {
     t.d.task('C1:5.5#side-kagelet-x', t.task(), 0)
     await tick()
     assert.equal(t.sdk.runs[0]!.options.env.KAGE_SSM_TOKEN, undefined)
+  })
+  test('a deferred approval ends the turn at once, holds no slot, and one yes lets one retry through', async () => {
+    const t = setup({ deferred: true })
+    t.d.task('C1:5.5', t.task(), 0)
+    await tick()
+    const use = (input: object) => Promise.race([t.sdk.runs[0]!.options.canUseTool('Bash', input, { signal: signal() }), tick(30).then(() => ({ behavior: 'held on the owner' }))])
+    const first = await use({ command: 'ls' })
+    assert.equal(first.behavior, 'deny')
+    assert.equal(first.interrupt, true)
+    assert.equal(t.posts.length, 1)
+    const id = t.idOf(t.posts[0]!)
+    assert.equal(t.d.verdict(id, { type: 'verdict', request_id: id, behavior: 'allow' }), false)   // no open ask holds the slot
+    assert.equal(t.approvals.answer(id, 'allow', Date.now())?.task.content, 'Task from Sam: hi')
+    assert.equal(t.approvals.answer(id, 'allow', Date.now()), undefined)
+    assert.deepEqual(await use({ command: 'ls' }), { behavior: 'allow', updatedInput: { command: 'ls' } })
+    assert.equal((await use({ command: 'ls' })).behavior, 'deny')
+    assert.equal(t.posts.length, 2)
+  })
+  test('a stored yes is spent even when no turn is open', async () => {
+    const t = setup({ deferred: true })
+    t.d.task('C1:5.5', t.task(), 0)
+    await tick()
+    t.sdk.runs[0]!.emit({ type: 'result', total_cost_usd: 0 })
+    await tick()
+    t.approvals.add({ id: 'abcde', key: 'C1:5.5', tool: 'Bash', input: { command: 'ls' }, task: t.task() }, Date.now())
+    t.approvals.answer('abcde', 'allow', Date.now())
+    const r = await Promise.race([t.sdk.runs[0]!.options.canUseTool('Bash', { command: 'ls' }, { signal: signal() }), tick(30).then(() => ({ behavior: 'held on the owner' }))])
+    assert.equal(r.behavior, 'allow')
   })
   test("an approval goes to the owner's DM and their yes or no reaches only the session that asked", async () => {
     const t = setup()

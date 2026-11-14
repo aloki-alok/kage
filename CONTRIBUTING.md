@@ -119,6 +119,7 @@ Write logs to stderr only. In a tmux pane, stdout carries the channel protocol, 
 | `ssm-relay.ts` | The SSM relay (#161): a unix socket where an owner thread's ssh asks the hub to run `aws ssm start-session`. `cli/ssm-proxy.ts` is the ssh ProxyCommand that connects to it. |
 | `scheduler.ts` | Runs due schedules as tasks in their thread. |
 | `limit-pause.ts` | The usage-limit pause: a turn that ends on the limit keeps its inbox message, its thread gets one notice, and the message replays at the reset. A kagelet message is never held here: it waits in the store. |
+| `deferred-approvals.ts` | An approval card that waits outside its session (#177): the turn ends when the card posts, the store keeps the card across a restart, the first answer wins, and a yes is spent by one retry of the same call. |
 | `closed-threads.ts` | A thread the safety check stopped: it starts on a new session, and a teammate's stays closed until the owner writes in it. |
 | `hub-lock.ts` | One hub per machine: a listening socket the OS frees when the hub dies. |
 | `hub-log.ts` | The hub log's rotation and the package check, shared by `hub.ts` and the hub. |
