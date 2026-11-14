@@ -45,7 +45,7 @@ function fakeSlack() {
   return { calls, posts, bot: client('bot'), user: client('owner') }
 }
 
-function setup(o: { settings?: { set(key: string, value: unknown): void }; hubDown?: boolean; dir?: string; kagelet?: string; dreaming?: string; dbRead?: { command: () => string | undefined; maxRows: number; timeoutMs?: number }; approve?: (tool: string, description: string, input: Record<string, unknown>) => Promise<boolean>; browser?: { call(op: string, args: Record<string, unknown>): Promise<unknown>; block: string[] } } = {}) {
+function setup(o: { settings?: { set(key: string, value: unknown): void }; hubDown?: boolean; dir?: string; kagelet?: string; dreaming?: string; dbRead?: { command: () => string | undefined; maxRows: number; timeoutMs?: number }; approve?: (tool: string, description: string, input: Record<string, unknown>) => Promise<boolean>; browser?: { call(op: string, args: Record<string, unknown>): Promise<unknown>; block: string[] }; meetbot?: { join(link: string): string } } = {}) {
   const slack = fakeSlack()
   const dir = o.dir ?? mkdtempSync(join(tmpdir(), 'kage-tools-'))
   const ledgers = openLedgers(dir)
@@ -61,7 +61,7 @@ function setup(o: { settings?: { set(key: string, value: unknown): void }; hubDo
       list: () => jobs,
     },
     afk: async c => { out.push(`afk ${JSON.stringify(c)}`); return 'AFK on' },
-    kagelet: o.kagelet, dreaming: o.dreaming, settings: o.settings, kageletMemory: { propose: (name: string, a: unknown, thread: string) => { out.push(`propose ${name} ${thread} ${JSON.stringify(a)}`); return 'proposed' }, decide: (d: unknown) => { out.push(`decide ${JSON.stringify(d)}`); return 'decided' }, open: () => 'open ones', notes: () => [] } as any, dbRead: o.dbRead, approve: o.approve, browser: o.browser, event: (kind, detail) => { events.push(`${kind} ${detail}`) },
+    kagelet: o.kagelet, dreaming: o.dreaming, settings: o.settings, kageletMemory: { propose: (name: string, a: unknown, thread: string) => { out.push(`propose ${name} ${thread} ${JSON.stringify(a)}`); return 'proposed' }, decide: (d: unknown) => { out.push(`decide ${JSON.stringify(d)}`); return 'decided' }, open: () => 'open ones', notes: () => [] } as any, dbRead: o.dbRead, approve: o.approve, browser: o.browser, meetbot: o.meetbot, event: (kind, detail) => { events.push(`${kind} ${detail}`) },
     onReport: r => { routed.push(`report ${JSON.stringify(r)}`) }, message: (to, text) => { routed.push(`message ${to} ${text}`); return `sent to ${to}` },
     kagelets: { list: () => 'the list', manage: async (a, ask) => { out.push(`manage ${JSON.stringify(a)}`); return ask ? `asked: ${await ask({ kagelet: a.name, tools: 'mcp__gmail__send', job: 'j' })}` : 'managed' } },
   })
@@ -870,5 +870,34 @@ describe('set_setting: the owner changes a setting through Kage, never by writin
     const r = await s.call('set_setting', { channel: 'C1', thread_ts: '5.5', key: 'connectors.voice.port', value: 0 })
     assert.equal(r.isError, true)
     assert.match(r.text, /port/)
+  })
+})
+
+describe('the meeting bot (#63)', () => {
+  const fakeBot = (asked: string[]) => ({ join: (link: string) => { asked.push(link); return link.includes('meet.google.com') ? '' : 'not a Google Meet link' } })
+  test("the owner's task sends the bot to a Meet link and is told it is on its way", async () => {
+    const asked: string[] = []
+    const s = setup({ meetbot: fakeBot(asked) })
+    s.t.onTask(s.task())
+    const r = await s.call('meeting_join', { channel: 'C1', thread_ts: '5.5', link: 'https://meet.google.com/abc-defg-hij' })
+    assert.equal(r.isError, undefined)
+    assert.match(r.text, /joining/)
+    assert.deepEqual(asked, ['https://meet.google.com/abc-defg-hij'])
+    const bad = await s.call('meeting_join', { channel: 'C1', thread_ts: '5.5', link: 'https://evil.example/x' })
+    assert.equal(bad.isError, true)
+    assert.match(bad.text, /not a Google Meet link/)
+  })
+  test("a teammate's task, a voice call and a kagelet never send the bot anywhere", async () => {
+    const asked: string[] = []
+    const s = setup({ meetbot: fakeBot(asked) })
+    s.t.onTask(s.task({ fromOwner: false }))
+    s.t.onTask(s.task({ channel: 'voice', thread_ts: 'voice:x', fromOwner: true }))
+    for (const [channel, thread_ts] of [['C1', '5.5'], ['voice', 'voice:x']]) {
+      const r = await s.call('meeting_join', { channel, thread_ts, link: 'https://meet.google.com/abc-defg-hij' })
+      assert.equal(r.isError, true)
+    }
+    assert.deepEqual(asked, [])
+    assert.equal(setup({ kagelet: 'calls', meetbot: fakeBot(asked) }).t.tools.some(x => x.name === 'meeting_join'), false)
+    assert.equal(setup().t.tools.some(x => x.name === 'meeting_join'), false)
   })
 })

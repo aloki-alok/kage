@@ -73,7 +73,7 @@ export function sdkSessions(o: {
   // Kage's own tools, approved for every session (hub.ts does the same for panes). browser_act raises its own
   // card, showing the control as the page labels it, so it is listed here to keep the owner from a second card. set_setting is the same: a safe key needs no card, a power key raises its own. Approved in canUseTool, not
   // allowedTools, which would skip the callback and makes the SDK warn on every session.
-  const ALLOWED = ['reply', 'edit_message', 'delete_message', 'send_file', 'message_people', 'schedule', 'unschedule', 'schedules', 'set_model', 'kagelets', 'review_kagelet_memory', 'browser_tabs', 'browser_read', 'browser_screenshot', 'browser_snapshot', 'browser_act', 'set_setting'].map(t => `mcp__kage__${t}`)
+  const ALLOWED = ['reply', 'edit_message', 'delete_message', 'send_file', 'message_people', 'schedule', 'unschedule', 'schedules', 'set_model', 'kagelets', 'review_kagelet_memory', 'browser_tabs', 'browser_read', 'browser_screenshot', 'browser_snapshot', 'browser_act', 'set_setting', 'meeting_join'].map(t => `mcp__kage__${t}`)
 
   function open(key: string, s: Session, carried: SDKUserMessage[] = []) {
     const inbox = makeInbox(carried)

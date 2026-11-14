@@ -288,6 +288,7 @@ const sdk = sdkLib ? sdkSessions({
     settings: { set: (key, value) => setKey(ENV_FILE, key, value) },
     kagelet: key.split('#side-kagelet-')[1], dreaming: key.split('#side-kdream-')[1], kageletMemory: kmem,
     browser: browser && { call: browser.call, block: BROWSER_BLOCK },
+    meetbot: meeting && { join: meeting.join },
     dbRead: { command: () => readCommand(kl.dbRead?.command ?? undefined, store, key.split('#side-kagelet-')[1] ?? ''), maxRows: kl.dbRead?.maxRows || 200 },
     kagelets: { list: () => manager.list(Date.now()), manage: (a, ask) => manager.manage(a, Date.now(), ask) }, approve,
     event: (kind, detail) => runs.emit(key, kind, detail),
