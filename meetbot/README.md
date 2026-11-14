@@ -1,6 +1,6 @@
 # Kage's meeting bot
 
-The bot joins a Google Meet in its own Chromium. It posts one chat line saying it takes notes, and it sends Meet's live captions to your Kage hub. It runs on any machine with a screen or Xvfb. It only calls out to the hub, so the machine opens no port.
+The bot joins a Google Meet in its own Chromium. It posts one chat line saying it takes notes, and it sends Meet's live captions to your Kage hub. When someone says Kage's name, the hub answers at the voice-call limits, and the bot speaks the answer into the call. When the call ends, the whole transcript goes to your DM with Kage as notes, with follow-ups that wait for your yes. It runs on any machine with a screen or Xvfb. It only calls out to the hub, so the machine opens no port.
 
 ## Run it
 
@@ -39,6 +39,7 @@ Then tell Kage in Slack: `@kage join https://meet.google.com/abc-defg-hij`. The 
 | `consent` | config.json | a line naming the bot | The chat line it posts when it joins. |
 | `chrome` | config.json | Playwright's Chromium | The browser to run. |
 | `profile` | config.json | `~/.config/kage-meetbot/chromium` | The browser profile. Sign in to a Google account here once if Meet refuses guests. |
+| `speak` | config.json | none | A command that reads Kage's answer on stdin and writes WAV audio to stdout: any TTS or voice pipeline. With none, or when it fails, the answer goes in the Meet chat. |
 | `meetingToken` | secrets.json | none | The hub's `meetingToken`. |
 
 ## Check a change

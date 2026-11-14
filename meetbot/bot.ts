@@ -2,14 +2,17 @@
 // join, drives its own Chromium into the Google Meet, and posts Meet's captions to the hub as speaker lines.
 // It only calls out: the hub is reached over the owner's tailnet at the meeting webhook, with the meeting token.
 // Everything it knows about Meet's page is page.js. Settings: ~/.config/kage-meetbot/config.json and secrets.json.
+import { spawn } from 'node:child_process'
 import { readFileSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { chromium, type Page } from 'playwright-core'
 
-export type Seg = { speaker: string; text: string; start: number }
-type Settings = { hub: string; name: string; consent: string; chrome?: string; profile: string; token: string }
+// What the hub sends (connectors/meeting.ts): go to a call, or speak an answer in it.
+export type Cmd = { seq: number; op: 'join'; link: string } | { seq: number; op: 'say'; call: string; text: string }
+export type Seg = { speaker: string; text: string; start: number; self?: boolean }
+type Settings = { hub: string; name: string; consent: string; chrome?: string; profile: string; token: string; speak?: string }
 
 const log = (...a: unknown[]) => console.error(new Date().toISOString(), ...a)
 const sleep = (ms: number) => new Promise(r => setTimeout(r, ms))
@@ -25,7 +28,7 @@ export function settings(dir = join(homedir(), '.config', 'kage-meetbot')): Sett
   if (!token) throw new Error('secrets.json: meetingToken is missing (the same token as the hub\'s meetingToken)')
   const name = str(c.name, 'Kage (notes)')
   return {
-    hub, token, name, chrome: str(c.chrome) || undefined, profile: str(c.profile, join(dir, 'chromium')),
+    hub, token, name, chrome: str(c.chrome) || undefined, profile: str(c.profile, join(dir, 'chromium')), speak: str(c.speak) || undefined,
     consent: str(c.consent, `${name} is taking notes for the meeting, and answers out loud when you say ${name.split(' ')[0]}.`),
   }
 }
@@ -34,6 +37,8 @@ export function settings(dir = join(homedir(), '.config', 'kage-meetbot')): Sett
 export async function attend(page: Page, link: string, o: {
   name: string; consent: string
   heard: (lines: Seg[]) => Promise<void> | void   // settled caption lines, about once a second
+  said?: string[]    // Kage's answers waiting to be spoken, filled by the poll loop
+  speak?: (text: string) => Promise<Buffer>   // text to WAV audio; with none, the answer goes in the Meet chat
   admitMs?: number   // how long to wait for the host to let Kage in
   aloneMs?: number   // with nobody else in the call this long, Kage leaves
   stop?: () => boolean
@@ -58,11 +63,15 @@ export async function attend(page: Page, link: string, o: {
   if (!admitted) throw new Error('nobody let Kage in')
   log('in the call')
 
-  // The consent line, before anything is heard.
-  if (await until(async () => (await mark('chatBox')) || (await click('chatOpen'), false), 10_000)) {
-    await page.fill('[data-kage="chatBox"]', o.consent)
+  const chat = async (text: string) => {
+    if (!await until(async () => (await mark('chatBox')) || (await click('chatOpen'), false), 10_000)) return false
+    await page.fill('[data-kage="chatBox"]', text)
     await page.press('[data-kage="chatBox"]', 'Enter')
-  } else log('no chat box: the consent line was not posted')
+    return true
+  }
+  // The consent line, before anything is heard.
+  if (!await chat(o.consent)) log('no chat box: the consent line was not posted')
+  await click('micOn')   // Meet may let a guest in muted
   if (!await click('captionsOn')) await page.keyboard.press('c')   // Meet's shortcut for captions
 
   const all: Seg[] = []
@@ -71,9 +80,15 @@ export async function attend(page: Page, link: string, o: {
   while (!o.stop?.()) {
     await sleep(1000)
     if (page.isClosed()) break
+    for (const text of o.said?.splice(0) ?? []) {
+      let spoken = false
+      if (o.speak) try { await k('say', (await o.speak(text)).toString('base64')); spoken = true } catch (e) { log('speaking failed, posting in chat:', String(e)) }
+      if (!spoken) await chat(text).catch(() => false)
+    }
     const lines = await k<{ speaker: string; text: string }[]>('settled').catch(() => [])
     if (lines.length) {
-      const segs = lines.map(l => ({ ...l, start: Math.round((Date.now() - t0) / 1000) }))
+      // Meet labels the bot's own speech "You"; it is kept for the notes and marked, so it never wakes Kage.
+      const segs = lines.map(l => ({ ...l, ...(l.speaker === 'You' || l.speaker === o.name ? { speaker: o.name, self: true } : {}), start: Math.round((Date.now() - t0) / 1000) }))
       all.push(...segs)
       await Promise.resolve(o.heard(segs)).catch(e => log('posting lines failed', String(e)))
     }
@@ -94,42 +109,70 @@ export function hub(s: Pick<Settings, 'hub' | 'token'>) {
       const r = await fetch(`${s.hub}/meetbot/next?after=${after}`, { headers: auth, signal: AbortSignal.timeout(40_000) })
       if (r.status === 204) return []
       if (!r.ok) throw new Error(`hub said ${r.status}`)
-      return await r.json() as { seq: number; op: string; link: string }[]
+      return await r.json() as Cmd[]
     },
     lines: async (call: string, segments: Seg[]) => {
       const r = await fetch(`${s.hub}/meetbot/segments`, { method: 'POST', headers: auth, body: JSON.stringify({ call, segments }) })
       if (!r.ok) throw new Error(`hub said ${r.status}`)
+    },
+    // The call is over: its live session ends, and the whole transcript goes to the notes webhook (/meeting).
+    ended: async (call: string, link: string, segments: Seg[]) => {
+      await fetch(`${s.hub}/meetbot/ended`, { method: 'POST', headers: auth, body: JSON.stringify({ call }) }).catch(() => {})
+      if (!segments.length) return
+      const r = await fetch(`${s.hub}/meeting`, { method: 'POST', headers: auth, body: JSON.stringify({ title: `Meet ${call}`, link, segments }) })
+      if (!r.ok) throw new Error(`hub said ${r.status} to the transcript`)
     },
   }
 }
 
 export const callId = (link: string) => new URL(link).pathname.slice(1)
 
-// One call at a time: a join that comes during a call waits for the next poll after it.
+// speak: a command that reads text on stdin and writes WAV audio to stdout (any TTS, or a voice pipeline's).
+export const speaker = (cmd: string) => (text: string) => new Promise<Buffer>((ok, fail) => {
+  const p = spawn(cmd, { shell: true, stdio: ['pipe', 'pipe', 'inherit'] })
+  const out: Buffer[] = []
+  p.stdout.on('data', (b: Buffer) => out.push(b))
+  p.on('error', fail)
+  p.on('close', code => code === 0 && out.length ? ok(Buffer.concat(out)) : fail(new Error(`speak exited ${code}`)))
+  p.stdin.end(text)
+})
+
+// The poll loop never waits on a call, so answers reach the call while it runs. One call at a time:
+// a join that comes during a call is dropped, with a log line.
 async function main() {
   const s = settings()
   const h = hub(s)
   log(`meeting bot up, hub ${s.hub}`)
+  let current: { call: string; said: string[] } | undefined
   let after = 0
   for (;;) {
     let cmds: Awaited<ReturnType<typeof h.next>>
     try { cmds = await h.next(after) } catch (e) { log('hub unreachable:', String(e)); await sleep(5000); continue }
     for (const c of cmds) {
       after = Math.max(after, c.seq)
-      if (c.op !== 'join' || !/^https:\/\/meet\.google\.com\/[a-z]{3}-[a-z]{4}-[a-z]{3}$/.test(c.link)) continue
-      const ctx = await chromium.launchPersistentContext(s.profile, {
-        headless: false, executablePath: s.chrome, viewport: { width: 1280, height: 800 },
-        args: ['--use-fake-ui-for-media-stream', '--autoplay-policy=no-user-gesture-required', '--disable-blink-features=AutomationControlled'],
-        ignoreDefaultArgs: ['--enable-automation'],
-      })
-      try {
-        await ctx.addInitScript({ path: PAGE_JS })
-        const page = ctx.pages()[0] ?? await ctx.newPage()
-        const call = callId(c.link)
-        await attend(page, c.link, { name: s.name, consent: s.consent, heard: segs => h.lines(call, segs) })
-      } catch (e) { log('call failed:', String(e)) } finally { await ctx.close().catch(() => {}) }
+      if (c.op === 'say') { if (current && current.call === c.call) current.said.push(c.text); continue }
+      if (!/^https:\/\/meet\.google\.com\/[a-z]{3}-[a-z]{4}-[a-z]{3}$/.test(c.link)) continue
+      if (current) { log('already in a call, not joining', c.link); continue }
+      const call = { call: callId(c.link), said: [] as string[] }
+      current = call
+      void runCall(s, h, c.link, call).finally(() => { current = undefined })
     }
   }
+}
+
+async function runCall(s: Settings, h: ReturnType<typeof hub>, link: string, call: { call: string; said: string[] }) {
+  const ctx = await chromium.launchPersistentContext(s.profile, {
+    headless: false, executablePath: s.chrome, viewport: { width: 1280, height: 800 },
+    args: ['--use-fake-ui-for-media-stream', '--autoplay-policy=no-user-gesture-required', '--disable-blink-features=AutomationControlled'],
+    ignoreDefaultArgs: ['--enable-automation'],
+  })
+  let all: Seg[] = []
+  try {
+    await ctx.addInitScript({ path: PAGE_JS })
+    const page = ctx.pages()[0] ?? await ctx.newPage()
+    all = await attend(page, link, { name: s.name, consent: s.consent, said: call.said, speak: s.speak ? speaker(s.speak) : undefined, heard: segs => h.lines(call.call, segs) })
+  } catch (e) { log('call failed:', String(e)) } finally { await ctx.close().catch(() => {}) }
+  await h.ended(call.call, link, all).catch(e => log('notes not sent:', String(e)))
 }
 
 if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) void main()
