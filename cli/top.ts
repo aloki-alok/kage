@@ -55,7 +55,7 @@ let confirmCut = ''
 let suspended = false
 let L: Layout | undefined            // the layout of the last frame, for mouse hits
 let panel = false, pick = 0, confirmRemove = ''
-let kagelets: KageletRow[] = [], kageletsAt = 0
+let kagelets: KageletRow[] = [], kageletsAt = 0, kageletsFailed = ''
 const CAP = dailyCap(parseEnv(existsSync(ENV_FILE) ? readFileSync(ENV_FILE, 'utf8') : ''))
 const KAGELETS = kageletsDir(DIR)
 
@@ -138,7 +138,7 @@ function refresh(now: number) {
 
 function readKageletRows(now: number) {
   kageletsAt = now
-  try { kagelets = kageletRows(readKagelets(KAGELETS), { runs: ledgerText(db, 'runs'), costs: ledgerText(db, 'costs'), reports: ledgerText(db, 'reports'), now }) } catch {}
+  try { kagelets = kageletRows(readKagelets(KAGELETS), { runs: ledgerText(db, 'runs'), costs: ledgerText(db, 'costs'), reports: ledgerText(db, 'reports'), now }); kageletsFailed = '' } catch (e) { kageletsFailed = `cannot read them: ${(e as Error).message}` }
 }
 
 // ---- the hub
@@ -427,8 +427,8 @@ function kageletPanel(now: number) {
   for (let y = y0; y <= y1; y++) put(0, y, ' '.repeat(W), 'w')
   put(x0, y0, `┏${'━'.repeat(w - 1)}┓`, 'g'); put(x0, y1, `┗${'━'.repeat(w - 1)}┛`, 'g')
   for (let y = y0 + 1; y < y1; y++) { put(x0, y, '┃', 'g'); put(right, y, '┃', 'g') }
-  const head = live ? `cap $${CAP.toFixed(2)} a day each` : 'hub offline: the keys need it'
-  put(x0 + 2, y0 + 1, `Kagelets (${kagelets.length})`, 'W'); put(right - head.length - 1, y0 + 1, head, live ? 'm' : 'R')
+  const head = clip(kageletsFailed || (live ? `cap $${CAP.toFixed(2)} a day each` : 'hub offline: the keys need it'), w - 20)
+  put(x0 + 2, y0 + 1, `Kagelets (${kagelets.length})`, 'W'); put(right - head.length - 1, y0 + 1, head, live && !kageletsFailed ? 'm' : 'R')
   put(x0 + 2, y0 + 2, '─'.repeat(w - 3), 'k')
   if (!kagelets.length) put(x0 + 3, y0 + 4, 'no kagelets yet', 'm')
   pick = clamp(pick, 0, Math.max(0, kagelets.length - 1))

@@ -321,8 +321,8 @@ case "${1:-}" in
   restart) cmd_restart "${@:2}" ;;
   reload) node cli/reload.ts ;;
   status) cmd_status ;;
-  # A word that is not a line count or -f: a kagelet's runs (cli/kagelet-logs.ts).
-  logs) if [[ -n ${2:-} && $2 != -f && ! $2 =~ ^[0-9]+$ ]]; then node cli/kagelet-logs.ts "$2"; else cmd_logs "${2:-}"; fi ;;
+  # A kagelet's name (it starts with a letter): its runs (cli/kagelet-logs.ts). Otherwise the hub log.
+  logs) if [[ ${2:-} =~ ^[a-z] ]]; then node cli/kagelet-logs.ts "$2"; else cmd_logs "${2:-}"; fi ;;
   cost) node cli/cost.ts "${@:2}" ;;
   schedules) node cli/schedules.ts ;;
   dream) node cli/dream.ts "${@:2}" ;;
