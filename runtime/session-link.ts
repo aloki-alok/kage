@@ -32,7 +32,7 @@ const alive = (pid: number) => {
 const heldKeys = (dir: string) => { try { return readdirSync(join(dir, 'held')).map(decodeURIComponent) } catch { return [] } }
 
 // At hub start, before any connector runs: hold again every thread whose terminal still runs.
-export function restoreHolds(dir: string, d: Dispatcher<ToSession>, now: number) {
+export function restoreHolds(dir: string, d: Dispatcher<ToSession>) {
   for (const key of heldKeys(dir)) {
     if (alive(holderOf(dir, key)) && 'id' in d.hold(key)) continue
     rmSync(holdFile(dir, key), { force: true })

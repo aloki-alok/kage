@@ -140,7 +140,7 @@ const deliver = (c: Conversation, task: Task, place: string, lane: Lane = 'main'
 function stopThread(key: string, cut: boolean): string {
   const now = Date.now()
   const end = (k: string) => {
-    const r = d.endThread(k, now, cut)
+    const r = d.endThread(k, cut)
     const dropped = 'ok' in r ? r.dropped.filter((m): m is Task => m.type === 'task') : []
     if (dropped.length) limits.turn(k, dropped, undefined, now)
     return { r, dropped: dropped.length }
@@ -374,7 +374,7 @@ limits.restore()
 // Panes still running from before this hub restarted keep working.
 d.adopt(Object.keys(saved).filter(k => runningAtStart.has(saved[k]!)), Date.now())
 // Threads still open in a terminal (kage attach) stay held: before any connector can deliver a task.
-restoreHolds(DIR, d, Date.now())
+restoreHolds(DIR, d)
 // Schedules live in the store and run as tasks in their thread (runtime/scheduler.ts).
 const schedules = scheduler({
   store, failed,

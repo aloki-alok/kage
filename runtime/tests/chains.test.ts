@@ -3,7 +3,7 @@
 // as router.ts wires them. The test plays each kagelet: it reports, then its turn ends with a result or a limit.
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { mkdirSync, mkdtempSync, symlinkSync, writeFileSync } from 'node:fs'
+import { mkdirSync, mkdtempSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { DatabaseSync } from 'node:sqlite'
 import { createSdkMcpServer, tool } from '@anthropic-ai/claude-agent-sdk'
@@ -405,7 +405,7 @@ test('a message turn cut before its end waits again, with no later turn needed t
   const h = await ab()
   assert.equal(h.routes.message(keyOf('a'), 'b', 'check this', NINE), 'sent to b')
   await tick()
-  h.d.endThread(keyOf('b'), NINE, true)             // kage stop --now on b's lane
+  h.d.endThread(keyOf('b'), true)             // kage stop --now on b's lane
   await tick()
   assert.deepEqual(h.states(), ['a>b t1 queued'])
   await h.pump(NINE + 60_000)
@@ -433,7 +433,7 @@ test('a restart delivers a waiting message, and again one no turn finished; read
   h.restart()
   h.routes.replay(NINE + 90_000)
   assert.deepEqual(h.states(), ['a>b t1 queued'])
-  h.d.endThread(keyOf('b'), NINE, true)             // the old hub's session is gone with it
+  h.d.endThread(keyOf('b'), true)             // the old hub's session is gone with it
   await tick()
   await h.pump(NINE + 100_000)
   assert.equal(h.tasksOf('b').length, 3)
@@ -469,12 +469,12 @@ test('a message an hour past its first turn, or its sending when no turn took it
   assert.match(h.routes.message(keyOf('a'), 'b', 'late', NINE), QUEUED('b'))
   await h.step('b')
   await h.pump(NINE + 50 * 60_000)
-  h.d.endThread(keyOf('b'), NINE, true)
+  h.d.endThread(keyOf('b'), true)
   await tick()
   await h.pump(NINE + 70 * 60_000)
   assert.equal(h.tasksOf('b').filter(t => t.handoff).length, 2)
   // Cut again: its hour still counts from the first turn, so it fails now.
-  h.d.endThread(keyOf('b'), NINE, true)
+  h.d.endThread(keyOf('b'), true)
   await tick()
   await h.pump(NINE + 111 * 60_000)
   assert.deepEqual(h.states(), [])

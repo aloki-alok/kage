@@ -11,7 +11,6 @@ import { connect, type Socket } from 'node:net'
 import { CWD, DIR } from './home.ts'
 import { pickThread } from './pick-thread.ts'
 
-const HOME = process.env.HOME!
 // Resume from the hub's working folder: Claude Code finds a session's transcript by folder.
 const SOCK = `${DIR}/router.sock`
 if (!existsSync(`${DIR}/kage.db`) || !existsSync(SOCK)) { console.error('Kage is not running: start it with kage start'); process.exit(1) }

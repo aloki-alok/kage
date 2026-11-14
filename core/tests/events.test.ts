@@ -2,8 +2,6 @@ import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { chainLine, chainViews, eventRow, whoOf, type KageEvent } from '../events.ts'
 
-const ev = (at: string, who: string, chain = '', kind: KageEvent['kind'] = 'tool'): KageEvent => ({ at, kind, who, trace: 't1', chain, detail: '', transcript: '' })
-
 test('an event row is one short line: no breaks, no tabs, cut at 200 characters', () => {
   const e = eventRow({ kind: 'report', who: 'deploys', trace: 't1', detail: `ok\n\tline two ${'x'.repeat(300)}` })
   assert.equal(e.detail.length, 200)

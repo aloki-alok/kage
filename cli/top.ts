@@ -374,7 +374,7 @@ function frame(t: number, since: number): string[] {
       put(x, l.moreY, clip(line, W - x - 2), 'g')
     }
     if (!l.live.length && !l.ended.length) put(l.lx, l.sepY, query ? 'no thread matches' : 'no threads yet', 'm')
-    if (open) detail(l, t, now, byKey)
+    if (open) detail(l, now, byKey)
     if (panel) kageletPanel(now)
   }
   footer(t)
@@ -384,7 +384,7 @@ function frame(t: number, since: number): string[] {
 
 const STATE_TONE: Record<State, string> = { asking: 'G', working: 'R', watching: 'w', quiet: 'm', starting: 'g', held: 'm', queued: 'g', closed: 'd' }
 // The open thread: its live feed from the transcript, the newest line typing in.
-function detail(l: Layout, t: number, now: number, byKey: Map<string, Row>) {
+function detail(l: Layout, now: number, byKey: Map<string, Row>) {
   const r = byKey.get(open!)
   if (!r) { open = undefined; return }
   const x0 = l.lx - 3, right = l.right, y0 = 4, y1 = Math.max(y0 + 8, H - 4), w = right - x0

@@ -40,7 +40,6 @@ export function configRefusal(tool: string, input: Record<string, unknown>, send
   const dir = dirname(envFile)
   // The forms a model types: absolute, the real path, ~, $HOME, and relative to the home folder sessions start in.
   const forms = [...new Set([dir, realish(dir), dir.startsWith(`${home}/`) ? dir.slice(home.length + 1) : ''])].filter(Boolean)
-  const esc = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
   // Each word of each path-like input, with ~ and $HOME expanded and ./, // and .. folded away.
   const words = Object.entries(input).filter(([k, v]) => !NOT_PATHS.has(k) && typeof v === 'string').map(([, v]) => v as string)
     .map(v => v.replace(/(^|[\s'"=:])~(?=\/)/g, `$1${home}`).replace(/\$\{?HOME\}?/g, home))

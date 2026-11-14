@@ -121,7 +121,7 @@ describe('the SSM relay', () => {
     const t = setup()
     const token = t.relay.issue('C1:5.5')!
     const run = (tok: string, input: string) => new Promise<{ out: string; err: string; code: number | null }>(ok => {
-      const p = execFile('node', [join(import.meta.dirname, '../../cli/ssm-proxy.ts'), ID, '22', 'us-west-1'], { env: { ...process.env, KAGE_SSM_SOCK: t.sock, KAGE_SSM_TOKEN: tok } }, (e, out, err) => ok({ out, err, code: p.exitCode }))
+      const p = execFile('node', [join(import.meta.dirname, '../../cli/ssm-proxy.ts'), ID, '22', 'us-west-1'], { env: { ...process.env, KAGE_SSM_SOCK: t.sock, KAGE_SSM_TOKEN: tok } }, (_e, out, err) => ok({ out, err, code: p.exitCode }))
       p.stdin!.end(input)
     })
     const good = await run(token, 'SSH-2.0-test\n')
@@ -129,7 +129,7 @@ describe('the SSM relay', () => {
     const bad = await run('wrong', 'x')
     assert.deepEqual([bad.out, bad.code], ['', 1])
     assert.match(bad.err, /kage ssm: no relay for this session/)
-    const none = await new Promise<{ err: string; code: number | null }>(ok => { const p = execFile('node', [join(import.meta.dirname, '../../cli/ssm-proxy.ts'), ID, '22'], { env: { PATH: process.env.PATH } }, (e, o, err) => ok({ err, code: p.exitCode })); p.stdin!.end() })
+    const none = await new Promise<{ err: string; code: number | null }>(ok => { const p = execFile('node', [join(import.meta.dirname, '../../cli/ssm-proxy.ts'), ID, '22'], { env: { PATH: process.env.PATH } }, (_e, _o, err) => ok({ err, code: p.exitCode })); p.stdin!.end() })
     assert.equal(none.code, 1)
     assert.match(none.err, /KAGE_SSM_TOKEN/)
   })

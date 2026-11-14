@@ -4,7 +4,7 @@ import { manifestUrl, upgradeSteps } from '../core/slack-scopes.ts'
 import { authTest, checkScopes } from '../runtime/slack-scopes.ts'
 import { settings } from './home.ts'
 
-const { config, secrets } = settings()
+const { secrets } = settings()
 const tokens = { user: secrets.slack?.user, bot: secrets.slack?.bot }
 const [cmd = ''] = process.argv.slice(2)
 const die = (msg: string): never => { console.error(msg); process.exit(1) }
