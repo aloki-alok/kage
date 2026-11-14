@@ -164,9 +164,8 @@ export function kageletManager(o: { dir: string; max: number; ledgers: { text(na
       }
       if (!existsSync(file) && a.action !== 'save') return `There is no kagelet named "${a.name}".`
       if (a.action === 'remove') {
+        // Its read command stays: the owner approved it for the install, and no card can bring one back.
         unlinkSync(file)
-        const { [a.name]: _, ...rest } = commands(o.store)
-        o.store.save(READ_COMMANDS, Object.keys(rest).length ? rest : undefined)
         o.sync(now)
         return `removed ${a.name}: its file and its schedule are gone.`
       }

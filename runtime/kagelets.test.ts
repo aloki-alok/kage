@@ -246,13 +246,13 @@ test('a kagelet never gets a read command the install does not already have', as
   assert.doesNotMatch(JSON.stringify([...t.grants, ...one.grants]) + t.logs.join('') + one.logs.join(''), /-sql/)
 })
 
-test('a removed kagelet\'s read command goes, and the others keep theirs', async () => {
+test('removing the last db_read kagelet keeps the read command the owner approved, so the next one may use it', async () => {
   const t = manager()
-  t.store.save('db-read-commands', { calls: '~/bin/read-sql --ro', other: '~/bin/other-sql' })
-  await t.m.manage({ action: 'save', name: 'other', ...calls }, 1)
-  await t.m.manage({ action: 'remove', name: 'other' }, 2)
-  assert.equal(readCommand(undefined, t.store, 'other'), undefined)
-  assert.equal(readCommand(undefined, t.store, 'calls'), '~/bin/read-sql --ro')
+  t.store.save('db-read-commands', { calls: '~/bin/read-sql --ro' })
+  await t.m.manage({ action: 'save', name: 'calls', ...calls }, 1)
+  await t.m.manage({ action: 'remove', name: 'calls' }, 2)
+  assert.match(await t.m.manage({ action: 'save', name: 'again', ...calls }, 3), /saved again/)
+  assert.equal(readCommand(undefined, t.store, 'again'), '~/bin/read-sql --ro')
 })
 
 const gmail = { ...job, tools: ['WebSearch', 'mcp__gmail__send'] }
