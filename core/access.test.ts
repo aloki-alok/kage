@@ -11,7 +11,7 @@ describe('a kagelet tool\'s tier comes from its name, never from the model', () 
       assert.equal(kageletTier(t), 'read', t)
   })
   test('an MCP tool that sends or changes something internal is write, and so is a name it cannot place', () => {
-    for (const t of ['mcp__gmail__send', 'mcp__notion__update_page', 'mcp__slack__post_message', 'mcp__linear__create_issue', 'mcp__x__get_or_create_label', 'mcp__x__notify'])
+    for (const t of ['mcp__gmail__send', 'mcp__notion__update_page', 'mcp__slack__post_message', 'mcp__linear__create_issue', 'mcp__x__get_or_create_label', 'mcp__x__notify', 'mcp__x__find_replace', 'mcp__x__get_upsert'])
       assert.equal(kageletTier(t), 'write', t)
   })
   test('prod, money, customers, access and deletes are act, even behind a read verb', () => {

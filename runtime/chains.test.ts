@@ -69,7 +69,7 @@ async function hub(o: { chainUsd?: number; capUsd?: number; max?: number } = {})
   })
   const sync = (now: number) => syncKagelets(readKagelets(kagelets), store, now, () => {})
   const schedules = scheduler({ store, deliver: toSession, failed: m => limits.turn('', [m], undefined, clock.now), ready: key => d.ready(key), trusted: () => false, ran: j => ledgers.add('runs', [j.id, j.key]) })
-  const manager = kageletManager({ dir: kagelets, max: 10, ledgers, sync, runNow: (id, now) => schedules.runNow(id, now), store, log: () => {}, tell: () => {} })
+  const manager = kageletManager({ dir: kagelets, max: 10, ledgers, sync, runNow: (id, now) => schedules.runNow(id, now), store, log: () => {} })
   const routesOn = () => kageletRoutes({ dir: kagelets, store, ledgers, runs, deliver: toSession,
     idle: key => d.ready(key) === 'ready' && d.hasFreeSlot(key), paused: now => limits.paused(now)?.until, capUsd: o.capUsd ?? 2, chainUsd: o.chainUsd, log: () => {} })
   routes = routesOn()

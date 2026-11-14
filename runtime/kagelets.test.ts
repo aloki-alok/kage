@@ -112,16 +112,16 @@ test('no more than the cap run: past it, a kagelet is logged and gets no schedul
 
 function manager(max = 10, envCommand?: string) {
   const dir = mkdtempSync(`${tmpdir()}/spec-`)
-  const ran: string[] = [], synced: number[] = [], logs: string[] = [], grants: string[][] = [], told: string[] = []
+  const ran: string[] = [], synced: number[] = [], logs: string[] = [], grants: string[][] = []
   const reports: string[] = []
   const store = openStore(':memory:')
   const m = kageletManager({
     dir, max, ledgers: { events: () => [], text: (n: string) => n === 'reports' ? reports.join('') : '', add: (n, cells) => { if (n === 'grants') grants.push(cells) } },
     sync: now => { synced.push(now) },
     runNow: id => { ran.push(id); return undefined },
-    store, envCommand, log: l => logs.push(l), tell: t => told.push(t),
+    store, envCommand, log: l => logs.push(l),
   })
-  return { dir, m, ran, synced, reports, store, logs, grants, told }
+  return { dir, m, ran, synced, reports, store, logs, grants }
 }
 const job = { thread: LINK, schedule: '0 9 * * *', tools: ['WebSearch'], job: 'Check the status page.', why: 'a daily check the owner asked for twice' }
 
@@ -155,7 +155,6 @@ test('a read tool is Kage\'s to grant: saved with no card, logged once with its 
   // Saved again: nothing new granted, so no second row.
   assert.match(await u.m.manage({ action: 'save', name: 'x', ...docs, schedule: '0 10 * * *' }, 2, o.ask), /saved x/)
   assert.deepEqual(o.cards, [])
-  assert.deepEqual(u.told, [])
   assert.deepEqual(u.grants.map(g => [g[0], g[1], g[3]]), [['x', 'read', 'WebSearch, WebFetch, mcp__docs__search']])
 })
 
@@ -177,7 +176,9 @@ test('a write tool asks the owner once; that yes stands for every later kagelet,
   assert.match(await u.m.manage({ action: 'save', name: 'y', ...gmail }, 4, yes.ask), /saved y/)
   assert.match(readFileSync(`${u.dir}/y.md`, 'utf8'), /^standing: mcp__gmail__send$/m)
   assert.equal(yes.cards.length, 1)
-  assert.deepEqual(u.told, [])
+  // A session that cannot ask the owner never adds a write tool, standing approval or not.
+  assert.match(await u.m.manage({ action: 'save', name: 'w', ...gmail }, 4), /not saved: .*cannot ask/)
+  u.grants.pop()
   // Another write tool is its own first yes.
   await u.m.manage({ action: 'save', name: 'z', ...job, tools: ['mcp__notion__update_page'] }, 5, yes.ask)
   assert.equal(yes.cards.length, 2)
@@ -289,7 +290,7 @@ test('an install from before tiers: its db_read standing approval goes once, and
   t.store.save('standing-approvals', { tool: 'db_read', command: 'hash-a', at: 1 })
   t.store.save('db-read-commands', { calls: '~/bin/read-sql --ro' })
   writeFileSync(`${t.dir}/calls.md`, `---\nthread: ${LINK}\nschedule: 0 9 * * *\ntools: WebSearch, db_read\nby: kage\nwhy: w\ngranted: db_read by standing approval, 2026-01-02T00:00:00.000Z\n---\nCount.\n`)
-  kageletManager({ dir: t.dir, max: 10, ledgers: { text: () => '', add: () => {}, events: () => [] }, sync: () => {}, runNow: () => undefined, store: t.store, log: () => {}, tell: () => {} })
+  kageletManager({ dir: t.dir, max: 10, ledgers: { text: () => '', add: () => {}, events: () => [] }, sync: () => {}, runNow: () => undefined, store: t.store, log: () => {} })
   assert.equal(t.store.load('standing-approvals'), undefined)
   assert.match(t.m.list(1), /calls\s+runs/)
   // A write tool then asks the owner for its first yes, as on a new install.

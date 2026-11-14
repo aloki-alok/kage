@@ -13,7 +13,7 @@ const READ_TOOLS = ['WebSearch', 'WebFetch', DB_READ]
 const READ_VERBS = new Set(['get', 'list', 'search', 'read', 'fetch', 'find', 'describe', 'lookup', 'view', 'show', 'count'])
 const WRITE_WORDS = new Set(['send', 'create', 'update', 'write', 'post', 'set', 'add', 'edit', 'put', 'patch', 'upload', 'reply', 'comment', 'move',
   'rename', 'save', 'submit', 'schedule', 'mark', 'start', 'stop', 'import', 'sync', 'publish', 'append', 'insert', 'modify', 'change', 'toggle',
-  'enable', 'disable', 'assign', 'approve', 'close', 'open', 'restore', 'reset', 'label', 'tag', 'draft', 'or', 'and'])
+  'enable', 'disable', 'assign', 'approve', 'close', 'open', 'restore', 'reset', 'label', 'tag', 'draft', 'replace', 'upsert', 'or', 'and'])
 // Any of these makes it act, whatever its verb.
 const ACT_WORDS = new Set(['delete', 'remove', 'destroy', 'drop', 'purge', 'erase', 'wipe', 'truncate', 'pay', 'payment', 'payments', 'refund',
   'charge', 'transfer', 'payout', 'invoice', 'billing', 'deploy', 'merge', 'release', 'rollback', 'migrate', 'migration', 'execute', 'exec', 'run',

@@ -234,7 +234,7 @@ const kagelets = (now: number) => {
   grants = syncKagelets(files, store, now, log, MAX_KAGELETS)
 }
 // The manager's side, for Kage's owner sessions (runtime/kage-tools.ts), and the owner's notes to a kagelet.
-const manager = kageletManager({ dir: KAGELETS, max: MAX_KAGELETS, ledgers, sync: kagelets, runNow: (id, now) => schedules.runNow(id, now), store, envCommand: env.KAGE_DB_READ_COMMAND, log, tell: text => void slack.notifyOwner(text) })
+const manager = kageletManager({ dir: KAGELETS, max: MAX_KAGELETS, ledgers, sync: kagelets, runNow: (id, now) => schedules.runNow(id, now), store, envCommand: env.KAGE_DB_READ_COMMAND, log })
 const notes = ownerNotes(store)
 // Chains and kagelet messages (#93): the hub hands one kagelet's output or message to another, with no Kage turn.
 const routes = kageletRoutes({ dir: KAGELETS, store, ledgers, runs, deliver: (key, task) => toSession(key, task),

@@ -117,8 +117,7 @@ export type AskOwner = (card: { kagelet: string; tools: string; job: string }) =
 // read_command: names one of the install's read commands for db_read. revoke: name is the tool.
 // No field here says who asked: the model fills every one, so none may widen a grant.
 export type Manage = { action: 'save' | 'pause' | 'resume' | 'run' | 'remove' | 'revoke'; name: string; thread?: string; schedule?: string; after?: string; tools?: string[]; job?: string; why?: string; read_command?: string }
-// tell: a DM to the owner.
-export function kageletManager(o: { dir: string; max: number; ledgers: { text(name: 'runs' | 'costs' | 'reports'): string } & Pick<Ledgers, 'add' | 'events'>; sync: (now: number) => void; runNow: (id: string, now: number) => string | undefined; store: Pick<Store, 'load' | 'save'>; envCommand?: string; log: (line: string) => void; tell: (text: string) => void }) {
+export function kageletManager(o: { dir: string; max: number; ledgers: { text(name: 'runs' | 'costs' | 'reports'): string } & Pick<Ledgers, 'add' | 'events'>; sync: (now: number) => void; runNow: (id: string, now: number) => string | undefined; store: Pick<Store, 'load' | 'save'>; envCommand?: string; log: (line: string) => void }) {
   // Once: the standing approval from before tiers ({ tool, command, at }) covered db_read alone, which is read now.
   if (typeof (o.store.load(STANDING) as { tool?: unknown } | undefined)?.tool === 'string') o.store.save(STANDING, undefined)
   const rows = (now: number) => kageletRows(readKagelets(o.dir), { runs: o.ledgers.text('runs'), costs: o.ledgers.text('costs'), reports: o.ledgers.text('reports'), now })

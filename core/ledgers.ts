@@ -91,5 +91,5 @@ export function grantsLine(tsv: string, from: number, to: number): string | unde
   const by = { read: 'read', standing: 'your standing yes' } as Record<string, string>
   const got = tsv.split('\n').map(l => l.split('\t')).filter(([at = '', , status = '']) => by[status] && Date.parse(at) >= from && Date.parse(at) < to)
     .map(([, name, status, , tools]) => `${name} got ${tools} (${by[status!]})`)
-  return got.length ? `*Kagelet grants with no card*: ${got.join('; ')}. To take one back: v in kage top, or ask me.` : undefined
+  return got.length ? `*Kagelet grants with no card*: ${got.join('; ')}. To end a write tool's standing yes: v in kage top, or ask me. A read grant ends when the kagelet is saved without it or removed.` : undefined
 }

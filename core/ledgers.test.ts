@@ -29,7 +29,7 @@ describe('the daily note of what waits on the owner', () => {
       tsvRow(['2026-11-04T05:01:00Z', 'late', 'read', 'w', 'WebFetch']),
     ].join('')
     assert.equal(grantsLine(rows, Date.parse('2026-11-03T05:00:00Z'), Date.parse('2026-11-04T05:00:00Z')),
-      '*Kagelet grants with no card*: calls got WebSearch, db_read (read); mailer got mcp__gmail__send (your standing yes). To take one back: v in kage top, or ask me.')
+      '*Kagelet grants with no card*: calls got WebSearch, db_read (read); mailer got mcp__gmail__send (your standing yes). To end a write tool\'s standing yes: v in kage top, or ask me. A read grant ends when the kagelet is saved without it or removed.')
     assert.equal(grantsLine(rows, Date.parse('2026-11-05T05:00:00Z'), Date.parse('2026-11-06T05:00:00Z')), undefined)
   })
 })

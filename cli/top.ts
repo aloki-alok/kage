@@ -18,6 +18,7 @@ import { HERO_BIG, HERO_SMALL } from '../core/hero.ts'
 import { schedulesIn } from '../runtime/store.ts'
 import { actionLine, dailyCap, PANEL_KEYS, panelLines, shownState, type PanelAction } from '../core/kagelet-view.ts'
 import { kageletRows, type KageletRow } from '../core/kagelets.ts'
+import { kageletTier } from '../core/access.ts'
 import { parseEnv } from '../core/settings.ts'
 import { kageletsDir, readKagelets } from '../runtime/kagelets.ts'
 import { eventsOn, ledgerText } from '../runtime/ledger.ts'
@@ -573,8 +574,9 @@ async function onKey(k: string) {
     else if (k === '\x1b[B' || k === 'j') pick = Math.min(kagelets.length - 1, pick + 1)
     else if (action && name) {
       if (action === 'remove') confirmRemove = name
-      // One revoke per tool it holds by standing approval: each takes that tool from every kagelet that got it so.
-      else if (action === 'revoke') { const tools = kagelets[pick]?.standing ?? []; if (!tools.length) say(`${name} holds no tool by standing approval.`); for (const t of tools) await act('revoke', t) }
+      // One revoke per write tool it holds, the one whose card made the approval too: each ends that tool's standing
+      // approval and takes it from every kagelet that got it so. The hub says when a tool has none.
+      else if (action === 'revoke') { const tools = (kagelets[pick]?.tools ?? []).filter(t => kageletTier(t) === 'write'); if (!tools.length) say(`${name} holds no write tool, so no standing approval.`); for (const t of tools) await act('revoke', t) }
       else await act(action, name)
     }
     return
