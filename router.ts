@@ -532,6 +532,8 @@ const BOOT_CODE = codeStamp(CODE)
 // The version of the code this hub runs, read once: kage status and kage doctor show it from this file.
 const VERSION = version(CODE)
 writeFileSync(`${DIR}/version`, `${VERSION}\n`, { mode: 0o600 })
+// Each boot with its commit: the auto-release soak runs from the first boot on one commit (core/auto-update.ts soakSince).
+ledgers.add('boots', [VERSION.split(' ')[0]!])
 let npmFailedFor = 0   // the code stamp whose npm ci failed: not tried again until the code moves
 function selfUpdate(now: number) {
   const code = codeStamp(CODE)
@@ -560,7 +562,7 @@ async function autoUpdate() {
 
 // The owner's hub makes the release that other installs follow (ADR 0013), daily. A skip logs one line and DMs nothing.
 async function autoRelease(now: number) {
-  const r = await releaseIfSoaked(CODE, DIR, VERSION, now).catch(e => ({ skip: `failed: ${e}`, broke: true }))
+  const r = await releaseIfSoaked(CODE, DIR, VERSION, ledgers.text('boots'), now).catch(e => ({ skip: `failed: ${e}`, broke: true }))
   if ('broke' in r) void slack.notifyOwner(`Kage's daily release stopped part way: ${r.skip}. kage release finishes it.`)
   if ('skip' in r) return log(`auto-release did nothing: ${r.skip}`)
   log(`auto-release made v${r.version}`)

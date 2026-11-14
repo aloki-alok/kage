@@ -1,6 +1,6 @@
 import { describe, test } from 'node:test'
 import assert from 'node:assert/strict'
-import { compareUrl, nextStep, soakGate } from '../auto-update.ts'
+import { compareUrl, nextStep, soakGate, soakSince } from '../auto-update.ts'
 
 const clean = { git: true, branch: 'main', dirty: false }
 
@@ -44,7 +44,7 @@ test('the compare link comes from the origin url, https or ssh', () => {
 describe('soakGate: the candidate ran on the owner hub for 24 hours', () => {
   const H = 3_600_000
   const now = 1_800_000_000_000
-  const ok = { candidate: 'abc1234def', running: 'abc1234', lastBootAt: now - 25 * H, crashDmAt: undefined, doctorOk: true, now }
+  const ok = { candidate: 'abc1234def', running: 'abc1234', since: now - 25 * H, crashDmAt: undefined, doctorOk: true, now }
   test('passes when the hub runs the commit, has been up 24 hours, doctor is all good and no crash DM', () => {
     assert.deepEqual(soakGate(ok), { ok: true })
   })
@@ -52,10 +52,10 @@ describe('soakGate: the candidate ran on the owner hub for 24 hours', () => {
     assert.deepEqual(soakGate({ ...ok, running: '1111111' }), { fail: 'the hub runs 1111111, not abc1234' })
   })
   test('fails when the hub started less than 24 hours ago', () => {
-    assert.deepEqual(soakGate({ ...ok, lastBootAt: now - 23 * H }), { fail: 'the hub has run it for 23 hours, not 24' })
+    assert.deepEqual(soakGate({ ...ok, since: now - 23 * H }), { fail: 'the hub has run it for 23 hours, not 24' })
   })
   test('fails when no start time is known', () => {
-    assert.deepEqual(soakGate({ ...ok, lastBootAt: undefined }), { fail: 'the hub start time is unknown' })
+    assert.deepEqual(soakGate({ ...ok, since: undefined }), { fail: 'the hub start time is unknown' })
   })
   test('fails when a crash-loop DM went out in the last 24 hours', () => {
     assert.deepEqual(soakGate({ ...ok, crashDmAt: now - 2 * H }), { fail: 'a crash-loop DM went out 2 hours ago' })
@@ -63,5 +63,34 @@ describe('soakGate: the candidate ran on the owner hub for 24 hours', () => {
   })
   test('fails when kage doctor is not all good', () => {
     assert.deepEqual(soakGate({ ...ok, doctorOk: false }), { fail: 'kage doctor is not "All good"' })
+  })
+})
+
+describe('soakSince: the clock runs from the first boot of an unbroken run on one commit', () => {
+  const H = 3_600_000
+  const t0 = Date.parse('2026-11-15T00:00:00Z')
+  const row = (h: number, sha: string) => `${new Date(t0 + h * H).toISOString()}\t${sha}`
+  const at = (h: number) => t0 + h * H
+  test('a restart on the same commit does not reset it, so the gate passes 24 hours after the first boot', () => {
+    const boots = [row(0, 'aaa1111'), row(10, 'aaa1111')].join('\n')
+    const since = soakSince(boots, 'aaa1111')
+    assert.equal(since, at(0))
+    assert.deepEqual(soakGate({ candidate: 'aaa1111xyz', running: 'aaa1111', since, doctorOk: true, now: at(24) }), { ok: true })
+  })
+  test('a boot on another commit resets the clock to that boot', () => {
+    const boots = [row(0, 'aaa1111'), row(20, 'bbb2222')].join('\n')
+    assert.equal(soakSince(boots, 'bbb2222'), at(20))
+    assert.equal(soakSince(boots, 'aaa1111'), undefined)
+    assert.deepEqual(soakGate({ candidate: 'bbb2222xyz', running: 'bbb2222', since: at(20), doctorOk: true, now: at(24) }), { fail: 'the hub has run it for 4 hours, not 24' })
+  })
+  test('going back to an older commit starts a new run on it', () => {
+    const boots = [row(0, 'aaa1111'), row(5, 'bbb2222'), row(9, 'aaa1111'), row(12, 'aaa1111')].join('\n')
+    assert.equal(soakSince(boots, 'aaa1111'), at(9))
+  })
+  test('no rows, or a different newest commit, give no start', () => {
+    assert.equal(soakSince('', 'aaa1111'), undefined)
+  })
+  test('a crash-loop DM inside the window still fails the gate', () => {
+    assert.deepEqual(soakGate({ candidate: 'aaa1111xyz', running: 'aaa1111', since: at(0), crashDmAt: at(15), doctorOk: true, now: at(25) }), { fail: 'a crash-loop DM went out 10 hours ago' })
   })
 })
