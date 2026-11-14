@@ -30,10 +30,10 @@ export async function bridge(page: Page, p: Pipeline, log: (...a: unknown[]) => 
       if (++frames === 1 || frames % 100 === 0) log('voice agent audio frames', frames, 'bytes', m.media.payload.length)
       void page.evaluate(b => (window as any).__kage.play(b), m.media.payload).catch(err => log('playing failed:', String(err)))
     }
-    else if (m.event === 'user' && typeof m.media?.payload === 'string') { log('heard:', m.media.payload.slice(-120)); void page.evaluate(l => (window as any).__kage.status('thinking', l), m.media.payload.slice(-160)).catch(() => {}) }
+    else if (m.event === 'user' && typeof m.media?.payload === 'string') { log('heard a turn,', m.media.payload.length, 'chars'); void page.evaluate(l => (window as any).__kage.status('thinking', l), m.media.payload.slice(-160)).catch(() => {}) }
     else if (m.event === 'clear') void page.evaluate(() => (window as any).__kage.clear()).catch(() => {})
     else if (m.event === 'end_call') { log('voice agent ended the call'); ended() }
-    else if (!/system_message|^system$|avatar_speaking/.test(m.event ?? '')) log('voice agent:', JSON.stringify(m).slice(0, 200))
+    else if (!/system_message|^system$|avatar_speaking/.test(m.event ?? '')) log('voice agent event:', String(m.event).slice(0, 40)) // the type only: events carry what people said (ADR 0010)
   }
   ws.onclose = c => log('voice agent socket closed', c.code)
   page.once('close', () => ws.close())   // however the call ends, the agent's call ends with it
