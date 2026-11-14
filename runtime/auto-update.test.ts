@@ -12,27 +12,59 @@ const commit = (cwd: string, file: string) => {
   git(cwd, 'add', file)
   git(cwd, '-c', 'user.name=t', '-c', 'user.email=t@example.com', 'commit', '-qm', file)
 }
-// An origin with one commit on main, and a checkout of it.
+// The owner moves the stable tag by hand: forced, annotated like a release would be.
+const stable = (origin: string, at = 'HEAD') => git(origin, '-c', 'user.name=t', '-c', 'user.email=t@example.com', 'tag', '-f', '-a', '-m', 'stable', 'stable', at)
+// An origin with one commit on main, tagged stable, and a checkout of it.
 function repos() {
   const root = mkdtempSync(join(tmpdir(), 'kage-update-'))
   const origin = join(root, 'origin'), local = join(root, 'local')
   git(root, 'init', '-q', '-b', 'main', origin)
   commit(origin, 'a.ts')
+  stable(origin)
   git(root, 'clone', '-q', origin, local)
   return { origin, local }
 }
 
-test('a clean main behind origin fast-forwards to it', async () => {
+test('a clean main fast-forwards to the stable tag, never past it to origin/main', async () => {
   const { origin, local } = repos()
   commit(origin, 'b.ts')
-  const r = await pullMain(local)
-  assert.equal(r, 'pulled')
+  stable(origin)
+  const tagged = git(origin, 'rev-parse', 'HEAD')
+  commit(origin, 'c.ts')
+  assert.equal(await pullMain(local), 'pulled')
+  assert.equal(git(local, 'rev-parse', 'HEAD'), tagged)
+  assert.equal(await pullMain(local), 'current')
+  // The owner moves the tag on: the next run follows it.
+  stable(origin)
+  assert.equal(await pullMain(local), 'pulled')
   assert.equal(git(local, 'rev-parse', 'HEAD'), git(origin, 'rev-parse', 'HEAD'))
+})
+
+test('with no stable tag on origin, nothing is pulled', async () => {
+  const { origin, local } = repos()
+  git(origin, 'tag', '-d', 'stable')
+  commit(origin, 'b.ts')
+  const before = git(local, 'rev-parse', 'HEAD')
+  assert.deepEqual(await pullMain(local), { skip: 'origin has no stable tag yet' })
+  assert.equal(git(local, 'rev-parse', 'HEAD'), before)
+})
+
+test('a stable tag moved back, behind main, is never followed', async () => {
+  const { origin, local } = repos()
+  const first = git(origin, 'rev-parse', 'HEAD')
+  commit(origin, 'b.ts')
+  stable(origin)
+  assert.equal(await pullMain(local), 'pulled')
+  stable(origin, first)
+  const before = git(local, 'rev-parse', 'HEAD')
+  assert.deepEqual(await pullMain(local), { skip: 'main has 1 commit that the stable tag lacks' })
+  assert.equal(git(local, 'rev-parse', 'HEAD'), before)
 })
 
 test('a checkout with uncommitted changes is left as it is', async () => {
   const { origin, local } = repos()
   commit(origin, 'b.ts')
+  stable(origin)
   const before = git(local, 'rev-parse', 'HEAD')
   writeFileSync(join(local, 'a.ts'), 'my edit')
   assert.deepEqual(await pullMain(local), { skip: 'the checkout has uncommitted changes' })
@@ -42,9 +74,10 @@ test('a checkout with uncommitted changes is left as it is', async () => {
 test('a local commit on main is never pulled over', async () => {
   const { origin, local } = repos()
   commit(origin, 'b.ts')
+  stable(origin)
   commit(local, 'mine.ts')
   const before = git(local, 'rev-parse', 'HEAD')
-  assert.deepEqual(await pullMain(local), { skip: 'main has 1 local commit that origin/main lacks' })
+  assert.deepEqual(await pullMain(local), { skip: 'main has 1 commit that the stable tag lacks' })
   assert.equal(git(local, 'rev-parse', 'HEAD'), before)
 })
 
@@ -53,7 +86,8 @@ test('main and origin that both moved on are left as they are', async () => {
   commit(origin, 'b.ts')
   commit(local, 'mine.ts')
   commit(local, 'mine2.ts')
-  assert.deepEqual(await pullMain(local), { skip: 'main has 2 local commits that origin/main lacks' })
+  stable(origin)
+  assert.deepEqual(await pullMain(local), { skip: 'main has 2 commits that the stable tag lacks' })
 })
 
 test('another branch, or an origin that cannot be reached, does nothing', async () => {

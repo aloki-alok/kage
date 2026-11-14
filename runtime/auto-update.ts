@@ -20,8 +20,8 @@ export function version(root: string): string {
   catch { return 'unknown (git log failed)' }
 }
 
-// Fast-forward a clean main to origin/main. Untracked files do not count as changes: a merge that would
-// overwrite one fails on its own.
+// Fast-forward a clean main to origin's stable tag (core/auto-update.ts). Untracked files do not count as changes:
+// a merge that would overwrite one fails on its own.
 export async function pullMain(root: string): Promise<'pulled' | 'current' | { skip: string }> {
   const c: Checkout = { git: isCheckout(root) }
   if (c.git) {
@@ -30,15 +30,18 @@ export async function pullMain(root: string): Promise<'pulled' | 'current' | { s
   }
   const before = nextStep(c)
   if (typeof before === 'object') return before
-  try { await git(root, 'fetch', '-q', 'origin', 'main') }
-  catch (e) { c.fetchError = String((e as { stderr?: string }).stderr || e).trim().split('\n')[0] }
-  if (c.fetchError === undefined) {
-    const [ahead, behind] = (await git(root, 'rev-list', '--left-right', '--count', 'HEAD...origin/main')).split(/\s+/).map(Number)
+  // Asked first, so a missing tag reads as missing, not as a failed fetch. --force: the owner moves the tag.
+  try {
+    c.stable = await git(root, 'ls-remote', '--tags', 'origin', 'refs/tags/stable') !== ''
+    if (c.stable) await git(root, 'fetch', '-q', '--force', '--no-tags', 'origin', 'refs/tags/stable:refs/tags/stable')
+  } catch (e) { c.fetchError = String((e as { stderr?: string }).stderr || e).trim().split('\n')[0] }
+  if (c.fetchError === undefined && c.stable) {
+    const [ahead, behind] = (await git(root, 'rev-list', '--left-right', '--count', 'HEAD...refs/tags/stable^{commit}')).split(/\s+/).map(Number)
     Object.assign(c, { ahead, behind })
   }
   const step = nextStep(c)
   if (step !== 'pull') return step === 'fetch' ? 'current' : step   // 'fetch' cannot come back once fetched
-  await git(root, 'merge', '-q', '--ff-only', 'origin/main')
+  await git(root, 'merge', '-q', '--ff-only', 'refs/tags/stable^{commit}')
   return 'pulled'
 }
 

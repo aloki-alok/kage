@@ -2,7 +2,7 @@
 # Installs Kage with one line:
 #   curl -fsSL https://raw.githubusercontent.com/aloki-alok/kage/main/install.sh | bash
 # It gets the code, installs its packages, puts `kage` on your PATH, then starts the setup.
-# With git, the code is a git checkout of main, which updates itself (KAGE_AUTO_UPDATE). Without git, it is
+# With git, the code is a git checkout of main, which updates itself to origin's stable tag (KAGE_AUTO_UPDATE). Without git, it is
 # a tarball, which updates only when you run this again. Your settings in ~/.config/kage stay as they are.
 set -euo pipefail
 REPO=aloki-alok/kage

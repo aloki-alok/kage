@@ -60,8 +60,9 @@ test('a tarball install run again with git becomes a clean main checkout in plac
   assert.equal(readFileSync(join(w.home, '.config/kage/env'), 'utf8'), env)
   assert.deepEqual(readdirSync(w.dir).filter(f => f.startsWith('.kage-clone')), [])   // no clone left behind
 
-  // The hub's own job then pulls the next commit.
+  // The hub's own job then pulls the next commit, once the owner tags it stable.
   commit(w.origin, 'c.ts', 'v3')
+  git(w.origin, '-c', 'user.name=t', '-c', 'user.email=t@example.com', 'tag', '-f', '-a', '-m', 'stable', 'stable')
   assert.equal(await pullMain(w.dir), 'pulled')
   assert.equal(readFileSync(join(w.dir, 'c.ts'), 'utf8'), 'v3')
 })
