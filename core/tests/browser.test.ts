@@ -1,6 +1,6 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { blockedSite, blockList, pageResult, setEnvLine, tabsResult } from './browser.ts'
+import { blockedSite, blockList, pageResult, setEnvLine, tabsResult } from '../browser.ts'
 
 test('blocks a listed site and its subdomains, and every page that is not http or https', () => {
   const list = blockList('Bank.example.com, vault.test ,')
