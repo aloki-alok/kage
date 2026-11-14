@@ -4,6 +4,7 @@ import { chmodSync, mkdirSync, readdirSync, readFileSync, rmSync, unlinkSync, wr
 import { createServer } from 'node:net'
 import { dirname, join } from 'node:path'
 import type { LimitCounts } from '../core/board.ts'
+import { PANEL_KEYS, type PanelAction } from '../core/kagelet-view.ts'
 import type { Dispatcher } from '../core/sessions.ts'
 import type { Reloaded } from '../core/settings.ts'
 import { log } from '../config.ts'
@@ -54,6 +55,8 @@ export function listenForSessions(path: string, d: Dispatcher<ToSession>, o: Rep
   quiesce?: () => { key: string; why: string }[]
   // kage stop <thread>: end one session after its turn, or now; the answer to print.
   end?: (key: string, cut: boolean) => string
+  // kage top's kagelets panel: run, pause, resume or remove one through the manager; the answer to print.
+  kagelet?: (action: PanelAction, name: string) => string
 }) {
   try { unlinkSync(path) } catch {}
   const dir = dirname(path)
@@ -76,7 +79,7 @@ export function listenForSessions(path: string, d: Dispatcher<ToSession>, o: Rep
       for (let i; (i = buf.indexOf('\n')) >= 0;) {
         const line = buf.slice(0, i)
         buf = buf.slice(i + 1)
-        let m: Partial<FromSession> & { key?: unknown; id?: unknown; text?: unknown; pid?: unknown }
+        let m: Partial<FromSession> & { key?: unknown; id?: unknown; text?: unknown; pid?: unknown; name?: unknown }
         try { m = JSON.parse(line) } catch { continue }
         if (!m || typeof m !== 'object') continue   // a bare null or number must not take the hub down
         if (m.type === 'hold' && !key && !held && typeof m.key === 'string') {
@@ -112,6 +115,12 @@ export function listenForSessions(path: string, d: Dispatcher<ToSession>, o: Rep
           // core/guards.ts (stops mistakes, not a determined session). kage tell refuses inside a session.
           const r = !m.text.trim() ? { refused: 'empty message' } : o.tell?.(m.key, m.text.trim()) ?? { refused: 'this hub cannot take messages' }
           sock.write(JSON.stringify({ type: 'tell', ...r }) + '\n')
+        } else if (m.type === 'kagelet' && !key && !held && typeof m.name === 'string') {
+          // Only the panel's actions: saving a kagelet file stays with Kage's tool and the owner's editor.
+          const action = (m as { action?: unknown }).action as PanelAction
+          const r = !Object.values(PANEL_KEYS).includes(action) ? { refused: `kage top runs, pauses, resumes or removes a kagelet, not ${String(action)}` }
+            : o.kagelet ? { text: o.kagelet(action, m.name) } : { refused: 'this hub cannot act on kagelets' }
+          sock.write(JSON.stringify({ type: 'kagelet', ...r }) + '\n')
         } else if (m.type === 'stop' && !key && !held && typeof m.key === 'string') {
           sock.write(JSON.stringify({ type: 'stop', ...d.stop(m.key, Date.now()) }) + '\n')
         } else if (m.type === 'hello' && !key && !held && typeof m.key === 'string') {
