@@ -17,7 +17,7 @@ const strings = z.array(z.string()).optional()
 export const Config = z.strictObject({
   version: z.literal(1),
   name: z.string().optional(),
-  harness: z.strictObject({ runtime: text, route: text, cwd: text, memory: text, ownerMemory: text, maxSessions: count, idleMinutes: count }).optional(),
+  harness: z.strictObject({ runtime: text, route: text, cwd: text, memory: text, ownerMemory: text, maxSessions: count, idleMinutes: count, unsandboxedCommands: z.array(z.string().min(1)).optional() }).optional(),
   people: z.strictObject({
     teammates: z.array(z.string().refine(validUserId)).optional(),
     agents: z.array(z.strictObject({ app: z.string(), owner: z.string().optional(), tag: z.string().optional() }).refine(a => appEntry(agentLine(a)) !== undefined)).optional(),

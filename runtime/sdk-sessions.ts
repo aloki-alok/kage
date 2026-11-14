@@ -8,7 +8,7 @@ import type { createSdkMcpServer, EffortLevel, Options, Query, SDKMessage, SDKUs
 import { z } from 'zod'
 import { log } from '../config.ts'
 import { senderOf, withoutInvisible, type Sender } from '../core/gate.ts'
-import { configRefusal, protectConfig, ownerMemoryRefusal, privateToolRefusal, slackSendRefusal, voiceToolRefusal } from '../core/guards.ts'
+import { configRefusal, unsandboxedRefusal, protectConfig, ownerMemoryRefusal, privateToolRefusal, slackSendRefusal, voiceToolRefusal } from '../core/guards.ts'
 import { builtinTools, grantRefusal } from '../core/kagelets.ts'
 import { approvalPreview } from '../core/preview.ts'
 import type { Dispatcher, Runner } from '../core/sessions.ts'
@@ -26,6 +26,7 @@ type Pick = { model?: string; effort?: EffortLevel }
 type Session = {
   id: string
   kage: Kage
+  outside?: string[]            // the patterns this session runs unsandboxed: kept for the teammate check
   sender?: Sender               // who sent the latest task: the guard hook reads it
   turn: { task: Task; mid: boolean }[]   // tasks the current turn may have read: a safety block reports them. mid: sent mid-turn
   state: 'idle' | 'running' | 'requires_action'
@@ -62,6 +63,9 @@ export function sdkSessions(o: {
   budgetOf?: (key: string) => number | undefined
   // A kagelet lane: the model its file names (core/kagelets.ts). No set_model reaches a lane, so nothing overrides it.
   modelOf?: (key: string) => string | undefined
+  // Commands the owner's own threads run outside the sandbox (harness.unsandboxedCommands). trusted: every task of the thread came from the owner.
+  unsandboxed?: string[]
+  trusted?: (key: string) => boolean
   restartMs?: number
 }) {
   const sessions = new Map<string, Session>()
@@ -105,7 +109,9 @@ export function sdkSessions(o: {
     const resumed = o.hasTranscript(s.id)
     const budget = o.budgetOf?.(key)
     const grant = o.grantOf?.(key)
-    const walled = protectConfig(o.envFile, o.codeDir)
+    const outside = o.trusted?.(key) && !grant ? o.unsandboxed ?? [] : []
+    s.outside = outside
+    const walled = protectConfig(o.envFile, o.codeDir, undefined, outside)
     const q = o.sdk.query({
       prompt: inbox,
       options: {
@@ -139,7 +145,7 @@ export function sdkSessions(o: {
             hooks: [async input => {
               const i = input as { tool_name: string; tool_input?: Record<string, string> }
               const grant = o.grantOf?.(key)
-              const reason = (grant && grantRefusal(i.tool_name, grant, i.tool_input ?? {})) || (privateToolRefusal(i.tool_name, s.sender) ?? voiceToolRefusal(i.tool_name, s.sender) ?? slackSendRefusal(i.tool_name) ?? ownerMemoryRefusal(i.tool_name, i.tool_input ?? {}, o.ownerMemory) ?? configRefusal(i.tool_name, i.tool_input ?? {}, s.sender, o.envFile))
+              const reason = (grant && grantRefusal(i.tool_name, grant, i.tool_input ?? {})) || (privateToolRefusal(i.tool_name, s.sender) ?? voiceToolRefusal(i.tool_name, s.sender) ?? slackSendRefusal(i.tool_name) ?? ownerMemoryRefusal(i.tool_name, i.tool_input ?? {}, o.ownerMemory) ?? configRefusal(i.tool_name, i.tool_input ?? {}, s.sender, o.envFile) ?? unsandboxedRefusal(i.tool_name, i.tool_input ?? {}, s.sender, s.outside ?? []))
               if (grant) o.onTool?.(key, i.tool_name, reason || undefined)
               return reason ? { hookSpecificOutput: { hookEventName: 'PreToolUse', permissionDecision: 'deny', permissionDecisionReason: reason } } : {}
             }],
