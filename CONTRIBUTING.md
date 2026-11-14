@@ -57,6 +57,7 @@ Write logs to stderr only. In a tmux pane, stdout carries the channel protocol, 
 | `guards.ts` | Hook rules: private sources, voice calls, the owner's memory, Slack posts only through Kage's tools. |
 | `ledgers.ts` | Reading the ledgers: questions waiting on the owner, what Kage posted, what turns cost, the daily note. |
 | `kagelets.ts` | A kagelet file (thread, schedule, grant, job) and the grant check. |
+| `db-read.ts` | The check a `db_read` query passes: one read statement, capped. |
 | `cron.ts` | Cron expressions, which schedules are due, and reading Claude Code's own cron jobs. |
 | `afk.ts` | AFK mode: which threads the stand-in watches, when it posts or phones the owner, and what it may say. |
 | `blocks.ts` | When the safety check stops a turn: the line in the thread, the owner's DM, and whether the thread closes. |
@@ -76,7 +77,7 @@ Write logs to stderr only. In a tmux pane, stdout carries the channel protocol, 
 | `session-link.ts` | The local socket that panes and the `kage` commands connect to. |
 | `protocol.ts` | The messages on that socket. |
 | `store.ts` | One SQLite file: conversations, their sessions, schedules, trust, the inbox of every message heard, and what connectors keep across a restart (AFK, GitHub and mail threads). The hub is the only writer of these tables. Old `.json` files move in once. |
-| `ledger.ts` | The ledgers (waiting, posted, prod-actions, costs, runs, commands) as rows in that file. The hub and every pane write them. Old `.tsv` files move in once. |
+| `ledger.ts` | The ledgers (waiting, posted, prod-actions, costs, runs, commands, reports, db-reads) as rows in that file. The hub and every pane write them. Old `.tsv` files move in once. |
 | `scheduler.ts` | Runs due schedules as tasks in their thread. |
 | `limit-pause.ts` | The usage-limit pause: a turn that ends on the limit keeps its inbox message, its thread gets one notice, and the message replays at the reset. |
 | `closed-threads.ts` | A thread the safety check stopped: it starts on a new session, and a teammate's stays closed until the owner writes in it. |

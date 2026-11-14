@@ -1,6 +1,6 @@
 import { describe, test } from 'node:test'
 import assert from 'node:assert/strict'
-import { mkdtempSync, readFileSync, symlinkSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdtempSync, readFileSync, symlinkSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { liveCronJobs } from '../core/cron.ts'
@@ -44,7 +44,7 @@ function fakeSlack() {
   return { calls, posts, bot: client('bot'), user: client('owner') }
 }
 
-function setup(o: { hubDown?: boolean; dir?: string; kagelet?: string } = {}) {
+function setup(o: { hubDown?: boolean; dir?: string; kagelet?: string; dbRead?: { command: string; maxRows: number; timeoutMs?: number } } = {}) {
   const slack = fakeSlack()
   const dir = o.dir ?? mkdtempSync(join(tmpdir(), 'kage-tools-'))
   const ledgers = openLedgers(dir)
@@ -58,7 +58,7 @@ function setup(o: { hubDown?: boolean; dir?: string; kagelet?: string } = {}) {
       list: () => jobs,
     },
     afk: async c => { out.push(`afk ${JSON.stringify(c)}`); return 'AFK on' },
-    kagelet: o.kagelet,
+    kagelet: o.kagelet, dbRead: o.dbRead,
     kagelets: { list: () => 'the list', manage: a => { out.push(`manage ${JSON.stringify(a)}`); return 'managed' } },
   })
   const call = (name: string, args: Record<string, unknown>) => t.tools.find(x => x.name === name)!.run(args)
@@ -416,6 +416,50 @@ describe("a session's Kage tools", () => {
     const lane = setup({ kagelet: 'status' })
     assert.equal(lane.t.tools.some(x => x.name === 'kagelets' || x.name === 'manage_kagelet'), false)
     assert.equal(setup().t.tools.some(x => x.name === 'report'), false)
+  })
+  // A stand-in for the owner's read command: prints two rows, and keeps the query it got as its last argument.
+  const reader = (dir: string, out = 'id\tcalls\n1\t40\n2\t12\n') => {
+    writeFileSync(join(dir, 'read.sh'), `printf '${out}'; for a; do q=$a; done; printf '%s' "$q" > ${join(dir, 'query')}`)
+    return { command: `sh ${join(dir, 'read.sh')} --read-only`, maxRows: 200 }
+  }
+  test('db_read exists only in a kagelet lane, and only when the owner set the read command', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'kage-db-'))
+    assert.equal(setup({ kagelet: 'calls', dbRead: reader(dir) }).t.tools.some(x => x.name === 'db_read'), true)
+    assert.equal(setup({ kagelet: 'calls' }).t.tools.some(x => x.name === 'db_read'), false)
+    assert.equal(setup({ dbRead: reader(dir) }).t.tools.some(x => x.name === 'db_read'), false)
+  })
+  test('db_read runs the capped query as the last argument, returns the rows, and logs the call but never the rows', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'kage-db-'))
+    const s = setup({ kagelet: 'calls', dbRead: reader(dir), dir })
+    const r = await s.call('db_read', { sql: "select id, calls from t where note = 'a; b'" })
+    assert.equal(r.isError, undefined)
+    assert.match(r.text, /^id\tcalls\n1\t40\n2\t12/)
+    assert.equal(readFileSync(join(dir, 'query'), 'utf8'), "select * from (\nselect id, calls from t where note = 'a; b'\n) as kage_db_read limit 200")
+    const row = s.ledgers.text('db-reads').trim().split('\t')
+    assert.deepEqual([row[1], row[2], row[4]], ['calls', '3', 'ok'])
+    assert.match(row[3]!, /^\d+ms$/)
+    assert.doesNotMatch(s.ledgers.text('db-reads'), /40/)
+  })
+  test('db_read refuses a write without running the command, and logs the refusal', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'kage-db-'))
+    const s = setup({ kagelet: 'calls', dbRead: reader(dir), dir })
+    const r = await s.call('db_read', { sql: 'select 1; delete from t' })
+    assert.equal(r.isError, true)
+    assert.match(r.text, /refused: one statement only/)
+    assert.equal(existsSync(join(dir, 'query')), false)
+    assert.match(s.ledgers.text('db-reads'), /\tcalls\t0\t\d+ms\trefused: one statement only/)
+  })
+  test('db_read stops a slow command, and cuts a long answer', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'kage-db-'))
+    const slow = setup({ kagelet: 'calls', dbRead: { command: 'sleep 5; echo', maxRows: 200, timeoutMs: 200 }, dir })
+    const r = await slow.call('db_read', { sql: 'select 1' })
+    assert.equal(r.isError, true)
+    assert.match(r.text, /took longer than/)
+    assert.match(slow.ledgers.text('db-reads'), /\tfailed: /)
+    const big = setup({ kagelet: 'calls', dbRead: { command: `node -e "console.log('x'.repeat(100000))"`, maxRows: 200 }, dir })
+    const b = await big.call('db_read', { sql: 'select 1' })
+    assert.ok(b.text.length < 21_000, String(b.text.length))
+    assert.match(b.text, /cut at 20000 characters/)
   })
   test('a kagelet reports one line per run; what it needs is posted in its thread and waits on the owner', async () => {
     const s = setup({ kagelet: 'status' })

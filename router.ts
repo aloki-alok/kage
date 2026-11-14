@@ -231,6 +231,7 @@ const sdk = sdkLib ? sdkSessions({
     schedules: { add: j => schedules.add(key, j, Date.now()), remove: id => schedules.remove(key, id), list: () => schedules.list(key) },
     afk: slack.afk?.command,
     kagelet: key.split('#side-kagelet-')[1],
+    ...env.KAGE_DB_READ_COMMAND && { dbRead: { command: env.KAGE_DB_READ_COMMAND, maxRows: Number(env.KAGE_DB_READ_MAX_ROWS) || 200 } },
     kagelets: { list: () => manager.list(Date.now()), manage: a => manager.manage(a, Date.now()) },
   }),
   hasTranscript: tmux.hasTranscript,
