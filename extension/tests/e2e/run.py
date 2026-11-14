@@ -1,12 +1,12 @@
 # Runs check.ts against the real extension in Chromium, paired the way a person's browser is (kage add browser),
 # in a throwaway home folder. From the repo root: uv run --with playwright python extension/tests/e2e/run.py
 # (once: uvx playwright install chromium). Exits with check.ts's code.
-import asyncio, os, socket, subprocess, sys, tempfile
+import json
+import asyncio, os, shutil, socket, subprocess, sys, tempfile
 from pathlib import Path
 from playwright.async_api import async_playwright
 
 ROOT = Path(__file__).resolve().parents[3]
-EXT = ROOT / 'extension'
 
 def free_port():
     with socket.socket() as s:
@@ -15,18 +15,29 @@ def free_port():
 
 async def main():
     home = Path(tempfile.mkdtemp(prefix='kage-e2e-'))
-    profile = home / '.config' / 'chromium'
+    # Chromium looks for the pairing helper in its profile folder, and kage add browser registers it only where that folder exists.
+    profile = home / 'Library' / 'Application Support' / 'Chromium'
     profile.mkdir(parents=True)
     (home / '.config' / 'kage').mkdir(parents=True)
     hub_port, page_port = free_port(), free_port()
+    # A copy, so the check can change its version on disk the way a git pull would.
+    EXT = home / 'extension'
+    shutil.copytree(ROOT / 'extension', EXT, ignore=shutil.ignore_patterns('tests'))
     env_file = home / '.config' / 'kage' / 'env'
     env_file.write_text(f'KAGE_NAME=kage\nKAGE_BROWSER_PORT={hub_port}\n')
     env = {**os.environ, 'HOME': str(home)}
     env.setdefault('PLAYWRIGHT_BROWSERS_PATH', str(Path(os.environ['HOME']) / '.cache' / 'ms-playwright'))
+    # Stand-ins for open and pbcopy, so pairing never opens the tester's own Chrome and Finder or takes their clipboard.
+    stubs = home / 'bin'
+    stubs.mkdir()
+    for c in ['open', 'pbcopy', 'xdg-open', 'google-chrome', 'chromium', 'wl-copy', 'xclip', 'xsel']:
+        (stubs / c).write_text('#!/bin/sh\nexit 0\n')
+        (stubs / c).chmod(0o755)
+    env['PATH'] = f"{stubs}:{env['PATH']}"
     subprocess.run(['node', 'cli/registry.ts', 'add', 'browser'], cwd=ROOT, env=env, check=True, stdout=subprocess.DEVNULL)
-    token = next(l.split('=', 1)[1] for l in env_file.read_text().splitlines() if l.startswith('KAGE_BROWSER_TOKEN='))
+    token = json.loads((home / '.config' / 'kage' / 'secrets.json').read_text())['browserToken']
     site = subprocess.Popen([sys.executable, '-m', 'http.server', str(page_port), '--bind', '127.0.0.1', '-d', str(Path(__file__).parent)], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-    check = subprocess.Popen(['node', str(Path(__file__).parent / 'check.ts')], cwd=ROOT, env={**env, 'KAGE_E2E_TOKEN': token, 'KAGE_E2E_PORT': str(hub_port)})
+    check = subprocess.Popen(['node', str(Path(__file__).parent / 'check.ts')], cwd=ROOT, env={**env, 'KAGE_E2E_TOKEN': token, 'KAGE_E2E_PORT': str(hub_port), 'KAGE_E2E_EXT': str(EXT)})
     try:
         async with async_playwright() as p:
             os.environ['HOME'] = str(home)   # Chromium looks for the pairing helper under this home

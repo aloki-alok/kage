@@ -226,9 +226,10 @@ const PROJECT = claudeProject(process.cwd())   // both runners start sessions in
 const recordCost = costRecorder(ledgers)
 // Kage in Chrome (#114): the owner's own browser, through Kage's extension, for the owner's own tasks only.
 rmSync(`${DIR}/browser-seen`, { force: true })   // a poll the last hub heard says nothing about this one
+let seenVersion: string | undefined
 let browserSeen = 0   // kage doctor reads browser-seen; written at most every 30 s, since the extension polls about every 25 s
 const browser = secrets.browserToken ? connectBrowser({ token: secrets.browserToken, port: conn.browser?.port || 8791,
-  onPoll: at => { if (at - browserSeen >= 30_000) { browserSeen = at; writeFileSync(`${DIR}/browser-seen`, String(at), { mode: 0o600 }) } } }) : undefined
+  onPoll: (at, v) => { if (at - browserSeen >= 30_000 || v !== seenVersion) { browserSeen = at; seenVersion = v; writeFileSync(`${DIR}/browser-seen`, `${at} ${v ?? ''}`.trim(), { mode: 0o600 }) } } }) : undefined
 void browser?.listening.then(port => log(`browser on: 127.0.0.1:${port}/browser`), e => log('browser could not listen', e))
 const browserBlock = (conn.browser?.block ?? []).join(',')
 const BROWSER_BLOCK = blockList(browserBlock)

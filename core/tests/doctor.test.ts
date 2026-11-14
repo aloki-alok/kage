@@ -110,6 +110,14 @@ describe('decisions', () => {
     assert.equal(chromeLine(0, 1_000_000_000).kind, 'fail')
     assert.doesNotMatch((chromeLine(0, 1_000_000_000) as { text: string }).text, /paste|prints a new one/)
   })
+  test('chrome: names the version it runs, and fails when the folder holds a newer one', () => {
+    const now = 1_000_000_000, seen = now * 1000
+    assert.equal((chromeLine(seen, now, '0.4.1', '0.4.1') as { text: string }).text, 'Chrome extension connected (v0.4.1)')
+    const old = chromeLine(seen, now, '0.4.0', '0.4.1') as { kind: string; text: string }
+    assert.equal(old.kind, 'fail')
+    assert.match(old.text, /runs v0\.4\.0.*v0\.4\.1.*chrome:\/\/extensions/)
+    assert.equal(chromeLine(seen, now, undefined, '0.4.1').kind, 'fail')
+  })
   test('path note only when kage is not on PATH', () => {
     assert.equal(pathNote(true), undefined)
     assert.equal(pathNote(false)?.kind, 'note')

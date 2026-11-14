@@ -21,7 +21,7 @@ export function connectBrowser(o: {
   callMs?: number    // how long a call waits for the extension's answer
   staleMs?: number   // with no poll for this long, the extension counts as gone
   now?: () => number
-  onPoll?: (at: number) => void   // each poll, so kage doctor can say when the extension was last seen
+  onPoll?: (at: number, version?: string) => void   // each poll, so kage doctor can say when the extension was last seen, and its version
 }) {
   const now = o.now ?? Date.now
   const pollMs = o.pollMs ?? 25_000, callMs = o.callMs ?? 20_000, staleMs = o.staleMs ?? 60_000
@@ -70,7 +70,7 @@ export function connectBrowser(o: {
     if (!bearerOk(req.headers.authorization, o.token)) { res.writeHead(401).end(); return }
     if (req.method === 'GET' && req.url === '/browser/next') {
       lastPoll = now()
-      o.onPoll?.(lastPoll)
+      o.onPoll?.(lastPoll, String(req.headers['x-kage-extension'] ?? '').slice(0, 20) || undefined)
       release(204)   // one poll at a time: a newer one (a restarted extension) replaces the old
       queue.unshift(...sent.values())
       sent.clear()

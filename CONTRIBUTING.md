@@ -15,8 +15,8 @@ The rules Kage follows, and why, are in [`docs/adr/`](docs/adr/). Read the ones 
 The Chrome extension (`extension/`) runs in a browser, so `npm test` cannot reach it. Its end-to-end check loads it into Chromium, pairs it the way `kage add browser` does, and attacks it with `extension/tests/e2e/page.html` (forged refs, overlays, mousemove traps, masked secrets). Run it after any change to `extension/`, `connectors/browser.ts` or `core/browser*.ts`:
 
 ```sh
-uvx playwright install chromium                                          # once
-uv run --with playwright python extension/tests/e2e/run.py               # 16 checks, exits 1 on a failure
+uv run --with playwright python -m playwright install chromium        # once
+uv run --with playwright python extension/tests/e2e/run.py               # 22 checks, exits 1 on a failure
 ```
 
 One test calls a real model, so `npm test` skips it. It starts a real session with the sandbox and permission settings and checks that the token files, the settings and the hub code stay closed. Run it after any change to `protectConfig` in `core/guards.ts` or to the sandbox or permission settings of a session. It costs a few cents. It also runs one tmux pane (skipped without tmux) that unsets `KAGE_SESSION` and tries to write `config.json` and read `secrets.json`:
