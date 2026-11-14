@@ -71,7 +71,7 @@ export async function connectSlack(o: { dir: string; appToken: string; bot: WebC
   const dm = await bot.conversations.open({ users: me.user_id! })
   const ids: Ids = { owner: me.user_id!, bot: botAuth.user_id!, botDm: dm.channel!.id!, name: o.name, teammates: o.teammates, apps: o.apps, team: me.team_id! }
   const react = (channel: string, ts: string, name: string) =>
-    (channel === ids.botDm ? bot : user).reactions.add({ channel, timestamp: ts, name }).catch(() => {})
+    (channel === ids.botDm ? bot : user).reactions.add({ channel, timestamp: ts, name }).then(() => true, () => false)
 
   const names = new Map<string, string>()
   async function nameOf(id?: string): Promise<string> {
@@ -173,9 +173,11 @@ export async function connectSlack(o: { dir: string; appToken: string; bot: WebC
     }
     // A person's tag that needs no work (an ack, a thanks) gets a reaction in code, not a session.
     if (t.kind === 'task' && !t.agent && o.triage) {
-      const j = await o.triage(thread, m.user === ids.owner ? 'owner' : 'other', t.text, !!m.files?.length)
+      const j = await o.triage(thread, !m.user || m.user === ids.owner ? 'owner' : 'other', t.text,
+        { hasFiles: !!(m.files?.length || (m as { attachments?: unknown[] }).attachments?.length), inThread: !!m.thread_ts && m.thread_ts !== m.ts })
       log(`triage ${thread}: ${j.pick}, ${j.why}`)
-      if (j.pick === 'react') return void react(m.channel, m.ts, SEEN)
+      // A reaction that fails to land starts the session instead: a request is never dropped silently.
+      if (j.pick === 'react' && await react(m.channel, m.ts, SEEN)) return
     }
     const agent = t.agent ? { app: t.agent, tag: (ids.apps ?? []).map(appEntry).find(e => e?.id === t.agent)?.tag } : undefined
     react(m.channel, m.ts, PICKED_UP)

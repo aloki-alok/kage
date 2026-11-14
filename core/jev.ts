@@ -51,8 +51,10 @@ export const OWNER_BAR = 0.95
 export const TRIAGE_MAX_CHARS = 200
 
 // Why a message goes to a session with no Jev call, or undefined when Jev may look at it.
-export const triageSkips = (text: string, hasFiles: boolean): string | undefined =>
-  !text.trim() ? 'empty' : hasFiles ? 'has files' : text.includes('?') ? 'asks a question' : text.length > TRIAGE_MAX_CHARS ? 'long' : undefined
+// inThread: a reply in a thread. It may answer a waiting session or a question Kage asked, so it is never reacted to.
+// hasFiles: files, or attachments (a forwarded message hides its text there).
+export const triageSkips = (text: string, o: { hasFiles: boolean; inThread: boolean }): string | undefined =>
+  !text.trim() ? 'empty' : o.inThread ? 'in a thread' : o.hasFiles ? 'has files' : /[?？؟]/.test(text) ? 'asks a question' : text.length > TRIAGE_MAX_CHARS ? 'long' : undefined
 
 export const triageRequest = (text: string, model: string) => ({
   model,

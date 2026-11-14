@@ -69,11 +69,15 @@ describe('the intake question', () => {
 
 describe('triage skips: what never goes to Jev', () => {
   test('a question, a long message or one with files starts a session without a call', () => {
-    assert.ok(triageSkips('can you check this?', false))
-    assert.ok(triageSkips('x'.repeat(TRIAGE_MAX_CHARS + 1), false))
-    assert.ok(triageSkips('see this', true))
-    assert.ok(triageSkips('', false))
-    assert.equal(triageSkips('thanks, that works', false), undefined)
+    const plain = { hasFiles: false, inThread: false }
+    for (const t of ['can you check this?', 'can you check this？', 'هل يمكنك؟']) assert.ok(triageSkips(t, plain), t)
+    assert.ok(triageSkips('x'.repeat(TRIAGE_MAX_CHARS + 1), plain))
+    assert.ok(triageSkips('see this', { ...plain, hasFiles: true }))
+    assert.ok(triageSkips('', plain))
+    assert.equal(triageSkips('thanks, that works', plain), undefined)
+  })
+  test('a reply in a thread (a re-tag, or an answer to a waiting session) always starts a session', () => {
+    assert.ok(triageSkips('ok do it', { hasFiles: false, inThread: true }))
   })
 })
 
