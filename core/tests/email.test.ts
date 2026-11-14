@@ -1,6 +1,6 @@
 import { describe, test } from 'node:test'
 import assert from 'node:assert/strict'
-import { composeReply, emailTaskLine, mailTask, newPart, replyTargets, type InboundMail } from '../mail.ts'
+import { composeReply, emailTaskLine, mailTask, newPart, replyTargets, type InboundMail } from '../email.ts'
 
 const cfg = { self: 'kage@kage.example.com', name: 'kage', owner: 'owner@example.com', teammates: ['sam@example.com'], domains: ['example.com'] }
 const PASS = { spam: 'PASS', virus: 'PASS', dmarc: 'PASS' }

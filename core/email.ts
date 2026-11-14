@@ -1,7 +1,7 @@
 // Email as a way to tag Kage: who may, what the ask is, and how a reply goes back.
-// Pure functions; mailbox.ts does the AWS calls.
-import { sessionKey } from '../core/conversations.ts'
-import { noChannelTag } from '../core/gate.ts'
+// Pure functions; connectors/email.ts does the AWS calls.
+import { sessionKey } from './conversations.ts'
+import { noChannelTag } from './gate.ts'
 
 export type InboundMail = {
   // SES receipt verdicts: PASS, FAIL, GRAY or PROCESSING_FAILED.
