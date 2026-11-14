@@ -115,7 +115,9 @@ export const ALIASES: Record<string, string> = { KAGE_MAX_SPECIALISTS: 'KAGE_MAX
 // Names the grep in docs/settings.md finds that are not settings: Kage sets them, or a script or test does.
 export const NOT_SETTINGS = ['KAGE_BIN', 'KAGE_CALL_CODE', 'KAGE_CALL_REASON', 'KAGE_CLAUDE', 'KAGE_DIR', 'KAGE_ENV', 'KAGE_GIT_URL', 'KAGE_REF', 'KAGE_SETUP_WAIT', 'KAGE_SLACK_API', 'KAGE_TARBALL', 'KAGE_THREAD']
 
-const looksSecret = (name: string) => /TOKEN|SECRET|KEY|PASS|AUTH|CRED/i.test(name)
+// By its name, or by what it holds: a URL with user:password@ in it, or a long unbroken random-looking string (not a path).
+const looksSecret = (name: string, value = '') => /TOKEN|SECRET|KEY|PASS|AUTH|CRED/i.test(name) || /:\/\/[^\s/:@]+:[^\s/@]+@/.test(value)
+  || (/^[A-Za-z0-9_+/=.-]{32,}$/.test(value) && /\d/.test(value) && /[A-Za-z]/.test(value) && !/^[/~.]/.test(value))
 
 const put = (o: Record<string, any>, path: string, v: unknown) => {
   const ks = path.split('.')
@@ -139,7 +141,7 @@ export function fromEnv(env: Env): { config: Config; secrets: Secrets } {
     const row = known.get(name)
     const v = row?.codec.read(value)
     if (row && v !== undefined) put(row.secret ? secrets : config, row.path, v)
-    else if (looksSecret(name)) { unknown[name] = null; secretUnknown[name] = value }
+    else if (looksSecret(name, value)) { unknown[name] = null; secretUnknown[name] = value }
     else unknown[name] = value
   }
   if (Object.keys(unknown).length) config.unknown = unknown

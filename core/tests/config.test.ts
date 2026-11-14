@@ -99,6 +99,14 @@ describe('importing an env file', () => {
     assert.deepEqual(toEnv(config, secrets), { KAGE_MAX_SESION: '6', KAGE_MAX_SESSIONS: 'many', KAGE_TEAMMATES: 'priya', KAGE_NEW_TOKEN: 'xoxb-fake' })
   })
 
+  test('an unknown line whose value holds a credential goes to secrets.json whatever its name', () => {
+    const env = { KAGE_DB_URL: 'postgres://app:hunter2@db.example.com/x', KAGE_WEBHOOK: 'a1B2c3D4e5F6g7H8i9J0k1L2m3N4o5P6q7R8', KAGE_NOTE: 'meet at noon', KAGE_PATH: '/home/o/some/long/folder/name/for/a/project/x1', KAGE_PLAIN_URL: 'https://example.com/path' }
+    const { config, secrets } = fromEnv(env)
+    assert.deepEqual(secrets.unknown, { KAGE_DB_URL: env.KAGE_DB_URL, KAGE_WEBHOOK: env.KAGE_WEBHOOK })
+    assert.ok(!JSON.stringify(config).includes('hunter2') && !JSON.stringify(config).includes('a1B2c3'))
+    assert.deepEqual(config.unknown, { KAGE_DB_URL: null, KAGE_NOTE: 'meet at noon', KAGE_PATH: env.KAGE_PATH, KAGE_PLAIN_URL: env.KAGE_PLAIN_URL, KAGE_WEBHOOK: null })
+    assert.deepEqual(toEnv(config, secrets), env)
+  })
   test('an unknown line with a secret-looking name keeps its value in secrets.json and flattens back, and config.json never holds it', () => {
     const { config, secrets } = fromEnv({ OPENAI_API_KEY: 'sk-test', MY_TOKEN: 'tok-test' })
     assert.deepEqual(toEnv(config, secrets), { OPENAI_API_KEY: 'sk-test', MY_TOKEN: 'tok-test' })
