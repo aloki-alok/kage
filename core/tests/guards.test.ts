@@ -121,7 +121,6 @@ describe("the token file on a task the owner did not send (#117)", () => {
   test('the owner may read and edit config.json and the folder listing', () => {
     yes('Read', { file_path: '/home/o/.config/kage/config.json' }, 'owner')
     yes('Read', { file_path: '/home/o/.config/kage/./config.json' }, 'owner')
-    yes('Read', { file_path: '/home/o/.config/kage/session.env' }, 'owner')
     yes('Grep', { pattern: 'x', path: '/home/o/.config/kage/config.json' }, 'owner')
   })
   test('other files and commands are fine for a teammate', () => {
@@ -160,6 +159,11 @@ describe('the token files behind every path form, and config.json closed to writ
     no('Grep', { pattern: 'xox', path: '/home/o/.config/kage/.' }, 'owner')
     no('Read', { file_path: '/home/o/.config/kage/s*.json' }, 'owner')
   })
+  test('the owner cannot read, search or write session.env or the waha folder by a file tool (the tmux route has only this hook)', () => {
+    for (const t of ['Read', 'Write', 'Edit']) for (const f of ['session.env', 'session.env.bak', 'waha/.env', 'waha']) no(t, { file_path: `/home/o/.config/kage/${f}` }, 'owner')
+    no('Grep', { pattern: 'KEY', path: '/home/o/.config/kage/session.env' }, 'owner')
+    no('Grep', { pattern: 'KEY', path: '/home/o/.config/kage/waha' }, 'owner')
+  })
   test('no session writes config.json, secrets.json or an env file by any tool', () => {
     for (const s of ['owner', 'teammate', undefined]) {
       no('Edit', { file_path: '/home/o/.config/kage/config.json' }, s)
@@ -186,6 +190,7 @@ describe('protectConfig: what the sandbox and the file rules close', () => {
     const read = w.sandbox.filesystem.denyRead
     for (const n of ['secrets.json*', 'env*', 'session.env*', 'waha/.env*']) assert.ok(read.includes(`${real(dir)}/${n}`), n)
     for (const n of ['session.env', 'waha/.env']) assert.ok(w.permissions.deny.includes(`Read(/${real(dir)}/${n})`), n)
+    for (const n of ['session.env', 'waha/.env']) assert.ok(w.permissions.deny.includes(`Edit(/${real(dir)}/${n})`), n)
   })
   test("the owner's Write and Edit tools reach memory/ and its ledger (the dream job's route), not the token files", () => {
     const at = (tool: string, f: string) => configRefusal(tool, { file_path: `${real(dir)}/${f}` }, 'owner', `${dir}/env`, '/home/o')
