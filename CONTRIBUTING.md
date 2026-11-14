@@ -10,6 +10,13 @@ npm run typecheck   # tsc --noEmit
 
 Tests live in a `tests/` folder inside the folder of the code they test: `core/gate.ts` is tested by `core/tests/gate.test.ts`.
 
+The Chrome extension (`extension/`) runs in a browser, so `npm test` cannot reach it. Its end-to-end check loads it into Chromium, pairs it the way `kage add browser` does, and attacks it with `extension/tests/e2e/page.html` (forged refs, overlays, mousemove traps, masked secrets). Run it after any change to `extension/`, `connectors/browser.ts` or `core/browser*.ts`:
+
+```sh
+uvx playwright install chromium                                          # once
+uv run --with playwright python extension/tests/e2e/run.py               # 16 checks, exits 1 on a failure
+```
+
 There is no build. Node runs the TypeScript files as they are, so write only syntax it can strip (`erasableSyntaxOnly` in `tsconfig.json` enforces it). A running hub restarts into new code by itself once every session is quiet (`runtime/code-stamp.ts`).
 
 Write logs to stderr only. In a tmux pane, stdout carries the channel protocol, so a stray `console.log` breaks it.

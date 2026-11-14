@@ -1,0 +1,28 @@
+<!doctype html>
+<title>Kage e2e</title>
+<style>
+  html { scroll-behavior: smooth }
+  .ghost { font-size: 0 } .ghost::before { content: "Delete account"; font-size: 14px }
+  #offscreen { position: absolute; left: -9999px } #clipped { clip-path: inset(50%) }
+</style>
+<p id="out">nothing</p><p id="sub"></p>
+<label>Name <input id="name"></label>
+<label>Secret <input type="password" value="hunter2"></label>
+<button onclick="out.textContent = 'Hello ' + document.getElementById('name').value + (event.isTrusted ? ' (trusted)' : ' (synthetic)')">Say hello</button>
+<form onsubmit="event.preventDefault(); sub.textContent = 'submitted'"><input aria-label="Search"></form>
+<div data-kage-ref="1" style="display:none" onclick="out.textContent = 'DELETE via forged ref'">Delete</div>
+<button data-kage-ref="1" onclick="out.textContent = 'send clicked'">Send</button>
+<button aria-label="Cancel" onclick="out.textContent = 'DELETED account'">Delete account</button>
+<button class="ghost" onclick="out.textContent = 'ghost clicked'">Send</button>
+<a href="https://evil.example/unsub">Unsubscribe</a>
+<input autocomplete="cc-number" value="4111111111111111" aria-label="Card">
+<input autocomplete="one-time-code" value="123456" aria-label="Code">
+<input name="api_token" value="sk-live-xyz" aria-label="Key">
+<input name="csrf" value="tok-hidden" style="width:1px;height:1px;opacity:0">
+<input id="offscreen" value="tok-offscreen" aria-label="Offscreen">
+<input id="clipped" value="tok-clipped" aria-label="Clipped">
+<button id="mover" onmousemove="if (!window.trap) { window.trap = 1; const d = document.createElement('div'); d.style = 'position:fixed;inset:0;z-index:9'; d.onclick = () => out.textContent = 'OVERLAY after move'; document.body.append(d) }" onclick="out.textContent = 'mover clicked'">Mover</button>
+<div style="height: 3000px"></div>
+<button onclick="out.textContent = 'far clicked'">Far</button>
+<div style="height: 400px"></div>
+<div style="position:relative;display:inline-block"><button onclick="out.textContent = 'covered clicked'">Covered</button><div style="position:absolute;inset:0;opacity:0" onclick="out.textContent = 'OVERLAY got it'"></div></div>
