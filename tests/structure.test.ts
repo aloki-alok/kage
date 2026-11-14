@@ -20,7 +20,7 @@ const MAX_LINES = 300
 const DEBT = {
   // ADR 0001: core/ does no I/O, reads no environment, sets no timers, and imports only core/.
   impureCore: [
-    'core/guards.ts', 'core/transcript.ts',
+    'core/guards.ts',
   ] as string[],
   // runtime/ and connectors/ never import a file in the repo root (router.ts, config.ts, ...).
   rootImports: [

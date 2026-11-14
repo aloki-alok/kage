@@ -14,7 +14,7 @@ Files in `core/` do no file, network or process I/O. They import nothing from `r
 
 - A rule that needs data takes it as an argument, so its test needs no fixtures on disk.
 - Code that must read a file goes in `runtime/` or `cli/`, even when it feels like a rule.
-- Known debt, to fix after #116 lands: `core/guards.ts:2` imports `node:fs` (`realpathSync`), `core/transcript.ts:3` imports `node:fs` (reads the transcript), and `core/blocks.ts:5` imports the `Task` type from `runtime/protocol.ts`. New code must not copy these.
+- Known debt: `core/guards.ts` imports `node:fs` (`realpathSync`, `readdirSync`) and reads `process.env.HOME`. `tests/structure.test.ts` lists it as `impureCore` debt.
 
 ## How it is checked
 

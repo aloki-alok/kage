@@ -7,7 +7,8 @@
 import { existsSync, statSync } from 'node:fs'
 import { CWD, DIR } from './home.ts'
 import { DatabaseSync } from 'node:sqlite'
-import { newLines, stepTime, transcriptLine } from '../core/transcript.ts'
+import { stepTime, transcriptLine } from '../core/transcript.ts'
+import { newLines } from '../runtime/transcript-tail.ts'
 
 const HOME = process.env.HOME!
 // Sessions run in the hub's working folder (hub.ts: harness.cwd, else home); Claude Code names the
