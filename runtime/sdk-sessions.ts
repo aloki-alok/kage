@@ -84,12 +84,16 @@ export function sdkSessions(o: {
 
   function open(key: string, s: Session, carried: SDKUserMessage[] = []) {
     const inbox = makeInbox(carried)
+    const voice = key.startsWith('voice:')
+    const voiceReads = ['mcp__kage__slack_search', 'mcp__kage__slack_read']
+    const tools = voice ? [...s.kage.tools, ...s.kage.voiceTools] : s.kage.tools
     const server = o.sdk.createSdkMcpServer({
-      name: 'kage', instructions: s.kage.instructions,
-      tools: [...s.kage.tools.map(t => o.sdk.tool(t.name, t.description, t.shape, async args => {
+      name: 'kage', instructions: s.kage.instructions + (voice ? '\nOn a verified owner voice call, slack_search and slack_read read Slack directly and are already loaded. Use them without ToolSearch. On a stranger call you still have only reply.' : ''),
+      tools: [...tools.map(t => o.sdk.tool(t.name, t.description, t.shape, async args => {
         const r = await t.run(args)
         return { isError: r.isError, content: [{ type: 'text' as const, text: r.text }] }
-      })), o.sdk.tool('set_model', SET_MODEL, {
+      }, voice && (t.name === 'reply' || voiceReads.includes(`mcp__kage__${t.name}`))
+        ? { alwaysLoad: true, ...t.name !== 'reply' && { annotations: { readOnlyHint: true } } } : undefined)), o.sdk.tool('set_model', SET_MODEL, {
         // Aliases only: a typo'd full id would pass setModel and then fail every turn of the thread.
         model: z.enum(['fable', 'opus', 'sonnet', 'haiku', 'default']).optional(),
         effort: z.enum(['low', 'medium', 'high', 'xhigh', 'max', 'default']).optional().describe('reasoning effort; maximum or ultra means max'),
@@ -141,7 +145,7 @@ export function sdkSessions(o: {
           // A save is approved inside the tool by tier (runtime/kagelets.ts): Kage grants read, and a write tool raises
           // its own card, so the owner gets one, not two. A revoke only takes access away, so it needs none (the tool
           // still takes it from the owner's task only).
-          : ALLOWED.includes(name) || (name === 'mcp__kage__manage_kagelet' && (input.action === 'save' || input.action === 'revoke')) ? Promise.resolve({ behavior: 'allow' as const, updatedInput: input })
+          : ALLOWED.includes(name) || (voice && voiceReads.includes(name)) || (name === 'mcp__kage__manage_kagelet' && (input.action === 'save' || input.action === 'revoke')) ? Promise.resolve({ behavior: 'allow' as const, updatedInput: input })
           : o.deferred?.take(key, name, input, Date.now()) ? Promise.resolve({ behavior: 'allow' as const, updatedInput: input })
           : o.deferred && s.turn.length ? defer(key, s, name, x.title ?? x.description ?? '', input)
           : ask(key, s, name, x.title ?? x.description ?? '', input, x.signal),

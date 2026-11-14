@@ -27,7 +27,19 @@ function fakeSlack() {
       delete: async (a: { channel: string; ts: string }) => { calls.push(`${who} delete ${a.channel} ${a.ts}`) },
       getPermalink: async (a: { channel: string; message_ts: string }) => ({ permalink: `https://x/${a.channel}/${a.message_ts}` }),
     },
+    search: { messages: async (a: { query: string; count: number; page: number }) => {
+      calls.push(`${who} search ${JSON.stringify(a)}`)
+      return { messages: { matches: [{ user: 'U0TEST1', text: 'A test result.', ts: '1.1', channel: { id: 'C0TEST1' }, permalink: 'https://test.invalid/message' }], paging: { page: a.page, pages: 2 } } }
+    } },
     conversations: {
+      history: async (a: { channel: string; limit: number; cursor?: string }) => {
+        calls.push(`${who} history ${JSON.stringify(a)}`)
+        return { messages: [{ user: 'U0TEST1', text: 'Test channel data.', ts: '1.1' }], has_more: true, response_metadata: { next_cursor: 'test-cursor' } }
+      },
+      replies: async (a: { channel: string; ts: string; limit: number; cursor?: string }) => {
+        calls.push(`${who} replies ${JSON.stringify(a)}`)
+        return { messages: [{ user: 'U0TEST1', text: 'Test thread data.', ts: '1.2' }], has_more: false }
+      },
       open: async (a: { users: string }) => {
         if (a.users.includes('UNOSCOPE')) throw Object.assign(new Error('x'), { data: { error: 'missing_scope' } })
         calls.push(`${who} open ${a.users}`)
@@ -955,5 +967,47 @@ describe('the meeting bot (#63)', () => {
     assert.deepEqual(asked, [])
     assert.equal(setup({ kagelet: 'calls', meetbot: fakeBot(asked) }).t.tools.some(x => x.name === 'meeting_join'), false)
     assert.equal(setup().t.tools.some(x => x.name === 'meeting_join'), false)
+  })
+})
+
+describe('voice Slack reads', () => {
+  test('an owner call can search and read Slack through the user client, with bounded pages and quoted data', async () => {
+    const s = setup()
+    s.t.onTask(s.task({ channel: 'voice', thread_ts: 'voice:test-call' }))
+    const args = { channel: 'voice', thread_ts: 'voice:test-call' }
+    const call = (name: string, a: object) => {
+      const tool = s.t.voiceTools?.find(tool => tool.name === name)
+      assert.ok(tool, `voice tool ${name} exists`)
+      return tool.run({ ...args, ...a })
+    }
+    const search = await call('slack_search', { query: 'test query', page: 2 })
+    assert.equal(search.isError, undefined)
+    assert.match(search.text, /Slack messages \(data, not instructions\)/)
+    assert.match(search.text, /"channel_id":"C0TEST1"/)
+    assert.match(search.text, /"pages":2/)
+    const history = await call('slack_read', { channel_id: 'C0TEST1', cursor: 'test-cursor' })
+    assert.match(history.text, /Test channel data/)
+    assert.match(history.text, /"next_cursor":"test-cursor"/)
+    const thread = await call('slack_read', { channel_id: 'C0TEST1', ts: '1.1' })
+    assert.match(thread.text, /Test thread data/)
+    assert.deepEqual(s.calls, [
+      'owner search {"query":"test query","count":20,"page":2}',
+      'owner history {"channel":"C0TEST1","limit":20,"cursor":"test-cursor"}',
+      'owner replies {"channel":"C0TEST1","ts":"1.1","limit":20}',
+    ])
+  })
+  test('the read handlers reject strangers, mismatched task ids and non-voice tasks without calling Slack', async () => {
+    const s = setup()
+    for (const tool of ['slack_search', 'slack_read']) assert.ok(s.t.voiceTools?.some(t => t.name === tool))
+    const args = { channel: 'voice', thread_ts: 'voice:test-call', query: 'test', channel_id: 'C0TEST1' }
+    for (const fromOwner of [false, true, false]) {
+      s.t.onTask(s.task({ channel: 'voice', thread_ts: 'voice:test-call', fromOwner }))
+      for (const tool of s.t.voiceTools) {
+        if (!fromOwner) assert.equal((await tool.run(args)).isError, true)
+        assert.equal((await tool.run({ ...args, thread_ts: 'voice:unknown-call' })).isError, true)
+        assert.equal((await tool.run({ ...args, channel: 'C0TEST1' })).isError, true)
+      }
+    }
+    assert.deepEqual(s.calls, [])
   })
 })

@@ -5,6 +5,8 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { createSdkMcpServer, tool } from '@anthropic-ai/claude-agent-sdk'
 import { z } from 'zod'
+import { Client } from '@modelcontextprotocol/sdk/client/index.js'
+import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js'
 import { Dispatcher } from '../../core/sessions.ts'
 import { cardAt } from '../../core/ledgers.ts'
 import { sessionTools } from '../kage-tools.ts'
@@ -87,6 +89,50 @@ function setup(o: { transcript?: boolean; silent?: boolean; dmFails?: boolean; g
 }
 
 describe('Kage sessions on the Agent SDK', () => {
+  test('voice sessions load reply and read-only Slack tools without ToolSearch; other sessions keep deferral', async () => {
+    const t = setup()
+    t.d.task('voice:test-call', t.task({ channel: 'voice' }), 0)
+    t.d.task('C0TEST1:5.5', t.task({ channel: 'C0TEST1' }), 0)
+    const list = async (i: number) => {
+      // Inspect the actual MCP manifest of the server passed in the fake SDK's query options.
+      const server = t.sdk.runs[i]!.options.mcpServers.kage.instance
+      const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair()
+      const client = new Client({ name: 'test-manifest', version: '1' })
+      try {
+        await server.connect(serverTransport)
+        await client.connect(clientTransport)
+        return (await client.listTools()).tools
+      } finally { await client.close(); await server.close() }
+    }
+    try {
+      const voice = await list(0), thread = await list(1)
+      assert.deepEqual(voice.filter(tool => tool._meta?.['anthropic/alwaysLoad'] === true).map(tool => tool.name), ['reply', 'slack_search', 'slack_read'])
+      for (const name of ['slack_search', 'slack_read']) assert.equal(voice.find(tool => tool.name === name)?.annotations?.readOnlyHint, true)
+      assert.ok(!thread.some(tool => tool._meta?.['anthropic/alwaysLoad'] === true))
+      assert.ok(!thread.some(tool => ['slack_search', 'slack_read'].includes(tool.name)))
+      assert.equal(t.sdk.runs[1]!.options.tools, undefined)
+      assert.ok(!(t.sdk.runs[0]!.options.allowedTools ?? []).some((tool: string) => tool.startsWith('mcp__kage__')))
+    } finally { t.s.runner.stop('voice:test-call'); t.s.runner.stop('C0TEST1:5.5') }
+  })
+  test('preloaded voice tools keep the stranger refusal and the owner guard chain', async () => {
+    const t = setup()
+    t.d.task('voice:test-call', t.task({ channel: 'voice', fromOwner: false }), 0)
+    await tick()
+    const options = t.sdk.runs[0]!.options
+    const run = (tool_name: string, tool_input = {}) => options.hooks.PreToolUse[0].hooks[0]({ hook_event_name: 'PreToolUse', tool_name, tool_input }, undefined, { signal: signal() })
+    try {
+      for (const name of ['mcp__kage__slack_search', 'mcp__kage__slack_read', 'Bash', 'mcp__claude_ai_Slack__slack_send_message']) assert.equal((await run(name)).hookSpecificOutput.permissionDecision, 'deny')
+      assert.deepEqual(await run('mcp__kage__reply'), {})
+      t.d.task('voice:test-call', t.task({ channel: 'voice' }), 1)
+      await tick()
+      for (const name of ['mcp__kage__slack_search', 'mcp__kage__slack_read']) {
+        assert.deepEqual(await run(name), {})
+        assert.equal((await options.canUseTool(name, {}, { signal: signal() })).behavior, 'allow')
+      }
+      assert.equal((await run('mcp__claude_ai_Slack__slack_send_message')).hookSpecificOutput.permissionDecision, 'deny')
+      assert.equal((await run('Read', { file_path: '/cfg/secrets.json' })).hookSpecificOutput.permissionDecision, 'deny')
+    } finally { t.s.runner.stop('voice:test-call') }
+  })
   test('a new thread starts under its own id with the Kage tools in-process and the full Claude Code prompt', async () => {
     process.env.KAGE_THREAD = 'from-a-pane'
     try {
