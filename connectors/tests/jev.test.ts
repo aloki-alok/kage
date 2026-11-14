@@ -41,7 +41,10 @@ describe('asking Jev about an agent post', () => {
     assert.equal((await jevCheck(config, { fetch: broken })('A0AGENT01', 'x')).reply, true)
     const slow = ((_: string, init: RequestInit) => new Promise((_r, reject) =>
       init.signal!.addEventListener('abort', () => reject(init.signal!.reason)))) as unknown as typeof fetch
+    // AbortSignal.timeout's timer does not hold the event loop, and this fake fetch holds no socket: keep Node up.
+    const alive = setTimeout(() => {}, 1000)
     const v = await jevCheck(config, { fetch: slow, timeoutMs: 20 })('A0AGENT01', 'x')
+    clearTimeout(alive)
     assert.equal(v.reply, true)
     assert.match(v.why, /TimeoutError/)
   })
