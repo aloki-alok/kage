@@ -77,6 +77,86 @@ describe('who may call the endpoint', () => {
   })
 })
 
+describe('the hang-up webhook', () => {
+  const ended = (s: { url: URL }, body: unknown, auth = `Bearer ${TOKEN}`, session?: string) => fetch(new URL('/voice/ended', s.url), {
+    method: 'POST', headers: { authorization: auth, 'content-type': 'application/json', ...(session && { 'mcp-session-id': session }) }, body: JSON.stringify(body),
+  })
+  for (const field of ['call_id', 'session_id', 'header'] as const) test(`hang-up by ${field} closes only that MCP session and ends its call at once, once`, async () => {
+    const calls: string[] = []
+    const s = await setup({ waitMs: 20, voice: { max: 2 }, end: key => calls.push(key) })
+    const a = await s.client(), b = await s.client()
+    await s.ask(a, 'first call')
+    await s.ask(b, 'second call')
+    const id = (a.transport as StreamableHTTPClientTransport).sessionId!
+    const body = field === 'header' ? {} : { [field]: id }
+    const header = field === 'header' ? id : undefined
+    const first = await Promise.all([ended(s, body, undefined, header), ended(s, body, undefined, header)])
+    assert.deepEqual(first.map(r => r.status), [204, 204])
+    assert.equal(s.v.sessions(), 1)
+    assert.equal(s.v.calls(), 1)
+    assert.deepEqual(calls, [`voice:${id}`])
+    // A duplicate hang-up, including one racing the first, is harmless.
+    const retries = await Promise.all([ended(s, body, undefined, header), ended(s, body, undefined, header)])
+    assert.deepEqual(retries.map(r => r.status), [204, 204])
+    assert.deepEqual(calls, [`voice:${id}`])
+    assert.equal((await b.listTools()).tools[0]!.name, 'ask_kage')
+    const gone = await fetch(s.url, { method: 'GET', headers: { authorization: `Bearer ${TOKEN}`, 'mcp-session-id': id, accept: 'text/event-stream' } })
+    assert.equal(gone.status, 404)
+  })
+  test('missing and bad tokens cannot hang up an existing call', async () => {
+    const calls: string[] = []
+    const s = await setup({ waitMs: 20, end: key => calls.push(key) })
+    const a = await s.client()
+    await s.ask(a, 'still here')
+    const id = (a.transport as StreamableHTTPClientTransport).sessionId!
+    for (const auth of ['', 'Bearer wrong', `Bearer ${TOKEN}x`, TOKEN]) {
+      const r = await ended(s, { call_id: id }, auth)
+      assert.equal(r.status, 401)
+      assert.equal(await r.text(), '')
+    }
+    assert.equal(s.v.calls(), 1)
+    assert.equal(s.v.sessions(), 1)
+    assert.deepEqual(calls, [])
+  })
+  test('unknown ids are ignored and an initialized session can end before its first question', async () => {
+    const calls: string[] = []
+    const s = await setup({ end: key => calls.push(key) })
+    const a = await s.client()
+    assert.equal((await ended(s, { call_id: 'test-unknown-call' })).status, 204)
+    assert.equal(s.v.sessions(), 1)
+    const id = (a.transport as StreamableHTTPClientTransport).sessionId!
+    assert.equal((await ended(s, { session_id: id })).status, 204)
+    assert.equal(s.v.sessions(), 0)
+    assert.deepEqual(calls, [])
+  })
+  test('hang-up releases an in-flight question and its call slot', { timeout: 5000 }, async () => {
+    const calls: string[] = []
+    const s = await setup({ end: key => calls.push(key) })
+    const a = await s.client()
+    const pending = s.ask(a, 'waiting for an answer').catch(() => undefined)
+    await until(() => s.delivered.length === 1)
+    const id = (a.transport as StreamableHTTPClientTransport).sessionId!
+    assert.equal((await ended(s, { call_id: id })).status, 204)
+    assert.deepEqual(calls, [`voice:${id}`])
+    assert.equal(s.v.calls(), 0)
+    assert.equal(s.v.sessions(), 0)
+    s.v.reply(`voice:${id}`, 'A reply after hang-up is dropped.')
+    const b = await s.client()
+    const next = s.ask(b, 'the next call')
+    await until(() => s.delivered.length === 2)
+    s.v.reply(s.delivered[1]!.key, 'New call.')
+    assert.equal((await next).text, 'New call.')
+    await a.close()   // the remote caller has disconnected; cancel its unanswered client request
+    await pending
+  })
+  test('missing or malformed ids are rejected without closing a session', async () => {
+    const s = await setup()
+    await s.client()
+    for (const body of [null, {}, { call_id: 42 }, { session_id: '' }]) assert.equal((await ended(s, body)).status, 400)
+    assert.equal(s.v.sessions(), 1)
+  })
+})
+
 describe('ask_kage', () => {
   test('the tool is the only one, and takes a question', async () => {
     const s = await setup()
