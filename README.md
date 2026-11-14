@@ -212,6 +212,7 @@ Kage gives Slack a path into a session that has everything your laptop has. Thes
 | Risk | What stops it |
 |---|---|
 | Someone else tags `@kage` | Only your Slack user ID, plus any IDs you list in `KAGE_TEAMMATES`, passes the gate. Everyone else is dropped before Claude sees anything. A teammate can never approve a prompt. |
+| A listed agent relays instructions it read somewhere else (an email, a page, a ticket) | An agent's task may only read files and answer in the thread. Every other tool (shell, edits, web, other MCP tools, subagents, posting as you, schedules) is refused before it runs, so no approval card for it ever reaches you. Its reads skip `~/.config/kage`, `~/.ssh`, `~/.aws`, `~/.claude`, `.env` files and keys, through symlinks too. A turn that holds an agent's task keeps the limit even when you write in it mid-turn. |
 | An app or script posts as you, using your token | Slack sets `client_msg_id` only on messages a person typed in a Slack app. Kage requires it and rejects anything with an `app_id`. |
 | A message in the thread says "ignore your instructions and..." | Thread messages reach Claude quoted, labelled by Slack ID, and marked as data. Only your own tagged line is the task. |
 | Claude is tricked into posting somewhere else | Replies may only go to a channel or DM a task came from, or to your DM with the bot. `@channel`, `@here` and user mentions are defused. |

@@ -16,6 +16,36 @@ export function voiceToolRefusal(tool: string, sender: string | undefined): stri
   if (sender !== 'voice' || VOICE_OK.has(tool)) return undefined
   return `${tool} is not allowed on a voice call: anyone may be talking. Answer from what you know, or say you will check with the owner.`
 }
+// A listed agent's task may read and answer, nothing more. An agent relays what it read elsewhere (an
+// email, a page, a ticket), so its task is where injected instructions arrive. It gets no shell, no edits,
+// no web (a URL can carry data out), no other MCP tool, no subagent, no posting as the owner and no
+// schedule, and it never puts an approval card in front of the owner: a card relayed by an agent is how
+// an injected instruction would get approved. Reads skip the places that hold secrets.
+const AGENT_OK = new Set(['Read', 'Grep', 'Glob', 'ToolSearch', 'TodoWrite',
+  'mcp__kage__reply', 'mcp__kage__edit_message', 'mcp__plugin_kage_kage__reply', 'mcp__plugin_kage_kage__edit_message'])
+const SECRET_DIRS = ['.config/kage', '.ssh', '.aws', '.claude', '.gnupg', '.docker', '.kube']
+const SECRET_FILE = /(^|\/)(\.env(\..*)?|\.netrc|\.npmrc|\.pgpass|id_[a-z0-9]+|[^/]*\.(pem|key|p12|pfx))$/i
+// A Glob pattern that would list secret files: it names .env, a key or a secret folder anywhere in it.
+const SECRET_GLOB = /(^|[/*{,])(\.env|\.netrc|\.npmrc|\.pgpass|id_[a-z0-9*]|\.ssh|\.aws|\.gnupg|\.claude|\.config\/kage)|\.(pem|key|p12|pfx)\b/i
+export function agentToolRefusal(tool: string, input: { file_path?: string; path?: string; pattern?: string }, sender: string | undefined, home = process.env.HOME ?? ''): string | undefined {
+  if (sender !== 'agent') return undefined
+  if (!AGENT_OK.has(tool)) return `${tool} is not allowed on an agent's task: it may only read and answer. Say in the thread what it would need, and that a person has to ask for it.`
+  const target = tool === 'Read' ? input.file_path : tool === 'Grep' || tool === 'Glob' ? (input.path ?? home) : undefined
+  if (!target) return undefined
+  // Both sides resolved, so a home folder behind a symlink (macOS /var -> /private/var) compares like for like.
+  const base = real(home), full = real(resolve(home, target)), glob = tool === 'Glob' ? String(input.pattern ?? '') : ''
+  const secret = SECRET_DIRS.some(d => { const dir = join(base, d); return full === dir || full.startsWith(dir + '/') || (full === base && glob.includes(d)) })
+    || SECRET_FILE.test(full) || SECRET_GLOB.test(glob)
+  return secret ? `${target} may hold secrets, and an agent's task does not read them.` : undefined
+}
+// The path as the file system has it, so a symlink can't point a read at a secret.
+// A path that does not exist yet resolves through its deepest existing folder, so it still compares like for like.
+function real(p: string): string {
+  try { return realpathSync(p) } catch {}
+  const up = dirname(p)
+  return up === p ? p : join(real(up), basename(p))
+}
+
 // A Slack connector posts as the owner with no sign of Kage. Kage's reply and message_people tools
 // post as Kage, or mark a post from the owner's account, so every Slack post goes through them.
 // Any Slack server's tool that sends, posts, schedules or replies; drafts post nothing.
