@@ -31,7 +31,7 @@ export const Config = z.strictObject({
   jev: z.strictObject({ agents: strings, threshold: money, model: text }).optional(),
   connectors: z.strictObject({
     email: z.strictObject({ on: yes, address: text, queue: text, ownerEmail: text, region: text, teammateEmails: strings }).optional(),
-    voice: z.strictObject({ on: yes, port: count, max: count, perHour: count }).optional(),
+    voice: z.strictObject({ on: yes, port: count, max: count, perHour: count, model: text }).optional(),
     call: z.strictObject({ command: text }).optional(),
     github: z.strictObject({ login: text, port: count, perHour: count }).optional(),
     meeting: z.strictObject({ port: count, perHour: count }).optional(),
@@ -99,7 +99,7 @@ export const KEYS: Row[] = [
   R('KAGE_EMAIL', 'connectors.email.on', onoff), R('KAGE_MAIL_ADDRESS', 'connectors.email.address'), R('KAGE_MAIL_QUEUE', 'connectors.email.queue'),
   R('KAGE_OWNER_EMAIL', 'connectors.email.ownerEmail'), R('KAGE_AWS_REGION', 'connectors.email.region'), R('KAGE_TEAMMATE_EMAILS', 'connectors.email.teammateEmails', list),
   R('KAGE_VOICE', 'connectors.voice.on', onoff), R('KAGE_VOICE_PORT', 'connectors.voice.port', int), R('KAGE_VOICE_MAX', 'connectors.voice.max', int),
-  R('KAGE_VOICE_PER_HOUR', 'connectors.voice.perHour', int), R('KAGE_CALL_COMMAND', 'connectors.call.command'),
+  R('KAGE_VOICE_PER_HOUR', 'connectors.voice.perHour', int), R('KAGE_VOICE_MODEL', 'connectors.voice.model'), R('KAGE_CALL_COMMAND', 'connectors.call.command'),
   R('KAGE_GITHUB_LOGIN', 'connectors.github.login'), R('KAGE_GITHUB_PORT', 'connectors.github.port', int), R('KAGE_GITHUB_PER_HOUR', 'connectors.github.perHour', int),
   R('KAGE_MEETING_PORT', 'connectors.meeting.port', int), R('KAGE_MEETING_PER_HOUR', 'connectors.meeting.perHour', int),
   R('KAGE_BROWSER_PORT', 'connectors.browser.port', int), R('KAGE_BROWSER_BLOCK', 'connectors.browser.block', list),
