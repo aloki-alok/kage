@@ -88,6 +88,11 @@ kage_name() { NAME="$(env_get KAGE_NAME)"; NAME="${NAME:-kage}"; }
 # A hub started before the service existed runs in a tmux session (start.sh). kage service on moves it.
 old_tmux() { command -v tmux >/dev/null && tmux has-session -t "=$NAME" 2>/dev/null; }
 running() { kage_name; ./service.sh running 2>/dev/null || old_tmux; }
+# The hub writes the status file (connectors/slack.ts): its first word is the socket's state, its fourth the hub's pid.
+connected() {
+  local st; st="$(dirname "$ENV_FILE")/status"
+  [[ -f $st && $(awk '{print $1}' "$st") == connected ]] && ps -p "$(awk '{print $4}' "$st")" >/dev/null 2>&1
+}
 LOG="$(dirname "$ENV_FILE")/hub.log"
 
 cmd_start() {
@@ -222,9 +227,11 @@ cmd_save() {
   umask 077
   # Keep any other settings already in the file (KAGE_ROUTE, KAGE_TEAMMATES).
   local keep=""; [[ -f "$ENV_FILE" ]] && keep="$(grep -vE '^(KAGE_NAME|SLACK_APP_TOKEN|SLACK_USER_TOKEN|SLACK_BOT_TOKEN)=' "$ENV_FILE" || true)"
+  # Written beside it, then moved over it: a crash or a full disk midway leaves the old file whole.
+  local tmp; tmp="$(mktemp "$ENV_FILE.XXXXXX")"
   { printf 'KAGE_NAME=%s\nSLACK_APP_TOKEN=%s\nSLACK_USER_TOKEN=%s\nSLACK_BOT_TOKEN=%s\n' "$NAME" "$APP" "$USR" "$BOT"
-    if [[ -n $keep ]]; then printf '%s\n' "$keep"; fi; } > "$ENV_FILE"
-  chmod 600 "$ENV_FILE"
+    if [[ -n $keep ]]; then printf '%s\n' "$keep"; fi; } > "$tmp" || { rm -f "$tmp"; die "Could not write $ENV_FILE."; }
+  chmod 600 "$tmp" && mv -f "$tmp" "$ENV_FILE"
   echo "ok: saved to $ENV_FILE (mode 600) for @$NAME, owner $OWNER"
 }
 
@@ -273,9 +280,8 @@ cmd_doctor() {
   local boots; boots="$(awk -v t=$(( $(date +%s) - 86400 )) '$1 > t' "$(dirname "$ENV_FILE")/boots" 2>/dev/null | wc -l | tr -d ' ')"
   (( boots > 5 )) && note "the hub started $boots times in 24 h: kage logs shows why"
   [[ "$(uname -s)" == Darwin ]] && note "with the lid closed this Mac sleeps, and Kage is offline until it wakes"
-  local st="$(dirname "$ENV_FILE")/status"
-  if [[ -f $st ]] && ps -p "$(awk '{print $4}' "$st")" >/dev/null 2>&1 && [[ $(awk '{print $1}' "$st") == connected ]]; then
-    pass "connected to Slack: $(cat "$st")"
+  if connected; then
+    pass "connected to Slack: $(cat "$(dirname "$ENV_FILE")/status")"
     pass "runs Kage $(running_version)"
   else
     fail "not connected to Slack yet: wait 20 s after start, or run kage logs to see why"
@@ -293,12 +299,19 @@ cmd_doctor() {
 }
 
 cmd_interactive() {
-  say "1/4  Checking tools"; cmd_check
-  say "2/4  Pick a name"; read -r -p "What do you call it in Slack? [kage] " n; valid_name "$n"
-  say "3/4  Create your Slack app"; cmd_app "$NAME"
+  say "1/5  Checking tools"; cmd_check
+  say "2/5  Pick a name"; read -r -p "What do you call it in Slack? [kage] " n; valid_name "$n"
+  say "3/5  Create your Slack app"; cmd_app "$NAME"
   read -r -p "Press Enter when you have the three tokens. "
-  say "4/4  Save your tokens"; cmd_save "$NAME"
-  say "Done. Start it with kage start (run ./setup.sh link first to put kage on your PATH)"
+  say "4/5  Save your tokens"; cmd_save "$NAME"
+  say "5/5  Start it"; cmd_start >/dev/null
+  # The first start installs the Agent SDK before the hub runs, so the wait covers only the connect.
+  local wait="${KAGE_SETUP_WAIT:-90}" i
+  echo "Waiting for Slack to connect (up to $wait s)..."
+  for ((i = 0; i < wait; i += 2)); do connected && break; sleep 2; done
+  connected || die "Not connected to Slack after $wait s. Run kage doctor: it names the fix for each problem."
+  say "Connected to Slack. Tag @$NAME in any thread to try it."
+  command -v kage >/dev/null || echo "To type kage from anywhere, run ./setup.sh link once."
 }
 
 # Help comes first, so "kage add --help" never reaches a command that would act on it.
