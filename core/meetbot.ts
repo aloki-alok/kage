@@ -52,3 +52,17 @@ export function askTask(question: string, recent: Line[], key: string): string {
     `Reply with the reply tool, channel "voice" and thread_ts "${key}". It is spoken in the meeting.`,
   ].join('\n')
 }
+
+// Whether a question was already asked: Meet rewrites a caption block after it settles, so the bot can send the
+// same words again with new punctuation or a word added at the end. A short earlier line ("Kage?") never covers a
+// longer question: one must be a prefix of the other and at least 80% of its length.
+export function sameQuestion(a: string, b: string): boolean {
+  const n = (s: string) => s.toLowerCase().replace(/[^\p{L}\p{N}]+/gu, ' ').trim()
+  const [x, y] = [n(a), n(b)].sort((p, q) => p.length - q.length) as [string, string]
+  return y.startsWith(x) && x.length >= 0.8 * y.length
+}
+
+// A live call's session key. It is on the voice channel, so the voice-call limits apply. Phone call keys are
+// voice:<MCP session UUID>, which never start with "meet-".
+export const meetKey = (call: string) => `voice:meet-${call}`
+export const meetCall = (key: string) => /^voice:meet-([a-z0-9-]{1,40})$/.exec(key)?.[1]
