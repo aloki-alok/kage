@@ -9,6 +9,12 @@
   <input type="text" aria-label="Your name" placeholder="Your name">
   <button id="ask"><span>Ask to join</span></button>
 </div>
+<!-- Meet's first-visit question, over the lobby: it takes every click until answered. -->
+<div id="media" role="dialog" style="position: fixed; inset: 0; background: #0008">
+  <p>Do you want people to see and hear you in the meeting?</p>
+  <button id="allow">Allow microphone and camera</button>
+  <button id="without">Continue without microphone and camera</button>
+</div>
 <div id="waiting" class="hide">Asking to be let in…</div>
 <div id="call" class="hide">
   <div data-participant-id="spaces/x/devices/1">Jane</div>
@@ -37,6 +43,8 @@
     setInterval(() => { an.getFloatTimeDomainData(buf); for (const v of buf) fake.peak = Math.max(fake.peak, Math.abs(v)) }, 20)
     show('waiting')
   }
+  $('#allow').onclick = () => { fake.media = 'allowed'; $('#media').remove() }
+  $('#without').onclick = () => { fake.media = 'refused'; $('#media').remove() }
   fake.admit = () => { fake.admitted = true; show('call') }
   $('#chatbtn').onclick = () => $('#chat').classList.remove('hide')
   $('#chat textarea').onkeydown = e => { if (e.key === 'Enter') { fake.sent.push(e.target.value); e.target.value = ''; e.preventDefault() } }
