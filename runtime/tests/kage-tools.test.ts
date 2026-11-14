@@ -605,3 +605,40 @@ describe("the owner's browser", () => {
     assert.match(r.text, /not connected/)
   })
 })
+
+describe('post_as_kage: the owner has Kage post in a channel of their choosing', () => {
+  test("on the owner's task it posts as the bot, top level or in a thread, with mentions defused", async () => {
+    const s = setup()
+    s.t.onTask(s.task())
+    const r = await s.call('post_as_kage', { channel: 'C1', thread_ts: '5.5', to: 'CNEW', text: 'Launch notes <!channel>' })
+    assert.equal(r.isError, undefined)
+    assert.match(r.text, /channel CNEW, ts 9\.1/)
+    await s.call('post_as_kage', { channel: 'C1', thread_ts: '5.5', to: 'CNEW', to_thread_ts: '7.7', text: 'second' })
+    assert.deepEqual(s.posts.map(p => [p.channel, p.thread_ts]), [['CNEW', undefined], ['CNEW', '7.7']])
+    assert.doesNotMatch(s.posts[0]!.text, /<!channel>/)
+    assert.ok(s.calls.every(c => c.startsWith('bot ')))
+  })
+  test("a teammate's, an agent's or a voice caller's task may not use it", async () => {
+    for (const t of [{ fromOwner: false }, { fromOwner: false, agent: true }, { fromOwner: false, channel: 'voice' }]) {
+      const s = setup()
+      const base = s.task({ fromOwner: t.fromOwner, channel: t.channel })
+      s.t.onTask(t.agent ? { ...base, agent: { app: 'ATEST0001' } } : base)
+      const r = await s.call('post_as_kage', { channel: t.channel ?? 'C1', thread_ts: '5.5', to: 'CNEW', text: 'hi' })
+      assert.equal(r.isError, true, JSON.stringify(t))
+      assert.match(r.text, /only the owner/)
+      assert.deepEqual(s.posts, [])
+    }
+  })
+  test('a secret is refused, and a channel the bot is not in is an error, never a post from the owner\'s account', async () => {
+    const s = setup()
+    s.t.onTask(s.task())
+    assert.equal((await s.call('post_as_kage', { channel: 'C1', thread_ts: '5.5', to: 'CNEW', text: 'key AKIAABCDEFGHIJKLMNOP' })).isError, true)
+    const r = await s.call('post_as_kage', { channel: 'C1', thread_ts: '5.5', to: 'CPRIV', text: 'hi' })
+    assert.equal(r.isError, true)
+    assert.match(r.text, /not a member/)
+    assert.deepEqual(s.posts, [])
+  })
+  test('a kagelet session has no post_as_kage', () => {
+    assert.equal(setup({ kagelet: 'calls' }).t.tools.some(x => x.name === 'post_as_kage'), false)
+  })
+})
