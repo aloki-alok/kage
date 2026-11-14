@@ -53,7 +53,10 @@ export async function attend(page: Page, link: string, o: {
   await page.goto(link, { waitUntil: 'domcontentloaded' })
   // A signed-in profile has no name field; a guest types the name everyone in the call will see.
   if (await until(() => mark('name'), 15_000)) await page.fill('[data-kage="name"]', o.name)
-  if (!await until(() => click('join'), 30_000)) throw new Error('no join button on the Meet page')
+  if (!await until(async () => (await click('blocker'), click('join')), 30_000)) {
+    const d = await k<string>('dialog')
+    throw new Error(d ? `a Meet popup is in the way: ${d}` : 'no join button on the Meet page')
+  }
   log('asked to join', link)
   const admitted = await until(async () => {
     await click('noticeJoin')   // "someone else in this call takes notes": every joiner clicks Join now

@@ -19,6 +19,8 @@
     name: [['input[type="text"]', /your name/i]],
     join: [['button', /^ask to join$/i], ['button', /^join now$/i], ['button', /^join$/i]],
     noticeJoin: [['[role="dialog"] button, [role="alertdialog"] button', /^join now$/i]],   // "someone else takes notes" notice
+    // Any popup over the lobby, whatever Meet adds next: let the mic in first (Kage speaks), else close it. Never "without".
+    blocker: [['[role="dialog"] button, [role="alertdialog"] button', /^allow microphone/i], ['[role="dialog"] button, [role="alertdialog"] button', /^(got it|dismiss|close|ok|not now|no thanks)$/i]],
     captionsOn: [['button', /turn on captions/i]],
     chatOpen: [['button', /chat with everyone|^chat$/i]],
     chatBox: [['textarea, [contenteditable="true"]', /send a message/i]],
@@ -113,5 +115,7 @@
   }
   new MutationObserver(scan).observe(document, { subtree: true, childList: true, characterData: true })
 
-  window.__kage = { say, hush, settled, scan, mark, state, others }
+  // The text of a popup still in the way, so a failed join says what blocked it.
+  const dialog = () => [...document.querySelectorAll('[role="dialog"], [role="alertdialog"]')].filter(visible).map(d => d.innerText.replace(/\s+/g, ' ').trim().slice(0, 200)).join(' | ')
+  window.__kage = { say, hush, settled, scan, mark, state, others, dialog }
 })()
