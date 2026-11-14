@@ -41,7 +41,7 @@ import { openStore, type Inbox } from './runtime/store.ts'
 import { openLedgers } from './runtime/ledger.ts'
 import { claudeProject, tmuxPanes } from './runtime/tmux-panes.ts'
 import { codeStamp } from './runtime/code-stamp.ts'
-import { markUpdatedFrom, pullMain, updatedNote, version } from './runtime/auto-update.ts'
+import { clearUpdatedFrom, markUpdatedFrom, pullMain, updatedNote, version } from './runtime/auto-update.ts'
 import { costCap, kageletManager, kageletsDir, ownerNotes, readKagelets, syncKagelets } from './runtime/kagelets.ts'
 import { kageletRows } from './core/kagelets.ts'
 import { askHub } from './cli/home.ts'
@@ -538,7 +538,7 @@ listenForSessions(`${DIR}/router.sock`, d, { ...replies, failed, schedules, tell
 
 await slack.start()
 const updated = updatedNote(DIR, CODE, VERSION)
-if (updated) { log(updated); void slack.notifyOwner(updated) }
+if (updated) { log(updated); void slack.notifyOwner(updated).then(sent => { if (sent) clearUpdatedFrom(DIR) }) }
 // Messages the last run took but never handled (it died in between) run now. Older than 10 minutes, they are let go.
 // Email needs no replay: SQS resends a mail until it is deleted after handling.
 store.prune(Date.now() - 7 * 86_400_000)

@@ -42,14 +42,16 @@ export async function pullMain(root: string): Promise<'pulled' | 'current' | { s
   return 'pulled'
 }
 
-// The auto-update job writes the version it pulled from; the next hub reads it once, so the owner hears
-// of each update one time. The oldest version wins when two pulls land before a restart.
+// The auto-update job writes the version it pulled from, and the next hub tells the owner. The mark goes only
+// once the DM is sent (clearUpdatedFrom), so a failed DM is tried again at the next start. The oldest version
+// wins when two pulls land before a restart.
 export const markUpdatedFrom = (dir: string, from: string) => { try { writeFileSync(`${dir}/updated-from`, from, { flag: 'wx' }) } catch { /* an older mark stays */ } }
+export const clearUpdatedFrom = (dir: string) => { try { unlinkSync(`${dir}/updated-from`) } catch { /* already gone */ } }
 export function updatedNote(dir: string, root: string, now: string): string | undefined {
   let from: string
-  try { from = readFileSync(`${dir}/updated-from`, 'utf8').trim(); unlinkSync(`${dir}/updated-from`) } catch { return }
+  try { from = readFileSync(`${dir}/updated-from`, 'utf8').trim() } catch { return }
   const [a, b] = [from.split(' ')[0]!, now.split(' ')[0]!]
-  if (!from || a === b) return
+  if (!from || a === b) { clearUpdatedFrom(dir); return }
   let origin = ''
   try { origin = gitNow(root, 'remote', 'get-url', 'origin') } catch { /* no origin: no link */ }
   const url = compareUrl(origin, a, b)

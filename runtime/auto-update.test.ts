@@ -4,7 +4,7 @@ import { execFileSync } from 'node:child_process'
 import { mkdtempSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { markUpdatedFrom, pullMain, updatedNote, version } from './auto-update.ts'
+import { clearUpdatedFrom, markUpdatedFrom, pullMain, updatedNote, version } from './auto-update.ts'
 
 const git = (cwd: string, ...args: string[]) => execFileSync('git', args, { cwd, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }).trim()
 const commit = (cwd: string, file: string) => {
@@ -48,6 +48,25 @@ test('a local commit on main is never pulled over', async () => {
   assert.equal(git(local, 'rev-parse', 'HEAD'), before)
 })
 
+test('main and origin that both moved on are left as they are', async () => {
+  const { origin, local } = repos()
+  commit(origin, 'b.ts')
+  commit(local, 'mine.ts')
+  commit(local, 'mine2.ts')
+  assert.deepEqual(await pullMain(local), { skip: 'main has 2 local commits that origin/main lacks' })
+})
+
+test('another branch, or an origin that cannot be reached, does nothing', async () => {
+  const { origin, local } = repos()
+  commit(origin, 'b.ts')
+  git(local, 'checkout', '-qb', 'my-fix')
+  assert.deepEqual(await pullMain(local), { skip: 'on branch my-fix, not main' })
+  git(local, 'checkout', '-q', 'main')
+  git(local, 'remote', 'set-url', 'origin', join(origin, 'gone'))
+  const r = await pullMain(local)
+  assert.ok(typeof r === 'object' && r.skip.startsWith('git fetch failed: '), JSON.stringify(r))
+})
+
 test('a folder with no .git of its own is not a checkout, even inside one', async () => {
   const { local } = repos()
   const inner = join(local, 'sub')
@@ -69,6 +88,9 @@ test('the hub after an update tells the owner once, with the compare link', () =
   markUpdatedFrom(dir, 'bbb2222 (2026-01-02)')   // a second pull before the restart keeps the first version
   assert.equal(updatedNote(dir, local, 'ccc3333 (2026-01-03)'),
     'Updated Kage from aaa1111 (2026-01-01) to ccc3333 (2026-01-03). <https://github.com/acme/kage/compare/aaa1111...ccc3333|What changed>')
+  // Not sent yet: the next start tries again. Sent: never again.
+  assert.match(updatedNote(dir, local, 'ccc3333 (2026-01-03)') ?? '', /^Updated Kage from aaa1111/)
+  clearUpdatedFrom(dir)
   assert.equal(updatedNote(dir, local, 'ccc3333 (2026-01-03)'), undefined)
 })
 
