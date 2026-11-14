@@ -97,6 +97,8 @@ Every weekday at 9, check https://status.example.com and post a three-line summa
 
 It runs on its schedule beside the thread's own session and posts in the thread. It has only the tools in `tools`, and teammate trust. WebFetch reaches http and https only. An MCP tool you grant by its full name runs with that tool's own reach. It approves nothing: when it needs a decision or another tool, it says so in the thread, and you decide there. A new, changed or deleted file applies within a minute, and `kage schedules` shows its runs. Kagelets need the default runtime, not tmux panes.
 
+Each kagelet has its own memory folder, `~/.config/kage/kagelets/memory/<name>/`, and its approved notes ride in every run. A kagelet's memory never reads or writes Kage's or your memory. Each night, a kagelet that ran gets a dream that reads its own events and reports and proposes edits to its notes. A proposal never applies on its own: Kage reviews each one (approve, edit, or reject with a reason), and every decision is a row in the event log (`memory-decision`).
+
 Kagelets are Kage's teammates, so Kage approves their tools for you, by tier. The tier of each tool comes from code (`core/access.ts`), never from the model:
 
 | Tier | Tools | Who approves |
@@ -206,8 +208,8 @@ sequenceDiagram
     participant K as Kage hub
     participant S as Your DM with Kage
     C->>K: permission request "abcde": Bash git push
-    K->>S: Approve? Bash: git push origin fix/x ... Reply "yes abcde" or "no abcde"
-    S->>K: yes abcde
+    K->>S: Approve? Bash: git push origin fix/x ... Reply yes or no in this thread
+    S->>K: yes (in the card thread)
     K->>C: allow abcde
     Note over C: the command runs
 ```

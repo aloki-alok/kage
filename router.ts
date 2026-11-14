@@ -6,7 +6,8 @@
 // Still here: thread trust (noteTrust), how each connector shows a failure (failed), the daily
 // "still waiting" note, the self-restart into a newer build, and the auto-update that pulls one.
 // server.ts is the other end for tmux panes only: the Kage channel inside each pane's Claude Code.
-import { execFileSync, spawn } from 'node:child_process'
+import { execFile, execFileSync, spawn } from 'node:child_process'
+import { canPushToKage } from './runtime/repo-access.ts'
 import { randomUUID } from 'node:crypto'
 import { existsSync, mkdirSync, readFileSync, renameSync, rmSync, statSync, writeFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
@@ -15,7 +16,7 @@ import { load, log } from './config.ts'
 import { connectEmail } from './connectors/email.ts'
 import { listenForCommands } from './connectors/slack-commands.ts'
 import { connectSlack } from './connectors/slack.ts'
-import { jevCheck } from './connectors/jev.ts'
+import { jevAfk, jevCheck, jevTriage } from './connectors/jev.ts'
 import { jevConfig } from './core/jev.ts'
 import { connectGithub } from './connectors/github.ts'
 import { connectMeeting } from './connectors/meeting.ts'
@@ -48,6 +49,9 @@ import { EVENT_DAYS } from './core/events.ts'
 import { claudeProject, tmuxPanes } from './runtime/tmux-panes.ts'
 import { codeStamp } from './runtime/code-stamp.ts'
 import { clearUpdatedFrom, markUpdatedFrom, pullMain, updatedNote, version } from './runtime/auto-update.ts'
+import { releaseIfSoaked } from './runtime/release.ts'
+import { kageletMemory } from './runtime/kagelet-memory.ts'
+import { dreamInput, dreamsDue, kageletDreamTask } from './core/kagelet-memory.ts'
 import { costCap, kageletDeliver, kageletManager, kageletRoutes, kageletsDir, ownerNotes, readCommand, readKagelets, syncKagelets } from './runtime/kagelets.ts'
 import { budgetLeft, COST_FLAG, costFlags, kageletRows } from './core/kagelets.ts'
 import { chainCap, dailyCap, totalCap } from './core/kagelet-view.ts'
@@ -180,7 +184,8 @@ const slack = await connectSlack({
     posted: () => ledgers.text('posted'), ownerWrote: (chat, thread, text) => { for (const k of notes.wrote(grants.keys(), chat, thread, text)) runs.emit(k, 'owner-note', `${text.length} characters`) }, ...inbox },
   // AFK mode is on unless afk.on is false. Its stand-in reads the owner's memory, read only.
   jev: jev && !('error' in jev) ? jevCheck(jev) : undefined,
-  afk: afk.on === false ? undefined : { memory: memoryDirs(process.env.HOME!, ENV_FILE, harness).owner, model: afk.model || 'sonnet', saved: store, call: phoneOwner },
+  triage: jev && !('error' in jev) ? jevTriage(jev, (who, detail) => runs.emit(who, 'triage', detail)) : undefined,
+  afk: afk.on === false ? undefined : { memory: memoryDirs(process.env.HOME!, ENV_FILE, harness).owner, model: afk.model || 'sonnet', saved: store, call: phoneOwner, jev: jev && !('error' in jev) ? jevAfk(jev) : undefined },
 })
 
 // threads.json came before the store: move it in once (the "dm" key needs the bot DM's id), then retire it.
@@ -233,6 +238,8 @@ const sdkLib = harness.runtime === 'tmux' ? undefined : await (async () => ({
 let grants = new Map<string, string[]>()
 let models = new Map<string, string>()   // lane key -> the model its file names
 const KAGELETS = kageletsDir(DIR, log)
+// Each kagelet's own memory and the dream's proposals waiting on Kage (#98). It never reads or writes MEM.
+const kmem = kageletMemory({ dir: KAGELETS, forbid: () => [MEM.own, MEM.owner], event: e => ledgers.event(e), waiting: cells => ledgers.add('waiting', cells) })
 // The names from before the rename still read.
 const MAX_KAGELETS = kl.max || 10
 // Off unless set (#96); a value that does not read as dollars is said once, here.
@@ -253,7 +260,7 @@ const kagelets = (now: number) => {
     ledgers.add('waiting', ['open', r.key!.split('#')[0]!, r.link ?? '', `kagelet ${name} ${why}`])
     log(`kagelet ${name} ${why}`)
   } }, rows, CAPS, now).length) files = readKagelets(KAGELETS)
-  grants = syncKagelets(files, store, now, log, MAX_KAGELETS)
+  grants = syncKagelets(files, store, now, log, MAX_KAGELETS, name => kmem.notes(name))
   models = new Map(rows.filter(r => r.key && r.model && grants.has(r.key)).map(r => [r.key!, r.model!]))
 }
 // The manager's side, for Kage's owner sessions (runtime/kage-tools.ts), and the owner's notes to a kagelet.
@@ -261,7 +268,7 @@ const manager = kageletManager({ dir: KAGELETS, max: MAX_KAGELETS, ledgers, sync
 const notes = ownerNotes(store)
 // Chains and kagelet messages (#93): the hub hands one kagelet's output or message to another, with no Kage turn.
 const routes = kageletRoutes({ dir: KAGELETS, store, ledgers, runs, deliver: (key, task) => toSession(key, task),
-  idle: key => !isClosed(key) && d.ready(key) === 'ready' && d.startsNow(key, Date.now()), paused: now => limits.paused(now)?.until, capUsd: CAPS.each, chainUsd: CAPS.chain, log })
+  idle: key => !isClosed(key) && d.ready(key) === 'ready' && d.startsNow(key, Date.now()), paused: now => limits.paused(now)?.until, capUsd: CAPS.each, chainUsd: CAPS.chain, log, memory: name => kmem.notes(name) })
 let kageletsRefused = false
 const sdk = sdkLib ? sdkSessions({
   sdk: sdkLib.lib,
@@ -271,7 +278,7 @@ const sdk = sdkLib ? sdkSessions({
     schedules: { add: j => schedules.add(key, j, Date.now()), remove: id => schedules.remove(key, id), list: () => schedules.list(key) },
     afk: slack.afk?.command,
     settings: { set: (key, value) => setKey(ENV_FILE, key, value) },
-    kagelet: key.split('#side-kagelet-')[1],
+    kagelet: key.split('#side-kagelet-')[1], dreaming: key.split('#side-kdream-')[1], kageletMemory: kmem,
     browser: browser && { call: browser.call, block: BROWSER_BLOCK },
     dbRead: { command: () => readCommand(kl.dbRead?.command ?? undefined, store, key.split('#side-kagelet-')[1] ?? ''), maxRows: kl.dbRead?.maxRows || 200 },
     kagelets: { list: () => manager.list(Date.now()), manage: (a, ask) => manager.manage(a, Date.now(), ask) }, approve,
@@ -283,6 +290,8 @@ const sdk = sdkLib ? sdkSessions({
   options: {
     cwd: process.cwd(),
     settingSources: ['user', 'project', 'local'],
+    // The shipped skills (skills/ at the repo root) load in every session, as kage:<name>, whatever the owner has installed.
+    plugins: [{ type: 'local' as const, path: dirname(fileURLToPath(import.meta.url)) }],
     settings: { autoMemoryDirectory: MEM.own },
     pathToClaudeCodeExecutable: sdkLib.claude,
   },
@@ -295,12 +304,12 @@ const sdk = sdkLib ? sdkSessions({
     routes.ended(key, usd ?? 0, d.saved()[key] ? `${PROJECT}/${d.saved()[key]}.jsonl` : '', Date.now(), limited)
   },
   budgetOf: key => key.includes('#side-kagelet-') ? budgetLeft(kageletRows(readKagelets(KAGELETS), { runs: '', costs: ledgers.text('costs'), now: Date.now() }), key, CAPS) : undefined,
-  modelOf: key => models.get(key),
+  modelOf: key => key.includes('#side-kdream-') ? 'sonnet' : models.get(key),
   onBlocked: blocked,
   onTurn: (key, tasks, limit, done) => limits.turn(key, tasks, limit, Date.now(), done),
   // A lane whose file is gone keeps no tools, rather than falling back to approval cards.
   // A lane from before the rename (#side-spec-) gets no tools either.
-  grantOf: key => grants.get(key) ?? (key.includes('#side-kagelet-') || key.includes('#side-spec-') ? [] : undefined),
+  grantOf: key => grants.get(key) ?? (key.includes('#side-kagelet-') || key.includes('#side-spec-') || key.includes('#side-kdream-') ? [] : undefined),
   onTool: (key, tool, refused) => runs.emit(key, refused ? 'refusal' : 'tool', refused ? `${tool}: ${refused}` : tool),
 }) : undefined
 if (sdk) mkdirSync(MEM.own, { recursive: true })
@@ -411,7 +420,9 @@ async function weeklyRetro(now: number) {
 // tidies its own memory (core/dream.ts). A side lane of the bot DM, so the DM's own conversation is
 // untouched. The hub snapshots the memory first, so `kage dream undo` restores it whatever the dream did.
 const DREAMT = `${DIR}/dream-sent`
-function dream(now: number) {
+// Asked once: push access to the Kage repo is what makes this the repo owner's hub (runtime/repo-access.ts).
+const OWNS_REPO = canPushToKage(args => new Promise((ok, no) => execFile('gh', args, { timeout: 15_000 }, (e, out) => e ? no(e) : ok(out))))
+async function dream(now: number) {
   const last = Number(readFile(DREAMT).trim()) || undefined
   if (limits.paused() || !dreamDue(now, last, d.quietEverywhere(now))) return   // a dream in the pause would only hit the limit
   const snap = snapshotMemory(MEM.own, now)
@@ -422,13 +433,38 @@ function dream(now: number) {
     .map(t => ({ place: placeOf(t.key), file: file(t.id) }))
   const c: Conversation = { connector: 'slack', chat: slack.ids.botDm, kind: 'dm', agentDm: true }
   const task: Task = {
-    type: 'task', fromOwner: true, content: dreamTask(MEM, threads, new Date(since).toISOString()),
+    type: 'task', fromOwner: true, content: dreamTask(MEM, threads, new Date(since).toISOString(), { dir: `${CODE}/skills`, pr: await OWNS_REPO }),
     meta: { channel: slack.ids.botDm, thread_ts: '', place: `DM with ${Title} (dream)`, permalink: '' },
     origin: { channel: slack.ids.botDm, ts: '' },
     scheduled: true,
   }
   log('dream starts, memory saved to', snap)
   if (deliver(c, task, task.meta.place, 'side-dream') !== 'failed') writeFileSync(DREAMT, String(now), { mode: 0o600 })
+}
+// Each night a kagelet that ran gets its own dream (#98): a lane with no tool but propose_memory, which reads its notes,
+// its events and its reports, and proposes edits. Nothing applies: Kage reviews each one (review_kagelet_memory).
+const KDREAMT = 'kagelet-dream-last'
+function kageletDreams(now: number) {
+  if (!sdk || limits.paused()) return
+  const rows = kageletRows(readKagelets(KAGELETS), { runs: ledgers.text('runs'), costs: '', now })
+  const last = new Map(Object.entries((store.load(KDREAMT) ?? {}) as Record<string, number>))
+  for (const name of dreamsDue(rows, new Map(rows.flatMap(r => r.lastRun ? [[r.name, r.lastRun] as const] : [])), last, now, d.quietEverywhere(now))) {
+    const lane = rows.find(r => r.name === name)!.key!
+    const conv = store.conversation(lane)
+    if (!conv) continue
+    const since = new Date(Math.max(last.get(name) ?? 0, now - 24 * 3600_000)).toISOString()
+    // UTC days: today's and yesterday's rows cover at most the 24 hours back.
+    const days = [new Date(now - 86_400_000), new Date(now)].flatMap(t => ledgers.events(t.toISOString().slice(0, 10)))
+    const input = dreamInput(name, since, days, ledgers.text('reports'))
+    const key = lane.replace('#side-kagelet-', '#side-kdream-')
+    store.seen(key, conv.conversation, `${name} (dream)`, now)
+    const { chat, thread } = conv.conversation
+    const task: Task = { type: 'task', fromOwner: false, scheduled: true, content: kageletDreamTask(name, kmem.notes(name), input.events, input.reports, since),
+      meta: { channel: chat, thread_ts: thread ?? '', place: `${name} (dream)`, permalink: '' }, origin: { channel: chat, ts: '' } }
+    log(`kagelet ${name} dreams`)
+    if (toSession(key, task) !== 'failed') store.save(KDREAMT, { ...Object.fromEntries(last), [name]: now })
+    return   // one a tick: its session is not quiet now, and the next tick picks the next kagelet
+  }
 }
 // GitHub is on when githubSecret and connectors.github.login are set: a webhook through a tunnel.
 const github = secrets.githubSecret && conn.github?.login ? connectGithub({
@@ -501,6 +537,8 @@ const BOOT_CODE = codeStamp(CODE)
 const VERSION = version(CODE)
 writeFileSync(`${DIR}/version`, `${VERSION}\n`, { mode: 0o600 })
 let configRestart = false   // set by the settings watcher below: restart once every session is quiet
+// Each boot with its commit: the auto-release soak runs from the first boot on one commit (core/auto-update.ts soakRuns).
+ledgers.add('boots', [VERSION.split(' ')[0]!])
 let npmFailedFor = 0   // the code stamp whose npm ci failed: not tried again until the code moves
 function selfUpdate(now: number) {
   const code = codeStamp(CODE)
@@ -528,6 +566,18 @@ async function autoUpdate() {
   else if (r !== 'current') log(`auto-update did nothing: ${r.skip}`)
 }
 
+// The owner's hub makes the release that other installs follow (ADR 0013). A skip logs one line and DMs nothing.
+// Hourly, because the job clock restarts with the hub: a daily period would never fire on a hub that restarts daily.
+// A line about the next release candidate and when its gate opens goes out every hour, so kage logs answers "when is the next release?". Other skips repeat once.
+let lastSkip = ''
+async function autoRelease(now: number) {
+  const r = await releaseIfSoaked(CODE, DIR, ledgers.text('boots'), now).catch(e => ({ skip: `failed: ${e}`, broke: true, candidate: undefined }))
+  if ('broke' in r) void slack.notifyOwner(`Kage's release stopped part way: ${r.skip}.`)
+  if ('skip' in r) { if (r.candidate || r.skip !== lastSkip) log(`auto-release did nothing: ${r.skip}`); lastSkip = r.skip; return }
+  log(`auto-release made v${r.version}`)
+  void slack.notifyOwner(`Released Kage v${r.version}. <${r.url}|Release notes>`)
+}
+
 // Every timed job of the hub, on one clock (runtime/jobs.ts).
 runJobs([
   // A drain for kage restart or stop starts no scheduled run: one due now runs after the restart.
@@ -537,10 +587,12 @@ runJobs([
   { name: 'daily note', every: 10 * 60_000, run: dailyNote },
   { name: 'self-update', every: 60_000, run: selfUpdate },
   ...config.autoUpdate === false ? [] : [{ name: 'auto-update', every: 6 * 3_600_000, run: autoUpdate }],
+  { name: 'auto-release', every: 3_600_000, run: autoRelease },
   // hub.ts rotates the log at each start; a hub that runs for weeks rotates it here.
   { name: 'hub-log', every: 3_600_000, run: () => rotate(`${DIR}/hub.log`) },
   { name: 'kagelets', every: 60_000, run: kagelets },
   { name: 'dream', every: 10 * 60_000, run: dream },
+  { name: 'kagelet dreams', every: 10 * 60_000, run: kageletDreams },
   { name: 'retro', every: 10 * 60_000, run: weeklyRetro },
   // A kagelet message waits until its target is idle, then starts a run of its own (runtime/kagelets.ts).
   { name: 'kagelet messages', every: 20_000, run: now => routes.pump(now) },

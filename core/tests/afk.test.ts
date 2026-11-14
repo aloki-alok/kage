@@ -1,6 +1,6 @@
 import { describe, test } from 'node:test'
 import assert from 'node:assert/strict'
-import { actOn, awayCommand, BURST, CALL_GAP, decideAfk, MAX_REPLIES, noteMention, notePing, outsider, parseTriage, restoreTo, untilOf, type Afk, type Ping, type Urgency, type Watch } from '../afk.ts'
+import { actOn, awayCommand, BURST, CALL_GAP, decideAfk, MAX_REPLIES, noteMention, notePing, outsider, noteOf, parseTriage, restoreTo, standInReply, untilOf, type Afk, type Ping, type Urgency, type Watch } from '../afk.ts'
 
 const OWNER = 'UOWNER001'
 const BOT = 'UBOT00001'
@@ -178,5 +178,22 @@ describe('restoreTo: the status when the owner is back', () => {
   })
   test('a status the owner set meanwhile stays', () => {
     assert.equal(restoreTo({ status_text: 'Lunch' }, ours, prior, NOW), undefined)
+  })
+})
+
+describe('standInReply: the usual replies come from templates', () => {
+  const o = { owner: 'Sam', until: '6:00 pm', title: 'Kage' }
+  test('a p0 says the owner is being called; high and normal say it was noted; low says nothing', () => {
+    assert.equal(standInReply('p0', o), 'Sam is away until 6:00 pm. I noted this and I am calling them now.')
+    assert.equal(standInReply('high', o), 'Sam is away until 6:00 pm. I noted this and will make sure they see it.')
+    assert.equal(standInReply('normal', o), standInReply('high', o))
+    assert.equal(standInReply('low', o), '')
+  })
+})
+
+describe('noteOf: the owner\'s line for a message', () => {
+  test('one short line of the newest message', () => {
+    assert.equal(noteOf('Maya', 'can you\nreview  #42'), 'Maya: can you review #42')
+    assert.equal(noteOf('Maya', 'x'.repeat(300)).length, 140)
   })
 })

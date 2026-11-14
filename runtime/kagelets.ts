@@ -4,6 +4,7 @@
 import { randomUUID } from 'node:crypto'
 import { existsSync, mkdirSync, readdirSync, readFileSync, renameSync, unlinkSync, writeFileSync } from 'node:fs'
 import { parseSessionKey } from '../core/conversations.ts'
+import { memoryBlock } from '../core/kagelet-memory.ts'
 import { DEFAULT_MODEL, capCheck, chainErrors, COST_FLAG, DB_READ, MAX_CHAIN, NAME, parseKagelet, resultLine, revokeStanding, rowLine, setPaused, kageletFile, kageletRows, type Caps, type Kagelet, type KageletRow, type Standing } from '../core/kagelets.ts'
 import { chainLine, chainViews, handoffDetail, whoOf } from '../core/events.ts'
 import { loopGuard } from '../core/agents.ts'
@@ -53,13 +54,13 @@ export function pauseKagelet(dir: string, name: string, paused: boolean, now = D
 }
 
 // What each run of a kagelet reads first, scheduled or started by another kagelet.
-export const kageletPrompt = (sp: Pick<Kagelet, 'name' | 'job'>) => `You are the kagelet "${sp.name}", run by Kage, its manager. You approve nothing: when the job needs a decision or a tool you do not have, say so in this thread, and the manager or its owner decides. Post what you find in this thread with the reply tool. End every run with the report tool: one line on what you found or did, in needs what you could not do and need from your manager, if anything, and in output the link or short note a kagelet that runs after you takes as its input, if any.\n\n${sp.job}`
+export const kageletPrompt = (sp: Pick<Kagelet, 'name' | 'job'>, notes: { file: string; text: string }[] = []) => `You are the kagelet "${sp.name}", run by Kage, its manager. You approve nothing: when the job needs a decision or a tool you do not have, say so in this thread, and the manager or its owner decides. Post what you find in this thread with the reply tool. End every run with the report tool: one line on what you found or did, in needs what you could not do and need from your manager, if anything, and in output the link or short note a kagelet that runs after you takes as its input, if any.\n\n${sp.job}${memoryBlock(notes)}`
 
 const said = new Map<string, string>()   // file name -> the error last logged, so a wrong file is logged once
 
 // Returns the grants: lane key -> its tools.
 // max: kagelets.max. Past it, by name order, a kagelet runs nothing and has no grant.
-export function syncKagelets(files: { name: string; text: string }[], store: Pick<Store, 'schedules' | 'addSchedule' | 'removeSchedule' | 'seen' | 'conversation'>, now: number, log: (line: string) => void, max = 10) {
+export function syncKagelets(files: { name: string; text: string }[], store: Pick<Store, 'schedules' | 'addSchedule' | 'removeSchedule' | 'seen' | 'conversation'>, now: number, log: (line: string) => void, max = 10, memory: (name: string) => { file: string; text: string }[] = () => []) {
   const grants = new Map<string, string[]>()
   const ids = new Set<string>()
   let running = 0
@@ -82,7 +83,7 @@ export function syncKagelets(files: { name: string; text: string }[], store: Pic
     // One that runs only after another has no schedule, but its lane needs its thread to start a run in.
     if (!sp.cron) { if (!store.conversation(sp.key)) store.seen(sp.key, parseSessionKey(sp.key)!.conversation, `${sp.name} (kagelet)`, now); continue }
     ids.add(id)
-    const prompt = kageletPrompt(sp)
+    const prompt = kageletPrompt(sp, memory(sp.name))
     // A schedule from before the rename (spec-<name> in a #side-spec- lane) hands over when it last ran.
     const cur = store.schedules().find(s => s.id === id) ?? store.schedules().find(s => s.id === `spec-${sp.name}`)
     if (cur && cur.key === sp.key && cur.cron === sp.cron && cur.prompt === prompt) continue
@@ -313,6 +314,8 @@ export function kageletRoutes(o: {
   // The usage-limit pause (runtime/limit-pause.ts) and its reset time: no message goes, and none ages.
   paused: (now: number) => number | undefined
   capUsd?: number; chainUsd?: number; log: (line: string) => void; newId?: () => string
+  // Its approved memory notes (runtime/kagelet-memory.ts), carried in a run a handoff starts as in a scheduled one.
+  memory?: (name: string) => { file: string; text: string }[]
 }) {
   const chains = new Map<string, { usd: number; at: number }>()
   // 20 a minute per pair, as for a teammate's agent (core/agents.ts). Hops travel in each message and on its run.
@@ -350,7 +353,7 @@ export function kageletRoutes(o: {
     if (row!.state === 'paused' || o.capUsd !== undefined && row!.costToday >= o.capUsd || !conversation || o.paused(now) !== undefined || !o.idle(row!.key!)) return 'waits'
     return { key: row!.key!, task: {
       type: 'task', fromOwner: false, scheduled: true, handoff: { chain: m.contextId, message: m.messageId, hops: m.hops },
-      content: `${kageletPrompt(parseKagelet(m.to, sp!.text) as Kagelet)}\n\n${messageInput(m)}`,
+      content: `${kageletPrompt(parseKagelet(m.to, sp!.text) as Kagelet, o.memory?.(m.to))}\n\n${messageInput(m)}`,
       meta: { channel: conversation.conversation.chat, thread_ts: conversation.conversation.thread ?? '', place: conversation.place, permalink: '' },
       origin: { channel: conversation.conversation.chat, ts: '' },
     } }

@@ -6,10 +6,11 @@ import { spawn } from 'node:child_process'
 import { mkdirSync } from 'node:fs'
 import type { WebClient } from '@slack/web-api'
 import { log } from '../config.ts'
-import { actOn, afkGuardPrompt, decideAfk, MAX_REPLIES, noteMention, notePing, outsider, parseTriage, restoreTo, standInPrompt, summaryOf, untilOf, type Afk, type AfkCommand, type Status } from '../core/afk.ts'
+import { actOn, afkGuardPrompt, decideAfk, MAX_REPLIES, noteMention, noteOf, notePing, outsider, parseTriage, restoreTo, standInPrompt, standInReply, summaryOf, untilOf, type Afk, type AfkCommand, type Status } from '../core/afk.ts'
 import type { SlackMessage } from '../core/slack-message.ts'
 import { findSecret, safeReply } from '../core/outbound.ts'
 import type { Saved } from '../runtime/store.ts'
+import type { JevAfk } from './jev.ts'
 import { guardVerdict } from '../core/whatsapp.ts'
 
 type Ids = { owner: string; bot: string; botDm: string; name: string; team?: string }
@@ -27,6 +28,8 @@ export function startAfk(o: {
   nameOf: (id?: string) => Promise<string>
   // Phones the owner (connectors.call.command); resolves '' once the call is placed, else why not.
   call?: (reason: string) => Promise<string>
+  // Jev's triage (connectors/jev.ts); absent means the Claude stand-in triages every message.
+  jev?: JevAfk
 }) {
   // An empty folder for the guard, so its Claude finds no CLAUDE.md or project memory.
   const ROOM = `${o.dir}/standin`
@@ -134,8 +137,15 @@ export function startAfk(o: {
       o.user.chat.getPermalink({ channel, message_ts: thread_ts ?? msg.ts }).then(r => r.permalink ?? '', () => ''),
     ])
     const all = `${convo}\n> [${who}, the newest message] ${(msg.text ?? '').replace(/\n/g, ' ')}`
-    const { system, prompt } = standInPrompt({ owner: o.ownerName, title: o.title, until: when(before.until, before.tz), note: before.note, place, from: who, convo: all })
-    const out = parseTriage(await claude(system, prompt, o.memory, 'Read,Grep,Glob,Bash', GH))
+    const until = when(before.until, before.tz)
+    // Jev triages; Claude drafts only for a question the owner's notes can answer, or when Jev is off or failed.
+    const j = await o.jev?.({ owner: o.ownerName, place, from: who, convo: all })
+    const sp = standInPrompt({ owner: o.ownerName, title: o.title, until, note: before.note, place, from: who, convo: all })
+    // With Jev's answer in hand, a failed draft only loses the draft: the urgency and a P0 call still go out.
+    const claudeOut = !j || j.lookup ? await claude(sp.system, sp.prompt, o.memory, 'Read,Grep,Glob,Bash', GH).then(parseTriage, e => { if (!j) throw e; return null }) : null
+    const out = j
+      ? { urgency: j.urgency, waits: j.waits, note: noteOf(who, msg.text ?? ''), reply: claudeOut?.reply || standInReply(j.urgency, { owner: o.ownerName, until, title: o.title }) }
+      : claudeOut
     if (!out) return void log('afk: stand-in gave no usable answer in', place)
     // Checked again after the thinking: the owner may be back, or typing here. since, not the
     // object: a second away during the thinking keeps the same away period.

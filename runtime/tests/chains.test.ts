@@ -24,7 +24,7 @@ const NINE = new Date(2026, 10, 14, 9, 0).getTime()
 const QUEUED = (to: string) => new RegExp(`^queued for ${to}`)
 const tick = () => new Promise(r => setTimeout(r, 5))
 
-async function hub(o: { chainUsd?: number; capUsd?: number; max?: number } = {}) {
+async function hub(o: { chainUsd?: number; capUsd?: number; max?: number; memory?: (name: string) => { file: string; text: string }[] } = {}) {
   const dir = mkdtempSync(`${tmpdir()}/kage-chains-`)
   const kagelets = `${dir}/kagelets`, work = `${dir}/files`
   // The thread folder every test kagelet shares (send_file's rule: <channel>_<thread_ts>).
@@ -71,7 +71,7 @@ async function hub(o: { chainUsd?: number; capUsd?: number; max?: number } = {})
   const schedules = scheduler({ store, deliver: toSession, failed: m => limits.turn('', [m], undefined, clock.now), ready: key => d.ready(key), trusted: () => false, ran: j => ledgers.add('runs', [j.id, j.key]) })
   const manager = kageletManager({ dir: kagelets, max: 10, ledgers, sync, runNow: (id, now) => schedules.runNow(id, now), store, log: () => {} })
   const routesOn = () => kageletRoutes({ dir: kagelets, store, ledgers, runs, deliver: toSession,
-    idle: key => d.ready(key) === 'ready' && d.startsNow(key, Date.now()), paused: now => limits.paused(now)?.until, capUsd: o.capUsd ?? 2, chainUsd: o.chainUsd, log: () => {} })
+    idle: key => d.ready(key) === 'ready' && d.startsNow(key, Date.now()), paused: now => limits.paused(now)?.until, capUsd: o.capUsd ?? 2, chainUsd: o.chainUsd, log: () => {}, memory: o.memory })
   routes = routesOn()
   // The fake Claude process a kagelet's session runs in: the newest one that read its prompt.
   const proc = (name: string) => [...sdk.runs].reverse().find(r => r.said.some(x => x.includes(`You are the kagelet "${name}"`)))!
@@ -100,7 +100,7 @@ async function hub(o: { chainUsd?: number; capUsd?: number; max?: number } = {})
     restart() { routes = routesOn() } }
 }
 
-async function abc(o?: { chainUsd?: number }) {
+async function abc(o?: Parameters<typeof hub>[0]) {
   const h = await hub(o)
   assert.match(await h.save('a', { schedule: '0 9 * * *' }), /saved a/)
   assert.match(await h.save('b', { after: 'a' }), /saved b/)
@@ -156,6 +156,12 @@ const guarded = (content: string) => {
   for (const l of content.split('\n')) if (/Ignore your job|Task from the owner/.test(l)) assert.match(l, /^> /, l)
   assert.doesNotMatch(content, /<\/?channel/i)
 }
+
+test('review finding: a run a handoff starts carries the target\'s approved memory, as a scheduled one does', async () => {
+  const h = await abc({ memory: name => name === 'b' ? [{ file: 'a.md', text: 'Use the v2 page.' }] : [] })
+  await h.step('a', { output: 'https://example.com/video-1' })
+  assert.match(h.tasks[1]![1].content, /Job of b\.[\s\S]*Your memory[\s\S]*## a\.md\nUse the v2 page\./)
+})
 
 test('a handed-over output and a message both reach the next run inside the data guard, never as instructions', async () => {
   const h = await abc()

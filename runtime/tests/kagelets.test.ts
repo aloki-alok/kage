@@ -444,3 +444,15 @@ test('a model Kage picks beyond the default needs a one-line reason; the reason 
   assert.match(await t.m.manage({ action: 'save', name: 'small', ...job, model: 'sonnet' }, 4), /saved small/)
   assert.doesNotMatch(readFileSync(`${t.dir}/small.md`, 'utf8'), /model/)
 })
+
+test('a kagelet\'s approved memory notes ride in its schedule prompt, and a new note replaces the schedule within a sync', () => {
+  const store = openStore(':memory:')
+  let notes = [{ file: 'a.md', text: 'The page moved to v2.' }]
+  syncKagelets([file()], store, 1000, () => {}, 10, name => name === 'deploys' ? notes : [])
+  assert.match(store.schedules()[0]!.prompt, /Summarise the deploy log\.[\s\S]*Your memory[\s\S]*## a\.md\nThe page moved to v2\./)
+  store.fired('kagelet-deploys', 5000)
+  notes = [...notes, { file: 'b.md', text: 'Skip weekends.' }]
+  syncKagelets([file()], store, 9000, () => {}, 10, name => name === 'deploys' ? notes : [])
+  assert.match(store.schedules()[0]!.prompt, /## b\.md/)
+  assert.equal(store.schedules()[0]!.lastFired, 5000)
+})

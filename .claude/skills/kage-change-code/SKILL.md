@@ -21,6 +21,7 @@ Read the ADRs in `docs/adr/` that match what you touch. Do not copy their text i
 | auto-update or the `stable` tag | 0008 |
 | anything that posts to Slack or another channel | 0009 |
 | the event log or a ledger | 0010 |
+| a specialist kagelet, or a rule every install should learn | 0012 (add or edit a skill in `skills/`) |
 
 Done when you can name each binding ADR and the line of your change that obeys it. If a change breaks an ADR, stop and write a new ADR first. Do not bend the rule in code.
 

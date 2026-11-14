@@ -14,11 +14,12 @@ import { askedFrom, cardAt } from '../core/ledgers.ts'
 import type { Delivery } from '../core/sessions.ts'
 import type { Task } from '../runtime/protocol.ts'
 import { startAfk } from './slack-afk.ts'
-import type { JevCheck } from './jev.ts'
+import type { JevAfk, JevCheck, Triage } from './jev.ts'
 import { socketWatch } from '../core/socket-watch.ts'
 import type { Inbox, Saved } from '../runtime/store.ts'
 
 const PICKED_UP = 'ninja'
+const SEEN = 'eyes'
 const WAITING = 'hourglass_flowing_sand'
 const FAILED = 'warning'
 
@@ -54,9 +55,11 @@ export async function intake(m: SlackMessage, ack: () => Promise<void>, hub: Pic
 
 export async function connectSlack(o: { dir: string; appToken: string; bot: WebClient; user: WebClient; name: string; title: string; teammates: string[]; apps: string[]; hub: Hub
   // AFK mode (connectors/slack-afk.ts); absent means off.
-  afk?: { memory: string; model: string; saved: Saved; call?: (reason: string) => Promise<string> }
+  afk?: { memory: string; model: string; saved: Saved; call?: (reason: string) => Promise<string>; jev?: JevAfk }
   // The Jev classifier (connectors/jev.ts); absent means every listed agent's tagged post is answered.
-  jev?: JevCheck }) {
+  jev?: JevCheck
+  // Intake triage (connectors/jev.ts): a message that needs no work gets a reaction and no session; absent means every tag starts one.
+  triage?: Triage }) {
   const { bot, user } = o
   // The owner is whoever the user token belongs to: that token is what hears messages.
   const me = await user.auth.test()
@@ -68,7 +71,7 @@ export async function connectSlack(o: { dir: string; appToken: string; bot: WebC
   const dm = await bot.conversations.open({ users: me.user_id! })
   const ids: Ids = { owner: me.user_id!, bot: botAuth.user_id!, botDm: dm.channel!.id!, name: o.name, teammates: o.teammates, apps: o.apps, team: me.team_id! }
   const react = (channel: string, ts: string, name: string) =>
-    (channel === ids.botDm ? bot : user).reactions.add({ channel, timestamp: ts, name }).catch(() => {})
+    (channel === ids.botDm ? bot : user).reactions.add({ channel, timestamp: ts, name }).then(() => true, () => false)
 
   const names = new Map<string, string>()
   async function nameOf(id?: string): Promise<string> {
@@ -144,7 +147,7 @@ export async function connectSlack(o: { dir: string; appToken: string; bot: WebC
       log('no running session asked for', t.request_id)
       return void underCard(`Request \`${t.request_id}\` is no longer waiting (its session ended or it was already answered). Tag the original thread again to redo it.`)
     }
-    if (t.kind === 'card') return void underCard(`Reply \`yes\` or \`no\` here to answer request \`${t.request_id}\`.`)
+    if (t.kind === 'card') return void underCard(`Reply \`yes\` or \`no\` here to answer this request.`)
     // Status names the owner's other conversations, so it goes to the owner's DM only, never the thread.
     if (t.kind === 'status') {
       react(m.channel, m.ts, PICKED_UP)
@@ -167,6 +170,14 @@ export async function connectSlack(o: { dir: string; appToken: string; bot: WebC
       const j = await o.jev(t.agent, t.text)
       log(`${j.reply ? 'answering' : 'dropped'} ${thread} from app ${t.agent}: ${j.why}`)
       if (!j.reply) return
+    }
+    // A person's tag that needs no work (an ack, a thanks) gets a reaction in code, not a session.
+    if (t.kind === 'task' && !t.agent && o.triage) {
+      const j = await o.triage(thread, !m.user || m.user === ids.owner ? 'owner' : 'other', t.text,
+        { hasFiles: !!(m.files?.length || (m as { attachments?: unknown[] }).attachments?.length), inThread: !!m.thread_ts && m.thread_ts !== m.ts })
+      log(`triage ${thread}: ${j.pick}, ${j.why}`)
+      // A reaction that fails to land starts the session instead: a request is never dropped silently.
+      if (j.pick === 'react' && await react(m.channel, m.ts, SEEN)) return
     }
     const agent = t.agent ? { app: t.agent, tag: (ids.apps ?? []).map(appEntry).find(e => e?.id === t.agent)?.tag } : undefined
     react(m.channel, m.ts, PICKED_UP)

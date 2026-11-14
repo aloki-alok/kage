@@ -11,10 +11,12 @@ Each file records one rule Kage follows, why, and how it is checked. Read the on
 | [0005](0005-ceiling-per-sender.md) | One ceiling per kind of sender, enforced by the harness where it can | Accepted, not yet built |
 | [0006](0006-config-and-secrets-files.md) | Settings in `config.json`, tokens in `secrets.json` | Accepted, in progress |
 | [0007](0007-tests-beside-code.md) | Tests live in `<folder>/tests/` | Accepted |
-| [0008](0008-auto-update-follows-stable.md) | Auto-update follows the `stable` tag | Accepted |
+| [0008](0008-auto-update-follows-stable.md) | Auto-update follows the `stable` tag | Accepted, amended by 0013 |
 | [0009](0009-posts-go-through-kage-tools.md) | Every post goes through Kage's tools and the outbound checks | Accepted |
 | [0010](0010-event-log-keeps-no-content.md) | The event log stores what happened, never what was said | Accepted |
 | [0011](0011-one-place-for-records.md) | Every record of what Kage did lives in one place | Accepted, partly built |
+| [0012](0012-specialist-kagelets-ship-their-own-skill.md) | A specialist kagelet ships with its own skill | Accepted, applies from the meeting bot on |
+| [0013](0013-releases-are-made-by-the-owners-hub.md) | The owner's hub makes releases and moves `stable` | Accepted |
 
 ## Format
 
