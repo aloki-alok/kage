@@ -21,6 +21,7 @@ Set up|service|on or off|Let macOS or Linux keep Kage running: back after a cras
 Run|start|[kagelet]|Start Kage in the background (turns the service on the first time). With a kagelet: run it again after kage stop|kage start
 Run|stop|[thread or kagelet] [--now or --cut-running]|Stop Kage once every running turn ends, or now with --cut-running. With a thread (link, place or key): end only its session, after its turn or --now. With a kagelet: pause it and keep its file|kage stop support
 Run|restart|[--cut-running]|Restart the hub once every running turn ends; new messages wait and run after it|kage restart
+Run|update|[--stable]|Pull the newest Kage now (or the latest release with --stable) and restart into it; local changes are left as they are|kage update
 Run|reload||Read the settings files again with no restart: who may tag Kage changes at once|kage reload
 Run|set|key value|Change one setting in config.json, such as harness.maxSessions. A list is JSON|kage set harness.maxSessions 6
 Run|status||One look at every session and what it is doing|kage status
@@ -116,6 +117,27 @@ cmd_stop() {
   elif old_tmux; then tmux kill-session -t "=$NAME"
   else echo "$NAME is not running."; return 0; fi
   echo "Stopped $NAME. It stays down until kage start or the next login (Linux: the next boot). Each thread resumes its conversation on its next tag."
+}
+
+# kage update: move this checkout to origin's main (or the stable release with --stable) and restart into it now,
+# without waiting for auto-update or a quiet moment. Only a fast-forward: local changes or commits are refused.
+cmd_update() {
+  local ref=origin/main old new
+  [[ "${1:-}" == --stable ]] && ref=stable
+  [[ -z "${1:-}" || "${1:-}" == --stable ]] || die "kage update takes nothing, or --stable for the latest release."
+  [[ -z "${KAGE_CLAUDE:-}" ]] || die "This shell runs inside Kage, so kage update would end this session too. Run it in your own terminal."
+  [[ -d .git ]] || die "This install is not a git checkout. Run the install line again to update it."
+  [[ -z "$(git status --porcelain --untracked-files=no)" ]] || die "This checkout has local changes, so it was left as it is: $(git status --porcelain --untracked-files=no | awk '{print $2}' | tr '\n' ' ')"
+  git fetch -q origin main --tags
+  [[ "$(git rev-list --count "$ref..HEAD")" == 0 ]] || die "This checkout has commits that are not on $ref, so it was left as it is."
+  old="$(git rev-parse --short HEAD)"
+  git merge -q --ff-only "$ref"
+  new="$(git rev-parse --short HEAD)"
+  if [[ $old == "$new" ]]; then echo "Already up to date ($new)."; return; fi
+  echo "Updated $old to $new:"
+  git log --format='  %s' "$old..$new"
+  # start.sh installs packages when the lockfile changed; a restart now picks up the new code.
+  if running; then cmd_restart; else echo "Kage is not running. Start it: kage start"; fi
 }
 
 # A change to KAGE_ROUTE, KAGE_RUNTIME, KAGE_CWD or KAGE_MEMORY needs kage stop, then kage start.
@@ -276,6 +298,7 @@ case "${1:-}" in
   # A thread (any word that is not a flag) or --now: one session (cli/stop.ts). Otherwise the whole hub.
   stop) if [[ " ${*:2} " == *" --now "* ]] || { [[ $# -gt 1 ]] && printf '%s\n' "${@:2}" | grep -qv '^--'; }; then node cli/stop.ts "${@:2}"; else cmd_stop "${@:2}"; fi ;;
   restart) cmd_restart "${@:2}" ;;
+  update) cmd_update "${@:2}" ;;
   reload) node cli/reload.ts ;;
   set) node cli/config.ts set "${@:2}" ;;
   status) cmd_status ;;
