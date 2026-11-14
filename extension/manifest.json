@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Kage",
-  "version": "0.4.0",
+  "version": "0.4.1",
   "description": "Lets your own Kage read your tabs and act in them, each action only after your yes in Slack.",
   "permissions": ["tabs", "scripting", "storage", "alarms", "nativeMessaging", "debugger", "tabGroups"],
   "host_permissions": ["<all_urls>"],

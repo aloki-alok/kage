@@ -80,8 +80,13 @@ const ops = {
     await chrome.tabs.update(Number(tabId), { url })
     return { url }
   },
+  // In Kage's own window, where the new tab is in front: the owner's windows keep their tabs, and Kage can
+  // picture and act in what it opened with no switch by the owner.
   async open({ url }) {
-    const tab = await chrome.tabs.create({ url, active: false })
+    const { kageWindow } = await chrome.storage.session.get('kageWindow')
+    const w = kageWindow && await chrome.windows.get(kageWindow).catch(() => undefined)
+    const tab = w ? await chrome.tabs.create({ url, windowId: w.id, active: true }) : (await chrome.windows.create({ url, focused: false })).tabs[0]
+    if (!w) await chrome.storage.session.set({ kageWindow: tab.windowId })
     await intoKageGroup(tab)
     return { tabId: tab.id, url }
   },
@@ -109,7 +114,8 @@ const KEYCODES = { Enter: 13, Tab: 9, Escape: 27, Backspace: 8, ArrowUp: 38, Arr
 // Kage's own tabs sit in one group named Kage, so the owner sees at a glance what it opened.
 async function intoKageGroup(tab) {
   const [g] = await chrome.tabGroups.query({ title: 'Kage', windowId: tab.windowId })
-  const groupId = await chrome.tabs.group({ tabIds: [tab.id], ...(g && { groupId: g.id }) })
+  // With no window named, Chrome makes the group in the window in front and moves the tab there.
+  const groupId = await chrome.tabs.group({ tabIds: [tab.id], ...(g ? { groupId: g.id } : { createProperties: { windowId: tab.windowId } }) })
   if (!g) await chrome.tabGroups.update(groupId, { title: 'Kage', color: 'grey' })
 }
 
