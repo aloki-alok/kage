@@ -25,6 +25,7 @@ const signal = () => new AbortController().signal
 
 function setup(o: { transcript?: boolean; silent?: boolean; dmFails?: boolean; grants?: Record<string, string[]>; manager?: boolean; budgets?: Record<string, number>; models?: Record<string, string>; trusted?: string[]; onResult?: (key: string, total: number, resumed: boolean) => void } = {}) {
   const sdk = fakeSdk(o)
+  const dropped: string[] = []
   const results: [string, number, boolean][] = []
   const blocks: [string, string[], string | null][] = []
   const turns: [string, string[], object | undefined, true | undefined][] = []
@@ -57,8 +58,7 @@ function setup(o: { transcript?: boolean; silent?: boolean; dmFails?: boolean; g
     ownerMemory: '/owner',
     envFile: '/cfg/env',
     codeDir: '/code/kage',
-    unsandboxed: ['ssh myhost *'],
-    trusted: key => o.trusted?.includes(key) ?? false,
+    ssm: { sock: '/cfg/ssm.sock', issue: key => o.trusted?.includes(key) ? `tok-${key}` : undefined, drop: key => { dropped.push(key) } },
     restartMs: 10,
     onResult: (key, total, resumed) => { results.push([key, total, resumed]); o.onResult?.(key, total, resumed) },
     budgetOf: key => o.budgets?.[key],
@@ -322,18 +322,24 @@ describe('Kage sessions on the Agent SDK', () => {
     assert.ok(o.settings.sandbox.filesystem.denyRead.includes('/cfg/secrets.json*'))
     assert.ok(o.settings.sandbox.filesystem.denyWrite.includes('/cfg/config.json*'))
   })
-  test('an owner-trusted thread runs ssh outside the sandbox, with the ssh option overrides denied (#161)', async () => {
+  test('an owner-trusted thread gets the SSM relay token and socket in its env, any other thread gets neither, and the sandbox stays whole (#161)', async () => {
     const t = setup({ trusted: ['C1:5.5'] })
     t.d.task('C1:5.5', t.task(), 0)
     t.d.task('C2:5.5', t.task({ channel: 'C2', fromOwner: false }), 0)
     await tick()
-    const own = t.sdk.runs[0]!.options.settings
-    assert.deepEqual(own.sandbox.excludedCommands, ['ssh myhost *'])
-    assert.equal(own.sandbox.enabled, true)
-    for (const r of ['Bash(ssh * -o*)', 'Bash(ssh -o*)', 'Bash(ssh * -F*)', 'Bash(ssh -F*)']) assert.ok(own.permissions.deny.includes(r), r)
-    const other = t.sdk.runs[1]!.options.settings
-    assert.equal(other.sandbox.excludedCommands, undefined)
-    assert.equal(other.permissions.deny.some((r: string) => r.startsWith('Bash(ssh')), false)
+    const own = t.sdk.runs[0]!.options
+    assert.equal(own.env.KAGE_SSM_TOKEN, 'tok-C1:5.5')
+    assert.equal(own.env.KAGE_SSM_SOCK, '/cfg/ssm.sock')
+    assert.equal(own.settings.sandbox.excludedCommands, undefined)
+    const other = t.sdk.runs[1]!.options
+    assert.equal(other.env.KAGE_SSM_TOKEN, undefined)
+    assert.equal(other.env.KAGE_SSM_SOCK, undefined)
+  })
+  test('a kagelet lane never gets a token, even in a trusted thread', async () => {
+    const t = setup({ trusted: ['C1:5.5#side-kagelet-x'], grants: { 'C1:5.5#side-kagelet-x': ['Read'] } })
+    t.d.task('C1:5.5#side-kagelet-x', t.task(), 0)
+    await tick()
+    assert.equal(t.sdk.runs[0]!.options.env.KAGE_SSM_TOKEN, undefined)
   })
   test("an approval goes to the owner's DM and their yes or no reaches only the session that asked", async () => {
     const t = setup()

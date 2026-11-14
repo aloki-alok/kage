@@ -42,6 +42,7 @@ import { runJobs } from './runtime/jobs.ts'
 import { snapshotMemory } from './runtime/memory-snapshot.ts'
 import { sdkSessions } from './runtime/sdk-sessions.ts'
 import { limitPause } from './runtime/limit-pause.ts'
+import { ssmRelay } from './runtime/ssm-relay.ts'
 import { listenForSessions, restoreHolds, routeReply } from './runtime/session-link.ts'
 import { openStore, type Inbox } from './runtime/store.ts'
 import { costRecorder, openLedgers, runEvents } from './runtime/ledger.ts'
@@ -93,6 +94,8 @@ COMMANDS = new Map(Object.entries(conn.commands ?? {}))
 
 // One SQLite file holds every conversation seen and the session working on each (runtime/store.ts).
 const store = openStore(`${DIR}/kage.db`)
+const SSM_SOCK = `${DIR}/ssm.sock`
+const ssm = ssmRelay({ path: SSM_SOCK, trusted: key => store.trust(key) === true, log })
 // What connectors keep across a restart, in the same file. The old JSON files move in once.
 store.importState({ afk: `${DIR}/afk.json`, 'github-threads': `${DIR}/github-threads.json`, 'mail-threads': `${DIR}/mail-threads.json` })
 // What Kage posted, waits on, spent and ran, in the same file (runtime/ledger.ts). Old .tsv files move in once.
@@ -298,8 +301,7 @@ const sdk = sdkLib ? sdkSessions({
   ownerMemory: MEM.owner,
   envFile: ENV_FILE,
   codeDir: CODE,
-  unsandboxed: config.harness?.unsandboxedCommands,
-  trusted: key => store.trust(key) === true,
+  ssm: { sock: SSM_SOCK, issue: key => ssm.issue(key), drop: key => ssm.drop(key) },
   onStart: () => store.saveSessions(d.saved()),
   onResult: (key, total, resumed, limited) => {
     const usd = recordCost(key, total, resumed)

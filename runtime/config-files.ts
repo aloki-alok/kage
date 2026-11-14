@@ -25,8 +25,18 @@ function json(text: string): unknown {
 }
 const keysOf = (e: unknown) => ((e as { issues?: { path: PropertyKey[]; keys?: string[] }[] }).issues ?? []).flatMap(i => (i.keys ?? ['']).map(k => [...i.path, k].filter(Boolean).join('.'))).filter(Boolean)
 const fail = (file: string, e: unknown) => Object.assign(new Error(why(file, e)), { keys: keysOf(e) })
+// Keys an older version wrote that no schema holds now. They are dropped on read, so an old config.json still loads.
+const RETIRED = ['harness.unsandboxedCommands']
+function dropRetired(raw: unknown, file: string) {
+  for (const k of RETIRED) {
+    const [a, b] = k.split('.') as [string, string]
+    const o = (raw as Record<string, Record<string, unknown> | undefined> | null)?.[a]
+    if (o && typeof o === 'object' && b in o) { delete o[b]; process.stderr.write(`${new Date().toISOString()} ${file}: ${k} is retired and ignored (the SSM relay replaced it). Remove it from the file.\n`) }
+  }
+  return raw
+}
 function parse<T>(schema: { parse: (x: unknown) => T }, file: string): T {
-  try { return schema.parse(json(readFileSync(file, 'utf8'))) } catch (e) { throw fail(file.split('/').pop()!, e) }
+  try { return schema.parse(dropRetired(json(readFileSync(file, 'utf8')), file.split('/').pop()!)) } catch (e) { throw fail(file.split('/').pop()!, e) }
 }
 
 // A change checked against the schema before it is written, with the same short message as a bad file.

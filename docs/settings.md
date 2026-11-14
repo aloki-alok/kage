@@ -59,6 +59,21 @@ Only a listed agent's post goes to Jev, at most its first 4,000 characters, with
 | `harness.memory` | `~/.config/kage/memory` | Kage's own memory folder. |
 | `harness.ownerMemory` | your Claude Code memory for the home folder | The memory Kage reads, and where it may write notes about people (`user_*.md`) only. |
 
+## ssh to hosts behind AWS SSM
+
+A session's shell runs in an OS sandbox. `session-manager-plugin` opens its own websocket and ignores the sandbox's proxy, so `ssh <host>` with an `aws ssm start-session` ProxyCommand hangs inside a session. Kage fixes this with a relay: the hub, outside the sandbox, runs `aws ssm start-session` and passes the bytes through a unix socket (`ssm.sock` in the config folder, mode 600).
+
+Only an owner-only Slack thread gets a relay token (`KAGE_SSM_TOKEN`) and the socket path (`KAGE_SSM_SOCK`) in its env. Teammate, agent, email, WhatsApp, voice and kagelet sessions get none, and the hub refuses them. The hub accepts only an instance id (`i-...` or `mi-...`) and a port from 1 to 65535, allows 8 relays at once, and logs the target and the exit of each, never the traffic.
+
+To use it, add one `Match` block per region at the top of `~/.ssh/config`, above the `Host` blocks (ssh keeps the first ProxyCommand it finds). It applies only when `KAGE_SSM_TOKEN` is set, so your own terminal keeps its direct ProxyCommand.
+
+```sshconfig
+Match originalhost web,web-prod exec "test -n \"$KAGE_SSM_TOKEN\""
+    ProxyCommand /path/to/kage/cli/ssm-proxy.ts %h %p us-west-1
+```
+
+The last argument is the AWS region of those hosts. The script needs `node` on the PATH of the ssh process. `kage doctor` warns when `~/.ssh/config` has an `aws ssm start-session` ProxyCommand and no `ssm-proxy` line. The hub's own `aws` must be on its PATH and logged in.
+
 ## AFK mode
 
 | Setting | Default | Effect |
@@ -124,4 +139,4 @@ When it is on, you type `@kage <task>` in any chat to hand Kage a task. The chat
 
 ## Set by Kage itself
 
-`KAGE_CLAUDE` (the command that starts Claude Code) and `KAGE_THREAD` (a pane's session key) are set by `hub.ts` and the hub. Do not put them in the settings files.
+`KAGE_CLAUDE` (the command that starts Claude Code) and `KAGE_THREAD` (a pane's session key) are set by `hub.ts` and the hub, and so are `KAGE_SSM_TOKEN` and `KAGE_SSM_SOCK` (a session's SSM relay). Do not put them in the settings files.

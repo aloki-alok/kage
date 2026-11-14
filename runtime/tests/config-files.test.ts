@@ -136,3 +136,21 @@ describe('a session may not change the settings by this code either', () => {
     assert.equal(readFileSync(join(w.dir, 'config.json'), 'utf8'), before)
   })
 })
+
+describe('a retired setting', () => {
+  test('harness.unsandboxedCommands is dropped on read with one log line, so an old config.json still loads', (t) => {
+    const w = world('')
+    writeFileSync(join(w.dir, 'config.json'), JSON.stringify({ version: 1, name: 'kagetest', harness: { maxSessions: 4, unsandboxedCommands: ['ssh myhost *'] } }))
+    const lines: string[] = []
+    t.mock.method(process.stderr, 'write', (s: string) => { lines.push(String(s)); return true })
+    const { config } = readSettings(w.env)
+    assert.deepEqual(config.harness, { maxSessions: 4 })
+    assert.equal(config.name, 'kagetest')
+    assert.equal(lines.filter(l => l.includes('harness.unsandboxedCommands')).length, 1)
+  })
+  test('a typo still fails, and a config with no retired key is untouched', () => {
+    const w = world('')
+    writeFileSync(join(w.dir, 'config.json'), JSON.stringify({ version: 1, harness: { maxSesion: 4 } }))
+    assert.throws(() => readSettings(w.env), /maxSesion/)
+  })
+})

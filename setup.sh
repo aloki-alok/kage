@@ -263,6 +263,11 @@ cmd_doctor() {
     if [[ "$(uname)" == Darwin ]]; then [[ -x /usr/bin/sandbox-exec ]] && pass "shell sandbox available" || fail "shell sandbox: /usr/bin/sandbox-exec is missing, so sessions cannot start. Restore macOS's sandbox-exec"
     else command -v bwrap >/dev/null 2>&1 && command -v socat >/dev/null 2>&1 && pass "shell sandbox available" || fail "shell sandbox: sessions cannot start without bubblewrap and socat. Run: sudo apt install bubblewrap socat"; fi
   fi
+  # A session's sandbox cannot reach AWS, so ssh to an SSM host needs the hub's relay (docs/settings.md, "ssh to hosts behind AWS SSM").
+  if [[ "$(cfg_get harness.runtime)" != tmux && -f "$HOME/.ssh/config" ]] && grep -qiE '^[[:space:]]*ProxyCommand.*aws ssm start-session' "$HOME/.ssh/config"; then
+    grep -q 'cli/ssm-proxy' "$HOME/.ssh/config" && pass "ssh config sends SSM hosts through the relay" \
+      || note "ssh: ~/.ssh/config has an aws ssm start-session ProxyCommand but no Match block for the relay, so ssh hangs inside a session. See docs/settings.md, \"ssh to hosts behind AWS SSM\""
+  fi
   if [[ "$(cfg_get harness.runtime)" != tmux ]]; then
     node -e 'import("@anthropic-ai/claude-agent-sdk").catch(()=>process.exit(1))' 2>/dev/null && pass "threads run on the Agent SDK, no prompts" \
       || fail "Agent SDK does not load: run npm ci, then restart (until then threads open as tmux panes)"
