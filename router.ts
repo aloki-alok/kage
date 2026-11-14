@@ -298,6 +298,8 @@ const sdk = sdkLib ? sdkSessions({
   ownerMemory: MEM.owner,
   envFile: ENV_FILE,
   codeDir: CODE,
+  unsandboxed: config.harness?.unsandboxedCommands,
+  trusted: key => store.trust(key) === true,
   onStart: () => store.saveSessions(d.saved()),
   onResult: (key, total, resumed, limited) => {
     const usd = recordCost(key, total, resumed)
