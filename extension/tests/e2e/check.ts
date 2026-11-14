@@ -27,6 +27,8 @@ check('a ref the page presets is ignored', el('Send').ref !== 1 || snap.elements
 check('aria-label beside different visible text shows both', /"Delete account \(labelled \\"Cancel\\"\)"/.test(list), list)
 check('text drawn by CSS is flagged', snap.elements.some(e => e.name.includes('styled text')), list)
 check('a link names the site it opens', /link "Unsubscribe" -> evil\.example/.test(list), list)
+check('text drawn by CSS inside a child is flagged', snap.elements.filter(e => e.name.includes('styled text')).length >= 2, list)
+check('values hidden in a zero box, drawn transparent or under a cover are not shown', !/tok-/.test(list), list)
 
 const name = el('Name'), search = el('Search')
 await act('type', { ref: name.ref, text: 'Ryu', expect: { host: '127.0.0.1', role: name.role, name: name.name } })

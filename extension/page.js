@@ -29,16 +29,27 @@ globalThis.__kage ??= (() => {
       if (st.display === 'none' || st.visibility === 'hidden' || Number(st.opacity) < 0.1) return false
       if (st.clipPath && st.clipPath !== 'none') return false
       if (st.clip && st.clip !== 'auto') return false
+      // An ancestor that clips its content to nothing (height: 0; overflow: hidden) hides the control too.
+      if (e !== el && st.overflow !== 'visible') { const a = e.getBoundingClientRect(); if (a.width < 2 || a.height < 2) return false }
     }
     return true
   }
+  // In the viewport, something else covers the control's center: a person cannot see what it holds.
+  const covered = el => {
+    const r = el.getBoundingClientRect(), x = r.left + r.width / 2, y = r.top + r.height / 2
+    if (x < 0 || y < 0 || x > innerWidth || y > innerHeight) return false
+    const hit = document.elementFromPoint(x, y)
+    return !!hit && hit !== el && !el.contains(hit) && !hit.contains(el)
+  }
   // Text CSS draws or hides (::before or ::after content, zero-size or see-through text) reads differently on
   // screen than in the DOM, so the card flags it and the owner checks the picture of the control.
-  const styled = el => {
-    const pseudo = ['::before', '::after'].some(p => { const c = getComputedStyle(el, p).content; return c && c !== 'none' && c !== 'normal' && c !== '""' })
-    const st = getComputedStyle(el)
-    return pseudo || parseFloat(st.fontSize) < 4 || st.color === 'transparent' || /rgba\(.*,\s*0\)$/.test(st.color)
+  // The control and everything inside it, since a child span can draw or hide the words just as well.
+  const styledOne = e => {
+    const pseudo = ['::before', '::after'].some(p => { const c = getComputedStyle(e, p).content; return c && c !== 'none' && c !== 'normal' && c !== '""' })
+    const st = getComputedStyle(e)
+    return pseudo || (e.textContent.trim() !== '' && parseFloat(st.fontSize) < 4) || st.color === 'transparent' || /rgba\(.*,\s*0\)$/.test(st.color)
   }
+  const styled = el => styledOne(el) || [...el.querySelectorAll('*')].slice(0, 50).some(styledOne)
   const role = el => el.getAttribute('role') || (el.tagName === 'INPUT' ? INPUT_ROLE[el.type] ?? 'textbox' : TAG_ROLE[el.tagName]) || (el.isContentEditable ? 'textbox' : 'element')
   // The name a person reads. When an aria-label says something else, both show, so a button that reads
   // "Delete account" but is labelled "Cancel" cannot pass for Cancel on the owner's card.
@@ -51,8 +62,9 @@ globalThis.__kage ??= (() => {
     return styled(el) ? `${base} (styled text: check the picture)` : base
   }
   const secret = el => el.type === 'password' || SECRET_AUTOCOMPLETE.test(el.getAttribute('autocomplete') ?? '') || SECRET_NAME.test(`${el.name ?? ''} ${el.id ?? ''}`)
+  // A value a person cannot read on screen (a secret, text drawn invisible, a field under a cover) is not shown.
   const value = (el, r) => {
-    if (secret(el)) return el.value ? '(filled)' : ''
+    if (secret(el) || (('value' in el) && (styledOne(el) || covered(el)))) return el.value ? '(filled)' : ''
     if (el.tagName === 'SELECT') return el.selectedOptions[0]?.text ?? ''
     if (el.type === 'checkbox' || el.type === 'radio') return el.checked ? 'checked' : 'not checked'
     if ('value' in el && r !== 'button' && r !== 'link') return String(el.value)

@@ -735,6 +735,13 @@ describe("acting in the owner's browser", () => {
     await setupAct({ acted }, asking(true, cards)).call('browser_act', { ...at, action: 'click', ref: 2 })
     assert.deepEqual(acted.at(-1)!.expect, { host: 'mail.example.com', role: 'button', name: 'Send' })
   })
+  test('a card with no picture of the control says so, so the owner checks the tab', async () => {
+    const cards: string[] = []
+    const s = setup({ browser: { ...chrome({}), call: async (op: string, args: Record<string, unknown>) => { if (op === 'crop') throw new Error('not the front tab'); return chrome({}).call(op, args) } }, approve: asking(true, cards) })
+    s.t.onTask(s.task())
+    await s.call('browser_act', { ...at, action: 'click', ref: 2 })
+    assert.match(cards[0]!, /no picture/)
+  })
   test('a blocked site, or a blocked address to go to, is refused with no card', async () => {
     const cards: string[] = []
     const s = setupAct({ url: 'https://bank.example.com/pay' }, asking(true, cards))

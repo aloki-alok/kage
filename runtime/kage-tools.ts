@@ -596,15 +596,17 @@ export function sessionTools(o: {
           if ('ref' in act && !now.el) return { isError: true, text: 'that control is no longer on the page: take a new snapshot' }
           // A look at the page goes to the owner's DM just before the card, when the tab is in front. Best effort:
           // a background tab cannot be captured, and the card alone still names the site and the control.
+          let pictured = act.action === 'open'
           if (act.action !== 'open') {
             try {
               // For a control, the picture is that control as the screen draws it: CSS can draw text the DOM lacks.
               const shot = await browser.call('ref' in act ? 'crop' : 'screenshot', { tabId, ...'ref' in act && { ref: act.ref } }) as { url: string; png: string }
               const png = /^data:image\/png;base64,(.+)$/.exec(shot.png)?.[1]
-              if (png && !blockedSite(shot.url, browser.block)) await bot.filesUploadV2({ channel_id: o.botDm(), file: Buffer.from(png, 'base64'), filename: `kage-before-${act.action}.png` })
-            } catch { /* no picture: the card goes anyway */ }
+              if (png && !blockedSite(shot.url, browser.block)) { await bot.filesUploadV2({ channel_id: o.botDm(), file: Buffer.from(png, 'base64'), filename: `kage-before-${act.action}.png` }); pictured = true }
+            } catch { /* no picture: the card says so */ }
           }
-          if (!await ask('browser_act', actCard(act, { url: now.url, el: target(now) }), { site: hostOf(now.url), ...act })) {
+          const line = actCard(act, { url: now.url, el: target(now) }) + (pictured ? '' : ' (no picture: the tab is not in front, so check it yourself before you say yes)')
+          if (!await ask('browser_act', line, { site: hostOf(now.url), ...act })) {
             seen(step, 'refused: the owner said no')
             return { isError: true, text: 'the owner said no, so nothing was done. Ask them what to do instead.' }
           }
