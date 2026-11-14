@@ -1,6 +1,7 @@
 import { describe, test } from 'node:test'
 import assert from 'node:assert/strict'
-import { mkdirSync, mkdtempSync, realpathSync, symlinkSync, writeFileSync } from 'node:fs'
+import { execFileSync } from 'node:child_process'
+import { mkdirSync, mkdtempSync, readFileSync, realpathSync, symlinkSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { configRefusal, protectConfig, ownerMemoryRefusal, privateToolRefusal, slackSendRefusal, voiceToolRefusal } from '../guards.ts'
@@ -180,6 +181,23 @@ describe('protectConfig: what the sandbox and the file rules close', () => {
     const deny = w.sandbox.filesystem.denyWrite
     for (const n of ['session.env', 'kagelets', 'specialists', 'config.json*', 'secrets.json*', 'env*', 'afk.json', 'hub.log', 'sender']) assert.ok(deny.includes(`${real(dir)}/${n}`), n)
     for (const n of ['files', 'memory']) assert.ok(!deny.some(d => d === `${real(dir)}/${n}` || d === real(dir)), n)
+  })
+  test('a name the hub reads when it is absent (crons-import.json, waha, threads.json) cannot be created, though the folder lacks it now', () => {
+    const deny = w.sandbox.filesystem.denyWrite
+    for (const n of ['crons-import.json*', 'waha', 'threads.json*', 'afk.json*', 'github-threads.json*', 'mail-threads.json*', 'kage.db*', 'hub.lock', 'router.sock']) assert.ok(deny.includes(`${real(dir)}/${n}`), n)
+  })
+  test('every name the code builds under the config folder with ${DIR}/, ${CONF}/ or ${o.dir}/ is on that list or is files/ or memory/', () => {
+    const root = new URL('../../', import.meta.url).pathname
+    const names = w.sandbox.filesystem.denyWrite.map(d => d.split('/').pop()!)
+    const covered = (n: string) => names.some(d => d === n || (d.endsWith('*') && n.startsWith(d.slice(0, -1))))
+    const seen = new Set<string>()
+    for (const f of execFileSync('git', ['ls-files', '*.ts', '*.sh'], { cwd: root, encoding: 'utf8' }).split('\n').filter(f => f && !f.includes('tests/'))) {
+      for (const m of readFileSync(join(root, f), 'utf8').matchAll(/\$\{(?:DIR|CONF|o\.dir)\}\/([A-Za-z0-9_.*-]+)/g)) seen.add(m[1]!.replace(/\.$/, ''))
+    }
+    // Names under the code folder, or kept open on purpose.
+    const open = new Set(['files', 'memory', 'server.ts', 'node_modules', 'package-lock.json', 'browser-pair.sh', 'version', 'status', 'standin'])
+    const missing = [...seen].filter(n => !covered(n) && !open.has(n))
+    assert.deepEqual(missing, [], 'add these to CONFIG_NAMES in core/guards.ts, or to the open list here if a session needs to write them')
   })
   test('the hub code folder and the files the OS reads at login are closed to writes too', () => {
     const deny = w.sandbox.filesystem.denyWrite

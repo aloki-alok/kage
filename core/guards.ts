@@ -63,15 +63,21 @@ export function configRefusal(tool: string, input: Record<string, unknown>, send
 // The settings every Kage SDK session starts with. An absolute path in a rule needs "//". Both the typed and the real
 // folder are listed. An Edit rule covers every file-editing tool, Write too (a Write rule only warns). The shell sandbox
 // denies reading the token files, and writing: the token files, config.json, and everything else in the config folder
-// but files/ and memory/ (session.env is loaded into the hub's environment, kagelets/ holds the tools kagelets get), and
+// but files/ and memory/ (CONFIG_NAMES below, session.env is loaded into the hub's environment, kagelets/ holds the tools kagelets get), and
 // the hub's own code folder (a restart runs it) and the login files the OS starts the hub from. The hub writes all of those
 // itself, so a session needs none. An allowWrite does not reopen a denied path, so the folder's entries are listed one by one.
 // failIfUnavailable: a session never starts without the wall. Writes elsewhere and the network stay open, as without a sandbox.
+// Every name the hub reads or writes in the config folder (grep '${DIR}/' and '${CONF}/'; a test in core/tests/guards.test.ts fails when a
+// new one is missing). The hub does the writing itself, so a shell needs none. A name absent today must be listed too: the hub adopts a
+// crons-import.json, a threads.json or a waha/.env it finds at its next start. The folder's own entries are added at session start.
+const CONFIG_NAMES = ['session.env', 'kagelets', 'specialists', 'config.json*', 'crons-import.json*', 'waha', 'threads.json*', 'afk.json*', 'github-threads.json*', 'mail-threads.json*',
+  'kage.db*', 'hub.lock', 'hub.log*', 'router.sock', '.archive', 'updated-from', 'browser-seen', 'wa-notes', 'retro-sent', 'dream-sent', 'daily-sent', 'crash-dm-at',
+  'config-unknown-told', 'canvas-events.jsonl', 'boots', 'held', 'sender', 'ledgers']
 export function protectConfig(envFile: string, codeDir: string, home = process.env.HOME ?? '') {
   const dirs = [...new Set([dirname(envFile), realish(dirname(envFile))])]
   const tokens = dirs.flatMap(d => [`${d}/secrets.json*`, `${d}/env*`])
   const kept = new Set(['files', 'memory'])
-  const folder = dirs.flatMap(d => [...new Set([...['session.env', 'kagelets', 'specialists', 'config.json*'].map(n => n),
+  const folder = dirs.flatMap(d => [...new Set([...CONFIG_NAMES,
     ...(() => { try { return readdirSync(d) } catch { return [] } })().filter(n => !kept.has(n))])].map(n => `${d}/${n}`))
   const deny = (f: string) => [`Edit(/${f})`]
   return {
