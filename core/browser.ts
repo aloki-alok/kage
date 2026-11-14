@@ -41,8 +41,14 @@ export function pageResult(p: Page, list: string[], max: number) {
   ].join('\n')
 }
 
-// kage add browser: the env file with one setting set, every other line kept, the setting moved to the end.
+// kage add browser: the env file with one setting set where it stands (or added at the end), every other
+// line, blank line and comment kept, in the file's own line endings.
 export function setEnvLine(env: string, key: string, value: string) {
-  const kept = env.split('\n').filter(l => l && !l.startsWith(`${key}=`))
-  return [...kept, `${key}=${value}`].join('\n') + '\n'
+  const eol = env.includes('\r\n') ? '\r\n' : '\n'
+  const lines = env.split(/\r?\n/)
+  if (lines.at(-1) === '') lines.pop()
+  const line = `${key}=${value}`
+  const at = lines.findIndex(l => l.startsWith(`${key}=`))
+  const kept = at < 0 ? [...lines, line] : lines.map((l, i) => i === at ? line : l).filter((l, i) => i <= at || !l.startsWith(`${key}=`))
+  return kept.join(eol) + eol
 }

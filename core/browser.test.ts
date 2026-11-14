@@ -51,7 +51,13 @@ test('a trailing dot, punycode, or a list entry written as a URL or with a wildc
 
 test('kage add browser sets its line in the env file and keeps every other line', () => {
   const env = 'KAGE_NAME=kage\nKAGE_BROWSER_TOKEN=old\nSLACK_BOT_TOKEN=xoxb-TEST\n'
-  assert.equal(setEnvLine(env, 'KAGE_BROWSER_TOKEN', 'new'), 'KAGE_NAME=kage\nSLACK_BOT_TOKEN=xoxb-TEST\nKAGE_BROWSER_TOKEN=new\n')
+  // Replaced where it stands, so the file reads the same apart from the token.
+  assert.equal(setEnvLine(env, 'KAGE_BROWSER_TOKEN', 'new'), 'KAGE_NAME=kage\nKAGE_BROWSER_TOKEN=new\nSLACK_BOT_TOKEN=xoxb-TEST\n')
   assert.equal(setEnvLine('KAGE_NAME=kage', 'KAGE_BROWSER_TOKEN', 't'), 'KAGE_NAME=kage\nKAGE_BROWSER_TOKEN=t\n')
   assert.equal(setEnvLine('', 'KAGE_BROWSER_TOKEN', 't'), 'KAGE_BROWSER_TOKEN=t\n')
+})
+
+test('kage add browser keeps blank lines, comments and CRLF line endings', () => {
+  assert.equal(setEnvLine('# Kage\r\nKAGE_NAME=kage\r\n\r\nKAGE_BROWSER_TOKEN=old\r\n', 'KAGE_BROWSER_TOKEN', 'new'), '# Kage\r\nKAGE_NAME=kage\r\n\r\nKAGE_BROWSER_TOKEN=new\r\n')
+  assert.equal(setEnvLine('A=1\n\nB=2\n', 'KAGE_BROWSER_TOKEN', 't'), 'A=1\n\nB=2\nKAGE_BROWSER_TOKEN=t\n')
 })
