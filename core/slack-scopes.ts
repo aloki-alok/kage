@@ -20,16 +20,18 @@ export const USER_SCOPES = [
   'search:read',
 ]
 
+import type { Line } from './doctor.ts'
+
 export type Missing = { bot: string[]; user: string[] }
 
 export const missingScopes = (wanted: string[], granted: string[]) => [...new Set(wanted)].filter(s => !granted.includes(s))
 
 const KINDS = ['bot', 'user'] as const
 
-// The doctor's lines (the caller adds `ok` or `FAIL`).
-export function scopeLines(m: Missing): { ok: boolean; text: string }[] {
-  const lines = KINDS.filter(k => m[k].length).map(k => ({ ok: false, text: `the Slack app lacks ${k} scopes ${m[k].join(', ')}: run kage slack upgrade` }))
-  return lines.length ? lines : [{ ok: true, text: 'the Slack app has every scope' }]
+// The doctor's lines (core/doctor.ts adds `ok` or `FAIL`).
+export function scopeLines(m: Missing): Line[] {
+  const lines = KINDS.filter(k => m[k].length).map(k => ({ kind: 'fail' as const, text: `the Slack app lacks ${k} scopes ${m[k].join(', ')}: run kage slack upgrade` }))
+  return lines.length ? lines : [{ kind: 'ok', text: 'the Slack app has every scope' }]
 }
 
 // The owner hears each distinct missing set once. `told` is the set last sent, kept by the hub so a restart does not repeat it.

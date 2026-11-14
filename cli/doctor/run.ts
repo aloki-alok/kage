@@ -9,9 +9,10 @@ import { slack } from './slack.ts'
 import { update } from './update.ts'
 import { browser } from './browser.ts'
 import { path } from './path.ts'
+import { scopes } from './scopes.ts'
 
 const lines: Line[] = []
-for (const [group, run] of Object.entries({ setup, session, service, slack, update, browser, path })) {
+for (const [group, run] of Object.entries({ setup, session, service, slack, update, browser, path, scopes })) {
   try { lines.push(...await run()) } catch (e) { lines.push({ kind: 'fail', text: `${group}: the check did not run (${(e as Error).message})` }) }
 }
 const r = report(lines, name)

@@ -15,7 +15,7 @@ Set up|check||Check that node 22.18+ and claude are installed (and tmux, for KAG
 Set up|app|[name]|Write the Slack app for the name you tag, and open the link that creates it|kage app kage
 Set up|save|[name]|Paste the three Slack tokens into hidden prompts; each is checked with Slack|kage save
 Set up|doctor||Check every part, and print the command that fixes each problem|kage doctor
-Set up|slack|check or upgrade|Check the Slack app has every scope Kage needs. upgrade adds the missing ones: copies the manifest, opens the app page, and waits|kage slack upgrade
+Set up|slack|upgrade|Add the Slack scopes Kage needs and the app lacks: copies the manifest, opens the app page, and waits|kage slack upgrade
 Set up|link||Put the kage command on your PATH (~/.local/bin/kage)|./setup.sh link
 Set up|service|on or off|Let macOS or Linux keep Kage running: back after a crash, a reboot or a login|kage service on
 Run|start|[kagelet]|Start Kage in the background (turns the service on the first time). With a kagelet: run it again after kage stop|kage start
@@ -236,96 +236,6 @@ cmd_save() {
   echo "ok: saved to $(dirname "$ENV_FILE")/secrets.json (mode 600) for @$NAME, owner $OWNER"
 }
 
-<<<<<<< Updated upstream
-=======
-cmd_doctor() {
-  local bad=0 tag
-  pass() { printf 'ok    %s\n' "$*"; }
-  fail() { printf 'FAIL  %s\n' "$*"; bad=1; }
-  note() { printf 'note  %s\n' "$*"; }
-
-  (cmd_check >/dev/null 2>&1) && pass "tools: node 22.18+, claude" || fail "tools: run kage check for the missing one"
-  if ! has_settings; then
-    fail "tokens: no settings in $(dirname "$ENV_FILE"). Run kage app, then kage save"
-  else
-    # The token file is secrets.json; an env file not yet imported holds the same tokens.
-    local tf="$(dirname "$ENV_FILE")/secrets.json"; [[ -f "$tf" ]] || tf="$ENV_FILE"
-    [[ "$(stat -c %a "$tf" 2>/dev/null || stat -f %Lp "$tf")" == 600 ]] && pass "token file is private (600)" || fail "token file: run chmod 600 $tf"
-    local k
-    for k in app:SLACK_APP_TOKEN user:SLACK_USER_TOKEN bot:SLACK_BOT_TOKEN; do
-      node cli/config.ts check-slack "${k%%:*}" >/dev/null 2>&1 && pass "${k##*:} accepted by Slack" || fail "${k##*:}: missing or rejected. Run kage save again"
-    done
-    local sc
-    sc="$(node cli/slack.ts check 2>&1)" && pass "${sc#* }" || while IFS= read -r l; do fail "${l#* }"; done <<<"$sc"
-    # Jev, the classifier for agent posts (core/jev.ts): only when a Jev key is set. The key stays in secrets.json.
-    local jev
-    if jev="$(KAGE_ENV="$ENV_FILE" node cli/jev-doctor.ts 2>/dev/null)"; then [[ -n "$jev" ]] && pass "$jev"; else fail "${jev:-jev: the check did not run}"; fi
-  fi
-  NAME="$(cfg_get name)"; NAME="${NAME:-kage}"
-
-  # Every SDK session runs its shell in an OS sandbox that keeps it off the tokens and the settings, and a session never starts without it.
-  if [[ "$(cfg_get harness.runtime)" != tmux ]]; then
-    if [[ "$(uname)" == Darwin ]]; then [[ -x /usr/bin/sandbox-exec ]] && pass "shell sandbox available" || fail "shell sandbox: /usr/bin/sandbox-exec is missing, so sessions cannot start. Restore macOS's sandbox-exec"
-    else command -v bwrap >/dev/null 2>&1 && command -v socat >/dev/null 2>&1 && pass "shell sandbox available" || fail "shell sandbox: sessions cannot start without bubblewrap and socat. Run: sudo apt install bubblewrap socat"; fi
-  fi
-  # A session's sandbox cannot reach AWS, so ssh to an SSM host needs the hub's relay (docs/settings.md, "ssh to hosts behind AWS SSM").
-  if [[ "$(cfg_get harness.runtime)" != tmux && -f "$HOME/.ssh/config" ]] && grep -qiE '^[[:space:]]*ProxyCommand.*aws ssm start-session' "$HOME/.ssh/config"; then
-    grep -q 'cli/ssm-proxy' "$HOME/.ssh/config" && pass "ssh config sends SSM hosts through the relay" \
-      || note "ssh: ~/.ssh/config has an aws ssm start-session ProxyCommand but no Match block for the relay, so ssh hangs inside a session. See docs/settings.md, \"ssh to hosts behind AWS SSM\""
-  fi
-  if [[ "$(cfg_get harness.runtime)" != tmux ]]; then
-    node -e 'import("@anthropic-ai/claude-agent-sdk").catch(()=>process.exit(1))' 2>/dev/null && pass "threads run on the Agent SDK, no prompts" \
-      || fail "Agent SDK does not load: run npm ci, then restart (until then threads open as tmux panes)"
-  elif [[ "$(cfg_get harness.route)" == plugin ]]; then
-    claude plugin list --json 2>/dev/null | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>process.exit(JSON.parse(s).some(p=>p.id==="kage@kage"&&p.enabled)?0:1))' \
-      && pass "plugin kage@kage installed and enabled" \
-      || fail "plugin: run claude plugin marketplace add \"$PWD\" && claude plugin install kage@kage"
-    node -e 'const f=process.env.HOME+"/.claude/remote-settings.json";let s={};try{s=require(f)}catch{};process.exit((s.allowedChannelPlugins||[]).some(p=>p.marketplace==="kage"&&p.plugin==="kage")?0:1)' \
-      && pass "your Claude org approves the kage channel" \
-      || fail "org approval missing: an org Owner adds kage to allowedChannelPlugins (README, 'Run threads as tmux panes instead')"
-  else
-    note "dev route: Claude Code shows a warning screen on each start, and a person confirms it"
-  fi
-
-  if ./service.sh installed; then
-    ./service.sh running && pass "the service keeps $NAME running" || fail "the service is on but $NAME is stopped: kage start"
-    ./service.sh stale && fail "the service unit still pins KAGE_CWD, so harness.cwd would not apply: kage service on"
-  elif old_tmux; then
-    fail "$NAME runs in tmux, which does not bring it back after a reboot or a kill: kage service on"
-  else
-    fail "not running: kage start"
-  fi
-  if [[ "$(./service.sh kind)" == systemd && "$(loginctl show-user "$(id -un)" -p Linger --value 2>/dev/null)" != yes ]]; then
-    fail "it starts only once you log in: sudo loginctl enable-linger $(id -un)"
-  fi
-  local boots; boots="$(awk -v t=$(( $(date +%s) - 86400 )) '$1 > t' "$(dirname "$ENV_FILE")/boots" 2>/dev/null | wc -l | tr -d ' ')"
-  (( boots > 5 )) && note "the hub started $boots times in 24 h: kage logs shows why"
-  [[ "$(uname -s)" == Darwin ]] && note "with the lid closed this Mac sleeps, and Kage is offline until it wakes"
-  if connected; then
-    pass "connected to Slack: $(cat "$(dirname "$ENV_FILE")/status")"
-    pass "runs Kage $(running_version)"
-  else
-    fail "not connected to Slack yet: wait 20 s after start, or run kage logs to see why"
-  fi
-  # The same rules as core/auto-update.ts, so a person sees why this install stays on its version.
-  if [[ "$(cfg_get autoUpdate)" == false ]]; then note "auto-update is off (autoUpdate is false)"
-  elif [[ ! -e .git ]]; then note "no auto-update: not a git checkout. Rerun the install line to make it one"
-  elif [[ "$(git rev-parse --abbrev-ref HEAD 2>/dev/null)" != main ]]; then note "no auto-update: on branch $(git rev-parse --abbrev-ref HEAD 2>/dev/null), not main"
-  elif [[ -n "$(git status --porcelain --untracked-files=no 2>/dev/null)" ]]; then note "no auto-update: the checkout has uncommitted changes"
-  elif ! tag="$(GIT_TERMINAL_PROMPT=0 GIT_SSH_COMMAND="ssh -o BatchMode=yes -o ConnectTimeout=10" git ls-remote --tags origin refs/tags/stable 2>/dev/null)"; then note "auto-update cannot check origin: git ls-remote failed"
-  elif [[ -z $tag ]]; then note "no auto-update: origin has no stable tag yet, so this install stays on its version"
-  fi
-  # Kage in Chrome (#114): the hub notes each poll of the extension in browser-seen (router.ts).
-  if node cli/config.ts has secrets.browserToken 2>/dev/null && running; then
-    local seen; seen="$(cat "$(dirname "$ENV_FILE")/browser-seen" 2>/dev/null || echo 0)"
-    if (( $(date +%s) - ${seen:-0} / 1000 < 120 )); then pass "Chrome extension connected"
-    else fail "Chrome extension not connected: load the extension folder in chrome://extensions and paste the token (kage add browser prints a new one)"; fi
-  fi
-  command -v kage >/dev/null || note "kage is not on your PATH: run ./setup.sh link to type kage <command> anywhere"
-  [[ $bad == 0 ]] && echo "All good. Tag @$NAME in Slack to try it." || return 1
-}
-
->>>>>>> Stashed changes
 cmd_interactive() {
   say "1/5  Checking tools"; cmd_check
   say "2/5  Pick a name"; read -r -p "What do you call it in Slack? [kage] " n; valid_name "$n"
@@ -353,12 +263,8 @@ case "${1:-}" in
   check) cmd_check ;;
   app) cmd_app "${2:-}" ;;
   save) cmd_save "${2:-}" ;;
-<<<<<<< Updated upstream
   doctor) node cli/doctor/run.ts ;;
-=======
-  doctor) cmd_doctor ;;
   slack) node cli/slack.ts "${2:-}" ;;
->>>>>>> Stashed changes
   link) mkdir -p ~/.local/bin && ln -sf "$PWD/setup.sh" ~/.local/bin/kage && echo "ok: run kage from anywhere (needs ~/.local/bin on PATH)" ;;
   service) ./service.sh "${2:-}" ;;
   run) exec node hub.ts ;;

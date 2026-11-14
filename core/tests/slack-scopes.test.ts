@@ -18,11 +18,11 @@ test('the manifest lists include the 2026-11-13 additions', () => {
 
 describe('doctor lines', () => {
   test('complete app: one ok line', () => {
-    assert.deepEqual(scopeLines({ bot: [], user: [] }), [{ ok: true, text: 'the Slack app has every scope' }])
+    assert.deepEqual(scopeLines({ bot: [], user: [] }), [{ kind: 'ok', text: 'the Slack app has every scope' }])
   })
   test('missing scopes: one FAIL line per kind, naming the fix', () => {
     assert.deepEqual(scopeLines({ bot: [], user: ['search:read', 'files:read'] }), [
-      { ok: false, text: 'the Slack app lacks user scopes search:read, files:read: run kage slack upgrade' },
+      { kind: 'fail', text: 'the Slack app lacks user scopes search:read, files:read: run kage slack upgrade' },
     ])
     assert.equal(scopeLines({ bot: ['x'], user: ['y'] }).length, 2)
   })

@@ -1,7 +1,5 @@
-// kage slack check:   one doctor line per finding on the app's scopes (exit 1 when scopes are missing).
 // kage slack upgrade: puts the current manifest on the clipboard, opens the app's manifest page, and waits for the new scopes.
 import { spawnSync } from 'node:child_process'
-import { scopeLines } from '../core/slack-scopes.ts'
 import { authTest, checkScopes } from '../runtime/slack-scopes.ts'
 import { settings } from './home.ts'
 
@@ -10,12 +8,7 @@ const tokens = { user: secrets.slack?.user, bot: secrets.slack?.bot }
 const [cmd = ''] = process.argv.slice(2)
 const die = (msg: string): never => { console.error(msg); process.exit(1) }
 
-if (cmd === 'check') {
-  if (!tokens.user || !tokens.bot) die('no Slack tokens saved: run kage save')
-  const lines = scopeLines(await checkScopes(tokens))
-  for (const l of lines) console.log(`${l.ok ? 'ok' : 'FAIL'} ${l.text}`)
-  process.exit(lines.every(l => l.ok) ? 0 : 1)
-} else if (cmd === 'upgrade') {
+if (cmd === 'upgrade') {
   if (!tokens.user || !tokens.bot) die('no Slack tokens saved: run kage save')
   const missing = await checkScopes(tokens)
   if (!missing.bot.length && !missing.user.length) { console.log('ok: the Slack app has every scope'); process.exit(0) }
@@ -41,4 +34,4 @@ if (cmd === 'check') {
     if (!now.bot.length && !now.user.length) { console.log('ok: the Slack app has every scope'); process.exit(0) }
   }
   die('The scopes are not there yet. If you reinstalled, run kage save with the new tokens, then kage doctor.')
-} else die('Usage: kage slack check | kage slack upgrade')
+} else die('Usage: kage slack upgrade')
