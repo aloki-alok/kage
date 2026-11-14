@@ -363,7 +363,7 @@ describe('Kage sessions on the Agent SDK', () => {
     t.d.sweep(Date.now() + 61_000)
     assert.equal(t.sdk.runs[0]!.closed, true)
   })
-  test("the guard hook refuses private sources on a teammate's task and the owner's memory always", async () => {
+  test("the guard hook refuses private sources on a teammate's task, the owner's memory always, and the token files on every task", async () => {
     const t = setup()
     t.d.task('C1:5.5', t.task({ fromOwner: false }), 0)
     await tick()
@@ -376,7 +376,10 @@ describe('Kage sessions on the Agent SDK', () => {
     t.d.task('C1:5.5', t.task(), 1)
     await tick()
     assert.deepEqual(await run('mcp__claude_ai_Gmail__search'), {})
-    assert.deepEqual(await run('Bash', { command: 'cat /cfg/env' }), {})
+    // The token files stay closed to the owner's task too; config.json does not.
+    assert.equal((await run('Bash', { command: 'cat /cfg/env' })).hookSpecificOutput.permissionDecision, 'deny')
+    assert.equal((await run('Read', { file_path: '/cfg/secrets.json' })).hookSpecificOutput.permissionDecision, 'deny')
+    assert.deepEqual(await run('Read', { file_path: '/cfg/config.json' }), {})
   })
   test('a kagelet lane gets only its grant, and approves nothing: a call that would ask is denied', async () => {
     const t = setup({ grants: { 'C1:5.5#side-kagelet-deploys': ['WebSearch'] } })

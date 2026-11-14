@@ -105,9 +105,24 @@ describe("the token file on a task the owner did not send (#117)", () => {
       no('Bash', { command: 'ls ~/.config/kage/' }, s)
     }
   })
-  test('the owner keeps it: posting as the bot and the Slack read fallback source the env file', () => {
-    yes('Bash', { command: 'source ~/.config/kage/env && curl ...' }, 'owner')
-    yes('Read', { file_path: ENV }, 'owner')
+  test('no session reads the token files, the owner included, even behind a ".." or a relative path', () => {
+    for (const s of ['owner', 'teammate']) {
+      no('Bash', { command: 'source ~/.config/kage/env && curl ...' }, s)
+      no('Read', { file_path: ENV }, s)
+      no('Read', { file_path: '/home/o/.config/kage/secrets.json' }, s)
+      no('Read', { file_path: '~/.config/kage/env.imported-20261114T101500Z' }, s)
+      no('Bash', { command: 'grep slack .config/kage/secrets.json' }, s)
+      no('Bash', { command: 'cat ~/.config/kage/files/../secrets.json' }, s)
+      no('Edit', { file_path: '/home/o/.config/kage/env.new' }, s)
+    }
+    no('Grep', { pattern: 'xox', path: '/home/o/.config/kage' }, 'owner')
+  })
+  test('the owner may read and edit config.json and the folder listing', () => {
+    yes('Read', { file_path: '/home/o/.config/kage/config.json' }, 'owner')
+    yes('Edit', { file_path: '~/.config/kage/config.json' }, 'owner')
+    yes('Bash', { command: 'ls ~/.config/kage/' }, 'owner')
+    yes('Read', { file_path: '/home/o/.config/kage/session.env' }, 'owner')
+    yes('Grep', { pattern: 'x', path: '/home/o/.config/kage/config.json' }, 'owner')
   })
   test('other files and commands are fine for a teammate', () => {
     yes('Read', { file_path: '/home/o/kage/README.md' }, 'teammate')
