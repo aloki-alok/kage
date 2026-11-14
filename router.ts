@@ -270,6 +270,7 @@ const sdk = sdkLib ? sdkSessions({
     pathToClaudeCodeExecutable: sdkLib.claude,
   },
   ownerMemory: MEM.owner,
+  envFile: ENV_FILE,
   onStart: () => store.saveSessions(d.saved()),
   onResult: (key, total, resumed, limited) => {
     const usd = recordCost(key, total, resumed)

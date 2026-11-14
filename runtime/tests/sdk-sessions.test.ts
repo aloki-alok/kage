@@ -54,6 +54,7 @@ function setup(o: { transcript?: boolean; silent?: boolean; dmFails?: boolean; g
     options: { cwd: '/home', settingSources: ['user'] },
     grantOf: key => o.grants?.[key],
     ownerMemory: '/owner',
+    envFile: '/cfg/env',
     restartMs: 10,
     onResult: (key, total, resumed) => { results.push([key, total, resumed]); o.onResult?.(key, total, resumed) },
     budgetOf: key => o.budgets?.[key],
@@ -361,9 +362,11 @@ describe('Kage sessions on the Agent SDK', () => {
     assert.equal(hook.onFailure, 'block')
     assert.equal((await run('mcp__claude_ai_Gmail__search')).hookSpecificOutput.permissionDecision, 'deny')
     assert.equal((await run('Write', { file_path: '/owner/MEMORY_x.md' })).hookSpecificOutput.permissionDecision, 'deny')
+    assert.equal((await run('Bash', { command: 'cat /cfg/env' })).hookSpecificOutput.permissionDecision, 'deny')
     t.d.task('C1:5.5', t.task(), 1)
     await tick()
     assert.deepEqual(await run('mcp__claude_ai_Gmail__search'), {})
+    assert.deepEqual(await run('Bash', { command: 'cat /cfg/env' }), {})
   })
   test('a kagelet lane gets only its grant, and approves nothing: a call that would ask is denied', async () => {
     const t = setup({ grants: { 'C1:5.5#side-kagelet-deploys': ['WebSearch'] } })
@@ -532,7 +535,7 @@ test('the usage limit, whole: no post but the notice, the inbox message kept, an
   const s = sdkSessions({
     sdk: { query: sdk.query as any, createSdkMcpServer, tool }, hub: () => d,
     tools: (_key, send) => sessionTools({ title: 'Kage', bot: slack as any, user: slack as any, botDm: () => 'DBOT', dir, ledgers: openLedgers(dir), send, memory: { own: '/own', owner: '/owner' } }),
-    hasTranscript: () => false, toHub: () => {}, options: { cwd: '/home' }, ownerMemory: '/owner', restartMs: 10,
+    hasTranscript: () => false, toHub: () => {}, options: { cwd: '/home' }, ownerMemory: '/owner', envFile: '/cfg/env', restartMs: 10,
     onTurn: (key, tasks, limit) => limits.turn(key, tasks, limit, 1000),
   })
   d = new Dispatcher<ToSession>(s.runner, { max: 2, idleMs: 60_000, connectMs: 60_000, evictMs: 1, newId: () => ID })

@@ -25,6 +25,21 @@ export function slackSendRefusal(tool: string): string | undefined {
   if (!SLACK_SEND.test(tool) || /draft/i.test(tool)) return undefined
   return `${tool} posts as the owner with no sign of Kage. Use the reply tool for this thread, or message_people to tell someone else.`
 }
+// The config folder holds the Slack, AWS and voice tokens. Only the owner's task may touch it: their sessions source
+// the env file to post as the bot or read Slack when the connector fails. Anyone else's task never needs it.
+// ponytail: a path match, so an obfuscated shell path (quotes, globs, cd steps) gets past; the outbound secret filter
+// (core/outbound.ts) still stops a token from being posted. Upgrade: run teammate sessions in a sandbox without it.
+const CONFIG_TOOLS = new Set(['Read', 'Grep', 'Glob', 'Edit', 'Write', 'NotebookEdit', 'Bash'])
+export function configRefusal(tool: string, input: Record<string, unknown>, sender: string | undefined, envFile: string, home = process.env.HOME ?? ''): string | undefined {
+  if (sender === 'owner' || !CONFIG_TOOLS.has(tool)) return
+  const dir = dirname(envFile)
+  const named = ['file_path', 'notebook_path', 'path', 'pattern', 'command'].map(k => input[k]).filter((v): v is string => typeof v === 'string')
+    .map(v => v.replace(/(^|[\s'"=:])~(?=\/)/g, `$1${home}`).replace(/\$\{?HOME\}?/g, home))
+  // A thread's files folder lives inside it (runtime: send_file, reports), so that one part stays open.
+  const touches = (v: string, d: string) => v.split(`${d}/files/`).join('').includes(d)
+  if (!named.some(v => touches(v, dir) || touches(v, realish(dir)))) return
+  return `Kage's config folder holds its tokens, and this task did not come from the owner. Reply that this needs the owner, and stop.`
+}
 // Kage's own memory (hub.ts points autoMemoryDirectory at it) and the owner's, which is the
 // memory of the home folder project in Claude Code.
 export const memoryDirs = (home: string, envFile: string, env: Record<string, string | undefined>) => ({
