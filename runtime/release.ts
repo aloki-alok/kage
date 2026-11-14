@@ -5,7 +5,7 @@ import { mkdtempSync, readFileSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { promisify } from 'node:util'
-import { compareUrl, soakGate } from '../core/auto-update.ts'
+import { compareUrl, soakGate, soakSince } from '../core/auto-update.ts'
 import { releasePlan } from '../core/release.ts'
 
 const sh = async (root: string, cmd: string, ...args: string[]) =>
@@ -87,12 +87,12 @@ export async function release(root: string, dryRun: boolean): Promise<Release> {
 
 // The hub's daily check (router.ts): release when main is ahead of `stable` and the soak gate passes. A skip is
 // one log line and no DM. Only the repo admin's hub gets past the first line.
-export async function releaseIfSoaked(root: string, dir: string, running: string, now: number): Promise<Release | { skip: string }> {
+export async function releaseIfSoaked(root: string, dir: string, running: string, boots: string, now: number): Promise<Release | { skip: string }> {
   if (!await isOwnerHub(root)) return { skip: 'this hub is not the repo admin' }
   if (!await mainAheadOfStable(root)) return { skip: 'main has nothing the stable tag lacks' }
   const num = (f: string) => { try { return readFileSync(join(dir, f), 'utf8').split('\n').map(Number).filter(Boolean) } catch { return [] } }
-  const [boot, dm] = [Math.max(0, ...num('boots')) * 1000 || undefined, Math.max(0, ...num('crash-dm-at')) * 1000 || undefined]
-  const gate = { candidate: await sh(root, 'git', 'rev-parse', 'HEAD'), running: running.split(' ')[0]!, lastBootAt: boot, crashDmAt: dm, now }
+  const dm = Math.max(0, ...num('crash-dm-at')) * 1000 || undefined
+  const gate = { candidate: await sh(root, 'git', 'rev-parse', 'HEAD'), running: running.split(' ')[0]!, since: soakSince(boots, running.split(' ')[0]!), crashDmAt: dm, now }
   // The doctor is the slow check, so it runs only once the cheap ones pass.
   let g = soakGate({ ...gate, doctorOk: true })
   if ('ok' in g) g = soakGate({ ...gate, doctorOk: (await tryOut(root, './setup.sh', 'doctor') ?? '').includes('All good') })
