@@ -40,3 +40,9 @@ export function pageResult(p: Page, list: string[], max: number) {
     ...p.text.length > max ? [`(cut at ${max} characters of ${p.text.length})`] : [],
   ].join('\n')
 }
+
+// kage add browser: the env file with one setting set, every other line kept, the setting moved to the end.
+export function setEnvLine(env: string, key: string, value: string) {
+  const kept = env.split('\n').filter(l => l && !l.startsWith(`${key}=`))
+  return [...kept, `${key}=${value}`].join('\n') + '\n'
+}

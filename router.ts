@@ -201,7 +201,9 @@ const PROJECT = claudeProject(process.cwd())   // both runners start sessions in
 // What each turn cost (runtime/ledger.ts costRecorder): `kage cost`, the kagelet caps and the cost flags read it.
 const recordCost = costRecorder(ledgers)
 // Kage in Chrome (#114): the owner's own browser, through Kage's extension, for the owner's own tasks only.
-const browser = env.KAGE_BROWSER_TOKEN ? connectBrowser({ token: env.KAGE_BROWSER_TOKEN, port: Number(env.KAGE_BROWSER_PORT || 8791) }) : undefined
+let browserSeen = 0   // kage doctor reads browser-seen; written at most every 30 s, since the extension polls about every 25 s
+const browser = env.KAGE_BROWSER_TOKEN ? connectBrowser({ token: env.KAGE_BROWSER_TOKEN, port: Number(env.KAGE_BROWSER_PORT || 8791),
+  onPoll: at => { if (at - browserSeen >= 30_000) { browserSeen = at; writeFileSync(`${DIR}/browser-seen`, String(at), { mode: 0o600 }) } } }) : undefined
 void browser?.listening.then(port => log(`browser on: 127.0.0.1:${port}/browser`), e => log('browser could not listen', e))
 const BROWSER_BLOCK = blockList(env.KAGE_BROWSER_BLOCK ?? '')
 for (const e of unreadableBlocks(env.KAGE_BROWSER_BLOCK ?? '')) log(`KAGE_BROWSER_BLOCK: "${e}" is not a site, so it blocks nothing`)
