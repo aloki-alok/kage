@@ -71,14 +71,9 @@ export function configRefusal(tool: string, input: Record<string, unknown>, send
 // new one is missing). The hub does the writing itself, so a shell needs none. A name absent today must be listed too: the hub adopts a
 // crons-import.json, a threads.json or a waha/.env it finds at its next start. The folder's own entries are added at session start.
 const CONFIG_NAMES = ['session.env', 'kagelets', 'specialists', 'config.json*', 'crons-import.json*', 'waha', 'threads.json*', 'afk.json*', 'github-threads.json*', 'mail-threads.json*',
-  'kage.db*', 'hub.lock', 'hub.log*', 'router.sock', '.archive', 'updated-from', 'browser-seen', 'wa-notes', 'retro-sent', 'dream-sent', 'daily-sent', 'crash-dm-at',
+  'kage.db*', 'hub.lock', 'hub.log*', 'router.sock', 'ssm.sock', '.archive', 'updated-from', 'browser-seen', 'wa-notes', 'retro-sent', 'dream-sent', 'daily-sent', 'crash-dm-at',
   'config-unknown-told', 'canvas-events.jsonl', 'boots', 'held', 'sender', 'ledgers']
-// SSH options that run a local command (ProxyCommand, LocalCommand) or reach the host another way (-F, -J). Denied whenever an ssh
-// command runs outside the sandbox, because excludedCommands is a convenience, not a boundary (Claude Agent SDK, sandbox.excludedCommands).
-const SSH_DENY = ['-o', '-F', '-J'].flatMap(f => [`Bash(ssh * ${f}*)`, `Bash(ssh ${f}*)`])
-// unsandboxed: the owner's own task only (harness.unsandboxedCommands). A call leaves the sandbox only when every command in a chain
-// matches, and a redirect, cd or substitution keeps it in, so a chain cannot carry a second command out.
-export function protectConfig(envFile: string, codeDir: string, home = process.env.HOME ?? '', unsandboxed: string[] = []) {
+export function protectConfig(envFile: string, codeDir: string, home = process.env.HOME ?? '') {
   const dirs = [...new Set([dirname(envFile), realish(dirname(envFile))])]
   const tokens = dirs.flatMap(d => [`${d}/secrets.json*`, `${d}/env*`])
   const kept = new Set(['files', 'memory'])
@@ -86,10 +81,9 @@ export function protectConfig(envFile: string, codeDir: string, home = process.e
     ...(() => { try { return readdirSync(d) } catch { return [] } })().filter(n => !kept.has(n))])].map(n => `${d}/${n}`))
   const deny = (f: string) => [`Edit(/${f})`]
   return {
-    permissions: { deny: [...dirs.flatMap(d => [`Read(/${d}/secrets.json)`, `Read(/${d}/env*)`, ...['secrets.json', 'env*', 'config.json'].flatMap(f => deny(`${d}/${f}`))]), ...unsandboxed.length ? SSH_DENY : []] },
+    permissions: { deny: dirs.flatMap(d => [`Read(/${d}/secrets.json)`, `Read(/${d}/env*)`, ...['secrets.json', 'env*', 'config.json'].flatMap(f => deny(`${d}/${f}`))]) },
     sandbox: {
       enabled: true, failIfUnavailable: true, autoAllowBashIfSandboxed: false, allowUnsandboxedCommands: false,
-      ...unsandboxed.length && { excludedCommands: unsandboxed },
       network: { allowedDomains: ['*'], allowLocalBinding: true, allowAllUnixSockets: true },
       filesystem: {
         allowWrite: ['/'], denyRead: tokens,
@@ -97,14 +91,6 @@ export function protectConfig(envFile: string, codeDir: string, home = process.e
       },
     },
   }
-}
-// A session opened for the owner may later get a teammate's task. The sandbox setting stays, so a teammate's Bash is refused here
-// when any command in it matches an excluded pattern (Bash rule syntax: * matches anything).
-export function unsandboxedRefusal(tool: string, input: Record<string, unknown>, sender: string | undefined, patterns: string[]): string | undefined {
-  if (tool !== 'Bash' || sender === 'owner' || !patterns.length || typeof input.command !== 'string') return
-  const res = patterns.map(p => new RegExp(`^${p.split('*').map(x => x.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('.*')}$`))
-  const hit = input.command.split(/&&|\|\||[;|\n]/).map(c => c.trim()).some(c => res.some(r => r.test(c)))
-  return hit ? `This command runs outside the sandbox for the owner's own task only. Say what you needed, and the owner runs it.` : undefined
 }
 const CLOSED_WRITE = `Settings and token files are closed to every session: only the owner's own terminal changes them (kage set). Say what you wanted changed, and the owner runs it.`
 // Kage's own memory (hub.ts points autoMemoryDirectory at it) and the owner's, which is the

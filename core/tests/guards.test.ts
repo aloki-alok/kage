@@ -4,7 +4,7 @@ import { execFileSync } from 'node:child_process'
 import { mkdirSync, mkdtempSync, readFileSync, realpathSync, symlinkSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { configRefusal, unsandboxedRefusal, protectConfig, ownerMemoryRefusal, privateToolRefusal, slackSendRefusal, voiceToolRefusal } from '../guards.ts'
+import { configRefusal, protectConfig, ownerMemoryRefusal, privateToolRefusal, slackSendRefusal, voiceToolRefusal } from '../guards.ts'
 
 
 describe('private sources on a teammate task', () => {
@@ -208,22 +208,5 @@ describe('protectConfig: what the sandbox and the file rules close', () => {
     assert.ok(w.permissions.deny.every(r => !r.startsWith('Write(')))
     assert.ok(w.permissions.deny.includes(`Edit(/${real(dir)}/config.json)`))
     assert.equal(w.sandbox.failIfUnavailable, true)
-  })
-})
-
-describe('unsandboxedRefusal: a teammate may not run what the owner left outside the sandbox', () => {
-  const rules = ['ssh myhost *']
-  const bash = (command: string, sender: 'owner' | 'teammate' = 'teammate') => unsandboxedRefusal('Bash', { command }, sender, rules)
-  test('the owner and an empty list are never refused', () => {
-    assert.equal(bash('ssh myhost ls', 'owner'), undefined)
-    assert.equal(unsandboxedRefusal('Bash', { command: 'ssh myhost ls' }, 'teammate', []), undefined)
-  })
-  test('a teammate is refused a command that matches, alone or inside a chain', () => {
-    for (const c of ['ssh myhost ls', 'echo hi && ssh myhost ls', 'ls | ssh myhost tee x', 'true; ssh myhost id']) assert.ok(bash(c), c)
-  })
-  test('a teammate keeps every other command and tool', () => {
-    assert.equal(bash('ssh other ls'), undefined)
-    assert.equal(bash('ls -la'), undefined)
-    assert.equal(unsandboxedRefusal('Read', { file_path: 'ssh myhost x' }, 'teammate', rules), undefined)
   })
 })
