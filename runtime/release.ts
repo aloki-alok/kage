@@ -19,7 +19,8 @@ export const isOwnerHub = async (root: string) => await tryOut(root, 'gh', 'repo
 export async function aheadOfStable(root: string, sha: string): Promise<boolean> {
   if (!await tryOut(root, 'git', 'rev-parse', '-q', '--verify', 'refs/tags/stable^{commit}')) return true
   if (await tryOut(root, 'git', 'merge-base', '--is-ancestor', 'refs/tags/stable', sha) === undefined) return false
-  return await sh(root, 'git', 'rev-parse', sha) !== await sh(root, 'git', 'rev-parse', 'refs/tags/stable^{commit}')
+  // The release's own merge commit, or a docs-only commit, differs from stable inertly: there is nothing new to ship.
+  return !await inert(root, 'refs/tags/stable', sha)
 }
 export const fetchRefs = (root: string) =>
   sh(root, 'git', 'fetch', '-q', '--force', 'origin', 'main', 'refs/tags/stable:refs/tags/stable').catch(() => sh(root, 'git', 'fetch', '-q', 'origin', 'main'))
@@ -72,18 +73,24 @@ export async function release(root: string, dryRun: boolean, at = 'HEAD'): Promi
     await sh(wt, 'git', 'commit', '-q', '-m', `Release ${tag}`, '--', 'package.json', 'package-lock.json', '.claude-plugin/plugin.json')
     const rel = await sh(wt, 'git', 'rev-parse', 'HEAD')
     await sh(root, 'git', 'tag', '-a', tag, '-m', tag, rel)
-    await sh(root, 'git', 'merge', '-q', '-m', `Release ${tag}: its version bump, made on the soaked commit`, rel)
-    // One atomic push: main, the tag and stable all move, or none does (stable is forced: the owner's hub moves it).
-    try { await sh(root, 'git', 'push', '-q', '--atomic', 'origin', 'main', `refs/tags/${tag}`, `+${rel}:refs/tags/stable`) }
-    catch (e) {
-      await sh(root, 'git', 'reset', '-q', '--hard', 'origin/main')
-      await sh(root, 'git', 'tag', '-d', tag)
-      throw e
+    // A merge that conflicts, or a push that fails, leaves nothing behind. A push that landed but timed out is
+    // told by the tag on origin: the push is atomic, so the tag there means main and stable moved too.
+    try {
+      await sh(root, 'git', 'merge', '-q', '-m', `Release ${tag}: its version bump, made on the soaked commit`, rel)
+      await sh(root, 'git', 'push', '-q', '--atomic', 'origin', 'main', `refs/tags/${tag}`, `+${rel}:refs/tags/stable`)
+    } catch (e) {
+      if (!await tryOut(root, 'git', 'ls-remote', '--tags', 'origin', `refs/tags/${tag}`)) {
+        await tryOut(root, 'git', 'merge', '--abort')
+        await sh(root, 'git', 'reset', '-q', '--hard', 'origin/main')
+        await sh(root, 'git', 'tag', '-d', tag)
+        throw e
+      }
     }
     await sh(root, 'git', 'update-ref', 'refs/tags/stable', rel)   // a lightweight tag, whatever the user's git config says
     const file = join(tmp, 'notes.md')
     writeFileSync(file, notes)
     const url = await sh(root, 'gh', 'release', 'create', tag, '--verify-tag', '--title', tag, '--notes-file', file)
+      .catch(e => { throw new Error(`${tag} is on origin and stable moved, but its GitHub Release failed (${e}). Make it with: gh release create ${tag} --verify-tag --generate-notes`) })
     return { version, notes, problems, url }
   } finally { await tryOut(root, 'git', 'worktree', 'remove', '--force', wt) }
 }

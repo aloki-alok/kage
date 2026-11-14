@@ -566,7 +566,7 @@ async function autoUpdate() {
 let lastSkip = ''
 async function autoRelease(now: number) {
   const r = await releaseIfSoaked(CODE, DIR, ledgers.text('boots'), now).catch(e => ({ skip: `failed: ${e}`, broke: true, candidate: undefined }))
-  if ('broke' in r) void slack.notifyOwner(`Kage's release stopped part way: ${r.skip}. kage release finishes it.`)
+  if ('broke' in r) void slack.notifyOwner(`Kage's release stopped part way: ${r.skip}.`)
   if ('skip' in r) { if (r.candidate || r.skip !== lastSkip) log(`auto-release did nothing: ${r.skip}`); lastSkip = r.skip; return }
   log(`auto-release made v${r.version}`)
   void slack.notifyOwner(`Released Kage v${r.version}. <${r.url}|Release notes>`)

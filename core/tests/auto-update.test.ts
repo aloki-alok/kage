@@ -50,6 +50,8 @@ describe('inertChange: a diff that touches nothing the hub runs', () => {
   test('code is not inert, even beside docs', () => {
     assert.equal(inertChange([f('README.md'), f('core/gate.ts')]), false)
     assert.equal(inertChange([f('skills/run.sh')]), false)
+    assert.equal(inertChange([f('LICENSE.ts')]), false)
+    assert.equal(inertChange([f('docs/build.ts')]), false)
   })
   test('the version files are inert only when the version is all that changed', () => {
     assert.equal(inertChange([f('package.json', true), f('package-lock.json', true), f('.claude-plugin/plugin.json', true)]), true)

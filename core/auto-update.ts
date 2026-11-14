@@ -34,7 +34,7 @@ export type Boot = { at: number; sha: string; inert: boolean }
 export type Run = { sha: string; start: number; end?: number; crashed: boolean }
 
 // One table: what the hub never runs. A match is a file whose change cannot alter the hub's behavior.
-const INERT: RegExp[] = [/\.md$/i, /^docs\//, /(^|\/)tests\//, /^(\.claude\/)?skills\/.*\.(md|txt)$/, /^LICENSE/]
+const INERT: RegExp[] = [/\.md$/i, /^docs\/(?!.*\.[cm]?[jt]s$)/, /(^|\/)tests\//, /^(\.claude\/)?skills\/.*\.(md|txt)$/, /^LICENSE[\w-]*(\.(md|txt))?$/]
 // Only the version may change in these.
 const VERSION_FILES = /^(package\.json|package-lock\.json|\.claude-plugin\/[^/]+\.json)$/
 
@@ -50,7 +50,7 @@ const loops = (boots: Boot[]) => boots.filter((b, i) => i >= 2 && b.at - boots[i
 // Runs in time order. A boot on the same commit, or on one that differs only inertly, continues the run and
 // moves its commit forward. A crash voids the run it hits and starts a clean one at that moment, on the same commit.
 export function soakRuns(boots: Boot[], crashes: number[]): Run[] {
-  const events = [...boots.map(b => ({ t: b.at, b })), ...[...crashes, ...loops(boots)].map(t => ({ t, b: undefined }))]
+  const events = [...boots.map(b => ({ t: b.at, b })), ...[...new Set([...crashes, ...loops(boots)])].map(t => ({ t, b: undefined }))]
     .sort((x, y) => x.t - y.t || (x.b ? -1 : 1))
   const runs: Run[] = []
   for (const { t, b } of events) {
