@@ -17,7 +17,8 @@ import { openWaiting, postedBy } from '../core/ledgers.ts'
 import type { Ledgers } from './ledger.ts'
 import { findSecret, layoutRefusal, safeReply, secretRefusal, splitForSlack } from '../core/outbound.ts'
 import type { Task } from './protocol.ts'
-import type { Manage } from './kagelets.ts'
+import type { AskOwner, Manage } from './kagelets.ts'
+import { DB_READ } from '../core/kagelets.ts'
 
 // The reaction each kind of reply leaves on the task message. An ack leaves none: 🥷 already says "picked up".
 // Ninja set, picked by the owner: 📜 a scroll back to you (waits on your answer), 🗡️ a quick strike, ⚔️ the task done.
@@ -43,10 +44,12 @@ export function sessionTools(o: {
   afk?: (c: AfkCommand) => Promise<string>
   // This session is the lane of this kagelet (core/kagelets.ts): it gets the report tool and none of the manager's.
   kagelet?: string
-  // KAGE_DB_READ_COMMAND, for a kagelet granted db_read (core/db-read.ts). Absent: the tool does not exist.
-  dbRead?: { command: string; maxRows: number; timeoutMs?: number }
+  // For a kagelet granted db_read (core/db-read.ts). command is read on each call (runtime/kagelets.ts readCommand). Absent: the tool does not exist.
+  dbRead?: { command: () => string | undefined; maxRows: number; timeoutMs?: number }
   // The manager's side in the hub (runtime/kagelets.ts). Absent: kagelets are off (tmux panes).
-  kagelets?: { list(): string; manage(a: Manage): string }
+  kagelets?: { list(): string; manage(a: Manage, ask?: AskOwner): Promise<string> }
+  // Put an approval card in front of the owner and wait: true only on their yes. Absent: no card (tmux panes).
+  approve?: (tool: string, description: string, input: Record<string, unknown>) => Promise<boolean>
 }) {
   const { title: Title, bot, user } = o
   // send_file sends only what was written in the thread's own folder: not any file on the disk, and
@@ -406,12 +409,14 @@ export function sessionTools(o: {
     async run(args) {
       const started = Date.now()
       const done = (lines: number, outcome: string) => append('db-reads', [name, String(lines), `${Date.now() - started}ms`, outcome])
+      const command = db.command()
+      if (!command) { done(0, 'refused: no read command is set'); return { isError: true, text: 'refused: no read command is set. Say so in the thread: your manager asks the owner.' } }
       const q = readOnlyQuery(String(args.sql ?? ''), db.maxRows)
       if ('refused' in q) { done(0, `refused: ${q.refused}`); return { isError: true, text: `refused: ${q.refused}` } }
       // ponytail: the timeout stops sh; a command that hands the query to a child (ssh, a pipe) may outlive it. Keep the server-side statement_timeout in the read command.
       const timeout = db.timeoutMs ?? 30_000
       // The query is $1 of the shell, never part of the command line, so its text is not shell code.
-      const r = await new Promise<{ out: string; err?: string }>(res => execFile('/bin/sh', ['-c', `${db.command} "$1"`, 'db_read', q.sql],
+      const r = await new Promise<{ out: string; err?: string }>(res => execFile('/bin/sh', ['-c', `${command} "$1"`, 'db_read', q.sql],
         { timeout, maxBuffer: 4 << 20, encoding: 'utf8' },
         (e, out, stderr) => res(e ? { out, err: (e as { killed?: boolean }).killed ? `the query took longer than ${timeout / 1000} s`
           // Never String(e): it quotes the command line, which may hold a host or a password.
@@ -444,15 +449,20 @@ export function sessionTools(o: {
       name: s.describe('short lowercase name: letters, digits, dashes'),
       thread: s.optional().describe('save: the Slack link of the thread it posts in'),
       schedule: s.optional().describe('save: a 5-field cron in local time, e.g. "0 9 * * 1-5"'),
-      tools: z.array(s).optional().describe('save: its grant. WebSearch and WebFetch, or an outside MCP tool by full name when the owner asked for it'),
+      tools: z.array(s).optional().describe('save: its grant. WebSearch and WebFetch, an outside MCP tool by full name when the owner asked for it, or db_read (the owner approves it on a card)'),
+      read_command: s.optional().describe('save with db_read: the owner\'s command that runs one read-only query, given as its last argument. Leave out to keep the one already approved'),
       job: s.optional().describe('save: what to do on each run, complete on its own'),
       by: z.enum(['owner', 'kage']).optional().describe('save: owner when the owner asked for this kagelet, kage when you decided to make it'),
       why: s.optional().describe('save: one line on why it exists'),
     },
     async run(args) {
-      if (!ownerOnly(args)) return { isError: true, text: 'only the owner\'s task can manage kagelets' }
       const { channel: _c, thread_ts: _t, ...a } = args as Manage & { channel: string; thread_ts: string }
-      return { text: team.manage(a) }
+      if (!ownerOnly(args)) {
+        if (a.tools?.includes(DB_READ)) { append('grants', [a.name, 'refused', 'not the owner\'s task']); log(`kagelet ${a.name}: ${DB_READ} refused: not the owner's task`) }
+        return { isError: true, text: 'only the owner\'s task can manage kagelets' }
+      }
+      const approve = o.approve
+      return { text: await team.manage(a, approve && (card => approve('grant_db_read', `Grant kagelet ${card.kagelet} ${DB_READ}. The read command is used by every kagelet granted ${DB_READ}.`, card))) }
     },
   })
   const pingIn = (channel: string) => [...ownerTask].some(([k, owner]) => owner && k.startsWith(`${channel}:`))
@@ -508,7 +518,7 @@ function instructions(Title: string, MEM: { own: string; owner: string }) {
     'If a reply asks a question or offers something and the work waits on the answer, pass waiting with one line naming it. When asked what is waiting, call the waiting tool and answer with its list.',
     'To tell people something in Slack ("tell X and Y", "let Z know"), use message_people with the people the task names. Add everyone in the task\'s channel only when the task says so ("everyone here"). Find their ids with the Slack user search. Write one message that stands alone: what and when. The tool signs it "<name>, via ' + Title + '": when the owner passes on someone else\'s news, pass from with that person\'s id, and never write "From X:" yourself. Then reply in the task thread with the link. Use message_people only to pass on the asker\'s own news (a meeting time, a status). Anything that would commit the owner (agreeing, money, a deadline, an opinion) goes as a Slack draft in that group DM for the owner to send.',
     'For a repeating check or a later reminder, use the schedule tool: it survives restarts and runs until unschedule. CronCreate is off here because its jobs die with this session. A run arrives as "Scheduled run of job <id> ...": do what its prompt says, and post only what the prompt asks for.',
-    'You manage kagelets: recurring jobs that run on their own schedule in a thread and report to you (kagelets and manage_kagelet, on the owner\'s tasks). When an owner task is recurring (a watch, a monitor, "check X every N", or a schedule you already run in a thread) and the job needs only web search and fetch, make a kagelet for it instead of doing it in this session: manage_kagelet save with by=kage and a one-line why, then unschedule the old schedule if there was one. Then tell the owner in one line in the thread where it was decided: "Made kagelet <name>: <job>, <when>. Say remove <name> to stop it." A job that needs more (files, shell, the database, an MCP tool) stays on the schedule tool unless the owner grants it. Only the owner grants db_read, by hand in the kagelet file: never put it in manage_kagelet. One-off tasks stay in this session. When the owner asks how your kagelets are doing, or a run needs something, read kagelets and act on what they need.',
+    'You manage kagelets: recurring jobs that run on their own schedule in a thread and report to you (kagelets and manage_kagelet, on the owner\'s tasks). When an owner task is recurring (a watch, a monitor, "check X every N", or a schedule you already run in a thread) and the job needs only web search and fetch, make a kagelet for it instead of doing it in this session: manage_kagelet save with by=kage and a one-line why, then unschedule the old schedule if there was one. Then tell the owner in one line in the thread where it was decided: "Made kagelet <name>: <job>, <when>. Say remove <name> to stop it." A job that needs the database gets db_read: put it in tools with read_command, the owner\'s read command from their setup (a script path, say). The owner gets a card with the kagelet, its job and the command, and only their yes saves it. A job that needs more (files, shell, an MCP tool) stays on the schedule tool unless the owner grants it. One-off tasks stay in this session. When the owner asks how your kagelets are doing, or a run needs something, read kagelets and act on what they need.',
     'After each change you make to production for a task (deploy, restart, DB write, prod config), call log_prod_write once.',
     'Answer in the thread by default, including normal work details like logs, numbers and code. Use private=true (the owner\'s DM) only for something that must never be visible in a channel: secrets, passwords, tokens, keys, or a person\'s private data.',
     'Never post anywhere else in Slack unless the task asks for it.',

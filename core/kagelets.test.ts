@@ -30,11 +30,17 @@ describe('the db_read grant', () => {
     assert.match(grantRefusal('mcp__kage__db_read', ['WebSearch']) ?? '', /grant/)
     assert.match(grantRefusal('mcp__kage__db_read', []) ?? '', /grant/)
   })
-  test('the owner may grant it; a kagelet Kage makes on its own never holds it, written by the tool or by hand', () => {
+  test('the tool writes it only with the owner\'s approval, which the file records; by hand, the owner needs none', () => {
     const f = { thread: LINK, schedule: '0 9 * * *', job: 'Count failed calls.', why: 'watch' }
-    assert.equal(typeof kageletFile({ ...f, tools: ['db_read'], by: 'owner' }), 'string')
-    assert.match((kageletFile({ ...f, tools: ['db_read'], by: 'kage' }) as { error: string }).error, /db_read/)
+    for (const by of ['owner', 'kage'] as const) assert.match((kageletFile({ ...f, tools: ['db_read'], by }) as { error: string }).error, /db_read/)
+    const text = kageletFile({ ...f, tools: ['WebSearch', 'db_read'], by: 'kage', granted: Date.UTC(2026, 0, 2) }) as string
+    assert.match(text, /^granted: db_read by the owner, 2026-01-02T00:00:00\.000Z$/m)
+    const k = parseKagelet('x', text) as { tools: string[]; granted?: number }
+    assert.deepEqual([k.tools, k.granted], [['WebSearch', 'db_read'], Date.UTC(2026, 0, 2)])
+    // Without db_read, no grant line.
+    assert.doesNotMatch(kageletFile({ ...f, tools: ['WebSearch'], by: 'kage', granted: 1 }) as string, /granted/)
     assert.match((parseKagelet('x', file(`thread: ${LINK}\nschedule: 0 9 * * *\ntools: db_read\nby: kage`)) as { error: string }).error, /db_read/)
+    assert.match((parseKagelet('x', file(`thread: ${LINK}\nschedule: 0 9 * * *\ntools: db_read\nby: kage\ngranted: db_read by the owner, not a time`)) as { error: string }).error, /db_read/)
     assert.deepEqual((parseKagelet('x', file(`thread: ${LINK}\nschedule: 0 9 * * *\ntools: db_read`)) as { tools: string[] }).tools, ['db_read'])
   })
 })

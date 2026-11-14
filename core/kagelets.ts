@@ -11,7 +11,8 @@ export const NAME = /^[a-z][a-z0-9-]{0,30}$/
 
 // Who made it, from its file: the owner (by hand, or by asking Kage) or Kage on its own. A hand-written file is the owner's.
 export type Maker = 'owner' | 'kage'
-export type Kagelet = { name: string; key: string; link: string; cron: string; tools: string[]; job: string; paused: boolean; by: Maker; why: string; resumed?: number }
+// granted: when the owner approved its db_read on Kage's card (runtime/kagelets.ts).
+export type Kagelet = { name: string; key: string; link: string; cron: string; tools: string[]; job: string; paused: boolean; by: Maker; why: string; resumed?: number; granted?: number }
 
 // Flat front matter (key: value lines between --- lines), then the job.
 export function parseKagelet(name: string, text: string): Kagelet | { error: string } {
@@ -27,11 +28,12 @@ export function parseKagelet(name: string, text: string): Kagelet | { error: str
   const job = m[2]!.trim()
   if (!job) return { error: 'the job, below the front matter, is empty' }
   const tools = (head.get('tools') ?? '').split(',').map(t => t.trim()).filter(Boolean)
+  const granted = Date.parse(GRANTED.exec(head.get('granted') ?? '')?.[1] ?? '')
   // Checked on every read, so a file that says by: kage cannot hold it even when written by hand.
-  if (head.get('by') === 'kage' && tools.includes(DB_READ)) return { error: `a kagelet Kage made on its own cannot hold ${DB_READ}: only the owner grants it` }
+  if (head.get('by') === 'kage' && tools.includes(DB_READ) && !(granted >= 0)) return { error: `a kagelet Kage made cannot hold ${DB_READ} without the owner's approval on Kage's card` }
   return { name, key: `${thread}#side-kagelet-${name}`, link, cron, tools, job, paused: isPaused(head.get('paused')),
     by: head.get('by') === 'kage' ? 'kage' : 'owner', why: head.get('why') ?? '',
-    ...(Date.parse(head.get('resumed') ?? '') >= 0 && { resumed: Date.parse(head.get('resumed')!) }) }
+    ...(Date.parse(head.get('resumed') ?? '') >= 0 && { resumed: Date.parse(head.get('resumed')!) }), ...(granted >= 0 && { granted }) }
 }
 
 // Fails closed: any value but none, no or false pauses it, so a typo never starts a kagelet.
@@ -58,22 +60,27 @@ paused: yes
 Say what to check, where, and what to post in the thread. For example: every weekday at 9, read https://status.example.com and post a three-line summary.
 `
 
-// The grant name for the database tool (runtime/kage-tools.ts). Only the owner grants it, by hand in the file.
+// The grant name for the database tool (runtime/kage-tools.ts). Only the owner grants it: by hand in the file,
+// or by a yes on Kage's card, which the file records as its granted line.
 export const DB_READ = 'db_read'
+const GRANTED = new RegExp(`^${DB_READ} by the owner, (\\S+)$`)
 
 // What a kagelet made on its own may be granted: the v1 web tools, never an MCP tool. Only the owner widens it.
 export const DEFAULT_GRANT = ['WebSearch', 'WebFetch']
 
 // The file the manager's tool writes. Refused with the reason when it would not run, would be granted a tool v1
-// cannot grant, or Kage made it and asks for more than DEFAULT_GRANT.
-export function kageletFile(f: { thread: string; schedule: string; tools: string[]; job: string; by: Maker; why: string; paused?: boolean }): string | { error: string } {
+// cannot grant, Kage made it and asks for more than DEFAULT_GRANT, or it holds db_read with no owner's yes.
+// granted: when the owner said yes to its db_read.
+export function kageletFile(f: { thread: string; schedule: string; tools: string[]; job: string; by: Maker; why: string; paused?: boolean; granted?: number }): string | { error: string } {
   // One line each, so no value can add a front matter line of its own (a second tools or paused line).
   for (const [k, v] of Object.entries({ thread: f.thread, schedule: f.schedule, why: f.why, tool: f.tools.join(',') })) if (/[\r\n]/.test(v)) return { error: `the ${k} must be one line` }
   const bad = f.tools.find(t => !grantable(t))
   if (bad) return { error: `a kagelet can be granted only web tools, MCP tools and ${DB_READ}, not ${bad}. A wider grant is the owner's call.` }
-  const wide = f.by === 'kage' && f.tools.find(t => !DEFAULT_GRANT.includes(t))
+  const db = f.tools.includes(DB_READ)
+  if (db && f.granted === undefined) return { error: `${DB_READ} needs the owner's yes on Kage's card` }
+  const wide = f.by === 'kage' && f.tools.find(t => !DEFAULT_GRANT.includes(t) && t !== DB_READ)
   if (wide) return { error: `a kagelet Kage makes on its own gets only ${DEFAULT_GRANT.join(' and ')}, not ${wide}. Ask the owner to grant it.` }
-  const text = `---\nthread: ${f.thread}\nschedule: ${f.schedule}\ntools: ${f.tools.join(', ')}\nby: ${f.by}\nwhy: ${f.why}\n${f.paused ? 'paused: yes\n' : ''}---\n${f.job.trim()}\n`
+  const text = `---\nthread: ${f.thread}\nschedule: ${f.schedule}\ntools: ${f.tools.join(', ')}\nby: ${f.by}\nwhy: ${f.why}\n${db ? `granted: ${DB_READ} by the owner, ${new Date(f.granted!).toISOString()}\n` : ''}${f.paused ? 'paused: yes\n' : ''}---\n${f.job.trim()}\n`
   const sp = parseKagelet('check', text)
   return 'error' in sp ? sp : text
 }
