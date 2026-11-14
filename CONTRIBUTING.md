@@ -57,6 +57,7 @@ Write logs to stderr only. In a tmux pane, stdout carries the channel protocol, 
 | `guards.ts` | Hook rules: private sources, voice calls, the owner's memory, Slack posts only through Kage's tools. |
 | `ledgers.ts` | Reading the ledgers: questions waiting on the owner, what Kage posted, what turns cost, the daily note. |
 | `kagelets.ts` | A kagelet file (thread, schedule, grant, job) and the grant check. |
+| `kagelet-view.ts` | What a terminal shows of kagelets: the `kage top` panel, its keys, and `kage logs <kagelet>`. |
 | `db-read.ts` | The check a `db_read` query passes: one read statement, capped. |
 | `cron.ts` | Cron expressions, which schedules are due, and reading Claude Code's own cron jobs. |
 | `afk.ts` | AFK mode: which threads the stand-in watches, when it posts or phones the owner, and what it may say. |

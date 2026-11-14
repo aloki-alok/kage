@@ -3,18 +3,24 @@
 // holds a string to every live thread; ended threads are one dim row each. It reads the store and the
 // transcripts, asks the hub for live state over its socket, and acts only through the hub. It never
 // starts a hub. Mouse works on every row.
+// l opens the kagelets panel: their state, last report, next run and cost, with keys that act through the hub.
 //   kage top           the console (q quits)
 //   kage top --once    print one settled frame and exit (COLUMNS and LINES set its size)
 import { spawnSync } from 'node:child_process'
 import { existsSync, readFileSync, statSync } from 'node:fs'
 import { connect, type Socket } from 'node:net'
-import { DIR } from './home.ts'
+import { DIR, ENV_FILE } from './home.ts'
 import { DatabaseSync } from 'node:sqlite'
 import { ago, boardRows, nextRuns, limitLine, pauseLine, watchingNext, whenLabel, type Live, type Row, type State } from '../core/board.ts'
 import { filterRows, hit, layout, moreLine, STRING, type Layout } from '../core/loom.ts'
 import { newLines, transcriptLine } from '../core/transcript.ts'
 import { HERO_BIG, HERO_SMALL } from '../core/hero.ts'
 import { schedulesIn } from '../runtime/store.ts'
+import { actionLine, dailyCap, PANEL_KEYS, panelLines, shownState, type PanelAction } from '../core/kagelet-view.ts'
+import { kageletRows, type KageletRow } from '../core/kagelets.ts'
+import { parseEnv } from '../core/settings.ts'
+import { kageletsDir, readKagelets } from '../runtime/kagelets.ts'
+import { ledgerText } from '../runtime/ledger.ts'
 
 const HOME = process.env.HOME!
 const PROJECT = `${HOME}/.claude/projects/${(process.env.KAGE_CWD || HOME).replace(/[^A-Za-z0-9]/g, '-')}`
@@ -48,6 +54,10 @@ let message = '', messageAt = 0
 let confirmCut = ''
 let suspended = false
 let L: Layout | undefined            // the layout of the last frame, for mouse hits
+let panel = false, pick = 0, confirmRemove = ''
+let kagelets: KageletRow[] = [], kageletsAt = 0
+const CAP = dailyCap(parseEnv(existsSync(ENV_FILE) ? readFileSync(ENV_FILE, 'utf8') : ''))
+const KAGELETS = kageletsDir(DIR)
 
 const mtime = (id: string) => { try { return statSync(`${PROJECT}/${id}.jsonl`).mtimeMs } catch { return 0 } }
 const idOf = (key: string) => known.find(k => k.key === key)?.id
@@ -120,9 +130,15 @@ function refresh(now: number) {
     }
   }
   cuts = cuts.filter(c => now - c.t0 < 1700)
+  if (panel && now - kageletsAt > 3_000) readKageletRows(now)
   rebuild()
   for (const r of view.live) follow(r.key)
   if (open) follow(open)
+}
+
+function readKageletRows(now: number) {
+  kageletsAt = now
+  try { kagelets = kageletRows(readKagelets(KAGELETS), { runs: ledgerText(db, 'runs'), costs: ledgerText(db, 'costs'), reports: ledgerText(db, 'reports'), now }) } catch {}
 }
 
 // ---- the hub
@@ -353,6 +369,7 @@ function frame(t: number, since: number): string[] {
     }
     if (!l.live.length && !l.ended.length) put(l.lx, l.sepY, query ? 'no thread matches' : 'no threads yet', 'm')
     if (open) detail(l, t, now, byKey)
+    if (panel) kageletPanel(now)
   }
   footer(t)
   glitch(t)
@@ -403,8 +420,35 @@ function detail(l: Layout, t: number, now: number, byKey: Map<string, Row>) {
   put(right - keys.length - 2, y1 - 1, keys, 'm')
 }
 
+const SHOWN_TONE: Record<string, string> = { running: 'w', paused: 'm', broken: 'R', 'over cap': 'G' }
+// The kagelets: two lines each, the state line and its last report, across the whole width.
+function kageletPanel(now: number) {
+  const x0 = 2, right = W - 3, y0 = 4, y1 = H - 3, w = right - x0
+  for (let y = y0; y <= y1; y++) put(0, y, ' '.repeat(W), 'w')
+  put(x0, y0, `┏${'━'.repeat(w - 1)}┓`, 'g'); put(x0, y1, `┗${'━'.repeat(w - 1)}┛`, 'g')
+  for (let y = y0 + 1; y < y1; y++) { put(x0, y, '┃', 'g'); put(right, y, '┃', 'g') }
+  const head = live ? `cap $${CAP.toFixed(2)} a day each` : 'hub offline: the keys need it'
+  put(x0 + 2, y0 + 1, `Kagelets (${kagelets.length})`, 'W'); put(right - head.length - 1, y0 + 1, head, live ? 'm' : 'R')
+  put(x0 + 2, y0 + 2, '─'.repeat(w - 3), 'k')
+  if (!kagelets.length) put(x0 + 3, y0 + 4, 'no kagelets yet', 'm')
+  pick = clamp(pick, 0, Math.max(0, kagelets.length - 1))
+  const fit = Math.max(1, Math.floor((y1 - y0 - 5) / 2)), from = Math.max(0, pick - fit + 1)
+  panelLines(kagelets, now, CAP).slice(from, from + fit).forEach((line, i) => {
+    const r = kagelets[from + i]!, y = y0 + 3 + i * 2, hot = from + i === pick
+    if (hot) put(x0 + 1, y, '▶', 'R')
+    put(x0 + 3, y, clip(line.main, w - 4), hot ? 'G' : SHOWN_TONE[shownState(r, CAP)]!)
+    put(x0 + 5, y + 1, clip(line.report, w - 6), 'm')
+  })
+  const keys = 'r run now   p pause   u resume   x remove   esc close'
+  put(right - keys.length - 2, y1 - 1, keys, 'm')
+}
+
 function footer(t: number) {
   const y = H - 1
+  if (confirmRemove) {
+    put(2, y, clip(`Remove ${confirmRemove}? Its file and its schedule go.`, W - 22), 'G'); put(W - 19, y, 'y', 'r'); put(W - 17, y, 'remove', 'm'); put(W - 8, y, 'n', 'r'); put(W - 6, y, 'keep', 'm')
+    return
+  }
   if (confirmCut) {
     const place = known.find(k => k.key === confirmCut)?.place ?? ''
     put(2, y, clip(`Cut ${place}? It spins up again on its next task.`, W - 20), 'G'); put(W - 16, y, 'y', 'r'); put(W - 14, y, 'cut', 'm'); put(W - 8, y, 'n', 'r'); put(W - 6, y, 'keep', 'm')
@@ -413,7 +457,7 @@ function footer(t: number) {
   if (searching) { put(2, y, `/ ${query}${Math.floor(t / 400) % 2 ? '▌' : ' '}`, 'G'); put(W - 28, y, 'enter keep   esc clear', 'm'); return }
   if (message && Date.now() - messageAt < 5000) { put(2, y, clip(message, W - 4), 'G'); return }
   let x = 2
-  const parts: [string, string][] = [['↑↓', 'pick'], ['⏎', 'open'], ['a', 'attach'], ['x', 'cut'], ['s', 'schedules'], ['/', query ? `search: ${query}` : 'search'], ['q', 'quit']]
+  const parts: [string, string][] = [['↑↓', 'pick'], ['⏎', 'open'], ['a', 'attach'], ['x', 'cut'], ['s', 'schedules'], ['l', 'kagelets'], ['/', query ? `search: ${query}` : 'search'], ['q', 'quit']]
   for (const [k, w] of parts) {
     if (x + k.length + w.length + 1 > W - 2) break
     put(x, y, k, 'r'); put(x + k.length + 1, y, w, 'm'); x += k.length + w.length + 5
@@ -493,6 +537,11 @@ function attach(r: Row) {
   } else back()
 }
 
+async function act(action: PanelAction, name: string) {
+  say(actionLine(await ask({ type: 'kagelet', action, name }), !!live))
+  readKageletRows(Date.now())
+}
+
 const target = () => open ?? hover ?? selKey
 const rowOf = (key: string) => board.find(r => r.key === key)
 function openThread(key: string) { open = key; selKey = key; openAt = Date.now(); mode = 'steps'; follow(key) }
@@ -503,6 +552,16 @@ async function onKey(k: string) {
   const list = [...(L?.live ?? []), ...(L?.ended ?? [])].map(r => r.key)
   const at = Math.max(0, list.indexOf(selKey))
   if (confirmCut) { const key = confirmCut; confirmCut = ''; if (k === 'y') await cut(key); return }
+  if (confirmRemove) { const name = confirmRemove; confirmRemove = ''; if (k === 'y') await act('remove', name); return }
+  if (panel) {
+    const name = kagelets[pick]?.name, action = PANEL_KEYS[k]
+    if (k === 'q' || k === '\x03') quit()
+    else if (k === '\x1b' || k === 'l') panel = false
+    else if (k === '\x1b[A' || k === 'k') pick = Math.max(0, pick - 1)
+    else if (k === '\x1b[B' || k === 'j') pick = Math.min(kagelets.length - 1, pick + 1)
+    else if (action && name) { if (action === 'remove') confirmRemove = name; else await act(action, name) }
+    return
+  }
   if (searching) {
     if (k === '\x1b') { query = ''; searching = false } else if (k === '\r') searching = false
     else if (k === '\x7f') query = query.slice(0, -1)
@@ -519,9 +578,10 @@ async function onKey(k: string) {
   else if (k === 's') { if (!open && selKey) openThread(selKey); mode = mode === 'steps' ? 'schedules' : 'steps' }
   else if (k === 'x' && target()) confirmCut = target()
   else if (k === 'a') { const r = rowOf(target()); if (r) attach(r) }
+  else if (k === 'l') { panel = true; open = undefined; readKageletRows(Date.now()) }
 }
 function onMouse(b: number, x: number, y: number, press: boolean) {
-  if (!L || intro() < 4100) return
+  if (!L || intro() < 4100 || panel) return
   const over = (open && x >= L.lx - 3 && y >= 4) ? undefined : hit(L, x - 1, y - 1)
   if (b === 35 || b === 32) { hover = over; return }       // motion
   if (b === 0 && press) { if (over) openThread(over); else if (!(open && x >= L.lx - 3)) open = undefined }

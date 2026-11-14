@@ -58,7 +58,8 @@ The install line puts `kage` on your PATH (in a git checkout, run `./setup.sh li
 |---|---|
 | Health check | `kage doctor` |
 | One look at every session | `kage status` |
-| The live console (mouse or keys: `↑↓` pick, `⏎` open the feed, `a` attach, `x` cut, `s` schedules, `/` search, `q` quit) | `kage top` |
+| The live console (mouse or keys: `↑↓` pick, `⏎` open the feed, `a` attach, `x` cut, `s` schedules, `l` kagelets, `/` search, `q` quit) | `kage top` |
+| Watch and fix kagelets | `kage top`, then `l`: each kagelet's state (running, paused, broken, over cap), last run and report, next run, cost today against its cap, and who made it. In the panel, `r` runs one now, `p` pauses it, `u` resumes it and `x` removes it after you confirm. The keys act through the hub, so they need Kage running. `kage logs <kagelet>` lists its last 20 runs, newest first: time, cost, ok or failed, and its report. |
 | Follow every step | `kage watch`, or `kage watch support` for threads whose place contains "support" |
 | Work in a thread's session yourself | `kage attach '<link>'` with the thread's Slack link ("Copy link" on any message in it). Keep the quotes, because the link holds `?` and `&`. Or `kage attach <place>`. It takes the session at once: a turn in progress stops, as with Esc. New tasks for it wait until you quit. When several threads share a place, attach by the link, or by the key it lists. |
 | Tell a thread something, as you | `kage tell <place> <message>`. Its session takes it after the current turn and answers in the thread. |
