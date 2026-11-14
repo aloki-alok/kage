@@ -25,19 +25,30 @@ export const hostBrowsers = (platform: string, home: string, exists: (path: stri
 // What kage add browser prints: only the steps Chrome leaves to the person. Chrome lets no script install an
 // unpacked extension, so Developer mode and Load unpacked stay. `opened`: the extensions page was opened for them.
 // `copied`: the folder path is on their clipboard. The token shows only with --show-token, or when no browser was paired.
-export function addBrowserLines(f: { names: string[]; ext: string; token: string; showToken: boolean; platform: string; opened: boolean; copied: boolean }): string[] {
+export function addBrowserLines(f: { names: string[]; ext: string; token: string; showToken: boolean; platform: string; opened: boolean; revealed: boolean }): string[] {
   const paired = f.names.length > 0
-  const key = f.platform === 'darwin' ? 'Cmd+Shift+G' : 'Ctrl+L'
   return [
     paired ? `Kage in Chrome is on. Pairing is set up for ${f.names.join(', ')}, so there is nothing to paste. Kage picks up the new token by itself once its sessions are quiet.`
       : 'Kage in Chrome is on, but no Chromium browser was found to pair. Paste the token below in the Kage toolbar icon after step 2.',
     '',
     f.opened ? '1. On the Extensions page that just opened, turn on Developer mode.' : '1. In Chrome, open chrome://extensions and turn on Developer mode.',
-    f.copied ? `2. Click Load unpacked, press ${key}, paste (the folder path is on your clipboard), and press Enter.` : `2. Click Load unpacked and pick this folder: ${f.ext}`,
+    // Not Load unpacked with a pasted path: that dialog lands inside the folder, where there is nothing to pick.
+    f.revealed ? '2. Drag the highlighted extension folder from the Finder window onto the Extensions page.' : `2. Click Load unpacked, go to ${f.ext.replace(/\/[^/]+\/?$/, '')}, click the extension folder once, then click Select.`,
     ...(f.showToken || !paired ? ['', `Token: ${f.token}`] : []),
     `Sites Kage must never read: run kage set connectors.browser.block '["bank.example.com","1password.com"]'`,
   ]
 }
+
+// Run again on a paired install, kage add browser changes nothing: a new token would cut the working extension
+// off, and Finder and the Extensions page are only for a first install. --reinstall does the whole first-run setup again.
+export const addBrowserPlan = (f: { hasToken: boolean; reinstall: boolean }) =>
+  f.hasToken && !f.reinstall ? { newToken: false, open: false } : { newToken: true, open: true }
+
+export const addBrowserAgainLines = () => [
+  'Kage in Chrome is already set up, so nothing changed. Run kage doctor to see whether it is connected.',
+  'If it is not: in chrome://extensions, turn Kage on if it is off, then click its reload arrow.',
+  'If Kage is not listed there at all, run kage add browser --reinstall.',
+]
 
 export const hostManifest = (path: string, id: string) => ({
   name: HOST, description: "Hands Kage's Chrome extension its token", path, type: 'stdio' as const,
