@@ -71,7 +71,7 @@ export function configRefusal(tool: string, input: Record<string, unknown>, send
 // new one is missing). The hub does the writing itself, so a shell needs none. A name absent today must be listed too: the hub adopts a
 // crons-import.json, a threads.json or a waha/.env it finds at its next start. The folder's own entries are added at session start.
 const CONFIG_NAMES = ['session.env', 'kagelets', 'specialists', 'config.json*', 'crons-import.json*', 'waha', 'threads.json*', 'afk.json*', 'github-threads.json*', 'mail-threads.json*',
-  'kage.db*', 'hub.lock', 'hub.log*', 'router.sock', 'ssm.sock', '.archive', 'updated-from', 'browser-seen', 'wa-notes', 'retro-sent', 'dream-sent', 'daily-sent', 'crash-dm-at',
+  'kage.db*', 'hub.lock', 'hub.log*', 'router.sock', 'ssm.sock', 'keys.sock', '.archive', 'updated-from', 'browser-seen', 'wa-notes', 'retro-sent', 'dream-sent', 'daily-sent', 'crash-dm-at',
   'config-unknown-told', 'canvas-events.jsonl', 'boots', 'held', 'sender', 'ledgers']
 export function protectConfig(envFile: string, codeDir: string, home = process.env.HOME ?? '') {
   const dirs = [...new Set([dirname(envFile), realish(dirname(envFile))])]

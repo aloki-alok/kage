@@ -89,6 +89,8 @@ function claudeCommand(route: string | undefined) {
     if ((statSync(sessionEnv).mode & 0o777) === 0o600) process.loadEnvFile(sessionEnv)
     else say(`${sessionEnv} is not private, so it was skipped. Run chmod 600 on it.`)
   }
+  // Keys named in config.json sessionKeys leave the environment here, before any session copies it (runtime/hold-keys.ts, #182).
+  await (await import('./runtime/hold-keys.ts')).holdKeys(Object.keys(cfg.sessionKeys ?? {}), say)
   // Kage keeps its own memory (core/guards.ts memoryDirs reads the same default).
   const mem = home(cfg.harness?.memory ?? envValue(legacy, 'KAGE_MEMORY') ?? '') || `${CONF}/memory`
   if (/['"\\]/.test(mem + DIR)) { say('Move kage or KAGE_MEMORY to a path without quotes or backslashes.'); process.exit(0) }

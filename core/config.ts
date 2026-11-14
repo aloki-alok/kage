@@ -26,6 +26,10 @@ export const Config = z.strictObject({
     max: count, dailyUsd: money, totalDailyUsd: money, chainUsd: money,
     dbRead: z.strictObject({ command: text, maxRows: count }).optional(),
   }).optional(),
+  // Keys that stay out of every session's environment: the hub adds each to requests for its one host (runtime/key-proxy.ts, #182).
+  sessionKeys: z.record(z.string().regex(/^[A-Z][A-Z0-9_]*$/), z.strictObject({
+    host: z.string().regex(/^[a-z0-9]([a-z0-9.-]*[a-z0-9])?$/), header: z.string().regex(/^[A-Za-z][A-Za-z0-9-]*$/).optional(), prefix: z.string().optional(),
+  })).optional(),
   autoUpdate: yes,
   afk: z.strictObject({ on: yes, model: text }).optional(),
   jev: z.strictObject({ agents: strings, threshold: money, model: text }).optional(),
@@ -43,6 +47,7 @@ export const Config = z.strictObject({
   unknown: z.record(z.string(), z.string().nullable()).optional(),
 })
 export type Config = z.infer<typeof Config>
+export type KeyRoute = NonNullable<Config['sessionKeys']>[string]
 
 const sec = z.string().nullable().optional()
 export const Secrets = z.strictObject({
@@ -114,7 +119,7 @@ export const KEYS: Row[] = [
 // Old names that older env files may still hold. The new name wins when both are there.
 export const ALIASES: Record<string, string> = { KAGE_MAX_SPECIALISTS: 'KAGE_MAX_KAGELETS', KAGE_SPECIALIST_DAILY_USD: 'KAGE_KAGELET_DAILY_USD' }
 // Names the grep in docs/settings.md finds that are not settings: Kage sets them, or a script or test does.
-export const NOT_SETTINGS = ['KAGE_BIN', 'KAGE_CALL_CODE', 'KAGE_CALL_REASON', 'KAGE_CLAUDE', 'KAGE_DIR', 'KAGE_ENV', 'KAGE_GIT_URL', 'KAGE_MEETBOT_CARTESIA', 'KAGE_MEETBOT_HUB', 'KAGE_MEETBOT_PIPELINE', 'KAGE_MEETBOT_PIPELINE_KEY', 'KAGE_MEETBOT_TOKEN', 'KAGE_PANE_SETTINGS', 'KAGE_REF', 'KAGE_SESSION', 'KAGE_SETUP_WAIT', 'KAGE_SLACK_API', 'KAGE_SSM_SOCK', 'KAGE_SSM_TOKEN', 'KAGE_TARBALL', 'KAGE_THREAD']
+export const NOT_SETTINGS = ['KAGE_BIN', 'KAGE_CALL_CODE', 'KAGE_CALL_REASON', 'KAGE_CLAUDE', 'KAGE_DIR', 'KAGE_ENV', 'KAGE_GIT_URL', 'KAGE_KEYS_SOCK', 'KAGE_KEYS_TOKEN', 'KAGE_MEETBOT_CARTESIA', 'KAGE_MEETBOT_HUB', 'KAGE_MEETBOT_PIPELINE', 'KAGE_MEETBOT_PIPELINE_KEY', 'KAGE_MEETBOT_TOKEN', 'KAGE_PANE_SETTINGS', 'KAGE_REF', 'KAGE_SESSION', 'KAGE_SETUP_WAIT', 'KAGE_SLACK_API', 'KAGE_SSM_SOCK', 'KAGE_SSM_TOKEN', 'KAGE_TARBALL', 'KAGE_THREAD']
 
 // By its name, or by what it holds: a URL with user:password@ in it, or a long unbroken random-looking string (not a path).
 const looksSecret = (name: string, value = '') => /TOKEN|SECRET|KEY|PASS|AUTH|CRED/i.test(name) || /:\/\/[^\s/:@]+:[^\s/@]+@/.test(value)

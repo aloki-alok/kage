@@ -68,6 +68,8 @@ export function sdkSessions(o: {
   // Approvals that wait outside the session (#177): a card ends the turn instead of holding it, and the owner's yes
   // starts a new turn that retries the call. Absent: the card holds the session until the owner answers.
   deferred?: ReturnType<typeof deferredApprovals>
+  // The key proxy (runtime/key-proxy.ts, #182): same shape and same threads as ssm. Held keys are not in any session's env.
+  keys?: { sock: string; issue: (key: string) => string | undefined; drop: (key: string) => void }
   restartMs?: number
 }) {
   const sessions = new Map<string, Session>()
@@ -113,6 +115,7 @@ export function sdkSessions(o: {
     const grant = o.grantOf?.(key)
     const walled = protectConfig(o.envFile, o.codeDir)
     const ssmToken = grant ? undefined : o.ssm?.issue(key)   // a kagelet lane never gets one
+    const keysToken = grant ? undefined : o.keys?.issue(key)
     const q = o.sdk.query({
       prompt: inbox,
       options: {
@@ -128,7 +131,7 @@ export function sdkSessions(o: {
         // Its jobs die with the session; the schedule tool replaces it.
         disallowedTools: [...o.options.disallowedTools ?? [], 'CronCreate', 'CronDelete', 'CronList'],
         // Claude Code sends session_state_changed, which busy() reads, only when asked.
-        env: { ...env, CLAUDE_CODE_EMIT_SESSION_STATE_EVENTS: '1', KAGE_SESSION: '1', ...ssmToken && { KAGE_SSM_TOKEN: ssmToken, KAGE_SSM_SOCK: o.ssm!.sock } },
+        env: { ...env, CLAUDE_CODE_EMIT_SESSION_STATE_EVENTS: '1', KAGE_SESSION: '1', ...ssmToken && { KAGE_SSM_TOKEN: ssmToken, KAGE_SSM_SOCK: o.ssm!.sock }, ...keysToken && { KAGE_KEYS_TOKEN: keysToken, KAGE_KEYS_SOCK: o.keys!.sock } },
         // A kagelet's grant is its approval, checked first: beyond it, even Kage's tools that act as the owner, it
         // approves nothing and puts no card in front of the owner. The PreToolUse hook checks the same grant again.
         canUseTool: (name, input, x) => o.grantOf?.(key)
@@ -289,6 +292,7 @@ export function sdkSessions(o: {
       if (s.turn.length) o.onTurn?.(key, s.turn.splice(0).map(x => x.task))
       denyAll(s)
       o.ssm?.drop(key)
+      o.keys?.drop(key)
       s.run?.inbox.close()
       s.run?.q.close()
       sessions.delete(key)

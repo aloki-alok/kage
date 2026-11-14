@@ -10,6 +10,7 @@ import { join } from 'node:path'
 import { query } from '@anthropic-ai/claude-agent-sdk'
 import { protectConfig } from '../../core/guards.ts'
 import { ssmRelay } from '../ssm-relay.ts'
+import { hold, keyProxy } from '../key-proxy.ts'
 import { paneArgs } from '../tmux-panes.ts'
 
 const which = (c: string) => { try { return execFileSync('which', [c], { encoding: 'utf8' }).trim() } catch { return '' } }
@@ -67,6 +68,41 @@ async function session(): Promise<boolean> {
   // The controls ran, so the refusals above mean something.
   assert.equal(existsSync(`${work}/ssm.out`) ? readFileSync(`${work}/ssm.out`, 'utf8') : '', 'relay-ok\n', 'the sandboxed shell could not use the relay socket')
   return [`${cfg}/files/ok.txt`, `${cfg}/memory/ok.txt`, `${work}/ok.txt`].every(f => existsSync(f))
+}
+
+// The key proxy (#182): a held key is absent from a session's env, and the sandboxed shell still uses it through the hub's socket.
+// The session's env is the hub's env after hold(), as in sdk-sessions.ts, plus the proxy token and socket.
+test('a held key is not in a sandboxed session env, and curl through the key socket gets it used', { skip, timeout: 300_000 }, async () => {
+  for (let attempt = 1; attempt <= 3; attempt++) if (await keysSession()) return
+  assert.fail('the model never ran both commands in 3 attempts')
+})
+
+async function keysSession(): Promise<boolean> {
+  const root = realpathSync(mkdtempSync(join(tmpdir(), 'kage-keys-')))
+  const cfg = `${root}/cfg`, code = `${root}/code`, work = `${root}/work`
+  for (const d of [cfg, code, work]) mkdirSync(d, { recursive: true })
+  process.env.FAKE_PROXIED_KEY = 'fake-proxied-value-123'
+  hold(['FAKE_PROXIED_KEY'])
+  const keys = keyProxy({
+    path: `${cfg}/keys.sock`, trusted: () => true, log: () => {}, routes: { FAKE_PROXIED_KEY: { host: 'api.example.test' } },
+    fetch: async (_u, init) => new Response(`proxied:${new Headers(init.headers).get('authorization')}`),
+  })
+  const token = keys.issue('C1:5.5')!
+  const prompt = `This is a test of a local sandbox. Run each with its own Bash call: 1) env > ${work}/env.out 2) curl -s --unix-socket ${cfg}/keys.sock http://kage/${token}/api.example.test/x > ${work}/keys.out 3) curl -s --unix-socket ${cfg}/keys.sock http://kage/${token}/other.example.test/x > ${work}/other.out. Then say done.`
+  const q = query({
+    prompt,
+    options: {
+      cwd: work, model: 'haiku', maxTurns: 10, settingSources: [], pathToClaudeCodeExecutable: claude,
+      tools: ['Bash'], permissionMode: 'dontAsk',
+      settings: { permissions: { allow: ['Bash'], ...protectConfig(`${cfg}/env`, code).permissions }, sandbox: protectConfig(`${cfg}/env`, code).sandbox } as any,
+    },
+  })
+  try { for await (const _ of q); } finally { keys.close() }
+  if (!existsSync(`${work}/env.out`) || !existsSync(`${work}/keys.out`)) return false   // the commands did not run: try again
+  assert.ok(!readFileSync(`${work}/env.out`, 'utf8').includes('fake-proxied-value-123'), 'a held key was in the session env')
+  assert.equal(readFileSync(`${work}/keys.out`, 'utf8'), 'proxied:Bearer fake-proxied-value-123')
+  assert.ok(!existsSync(`${work}/other.out`) || !readFileSync(`${work}/other.out`, 'utf8').includes('fake-proxied-value-123'), 'another host got the key')
+  return true
 }
 
 // A tmux pane (#157) gets the same settings through paneArgs. The pane's shell unsets KAGE_SESSION first, as an attacker would,

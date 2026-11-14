@@ -49,6 +49,10 @@ export function sshLine(sshConfig: string | undefined): Line | undefined {
     : note('ssh: ~/.ssh/config has an aws ssm start-session ProxyCommand but no Match block for the relay, so ssh hangs inside a session. See docs/settings.md, "ssh to hosts behind AWS SSM"')
 }
 
+// Each proxied key by name (#182), never its value: where it may go and in which header.
+export const keyLines = (keys: Record<string, { host: string; header?: string }> = {}): Line[] =>
+  Object.entries(keys).map(([n, k]) => ok(`session key ${n}: kept out of sessions, sent only to ${k.host} (${k.header ?? 'authorization'})`))
+
 export function sessionLines(f: { root?: string; runtime?: string; route?: string; sdkLoads?: boolean; plugin?: boolean; orgApproved?: boolean }): Line[] {
   if (f.runtime !== 'tmux') return [f.sdkLoads ? ok('threads run on the Agent SDK, no prompts') : fail('Agent SDK does not load: run npm ci, then restart (until then threads open as tmux panes)')]
   if (f.route !== 'plugin') return [note('dev route: Claude Code shows a warning screen on each start, and a person confirms it')]

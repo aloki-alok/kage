@@ -24,7 +24,7 @@ function kageCopy() {
   for (const f of ['hub.ts', 'service.sh']) copyFileSync(join(REPO, f), join(dir, f))
   mkdirSync(join(dir, 'runtime'))
   mkdirSync(join(dir, 'cli'))
-  for (const f of ['hub-log.ts', 'config-files.ts']) copyFileSync(join(REPO, 'runtime', f), join(dir, 'runtime', f))
+  for (const f of ['hub-log.ts', 'config-files.ts', 'hold-keys.ts', 'key-proxy.ts']) copyFileSync(join(REPO, 'runtime', f), join(dir, 'runtime', f))
   for (const f of ['config.ts', 'home.ts']) copyFileSync(join(REPO, 'cli', f), join(dir, 'cli', f))
   cpSync(join(REPO, 'core'), join(dir, 'core'), { recursive: true })
   symlinkSync(join(REPO, 'node_modules/zod'), join(dir, 'node_modules/zod'))

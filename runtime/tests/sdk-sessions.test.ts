@@ -27,6 +27,7 @@ const signal = () => new AbortController().signal
 function setup(o: { transcript?: boolean; silent?: boolean; dmFails?: boolean; grants?: Record<string, string[]>; manager?: boolean; budgets?: Record<string, number>; models?: Record<string, string>; trusted?: string[]; deferred?: boolean; onResult?: (key: string, total: number, resumed: boolean) => void } = {}) {
   const sdk = fakeSdk(o)
   const dropped: string[] = []
+  const keysDropped: string[] = []
   const results: [string, number, boolean][] = []
   const blocks: [string, string[], string | null][] = []
   const turns: [string, string[], object | undefined, true | undefined][] = []
@@ -61,6 +62,7 @@ function setup(o: { transcript?: boolean; silent?: boolean; dmFails?: boolean; g
     envFile: '/cfg/env',
     codeDir: '/code/kage',
     ssm: { sock: '/cfg/ssm.sock', issue: key => o.trusted?.includes(key) ? `tok-${key}` : undefined, drop: key => { dropped.push(key) } },
+    keys: { sock: '/cfg/keys.sock', issue: key => o.trusted?.includes(key) ? `key-${key}` : undefined, drop: key => { keysDropped.push(key) } },
     restartMs: 10,
     ...o.deferred && { deferred: approvals },
     onResult: (key, total, resumed) => { results.push([key, total, resumed]); o.onResult?.(key, total, resumed) },
@@ -79,7 +81,7 @@ function setup(o: { transcript?: boolean; silent?: boolean; dmFails?: boolean; g
   })
   // The card's request id, read from the ledger row the hub keeps for the card's message (the text carries no code).
   const idOf = (text: string) => cardAt(openLedgers(dir).text('posted'), 'DBOT', `9.${posts.lastIndexOf(text) + 1}`)!
-  return { sdk, posts, d, s, task, idOf, approvals, results, blocks, turns, call, servers, tools }
+  return { sdk, posts, d, s, task, idOf, approvals, results, blocks, turns, call, servers, tools, keysDropped }
 }
 
 describe('Kage sessions on the Agent SDK', () => {
@@ -337,6 +339,18 @@ describe('Kage sessions on the Agent SDK', () => {
     const other = t.sdk.runs[1]!.options
     assert.equal(other.env.KAGE_SSM_TOKEN, undefined)
     assert.equal(other.env.KAGE_SSM_SOCK, undefined)
+  })
+  test('a trusted thread gets the key proxy token and socket, any other thread gets neither, and it is dropped with the session (#182)', async () => {
+    const t = setup({ trusted: ['C1:5.5'] })
+    t.d.task('C1:5.5', t.task(), 0)
+    t.d.task('C2:5.5', t.task({ channel: 'C2', fromOwner: false }), 0)
+    await tick()
+    assert.equal(t.sdk.runs[0]!.options.env.KAGE_KEYS_TOKEN, 'key-C1:5.5')
+    assert.equal(t.sdk.runs[0]!.options.env.KAGE_KEYS_SOCK, '/cfg/keys.sock')
+    assert.equal(t.sdk.runs[1]!.options.env.KAGE_KEYS_TOKEN, undefined)
+    assert.equal(t.sdk.runs[1]!.options.env.KAGE_KEYS_SOCK, undefined)
+    t.s.runner.stop('C1:5.5')
+    assert.ok(t.keysDropped.includes('C1:5.5'))
   })
   test('a kagelet lane never gets a token, even in a trusted thread', async () => {
     const t = setup({ trusted: ['C1:5.5#side-kagelet-x'], grants: { 'C1:5.5#side-kagelet-x': ['Read'] } })
