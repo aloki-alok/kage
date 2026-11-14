@@ -165,10 +165,15 @@ export const resultLine = (r: KageletRow, now: number) => !r.result ? 'no report
 
 // Of Kage's own tools, a kagelet has only those for its thread and message_kagelet (to its own install), whatever its grant says: the rest act as the
 // owner (message_people, away), outlive the run (schedule) or need the owner (log_prod_write).
-const THREAD_TOOLS = ['reply', 'edit_message', 'delete_message', 'report', 'message_kagelet'].map(t => `mcp__kage__${t}`)
+// ToolSearch too: it only loads a deferred tool's schema, and the tool it loads still passes this check.
+const THREAD_TOOLS = [...['reply', 'edit_message', 'delete_message', 'report', 'message_kagelet'].map(t => `mcp__kage__${t}`), 'ToolSearch']
 // What a grant may name: web tools and outside MCP tools, an allowlist so a new built-in tool stays out. No file,
 // shell or agent tool, granted or not: one could rewrite the kagelet's own grant or read the env file with the
 // tokens. ponytail: a file grant needs a sandboxed work folder first.
+const WEB_TOOLS = ['WebFetch', 'WebSearch']
+// The built-in tools a kagelet's session loads: its granted web tools and ToolSearch. Claude Code's default set leaves
+// WebFetch out (a subagent stands in for it), so the session names them.
+export const builtinTools = (grant: string[]) => [...grant.filter(t => WEB_TOOLS.includes(t)), 'ToolSearch']
 const grantable = (t: string) => t === DB_READ || t === 'WebFetch' || t === 'WebSearch' || (t.startsWith('mcp__') && !t.startsWith('mcp__kage__') && !t.startsWith('mcp__plugin_kage_'))
 
 // The grant only shrinks: a tool outside it is denied.

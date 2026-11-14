@@ -388,6 +388,20 @@ describe('Kage sessions on the Agent SDK', () => {
     assert.match(asked.message, /approves nothing/)
     assert.deepEqual(t.posts, [])                  // no approval card reaches the owner
   })
+  // Claude Code leaves WebFetch out of its default tool set (a subagent stands in for it), so the lane names its tools.
+  test('a kagelet lane loads only its granted built-in tools and ToolSearch; other sessions keep the default set', async () => {
+    const t = setup({ grants: { 'C1:5.5#side-kagelet-web': ['WebFetch', 'mcp__store__upload'] } })
+    t.d.task('C1:5.5#side-kagelet-web', t.task(), 0)
+    t.d.task('C2:5.5', t.task({ channel: 'C2' }), 0)
+    await tick()
+    assert.deepEqual(t.sdk.runs[0]!.options.tools, ['WebFetch', 'ToolSearch'])
+    assert.equal(t.sdk.runs[1]!.options.tools, undefined)
+    const run = (tool_name: string, tool_input = {}) => t.sdk.runs[0]!.options.hooks.PreToolUse[0].hooks[0]({ hook_event_name: 'PreToolUse', tool_name, tool_input }, undefined, { signal: signal() })
+    assert.deepEqual(await run('ToolSearch', { query: 'select:WebFetch' }), {})
+    assert.deepEqual(await run('WebFetch', { url: 'https://example.com' }), {})
+    assert.equal((await run('Agent')).hookSpecificOutput.permissionDecision, 'deny')
+    assert.equal((await run('WebSearch')).hookSpecificOutput.permissionDecision, 'deny')
+  })
   test("each tool call in a kagelet lane is logged with its refusal, if any; other sessions' calls are not", async () => {
     const t = setup({ grants: { 'C1:5.5#side-kagelet-deploys': ['WebSearch'] } })
     t.d.task('C1:5.5#side-kagelet-deploys', t.task(), 0)
