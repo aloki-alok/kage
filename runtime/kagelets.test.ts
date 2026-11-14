@@ -273,6 +273,20 @@ test('each kagelet keeps its own read command: a yes for B leaves A\'s unchanged
   assert.equal(readCommand(undefined, t.store, 'calls'), '~/bin/read-sql --ro')
 })
 
+test('a re-save that switches to another approved command is the standing approval\'s grant, with a DM, not the old card\'s', async () => {
+  const t = manager(), y = owner(true)
+  await t.m.manage({ action: 'save', name: 'calls', ...calls }, 1, y.ask)
+  await t.m.manage({ action: 'save', name: 'other', ...calls, read_command: '~/bin/other-sql' }, 2, y.ask)
+  assert.match(await t.m.manage({ action: 'save', name: 'calls', ...calls, read_command: '~/bin/other-sql' }, Date.UTC(2026, 0, 4), y.ask), /saved calls/)
+  assert.equal(y.cards.length, 2)
+  assert.match(readFileSync(`${t.dir}/calls.md`, 'utf8'), /^granted: db_read by standing approval, 2026-01-04T00:00:00\.000Z$/m)
+  assert.equal(t.told.length, 1)
+  assert.match(t.told[0]!, /calls/)
+  // So a revoke takes it.
+  await t.m.manage({ action: 'revoke', name: 'db_read' }, 5)
+  assert.doesNotMatch(readFileSync(`${t.dir}/calls.md`, 'utf8'), /db_read/)
+})
+
 test('a standing approval never covers a different read command, a changed settings command, or a session that cannot ask the owner', async () => {
   const t = manager(), y = owner(true)
   await t.m.manage({ action: 'save', name: 'calls', ...calls }, 1, y.ask)

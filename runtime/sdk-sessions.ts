@@ -118,7 +118,7 @@ export function sdkSessions(o: {
           // A grant beyond the web tools raises its own card from inside the tool (runtime/kagelets.ts), so the owner
           // gets one, not two. A revoke only takes access away, so it needs none (the tool still takes it from the
           // owner's task only).
-          : ALLOWED.includes(name) || (name === 'mcp__kage__manage_kagelet' && ((Array.isArray(input.tools) && input.tools.some(t => !DEFAULT_GRANT.includes(t))) || input.action === 'revoke')) ? Promise.resolve({ behavior: 'allow' as const, updatedInput: input })
+          : ALLOWED.includes(name) || (name === 'mcp__kage__manage_kagelet' && ((input.action === 'save' && Array.isArray(input.tools) && input.tools.some(t => !DEFAULT_GRANT.includes(t))) || input.action === 'revoke')) ? Promise.resolve({ behavior: 'allow' as const, updatedInput: input })
           : ask(key, s, name, x.title ?? x.description ?? '', input, x.signal),
         // The same rules as private-data-guard.ts, in-process. A failed check blocks the call.
         hooks: {

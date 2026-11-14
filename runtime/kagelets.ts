@@ -188,10 +188,13 @@ export function kageletManager(o: { dir: string; max: number; ledgers: { text(na
         // named, not shown: it is the one most likely to hold a host or a password.
         const card = { kagelet: a.name, tools: wide.join(', '), ...(db && { read_command: o.envCommand ? 'KAGE_DB_READ_COMMAND, as set in the settings file' : command! }), job: (a.job ?? '').trim().split('\n')[0]!.slice(0, 300) }
         if (!standing && !await ask(card)) return refuse(`the owner did not approve ${wide.join(', ')}`)
+        // Read before the save below: whether this kagelet already ran this command.
+        const own = !!o.envCommand || commands(o.store)[a.name] === command
         if (db && !o.envCommand) o.store.save(READ_COMMANDS, { ...commands(o.store), [a.name]: command! })
         if (standing) {
-          // A kagelet the owner approved on its own card keeps that grant when saved again, so a revoke leaves it.
-          const card = old && !('error' in old) && old.granted !== undefined && !old.standing ? old.granted : undefined
+          // A kagelet the owner approved on its own card keeps that grant when saved again with that same command, so
+          // a revoke leaves it. Another command is the standing approval's grant: the card never saw it.
+          const card = own && old && !('error' in old) && old.granted !== undefined && !old.standing ? old.granted : undefined
           text = fileText(true, card === undefined, card ?? now)
           o.ledgers.add('grants', [a.name, 'standing', `the owner's standing approval of ${new Date(yes!.at).toISOString()} covers ${DB_READ} through the same read command`])
           o.log(`kagelet ${a.name}: ${DB_READ} granted by the standing approval`)

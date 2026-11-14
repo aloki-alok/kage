@@ -78,6 +78,9 @@ export const DEFAULT_GRANT = ['WebSearch', 'WebFetch']
 export function kageletFile(f: { thread: string; schedule: string; tools: string[]; job: string; by: Maker; why: string; paused?: boolean; approved?: boolean; granted?: number; standing?: boolean }): string | { error: string } {
   // One line each, so no value can add a front matter line of its own (a second tools or paused line).
   for (const [k, v] of Object.entries({ thread: f.thread, schedule: f.schedule, why: f.why, tool: f.tools.join(',') })) if (/[\r\n]/.test(v)) return { error: `the ${k} must be one line` }
+  // A comma or space in one name reads back as two tools, so the card would not name what the file grants.
+  const odd = f.tools.find(t => !/^[\w-]+$/.test(t))
+  if (odd) return { error: `"${odd}" is not one tool name: letters, digits, _ and - only` }
   const bad = f.tools.find(t => !grantable(t))
   if (bad) return { error: `a kagelet can be granted only web tools, MCP tools and ${DB_READ}, not ${bad}. A wider grant is the owner's call.` }
   const db = f.tools.includes(DB_READ)

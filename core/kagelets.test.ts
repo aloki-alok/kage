@@ -176,6 +176,8 @@ describe('a tool beyond the default web tools', () => {
     assert.equal(typeof make('kage', ['WebSearch', 'WebFetch']), 'string')
     for (const by of ['owner', 'kage'] as const) assert.match((make(by, ['mcp__gmail__send']) as { error: string }).error, /owner/)
     assert.equal(typeof make('kage', ['mcp__gmail__send'], true), 'string')
+    // A comma or space in one name would read back as two tools, one the card never named.
+    for (const t of ['mcp__a__b,db_read', 'mcp__a__b db_read']) assert.match((make('owner', [t], true) as { error: string }).error, /tool name/)
   })
   test('a hand-written file with no by line is the owner\'s', () => {
     assert.equal((parseKagelet('x', file(`thread: ${LINK}\nschedule: 0 9 * * *`)) as { by: string }).by, 'owner')

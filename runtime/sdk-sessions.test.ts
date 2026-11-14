@@ -344,11 +344,16 @@ describe('Kage sessions on the Agent SDK', () => {
     t.d.task('C1:5.5', t.task(), 0)
     await tick()
     // The generic card is skipped for it: the tool raises its own. Any other save still asks.
-    const posts = t.posts.length
+    let posts = t.posts.length
     assert.equal((await t.sdk.runs[0]!.options.canUseTool('mcp__kage__manage_kagelet', { action: 'save', tools: ['db_read'] }, { signal: signal() })).behavior, 'allow')
     // Any tool beyond WebSearch and WebFetch gets the tool's own card too.
     assert.equal(await Promise.race([t.sdk.runs[0]!.options.canUseTool('mcp__kage__manage_kagelet', { action: 'save', tools: ['WebSearch', 'mcp__gmail__send'] }, { signal: signal() }).then((r: { behavior: string }) => r.behavior), tick(50).then(() => 'card')]), 'allow')
     assert.equal(t.posts.length, posts)
+    // Only a save raises the tool's own card: remove or run with a tools field still gets the generic one.
+    void t.sdk.runs[0]!.options.canUseTool('mcp__kage__manage_kagelet', { action: 'remove', name: 'x', tools: ['db_read'] }, { signal: signal() })
+    await tick()
+    assert.equal(t.posts.length, posts + 1)
+    posts++
     // Revoking only takes access away: the owner's word in chat is enough, with no card.
     // Raced against a tick: a card here would wait for an answer forever, and the test would hang instead of failing.
     assert.equal(await Promise.race([t.sdk.runs[0]!.options.canUseTool('mcp__kage__manage_kagelet', { action: 'revoke', name: 'db_read' }, { signal: signal() }).then((r: { behavior: string }) => r.behavior), tick(50).then(() => 'card')]), 'allow')
