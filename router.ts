@@ -17,6 +17,8 @@ import { listenForCommands } from './connectors/slack-commands.ts'
 import { connectSlack } from './connectors/slack.ts'
 import { connectGithub } from './connectors/github.ts'
 import { connectMeeting } from './connectors/meeting.ts'
+import { connectBrowser } from './connectors/browser.ts'
+import { blockList } from './core/browser.ts'
 import { connectVoice } from './connectors/voice.ts'
 import { startWhatsApp } from './connectors/whatsapp-link.ts'
 import { parseCommands } from './core/commands.ts'
@@ -198,6 +200,10 @@ const MEM = memoryDirs(process.env.HOME!, ENV_FILE, env)
 const PROJECT = claudeProject(process.cwd())   // both runners start sessions in the hub's folder, so transcripts live here
 // What each turn cost (runtime/ledger.ts costRecorder): `kage cost`, the kagelet caps and the cost flags read it.
 const recordCost = costRecorder(ledgers)
+// Kage in Chrome (#114): the owner's own browser, through Kage's extension, for the owner's own tasks only.
+const browser = env.KAGE_BROWSER_TOKEN ? connectBrowser({ token: env.KAGE_BROWSER_TOKEN, port: Number(env.KAGE_BROWSER_PORT || 8791) }) : undefined
+void browser?.listening.then(port => log(`browser on: 127.0.0.1:${port}/browser`), e => log('browser could not listen', e))
+const BROWSER_BLOCK = blockList(env.KAGE_BROWSER_BLOCK ?? '')
 const sdkLib = env.KAGE_RUNTIME === 'tmux' ? undefined : await (async () => ({
   lib: await import('@anthropic-ai/claude-agent-sdk'),
   // The same pinned Claude Code the panes run, not the copy bundled with the SDK.
@@ -248,6 +254,7 @@ const sdk = sdkLib ? sdkSessions({
     schedules: { add: j => schedules.add(key, j, Date.now()), remove: id => schedules.remove(key, id), list: () => schedules.list(key) },
     afk: slack.afk?.command,
     kagelet: key.split('#side-kagelet-')[1],
+    browser: browser && { call: browser.call, block: BROWSER_BLOCK },
     dbRead: { command: () => readCommand(env.KAGE_DB_READ_COMMAND, store, key.split('#side-kagelet-')[1] ?? ''), maxRows: Number(env.KAGE_DB_READ_MAX_ROWS) || 200 },
     kagelets: { list: () => manager.list(Date.now()), manage: (a, ask) => manager.manage(a, Date.now(), ask) }, approve,
     event: (kind, detail) => runs.emit(key, kind, detail),

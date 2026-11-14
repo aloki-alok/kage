@@ -3,7 +3,8 @@ import { realpathSync } from 'node:fs'
 import { basename, dirname, join, resolve } from 'node:path'
 
 // Sources that hold the owner's private data. Only the owner's own task may read them.
-const PRIVATE_TOOL = /^mcp__.*(gmail|google_drive|google_calendar|granola|fireflies)/i
+// browser_: Kage's own tools on the owner's Chrome, where every tab carries their logins (#114).
+const PRIVATE_TOOL = /^mcp__.*(gmail|google_drive|google_calendar|granola|fireflies|kage_?_browser_)/i
 export function privateToolRefusal(tool: string, sender: string | undefined): string | undefined {
   if (!PRIVATE_TOOL.test(tool) || sender === 'owner') return undefined
   return `${tool} reads the owner's private data, and this task did not come from the owner. Reply that this needs the owner, and stop.`
