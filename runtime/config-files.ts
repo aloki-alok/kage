@@ -3,7 +3,7 @@
 // service units that set it keep working: the folder is its dirname.
 import { existsSync, readdirSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
-import { Config, fromEnv, Secrets, toEnv, type Env } from '../core/config.ts'
+import { badValue, Config, fromEnv, Secrets, settingTier } from '../core/config.ts'
 import { parseEnv } from '../core/settings.ts'
 
 export const files = (envFile: string) => ({ dir: dirname(envFile), config: join(dirname(envFile), 'config.json'), secrets: join(dirname(envFile), 'secrets.json'), legacy: envFile })
@@ -84,9 +84,6 @@ export function readSettings(envFile: string): { config: Config; secrets: Secret
   return { config: parse(Config, f.config), secrets: existsSync(f.secrets) ? parse(Secrets, f.secrets) : {} }
 }
 
-// ponytail: the hub still reads a flat env built from the files, so the readers do not all change at once.
-export const readEnv = (envFile: string): Env => { const s = readSettings(envFile); return toEnv(s.config, s.secrets) }
-
 // Read, change, write one file. An env file waiting to be imported goes in first, so a change is never lost to it.
 // KAGE_SESSION is set on every session (SDK and tmux) and KAGE_THREAD on a pane: a session never changes the files from its shell.
 // The sandbox is the wall (core/guards.ts protectConfig); this is the same refusal where the sandbox cannot be.
@@ -102,4 +99,21 @@ export function updateSecrets(envFile: string, change: (s: Secrets) => Secrets) 
   importLegacy(envFile)
   const f = files(envFile)
   write(f.secrets, checked(Secrets, 'secrets.json', change(existsSync(f.secrets) ? parse(Secrets, f.secrets) : {})))
+}
+
+// One config.json key from a dotted path, checked as the hub will read it (the schema, then checkSettings) before the file is written.
+// The watcher sees the write and applies it live or by a quiet restart, as for any edit.
+export function setKey(envFile: string, key: string, value: unknown) {
+  if (settingTier(key) === 'never') throw new Error(`${key} cannot be set this way`)
+  const { config } = readSettings(envFile)
+  const next = structuredClone(config) as Record<string, any>
+  const ks = key.split('.')
+  const last = ks.pop()!
+  let at = next
+  for (const k of ks) at = (at[k] ??= {})
+  at[last] = value
+  const done = checked(Config, 'config.json', next)
+  const bad = badValue(done)
+  if (bad) throw new Error(bad)
+  updateConfig(envFile, () => done)
 }

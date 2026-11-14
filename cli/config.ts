@@ -5,9 +5,9 @@
 //   config.ts check-slack <app|user|bot>  asks Slack whether that token works: prints "ok" or Slack's error. The token stays inside this process.
 //   config.ts set <key> <value>  one config.json key. The value is JSON when it parses ("6", "true", "[\"a\"]"), else text. The file is checked before it is written.
 //   config.ts save <name>        the three Slack tokens, as words on stdin, into secrets.json (kage save)
-import { Config, tilde } from '../core/config.ts'
+import { tilde } from '../core/config.ts'
 import { ENV_FILE } from './home.ts'
-import { readSettings, updateConfig, updateSecrets } from '../runtime/config-files.ts'
+import { readSettings, setKey, updateConfig, updateSecrets } from '../runtime/config-files.ts'
 
 const die = (msg: string): never => { console.error(msg); process.exit(1) }
 const [cmd = '', key = '', ...rest] = process.argv.slice(2)
@@ -38,15 +38,7 @@ if (cmd === 'has') {
   let parsed: unknown = value
   try { parsed = JSON.parse(value) } catch {}
   try {
-    updateConfig(ENV_FILE, c => {
-      const next = structuredClone(c) as Record<string, any>
-      const ks = key.split('.')
-      const last = ks.pop()!
-      let at = next
-      for (const k of ks) at = (at[k] ??= {})
-      at[last] = parsed
-      return next as Config
-    })
+    setKey(ENV_FILE, key, parsed)
   } catch (e) { die(`Not changed: ${(e as Error).message.replace(/^config\.json: /, '')}`) }
   console.log(`Set ${key}. The people lists apply at once. Any other key applies by itself once every session is quiet (or run kage restart).`)
 } else if (cmd === 'save') {

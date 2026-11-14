@@ -16,24 +16,26 @@ import type { Task } from '../runtime/protocol.ts'
 import type { Inbox, Saved } from '../runtime/store.ts'
 import { composeReply, emailTaskLine, mailTask, replyTargets, type InboundMail, type MailConfig } from '../core/email.ts'
 
-// On when the mail settings exist, unless KAGE_EMAIL=off (the kill switch).
+// The AWS keys (secrets.json) and connectors.email (config.json).
+export type Mail = { on?: boolean; address?: string | null; queue?: string | null; ownerEmail?: string | null; region?: string | null; teammateEmails?: string[]; accessKeyId?: string | null; secretAccessKey?: string | null }
+// On when the mail settings exist, unless connectors.email.on is false (the kill switch).
 export function connectEmail(o: {
-  env: Record<string, string>
+  mail: Mail
   saved: Saved
   name: string
   deliver: (c: Conversation, task: Task, place: string) => Delivery
   failed: (task: Task) => void
   inbox: Inbox
 }) {
-  const { env } = o
-  if (env.KAGE_EMAIL === 'off' || !env.KAGE_MAIL_QUEUE || !env.KAGE_MAIL_ADDRESS || !env.KAGE_OWNER_EMAIL) return undefined
+  const { mail } = o
+  if (mail.on === false || !mail.queue || !mail.address || !mail.ownerEmail) return undefined
   const cfg = {
-    self: env.KAGE_MAIL_ADDRESS, name: o.name, owner: env.KAGE_OWNER_EMAIL,
-    teammates: (env.KAGE_TEAMMATE_EMAILS || '').split(',').map(s => s.trim()).filter(Boolean),
-    domains: [env.KAGE_OWNER_EMAIL.split('@')[1]!],
+    self: mail.address, name: o.name, owner: mail.ownerEmail,
+    teammates: mail.teammateEmails ?? [],
+    domains: [mail.ownerEmail.split('@')[1]!],
   }
   const send = startMailbox({
-    env, saved: o.saved, cfg, inbox: o.inbox,
+    mail: { ...mail, queue: mail.queue }, saved: o.saved, cfg, inbox: o.inbox,
     onTask(t) {
       const place = `email: ${t.subject.slice(0, 60)}`
       const content = [
@@ -68,14 +70,14 @@ const dkimResolver = (name: string, rr: string) => resolver.resolve(name, rr) as
 const list = (v?: string | string[]) => (Array.isArray(v) ? v : v ? v.split(/\s+/) : []).filter(Boolean)
 
 function startMailbox(o: {
-  env: Record<string, string>; saved: Saved; cfg: MailConfig; inbox: Inbox; onTask: (t: MailTaskOut) => void
+  mail: Mail & { queue: string }; saved: Saved; cfg: MailConfig; inbox: Inbox; onTask: (t: MailTaskOut) => void
 }) {
-  const region = o.env.KAGE_AWS_REGION || 'us-west-1'
-  const credentials = { accessKeyId: o.env.KAGE_AWS_ACCESS_KEY_ID!, secretAccessKey: o.env.KAGE_AWS_SECRET_ACCESS_KEY! }
+  const region = o.mail.region || 'us-west-1'
+  const credentials = { accessKeyId: o.mail.accessKeyId!, secretAccessKey: o.mail.secretAccessKey! }
   const sqs = new SQSClient({ region, credentials })
   const s3 = new S3Client({ region, credentials })
   const ses = new SESv2Client({ region, credentials })
-  const queue = o.env.KAGE_MAIL_QUEUE!
+  const queue = o.mail.queue
   const threads = (o.saved.load('mail-threads') ?? {}) as Record<string, Thread>
 
   async function handle(body: string) {

@@ -50,11 +50,13 @@ const IDLE_MS = 3 * 60_000
 const CODE_MS = 10 * 60_000   // a code not used by a call within this is dead
 const same = ' (That answers your earlier question. Ask your new one again.)'
 
-// On when KAGE_VOICE_TOKEN is set, unless KAGE_VOICE=off (the kill switch).
+// On when voiceToken is set, unless connectors.voice.on is false (the kill switch).
 // slot: whether a task for this key would start without evicting or jumping ahead of another thread
 // (Dispatcher.hasFreeSlot). A call that cannot get one is told Kage is busy, so it never costs the owner a slot.
+// The voice token (secrets.json) and connectors.voice (config.json).
+export type Voice = { token?: string | null; on?: boolean; max?: number; perHour?: number; port?: number }
 export function connectVoice(o: {
-  env: Record<string, string>
+  voice: Voice
   name: string
   deliver: (c: Conversation, task: Task, place: string) => Delivery
   failed: (task: Task) => void
@@ -63,13 +65,12 @@ export function connectVoice(o: {
   waitMs?: number
   now?: () => number
 }) {
-  const { env } = o
-  const token = env.KAGE_VOICE_TOKEN
-  if (env.KAGE_VOICE === 'off' || !token) return undefined
+  const { token, on, max, perHour: perHourSetting, port: portSetting } = o.voice
+  if (on === false || !token) return undefined
   const waitMs = o.waitMs ?? 20_000
   const now = o.now ?? Date.now
-  const maxCalls = Number(env.KAGE_VOICE_MAX || 1)
-  const perHour = Number(env.KAGE_VOICE_PER_HOUR || 20)
+  const maxCalls = max || 1
+  const perHour = perHourSetting || 20
   // A call has one question in flight at a time. Replies belong to it and wait in `answers` until an
   // ask returns them: the first reply ends the question, any more are kept for the next ask.
   type Call = { inflight: boolean; answers: string[]; wake: Set<() => void>; last: number; sent: number; noted: boolean }
@@ -205,7 +206,7 @@ export function connectVoice(o: {
   })
   const timer = setInterval(() => void sweep(), 60_000)
   timer.unref()
-  const port = Number(env.KAGE_VOICE_PORT || 8787)
+  const port = portSetting ?? 8787
   const listening = new Promise<number>(ok => server.listen(port, '127.0.0.1', () => ok((server.address() as AddressInfo).port)))
   void listening.then(p => log(`voice on: 127.0.0.1:${p}`))
   return {

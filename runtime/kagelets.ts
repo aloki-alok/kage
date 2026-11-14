@@ -58,7 +58,7 @@ export const kageletPrompt = (sp: Pick<Kagelet, 'name' | 'job'>) => `You are the
 const said = new Map<string, string>()   // file name -> the error last logged, so a wrong file is logged once
 
 // Returns the grants: lane key -> its tools.
-// max: KAGE_MAX_KAGELETS. Past it, by name order, a kagelet runs nothing and has no grant.
+// max: kagelets.max. Past it, by name order, a kagelet runs nothing and has no grant.
 export function syncKagelets(files: { name: string; text: string }[], store: Pick<Store, 'schedules' | 'addSchedule' | 'removeSchedule' | 'seen' | 'conversation'>, now: number, log: (line: string) => void, max = 10) {
   const grants = new Map<string, string[]>()
   const ids = new Set<string>()
@@ -68,7 +68,7 @@ export function syncKagelets(files: { name: string; text: string }[], store: Pic
   for (const f of [...files].sort((a, b) => a.name.localeCompare(b.name))) {
     let sp = parseKagelet(f.name, f.text)
     if (!('error' in sp) && broken.has(sp.name)) sp = { error: broken.get(sp.name)! }
-    if (!('error' in sp) && !sp.paused && ++running > max) sp = { error: `this install runs at most ${max} kagelets (KAGE_MAX_KAGELETS)` }
+    if (!('error' in sp) && !sp.paused && ++running > max) sp = { error: `this install runs at most ${max} kagelets (kagelets.max)` }
     if ('error' in sp) {
       if (said.get(f.name) !== sp.error) log(`kagelet ${f.name} does not run: ${sp.error}`)
       said.set(f.name, sp.error)
@@ -96,7 +96,7 @@ export function syncKagelets(files: { name: string; text: string }[], store: Pic
   return grants
 }
 
-// The command a kagelet's db_read runs: KAGE_DB_READ_COMMAND wins, else the one this kagelet saved with.
+// The command a kagelet's db_read runs: kagelets.dbRead.command wins, else the one this kagelet saved with.
 // Read on each call, so a change applies with no restart.
 const READ_COMMANDS = 'db-read-commands'
 // One command for every kagelet, from before each had its own: still read for a kagelet with none, never written.
@@ -186,7 +186,7 @@ export function kageletManager(o: { dir: string; max: number; ledgers: { text(na
         if (fresh.length) { row(a.name, 'refused', why, fresh); o.log(`kagelet ${a.name}: ${fresh.join(', ')} refused: ${why}`) }
         return `not saved: ${why}`
       }
-      if (!old && readKagelets(o.dir).length >= o.max) return refuse(`this install has at most ${o.max} kagelets (KAGE_MAX_KAGELETS). Remove one first, or ask the owner to raise it.`)
+      if (!old && readKagelets(o.dir).length >= o.max) return refuse(`this install has at most ${o.max} kagelets (kagelets.max). Remove one first, or ask the owner to raise it.`)
       // after: refused when it names a missing kagelet, closes a cycle or goes too deep, with this file in place.
       const others = readKagelets(o.dir).filter(f => f.name !== a.name).map(f => parseKagelet(f.name, f.text)).filter((p): p is Kagelet => !('error' in p))
       // Also refused when it breaks a step after it (a tool taken away that the next step holds).
@@ -204,15 +204,15 @@ export function kageletManager(o: { dir: string; max: number; ledgers: { text(na
       // Checked as if approved first, so an act tool or a file that would not run is refused before any card.
       const valid = fileText(true)
       if (typeof valid !== 'string') return refuse(valid.error)
-      // db_read reads through a command the install already has: KAGE_DB_READ_COMMAND, else one the owner approved
+      // db_read reads through a command the install already has: kagelets.dbRead.command, else one the owner approved
       // before (kept in the store). A kagelet never brings a new one.
       let command: string | undefined
       if (tools.includes(DB_READ) && !o.envCommand) {
         const known = [...new Set([...Object.values(commands(o.store)), o.store.load(OLD_READ_COMMAND) as string | undefined].filter((c): c is string => !!c))]
         command = a.read_command?.trim() || commands(o.store)[a.name] || (known.length === 1 ? known[0] : undefined)
-        if (!known.length) return refuse(`${DB_READ} reads through the install's read command, and none is set: the owner sets KAGE_DB_READ_COMMAND`)
+        if (!known.length) return refuse(`${DB_READ} reads through the install's read command, and none is set: the owner sets kagelets.dbRead.command`)
         if (!command) return refuse(`${DB_READ}: pass read_command, one of the install's read commands`)
-        if (!known.includes(command)) return refuse(`a kagelet never gets a read command the install does not already have: the owner sets KAGE_DB_READ_COMMAND`)
+        if (!known.includes(command)) return refuse(`a kagelet never gets a read command the install does not already have: the owner sets kagelets.dbRead.command`)
       }
       // Write tools: one it already held by a card or by hand stays; a standing approval covers the next; the rest
       // take one card. Only a session that can ask the owner grants a write tool, standing approval or not.
@@ -341,7 +341,7 @@ export function kageletRoutes(o: {
     const why = !row || !sp ? `there is no kagelet named "${m.to}"`
       : row.state === 'broken' ? `${m.to} is broken (${row.error})`
       : wider ? `${m.to} holds ${wider}, which ${m.from} does not. A kagelet messages only one with the same tools or fewer.`
-      : o.chainUsd !== undefined && c.usd >= o.chainUsd ? `the chain spent $${c.usd.toFixed(2)}, at or over its cap of $${o.chainUsd.toFixed(2)} (KAGE_KAGELET_CHAIN_USD)`
+      : o.chainUsd !== undefined && c.usd >= o.chainUsd ? `the chain spent $${c.usd.toFixed(2)}, at or over its cap of $${o.chainUsd.toFixed(2)} (kagelets.chainUsd)`
       : m.hops > MAX_CHAIN - 1 ? `${m.hops} hops with no person or schedule in between (the limit is ${MAX_CHAIN - 1})`
       : undefined
     if (why) return { why }

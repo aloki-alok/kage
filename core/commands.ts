@@ -1,16 +1,6 @@
-// Local slash commands: KAGE_COMMANDS="/lookup=/abs/path/script.mjs,...". The hub answers
+// Local slash commands: connectors.commands in config.json, {"/lookup": "/abs/path/script.mjs"}. The hub answers
 // these itself for anyone in the workspace, without a Claude session. The only thing a caller
 // controls is a list of phone numbers, so the script is the whole of what they can run.
-export function parseCommands(value: string): Map<string, string> {
-  const out = new Map<string, string>()
-  for (const entry of value.split(',').map(s => s.trim()).filter(Boolean)) {
-    const m = /^(\/[a-z][a-z0-9-]{1,30})=(\/\S+)$/.exec(entry)
-    if (!m) throw new Error(`KAGE_COMMANDS entry "${entry}" must look like /name=/absolute/path`)
-    out.set(m[1]!, m[2]!)
-  }
-  return out
-}
-
 export type CommandRequest = { team_id?: string; user_id?: string; command?: string; text?: string }
 export type CommandResult = { ok: true; script: string; numbers: string[] } | { ok: false; reply: string }
 

@@ -1,9 +1,9 @@
 // Browser connector (#114): the hub's side of Kage's Chrome extension. The extension long-polls
 // 127.0.0.1:<port>/browser/next for a command, runs it in the owner's Chrome, and posts what it got to
 // /browser/result. Long polling, not a socket: plain node:http on this side, plain fetch in the extension.
-// Both paths need `Authorization: Bearer <KAGE_BROWSER_TOKEN>`. A web page cannot send that header across
+// Both paths need `Authorization: Bearer <browserToken>`. A web page cannot send that header across
 // origins without a preflight, and the preflight gets 401, so no page the owner visits can drive this.
-// What a session may see of a page is core/browser.ts. Off unless KAGE_BROWSER_TOKEN is set.
+// What a session may see of a page is core/browser.ts. Off unless browserToken is set.
 import { createHash, randomUUID, timingSafeEqual } from 'node:crypto'
 import { createServer, type ServerResponse } from 'node:http'
 import type { AddressInfo } from 'node:net'
@@ -50,7 +50,7 @@ export function connectBrowser(o: {
   const connected = () => !!waiter || now() - lastPoll < staleMs
 
   function call(op: string, args: unknown): Promise<unknown> {
-    if (!connected()) return Promise.reject(new Error('the Kage Chrome extension is not connected: install it from the extension folder and paste KAGE_BROWSER_TOKEN into its options'))
+    if (!connected()) return Promise.reject(new Error('the Kage Chrome extension is not connected: install it from the extension folder and paste browserToken into its options'))
     const id = randomUUID()
     return new Promise((resolve, reject) => {
       const timer = setTimeout(() => {

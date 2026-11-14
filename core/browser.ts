@@ -1,7 +1,7 @@
 // Kage in Chrome (#114): what a session may see of the owner's browser. The owner's own tabs carry their logins,
 // so a page's words reach Claude only as quoted data, and a site on the owner's block list never reaches it.
 
-// KAGE_BROWSER_BLOCK: hosts, comma-separated. A host also blocks its subdomains. Each entry is read the way the
+// connectors.browser.block: hosts, comma-separated. A host also blocks its subdomains. Each entry is read the way the
 // browser reads an address (punycode, no trailing dot), and may be written as a URL or as *.host.
 const hostOf = (entry: string) => {
   const h = entry.trim().replace(/^\*\./, '')

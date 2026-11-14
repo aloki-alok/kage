@@ -1,8 +1,8 @@
 // Meeting connector: a finished meeting's transcript wakes Kage for notes and proposed follow-ups
 // (core/meeting.ts). A meeting bot such as Vexa, or any script, posts the transcript to
-// 127.0.0.1:<port>/meeting with `Authorization: Bearer <KAGE_MEETING_TOKEN>`. Each meeting gets
+// 127.0.0.1:<port>/meeting with `Authorization: Bearer <meetingToken>`. Each meeting gets
 // its own thread in the owner's DM with Kage, and the owner answers there in person. The words are
-// other people's, so the task runs at teammate trust. Off unless KAGE_MEETING_TOKEN is set.
+// other people's, so the task runs at teammate trust. Off unless meetingToken is set.
 // This mirrors connectors/github.ts; the bearer token is the voice connector's check.
 import { createHash } from 'node:crypto'
 import { createServer } from 'node:http'

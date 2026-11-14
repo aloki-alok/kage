@@ -80,6 +80,19 @@ describe('a wrong file is refused', () => {
   })
 })
 
+describe('a schema-valid value the hub cannot run on is refused too', () => {
+  test('a quote in a path, a bad port or a missing cwd leaves the last good settings and asks for no restart', () => {
+    const t = setup()
+    for (const bad of [{ harness: { memory: "/tmp/it's" } }, { connectors: { voice: { port: 99999 } } }, { harness: { cwd: join(t.dir, 'nope') } }]) {
+      updateConfig(t.env, c => ({ ...c, harness: undefined, connectors: undefined, ...bad }))
+      assert.match((t.w.check() as { refused: string }).refused, /memory|port|cwd/)
+    }
+    assert.deepEqual(t.seen.restart, [])
+    assert.equal(t.seen.told.length, 3)
+    t.w.close()
+  })
+})
+
 describe('the watcher itself', () => {
   test('a write to config.json is checked by itself, with no call', { timeout: 20_000 }, async () => {
     const t = setup()
