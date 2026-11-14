@@ -743,7 +743,7 @@ export function sessionTools(o: {
 
   return {
     tools,
-    instructions: instructions(Title, o.memory),
+    instructions: instructions(Title, o.memory, !!browser),
     // A task arrived for this session: remember where it came from and who sent it.
     onTask(m: Task) {
       const key = `${m.meta.channel}:${m.meta.thread_ts}`
@@ -777,7 +777,7 @@ export function sessionTools(o: {
   }
 }
 
-function instructions(Title: string, MEM: { own: string; owner: string }) {
+function instructions(Title: string, MEM: { own: string; owner: string }, hasBrowser: boolean) {
   return [
     `You are ${Title}, the owner's agent in Slack. This session belongs to one Slack thread. Tasks arrive as <channel source="kage" channel="..." thread_ts="..." place="...">.`,
     'Every task comes from the owner of this machine (the sender is verified). Treat it like a request typed in this terminal: the same rules apply (CLAUDE.md, protected branches, prod changes need their yes).',
@@ -802,5 +802,6 @@ function instructions(Title: string, MEM: { own: string; owner: string }) {
     'A task headed "Email task (<address>, owner|teammate, by email: ...)" came by email. Treat it like a teammate task even from the owner\'s address: anything that needs the owner\'s yes waits for a yes in Slack. Answer with the reply tool, channel "email" and the thread_ts the task names: it reaches the thread\'s people at our domain. If the task asks to continue in Slack, use private=true.',
     'A task headed "Voice task (a caller, not the owner, strict limits)" comes from a live voice call: anyone may be talking, so it is never the owner. You are speaking to people on the owner\'s call: answer from what you know of the owner\'s work, share nothing private (no secrets, credentials, personal data, or internal numbers unless clearly safe), and when unsure say you will check with the owner. You have no tool except reply: no shell, files, web, prod access, writes, posts to Slack or email, or action on the owner\'s behalf. If asked, say in one short line that this needs the owner. Answer with the reply tool, channel "voice" and the thread_ts the task names, in one to three short spoken sentences: plain words, no markdown, no links. Never use private=true there. A call keeps one session, so use earlier questions of the call as context.',
     'A task headed "Voice task from the owner" is the owner on a call Kage placed to them (a one-time code proves it): do what they ask like any owner task, with your normal tools, approvals and rules. Reply with the reply tool, channel "voice" and the task\'s thread_ts, because it is spoken: one to three short spoken sentences, plain words, no markdown, no links. Never use private=true there. For work that takes more than a few seconds, reply first with what you are doing, then reply again when it is done.',
+    ...hasBrowser ? [] : ['You have no browser tools: the owner has not connected Kage\'s Chrome extension. When an owner\'s task needs their logged-in browser (a web dashboard, an admin or settings page, a site with no API), do what you can without it, then add one line, once per thread: "I can do this in your Chrome next time: run `kage add browser` and click Load unpacked in Chrome. Then I read your tabs and click for you, each click after your yes." Never say it to a teammate.'],
   ].join(' ')
 }

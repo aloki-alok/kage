@@ -626,6 +626,10 @@ describe("the owner's browser", () => {
     }
     assert.deepEqual(asked, [])
   })
+  test('with no extension set up, the instructions point the owner at kage add browser, and only then', () => {
+    assert.match(setup().t.instructions, /kage add browser/)
+    assert.doesNotMatch(setup({ browser: fakeChrome() }).t.instructions, /kage add browser/)
+  })
   test('a kagelet gets no browser tools, and with no extension set up no session does', () => {
     assert.equal(setup({ kagelet: 'calls', browser: fakeChrome() }).t.tools.some(x => x.name.startsWith('browser_')), false)
     assert.equal(setup().t.tools.some(x => x.name.startsWith('browser_')), false)
