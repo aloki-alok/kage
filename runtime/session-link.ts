@@ -119,7 +119,7 @@ export function listenForSessions(path: string, d: Dispatcher<ToSession>, o: Rep
           // Only the panel's actions: saving a kagelet file stays with Kage's tool and the owner's editor.
           const action = (m as { action?: unknown }).action as PanelAction
           const answer = (r: { text: string } | { refused: string }) => sock.write(JSON.stringify({ type: 'kagelet', ...r }) + '\n')
-          if (!Object.values(PANEL_KEYS).includes(action)) answer({ refused: `kage top runs, pauses, resumes or removes a kagelet, not ${String(action)}` })
+          if (!Object.values(PANEL_KEYS).includes(action)) answer({ refused: `kage top runs, pauses, resumes or removes a kagelet, or revokes the standing approval, not ${String(action)}` })
           else if (!o.kagelet) answer({ refused: 'this hub cannot act on kagelets' })
           else void o.kagelet(action, m.name).then(text => answer({ text }), (e: Error) => answer({ refused: e.message }))
         } else if (m.type === 'stop' && !key && !held && typeof m.key === 'string') {

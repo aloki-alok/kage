@@ -90,6 +90,18 @@ describe('the event log lives in kage.db beside the ledgers', () => {
       ['refusal', 'calls', "db_read: not the owner's task"],
     ])
   })
+  test('a standing grant, a revoke and a cost flag are events too, each with its reason (#96)', () => {
+    const l = openLedgers(dir(), () => '2026-11-14T09:00:00.000Z')
+    l.add('grants', ['other', 'standing', 'the owner\'s standing approval of 2026-11-13T09:00:00.000Z covers db_read through the same read command'])
+    l.add('grants', ['other', 'revoked', 'the owner revoked the standing approval for db_read'])
+    l.add('reports', ['cost:other', 'other: spent $0.90 today, over 3x its 7-day average of $0.10', ''])
+    l.add('reports', ['other', 'all green', ''])   // a kagelet's own report is the report tool's event, not this one
+    assert.deepEqual(l.events('2026-11-14').map(e => [e.kind, e.who, e.detail]), [
+      ['grant', 'other', 'db_read standing: the owner\'s standing approval of 2026-11-13T09:00:00.000Z covers db_read through the same read command'],
+      ['revoke', 'other', 'db_read revoked: the owner revoked the standing approval for db_read'],
+      ['cost-flag', 'other', 'other: spent $0.90 today, over 3x its 7-day average of $0.10'],
+    ])
+  })
   test('pruning folds each day older than the cutoff into one summary row, keeps newer days, and keeps summaries', () => {
     let at = '2026-10-01T09:00:00.000Z'
     const l = openLedgers(dir(), () => at)

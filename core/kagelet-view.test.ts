@@ -1,7 +1,7 @@
 import { describe, test } from 'node:test'
 import assert from 'node:assert/strict'
 import { kageletRows } from './kagelets.ts'
-import { actionLine, CAP_PAUSE, dailyCap, kageletRuns, PANEL_KEYS, panelLines, runLine, shownState } from './kagelet-view.ts'
+import { actionLine, CAP_PAUSE, capError, dailyCap, totalCap, kageletRuns, PANEL_KEYS, panelLines, runLine, shownState } from './kagelet-view.ts'
 
 const LINK = 'https://test.slack.com/archives/CTEST1/p1700000000123456'
 const KEY = 'CTEST1:1700000000.123456#side-kagelet-deploys'
@@ -23,14 +23,15 @@ describe('the kagelets panel in kage top', () => {
   test('each kagelet reads on, paused, broken or over cap', () => {
     assert.deepEqual(rows.map(r => [r.name, shownState(r, 2)]), [['broken', 'broken'], ['deploys', 'on'], ['held', 'paused'], ['spender', 'over cap']])
   })
-  test('cost exactly at the cap is over cap', () => {
+  test('cost exactly at the cap is over cap; with no cap set, nothing is ever over cap', () => {
     const deploys = rows.find(r => r.name === 'deploys')!
     assert.equal(shownState(deploys, 0.4), 'over cap')
     assert.equal(shownState(deploys, 0.41), 'on')
+    assert.deepEqual(rows.map(r => shownState(r, undefined)), ['broken', 'on', 'paused', 'paused'])
   })
-  test('a line shows its state, last and next run, cost against the cap and who made it; the next line its report', () => {
+  test('a line shows its state, last and next run, cost today against its 7-day average and who made it; the next line its report', () => {
     const [broken, deploys, held] = panelLines(rows, now, 2)
-    assert.match(deploys!.main, /^deploys +on +last 09:00 +next Sun 09:00 +\$0\.40 of \$2\.00 +by Kage$/)
+    assert.match(deploys!.main, /^deploys +on +last 09:00 +next Sun 09:00 +\$0\.40 avg \$0\.00 +by Kage$/)
     assert.equal(deploys!.report, '09:05 all green')
     assert.match(held!.main, /paused .*last never .*next - .*by owner$/)
     assert.equal(held!.report, 'no report yet')
@@ -40,16 +41,31 @@ describe('the kagelets panel in kage top', () => {
   test('every line fits 100 columns', () => {
     for (const l of panelLines(rows, now, 2)) assert.ok(l.main.length <= 94, l.main)
   })
-  test('the cap comes from the settings file, the old name too, 2 dollars when unset', () => {
+  test('the caps are off unless the settings file sets them; the old name still reads', () => {
+    assert.equal(dailyCap({}), undefined)
+    assert.equal(totalCap({}), undefined)
+    assert.equal(totalCap({ KAGE_KAGELET_TOTAL_DAILY_USD: '' }), undefined)   // an empty line in the file is off, not a $0 cap
     assert.equal(dailyCap({ KAGE_KAGELET_DAILY_USD: '5' }), 5)
     assert.equal(dailyCap({ KAGE_SPECIALIST_DAILY_USD: '3' }), 3)
-    assert.equal(dailyCap({}), 2)
+    assert.equal(dailyCap({ KAGE_KAGELET_DAILY_USD: '0' }), 0)
+    assert.equal(totalCap({ KAGE_KAGELET_TOTAL_DAILY_USD: '25' }), 25)
+  })
+  test('a cap that is not a number, or below zero, is refused with the reason, so the hub can say it', () => {
+    for (const v of ['two', '-1', 'NaN', 'Infinity']) assert.match(String(capError({ KAGE_KAGELET_DAILY_USD: v })), /KAGE_KAGELET_DAILY_USD/, v)
+    assert.match(String(capError({ KAGE_KAGELET_TOTAL_DAILY_USD: 'lots' })), /KAGE_KAGELET_TOTAL_DAILY_USD/)
+    assert.equal(capError({ KAGE_KAGELET_DAILY_USD: '2', KAGE_KAGELET_TOTAL_DAILY_USD: '' }), undefined)
+  })
+  test('a db_read grant by the standing approval shows on its line, within 100 columns', () => {
+    const standing = kageletRows([{ name: 'spender-sixteen1', text: file('by: kage\ntools: db_read\ngranted: db_read by standing approval, 2026-01-02T00:00:00.000Z') }], { runs: '', costs: '', now })
+    const [line] = panelLines(standing, now, 2)
+    assert.match(line!.main, /by Kage, standing$/)
+    assert.ok(line!.main.length <= 94, line!.main)
   })
 })
 
 describe('the panel keys', () => {
-  test('r runs now, p pauses, u resumes, x removes; nothing saves or edits a file', () => {
-    assert.deepEqual(PANEL_KEYS, { r: 'run', p: 'pause', u: 'resume', x: 'remove' })
+  test('r runs now, p pauses, u resumes, x removes, v revokes the standing db_read approval; nothing saves a file', () => {
+    assert.deepEqual(PANEL_KEYS, { r: 'run', p: 'pause', u: 'resume', x: 'remove', v: 'revoke' })
   })
   test('the hub answer becomes one line; a hub that is down or silent is said plainly', () => {
     assert.equal(actionLine({ type: 'kagelet', text: 'deploys is paused within a minute.' }, true), 'deploys is paused within a minute.')

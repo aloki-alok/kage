@@ -1,12 +1,14 @@
 // Kagelets (#57): the files in the kagelets folder become recurring schedules in a side lane of their thread,
 // at teammate trust, and the grants the runner enforces (core/kagelets.ts). The hub syncs them at start and
 // each minute, so adding, changing or deleting a file applies within a minute.
+import { createHash } from 'node:crypto'
 import { existsSync, mkdirSync, readdirSync, readFileSync, renameSync, unlinkSync, writeFileSync } from 'node:fs'
 import { parseSessionKey } from '../core/conversations.ts'
-import { DB_READ, NAME, parseKagelet, resultLine, rowLine, setPaused, kageletFile, kageletRows, type Maker, type KageletRow } from '../core/kagelets.ts'
-import { CAP_PAUSE } from '../core/kagelet-view.ts'
+import { capCheck, COST_FLAG, DB_READ, NAME, parseKagelet, resultLine, revokeStanding, rowLine, setPaused, kageletFile, kageletRows, standingApplies, type Caps, type Maker, type KageletRow, type Standing } from '../core/kagelets.ts'
 import type { Store } from './store.ts'
 import type { Ledgers } from './ledger.ts'
+import type { Task } from './protocol.ts'
+import type { Delivery } from '../core/sessions.ts'
 
 // The kagelets folder. Only the hub (log given) moves one from before the rename (specialists/) here, once: a kage
 // command that moved it would empty the folder under an old hub still running, which then drops every schedule.
@@ -85,6 +87,8 @@ export function syncKagelets(files: { name: string; text: string }[], store: Pic
 // The command db_read runs: KAGE_DB_READ_COMMAND wins, else the one the owner approved on Kage's card.
 // Read on each call, so a yes applies with no restart.
 const READ_COMMAND = 'db-read-command'
+// The standing approval (core/kagelets.ts Standing), kept in the store beside the command.
+const STANDING = 'standing-approvals'
 export const readCommand = (envCommand: string | undefined, store: Pick<Store, 'load'>) => envCommand || (store.load(READ_COMMAND) as string | undefined)
 
 // The owner's answer to Kage's approval card (runtime/sdk-sessions.ts): true only on their yes.
@@ -93,17 +97,36 @@ export type AskOwner = (card: { kagelet: string; read_command: string; job: stri
 // The manager's side (Kage's owner sessions, runtime/kage-tools.ts): write, pause, run and remove kagelet files.
 // The hub syncs right after a change, so run works at once; the minute sync applies it anyway.
 // read_command: the read command Kage proposes with a db_read grant.
-export type Manage = { action: 'save' | 'pause' | 'resume' | 'run' | 'remove'; name: string; thread?: string; schedule?: string; tools?: string[]; job?: string; by?: Maker; why?: string; read_command?: string }
+// revoke: name is the tool (db_read), and its standing approval goes (core/kagelets.ts revokeStanding).
+export type Manage = { action: 'save' | 'pause' | 'resume' | 'run' | 'remove' | 'revoke'; name: string; thread?: string; schedule?: string; tools?: string[]; job?: string; by?: Maker; why?: string; read_command?: string }
 export function kageletManager(o: { dir: string; max: number; ledgers: { text(name: 'runs' | 'costs' | 'reports'): string } & Pick<Ledgers, 'add'>; sync: (now: number) => void; runNow: (id: string, now: number) => string | undefined; store: Pick<Store, 'load' | 'save'>; envCommand?: string; log: (line: string) => void }) {
   const rows = (now: number) => kageletRows(readKagelets(o.dir), { runs: o.ledgers.text('runs'), costs: o.ledgers.text('costs'), reports: o.ledgers.text('reports'), now })
   return {
     list(now: number): string {
       const all = rows(now)
       if (!all.length) return 'No kagelets yet.'
-      return all.map(r => `${rowLine(r, now)}\n  made by ${r.by === 'kage' ? 'Kage' : 'the owner'}${r.why ? `: ${r.why}` : ''}\n  last report: ${resultLine(r, now)}`).join('\n')
+      // Today's cost flag (core/kagelets.ts costFlags), if the hub filed one.
+      const midnight = new Date(now).setHours(0, 0, 0, 0)
+      const flags = new Map(o.ledgers.text('reports').split('\n').map(l => l.split('\t')).filter(([at = '', n = '']) => n.startsWith(COST_FLAG) && Date.parse(at) >= midnight).map(([, n, line]) => [n!.slice(COST_FLAG.length), line!]))
+      return all.map(r => `${rowLine(r, now)}\n  made by ${r.by === 'kage' ? 'Kage' : 'the owner'}${r.why ? `: ${r.why}` : ''}\n  last report: ${resultLine(r, now)}${flags.has(r.name) ? `\n  cost flag today: ${flags.get(r.name)}` : ''}`).join('\n')
     },
     // ask: the owner's card, needed only to grant db_read.
     async manage(a: Manage, now: number, ask?: AskOwner): Promise<string> {
+      if (a.action === 'revoke') {
+        // Files first, the store row last, and the files are read even with no row: a revoke that stopped halfway
+        // finishes when run again.
+        const out = a.name === DB_READ ? revokeStanding(readKagelets(o.dir)) : []
+        if (!out.length && (a.name !== DB_READ || !o.store.load(STANDING))) return `There is no standing approval for ${a.name}.`
+        for (const f of out) {
+          writeFileSync(`${o.dir}/${f.name}.md.new`, f.text, { mode: 0o600 })
+          renameSync(`${o.dir}/${f.name}.md.new`, `${o.dir}/${f.name}.md`)
+          o.ledgers.add('grants', [f.name, 'revoked', `the owner revoked the standing approval for ${DB_READ}`])
+          o.log(`kagelet ${f.name}: ${DB_READ} revoked with the standing approval`)
+        }
+        o.store.save(STANDING, undefined)
+        o.sync(now)
+        return `revoked the standing approval for ${DB_READ}. ${out.length ? `It no longer grants it to ${out.map(f => f.name).join(', ')}.` : 'No kagelet held it by that approval.'} The next ${DB_READ} grant asks the owner on a card.`
+      }
       if (!NAME.test(a.name)) return `"${a.name}" is not a kagelet name: a short lowercase name, letters, digits, dashes.`
       const file = `${o.dir}/${a.name}.md`
       if (a.action === 'pause' || a.action === 'resume') {
@@ -127,20 +150,35 @@ export function kageletManager(o: { dir: string; max: number; ledgers: { text(na
       }
       const old = existsSync(file) ? parseKagelet(a.name, readFileSync(file, 'utf8')) : undefined
       if (!old && readKagelets(o.dir).length >= o.max) return refuse(`this install has at most ${o.max} kagelets (KAGE_MAX_KAGELETS). Remove one first, or ask the owner to raise it.`)
-      const text = kageletFile({ thread: a.thread ?? '', schedule: a.schedule ?? '', tools: a.tools ?? [], job: a.job ?? '', by: a.by ?? (old && !('error' in old) ? old.by : 'kage'), why: a.why ?? '', paused: !!old && !('error' in old) && old.paused, ...(db && { granted: now }) })
+      const fileText = (standing = false, granted = now) => kageletFile({ thread: a.thread ?? '', schedule: a.schedule ?? '', tools: a.tools ?? [], job: a.job ?? '', by: a.by ?? (old && !('error' in old) ? old.by : 'kage'), why: a.why ?? '', paused: !!old && !('error' in old) && old.paused, ...(db && { granted, standing }) })
+      let text = fileText()
       if (typeof text !== 'string') return refuse(text.error)
       if (db) {
         // The database grant is the owner's alone: only their yes on the card saves it.
         if (!ask) return refuse(`only the owner grants ${DB_READ}, and this session cannot ask them`)
         const command = o.envCommand || a.read_command?.trim() || readCommand(undefined, o.store)
         if (!command) return refuse(`${DB_READ} needs a read command: pass read_command, the owner's command that runs one read-only query`)
+        // The owner's earlier yes to this same command stands (#96): no card, and the reason is logged. Only a
+        // session that could ask (checked above) gets here, so a teammate's never uses it.
+        const hash = createHash('sha256').update(command).digest('hex')
+        const yes = o.store.load(STANDING) as Standing | undefined
+        const standing = standingApplies(yes, { tool: DB_READ, command: hash, owner: true })
         // The command before the job line, so a long job never pushes it past the card's cut. An env command is
         // named, not shown: it is the one most likely to hold a host or a password.
         const card = { kagelet: a.name, read_command: o.envCommand ? 'KAGE_DB_READ_COMMAND, as set in the settings file' : command, job: (a.job ?? '').trim().split('\n')[0]!.slice(0, 300) }
-        if (!await ask(card)) return refuse(`the owner did not approve ${DB_READ}`)
-        if (!o.envCommand) o.store.save(READ_COMMAND, command)
-        o.ledgers.add('grants', [a.name, 'granted', 'the owner said yes on the card'])
-        o.log(`kagelet ${a.name}: ${DB_READ} granted by the owner`)
+        if (!standing && !await ask(card)) return refuse(`the owner did not approve ${DB_READ}`)
+        if (standing) {
+          // A kagelet the owner approved on its own card keeps that grant when saved again, so a revoke leaves it.
+          const card = old && !('error' in old) && old.granted !== undefined && !old.standing ? old.granted : undefined
+          text = fileText(card === undefined, card ?? now) as string
+          o.ledgers.add('grants', [a.name, 'standing', `the owner's standing approval of ${new Date(yes!.at).toISOString()} covers ${DB_READ} through the same read command`])
+          o.log(`kagelet ${a.name}: ${DB_READ} granted by the standing approval`)
+        } else {
+          if (!o.envCommand) o.store.save(READ_COMMAND, command)
+          o.store.save(STANDING, { tool: DB_READ, command: hash, at: now } satisfies Standing)
+          o.ledgers.add('grants', [a.name, 'granted', 'the owner said yes on the card'])
+          o.log(`kagelet ${a.name}: ${DB_READ} granted by the owner`)
+        }
       }
       mkdirSync(o.dir, { recursive: true, mode: 0o700 })
       writeFileSync(`${file}.new`, text, { mode: 0o600 })
@@ -151,15 +189,20 @@ export function kageletManager(o: { dir: string; max: number; ledgers: { text(na
   }
 }
 
-// KAGE_KAGELET_DAILY_USD: a kagelet whose lane spent the cap today is paused (its file says so) and flagged.
-// It stays paused past midnight: a resume is the owner's or the manager's call. Returns who was paused.
-export function costCap(dir: string, rows: KageletRow[], capUsd: number, flag: (name: string, why: string) => void): string[] {
-  const over = rows.filter(r => r.state === 'runs' && r.costToday >= capUsd)
-  for (const r of over) {
-    pauseKagelet(dir, r.name, true)
-    flag(r.name, `${CAP_PAUSE} $${r.costToday.toFixed(2)} today, at or over its daily cap of $${capUsd.toFixed(2)} (KAGE_KAGELET_DAILY_USD)`)
-  }
-  return over.map(r => r.name)
+// The cost caps (core/kagelets.ts capCheck), on the hub's job loop: a kagelet over a cap is paused (its file says
+// so) and flagged, and the owner gets the DMs. It stays paused past midnight: a resume is the owner's or the
+// manager's call. The ids of today's once-a-day DMs are kept in the store, so a restart sends none twice.
+const SENT = 'kagelet-cap-sent'
+export function costCap(o: { dir: string; store: Pick<Store, 'load' | 'save'>; title: string; flag: (name: string, why: string) => void; tell: (text: string) => void }, rows: KageletRow[], caps: Caps, now: number): string[] {
+  const day = new Date(now).toDateString()
+  const was = o.store.load(SENT) as { day: string; ids: string[] } | undefined
+  const sent = was?.day === day ? was.ids : []
+  const r = capCheck(rows, caps, sent, o.title)
+  for (const p of r.pause) { pauseKagelet(o.dir, p.name, true); o.flag(p.name, p.why) }
+  for (const t of r.tell) o.tell(t.text)
+  const ids = r.tell.flatMap(t => t.id ? [t.id] : [])
+  if (ids.length) o.store.save(SENT, { day, ids: [...sent, ...ids] })
+  return r.pause.map(p => p.name)
 }
 
 // The owner's words typed in a kagelet's thread (no tag) reach its next run, scheduled or run now. Kept in the
@@ -188,4 +231,12 @@ export function ownerNotes(store: Pick<Store, 'load' | 'save'>) {
       return text
     },
   }
+}
+
+// The scheduler's deliver: a kagelet's run carries what the owner wrote in its thread since its last one.
+// The notes stay when the run never reached a session.
+export const kageletDeliver = (notes: ReturnType<typeof ownerNotes>, toSession: (key: string, task: Task) => Delivery) => (key: string, task: Task): Delivery => {
+  let r: Delivery | undefined
+  if (key.includes('#side-kagelet-')) notes.take(key, said => (r = toSession(key, { ...task, content: `${task.content}\n\n${said}` })) !== 'failed')
+  return r ?? toSession(key, task)
 }

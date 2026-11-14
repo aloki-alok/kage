@@ -5,8 +5,9 @@
 import { existsSync, readdirSync, readFileSync, renameSync } from 'node:fs'
 import { DatabaseSync } from 'node:sqlite'
 import { log } from '../config.ts'
-import { tsvRow } from '../core/ledgers.ts'
+import { lastTotals, tsvRow, turnCost } from '../core/ledgers.ts'
 import { eventRow, whoOf, type EventKind, type KageEvent } from '../core/events.ts'
+import { COST_FLAG } from '../core/kagelets.ts'
 
 export type LedgerName = 'waiting' | 'posted' | 'prod-actions' | 'costs' | 'runs' | 'commands' | 'reports' | 'db-reads' | 'grants'
 const NAMES: LedgerName[] = ['waiting', 'posted', 'prod-actions', 'costs', 'runs', 'commands', 'reports', 'db-reads', 'grants']
@@ -65,8 +66,13 @@ export function openLedgers(dir: string, now = () => new Date().toISOString()) {
     // A ledger is a side record: a failed write is logged, never allowed to block a task or a reply.
     add(name: LedgerName, cells: string[]) {
       try { insert.run(name, now(), JSON.stringify(cells.map(c => c.replace(/[\t\r\n]+/g, ' ')))) } catch (e) { log('ledger write failed', name, e) }
-      // Every grants row (only db_read is granted) is an event too, from whichever process wrote it.
-      if (name === 'grants') event({ kind: cells[1] === 'granted' ? 'grant' : 'refusal', who: cells[0] ?? '', trace: '', detail: `db_read: ${cells[2] ?? ''}` })
+      // Every grants row (only db_read is granted) is an event too, from whichever process wrote it: granted (a
+      // card), standing (a standing approval, #96), revoked or refused. So is the hub's cost flag (cost:<name>).
+      if (name === 'grants') {
+        const [who = '', status = '', why = ''] = cells
+        event({ kind: status === 'granted' || status === 'standing' ? 'grant' : status === 'revoked' ? 'revoke' : 'refusal', who, trace: '', detail: `db_read${status === 'standing' || status === 'revoked' ? ` ${status}` : ''}: ${why}` })
+      }
+      if (name === 'reports' && cells[0]?.startsWith(COST_FLAG)) event({ kind: 'cost-flag', who: cells[0].slice(COST_FLAG.length), trace: '', detail: cells[1] ?? '' })
     },
     text(name: LedgerName): string {
       try { return ledgerText(db, name) } catch (e) { log('ledger read failed', name, e); return '' }
@@ -122,4 +128,17 @@ export function runEvents(l: Pick<Ledgers, 'event'>, newId: () => string) {
     emit(key, 'run.start', detail)
   }
   return { start, emit, end }
+}
+
+// What each turn cost (core/ledgers.ts turnCost): one costs row per result whose total grew. `kage cost`, the
+// kagelet caps and `kage logs` read them. Returns the turn's cost, undefined when there is none to record.
+export function costRecorder(l: Pick<Ledgers, 'add' | 'text'>) {
+  const totals = lastTotals(l.text('costs'))
+  return (key: string, total: number, resumed: boolean) => {
+    const usd = turnCost(totals.get(key), total, resumed)
+    if (usd === undefined) return undefined
+    totals.set(key, total)
+    l.add('costs', [key, String(usd), String(total)])
+    return usd
+  }
 }

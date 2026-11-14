@@ -57,7 +57,7 @@ Write logs to stderr only. In a tmux pane, stdout carries the channel protocol, 
 | `guards.ts` | Hook rules: private sources, voice calls, the owner's memory, Slack posts only through Kage's tools. |
 | `ledgers.ts` | Reading the ledgers: questions waiting on the owner, what Kage posted, what turns cost, the daily note. |
 | `events.ts` | The event log's row (what happened, never what was said), its 30 days, and one day's events grouped by kagelet and chain for the dream job. |
-| `kagelets.ts` | A kagelet file (thread, schedule, grant, job) and the grant check. |
+| `kagelets.ts` | A kagelet file (thread, schedule, grant, job), the grant check, standing approvals and their revoke, the cost caps (off unless set) and the cost flags. |
 | `kagelet-view.ts` | What a terminal shows of kagelets: the `kage top` panel, its keys, and `kage logs <kagelet>`. |
 | `db-read.ts` | The check a `db_read` query passes: one read statement, capped. |
 | `cron.ts` | Cron expressions, which schedules are due, and reading Claude Code's own cron jobs. |
@@ -78,14 +78,14 @@ Write logs to stderr only. In a tmux pane, stdout carries the channel protocol, 
 | `kage-tools.ts` | A session's tools (reply, edit, delete, send a file, message people, waiting, prod log, schedules, away and back), its instructions, and the approval card. |
 | `session-link.ts` | The local socket that panes and the `kage` commands connect to. |
 | `protocol.ts` | The messages on that socket. |
-| `store.ts` | One SQLite file: conversations, their sessions, schedules, trust, the inbox of every message heard, and what connectors keep across a restart (AFK, GitHub and mail threads, the `db_read` command the owner approved). The hub is the only writer of these tables. Old `.json` files move in once. |
-| `ledger.ts` | The ledgers (waiting, posted, prod-actions, costs, runs, commands, reports, db-reads, grants) as rows in that file. The hub and every pane write them. Old `.tsv` files move in once. Also the event log (#94): one row per run start and end, kagelet tool call, report, grant, refusal, owner note and cost pause, each on its run's trace. Rows older than 30 days fold into one summary row per day. |
+| `store.ts` | One SQLite file: conversations, their sessions, schedules, trust, the inbox of every message heard, and what connectors keep across a restart (AFK, GitHub and mail threads, the `db_read` command the owner approved and its standing approval). The hub is the only writer of these tables. Old `.json` files move in once. |
+| `ledger.ts` | The ledgers (waiting, posted, prod-actions, costs, runs, commands, reports, db-reads, grants) as rows in that file. The hub and every pane write them. Old `.tsv` files move in once. Also the event log (#94): one row per run start and end, kagelet tool call, report, grant (by card or standing approval), revoke, refusal, owner note, cost pause and cost flag, each on its run's trace. Rows older than 30 days fold into one summary row per day. |
 | `scheduler.ts` | Runs due schedules as tasks in their thread. |
 | `limit-pause.ts` | The usage-limit pause: a turn that ends on the limit keeps its inbox message, its thread gets one notice, and the message replays at the reset. |
 | `closed-threads.ts` | A thread the safety check stopped: it starts on a new session, and a teammate's stays closed until the owner writes in it. |
 | `hub-lock.ts` | One hub per machine: a listening socket the OS frees when the hub dies. |
 | `hub-log.ts` | The hub log's rotation and the package check, shared by `hub.ts` and the hub. |
-| `kagelets.ts` | The kagelets folder synced into schedules and grants (#57), and the manager's tool, which asks the owner before it grants `db_read`. |
+| `kagelets.ts` | The kagelets folder synced into schedules and grants (#57), the manager's tool, which asks the owner before it grants `db_read` unless a standing approval covers it, and the cost-cap check on the job loop. |
 | `code-stamp.ts` | When the code changed, so the hub knows to restart into it. |
 | `auto-update.ts` | The version line, and the git calls that pull origin/main (the decision is `core/auto-update.ts`). |
 
