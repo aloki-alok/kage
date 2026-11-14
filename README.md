@@ -43,7 +43,7 @@ The rest of this page is for doing it by hand, and for knowing how it works.
 
 ## Set it up by hand (about 5 minutes)
 
-1. Install it. One line, no git needed: it downloads Kage, puts the `kage` command on your PATH, and starts the setup.
+1. Install it. One line: it gets Kage (with git when you have it, so Kage updates itself), puts the `kage` command on your PATH, and starts the setup.
    ```sh
    curl -fsSL https://raw.githubusercontent.com/aloki-alok/kage/main/install.sh | bash
    ```

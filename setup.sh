@@ -126,7 +126,17 @@ cmd_restart() {
 
 cmd_status() {
   running || { echo "$NAME is not running. Start it: kage start"; return 1; }
+  echo "Kage $(running_version)"
   node cli/top.ts --once
+}
+
+# The version the hub read at its start (router.ts writes it), and the version of the code on disk.
+running_version() { cat "$(dirname "$ENV_FILE")/version" 2>/dev/null || echo unknown; }
+disk_version() { node -e 'import("./runtime/auto-update.ts").then(m=>console.log(m.version(process.cwd())))'; }
+cmd_version() {
+  local disk run; disk="$(disk_version)"; run="$(running_version)"
+  echo "kage $disk"
+  if running && [[ $run != unknown && $run != "$disk" ]]; then echo "The hub still runs $run. It restarts into the new code once every session is quiet."; fi
 }
 
 cmd_logs() {
@@ -266,8 +276,15 @@ cmd_doctor() {
   local st="$(dirname "$ENV_FILE")/status"
   if [[ -f $st ]] && ps -p "$(awk '{print $4}' "$st")" >/dev/null 2>&1 && [[ $(awk '{print $1}' "$st") == connected ]]; then
     pass "connected to Slack: $(cat "$st")"
+    pass "runs Kage $(running_version)"
   else
     fail "not connected to Slack yet: wait 20 s after start, or run kage logs to see why"
+  fi
+  # The same rules as core/auto-update.ts, so a person sees why this install stays on its version.
+  if [[ "$(env_get KAGE_AUTO_UPDATE)" == off ]]; then note "auto-update is off (KAGE_AUTO_UPDATE=off)"
+  elif [[ ! -e .git ]]; then note "no auto-update: not a git checkout. Rerun the install line to make it one"
+  elif [[ "$(git rev-parse --abbrev-ref HEAD 2>/dev/null)" != main ]]; then note "no auto-update: on branch $(git rev-parse --abbrev-ref HEAD 2>/dev/null), not main"
+  elif [[ -n "$(git status --porcelain --untracked-files=no 2>/dev/null)" ]]; then note "no auto-update: the checkout has uncommitted changes"
   fi
   command -v kage >/dev/null || note "kage is not on your PATH: run ./setup.sh link to type kage <command> anywhere"
   [[ $bad == 0 ]] && echo "All good. Tag @$NAME in Slack to try it." || return 1
@@ -283,6 +300,7 @@ cmd_interactive() {
 }
 
 # Help comes first, so "kage add --help" never reaches a command that would act on it.
+[[ "${1:-}" == --version ]] && { cmd_version; exit 0; }
 for a in "$@"; do [[ $a == -h || $a == --help ]] && { [[ $1 == "$a" || $1 == help ]] && cmd_help || cmd_help "$1"; exit 0; }; done
 
 case "${1:-}" in

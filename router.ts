@@ -4,7 +4,7 @@
 //   core/        pure rules: the gate, the dispatcher, what may go out, ledgers, hook guards
 //   runtime/     where sessions run (Agent SDK by default, or tmux panes), the socket, the store
 // Still here: thread trust (noteTrust), how each connector shows a failure (failed), the daily
-// "still waiting" note, and the self-restart into a newer build.
+// "still waiting" note, the self-restart into a newer build, and the auto-update that pulls one.
 // server.ts is the other end for tmux panes only: the Kage channel inside each pane's Claude Code.
 import { execFileSync, spawn } from 'node:child_process'
 import { randomUUID } from 'node:crypto'
@@ -41,6 +41,7 @@ import { openStore, type Inbox } from './runtime/store.ts'
 import { openLedgers } from './runtime/ledger.ts'
 import { claudeProject, tmuxPanes } from './runtime/tmux-panes.ts'
 import { codeStamp } from './runtime/code-stamp.ts'
+import { clearUpdatedFrom, markUpdatedFrom, pullMain, updatedNote, version } from './runtime/auto-update.ts'
 import { costCap, kageletManager, kageletsDir, ownerNotes, readKagelets, syncKagelets } from './runtime/kagelets.ts'
 import { kageletRows } from './core/kagelets.ts'
 import { askHub } from './cli/home.ts'
@@ -449,6 +450,9 @@ function failed(m: ToSession) {
 // Compared to the boot stamp, not the clock, so a file with a future time cannot restart the hub over and over.
 const CODE = dirname(fileURLToPath(import.meta.url))
 const BOOT_CODE = codeStamp(CODE)
+// The version of the code this hub runs, read once: kage status and kage doctor show it from this file.
+const VERSION = version(CODE)
+writeFileSync(`${DIR}/version`, `${VERSION}\n`, { mode: 0o600 })
 let npmFailedFor = 0   // the code stamp whose npm ci failed: not tried again until the code moves
 function selfUpdate(now: number) {
   const code = codeStamp(CODE)
@@ -467,6 +471,14 @@ function selfUpdate(now: number) {
   }
 }
 
+// Auto-update pulls a clean main checkout to origin/main (core/auto-update.ts); selfUpdate above then restarts into it.
+// ponytail: no signature check yet (#58), so a bad push to origin/main reaches this install within 6 hours.
+async function autoUpdate() {
+  const r = await pullMain(CODE)
+  if (r === 'pulled') { markUpdatedFrom(DIR, VERSION); log('auto-update pulled origin/main: the hub restarts into it once every session is quiet') }
+  else if (r !== 'current') log(`auto-update did nothing: ${r.skip}`)
+}
+
 // Every timed job of the hub, on one clock (runtime/jobs.ts).
 runJobs([
   // A drain for kage restart or stop starts no scheduled run: one due now runs after the restart.
@@ -475,6 +487,7 @@ runJobs([
   { name: 'limit pause', every: 20_000, run: now => limits.tick(now) },
   { name: 'daily note', every: 10 * 60_000, run: dailyNote },
   { name: 'self-update', every: 60_000, run: selfUpdate },
+  ...env.KAGE_AUTO_UPDATE === 'off' ? [] : [{ name: 'auto-update', every: 6 * 3_600_000, run: autoUpdate }],
   // hub.ts rotates the log at each start; a hub that runs for weeks rotates it here.
   { name: 'hub-log', every: 3_600_000, run: () => rotate(`${DIR}/hub.log`) },
   { name: 'kagelets', every: 60_000, run: kagelets },
@@ -524,6 +537,8 @@ listenForSessions(`${DIR}/router.sock`, d, { ...replies, failed, schedules, tell
   quiesce: () => { const now = Date.now(); limits.drain(now); return d.unquiet(now).filter(u => u.why !== 'just active' && u.why !== 'open in a terminal') }, callCode: voice?.issueCode })
 
 await slack.start()
+const updated = updatedNote(DIR, CODE, VERSION)
+if (updated) { log(updated); void slack.notifyOwner(updated).then(sent => { if (sent) clearUpdatedFrom(DIR) }) }
 // Messages the last run took but never handled (it died in between) run now. Older than 10 minutes, they are let go.
 // Email needs no replay: SQS resends a mail until it is deleted after handling.
 store.prune(Date.now() - 7 * 86_400_000)
