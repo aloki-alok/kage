@@ -14,7 +14,6 @@ const text = new Map(files.map(f => [f, readFileSync(`${root}/${f}`, 'utf8')]))
 const code = (f: string) => text.get(f)!.replace(/\/\*[\s\S]*?\*\//g, '').replace(/(^|\s)\/\/.*$/gm, '$1')
 // Shell scripts call core/ too (setup.sh runs node with an import), so they count as users of an export.
 const scripts = execFileSync('git', ['ls-files', '*.sh'], { cwd: root, encoding: 'utf8' }).split('\n').filter(Boolean).map(f => readFileSync(`${root}/${f}`, 'utf8'))
-// Lines that are not imports: splitting a module adds import lines to its importers, and that must not count against them.
 // Import lines do not count: splitting a module adds them to its importers, and the rule must not punish a split.
 const lines = (f: string) => text.get(f)!.split('\n').slice(0, -1).filter(l => !l.startsWith('import ')).length
 const inDir = (d: string) => files.filter(f => f.startsWith(`${d}/`) && f.endsWith('.ts') && !f.slice(d.length + 1).includes('/'))
