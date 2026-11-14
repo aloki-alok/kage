@@ -52,6 +52,7 @@ function setup(o: { hubDown?: boolean; dir?: string; kagelet?: string; dbRead?: 
   const out: string[] = []
   const jobs: any[] = []
   const events: string[] = []
+  const routed: string[] = []
   const t = sessionTools({
     title: 'Kage', bot: slack.bot as any, user: slack.user as any, botDm: () => 'DBOT', dir, ledgers, send: m => { if (o.hubDown) return false; out.push(`${m.type} ${m.text}`) }, memory: { own: '/own', owner: '/owner' },
     schedules: {
@@ -61,6 +62,7 @@ function setup(o: { hubDown?: boolean; dir?: string; kagelet?: string; dbRead?: 
     },
     afk: async c => { out.push(`afk ${JSON.stringify(c)}`); return 'AFK on' },
     kagelet: o.kagelet, dbRead: o.dbRead, approve: o.approve, event: (kind, detail) => { events.push(`${kind} ${detail}`) },
+    onReport: r => { routed.push(`report ${JSON.stringify(r)}`) }, message: (to, text) => { routed.push(`message ${to} ${text}`); return `sent to ${to}` },
     kagelets: { list: () => 'the list', manage: async (a, ask) => { out.push(`manage ${JSON.stringify(a)}`); return ask ? `asked: ${await ask({ kagelet: a.name, tools: 'db_read', job: 'j', read_command: 'r' })}` : 'managed' } },
   })
   const call = (name: string, args: Record<string, unknown>) => t.tools.find(x => x.name === name)!.run(args)
@@ -69,7 +71,7 @@ function setup(o: { hubDown?: boolean; dir?: string; kagelet?: string; dbRead?: 
     meta: { channel: o.channel ?? 'C1', thread_ts: o.thread_ts ?? '5.5', place: '#general', permalink: 'https://x/p' },
     origin: { channel: o.channel ?? 'C1', ts: '5.5' },
   })
-  return { ...slack, dir, ledgers, out, t, call, task, jobs, events }
+  return { ...slack, dir, ledgers, out, t, call, task, jobs, events, routed }
 }
 
 describe("a session's Kage tools", () => {
@@ -515,8 +517,19 @@ describe("a session's Kage tools", () => {
     assert.match((await s.call('waiting', {})).text, /status needs: read access to the deploy log/)
     // The event log gets whether it needed something, not its words.
     assert.deepEqual(s.events, ['report ok', 'report needs'])
+    // Its output goes to the hub for a kagelet that runs after it (#93).
+    await s.call('report', { channel: 'C1', thread_ts: '5.5', summary: 'cut', output: 'https://example.com/v' })
+    assert.deepEqual(s.routed.at(-1), 'report {"needs":"","output":"https://example.com/v"}')
     // Only its own thread.
     assert.equal((await s.call('report', { channel: 'COTHER', thread_ts: '1.1', summary: 'x' })).isError, true)
+  })
+  test('message_kagelet exists only in a kagelet lane, from its own thread, and the hub routes it (#93)', async () => {
+    assert.equal(setup().t.tools.some(x => x.name === 'message_kagelet'), false)
+    const s = setup({ kagelet: 'status' })
+    s.t.onTask({ ...s.task({ fromOwner: false }), scheduled: true })
+    assert.equal((await s.call('message_kagelet', { channel: 'C1', thread_ts: '5.5', to: 'upload', text: 'ready' })).text, 'sent to upload')
+    assert.deepEqual(s.routed, ['message upload ready'])
+    assert.equal((await s.call('message_kagelet', { channel: 'COTHER', thread_ts: '1.1', to: 'upload', text: 'x' })).isError, true)
   })
 })
 

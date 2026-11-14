@@ -23,3 +23,23 @@ export function dayEvents(events: KageEvent[], day: string): { who: string; chai
   }
   return [...groups.values()].sort((a, b) => a.who.localeCompare(b.who) || a.chain.localeCompare(b.chain))
 }
+
+// A handoff row's detail (runtime/kagelets.ts kageletRoutes): "to <kagelet>, <link|note|file>: ok", the same with
+// "failed, <why>" when the hub would not start it, or "stopped: <why>" when a step ended the chain.
+export const handoffDetail = (to: string, kind: string, failed?: string) => `to ${to}, ${kind}: ${failed ? `failed, ${failed}` : 'ok'}`
+// One chain as the panel, kage logs and the manager show it: a > b > c and where it stopped.
+export type ChainView = { chain: string; steps: string[]; state: string }
+export function chainViews(events: KageEvent[]): ChainView[] {
+  const chains = new Map<string, ChainView & { ended: Set<string> }>()
+  for (const e of [...events].sort((a, b) => a.at.localeCompare(b.at))) {
+    if (!e.chain || (e.kind !== 'handoff' && e.kind !== 'run.end')) continue
+    const c = chains.get(e.chain) ?? chains.set(e.chain, { chain: e.chain, steps: [e.who], state: '', ended: new Set() }).get(e.chain)!
+    if (e.kind === 'run.end') { c.ended.add(e.who); continue }
+    const to = /^to (\S+), \w+: (ok|failed, (.*))$/.exec(e.detail)
+    if (to) c.steps.push(to[1]!)
+    if (to && to[2] !== 'ok') c.state = `stopped before ${to[1]}: ${to[3]}`
+    else if (e.detail.startsWith('stopped: ')) c.state = `stopped at ${e.who}: ${e.detail.slice(9)}`
+  }
+  return [...chains.values()].map(({ ended, ...c }) => ({ ...c, state: c.state || (ended.has(c.steps.at(-1)!) ? 'done' : 'running') }))
+}
+export const chainLine = (c: ChainView) => `${c.steps.join(' > ')}  ${c.state}`

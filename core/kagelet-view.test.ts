@@ -1,7 +1,7 @@
 import { describe, test } from 'node:test'
 import assert from 'node:assert/strict'
 import { kageletRows } from './kagelets.ts'
-import { actionLine, CAP_PAUSE, capError, dailyCap, totalCap, kageletRuns, PANEL_KEYS, panelLines, runLine, shownState } from './kagelet-view.ts'
+import { actionLine, CAP_PAUSE, capError, chainCap, dailyCap, totalCap, kageletRuns, PANEL_KEYS, panelLines, runLine, shownState } from './kagelet-view.ts'
 
 const LINK = 'https://test.slack.com/archives/CTEST1/p1700000000123456'
 const KEY = 'CTEST1:1700000000.123456#side-kagelet-deploys'
@@ -49,10 +49,14 @@ describe('the kagelets panel in kage top', () => {
     assert.equal(dailyCap({ KAGE_SPECIALIST_DAILY_USD: '3' }), 3)
     assert.equal(dailyCap({ KAGE_KAGELET_DAILY_USD: '0' }), 0)
     assert.equal(totalCap({ KAGE_KAGELET_TOTAL_DAILY_USD: '25' }), 25)
+    assert.equal(chainCap({}), undefined)
+    assert.equal(chainCap({ KAGE_KAGELET_CHAIN_USD: '' }), undefined)
+    assert.equal(chainCap({ KAGE_KAGELET_CHAIN_USD: '0.5' }), 0.5)
   })
   test('a cap that is not a number, or below zero, is refused with the reason, so the hub can say it', () => {
     for (const v of ['two', '-1', 'NaN', 'Infinity']) assert.match(String(capError({ KAGE_KAGELET_DAILY_USD: v })), /KAGE_KAGELET_DAILY_USD/, v)
     assert.match(String(capError({ KAGE_KAGELET_TOTAL_DAILY_USD: 'lots' })), /KAGE_KAGELET_TOTAL_DAILY_USD/)
+    assert.match(String(capError({ KAGE_KAGELET_CHAIN_USD: 'five' })), /KAGE_KAGELET_CHAIN_USD/)
     assert.equal(capError({ KAGE_KAGELET_DAILY_USD: '2', KAGE_KAGELET_TOTAL_DAILY_USD: '' }), undefined)
   })
   test('a db_read grant by the standing approval shows on its line, within 100 columns', () => {

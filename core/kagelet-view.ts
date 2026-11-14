@@ -12,7 +12,10 @@ const daily = (env: Env) => env.KAGE_KAGELET_DAILY_USD || env.KAGE_SPECIALIST_DA
 export const dailyCap = (env: Env) => dollars(daily(env))
 // KAGE_KAGELET_TOTAL_DAILY_USD: all kagelets together. The hub pauses every one at it.
 export const totalCap = (env: Env) => dollars(env.KAGE_KAGELET_TOTAL_DAILY_USD)
-export const capError = (env: Env) => [['KAGE_KAGELET_DAILY_USD', daily(env)], ['KAGE_KAGELET_TOTAL_DAILY_USD', env.KAGE_KAGELET_TOTAL_DAILY_USD]]
+// KAGE_KAGELET_CHAIN_USD: one chain of kagelet handoffs and messages (#93). The hub stops the chain at it.
+export const chainCap = (env: Env) => dollars(env.KAGE_KAGELET_CHAIN_USD)
+export const capError = (env: Env) => [['KAGE_KAGELET_DAILY_USD', daily(env)], ['KAGE_KAGELET_TOTAL_DAILY_USD', env.KAGE_KAGELET_TOTAL_DAILY_USD],
+  ['KAGE_KAGELET_CHAIN_USD', env.KAGE_KAGELET_CHAIN_USD]]
   .filter(([, v]) => v && dollars(v) === undefined).map(([k]) => `${k} is not a number of dollars, so that cap is off`).join('. ') || undefined
 
 // On: enabled and waiting for its schedule (a run in progress shows in kage logs). Over cap: what it spent

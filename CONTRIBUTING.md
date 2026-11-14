@@ -56,8 +56,9 @@ Write logs to stderr only. In a tmux pane, stdout carries the channel protocol, 
 | `outbound.ts` | What may go out: no crowd pings, no secrets in a thread, Slack-sized parts, code blocks narrow enough for the thread panel. |
 | `guards.ts` | Hook rules: private sources, voice calls, the owner's memory, Slack posts only through Kage's tools. |
 | `ledgers.ts` | Reading the ledgers: questions waiting on the owner, what Kage posted, what turns cost, the daily note. |
-| `events.ts` | The event log's row (what happened, never what was said), its 30 days, and one day's events grouped by kagelet and chain for the dream job. |
-| `kagelets.ts` | A kagelet file (thread, schedule, grant, job), the grant check, standing approvals and their revoke, the cost caps (off unless set) and the cost flags. |
+| `events.ts` | The event log's row (what happened, never what was said), its 30 days, one day's events grouped by kagelet and chain for the dream job, and a chain read back as `a > b > c` and where it stopped. |
+| `kagelets.ts` | A kagelet file (thread, schedule or `after:`, grant, job), the grant check, the chain check (no cycle, no missing kagelet, at most 5 deep), standing approvals and their revoke, the cost caps (off unless set) and the cost flags. |
+| `kagelet-message.ts` | The message one kagelet sends another (an `after:` handoff or `message_kagelet`): its fields, named after A2A's Message, its delivery states, and the check where it enters the hub. |
 | `kagelet-view.ts` | What a terminal shows of kagelets: the `kage top` panel, its keys, and `kage logs <kagelet>`. |
 | `db-read.ts` | The check a `db_read` query passes: one read statement, capped. |
 | `cron.ts` | Cron expressions, which schedules are due, and reading Claude Code's own cron jobs. |
@@ -73,19 +74,19 @@ Write logs to stderr only. In a tmux pane, stdout carries the channel protocol, 
 
 | File | Holds |
 |---|---|
-| `sdk-sessions.ts` | The default runner: an Agent SDK session per key, inside the hub. |
+| `sdk-sessions.ts` | The default runner: an Agent SDK session per key, inside the hub. `fake-sdk.ts` is the fake SDK its tests drive. |
 | `tmux-panes.ts` | The other runner: a Claude Code pane per key. |
 | `kage-tools.ts` | A session's tools (reply, edit, delete, send a file, message people, waiting, prod log, schedules, away and back), its instructions, and the approval card. |
 | `session-link.ts` | The local socket that panes and the `kage` commands connect to. |
 | `protocol.ts` | The messages on that socket. |
-| `store.ts` | One SQLite file: conversations, their sessions, schedules, trust, the inbox of every message heard, and what connectors keep across a restart (AFK, GitHub and mail threads, each kagelet's `db_read` command the owner approved and the standing approval). The hub is the only writer of these tables. Old `.json` files move in once. |
+| `store.ts` | One SQLite file: conversations, their sessions, schedules, trust, the inbox of every message heard, and what connectors keep across a restart (AFK, GitHub and mail threads, each kagelet's `db_read` command the owner approved and the standing approval), and every kagelet message with its delivery state, stored before delivery so a restart replays it. The hub is the only writer of these tables. Old `.json` files move in once. |
 | `ledger.ts` | The ledgers (waiting, posted, prod-actions, costs, runs, commands, reports, db-reads, grants) as rows in that file. The hub and every pane write them. Old `.tsv` files move in once. Also the event log (#94): one row per run start and end, kagelet tool call, report, grant (by card or standing approval), revoke, refusal, owner note, cost pause and cost flag, each on its run's trace. Rows older than 30 days fold into one summary row per day. |
 | `scheduler.ts` | Runs due schedules as tasks in their thread. |
-| `limit-pause.ts` | The usage-limit pause: a turn that ends on the limit keeps its inbox message, its thread gets one notice, and the message replays at the reset. |
+| `limit-pause.ts` | The usage-limit pause: a turn that ends on the limit keeps its inbox message, its thread gets one notice, and the message replays at the reset. A kagelet message is never held here: it waits in the store. |
 | `closed-threads.ts` | A thread the safety check stopped: it starts on a new session, and a teammate's stays closed until the owner writes in it. |
 | `hub-lock.ts` | One hub per machine: a listening socket the OS frees when the hub dies. |
 | `hub-log.ts` | The hub log's rotation and the package check, shared by `hub.ts` and the hub. |
-| `kagelets.ts` | The kagelets folder synced into schedules and grants (#57), the manager's tool, which asks the owner before it grants any tool beyond WebSearch and WebFetch (a standing approval covers `db_read` alone, with a DM to the owner), and the cost-cap check on the job loop. |
+| `kagelets.ts` | The kagelets folder synced into schedules and grants (#57), the manager's tool, which asks the owner before it grants any tool beyond WebSearch and WebFetch (a standing approval covers `db_read` alone, with a DM to the owner), and the cost-cap check on the job loop., and the one route a kagelet's output or message takes to another kagelet (#93), with the loop guard and the chain cap. |
 | `code-stamp.ts` | When the code changed, so the hub knows to restart into it. |
 | `auto-update.ts` | The version line, and the git calls that pull origin's `stable` tag (the decision is `core/auto-update.ts`). |
 

@@ -20,7 +20,8 @@ import { actionLine, dailyCap, PANEL_KEYS, panelLines, shownState, type PanelAct
 import { DB_READ, kageletRows, type KageletRow } from '../core/kagelets.ts'
 import { parseEnv } from '../core/settings.ts'
 import { kageletsDir, readKagelets } from '../runtime/kagelets.ts'
-import { ledgerText } from '../runtime/ledger.ts'
+import { eventsOn, ledgerText } from '../runtime/ledger.ts'
+import { chainLine, chainViews } from '../core/events.ts'
 
 const HOME = process.env.HOME!
 const PROJECT = `${HOME}/.claude/projects/${(process.env.KAGE_CWD || HOME).replace(/[^A-Za-z0-9]/g, '-')}`
@@ -55,7 +56,7 @@ let confirmCut = ''
 let suspended = false
 let L: Layout | undefined            // the layout of the last frame, for mouse hits
 let panel = false, pick = 0, confirmRemove = ''
-let kagelets: KageletRow[] = [], kageletsAt = 0, kageletsFailed = ''
+let kagelets: KageletRow[] = [], kageletsAt = 0, kageletsFailed = '', chains: string[] = []
 const CAP = dailyCap(parseEnv(existsSync(ENV_FILE) ? readFileSync(ENV_FILE, 'utf8') : ''))
 const KAGELETS = kageletsDir(DIR)
 
@@ -139,6 +140,8 @@ function refresh(now: number) {
 function readKageletRows(now: number) {
   kageletsAt = now
   try { kagelets = kageletRows(readKagelets(KAGELETS), { runs: ledgerText(db, 'runs'), costs: ledgerText(db, 'costs'), reports: ledgerText(db, 'reports'), now }); kageletsFailed = '' } catch (e) { kageletsFailed = `cannot read them: ${(e as Error).message}` }
+  // Today's chains (#93), newest last. A hub older than the event log has no table: none then.
+  try { chains = chainViews(eventsOn(db, new Date(now).toISOString().slice(0, 10))).map(chainLine) } catch { chains = [] }
 }
 
 // ---- the hub
@@ -435,7 +438,10 @@ function kageletPanel(now: number) {
   put(x0 + 2, y0 + 2, '─'.repeat(w - 3), 'k')
   if (!kagelets.length) put(x0 + 3, y0 + 4, 'no kagelets yet', 'm')
   pick = clamp(pick, 0, Math.max(0, kagelets.length - 1))
-  const fit = Math.max(1, Math.floor((y1 - y0 - 5) / 2)), from = Math.max(0, pick - fit + 1)
+  // The last few chains today sit above the keys: a > b > c and where each stopped.
+  const shown = chains.slice(-Math.min(3, Math.max(0, Math.floor((y1 - y0 - 9) / 2))))
+  shown.forEach((c, i) => put(x0 + 3, y1 - 2 - shown.length + i, clip(`chain ${c}`, w - 4), c.includes('stopped') ? 'R' : 'm'))
+  const fit = Math.max(1, Math.floor((y1 - y0 - 5 - shown.length) / 2)), from = Math.max(0, pick - fit + 1)
   panelLines(kagelets, now, CAP).slice(from, from + fit).forEach((line, i) => {
     const r = kagelets[from + i]!, y = y0 + 3 + i * 2, hot = from + i === pick
     if (hot) put(x0 + 1, y, '▶', 'R')

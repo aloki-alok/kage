@@ -178,3 +178,17 @@ describe('runs: each event lands on the trace of the run its session is in', () 
     ])
   })
 })
+
+test('a run tells the chain router whether it reported or had a call refused, and takes a chain id and hops', () => {
+  const runs = runEvents(openLedgers(dir(), () => '2026-11-14T09:00:00.000Z'), () => 't1')
+  runs.start('k', 'scheduled', { fresh: true })
+  runs.emit('k', 'refusal', 'Bash: no')
+  assert.deepEqual(runs.of('k'), { trace: 't1', chain: '', hops: 0, reported: false, refused: true })
+  runs.of('k')!.chain = 't1'
+  runs.emit('k', 'handoff', 'to b, note: ok')
+  runs.end('k', '$0.00')
+  assert.equal(runs.of('k'), undefined)
+  // A message's run carries its chain and hops.
+  runs.start('k', 'scheduled', { fresh: true, chain: 'c1', hops: 2 })
+  assert.deepEqual([runs.of('k')!.chain, runs.of('k')!.hops], ['c1', 2])
+})
