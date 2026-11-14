@@ -80,7 +80,7 @@ function setup(o: { transcript?: boolean; silent?: boolean; dmFails?: boolean; g
     hub: () => d,
     tools: (_key, send, approve) => sessionTools({ title: 'Kage', bot: slack as any, user: slack as any, botDm: () => 'DBOT', dir, ledgers: openLedgers(dir), send, memory: { own: '/own', owner: '/owner' }, approve,
       // A manager that only asks the card and says the answer.
-      ...o.manager && { kagelets: { list: () => '', manage: async (a, ask) => `yes: ${await ask!({ kagelet: a.name, read_command: '~/bin/read-sql', job: 'Count failed calls.' })}` } } }),
+      ...o.manager && { kagelets: { list: () => '', manage: async (a, ask) => `yes: ${await ask!({ kagelet: a.name, tools: 'db_read', read_command: '~/bin/read-sql', job: 'Count failed calls.' })}` } } }),
     hasTranscript: () => o.transcript ?? false,
     toHub: () => {},
     options: { cwd: '/home', settingSources: ['user'] },
@@ -339,14 +339,21 @@ describe('Kage sessions on the Agent SDK', () => {
     t.d.verdict(id2, { type: 'verdict', request_id: id2, behavior: 'deny' })
     assert.equal((await other).behavior, 'deny')
   })
-  test('a db_read grant gets one card, from the tool, that names the kagelet, its job and the command; only a yes passes', async () => {
+  test('a grant beyond the web tools gets one card, from the tool, that names the kagelet, its tools, its job and the command; only a yes passes', async () => {
     const t = setup({ manager: true })
     t.d.task('C1:5.5', t.task(), 0)
     await tick()
     // The generic card is skipped for it: the tool raises its own. Any other save still asks.
-    const posts = t.posts.length
+    let posts = t.posts.length
     assert.equal((await t.sdk.runs[0]!.options.canUseTool('mcp__kage__manage_kagelet', { action: 'save', tools: ['db_read'] }, { signal: signal() })).behavior, 'allow')
+    // Any tool beyond WebSearch and WebFetch gets the tool's own card too.
+    assert.equal(await Promise.race([t.sdk.runs[0]!.options.canUseTool('mcp__kage__manage_kagelet', { action: 'save', tools: ['WebSearch', 'mcp__gmail__send'] }, { signal: signal() }).then((r: { behavior: string }) => r.behavior), tick(50).then(() => 'card')]), 'allow')
     assert.equal(t.posts.length, posts)
+    // Only a save raises the tool's own card: remove or run with a tools field still gets the generic one.
+    void t.sdk.runs[0]!.options.canUseTool('mcp__kage__manage_kagelet', { action: 'remove', name: 'x', tools: ['db_read'] }, { signal: signal() })
+    await tick()
+    assert.equal(t.posts.length, posts + 1)
+    posts++
     // Revoking only takes access away: the owner's word in chat is enough, with no card.
     // Raced against a tick: a card here would wait for an answer forever, and the test would hang instead of failing.
     assert.equal(await Promise.race([t.sdk.runs[0]!.options.canUseTool('mcp__kage__manage_kagelet', { action: 'revoke', name: 'db_read' }, { signal: signal() }).then((r: { behavior: string }) => r.behavior), tick(50).then(() => 'card')]), 'allow')
@@ -357,7 +364,7 @@ describe('Kage sessions on the Agent SDK', () => {
     const save = { channel: 'C1', thread_ts: '5.5', action: 'save', name: 'calls', tools: ['db_read'] }
     const yes = t.call('manage_kagelet', save)
     await tick()
-    assert.match(t.posts.at(-1)!, /Approve\?\* grant db read[\s\S]*kagelet: calls\nread_command: ~\/bin\/read-sql\njob: Count failed calls\./)
+    assert.match(t.posts.at(-1)!, /Approve\?\* grant kagelet[\s\S]*kagelet: calls\ntools: db_read\nread_command: ~\/bin\/read-sql\njob: Count failed calls\./)
     const id = t.idOf(t.posts.at(-1)!)
     t.d.verdict(id, { type: 'verdict', request_id: id, behavior: 'allow' })
     assert.equal((await yes).content[0].text, 'yes: true')

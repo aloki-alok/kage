@@ -3,7 +3,7 @@ import assert from 'node:assert/strict'
 import { openStore } from './store.ts'
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
-import { costCap, kageletManager, readCommand, kageletsDir, ownerNotes, pauseKagelet, readKagelets, syncKagelets } from './kagelets.ts'
+import { costCap, kageletManager, readCommand, type Manage, kageletsDir, ownerNotes, pauseKagelet, readKagelets, syncKagelets } from './kagelets.ts'
 
 const LINK = 'https://test.slack.com/archives/CTEST1/p1700000000123456'
 const KEY = 'CTEST1:1700000000.123456#side-kagelet-deploys'
@@ -112,18 +112,18 @@ test('no more than the cap run: past it, a kagelet is logged and gets no schedul
 
 function manager(max = 10, envCommand?: string) {
   const dir = mkdtempSync(`${tmpdir()}/spec-`)
-  const ran: string[] = [], synced: number[] = [], logs: string[] = [], grants: string[][] = []
+  const ran: string[] = [], synced: number[] = [], logs: string[] = [], grants: string[][] = [], told: string[] = []
   const reports: string[] = []
   const store = openStore(':memory:')
   const m = kageletManager({
     dir, max, ledgers: { text: (n: string) => n === 'reports' ? reports.join('') : '', add: (n, cells) => { if (n === 'grants') grants.push(cells) } },
     sync: now => { synced.push(now) },
     runNow: id => { ran.push(id); return undefined },
-    store, envCommand, log: l => logs.push(l),
+    store, envCommand, log: l => logs.push(l), tell: t => told.push(t),
   })
-  return { dir, m, ran, synced, reports, store, logs, grants }
+  return { dir, m, ran, synced, reports, store, logs, grants, told }
 }
-const job = { thread: LINK, schedule: '0 9 * * *', tools: ['WebSearch'], job: 'Check the status page.', by: 'kage' as const, why: 'a daily check the owner asked for twice' }
+const job = { thread: LINK, schedule: '0 9 * * *', tools: ['WebSearch'], job: 'Check the status page.', why: 'a daily check the owner asked for twice' }
 
 test('the manager saves a kagelet file the hub syncs at once, and lists who made it and why', async () => {
   const t = manager()
@@ -137,7 +137,7 @@ test('the manager saves a kagelet file the hub syncs at once, and lists who made
   assert.match(list, /no report yet/)
 })
 
-test('the manager is refused a new kagelet past the cap, a tool v1 cannot grant, and a wider grant for one it makes itself', async () => {
+test('the manager is refused a new kagelet past the cap and a tool v1 cannot grant', async () => {
   const t = manager(1)
   await t.m.manage({ action: 'save', name: 'one', ...job }, 1)
   assert.match(await t.m.manage({ action: 'save', name: 'two', ...job }, 1), /at most 1/)
@@ -145,13 +145,34 @@ test('the manager is refused a new kagelet past the cap, a tool v1 cannot grant,
   assert.match(await t.m.manage({ action: 'save', name: 'one', ...job, schedule: '0 10 * * *' }, 1), /saved one/i)
   const u = manager()
   assert.match(await u.m.manage({ action: 'save', name: 'x', ...job, tools: ['Bash'] }, 1), /not Bash/)
-  assert.match(await u.m.manage({ action: 'save', name: 'x', ...job, tools: ['mcp__docs__read'] }, 1), /owner/)
-  assert.match(await u.m.manage({ action: 'save', name: 'x', ...job, by: 'owner', tools: ['mcp__docs__read'] }, 1), /saved x/i)
   assert.match(await u.m.manage({ action: 'save', name: '../x', ...job }, 1), /name/)
-  // A change that leaves out by keeps who made it.
-  const { by: _, ...noBy } = job
-  await u.m.manage({ action: 'save', name: 'x', ...noBy, tools: ['WebSearch'] }, 2)
-  assert.match(readFileSync(`${u.dir}/x.md`, 'utf8'), /^by: owner$/m)
+})
+
+test('a tool beyond WebSearch and WebFetch is saved only on the owner\'s yes to a card; a by from the model widens nothing', async () => {
+  const u = manager()
+  const gmail = { ...job, tools: ['WebSearch', 'mcp__gmail__send'] }
+  // The model claims the owner asked for it, in a session that cannot show a card.
+  assert.match(await u.m.manage({ action: 'save', name: 'x', ...gmail, by: 'owner' } as Manage, 1), /not saved: .*owner/)
+  const no = owner(false)
+  assert.match(await u.m.manage({ action: 'save', name: 'x', ...gmail, by: 'owner' } as Manage, 1, no.ask), /not saved: the owner did not approve mcp__gmail__send/)
+  assert.deepEqual(no.cards, [{ kagelet: 'x', tools: 'mcp__gmail__send', job: 'Check the status page.' }])
+  assert.equal(readKagelets(u.dir).length, 0)
+  const yes = owner(true)
+  assert.match(await u.m.manage({ action: 'save', name: 'x', ...gmail }, 2, yes.ask), /saved x/)
+  assert.match(readFileSync(`${u.dir}/x.md`, 'utf8'), /^tools: WebSearch, mcp__gmail__send$/m)
+  // Saved again, it asks again: no standing approval covers an MCP tool.
+  await u.m.manage({ action: 'save', name: 'x', ...gmail }, 3, yes.ask)
+  assert.equal(yes.cards.length, 2)
+  assert.deepEqual(u.grants.map(g => g.slice(0, 2)), [['x', 'refused'], ['x', 'refused'], ['x', 'granted'], ['x', 'granted']])
+})
+
+test('who made it comes from the file, never the model: a new one is Kage\'s, and a hand-written one stays the owner\'s', async () => {
+  const u = manager()
+  await u.m.manage({ action: 'save', name: 'new', ...job, by: 'owner' } as Manage, 1)
+  assert.match(readFileSync(`${u.dir}/new.md`, 'utf8'), /^by: kage$/m)
+  writeFileSync(`${u.dir}/mine.md`, file().text)
+  await u.m.manage({ action: 'save', name: 'mine', ...job, by: 'kage' } as Manage, 2)
+  assert.match(readFileSync(`${u.dir}/mine.md`, 'utf8'), /^by: owner$/m)
 })
 
 // The owner's answer to the approval card, and every card it was shown.
@@ -159,14 +180,14 @@ const owner = (yes: boolean) => {
   const cards: Record<string, string>[] = []
   return { cards, ask: async (c: Record<string, string>) => { cards.push(c); return yes } }
 }
-const calls = { ...job, by: 'kage' as const, tools: ['WebSearch', 'db_read'], job: 'Count failed calls.\nPost the count.', read_command: '~/bin/read-sql --ro' }
+const calls = { ...job, tools: ['WebSearch', 'db_read'], job: 'Count failed calls.\nPost the count.', read_command: '~/bin/read-sql --ro' }
 
 test('db_read is saved only on the owner\'s yes to a card that names the kagelet, its job and the read command', async () => {
   const no = manager(), o = owner(false)
   assert.match(await no.m.manage({ action: 'save', name: 'calls', ...calls }, 1, o.ask), /not saved: the owner did not approve db_read/)
-  assert.deepEqual(Object.entries(o.cards[0]!), [['kagelet', 'calls'], ['read_command', '~/bin/read-sql --ro'], ['job', 'Count failed calls.']])
+  assert.deepEqual(Object.entries(o.cards[0]!), [['kagelet', 'calls'], ['tools', 'db_read'], ['read_command', '~/bin/read-sql --ro'], ['job', 'Count failed calls.']])
   assert.equal(readKagelets(no.dir).length, 0)
-  assert.equal(readCommand(undefined, no.store), undefined)
+  assert.equal(readCommand(undefined, no.store, 'calls'), undefined)
   assert.deepEqual(no.grants.map(g => g.slice(0, 2)), [['calls', 'refused']])
   assert.match(no.logs.join('\n'), /kagelet calls: db_read refused: the owner did not approve/)
 
@@ -174,7 +195,7 @@ test('db_read is saved only on the owner\'s yes to a card that names the kagelet
   assert.match(await yes.m.manage({ action: 'save', name: 'calls', ...calls }, Date.UTC(2026, 0, 2), y.ask), /saved calls/)
   assert.match(readFileSync(`${yes.dir}/calls.md`, 'utf8'), /^granted: db_read by the owner, 2026-01-02T00:00:00\.000Z$/m)
   // Kept in the hub's store, where the db_read tool reads it on each call.
-  assert.equal(readCommand(undefined, yes.store), '~/bin/read-sql --ro')
+  assert.equal(readCommand(undefined, yes.store, 'calls'), '~/bin/read-sql --ro')
   assert.deepEqual(yes.grants.map(g => g.slice(0, 2)), [['calls', 'granted']])
   assert.match(yes.logs.join('\n'), /kagelet calls: db_read granted by the owner/)
   // The ledger and the log name the kagelet and the outcome, never the command.
@@ -198,15 +219,19 @@ test('KAGE_DB_READ_COMMAND wins over a proposed command: the card names it witho
   assert.match(await t.m.manage({ action: 'save', name: 'calls', ...calls }, 1, o.ask), /saved calls/)
   assert.match(o.cards[0]!.read_command!, /^KAGE_DB_READ_COMMAND/)
   assert.doesNotMatch(JSON.stringify(o.cards), /password/)
-  assert.equal(t.store.load('db-read-command'), undefined)
-  assert.equal(readCommand('env-read', t.store), 'env-read')
-  // Once approved, a later grant may use the stored command without proposing one, and the yes stands for it (#96).
+  assert.equal(t.store.load('db-read-commands'), undefined)
+  assert.equal(readCommand('env-read', t.store, 'calls'), 'env-read')
+  // With no settings command, a new kagelet names its own command, never borrows another's. The same command
+  // passed again is covered by the standing approval (#96).
   const u = manager(), y = owner(true)
   await u.m.manage({ action: 'save', name: 'calls', ...calls }, 1, y.ask)
   const { read_command: _, ...noCommand } = calls
-  assert.match(await u.m.manage({ action: 'save', name: 'other', ...noCommand }, 2, y.ask), /saved other/)
+  assert.match(await u.m.manage({ action: 'save', name: 'other', ...noCommand }, 2, y.ask), /not saved: .*read_command/)
+  assert.match(await u.m.manage({ action: 'save', name: 'other', ...calls }, 2, y.ask), /saved other/)
+  // A save again without read_command keeps the kagelet's own.
+  assert.match(await u.m.manage({ action: 'save', name: 'other', ...noCommand }, 3, y.ask), /saved other/)
   assert.equal(y.cards.length, 1)
-  assert.equal(readCommand('env-read', u.store), 'env-read')
+  assert.equal(readCommand('env-read', u.store, 'other'), 'env-read')
 })
 
 test('after the owner\'s yes, a later db_read save through the same command needs no card, and is logged with a reason', async () => {
@@ -214,10 +239,15 @@ test('after the owner\'s yes, a later db_read save through the same command need
   await t.m.manage({ action: 'save', name: 'calls', ...calls }, 1, y.ask)
   assert.match(await t.m.manage({ action: 'save', name: 'other', ...calls }, Date.UTC(2026, 0, 3), y.ask), /saved other/)
   assert.match(readFileSync(`${t.dir}/other.md`, 'utf8'), /^granted: db_read by standing approval, 2026-01-03T00:00:00\.000Z$/m)
+  // The owner hears each grant the standing approval makes: which kagelet, which tool, how to revoke.
+  assert.equal(t.told.length, 1)
+  assert.match(t.told[0]!, /other.*db_read.*standing approval[\s\S]*revoke/i)
   // Saved again: no card either, and the grant the owner gave on its own card stays theirs, so a revoke keeps it.
   assert.match(await t.m.manage({ action: 'save', name: 'calls', ...calls, schedule: '0 10 * * *' }, 5, y.ask), /saved calls/)
   assert.equal(y.cards.length, 1)
   assert.match(readFileSync(`${t.dir}/calls.md`, 'utf8'), /^granted: db_read by the owner, 1970-01-01T00:00:00\.001Z$/m)
+  // That grant is still the card's, so the standing approval granted nothing new: no DM.
+  assert.equal(t.told.length, 1)
   await t.m.manage({ action: 'revoke', name: 'db_read' }, 6)
   assert.match(readFileSync(`${t.dir}/calls.md`, 'utf8'), /^tools: WebSearch, db_read$/m)
   assert.doesNotMatch(readFileSync(`${t.dir}/other.md`, 'utf8'), /db_read/)
@@ -225,6 +255,36 @@ test('after the owner\'s yes, a later db_read save through the same command need
   assert.match(t.grants[1]![2]!, /standing approval.*same read command/)
   assert.match(t.logs.join('\n'), /kagelet other: db_read granted by the standing approval/)
   assert.doesNotMatch(JSON.stringify(t.grants) + t.logs.join('') + JSON.stringify(t.store.load('standing-approvals')), /read-sql/)
+})
+
+test('each kagelet keeps its own read command: a yes for B leaves A\'s unchanged, and a removed one\'s goes', async () => {
+  const t = manager(), y = owner(true)
+  await t.m.manage({ action: 'save', name: 'calls', ...calls }, 1, y.ask)
+  await t.m.manage({ action: 'save', name: 'other', ...calls, read_command: '~/bin/other-sql' }, 2, y.ask)
+  assert.equal(y.cards.length, 2)
+  assert.equal(readCommand(undefined, t.store, 'calls'), '~/bin/read-sql --ro')
+  assert.equal(readCommand(undefined, t.store, 'other'), '~/bin/other-sql')
+  assert.equal(readCommand(undefined, t.store, 'third'), undefined)
+  await t.m.manage({ action: 'remove', name: 'other' }, 3)
+  assert.equal(readCommand(undefined, t.store, 'other'), undefined)
+  // An install from before keeps one command for all: its kagelets still read it, until each gets its own.
+  t.store.save('db-read-command', '~/bin/old-sql')
+  assert.equal(readCommand(undefined, t.store, 'third'), '~/bin/old-sql')
+  assert.equal(readCommand(undefined, t.store, 'calls'), '~/bin/read-sql --ro')
+})
+
+test('a re-save that switches to another approved command is the standing approval\'s grant, with a DM, not the old card\'s', async () => {
+  const t = manager(), y = owner(true)
+  await t.m.manage({ action: 'save', name: 'calls', ...calls }, 1, y.ask)
+  await t.m.manage({ action: 'save', name: 'other', ...calls, read_command: '~/bin/other-sql' }, 2, y.ask)
+  assert.match(await t.m.manage({ action: 'save', name: 'calls', ...calls, read_command: '~/bin/other-sql' }, Date.UTC(2026, 0, 4), y.ask), /saved calls/)
+  assert.equal(y.cards.length, 2)
+  assert.match(readFileSync(`${t.dir}/calls.md`, 'utf8'), /^granted: db_read by standing approval, 2026-01-04T00:00:00\.000Z$/m)
+  assert.equal(t.told.length, 1)
+  assert.match(t.told[0]!, /calls/)
+  // So a revoke takes it.
+  await t.m.manage({ action: 'revoke', name: 'db_read' }, 5)
+  assert.doesNotMatch(readFileSync(`${t.dir}/calls.md`, 'utf8'), /db_read/)
 })
 
 test('a standing approval never covers a different read command, a changed settings command, or a session that cannot ask the owner', async () => {
@@ -239,7 +299,7 @@ test('a standing approval never covers a different read command, a changed setti
   await e.m.manage({ action: 'save', name: 'calls', ...calls }, 1, o.ask)
   await e.m.manage({ action: 'save', name: 'other', ...calls }, 2, o.ask)
   assert.equal(o.cards.length, 1)
-  const changed = kageletManager({ dir: e.dir, max: 10, ledgers: { text: () => '', add: () => {} }, sync: () => {}, runNow: () => undefined, store: e.store, envCommand: 'env-read --host=new', log: () => {} })
+  const changed = kageletManager({ dir: e.dir, max: 10, ledgers: { text: () => '', add: () => {} }, sync: () => {}, runNow: () => undefined, store: e.store, envCommand: 'env-read --host=new', log: () => {}, tell: () => {} })
   await changed.manage({ action: 'save', name: 'third', ...calls }, 3, o.ask)
   assert.equal(o.cards.length, 2)
 })

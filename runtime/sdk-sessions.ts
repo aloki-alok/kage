@@ -9,7 +9,7 @@ import { z } from 'zod'
 import { log } from '../config.ts'
 import { senderOf, withoutInvisible, type Sender } from '../core/gate.ts'
 import { ownerMemoryRefusal, privateToolRefusal, slackSendRefusal, voiceToolRefusal } from '../core/guards.ts'
-import { DB_READ, grantRefusal } from '../core/kagelets.ts'
+import { DEFAULT_GRANT, grantRefusal } from '../core/kagelets.ts'
 import { approvalPreview } from '../core/preview.ts'
 import type { Dispatcher, Runner } from '../core/sessions.ts'
 import type { sessionTools } from './kage-tools.ts'
@@ -115,9 +115,10 @@ export function sdkSessions(o: {
         canUseTool: (name, input, x) => o.grantOf?.(key)
           ? Promise.resolve(grantRefusal(name, o.grantOf(key)!, input) ? { behavior: 'deny' as const, message: 'A kagelet approves nothing. Say in the thread what you needed and why: your manager decides.' }
             : { behavior: 'allow' as const, updatedInput: input })
-          // A db_read grant raises its own card from inside the tool (runtime/kagelets.ts), so the owner gets one, not two.
-          // A revoke only takes access away, so it needs none (the tool still takes it from the owner's task only).
-          : ALLOWED.includes(name) || (name === 'mcp__kage__manage_kagelet' && ((input.tools as unknown[] | undefined)?.includes(DB_READ) || input.action === 'revoke')) ? Promise.resolve({ behavior: 'allow' as const, updatedInput: input })
+          // A grant beyond the web tools raises its own card from inside the tool (runtime/kagelets.ts), so the owner
+          // gets one, not two. A revoke only takes access away, so it needs none (the tool still takes it from the
+          // owner's task only).
+          : ALLOWED.includes(name) || (name === 'mcp__kage__manage_kagelet' && ((input.action === 'save' && Array.isArray(input.tools) && input.tools.some(t => !DEFAULT_GRANT.includes(t))) || input.action === 'revoke')) ? Promise.resolve({ behavior: 'allow' as const, updatedInput: input })
           : ask(key, s, name, x.title ?? x.description ?? '', input, x.signal),
         // The same rules as private-data-guard.ts, in-process. A failed check blocks the call.
         hooks: {

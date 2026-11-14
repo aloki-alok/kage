@@ -10,7 +10,7 @@ import { CAP_PAUSE } from './kagelet-view.ts'
 // A kagelet's name, which is also its file name: no dots or slashes, so it never leaves the folder.
 export const NAME = /^[a-z][a-z0-9-]{0,30}$/
 
-// Who made it, from its file: the owner (by hand, or by asking Kage) or Kage on its own. A hand-written file is the owner's.
+// Who made it, from its file: Kage's tool wrote it first, or the owner did by hand (no by line). Provenance only.
 export type Maker = 'owner' | 'kage'
 // granted: when the owner approved its db_read on Kage's card (runtime/kagelets.ts). standing: by a standing approval.
 export type Kagelet = { name: string; key: string; link: string; cron: string; tools: string[]; job: string; paused: boolean; by: Maker; why: string; resumed?: number; granted?: number; standing?: true }
@@ -67,21 +67,26 @@ Say what to check, where, and what to post in the thread. For example: every wee
 export const DB_READ = 'db_read'
 const GRANTED = new RegExp(`^${DB_READ} by (the owner|standing approval), (\\S+)$`)
 
-// What a kagelet made on its own may be granted: the v1 web tools, never an MCP tool. Only the owner widens it.
+// What the manager's tool may grant on its own: the v1 web tools. Anything more needs the owner's yes on a card.
 export const DEFAULT_GRANT = ['WebSearch', 'WebFetch']
 
 // The file the manager's tool writes. Refused with the reason when it would not run, would be granted a tool v1
-// cannot grant, Kage made it and asks for more than DEFAULT_GRANT, or it holds db_read with no owner's yes.
+// cannot grant, asks for more than DEFAULT_GRANT with no owner's yes, or holds db_read with no owner's yes.
+// by is provenance only and never widens a grant: the model steers every save, the owner's sessions too.
+// approved: the owner said yes on a card to its tools beyond DEFAULT_GRANT.
 // granted: when the owner said yes to its db_read. standing: that yes was a standing approval, not a card.
-export function kageletFile(f: { thread: string; schedule: string; tools: string[]; job: string; by: Maker; why: string; paused?: boolean; granted?: number; standing?: boolean }): string | { error: string } {
+export function kageletFile(f: { thread: string; schedule: string; tools: string[]; job: string; by: Maker; why: string; paused?: boolean; approved?: boolean; granted?: number; standing?: boolean }): string | { error: string } {
   // One line each, so no value can add a front matter line of its own (a second tools or paused line).
   for (const [k, v] of Object.entries({ thread: f.thread, schedule: f.schedule, why: f.why, tool: f.tools.join(',') })) if (/[\r\n]/.test(v)) return { error: `the ${k} must be one line` }
+  // A comma or space in one name reads back as two tools, so the card would not name what the file grants.
+  const odd = f.tools.find(t => !/^[\w-]+$/.test(t))
+  if (odd) return { error: `"${odd}" is not one tool name: letters, digits, _ and - only` }
   const bad = f.tools.find(t => !grantable(t))
   if (bad) return { error: `a kagelet can be granted only web tools, MCP tools and ${DB_READ}, not ${bad}. A wider grant is the owner's call.` }
   const db = f.tools.includes(DB_READ)
   if (db && f.granted === undefined) return { error: `${DB_READ} needs the owner's yes on Kage's card` }
-  const wide = f.by === 'kage' && f.tools.find(t => !DEFAULT_GRANT.includes(t) && t !== DB_READ)
-  if (wide) return { error: `a kagelet Kage makes on its own gets only ${DEFAULT_GRANT.join(' and ')}, not ${wide}. Ask the owner to grant it.` }
+  const wide = !f.approved && f.tools.find(t => !DEFAULT_GRANT.includes(t) && t !== DB_READ)
+  if (wide) return { error: `${wide} needs the owner's yes on Kage's card: without it, a kagelet gets only ${DEFAULT_GRANT.join(' and ')}` }
   const text = `---\nthread: ${f.thread}\nschedule: ${f.schedule}\ntools: ${f.tools.join(', ')}\nby: ${f.by}\nwhy: ${f.why}\n${db ? `granted: ${DB_READ} by ${f.standing ? 'standing approval' : 'the owner'}, ${new Date(f.granted!).toISOString()}\n` : ''}${f.paused ? 'paused: yes\n' : ''}---\n${f.job.trim()}\n`
   const sp = parseKagelet('check', text)
   return 'error' in sp ? sp : text

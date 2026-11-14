@@ -153,7 +153,7 @@ describe('the rows kage list, kage top and the manager show', () => {
 
 describe('a file the manager writes', () => {
   test('reads back as the same kagelet', () => {
-    const text = kageletFile({ thread: LINK, schedule: '0 9 * * *', tools: ['WebSearch', 'mcp__docs__read'], job: 'Check the docs.', by: 'owner', why: 'the owner asked' })
+    const text = kageletFile({ thread: LINK, schedule: '0 9 * * *', tools: ['WebSearch', 'mcp__docs__read'], job: 'Check the docs.', by: 'owner', why: 'the owner asked', approved: true })
     assert.ok(typeof text === 'string')
     const sp = parseKagelet('docs', text) as { cron: string; tools: string[]; job: string; paused: boolean }
     assert.deepEqual([sp.cron, sp.tools, sp.job, sp.paused, (sp as any).by, (sp as any).why], ['0 9 * * *', ['WebSearch', 'mcp__docs__read'], 'Check the docs.', false, 'owner', 'the owner asked'])
@@ -170,12 +170,14 @@ describe('a file the manager writes', () => {
   })
 })
 
-describe('the grant cap on a kagelet Kage makes on its own', () => {
-  const make = (by: 'owner' | 'kage', tools: string[]) => kageletFile({ thread: LINK, schedule: '0 9 * * *', tools, job: 'x', by, why: 'a daily check' })
-  test('gets the default web tools only; the owner may grant an MCP tool', () => {
+describe('a tool beyond the default web tools', () => {
+  const make = (by: 'owner' | 'kage', tools: string[], approved?: true) => kageletFile({ thread: LINK, schedule: '0 9 * * *', tools, job: 'x', by, why: 'a daily check', ...approved && { approved } })
+  test('needs the owner\'s yes on a card, whoever the file says made it', () => {
     assert.equal(typeof make('kage', ['WebSearch', 'WebFetch']), 'string')
-    assert.match((make('kage', ['mcp__docs__read']) as { error: string }).error, /owner/)
-    assert.equal(typeof make('owner', ['mcp__docs__read']), 'string')
+    for (const by of ['owner', 'kage'] as const) assert.match((make(by, ['mcp__gmail__send']) as { error: string }).error, /owner/)
+    assert.equal(typeof make('kage', ['mcp__gmail__send'], true), 'string')
+    // A comma or space in one name would read back as two tools, one the card never named.
+    for (const t of ['mcp__a__b,db_read', 'mcp__a__b db_read']) assert.match((make('owner', [t], true) as { error: string }).error, /tool name/)
   })
   test('a hand-written file with no by line is the owner\'s', () => {
     assert.equal((parseKagelet('x', file(`thread: ${LINK}\nschedule: 0 9 * * *`)) as { by: string }).by, 'owner')
