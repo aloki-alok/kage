@@ -84,4 +84,7 @@ describe('the WAHA webhook refuses a caller before it does any work', () => {
     assert.deepEqual(t.ran, ['wa:m9'])
     t.close()
   })
+  test('a handler built with an empty key is refused at build time, so nobody can sign with ""', () => {
+    assert.throws(() => wahaHandler('', { take: () => true, handled: () => {}, has: () => false }, () => {}))
+  })
 })

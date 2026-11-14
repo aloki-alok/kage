@@ -33,9 +33,11 @@ const signed = (hmac: string, body: Buffer, given: string) => {
 }
 
 // The webhook handler. The port may face a container VM (KAGE_WA_HOOK_HOST=0.0.0.0), so the HMAC is the only
-// gate and nothing runs before it: method, path and the signature header are checked before one byte is
-// read, then the HMAC on the full body, then the inbox take before the 200.
+// gate: method, path and the signature header are checked before one byte is read (a scanner costs nothing),
+// then the HMAC on the full body (a caller with a header can still make the hub buffer up to MAX_BODY, so the
+// server drops slow bodies after 10 s), then the inbox take before the 200.
 export function wahaHandler(hmac: string, inbox: Inbox, run: (p: WahaPayload, source?: string) => unknown, max = MAX_BODY): RequestListener {
+  if (!hmac) throw new Error('the WAHA webhook needs an HMAC key')
   return (req, res) => {
     const given = req.headers['x-webhook-hmac']
     if (req.method !== 'POST' || req.url !== '/waha') { res.writeHead(404).end(); return }
@@ -150,7 +152,9 @@ export function startWhatsApp(o: { dir: string; name: string; owner: string; env
   // KAGE_WA_HOOK_HOST=0.0.0.0: then only the HMAC guards it, so keep the port off the internet.
   const HOST = o.env.KAGE_WA_HOOK_HOST || '127.0.0.1'
   const PORT = Number(o.env.KAGE_WA_HOOK_PORT || 3199)
-  createServer(wahaHandler(HMAC, o.inbox, run)).listen(PORT, HOST, () => log(`whatsapp on: listening on ${HOST}:${PORT}`))
+  const server = createServer(wahaHandler(HMAC, o.inbox, run))
+  server.requestTimeout = 10_000
+  server.listen(PORT, HOST, () => log(`whatsapp on: listening on ${HOST}:${PORT}`))
 
   return {
     // A session can send only to its own chat: the key names it.
