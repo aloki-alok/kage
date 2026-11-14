@@ -181,7 +181,7 @@ describe('what the hub needs to run', () => {
     assert.match(bad({ harness: { ownerMemory: '/tmp/a"b' } }), /harness\.ownerMemory/)
     assert.match(bad({ harness: { cwd: '/tmp/a\\b' } }), /harness\.cwd/)
     assert.match(bad({ connectors: { whatsapp: { memory: "/tmp/x'y" } } }), /whatsapp\.memory/)
-    for (const [k, port] of [['voice', 0], ['github', 70000], ['meeting', -1], ['browser', 8791.5]] as const) assert.match(bad({ connectors: { [k]: { port } } }), new RegExp(`connectors\\.${k}\\.port`), k)
+    for (const [k, port] of [['voice', 0], ['github', 70000], ['voice', 80], ['meeting', 1023], ['meeting', -1], ['browser', 8791.5]] as const) assert.match(bad({ connectors: { [k]: { port } } }), new RegExp(`connectors\\.${k}\\.port`), k)
     assert.match(bad({ connectors: { whatsapp: { hookPort: 99999 } } }), /whatsapp\.hookPort/)
     assert.ok(!('error' in checkSettings({ version: 1, harness: { memory: '~/mem dir' }, connectors: { voice: { port: 8790 } } } as Config, secrets)))
   })

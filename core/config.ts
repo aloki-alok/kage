@@ -114,7 +114,7 @@ export const KEYS: Row[] = [
 // Old names that older env files may still hold. The new name wins when both are there.
 export const ALIASES: Record<string, string> = { KAGE_MAX_SPECIALISTS: 'KAGE_MAX_KAGELETS', KAGE_SPECIALIST_DAILY_USD: 'KAGE_KAGELET_DAILY_USD' }
 // Names the grep in docs/settings.md finds that are not settings: Kage sets them, or a script or test does.
-export const NOT_SETTINGS = ['KAGE_BIN', 'KAGE_CALL_CODE', 'KAGE_CALL_REASON', 'KAGE_CLAUDE', 'KAGE_DIR', 'KAGE_ENV', 'KAGE_GIT_URL', 'KAGE_REF', 'KAGE_SETUP_WAIT', 'KAGE_SLACK_API', 'KAGE_TARBALL', 'KAGE_THREAD']
+export const NOT_SETTINGS = ['KAGE_BIN', 'KAGE_CALL_CODE', 'KAGE_CALL_REASON', 'KAGE_CLAUDE', 'KAGE_DIR', 'KAGE_ENV', 'KAGE_GIT_URL', 'KAGE_REF', 'KAGE_SESSION', 'KAGE_SETUP_WAIT', 'KAGE_SLACK_API', 'KAGE_TARBALL', 'KAGE_THREAD']
 
 // By its name, or by what it holds: a URL with user:password@ in it, or a long unbroken random-looking string (not a path).
 const looksSecret = (name: string, value = '') => /TOKEN|SECRET|KEY|PASS|AUTH|CRED/i.test(name) || /:\/\/[^\s/:@]+:[^\s/@]+@/.test(value)
@@ -202,7 +202,7 @@ export function checkSettings(c: Config, s: Secrets): { name: string; teammates:
     if (v && /['"\\]/.test(v)) return { error: `${path} must not hold a quote or a backslash` }
   const k = c.connectors
   for (const [path, v] of [['voice.port', k?.voice?.port], ['github.port', k?.github?.port], ['meeting.port', k?.meeting?.port], ['browser.port', k?.browser?.port], ['whatsapp.hookPort', k?.whatsapp?.hookPort]] as const)
-    if (v != null && !(Number.isInteger(v) && v >= 1 && v <= 65535)) return { error: `connectors.${path} must be a port from 1 to 65535` }
+    if (v != null && !(Number.isInteger(v) && v >= 1024 && v <= 65535)) return { error: `connectors.${path} must be a port from 1024 to 65535` }
   const name = (c.name || 'kage').toLowerCase()
   if (!validName(name)) return { error: `name "${name}" must be a short lowercase word (letters, digits, dashes)` }
   return { name, teammates: c.people?.teammates ?? [], apps: (c.people?.agents ?? []).map(agentLine) }
