@@ -81,13 +81,10 @@ const ops = {
     await chrome.tabs.update(Number(tabId), { url })
     return { url }
   },
-  // In Kage's own window, where the new tab is in front: the owner's windows keep their tabs, and Kage can
-  // picture and act in what it opened with no switch by the owner.
+  // In front, in the owner's last used window, in the Kage group: Chrome can picture and act only in a front tab.
   async open({ url }) {
-    const { kageWindow } = await chrome.storage.session.get('kageWindow')
-    const w = kageWindow && await chrome.windows.get(kageWindow).catch(() => undefined)
-    const tab = w ? await chrome.tabs.create({ url, windowId: w.id, active: true }) : (await chrome.windows.create({ url, focused: false })).tabs[0]
-    if (!w) await chrome.storage.session.set({ kageWindow: tab.windowId })
+    const w = await chrome.windows.getLastFocused({ windowTypes: ['normal'] })
+    const tab = await chrome.tabs.create({ url, windowId: w.id, active: true })
     await intoKageGroup(tab)
     return { tabId: tab.id, url }
   },

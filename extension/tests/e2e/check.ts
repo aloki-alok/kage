@@ -51,14 +51,14 @@ check('a crop of the control comes back as a PNG', crop.png.startsWith('data:ima
 const opened = await b.call('open', { url: t.url }) as { tabId: number }
 const after = await b.call('tabs', {}) as Tab[]
 const mine = after.find(x => x.id === opened.tabId)!
-check("a tab Kage opens is in front in its own window, and the owner's front tab stays put",
-  mine.active && mine.windowId !== t.windowId && after.find(x => x.id === t.id)!.active, JSON.stringify(after.map(x => [x.id, x.windowId, x.active])))
+check("a tab Kage opens is in front in the owner's window, in the Kage group",
+  mine.active && mine.windowId === t.windowId, JSON.stringify(after.map(x => [x.id, x.windowId, x.active])))
 await new Promise(r => setTimeout(r, 1500))
 const snap2 = await b.call('snapshot', { tabId: opened.tabId }) as Snapshot
 const sent2 = snap2.elements.find(e => e.name === 'Send')!
 check('a tab Kage opened can be acted in at once', ((await b.call('crop', { tabId: opened.tabId, ref: sent2.ref })) as { png: string }).png.startsWith('data:image/png'))
 const again = await b.call('open', { url: t.url }) as { tabId: number }
-check("Kage's next tab joins the same window", (await b.call('tabs', {}) as Tab[]).find(x => x.id === again.tabId)!.windowId === mine.windowId)
+check("Kage's next tab opens in the same window", (await b.call('tabs', {}) as Tab[]).find(x => x.id === again.tabId)!.windowId === mine.windowId)
 
 const want = (JSON.parse(readFileSync(`${process.env.KAGE_E2E_EXT}/manifest.json`, 'utf8')) as { version: string }).version
 check('each poll names the version the extension runs, for kage doctor', polledVersion === want, String(polledVersion))

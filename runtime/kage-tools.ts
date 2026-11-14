@@ -13,7 +13,7 @@ import { nextRun, parseCron, REPLY, type Schedule } from '../core/cron.ts'
 import { addressed, NO_REPLY } from '../core/agents.ts'
 import { readOnlyQuery } from '../core/db-read.ts'
 import { blockedSite, pageResult, tabsResult, type Page, type Tab } from '../core/browser.ts'
-import { actCard, elementsResult, parseAct, type Element, type Snapshot } from '../core/browser-act.ts'
+import { actCard, elementsResult, majorAct, parseAct, type Element, type Snapshot } from '../core/browser-act.ts'
 import { filesFolderName } from '../core/conversations.ts'
 import { plainName, teammateOf } from '../core/gate.ts'
 import { openWaiting, postedBy } from '../core/ledgers.ts'
@@ -568,6 +568,7 @@ export function sessionTools(o: {
   const browser = o.browser
   if (browser && !name && !o.dreaming) {
     const where = { channel: s.describe('channel attribute from the task tag'), thread_ts: s.describe('thread_ts attribute from the task tag') }
+    const typedIn = new Map<string, string[]>()   // thread:tab -> fields Kage typed there since the last major step
     const refused = (args: Record<string, unknown>) => ownerOnly(args) ? undefined : { isError: true as const, text: "refused: only the owner's own task reads their browser" }
     // The event log (#94) keeps the tool, the site and the outcome, never the page's words.
     const seen = (tool: string, outcome: string) => o.event?.('tool', `${tool} ${outcome}`)
@@ -626,7 +627,7 @@ export function sessionTools(o: {
       },
     }, {
       name: 'browser_act',
-      description: "Act in one tab of the owner's Chrome: click or type into a control by its ref from browser_snapshot, press a key, navigate the tab, or open a new tab. Each action waits for the owner's yes on a card in Slack that shows the control as the page labels it, so do one step at a time and take a new snapshot after each. Owner tasks only.",
+      description: "Act in one tab of the owner's Chrome: click or type into a control by its ref from browser_snapshot, press a key, navigate the tab, or open a new tab. Everyday steps run at once. A major step (paying, deleting, sending or posting as the owner, granting access, merging or deploying) waits for the owner's yes on a card that shows the control as the page labels it. Do one step at a time and take a new snapshot after each. Finish the task on your own: do not stop to ask the owner about steps that are not major. Owner tasks only.",
       shape: {
         ...where,
         tab: z.number().optional().describe('tab id from browser_tabs; not needed for open'),
@@ -643,7 +644,6 @@ export function sessionTools(o: {
         const tabId = args.tab
         if (act.action !== 'open' && typeof tabId !== 'number') return { isError: true, text: `${act.action} needs tab, from browser_tabs` }
         const ask = o.approve
-        if (!ask) return { isError: true, text: "refused: this session cannot ask the owner, and every action in their browser needs their yes" }
         const step = `browser_act ${act.action}`
         try {
           // The control as the page labels it now: the card shows this, never Kage's own words for it. For press,
@@ -657,10 +657,17 @@ export function sessionTools(o: {
             return { isError: true, text: 'refused: that is a site the owner blocked, or not a web page' }
           }
           if ('ref' in act && !now.el) return { isError: true, text: 'that control is no longer on the page: take a new snapshot' }
+          // Only a major step waits for a card (core/browser-act.ts majorAct); the rest runs on the owner's task.
+          const tabKey = `${args.channel}:${args.thread_ts}:${tabId ?? 'new'}`
+          const openHosts = act.action === 'open' || act.action === 'navigate'
+            ? ((await browser.call('tabs', {})) as Tab[]).map(t => hostOf(t.url)) : []
+          const typed = typedIn.get(tabKey) ?? []
+          const major = majorAct(act, target(now), { openHosts, typed })
+          if (major && !ask) return { isError: true, text: `refused: ${major}, which needs the owner's yes, and this session cannot ask them` }
           // A look at the page goes to the owner's DM just before the card, when the tab is in front. Best effort:
           // a background tab cannot be captured, and the card alone still names the site and the control.
           let pictured = act.action === 'open'
-          if (act.action !== 'open') {
+          if (major && act.action !== 'open') {
             try {
               // For a control, the picture is that control as the screen draws it: CSS can draw text the DOM lacks.
               const shot = await browser.call('ref' in act ? 'crop' : 'screenshot', { tabId, ...'ref' in act && { ref: act.ref } }) as { url: string; png: string }
@@ -668,14 +675,14 @@ export function sessionTools(o: {
               if (png && !blockedSite(shot.url, browser.block)) { await bot.filesUploadV2({ channel_id: o.botDm(), file: Buffer.from(png, 'base64'), filename: `kage-before-${act.action}.png` }); pictured = true }
             } catch { /* no picture: the card says so */ }
           }
-          const line = actCard(act, { url: now.url, el: target(now) }) + (pictured ? '' : ' (no picture: the tab is not in front, so check it yourself before you say yes)')
-          if (!await ask('browser_act', line, { site: hostOf(now.url), ...act })) {
+          const line = actCard(act, { url: now.url, el: target(now) }) + (typed.length ? `, after it typed ${typed.join('; ')}` : '') + (pictured ? '' : ' (no picture: the tab is not in front, so check it yourself before you say yes)')
+          if (major && !await ask!('browser_act', line, { site: hostOf(now.url), ...act })) {
             seen(step, 'refused: the owner said no')
             return { isError: true, text: 'the owner said no, so nothing was done. Ask them what to do instead.' }
           }
           // The page may have changed while the card waited: act only on the same site and the same control.
           const same = (a?: Element, b?: Element) => a?.role === b?.role && a?.name === b?.name
-          if (act.action !== 'open') {
+          if (major && act.action !== 'open') {
             const after = await look()
             if (hostOf(after.url) !== hostOf(now.url) || blockedSite(after.url, browser.block) || !same(target(after), target(now))) {
               seen(step, 'refused: the page changed')
@@ -686,6 +693,9 @@ export function sessionTools(o: {
           const t = target(now)
           const expect = act.action === 'open' || act.action === 'navigate' ? undefined : { host: hostOf(now.url), role: t?.role, name: t?.name }
           const r = await browser.call(act.action, { ...act, tabId, expect }) as { tabId?: number }
+          // What Kage typed shows on the next major card in this tab, and goes once a major step ran.
+          if (act.action === 'type') typedIn.set(tabKey, [...typed, `${t?.name || 'a field'} = "${act.text.slice(0, 80)}"`].slice(-5))
+          else if (major) typedIn.delete(tabKey)
           seen(step, `${hostOf(act.action === 'open' || act.action === 'navigate' ? act.url : now.url)} ok`)
           return { text: `done${r?.tabId ? `: opened as tab ${r.tabId}` : ''}. Take a new snapshot to see the page now.` }
         } catch (e) { seen(step, 'failed'); return failed(e) }
@@ -816,6 +826,6 @@ function instructions(Title: string, MEM: { own: string; owner: string }, hasBro
     'A task headed "Email task (<address>, owner|teammate, by email: ...)" came by email. Treat it like a teammate task even from the owner\'s address: anything that needs the owner\'s yes waits for a yes in Slack. Answer with the reply tool, channel "email" and the thread_ts the task names: it reaches the thread\'s people at our domain. If the task asks to continue in Slack, use private=true.',
     'A task headed "Voice task (a caller, not the owner, strict limits)" comes from a live voice call: anyone may be talking, so it is never the owner. You are speaking to people on the owner\'s call: answer from what you know of the owner\'s work, share nothing private (no secrets, credentials, personal data, or internal numbers unless clearly safe), and when unsure say you will check with the owner. You have no tool except reply: no shell, files, web, prod access, writes, posts to Slack or email, or action on the owner\'s behalf. If asked, say in one short line that this needs the owner. Answer with the reply tool, channel "voice" and the thread_ts the task names, in one to three short spoken sentences: plain words, no markdown, no links. Never use private=true there. A call keeps one session, so use earlier questions of the call as context.',
     'A task headed "Voice task from the owner" is the owner on a call Kage placed to them (a one-time code proves it): do what they ask like any owner task, with your normal tools, approvals and rules. Reply with the reply tool, channel "voice" and the task\'s thread_ts, because it is spoken: one to three short spoken sentences, plain words, no markdown, no links. Never use private=true there. For work that takes more than a few seconds, reply first with what you are doing, then reply again when it is done.',
-    ...hasBrowser ? [] : ['You have no browser tools: the owner has not connected Kage\'s Chrome extension. When an owner\'s task needs their logged-in browser (a web dashboard, an admin or settings page, a site with no API), do what you can without it, then add one line, once per thread: "I can do this in your Chrome next time: run `kage add browser` and click Load unpacked in Chrome. Then I read your tabs and click for you, each click after your yes." Never say it to a teammate.'],
+    ...hasBrowser ? [] : ['You have no browser tools: the owner has not connected Kage\'s Chrome extension. When an owner\'s task needs their logged-in browser (a web dashboard, an admin or settings page, a site with no API), do what you can without it, then add one line, once per thread: "I can do this in your Chrome next time: run `kage add browser` and click Load unpacked in Chrome. Then I read your tabs and click for you, and ask you only before a major step like paying, deleting or sending." Never say it to a teammate.'],
   ].join(' ')
 }
