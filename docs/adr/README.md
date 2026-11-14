@@ -14,6 +14,7 @@ Each file records one rule Kage follows, why, and how it is checked. Read the on
 | [0008](0008-auto-update-follows-stable.md) | Auto-update follows the `stable` tag | Accepted |
 | [0009](0009-posts-go-through-kage-tools.md) | Every post goes through Kage's tools and the outbound checks | Accepted |
 | [0010](0010-event-log-keeps-no-content.md) | The event log stores what happened, never what was said | Accepted |
+| [0011](0011-one-place-for-records.md) | Every record of what Kage did lives in one place | Accepted, partly built |
 
 ## Format
 
