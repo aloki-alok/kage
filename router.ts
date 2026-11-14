@@ -238,7 +238,7 @@ const manager = kageletManager({ dir: KAGELETS, max: MAX_KAGELETS, ledgers, sync
 const notes = ownerNotes(store)
 // Chains and kagelet messages (#93): the hub hands one kagelet's output or message to another, with no Kage turn.
 const routes = kageletRoutes({ dir: KAGELETS, store, ledgers, runs, deliver: (key, task) => toSession(key, task),
-  idle: key => !isClosed(key) && d.ready(key) === 'ready' && d.hasFreeSlot(key), paused: now => limits.paused(now)?.until, capUsd: CAPS.each, chainUsd: CAPS.chain, log })
+  idle: key => !isClosed(key) && d.ready(key) === 'ready' && d.startsNow(key, Date.now()), paused: now => limits.paused(now)?.until, capUsd: CAPS.each, chainUsd: CAPS.chain, log })
 let kageletsRefused = false
 const sdk = sdkLib ? sdkSessions({
   sdk: sdkLib.lib,
