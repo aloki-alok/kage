@@ -33,7 +33,7 @@ Run every command from the repo root. Each step ends with a check. Go to the nex
    ```sh
    osascript -e "tell application \"Terminal\" to do script \"cd '$PWD' && ./setup.sh save <name>\"" -e 'tell application "Terminal" to activate'
    ```
-   On Linux, ask them to run `cd ~/kage && ./setup.sh save <name>` in a terminal. The window prints `ok: saved to ... owner U...` when the tokens work.
+   On Linux, ask them to run `kage save <name>` in a terminal (the install line put `kage` on PATH; in a terminal opened before the install, run `~/.local/bin/kage save <name>`). The window prints `ok: saved to ... owner U...` when the tokens work.
    Check: `./setup.sh doctor` shows `ok` for the three `SLACK_` tokens. The other lines may still fail at this point.
 
 6. Start it.
