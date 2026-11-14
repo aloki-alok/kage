@@ -250,6 +250,9 @@ cmd_doctor() {
     for k in SLACK_APP_TOKEN SLACK_USER_TOKEN SLACK_BOT_TOKEN; do
       slack_check "$(env_get $k)" >/dev/null 2>&1 && pass "$k accepted by Slack" || fail "$k: missing or rejected. Run kage save again"
     done
+    # Jev, the classifier for agent posts (core/jev.ts): only when JEV_API_KEY is set. The key stays in the env file.
+    local jev
+    if jev="$(KAGE_ENV="$ENV_FILE" node cli/jev-doctor.ts 2>/dev/null)"; then [[ -n "$jev" ]] && pass "$jev"; else fail "${jev:-jev: the check did not run}"; fi
   fi
   NAME="$(env_get KAGE_NAME)"; NAME="${NAME:-kage}"
 
