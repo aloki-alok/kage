@@ -25,6 +25,9 @@ export function connectBrowser(o: {
   const now = o.now ?? Date.now
   const pollMs = o.pollMs ?? 25_000, callMs = o.callMs ?? 20_000, staleMs = o.staleMs ?? 60_000
   const queue: Cmd[] = []
+  // Sent to a poll, with no result yet. The extension polls again only after it posts a result, so a new poll
+  // while these wait means the old poll's socket died before the extension read them: they go out again.
+  const sent = new Map<string, Cmd>()
   const pending = new Map<string, { resolve: (v: unknown) => void; reject: (e: Error) => void; timer: NodeJS.Timeout }>()
   let waiter: { res: ServerResponse; timer: NodeJS.Timeout } | undefined
   let lastPoll = -Infinity
@@ -37,7 +40,12 @@ export function connectBrowser(o: {
     if (status === 204) res.writeHead(204).end()
     else res.writeHead(200, { 'content-type': 'application/json' }).end(body)
   }
-  const flush = () => { if (waiter && queue.length) release(200, JSON.stringify(queue.shift())) }
+  const flush = () => {
+    if (!waiter || !queue.length) return
+    const c = queue.shift()!
+    sent.set(c.id, c)
+    release(200, JSON.stringify(c))
+  }
   const connected = () => !!waiter || now() - lastPoll < staleMs
 
   function call(op: string, args: unknown): Promise<unknown> {
@@ -46,6 +54,7 @@ export function connectBrowser(o: {
     return new Promise((resolve, reject) => {
       const timer = setTimeout(() => {
         pending.delete(id)
+        sent.delete(id)
         const i = queue.findIndex(c => c.id === id)
         if (i >= 0) queue.splice(i, 1)
         reject(new Error(`the Chrome extension did not answer in ${Math.round(callMs / 1000)} s`))
@@ -61,6 +70,8 @@ export function connectBrowser(o: {
     if (req.method === 'GET' && req.url === '/browser/next') {
       lastPoll = now()
       release(204)   // one poll at a time: a newer one (a restarted extension) replaces the old
+      queue.unshift(...sent.values())
+      sent.clear()
       waiter = { res, timer: setTimeout(() => release(204), pollMs) }
       req.on('close', () => { if (waiter?.res === res && !res.writableEnded) { clearTimeout(waiter.timer); waiter = undefined } })
       flush()
@@ -82,6 +93,7 @@ export function connectBrowser(o: {
       // A result after its call timed out has no one waiting.
       if (!p) { res.writeHead(404).end(); return }
       pending.delete(r.id as string)
+      sent.delete(r.id as string)
       clearTimeout(p.timer)
       if (r.ok === true) p.resolve(r.data)
       else p.reject(new Error(String(r.error ?? 'the extension failed').slice(0, 500)))

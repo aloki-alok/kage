@@ -18,7 +18,7 @@ import { connectSlack } from './connectors/slack.ts'
 import { connectGithub } from './connectors/github.ts'
 import { connectMeeting } from './connectors/meeting.ts'
 import { connectBrowser } from './connectors/browser.ts'
-import { blockList } from './core/browser.ts'
+import { blockList, unreadableBlocks } from './core/browser.ts'
 import { connectVoice } from './connectors/voice.ts'
 import { startWhatsApp } from './connectors/whatsapp-link.ts'
 import { parseCommands } from './core/commands.ts'
@@ -204,6 +204,7 @@ const recordCost = costRecorder(ledgers)
 const browser = env.KAGE_BROWSER_TOKEN ? connectBrowser({ token: env.KAGE_BROWSER_TOKEN, port: Number(env.KAGE_BROWSER_PORT || 8791) }) : undefined
 void browser?.listening.then(port => log(`browser on: 127.0.0.1:${port}/browser`), e => log('browser could not listen', e))
 const BROWSER_BLOCK = blockList(env.KAGE_BROWSER_BLOCK ?? '')
+for (const e of unreadableBlocks(env.KAGE_BROWSER_BLOCK ?? '')) log(`KAGE_BROWSER_BLOCK: "${e}" is not a site, so it blocks nothing`)
 const sdkLib = env.KAGE_RUNTIME === 'tmux' ? undefined : await (async () => ({
   lib: await import('@anthropic-ai/claude-agent-sdk'),
   // The same pinned Claude Code the panes run, not the copy bundled with the SDK.

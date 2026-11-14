@@ -63,3 +63,18 @@ test('refuses without the token, and on any other path', async t => {
   assert.equal((await fetch(`${url}/browser/next`, { method: 'OPTIONS' })).status, 401)   // no CORS door for a web page
   assert.equal((await fetch(`${url}/other`, { headers: auth })).status, 404)
 })
+
+test('a command whose poll died before the extension read it goes out again on the next poll', async t => {
+  const { b, url, next, result } = await hub({ pollMs: 5000 })
+  t.after(() => b.close())
+  const ac = new AbortController()
+  void fetch(`${url}/browser/next`, { headers: auth, signal: ac.signal }).catch(() => {})
+  while (!b.connected()) await new Promise(r => setTimeout(r, 5))
+  ac.abort()
+  const answer = b.call('tabs', {})   // may be written to the dying socket
+  await new Promise(r => setTimeout(r, 50))
+  const cmd = await (await next()).json() as { id: string; op: string }
+  assert.equal(cmd.op, 'tabs')
+  await result({ id: cmd.id, ok: true, data: [] })
+  assert.deepEqual(await answer, [])
+})
