@@ -181,6 +181,37 @@ describe('a turn that ends on the usage limit', () => {
     await again.tick(55 * MIN)
     assert.deepEqual(replayed, ['slack:C1:7.7'])
   })
+  test('a thread told before a hub restart is not told again in the same pause', () => {
+    const h = hub()
+    const t = slackTask('7.7')
+    h.hear('C1:5.5', t, 0)
+    h.p.turn('C1:5.5', [t], { kind: 'rate_limit', until: 55 * MIN }, 1000)
+    const notices: string[] = []
+    const again = limitPause({ store: h.store, notice: (_, text) => notices.push(text), end: () => {}, replay: async () => {}, redeliver: () => {}, log: () => {}, tellOwner: () => {} })
+    again.restore()
+    h.store.take('slack:C1:8.8', 'slack', 'event 8.8', 20 * MIN)
+    assert.equal(again.hold('C1:5.5', slackTask('8.8'), 20 * MIN), true)
+    assert.equal(again.hold('C1:5.5', run('job1'), 21 * MIN), true)
+    assert.deepEqual(notices, [])
+    // Another thread was never told, so it is.
+    h.store.take('slack:C2:1.1', 'slack', 'event 1.1', 22 * MIN)
+    assert.equal(again.hold('C2:1.1', slackTask('1.1', 'C2', '1.1'), 22 * MIN), true)
+    assert.equal(notices.length, 1)
+  })
+  test('the side lanes of a thread share its one notice: they post in the same thread', () => {
+    const h = hub()
+    const t = slackTask('7.7')
+    h.hear('C1:5.5', t, 0)
+    h.p.turn('C1:5.5', [t], { kind: 'rate_limit', until: 55 * MIN }, 1000)
+    assert.equal(h.p.hold('C1:5.5#side-kagelet-watch', run('kagelet-watch'), 15 * MIN), true)
+    assert.equal(h.p.hold('C1:5.5#side-kagelet-other', run('kagelet-other'), 16 * MIN), true)
+    assert.equal(h.notices.length, 1)
+    // A lane turn begun before the limit ends well: the thread was still told, so it is not told again.
+    h.p.turn('C1:5.5#side-x', [], undefined, 17 * MIN)
+    h.store.take('slack:C1:8.8', 'slack', 'event 8.8', 18 * MIN)
+    assert.equal(h.p.hold('C1:5.5', slackTask('8.8'), 18 * MIN), true)
+    assert.equal(h.notices.length, 1)
+  })
   test('a task the dispatcher still had for the thread when its session closed is held too', () => {
     const h = hub()
     const first = slackTask('7.7'), second = slackTask('8.8')

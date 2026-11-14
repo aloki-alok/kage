@@ -6,10 +6,10 @@ import { join } from 'node:path'
 import { liveCronJobs } from '../core/cron.ts'
 import { cardAt } from '../core/ledgers.ts'
 import { openLedgers } from './ledger.ts'
-import { sessionTools } from './kage-tools.ts'
+import { postAsKage, sessionTools } from './kage-tools.ts'
 import type { Task } from './protocol.ts'
 
-// A fake Slack: records posts, edits, deletes and reactions; the bot is not in channel "CPRIV".
+// A fake Slack: records posts, edits, deletes and reactions; the bot is not in channel "CPRIV" and cannot see group DM "GDM".
 function fakeSlack() {
   const calls: string[] = []
   const posts: { channel: string; thread_ts?: string; text: string }[] = []
@@ -18,6 +18,7 @@ function fakeSlack() {
     chat: {
       postMessage: async (a: { channel: string; thread_ts?: string; text: string }) => {
         if (who === 'bot' && a.channel === 'CPRIV') throw Object.assign(new Error('x'), { data: { error: 'not_in_channel' } })
+        if (who === 'bot' && a.channel === 'GDM') throw Object.assign(new Error('x'), { data: { error: 'channel_not_found' } })
         posts.push({ channel: a.channel, thread_ts: a.thread_ts, text: a.text })
         calls.push(`${who} post ${a.channel} ${a.text}`)
         return { ts: `9.${++n}` }
@@ -514,5 +515,16 @@ describe("a session's Kage tools", () => {
     assert.deepEqual(s.events, ['report ok', 'report needs'])
     // Only its own thread.
     assert.equal((await s.call('report', { channel: 'COTHER', thread_ts: '1.1', summary: 'x' })).isError, true)
+  })
+})
+
+describe('a line the hub posts as Kage', () => {
+  test('goes where a reply goes: as the bot, or as the owner marked with the name where the bot cannot post', async () => {
+    const s = fakeSlack()
+    const o = { title: 'Kage', bot: s.bot as any, user: s.user as any }
+    assert.deepEqual(await postAsKage(o, 'C1', '5.5', 'Paused'), { ts: '9.1', by: 'bot' })
+    assert.deepEqual(await postAsKage(o, 'GDM', '5.5', 'Paused'), { ts: '9.2', by: 'owner' })
+    assert.deepEqual(await postAsKage(o, 'CPRIV', '5.5', 'Paused'), { ts: '9.3', by: 'owner' })
+    assert.deepEqual(s.calls, ['bot post C1 Paused', 'owner post GDM *Kage:* Paused', 'owner post CPRIV *Kage:* Paused'])
   })
 })

@@ -14,7 +14,7 @@ const RETRY = { rate_limit: 15 * 60_000, overloaded: 5 * 60_000 }
 const sourceOf = (t: Task) => (t.origin.ts && !t.scheduled ? `slack:${t.origin.channel}:${t.origin.ts}` : undefined)
 
 export function limitPause(o: {
-  store: Pick<Store, 'delivered' | 'hold' | 'held' | 'release' | 'handled'>
+  store: Pick<Store, 'delivered' | 'hold' | 'held' | 'release' | 'handled' | 'load' | 'save'>
   notice: (task: Task, text: string) => void           // one line in the task's thread, as the bot
   // Close the session, so it reads nothing more into the limit. Returns the tasks it had not read yet.
   end: (key: string) => Task[] | void
@@ -32,9 +32,19 @@ export function limitPause(o: {
   let drainUntil = 0
   const open = new Set<string>()                              // inbox ids that wait for their turn to end
   // Thread -> the reset time it was told. Told again only for a reset more than 30 minutes later, so a
-  // retry every 15 minutes with no known reset does not post every time.
-  const told = new Map<string, number>()
-  // ponytail: scheduled runs wait in memory, so a hub restart in the pause drops them. A recurring one runs at its next time.
+  // retry every 15 minutes with no known reset does not post every time. In the store, so a hub restart
+  // tells no thread twice. Keyed by the thread, not the lane: every lane of a thread posts in it.
+  const TOLD = 'limit-told'
+  const told = (o.store.load(TOLD) ?? {}) as Record<string, number>
+  const threadOf = (key: string) => key.split('#')[0]!
+  // A reset older than 30 minutes can never stop a notice (a new reset is later than now), so it goes.
+  function setTold(key: string, at: number | undefined, now: number) {
+    if (at === undefined) delete told[threadOf(key)]
+    else told[threadOf(key)] = at
+    for (const [k, v] of Object.entries(told)) if (v < now - 30 * 60_000) delete told[k]
+    o.store.save(TOLD, Object.keys(told).length ? told : undefined)
+  }
+  // ponytail: scheduled runs wait in memory, so a crash or kage restart in the pause drops them (a code update waits for the reset). A recurring one runs at its next time.
   const owed = new Map<string, { key: string; task: Task }>() // job id -> the one run it gets at the reset
   const counts = { limitHits: 0, held: 0, replays: 0, replayFailures: 0 }
 
@@ -46,8 +56,8 @@ export function limitPause(o: {
     else return false
     counts.held++
     // Only a real limit that outlasts any drain is worth a notice: a drain, or one that lapsed before the tick, says nothing.
-    if (until! > Math.max(drainUntil, now) && until! - (told.get(key) ?? -Infinity) > 30 * 60_000) {
-      told.set(key, until!)
+    if (until! > Math.max(drainUntil, now) && until! - (told[threadOf(key)] ?? -Infinity) > 30 * 60_000) {
+      setTold(key, until!, now)
       const at = (o.time ?? clockTime)(until!, now)
       o.notice(t, limit.kind === 'overloaded' ? `Paused: Claude is overloaded. I'll try again at ${at}.` : `Paused by the usage limit until ${at}. I'll pick this up then.`)
     }
@@ -78,7 +88,8 @@ export function limitPause(o: {
     // A turn ended, or its session closed. No limit: its messages are handled. A limit: they are held, and the pause starts or moves.
     turn(key: string, tasks: Task[], limit: Limit | undefined, now: number) {
       if (!limit) {
-        told.delete(key)
+        // Only the thread's main session clears it: a lane's turn may have begun before the limit.
+        if (key === threadOf(key) && key in told) setTold(key, undefined, now)
         for (const t of tasks) { const s = sourceOf(t); if (s && open.delete(s)) o.store.handled(s) }
         return
       }

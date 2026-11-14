@@ -28,6 +28,20 @@ const HUB_DOWN = 'not sent: Kage is restarting. Wait a few seconds and send it a
 type Result = { text: string; isError?: true }
 export type KageTool = { name: string; description: string; shape: z.ZodRawShape; run: (args: Record<string, unknown>) => Promise<Result> }
 
+// One message as Kage, the way a reply goes. The hub's own lines (the usage-limit notice) use it too.
+export async function postAsKage(o: { title: string; bot: WebClient; user: WebClient }, channel: string, thread_ts: string | undefined, text: string): Promise<{ ts: string; by: 'bot' | 'owner' }> {
+  try {
+    const r = await o.bot.chat.postMessage({ channel, thread_ts, text, unfurl_links: false })
+    return { ts: r.ts!, by: 'bot' }
+  } catch (e: any) {
+    if (!['not_in_channel', 'channel_not_found'].includes(e?.data?.error)) throw e
+    // The bot is not a member here (a DM, a group DM, a private channel): post as the owner, marked with the name.
+    // These posts carry no client_msg_id, so the gate never reads them back as tasks.
+    const r = await o.user.chat.postMessage({ channel, thread_ts, text: `*${o.title}:* ${text}`, unfurl_links: false })
+    return { ts: r.ts!, by: 'owner' }
+  }
+}
+
 export function sessionTools(o: {
   title: string
   bot: WebClient
@@ -104,19 +118,10 @@ export function sessionTools(o: {
     let via = Title
     const sent: string[] = []
     for (const part of parts) {
-      try {
-        const r = await bot.chat.postMessage({ channel, thread_ts, text: part, unfurl_links: false })
-        append('posted', [channel, r.ts!, 'bot', key])
-        sent.push(r.ts!)
-      } catch (e: any) {
-        if (!['not_in_channel', 'channel_not_found'].includes(e?.data?.error)) throw e
-        // The bot is not a member here (a DM, a private channel): post as the owner, marked with the name.
-        // These posts carry no client_msg_id, so the gate never reads them back as tasks.
-        const r = await user.chat.postMessage({ channel, thread_ts, text: `*${Title}:* ${part}`, unfurl_links: false })
-        append('posted', [channel, r.ts!, 'owner', key])
-        sent.push(r.ts!)
-        via = `your account (${Title} is not in this conversation)`
-      }
+      const r = await postAsKage(o, channel, thread_ts, part)
+      append('posted', [channel, r.ts, r.by, key])
+      sent.push(r.ts)
+      if (r.by === 'owner') via = `your account (${Title} is not in this conversation)`
     }
     return { via, where: `channel ${channel}, ts ${sent.join(', ')}` }
   }
