@@ -14,8 +14,8 @@ export const extensionId = (keyB64: string) =>
 // The per-user folders each Chromium browser reads helpers from, for the browsers whose profile root exists.
 // Windows registers helpers in the registry instead: not handled.
 const ROOTS: Record<string, string[]> = {
-  darwin: ['Google/Chrome', 'Google/Chrome Beta', 'Chromium', 'BraveSoftware/Brave-Browser', 'Microsoft Edge', 'Arc/User Data', 'Vivaldi'].map(r => `Library/Application Support/${r}`),
-  linux: ['google-chrome', 'google-chrome-beta', 'chromium', 'BraveSoftware/Brave-Browser', 'microsoft-edge', 'vivaldi'].map(r => `.config/${r}`),
+  darwin: ['Google/Chrome', 'Google/Chrome Beta', 'Google/Chrome Canary', 'Chromium', 'BraveSoftware/Brave-Browser', 'Microsoft Edge', 'Arc/User Data', 'Vivaldi'].map(r => `Library/Application Support/${r}`),
+  linux: ['google-chrome', 'google-chrome-beta', 'google-chrome-unstable', 'chromium', 'BraveSoftware/Brave-Browser', 'microsoft-edge', 'vivaldi'].map(r => `.config/${r}`),
 }
 export const hostDirs = (platform: string, home: string, exists: (path: string) => boolean) =>
   (ROOTS[platform] ?? []).map(r => `${home}/${r}`).filter(exists).map(r => `${r}/NativeMessagingHosts`)
@@ -36,5 +36,6 @@ export function unframe(buf: Buffer): unknown {
   if (buf.length < 4) return undefined
   const n = buf.readUInt32LE(0)
   if (buf.length < 4 + n) return undefined
-  try { return JSON.parse(buf.subarray(4, 4 + n).toString('utf8')) } catch { return undefined }
+  // A whole frame that is not JSON is answered as an error: waiting for more would hang the helper.
+  try { return JSON.parse(buf.subarray(4, 4 + n).toString('utf8')) } catch { return { error: 'not JSON' } }
 }

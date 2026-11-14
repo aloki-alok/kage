@@ -21,3 +21,12 @@ test('the helper answers with the token and hub address from the settings file',
 test('with Kage in Chrome off, the helper says how to turn it on', () => {
   assert.deepEqual(ask('KAGE_NAME=kage\n'), { error: 'Kage in Chrome is off: run kage add browser' })
 })
+
+test('a message that is not JSON gets an answer at once, not a hang', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'kage-pair-'))
+  writeFileSync(`${dir}/env`, 'KAGE_BROWSER_TOKEN=abc123\n', { mode: 0o600 })
+  const body = Buffer.from('{x}')
+  const head = Buffer.alloc(4); head.writeUInt32LE(body.length, 0)
+  const out = execFileSync(process.execPath, [HELPER], { input: Buffer.concat([head, body]), env: { ...process.env, KAGE_ENV: `${dir}/env` }, timeout: 5000 })
+  assert.deepEqual(unframe(out), { error: 'not a pairing request' })
+})

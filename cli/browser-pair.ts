@@ -20,7 +20,8 @@ const chunks: Buffer[] = []
 process.stdin.on('data', (c: Buffer) => {
   chunks.push(c)
   // One message is all it serves: answer as soon as it is whole, then exit.
-  if (unframe(Buffer.concat(chunks)) === undefined) return
-  process.stdout.write(frame(answer()), () => process.exit(0))
+  const m = unframe(Buffer.concat(chunks)) as { want?: unknown } | null | undefined
+  if (m === undefined) return
+  process.stdout.write(frame(m?.want === 'token' ? answer() : { error: 'not a pairing request' }), () => process.exit(0))
 })
 process.stdin.on('end', () => process.exit(0))

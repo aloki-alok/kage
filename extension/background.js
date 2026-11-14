@@ -34,7 +34,12 @@ const settings = () => chrome.storage.local.get({ hub: 'http://127.0.0.1:8791', 
 // kage add browser registers a helper only this extension may start (core/browser-pair.ts). It answers with the
 // token from the settings file, so a new token needs no paste. Returns true when it gave a different token.
 const HOST = 'dev.kage.pair'
+// At most one ask per 5 minutes: the alarm restarts the loop every 30 s, and each ask starts a process. Kept in
+// session storage, since Chrome restarts an idle service worker and that would reset a variable.
 async function pair() {
+  const { asked = 0 } = await chrome.storage.session.get('asked')
+  if (Date.now() - asked < 300_000) return false
+  await chrome.storage.session.set({ asked: Date.now() })
   let r
   try { r = await chrome.runtime.sendNativeMessage(HOST, { want: 'token' }) } catch { return false }   // no helper: paste by hand
   if (!r?.token || !r.hub) return false

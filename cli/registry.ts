@@ -6,6 +6,7 @@
 //   kage remove <person or app id> whoever answers to them goes too
 //   kage list                      add --ids to skip the name lookup
 import { randomBytes } from 'node:crypto'
+import { fileURLToPath } from 'node:url'
 import { existsSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs'
 import { setEnvLine } from '../core/browser.ts'
 import { extensionId, HOST, hostDirs, hostManifest } from '../core/browser-pair.ts'
@@ -44,12 +45,14 @@ if (cmd === 'add' && args[0] === 'browser') {
   const token = randomBytes(24).toString('hex')
   writeFileSync(`${ENV_FILE}.new`, setEnvLine(readFileSync(ENV_FILE, 'utf8'), 'KAGE_BROWSER_TOKEN', token), { mode: 0o600 })
   renameSync(`${ENV_FILE}.new`, ENV_FILE)
-  const ext = new URL('../extension', import.meta.url).pathname
+  const ext = fileURLToPath(new URL('../extension', import.meta.url))
   const id = extensionId(JSON.parse(readFileSync(`${ext}/manifest.json`, 'utf8')).key)
   // Chrome starts the helper with a bare PATH, so the wrapper names this node and this checkout outright.
   const helper = `${DIR}/browser-pair.sh`
-  if ([ENV_FILE, process.execPath, ext].some(p => p.includes("'"))) die('A path here holds a quote mark, which the pairing helper cannot name. Move Kage or node to a path without one.')
-  writeFileSync(helper, `#!/bin/sh\nKAGE_ENV='${ENV_FILE}' exec '${process.execPath}' '${new URL('./browser-pair.ts', import.meta.url).pathname}'\n`, { mode: 0o700 })
+  // fileURLToPath, not .pathname: a space in the checkout's path stays a space, not %20.
+  const pairer = fileURLToPath(new URL('./browser-pair.ts', import.meta.url))
+  if ([ENV_FILE, process.execPath, pairer].some(p => p.includes("'"))) die('A path here holds a quote mark, which the pairing helper cannot name. Move Kage or node to a path without one.')
+  writeFileSync(helper, `#!/bin/sh\nKAGE_ENV='${ENV_FILE}' exec '${process.execPath}' '${pairer}'\n`, { mode: 0o700 })
   const dirs = hostDirs(process.platform, process.env.HOME!, existsSync)
   for (const d of dirs) {
     mkdirSync(d, { recursive: true })

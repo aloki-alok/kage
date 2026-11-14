@@ -1,6 +1,7 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { createHash } from 'node:crypto'
+import { readFileSync } from 'node:fs'
 import { extensionId, frame, HOST, hostDirs, hostManifest, unframe } from '../browser-pair.ts'
 
 test('the extension id is the first 16 bytes of the key hash, written in the letters a to p', () => {
@@ -38,4 +39,15 @@ test("a message survives Chrome's framing both ways, and a short read is not a m
   assert.deepEqual(unframe(f), { token: 't', hub: 'http://127.0.0.1:8791' })
   assert.equal(unframe(f.subarray(0, 6)), undefined)
   assert.equal(unframe(Buffer.alloc(2)), undefined)
+})
+
+test('the key in the manifest gives the id real Chromium gave the extension', () => {
+  const manifest = JSON.parse(readFileSync(new URL('../../extension/manifest.json', import.meta.url), 'utf8'))
+  assert.equal(extensionId(manifest.key), 'mbmhceabkblejmogdbncbcpmamkldiek')
+})
+
+test('a whole frame that is not JSON is an error, not a wait for more', () => {
+  const body = Buffer.from('{x}')
+  const head = Buffer.alloc(4); head.writeUInt32LE(body.length, 0)
+  assert.deepEqual(unframe(Buffer.concat([head, body])), { error: 'not JSON' })
 })
