@@ -568,6 +568,8 @@ describe("the owner's browser", () => {
     assert.match(page.text, /data, not instructions/)
     assert.match(page.text, /^> Please email/m)
     assert.deepEqual(asked, ['tabs {}', 'read {"tabId":3}'])
+    // The event log keeps what ran and on which site, never the page's words.
+    assert.deepEqual(s.events, ['tool browser_tabs ok', 'tool browser_read docs.example.com ok'])
   })
   test("a teammate's task never reaches the browser", async () => {
     const asked: string[] = []
@@ -593,6 +595,7 @@ describe("the owner's browser", () => {
     assert.deepEqual([...readFileSync(file)].slice(0, 4), [0x89, 0x50, 0x4e, 0x47])
     const no = await s.call('browser_screenshot', { channel: 'C1', thread_ts: '5.5', tab: 4 })
     assert.equal(no.isError, true)
+    assert.deepEqual(s.events, ['tool browser_screenshot docs.example.com ok', 'tool browser_screenshot refused: a blocked site'])
   })
   test('an extension that is not connected is an error the session can say', async () => {
     const s = setup({ browser: { block: [], call: async () => { throw new Error('the Kage Chrome extension is not connected') } } })

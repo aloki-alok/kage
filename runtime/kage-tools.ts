@@ -505,6 +505,9 @@ export function sessionTools(o: {
   if (browser && !name) {
     const where = { channel: s.describe('channel attribute from the task tag'), thread_ts: s.describe('thread_ts attribute from the task tag') }
     const refused = (args: Record<string, unknown>) => ownerOnly(args) ? undefined : { isError: true as const, text: "refused: only the owner's own task reads their browser" }
+    // The event log (#94) keeps the tool, the site and the outcome, never the page's words.
+    const seen = (tool: string, outcome: string) => o.event?.('tool', `${tool} ${outcome}`)
+    const hostOf = (url: string) => { try { return new URL(url).hostname } catch { return 'unknown' } }
     const failed = (e: unknown) => ({ isError: true as const, text: `browser: ${e instanceof Error ? e.message : String(e)}` })
     tools.push({
       name: 'browser_tabs',
@@ -512,7 +515,7 @@ export function sessionTools(o: {
       shape: where,
       async run(args) {
         const no = refused(args); if (no) return no
-        try { return { text: tabsResult(await browser.call('tabs', {}) as Tab[], browser.block) } } catch (e) { return failed(e) }
+        try { const text = tabsResult(await browser.call('tabs', {}) as Tab[], browser.block); seen('browser_tabs', 'ok'); return { text } } catch (e) { seen('browser_tabs', 'failed'); return failed(e) }
       },
     }, {
       name: 'browser_read',
@@ -520,7 +523,12 @@ export function sessionTools(o: {
       shape: { ...where, tab: z.number().describe('tab id from browser_tabs') },
       async run(args) {
         const no = refused(args); if (no) return no
-        try { return { text: pageResult(await browser.call('read', { tabId: args.tab }) as Page, browser.block, 40_000) } } catch (e) { return failed(e) }
+        try {
+          const p = await browser.call('read', { tabId: args.tab }) as Page
+          const text = pageResult(p, browser.block, 40_000)
+          seen('browser_read', text.startsWith('refused') ? 'refused: a blocked site' : `${hostOf(p.url)} ok`)
+          return text.startsWith('refused') ? { isError: true, text } : { text }
+        } catch (e) { seen('browser_read', 'failed'); return failed(e) }
       },
     }, {
       name: 'browser_screenshot',
@@ -530,13 +538,14 @@ export function sessionTools(o: {
         const no = refused(args); if (no) return no
         try {
           const r = await browser.call('screenshot', { tabId: args.tab }) as { url: string; png: string }
-          if (blockedSite(r.url, browser.block)) return { isError: true, text: 'refused: that tab is on a site the owner blocked, or is not a web page' }
+          if (blockedSite(r.url, browser.block)) { seen('browser_screenshot', 'refused: a blocked site'); return { isError: true, text: 'refused: that tab is on a site the owner blocked, or is not a web page' } }
           const png = /^data:image\/png;base64,(.+)$/.exec(r.png)?.[1]
           if (!png) return { isError: true, text: 'browser: the extension sent no PNG' }
           const file = `${filesOf(String(args.channel), String(args.thread_ts))}/tab-${Date.now()}.png`
           writeFileSync(file, Buffer.from(png, 'base64'), { mode: 0o600 })
+          seen('browser_screenshot', `${hostOf(r.url)} ok`)
           return { text: `saved ${file}. Send it to the owner with send_file.` }
-        } catch (e) { return failed(e) }
+        } catch (e) { seen('browser_screenshot', 'failed'); return failed(e) }
       },
     })
   }
