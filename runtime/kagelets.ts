@@ -4,7 +4,7 @@
 import { randomUUID } from 'node:crypto'
 import { existsSync, mkdirSync, readdirSync, readFileSync, renameSync, unlinkSync, writeFileSync } from 'node:fs'
 import { parseSessionKey } from '../core/conversations.ts'
-import { capCheck, chainErrors, COST_FLAG, DB_READ, MAX_CHAIN, NAME, parseKagelet, resultLine, revokeStanding, rowLine, setPaused, kageletFile, kageletRows, type Caps, type Kagelet, type KageletRow, type Standing } from '../core/kagelets.ts'
+import { DEFAULT_MODEL, capCheck, chainErrors, COST_FLAG, DB_READ, MAX_CHAIN, NAME, parseKagelet, resultLine, revokeStanding, rowLine, setPaused, kageletFile, kageletRows, type Caps, type Kagelet, type KageletRow, type Standing } from '../core/kagelets.ts'
 import { chainLine, chainViews, handoffDetail, whoOf } from '../core/events.ts'
 import { loopGuard } from '../core/agents.ts'
 import { messageInput, parseMessage, type KageletMessage } from '../core/kagelet-message.ts'
@@ -116,7 +116,7 @@ export type AskOwner = (card: { kagelet: string; tools: string; job: string }) =
 // The hub syncs right after a change, so run works at once; the minute sync applies it anyway.
 // read_command: names one of the install's read commands for db_read. revoke: name is the tool.
 // No field here says who asked: the model fills every one, so none may widen a grant.
-export type Manage = { action: 'save' | 'pause' | 'resume' | 'run' | 'remove' | 'revoke'; name: string; thread?: string; schedule?: string; after?: string; tools?: string[]; job?: string; why?: string; read_command?: string }
+export type Manage = { action: 'save' | 'pause' | 'resume' | 'run' | 'remove' | 'revoke'; name: string; thread?: string; schedule?: string; after?: string; tools?: string[]; job?: string; why?: string; model?: string; model_why?: string; read_command?: string }
 export function kageletManager(o: { dir: string; max: number; ledgers: { text(name: 'runs' | 'costs' | 'reports'): string } & Pick<Ledgers, 'add' | 'events'>; sync: (now: number) => void; runNow: (id: string, now: number) => string | undefined; store: Pick<Store, 'load' | 'save'>; envCommand?: string; log: (line: string) => void }) {
   // Once: the standing approval from before tiers ({ tool, command, at }) covered db_read alone, which is read now.
   if (typeof (o.store.load(STANDING) as { tool?: unknown } | undefined)?.tool === 'string') o.store.save(STANDING, undefined)
@@ -132,7 +132,7 @@ export function kageletManager(o: { dir: string; max: number; ledgers: { text(na
       const flags = new Map(o.ledgers.text('reports').split('\n').map(l => l.split('\t')).filter(([at = '', n = '']) => n.startsWith(COST_FLAG) && Date.parse(at) >= midnight).map(([, n, line]) => [n!.slice(COST_FLAG.length), line!]))
       // One line per chain today: its steps and where it stopped (#93).
       const chains = chainViews(o.ledgers.events(new Date(now).toISOString().slice(0, 10))).map(c => `  ${chainLine(c)}`)
-      return [...all.map(r => `${rowLine(r, now)}\n  made by ${r.by === 'kage' ? 'Kage' : 'the owner'}${r.why ? `: ${r.why}` : ''}\n  last report: ${resultLine(r, now)}${flags.has(r.name) ? `\n  cost flag today: ${flags.get(r.name)}` : ''}`),
+      return [...all.map(r => `${rowLine(r, now)}\n  model ${r.model}${r.modelWhy ? `: ${r.modelWhy}` : ''}\n  made by ${r.by === 'kage' ? 'Kage' : 'the owner'}${r.why ? `: ${r.why}` : ''}\n  last report: ${resultLine(r, now)}${flags.has(r.name) ? `\n  cost flag today: ${flags.get(r.name)}` : ''}`),
         ...chains.length ? [`Chains today:\n${chains.join('\n')}`] : []].join('\n')
     },
     // ask: the owner's card, needed only for a write tool no standing approval covers.
@@ -196,7 +196,11 @@ export function kageletManager(o: { dir: string; max: number; ledgers: { text(na
       // Who made it is what the hub knows: a file that exists keeps its maker (a hand-written one is the owner's),
       // and a new one is Kage's, since only Kage's tool writes it.
       const by = had ? had.by : 'kage'
-      const fileText = (approved: boolean, standing: string[] = []) => kageletFile({ thread: a.thread ?? '', schedule: a.schedule ?? '', ...(a.after && { after: a.after }), tools, job: a.job ?? '', by, why: a.why ?? '', paused: !!had?.paused, approved, standing })
+      // The model stays as the file has it. One Kage picks, past the default, needs a reason the panel shows.
+      const model = a.model ?? had?.model ?? DEFAULT_MODEL
+      const modelWhy = a.model_why ?? (model === had?.model ? had.modelWhy : '')
+      if (model !== DEFAULT_MODEL && model !== had?.model && !modelWhy.trim()) return refuse(`${model} needs a one-line model_why: the owner sees it in the panel`)
+      const fileText = (approved: boolean, standing: string[] = []) => kageletFile({ thread: a.thread ?? '', schedule: a.schedule ?? '', ...(a.after && { after: a.after }), tools, job: a.job ?? '', by, why: a.why ?? '', model, modelWhy, paused: !!had?.paused, approved, standing })
       // Checked as if approved first, so an act tool or a file that would not run is refused before any card.
       const valid = fileText(true)
       if (typeof valid !== 'string') return refuse(valid.error)

@@ -5,7 +5,7 @@ import { DatabaseSync } from 'node:sqlite'
 import { DIR } from './home.ts'
 import { parseKagelet } from '../core/kagelets.ts'
 import { clockTime } from '../core/board.ts'
-import { kageletRuns, runLine } from '../core/kagelet-view.ts'
+import { kageletRuns, modelLine, runLine } from '../core/kagelet-view.ts'
 import { kageletsDir, readKagelets } from '../runtime/kagelets.ts'
 import { eventsOn, ledgerText } from '../runtime/ledger.ts'
 import { chainLine, chainViews } from '../core/events.ts'
@@ -16,6 +16,7 @@ const file = readKagelets(kageletsDir(DIR)).find(f => f.name === name)
 if (!file) { console.error(`There is no kagelet named "${name}". kage list shows them.`); process.exit(1) }
 const sp = parseKagelet(name, file.text)
 if ('error' in sp) console.log(`${name} does not run: ${sp.error}`)
+else console.log(modelLine(sp))
 if (!existsSync(`${DIR}/kage.db`)) { console.log('No runs yet.'); process.exit(0) }
 const db = new DatabaseSync(`${DIR}/kage.db`, { readOnly: true })
 const now = Date.now()

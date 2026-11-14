@@ -430,3 +430,17 @@ test('a sync runs no kagelet whose after: line makes a cycle, and logs why once'
   assert.equal(grants.size, 0)
   assert.match(logs.join('\n'), /kagelet a does not run: after makes a cycle/)
 })
+
+test('a model Kage picks beyond the default needs a one-line reason; the reason shows in the list; an unchanged model needs none', async () => {
+  const t = manager()
+  assert.match(await t.m.manage({ action: 'save', name: 'big', ...job, model: 'opus' }, 1), /not saved: .*model_why/)
+  assert.equal(existsSync(`${t.dir}/big.md`), false)
+  assert.match(await t.m.manage({ action: 'save', name: 'big', ...job, model: 'opus', model_why: 'a long monthly roll-up' }, 2), /saved big/)
+  assert.match(t.m.list(2), /opus[\s\S]*a long monthly roll-up/)
+  // A later save that leaves the model alone keeps it and its reason.
+  assert.match(await t.m.manage({ action: 'save', name: 'big', ...job, schedule: '0 10 * * *' }, 3), /saved big/)
+  assert.match(readFileSync(`${t.dir}/big.md`, 'utf8'), /^model: opus$[\s\S]*^model_why: a long monthly roll-up$/m)
+  // The default needs no reason, and writes no line.
+  assert.match(await t.m.manage({ action: 'save', name: 'small', ...job, model: 'sonnet' }, 4), /saved small/)
+  assert.doesNotMatch(readFileSync(`${t.dir}/small.md`, 'utf8'), /model/)
+})

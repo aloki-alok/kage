@@ -1,7 +1,7 @@
 import { describe, test } from 'node:test'
 import assert from 'node:assert/strict'
 import { kageletRows } from '../kagelets.ts'
-import { actionLine, CAP_PAUSE, capError, chainCap, dailyCap, totalCap, kageletRuns, PANEL_KEYS, panelLines, runLine, shownState } from '../kagelet-view.ts'
+import { modelLine, actionLine, CAP_PAUSE, capError, chainCap, dailyCap, totalCap, kageletRuns, PANEL_KEYS, panelLines, runLine, shownState } from '../kagelet-view.ts'
 
 const LINK = 'https://test.slack.com/archives/CTEST1/p1700000000123456'
 const KEY = 'CTEST1:1700000000.123456#side-kagelet-deploys'
@@ -20,6 +20,15 @@ describe('the kagelets panel in kage top', () => {
   const reports = `${at(9, 5)}\tdeploys\tall green\t\n`
   const rows = kageletRows(files, { runs: `${at(9)}\tkagelet-deploys\t${KEY}\n`, costs, reports, now })
 
+  test('the report line starts with its schedule and model, and a chosen model ends with its reason', () => {
+    const [big, plain] = panelLines(kageletRows([{ name: 'big', text: file('model: opus\nmodel_why: big roll-up') }, { name: 'plain', text: file('') }], { runs: '', costs: '', now }), now)
+    assert.match(big!.report, /^0 9 \* \* \* +opus +no report yet \(opus: big roll-up\)$/)
+    assert.match(plain!.report, /^0 9 \* \* \* +sonnet +no report yet$/)
+  })
+  test('kage logs names the model, with its reason when there is one', () => {
+    assert.equal(modelLine({ model: 'sonnet', modelWhy: '' }), 'model: sonnet')
+    assert.equal(modelLine({ model: 'opus', modelWhy: 'big roll-up' }), 'model: opus (big roll-up)')
+  })
   test('each kagelet reads on, paused, broken or over cap', () => {
     assert.deepEqual(rows.map(r => [r.name, shownState(r, 2)]), [['broken', 'broken'], ['deploys', 'on'], ['held', 'paused'], ['spender', 'over cap']])
   })
@@ -32,9 +41,9 @@ describe('the kagelets panel in kage top', () => {
   test('a line shows its state, last and next run, cost today against its 7-day average and who made it; the next line its report', () => {
     const [broken, deploys, held] = panelLines(rows, now, 2)
     assert.match(deploys!.main, /^deploys +on +last 09:00 +next Sun 09:00 +\$0\.40 avg \$0\.00 +by Kage$/)
-    assert.equal(deploys!.report, '09:05 all green')
+    assert.match(deploys!.report, /^0 9 \* \* \* +sonnet +09:05 all green$/)
     assert.match(held!.main, /paused .*last never .*next - .*by owner$/)
-    assert.equal(held!.report, 'no report yet')
+    assert.match(held!.report, /sonnet +no report yet$/)
     assert.match(broken!.main, /^broken +broken +it needs front matter/)
     assert.equal(broken!.report, '')
   })

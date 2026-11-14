@@ -1,7 +1,7 @@
 // What the owner sees of kagelets in a terminal: the panel in kage top, its keys, and kage logs <kagelet>.
 // The actions go to the hub's manager (runtime/kagelets.ts), the same one Kage's own tool uses.
 import { clockTime, whenLabel } from './board.ts'
-import type { KageletRow, Report } from './kagelets.ts'
+import { DEFAULT_MODEL, type KageletRow, type Report } from './kagelets.ts'
 
 // The cost caps are off unless set (#96). A set value that is not a number of dollars, or is below zero, is off
 // too, and capError names it, so the hub says so at start instead of guarding nothing in silence.
@@ -33,7 +33,7 @@ export function panelLines(rows: KageletRow[], now: number, cap?: number) {
   return rows.map(r => r.state === 'broken' ? { main: `${r.name.padEnd(16)} ${'broken'.padEnd(8)} ${r.error}`, report: '' } : {
     main: [r.name.padEnd(16), shownState(r, cap).padEnd(8), `last ${r.lastRun ? whenLabel(r.lastRun, now) : 'never'}`.padEnd(14),
       `next ${whenLabel(r.next, now)}`.padEnd(14), `$${r.costToday.toFixed(2)} avg $${r.avg7.toFixed(2)}`.padEnd(16), `by ${r.by === 'kage' ? 'Kage' : 'owner'}${r.standing ? ', standing' : ''}`].join(' '),
-    report: r.result ? `${clockTime(r.result.at, now)} ${reportText(r.result)}` : 'no report yet',
+    report: `${(r.cron || `after ${r.after}`).padEnd(13)} ${(r.model ?? '').padEnd(7)} ${r.result ? `${clockTime(r.result.at, now)} ${reportText(r.result)}` : 'no report yet'}${r.modelWhy && r.model !== DEFAULT_MODEL ? ` (${r.model}: ${r.modelWhy})` : ''}`,
   })
 }
 
@@ -70,5 +70,8 @@ export function kageletRuns(name: string, key: string, l: { runs: string; costs:
     return end === Infinity && now - at < 3_600_000 ? { at, usd, status: 'running', report: 'no report yet' } : { at, usd, status: 'failed', report: 'no report: the run ended without one' }
   }).reverse()
 }
+
+// The first line of kage logs <kagelet>.
+export const modelLine = (k: { model: string; modelWhy: string }) => `model: ${k.model}${k.modelWhy ? ` (${k.modelWhy})` : ''}`
 
 export const runLine = (r: Run, now: number) => [clockTime(r.at, now).padEnd(16), `$${r.usd.toFixed(2)}`.padEnd(7), r.status.padEnd(15), r.report].join(' ')

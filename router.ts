@@ -227,6 +227,7 @@ const sdkLib = env.KAGE_RUNTIME === 'tmux' ? undefined : await (async () => ({
 // Kagelets (#57): one file each in the kagelets folder, synced at start and each minute. Each runs on its
 // schedule in a side lane of its thread, at teammate trust, with only its grant, and approves nothing.
 let grants = new Map<string, string[]>()
+let models = new Map<string, string>()   // lane key -> the model its file names
 const KAGELETS = kageletsDir(DIR, log)
 // The names from before the rename still read.
 const MAX_KAGELETS = Number(env.KAGE_MAX_KAGELETS || env.KAGE_MAX_SPECIALISTS || 10)
@@ -250,6 +251,7 @@ const kagelets = (now: number) => {
     log(`kagelet ${name} ${why}`)
   } }, rows, CAPS, now).length) files = readKagelets(KAGELETS)
   grants = syncKagelets(files, store, now, log, MAX_KAGELETS)
+  models = new Map(rows.filter(r => r.key && r.model && grants.has(r.key)).map(r => [r.key!, r.model!]))
 }
 // The manager's side, for Kage's owner sessions (runtime/kage-tools.ts), and the owner's notes to a kagelet.
 const manager = kageletManager({ dir: KAGELETS, max: MAX_KAGELETS, ledgers, sync: kagelets, runNow: (id, now) => schedules.runNow(id, now), store, envCommand: env.KAGE_DB_READ_COMMAND, log })
@@ -288,6 +290,7 @@ const sdk = sdkLib ? sdkSessions({
     routes.ended(key, usd ?? 0, d.saved()[key] ? `${PROJECT}/${d.saved()[key]}.jsonl` : '', Date.now(), limited)
   },
   budgetOf: key => key.includes('#side-kagelet-') ? budgetLeft(kageletRows(readKagelets(KAGELETS), { runs: '', costs: ledgers.text('costs'), now: Date.now() }), key, CAPS) : undefined,
+  modelOf: key => models.get(key),
   onBlocked: blocked,
   onTurn: (key, tasks, limit, done) => limits.turn(key, tasks, limit, Date.now(), done),
   // A lane whose file is gone keeps no tools, rather than falling back to approval cards.

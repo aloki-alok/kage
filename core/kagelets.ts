@@ -17,7 +17,12 @@ export const NAME = /^[a-z][a-z0-9-]{0,30}$/
 export type Maker = 'owner' | 'kage'
 // standing: its write tools held by a standing approval (runtime/kagelets.ts), so a revoke of that tool takes them.
 // after: the kagelet whose output starts this one (#93). cron: '' when it runs only after another.
-export type Kagelet = { name: string; key: string; link: string; cron: string; after?: string; tools: string[]; job: string; paused: boolean; by: Maker; why: string; resumed?: number; standing?: string[] }
+export type Kagelet = { name: string; key: string; link: string; cron: string; after?: string; tools: string[]; job: string; paused: boolean; by: Maker; why: string; model: string; modelWhy: string; resumed?: number; standing?: string[] }
+
+// Sonnet unless the file says otherwise (#98). A name Claude Code knows: an alias or a full id.
+// A typo would pass the SDK's setup and then fail every run, so a name that is neither is held.
+export const DEFAULT_MODEL = 'sonnet'
+const MODEL = /^(fable|opus|sonnet|haiku|claude-[a-z0-9.-]+(\[1m\])?)$/
 
 // Flat front matter (key: value lines between --- lines), then the job.
 export function parseKagelet(name: string, text: string): Kagelet | { error: string } {
@@ -32,6 +37,8 @@ export function parseKagelet(name: string, text: string): Kagelet | { error: str
   const after = head.get('after') ?? ''
   if (after && !NAME.test(after)) return { error: `after must name a kagelet, not "${after}"` }
   if (cron || !after) try { parseCron(cron) } catch { return { error: `schedule must be a cron line like "0 9 * * 1-5", not "${cron}"` } }
+  const model = head.get('model') || DEFAULT_MODEL
+  if (!MODEL.test(model)) return { error: `model must be sonnet, opus, haiku, fable or a claude-... id, not "${model}"` }
   const job = m[2]!.trim()
   if (!job) return { error: 'the job, below the front matter, is empty' }
   const tools = (head.get('tools') ?? '').split(',').map(t => t.trim()).filter(Boolean)
@@ -41,7 +48,7 @@ export function parseKagelet(name: string, text: string): Kagelet | { error: str
   const act = tools.find(t => kageletTier(t) === 'act')
   if (act) return { error: `a kagelet never holds ${act}: it is an act tool (prod, money, customers, access or a delete) or not a web or MCP tool. The kagelet says in its thread what it needs, and Kage asks the owner each time.` }
   return { name, key: `${thread}#side-kagelet-${name}`, link, cron, ...(after && { after }), tools, job, paused: isPaused(head.get('paused')),
-    by: head.get('by') === 'kage' ? 'kage' : 'owner', why: head.get('why') ?? '',
+    by: head.get('by') === 'kage' ? 'kage' : 'owner', why: head.get('why') ?? '', model, modelWhy: head.get('model_why') ?? '',
     ...(Date.parse(head.get('resumed') ?? '') >= 0 && { resumed: Date.parse(head.get('resumed')!) }), ...(standing.length && { standing }) }
 }
 
@@ -74,16 +81,16 @@ Say what to check, where, and what to post in the thread. For example: every wee
 // model steers every save, the owner's sessions too.
 // approved: the owner said yes to its write tools (a card, a standing approval, or a grant it already held).
 // standing: those of its write tools that a standing approval covers.
-export function kageletFile(f: { thread: string; schedule: string; after?: string; tools: string[]; job: string; by: Maker; why: string; paused?: boolean; approved?: boolean; standing?: string[] }): string | { error: string } {
+export function kageletFile(f: { thread: string; schedule: string; after?: string; tools: string[]; job: string; by: Maker; why: string; model?: string; modelWhy?: string; paused?: boolean; approved?: boolean; standing?: string[] }): string | { error: string } {
   // One line each, so no value can add a front matter line of its own (a second tools or paused line).
-  for (const [k, v] of Object.entries({ thread: f.thread, schedule: f.schedule, after: f.after ?? '', why: f.why, tool: f.tools.join(',') })) if (/[\r\n]/.test(v)) return { error: `the ${k} must be one line` }
+  for (const [k, v] of Object.entries({ thread: f.thread, schedule: f.schedule, after: f.after ?? '', why: f.why, model: f.model ?? '', model_why: f.modelWhy ?? '', tool: f.tools.join(',') })) if (/[\r\n]/.test(v)) return { error: `the ${k} must be one line` }
   // A comma or space in one name reads back as two tools, so the card would not name what the file grants.
   const odd = f.tools.find(t => !/^[\w-]+$/.test(t))
   if (odd) return { error: `"${odd}" is not one tool name: letters, digits, _ and - only` }
   const wide = !f.approved && f.tools.find(t => kageletTier(t) === 'write')
   if (wide) return { error: `${wide} needs the owner's yes on Kage's card: it sends or changes something` }
   const standing = (f.standing ?? []).filter(t => f.tools.includes(t))
-  const text = `---\nthread: ${f.thread}\n${f.schedule || !f.after ? `schedule: ${f.schedule}\n` : ''}${f.after ? `after: ${f.after}\n` : ''}tools: ${f.tools.join(', ')}\nby: ${f.by}\nwhy: ${f.why}\n${standing.length ? `standing: ${standing.join(', ')}\n` : ''}${f.paused ? 'paused: yes\n' : ''}---\n${f.job.trim()}\n`
+  const text = `---\nthread: ${f.thread}\n${f.schedule || !f.after ? `schedule: ${f.schedule}\n` : ''}${f.after ? `after: ${f.after}\n` : ''}tools: ${f.tools.join(', ')}\nby: ${f.by}\nwhy: ${f.why}\n${f.model && f.model !== DEFAULT_MODEL ? `model: ${f.model}\n${f.modelWhy ? `model_why: ${f.modelWhy}\n` : ''}` : ''}${standing.length ? `standing: ${standing.join(', ')}\n` : ''}${f.paused ? 'paused: yes\n' : ''}---\n${f.job.trim()}\n`
   const sp = parseKagelet('check', text)
   return 'error' in sp ? sp : text
 }
@@ -114,7 +121,7 @@ export function chainErrors(ks: { name: string; after?: string; tools?: string[]
 
 export type Report = { at: number; summary: string; needs?: string }
 // costToday: since midnight, or since its last resume today. avg7: its daily average over the 7 days before today.
-export type KageletRow = { name: string; state: 'runs' | 'paused' | 'broken'; error?: string; key?: string; link?: string; cron?: string; after?: string; tools: string[]; lastRun?: number; next?: number; costToday: number; avg7: number; result?: Report; by?: Maker; why?: string; standing?: string[] }
+export type KageletRow = { name: string; state: 'runs' | 'paused' | 'broken'; error?: string; key?: string; link?: string; cron?: string; after?: string; tools: string[]; lastRun?: number; next?: number; costToday: number; avg7: number; result?: Report; by?: Maker; why?: string; model?: string; modelWhy?: string; standing?: string[] }
 // One row per file for kage list, kage top and the manager. runs, costs and reports are the ledgers (core/ledgers.ts).
 export function kageletRows(files: { name: string; text: string }[], o: { runs: string; costs: string; reports?: string; now: number }): KageletRow[] {
   const results = new Map<string, Report>()
@@ -142,7 +149,7 @@ export function kageletRows(files: { name: string; text: string }[], o: { runs: 
       name: sp.name, state: sp.paused ? 'paused' : 'runs', key: sp.key, link: sp.link, cron: sp.cron, ...(sp.after && { after: sp.after }), tools: sp.tools,
       ...(last.has(sp.name) && { lastRun: last.get(sp.name) }), ...(next !== undefined && { next }), costToday: spendSince(o.costs, Math.max(midnight, sp.resumed ?? 0)).find(s => s.key === sp.key)?.usd ?? 0,
       avg7: Math.round(((week.find(s => s.key === sp.key)?.usd ?? 0) - (today.find(s => s.key === sp.key)?.usd ?? 0)) / 7 * 1e6) / 1e6,
-      ...(results.has(sp.name) && { result: results.get(sp.name) }), by: sp.by, why: sp.why, ...(sp.standing && { standing: sp.standing }),
+      ...(results.has(sp.name) && { result: results.get(sp.name) }), by: sp.by, why: sp.why, model: sp.model, modelWhy: sp.modelWhy, ...(sp.standing && { standing: sp.standing }),
     }
   })
 }
