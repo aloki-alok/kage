@@ -3,13 +3,13 @@ import { BOT_SCOPES, USER_SCOPES, missingScopes, type Missing } from '../core/sl
 
 type Fetch = typeof fetch
 
-export async function authTest(token: string, f: Fetch = fetch): Promise<{ scopes: string[]; botId?: string } | undefined> {
+export async function authTest(token: string, f: Fetch = fetch): Promise<{ scopes: string[]; botId?: string; teamId?: string } | undefined> {
   try {
     const r = await f('https://slack.com/api/auth.test', { method: 'POST', headers: { Authorization: `Bearer ${token}` }, signal: AbortSignal.timeout(10_000) })
-    const body = await r.json() as { ok: boolean; bot_id?: string }
+    const body = await r.json() as { ok: boolean; bot_id?: string; team_id?: string }
     const header = r.headers.get('x-oauth-scopes')
     if (!body.ok || header === null) return undefined
-    return { scopes: header.split(',').map(s => s.trim()).filter(Boolean), botId: body.bot_id }
+    return { scopes: header.split(',').map(s => s.trim()).filter(Boolean), botId: body.bot_id, teamId: body.team_id }
   } catch { return undefined }
 }
 

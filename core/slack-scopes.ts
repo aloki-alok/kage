@@ -14,10 +14,8 @@ export const USER_SCOPES = [
   'users.profile:read', 'users.profile:write',
   // message_people opens the group DM of you and the people a task names.
   'im:write', 'mpim:write',
-  // Sessions open files people attach in a thread.
+  // The hub downloads files people attach to a task (runtime/slack-files.ts).
   'files:read',
-  // Sessions search Slack for the same subject in other channels before they answer.
-  'search:read',
 ]
 
 import type { Line } from './doctor.ts'
@@ -40,5 +38,22 @@ export function scopeDm(m: Missing, told: string | undefined): { send?: string; 
   if (!set) return { send: undefined, told: undefined }
   if (set === told) return { send: undefined, told }
   const what = KINDS.filter(k => m[k].length).map(k => `${k} scopes ${m[k].join(', ')}`).join(' and ')
-  return { send: `Your Slack app lacks ${what}, so some Kage features fail with missing_scope. Run \`kage slack upgrade\` in a terminal to add them.`, told: set }
+  return { send: `Your Slack app lacks ${what}, so some Kage features fail with missing_scope. Run \`kage slack upgrade\` in a terminal. It opens your app's manifest and names the scopes to add. Your other settings stay as they are.`, told: set }
+}
+
+// The app's manifest page in Slack's app settings (the same deep link the Slack CLI uses for the logs page).
+export const manifestUrl = (team: string, app: string) => `https://app.slack.com/app-settings/${team}/${app}/app-manifest`
+
+// What the person does. Only the missing names are added, so a customized app (own slash commands, interactivity,
+// extra scopes) keeps everything it has. Pasting our whole manifest over theirs would wipe those.
+export function upgradeSteps(m: Missing, url: string): string[] {
+  const adds = KINDS.filter(k => m[k].length).map(k => `   - oauth_config.scopes.${k}: add ${m[k].join(', ')}`)
+  return [
+    `1. Open ${url} if it did not open.`,
+    '2. In the manifest, add only these scope names to the lists that exist. Do not paste a whole manifest over yours.',
+    ...adds,
+    '3. Click Save Changes.',
+    '4. Click "Reinstall to Workspace" in the yellow banner, then click Allow.',
+    '5. If Slack shows new tokens under Install App, run kage save to enter them.',
+  ]
 }

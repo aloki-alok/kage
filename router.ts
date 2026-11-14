@@ -182,7 +182,7 @@ if (jev && 'error' in jev) log(`jev is off: ${jev.error}`)
 else if (jev) log(`jev checks ${jev.agents === 'all' ? 'every listed agent' : jev.agents.join(', ')} at threshold ${jev.threshold}`)
 
 const slack = await connectSlack({
-  dir: DIR, appToken: secrets.slack!.app!, bot, user, name: NAME, title: Title, teammates: TEAMMATES, apps: TRUSTED_APPS,
+  dir: DIR, appToken: secrets.slack!.app!, userToken: secrets.slack!.user!, bot, user, name: NAME, title: Title, teammates: TEAMMATES, apps: TRUSTED_APPS,
   hub: { deliver, stop: (c, cut, by) => {
       const key = sessionKey(c, { lane: 'main' })
       return mayStop(by, slack.ids.owner, starters, key) ? stopThread(key, cut) : 'Only the owner, or the teammate whose task started this thread, can stop it.'
