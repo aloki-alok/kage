@@ -45,6 +45,7 @@ import { sdkSessions } from './runtime/sdk-sessions.ts'
 import { answerDeferred, deferredApprovals } from './runtime/deferred-approvals.ts'
 import { limitPause } from './runtime/limit-pause.ts'
 import { ssmRelay } from './runtime/ssm-relay.ts'
+import { keyProxy } from './runtime/key-proxy.ts'
 import { ssmEligible } from './core/ssm.ts'
 import { listenForSessions, restoreHolds, routeReply } from './runtime/session-link.ts'
 import { openStore, type Inbox } from './runtime/store.ts'
@@ -104,6 +105,8 @@ const deferred = deferredApprovals(store)
 const answerCard = (id: string, behavior: 'allow' | 'deny') => answerDeferred(deferred, (key, task) => { if (toSession(key, task) === 'failed') failed(task) }, id, behavior, Date.now())
 const SSM_SOCK = `${DIR}/ssm.sock`
 const ssm = ssmRelay({ path: SSM_SOCK, trusted: key => store.relayOk(key), log })
+const KEYS_SOCK = `${DIR}/keys.sock`
+const keys = keyProxy({ path: KEYS_SOCK, routes: config.sessionKeys ?? {}, trusted: key => store.relayOk(key), log })   // the same allow list as the SSM relay
 // What connectors keep across a restart, in the same file. The old JSON files move in once.
 store.importState({ afk: `${DIR}/afk.json`, 'github-threads': `${DIR}/github-threads.json`, 'mail-threads': `${DIR}/mail-threads.json` })
 // What Kage posted, waits on, spent and ran, in the same file (runtime/ledger.ts). Old .tsv files move in once.
@@ -316,6 +319,7 @@ const sdk = sdkLib ? sdkSessions({
   envFile: ENV_FILE,
   codeDir: CODE,
   ssm: { sock: SSM_SOCK, issue: key => ssm.issue(key), drop: key => ssm.drop(key) },
+  keys: { sock: KEYS_SOCK, issue: key => keys.issue(key), drop: key => keys.drop(key) },
   onStart: () => store.saveSessions(d.saved()),
   onResult: (key, total, resumed, limited) => {
     const usd = recordCost(key, total, resumed)
@@ -671,7 +675,7 @@ function relay(action: string, key?: string): { ok: true; keys: string[] } | { r
     if (!key || !ssmEligible(key) || key.includes('#')) return { refused: 'that is not a Slack thread key (lanes are not listed)' }
     if (action === 'allow' && !store.conversation(key)) return { refused: 'no thread with that key' }
     store.setRelayAllow(key, action === 'allow')
-    if (action === 'deny') ssm.drop(key)
+    if (action === 'deny') { ssm.drop(key); keys.drop(key) }
     log('relay', action, key)
   }
   return { ok: true, keys: store.relayAllowed() }
