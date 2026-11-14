@@ -23,3 +23,18 @@ export function compareUrl(origin: string, from: string, to: string): string | u
   const m = /github\.com[/:]([^/]+)\/(.+?)(\.git)?$/.exec(origin.trim())
   return m ? `https://github.com/${m[1]}/${m[2]}/compare/${from}...${to}` : undefined
 }
+
+// The soak gate (ADR 0008, 0012): a commit may become a release only after the owner's hub ran it for 24 hours.
+// lastBootAt and crashDmAt are ms since the epoch. A hub restart for any reason restarts the 24 hours.
+const DAY = 86_400_000
+export type Soak = { candidate: string; running: string; lastBootAt?: number; crashDmAt?: number; doctorOk: boolean; now: number }
+export function soakGate(s: Soak): { ok: true } | { fail: string } {
+  const run = s.running.trim()
+  if (!run || !s.candidate.startsWith(run)) return { fail: `the hub runs ${run || 'an unknown version'}, not ${s.candidate.slice(0, 7)}` }
+  if (s.lastBootAt === undefined) return { fail: 'the hub start time is unknown' }
+  const up = s.now - s.lastBootAt
+  if (up < DAY) return { fail: `the hub has run it for ${Math.floor(up / 3_600_000)} hours, not 24` }
+  if (s.crashDmAt !== undefined && s.now - s.crashDmAt < DAY) return { fail: `a crash-loop DM went out ${Math.floor((s.now - s.crashDmAt) / 3_600_000)} hours ago` }
+  if (!s.doctorOk) return { fail: 'kage doctor is not "All good"' }
+  return { ok: true }
+}

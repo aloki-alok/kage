@@ -1,6 +1,6 @@
-import { test } from 'node:test'
+import { describe, test } from 'node:test'
 import assert from 'node:assert/strict'
-import { compareUrl, nextStep } from '../auto-update.ts'
+import { compareUrl, nextStep, soakGate } from '../auto-update.ts'
 
 const clean = { git: true, branch: 'main', dirty: false }
 
@@ -38,4 +38,30 @@ test('the compare link comes from the origin url, https or ssh', () => {
   assert.equal(compareUrl('git@github.com:acme/kage.git', 'aaa1111', 'bbb2222'), 'https://github.com/acme/kage/compare/aaa1111...bbb2222')
   assert.equal(compareUrl('https://github.com/acme/kage', 'aaa1111', 'bbb2222'), 'https://github.com/acme/kage/compare/aaa1111...bbb2222')
   assert.equal(compareUrl('https://gitlab.example.com/acme/kage.git', 'aaa1111', 'bbb2222'), undefined)
+})
+
+
+describe('soakGate: the candidate ran on the owner hub for 24 hours', () => {
+  const H = 3_600_000
+  const now = 1_800_000_000_000
+  const ok = { candidate: 'abc1234def', running: 'abc1234', lastBootAt: now - 25 * H, crashDmAt: undefined, doctorOk: true, now }
+  test('passes when the hub runs the commit, has been up 24 hours, doctor is all good and no crash DM', () => {
+    assert.deepEqual(soakGate(ok), { ok: true })
+  })
+  test('fails when the hub runs another commit', () => {
+    assert.deepEqual(soakGate({ ...ok, running: '1111111' }), { fail: 'the hub runs 1111111, not abc1234' })
+  })
+  test('fails when the hub started less than 24 hours ago', () => {
+    assert.deepEqual(soakGate({ ...ok, lastBootAt: now - 23 * H }), { fail: 'the hub has run it for 23 hours, not 24' })
+  })
+  test('fails when no start time is known', () => {
+    assert.deepEqual(soakGate({ ...ok, lastBootAt: undefined }), { fail: 'the hub start time is unknown' })
+  })
+  test('fails when a crash-loop DM went out in the last 24 hours', () => {
+    assert.deepEqual(soakGate({ ...ok, crashDmAt: now - 2 * H }), { fail: 'a crash-loop DM went out 2 hours ago' })
+    assert.deepEqual(soakGate({ ...ok, crashDmAt: now - 30 * H }), { ok: true })
+  })
+  test('fails when kage doctor is not all good', () => {
+    assert.deepEqual(soakGate({ ...ok, doctorOk: false }), { fail: 'kage doctor is not "All good"' })
+  })
 })
