@@ -18,7 +18,7 @@ a{color:inherit}
 /* header */
 @font-face{font-family:"Departure Mono";src:url("fonts/DepartureMono-Regular.woff2") format("woff2");font-display:swap}
 header{position:sticky;top:0;z-index:5;background:color-mix(in srgb,var(--paper) 90%,transparent);backdrop-filter:blur(8px)}
-.bar{display:grid;grid-template-columns:var(--rail) 1fr auto;align-items:center;height:64px;padding:0 36px;gap:0 56px}
+.bar{display:grid;grid-template-columns:var(--rail) 1fr auto;align-items:center;height:64px;padding:0 36px;gap:0 56px;max-width:var(--page);margin:0 auto}
 .logo{display:flex;align-items:baseline;gap:10px;text-decoration:none}
 .logo .w{font:400 24px/1 var(--serif);letter-spacing:-.02em}
 .logo .t{font:500 11px var(--mono);color:var(--mid);letter-spacing:.08em}
@@ -31,8 +31,8 @@ header{position:sticky;top:0;z-index:5;background:color-mix(in srgb,var(--paper)
 .btn:hover{border-color:var(--mid)}
 .btn kbd{color:var(--mid);margin-left:10px;font:inherit}
 /* the claude.dev post grid: a left rail, then one reading column that the title block shares */
-:root{--rail:300px;--col:720px}
-.grid{display:grid;grid-template-columns:var(--rail) minmax(0,var(--col));gap:0 56px;padding:0 36px;max-width:1240px}
+:root{--rail:300px;--col:720px;--page:calc(var(--rail) + var(--col) + 128px)}
+.grid{display:grid;grid-template-columns:var(--rail) minmax(0,var(--col));gap:0 56px;padding:0 36px;max-width:var(--page);margin:0 auto}
 .hero{padding-top:72px;padding-bottom:56px}
 .eyebrow{font:500 12px var(--mono);color:var(--mid);letter-spacing:.08em}
 h1{font:400 clamp(30px,3.4vw,44px)/1.18 var(--serif);letter-spacing:-.01em;margin:16px 0 18px}
