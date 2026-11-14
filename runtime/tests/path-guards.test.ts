@@ -4,7 +4,7 @@ import { execFileSync } from 'node:child_process'
 import { mkdirSync, mkdtempSync, readFileSync, realpathSync, symlinkSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { certFileEnv, configRefusal, protectConfig, ownerMemoryRefusal } from '../path-guards.ts'
+import { agentReadRefusal, certFileEnv, configRefusal, protectConfig, ownerMemoryRefusal } from '../path-guards.ts'
 
 describe("the owner's memory takes only people notes", () => {
   const MEM = '/home/o/.claude/projects/-home-o/memory'
@@ -261,5 +261,26 @@ describe('Go tools verify TLS inside the macOS sandbox (#226)', () => {
     assert.deepEqual(certFileEnv('darwin', { SSL_CERT_FILE: '/mine.pem' }, has), {})
     assert.deepEqual(certFileEnv('linux', {}, has), {})
     assert.deepEqual(certFileEnv('darwin', {}, () => false), {})
+  })
+})
+
+describe("an agent's task reads no secrets", () => {
+  const home = mkdtempSync(join(tmpdir(), 'kage-agent-'))
+  mkdirSync(join(home, '.config/kage'), { recursive: true })
+  writeFileSync(join(home, '.config/kage/secrets.json'), '{}')
+  mkdirSync(join(home, 'work'), { recursive: true })
+  symlinkSync(join(home, '.config/kage/secrets.json'), join(home, 'work/notes.txt'))
+  const refuse = (tool: string, input: Record<string, string>) => agentReadRefusal(tool, input, 'agent', home)
+  test('a read of a place that holds secrets is refused, through a symlink and for a path that does not exist yet', () => {
+    for (const p of ['.config/kage/secrets.json', '.ssh/id_ed25519', '.aws/credentials', '.claude/settings.json', 'work/.env', 'work/.env.production', 'work/server.pem', 'work/notes.txt'])
+      assert.match(refuse('Read', { file_path: join(home, p) }) ?? '', /secrets/, p)
+    assert.match(refuse('Grep', { path: join(home, '.aws') }) ?? '', /secrets/)
+    assert.match(refuse('Glob', { pattern: '**/.env*' }) ?? '', /secrets/)
+    assert.match(refuse('Glob', { pattern: '.config/kage/*' }) ?? '', /secrets/)
+  })
+  test('ordinary reads pass, and only an agent is checked', () => {
+    assert.equal(refuse('Read', { file_path: join(home, 'work/README.md') }), undefined)
+    assert.equal(refuse('Grep', { path: join(home, 'work') }), undefined)
+    assert.equal(agentReadRefusal('Read', { file_path: join(home, '.ssh/id_ed25519') }, 'teammate', home), undefined)
   })
 })

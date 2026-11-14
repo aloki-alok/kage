@@ -27,6 +27,22 @@ export function voiceToolRefusal(tool: string, sender: string | undefined): stri
   if (sender !== 'voice' || VOICE_OK.has(tool)) return undefined
   return `${tool} is not allowed on a voice call: anyone may be talking. Answer from what you know, or say you will check with the owner.`
 }
+// A listed agent's task may read and answer, nothing more. An agent relays what it read elsewhere (an
+// email, a page, a ticket), so its task is where injected instructions arrive. It gets no shell, no edits,
+// no web (a URL can carry data out), no other MCP tool, no subagent, no posting as the owner and no
+// schedule, and it never puts an approval card in front of the owner: a card relayed by an agent is how
+// an injected instruction would get approved. Its reads skip the places that hold secrets (runtime/path-guards.ts).
+const AGENT_OK = new Set(['Read', 'Grep', 'Glob', 'ToolSearch', 'TodoWrite',
+  'mcp__kage__reply', 'mcp__kage__edit_message', 'mcp__plugin_kage_kage__reply', 'mcp__plugin_kage_kage__edit_message'])
+export const SECRET_DIRS = ['.config/kage', '.ssh', '.aws', '.claude', '.gnupg', '.docker', '.kube']
+export const SECRET_FILE = /(^|\/)(\.env(\..*)?|\.netrc|\.npmrc|\.pgpass|id_[a-z0-9]+|[^/]*\.(pem|key|p12|pfx))$/i
+// A Glob pattern that would list secret files: it names .env, a key or a secret folder anywhere in it.
+export const SECRET_GLOB = /(^|[/*{,])(\.env|\.netrc|\.npmrc|\.pgpass|id_[a-z0-9*]|\.ssh|\.aws|\.gnupg|\.claude|\.config\/kage)|\.(pem|key|p12|pfx)\b/i
+export function agentToolRefusal(tool: string, sender: string | undefined): string | undefined {
+  if (sender !== 'agent' || AGENT_OK.has(tool)) return undefined
+  return `${tool} is not allowed on an agent's task: it may only read and answer. Say in the thread what it would need, and that a person has to ask for it.`
+}
+
 // A Slack connector posts as the owner with no sign of Kage. Kage's reply and message_people tools
 // post as Kage, or mark a post from the owner's account, so every Slack post goes through them.
 // Any Slack server's tool that sends, posts, schedules or replies; drafts post nothing.

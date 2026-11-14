@@ -155,7 +155,7 @@ export function sdkSessions(o: {
             hooks: [async input => {
               const i = input as { tool_name: string; tool_input?: Record<string, string> }
               const grant = o.grantOf?.(key)
-              const reason = (grant && grantRefusal(i.tool_name, grant, i.tool_input ?? {})) || toolRefusal(i.tool_name, i.tool_input ?? {}, s.sender, o)
+              const reason = (grant && grantRefusal(i.tool_name, grant, i.tool_input ?? {})) || toolRefusal(i.tool_name, i.tool_input ?? {}, s.turn.some(x => senderOf(x.task) === 'agent') ? 'agent' : s.sender, o)   // a task sent mid-turn joins it: an agent's anywhere limits the turn
               if (grant) o.onTool?.(key, i.tool_name, reason || undefined)
               return reason ? { hookSpecificOutput: { hookEventName: 'PreToolUse', permissionDecision: 'deny', permissionDecisionReason: reason } } : {}
             }],
