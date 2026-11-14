@@ -33,7 +33,7 @@ import { dreamDue, dreamTask, threadsSince } from './core/dream.ts'
 import { retro, retroDue } from './core/retro.ts'
 import { Dispatcher, mixRunners } from './core/sessions.ts'
 import { reloader } from './core/settings.ts'
-import { readEnv, readSettings } from './runtime/config-files.ts'
+import { readEnv, readSettings, sweepImported } from './runtime/config-files.ts'
 import { unknownNames } from './core/config.ts'
 import type { Task, ToSession } from './runtime/protocol.ts'
 import { postAsKage, sessionTools } from './runtime/kage-tools.ts'
@@ -585,6 +585,8 @@ listenForSessions(`${DIR}/router.sock`, d, { ...replies, failed, schedules, tell
   quiesce: () => { const now = Date.now(); limits.drain(now); return d.unquiet(now).filter(u => u.why !== 'just active' && u.why !== 'open in a terminal') }, callCode: voice?.issueCode })
 
 await slack.start()
+// Imported env files hold every token. Slack connected means this start is clean, not a crash loop: delete the ones older than 7 days.
+try { for (const f of sweepImported(ENV_FILE)) log(`deleted ${f}, 7 days after the import`) } catch (e) { log(`could not sweep old env files: ${e}`) }
 const updated = updatedNote(DIR, CODE, VERSION)
 if (updated) { log(updated); void slack.notifyOwner(updated).then(sent => { if (sent) clearUpdatedFrom(DIR) }) }
 // Env lines the import could not place sit under "unknown" in config.json. The owner hears their names (never values) once per set.

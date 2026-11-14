@@ -31,9 +31,18 @@ describe('the first start imports the env file', () => {
   test('a second start does nothing, and a config.json that exists is never overwritten', () => {
     const w = world()
     importLegacy(w.env)
-    writeFileSync(w.env, 'KAGE_NAME=other\n')
     assert.equal(importLegacy(w.env), undefined)
     assert.equal(readSettings(w.env).config.name, 'kagetest')
+  })
+  test('a plaintext env left by a crash after config.json was written is renamed, so the sweep deletes it', () => {
+    const w = world()
+    importLegacy(w.env, new Date('2026-11-14T09:00:00Z'))
+    writeFileSync(w.env, 'KAGE_NAME=other\nSLACK_BOT_TOKEN=xoxb-fake\n')
+    const to = importLegacy(w.env, new Date('2026-11-14T10:15:00Z'))
+    assert.equal(to, `${w.env}.imported-20261114T101500Z`)
+    assert.ok(!existsSync(w.env))
+    assert.equal(readSettings(w.env).config.name, 'kagetest')   // config.json still wins
+    assert.deepEqual(sweepImported(w.env, new Date('2026-11-22T10:15:01Z')), ['env.imported-20261114T090000Z', 'env.imported-20261114T101500Z'])
   })
   test('before the import, the env file reads the same as after, and nothing is written', () => {
     const w = world()
@@ -77,6 +86,19 @@ describe('changing the files', () => {
     try { readSettings(w.env) } catch (e) { msg = (e as Error).message }
     assert.match(msg, /config\.json.*maxSesion/)
     assert.ok(!msg.includes('xoxb-fake-value'))
+  })
+})
+
+describe('a file that is not JSON', () => {
+  test('says the line only, never the text, so a token in it cannot reach the log or a DM', () => {
+    for (const bad of ['{\n  "slack": { "bot": "xoxb-fake-leak" \n  "x": 1 }\n', 'xoxb-fake-leak', '{"a": xoxb-fake-leak}']) {
+      const w = world('')
+      writeFileSync(join(w.dir, 'config.json'), bad)
+      let msg = ''
+      try { readSettings(w.env) } catch (e) { msg = (e as Error).message }
+      assert.match(msg, /^config\.json: not valid JSON( at line \d+)?$/, msg)
+      assert.ok(!msg.includes('leak') && !msg.includes('xox'), msg)
+    }
   })
 })
 

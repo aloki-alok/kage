@@ -14,8 +14,16 @@ const why = (file: string, e: unknown) => {
   const issues = (e as { issues?: { path: PropertyKey[]; message: string }[] }).issues
   return `${file}: ${issues ? issues.map(i => `${i.path.join('.') || 'the file'}: ${i.message}`).join('; ') : (e as Error).message}`
 }
+// A SyntaxError quotes the file's text, which may be a token, into the log and the owner's DM: say only the line.
+function json(text: string): unknown {
+  try { return JSON.parse(text) } catch (e) {
+    const at = /position (\d+)/.exec((e as Error).message)?.[1] ?? /line (\d+)/.exec((e as Error).message)?.[1]
+    const line = /position/.test((e as Error).message) ? text.slice(0, Number(at)).split('\n').length : at
+    throw new Error(`not valid JSON${line ? ` at line ${line}` : ''}`)
+  }
+}
 function parse<T>(schema: { parse: (x: unknown) => T }, file: string): T {
-  try { return schema.parse(JSON.parse(readFileSync(file, 'utf8'))) } catch (e) { throw new Error(why(file.split('/').pop()!, e)) }
+  try { return schema.parse(json(readFileSync(file, 'utf8'))) } catch (e) { throw new Error(why(file.split('/').pop()!, e)) }
 }
 
 // A change checked against the schema before it is written, with the same short message as a bad file.
@@ -39,10 +47,13 @@ const stamp = (d: Date) => d.toISOString().replace(/[-:]/g, '').replace(/\.\d+/,
 // Returns the imported file's new name, or undefined when there was nothing to do.
 export function importLegacy(envFile: string, now = new Date()): string | undefined {
   const f = files(envFile)
-  if (existsSync(f.config) || !existsSync(f.legacy)) return undefined
-  const { config, secrets } = fromEnv(parseEnv(readFileSync(f.legacy, 'utf8')))
-  write(f.secrets, secrets)
-  write(f.config, config)
+  if (!existsSync(f.legacy)) return undefined
+  // A crash between writing config.json and this rename leaves the env file, plaintext tokens and all. config.json wins, so only rename it.
+  if (!existsSync(f.config)) {
+    const { config, secrets } = fromEnv(parseEnv(readFileSync(f.legacy, 'utf8')))
+    write(f.secrets, secrets)
+    write(f.config, config)
+  }
   const to = `${f.legacy}.imported-${stamp(now)}`
   renameSync(f.legacy, to)
   return to

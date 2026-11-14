@@ -82,8 +82,6 @@ function claudeCommand(route: string | undefined, mem: string) {
   const boots = countBoot(`${CONF}/boots`, now)
   say(`hub start ${boots} in the last 10 minutes`)
   await crashLoopDm(tokens, boots, last, now)
-  // Imported env files hold every token: on a clean start, the ones older than 7 days are deleted.
-  if (boots < 3) try { for (const f of files?.sweepImported(ENV_FILE) ?? []) say(`deleted ${f}, 7 days after the import`) } catch (e) { say(`could not sweep old env files: ${e}`) }
 
   // Sessions see the supervisor's environment, not your shell's. Exports they need go in session.env, which must be private.
   const sessionEnv = `${CONF}/session.env`
