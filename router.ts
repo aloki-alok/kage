@@ -483,11 +483,11 @@ function selfUpdate(now: number) {
   }
 }
 
-// Auto-update pulls a clean main checkout to origin/main (core/auto-update.ts); selfUpdate above then restarts into it.
-// ponytail: no signature check yet (#58), so a bad push to origin/main reaches this install within 6 hours.
+// Auto-update moves a clean main checkout to origin's stable tag (core/auto-update.ts); selfUpdate above then restarts into it.
+// ponytail: no signature check yet (#58), so a bad move of the stable tag reaches this install within 6 hours.
 async function autoUpdate() {
   const r = await pullMain(CODE)
-  if (r === 'pulled') { markUpdatedFrom(DIR, VERSION); log('auto-update pulled origin/main: the hub restarts into it once every session is quiet') }
+  if (r === 'pulled') { markUpdatedFrom(DIR, VERSION); log('auto-update pulled the stable tag: the hub restarts into it once every session is quiet') }
   else if (r !== 'current') log(`auto-update did nothing: ${r.skip}`)
 }
 

@@ -229,7 +229,7 @@ cmd_save() {
 }
 
 cmd_doctor() {
-  local bad=0
+  local bad=0 tag
   pass() { printf 'ok    %s\n' "$*"; }
   fail() { printf 'FAIL  %s\n' "$*"; bad=1; }
   note() { printf 'note  %s\n' "$*"; }
@@ -285,6 +285,8 @@ cmd_doctor() {
   elif [[ ! -e .git ]]; then note "no auto-update: not a git checkout. Rerun the install line to make it one"
   elif [[ "$(git rev-parse --abbrev-ref HEAD 2>/dev/null)" != main ]]; then note "no auto-update: on branch $(git rev-parse --abbrev-ref HEAD 2>/dev/null), not main"
   elif [[ -n "$(git status --porcelain --untracked-files=no 2>/dev/null)" ]]; then note "no auto-update: the checkout has uncommitted changes"
+  elif ! tag="$(GIT_TERMINAL_PROMPT=0 GIT_SSH_COMMAND="ssh -o BatchMode=yes -o ConnectTimeout=10" git ls-remote --tags origin refs/tags/stable 2>/dev/null)"; then note "auto-update cannot check origin: git ls-remote failed"
+  elif [[ -z $tag ]]; then note "no auto-update: origin has no stable tag yet, so this install stays on its version"
   fi
   command -v kage >/dev/null || note "kage is not on your PATH: run ./setup.sh link to type kage <command> anywhere"
   [[ $bad == 0 ]] && echo "All good. Tag @$NAME in Slack to try it." || return 1

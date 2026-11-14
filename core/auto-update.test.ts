@@ -8,7 +8,12 @@ test('a clean main checkout fetches first', () => {
   assert.equal(nextStep(clean), 'fetch')
 })
 
-test('behind origin and not ahead pulls', () => {
+test('no stable tag on origin: no update, with the reason', () => {
+  assert.deepEqual(nextStep({ ...clean, stable: false }), { skip: 'origin has no stable tag yet' })
+  assert.deepEqual(nextStep({ ...clean, stable: false, ahead: 0, behind: 3 }), { skip: 'origin has no stable tag yet' })
+})
+
+test('behind the stable tag and not ahead pulls', () => {
   assert.equal(nextStep({ ...clean, ahead: 0, behind: 3 }), 'pull')
 })
 
@@ -16,16 +21,16 @@ test('level with origin does nothing', () => {
   assert.equal(nextStep({ ...clean, ahead: 0, behind: 0 }), 'current')
 })
 
-test('a local commit the remote lacks is never pulled over', () => {
-  assert.deepEqual(nextStep({ ...clean, ahead: 1, behind: 0 }), { skip: 'main has 1 local commit that origin/main lacks' })
-  assert.deepEqual(nextStep({ ...clean, ahead: 2, behind: 5 }), { skip: 'main has 2 local commits that origin/main lacks' })
+test('a commit the stable tag lacks is never pulled over', () => {
+  assert.deepEqual(nextStep({ ...clean, ahead: 1, behind: 0 }), { skip: 'main has 1 commit that the stable tag lacks' })
+  assert.deepEqual(nextStep({ ...clean, ahead: 2, behind: 5 }), { skip: 'main has 2 commits that the stable tag lacks' })
 })
 
 test('every other checkout is left alone, with the reason', () => {
   assert.deepEqual(nextStep({ git: false }), { skip: 'not a git checkout' })
   assert.deepEqual(nextStep({ ...clean, branch: 'my-fix' }), { skip: 'on branch my-fix, not main' })
   assert.deepEqual(nextStep({ ...clean, dirty: true }), { skip: 'the checkout has uncommitted changes' })
-  assert.deepEqual(nextStep({ ...clean, fetchError: 'could not resolve host' }), { skip: 'git fetch failed: could not resolve host' })
+  assert.deepEqual(nextStep({ ...clean, fetchError: 'could not resolve host' }), { skip: 'could not reach origin: could not resolve host' })
 })
 
 test('the compare link comes from the origin url, https or ssh', () => {
