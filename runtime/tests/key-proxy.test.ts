@@ -45,7 +45,7 @@ describe('the key proxy', () => {
     assert.equal(sent(t.calls[0]!).get('x-api-key'), 'fake-key-1')
     assert.equal(sent(t.calls[0]!).get('x-keep'), 'yes')
     assert.ok(!JSON.stringify([...sent(t.calls[0]!)]).includes('fake-key-2'), 'the other host key leaked')
-    assert.equal(t.calls[0]!.redirect, 'manual')   // a redirect never carries the key to another host
+    assert.equal(t.calls[0]!.init.redirect, 'manual')   // a redirect never carries the key to another host
   })
   test('another host is refused and nothing is fetched', async () => {
     const t = setup()

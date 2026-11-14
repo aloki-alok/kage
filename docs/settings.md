@@ -76,6 +76,22 @@ Match originalhost web,web-prod exec "test -n \"$KAGE_SSM_TOKEN\""
 
 The last argument is the AWS region of those hosts. The script needs `node` on the PATH of the ssh process. `kage doctor` warns when `~/.ssh/config` has an `aws ssm start-session` ProxyCommand and no `ssm-proxy` line. The hub's own `aws` must be on its PATH and logged in.
 
+## Keys that stay out of sessions
+
+A key in `session.env` reaches every session as a plain environment variable, so a session can print it. To keep a key out, name it in `config.json` under `sessionKeys` and keep its value in `session.env`, then run `kage restart`. The hub holds the value in memory and removes it from the environment before any session starts.
+
+```json
+{ "sessionKeys": { "EXAMPLE_API_KEY": { "host": "api.example.com", "header": "x-api-key", "prefix": "" } } }
+```
+
+`host` is one host name, with no port or path. `header` defaults to `authorization` and `prefix` to `Bearer `. A session reaches the key through the hub's socket, with the token in its env:
+
+```sh
+curl --unix-socket "$KAGE_KEYS_SOCK" "http://kage/$KAGE_KEYS_TOKEN/api.example.com/v1/things"
+```
+
+The hub fetches `https://api.example.com/v1/things` and adds the key in the header. A request for any other host gets a 403 and no key. The hub does not follow redirects, so a key never leaves its host. Who gets a token follows the SSM relay: owner-only Slack threads, and a thread run with `kage relay allow`. `kage doctor` lists each key by name, host and header, never its value. A tool that reads the key from an environment variable no longer finds it, and a tmux pane has no proxy token, so panes lose these keys too.
+
 ## AFK mode
 
 | Setting | Default | Effect |
@@ -146,4 +162,4 @@ When it is on, you type `@kage <task>` in any chat to hand Kage a task. The chat
 
 ## Set by Kage itself
 
-`KAGE_CLAUDE` (the command that starts Claude Code) and `KAGE_THREAD` (a pane's session key) are set by `hub.ts` and the hub, and so are `KAGE_SSM_TOKEN` and `KAGE_SSM_SOCK` (a session's SSM relay), and `KAGE_PANE_SETTINGS` (the sandbox settings a pane starts Claude Code with). Do not put them in the settings files.
+`KAGE_CLAUDE` (the command that starts Claude Code) and `KAGE_THREAD` (a pane's session key) are set by `hub.ts` and the hub, and so are `KAGE_SSM_TOKEN` and `KAGE_SSM_SOCK` (a session's SSM relay), `KAGE_KEYS_TOKEN` and `KAGE_KEYS_SOCK` (a session's key proxy), and `KAGE_PANE_SETTINGS` (the sandbox settings a pane starts Claude Code with). Do not put them in the settings files.
