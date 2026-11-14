@@ -56,6 +56,13 @@ describe('the grant', () => {
       assert.match(grantRefusal(t, []) ?? '', /grant/, t)
     for (const t of ['mcp__kage__reply', 'mcp__kage__edit_message', 'mcp__kage__delete_message', 'mcp__kage__report', 'mcp__kage__message_kagelet']) assert.equal(grantRefusal(t, []), undefined, t)
   })
+  test('ToolSearch is always there, since a granted tool may load deferred; what it loads still passes the grant', () => {
+    assert.equal(grantRefusal('ToolSearch', ['WebFetch'], { query: 'select:WebFetch' }), undefined)
+    assert.equal(grantRefusal('WebFetch', ['WebFetch'], { url: 'https://example.com' }), undefined)
+    assert.match(grantRefusal('Bash', ['WebFetch']) ?? '', /only web and MCP tools/)
+    assert.match(grantRefusal('Agent', ['WebFetch']) ?? '', /only web and MCP tools/)
+    assert.match(grantRefusal('WebSearch', ['WebFetch']) ?? '', /grant/)
+  })
   test('only web and outside MCP tools can be granted, so no file, shell or agent tool ever runs; web fetches only over http(s)', () => {
     for (const t of ['Bash', 'Read', 'Grep', 'Glob', 'LS', 'NotebookRead', 'Write', 'Edit', 'MultiEdit', 'NotebookEdit', 'Monitor', 'PowerShell', 'Skill', 'Agent', 'Task', 'mcp__plugin_kage_kage__reply'])
       assert.match(grantRefusal(t, [t], { file_path: '/tmp/x' }) ?? '', /only web and MCP tools/, t)

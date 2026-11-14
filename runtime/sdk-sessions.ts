@@ -9,7 +9,7 @@ import { z } from 'zod'
 import { log } from '../config.ts'
 import { senderOf, withoutInvisible, type Sender } from '../core/gate.ts'
 import { ownerMemoryRefusal, privateToolRefusal, slackSendRefusal, voiceToolRefusal } from '../core/guards.ts'
-import { DEFAULT_GRANT, grantRefusal } from '../core/kagelets.ts'
+import { builtinTools, DEFAULT_GRANT, grantRefusal } from '../core/kagelets.ts'
 import { approvalPreview } from '../core/preview.ts'
 import type { Dispatcher, Runner } from '../core/sessions.ts'
 import type { sessionTools } from './kage-tools.ts'
@@ -99,6 +99,7 @@ export function sdkSessions(o: {
     const { KAGE_THREAD: _, ...env } = process.env   // with it, the kage plugin's own channel would take the thread
     const resumed = o.hasTranscript(s.id)
     const budget = o.budgetOf?.(key)
+    const grant = o.grantOf?.(key)
     const q = o.sdk.query({
       prompt: inbox,
       options: {
@@ -106,6 +107,7 @@ export function sdkSessions(o: {
         ...(resumed ? { resume: s.id } : { sessionId: s.id }),
         ...picks.get(key),
         ...budget !== undefined && { maxBudgetUsd: budget },
+        ...grant && { tools: builtinTools(grant) },
         systemPrompt: { type: 'preset', preset: 'claude_code' },
         mcpServers: { ...o.options.mcpServers, kage: server },
         // Its jobs die with the session; the schedule tool replaces it.
