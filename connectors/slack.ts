@@ -14,6 +14,7 @@ import { askedFrom, cardAt } from '../core/ledgers.ts'
 import type { Delivery } from '../core/sessions.ts'
 import type { Task } from '../runtime/protocol.ts'
 import { startAfk } from './slack-afk.ts'
+import type { JevCheck } from './jev.ts'
 import { socketWatch } from '../core/socket-watch.ts'
 import type { Inbox, Saved } from '../runtime/store.ts'
 
@@ -53,7 +54,9 @@ export async function intake(m: SlackMessage, ack: () => Promise<void>, hub: Pic
 
 export async function connectSlack(o: { dir: string; appToken: string; bot: WebClient; user: WebClient; name: string; title: string; teammates: string[]; apps: string[]; hub: Hub
   // AFK mode (connectors/slack-afk.ts); absent means off.
-  afk?: { memory: string; model: string; saved: Saved; call?: (reason: string) => Promise<string> } }) {
+  afk?: { memory: string; model: string; saved: Saved; call?: (reason: string) => Promise<string> }
+  // The Jev classifier (connectors/jev.ts); absent means every listed agent's tagged post is answered.
+  jev?: JevCheck }) {
   const { bot, user } = o
   // The owner is whoever the user token belongs to: that token is what hears messages.
   const me = await user.auth.test()
@@ -158,6 +161,12 @@ export async function connectSlack(o: { dir: string; appToken: string; bot: WebC
       log(`dropped ${thread} from ${m.user ?? 'no user'} (app ${t.agent}): loop, ${DROPS.loop}: ${loop}`)
       if (loops.tell(t.agent, Date.now())) void notifyOwner(`I stopped answering agent \`${t.agent}\` in ${await placeOf(m.channel)}: ${loop}. Its posts are dropped while it is over the limit. A thread over the limit opens again when a person writes in it.`)
       return
+    }
+    // An agent's post that asks for nothing (an ack, a "done" report) starts no task, so two agents can't keep a thread going.
+    if (t.kind === 'task' && t.agent && o.jev) {
+      const j = await o.jev(t.agent, t.text)
+      log(`${j.reply ? 'answering' : 'dropped'} ${thread} from app ${t.agent}: ${j.why}`)
+      if (!j.reply) return
     }
     const agent = t.agent ? { app: t.agent, tag: (ids.apps ?? []).map(appEntry).find(e => e?.id === t.agent)?.tag } : undefined
     react(m.channel, m.ts, PICKED_UP)

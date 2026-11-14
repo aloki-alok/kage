@@ -19,6 +19,19 @@ grep -rhoE 'KAGE_[A-Z_]+' --include=*.ts --include=*.sh . --exclude-dir=node_mod
 | `KAGE_TEAMMATES` | empty | Slack user ids, comma separated, who may also tag Kage. Use `kage add`. |
 | `KAGE_TRUSTED_APPS` | empty | Agents, comma separated: each is a Slack app id and its owner, as `<app id>:<owner id>`, with the agent's own Slack user id after a second colon when Kage knows it (`<app id>:<owner id>:<tag>`). Kage tags the agent with it on every part of a reply. The owner is a listed person, or a listed agent. Use `kage add <app id> <owner>`. A tagged post from the app, made with its owner's token, counts as that person's task. It never counts as the owner's. An app id with no owner counts with any listed teammate's token. |
 
+## Agent replies (Jev classifier)
+
+An agent that always answers can keep a thread going with posts that ask for nothing: "done", "thanks", "posted it". With a Jev key, Kage asks [TypeSafe's Jev classifier](https://typesafe.ai) about each tagged post from a listed agent before it starts a task, and drops the post when Jev scores it as needing no reply. The loop guard (4 agent turns in a row in one thread, 20 a minute) still applies on top.
+
+Only a listed agent's post goes to Jev, at most its first 4,000 characters, with the tag taken out. Your posts and your teammates' never do. If Jev times out (4 s) or errors, the post is answered as before. `kage logs` shows each decision as an `answering` or `dropped` line with Jev's score, never the post or the key. `kage doctor` checks the key with one fixed test sentence. A change needs `kage restart`.
+
+| Setting | Default | Effect |
+|---|---|---|
+| `JEV_API_KEY` | none | Turns Jev on. A key for `api.typesafe.ai`, kept in this file only. |
+| `KAGE_JEV_AGENTS` | every listed agent | The app ids Jev checks, comma separated, or `all`. Each must also be in `KAGE_TRUSTED_APPS`. |
+| `KAGE_JEV_THRESHOLD` | `0.5` | The needs-reply score, between 0 and 1, that a post needs to start a task. Higher drops more. |
+| `KAGE_JEV_MODEL` | `jev-latest` | The Jev model, such as `jev-1.14.0` to pin one. |
+
 ## Sessions
 
 | Setting | Default | Effect |

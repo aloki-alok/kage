@@ -49,6 +49,7 @@ Write logs to stderr only. In a tmux pane, stdout carries the channel protocol, 
 |---|---|
 | `gate.ts` | Who may start a task, the task line Claude reads, quoting the thread, teammates. |
 | `agents.ts` | Talking to another agent: the tag on every part of a post, the "no reply needed" marker, and the loop guard. |
+| `jev.ts` | Whether a listed agent's post needs a reply: the Jev settings, which agents it checks, the question, and how its score decides. The call is `connectors/jev.ts`, and `cli/jev-doctor.ts` is the doctor's line. |
 | `registry.ts` | Who is listed besides the owner: people, agents and each agent's owner, as two lines of the env file. |
 | `slack-message.ts` | What a Slack message event is, whether a person typed it, and the `@kage` tag. |
 | `conversations.ts` | A conversation and its session key, both ways. |

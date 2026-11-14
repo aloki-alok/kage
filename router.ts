@@ -15,6 +15,8 @@ import { load, log } from './config.ts'
 import { connectEmail } from './connectors/email.ts'
 import { listenForCommands } from './connectors/slack-commands.ts'
 import { connectSlack } from './connectors/slack.ts'
+import { jevCheck } from './connectors/jev.ts'
+import { jevConfig } from './core/jev.ts'
 import { connectGithub } from './connectors/github.ts'
 import { connectMeeting } from './connectors/meeting.ts'
 import { connectVoice } from './connectors/voice.ts'
@@ -150,6 +152,11 @@ function phoneOwner(reason: string): Promise<string> {
   const timer = setTimeout(() => p.kill(), 60_000)   // a dialer that hangs reports as failed
   return new Promise(res => { p.on('error', e => res(String(e))); p.on('close', code => { clearTimeout(timer); res(code === 0 ? '' : `dialer exited ${code ?? 'on timeout'}`) }) })
 }
+// The Jev classifier for agent posts (core/jev.ts). A wrong setting leaves it off and says why, so Kage still starts.
+const jev = jevConfig(env)
+if (jev && 'error' in jev) log(`jev is off: ${jev.error}`)
+else if (jev) log(`jev checks ${jev.agents === 'all' ? 'every listed agent' : jev.agents.join(', ')} at threshold ${jev.threshold}`)
+
 const slack = await connectSlack({
   dir: DIR, appToken: need('SLACK_APP_TOKEN'), bot, user, name: NAME, title: Title, teammates: TEAMMATES, apps: TRUSTED_APPS,
   hub: { deliver, stop: (c, cut, by) => {
@@ -158,6 +165,7 @@ const slack = await connectSlack({
     }, verdict: (id, behavior) => d.verdict(id, { type: 'verdict', request_id: id, behavior }), status, heard: m => schedules.heard(m),
     posted: () => ledgers.text('posted'), ownerWrote: (chat, thread, text) => notes.wrote(grants.keys(), chat, thread, text), ...inbox },
   // AFK mode is on unless KAGE_AFK=off. Its stand-in reads the owner's memory, read only.
+  jev: jev && !('error' in jev) ? jevCheck(jev) : undefined,
   afk: env.KAGE_AFK === 'off' ? undefined : { memory: memoryDirs(process.env.HOME!, ENV_FILE, env).owner, model: env.KAGE_AFK_MODEL || 'sonnet', saved: store, call: phoneOwner },
 })
 
