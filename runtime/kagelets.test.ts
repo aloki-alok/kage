@@ -164,7 +164,7 @@ const calls = { ...job, by: 'kage' as const, tools: ['WebSearch', 'db_read'], jo
 test('db_read is saved only on the owner\'s yes to a card that names the kagelet, its job and the read command', async () => {
   const no = manager(), o = owner(false)
   assert.match(await no.m.manage({ action: 'save', name: 'calls', ...calls }, 1, o.ask), /not saved: the owner did not approve db_read/)
-  assert.deepEqual(o.cards, [{ kagelet: 'calls', job: 'Count failed calls.', read_command: '~/bin/read-sql --ro' }])
+  assert.deepEqual(Object.entries(o.cards[0]!), [['kagelet', 'calls'], ['read_command', '~/bin/read-sql --ro'], ['job', 'Count failed calls.']])
   assert.equal(readKagelets(no.dir).length, 0)
   assert.equal(readCommand(undefined, no.store), undefined)
   assert.deepEqual(no.grants.map(g => g.slice(0, 2)), [['calls', 'refused']])
@@ -193,10 +193,11 @@ test('a db_read save with no way to ask the owner, or no read command, is refuse
   assert.deepEqual(t.grants.map(g => g.slice(0, 2)), [['calls', 'refused'], ['calls', 'refused'], ['calls', 'refused']])
 })
 
-test('KAGE_DB_READ_COMMAND wins over a proposed command: the card shows it, and the store keeps nothing', async () => {
-  const t = manager(10, 'env-read'), o = owner(true)
+test('KAGE_DB_READ_COMMAND wins over a proposed command: the card names it without its text, and the store keeps nothing', async () => {
+  const t = manager(10, 'env-read --password=x'), o = owner(true)
   assert.match(await t.m.manage({ action: 'save', name: 'calls', ...calls }, 1, o.ask), /saved calls/)
-  assert.equal(o.cards[0]!.read_command, 'env-read')
+  assert.match(o.cards[0]!.read_command!, /^KAGE_DB_READ_COMMAND/)
+  assert.doesNotMatch(JSON.stringify(o.cards), /password/)
   assert.equal(t.store.load('db-read-command'), undefined)
   assert.equal(readCommand('env-read', t.store), 'env-read')
   // Once approved, a later grant may use the stored command without proposing one.

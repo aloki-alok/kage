@@ -87,7 +87,7 @@ const READ_COMMAND = 'db-read-command'
 export const readCommand = (envCommand: string | undefined, store: Pick<Store, 'load'>) => envCommand || (store.load(READ_COMMAND) as string | undefined)
 
 // The owner's answer to Kage's approval card (runtime/sdk-sessions.ts): true only on their yes.
-export type AskOwner = (card: { kagelet: string; job: string; read_command: string }) => Promise<boolean>
+export type AskOwner = (card: { kagelet: string; read_command: string; job: string }) => Promise<boolean>
 
 // The manager's side (Kage's owner sessions, runtime/kage-tools.ts): write, pause, run and remove kagelet files.
 // The hub syncs right after a change, so run works at once; the minute sync applies it anyway.
@@ -133,7 +133,10 @@ export function kageletManager(o: { dir: string; max: number; ledgers: { text(na
         if (!ask) return refuse(`only the owner grants ${DB_READ}, and this session cannot ask them`)
         const command = o.envCommand || a.read_command?.trim() || readCommand(undefined, o.store)
         if (!command) return refuse(`${DB_READ} needs a read command: pass read_command, the owner's command that runs one read-only query`)
-        if (!await ask({ kagelet: a.name, job: (a.job ?? '').trim().split('\n')[0]!, read_command: command })) return refuse(`the owner did not approve ${DB_READ}`)
+        // The command before the job line, so a long job never pushes it past the card's cut. An env command is
+        // named, not shown: it is the one most likely to hold a host or a password.
+        const card = { kagelet: a.name, read_command: o.envCommand ? 'KAGE_DB_READ_COMMAND, as set in the settings file' : command, job: (a.job ?? '').trim().split('\n')[0]!.slice(0, 300) }
+        if (!await ask(card)) return refuse(`the owner did not approve ${DB_READ}`)
         if (!o.envCommand) o.store.save(READ_COMMAND, command)
         o.ledgers.add('grants', [a.name, 'granted', 'the owner said yes on the card'])
         o.log(`kagelet ${a.name}: ${DB_READ} granted by the owner`)

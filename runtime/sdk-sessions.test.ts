@@ -76,7 +76,7 @@ function setup(o: { transcript?: boolean; silent?: boolean; dmFails?: boolean; g
     hub: () => d,
     tools: (_key, send, approve) => sessionTools({ title: 'Kage', bot: slack as any, user: slack as any, botDm: () => 'DBOT', dir, ledgers: openLedgers(dir), send, memory: { own: '/own', owner: '/owner' }, approve,
       // A manager that only asks the card and says the answer.
-      ...o.manager && { kagelets: { list: () => '', manage: async (a, ask) => `yes: ${await ask!({ kagelet: a.name, job: 'Count failed calls.', read_command: '~/bin/read-sql' })}` } } }),
+      ...o.manager && { kagelets: { list: () => '', manage: async (a, ask) => `yes: ${await ask!({ kagelet: a.name, read_command: '~/bin/read-sql', job: 'Count failed calls.' })}` } } }),
     hasTranscript: () => o.transcript ?? false,
     toHub: () => {},
     options: { cwd: '/home', settingSources: ['user'] },
@@ -330,7 +330,7 @@ describe('Kage sessions on the Agent SDK', () => {
     const save = { channel: 'C1', thread_ts: '5.5', action: 'save', name: 'calls', tools: ['db_read'] }
     const yes = t.call('manage_kagelet', save)
     await tick()
-    assert.match(t.posts.at(-1)!, /Approve\?\* grant db read[\s\S]*kagelet: calls\njob: Count failed calls\.\nread_command: ~\/bin\/read-sql/)
+    assert.match(t.posts.at(-1)!, /Approve\?\* grant db read[\s\S]*kagelet: calls\nread_command: ~\/bin\/read-sql\njob: Count failed calls\./)
     const id = t.idOf(t.posts.at(-1)!)
     t.d.verdict(id, { type: 'verdict', request_id: id, behavior: 'allow' })
     assert.equal((await yes).content[0].text, 'yes: true')
