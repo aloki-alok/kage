@@ -30,8 +30,8 @@ export function dreamTask(m: { own: string; owner: string }, threads: { place: s
   return [
     'Nightly dream. Nobody wrote a new message: the hub started this while every session was quiet.',
     ...read,
-    `2. Your memory, ${m.own}: merge notes that say the same thing, and where two disagree keep the newer one. Move a note nobody needed for 30 days into ${m.own}/.archive/ with mv; never delete a file. Keep MEMORY.md in step with the files.`,
-    `3. For every new note, move, merge or edit, append one line to ${m.own}/.dream-ledger.tsv: ISO time, action, file, one-line reason.`,
+    `2. Your memory, ${m.own}: first list it with the Glob tool (path ${m.own}, pattern \`**/*\`, then \`.archive/*\`). Only the listing says which files exist. MEMORY.md and the ledger name files that were since merged, renamed or archived, so read a file only after you see it listed. Then merge notes that say the same thing, and where two disagree keep the newer one. Move a note nobody needed for 30 days into ${m.own}/.archive/: Write a copy there, then empty the old file with Write; never delete a file. Keep MEMORY.md in step with the files. Change every file in that folder with the Write and Edit tools, never a shell command: a shell command that names the folder is refused.`,
+    `3. For every new note, move, merge or edit, append one line to ${m.own}/.dream-ledger.tsv (Read it, then Edit or Write it with the new line added): ISO time, action, file, one-line reason.`,
     `4. The owner's memory, ${m.owner}, is read only for you. List files over 20 KB, index lines whose file is missing, and notes that contradict each other.`,
     ...skills ? [skillStep(skills)] : [],
     '5. Reply here in at most 5 lines: what you learned from the threads, what you changed in your memory, then what the owner should look at in theirs. Nothing changed and nothing found: one line saying so.',

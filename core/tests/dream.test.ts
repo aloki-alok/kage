@@ -35,3 +35,10 @@ test('the dream names each thread and its transcript, and asks for lessons from 
   assert.doesNotMatch(t, /no threads moved/i)
   assert.match(dreamTask({ own: '/m/kage', owner: '/m/owner' }, [], 'x'), /no threads moved/i)
 })
+
+test("the dream lists its memory folder first and changes it with Write and Edit, not a shell", () => {
+  const t = dreamTask({ own: "/m/kage", owner: "/m/owner" }, [], "x")
+  assert.match(t, /Glob tool \(path \/m\/kage/)
+  assert.match(t, /only the listing says which files exist/i)
+  assert.match(t, /Write and Edit tools, never a shell command/)
+})
