@@ -1,0 +1,116 @@
+import { test, describe } from 'node:test'
+import assert from 'node:assert/strict'
+import { autoUpdateNote, bootNotes, chromeLine, jevLine, lingerLine, nodeOk, pathNote, render, report, serviceLines, sessionLines, slackLines, sandboxLine, sshLine, tokenLines, toolsLine } from '../doctor.ts'
+
+const text = (ls: { kind: string; text: string }[]) => ls.map(l => `${l.kind}:${l.text}`)
+
+describe('doctor output', () => {
+  test('a line renders as ok, FAIL or note, padded to six columns', () => {
+    assert.equal(render({ kind: 'ok', text: 'x' }), 'ok    x')
+    assert.equal(render({ kind: 'fail', text: 'x' }), 'FAIL  x')
+    assert.equal(render({ kind: 'note', text: 'x' }), 'note  x')
+  })
+  test('the last line is All good only when nothing fails, and notes do not fail', () => {
+    const good = report([{ kind: 'ok', text: 'a' }, { kind: 'note', text: 'b' }], 'kage')
+    assert.equal(good.ok, true)
+    assert.equal(good.text, 'ok    a\nnote  b\nAll good. Tag @kage in Slack to try it.')
+    const bad = report([{ kind: 'fail', text: 'a' }], 'kage')
+    assert.equal(bad.ok, false)
+    assert.equal(bad.text, 'FAIL  a')
+  })
+})
+
+describe('decisions', () => {
+  test('node 22.18 is the floor', () => {
+    assert.deepEqual(['22.17.9', '22.18.0', '23.0.0', '21.9.0'].map(nodeOk), [false, true, true, false])
+  })
+  test('tools: tmux counts only for the tmux runtime', () => {
+    const f = { nodeVersion: '22.18.0', claude: true, tmuxNeeded: false, tmux: false }
+    assert.equal(toolsLine(f).kind, 'ok')
+    assert.equal(toolsLine({ ...f, claude: false }).kind, 'fail')
+    assert.equal(toolsLine({ ...f, tmuxNeeded: true }).kind, 'fail')
+  })
+  test('no settings is one FAIL that names the folder', () => {
+    assert.deepEqual(text(tokenLines({ hasSettings: false, dir: '/c', mode: undefined, slack: {} })), ['fail:tokens: no settings in /c. Run kage app, then kage save'])
+  })
+  test('tokens: a loose file mode and a rejected token each fail', () => {
+    const ls = tokenLines({ hasSettings: true, dir: '/c', file: '/c/secrets.json', mode: '644', slack: { app: true, user: false, bot: true } })
+    assert.deepEqual(text(ls), [
+      'fail:token file: run chmod 600 /c/secrets.json',
+      'ok:SLACK_APP_TOKEN accepted by Slack',
+      'fail:SLACK_USER_TOKEN: missing or rejected. Run kage save again',
+      'ok:SLACK_BOT_TOKEN accepted by Slack',
+    ])
+  })
+  test('jev: silent when off, its line when it works, a fail when it exits non-zero', () => {
+    assert.equal(jevLine({ status: 0, out: '' }), undefined)
+    assert.deepEqual(jevLine({ status: 0, out: 'jevKey accepted' }), { kind: 'ok', text: 'jevKey accepted' })
+    assert.deepEqual(jevLine({ status: 1, out: 'jev: bad' }), { kind: 'fail', text: 'jev: bad' })
+    assert.deepEqual(jevLine({ status: 1, out: '' }), { kind: 'fail', text: 'jev: the check did not run' })
+  })
+  test('sandbox: sandbox-exec on a Mac, bubblewrap and socat on Linux', () => {
+    assert.equal(sandboxLine({ platform: 'darwin', sandboxExec: true, bwrap: false, socat: false }).kind, 'ok')
+    assert.equal(sandboxLine({ platform: 'darwin', sandboxExec: false, bwrap: true, socat: true }).kind, 'fail')
+    assert.equal(sandboxLine({ platform: 'linux', sandboxExec: false, bwrap: true, socat: false }).kind, 'fail')
+    assert.equal(sandboxLine({ platform: 'linux', sandboxExec: false, bwrap: true, socat: true }).kind, 'ok')
+  })
+  test('ssh: an SSM ProxyCommand with no relay is a note, with the relay an ok, with neither nothing', () => {
+    const ssm = 'Host i-*\n  ProxyCommand aws ssm start-session --target %h'
+    assert.equal(sshLine(ssm)?.kind, 'note')
+    assert.equal(sshLine(ssm + '\nMatch exec x\n  ProxyCommand node cli/ssm-proxy.ts')?.kind, 'ok')
+    assert.equal(sshLine('Host a\n  User b'), undefined)
+    assert.equal(sshLine(undefined), undefined)
+  })
+  test('session: SDK must load; tmux plugin route needs plugin and org approval; dev route is a note', () => {
+    assert.deepEqual(text(sessionLines({ runtime: 'sdk', sdkLoads: true })), ['ok:threads run on the Agent SDK, no prompts'])
+    assert.equal(sessionLines({ runtime: undefined, sdkLoads: false })[0]!.kind, 'fail')
+    assert.deepEqual(sessionLines({ runtime: 'tmux', route: 'plugin', plugin: true, orgApproved: false }).map(l => l.kind), ['ok', 'fail'])
+    assert.deepEqual(sessionLines({ runtime: 'tmux', route: 'plugin', plugin: false, orgApproved: true }).map(l => l.kind), ['fail', 'ok'])
+    assert.deepEqual(sessionLines({ runtime: 'tmux' }).map(l => l.kind), ['note'])
+  })
+  test('service: running, stopped, stale unit, old tmux, off', () => {
+    const f = { name: 'kage', installed: true, running: true, stale: false, oldTmux: false }
+    assert.deepEqual(text(serviceLines(f)), ['ok:the service keeps kage running'])
+    assert.deepEqual(text(serviceLines({ ...f, running: false })), ['fail:the service is on but kage is stopped: kage start'])
+    assert.deepEqual(text(serviceLines({ ...f, stale: true })), ['ok:the service keeps kage running', 'fail:the service unit still pins KAGE_CWD, so harness.cwd would not apply: kage service on'])
+    assert.equal(serviceLines({ ...f, installed: false, oldTmux: true })[0]!.text, 'kage runs in tmux, which does not bring it back after a reboot or a kill: kage service on')
+    assert.equal(serviceLines({ ...f, installed: false })[0]!.text, 'not running: kage start')
+  })
+  test('linger: only systemd without linger fails', () => {
+    assert.equal(lingerLine({ kind: 'systemd', linger: 'no', user: 'u' })?.text, 'it starts only once you log in: sudo loginctl enable-linger u')
+    assert.equal(lingerLine({ kind: 'systemd', linger: 'yes', user: 'u' }), undefined)
+    assert.equal(lingerLine({ kind: 'launchd', linger: '', user: 'u' }), undefined)
+  })
+  test('boots: a missing file is zero boots (#90), over five in a day is a note', () => {
+    assert.deepEqual(bootNotes({ boots: undefined, now: 100_000, darwin: false }), [])
+    const old = String(100_000 - 90_000)
+    assert.deepEqual(bootNotes({ boots: `${old}\n99990\n99991\n`, now: 100_000, darwin: false }), [])
+    const six = [1, 2, 3, 4, 5, 6].map(n => 99_000 + n).join('\n')
+    assert.deepEqual(text(bootNotes({ boots: six, now: 100_000, darwin: false })), ['note:the hub started 6 times in 24 h: kage logs shows why'])
+    assert.deepEqual(text(bootNotes({ boots: undefined, now: 1, darwin: true })), ['note:with the lid closed this Mac sleeps, and Kage is offline until it wakes'])
+  })
+  test('slack: connected shows the status and version, else one FAIL', () => {
+    assert.deepEqual(text(slackLines({ connected: true, status: 'connected 1 pid 2', version: 'abc (2026-01-01)' })), ['ok:connected to Slack: connected 1 pid 2', 'ok:runs Kage abc (2026-01-01)'])
+    assert.deepEqual(text(slackLines({ connected: false, status: '', version: 'unknown' })), ['fail:not connected to Slack yet: wait 20 s after start, or run kage logs to see why'])
+  })
+  test('auto-update: each reason in order, then ask origin, then the stable-tag cases', () => {
+    const base = { off: false, git: true, branch: 'main', dirty: false }
+    assert.equal((autoUpdateNote({ ...base, off: true }) as { text: string }).text, 'auto-update is off (autoUpdate is false)')
+    assert.equal((autoUpdateNote({ ...base, git: false }) as { text: string }).text, 'no auto-update: not a git checkout. Rerun the install line to make it one')
+    assert.equal((autoUpdateNote({ ...base, branch: 'x' }) as { text: string }).text, 'no auto-update: on branch x, not main')
+    assert.equal((autoUpdateNote({ ...base, dirty: true }) as { text: string }).text, 'no auto-update: the checkout has uncommitted changes')
+    assert.equal(autoUpdateNote(base), 'ask-origin')
+    assert.equal((autoUpdateNote({ ...base, origin: 'failed' }) as { text: string }).text, 'auto-update cannot check origin: git ls-remote failed')
+    assert.equal((autoUpdateNote({ ...base, origin: 'no-stable' }) as { text: string }).text, 'no auto-update: origin has no stable tag yet, so this install stays on its version')
+    assert.equal(autoUpdateNote({ ...base, origin: 'stable' }), undefined)
+  })
+  test('chrome: seen within 120 s is connected', () => {
+    assert.equal(chromeLine(1_000_000_000_000 - 119_000, 1_000_000_000).kind, 'ok')
+    assert.equal(chromeLine(1_000_000_000_000 - 121_000, 1_000_000_000).kind, 'fail')
+    assert.equal(chromeLine(0, 1_000_000_000).kind, 'fail')
+  })
+  test('path note only when kage is not on PATH', () => {
+    assert.equal(pathNote(true), undefined)
+    assert.equal(pathNote(false)?.kind, 'note')
+  })
+})
