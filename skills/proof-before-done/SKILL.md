@@ -11,7 +11,7 @@ Every rule here exists because a claim made without a read cost a correction. Ea
 2. Create a promised follow-up first, then quote its id and next run. A promise with no schedule behind it is not a promise.
 3. Before you say you cannot, check the capability in the code or the log. Capabilities change between sessions.
 4. Retry a write only after a read shows it did not run. A retry on a write that ran does it twice.
-5. A status can hide the outcome. A completed call may be a voicemail greeting, so read the first turn of the transcript before you say someone answered.
+5. A status can hide the outcome. A done or completed state may not mean the intended result, so read the content (the transcript, the row, the output) before you say it did.
 6. A risk found by searching code is a guess. Trace each path, check real data for real cases, then label each risk real, possible or not real.
 
 ## Causes and baselines

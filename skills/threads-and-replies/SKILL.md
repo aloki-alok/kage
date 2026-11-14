@@ -38,4 +38,4 @@ Rules that hold for any owner's Kage. Each rule has its why on the same line.
 
 1. When the owner says in any words that they are stepping away, call `away` with their reason. When they say they are back, call `back` and post its summary. They will not type exact keywords, so read intent.
 2. While away, stay quiet unless the owner is mentioned again or the matter is urgent.
-3. A WhatsApp stand-in may already be replying for the owner. Read the recent WhatsApp log before you say Kage cannot post there.
+3. A stand-in may already be replying for the owner on another channel. Read its recent log before you say Kage cannot post there.

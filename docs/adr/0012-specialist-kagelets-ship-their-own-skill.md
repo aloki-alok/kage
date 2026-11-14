@@ -1,10 +1,10 @@
 # 0012. A specialist kagelet ships with its own skill
 
-Status: Accepted, applies from #63 on
+Status: Accepted, applies from the meeting bot (#63) on
 
 ## Context
 
-The shipped skills in `skills/` teach every new install what the first owner's Kage learned the hard way. A specialist kagelet, such as the meeting bot in #63, has lessons only it needs. If those stay in one owner's private memory, each new install trains its own bot from zero.
+The shipped skills in `skills/` teach every new install what earlier Kage installs learned the hard way. A specialist kagelet, such as a meeting bot, has lessons only it needs. If those stay in one owner's private memory, each new install trains its own bot from zero.
 
 ## Decision
 
