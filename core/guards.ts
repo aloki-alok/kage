@@ -27,17 +27,23 @@ export function slackSendRefusal(tool: string): string | undefined {
 }
 // The config folder holds the Slack, AWS and voice tokens. Only the owner's task may touch it: their sessions source
 // the env file to post as the bot or read Slack when the connector fails. Anyone else's task never needs it.
-// ponytail: a path match, so an obfuscated shell path (quotes, globs, cd steps) gets past; the outbound secret filter
-// (core/outbound.ts) still stops a token from being posted. Upgrade: run teammate sessions in a sandbox without it.
-const CONFIG_TOOLS = new Set(['Read', 'Grep', 'Glob', 'Edit', 'Write', 'NotebookEdit', 'Bash'])
+// Its files/ (each thread's files, for send_file and reports) and memory/ (Kage's own lessons) stay open.
+// ponytail: a path match, so a deliberately hidden path (quotes, globs, a search from a parent folder) gets past;
+// the outbound secret filter (core/outbound.ts) still stops a token from being posted. Upgrade: a sandbox without it.
+const CONFIG_TOOLS = new Set(['Read', 'Grep', 'Glob', 'Edit', 'MultiEdit', 'Write', 'NotebookEdit', 'Bash'])
+const NOT_PATHS = new Set(['content', 'old_string', 'new_string', 'new_source', 'description', 'edits'])
 export function configRefusal(tool: string, input: Record<string, unknown>, sender: string | undefined, envFile: string, home = process.env.HOME ?? ''): string | undefined {
   if (sender === 'owner' || !CONFIG_TOOLS.has(tool)) return
   const dir = dirname(envFile)
-  const named = ['file_path', 'notebook_path', 'path', 'pattern', 'command'].map(k => input[k]).filter((v): v is string => typeof v === 'string')
+  // The forms a model types: absolute, the real path, ~, $HOME, and relative to the home folder sessions start in.
+  const forms = [...new Set([dir, realish(dir), dir.startsWith(`${home}/`) ? dir.slice(home.length + 1) : ''])].filter(Boolean)
+  const esc = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+  const named = Object.entries(input).filter(([k, v]) => !NOT_PATHS.has(k) && typeof v === 'string').map(([, v]) => v as string)
     .map(v => v.replace(/(^|[\s'"=:])~(?=\/)/g, `$1${home}`).replace(/\$\{?HOME\}?/g, home))
-  // A thread's files folder lives inside it (runtime: send_file, reports), so that one part stays open.
-  const touches = (v: string, d: string) => v.split(`${d}/files/`).join('').includes(d)
-  if (!named.some(v => touches(v, dir) || touches(v, realish(dir)))) return
+  // The folder itself, ended by a path or word boundary, unless it goes on into files/ or memory/ with no "..".
+  const hit = (v: string) => forms.some(f => [...v.matchAll(new RegExp(`${esc(f)}(?![\\w.-])(/(?:files|memory)(?=/|$|[\\s'"])[^\\s'"]*)?`, 'g'))]
+    .some(m => !m[1] || m[1].includes('..')))
+  if (!named.some(hit)) return
   return `Kage's config folder holds its tokens, and this task did not come from the owner. Reply that this needs the owner, and stop.`
 }
 // Kage's own memory (hub.ts points autoMemoryDirectory at it) and the owner's, which is the

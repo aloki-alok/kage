@@ -95,6 +95,14 @@ describe("the token file on a task the owner did not send (#117)", () => {
       no('Bash', { command: 'cat ~/.config/kage/env' }, s)
       no('Bash', { command: 'source $HOME/.config/kage/env && curl -H "Authorization: Bearer $SLACK_USER_TOKEN"' }, s)
       no('Bash', { command: 'grep TOKEN /home/o/.config/kage/env' }, s)
+      // Relative to the home folder a session starts in, and out of an open subfolder.
+      no('Read', { file_path: '.config/kage/env' }, s)
+      no('Bash', { command: 'cd .config/kage && cat env' }, s)
+      no('Bash', { command: 'cat ~/.config/kage/files/../env' }, s)
+      no('Read', { file_path: '/home/o/.config/kage/files/C1/../../env' }, s)
+      no('MultiEdit', { file_path: '/home/o/.config/kage/env', edits: [] }, s)
+      no('Grep', { pattern: 'xox', glob: '.config/kage/*' }, s)
+      no('Bash', { command: 'ls ~/.config/kage/' }, s)
     }
   })
   test('the owner keeps it: posting as the bot and the Slack read fallback source the env file', () => {
@@ -110,5 +118,11 @@ describe("the token file on a task the owner did not send (#117)", () => {
     yes('Bash', { command: 'python3 run.py /home/o/.config/kage/files/C1_5.5' }, 'teammate')
     yes('Read', { file_path: '~/.config/kage/files/C1_5.5/out.csv' }, 'teammate')
     no('Bash', { command: 'cp ~/.config/kage/files/C1_5.5/x ~/.config/kage/env' }, 'teammate')
+    yes('Bash', { command: 'ls ~/.config/kage/files' }, 'teammate')
+    // Kage's own memory sits there too, and it saves lessons on any task.
+    yes('Read', { file_path: '/home/o/.config/kage/memory/MEMORY.md' }, 'teammate')
+    yes('Write', { file_path: '~/.config/kage/memory/x.md', content: 'the env file is ~/.config/kage/env' }, 'teammate')
+    // A neighbour folder is not it.
+    yes('Read', { file_path: '/home/o/.config/kage-x/notes.md' }, 'teammate')
   })
 })
