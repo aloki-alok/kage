@@ -37,7 +37,7 @@ export function connectEmail(o: {
   const send = startMailbox({
     mail: { ...mail, queue: mail.queue }, saved: o.saved, cfg, inbox: o.inbox,
     onTask(t) {
-      const place = `email: ${t.subject.slice(0, 60)}`
+      const place = `email thread ${logRef(t.key)}`   // a place is logged and shown: never the subject
       const content = [
         emailTaskLine(t.from, t.sender, t.ask),
         `Reply with the reply tool, channel "email" and thread_ts "${t.key}": it goes to the thread's ${cfg.domains[0]} people. Subject: ${noChannelTag(t.subject).replace(/\s+/g, ' ')}`,

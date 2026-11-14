@@ -5,6 +5,7 @@
 import { clockTime } from '../core/board.ts'
 import type { Task } from '../core/task.ts'
 import type { Store } from './store.ts'
+import { logKey } from './log.ts'
 
 // until: when the limit resets (ms), when Claude said.
 export type Limit = { kind: 'rate_limit' | 'overloaded'; until?: number }
@@ -119,7 +120,7 @@ export function limitPause(o: {
       // A kagelet message's task has no job, so it is never owed: its message waits in the store (runtime/kagelets.ts).
       const all = [...tasks, ...o.end(key) ?? []]
       o.settle?.(all, false)
-      for (const t of all) if (!keep(key, t, limit, now) && !t.handoff) o.log('cannot hold a task with no inbox message', key, t.meta.place)
+      for (const t of all) if (!keep(key, t, limit, now) && !t.handoff) o.log('cannot hold a task with no inbox message', logKey(key), t.meta.place)
     },
     // At the reset time: held messages replay oldest first, then each owed scheduled run once.
     async tick(now: number) { if (until !== undefined && now >= until) await lift() },

@@ -7,7 +7,7 @@
 import { VOICE_READS, VOICE_READS_LINE, voiceToolOptions } from './voice-slack-tools.ts'
 import type { createSdkMcpServer, EffortLevel, Options, Query, SDKMessage, SDKUserMessage, tool } from '@anthropic-ai/claude-agent-sdk'
 import { z } from 'zod'
-import { log } from './log.ts'
+import { log, logKey } from './log.ts'
 import { senderOf, withoutInvisible, type Sender } from '../core/gate.ts'
 import { configRefusal, protectConfig, ownerMemoryRefusal, privateToolRefusal, slackSendRefusal, voiceToolRefusal } from '../core/guards.ts'
 import { builtinTools, grantRefusal } from '../core/kagelets.ts'
@@ -107,7 +107,7 @@ export function sdkSessions(o: {
           if (a.effort === 'default') delete pick.effort; else pick.effort = a.effort
         }
         picks.set(key, { ...pick })
-        log('set_model', key, s.sender, pick.model ?? 'default', pick.effort ?? 'default')
+        log('set_model', logKey(key), s.sender, pick.model ?? 'default', pick.effort ?? 'default')
         return { content: [{ type: 'text' as const, text: `This thread now runs on ${pick.model ?? 'the default model'} at ${pick.effort ?? 'default'} effort.` }] }
       })],
     })
@@ -221,7 +221,7 @@ export function sdkSessions(o: {
           }
           if (m.type === 'result' && !sawState) s.state = 'idle'
         }
-      } catch (e) { log('session ended', key, e) }
+      } catch (e) { log('session ended', logKey(key), e) }
       // The process went away on the limit before it sent a result: its tasks go back the same way.
       if (limit && s.turn.length) o.onTurn?.(key, s.turn.splice(0).map(x => x.task), { kind: limit, ...(limit === 'rate_limit' && resetsAt && { until: resetsAt }) })
       // The Claude process is gone: its open approvals go with it. Unless the dispatcher closed it,

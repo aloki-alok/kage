@@ -13,7 +13,7 @@ import { existsSync, mkdirSync, readFileSync, renameSync, rmSync, statSync, writ
 import { fileURLToPath } from 'node:url'
 import { dirname } from 'node:path'
 import { load } from './config.ts'
-import { log, logRef } from './runtime/log.ts'
+import { log, logKey, logRef } from './runtime/log.ts'
 import { connectEmail } from './connectors/email.ts'
 import { listenForCommands } from './connectors/slack-commands.ts'
 import { connectSlack } from './connectors/slack.ts'
@@ -132,7 +132,7 @@ const deliver = (c: Conversation, task: Task, place: string, lane: Lane = 'main'
   const key = sessionKey(c, { lane })
   if (by && !d.saved()[key] && !starters.has(key)) starters.set(key, by)
   store.seen(key, c, place, Date.now())
-  log(`task for ${place} (${key}): ${task.fromOwner ? 'from the owner' : 'not from the owner'}${task.scheduled ? ', scheduled' : ''}, ${d.saved()[key] ? 'resumes its session' : 'new session'}`)
+  log(`task for ${place} (${logKey(key)}): ${task.fromOwner ? 'from the owner' : 'not from the owner'}${task.scheduled ? ', scheduled' : ''}, ${d.saved()[key] ? 'resumes its session' : 'new session'}`)
   return toSession(key, task)
 }
 // kage stop <thread> and "@kage stop": end a thread's session and its side lanes, after their turn or now.
@@ -173,7 +173,7 @@ const { blocked, closedTo, isClosed } = closedThreads({
   reset: key => d.reset(key),
   say: (key, t, text) => void postAsKage({ title: Title, bot, user }, t.meta.channel, t.meta.thread_ts || undefined, text).then(
     r => ledgers.add('posted', [t.meta.channel, r.ts, r.by, key]),
-    e => log('could not post the block line', key, e?.data?.error ?? e)),
+    e => log('could not post the block line', logKey(key), e?.data?.error ?? e)),
   tellOwner: text => void slack.notifyOwner(text),
 })
 // A thread is owner-trusted while every task it got came from the owner by Slack (not email or voice); a schedule set up
@@ -645,7 +645,7 @@ const replies = {
   voice: (key: string, text: string) => { if (!meeting?.say(key, text)) voice?.reply(key, text) },   // voice:meet-<call> is a Meet call (#63)
   wa: (key: string, text: string) => void whatsapp?.send(key, text).catch(e => log('whatsapp send failed in', logRef(key), e)),
   mail: (key: string, text: string) => void email?.send(key, text).catch(e => {
-    log('mail reply failed', key, e)
+    log('mail reply failed', logRef(key), e)
     void slack.notifyOwner(`Email reply failed for ${placeOf(key)}: ${e}`)
   }),
 }
