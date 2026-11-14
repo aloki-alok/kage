@@ -39,7 +39,7 @@ Copy the nearest sibling before you write anything new. `CONTRIBUTING.md` has th
 
 ## 3. Keep it clean
 
-`tests/structure.test.ts` (ADR 0014) enforces the mechanical rules. The rest are judgment, and review checks them.
+`tests/structure.test.ts` (ADR 0014) and `tsconfig.json` (`noUnusedLocals`, `noUnusedParameters`) enforce the mechanical rules. The rest are judgment, and review checks them.
 
 1. Names say what a thing does, so a reader needs no comment to know it. A file is named for its one job (`transcript-tail.ts`, not `utils.ts`). A function is a verb phrase (`readKagelets`, `planBlock`). A value is a noun for what it holds (`ownerMemoryDir`, not `kmem` or `d`). No made-up words (`realish`), no one-letter names outside a short loop. Rename when you touch a vague name.
 2. One file, one job. If a file passes 300 lines, split it along its jobs before you add to it.

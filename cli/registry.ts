@@ -18,7 +18,7 @@ import { pauseLine, type Live } from '../core/board.ts'
 import { askHub, DIR, ENV_FILE, settingsExist } from './home.ts'
 import { NAME, resultLine, rowLine, kageletRows, starterFile } from '../core/kagelets.ts'
 import { openLedgers } from '../runtime/ledger.ts'
-import { kageletsDir, readKagelets } from '../runtime/kagelets.ts'
+import { kageletsDir, readKagelets } from '../runtime/kagelet-files.ts'
 import { reload, said } from './reload.ts'
 
 const KAGELETS = kageletsDir(DIR)

@@ -74,7 +74,7 @@ test('a hold outlives a hub restart: the new hub holds the thread before any tas
 
   // The restarted hub restores holds before anything else runs.
   const two = hub()
-  restoreHolds(dir, two.d, Date.now())
+  restoreHolds(dir, two.d)
   assert.equal(two.d.task('A', task('during restart'), 0), 'held')
   assert.equal(two.d.task('B', task('b'), 0), 'starting')   // the dead terminal's hold was dropped
   const s2 = listenForSessions(sock, two.d, { mail: () => {}, wa: () => {}, voice: () => {}, failed: () => {}, schedules: { add: () => undefined, remove: () => {} } })

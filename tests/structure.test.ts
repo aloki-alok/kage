@@ -14,7 +14,8 @@ const text = new Map(files.map(f => [f, readFileSync(`${root}/${f}`, 'utf8')]))
 const code = (f: string) => text.get(f)!.replace(/\/\*[\s\S]*?\*\//g, '').replace(/(^|\s)\/\/.*$/gm, '$1')
 // Shell scripts call core/ too (setup.sh runs node with an import), so they count as users of an export.
 const scripts = execFileSync('git', ['ls-files', '*.sh'], { cwd: root, encoding: 'utf8' }).split('\n').filter(Boolean).map(f => readFileSync(`${root}/${f}`, 'utf8'))
-const lines = (f: string) => text.get(f)!.split('\n').length - 1   // as wc -l counts
+// Import lines do not count: splitting a module adds them to its importers, and the rule must not punish a split.
+const lines = (f: string) => text.get(f)!.split('\n').slice(0, -1).filter(l => !l.startsWith('import ')).length
 const inDir = (d: string) => files.filter(f => f.startsWith(`${d}/`) && f.endsWith('.ts') && !f.slice(d.length + 1).includes('/'))
 
 const MAX_LINES = 300
@@ -26,10 +27,10 @@ const DEBT = {
   ] as string[],
   // runtime/ and connectors/ never import a file in the repo root (router.ts, config.ts, ...).
   rootImports: [] as string[],
-  // A source file over MAX_LINES lines, with the most it may have. Split it; lower the number as it shrinks.
+  // A source file over MAX_LINES lines (import lines not counted), with the most it may have. Split it; lower the number as it shrinks.
   longFiles: {
-    'runtime/kage-tools.ts': 832, 'router.ts': 728, 'cli/top.ts': 624,
-    'runtime/kagelets.ts': 453, 'runtime/sdk-sessions.ts': 347, 'core/sessions.ts': 323,
+    'runtime/kage-tools.ts': 808, 'router.ts': 666, 'cli/top.ts': 607,
+    'runtime/sdk-sessions.ts': 334, 'core/sessions.ts': 323,
   } as Record<string, number>,
   // A core/ or runtime/ file missing from the CONTRIBUTING.md code map.
   unmapped: [
@@ -62,7 +63,7 @@ test('runtime/ and connectors/ never import a root file', () => {
   check('rootImports', [...inDir('runtime'), ...inDir('connectors')].filter(f => bad.test(code(f))), DEBT.rootImports)
 })
 
-test(`a source file is ${MAX_LINES} lines or fewer, and a long one never grows`, () => {
+test(`a source file is ${MAX_LINES} lines or fewer, imports aside, and a long one never grows`, () => {
   const long = files.filter(f => lines(f) > MAX_LINES)
   check('longFiles', long, Object.keys(DEBT.longFiles))
   const grew = long.filter(f => lines(f) > DEBT.longFiles[f]!).map(f => `${f}: ${lines(f)} > ${DEBT.longFiles[f]}`)

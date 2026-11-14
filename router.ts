@@ -59,7 +59,12 @@ import { clearUpdatedFrom, markUpdatedFrom, pullMain, updatedNote, version } fro
 import { releaseIfSoaked } from './runtime/release.ts'
 import { kageletMemory } from './runtime/kagelet-memory.ts'
 import { dreamInput, dreamsDue, kageletDreamTask } from './core/kagelet-memory.ts'
-import { costCap, kageletDeliver, kageletManager, kageletRoutes, kageletsDir, ownerNotes, readCommand, readKagelets, syncKagelets } from './runtime/kagelets.ts'
+import { costCap } from './runtime/kagelet-cost-cap.ts'
+import { kageletsDir, readKagelets } from './runtime/kagelet-files.ts'
+import { kageletManager, readCommand } from './runtime/kagelet-manager.ts'
+import { kageletDeliver, ownerNotes } from './runtime/kagelet-notes.ts'
+import { kageletRoutes } from './runtime/kagelet-routes.ts'
+import { syncKagelets } from './runtime/kagelet-sync.ts'
 import { budgetLeft, COST_FLAG, costFlags, kageletRows } from './core/kagelets.ts'
 import { chainCap, dailyCap, totalCap } from './core/kagelet-view.ts'
 import { askHub } from './cli/home.ts'
@@ -135,7 +140,7 @@ const deliver = (c: Conversation, task: Task, place: string, lane: Lane = 'main'
 function stopThread(key: string, cut: boolean): string {
   const now = Date.now()
   const end = (k: string) => {
-    const r = d.endThread(k, now, cut)
+    const r = d.endThread(k, cut)
     const dropped = 'ok' in r ? r.dropped.filter((m): m is Task => m.type === 'task') : []
     if (dropped.length) limits.turn(k, dropped, undefined, now)
     return { r, dropped: dropped.length }
@@ -369,7 +374,7 @@ limits.restore()
 // Panes still running from before this hub restarted keep working.
 d.adopt(Object.keys(saved).filter(k => runningAtStart.has(saved[k]!)), Date.now())
 // Threads still open in a terminal (kage attach) stay held: before any connector can deliver a task.
-restoreHolds(DIR, d, Date.now())
+restoreHolds(DIR, d)
 // Schedules live in the store and run as tasks in their thread (runtime/scheduler.ts).
 const schedules = scheduler({
   store, failed,

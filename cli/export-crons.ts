@@ -11,7 +11,6 @@ import { cronJobsFromTranscript } from '../core/cron.ts'
 import { senderFile } from '../core/guards.ts'
 import { claudeProject, paneProcessStart } from '../runtime/tmux-panes.ts'
 
-const HOME = process.env.HOME!
 const NAME = process.env.KAGE_NAME || 'kage'
 const PROJECT = claudeProject(CWD)
 

@@ -171,7 +171,7 @@ export class Dispatcher<M> {
   // kage stop <thread> and "@kage stop": end one thread's session once its turn ends, or now (cut). A session that
   // is starting, asking or mid-turn waits for the next sweep after that; a timed check is not a turn, so it ends now.
   // Tasks no session read are dropped and returned, so the caller can let their messages go.
-  endThread(key: string, now: number, cut: boolean):
+  endThread(key: string, cut: boolean):
     { ok: true; ending?: true; asking?: true; cut?: 'busy' | 'asking'; dropped: M[] } | { refused: 'closed' } {
     const live = this.#live.has(key)
     if (!live && !this.#waiting.includes(key)) return { refused: 'closed' }

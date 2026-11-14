@@ -104,7 +104,7 @@ export function limitPause(o: {
     turn(key: string, tasks: Task[], limit: Limit | undefined, now: number, done = false) {
       if (!limit) {
         o.settle?.(tasks, done)
-        if (probing === threadOf(key) && until !== undefined) { probing = undefined; o.log('the limit lifted early'); void lift(now) }
+        if (probing === threadOf(key) && until !== undefined) { probing = undefined; o.log('the limit lifted early'); void lift() }
         // Only the thread's main session clears it: a lane's turn may have begun before the limit.
         if (key === threadOf(key) && key in told) setTold(key, undefined, now)
         for (const t of tasks) { const s = sourceOf(t); if (s && open.delete(s)) o.store.handled(s) }
@@ -122,10 +122,10 @@ export function limitPause(o: {
       for (const t of all) if (!keep(key, t, limit, now) && !t.handoff) o.log('cannot hold a task with no inbox message', key, t.meta.place)
     },
     // At the reset time: held messages replay oldest first, then each owed scheduled run once.
-    async tick(now: number) { if (until !== undefined && now >= until) await lift(now) },
+    async tick(now: number) { if (until !== undefined && now >= until) await lift() },
   }
   // The pause ends: held messages replay oldest first, then each owed scheduled run once.
-  async function lift(now: number) {
+  async function lift() {
     {
       until = undefined
       const rows = o.store.held()
