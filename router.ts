@@ -317,7 +317,7 @@ const sdk = sdkLib ? sdkSessions({
     routes.ended(key, usd ?? 0, d.saved()[key] ? `${PROJECT}/${d.saved()[key]}.jsonl` : '', Date.now(), limited)
   },
   budgetOf: key => key.includes('#side-kagelet-') ? budgetLeft(kageletRows(readKagelets(KAGELETS), { runs: '', costs: ledgers.text('costs'), now: Date.now() }), key, CAPS) : undefined,
-  modelOf: key => key.includes('#side-kdream-') ? 'sonnet' : models.get(key),
+  modelOf: key => key.includes('#side-kdream-') ? 'sonnet' : key.startsWith('voice:') && config.connectors?.voice?.model ? config.connectors.voice.model : models.get(key),
   onBlocked: blocked,
   onTurn: (key, tasks, limit, done) => limits.turn(key, tasks, limit, Date.now(), done),
   // A lane whose file is gone keeps no tools, rather than falling back to approval cards.

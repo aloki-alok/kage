@@ -119,6 +119,7 @@ Email is on when `connectors.email.address`, `connectors.email.queue` and `conne
 | `connectors.voice.port` | `8787` | It listens on `127.0.0.1:<port>/mcp`. Put a tunnel in front of it. |
 | `connectors.voice.max` | `1` | Calls at a time. A call never takes a slot from your threads. |
 | `connectors.voice.perHour` | `20` | New calls per hour. |
+| `connectors.voice.model` | none | The model a call's session uses, such as `sonnet` or `haiku` for faster spoken answers. With none, calls use the same model as your threads. |
 | `connectors.voice.on` | on | `false` turns voice off. |
 | `connectors.call.command` | none | The command `kage call` and an AFK P0 run to phone you. It gets a one-time code in `$KAGE_CALL_CODE`, and for a P0 the reason in `$KAGE_CALL_REASON`. |
 
