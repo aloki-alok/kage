@@ -472,7 +472,8 @@ describe("a session's Kage tools", () => {
     const row = s.ledgers.text('db-reads').trim().split('\t')
     assert.deepEqual([row[1], row[2], row[4]], ['calls', '3', 'ok'])
     assert.match(row[3]!, /^\d+ms$/)
-    assert.doesNotMatch(s.ledgers.text('db-reads'), /40/)
+    // The row's own fields only: its leading timestamp may hold "40" by chance.
+    assert.doesNotMatch(row.slice(1).join('\t'), /40/)
   })
   test('db_read refuses a write without running the command, and logs the refusal', async () => {
     const dir = mkdtempSync(join(tmpdir(), 'kage-db-'))
