@@ -23,7 +23,7 @@ async function show() {
 $('form').onsubmit = async e => {
   e.preventDefault()
   const token = $('token').value.trim()
-  const hub = $('hub').value.trim() || DEFAULT_HUB
+  const hub = ($('hub').value.trim() || DEFAULT_HUB).replace(/\/+$/, '')
   let ok = true
   try { const u = new URL(hub); ok = u.protocol === 'http:' && ['127.0.0.1', 'localhost'].includes(u.hostname) } catch { ok = false }
   // The hub listens on this machine only, so any other address is a typo, or a page trying to collect the token.

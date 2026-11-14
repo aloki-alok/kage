@@ -54,8 +54,10 @@ async function loop() {
       let r
       try { r = await fetch(`${hub}/browser/next`, { headers: auth }) } catch { await setState('unreachable'); await sleep(5000); continue }
       if (r.status === 401) { await setState('refused'); return }
+      // Only the hub answers 200 or 204 here: any other status is some other service on that port, or a wrong path.
+      if (r.status !== 200 && r.status !== 204) { await setState('unreachable'); await sleep(5000); continue }
       await setState('connected')
-      if (r.status !== 200) { if (r.status !== 204) await sleep(5000); continue }
+      if (r.status === 204) continue
       const cmd = await r.json()
       let body
       try {
@@ -73,5 +75,6 @@ chrome.alarms.create('kage-poll', { periodInMinutes: 0.5 })
 chrome.alarms.onAlarm.addListener(() => void loop())
 chrome.runtime.onStartup.addListener(() => void loop())
 chrome.runtime.onInstalled.addListener(() => void loop())
-chrome.storage.onChanged.addListener(c => { if (c.token || c.hub) void loop() })
+// New settings clear the shown state (options.js), so the next state is written even if it is the same as before.
+chrome.storage.onChanged.addListener(c => { if (c.token || c.hub) { last = ''; void loop() } })
 void loop()

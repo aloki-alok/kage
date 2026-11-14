@@ -8,7 +8,7 @@
 // server.ts is the other end for tmux panes only: the Kage channel inside each pane's Claude Code.
 import { execFileSync, spawn } from 'node:child_process'
 import { randomUUID } from 'node:crypto'
-import { existsSync, mkdirSync, readFileSync, renameSync, statSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, readFileSync, renameSync, rmSync, statSync, writeFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { dirname } from 'node:path'
 import { load, log } from './config.ts'
@@ -201,6 +201,7 @@ const PROJECT = claudeProject(process.cwd())   // both runners start sessions in
 // What each turn cost (runtime/ledger.ts costRecorder): `kage cost`, the kagelet caps and the cost flags read it.
 const recordCost = costRecorder(ledgers)
 // Kage in Chrome (#114): the owner's own browser, through Kage's extension, for the owner's own tasks only.
+rmSync(`${DIR}/browser-seen`, { force: true })   // a poll the last hub heard says nothing about this one
 let browserSeen = 0   // kage doctor reads browser-seen; written at most every 30 s, since the extension polls about every 25 s
 const browser = env.KAGE_BROWSER_TOKEN ? connectBrowser({ token: env.KAGE_BROWSER_TOKEN, port: Number(env.KAGE_BROWSER_PORT || 8791),
   onPoll: at => { if (at - browserSeen >= 30_000) { browserSeen = at; writeFileSync(`${DIR}/browser-seen`, String(at), { mode: 0o600 }) } } }) : undefined
