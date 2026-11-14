@@ -246,8 +246,9 @@ test('the owner\'s words in a kagelet\'s thread reach its next run once, and onl
   const store = openStore(':memory:')
   const notes = ownerNotes(store)
   const lanes = [KEY, 'CTEST2:1.1#side-kagelet-other']
-  notes.wrote(lanes, 'CTEST1', '1700000000.123456', 'skip the staging log today')
-  notes.wrote(lanes, 'CTEST9', '5.5', 'not for any kagelet')
+  // It returns the lanes it reached, for the event log.
+  assert.deepEqual(notes.wrote(lanes, 'CTEST1', '1700000000.123456', 'skip the staging log today'), [KEY])
+  assert.deepEqual(notes.wrote(lanes, 'CTEST9', '5.5', 'not for any kagelet'), [])
   // A run that could not be delivered keeps them for the next one.
   assert.match(notes.take(KEY, () => false) ?? '', /skip the staging log today/)
   assert.match(notes.take(KEY, () => true) ?? '', /owner wrote[\s\S]*skip the staging log today/)

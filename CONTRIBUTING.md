@@ -56,6 +56,7 @@ Write logs to stderr only. In a tmux pane, stdout carries the channel protocol, 
 | `outbound.ts` | What may go out: no crowd pings, no secrets in a thread, Slack-sized parts, code blocks narrow enough for the thread panel. |
 | `guards.ts` | Hook rules: private sources, voice calls, the owner's memory, Slack posts only through Kage's tools. |
 | `ledgers.ts` | Reading the ledgers: questions waiting on the owner, what Kage posted, what turns cost, the daily note. |
+| `events.ts` | The event log's row (what happened, never what was said), its 30 days, and one day's events grouped by kagelet and chain for the dream job. |
 | `kagelets.ts` | A kagelet file (thread, schedule, grant, job) and the grant check. |
 | `kagelet-view.ts` | What a terminal shows of kagelets: the `kage top` panel, its keys, and `kage logs <kagelet>`. |
 | `db-read.ts` | The check a `db_read` query passes: one read statement, capped. |
@@ -78,7 +79,7 @@ Write logs to stderr only. In a tmux pane, stdout carries the channel protocol, 
 | `session-link.ts` | The local socket that panes and the `kage` commands connect to. |
 | `protocol.ts` | The messages on that socket. |
 | `store.ts` | One SQLite file: conversations, their sessions, schedules, trust, the inbox of every message heard, and what connectors keep across a restart (AFK, GitHub and mail threads, the `db_read` command the owner approved). The hub is the only writer of these tables. Old `.json` files move in once. |
-| `ledger.ts` | The ledgers (waiting, posted, prod-actions, costs, runs, commands, reports, db-reads, grants) as rows in that file. The hub and every pane write them. Old `.tsv` files move in once. |
+| `ledger.ts` | The ledgers (waiting, posted, prod-actions, costs, runs, commands, reports, db-reads, grants) as rows in that file. The hub and every pane write them. Old `.tsv` files move in once. Also the event log (#94): one row per run start and end, kagelet tool call, report, grant, refusal, owner note and cost pause, each on its run's trace. Rows older than 30 days fold into one summary row per day. |
 | `scheduler.ts` | Runs due schedules as tasks in their thread. |
 | `limit-pause.ts` | The usage-limit pause: a turn that ends on the limit keeps its inbox message, its thread gets one notice, and the message replays at the reset. |
 | `closed-threads.ts` | A thread the safety check stopped: it starts on a new session, and a teammate's stays closed until the owner writes in it. |

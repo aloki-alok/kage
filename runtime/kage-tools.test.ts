@@ -50,6 +50,7 @@ function setup(o: { hubDown?: boolean; dir?: string; kagelet?: string; dbRead?: 
   const ledgers = openLedgers(dir)
   const out: string[] = []
   const jobs: any[] = []
+  const events: string[] = []
   const t = sessionTools({
     title: 'Kage', bot: slack.bot as any, user: slack.user as any, botDm: () => 'DBOT', dir, ledgers, send: m => { if (o.hubDown) return false; out.push(`${m.type} ${m.text}`) }, memory: { own: '/own', owner: '/owner' },
     schedules: {
@@ -58,7 +59,7 @@ function setup(o: { hubDown?: boolean; dir?: string; kagelet?: string; dbRead?: 
       list: () => jobs,
     },
     afk: async c => { out.push(`afk ${JSON.stringify(c)}`); return 'AFK on' },
-    kagelet: o.kagelet, dbRead: o.dbRead, approve: o.approve,
+    kagelet: o.kagelet, dbRead: o.dbRead, approve: o.approve, event: (kind, detail) => { events.push(`${kind} ${detail}`) },
     kagelets: { list: () => 'the list', manage: async (a, ask) => { out.push(`manage ${JSON.stringify(a)}`); return ask ? `asked: ${await ask({ kagelet: a.name, job: 'j', read_command: 'r' })}` : 'managed' } },
   })
   const call = (name: string, args: Record<string, unknown>) => t.tools.find(x => x.name === name)!.run(args)
@@ -67,7 +68,7 @@ function setup(o: { hubDown?: boolean; dir?: string; kagelet?: string; dbRead?: 
     meta: { channel: o.channel ?? 'C1', thread_ts: o.thread_ts ?? '5.5', place: '#general', permalink: 'https://x/p' },
     origin: { channel: o.channel ?? 'C1', ts: '5.5' },
   })
-  return { ...slack, dir, ledgers, out, t, call, task, jobs }
+  return { ...slack, dir, ledgers, out, t, call, task, jobs, events }
 }
 
 describe("a session's Kage tools", () => {
@@ -509,6 +510,8 @@ describe("a session's Kage tools", () => {
     assert.deepEqual(s.posts.map(p => [p.channel, p.thread_ts]), [['C1', '5.5']])
     assert.match(s.posts[0]!.text, /status needs:\* read access to the deploy log/)
     assert.match((await s.call('waiting', {})).text, /status needs: read access to the deploy log/)
+    // The event log gets whether it needed something, not its words.
+    assert.deepEqual(s.events, ['report ok', 'report needs'])
     // Only its own thread.
     assert.equal((await s.call('report', { channel: 'COTHER', thread_ts: '1.1', summary: 'x' })).isError, true)
   })

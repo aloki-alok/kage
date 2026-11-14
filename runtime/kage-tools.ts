@@ -19,6 +19,7 @@ import { findSecret, layoutRefusal, safeReply, secretRefusal, splitForSlack } fr
 import type { Task } from './protocol.ts'
 import type { AskOwner, Manage } from './kagelets.ts'
 import { DB_READ } from '../core/kagelets.ts'
+import type { EventKind } from '../core/events.ts'
 
 // The reaction each kind of reply leaves on the task message. An ack leaves none: 🥷 already says "picked up".
 // Ninja set, picked by the owner: 📜 a scroll back to you (waits on your answer), 🗡️ a quick strike, ⚔️ the task done.
@@ -50,6 +51,8 @@ export function sessionTools(o: {
   kagelets?: { list(): string; manage(a: Manage, ask?: AskOwner): Promise<string> }
   // Put an approval card in front of the owner and wait: true only on their yes. Absent: no card (tmux panes).
   approve?: (tool: string, description: string, input: Record<string, unknown>) => Promise<boolean>
+  // The event log, on this session's current run (runtime/ledger.ts runEvents). Absent: tmux panes.
+  event?: (kind: EventKind, detail: string) => void
 }) {
   const { title: Title, bot, user } = o
   // send_file sends only what was written in the thread's own folder: not any file on the disk, and
@@ -393,6 +396,7 @@ export function sessionTools(o: {
       if (!ownerTask.has(key)) return { isError: true, text: 'refused: report from your own thread only' }
       const needs = a.needs?.trim() ?? ''
       append('reports', [name, a.summary, needs])
+      o.event?.('report', needs ? 'needs' : 'ok')
       if (!needs) return { text: 'reported' }
       await post(key, a.channel, a.thread_ts, `*${name} needs:* ${needs}`)
       append('waiting', ['open', key, links.get(key) ?? key, `${name} needs: ${needs}`])

@@ -38,7 +38,8 @@ import { sdkSessions } from './runtime/sdk-sessions.ts'
 import { limitPause } from './runtime/limit-pause.ts'
 import { listenForSessions, restoreHolds, routeReply } from './runtime/session-link.ts'
 import { openStore, type Inbox } from './runtime/store.ts'
-import { openLedgers } from './runtime/ledger.ts'
+import { openLedgers, runEvents } from './runtime/ledger.ts'
+import { EVENT_DAYS } from './core/events.ts'
 import { claudeProject, tmuxPanes } from './runtime/tmux-panes.ts'
 import { codeStamp } from './runtime/code-stamp.ts'
 import { clearUpdatedFrom, markUpdatedFrom, pullMain, updatedNote, version } from './runtime/auto-update.ts'
@@ -85,6 +86,8 @@ const store = openStore(`${DIR}/kage.db`)
 store.importState({ afk: `${DIR}/afk.json`, 'github-threads': `${DIR}/github-threads.json`, 'mail-threads': `${DIR}/mail-threads.json` })
 // What Kage posted, waits on, spent and ran, in the same file (runtime/ledger.ts). Old .tsv files move in once.
 const ledgers = openLedgers(DIR)
+// The event log (core/events.ts): each run of a session or kagelet, and what it did, on one trace.
+const runs = runEvents(ledgers, randomUUID)
 const placeOf = (key: string) => placeFor(k => store.conversation(k)?.place, key)
 // Every connector writes what it hears here before acknowledging it (runtime/store.ts, the inbox).
 // A message a session took stays until its turn ends: a turn that hits the usage limit replays it (runtime/limit-pause.ts).
@@ -125,7 +128,10 @@ const toSession = (key: string, task: Task) => {
   if (limits.hold(key, task, Date.now())) return 'held'
   noteTrust(key, task)
   const r = d.task(key, task, Date.now())
-  if (r !== 'failed') limits.delivered(key, task)
+  if (r !== 'failed') {
+    limits.delivered(key, task)
+    runs.start(key, task.scheduled ? `scheduled ${task.job ?? ''}` : `task from the ${senderOf(task)}`, { fresh: !!task.scheduled })
+  }
   return r
 }
 // A thread the safety check stopped starts over, closed to teammates until the owner writes (runtime/closed-threads.ts).
@@ -158,7 +164,7 @@ const slack = await connectSlack({
       const key = sessionKey(c, { lane: 'main' })
       return mayStop(by, slack.ids.owner, starters, key) ? stopThread(key, cut) : 'Only the owner, or the teammate whose task started this thread, can stop it.'
     }, verdict: (id, behavior) => d.verdict(id, { type: 'verdict', request_id: id, behavior }), status, heard: m => schedules.heard(m),
-    posted: () => ledgers.text('posted'), ownerWrote: (chat, thread, text) => notes.wrote(grants.keys(), chat, thread, text), ...inbox },
+    posted: () => ledgers.text('posted'), ownerWrote: (chat, thread, text) => { for (const k of notes.wrote(grants.keys(), chat, thread, text)) runs.emit(k, 'owner-note', `${text.length} characters`) }, ...inbox },
   // AFK mode is on unless KAGE_AFK=off. Its stand-in reads the owner's memory, read only.
   afk: env.KAGE_AFK === 'off' ? undefined : { memory: memoryDirs(process.env.HOME!, ENV_FILE, env).owner, model: env.KAGE_AFK_MODEL || 'sonnet', saved: store, call: phoneOwner },
 })
@@ -188,6 +194,7 @@ const tmux = tmuxPanes({
 // Panes still running when the hub starts keep their thread (and their CronCreate jobs) until they
 // close; see mixRunners.
 const MEM = memoryDirs(process.env.HOME!, ENV_FILE, env)
+const PROJECT = claudeProject(process.cwd())   // both runners start sessions in the hub's folder, so transcripts live here
 const sdkLib = env.KAGE_RUNTIME === 'tmux' ? undefined : await (async () => ({
   lib: await import('@anthropic-ai/claude-agent-sdk'),
   // The same pinned Claude Code the panes run, not the copy bundled with the SDK.
@@ -214,6 +221,7 @@ const kagelets = (now: number) => {
   if (costCap(KAGELETS, rows, KAGELET_USD, (name, why) => {
     const r = rows.find(x => x.name === name)!
     ledgers.add('reports', [name, why, 'the owner to resume it, or a higher KAGE_KAGELET_DAILY_USD'])
+    runs.emit(r.key!, 'cap-pause', why)
     ledgers.add('waiting', ['open', r.key!.split('#')[0]!, r.link ?? '', `kagelet ${name} ${why}`])
     log(`kagelet ${name} ${why}`)
     void slack.notifyOwner(`Kagelet *${name}* is ${why}. Resume it with kage top or by asking ${Title}.`)
@@ -234,6 +242,7 @@ const sdk = sdkLib ? sdkSessions({
     kagelet: key.split('#side-kagelet-')[1],
     dbRead: { command: () => readCommand(env.KAGE_DB_READ_COMMAND, store), maxRows: Number(env.KAGE_DB_READ_MAX_ROWS) || 200 },
     kagelets: { list: () => manager.list(Date.now()), manage: (a, ask) => manager.manage(a, Date.now(), ask) }, approve,
+    event: (kind, detail) => runs.emit(key, kind, detail),
   }),
   hasTranscript: tmux.hasTranscript,
   toHub: (key, m) => routeReply(key, m, replies),
@@ -247,6 +256,7 @@ const sdk = sdkLib ? sdkSessions({
   onStart: () => store.saveSessions(d.saved()),
   onResult: (key, total, resumed) => {
     const usd = turnCost(costTotals.get(key), total, resumed)
+    runs.end(key, `$${(usd ?? 0).toFixed(2)}`, d.saved()[key] ? `${PROJECT}/${d.saved()[key]}.jsonl` : '')
     if (usd === undefined) return
     costTotals.set(key, total)
     ledgers.add('costs', [key, String(usd), String(total)])
@@ -256,6 +266,7 @@ const sdk = sdkLib ? sdkSessions({
   // A lane whose file is gone keeps no tools, rather than falling back to approval cards.
   // A lane from before the rename (#side-spec-) gets no tools either.
   grantOf: key => grants.get(key) ?? (key.includes('#side-kagelet-') || key.includes('#side-spec-') ? [] : undefined),
+  onTool: (key, tool, refused) => runs.emit(key, refused ? 'refusal' : 'tool', refused ? `${tool}: ${refused}` : tool),
 }) : undefined
 if (sdk) mkdirSync(MEM.own, { recursive: true })
 kagelets(Date.now())
@@ -366,7 +377,6 @@ async function weeklyRetro(now: number) {
 // tidies its own memory (core/dream.ts). A side lane of the bot DM, so the DM's own conversation is
 // untouched. The hub snapshots the memory first, so `kage dream undo` restores it whatever the dream did.
 const DREAMT = `${DIR}/dream-sent`
-const PROJECT = claudeProject(process.cwd())   // both runners start sessions in the hub's folder
 function dream(now: number) {
   const last = Number(readFile(DREAMT).trim()) || undefined
   if (limits.paused() || !dreamDue(now, last, d.quietEverywhere(now))) return   // a dream in the pause would only hit the limit
@@ -495,6 +505,7 @@ runJobs([
   { name: 'kagelets', every: 60_000, run: kagelets },
   { name: 'dream', every: 10 * 60_000, run: dream },
   { name: 'retro', every: 10 * 60_000, run: weeklyRetro },
+  { name: 'events', every: 3_600_000, run: now => ledgers.pruneEvents(new Date(now - EVENT_DAYS * 86_400_000).toISOString()) },
 ])
 
 const replies = {

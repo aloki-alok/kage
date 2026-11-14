@@ -168,12 +168,13 @@ const NOTES = 'kagelet-notes'
 export function ownerNotes(store: Pick<Store, 'load' | 'save'>) {
   const all = () => (store.load(NOTES) ?? {}) as Record<string, string[]>
   return {
-    // lanes: every kagelet's lane key (the grants). Each lane in this thread keeps the last 10.
+    // lanes: every kagelet's lane key (the grants). Each lane in this thread keeps the last 10. Returns the lanes it reached.
     wrote(lanes: Iterable<string>, chat: string, thread: string, text: string) {
       const notes = all()
-      let hit = false
-      for (const k of lanes) if (k.startsWith(`${chat}:${thread}#side-kagelet-`)) { notes[k] = [...notes[k] ?? [], text.slice(0, 2000)].slice(-10); hit = true }
-      if (hit) store.save(NOTES, notes)
+      const hit = [...lanes].filter(k => k.startsWith(`${chat}:${thread}#side-kagelet-`))
+      for (const k of hit) notes[k] = [...notes[k] ?? [], text.slice(0, 2000)].slice(-10)
+      if (hit.length) store.save(NOTES, notes)
+      return hit
     },
     // deliver: hands the run over with the notes; false means it never reached a session, so they stay.
     take(key: string, deliver: (text: string) => boolean): string | undefined {
