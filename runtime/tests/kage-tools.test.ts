@@ -426,7 +426,11 @@ describe("a session's Kage tools", () => {
   test('a kagelet\'s dream session has propose_memory for its own kagelet and nothing of the manager\'s; the manager reviews and never proposes', async () => {
     const dream = setup({ dreaming: 'status' })
     dream.t.onTask(dream.task({ fromOwner: false }))
-    assert.equal(dream.t.tools.some(x => ['kagelets', 'manage_kagelet', 'review_kagelet_memory', 'report'].includes(x.name)), false)
+    // Exactly the thread tools Kage gives every session, and propose_memory: no manager, browser or post_as_kage tool.
+    const names = dream.t.tools.map(x => x.name)
+    assert.ok(names.includes('propose_memory'))
+    for (const n of ['kagelets', 'manage_kagelet', 'review_kagelet_memory', 'report', 'post_as_kage']) assert.equal(names.includes(n), false, n)
+    assert.equal(names.some(n => n.startsWith('browser_')), false)
     // The kagelet is the lane's, never an argument: a name in the call is not a field.
     assert.equal('kagelet' in dream.t.tools.find(x => x.name === 'propose_memory')!.shape, false)
     assert.equal((await dream.call('propose_memory', { channel: 'C1', thread_ts: '5.5', file: 'a.md', text: 't', why: 'w' })).text, 'proposed')

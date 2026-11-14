@@ -3,7 +3,7 @@
 // which is Kage's tool, so the owner's session. No path here reaches Kage's or the owner's memory: the folder must be a
 // real directory at exactly <kagelets>/memory/<name> (no link along the way), and a note must be a regular file.
 import { randomUUID } from 'node:crypto'
-import { existsSync, lstatSync, mkdirSync, readdirSync, readFileSync, realpathSync, renameSync, unlinkSync, writeFileSync } from 'node:fs'
+import { existsSync, lstatSync, mkdirSync, readdirSync, readFileSync, realpathSync, renameSync, rmSync, unlinkSync, writeFileSync } from 'node:fs'
 import { memoryPath, proposalFrom, type Proposal } from '../core/kagelet-memory.ts'
 import { NAME } from '../core/kagelets.ts'
 import type { EventKind } from '../core/events.ts'
@@ -27,13 +27,17 @@ export function kageletMemory(o: {
     const ok = memoryPath(o.dir, name, 'x.md', o.forbid())
     if ('error' in ok) return ok
     const memory = `${o.dir}/memory`, mine = `${memory}/${name}`
+    // Before anything is made: a kagelets folder that is a link into forbidden memory is refused untouched.
+    const root = real(o.dir)
+    if (create && root && o.forbid().some(f => { const r = real(f); return !!r && (within(root, r) || within(r, root)) })) return { error: `${o.dir} reaches Kage's or the owner's memory` }
     if (create) for (const p of [memory, mine]) if (!linked(p)) mkdirSync(p, { mode: 0o700 })
     if (!isDir(memory) || !isDir(mine)) return { error: create ? `${mine} is not a plain folder` : 'no folder' }
     const at = real(mine), base = real(o.dir)
     if (!at || !base || at !== `${base}/memory/${name}` || o.forbid().some(f => { const r = real(f); return !!r && (within(at, r) || within(r, at)) })) return { error: `${mine} reaches outside the kagelets folder` }
     return { path: mine }
   }
-  const file = (path: string) => { try { return lstatSync(path).isFile() } catch { return false } }
+  // A plain file with one name: a hard link to another file (the owner's note) is not a note.
+  const file = (path: string) => { try { const s = lstatSync(path); return s.isFile() && s.nlink === 1 } catch { return false } }
   const proposals = (name: string): Saved[] => {
     const f = folder(name)
     if ('error' in f || !isDir(`${f.path}/.proposals`)) return []
@@ -59,7 +63,8 @@ export function kageletMemory(o: {
       if (open.length >= 5) return 'not proposed: five proposals already wait for Kage'
       const id = (o.newId ?? (() => randomUUID().slice(0, 8)))()
       const dir = `${f.path}/.proposals`
-      if (!isDir(dir)) mkdirSync(dir, { mode: 0o700 })
+      if (!linked(dir)) mkdirSync(dir, { mode: 0o700 })
+      if (!isDir(dir)) return `not proposed: ${dir} is not a plain folder`
       writeFileSync(`${dir}/${id}.json`, JSON.stringify({ ...p, id, at: Date.now(), thread } satisfies Saved), { mode: 0o600 })
       o.event({ kind: 'memory-proposal', who: name, trace: '', detail: `${p.file}: ${p.why}` })
       o.waiting(['open', thread, '', `kagelet ${name} proposed a change to its memory (${p.file}): review it with review_kagelet_memory`])
@@ -77,6 +82,8 @@ export function kageletMemory(o: {
       if (!p) return `There is no proposal ${d.id} for ${d.kagelet}.`
       const f = folder(d.kagelet)
       if ('error' in f) return `refused: ${f.error}`
+      const again = proposalFrom(p)
+      if ('error' in again) return `not ${d.action === 'reject' ? 'rejected' : d.action === 'edit' ? 'edited' : 'approved'}: the saved proposal is not valid (${again.error})`
       const reason = (d.reason ?? '').trim()
       if (d.action === 'reject' && (!reason || reason.length > 200 || /[\r\n]/.test(reason))) return 'A rejection needs a one-line reason.'
       const text = d.action === 'edit' ? proposalFrom({ ...p, text: d.text })  : p
@@ -85,7 +92,8 @@ export function kageletMemory(o: {
         const target = `${f.path}/${p.file}`
         if (existsSync(target) && !file(target)) return `refused: ${p.file} is not a plain file, so nothing was written`
         // A copy swapped in, so the kagelet never reads a half-written note.
-        writeFileSync(`${target}.new`, text.text, { mode: 0o600 })
+        rmSync(`${target}.new`, { force: true })   // a link left there is removed, never written through
+        writeFileSync(`${target}.new`, text.text, { mode: 0o600, flag: 'wx' })
         renameSync(`${target}.new`, target)
       }
       unlinkSync(`${f.path}/.proposals/${p.id}.json`)
