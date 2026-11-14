@@ -3,6 +3,7 @@
 // Kage does, what it replies. Reads the hub's store and the Claude Code transcripts, so it works
 // with both runtimes (tmux panes and SDK sessions) and never touches a running session.
 //   kage watch [place]     only threads whose place contains [place], e.g. "support"
+//   kage watch --hub       the hub log's lines too, in one stream: what kage logs -f runs
 import { existsSync, statSync } from 'node:fs'
 import { CWD, DIR } from './home.ts'
 import { DatabaseSync } from 'node:sqlite'
@@ -12,7 +13,9 @@ const HOME = process.env.HOME!
 // Sessions run in the hub's working folder (hub.ts: harness.cwd, else home); Claude Code names the
 // transcript folder after it.
 const PROJECT = `${HOME}/.claude/projects/${CWD.replace(/[^A-Za-z0-9]/g, '-')}`
-const only = process.argv[2]?.toLowerCase()
+const args = process.argv.slice(2)
+const only = args.find(a => !a.startsWith('--'))?.toLowerCase()
+const HUB_LOG = args.includes('--hub') ? `${DIR}/hub.log` : undefined
 if (!existsSync(`${DIR}/kage.db`)) { console.error(`No ${DIR}/kage.db yet: start Kage first.`); process.exit(1) }
 const db = new DatabaseSync(`${DIR}/kage.db`, { readOnly: true })
 const threads = db.prepare('select s.key, s.claude_id as id, coalesce(c.place, s.key) as place from sessions s left join conversations c using (key)')
@@ -36,7 +39,20 @@ function print(at: number, place: string, step: string) {
 
 if (!existsSync(PROJECT)) console.error(`No transcripts in ${PROJECT}. If the hub runs in another folder, set harness.cwd to it (kage set harness.cwd <folder>).`)
 
+// Hub lines read "<ISO time> [kage] <text>"; a line with no time (a crash trace) keeps the time of now.
+function hubLines(first: boolean) {
+  if (!HUB_LOG) return
+  if (!offsets.has(HUB_LOG)) { let size = 0; try { size = statSync(HUB_LOG).size } catch {} ; offsets.set(HUB_LOG, first ? Math.max(0, size - 4_000) : 0) }
+  const r = newLines(HUB_LOG, offsets.get(HUB_LOG)!)
+  offsets.set(HUB_LOG, r.offset)
+  for (const raw of first ? r.lines.slice(-20) : r.lines) {
+    const m = /^(\S+Z) (?:\[kage\] )?(.*)$/.exec(raw)
+    print(m ? Date.parse(m[1]!) || Date.now() : Date.now(), 'hub', `hub   ${m ? m[2] : raw}`)
+  }
+}
+
 function scan(first: boolean) {
+  hubLines(first)
   let all: { id: string; place: string }[]
   try { all = threads.all() as typeof all } catch { return }   // the store is busy: next tick
   for (const t of all) {

@@ -93,3 +93,15 @@ export function grantsLine(tsv: string, from: number, to: number): string | unde
     .map(([, name, status, , tools]) => `${name} got ${tools} (${by[status!]})`)
   return got.length ? `*Kagelet grants with no card*: ${got.join('; ')}. To end a write tool's standing yes: v in kage top, or ask me. A read grant ends when the kagelet is saved without it or removed.` : undefined
 }
+
+// One plain line per ledger row or event for the hub log (runtime/ledger.ts), so kage logs tells what happened
+// in order. What happened, never what was said: the cells hold keys, costs and the owner's open questions.
+const cap = (s: string) => s.length > 300 ? `${s.slice(0, 299)}…` : s
+export function trailLine(name: string, c: string[]): string {
+  const [a = '', b = '', d = '', e = ''] = c
+  if (name === 'costs') return cap(`cost ${a}: $${Number(b).toFixed(2)} this turn, $${Number(d).toFixed(2)} so far`)
+  if (name === 'posted') return cap(`posted in ${a} for ${e || '?'} (${d})`)
+  if (name === 'waiting') return cap(a === 'open' ? `waiting on the owner in ${b}: ${e}` : `${a} in ${b}`)
+  return cap(`${name}: ${c.filter(Boolean).join(' · ')}`)
+}
+export const trailEvent = (e: { kind: string; who: string; detail: string }) => cap(`${e.kind} ${e.who}: ${e.detail}`)

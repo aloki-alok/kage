@@ -32,8 +32,8 @@ export function ssmRelay(o: { path: string; trusted: (key: string) => boolean; l
       const args = ['ssm', 'start-session', '--target', h.target, '--document-name', 'AWS-StartSSHSession', '--parameters', `portNumber=${h.port}`, ...h.region ? ['--region', h.region] : []]
       const p = spawn(o.aws ?? 'aws', args, { stdio: ['pipe', 'pipe', 'ignore'] })
       let done = false
-      const end = (why: string) => { if (done) return; done = true; active--; o.log('ssm relay', h.target, why); s.end() }
-      p.on('error', e => { if (!done) { done = true; active--; o.log('ssm relay', h.target, `failed ${(e as NodeJS.ErrnoException).code}`); refuse(s, 'aws did not start') } })
+      const end = (why: string) => { if (done) return; done = true; active--; o.log('ssm relay', h.target, 'for', key, why); s.end() }
+      p.on('error', e => { if (!done) { done = true; active--; o.log('ssm relay', h.target, 'for', key, `failed ${(e as NodeJS.ErrnoException).code}`); refuse(s, 'aws did not start') } })
       p.on('spawn', () => {
         s.write('ok\n')
         if (rest.length) p.stdin.write(rest)
