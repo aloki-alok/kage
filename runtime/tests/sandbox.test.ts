@@ -1,6 +1,6 @@
 // A real Claude Code session with the settings every Kage session starts with (core/guards.ts protectConfig): the writes and
 // reads a session must not make fail on the disk, and the ones it may make succeed. It runs a real model on the smallest
-// tier, a few cents. Skipped only when this machine has no OS sandbox or no claude command.
+// tier, a few cents. Skipped unless KAGE_LIVE_TESTS=1 (see CONTRIBUTING.md), and then only when this machine has no OS sandbox or no claude command.
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { execFileSync } from 'node:child_process'
@@ -13,7 +13,7 @@ import { protectConfig } from '../../core/guards.ts'
 const which = (c: string) => { try { return execFileSync('which', [c], { encoding: 'utf8' }).trim() } catch { return '' } }
 const claude = which('claude')
 const sandboxed = process.platform === 'darwin' ? existsSync('/usr/bin/sandbox-exec') : !!which('bwrap')
-const skip = !claude ? 'no claude command' : !sandboxed ? 'no OS sandbox here' : false
+const skip = process.env.KAGE_LIVE_TESTS !== '1' ? 'set KAGE_LIVE_TESTS=1 to run: it calls a real model' : !claude ? 'no claude command' : !sandboxed ? 'no OS sandbox here' : false
 
 // A small model sometimes skips a step. The refusals are checked on every attempt, and an attempt whose control writes did not
 // happen proves nothing, so it is run again (up to 3 times) before the test fails.
