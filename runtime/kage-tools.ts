@@ -563,7 +563,10 @@ export function sessionTools(o: {
     },
     async run(args) {
       const a = args as { channel: string; thread_ts: string; to: string; to_thread_ts?: string; text: string }
-      if (!ownerOnly(a) || a.channel === 'voice') return { isError: true, text: "refused: only the owner's own task may post where no task came from" }
+      // An agent may post with the owner's token, and an owner-verified call still has anyone listening in: neither counts.
+      if (!ownerOnly(a) || a.channel === 'voice' || agents.get(`${a.channel}:${a.thread_ts}`)) return { isError: true, text: "refused: only the owner's own task may post where no task came from" }
+      if (!/^[CG][A-Z0-9]+$/.test(a.to)) return { isError: true, text: 'refused: name the channel by its id (C...)' }
+      if (!a.text.trim()) return { isError: true, text: 'refused: the text is empty' }
       const no = secretRefusal(a.text, { fromOwner: true }) ?? layoutRefusal(a.text)
       if (no) return { isError: true, text: no }
       const sent: string[] = []

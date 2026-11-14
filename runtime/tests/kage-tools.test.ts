@@ -638,6 +638,23 @@ describe('post_as_kage: the owner has Kage post in a channel of their choosing',
     assert.match(r.text, /not a member/)
     assert.deepEqual(s.posts, [])
   })
+  test("an agent's task made with the owner's token and an owner-verified voice call may not use it either", async () => {
+    for (const t of [{ channel: 'C1', agent: true }, { channel: 'voice', agent: false }]) {
+      const s = setup()
+      const base = s.task({ fromOwner: true, channel: t.channel })
+      s.t.onTask(t.agent ? { ...base, agent: { app: 'ATEST0001' } } : base)
+      const r = await s.call('post_as_kage', { channel: t.channel, thread_ts: '5.5', to: 'CNEW', text: 'hi' })
+      assert.equal(r.isError, true, JSON.stringify(t))
+      assert.deepEqual(s.posts, [])
+    }
+  })
+  test('empty text or a target that is not a channel id posts nothing', async () => {
+    const s = setup()
+    s.t.onTask(s.task())
+    for (const a of [{ to: 'CNEW', text: '  ' }, { to: 'U0SOMEONE', text: 'hi' }, { to: '#general', text: 'hi' }])
+      assert.equal((await s.call('post_as_kage', { channel: 'C1', thread_ts: '5.5', ...a })).isError, true, JSON.stringify(a))
+    assert.deepEqual(s.posts, [])
+  })
   test('a kagelet session has no post_as_kage', () => {
     assert.equal(setup({ kagelet: 'calls' }).t.tools.some(x => x.name === 'post_as_kage'), false)
   })
