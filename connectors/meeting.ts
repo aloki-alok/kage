@@ -13,7 +13,7 @@ import type { AddressInfo } from 'node:net'
 import { log } from '../config.ts'
 import type { Conversation } from '../core/conversations.ts'
 import { meetingTask, parseMeeting } from '../core/meeting.ts'
-import { meetLink, parseSegments, type Line } from '../core/meetbot.ts'
+import { askOf, askTask, meetCall, meetKey, meetLink, parseSegments, sameQuestion, type Line } from '../core/meetbot.ts'
 import type { Delivery } from '../core/sessions.ts'
 import type { Task } from '../runtime/protocol.ts'
 import type { Inbox } from '../runtime/store.ts'
@@ -30,7 +30,9 @@ export function connectMeeting(o: {
   perHour: number
   inbox: Inbox
   untake: (source: string) => void   // frees a source id, so the same body sent again runs (Store.untake)
-  onLines?: (call: string, lines: Line[]) => void   // caption lines the bot heard in a live call
+  name?: string      // the word that wakes Kage in a call (the Slack name); no name, no live answers
+  end?: (key: string) => void   // a call is over: end its live session (Dispatcher.end)
+  askWaitMs?: number   // how long a question that names Kage waits for the rest of it
   pollMs?: number    // how long one bot poll is held open with nothing to send
   staleMs?: number   // with no poll for this long, the bot counts as gone
   now?: () => number
@@ -75,7 +77,7 @@ export function connectMeeting(o: {
   }
   // Commands for the bot. Each has a seq, and a poll asks for those after the last it saw, so a poll whose
   // answer was lost gets the same commands again. The seq starts at the clock, so it still grows after a restart.
-  type Cmd = { seq: number; at: number; op: 'join'; link: string }
+  type Cmd = { seq: number; at: number } & ({ op: 'join'; link: string } | { op: 'say'; call: string; text: string })
   const cmds: Cmd[] = []
   let seq = now()
   let waiter: { res: ServerResponse; after: number; timer: NodeJS.Timeout } | undefined
@@ -97,10 +99,68 @@ export function connectMeeting(o: {
     const url = meetLink(link)
     if (!url) return 'not a Google Meet link (https://meet.google.com/abc-defg-hij)'
     if (!waiter && now() - lastPoll >= staleMs) return 'the meeting bot is not connected: start it on its machine and check it can reach this hub'
-    cmds.push({ seq: seq = Math.max(seq + 1, now()), at: now(), op: 'join', link: url })
+    queue({ op: 'join', link: url })
+    return ''
+  }
+  const queue = (c: { op: 'join'; link: string } | { op: 'say'; call: string; text: string }) => {
+    cmds.push({ ...c, seq: seq = Math.max(seq + 1, now()), at: now() })
     cmds.splice(0, cmds.length - 20)
     answer()
-    return ''
+  }
+
+  // A live call: its last lines (context for a question) and whether a question waits on Kage. One question at a
+  // time per call, so a room that keeps saying the name cannot stack sessions. A question with no reply in 2 minutes
+  // counts as lost, so the call is not stuck.
+  const RECENT = 40, LOST_MS = 120_000
+  // A question that names Kage waits askWaitMs for the rest of it: captions split speech at pauses, and a session
+  // started on "Kage, what is" answers half a question. The same speaker's next lines join it, and the wait
+  // restarts with each one, so it is asked once the speaker stops.
+  const askWaitMs = o.askWaitMs ?? 2000
+  type Live = { recent: Line[]; asked: number; said: string[]; pending?: { speaker: string; text: string; timer: NodeJS.Timeout } }
+  const live = new Map<string, Live>()
+  const asks = hourCap(o.perHour * 6)
+  function heard(call: string, lines: Line[]) {
+    const c = live.get(call) ?? { recent: [], asked: 0, said: [] }
+    live.set(call, c)
+    for (const l of lines) {
+      c.recent.push(l)
+      c.recent.splice(0, c.recent.length - RECENT)
+      if (c.pending && !l.self && l.speaker === c.pending.speaker) {
+        c.pending.text += ` ${l.text}`
+        clearTimeout(c.pending.timer)
+        c.pending.timer = setTimeout(() => ask(call), askWaitMs)
+        continue
+      }
+      const q = o.name ? askOf(l, o.name) : undefined
+      if (q && !c.pending) c.pending = { speaker: l.speaker, text: q, timer: setTimeout(() => ask(call), askWaitMs) }
+    }
+  }
+  // One question at a time per call, never one already asked (a caption rewrite), and within the hourly cap.
+  function ask(call: string) {
+    const c = live.get(call)
+    const q = c?.pending?.text
+    if (!c || !q) return
+    c.pending = undefined
+    if (now() - c.asked < LOST_MS || asks.full(now()) || c.said.some(s => sameQuestion(s, q))) return
+    const key = meetKey(call), place = `Meet ${call}`
+    const task: Task = {
+      type: 'task', fromOwner: false, content: askTask(q, c.recent, key),
+      meta: { channel: 'voice', thread_ts: key, place, permalink: `https://meet.google.com/${call}` },
+      origin: { channel: 'voice', ts: key },
+    }
+    c.asked = now()
+    c.said = [...c.said, q].slice(-20)
+    asks.add(now())
+    if (o.deliver({ connector: 'voice', chat: `meet-${call}`, kind: 'chat' }, task, place) === 'failed') { c.asked = 0; log('meeting question could not start a session', call) }
+  }
+  // The router's replies.voice for a meeting's key: the answer goes to the bot, which speaks it. false: not a meeting.
+  function say(key: string, text: string): boolean {
+    const call = meetCall(key)
+    if (!call) return false
+    const c = live.get(call)
+    if (c) c.asked = 0
+    queue({ op: 'say', call, text: text.slice(0, 2000) })
+    return true
   }
   function botRoute(req: IncomingMessage, res: ServerResponse) {
     const url = new URL(req.url ?? '/', 'http://hub')
@@ -119,7 +179,19 @@ export function connectMeeting(o: {
         let s: ReturnType<typeof parseSegments>
         try { s = parseSegments(JSON.parse(raw.toString('utf8'))) } catch { s = undefined }
         if (!s) { res.writeHead(400).end(); return }
-        if (s.lines.length) o.onLines?.(s.call, s.lines)
+        if (s.lines.length) heard(s.call, s.lines)
+        res.writeHead(200).end()
+      })
+      return
+    }
+    if (req.method === 'POST' && url.pathname === '/meetbot/ended') {
+      void readBody(req, 10_000).then(raw => {
+        let call: unknown
+        try { call = (JSON.parse(raw?.toString('utf8') ?? '') as { call?: unknown }).call } catch {}
+        if (typeof call !== 'string' || !/^[a-z0-9-]{1,40}$/.test(call)) { res.writeHead(400).end(); return }
+        clearTimeout(live.get(call)?.pending?.timer)
+        live.delete(call)
+        o.end?.(meetKey(call))
         res.writeHead(200).end()
       })
       return
@@ -150,7 +222,7 @@ export function connectMeeting(o: {
   })
   const listening = new Promise<number>(ok => server.listen(o.port, '127.0.0.1', () => ok((server.address() as AddressInfo).port)))
   return {
-    listening, join, replay: (source: string, body: string) => run(body, source),
-    close: () => { if (waiter) { clearTimeout(waiter.timer); waiter.res.writeHead(204).end(); waiter = undefined } server.closeAllConnections(); server.close() },
+    listening, join, say, replay: (source: string, body: string) => run(body, source),
+    close: () => { for (const c of live.values()) clearTimeout(c.pending?.timer); if (waiter) { clearTimeout(waiter.timer); waiter.res.writeHead(204).end(); waiter = undefined } server.closeAllConnections(); server.close() },
   }
 }

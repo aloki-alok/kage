@@ -23,6 +23,7 @@
     chatOpen: [['button', /chat with everyone|^chat$/i]],
     chatBox: [['textarea, [contenteditable="true"]', /send a message/i]],
     leave: [['button', /leave call/i]],
+    micOn: [['button', /turn on microphone/i]],
   }
   const label = el => `${el.getAttribute('aria-label') ?? ''} ${el.getAttribute('placeholder') ?? ''} ${el.innerText ?? ''}`.replace(/\s+/g, ' ').trim()
   const visible = el => !!(el.offsetWidth || el.offsetHeight || el.getClientRects().length)

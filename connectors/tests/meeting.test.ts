@@ -11,22 +11,22 @@ async function setup(perHour = 100, pollMs = 2000) {
   let clock = Date.now()
   let throwing = false
   const posts: string[] = []
-  const tasks: { key: string; content: string; fromOwner: boolean }[] = []
+  const tasks: { key: string; content: string; fromOwner: boolean; channel?: string }[] = []
   const told: string[] = []
   let ts = 100
-  const heard: { call: string; lines: { speaker: string; text: string }[] }[] = []
+  const ended: string[] = []
   const m = connectMeeting({
-    token: TOKEN, port: 0, botDm: 'DB', perHour, pollMs, onLines: (call, lines) => void heard.push({ call, lines }), notify: t => void told.push(t), now: () => clock,
+    token: TOKEN, port: 0, botDm: 'DB', perHour, pollMs, name: 'kage', askWaitMs: 50, end: key => void ended.push(key), notify: t => void told.push(t), now: () => clock,
     untake: s => store.untake(s),
     inbox: { take: (s, c, p) => store.take(s, c, p, Date.now()), handled: s => store.handled(s), has: s => store.has(s) },
     post: async text => { posts.push(text); return String(ts++) },
-    deliver: (c, task) => { if (throwing) throw new Error('runner down'); tasks.push({ key: `${c.chat}:${c.thread}`, content: task.content, fromOwner: task.fromOwner }); return 'sent' },
+    deliver: (c, task) => { if (throwing) throw new Error('runner down'); tasks.push({ key: c.connector === 'voice' ? `voice:${c.chat}` : `${c.chat}:${c.thread}`, content: task.content, fromOwner: task.fromOwner, channel: task.meta.channel }); return 'sent' },
   })
   const port = await m.listening
   const send = (b: string, auth = `Bearer ${TOKEN}`) => fetch(`http://127.0.0.1:${port}/meeting`, { method: 'POST', body: b, headers: { authorization: auth, 'content-type': 'application/json' } })
   const bot = (path: string, init: RequestInit = {}, auth = `Bearer ${TOKEN}`) =>
     fetch(`http://127.0.0.1:${port}${path}`, { ...init, headers: { authorization: auth, 'content-type': 'application/json' } })
-  return { m, store, posts, tasks, told, send, bot, heard, later: (ms: number) => { clock += ms }, throwOnDeliver: (on = true) => { throwing = on } }
+  return { m, store, posts, tasks, told, send, bot, ended, later: (ms: number) => { clock += ms }, throwOnDeliver: (on = true) => { throwing = on } }
 }
 
 test('a transcript opens one DM thread per meeting and runs at teammate trust', async () => {
@@ -146,15 +146,79 @@ test('a join is refused for anything but a Meet link, and nothing is queued', as
   } finally { t.m.close() }
 })
 
-test('caption lines from the bot reach the hub; a wrong token or a bad body is refused', async () => {
+const sleep = (ms: number) => new Promise(r => setTimeout(r, ms))
+const lines = (...l: [string, string][]) => JSON.stringify({ call: 'abc-defg-hij', segments: l.map(([speaker, text]) => ({ speaker, text })) })
+
+test('a line that names Kage starts one voice-limited session for the call; other lines only add context', async () => {
   const t = await setup()
   try {
-    const post = (b: unknown, auth?: string) => t.bot('/meetbot/segments', { method: 'POST', body: JSON.stringify(b) }, auth)
-    assert.equal((await post({ call: 'abc-defg-hij', segments: [{ speaker: 'Jane', text: 'hi  there' }] })).status, 200)
-    assert.deepEqual(t.heard, [{ call: 'abc-defg-hij', lines: [{ speaker: 'Jane', text: 'hi there' }] }])
-    assert.equal((await post({ call: 'abc-defg-hij', segments: [] }, 'Bearer nope')).status, 401)
-    assert.equal((await post({ segments: [] })).status, 400)
-    assert.equal((await t.bot('/meetbot/next?after=0', {}, 'Bearer nope')).status, 401)
-    assert.equal(t.heard.length, 1)
+    const post = (b: string, auth?: string) => t.bot('/meetbot/segments', { method: 'POST', body: b }, auth)
+    assert.equal((await post(lines(['Kim', 'I own the deploy.']))).status, 200)
+    assert.equal(t.tasks.length, 0)
+    assert.equal((await post(lines(['Jane', 'Kage, who owns the deploy?']))).status, 200)
+    await sleep(120)
+    assert.equal(t.tasks.length, 1)
+    const task = t.tasks[0]!
+    assert.deepEqual([task.key, task.fromOwner, task.channel], ['voice:meet-abc-defg-hij', false, 'voice'])
+    assert.match(task.content, /^Voice task \(a caller, not the owner/)
+    assert.match(task.content, /^> Kim: I own the deploy\.$/m)
+    // While that question waits, another one is not started on top of it.
+    await post(lines(['Jane', 'Kage, are you there?']))
+    await sleep(120)
+    assert.equal(t.tasks.length, 1)
+    assert.equal((await post(lines(['Jane', 'x']), 'Bearer nope')).status, 401)
+    assert.equal((await post('{"segments":[]}')).status, 400)
+  } finally { t.m.close() }
+})
+
+test("the session's reply reaches the bot as a say command for its call, and the next question may start", async () => {
+  const t = await setup()
+  try {
+    await t.bot('/meetbot/next?after=0')
+    await t.bot('/meetbot/segments', { method: 'POST', body: lines(['Jane', 'Kage, ping']) })
+    await sleep(120)
+    assert.equal(t.m.say('voice:meet-abc-defg-hij', 'Pong.'), true)
+    const r = await t.bot('/meetbot/next?after=0')
+    assert.deepEqual((await r.json() as { op: string; call: string; text: string }[]).map(c => [c.op, c.call, c.text]), [['say', 'abc-defg-hij', 'Pong.']])
+    assert.equal(t.m.say('voice:some-phone-call', 'x'), false)   // not a meeting: the phone connector's
+    await t.bot('/meetbot/segments', { method: 'POST', body: lines(['Jane', 'Kage, again']) })
+    await sleep(120)
+    assert.equal(t.tasks.length, 2)
+  } finally { t.m.close() }
+})
+
+test('when the bot says the call ended, its live session ends and a new question starts fresh', async () => {
+  const t = await setup()
+  try {
+    await t.bot('/meetbot/segments', { method: 'POST', body: lines(['Jane', 'Kage, ping']) })
+    await sleep(120)
+    assert.equal((await t.bot('/meetbot/ended', { method: 'POST', body: '{"call":"abc-defg-hij"}' })).status, 200)
+    assert.deepEqual(t.ended, ['voice:meet-abc-defg-hij'])
+    assert.equal((await t.bot('/meetbot/ended', { method: 'POST', body: '{"call":"../x"}' })).status, 400)
+    await t.bot('/meetbot/segments', { method: 'POST', body: lines(['Jane', 'Kage, again']) })
+    await sleep(120)
+    assert.equal(t.tasks.length, 2)   // the old question no longer blocks
+  } finally { t.m.close() }
+})
+
+test('a question split across caption lines is asked once, whole, and its later rewrite is not asked again', async () => {
+  const t = await setup()
+  try {
+    const post = (...l: [string, string][]) => t.bot('/meetbot/segments', { method: 'POST', body: lines(...l) })
+    await post(['Jane', 'Kage, what is'])
+    await sleep(20)
+    await post(['Kim', 'hm'], ['Jane', 'the status of the launch'])
+    assert.equal(t.tasks.length, 0)   // still listening for the rest of the question
+    await sleep(120)
+    assert.equal(t.tasks.length, 1)
+    assert.match(t.tasks[0]!.content, /"Kage, what is the status of the launch"/)
+    t.m.say('voice:meet-abc-defg-hij', 'On track.')
+    // Meet rewrites the caption block, so the bot sends the whole line again: the same question, already answered.
+    await post(['Jane', 'Kage, what is the status of the launch?'])
+    await sleep(120)
+    assert.equal(t.tasks.length, 1)
+    await post(['Jane', 'Kage, and the budget?'])
+    await sleep(120)
+    assert.equal(t.tasks.length, 2)
   } finally { t.m.close() }
 })

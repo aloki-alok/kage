@@ -30,6 +30,11 @@
     // Meet asks for the microphone when it joins; keep what it got to check it is Kage's track.
     const s = await navigator.mediaDevices.getUserMedia({ audio: true })
     fake.mic = s.getAudioTracks().length
+    // What the call would hear from Kage: the loudest sample on its mic track so far.
+    const ac = new AudioContext(), an = ac.createAnalyser(), buf = new Float32Array(2048)
+    ac.createMediaStreamSource(s).connect(an)
+    fake.peak = 0
+    setInterval(() => { an.getFloatTimeDomainData(buf); for (const v of buf) fake.peak = Math.max(fake.peak, Math.abs(v)) }, 20)
     show('waiting')
   }
   fake.admit = () => { fake.admitted = true; show('call') }
