@@ -76,6 +76,7 @@ const ops = {
     for (let i = 0; i < bytes.length; i += 0x8000) bin += String.fromCharCode(...bytes.subarray(i, i + 0x8000))
     return { url: b.url, png: `data:image/png;base64,${btoa(bin)}` }
   },
+  async version() { return chrome.runtime.getManifest().version },
   async navigate({ tabId, url }) {
     await chrome.tabs.update(Number(tabId), { url })
     return { url }
@@ -161,7 +162,7 @@ async function loop() {
       if (!token) { if (await pair()) continue; await setState('no-token'); return }
       const auth = { authorization: `Bearer ${token}` }
       let r
-      try { r = await fetch(`${hub}/browser/next`, { headers: auth }) } catch { await setState('unreachable'); await sleep(5000); continue }
+      try { r = await fetch(`${hub}/browser/next`, { headers: { ...auth, 'x-kage-extension': chrome.runtime.getManifest().version } }) } catch { await setState('unreachable'); await sleep(5000); continue }
       // A refused token may be an old one: kage add browser made a new one since. Ask the helper once.
       if (r.status === 401) { if (await pair()) continue; await setState('refused'); return }
       // Only the hub answers 200 or 204 here: any other status is some other service on that port, or a wrong path.
@@ -182,7 +183,13 @@ const sleep = ms => new Promise(r => setTimeout(r, ms))
 
 // A service worker sleeps when idle; the alarm wakes it and restarts the loop if it died.
 chrome.alarms.create('kage-poll', { periodInMinutes: 0.5 })
-chrome.alarms.onAlarm.addListener(() => void loop())
+chrome.alarms.onAlarm.addListener(() => { void loop(); void reloadIfChanged() })
+// An unpacked extension runs the code it loaded, not what a git pull put on disk since. A new version in
+// manifest.json on disk reloads it, so an update needs no click in chrome://extensions.
+async function reloadIfChanged() {
+  const disk = await fetch(chrome.runtime.getURL('manifest.json'), { cache: 'no-store' }).then(r => r.json()).catch(() => undefined)
+  if (disk?.version && disk.version !== chrome.runtime.getManifest().version) chrome.runtime.reload()
+}
 chrome.runtime.onStartup.addListener(() => void loop())
 chrome.runtime.onInstalled.addListener(() => void loop())
 // New settings clear the shown state (options.js), so the next state is written even if it is the same as before.
