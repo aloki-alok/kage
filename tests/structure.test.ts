@@ -29,7 +29,7 @@ const DEBT = {
   // A source file over MAX_LINES lines, with the most it may have. Split it; lower the number as it shrinks.
   longFiles: {
     'runtime/kage-tools.ts': 832, 'router.ts': 728, 'cli/top.ts': 624,
-    'runtime/kagelets.ts': 453, 'runtime/sdk-sessions.ts': 347, 'core/sessions.ts': 323,
+    'runtime/sdk-sessions.ts': 347, 'core/sessions.ts': 323,
   } as Record<string, number>,
   // A core/ or runtime/ file missing from the CONTRIBUTING.md code map.
   unmapped: [

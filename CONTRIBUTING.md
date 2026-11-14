@@ -131,7 +131,12 @@ Write logs to stderr only. In a tmux pane, stdout carries the channel protocol, 
 | `hub-lock.ts` | One hub per machine: a listening socket the OS frees when the hub dies. |
 | `hub-log.ts` | The hub log's rotation and the package check, shared by `hub.ts` and the hub. |
 | `log.ts` | Kage's log line (stderr only) and the logger the Slack clients get. |
-| `kagelets.ts` | The kagelets folder synced into schedules and grants (#57), the manager's tool, which grants by tier (read with no card, a write tool on the owner's first yes, which then stands for that tool, act never), and the cost-cap check on the job loop, and the one route a kagelet's output or message takes to another kagelet (#93), with the loop guard and the chain cap. |
+| `kagelet-files.ts` | The kagelets folder on disk: where it is, its `.md` files, and the paused line. |
+| `kagelet-sync.ts` | The folder synced into schedules and grants each minute (#57), and the prompt each run reads first. |
+| `kagelet-manager.ts` | The manager's tool (save, pause, resume, run, remove, revoke) and which tools each kagelet is granted: read with no card, a write tool on the owner's first yes, which then stands for that tool, act never. |
+| `kagelet-cost-cap.ts` | The cost caps on the hub's job loop: a kagelet over a cap is paused and flagged, and the owner is told once a day. |
+| `kagelet-notes.ts` | The owner's words typed in a kagelet's thread, carried to its next run. |
+| `kagelet-routes.ts` | The one route a kagelet's output or message takes to another kagelet (#93), with the loop guard and the chain cap. |
 | `config-files.ts` | config.json and secrets.json on disk (the schema and the env import table are `core/config.ts`): reading, changing, the first-start import of the old env file, and deleting that file after 7 days. |
 | `code-stamp.ts` | When the code changed, so the hub knows to restart into it. |
 | `auto-update.ts` | The version line, and the git calls that pull origin's `stable` tag (the decision is `core/auto-update.ts`). |

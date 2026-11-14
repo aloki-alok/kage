@@ -20,7 +20,7 @@ import { schedulesIn } from '../runtime/store.ts'
 import { actionLine, dailyCap, PANEL_KEYS, panelLines, shownState, type PanelAction } from '../core/kagelet-view.ts'
 import { kageletRows, type KageletRow } from '../core/kagelets.ts'
 import { kageletTier } from '../core/access.ts'
-import { kageletsDir, readKagelets } from '../runtime/kagelets.ts'
+import { kageletsDir, readKagelets } from '../runtime/kagelet-files.ts'
 import { eventsOn, ledgerText } from '../runtime/ledger.ts'
 import { chainLine, chainViews } from '../core/events.ts'
 
