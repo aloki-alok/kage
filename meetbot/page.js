@@ -117,5 +117,6 @@
 
   // The text of a popup still in the way, so a failed join says what blocked it.
   const dialog = () => [...document.querySelectorAll('[role="dialog"], [role="alertdialog"]')].filter(visible).map(d => d.innerText.replace(/\s+/g, ' ').trim().slice(0, 200)).join(' | ')
-  window.__kage = { say, hush, settled, scan, mark, state, others, dialog }
+  const captionsShown = () => !!document.querySelector(SEL.captions)
+  window.__kage = { say, hush, settled, scan, mark, state, others, dialog, captionsShown }
 })()

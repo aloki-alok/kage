@@ -52,7 +52,9 @@ export async function attend(page: Page, link: string, o: {
 
   await page.goto(link, { waitUntil: 'domcontentloaded' })
   // A signed-in profile has no name field; a guest types the name everyone in the call will see.
-  if (await until(() => mark('name'), 15_000)) await page.fill('[data-kage="name"]', o.name)
+  // A signed-in profile shows Join at once; only a guest gets a name field. Wait for whichever comes first.
+  await until(async () => (await mark('name')) || (await mark('join')), 15_000)
+  if (await mark('name')) await page.fill('[data-kage="name"]', o.name)
   if (!await until(async () => (await click('blocker'), click('join')), 30_000)) {
     const d = await k<string>('dialog')
     throw new Error(d ? `a Meet popup is in the way: ${d}` : 'no join button on the Meet page')
@@ -80,12 +82,13 @@ export async function attend(page: Page, link: string, o: {
 
   const all: Seg[] = []
   const t0 = Date.now()
-  let lastCompany = Date.now()
+  let lastCompany = Date.now(), captionsChecked = false
   while (!o.stop?.()) {
     await sleep(1000)
     if (page.isClosed()) break
     for (const text of o.said?.splice(0) ?? []) {
       let spoken = false
+      log('saying:', text.slice(0, 120))
       if (o.speak) try { await k('say', (await o.speak(text)).toString('base64')); spoken = true } catch (e) { log('speaking failed, posting in chat:', String(e)) }
       if (!spoken) await chat(text).catch(() => false)
     }
@@ -94,7 +97,12 @@ export async function attend(page: Page, link: string, o: {
       // Meet labels the bot's own speech "You"; it is kept for the notes and marked, so it never wakes Kage.
       const segs = lines.map(l => ({ ...l, ...(l.speaker === 'You' || l.speaker === o.name ? { speaker: o.name, self: true } : {}), start: Math.round((Date.now() - t0) / 1000) }))
       all.push(...segs)
+      for (const l of segs) log('heard', `${l.speaker}:`, l.text.slice(0, 160))
       await Promise.resolve(o.heard(segs)).catch(e => log('posting lines failed', String(e)))
+    }
+    if (!all.length && !captionsChecked && Date.now() - t0 > 20_000) {
+      captionsChecked = true
+      log(await k<boolean>('captionsShown') ? 'captions are on, nobody has spoken yet' : 'no captions on the page after 20 s: Meet may have moved its captions')
     }
     const s = await k<string>('state').catch(() => 'ended')
     if (s === 'ended' || s === 'refused') break
@@ -179,7 +187,7 @@ async function runCall(s: Settings, h: ReturnType<typeof hub>, link: string, cal
   const ua = s.window ? undefined : `Mozilla/5.0 (${process.platform === 'darwin' ? 'Macintosh; Intel Mac OS X 10_15_7' : 'X11; Linux x86_64'}) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/${chromium.version?.() ?? '140.0.0.0'} Safari/537.36`
   const ctx = await chromium.launchPersistentContext(s.profile, {
     headless: !s.window, executablePath: s.chrome, viewport: { width: 1280, height: 800 }, ...(ua && { userAgent: ua }),
-    args: ['--use-fake-ui-for-media-stream', '--autoplay-policy=no-user-gesture-required', '--disable-blink-features=AutomationControlled', ...(s.window ? [] : ['--headless=new'])],
+    args: ['--use-fake-ui-for-media-stream', '--use-fake-device-for-media-stream', '--autoplay-policy=no-user-gesture-required', '--disable-blink-features=AutomationControlled', ...(s.window ? [] : ['--headless=new'])],
     ignoreDefaultArgs: ['--enable-automation'],
   })
   let all: Seg[] = []
