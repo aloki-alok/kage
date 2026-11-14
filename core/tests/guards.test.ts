@@ -182,6 +182,18 @@ describe('protectConfig: what the sandbox and the file rules close', () => {
     for (const n of ['session.env', 'kagelets', 'specialists', 'config.json*', 'secrets.json*', 'env*', 'afk.json', 'hub.log', 'sender']) assert.ok(deny.includes(`${real(dir)}/${n}`), n)
     for (const n of ['files', 'memory']) assert.ok(!deny.some(d => d === `${real(dir)}/${n}` || d === real(dir)), n)
   })
+  test('no session reads session.env or the waha key file, though only secrets.json and env* were named before', () => {
+    const read = w.sandbox.filesystem.denyRead
+    for (const n of ['secrets.json*', 'env*', 'session.env*', 'waha/.env*']) assert.ok(read.includes(`${real(dir)}/${n}`), n)
+    for (const n of ['session.env', 'waha/.env']) assert.ok(w.permissions.deny.includes(`Read(/${real(dir)}/${n})`), n)
+  })
+  test("the owner's Write and Edit tools reach memory/ and its ledger (the dream job's route), not the token files", () => {
+    const at = (tool: string, f: string) => configRefusal(tool, { file_path: `${real(dir)}/${f}` }, 'owner', `${dir}/env`, '/home/o')
+    for (const t of ['Write', 'Edit']) for (const f of ['memory/.dream-ledger.tsv', 'memory/MEMORY.md', 'memory/a.md']) assert.equal(at(t, f), undefined, `${t} ${f}`)
+    for (const f of ['secrets.json', 'env', 'config.json']) assert.ok(at('Write', f), f)
+    assert.equal(configRefusal('Glob', { path: `${real(dir)}/memory`, pattern: '**/*' }, 'owner', `${dir}/env`, '/home/o'), undefined)
+    assert.equal(configRefusal('Glob', { path: `${real(dir)}/memory`, pattern: '.archive/*' }, 'owner', `${dir}/env`, '/home/o'), undefined)
+  })
   test('a name the hub reads when it is absent (crons-import.json, waha, threads.json) cannot be created, though the folder lacks it now', () => {
     const deny = w.sandbox.filesystem.denyWrite
     for (const n of ['crons-import.json*', 'waha', 'threads.json*', 'afk.json*', 'github-threads.json*', 'mail-threads.json*', 'kage.db*', 'hub.lock', 'router.sock']) assert.ok(deny.includes(`${real(dir)}/${n}`), n)

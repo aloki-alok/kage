@@ -32,6 +32,7 @@ async function session(): Promise<boolean> {
   writeFileSync(`${cfg}/secrets.json`, '{"slack":{"bot":"xoxb-FAKE-SECRET"}}')
   writeFileSync(`${cfg}/env`, 'SLACK_BOT_TOKEN=xoxb-FAKE-ENV')
   writeFileSync(`${cfg}/config.json`, '{"version":1}')
+  writeFileSync(`${cfg}/session.env`, 'export FAKE_SESSION_ENV=xoxb-FAKE-SESSIONENV')
   writeFileSync(`${cfg}/afk.json`, '{}')   // any entry the folder holds at session start
   writeFileSync(`${code}/hub.ts`, '// hub')
   // The SSM relay (#161) lives in the config folder: a sandboxed shell must reach it, with a fake aws that echoes.
@@ -42,7 +43,7 @@ async function session(): Promise<boolean> {
   const seen: string[] = []
   const steps = [
     `echo ok > ${cfg}/files/ok.txt`, `echo ok > ${cfg}/memory/ok.txt`, `echo ok > ${work}/ok.txt`,
-    `cat ${cfg}/secrets.json`, `cat ${cfg}/env`, `echo bad > ${cfg}/session.env`, `mkdir ${cfg}/kagelets`,
+    `cat ${cfg}/secrets.json`, `cat ${cfg}/env`, `cat ${cfg}/session.env`, `echo bad > ${cfg}/session.env`, `mkdir ${cfg}/kagelets`,
     `echo bad >> ${cfg}/config.json`, `echo bad >> ${code}/hub.ts`, `echo bad > ${code}/new.ts`, `echo bad > ${cfg}/afk.json`, `echo bad > ${cfg}/crons-import.json`, `echo bad > ${cfg}/threads.json`, `mkdir ${cfg}/waha && echo bad > ${cfg}/waha/.env`,
     `echo relay-ok | KAGE_SSM_TOKEN=${token} KAGE_SSM_SOCK=${cfg}/ssm.sock node ${proxy} i-0123456789abcdef0 22 > ${work}/ssm.out`,
   ]
@@ -58,10 +59,11 @@ async function session(): Promise<boolean> {
   for await (const m of q) if (m.type === 'user') for (const c of (m.message.content as any[]) ?? []) if (c.type === 'tool_result') seen.push(typeof c.content === 'string' ? c.content : JSON.stringify(c.content))
   relay.close()
   const out = seen.join('\n')
-  assert.ok(!out.includes('FAKE-SECRET') && !out.includes('FAKE-ENV'), 'a token was read')
+  assert.ok(!out.includes('FAKE-SECRET') && !out.includes('FAKE-ENV') && !out.includes('FAKE-SESSIONENV'), 'a token was read')
+  assert.equal(readFileSync(`${cfg}/session.env`, 'utf8'), 'export FAKE_SESSION_ENV=xoxb-FAKE-SESSIONENV')
   assert.equal(readFileSync(`${cfg}/afk.json`, 'utf8'), '{}')
   // Names the hub adopts at its next start when it finds them: absent now, so only a name on the list keeps them from being made.
-  for (const f of ['session.env', 'kagelets', 'crons-import.json', 'threads.json', 'waha']) assert.ok(!existsSync(`${cfg}/${f}`), `${f} was created`)
+  for (const f of ['kagelets', 'crons-import.json', 'threads.json', 'waha']) assert.ok(!existsSync(`${cfg}/${f}`), `${f} was created`)
   assert.equal(readFileSync(`${cfg}/config.json`, 'utf8'), '{"version":1}')
   assert.equal(readFileSync(`${code}/hub.ts`, 'utf8'), '// hub')
   assert.ok(!existsSync(`${code}/new.ts`))

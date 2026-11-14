@@ -74,13 +74,13 @@ const CONFIG_NAMES = ['session.env', 'kagelets', 'specialists', 'config.json*', 
   'config-unknown-told', 'canvas-events.jsonl', 'boots', 'held', 'sender', 'ledgers']
 export function protectConfig(envFile: string, codeDir: string, home = process.env.HOME ?? '') {
   const dirs = [...new Set([dirname(envFile), realish(dirname(envFile))])]
-  const tokens = dirs.flatMap(d => [`${d}/secrets.json*`, `${d}/env*`])
+  const tokens = dirs.flatMap(d => [`${d}/secrets.json*`, `${d}/env*`, `${d}/session.env*`, `${d}/waha/.env*`])
   const kept = new Set(['files', 'memory'])
   const folder = dirs.flatMap(d => [...new Set([...CONFIG_NAMES,
     ...(() => { try { return readdirSync(d) } catch { return [] } })().filter(n => !kept.has(n))])].map(n => `${d}/${n}`))
   const deny = (f: string) => [`Edit(/${f})`]
   return {
-    permissions: { deny: dirs.flatMap(d => [`Read(/${d}/secrets.json)`, `Read(/${d}/env*)`, ...['secrets.json', 'env*', 'config.json'].flatMap(f => deny(`${d}/${f}`))]) },
+    permissions: { deny: dirs.flatMap(d => [`Read(/${d}/secrets.json)`, `Read(/${d}/env*)`, `Read(/${d}/session.env)`, `Read(/${d}/waha/.env)`, ...['secrets.json', 'env*', 'config.json'].flatMap(f => deny(`${d}/${f}`))]) },
     sandbox: {
       enabled: true, failIfUnavailable: true, autoAllowBashIfSandboxed: false, allowUnsandboxedCommands: false,
       network: { allowedDomains: ['*'], allowLocalBinding: true, allowAllUnixSockets: true },
