@@ -84,7 +84,7 @@ Write logs to stderr only. In a tmux pane, stdout carries the channel protocol, 
 |---|---|
 | `sdk-sessions.ts` | The default runner: an Agent SDK session per key, inside the hub. `tests/fake-sdk.ts` is the fake SDK its tests drive. |
 | `tmux-panes.ts` | The other runner: a Claude Code pane per key. |
-| `kage-tools.ts` | A session's tools (reply, edit, delete, send a file, message people, waiting, prod log, schedules, away and back), its instructions, and the approval card. |
+| `kage-tools.ts` | A session's tools (reply, edit, delete, send a file, message people, post as Kage in another channel (owner only), waiting, prod log, schedules, away and back), its instructions, and the approval card. |
 | `session-link.ts` | The local socket that panes and the `kage` commands connect to. |
 | `protocol.ts` | The messages on that socket. |
 | `store.ts` | One SQLite file: conversations, their sessions, schedules, trust, the inbox of every message heard, and what connectors keep across a restart (AFK, GitHub and mail threads, each kagelet's `db_read` command and the standing approval of each write tool), and every kagelet message with its delivery state, stored before delivery so a restart replays it. The hub is the only writer of these tables. Old `.json` files move in once. |
