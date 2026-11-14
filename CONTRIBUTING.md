@@ -57,7 +57,7 @@ Write logs to stderr only. In a tmux pane, stdout carries the channel protocol, 
 | `conversations.ts` | A conversation and its session key, both ways. |
 | `sessions.ts` | The dispatcher: one session per key, the slot limit, idle close, eviction, holds for `kage attach`. |
 | `outbound.ts` | What may go out: no crowd pings, no secrets in a thread, Slack-sized parts, code blocks narrow enough for the thread panel. |
-| `guards.ts` | Hook rules: private sources, voice calls, the owner's memory, Slack posts only through Kage's tools. |
+| `guards.ts` | Hook rules: private sources, voice calls, the owner's memory, the config folder that holds the tokens (owner tasks only, a thread's files folder excepted), Slack posts only through Kage's tools. |
 | `ledgers.ts` | Reading the ledgers: questions waiting on the owner, what Kage posted, what turns cost, the daily note. |
 | `events.ts` | The event log's row (what happened, never what was said), its 30 days, one day's events grouped by kagelet and chain for the dream job, and a chain read back as `a > b > c` and where it stopped. |
 | `kagelets.ts` | A kagelet file (thread, schedule or `after:`, grant, job), the grant check, the chain check (no cycle, no missing kagelet, at most 5 deep), standing approvals per write tool and their revoke, the cost caps (off unless set) and the cost flags. |

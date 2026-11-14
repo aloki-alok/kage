@@ -8,7 +8,7 @@ import type { createSdkMcpServer, EffortLevel, Options, Query, SDKMessage, SDKUs
 import { z } from 'zod'
 import { log } from '../config.ts'
 import { senderOf, withoutInvisible, type Sender } from '../core/gate.ts'
-import { ownerMemoryRefusal, privateToolRefusal, slackSendRefusal, voiceToolRefusal } from '../core/guards.ts'
+import { configRefusal, ownerMemoryRefusal, privateToolRefusal, slackSendRefusal, voiceToolRefusal } from '../core/guards.ts'
 import { builtinTools, grantRefusal } from '../core/kagelets.ts'
 import { approvalPreview } from '../core/preview.ts'
 import type { Dispatcher, Runner } from '../core/sessions.ts'
@@ -44,6 +44,7 @@ export function sdkSessions(o: {
   toHub: (key: string, m: { type: 'mail' | 'wa' | 'voice'; text: string }) => void
   options: Options                                 // cwd, settings, settingSources, the claude binary
   ownerMemory: string
+  envFile: string                                 // its folder holds the tokens: only the owner's task touches it
   onStart?: () => void                            // a new id may have been minted: save the map
   // A turn ended: the session's running cost so far. limited: it ended on the usage limit, so it did no work.
   onResult?: (key: string, totalUsd: number, resumed: boolean, limited: boolean) => void
@@ -131,7 +132,7 @@ export function sdkSessions(o: {
             hooks: [async input => {
               const i = input as { tool_name: string; tool_input?: Record<string, string> }
               const grant = o.grantOf?.(key)
-              const reason = (grant && grantRefusal(i.tool_name, grant, i.tool_input ?? {})) || (privateToolRefusal(i.tool_name, s.sender) ?? voiceToolRefusal(i.tool_name, s.sender) ?? slackSendRefusal(i.tool_name) ?? ownerMemoryRefusal(i.tool_name, i.tool_input ?? {}, o.ownerMemory))
+              const reason = (grant && grantRefusal(i.tool_name, grant, i.tool_input ?? {})) || (privateToolRefusal(i.tool_name, s.sender) ?? voiceToolRefusal(i.tool_name, s.sender) ?? slackSendRefusal(i.tool_name) ?? ownerMemoryRefusal(i.tool_name, i.tool_input ?? {}, o.ownerMemory) ?? configRefusal(i.tool_name, i.tool_input ?? {}, s.sender, o.envFile))
               if (grant) o.onTool?.(key, i.tool_name, reason || undefined)
               return reason ? { hookSpecificOutput: { hookEventName: 'PreToolUse', permissionDecision: 'deny', permissionDecisionReason: reason } } : {}
             }],

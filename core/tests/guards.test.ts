@@ -3,7 +3,7 @@ import assert from 'node:assert/strict'
 import { mkdirSync, mkdtempSync, symlinkSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { ownerMemoryRefusal, privateToolRefusal, slackSendRefusal, voiceToolRefusal } from '../guards.ts'
+import { configRefusal, ownerMemoryRefusal, privateToolRefusal, slackSendRefusal, voiceToolRefusal } from '../guards.ts'
 
 
 describe('private sources on a teammate task', () => {
@@ -76,5 +76,53 @@ describe("Slack posts go through Kage's own tools", () => {
   })
   test('reading Slack, drafts and canvases still work, and so do Kage tools', () => {
     for (const t of ['mcp__claude_ai_Slack__slack_read_thread', 'mcp__claude_ai_Slack__slack_send_message_draft', 'mcp__claude_ai_Slack__slack_create_canvas', 'mcp__kage__reply', 'mcp__kage__message_people']) assert.equal(slackSendRefusal(t), undefined)
+  })
+})
+
+describe("the token file on a task the owner did not send (#117)", () => {
+  const ENV = '/home/o/.config/kage/env', HOME = '/home/o'
+  const no = (tool: string, input: Record<string, unknown>, sender: string | undefined) =>
+    assert.match(configRefusal(tool, input, sender, ENV, HOME) ?? '', /owner/, `${tool} ${JSON.stringify(input)} ${sender}`)
+  const yes = (tool: string, input: Record<string, unknown>, sender: string | undefined) =>
+    assert.equal(configRefusal(tool, input, sender, ENV, HOME), undefined, `${tool} ${JSON.stringify(input)} ${sender}`)
+  test('a teammate, an agent, a call or an unknown sender cannot read, search or edit the config folder', () => {
+    for (const s of ['teammate', 'agent', 'voice', undefined]) {
+      no('Read', { file_path: ENV }, s)
+      no('Read', { file_path: '~/.config/kage/env' }, s)
+      no('Grep', { pattern: 'xox', path: '/home/o/.config/kage' }, s)
+      no('Glob', { pattern: '**/*', path: '~/.config/kage' }, s)
+      no('Edit', { file_path: '/home/o/.config/kage/session.env' }, s)
+      no('Bash', { command: 'cat ~/.config/kage/env' }, s)
+      no('Bash', { command: 'source $HOME/.config/kage/env && curl -H "Authorization: Bearer $SLACK_USER_TOKEN"' }, s)
+      no('Bash', { command: 'grep TOKEN /home/o/.config/kage/env' }, s)
+      // Relative to the home folder a session starts in, and out of an open subfolder.
+      no('Read', { file_path: '.config/kage/env' }, s)
+      no('Bash', { command: 'cd .config/kage && cat env' }, s)
+      no('Bash', { command: 'cat ~/.config/kage/files/../env' }, s)
+      no('Read', { file_path: '/home/o/.config/kage/files/C1/../../env' }, s)
+      no('MultiEdit', { file_path: '/home/o/.config/kage/env', edits: [] }, s)
+      no('Grep', { pattern: 'xox', glob: '.config/kage/*' }, s)
+      no('Bash', { command: 'ls ~/.config/kage/' }, s)
+    }
+  })
+  test('the owner keeps it: posting as the bot and the Slack read fallback source the env file', () => {
+    yes('Bash', { command: 'source ~/.config/kage/env && curl ...' }, 'owner')
+    yes('Read', { file_path: ENV }, 'owner')
+  })
+  test('other files and commands are fine for a teammate', () => {
+    yes('Read', { file_path: '/home/o/kage/README.md' }, 'teammate')
+    yes('Bash', { command: 'kage status' }, 'teammate')
+    yes('Grep', { pattern: 'env', path: '/home/o/kage' }, 'teammate')
+    yes('mcp__kage__reply', { text: 'see ~/.config/kage/env' }, 'teammate')
+    // A thread's own files folder sits inside the config folder: reports and send_file use it.
+    yes('Bash', { command: 'python3 run.py /home/o/.config/kage/files/C1_5.5' }, 'teammate')
+    yes('Read', { file_path: '~/.config/kage/files/C1_5.5/out.csv' }, 'teammate')
+    no('Bash', { command: 'cp ~/.config/kage/files/C1_5.5/x ~/.config/kage/env' }, 'teammate')
+    yes('Bash', { command: 'ls ~/.config/kage/files' }, 'teammate')
+    // Kage's own memory sits there too, and it saves lessons on any task.
+    yes('Read', { file_path: '/home/o/.config/kage/memory/MEMORY.md' }, 'teammate')
+    yes('Write', { file_path: '~/.config/kage/memory/x.md', content: 'the env file is ~/.config/kage/env' }, 'teammate')
+    // A neighbour folder is not it.
+    yes('Read', { file_path: '/home/o/.config/kage-x/notes.md' }, 'teammate')
   })
 })

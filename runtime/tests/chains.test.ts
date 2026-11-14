@@ -57,7 +57,7 @@ async function hub(o: { chainUsd?: number; capUsd?: number; max?: number } = {})
     sdk: { query: (x: any) => { if (fail.start) throw new Error('no claude'); return sdk.query(x) as any }, createSdkMcpServer, tool },
     hub: () => d,
     tools: () => ({ tools: [], instructions: '', onTask() {}, askOwner: async () => {} }) as any,
-    hasTranscript: () => false, toHub: () => {}, options: { cwd: dir, settingSources: [] }, ownerMemory: '/owner', restartMs: 10,
+    hasTranscript: () => false, toHub: () => {}, options: { cwd: dir, settingSources: [] }, ownerMemory: '/owner', envFile: '/cfg/env', restartMs: 10,
     onResult: (key, total, _resumed, limited) => { const usd = total - (totals.get(key) ?? 0); totals.set(key, total); routes.ended(key, usd, '', clock.now, limited) },
     onTurn: (key, ts, limit, done) => limits.turn(key, ts, limit, clock.now, done),
   })
