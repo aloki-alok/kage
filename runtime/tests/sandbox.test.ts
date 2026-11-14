@@ -15,7 +15,14 @@ const claude = which('claude')
 const sandboxed = process.platform === 'darwin' ? existsSync('/usr/bin/sandbox-exec') : !!which('bwrap')
 const skip = !claude ? 'no claude command' : !sandboxed ? 'no OS sandbox here' : false
 
-test('a sandboxed session cannot read tokens or write settings, session.env, kagelets or the hub code, and can write files/ and memory/', { skip, timeout: 280_000 }, async () => {
+// A small model sometimes skips a step. The refusals are checked on every attempt, and an attempt whose control writes did not
+// happen proves nothing, so it is run again (up to 3 times) before the test fails.
+test('a sandboxed session cannot read tokens or write settings, session.env, kagelets or the hub code, and can write files/ and memory/', { skip, timeout: 600_000 }, async () => {
+  for (let attempt = 1; attempt <= 3; attempt++) if (await session()) return
+  assert.fail('the model never ran the control writes in 3 attempts')
+})
+
+async function session(): Promise<boolean> {
   const root = realpathSync(mkdtempSync(join(tmpdir(), 'kage-sbx-')))
   const cfg = `${root}/cfg`, code = `${root}/code`, work = `${root}/work`
   for (const d of [`${cfg}/files`, `${cfg}/memory`, code, work]) mkdirSync(d, { recursive: true })
@@ -41,12 +48,12 @@ test('a sandboxed session cannot read tokens or write settings, session.env, kag
   })
   for await (const m of q) if (m.type === 'user') for (const c of (m.message.content as any[]) ?? []) if (c.type === 'tool_result') seen.push(typeof c.content === 'string' ? c.content : JSON.stringify(c.content))
   const out = seen.join('\n')
-  // The controls ran, so the refusals below mean something.
-  for (const f of [`${cfg}/files/ok.txt`, `${cfg}/memory/ok.txt`, `${work}/ok.txt`]) assert.ok(existsSync(f), `${f} should have been written`)
   assert.ok(!out.includes('FAKE-SECRET') && !out.includes('FAKE-ENV'), 'a token was read')
   assert.equal(readFileSync(`${cfg}/afk.json`, 'utf8'), '{}')
   for (const f of ['session.env', 'kagelets']) assert.ok(!existsSync(`${cfg}/${f}`), `${f} was created`)
   assert.equal(readFileSync(`${cfg}/config.json`, 'utf8'), '{"version":1}')
   assert.equal(readFileSync(`${code}/hub.ts`, 'utf8'), '// hub')
   assert.ok(!existsSync(`${code}/new.ts`))
-})
+  // The controls ran, so the refusals above mean something.
+  return [`${cfg}/files/ok.txt`, `${cfg}/memory/ok.txt`, `${work}/ok.txt`].every(f => existsSync(f))
+}
