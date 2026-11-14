@@ -66,6 +66,7 @@ Write logs to stderr only. In a tmux pane, stdout carries the channel protocol, 
 | `access.ts` | The access tiers: whether a kagelet's tool is read, write or act, from its name. |
 | `db-read.ts` | The check a `db_read` query passes: one read statement, capped. |
 | `browser.ts` | What a session may see of the owner's Chrome (#114): the block list, tabs shown by id, and a page's text quoted as data. |
+| `browser-pair.ts` | Pairing the Chrome extension with no paste: its fixed id, the helper's folder in each Chromium browser, and Chrome's message framing. `cli/browser-pair.ts` is the helper Chrome starts. |
 | `cron.ts` | Cron expressions, which schedules are due, and reading Claude Code's own cron jobs. |
 | `email.ts` | Email as a way to tag Kage: who may (the provider's DKIM signature, not only DMARC), the ask in the new text, and the reply-all kept to the owner's domains. The SES, S3 and SQS calls are `connectors/email.ts`. |
 | `whatsapp.ts` | The owner's WhatsApp: the owner's tag is the only way in, the armed-chat stand-in, and the guard that reads every message before it leaves as the owner. The WAHA webhook and calls are `connectors/whatsapp.ts`. |

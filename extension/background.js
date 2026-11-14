@@ -31,6 +31,20 @@ const ops = {
 
 const settings = () => chrome.storage.local.get({ hub: 'http://127.0.0.1:8791', token: '' })
 
+// kage add browser registers a helper only this extension may start (core/browser-pair.ts). It answers with the
+// token from the settings file, so a new token needs no paste. Returns true when it gave a different token.
+const HOST = 'dev.kage.pair'
+async function pair() {
+  let r
+  try { r = await chrome.runtime.sendNativeMessage(HOST, { want: 'token' }) } catch { return false }   // no helper: paste by hand
+  if (!r?.token || !r.hub) return false
+  const { token } = await settings()
+  if (r.token === token) return false
+  last = ''
+  await chrome.storage.local.set({ token: r.token, hub: r.hub, status: null })
+  return true
+}
+
 // What the popup shows, and a ! on the toolbar icon whenever Kage cannot reach this browser.
 // connected | no-token | refused (wrong token) | unreachable (hub not running, or wrong address)
 let last = ''
@@ -49,11 +63,12 @@ async function loop() {
   try {
     for (;;) {
       const { hub, token } = await settings()
-      if (!token) { await setState('no-token'); return }
+      if (!token) { if (await pair()) continue; await setState('no-token'); return }
       const auth = { authorization: `Bearer ${token}` }
       let r
       try { r = await fetch(`${hub}/browser/next`, { headers: auth }) } catch { await setState('unreachable'); await sleep(5000); continue }
-      if (r.status === 401) { await setState('refused'); return }
+      // A refused token may be an old one: kage add browser made a new one since. Ask the helper once.
+      if (r.status === 401) { if (await pair()) continue; await setState('refused'); return }
       // Only the hub answers 200 or 204 here: any other status is some other service on that port, or a wrong path.
       if (r.status !== 200 && r.status !== 204) { await setState('unreachable'); await sleep(5000); continue }
       await setState('connected')

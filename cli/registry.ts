@@ -8,6 +8,7 @@
 import { randomBytes } from 'node:crypto'
 import { existsSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs'
 import { setEnvLine } from '../core/browser.ts'
+import { extensionId, HOST, hostDirs, hostManifest } from '../core/browser-pair.ts'
 import { findPeople, type Person } from '../core/gate.ts'
 import { add, kindOf, ownerPerson, registryIn, remove, withRegistry, type Entry } from '../core/registry.ts'
 import { pauseLine, type Live } from '../core/board.ts'
@@ -36,22 +37,34 @@ if (cmd === 'add' && args[0] === 'kagelet') {
   process.exit(0)
 }
 // kage add browser: turn Kage in Chrome on (#114). A new token each time, so running it again also cuts off an
-// extension that had the old one. The token is shown once, here, for the extension's options.
+// extension that had the old one. It also registers the pairing helper (core/browser-pair.ts) with each Chromium
+// browser here, so the extension fetches the token itself. The token is printed too, for a browser it missed.
 if (cmd === 'add' && args[0] === 'browser') {
   if (!existsSync(ENV_FILE)) die(`No settings file at ${ENV_FILE}. Run kage setup first.`)
   const token = randomBytes(24).toString('hex')
   writeFileSync(`${ENV_FILE}.new`, setEnvLine(readFileSync(ENV_FILE, 'utf8'), 'KAGE_BROWSER_TOKEN', token), { mode: 0o600 })
   renameSync(`${ENV_FILE}.new`, ENV_FILE)
   const ext = new URL('../extension', import.meta.url).pathname
+  const id = extensionId(JSON.parse(readFileSync(`${ext}/manifest.json`, 'utf8')).key)
+  // Chrome starts the helper with a bare PATH, so the wrapper names this node and this checkout outright.
+  const helper = `${DIR}/browser-pair.sh`
+  if ([ENV_FILE, process.execPath, ext].some(p => p.includes("'"))) die('A path here holds a quote mark, which the pairing helper cannot name. Move Kage or node to a path without one.')
+  writeFileSync(helper, `#!/bin/sh\nKAGE_ENV='${ENV_FILE}' exec '${process.execPath}' '${new URL('./browser-pair.ts', import.meta.url).pathname}'\n`, { mode: 0o700 })
+  const dirs = hostDirs(process.platform, process.env.HOME!, existsSync)
+  for (const d of dirs) {
+    mkdirSync(d, { recursive: true })
+    writeFileSync(`${d}/${HOST}.json`, JSON.stringify(hostManifest(helper, id), null, 2) + '\n')
+  }
   console.log([
-    `Kage in Chrome is on. Your token (shown once): ${token}`,
+    `Kage in Chrome is on.${dirs.length ? ` Pairing is set up for ${dirs.map(d => d.split('/').slice(-2, -1)[0]).join(', ')}, so there is nothing to paste.` : ''}`,
     '',
     '1. Run kage restart.',
     '2. In Chrome, open chrome://extensions, turn on Developer mode, click Load unpacked, and pick:',
     `   ${ext}`,
-    "3. Click the Kage icon in Chrome's toolbar, paste the token, and save. It says Connected within a few seconds.",
+    '3. The Kage icon in the toolbar says Connected within a few seconds.',
     '4. In Slack, ask Kage: "what tabs do I have open?"',
     '',
+    `If the icon asks for a token, paste: ${token}`,
     'Sites Kage must never read: add KAGE_BROWSER_BLOCK=bank.example.com,1password.com to the settings file.',
   ].join('\n'))
   process.exit(0)

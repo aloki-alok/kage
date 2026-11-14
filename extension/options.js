@@ -4,7 +4,7 @@ const DEFAULT_HUB = 'http://127.0.0.1:8791'
 // Each state says what is wrong and the one thing that fixes it.
 const STATES = {
   connected: ['Connected', at => `Last heard from your Kage at ${new Date(at).toLocaleTimeString()}.`],
-  'no-token': ['Not connected', () => 'Run kage add browser in a terminal, then paste the token it prints.'],
+  'no-token': ['Not connected', () => 'Run kage add browser in a terminal. It connects this browser by itself; if it does not, paste the token it printed.'],
   refused: ['Wrong token', () => 'Your Kage refused this token. Run kage add browser again and paste the new one.'],
   unreachable: ['Kage is not reachable', () => 'Start it with kage start, and check the hub address below.'],
 }
