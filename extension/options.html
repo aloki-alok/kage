@@ -1,0 +1,20 @@
+<!doctype html>
+<html lang="en">
+<meta charset="utf-8">
+<title>Kage</title>
+<style>
+  body { font: 14px/1.5 system-ui, sans-serif; max-width: 34rem; margin: 2rem auto; padding: 0 1rem; color: #1b1b1b; background: #fff; }
+  @media (prefers-color-scheme: dark) { body { color: #e8e8e8; background: #161616; } input { background: #222; color: inherit; } }
+  label { display: block; margin-top: 1rem; }
+  input { width: 100%; box-sizing: border-box; padding: .4rem; font: inherit; border: 1px solid #888; }
+  button { margin-top: 1rem; padding: .4rem 1rem; font: inherit; }
+  #status { margin-top: 1rem; color: #777; }
+</style>
+<h1>Connect to your Kage</h1>
+<p>Kage reads your tabs only when you ask it in Slack. Sites in <code>KAGE_BROWSER_BLOCK</code> never reach it.</p>
+<label>Hub address <input id="hub" placeholder="http://127.0.0.1:8791"></label>
+<label>Token (the value of <code>KAGE_BROWSER_TOKEN</code>) <input id="token" type="password" autocomplete="off"></label>
+<button id="save">Save</button>
+<p id="status"></p>
+<script src="options.js"></script>
+</html>

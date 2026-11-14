@@ -66,7 +66,7 @@ export function sdkSessions(o: {
   const picks = new Map<string, Pick>()
   // Kage's own tools, approved for every session (hub.ts does the same for panes). Approved in canUseTool, not
   // allowedTools, which would skip the callback and makes the SDK warn on every session.
-  const ALLOWED = ['reply', 'edit_message', 'delete_message', 'send_file', 'message_people', 'schedule', 'unschedule', 'schedules', 'set_model', 'kagelets'].map(t => `mcp__kage__${t}`)
+  const ALLOWED = ['reply', 'edit_message', 'delete_message', 'send_file', 'message_people', 'schedule', 'unschedule', 'schedules', 'set_model', 'kagelets', 'browser_tabs', 'browser_read', 'browser_screenshot'].map(t => `mcp__kage__${t}`)
 
   function open(key: string, s: Session, carried: SDKUserMessage[] = []) {
     const inbox = makeInbox(carried)

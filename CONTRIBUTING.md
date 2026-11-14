@@ -41,6 +41,7 @@ Write logs to stderr only. In a tmux pane, stdout carries the channel protocol, 
 | `hub.ts` | The hub's entry, run by the service: the log file's size, the boot count and the crash-loop DM, then `router.ts`. Node modules only, so a bad pull is still caught. `start.sh` only forwards old login items to `kage start`. |
 | `docs/settings.md` | Every setting in the env file. |
 | `AGENTS.md` | Setup steps for a coding agent. `CLAUDE.md` loads it and this file. |
+| `extension/` | Kage's Chrome extension (#114): plain JS, no build. It polls the hub (`connectors/browser.ts`) and reads tabs. |
 | `.claude-plugin/`, `.mcp.json`, `hooks/` | Used only when Kage is installed as a Claude Code plugin (tmux panes on the plugin route). |
 
 ### core/
@@ -62,6 +63,7 @@ Write logs to stderr only. In a tmux pane, stdout carries the channel protocol, 
 | `kagelet-view.ts` | What a terminal shows of kagelets: the `kage top` panel, its keys, and `kage logs <kagelet>`. |
 | `access.ts` | The access tiers: whether a kagelet's tool is read, write or act, from its name. |
 | `db-read.ts` | The check a `db_read` query passes: one read statement, capped. |
+| `browser.ts` | What a session may see of the owner's Chrome (#114): the block list, tabs shown by id, and a page's text quoted as data. |
 | `cron.ts` | Cron expressions, which schedules are due, and reading Claude Code's own cron jobs. |
 | `afk.ts` | AFK mode: which threads the stand-in watches, when it posts or phones the owner, and what it may say. |
 | `blocks.ts` | When the safety check stops a turn: the line in the thread, the owner's DM, and whether the thread closes. |

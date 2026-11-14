@@ -14,6 +14,12 @@ describe('private sources on a teammate task', () => {
       assert.match(privateToolRefusal(t, 'teammate') ?? '', /owner/)
   })
   test('an unknown sender is refused', () => assert.ok(privateToolRefusal(MAIL, undefined)))
+  test("only the owner's task reaches the owner's browser", () => {
+    for (const t of ['mcp__kage__browser_tabs', 'mcp__kage__browser_read', 'mcp__plugin_kage_kage__browser_screenshot']) {
+      assert.equal(privateToolRefusal(t, 'owner'), undefined, t)
+      assert.match(privateToolRefusal(t, 'teammate') ?? '', /owner/, t)
+    }
+  })
   describe("the owner's memory takes only people notes", () => {
     const MEM = '/home/o/.claude/projects/-home-o/memory'
     const ok = (tool: string, file_path: string) => assert.equal(ownerMemoryRefusal(tool, { file_path }, MEM), undefined, `${tool} ${file_path}`)
