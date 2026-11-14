@@ -12,7 +12,8 @@ import { randomUUID } from 'node:crypto'
 import { existsSync, mkdirSync, readFileSync, renameSync, rmSync, statSync, writeFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { dirname } from 'node:path'
-import { load, log } from './config.ts'
+import { load } from './config.ts'
+import { log } from './runtime/log.ts'
 import { connectEmail } from './connectors/email.ts'
 import { listenForCommands } from './connectors/slack-commands.ts'
 import { connectSlack } from './connectors/slack.ts'
@@ -258,7 +259,6 @@ let models = new Map<string, string>()   // lane key -> the model its file names
 const KAGELETS = kageletsDir(DIR, log)
 // Each kagelet's own memory and the dream's proposals waiting on Kage (#98). It never reads or writes MEM.
 const kmem = kageletMemory({ dir: KAGELETS, forbid: () => [MEM.own, MEM.owner], event: e => ledgers.event(e), waiting: cells => ledgers.add('waiting', cells) })
-// The names from before the rename still read.
 const MAX_KAGELETS = kl.max || 10
 // Off unless set (#96); a value that does not read as dollars is said once, here.
 const CAPS = { each: dailyCap(kl), total: totalCap(kl), chain: chainCap(kl) }

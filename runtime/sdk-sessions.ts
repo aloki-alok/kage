@@ -6,7 +6,7 @@
 // install needs no SDK.
 import type { createSdkMcpServer, EffortLevel, Options, Query, SDKMessage, SDKUserMessage, tool } from '@anthropic-ai/claude-agent-sdk'
 import { z } from 'zod'
-import { log } from '../config.ts'
+import { log } from './log.ts'
 import { senderOf, withoutInvisible, type Sender } from '../core/gate.ts'
 import { configRefusal, protectConfig, ownerMemoryRefusal, privateToolRefusal, slackSendRefusal, voiceToolRefusal } from '../core/guards.ts'
 import { builtinTools, grantRefusal } from '../core/kagelets.ts'

@@ -1,6 +1,6 @@
 // The hub's timed work in one place: each job runs on its own period from one clock. A job that
 // fails is logged and tried again next period; an async job still running is not started again.
-import { log } from '../config.ts'
+import { log } from './log.ts'
 
 export type Job = { name: string; every: number; run: (now: number) => void | Promise<void> }
 

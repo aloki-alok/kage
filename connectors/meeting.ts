@@ -10,7 +10,7 @@
 import { createHash } from 'node:crypto'
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http'
 import type { AddressInfo } from 'node:net'
-import { log } from '../config.ts'
+import { log } from '../runtime/log.ts'
 import type { Conversation } from '../core/conversations.ts'
 import { meetingTask, parseMeeting } from '../core/meeting.ts'
 import { askOf, askTask, meetCall, meetKey, meetLink, parseSegments, sameQuestion, type Line } from '../core/meetbot.ts'

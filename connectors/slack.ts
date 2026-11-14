@@ -4,7 +4,7 @@
 import { SocketModeClient, LogLevel } from '@slack/socket-mode'
 import { appendFileSync, writeFileSync } from 'node:fs'
 import type { WebClient } from '@slack/web-api'
-import { log, logger } from '../config.ts'
+import { log, logger } from '../runtime/log.ts'
 import { agentNote, loopGuard } from '../core/agents.ts'
 import { appEntry } from '../core/registry.ts'
 import { classify, DROPS, plainName, quoteMessage, taskLine, type Ids } from '../core/gate.ts'

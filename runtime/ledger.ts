@@ -4,7 +4,7 @@
 // text() gives back the TSV the parsers in core/ledgers.ts and core/retro.ts already read.
 import { existsSync, readdirSync, readFileSync, renameSync } from 'node:fs'
 import { DatabaseSync } from 'node:sqlite'
-import { log } from '../config.ts'
+import { log } from './log.ts'
 import { lastTotals, trailEvent, trailLine, tsvRow, turnCost } from '../core/ledgers.ts'
 import { eventRow, whoOf, type EventKind, type KageEvent } from '../core/events.ts'
 import { COST_FLAG } from '../core/kagelets.ts'

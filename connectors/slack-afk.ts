@@ -5,7 +5,7 @@
 import { spawn } from 'node:child_process'
 import { mkdirSync } from 'node:fs'
 import type { WebClient } from '@slack/web-api'
-import { log } from '../config.ts'
+import { log } from '../runtime/log.ts'
 import { actOn, afkGuardPrompt, decideAfk, MAX_REPLIES, noteMention, noteOf, notePing, outsider, parseTriage, restoreTo, standInPrompt, standInReply, summaryOf, untilOf, type Afk, type AfkCommand, type Status } from '../core/afk.ts'
 import type { SlackMessage } from '../core/slack-message.ts'
 import { findSecret, safeReply } from '../core/outbound.ts'

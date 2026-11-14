@@ -1,7 +1,7 @@
 // The Jev call (rules in core/jev.ts). It fails open: on a timeout, an HTTP error or an answer it cannot read, the
 // post is answered as before, and the loop guard (core/agents.ts) still caps an agent's turns. The log carries the
 // score and the reason only, never the key or the post.
-import { log } from '../config.ts'
+import { log } from '../runtime/log.ts'
 import { JEV_URL, afkRequest, afkVerdict, jevChecks, jevRequest, jevVerdict, triageRequest, triageSkips, triageVerdict, type JevConfig, type Urgency } from '../core/jev.ts'
 
 export type JevCheck = (app: string, text: string) => Promise<{ reply: boolean; why: string }>

@@ -5,7 +5,7 @@
 // connectors.github.login are set. Reach it through a tunnel to 127.0.0.1:<port>/github.
 import { createServer } from 'node:http'
 import type { AddressInfo } from 'node:net'
-import { log } from '../config.ts'
+import { log } from '../runtime/log.ts'
 import type { Conversation } from '../core/conversations.ts'
 import { noChannelTag } from '../core/gate.ts'
 import { githubEvent, signedByGithub } from '../core/github.ts'

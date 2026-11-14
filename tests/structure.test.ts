@@ -7,7 +7,7 @@ import { readFileSync } from 'node:fs'
 import { basename } from 'node:path'
 
 const root = new URL('..', import.meta.url).pathname
-const files = execFileSync('git', ['ls-files', '*.ts', '*.js'], { cwd: root, encoding: 'utf8' }).split('\n')
+const files = execFileSync('git', ['ls-files', '--cached', '--others', '--exclude-standard', '*.ts', '*.js'], { cwd: root, encoding: 'utf8' }).split('\n')
   .filter(f => f && !/(^|\/)tests\//.test(f) && !f.startsWith('docs/'))
 const text = new Map(files.map(f => [f, readFileSync(`${root}/${f}`, 'utf8')]))
 // The source without line and block comments, so a rule reads code, not prose about it.
@@ -23,14 +23,7 @@ const DEBT = {
     'core/guards.ts',
   ] as string[],
   // runtime/ and connectors/ never import a file in the repo root (router.ts, config.ts, ...).
-  rootImports: [
-    'runtime/closed-threads.ts', 'runtime/jobs.ts', 'runtime/kage-tools.ts',
-    'runtime/ledger.ts', 'runtime/scheduler.ts', 'runtime/sdk-sessions.ts',
-    'runtime/session-link.ts', 'runtime/slack-files.ts', 'runtime/tmux-panes.ts',
-    'connectors/email.ts', 'connectors/github.ts', 'connectors/jev.ts',
-    'connectors/meeting.ts', 'connectors/slack-afk.ts', 'connectors/slack-commands.ts',
-    'connectors/slack.ts', 'connectors/voice.ts', 'connectors/whatsapp.ts',
-  ] as string[],
+  rootImports: [] as string[],
   // A source file over MAX_LINES lines, with the most it may have. Split it; lower the number as it shrinks.
   longFiles: {
     'runtime/kage-tools.ts': 832, 'router.ts': 728, 'cli/top.ts': 624,

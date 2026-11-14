@@ -7,7 +7,7 @@ import type { LimitCounts } from '../core/board.ts'
 import { PANEL_KEYS, type PanelAction } from '../core/kagelet-view.ts'
 import type { Dispatcher } from '../core/sessions.ts'
 import type { Reloaded } from '../core/settings.ts'
-import { log } from '../config.ts'
+import { log } from './log.ts'
 import type { FromSession, ToSession } from './protocol.ts'
 import type { scheduler } from './scheduler.ts'
 

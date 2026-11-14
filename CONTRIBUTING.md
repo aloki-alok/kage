@@ -50,7 +50,7 @@ Write logs to stderr only. In a tmux pane, stdout carries the channel protocol, 
 | `router.ts` | The hub, loaded by `hub.ts`: wires connectors, the dispatcher, the runner and the store. Its header names the few rules still in it. |
 | `server.ts` | For tmux panes only: serves Kage's tools over MCP inside each pane and relays approvals. |
 | `private-data-guard.ts` | The plugin hook (`hooks/hooks.json`) that runs the rules in `core/guards.ts` inside tmux panes. The SDK runner applies the same rules in process. |
-| `config.ts` | Reads the settings files and makes the Slack clients. |
+| `config.ts` | Reads the settings files and makes the Slack clients. Only `router.ts`, `server.ts` and `cli/` import it; everything else logs through `runtime/log.ts`. |
 | `core/` | Pure rules. See the table below. |
 | `connectors/` | Where Kage hears from. Each turns a message into a `Task` (`core/task.ts`). Who may drive Kage is decided in `core/gate.ts`, not here. |
 | `runtime/` | Where sessions run, and the hub's state. See the table below. |
@@ -128,6 +128,7 @@ Write logs to stderr only. In a tmux pane, stdout carries the channel protocol, 
 | `closed-threads.ts` | A thread the safety check stopped: it starts on a new session, and a teammate's stays closed until the owner writes in it. |
 | `hub-lock.ts` | One hub per machine: a listening socket the OS frees when the hub dies. |
 | `hub-log.ts` | The hub log's rotation and the package check, shared by `hub.ts` and the hub. |
+| `log.ts` | Kage's log line (stderr only) and the logger the Slack clients get. |
 | `kagelets.ts` | The kagelets folder synced into schedules and grants (#57), the manager's tool, which grants by tier (read with no card, a write tool on the owner's first yes, which then stands for that tool, act never), and the cost-cap check on the job loop, and the one route a kagelet's output or message takes to another kagelet (#93), with the loop guard and the chain cap. |
 | `config-files.ts` | config.json and secrets.json on disk (the schema and the env import table are `core/config.ts`): reading, changing, the first-start import of the old env file, and deleting that file after 7 days. |
 | `code-stamp.ts` | When the code changed, so the hub knows to restart into it. |
