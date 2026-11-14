@@ -71,7 +71,7 @@ async function hub(o: { chainUsd?: number; capUsd?: number; max?: number } = {})
   const schedules = scheduler({ store, deliver: toSession, failed: m => limits.turn('', [m], undefined, clock.now), ready: key => d.ready(key), trusted: () => false, ran: j => ledgers.add('runs', [j.id, j.key]) })
   const manager = kageletManager({ dir: kagelets, max: 10, ledgers, sync, runNow: (id, now) => schedules.runNow(id, now), store, log: () => {} })
   const routesOn = () => kageletRoutes({ dir: kagelets, store, ledgers, runs, deliver: toSession,
-    idle: key => d.ready(key) === 'ready' && d.hasFreeSlot(key), paused: now => limits.paused(now)?.until, capUsd: o.capUsd ?? 2, chainUsd: o.chainUsd, log: () => {} })
+    idle: key => d.ready(key) === 'ready' && d.startsNow(key, Date.now()), paused: now => limits.paused(now)?.until, capUsd: o.capUsd ?? 2, chainUsd: o.chainUsd, log: () => {} })
   routes = routesOn()
   // The fake Claude process a kagelet's session runs in: the newest one that read its prompt.
   const proc = (name: string) => [...sdk.runs].reverse().find(r => r.said.some(x => x.includes(`You are the kagelet "${name}"`)))!
@@ -467,6 +467,19 @@ test('a message an hour past its first turn, or its sending when no turn took it
   await h.pump(NINE + 111 * 60_000)
   assert.deepEqual(h.states(), [])
   assert.equal(h.tasksOf('b').filter(t => t.handoff).length, 2)
+})
+
+test('a hub restart gives a queued message a fresh hour: the time the hub was down or paused does not count', async () => {
+  const h = await ab()
+  await h.manager.manage({ action: 'pause', name: 'b' }, NINE)
+  assert.match(h.routes.message(keyOf('a'), 'b', 'still there', NINE), QUEUED('b'))
+  h.restart()
+  h.routes.replay(NINE + 2 * 3_600_000)
+  assert.deepEqual(h.states(), ['a>b t1 queued'])
+  await h.pump(NINE + 2 * 3_600_000 + 59 * 60_000)
+  assert.deepEqual(h.states(), ['a>b t1 queued'])
+  await h.pump(NINE + 2 * 3_600_000 + 61 * 60_000)
+  assert.deepEqual(h.states(), [])
 })
 
 test('a turn longer than an hour keeps its message: only a queued one expires, and read or failed is for good', async () => {
