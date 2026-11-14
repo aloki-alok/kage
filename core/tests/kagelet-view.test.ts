@@ -117,7 +117,4 @@ describe('kage logs <kagelet>', () => {
   test('a line reads time, cost, status, report', () => {
     assert.match(runLine(list[0]!, now), /^14:55 +\$0\.05 +ok +needs: the staging password/)
   })
-  test('runs from before the rename (spec-) count too', () => {
-    assert.equal(kageletRuns('deploys', KEY, { runs: `${at(9)}\tspec-deploys\t${KEY}\n`, costs: '', reports: '' }, now).length, 1)
-  })
 })

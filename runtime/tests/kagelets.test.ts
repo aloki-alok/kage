@@ -4,7 +4,7 @@ import { openStore } from '../store.ts'
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { costCap } from '../kagelet-cost-cap.ts'
-import { kageletsDir, pauseKagelet, readKagelets } from '../kagelet-files.ts'
+import { pauseKagelet, readKagelets } from '../kagelet-files.ts'
 import { kageletManager, readCommand, type Manage } from '../kagelet-manager.ts'
 import { ownerNotes } from '../kagelet-notes.ts'
 import { syncKagelets } from '../kagelet-sync.ts'
@@ -396,34 +396,6 @@ test('the owner\'s words in a kagelet\'s thread reach its next run once, and onl
   assert.match(notes.take(KEY, () => true) ?? '', /owner wrote[\s\S]*skip the staging log today/)
   assert.equal(notes.take(KEY, () => true), undefined)
   assert.equal(notes.take('CTEST2:1.1#side-kagelet-other', () => true), undefined)
-})
-
-test('a schedule from before the rename (old id and lane) moves to the new one, keeping when it last ran', () => {
-  const store = openStore(':memory:')
-  const OLD = 'CTEST1:1700000000.123456#side-spec-deploys'
-  store.addSchedule({ id: 'spec-deploys', key: OLD, cron: '0 9 * * 1-5', prompt: 'old', recurring: true, fromOwner: false, created: 100, lastFired: 5000 })
-  store.addSchedule({ id: 'ab12cd34', key: OLD, cron: '0 * * * *', prompt: 'x', recurring: true, fromOwner: false, created: 0, lastFired: 0 })
-  syncKagelets([file()], store, 9000, () => {})
-  assert.deepEqual(store.schedules().map(s => [s.id, s.key, s.created, s.lastFired]), [['kagelet-deploys', KEY, 100, 5000]])
-})
-
-test('only the hub moves the old folder; a kage command reads it where it is, so an old hub still running keeps its schedules', () => {
-  const dir = mkdtempSync(`${tmpdir()}/kagelet-`)
-  mkdirSync(`${dir}/specialists`)
-  writeFileSync(`${dir}/specialists/deploys.md`, 'x')
-  assert.equal(kageletsDir(dir), `${dir}/specialists`)
-  assert.equal(existsSync(`${dir}/specialists/deploys.md`), true)
-  const logs: string[] = []
-  assert.equal(kageletsDir(dir, l => logs.push(l)), `${dir}/kagelets`)
-  assert.deepEqual(readKagelets(`${dir}/kagelets`), [{ name: 'deploys', text: 'x' }])
-  assert.equal(existsSync(`${dir}/specialists`), false)
-  assert.equal(kageletsDir(dir), `${dir}/kagelets`)
-  // Both there: the new one wins, and the hub says the old one is left.
-  mkdirSync(`${dir}/specialists`)
-  writeFileSync(`${dir}/specialists/other.md`, 'y')
-  assert.equal(kageletsDir(dir, l => logs.push(l)), `${dir}/kagelets`)
-  assert.match(logs.join('\n'), /specialists.*other\.md|1 file/)
-  assert.equal(kageletsDir(mkdtempSync(`${tmpdir()}/kagelet-`), () => {}).endsWith('/kagelets'), true)
 })
 
 test('a sync runs no kagelet whose after: line makes a cycle, and logs why once', () => {

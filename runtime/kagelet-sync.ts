@@ -37,15 +37,13 @@ export function syncKagelets(files: { name: string; text: string }[], store: Pic
     if (!sp.cron) { if (!store.conversation(sp.key)) store.seen(sp.key, parseSessionKey(sp.key)!.conversation, `${sp.name} (kagelet)`, now); continue }
     ids.add(id)
     const prompt = kageletPrompt(sp, memory(sp.name))
-    // A schedule from before the rename (spec-<name> in a #side-spec- lane) hands over when it last ran.
-    const cur = store.schedules().find(s => s.id === id) ?? store.schedules().find(s => s.id === `spec-${sp.name}`)
+    const cur = store.schedules().find(s => s.id === id)
     if (cur && cur.key === sp.key && cur.cron === sp.cron && cur.prompt === prompt) continue
     if (cur) store.removeSchedule(cur.id)
     store.seen(sp.key, parseSessionKey(sp.key)!.conversation, `${sp.name} (kagelet)`, now)
     store.addSchedule({ id, key: sp.key, cron: sp.cron, prompt, recurring: true, fromOwner: false, created: cur?.created ?? now, lastFired: cur?.lastFired ?? 0 })
   }
   // A removed kagelet goes with every schedule in its lane, the ones it added itself too.
-  // Every schedule in a lane from before the rename goes: its kagelet now runs in its new lane.
-  for (const s of store.schedules()) if ((s.id.startsWith('kagelet-') && !ids.has(s.id)) || (s.key.includes('#side-kagelet-') && !grants.has(s.key)) || s.key.includes('#side-spec-')) store.removeSchedule(s.id)
+  for (const s of store.schedules()) if ((s.id.startsWith('kagelet-') && !ids.has(s.id)) || (s.key.includes('#side-kagelet-') && !grants.has(s.key))) store.removeSchedule(s.id)
   return grants
 }

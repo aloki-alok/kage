@@ -90,7 +90,7 @@ quiet_first() {
 }
 
 kage_name() { NAME="$(cfg_get name)"; NAME="${NAME:-kage}"; }
-# A hub started before the service existed runs in a tmux session (start.sh). kage service on moves it.
+# compat: remove after 2026-12-15: a hub started before the service existed runs in a tmux session (start.sh). kage service on moves it.
 old_tmux() { command -v tmux >/dev/null && tmux has-session -t "=$NAME" 2>/dev/null; }
 running() { kage_name; ./service.sh running 2>/dev/null || old_tmux; }
 # The hub writes the status file (connectors/slack.ts): its first word is the socket's state, its fourth the hub's pid.

@@ -135,8 +135,7 @@ export function kageletRows(files: { name: string; text: string }[], o: { runs: 
   const last = new Map<string, number>()
   for (const l of o.runs.split('\n')) {
     const [when = '', id = ''] = l.split('\t')
-    // spec- is the id from before the rename (#77): its old runs still count.
-    const name = id.startsWith('kagelet-') ? id.slice(8) : id.startsWith('spec-') ? id.slice(5) : ''
+    const name = id.startsWith('kagelet-') ? id.slice(8) : ''
     if (name) last.set(name, Date.parse(when))
   }
   const chained = chainErrors(files.map(f => parseKagelet(f.name, f.text)).filter((p): p is Kagelet => !('error' in p)))

@@ -97,6 +97,8 @@ test('a core/ export is used outside its file: by another source file, or by its
 
 test('code marked "compat: remove after <date>" is gone by that date', () => {
   const today = new Date().toISOString().slice(0, 10)
-  const due = files.flatMap(f => [...text.get(f)!.matchAll(/compat: remove after (\d{4}-\d{2}-\d{2})/g)].filter(m => m[1]! < today).map(m => `${f} (${m[1]})`))
+  const shell = execFileSync('git', ['ls-files', '*.sh'], { cwd: root, encoding: 'utf8' }).split('\n').filter(Boolean)
+  for (const f of shell) if (!text.has(f)) text.set(f, readFileSync(`${root}/${f}`, 'utf8'))
+  const due = [...files, ...shell].flatMap(f => [...text.get(f)!.matchAll(/compat: remove after (\d{4}-\d{2}-\d{2})/g)].filter(m => m[1]! < today).map(m => `${f} (${m[1]})`))
   assert.deepEqual(due, [], 'past their removal date: delete the compat code')
 })
