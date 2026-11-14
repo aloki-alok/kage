@@ -12,7 +12,8 @@ export const NAME = /^[a-z][a-z0-9-]{0,30}$/
 // Who made it, from its file: the owner (by hand, or by asking Kage) or Kage on its own. A hand-written file is the owner's.
 export type Maker = 'owner' | 'kage'
 // granted: when the owner approved its db_read on Kage's card (runtime/kagelets.ts).
-export type Kagelet = { name: string; key: string; link: string; cron: string; tools: string[]; job: string; paused: boolean; by: Maker; why: string; resumed?: number; granted?: number }
+// after: the kagelet whose output starts this one (#93). cron: '' when it runs only after another.
+export type Kagelet = { name: string; key: string; link: string; cron: string; after?: string; tools: string[]; job: string; paused: boolean; by: Maker; why: string; resumed?: number; granted?: number }
 
 // Flat front matter (key: value lines between --- lines), then the job.
 export function parseKagelet(name: string, text: string): Kagelet | { error: string } {
@@ -24,14 +25,16 @@ export function parseKagelet(name: string, text: string): Kagelet | { error: str
   const thread = slackLinkKey(link)
   if (!thread) return { error: 'thread must be a Slack message link ("Copy link" in Slack)' }
   const cron = head.get('schedule') ?? ''
-  try { parseCron(cron) } catch { return { error: `schedule must be a cron line like "0 9 * * 1-5", not "${cron}"` } }
+  const after = head.get('after') ?? ''
+  if (after && !NAME.test(after)) return { error: `after must name a kagelet, not "${after}"` }
+  if (cron || !after) try { parseCron(cron) } catch { return { error: `schedule must be a cron line like "0 9 * * 1-5", not "${cron}"` } }
   const job = m[2]!.trim()
   if (!job) return { error: 'the job, below the front matter, is empty' }
   const tools = (head.get('tools') ?? '').split(',').map(t => t.trim()).filter(Boolean)
   const granted = Date.parse(GRANTED.exec(head.get('granted') ?? '')?.[1] ?? '')
   // Checked on every read, so a file that says by: kage cannot hold it even when written by hand.
   if (head.get('by') === 'kage' && tools.includes(DB_READ) && !(granted >= 0)) return { error: `a kagelet Kage made cannot hold ${DB_READ} without the owner's approval on Kage's card` }
-  return { name, key: `${thread}#side-kagelet-${name}`, link, cron, tools, job, paused: isPaused(head.get('paused')),
+  return { name, key: `${thread}#side-kagelet-${name}`, link, cron, ...(after && { after }), tools, job, paused: isPaused(head.get('paused')),
     by: head.get('by') === 'kage' ? 'kage' : 'owner', why: head.get('why') ?? '',
     ...(Date.parse(head.get('resumed') ?? '') >= 0 && { resumed: Date.parse(head.get('resumed')!) }), ...(granted >= 0 && { granted }) }
 }
@@ -71,23 +74,43 @@ export const DEFAULT_GRANT = ['WebSearch', 'WebFetch']
 // The file the manager's tool writes. Refused with the reason when it would not run, would be granted a tool v1
 // cannot grant, Kage made it and asks for more than DEFAULT_GRANT, or it holds db_read with no owner's yes.
 // granted: when the owner said yes to its db_read.
-export function kageletFile(f: { thread: string; schedule: string; tools: string[]; job: string; by: Maker; why: string; paused?: boolean; granted?: number }): string | { error: string } {
+export function kageletFile(f: { thread: string; schedule: string; after?: string; tools: string[]; job: string; by: Maker; why: string; paused?: boolean; granted?: number }): string | { error: string } {
   // One line each, so no value can add a front matter line of its own (a second tools or paused line).
-  for (const [k, v] of Object.entries({ thread: f.thread, schedule: f.schedule, why: f.why, tool: f.tools.join(',') })) if (/[\r\n]/.test(v)) return { error: `the ${k} must be one line` }
+  for (const [k, v] of Object.entries({ thread: f.thread, schedule: f.schedule, after: f.after ?? '', why: f.why, tool: f.tools.join(',') })) if (/[\r\n]/.test(v)) return { error: `the ${k} must be one line` }
   const bad = f.tools.find(t => !grantable(t))
   if (bad) return { error: `a kagelet can be granted only web tools, MCP tools and ${DB_READ}, not ${bad}. A wider grant is the owner's call.` }
   const db = f.tools.includes(DB_READ)
   if (db && f.granted === undefined) return { error: `${DB_READ} needs the owner's yes on Kage's card` }
   const wide = f.by === 'kage' && f.tools.find(t => !DEFAULT_GRANT.includes(t) && t !== DB_READ)
   if (wide) return { error: `a kagelet Kage makes on its own gets only ${DEFAULT_GRANT.join(' and ')}, not ${wide}. Ask the owner to grant it.` }
-  const text = `---\nthread: ${f.thread}\nschedule: ${f.schedule}\ntools: ${f.tools.join(', ')}\nby: ${f.by}\nwhy: ${f.why}\n${db ? `granted: ${DB_READ} by the owner, ${new Date(f.granted!).toISOString()}\n` : ''}${f.paused ? 'paused: yes\n' : ''}---\n${f.job.trim()}\n`
+  const text = `---\nthread: ${f.thread}\n${f.schedule || !f.after ? `schedule: ${f.schedule}\n` : ''}${f.after ? `after: ${f.after}\n` : ''}tools: ${f.tools.join(', ')}\nby: ${f.by}\nwhy: ${f.why}\n${db ? `granted: ${DB_READ} by the owner, ${new Date(f.granted!).toISOString()}\n` : ''}${f.paused ? 'paused: yes\n' : ''}---\n${f.job.trim()}\n`
   const sp = parseKagelet('check', text)
   return 'error' in sp ? sp : text
 }
 
+// A chain is at most this many kagelets, the first one included.
+export const MAX_CHAIN = 5
+// Why each kagelet's after: line cannot run: it names a missing kagelet, it is part of a cycle, or the chain up
+// to it is deeper than MAX_CHAIN. Checked when the manager saves and on every sync, so a hand-written file is held too.
+export function chainErrors(ks: { name: string; after?: string }[]): Map<string, string> {
+  const after = new Map(ks.map(k => [k.name, k.after]))
+  const errors = new Map<string, string>()
+  for (const k of ks) {
+    if (!k.after) continue
+    const seen = [k.name]
+    for (let at = k.after; at; at = after.get(at)!) {
+      if (!after.has(at)) { errors.set(k.name, `after names no kagelet named "${at}"`); break }
+      if (seen.includes(at)) { errors.set(k.name, `after makes a cycle: ${[...seen, at].join(' after ')}`); break }
+      seen.push(at)
+    }
+    if (!errors.has(k.name) && seen.length > MAX_CHAIN) errors.set(k.name, `this chain is ${seen.length} steps deep, more than ${MAX_CHAIN}`)
+  }
+  return errors
+}
+
 export type Report = { at: number; summary: string; needs?: string }
 // costToday: since midnight, or since its last resume today.
-export type KageletRow = { name: string; state: 'runs' | 'paused' | 'broken'; error?: string; key?: string; link?: string; cron?: string; tools: string[]; lastRun?: number; next?: number; costToday: number; result?: Report; by?: Maker; why?: string }
+export type KageletRow = { name: string; state: 'runs' | 'paused' | 'broken'; error?: string; key?: string; link?: string; cron?: string; after?: string; tools: string[]; lastRun?: number; next?: number; costToday: number; result?: Report; by?: Maker; why?: string }
 // One row per file for kage list, kage top and the manager. runs, costs and reports are the ledgers (core/ledgers.ts).
 export function kageletRows(files: { name: string; text: string }[], o: { runs: string; costs: string; reports?: string; now: number }): KageletRow[] {
   const results = new Map<string, Report>()
@@ -103,12 +126,14 @@ export function kageletRows(files: { name: string; text: string }[], o: { runs: 
     const name = id.startsWith('kagelet-') ? id.slice(8) : id.startsWith('spec-') ? id.slice(5) : ''
     if (name) last.set(name, Date.parse(when))
   }
+  const chained = chainErrors(files.map(f => parseKagelet(f.name, f.text)).filter((p): p is Kagelet => !('error' in p)))
   return [...files].sort((a, b) => a.name.localeCompare(b.name)).map((f): KageletRow => {
-    const sp = parseKagelet(f.name, f.text)
+    const parsed = parseKagelet(f.name, f.text)
+    const sp = !('error' in parsed) && chained.has(parsed.name) ? { error: chained.get(parsed.name)! } : parsed
     if ('error' in sp) return { name: f.name, state: 'broken', error: sp.error, tools: [], costToday: 0 }
-    const next = sp.paused ? undefined : nextRun(sp.cron, new Date(o.now), 366 * 24 * 3600_000)?.getTime()
+    const next = sp.paused || !sp.cron ? undefined : nextRun(sp.cron, new Date(o.now), 366 * 24 * 3600_000)?.getTime()
     return {
-      name: sp.name, state: sp.paused ? 'paused' : 'runs', key: sp.key, link: sp.link, cron: sp.cron, tools: sp.tools,
+      name: sp.name, state: sp.paused ? 'paused' : 'runs', key: sp.key, link: sp.link, cron: sp.cron, ...(sp.after && { after: sp.after }), tools: sp.tools,
       ...(last.has(sp.name) && { lastRun: last.get(sp.name) }), ...(next !== undefined && { next }), costToday: spendSince(o.costs, Math.max(midnight, sp.resumed ?? 0)).find(s => s.key === sp.key)?.usd ?? 0,
       ...(results.has(sp.name) && { result: results.get(sp.name) }), by: sp.by, why: sp.why,
     }
@@ -117,16 +142,16 @@ export function kageletRows(files: { name: string; text: string }[], o: { runs: 
 
 export function rowLine(r: KageletRow, now: number) {
   if (r.state === 'broken') return `${r.name.padEnd(16)} does not run: ${r.error}`
-  return [r.name.padEnd(16), r.state.padEnd(6), r.cron!.padEnd(15), `last ${r.lastRun ? clockTime(r.lastRun, now) : 'never'}`.padEnd(14),
+  return [r.name.padEnd(16), r.state.padEnd(6), (r.cron || `after ${r.after}`).padEnd(15), `last ${r.lastRun ? clockTime(r.lastRun, now) : 'never'}`.padEnd(14),
     `next ${whenLabel(r.next, now)}`.padEnd(14), `$${r.costToday.toFixed(2)} today`].join(' ')
 }
 
 export const resultLine = (r: KageletRow, now: number) => !r.result ? 'no report yet'
   : `${clockTime(r.result.at, now)} ${r.result.needs ? `needs: ${r.result.needs} (${r.result.summary})` : r.result.summary}`
 
-// Of Kage's own tools, a kagelet has only those for its thread, whatever its grant says: the rest act as the
+// Of Kage's own tools, a kagelet has only those for its thread and message_kagelet (to its own install), whatever its grant says: the rest act as the
 // owner (message_people, away), outlive the run (schedule) or need the owner (log_prod_write).
-const THREAD_TOOLS = ['reply', 'edit_message', 'delete_message', 'report'].map(t => `mcp__kage__${t}`)
+const THREAD_TOOLS = ['reply', 'edit_message', 'delete_message', 'report', 'message_kagelet'].map(t => `mcp__kage__${t}`)
 // What a grant may name: web tools and outside MCP tools, an allowlist so a new built-in tool stays out. No file,
 // shell or agent tool, granted or not: one could rewrite the kagelet's own grant or read the env file with the
 // tokens. ponytail: a file grant needs a sandboxed work folder first.

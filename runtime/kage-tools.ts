@@ -53,6 +53,9 @@ export function sessionTools(o: {
   approve?: (tool: string, description: string, input: Record<string, unknown>) => Promise<boolean>
   // The event log, on this session's current run (runtime/ledger.ts runEvents). Absent: tmux panes.
   event?: (kind: EventKind, detail: string) => void
+  // A kagelet's report and messages, for the hub's chain router (runtime/kagelets.ts kageletRoutes).
+  onReport?: (r: { needs: string; output: string }) => void
+  message?: (to: string, text: string, file?: string) => string
 }) {
   const { title: Title, bot, user } = o
   // send_file sends only what was written in the thread's own folder: not any file on the disk, and
@@ -389,18 +392,38 @@ export function sessionTools(o: {
       thread_ts: s.describe('thread_ts attribute from the task tag'),
       summary: s.describe('one line: what this run found or did'),
       needs: s.optional().describe('what you could not do and need from your manager, in one line; leave out when nothing'),
+      output: s.optional().describe('a link or short note a kagelet that runs after you takes as its input; leave out when nothing'),
     },
     async run(args) {
-      const a = args as { channel: string; thread_ts: string; summary: string; needs?: string }
+      const a = args as { channel: string; thread_ts: string; summary: string; needs?: string; output?: string }
       const key = `${a.channel}:${a.thread_ts}`
       if (!ownerTask.has(key)) return { isError: true, text: 'refused: report from your own thread only' }
       const needs = a.needs?.trim() ?? ''
       append('reports', [name, a.summary, needs])
       o.event?.('report', needs ? 'needs' : 'ok')
+      o.onReport?.({ needs, output: a.output?.trim() ?? '' })
       if (!needs) return { text: 'reported' }
       await post(key, a.channel, a.thread_ts, `*${name} needs:* ${needs}`)
       append('waiting', ['open', key, links.get(key) ?? key, `${name} needs: ${needs}`])
       return { text: 'reported, and what you need is posted in the thread for your manager and the owner' }
+    },
+  })
+  // A kagelet asks another kagelet of this install, never a person: the hub starts or queues the other's run with it.
+  const message = o.message
+  if (name && message) tools.push({
+    name: 'message_kagelet',
+    description: 'Send another kagelet of this install a message: text, and a file path inside the work folder if any. It starts its next run with your message as input, or reaches its run in progress. No tool grant goes with it.',
+    shape: {
+      channel: s.describe('channel attribute from the task tag'),
+      thread_ts: s.describe('thread_ts attribute from the task tag'),
+      to: s.describe('the other kagelet\'s name'),
+      text: s.describe('the message'),
+      file: s.optional().describe('a file path inside the work folder'),
+    },
+    async run(args) {
+      const a = args as { channel: string; thread_ts: string; to: string; text: string; file?: string }
+      if (!ownerTask.has(`${a.channel}:${a.thread_ts}`)) return { isError: true, text: 'refused: message from your own thread only' }
+      return { text: message(a.to, a.text, a.file) }
     },
   })
   // db_read: one read through the owner's own read command, for a kagelet the owner granted it (the grant check
@@ -445,7 +468,7 @@ export function sessionTools(o: {
     },
   }, {
     name: 'manage_kagelet',
-    description: 'Create or change (save), pause, resume, run now, or remove a kagelet: a recurring job that runs on its own schedule in its thread, with only the tools you grant, and reports to you. save needs name, thread (a Slack message link), schedule (5-field cron), tools, job, by and why. Owner tasks only.',
+    description: 'Create or change (save), pause, resume, run now, or remove a kagelet: a recurring job that runs on its own schedule in its thread, with only the tools you grant, and reports to you. save needs name, thread (a Slack message link), schedule (5-field cron) or after (the kagelet whose output starts it), tools, job, by and why. Owner tasks only.',
     shape: {
       channel: s.describe('channel attribute from the task tag'),
       thread_ts: s.describe('thread_ts attribute from the task tag'),
@@ -453,6 +476,7 @@ export function sessionTools(o: {
       name: s.describe('short lowercase name: letters, digits, dashes'),
       thread: s.optional().describe('save: the Slack link of the thread it posts in'),
       schedule: s.optional().describe('save: a 5-field cron in local time, e.g. "0 9 * * 1-5"'),
+      after: s.optional().describe('save: the kagelet whose report output starts this one, as a chain step (at most 5 deep, no cycles); schedule may then be left out'),
       tools: z.array(s).optional().describe('save: its grant. WebSearch and WebFetch, an outside MCP tool by full name when the owner asked for it, or db_read (the owner approves it on a card)'),
       read_command: s.optional().describe('save with db_read: the owner\'s command that runs one read-only query, given as its last argument. Leave out to keep the one already approved'),
       job: s.optional().describe('save: what to do on each run, complete on its own'),

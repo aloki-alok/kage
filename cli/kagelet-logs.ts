@@ -1,4 +1,4 @@
-// kage logs <kagelet>: its last 20 runs, newest first: time, cost, ok or failed, and its report.
+// kage logs <kagelet>: its last 20 runs, newest first: time, cost, ok or failed, and its report. Then today's chains it was in.
 // It reads the files and the ledgers, so it works with the hub down.
 import { existsSync } from 'node:fs'
 import { DatabaseSync } from 'node:sqlite'
@@ -6,7 +6,8 @@ import { DIR } from './home.ts'
 import { parseKagelet } from '../core/kagelets.ts'
 import { kageletRuns, runLine } from '../core/kagelet-view.ts'
 import { kageletsDir, readKagelets } from '../runtime/kagelets.ts'
-import { ledgerText } from '../runtime/ledger.ts'
+import { eventsOn, ledgerText } from '../runtime/ledger.ts'
+import { chainLine, chainViews } from '../core/events.ts'
 
 const name = process.argv[2] ?? ''
 const file = readKagelets(kageletsDir(DIR)).find(f => f.name === name)
@@ -20,3 +21,7 @@ const now = Date.now()
 const runs = kageletRuns(name, 'error' in sp ? '' : sp.key, { runs: ledgerText(db, 'runs'), costs: ledgerText(db, 'costs'), reports: ledgerText(db, 'reports') }, now)
 if (!runs.length) console.log('No runs yet.')
 for (const r of runs.slice(0, 20)) console.log(runLine(r, now))
+// The chains it was a step of today (#93). A hub older than the event log has none.
+let chains: string[] = []
+try { chains = chainViews(eventsOn(db, new Date(now).toISOString().slice(0, 10))).filter(c => c.steps.includes(name)).map(chainLine) } catch {}
+for (const c of chains) console.log(`chain ${c}`)

@@ -56,8 +56,8 @@ Write logs to stderr only. In a tmux pane, stdout carries the channel protocol, 
 | `outbound.ts` | What may go out: no crowd pings, no secrets in a thread, Slack-sized parts, code blocks narrow enough for the thread panel. |
 | `guards.ts` | Hook rules: private sources, voice calls, the owner's memory, Slack posts only through Kage's tools. |
 | `ledgers.ts` | Reading the ledgers: questions waiting on the owner, what Kage posted, what turns cost, the daily note. |
-| `events.ts` | The event log's row (what happened, never what was said), its 30 days, and one day's events grouped by kagelet and chain for the dream job. |
-| `kagelets.ts` | A kagelet file (thread, schedule, grant, job) and the grant check. |
+| `events.ts` | The event log's row (what happened, never what was said), its 30 days, one day's events grouped by kagelet and chain for the dream job, and a chain read back as `a > b > c` and where it stopped. |
+| `kagelets.ts` | A kagelet file (thread, schedule or `after:`, grant, job), the grant check, and the chain check (no cycle, no missing kagelet, at most 5 deep). |
 | `kagelet-view.ts` | What a terminal shows of kagelets: the `kage top` panel, its keys, and `kage logs <kagelet>`. |
 | `db-read.ts` | The check a `db_read` query passes: one read statement, capped. |
 | `cron.ts` | Cron expressions, which schedules are due, and reading Claude Code's own cron jobs. |
@@ -85,7 +85,7 @@ Write logs to stderr only. In a tmux pane, stdout carries the channel protocol, 
 | `closed-threads.ts` | A thread the safety check stopped: it starts on a new session, and a teammate's stays closed until the owner writes in it. |
 | `hub-lock.ts` | One hub per machine: a listening socket the OS frees when the hub dies. |
 | `hub-log.ts` | The hub log's rotation and the package check, shared by `hub.ts` and the hub. |
-| `kagelets.ts` | The kagelets folder synced into schedules and grants (#57), and the manager's tool, which asks the owner before it grants `db_read`. |
+| `kagelets.ts` | The kagelets folder synced into schedules and grants (#57), the manager's tool, which asks the owner before it grants `db_read`, and the one route a kagelet's output or message takes to another kagelet (#93), with the loop guard and the cost caps. |
 | `code-stamp.ts` | When the code changed, so the hub knows to restart into it. |
 | `auto-update.ts` | The version line, and the git calls that pull origin/main (the decision is `core/auto-update.ts`). |
 

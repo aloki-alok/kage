@@ -1,6 +1,6 @@
 import { describe, test } from 'node:test'
 import assert from 'node:assert/strict'
-import { grantRefusal, parseKagelet, resultLine, rowLine, setPaused, kageletFile, kageletRows, starterFile } from './kagelets.ts'
+import { chainErrors, grantRefusal, parseKagelet, resultLine, rowLine, setPaused, kageletFile, kageletRows, starterFile } from './kagelets.ts'
 
 const file = (head: string, body = 'Post a summary of the deploy log.') => `---\n${head}\n---\n${body}\n`
 const LINK = 'https://test.slack.com/archives/CTEST1/p1700000000123456'
@@ -54,7 +54,7 @@ describe('the grant', () => {
     // Only the tools for its own thread: never the ones that act as the owner or outlive the run.
     for (const t of ['mcp__kage__message_people', 'mcp__kage__schedule', 'mcp__kage__away', 'mcp__kage__send_file', 'mcp__kage__set_model', 'mcp__kage__log_prod_write'])
       assert.match(grantRefusal(t, []) ?? '', /grant/, t)
-    for (const t of ['mcp__kage__reply', 'mcp__kage__edit_message', 'mcp__kage__delete_message', 'mcp__kage__report']) assert.equal(grantRefusal(t, []), undefined, t)
+    for (const t of ['mcp__kage__reply', 'mcp__kage__edit_message', 'mcp__kage__delete_message', 'mcp__kage__report', 'mcp__kage__message_kagelet']) assert.equal(grantRefusal(t, []), undefined, t)
   })
   test('only web and outside MCP tools can be granted, so no file, shell or agent tool ever runs; web fetches only over http(s)', () => {
     for (const t of ['Bash', 'Read', 'Grep', 'Glob', 'LS', 'NotebookRead', 'Write', 'Edit', 'MultiEdit', 'NotebookEdit', 'Monitor', 'PowerShell', 'Skill', 'Agent', 'Task', 'mcp__plugin_kage_kage__reply'])
@@ -204,4 +204,40 @@ describe('a run ledger row from before the rename', () => {
     const rows = kageletRows([{ name: 'deploys', text: file(`thread: ${LINK}\nschedule: 0 9 * * *`) }], { runs: `${new Date(2026, 10, 14, 9).toISOString()}\tspec-deploys\tC:1.1#side-spec-deploys\n`, costs: '', now })
     assert.equal(rows[0]!.lastRun, new Date(2026, 10, 14, 9).getTime())
   })
+})
+
+describe('chains (#93): after: <kagelet> runs a kagelet on another one\'s output', () => {
+  const k = (name: string, after?: string) => ({ name, ...(after && { after }) })
+  test('a file may name the kagelet it runs after, and then needs no schedule', () => {
+    const sp = parseKagelet('edit', file(`thread: ${LINK}\nafter: make\ntools: WebFetch`))
+    assert.ok(!('error' in sp))
+    assert.equal(sp.after, 'make')
+    assert.equal(sp.cron, '')
+    assert.match((parseKagelet('edit', file(`thread: ${LINK}\nafter: Make Videos`)) as { error: string }).error, /after must name a kagelet/)
+    assert.match((parseKagelet('edit', file(`thread: ${LINK}`)) as { error: string }).error, /schedule must be a cron line/)
+  })
+  test('refused: a missing kagelet, a cycle, a chain deeper than 5', () => {
+    assert.deepEqual([...chainErrors([k('a'), k('b', 'a'), k('c', 'b')])], [])
+    assert.match(chainErrors([k('b', 'gone')]).get('b')!, /no kagelet named "gone"/)
+    const cycle = chainErrors([k('a', 'c'), k('b', 'a'), k('c', 'b'), k('d', 'c')])
+    assert.deepEqual([...cycle.keys()].sort(), ['a', 'b', 'c', 'd'])
+    assert.match(cycle.get('a')!, /cycle/)
+    assert.match(chainErrors([k('a', 'a')]).get('a')!, /cycle/)
+    const five = [k('a'), k('b', 'a'), k('c', 'b'), k('d', 'c'), k('e', 'd')]
+    assert.deepEqual([...chainErrors(five)], [])
+    assert.match(chainErrors([...five, k('f', 'e')]).get('f')!, /6 steps deep, more than 5/)
+  })
+  test('the manager\'s file keeps after, and a schedule only when it has one', () => {
+    const text = kageletFile({ thread: LINK, schedule: '', after: 'make', tools: ['WebFetch'], job: 'Trim it.', by: 'kage', why: 'w' })
+    assert.equal(typeof text, 'string')
+    assert.match(text as string, /^after: make$/m)
+    assert.doesNotMatch(text as string, /^schedule:/m)
+  })
+})
+
+test('a kagelet whose after: line cannot run shows as broken with the reason', () => {
+  const f = (name: string, after: string) => ({ name, text: file(`thread: ${LINK}\nafter: ${after}`) })
+  const rows = kageletRows([f('a', 'b'), f('b', 'a'), f('c', 'gone')], { runs: '', costs: '', now: 0 })
+  assert.deepEqual(rows.map(r => [r.name, r.state]), [['a', 'broken'], ['b', 'broken'], ['c', 'broken']])
+  assert.match(rows[2]!.error!, /no kagelet named "gone"/)
 })

@@ -43,7 +43,7 @@ import { EVENT_DAYS } from './core/events.ts'
 import { claudeProject, tmuxPanes } from './runtime/tmux-panes.ts'
 import { codeStamp } from './runtime/code-stamp.ts'
 import { clearUpdatedFrom, markUpdatedFrom, pullMain, updatedNote, version } from './runtime/auto-update.ts'
-import { costCap, kageletManager, kageletsDir, ownerNotes, readCommand, readKagelets, syncKagelets } from './runtime/kagelets.ts'
+import { costCap, kageletManager, kageletRoutes, kageletsDir, ownerNotes, readCommand, readKagelets, syncKagelets } from './runtime/kagelets.ts'
 import { kageletRows } from './core/kagelets.ts'
 import { dailyCap } from './core/kagelet-view.ts'
 import { askHub } from './cli/home.ts'
@@ -131,7 +131,7 @@ const toSession = (key: string, task: Task) => {
   if (r !== 'failed') {
     limits.delivered(key, task)
     // Only SDK sessions report a turn's end, so a tmux pane gets no run events.
-    if (sdk && !onPane.has(key)) runs.start(key, task.scheduled ? `scheduled ${task.job ?? ''}` : `task from the ${senderOf(task)}`, { fresh: !!task.scheduled })
+    if (sdk && !onPane.has(key)) runs.start(key, task.scheduled ? `scheduled ${task.job ?? ''}` : `task from the ${senderOf(task)}`, { fresh: !!task.scheduled, ...(task.chain && { chain: task.chain }) })
   }
   return r
 }
@@ -232,6 +232,9 @@ const kagelets = (now: number) => {
 // The manager's side, for Kage's owner sessions (runtime/kage-tools.ts), and the owner's notes to a kagelet.
 const manager = kageletManager({ dir: KAGELETS, max: MAX_KAGELETS, ledgers, sync: kagelets, runNow: (id, now) => schedules.runNow(id, now), store, envCommand: env.KAGE_DB_READ_COMMAND, log })
 const notes = ownerNotes(store)
+// Chains and kagelet messages (#93): the hub hands one kagelet's output or message to another, with no Kage turn.
+const routes = kageletRoutes({ dir: KAGELETS, workDir: `${DIR}/files`, store, ledgers, runs, deliver: (key, task) => toSession(key, task),
+  capUsd: KAGELET_USD, chainUsd: Number(env.KAGE_KAGELET_CHAIN_USD || 5), log })
 let kageletsRefused = false
 const sdk = sdkLib ? sdkSessions({
   sdk: sdkLib.lib,
@@ -244,6 +247,7 @@ const sdk = sdkLib ? sdkSessions({
     dbRead: { command: () => readCommand(env.KAGE_DB_READ_COMMAND, store), maxRows: Number(env.KAGE_DB_READ_MAX_ROWS) || 200 },
     kagelets: { list: () => manager.list(Date.now()), manage: (a, ask) => manager.manage(a, Date.now(), ask) }, approve,
     event: (kind, detail) => runs.emit(key, kind, detail),
+    onReport: r => routes.reported(key, r), message: (to, text, file) => routes.message(key, to, text, file),
   }),
   hasTranscript: tmux.hasTranscript,
   toHub: (key, m) => routeReply(key, m, replies),
@@ -257,7 +261,7 @@ const sdk = sdkLib ? sdkSessions({
   onStart: () => store.saveSessions(d.saved()),
   onResult: (key, total, resumed) => {
     const usd = turnCost(costTotals.get(key), total, resumed)
-    runs.end(key, `$${(usd ?? 0).toFixed(2)}`, d.saved()[key] ? `${PROJECT}/${d.saved()[key]}.jsonl` : '')
+    routes.ended(key, usd ?? 0, d.saved()[key] ? `${PROJECT}/${d.saved()[key]}.jsonl` : '')
     if (usd === undefined) return
     costTotals.set(key, total)
     ledgers.add('costs', [key, String(usd), String(total)])

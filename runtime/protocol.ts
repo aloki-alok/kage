@@ -15,6 +15,7 @@ export type Task = {
   job?: string       // the schedule this run belongs to (runtime/scheduler.ts)
   agent?: { app: string; tag?: string }   // a listed agent posted it (core/agents.ts); tag: its Slack user id, when the registry has it
   scheduled?: true   // Kage started it itself (a schedule, dream), so it answers no open question
+  chain?: string     // the kagelet chain this run is a step of (runtime/kagelets.ts kageletRoutes)
 }
 export type Verdict = { type: 'verdict'; request_id: string; behavior: 'allow' | 'deny' }
 export type ToSession = Task | Verdict

@@ -116,7 +116,7 @@ function manager(max = 10, envCommand?: string) {
   const reports: string[] = []
   const store = openStore(':memory:')
   const m = kageletManager({
-    dir, max, ledgers: { text: (n: string) => n === 'reports' ? reports.join('') : '', add: (n, cells) => { if (n === 'grants') grants.push(cells) } },
+    dir, max, ledgers: { events: () => [], text: (n: string) => n === 'reports' ? reports.join('') : '', add: (n, cells) => { if (n === 'grants') grants.push(cells) } },
     sync: now => { synced.push(now) },
     runNow: id => { ran.push(id); return undefined },
     store, envCommand, log: l => logs.push(l),
