@@ -1,4 +1,4 @@
-// kage slack upgrade: puts the current manifest on the clipboard, opens the app's manifest page, and waits for the new scopes.
+// kage slack upgrade: puts the current manifest on the clipboard, opens the app's page, and waits for the new scopes.
 import { spawnSync } from 'node:child_process'
 import { authTest, checkScopes } from '../runtime/slack-scopes.ts'
 import { settings } from './home.ts'
@@ -20,11 +20,12 @@ if (cmd === 'upgrade') {
   const manifest = spawnSync(process.execPath, [new URL('./manifest.ts', import.meta.url).pathname], { encoding: 'utf8', env: { ...process.env, KAGE_NAME: config.name || 'kage' } }).stdout
   const tryRun = (bin: string, args: string[], input?: string) => spawnSync(bin, args, { input, stdio: [input === undefined ? 'ignore' : 'pipe', 'ignore', 'ignore'] }).status === 0
   const copied = tryRun('pbcopy', [], manifest) || tryRun('wl-copy', [], manifest) || tryRun('xclip', ['-selection', 'clipboard'], manifest)
-  const url = `https://api.slack.com/apps/${appId}/app-manifest`
+  // The manifest editor has no stable deep link (api.slack.com/apps/<id>/app-manifest is a 404), so open the app's page.
+  const url = `https://api.slack.com/apps/${appId}`
   tryRun('open', [url]) || tryRun('xdg-open', [url])
   if (!copied) console.log(`No clipboard tool found. Copy this manifest:\n\n${manifest}\n`)
   console.log(`1. ${copied ? 'The manifest is on your clipboard. ' : ''}Open ${url} if it did not open.`)
-  console.log('2. Select all the text there, paste the manifest over it, and click Save Changes.')
+  console.log('2. Click App Manifest in the left sidebar. Select all the text there, paste the manifest over it, and click Save Changes.')
   console.log('3. Click "Reinstall to Workspace" in the yellow banner, then click Allow.')
   console.log('4. If Slack shows new tokens under Install App, run kage save to enter them.')
   console.log('Waiting for the new scopes (up to 10 minutes)...')
