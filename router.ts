@@ -532,7 +532,7 @@ const BOOT_CODE = codeStamp(CODE)
 // The version of the code this hub runs, read once: kage status and kage doctor show it from this file.
 const VERSION = version(CODE)
 writeFileSync(`${DIR}/version`, `${VERSION}\n`, { mode: 0o600 })
-// Each boot with its commit: the auto-release soak runs from the first boot on one commit (core/auto-update.ts soakSince).
+// Each boot with its commit: the auto-release soak runs from the first boot on one commit (core/auto-update.ts soakRuns).
 ledgers.add('boots', [VERSION.split(' ')[0]!])
 let npmFailedFor = 0   // the code stamp whose npm ci failed: not tried again until the code moves
 function selfUpdate(now: number) {
@@ -562,12 +562,12 @@ async function autoUpdate() {
 
 // The owner's hub makes the release that other installs follow (ADR 0013). A skip logs one line and DMs nothing.
 // Hourly, because the job clock restarts with the hub: a daily period would never fire on a hub that restarts daily.
-// The gate is cheap and skips fast, and a skip repeated word for word is logged once.
+// A line about the next release candidate and when its gate opens goes out every hour, so kage logs answers "when is the next release?". Other skips repeat once.
 let lastSkip = ''
 async function autoRelease(now: number) {
-  const r = await releaseIfSoaked(CODE, DIR, VERSION, ledgers.text('boots'), now).catch(e => ({ skip: `failed: ${e}`, broke: true }))
+  const r = await releaseIfSoaked(CODE, DIR, ledgers.text('boots'), now).catch(e => ({ skip: `failed: ${e}`, broke: true, candidate: undefined }))
   if ('broke' in r) void slack.notifyOwner(`Kage's release stopped part way: ${r.skip}. kage release finishes it.`)
-  if ('skip' in r) { if (r.skip !== lastSkip) log(`auto-release did nothing: ${r.skip}`); lastSkip = r.skip; return }
+  if ('skip' in r) { if (r.candidate || r.skip !== lastSkip) log(`auto-release did nothing: ${r.skip}`); lastSkip = r.skip; return }
   log(`auto-release made v${r.version}`)
   void slack.notifyOwner(`Released Kage v${r.version}. <${r.url}|Release notes>`)
 }
