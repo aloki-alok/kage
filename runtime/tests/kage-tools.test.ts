@@ -636,6 +636,19 @@ describe("the owner's browser", () => {
     }
     assert.deepEqual(asked, [])
   })
+  test("an owner-verified voice call and an agent's task made with the owner's token never reach the browser", async () => {
+    for (const t of [{ channel: 'voice', agent: false }, { channel: 'C1', agent: true }]) {
+      const asked: string[] = []
+      const s = setup({ browser: fakeChrome(asked) })
+      const base = s.task({ fromOwner: true, channel: t.channel })
+      s.t.onTask(t.agent ? { ...base, agent: { app: 'ATEST0001' } } : base)
+      for (const name of s.t.tools.map(x => x.name).filter(n => n.startsWith('browser_'))) {
+        const r = await s.call(name, { channel: t.channel, thread_ts: '5.5', tab: 3, url: 'https://docs.example.com', action: 'click', ref: 1 })
+        assert.equal(r.isError, true, `${name} ${JSON.stringify(t)}`)
+      }
+      assert.deepEqual(asked, [], JSON.stringify(t))
+    }
+  })
   test('with no extension set up, the instructions point the owner at kage add browser, and only then', () => {
     assert.match(setup().t.instructions, /kage add browser/)
     assert.doesNotMatch(setup({ browser: fakeChrome() }).t.instructions, /kage add browser/)
