@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # The kage command. `./setup.sh link` puts it on PATH as `kage`; `kage help` lists every command.
-# Commands live in the COMMANDS table below and in the case at the bottom; core/cli-help.test.ts
+# Commands live in the COMMANDS table below and in the case at the bottom; core/tests/cli-help.test.ts
 # checks that the two list the same names.
 set -euo pipefail
 cd "$(dirname "$(readlink -f "$0")")"  # readlink: works when run through the kage link
