@@ -33,6 +33,8 @@ export function closedThreads(o: {
       if (p.reply && t) o.say(key, t, p.reply)
       if (p.dm) o.tellOwner(p.dm)
     },
+    // A thread the safety check closed, for a caller that must not hand it a task at all.
+    isClosed: (key: string) => closed().has(threadOf(key)),
     // true: the task is dropped. The owner's task reopens the thread instead, but not a schedule set up before it closed.
     closedTo(key: string, t: Task): boolean {
       const thread = threadOf(key)

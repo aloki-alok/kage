@@ -43,9 +43,9 @@ import { EVENT_DAYS } from './core/events.ts'
 import { claudeProject, tmuxPanes } from './runtime/tmux-panes.ts'
 import { codeStamp } from './runtime/code-stamp.ts'
 import { clearUpdatedFrom, markUpdatedFrom, pullMain, updatedNote, version } from './runtime/auto-update.ts'
-import { costCap, kageletDeliver, kageletManager, kageletsDir, ownerNotes, readCommand, readKagelets, syncKagelets } from './runtime/kagelets.ts'
+import { costCap, kageletDeliver, kageletManager, kageletRoutes, kageletsDir, ownerNotes, readCommand, readKagelets, syncKagelets } from './runtime/kagelets.ts'
 import { budgetLeft, COST_FLAG, costFlags, kageletRows } from './core/kagelets.ts'
-import { capError, dailyCap, totalCap } from './core/kagelet-view.ts'
+import { capError, chainCap, dailyCap, totalCap } from './core/kagelet-view.ts'
 import { askHub } from './cli/home.ts'
 import { hubLock } from './runtime/hub-lock.ts'
 import { npmCi, packagesStale, rotate } from './runtime/hub-log.ts'
@@ -131,12 +131,12 @@ const toSession = (key: string, task: Task) => {
   if (r !== 'failed') {
     limits.delivered(key, task)
     // Only SDK sessions report a turn's end, so a tmux pane gets no run events.
-    if (sdk && !onPane.has(key)) runs.start(key, task.scheduled ? `scheduled ${task.job ?? ''}` : `task from the ${senderOf(task)}`, { fresh: !!task.scheduled })
+    if (sdk && !onPane.has(key)) runs.start(key, task.scheduled ? `scheduled ${task.job ?? ''}` : `task from the ${senderOf(task)}`, { fresh: !!task.scheduled, ...(task.handoff && { chain: task.handoff.chain, hops: task.handoff.hops }) })
   }
   return r
 }
 // A thread the safety check stopped starts over, closed to teammates until the owner writes (runtime/closed-threads.ts).
-const { blocked, closedTo } = closedThreads({
+const { blocked, closedTo, isClosed } = closedThreads({
   store,
   reset: key => d.reset(key),
   say: (key, t, text) => void postAsKage({ title: Title, bot, user }, t.meta.channel, t.meta.thread_ts || undefined, text).then(
@@ -213,7 +213,7 @@ const KAGELETS = kageletsDir(DIR, log)
 // The names from before the rename still read.
 const MAX_KAGELETS = Number(env.KAGE_MAX_KAGELETS || env.KAGE_MAX_SPECIALISTS || 10)
 // Off unless set (#96); a value that does not read as dollars is said once, here.
-const CAPS = { each: dailyCap(env), total: totalCap(env) }
+const CAPS = { each: dailyCap(env), total: totalCap(env), chain: chainCap(env) }
 if (capError(env)) log(capError(env)!)
 // Only the SDK runner enforces a grant, so with tmux panes no kagelet runs: their schedules are removed.
 // A kagelet over its daily cost cap is paused and flagged first, so this sync already drops its schedule.
@@ -236,6 +236,9 @@ const kagelets = (now: number) => {
 // The manager's side, for Kage's owner sessions (runtime/kage-tools.ts), and the owner's notes to a kagelet.
 const manager = kageletManager({ dir: KAGELETS, max: MAX_KAGELETS, ledgers, sync: kagelets, runNow: (id, now) => schedules.runNow(id, now), store, envCommand: env.KAGE_DB_READ_COMMAND, log, tell: text => void slack.notifyOwner(text) })
 const notes = ownerNotes(store)
+// Chains and kagelet messages (#93): the hub hands one kagelet's output or message to another, with no Kage turn.
+const routes = kageletRoutes({ dir: KAGELETS, store, ledgers, runs, deliver: (key, task) => toSession(key, task),
+  idle: key => !isClosed(key) && d.ready(key) === 'ready' && d.hasFreeSlot(key), paused: now => limits.paused(now)?.until, capUsd: CAPS.each, chainUsd: CAPS.chain, log })
 let kageletsRefused = false
 const sdk = sdkLib ? sdkSessions({
   sdk: sdkLib.lib,
@@ -248,6 +251,7 @@ const sdk = sdkLib ? sdkSessions({
     dbRead: { command: () => readCommand(env.KAGE_DB_READ_COMMAND, store, key.split('#side-kagelet-')[1] ?? ''), maxRows: Number(env.KAGE_DB_READ_MAX_ROWS) || 200 },
     kagelets: { list: () => manager.list(Date.now()), manage: (a, ask) => manager.manage(a, Date.now(), ask) }, approve,
     event: (kind, detail) => runs.emit(key, kind, detail),
+    onReport: r => routes.reported(key, r), message: (to, text) => routes.message(key, to, text),
   }),
   hasTranscript: tmux.hasTranscript,
   toHub: (key, m) => routeReply(key, m, replies),
@@ -259,13 +263,13 @@ const sdk = sdkLib ? sdkSessions({
   },
   ownerMemory: MEM.owner,
   onStart: () => store.saveSessions(d.saved()),
-  onResult: (key, total, resumed) => {
+  onResult: (key, total, resumed, limited) => {
     const usd = recordCost(key, total, resumed)
-    runs.end(key, `$${(usd ?? 0).toFixed(2)}`, d.saved()[key] ? `${PROJECT}/${d.saved()[key]}.jsonl` : '')
+    routes.ended(key, usd ?? 0, d.saved()[key] ? `${PROJECT}/${d.saved()[key]}.jsonl` : '', Date.now(), limited)
   },
   budgetOf: key => key.includes('#side-kagelet-') ? budgetLeft(kageletRows(readKagelets(KAGELETS), { runs: '', costs: ledgers.text('costs'), now: Date.now() }), key, CAPS) : undefined,
   onBlocked: blocked,
-  onTurn: (key, tasks, limit) => limits.turn(key, tasks, limit, Date.now()),
+  onTurn: (key, tasks, limit, done) => limits.turn(key, tasks, limit, Date.now(), done),
   // A lane whose file is gone keeps no tools, rather than falling back to approval cards.
   // A lane from before the rename (#side-spec-) gets no tools either.
   grantOf: key => grants.get(key) ?? (key.includes('#side-kagelet-') || key.includes('#side-spec-') ? [] : undefined),
@@ -290,7 +294,7 @@ const d: Dispatcher<ToSession> = new Dispatcher<ToSession>(runner, {
 })
 // The usage-limit pause: a turn that ends on the limit keeps its message and replays it at the reset (runtime/limit-pause.ts).
 const limits = limitPause({
-  store, log,
+  store, log, settle: (tasks, done) => routes.settle(tasks, done),
   tellOwner: text => void slack.notifyOwner(text),
   end: key => d.end(key).filter(m => m.type === 'task'),
   // A tmux pane reports no turn end, so its messages are handled at delivery, as before.
@@ -505,6 +509,8 @@ runJobs([
   { name: 'kagelets', every: 60_000, run: kagelets },
   { name: 'dream', every: 10 * 60_000, run: dream },
   { name: 'retro', every: 10 * 60_000, run: weeklyRetro },
+  // A kagelet message waits until its target is idle, then starts a run of its own (runtime/kagelets.ts).
+  { name: 'kagelet messages', every: 20_000, run: now => routes.pump(now) },
   { name: 'events', every: 3_600_000, run: now => ledgers.pruneEvents(new Date(now - EVENT_DAYS * 86_400_000).toISOString()) },
 ])
 
@@ -555,6 +561,8 @@ if (updated) { log(updated); void slack.notifyOwner(updated).then(sent => { if (
 // Messages the last run took but never handled (it died in between) run now. Older than 10 minutes, they are let go.
 // Email needs no replay: SQS resends a mail until it is deleted after handling.
 store.prune(Date.now() - 7 * 86_400_000)
+// Kagelet messages the last run stored but no run read go again (runtime/kagelets.ts kageletRoutes).
+routes.replay(Date.now())
 const missed = store.unhandled(Date.now() - 10 * 60_000)
 if (missed.length) log(`replaying ${missed.length} message${missed.length === 1 ? '' : 's'} the last run heard but never handled`)
 for (const r of missed) {

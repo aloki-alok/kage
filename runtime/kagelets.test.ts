@@ -116,7 +116,7 @@ function manager(max = 10, envCommand?: string) {
   const reports: string[] = []
   const store = openStore(':memory:')
   const m = kageletManager({
-    dir, max, ledgers: { text: (n: string) => n === 'reports' ? reports.join('') : '', add: (n, cells) => { if (n === 'grants') grants.push(cells) } },
+    dir, max, ledgers: { events: () => [], text: (n: string) => n === 'reports' ? reports.join('') : '', add: (n, cells) => { if (n === 'grants') grants.push(cells) } },
     sync: now => { synced.push(now) },
     runNow: id => { ran.push(id); return undefined },
     store, envCommand, log: l => logs.push(l), tell: t => told.push(t),
@@ -299,7 +299,7 @@ test('a standing approval never covers a different read command, a changed setti
   await e.m.manage({ action: 'save', name: 'calls', ...calls }, 1, o.ask)
   await e.m.manage({ action: 'save', name: 'other', ...calls }, 2, o.ask)
   assert.equal(o.cards.length, 1)
-  const changed = kageletManager({ dir: e.dir, max: 10, ledgers: { text: () => '', add: () => {} }, sync: () => {}, runNow: () => undefined, store: e.store, envCommand: 'env-read --host=new', log: () => {}, tell: () => {} })
+  const changed = kageletManager({ dir: e.dir, max: 10, ledgers: { text: () => '', add: () => {}, events: () => [] }, sync: () => {}, runNow: () => undefined, store: e.store, envCommand: 'env-read --host=new', log: () => {}, tell: () => {} })
   await changed.manage({ action: 'save', name: 'third', ...calls }, 3, o.ask)
   assert.equal(o.cards.length, 2)
 })
@@ -449,4 +449,13 @@ test('only the hub moves the old folder; a kage command reads it where it is, so
   assert.equal(kageletsDir(dir, l => logs.push(l)), `${dir}/kagelets`)
   assert.match(logs.join('\n'), /specialists.*other\.md|1 file/)
   assert.equal(kageletsDir(mkdtempSync(`${tmpdir()}/kagelet-`), () => {}).endsWith('/kagelets'), true)
+})
+
+test('a sync runs no kagelet whose after: line makes a cycle, and logs why once', () => {
+  const store = openStore(':memory:')
+  const logs: string[] = []
+  const chained = (name: string, after: string) => ({ name, text: `---\nthread: ${LINK}\nafter: ${after}\ntools: WebFetch\n---\nJob.\n` })
+  const grants = syncKagelets([chained('a', 'b'), chained('b', 'a')], store, 1000, l => logs.push(l))
+  assert.equal(grants.size, 0)
+  assert.match(logs.join('\n'), /kagelet a does not run: after makes a cycle/)
 })

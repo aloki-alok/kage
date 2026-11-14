@@ -24,6 +24,8 @@ export function limitPause(o: {
   tellOwner: (text: string) => void                    // a DM to the owner
   // false for a session whose runner reports no turn end (a tmux pane): its messages are handled at delivery.
   defers?: (key: string) => boolean
+  // Every task list a turn or a stop ends, so a kagelet message is read (done) or waits again (runtime/kagelets.ts settle).
+  settle?: (tasks: Task[], done: boolean) => void
   time?: (at: number, now: number) => string
 }) {
   let until: number | undefined
@@ -86,8 +88,10 @@ export function limitPause(o: {
     // What connectors call after they delivered a message. One that waits for its turn, or for the reset, stays.
     handled(source: string) { if (!open.has(source)) o.store.handled(source) },
     // A turn ended, or its session closed. No limit: its messages are handled. A limit: they are held, and the pause starts or moves.
-    turn(key: string, tasks: Task[], limit: Limit | undefined, now: number) {
+    // done: the turn ended with its result, so it finished these tasks; with no done, they were cut, closed or dropped.
+    turn(key: string, tasks: Task[], limit: Limit | undefined, now: number, done = false) {
       if (!limit) {
+        o.settle?.(tasks, done)
         // Only the thread's main session clears it: a lane's turn may have begun before the limit.
         if (key === threadOf(key) && key in told) setTold(key, undefined, now)
         for (const t of tasks) { const s = sourceOf(t); if (s && open.delete(s)) o.store.handled(s) }
@@ -98,7 +102,10 @@ export function limitPause(o: {
       until = Math.max(until ?? 0, limit.until && limit.until > now ? limit.until : now + RETRY[limit.kind])
       o.log(`${limit.kind === 'overloaded' ? 'overload' : 'usage limit'} hit in ${key}: paused until ${new Date(until).toISOString()}, ${tasks.length} task${tasks.length === 1 ? '' : 's'} held`)
       // The session closes first: what the dispatcher still had for it was never read, and is held with the rest.
-      for (const t of [...tasks, ...o.end(key) ?? []]) if (!keep(key, t, limit, now)) o.log('cannot hold a task with no inbox message', key, t.meta.place)
+      // A kagelet message's task has no job, so it is never owed: its message waits in the store (runtime/kagelets.ts).
+      const all = [...tasks, ...o.end(key) ?? []]
+      o.settle?.(all, false)
+      for (const t of all) if (!keep(key, t, limit, now) && !t.handoff) o.log('cannot hold a task with no inbox message', key, t.meta.place)
     },
     // At the reset time: held messages replay oldest first, then each owed scheduled run once.
     async tick(now: number) {

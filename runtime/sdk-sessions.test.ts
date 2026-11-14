@@ -1,6 +1,6 @@
 import { describe, test } from 'node:test'
 import assert from 'node:assert/strict'
-import { mkdtempSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { createSdkMcpServer, tool } from '@anthropic-ai/claude-agent-sdk'
@@ -8,47 +8,15 @@ import { z } from 'zod'
 import { Dispatcher } from '../core/sessions.ts'
 import { sessionTools } from './kage-tools.ts'
 import type { Task, ToSession } from './protocol.ts'
-import { costRecorder, openLedgers } from './ledger.ts'
-import { kageletDeliver, ownerNotes } from './kagelets.ts'
+import { costRecorder, openLedgers, runEvents } from './ledger.ts'
+import { kageletDeliver, kageletRoutes, ownerNotes } from './kagelets.ts'
+import { kageletFile } from '../core/kagelets.ts'
 import { scheduler } from './scheduler.ts'
 import { parseSessionKey } from '../core/conversations.ts'
 import { sdkSessions } from './sdk-sessions.ts'
 import { limitPause } from './limit-pause.ts'
 import { openStore } from './store.ts'
-
-// A fake Agent SDK: each query() records its options and the user messages it reads, and the test
-// pushes SDK messages out of it. Its handshake completes unless silent, and then it says nothing
-// until it has a prompt, as the real one may. end() makes the Claude
-// process exit on its own.
-function fakeSdk(o: { silent?: boolean } = {}) {
-  const runs: { options: any; said: string[]; emit: (m: object) => void; end: () => void; closed: boolean; set: object[] }[] = []
-  const query = ({ prompt, options }: { prompt: AsyncIterable<any>; options: any }) => {
-    const out: object[] = []
-    let wake = () => {}
-    let done = false
-    const run = {
-      options, said: [] as string[], closed: false, set: [] as object[],
-      emit: (m: object) => { out.push(m); wake() },
-      end: () => { done = true; wake() },
-    }
-    runs.push(run)
-    void (async () => { for await (const m of prompt) run.said.push(m.message.content) })()
-    return {
-      initializationResult: () => o.silent ? new Promise(() => {}) : Promise.resolve({}),
-      close() { run.closed = true; run.end() },
-      async setModel(model?: string) { run.set.push({ model }) },
-      async applyFlagSettings(x: object) { run.set.push(x) },
-      async *[Symbol.asyncIterator]() {
-        while (true) {
-          while (out.length) yield out.shift()
-          if (done) return
-          await new Promise<void>(r => { wake = r })
-        }
-      },
-    }
-  }
-  return { runs, query }
-}
+import { fakeSdk } from './fake-sdk.ts'
 
 const tick = (ms = 5) => new Promise(r => setTimeout(r, ms))
 const ID = '11111111-1111-4111-8111-111111111111'
@@ -58,7 +26,7 @@ function setup(o: { transcript?: boolean; silent?: boolean; dmFails?: boolean; g
   const sdk = fakeSdk(o)
   const results: [string, number, boolean][] = []
   const blocks: [string, string[], string | null][] = []
-  const turns: [string, string[], object | undefined][] = []
+  const turns: [string, string[], object | undefined, true | undefined][] = []
   const tools: [string, string, string | undefined][] = []
   const posts: string[] = []
   const slack = {
@@ -90,7 +58,7 @@ function setup(o: { transcript?: boolean; silent?: boolean; dmFails?: boolean; g
     onResult: (key, total, resumed) => { results.push([key, total, resumed]); o.onResult?.(key, total, resumed) },
     budgetOf: key => o.budgets?.[key],
     onBlocked: (key, turn, category) => { blocks.push([key, turn.map(t => t.content), category]) },
-    onTurn: (key, tasks, limit) => { turns.push([key, tasks.map(t => t.content), limit]) },
+    onTurn: (key, tasks, limit, done) => { turns.push([key, tasks.map(t => t.content), limit, done]) },
     onTool: (key, tool, refused) => { tools.push([key, tool, refused]) },
   })
   let n = 0
@@ -134,7 +102,7 @@ describe('Kage sessions on the Agent SDK', () => {
     run.emit({ type: 'result', total_cost_usd: 0, is_error: true })
     await tick()
     // Both tasks: the one sent mid-turn was not read either.
-    assert.deepEqual(t.turns, [['C1:5.5', ['Task from Sam: one', 'Task from Sam: two, sent mid-turn'], { kind: 'rate_limit', until: 1_800_000_000_000 }]])
+    assert.deepEqual(t.turns, [['C1:5.5', ['Task from Sam: one', 'Task from Sam: two, sent mid-turn'], { kind: 'rate_limit', until: 1_800_000_000_000 }, undefined]])
     assert.deepEqual(t.posts, [])
     // Closing the session afterwards reports nothing more for those tasks.
     t.d.end('C1:5.5')
@@ -157,7 +125,8 @@ describe('Kage sessions on the Agent SDK', () => {
       await tick()
       for (const m of msgs) t.sdk.runs[0]!.emit(m)
       await tick()
-      assert.deepEqual(t.turns, [['C1:5.5', ['Task from Sam: hi'], limit]], JSON.stringify(msgs))
+      // done only for a turn that ended with its work: a limited one is not.
+      assert.deepEqual(t.turns, [['C1:5.5', ['Task from Sam: hi'], limit, limit ? undefined : true]], JSON.stringify(msgs))
     }
   })
   test('a Claude process that exits on the limit before any result still reports its tasks as limited', async () => {
@@ -167,7 +136,7 @@ describe('Kage sessions on the Agent SDK', () => {
     t.sdk.runs[0]!.emit({ type: 'assistant', parent_tool_use_id: null, error: 'rate_limit', message: { content: [] } })
     t.sdk.runs[0]!.end()
     await tick()
-    assert.deepEqual(t.turns, [['C1:5.5', ['Task from Sam: hi'], { kind: 'rate_limit' }]])
+    assert.deepEqual(t.turns, [['C1:5.5', ['Task from Sam: hi'], { kind: 'rate_limit' }, undefined]])
   })
   test('a turn that ends well reports the tasks it read; one sent mid-turn waits for the next turn; a closed session reports the rest', async () => {
     const t = setup()
@@ -176,9 +145,9 @@ describe('Kage sessions on the Agent SDK', () => {
     t.d.task('C1:5.5', t.task({ content: 'Task from Sam: two' }), 1)
     t.sdk.runs[0]!.emit({ type: 'result', total_cost_usd: 1 })
     await tick()
-    assert.deepEqual(t.turns, [['C1:5.5', ['Task from Sam: one'], undefined]])
+    assert.deepEqual(t.turns, [['C1:5.5', ['Task from Sam: one'], undefined, true]])
     t.d.end('C1:5.5')
-    assert.deepEqual(t.turns[1], ['C1:5.5', ['Task from Sam: two'], undefined])
+    assert.deepEqual(t.turns[1], ['C1:5.5', ['Task from Sam: two'], undefined, undefined])
   })
   test('a thread with a transcript resumes it', () => {
     const t = setup({ transcript: true })
@@ -595,22 +564,38 @@ test('the usage limit, whole: no post but the notice, the inbox message kept, an
 })
 
 test('every path that runs a kagelet turn writes a costs row (#96)', async () => {
-  // The paths on main that start a kagelet turn. When #93 lands, add its chain handoff and kagelet message here.
-  const LANE = 'C1:5.5#side-kagelet-calls'
+  // Every path that starts a kagelet turn: its schedule, run now, an owner note, and the chain route (#93): an
+  // after: handoff from src, and a message from src's run.
+  const LINK = 'https://test.slack.com/archives/C1/p1700000000123456'
+  const LANE = 'C1:1700000000.123456#side-kagelet-calls', SRC = 'C1:1700000000.123456#side-kagelet-src'
   const now = new Date(2026, 10, 14, 9, 0, 30).getTime()
-  const paths: Record<string, (x: { schedules: ReturnType<typeof scheduler>; notes: ReturnType<typeof ownerNotes> }) => void> = {
+  type Hub = { schedules: ReturnType<typeof scheduler>; notes: ReturnType<typeof ownerNotes>; routes: ReturnType<typeof kageletRoutes>; runs: ReturnType<typeof runEvents> }
+  const paths: Record<string, (x: Hub) => void> = {
     schedule: x => x.schedules.tick(now),
     'run now': x => { x.schedules.runNow('kagelet-calls', now) },
-    'owner note': x => { x.notes.wrote([LANE], 'C1', '5.5', 'skip staging today'); x.schedules.tick(now) },
+    'owner note': x => { x.notes.wrote([LANE], 'C1', '1700000000.123456', 'skip staging today'); x.schedules.tick(now) },
+    'chain handoff': x => { x.runs.emit(SRC, 'report', 'ok'); x.routes.reported(SRC, { needs: '', output: 'https://example.com/calls.csv' }); x.routes.ended(SRC, 0, '', now) },
+    'kagelet message': x => assert.equal(x.routes.message(SRC, 'calls', 'count these', now), 'sent to calls'),
   }
   for (const [path, start] of Object.entries(paths)) {
-    const ledgers = openLedgers(mkdtempSync(join(tmpdir(), 'kage-costs-')))
+    const dir = mkdtempSync(join(tmpdir(), 'kage-costs-'))
+    const ledgers = openLedgers(dir)
     const t = setup({ onResult: costRecorder(ledgers) })
     const store = openStore(':memory:')
     store.seen(LANE, parseSessionKey(LANE)!.conversation, 'calls (kagelet)', 0)
     store.addSchedule({ id: 'kagelet-calls', key: LANE, cron: '0 9 * * *', prompt: 'Count failed calls.', recurring: true, fromOwner: false, created: now - 3_600_000, lastFired: 0 })
+    mkdirSync(`${dir}/kagelets`)
+    const kagelet = (name: string, f: { schedule?: string; after?: string }, job: string) =>
+      writeFileSync(`${dir}/kagelets/${name}.md`, kageletFile({ thread: LINK, schedule: f.schedule ?? '', ...f.after && { after: f.after }, tools: ['WebFetch'], job, by: 'owner', why: 'w' }) as string)
+    kagelet('src', { schedule: '0 8 * * *' }, 'Fetch the calls.')
+    kagelet('calls', { after: 'src' }, 'Count failed calls.')
     const notes = ownerNotes(store)
-    start({ notes, schedules: scheduler({ store, failed: () => {}, deliver: kageletDeliver(notes, (k, task) => t.d.task(k, task, now)), ready: k => t.d.ready(k), trusted: () => false }) })
+    const deliver = kageletDeliver(notes, (k, task) => t.d.task(k, task, now))
+    const runs = runEvents(ledgers, () => 'trace-1')
+    runs.start(SRC, 'scheduled', { fresh: true })   // src's run, open
+    const routes = kageletRoutes({ dir: `${dir}/kagelets`, store, ledgers, runs, deliver,
+      idle: k => t.d.ready(k) === 'ready' && t.d.hasFreeSlot(k), paused: () => undefined, log: () => {} })
+    start({ notes, runs, routes, schedules: scheduler({ store, failed: () => {}, deliver, ready: k => t.d.ready(k), trusted: () => false }) })
     await tick()
     const run = t.sdk.runs.at(-1)
     assert.ok(run, `${path}: no session started`)

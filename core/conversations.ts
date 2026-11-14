@@ -80,3 +80,7 @@ export function matchThreads<R extends ThreadRow>(rows: R[], arg: string): R[] {
   const want = arg.trim().toLowerCase()
   return want ? rows.filter(r => r.key === arg.trim() || r.place.toLowerCase().includes(want)) : []
 }
+
+// The folder a thread's files live in, under the files folder: send_file sends and a kagelet message carries only
+// what is in its own thread's folder.
+export const filesFolderName = (channel: string, thread_ts: string) => `${channel}_${thread_ts}`.replace(/[^\w.-]/g, '_')

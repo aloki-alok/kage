@@ -45,11 +45,13 @@ export function sdkSessions(o: {
   options: Options                                 // cwd, settings, settingSources, the claude binary
   ownerMemory: string
   onStart?: () => void                            // a new id may have been minted: save the map
-  onResult?: (key: string, totalUsd: number, resumed: boolean) => void   // a turn ended: the session's running cost so far
+  // A turn ended: the session's running cost so far. limited: it ended on the usage limit, so it did no work.
+  onResult?: (key: string, totalUsd: number, resumed: boolean, limited: boolean) => void
   onBlocked?: (key: string, turn: Task[], category: string | null) => void   // the safety check stopped a turn (core/blocks.ts)
   // A turn ended, or the session closed: the tasks it leaves behind. limit: it ended on the usage limit or an
   // overload, so it did none of them (runtime/limit-pause.ts).
-  onTurn?: (key: string, tasks: Task[], limit?: Limit) => void
+  // done: the turn ended with its result, so it finished these tasks; with no done, they were cut or closed.
+  onTurn?: (key: string, tasks: Task[], limit?: Limit, done?: true) => void
   // A kagelet lane (core/kagelets.ts): its grant. Only these tools, and it approves nothing.
   grantOf?: (key: string) => string[] | undefined
   // A kagelet lane's tool call, for the event log: the tool's name and why it was refused, never its input.
@@ -178,7 +180,7 @@ export function sdkSessions(o: {
             limit = status === 429 ? 'rate_limit' : status === 529 ? 'overloaded' : undefined
           }
           // Every result reports its cost, a limit's too: the money was spent either way.
-          if (m.type === 'result') o.onResult?.(key, m.total_cost_usd, resumed)
+          if (m.type === 'result') o.onResult?.(key, m.total_cost_usd, resumed, !!limit)
           if (m.type === 'result' && limit) {
             // The turn did nothing, and a task sent mid-turn would only hit the limit too: all of them go back.
             const tasks = s.turn.map(x => x.task)
@@ -191,7 +193,7 @@ export function sdkSessions(o: {
             blocked = false
             const done = s.turn.filter(x => !x.mid).map(x => x.task)
             s.turn = s.turn.filter(x => x.mid).map(x => ({ ...x, mid: false }))
-            if (done.length) o.onTurn?.(key, done)
+            if (done.length) o.onTurn?.(key, done, undefined, true)
           }
           if (m.type === 'result' && !sawState) s.state = 'idle'
         }
@@ -204,8 +206,13 @@ export function sdkSessions(o: {
       denyAll(s)
       s.state = 'idle'
       if (s.stopped) return
+      // It exited with no result: a kagelet message's turn did not finish it, so it goes back to wait (runtime/kagelets.ts).
+      const lost = s.turn.filter(x => x.task.handoff)
+      if (lost.length) { s.turn = s.turn.filter(x => !x.task.handoff); o.onTurn?.(key, lost.map(x => x.task)) }
       o.hub().disconnect(key, send)
-      const unread = inbox.drain()
+      // Nor does the new process take one it never read: the store hands it out again.
+      const gone = new Set(lost.map(x => channelTag(x.task)))
+      const unread = inbox.drain().filter(u => !gone.has(u.message.content as string))
       setTimeout(() => { if (!s.stopped) open(key, s, unread) }, o.restartMs ?? 3000)
     })()
   }

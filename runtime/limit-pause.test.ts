@@ -304,3 +304,14 @@ describe('a drain before kage restart or kage stop', () => {
     assert.deepEqual(h.notices, [])
   })
 })
+
+test('every task list a turn or a stop ends is settled once: done only for a turn that ended with its result', () => {
+  const settled: string[] = []
+  const pending = [run('b')]
+  const p = limitPause({ store: openStore(':memory:'), notice: () => {}, end: () => pending.splice(0), replay: async () => {}, redeliver: () => {}, log: () => {}, tellOwner: () => {},
+    settle: (ts, done) => settled.push(`${ts.map(t => t.job ?? t.origin.ts).join(',')} ${done}`) })
+  p.turn('k', [slackTask('1.1')], undefined, 0, true)        // the turn ended with its result
+  p.turn('k', [slackTask('2.2')], undefined, 0)              // a stop, a cut, or a task no session took
+  p.turn('k', [run('a')], { kind: 'rate_limit' }, 0, true)   // the limit: never done, and the dispatcher's unread tasks too
+  assert.deepEqual(settled, ['1.1 true', '2.2 false', 'a,b false'])
+})
