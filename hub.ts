@@ -50,10 +50,10 @@ async function crashLoopDm(tokens: { user: string; bot: string }, boots: number,
 }
 
 // The command that starts Claude Code in a tmux pane. A session inherits it, which is how kage commands know they run inside Kage.
-function claudeCommand(route: string | undefined, mem: string) {
+function claudeCommand(route: string | undefined) {
   let tools = ''
   for (const t of ['reply', 'edit_message', 'delete_message', 'send_file', 'message_people', 'schedule', 'unschedule', 'schedules']) tools += ` mcp__kage__${t} mcp__plugin_kage_kage__${t}`
-  tools += ` --disallowedTools CronCreate CronDelete CronList --settings '{"autoMemoryDirectory":"${mem}"}'`
+  tools += ` --disallowedTools CronCreate CronDelete CronList`
   // The plugin route only works once your org approves the channel, so it is opt-in: KAGE_ROUTE=plugin.
   if (route === 'plugin') return `claude --channels plugin:kage@kage --allowedTools${tools}`
   const mcp = JSON.stringify({ mcpServers: { kage: { command: process.execPath, args: [join(DIR, 'server.ts')] } } })
@@ -94,7 +94,7 @@ function claudeCommand(route: string | undefined, mem: string) {
   if (/['"\\]/.test(mem + DIR)) { say('Move kage or KAGE_MEMORY to a path without quotes or backslashes.'); process.exit(0) }
   mkdirSync(mem, { recursive: true })
   process.env.KAGE_ENV = ENV_FILE
-  process.env.KAGE_CLAUDE = claudeCommand(cfg.harness?.route ?? envValue(legacy, 'KAGE_ROUTE'), mem)
+  process.env.KAGE_CLAUDE = claudeCommand(cfg.harness?.route ?? envValue(legacy, 'KAGE_ROUTE'))
   // Sessions work in your home folder, so they have the reach of a normal session; KAGE_CWD changes that.
   // Claude Code files transcripts by folder, so a different folder would forget every thread.
   // harness.cwd wins over a KAGE_CWD an older service unit still sets (kage service on rewrites the unit without it).

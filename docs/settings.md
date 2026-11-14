@@ -139,4 +139,4 @@ When it is on, you type `@kage <task>` in any chat to hand Kage a task. The chat
 
 ## Set by Kage itself
 
-`KAGE_CLAUDE` (the command that starts Claude Code) and `KAGE_THREAD` (a pane's session key) are set by `hub.ts` and the hub, and so are `KAGE_SSM_TOKEN` and `KAGE_SSM_SOCK` (a session's SSM relay). Do not put them in the settings files.
+`KAGE_CLAUDE` (the command that starts Claude Code) and `KAGE_THREAD` (a pane's session key) are set by `hub.ts` and the hub, and so are `KAGE_SSM_TOKEN` and `KAGE_SSM_SOCK` (a session's SSM relay), and `KAGE_PANE_SETTINGS` (the sandbox settings a pane starts Claude Code with). Do not put them in the settings files.
