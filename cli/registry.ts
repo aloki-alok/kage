@@ -5,7 +5,9 @@
 //                                  A pasted mention of the agent in place of its app id also saves its tag, so Kage can address it.
 //   kage remove <person or app id> whoever answers to them goes too
 //   kage list                      add --ids to skip the name lookup
+import { randomBytes } from 'node:crypto'
 import { existsSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs'
+import { setEnvLine } from '../core/browser.ts'
 import { findPeople, type Person } from '../core/gate.ts'
 import { add, kindOf, ownerPerson, registryIn, remove, withRegistry, type Entry } from '../core/registry.ts'
 import { pauseLine, type Live } from '../core/board.ts'
@@ -31,6 +33,27 @@ if (cmd === 'add' && args[0] === 'kagelet') {
   mkdirSync(KAGELETS, { recursive: true, mode: 0o700 })
   writeFileSync(file, starterFile(), { mode: 0o600, flag: 'wx' })
   console.log(`Wrote ${file}, paused.\nFill in its thread, schedule, tools and job, then run kage start ${name}. It runs within a minute.`)
+  process.exit(0)
+}
+// kage add browser: turn Kage in Chrome on (#114). A new token each time, so running it again also cuts off an
+// extension that had the old one. The token is shown once, here, for the extension's options.
+if (cmd === 'add' && args[0] === 'browser') {
+  if (!existsSync(ENV_FILE)) die(`No settings file at ${ENV_FILE}. Run kage setup first.`)
+  const token = randomBytes(24).toString('hex')
+  writeFileSync(`${ENV_FILE}.new`, setEnvLine(readFileSync(ENV_FILE, 'utf8'), 'KAGE_BROWSER_TOKEN', token), { mode: 0o600 })
+  renameSync(`${ENV_FILE}.new`, ENV_FILE)
+  const ext = new URL('../extension', import.meta.url).pathname
+  console.log([
+    `Kage in Chrome is on. Your token (shown once): ${token}`,
+    '',
+    '1. Run kage restart.',
+    '2. In Chrome, open chrome://extensions, turn on Developer mode, click Load unpacked, and pick:',
+    `   ${ext}`,
+    "3. Click the Kage icon in Chrome's toolbar, paste the token, and save. It says Connected within a few seconds.",
+    '4. In Slack, ask Kage: "what tabs do I have open?"',
+    '',
+    'Sites Kage must never read: add KAGE_BROWSER_BLOCK=bank.example.com,1password.com to the settings file.',
+  ].join('\n'))
   process.exit(0)
 }
 if (!existsSync(ENV_FILE)) die(`No settings file at ${ENV_FILE}. Run kage setup first.`)

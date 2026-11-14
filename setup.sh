@@ -30,7 +30,7 @@ Watch|schedules||Every schedule and reply watch, in every thread|kage schedules
 Watch|top||The live console: every thread, its feed, attach and stop, by mouse or keys|kage top
 Watch|watch|[place]|Follow every step every session takes, as it happens|kage watch support
 Watch|attach|[place or link]|Take a thread into this terminal, by its place or its Slack link in quotes; Kage gets it back when you quit|kage attach "https://example.slack.com/archives/C0123ABC/p1700000000123456"
-People|add|<person>, <app id> <owner> or kagelet <name>|Let a person tag Kage (a mention, member id, email, name or @handle), or an agent with the person or agent it answers to. kagelet <name> writes a paused starter file for a kagelet|kage add priya
+People|add|<person>, <app id> <owner>, kagelet <name> or browser|Let a person tag Kage (a mention, member id, email, name or @handle), or an agent with the person or agent it answers to. kagelet <name> writes a paused starter file for a kagelet. browser turns Kage in Chrome on and prints the token for its extension|kage add priya
 People|remove|<person or app id>|Take a person or an agent off the list; whoever answers to them goes too|kage remove priya
 People|list||Who may tag Kage besides you: each person, with their agents under them. Then the kagelets Kage manages: schedule, last and next run, cost today|kage list
 People|tell|<place> <message>|Tell a thread something as you; its session takes it after the current turn|kage tell support use the staging db
@@ -287,6 +287,12 @@ cmd_doctor() {
   elif [[ -n "$(git status --porcelain --untracked-files=no 2>/dev/null)" ]]; then note "no auto-update: the checkout has uncommitted changes"
   elif ! tag="$(GIT_TERMINAL_PROMPT=0 GIT_SSH_COMMAND="ssh -o BatchMode=yes -o ConnectTimeout=10" git ls-remote --tags origin refs/tags/stable 2>/dev/null)"; then note "auto-update cannot check origin: git ls-remote failed"
   elif [[ -z $tag ]]; then note "no auto-update: origin has no stable tag yet, so this install stays on its version"
+  fi
+  # Kage in Chrome (#114): the hub notes each poll of the extension in browser-seen (router.ts).
+  if [[ -n "$(env_get KAGE_BROWSER_TOKEN)" ]] && running; then
+    local seen; seen="$(cat "$(dirname "$ENV_FILE")/browser-seen" 2>/dev/null || echo 0)"
+    if (( $(date +%s) - ${seen:-0} / 1000 < 120 )); then pass "Chrome extension connected"
+    else fail "Chrome extension not connected: load the extension folder in chrome://extensions and paste the token (kage add browser prints a new one)"; fi
   fi
   command -v kage >/dev/null || note "kage is not on your PATH: run ./setup.sh link to type kage <command> anywhere"
   [[ $bad == 0 ]] && echo "All good. Tag @$NAME in Slack to try it." || return 1
