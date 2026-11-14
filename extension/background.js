@@ -21,7 +21,11 @@ const ops = {
   async screenshot({ tabId }) {
     const t = await chrome.tabs.get(Number(tabId))
     if (!t.active) throw new Error('that tab is not the front tab of its window, so it cannot be captured without switching to it')
-    return { url: t.url ?? '', png: await chrome.tabs.captureVisibleTab(t.windowId, { format: 'png' }) }
+    const png = await chrome.tabs.captureVisibleTab(t.windowId, { format: 'png' })
+    // The owner may have switched tabs while it captured: the hub checks the block list on the tab really shown.
+    const [shown] = await chrome.tabs.query({ active: true, windowId: t.windowId })
+    if (shown?.id !== t.id) throw new Error('the owner switched tabs during the capture, so it was thrown away')
+    return { url: shown.url ?? '', png }
   },
 }
 
