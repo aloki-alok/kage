@@ -42,7 +42,7 @@ const DEBT = {
   ] as string[],
   // A core/ export no other file needs: over-exported (drop the export) or dead (only a test uses it: delete both).
   unusedCoreExports: [
-    'core/config.ts NOT_SETTINGS', 'core/config.ts toEnv', 'core/events.ts dayEvents',
+    'core/config.ts NOT_SETTINGS', 'core/config.ts toEnv',   // leave with the old env import (compat PR)
   ] as string[],
 }
 

@@ -13,17 +13,6 @@ export const eventRow = (e: Omit<KageEvent, 'at' | 'chain' | 'transcript'> & Par
 
 export const whoOf = (key: string) => key.split('#side-kagelet-')[1] ?? key
 
-// What the dream job reads: one day's (UTC, YYYY-MM-DD) events, grouped by kagelet or session and chain.
-export function dayEvents(events: KageEvent[], day: string): { who: string; chain: string; events: KageEvent[] }[] {
-  const groups = new Map<string, { who: string; chain: string; events: KageEvent[] }>()
-  for (const e of events.filter(e => e.at.startsWith(day)).sort((a, b) => a.at.localeCompare(b.at))) {
-    const k = `${e.who}\t${e.chain}`
-    if (!groups.has(k)) groups.set(k, { who: e.who, chain: e.chain, events: [] })
-    groups.get(k)!.events.push(e)
-  }
-  return [...groups.values()].sort((a, b) => a.who.localeCompare(b.who) || a.chain.localeCompare(b.chain))
-}
-
 // A handoff row's detail (runtime/kagelets.ts kageletRoutes): "to <kagelet>, <link|note|file>: ok", the same with
 // "failed, <why>" when the hub would not start it, or "stopped: <why>" when a step ended the chain.
 export const handoffDetail = (to: string, kind: string, failed?: string) => `to ${to}, ${kind}: ${failed ? `failed, ${failed}` : 'ok'}`
