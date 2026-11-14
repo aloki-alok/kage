@@ -40,3 +40,39 @@ export function jevVerdict(body: unknown, threshold: number): { reply: boolean; 
   if (typeof score !== 'number' || !Number.isFinite(score)) return { error: 'the answer has no needs_reply score' }
   return { reply: score >= threshold, score }
 }
+
+// Intake triage (#142): before a session starts, Jev picks `session` or `react` for a tagged message from a person.
+// Jev only ever chooses less work: it never allows a tool or unlocks anything, and anything unclear is `session`.
+// A react needs this much probability on `react`. The owner's bar is higher: a reaction shows the owner that Kage
+// saw the message, so a wrong one costs more there.
+export const OTHER_BAR = 0.8
+export const OWNER_BAR = 0.95
+// A longer message is real work, so it is never sent to Jev.
+export const TRIAGE_MAX_CHARS = 200
+
+// Why a message goes to a session with no Jev call, or undefined when Jev may look at it.
+export const triageSkips = (text: string, hasFiles: boolean): string | undefined =>
+  !text.trim() ? 'empty' : hasFiles ? 'has files' : text.includes('?') ? 'asks a question' : text.length > TRIAGE_MAX_CHARS ? 'long' : undefined
+
+export const triageRequest = (text: string, model: string) => ({
+  model,
+  state: `Message to an AI agent: ${text.slice(0, JEV_MAX_CHARS)}`,
+  questions: {
+    intake: {
+      type: 'choice' as const,
+      instructions: 'Does this message need the agent to do any work?',
+      criteria: {
+        session: 'It asks for work, gives an instruction, answers a question the agent asked, or could be read as a request.',
+        react: 'It is only an acknowledgement, thanks, or a report that needs no reply or work (ok, thanks, done, got it, FYI).',
+      },
+    },
+  },
+})
+
+// score: Jev's probability for `react`. Only a `react` choice over the bar for this sender gives `react`.
+export function triageVerdict(body: unknown, sender: 'owner' | 'other'): { pick: 'session' | 'react'; score: number } | { error: string } {
+  const a = (body as { answers?: { intake?: { choice?: unknown; probabilities?: { react?: unknown } } } } | null)?.answers?.intake
+  const score = a?.probabilities?.react
+  if ((a?.choice !== 'react' && a?.choice !== 'session') || typeof score !== 'number' || !Number.isFinite(score)) return { error: 'the answer has no intake choice and score' }
+  return { pick: a.choice === 'react' && score >= (sender === 'owner' ? OWNER_BAR : OTHER_BAR) ? 'react' : 'session', score }
+}

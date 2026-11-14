@@ -1,6 +1,6 @@
 import { describe, test } from 'node:test'
 import assert from 'node:assert/strict'
-import { JEV_MAX_CHARS, jevChecks, jevConfig, jevRequest, jevVerdict } from '../jev.ts'
+import { JEV_MAX_CHARS, OTHER_BAR, OWNER_BAR, TRIAGE_MAX_CHARS, jevChecks, jevConfig, jevRequest, jevVerdict, triageRequest, triageSkips, triageVerdict } from '../jev.ts'
 
 describe('the Jev settings', () => {
   test('no key leaves Jev off', () => {
@@ -55,5 +55,43 @@ describe('Jev\'s answer', () => {
   test('an answer without a score is an error, so the caller answers anyway', () => {
     for (const b of [null, {}, { answers: {} }, answer('0.9'), answer(Number.NaN), { detail: { error_type: 'api_usage_error' } }])
       assert.ok('error' in jevVerdict(b, 0.5))
+  })
+})
+
+describe('the intake question', () => {
+  test('one choice, session or react, with a description for each option', () => {
+    const q = triageRequest('thanks, done', 'jev-latest').questions.intake
+    assert.equal(q.type, 'choice')
+    assert.deepEqual(Object.keys(q.criteria), ['session', 'react'])
+    assert.equal(triageRequest('x'.repeat(JEV_MAX_CHARS + 9), 'm').state.length, 'Message to an AI agent: '.length + JEV_MAX_CHARS)
+  })
+})
+
+describe('triage skips: what never goes to Jev', () => {
+  test('a question, a long message or one with files starts a session without a call', () => {
+    assert.ok(triageSkips('can you check this?', false))
+    assert.ok(triageSkips('x'.repeat(TRIAGE_MAX_CHARS + 1), false))
+    assert.ok(triageSkips('see this', true))
+    assert.ok(triageSkips('', false))
+    assert.equal(triageSkips('thanks, that works', false), undefined)
+  })
+})
+
+describe('Jev\'s intake answer', () => {
+  const answer = (choice: string, react: number, extra: object = {}) =>
+    ({ answers: { intake: { type: 'choice', choice, confidence: 1, probabilities: { session: 1 - react, react }, ...extra } } })
+  test('react needs the choice and enough probability; the score is the react probability', () => {
+    assert.deepEqual(triageVerdict(answer('react', 0.9), 'other'), { pick: 'react', score: 0.9 })
+    assert.deepEqual(triageVerdict(answer('react', 0.7), 'other'), { pick: 'session', score: 0.7 })
+    assert.deepEqual(triageVerdict(answer('session', 0.95), 'other'), { pick: 'session', score: 0.95 })
+  })
+  test('the owner needs a stricter bar than anyone else', () => {
+    assert.deepEqual(triageVerdict(answer('react', 0.9), 'owner'), { pick: 'session', score: 0.9 })
+    assert.deepEqual(triageVerdict(answer('react', 0.97), 'owner'), { pick: 'react', score: 0.97 })
+    assert.ok(OWNER_BAR > OTHER_BAR)
+  })
+  test('an answer it cannot read is an error, so the caller starts a session', () => {
+    for (const b of [null, {}, { answers: {} }, answer('ignore', 1), { answers: { intake: { choice: 'react' } } }, answer('react', Number.NaN)])
+      assert.ok('error' in triageVerdict(b, 'other'), JSON.stringify(b))
   })
 })
