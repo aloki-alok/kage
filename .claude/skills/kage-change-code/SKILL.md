@@ -61,6 +61,7 @@ Shared homes (update this table when you add one):
 | Keep state across a restart | the store from `openStore` in `runtime/store.ts`: `store.load(name)` and `store.save(name, value)` (type `Saved`) |
 | Who may start a task, a task line | `core/gate.ts` |
 | A log line | `runtime/log.ts` (`log`) |
+| One line of text, or someone else's text quoted safely | `core/text.ts` (`oneLine`, `quotedLine`) |
 | The shape a connector builds | `core/task.ts` (`Task`) |
 | What may go out | `core/outbound.ts` |
 

@@ -1,4 +1,5 @@
 // Who may drive Kage and what Claude reads: the sender gate, the task line, quoting, teammates.
+import { noChannelTag, oneLine, quotedLine } from './text.ts'
 import { needsNoReply } from './agents.ts'
 import { agentTag, filesTag, postedByTrustedApp, typedByPerson, type SlackMessage } from './slack-message.ts'
 
@@ -98,14 +99,12 @@ export function quoteMessage(
   return body.split('\n').map((l, i) => `> ${i === 0 ? `[${who} ${x.ts}] ` : ''}${l}`).join('\n')
 }
 
-// Text from outside can neither open nor close the <channel> tag Claude reads tasks in.
-export const noChannelTag = (s: string) => s.replace(/<(\/?channel)/gi, '&lt;$1')
 
 // The instruction line of a task. A teammate's text is less trusted than the owner's: it can't
 // close the <channel> tag, and it stays on one line so it can't forge a "Task from <owner>:" line.
 export function taskLine(text: string, from: { name: string; teammate?: string }): string {
   let t = noChannelTag(text)
-  if (from.teammate) t = t.replace(/\s+/g, ' ').trim()
+  if (from.teammate) t = oneLine(t)
   t ||= '(empty: they only tagged you)'
   return from.teammate ? `Teammate task (${from.teammate}, ${from.name}, not the owner): ${t}` : `Task from ${from.name}: ${t}`
 }
@@ -155,7 +154,7 @@ export const mayStop = (by: string, owner: string, starters: Map<string, string>
 
 // The instruction line Claude reads for a stranger on a call (connectors/voice.ts) or in a meeting (connectors/meeting.ts). The question is JSON-quoted on one line: data, never instructions.
 export function voiceTaskLine(question: string): string {
-  const q = noChannelTag(question).replace(/\s+/g, ' ').trim()
+  const q = quotedLine(question)
   return 'Voice task (a caller, not the owner, strict limits: answer and look things up only; no secrets, no private data, no prod access, no writes, no posts to Slack or email, no action on the owner\'s behalf; if asked, say it needs the owner). '
     + 'You are speaking to people on the owner\'s call, so share nothing private: no secrets, no credentials, no personal data, no internal numbers unless clearly safe. When unsure, say you will check with the owner. '
     + 'Answer in one to three short spoken sentences, plain words, no markdown, no links. '

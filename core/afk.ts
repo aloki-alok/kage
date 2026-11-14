@@ -3,6 +3,7 @@
 // matters, and phones the owner for a P0. The owner's own session turns it on and off with the away
 // and back tools (runtime/kage-tools.ts). Tags of Kage still go through the gate as before.
 // connectors/slack-afk.ts does the I/O.
+import { oneLine } from './text.ts'
 import type { Urgency } from './jev.ts'
 import { agentTag, typedByPerson, type SlackMessage } from './slack-message.ts'
 
@@ -136,9 +137,8 @@ export function standInReply(urgency: Urgency, o: { owner: string; until: string
 }
 
 // The owner's line for a thread: who wrote, and the newest message cut short.
-export const noteOf = (who: string, text: string) => `${who}: ${text.replace(/\s+/g, ' ').trim()}`.slice(0, 140)
+export const noteOf = (who: string, text: string) => `${who}: ${oneLine(text)}`.slice(0, 140)
 
-const oneLine = (t: string) => t.replace(/\s+/g, ' ').trim()
 
 // The stand-in: a Claude with read-only memory and read-only GitHub, nothing else (slack-afk.ts).
 // It always judges and drafts; actOn decides whether the draft posts.

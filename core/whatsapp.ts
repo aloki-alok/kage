@@ -6,7 +6,8 @@
 //    task the owner started.
 // Everything else is stored and ignored.
 
-import { noChannelTag } from './gate.ts'
+import { oneLine } from './text.ts'
+import { noChannelTag } from './text.ts'
 
 // fromMe: sent from the owner's account. viaApi: sent through WAHA, which only Kage uses, so it is
 // Kage's own message even though it is fromMe too.
@@ -43,7 +44,7 @@ export function decideWhatsApp(m: WaMessage, armed: ReadonlyMap<string, Arming>,
   if (m.fromMe) {
     const tag = tagFor(name)
     // A forward is someone else's words, so its tag never starts a task.
-    if (!m.forwarded && tag.test(m.text)) return { kind: 'owner-task', chat: m.chat, text: m.text.replace(tag, '$1').replace(/\s+/g, ' ').trim() }
+    if (!m.forwarded && tag.test(m.text)) return { kind: 'owner-task', chat: m.chat, text: oneLine(m.text.replace(tag, '$1')) }
     return live ? { kind: 'disarm', chat: m.chat, why: 'owner typed' } : ignore
   }
   if (!live) return ignore
@@ -53,7 +54,6 @@ export function decideWhatsApp(m: WaMessage, armed: ReadonlyMap<string, Arming>,
 
 // A message as both sides read it. One line each, so nobody can forge a line from the owner.
 export type WaLine = { fromMe: boolean; text: string }
-const oneLine = (t: string) => t.replace(/\s+/g, ' ').trim()
 const hasTag = (text: string, name: string) => tagFor(name).test(text)
 
 // The task for the owner's own session. Their ask is the only instruction; the chat is quoted data.
