@@ -1,9 +1,9 @@
 import { describe, test } from 'node:test'
 import assert from 'node:assert/strict'
-import { mkdirSync, mkdtempSync, symlinkSync, writeFileSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, realpathSync, symlinkSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { configRefusal, ownerMemoryRefusal, privateToolRefusal, slackSendRefusal, voiceToolRefusal } from '../guards.ts'
+import { configRefusal, protectConfig, ownerMemoryRefusal, privateToolRefusal, slackSendRefusal, voiceToolRefusal } from '../guards.ts'
 
 
 describe('private sources on a teammate task', () => {
@@ -166,5 +166,29 @@ describe('the token files behind every path form, and config.json closed to writ
       no('MultiEdit', { file_path: '/home/o/.config//kage/config.json', edits: [] }, s)
       no('Bash', { command: 'echo {} > ~/.config/kage/config.json' }, s)
     }
+  })
+})
+
+describe('protectConfig: what the sandbox and the file rules close', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'kage-protect-'))
+  const code = mkdtempSync(join(tmpdir(), 'kage-code-'))
+  for (const f of ['config.json', 'secrets.json', 'afk.json', 'hub.log']) writeFileSync(join(dir, f), '')
+  for (const d of ['files', 'memory', 'sender']) mkdirSync(join(dir, d))
+  const w = protectConfig(`${dir}/env`, code, '/home/o')
+  const real = (p: string) => realpathSync(p)
+  test('a shell may not write anything in the config folder but files/ and memory/, whether or not it exists yet', () => {
+    const deny = w.sandbox.filesystem.denyWrite
+    for (const n of ['session.env', 'kagelets', 'specialists', 'config.json*', 'secrets.json*', 'env*', 'afk.json', 'hub.log', 'sender']) assert.ok(deny.includes(`${real(dir)}/${n}`), n)
+    for (const n of ['files', 'memory']) assert.ok(!deny.some(d => d === `${real(dir)}/${n}` || d === real(dir)), n)
+  })
+  test('the hub code folder and the files the OS reads at login are closed to writes too', () => {
+    const deny = w.sandbox.filesystem.denyWrite
+    assert.ok(deny.includes(real(code)))
+    assert.ok(deny.includes('/home/o/Library/LaunchAgents') && deny.includes('/home/o/.config/systemd'))
+  })
+  test('the file rules use Edit, which covers Write, and the sandbox must start', () => {
+    assert.ok(w.permissions.deny.every(r => !r.startsWith('Write(')))
+    assert.ok(w.permissions.deny.includes(`Edit(/${real(dir)}/config.json)`))
+    assert.equal(w.sandbox.failIfUnavailable, true)
   })
 })

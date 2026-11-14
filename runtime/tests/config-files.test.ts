@@ -111,3 +111,19 @@ describe('a change that breaks the schema', () => {
     assert.equal(readFileSync(join(w.dir, 'config.json'), 'utf8'), before)
   })
 })
+
+describe('a session may not change the settings by this code either', () => {
+  test('with KAGE_SESSION set (kept in every session, unlike KAGE_THREAD), a change is refused and the files stay as they were', () => {
+    const w = world()
+    importLegacy(w.env)
+    const before = readFileSync(join(w.dir, 'config.json'), 'utf8')
+    for (const marker of ['KAGE_SESSION', 'KAGE_THREAD']) {
+      process.env[marker] = '1'
+      try {
+        assert.throws(() => updateConfig(w.env, c => ({ ...c, name: 'x' })), /terminal/)
+        assert.throws(() => updateSecrets(w.env, s => ({ ...s, browserToken: 'x' })), /terminal/)
+      } finally { delete process.env[marker] }
+    }
+    assert.equal(readFileSync(join(w.dir, 'config.json'), 'utf8'), before)
+  })
+})

@@ -44,6 +44,7 @@ export function sdkSessions(o: {
   toHub: (key: string, m: { type: 'mail' | 'wa' | 'voice'; text: string }) => void
   options: Options                                 // cwd, settings, settingSources, the claude binary
   ownerMemory: string
+  codeDir: string                                  // the folder the hub runs from: a restart runs it, so no shell may write there
   envFile: string                                 // its folder holds the tokens: only the owner's task touches it
   onStart?: () => void                            // a new id may have been minted: save the map
   // A turn ended: the session's running cost so far. limited: it ended on the usage limit, so it did no work.
@@ -100,11 +101,11 @@ export function sdkSessions(o: {
         return { content: [{ type: 'text' as const, text: `This thread now runs on ${pick.model ?? 'the default model'} at ${pick.effort ?? 'default'} effort.` }] }
       })],
     })
-    const { KAGE_THREAD: _, ...env } = process.env   // with it, the kage plugin's own channel would take the thread
+    const { KAGE_THREAD: _, ...env } = process.env   // with it, the kage plugin's own channel would take the thread. KAGE_SESSION below stays: kage set refuses on it.
     const resumed = o.hasTranscript(s.id)
     const budget = o.budgetOf?.(key)
     const grant = o.grantOf?.(key)
-    const walled = protectConfig(o.envFile)
+    const walled = protectConfig(o.envFile, o.codeDir)
     const q = o.sdk.query({
       prompt: inbox,
       options: {
@@ -120,7 +121,7 @@ export function sdkSessions(o: {
         // Its jobs die with the session; the schedule tool replaces it.
         disallowedTools: [...o.options.disallowedTools ?? [], 'CronCreate', 'CronDelete', 'CronList'],
         // Claude Code sends session_state_changed, which busy() reads, only when asked.
-        env: { ...env, CLAUDE_CODE_EMIT_SESSION_STATE_EVENTS: '1' },
+        env: { ...env, CLAUDE_CODE_EMIT_SESSION_STATE_EVENTS: '1', KAGE_SESSION: '1' },
         // A kagelet's grant is its approval, checked first: beyond it, even Kage's tools that act as the owner, it
         // approves nothing and puts no card in front of the owner. The PreToolUse hook checks the same grant again.
         canUseTool: (name, input, x) => o.grantOf?.(key)

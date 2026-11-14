@@ -1,5 +1,5 @@
 // Hook rules inside a Kage session: private sources, the owner's memory, the sender file.
-import { realpathSync } from 'node:fs'
+import { readdirSync, realpathSync } from 'node:fs'
 import { basename, dirname, join, posix, resolve } from 'node:path'
 
 // Sources that hold the owner's private data. Only the owner's own task may read them.
@@ -61,16 +61,28 @@ export function configRefusal(tool: string, input: Record<string, unknown>, send
   return `Kage's config folder holds its tokens, and this task did not come from the owner. Reply that this needs the owner, and stop.`
 }
 // The settings every Kage SDK session starts with. An absolute path in a rule needs "//". Both the typed and the real
-// folder are listed. The shell sandbox denies reading the token files and writing them and config.json (globs, so a .new copy too). Writes elsewhere and the network stay open, as without a sandbox. If the OS cannot sandbox, configRefusal remains.
-export function protectConfig(envFile: string) {
+// folder are listed. An Edit rule covers every file-editing tool, Write too (a Write rule only warns). The shell sandbox
+// denies reading the token files, and writing: the token files, config.json, and everything else in the config folder
+// but files/ and memory/ (session.env is loaded into the hub's environment, kagelets/ holds the tools kagelets get), and
+// the hub's own code folder (a restart runs it) and the login files the OS starts the hub from. The hub writes all of those
+// itself, so a session needs none. An allowWrite does not reopen a denied path, so the folder's entries are listed one by one.
+// failIfUnavailable: a session never starts without the wall. Writes elsewhere and the network stay open, as without a sandbox.
+export function protectConfig(envFile: string, codeDir: string, home = process.env.HOME ?? '') {
   const dirs = [...new Set([dirname(envFile), realish(dirname(envFile))])]
   const tokens = dirs.flatMap(d => [`${d}/secrets.json*`, `${d}/env*`])
+  const kept = new Set(['files', 'memory'])
+  const folder = dirs.flatMap(d => [...new Set([...['session.env', 'kagelets', 'specialists', 'config.json*'].map(n => n),
+    ...(() => { try { return readdirSync(d) } catch { return [] } })().filter(n => !kept.has(n))])].map(n => `${d}/${n}`))
+  const deny = (f: string) => [`Edit(/${f})`]
   return {
-    permissions: { deny: dirs.flatMap(d => [`Read(/${d}/secrets.json)`, `Read(/${d}/env*)`, ...['secrets.json', 'env*', 'config.json'].flatMap(f => [`Edit(/${d}/${f})`, `Write(/${d}/${f})`])]) },
+    permissions: { deny: dirs.flatMap(d => [`Read(/${d}/secrets.json)`, `Read(/${d}/env*)`, ...['secrets.json', 'env*', 'config.json'].flatMap(f => deny(`${d}/${f}`))]) },
     sandbox: {
-      enabled: true, failIfUnavailable: false, autoAllowBashIfSandboxed: false, allowUnsandboxedCommands: false,
+      enabled: true, failIfUnavailable: true, autoAllowBashIfSandboxed: false, allowUnsandboxedCommands: false,
       network: { allowedDomains: ['*'], allowLocalBinding: true, allowAllUnixSockets: true },
-      filesystem: { allowWrite: ['/'], denyRead: tokens, denyWrite: [...tokens, ...dirs.map(d => `${d}/config.json*`)] },
+      filesystem: {
+        allowWrite: ['/'], denyRead: tokens,
+        denyWrite: [...new Set([...tokens, ...folder, ...[codeDir, realish(codeDir)], `${home}/Library/LaunchAgents`, `${home}/.config/systemd`])],
+      },
     },
   }
 }

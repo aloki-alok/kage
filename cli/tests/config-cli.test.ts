@@ -8,7 +8,7 @@ import { join } from 'node:path'
 const CLI = new URL('../config.ts', import.meta.url).pathname
 const dir = mkdtempSync(join(tmpdir(), 'kage-cfgcli-'))
 const run = (args: string[], extra: Record<string, string> = {}, input = '') => {
-  const { KAGE_THREAD: _, ...base } = process.env
+  const { KAGE_THREAD: _, KAGE_SESSION: __, ...base } = process.env
   const r = spawnSync(process.execPath, [CLI, ...args], { input, encoding: 'utf8', env: { ...base, KAGE_ENV: `${dir}/env`, ...extra } })
   return { out: r.stdout.trim(), err: r.stderr.trim(), code: r.status }
 }
@@ -24,9 +24,12 @@ test('get never prints a token, and has says only whether one is set', () => {
 
 test('a session cannot change a setting, and the owner at a terminal can', () => {
   const before = readFileSync(`${dir}/config.json`, 'utf8')
-  const blocked = run(['set', 'harness.maxSessions', '3'], { KAGE_THREAD: 'C1:5.5' })
-  assert.equal(blocked.code, 1)
-  assert.match(blocked.err, /terminal/)
+  for (const marker of [{ KAGE_THREAD: 'C1:5.5' }, { KAGE_SESSION: '1' }]) {   // an SDK session keeps only KAGE_SESSION
+    const blocked = run(['set', 'harness.maxSessions', '3'], marker)
+    assert.equal(blocked.code, 1)
+    assert.match(blocked.err, /terminal/)
+    assert.equal(run(['save', 'x'], marker, 'xapp-1-FAKE xoxp-FAKE-user xoxb-FAKE-bot').code, 1)
+  }
   assert.equal(readFileSync(`${dir}/config.json`, 'utf8'), before)
   assert.equal(run(['set', 'harness.maxSessions', '3']).code, 0)
   assert.equal(run(['get', 'harness.maxSessions']).out, '3')

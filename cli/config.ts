@@ -33,8 +33,6 @@ if (cmd === 'has') {
   if (v === undefined || v === null) process.exit(0)
   console.log(key === 'harness.cwd' ? tilde(String(v), process.env.HOME!) : Array.isArray(v) && v.every(x => typeof x === 'string') ? v.join(',') : typeof v === 'object' ? JSON.stringify(v) : String(v))
 } else if (cmd === 'set') {
-  // A session's shell could point the hub at a command of its own, so only the owner's terminal changes settings.
-  if (process.env.KAGE_THREAD) die('Not changed: settings change only from the owner\'s own terminal. Say what you want changed, and the owner runs kage set.')
   if (!key || rest.length !== 1) die('Usage: kage set <key> <value>, a key such as harness.maxSessions. kage help set shows an example.')
   const value = rest[0]!
   let parsed: unknown = value

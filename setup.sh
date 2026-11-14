@@ -257,6 +257,11 @@ cmd_doctor() {
   fi
   NAME="$(cfg_get name)"; NAME="${NAME:-kage}"
 
+  # Every SDK session runs its shell in an OS sandbox that keeps it off the tokens and the settings, and a session never starts without it.
+  if [[ "$(cfg_get harness.runtime)" != tmux ]]; then
+    if [[ "$(uname)" == Darwin ]]; then [[ -x /usr/bin/sandbox-exec ]] && pass "shell sandbox available" || fail "shell sandbox: /usr/bin/sandbox-exec is missing, so sessions cannot start. Restore macOS's sandbox-exec"
+    else command -v bwrap >/dev/null 2>&1 && command -v socat >/dev/null 2>&1 && pass "shell sandbox available" || fail "shell sandbox: sessions cannot start without bubblewrap and socat. Run: sudo apt install bubblewrap socat"; fi
+  fi
   if [[ "$(cfg_get harness.runtime)" != tmux ]]; then
     node -e 'import("@anthropic-ai/claude-agent-sdk").catch(()=>process.exit(1))' 2>/dev/null && pass "threads run on the Agent SDK, no prompts" \
       || fail "Agent SDK does not load: run npm ci, then restart (until then threads open as tmux panes)"

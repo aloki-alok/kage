@@ -59,6 +59,7 @@ import { closedThreads } from './runtime/closed-threads.ts'
 
 const { ENV_FILE, NAME, Title, TEAMMATES, TRUSTED_APPS, env, need, bot, user } = load()
 const DIR = dirname(ENV_FILE)
+const CODE = dirname(fileURLToPath(import.meta.url))
 // One hub per machine, checked before the store and Slack: two hubs on one Slack app split its events. A hub
 // that answers on the socket in 2 s is running, so this one exits 0 and its supervisor leaves it down. A bare
 // connect is not enough, because a hung hub still takes connects.
@@ -286,6 +287,7 @@ const sdk = sdkLib ? sdkSessions({
   },
   ownerMemory: MEM.owner,
   envFile: ENV_FILE,
+  codeDir: CODE,
   onStart: () => store.saveSessions(d.saved()),
   onResult: (key, total, resumed, limited) => {
     const usd = recordCost(key, total, resumed)
@@ -493,7 +495,6 @@ function failed(m: ToSession) {
 // Compared to the boot stamp, not the clock, so a file with a future time cannot restart the hub over and over.
 // Not in a usage-limit pause: the scheduled runs it owes live in memory (runtime/limit-pause.ts), and a hub
 // that held only those would start unpaused and run into the limit again.
-const CODE = dirname(fileURLToPath(import.meta.url))
 const BOOT_CODE = codeStamp(CODE)
 // The version of the code this hub runs, read once: kage status and kage doctor show it from this file.
 const VERSION = version(CODE)

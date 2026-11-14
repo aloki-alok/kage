@@ -85,12 +85,17 @@ export function readSettings(envFile: string): { config: Config; secrets: Secret
 export const readEnv = (envFile: string): Env => { const s = readSettings(envFile); return toEnv(s.config, s.secrets) }
 
 // Read, change, write one file. An env file waiting to be imported goes in first, so a change is never lost to it.
+// KAGE_SESSION is set on every session (SDK and tmux) and KAGE_THREAD on a pane: a session never changes the files from its shell.
+// The sandbox is the wall (core/guards.ts protectConfig); this is the same refusal where the sandbox cannot be.
+const sessionRefusal = () => { if (process.env.KAGE_SESSION || process.env.KAGE_THREAD) throw new Error("not changed: settings change only from the owner's own terminal. Say what you want changed, and the owner runs kage set.") }
 export function updateConfig(envFile: string, change: (c: Config) => Config) {
+  sessionRefusal()
   importLegacy(envFile)
   const f = files(envFile)
   write(f.config, checked(Config, 'config.json', change(existsSync(f.config) ? parse(Config, f.config) : { version: 1 })))
 }
 export function updateSecrets(envFile: string, change: (s: Secrets) => Secrets) {
+  sessionRefusal()
   importLegacy(envFile)
   const f = files(envFile)
   write(f.secrets, checked(Secrets, 'secrets.json', change(existsSync(f.secrets) ? parse(Secrets, f.secrets) : {})))
