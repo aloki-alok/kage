@@ -60,6 +60,7 @@ p { margin: 0; }
 .sky { position: fixed; inset: 0; pointer-events: none; z-index: 0; opacity: var(--light); transition: opacity 1.6s;
   background: radial-gradient(120% 70% at var(--sun-x, 50%) -10%, #1d2228 0%, transparent 60%); }
 main, header, footer { position: relative; z-index: 1; }
+header { z-index: 2; }
 
 header .wrap { display: flex; justify-content: space-between; align-items: center; padding-block: 28px; }
 .mark { font: 400 2rem var(--display); --len: .55; --skew: 52deg; }
