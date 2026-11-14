@@ -234,7 +234,7 @@ const kagelets = (now: number) => {
   grants = syncKagelets(files, store, now, log, MAX_KAGELETS)
 }
 // The manager's side, for Kage's owner sessions (runtime/kage-tools.ts), and the owner's notes to a kagelet.
-const manager = kageletManager({ dir: KAGELETS, max: MAX_KAGELETS, ledgers, sync: kagelets, runNow: (id, now) => schedules.runNow(id, now), store, envCommand: env.KAGE_DB_READ_COMMAND, log })
+const manager = kageletManager({ dir: KAGELETS, max: MAX_KAGELETS, ledgers, sync: kagelets, runNow: (id, now) => schedules.runNow(id, now), store, envCommand: env.KAGE_DB_READ_COMMAND, log, tell: text => void slack.notifyOwner(text) })
 const notes = ownerNotes(store)
 let kageletsRefused = false
 const sdk = sdkLib ? sdkSessions({
@@ -245,7 +245,7 @@ const sdk = sdkLib ? sdkSessions({
     schedules: { add: j => schedules.add(key, j, Date.now()), remove: id => schedules.remove(key, id), list: () => schedules.list(key) },
     afk: slack.afk?.command,
     kagelet: key.split('#side-kagelet-')[1],
-    dbRead: { command: () => readCommand(env.KAGE_DB_READ_COMMAND, store), maxRows: Number(env.KAGE_DB_READ_MAX_ROWS) || 200 },
+    dbRead: { command: () => readCommand(env.KAGE_DB_READ_COMMAND, store, key.split('#side-kagelet-')[1] ?? ''), maxRows: Number(env.KAGE_DB_READ_MAX_ROWS) || 200 },
     kagelets: { list: () => manager.list(Date.now()), manage: (a, ask) => manager.manage(a, Date.now(), ask) }, approve,
     event: (kind, detail) => runs.emit(key, kind, detail),
   }),

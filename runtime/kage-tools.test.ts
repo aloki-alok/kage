@@ -61,7 +61,7 @@ function setup(o: { hubDown?: boolean; dir?: string; kagelet?: string; dbRead?: 
     },
     afk: async c => { out.push(`afk ${JSON.stringify(c)}`); return 'AFK on' },
     kagelet: o.kagelet, dbRead: o.dbRead, approve: o.approve, event: (kind, detail) => { events.push(`${kind} ${detail}`) },
-    kagelets: { list: () => 'the list', manage: async (a, ask) => { out.push(`manage ${JSON.stringify(a)}`); return ask ? `asked: ${await ask({ kagelet: a.name, job: 'j', read_command: 'r' })}` : 'managed' } },
+    kagelets: { list: () => 'the list', manage: async (a, ask) => { out.push(`manage ${JSON.stringify(a)}`); return ask ? `asked: ${await ask({ kagelet: a.name, tools: 'db_read', job: 'j', read_command: 'r' })}` : 'managed' } },
   })
   const call = (name: string, args: Record<string, unknown>) => t.tools.find(x => x.name === name)!.run(args)
   const task = (o: Partial<Task['meta']> & { fromOwner?: boolean } = {}): Task => ({
@@ -413,8 +413,10 @@ describe("a session's Kage tools", () => {
     assert.equal((await s.call('manage_kagelet', { channel: 'C1', thread_ts: '5.5', action: 'run', name: 'x' })).isError, true)
     s.t.onTask(s.task())
     assert.equal((await s.call('kagelets', { channel: 'C1', thread_ts: '5.5' })).text, 'the list')
-    assert.equal((await s.call('manage_kagelet', { channel: 'C1', thread_ts: '5.5', action: 'save', name: 'status', thread: 'L', schedule: '0 9 * * *', tools: ['WebSearch'], job: 'j', by: 'kage', why: 'w' })).text, 'managed')
-    assert.deepEqual(s.out, ['manage {"action":"save","name":"status","thread":"L","schedule":"0 9 * * *","tools":["WebSearch"],"job":"j","by":"kage","why":"w"}'])
+    assert.equal((await s.call('manage_kagelet', { channel: 'C1', thread_ts: '5.5', action: 'save', name: 'status', thread: 'L', schedule: '0 9 * * *', tools: ['WebSearch'], job: 'j', why: 'w' })).text, 'managed')
+    assert.deepEqual(s.out, ['manage {"action":"save","name":"status","thread":"L","schedule":"0 9 * * *","tools":["WebSearch"],"job":"j","why":"w"}'])
+    // The model gets no field that says who asked: it could claim the owner did.
+    assert.equal('by' in s.t.tools.find(x => x.name === 'manage_kagelet')!.shape, false)
     const lane = setup({ kagelet: 'status' })
     assert.equal(lane.t.tools.some(x => x.name === 'kagelets' || x.name === 'manage_kagelet'), false)
     assert.equal(setup().t.tools.some(x => x.name === 'report'), false)
@@ -425,8 +427,8 @@ describe("a session's Kage tools", () => {
     s.t.onTask(s.task())
     const save = { channel: 'C1', thread_ts: '5.5', action: 'save', name: 'calls', tools: ['db_read'], read_command: 'r' }
     assert.equal((await s.call('manage_kagelet', save)).text, 'asked: true')
-    assert.deepEqual(asked, [['grant_db_read', asked[0] && (asked[0] as string[])[1], { kagelet: 'calls', job: 'j', read_command: 'r' }]])
-    assert.match((asked[0] as string[])[1]!, /every kagelet granted db_read/)
+    assert.deepEqual(asked, [['grant_kagelet', asked[0] && (asked[0] as string[])[1], { kagelet: 'calls', tools: 'db_read', job: 'j', read_command: 'r' }]])
+    assert.match((asked[0] as string[])[1]!, /calls: db_read\. The read command is this kagelet's own/)
     s.t.onTask(s.task({ fromOwner: false }))
     assert.equal((await s.call('manage_kagelet', save)).isError, true)
     assert.equal(asked.length, 1)
