@@ -1,5 +1,6 @@
 // Prints the Slack app manifest for the name in name (setup.sh calls this).
 import { validName } from '../core/gate.ts'
+import { BOT_SCOPES, USER_SCOPES } from '../core/slack-scopes.ts'
 
 const name = process.env.KAGE_NAME || 'kage'
 if (!validName(name)) throw new Error(`bad name: ${name}`)
@@ -17,23 +18,8 @@ const manifest = {
   },
   oauth_config: {
     scopes: {
-      // The bot posts replies and approval prompts, and adds the pickup and done reactions.
-      bot: ['chat:write', 'files:write', 'im:write', 'im:history', 'reactions:write', 'users:read'],
-      // Your user token hears your conversations, reads the thread for context, and replies
-      // where the bot isn't a member.
-      user: [
-        'channels:history', 'groups:history', 'im:history', 'mpim:history',
-        'channels:read', 'groups:read', 'im:read', 'mpim:read',
-        'chat:write', 'reactions:write', 'users:read',
-        // AFK mode sets your status while you are away, then puts the old one back.
-        'users.profile:read', 'users.profile:write',
-        // message_people opens the group DM of you and the people a task names.
-        'im:write', 'mpim:write',
-        // Sessions open files people attach in a thread.
-        'files:read',
-        // Sessions search Slack for the same subject in other channels before they answer.
-        'search:read',
-      ],
+      bot: BOT_SCOPES,
+      user: USER_SCOPES,
     },
   },
   settings: {
