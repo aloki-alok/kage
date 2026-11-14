@@ -9,6 +9,8 @@ export const BOT_SCOPES = ['chat:write', 'files:write', 'im:write', 'im:history'
 export const USER_SCOPES = [
   'channels:history', 'groups:history', 'im:history', 'mpim:history',
   'channels:read', 'groups:read', 'im:read', 'mpim:read',
+  // The verified owner's voice call searches Slack without discovering an external tool first.
+  'search:read',
   'chat:write', 'reactions:write', 'users:read',
   // AFK mode sets your status while you are away, then puts the old one back.
   'users.profile:read', 'users.profile:write',

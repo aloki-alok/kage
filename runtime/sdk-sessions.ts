@@ -4,6 +4,7 @@
 // the hub process, crons included.
 // The SDK comes in as an argument: the hub imports it only when this runtime is on, so a tmux-only
 // install needs no SDK.
+import { VOICE_READS, VOICE_READS_LINE, voiceToolOptions } from './voice-slack-tools.ts'
 import type { createSdkMcpServer, EffortLevel, Options, Query, SDKMessage, SDKUserMessage, tool } from '@anthropic-ai/claude-agent-sdk'
 import { z } from 'zod'
 import { log } from './log.ts'
@@ -84,12 +85,13 @@ export function sdkSessions(o: {
 
   function open(key: string, s: Session, carried: SDKUserMessage[] = []) {
     const inbox = makeInbox(carried)
+    const voice = key.startsWith('voice:')
     const server = o.sdk.createSdkMcpServer({
-      name: 'kage', instructions: s.kage.instructions,
-      tools: [...s.kage.tools.map(t => o.sdk.tool(t.name, t.description, t.shape, async args => {
+      name: 'kage', instructions: s.kage.instructions + (voice ? VOICE_READS_LINE : ''),
+      tools: [...(voice ? [...s.kage.tools, ...s.kage.voiceTools] : s.kage.tools).map(t => o.sdk.tool(t.name, t.description, t.shape, async args => {
         const r = await t.run(args)
         return { isError: r.isError, content: [{ type: 'text' as const, text: r.text }] }
-      })), o.sdk.tool('set_model', SET_MODEL, {
+      }, voiceToolOptions(voice, t.name))), o.sdk.tool('set_model', SET_MODEL, {
         // Aliases only: a typo'd full id would pass setModel and then fail every turn of the thread.
         model: z.enum(['fable', 'opus', 'sonnet', 'haiku', 'default']).optional(),
         effort: z.enum(['low', 'medium', 'high', 'xhigh', 'max', 'default']).optional().describe('reasoning effort; maximum or ultra means max'),
@@ -99,13 +101,12 @@ export function sdkSessions(o: {
         if (a.model) {
           await q.setModel(a.model === 'default' ? undefined : a.model)
           if (a.model === 'default') delete pick.model; else pick.model = a.model
-          picks.set(key, { ...pick })
         }
         if (a.effort) {
           await q.applyFlagSettings({ effortLevel: a.effort === 'default' ? null : a.effort })
           if (a.effort === 'default') delete pick.effort; else pick.effort = a.effort
-          picks.set(key, { ...pick })
         }
+        picks.set(key, { ...pick })
         log('set_model', key, s.sender, pick.model ?? 'default', pick.effort ?? 'default')
         return { content: [{ type: 'text' as const, text: `This thread now runs on ${pick.model ?? 'the default model'} at ${pick.effort ?? 'default'} effort.` }] }
       })],
@@ -141,7 +142,7 @@ export function sdkSessions(o: {
           // A save is approved inside the tool by tier (runtime/kagelets.ts): Kage grants read, and a write tool raises
           // its own card, so the owner gets one, not two. A revoke only takes access away, so it needs none (the tool
           // still takes it from the owner's task only).
-          : ALLOWED.includes(name) || (name === 'mcp__kage__manage_kagelet' && (input.action === 'save' || input.action === 'revoke')) ? Promise.resolve({ behavior: 'allow' as const, updatedInput: input })
+          : ALLOWED.includes(name) || (voice && VOICE_READS.includes(name)) || (name === 'mcp__kage__manage_kagelet' && (input.action === 'save' || input.action === 'revoke')) ? Promise.resolve({ behavior: 'allow' as const, updatedInput: input })
           : o.deferred?.take(key, name, input, Date.now()) ? Promise.resolve({ behavior: 'allow' as const, updatedInput: input })
           : o.deferred && s.turn.length ? defer(key, s, name, x.title ?? x.description ?? '', input)
           : ask(key, s, name, x.title ?? x.description ?? '', input, x.signal),
