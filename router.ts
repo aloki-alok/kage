@@ -511,7 +511,6 @@ const meeting = secrets.meetingToken ? connectMeeting({
   notify: text => void slack.notifyOwner(text),
   perHour: conn.meeting?.perHour || 10, inbox, untake: source => store.untake(source), name: NAME,
   end: key => { if (meetCall(key)) d.end(key) },   // only the call's own session
-  code: () => voice?.issueCode(),   // voice is made below; a join only happens later, from a session
 }) : undefined
 void meeting?.listening.then(port => { log(`meetings on: 127.0.0.1:${port}/meeting`); if (existsSync(`${CODE}/meetbot/node_modules`)) meetbot(port) })
 // The meeting bot runs as the hub's child when it is installed in this checkout (meetbot/node_modules): it waits

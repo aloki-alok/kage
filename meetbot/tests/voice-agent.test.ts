@@ -24,7 +24,7 @@ function tone(seconds: number) {
   return pcm.toString('base64')
 }
 
-async function setup(t: TestContext, ownerCode?: string) {
+async function setup(t: TestContext) {
   const creates: { agent_id?: number; custom_variables?: { owner_code?: string } }[] = []
   const audio: { type?: string; data?: string }[] = []
   let socket: WebSocket | undefined
@@ -61,7 +61,7 @@ async function setup(t: TestContext, ownerCode?: string) {
   let stop = false, finished = false
   const done = attend(page, `http://127.0.0.1:${port}/meet`, {
     name: 'Kage (test)', consent: 'Test call.', heard: () => {}, stop: () => stop,
-    voice: (pg, ended) => bridge(pg, { api: `http://127.0.0.1:${port}`, key: 'test-key', agent: 42, ownerCode }, (...a) => logs.push(a.join(' ')), ended),
+    voice: (pg, ended) => bridge(pg, { api: `http://127.0.0.1:${port}`, key: 'test-key', agent: 42 }, (...a) => logs.push(a.join(' ')), ended),
   }).finally(() => { finished = true })
   // Observe failures at once, including when an assertion exits before attend finishes.
   void done.catch(() => {})
@@ -85,11 +85,11 @@ async function setup(t: TestContext, ownerCode?: string) {
   return { page, creates, audio, send, socket: () => socket!, logs, done, finished: () => finished }
 }
 
-test('the voice session create body carries the agent and owner code', { timeout: 15_000 }, async t => {
-  const s = await setup(t, 'test-owner-code')
+test('the voice session create body carries the agent and no owner code', { timeout: 15_000 }, async t => {
+  const s = await setup(t)
   assert.equal(s.creates.length, 1)
   assert.equal(s.creates[0]!.agent_id, 42)
-  assert.equal(s.creates[0]!.custom_variables?.owner_code, 'test-owner-code')
+  assert.equal(s.creates[0]!.custom_variables, undefined)
 })
 
 test('audio from the Meet page reaches the voice socket as audio frames', { timeout: 15_000 }, async t => {
