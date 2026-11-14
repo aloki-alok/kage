@@ -114,7 +114,7 @@ export const KEYS: Row[] = [
 // Old names that older env files may still hold. The new name wins when both are there.
 export const ALIASES: Record<string, string> = { KAGE_MAX_SPECIALISTS: 'KAGE_MAX_KAGELETS', KAGE_SPECIALIST_DAILY_USD: 'KAGE_KAGELET_DAILY_USD' }
 // Names the grep in docs/settings.md finds that are not settings: Kage sets them, or a script or test does.
-export const NOT_SETTINGS = ['KAGE_BIN', 'KAGE_CALL_CODE', 'KAGE_CALL_REASON', 'KAGE_CLAUDE', 'KAGE_DIR', 'KAGE_ENV', 'KAGE_GIT_URL', 'KAGE_REF', 'KAGE_SESSION', 'KAGE_SETUP_WAIT', 'KAGE_SLACK_API', 'KAGE_SSM_SOCK', 'KAGE_SSM_TOKEN', 'KAGE_TARBALL', 'KAGE_THREAD']
+export const NOT_SETTINGS = ['KAGE_BIN', 'KAGE_CALL_CODE', 'KAGE_CALL_REASON', 'KAGE_CLAUDE', 'KAGE_DIR', 'KAGE_ENV', 'KAGE_GIT_URL', 'KAGE_PANE_SETTINGS', 'KAGE_REF', 'KAGE_SESSION', 'KAGE_SETUP_WAIT', 'KAGE_SLACK_API', 'KAGE_SSM_SOCK', 'KAGE_SSM_TOKEN', 'KAGE_TARBALL', 'KAGE_THREAD']
 
 // By its name, or by what it holds: a URL with user:password@ in it, or a long unbroken random-looking string (not a path).
 const looksSecret = (name: string, value = '') => /TOKEN|SECRET|KEY|PASS|AUTH|CRED/i.test(name) || /:\/\/[^\s/:@]+:[^\s/@]+@/.test(value)
