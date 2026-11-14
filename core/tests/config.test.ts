@@ -92,13 +92,20 @@ describe('importing an env file', () => {
     assert.ok(!JSON.stringify(config).includes('xox'))
   })
 
-  test('a line the table does not know, or a value that does not fit, is kept under unknown, a secret-looking one without its value', () => {
+  test('a line the table does not know, or a value that does not fit, is kept under unknown, a secret-looking one with its value only in secrets', () => {
     const { config, secrets } = fromEnv(parseEnv('KAGE_MAX_SESION=6\nKAGE_MAX_SESSIONS=many\nKAGE_NEW_TOKEN=xoxb-fake\nKAGE_TEAMMATES=priya\n'))
     assert.deepEqual(config.unknown, { KAGE_MAX_SESION: '6', KAGE_MAX_SESSIONS: 'many', KAGE_NEW_TOKEN: null, KAGE_TEAMMATES: 'priya' })
     assert.deepEqual(unknownNames(config), ['KAGE_MAX_SESION', 'KAGE_MAX_SESSIONS', 'KAGE_NEW_TOKEN', 'KAGE_TEAMMATES'])
-    assert.deepEqual(toEnv(config, secrets), { KAGE_MAX_SESION: '6', KAGE_MAX_SESSIONS: 'many', KAGE_TEAMMATES: 'priya' })
+    assert.deepEqual(toEnv(config, secrets), { KAGE_MAX_SESION: '6', KAGE_MAX_SESSIONS: 'many', KAGE_TEAMMATES: 'priya', KAGE_NEW_TOKEN: 'xoxb-fake' })
   })
 
+  test('an unknown line with a secret-looking name keeps its value in secrets.json and flattens back, and config.json never holds it', () => {
+    const { config, secrets } = fromEnv({ OPENAI_API_KEY: 'sk-test', MY_TOKEN: 'tok-test' })
+    assert.deepEqual(toEnv(config, secrets), { OPENAI_API_KEY: 'sk-test', MY_TOKEN: 'tok-test' })
+    assert.deepEqual(secrets.unknown, { OPENAI_API_KEY: 'sk-test', MY_TOKEN: 'tok-test' })
+    assert.ok(!JSON.stringify(config).includes('sk-test') && !JSON.stringify(config).includes('tok-test'))
+    assert.deepEqual(unknownNames(config), ['MY_TOKEN', 'OPENAI_API_KEY'])
+  })
   test('an old name fills the new one unless the new one is set', () => {
     assert.equal(fromEnv({ KAGE_MAX_SPECIALISTS: '3' }).config.kagelets?.max, 3)
     assert.equal(fromEnv({ KAGE_MAX_SPECIALISTS: '3', KAGE_MAX_KAGELETS: '5' }).config.kagelets?.max, 5)

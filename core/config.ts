@@ -38,7 +38,7 @@ export const Config = z.strictObject({
     whatsapp: z.strictObject({ on: yes, memory: text, model: text, wahaUrl: text, hookHost: text, hookPort: count }).optional(),
     commands: z.record(z.string(), z.string()).optional(),
   }).optional(),
-  // Env lines the table does not know. A value is kept only when its name does not look like a secret.
+  // Env lines the table does not know. A secret-looking one keeps only its name here (null) and its value in secrets.json.
   unknown: z.record(z.string(), z.string().nullable()).optional(),
 })
 export type Config = z.infer<typeof Config>
@@ -48,6 +48,8 @@ export const Secrets = z.strictObject({
   slack: z.strictObject({ app: sec, user: sec, bot: sec }).optional(),
   aws: z.strictObject({ accessKeyId: sec, secretAccessKey: sec }).optional(),
   voiceToken: sec, githubSecret: sec, meetingToken: sec, browserToken: sec, jevKey: sec,
+  // Values of env lines the table does not know and whose names look like secrets: kept, never dropped.
+  unknown: z.record(z.string(), z.string()).optional(),
 })
 export type Secrets = z.infer<typeof Secrets>
 
@@ -124,11 +126,12 @@ const put = (o: Record<string, any>, path: string, v: unknown) => {
 const get = (o: any, path: string) => path.split('.').reduce((x, k) => x?.[k], o)
 
 // A flat env, as parseEnv reads it, to the two files' contents. A line that does not fit its type, or that the table
-// does not know, goes under "unknown" and is never lost: toEnv gives it back.
+// does not know, goes under "unknown" and is never lost: toEnv gives it back. A secret-looking one has its value in secrets.json.
 export function fromEnv(env: Env): { config: Config; secrets: Secrets } {
   const config: Record<string, any> = { version: 1 }
   const secrets: Record<string, any> = {}
   const unknown: Record<string, string | null> = {}
+  const secretUnknown: Record<string, string> = {}
   const flat: Env = { ...env }
   for (const [old, now] of Object.entries(ALIASES)) if (old in flat) { if (!(now in flat)) flat[now] = flat[old]!; delete flat[old] }
   const known = new Map(KEYS.map(k => [k.env, k]))
@@ -136,9 +139,11 @@ export function fromEnv(env: Env): { config: Config; secrets: Secrets } {
     const row = known.get(name)
     const v = row?.codec.read(value)
     if (row && v !== undefined) put(row.secret ? secrets : config, row.path, v)
-    else unknown[name] = looksSecret(name) ? null : value
+    else if (looksSecret(name)) { unknown[name] = null; secretUnknown[name] = value }
+    else unknown[name] = value
   }
   if (Object.keys(unknown).length) config.unknown = unknown
+  if (Object.keys(secretUnknown).length) secrets.unknown = secretUnknown
   return { config: Config.parse(config), secrets: Secrets.parse(secrets) }
 }
 
@@ -150,6 +155,7 @@ export function toEnv(config: Config, secrets: Secrets): Env {
     if (v !== undefined && v !== null) env[k.env] = k.codec.write(v)
   }
   for (const [name, value] of Object.entries(config.unknown ?? {})) if (value !== null) env[name] = value
+  for (const [name, value] of Object.entries(secrets.unknown ?? {})) env[name] = value
   return env
 }
 
