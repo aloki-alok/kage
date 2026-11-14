@@ -1,6 +1,6 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { blockedSite, blockList, pageResult, tabsResult } from './browser.ts'
+import { blockedSite, blockList, pageResult, setEnvLine, tabsResult } from '../browser.ts'
 
 test('blocks a listed site and its subdomains, and every page that is not http or https', () => {
   const list = blockList('Bank.example.com, vault.test ,')
@@ -47,4 +47,17 @@ test('a trailing dot, punycode, or a list entry written as a URL or with a wildc
   assert.deepEqual(list, ['xn--bnk-qla.de', 'mail.example.org', 'corp.com', 'ex.com'])
   for (const u of ['https://bank.example.com./', 'https://bänk.de/', 'https://mail.example.org/', 'https://x.corp.com/', 'https://ex.com/'])
     assert.equal(blockedSite(u, [...list, 'bank.example.com']), true, u)
+})
+
+test('kage add browser sets its line in the env file and keeps every other line', () => {
+  const env = 'KAGE_NAME=kage\nKAGE_BROWSER_TOKEN=old\nSLACK_BOT_TOKEN=xoxb-TEST\n'
+  // Replaced where it stands, so the file reads the same apart from the token.
+  assert.equal(setEnvLine(env, 'KAGE_BROWSER_TOKEN', 'new'), 'KAGE_NAME=kage\nKAGE_BROWSER_TOKEN=new\nSLACK_BOT_TOKEN=xoxb-TEST\n')
+  assert.equal(setEnvLine('KAGE_NAME=kage', 'KAGE_BROWSER_TOKEN', 't'), 'KAGE_NAME=kage\nKAGE_BROWSER_TOKEN=t\n')
+  assert.equal(setEnvLine('', 'KAGE_BROWSER_TOKEN', 't'), 'KAGE_BROWSER_TOKEN=t\n')
+})
+
+test('kage add browser keeps blank lines, comments and CRLF line endings', () => {
+  assert.equal(setEnvLine('# Kage\r\nKAGE_NAME=kage\r\n\r\nKAGE_BROWSER_TOKEN=old\r\n', 'KAGE_BROWSER_TOKEN', 'new'), '# Kage\r\nKAGE_NAME=kage\r\n\r\nKAGE_BROWSER_TOKEN=new\r\n')
+  assert.equal(setEnvLine('A=1\n\nB=2\n', 'KAGE_BROWSER_TOKEN', 't'), 'A=1\n\nB=2\nKAGE_BROWSER_TOKEN=t\n')
 })

@@ -31,6 +31,17 @@ const ops = {
 
 const settings = () => chrome.storage.local.get({ hub: 'http://127.0.0.1:8791', token: '' })
 
+// What the popup shows, and a ! on the toolbar icon whenever Kage cannot reach this browser.
+// connected | no-token | refused (wrong token) | unreachable (hub not running, or wrong address)
+let last = ''
+async function setState(state) {
+  if (state === last && state !== 'connected') return
+  last = state
+  await chrome.storage.local.set({ status: { state, at: Date.now() } })
+  await chrome.action.setBadgeText({ text: state === 'connected' ? '' : '!' })
+  await chrome.action.setBadgeBackgroundColor({ color: '#c2410c' })
+}
+
 let polling = false
 async function loop() {
   if (polling) return
@@ -38,13 +49,15 @@ async function loop() {
   try {
     for (;;) {
       const { hub, token } = await settings()
-      if (!token) return
+      if (!token) { await setState('no-token'); return }
       const auth = { authorization: `Bearer ${token}` }
       let r
-      try { r = await fetch(`${hub}/browser/next`, { headers: auth }) } catch { await sleep(5000); continue }
-      if (r.status === 401) { await chrome.storage.local.set({ status: 'the hub refused the token' }); return }
-      await chrome.storage.local.set({ status: `connected ${new Date().toLocaleTimeString()}` })
-      if (r.status !== 200) { if (r.status !== 204) await sleep(5000); continue }
+      try { r = await fetch(`${hub}/browser/next`, { headers: auth }) } catch { await setState('unreachable'); await sleep(5000); continue }
+      if (r.status === 401) { await setState('refused'); return }
+      // Only the hub answers 200 or 204 here: any other status is some other service on that port, or a wrong path.
+      if (r.status !== 200 && r.status !== 204) { await setState('unreachable'); await sleep(5000); continue }
+      await setState('connected')
+      if (r.status === 204) continue
       const cmd = await r.json()
       let body
       try {
@@ -62,5 +75,6 @@ chrome.alarms.create('kage-poll', { periodInMinutes: 0.5 })
 chrome.alarms.onAlarm.addListener(() => void loop())
 chrome.runtime.onStartup.addListener(() => void loop())
 chrome.runtime.onInstalled.addListener(() => void loop())
-chrome.storage.onChanged.addListener(c => { if (c.token || c.hub) void loop() })
+// New settings clear the shown state (options.js), so the next state is written even if it is the same as before.
+chrome.storage.onChanged.addListener(c => { if (c.token || c.hub) { last = ''; void loop() } })
 void loop()

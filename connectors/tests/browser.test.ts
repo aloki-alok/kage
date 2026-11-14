@@ -1,6 +1,6 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { connectBrowser } from './browser.ts'
+import { connectBrowser } from '../browser.ts'
 
 const TOKEN = 'test-token'
 const auth = { authorization: `Bearer ${TOKEN}` }
