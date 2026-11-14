@@ -54,6 +54,8 @@ export function sdkSessions(o: {
   grantOf?: (key: string) => string[] | undefined
   // A kagelet lane's tool call, for the event log: the tool's name and why it was refused, never its input.
   onTool?: (key: string, tool: string, refused?: string) => void
+  // A kagelet lane: what it may spend before a cap (core/kagelets.ts budgetLeft). The SDK stops the run there.
+  budgetOf?: (key: string) => number | undefined
   restartMs?: number
 }) {
   const sessions = new Map<string, Session>()
@@ -94,12 +96,14 @@ export function sdkSessions(o: {
     })
     const { KAGE_THREAD: _, ...env } = process.env   // with it, the kage plugin's own channel would take the thread
     const resumed = o.hasTranscript(s.id)
+    const budget = o.budgetOf?.(key)
     const q = o.sdk.query({
       prompt: inbox,
       options: {
         ...o.options,
         ...(resumed ? { resume: s.id } : { sessionId: s.id }),
         ...picks.get(key),
+        ...budget !== undefined && { maxBudgetUsd: budget },
         systemPrompt: { type: 'preset', preset: 'claude_code' },
         mcpServers: { ...o.options.mcpServers, kage: server },
         // Its jobs die with the session; the schedule tool replaces it.
@@ -112,7 +116,8 @@ export function sdkSessions(o: {
           ? Promise.resolve(grantRefusal(name, o.grantOf(key)!, input) ? { behavior: 'deny' as const, message: 'A kagelet approves nothing. Say in the thread what you needed and why: your manager decides.' }
             : { behavior: 'allow' as const, updatedInput: input })
           // A db_read grant raises its own card from inside the tool (runtime/kagelets.ts), so the owner gets one, not two.
-          : ALLOWED.includes(name) || (name === 'mcp__kage__manage_kagelet' && (input.tools as unknown[] | undefined)?.includes(DB_READ)) ? Promise.resolve({ behavior: 'allow' as const, updatedInput: input })
+          // A revoke only takes access away, so it needs none (the tool still takes it from the owner's task only).
+          : ALLOWED.includes(name) || (name === 'mcp__kage__manage_kagelet' && ((input.tools as unknown[] | undefined)?.includes(DB_READ) || input.action === 'revoke')) ? Promise.resolve({ behavior: 'allow' as const, updatedInput: input })
           : ask(key, s, name, x.title ?? x.description ?? '', input, x.signal),
         // The same rules as private-data-guard.ts, in-process. A failed check blocks the call.
         hooks: {
@@ -171,6 +176,8 @@ export function sdkSessions(o: {
             const status = 'api_error_status' in m ? m.api_error_status : undefined
             limit = status === 429 ? 'rate_limit' : status === 529 ? 'overloaded' : undefined
           }
+          // Every result reports its cost, a limit's too: the money was spent either way.
+          if (m.type === 'result') o.onResult?.(key, m.total_cost_usd, resumed)
           if (m.type === 'result' && limit) {
             // The turn did nothing, and a task sent mid-turn would only hit the limit too: all of them go back.
             const tasks = s.turn.map(x => x.task)
@@ -184,7 +191,6 @@ export function sdkSessions(o: {
             const done = s.turn.filter(x => !x.mid).map(x => x.task)
             s.turn = s.turn.filter(x => x.mid).map(x => ({ ...x, mid: false }))
             if (done.length) o.onTurn?.(key, done)
-            o.onResult?.(key, m.total_cost_usd, resumed)
           }
           if (m.type === 'result' && !sawState) s.state = 'idle'
         }

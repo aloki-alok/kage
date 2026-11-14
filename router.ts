@@ -24,7 +24,7 @@ import { memoryDirs } from './core/guards.ts'
 import { limitLine, pauseLine, stopLine } from './core/board.ts'
 import { placeFor, sessionKey, type Conversation, type Lane } from './core/conversations.ts'
 import { mayStop, senderOf } from './core/gate.ts'
-import { dailyDue, lastTotals, openWaiting, staleWaiting, turnCost } from './core/ledgers.ts'
+import { dailyDue, openWaiting, staleWaiting } from './core/ledgers.ts'
 import { dreamDue, dreamTask, threadsSince } from './core/dream.ts'
 import { retro, retroDue } from './core/retro.ts'
 import { Dispatcher, mixRunners } from './core/sessions.ts'
@@ -38,14 +38,14 @@ import { sdkSessions } from './runtime/sdk-sessions.ts'
 import { limitPause } from './runtime/limit-pause.ts'
 import { listenForSessions, restoreHolds, routeReply } from './runtime/session-link.ts'
 import { openStore, type Inbox } from './runtime/store.ts'
-import { openLedgers, runEvents } from './runtime/ledger.ts'
+import { costRecorder, openLedgers, runEvents } from './runtime/ledger.ts'
 import { EVENT_DAYS } from './core/events.ts'
 import { claudeProject, tmuxPanes } from './runtime/tmux-panes.ts'
 import { codeStamp } from './runtime/code-stamp.ts'
 import { clearUpdatedFrom, markUpdatedFrom, pullMain, updatedNote, version } from './runtime/auto-update.ts'
-import { costCap, kageletManager, kageletsDir, ownerNotes, readCommand, readKagelets, syncKagelets } from './runtime/kagelets.ts'
-import { kageletRows } from './core/kagelets.ts'
-import { dailyCap } from './core/kagelet-view.ts'
+import { costCap, kageletDeliver, kageletManager, kageletsDir, ownerNotes, readCommand, readKagelets, syncKagelets } from './runtime/kagelets.ts'
+import { budgetLeft, COST_FLAG, costFlags, kageletRows } from './core/kagelets.ts'
+import { capError, dailyCap, totalCap } from './core/kagelet-view.ts'
 import { askHub } from './cli/home.ts'
 import { hubLock } from './runtime/hub-lock.ts'
 import { npmCi, packagesStale, rotate } from './runtime/hub-log.ts'
@@ -196,6 +196,8 @@ const tmux = tmuxPanes({
 // close; see mixRunners.
 const MEM = memoryDirs(process.env.HOME!, ENV_FILE, env)
 const PROJECT = claudeProject(process.cwd())   // both runners start sessions in the hub's folder, so transcripts live here
+// What each turn cost (runtime/ledger.ts costRecorder): `kage cost`, the kagelet caps and the cost flags read it.
+const recordCost = costRecorder(ledgers)
 const sdkLib = env.KAGE_RUNTIME === 'tmux' ? undefined : await (async () => ({
   lib: await import('@anthropic-ai/claude-agent-sdk'),
   // The same pinned Claude Code the panes run, not the copy bundled with the SDK.
@@ -204,29 +206,31 @@ const sdkLib = env.KAGE_RUNTIME === 'tmux' ? undefined : await (async () => ({
   console.error(`Agent SDK not usable (${e.message}), so threads open as tmux panes. Run npm ci, then restart.`)
   return undefined
 })
-// What each turn cost (core/ledgers.ts): `kage cost` reads it.
-const costTotals = lastTotals(ledgers.text('costs'))
 // Kagelets (#57): one file each in the kagelets folder, synced at start and each minute. Each runs on its
 // schedule in a side lane of its thread, at teammate trust, with only its grant, and approves nothing.
 let grants = new Map<string, string[]>()
 const KAGELETS = kageletsDir(DIR, log)
 // The names from before the rename still read.
 const MAX_KAGELETS = Number(env.KAGE_MAX_KAGELETS || env.KAGE_MAX_SPECIALISTS || 10)
-const KAGELET_USD = dailyCap(env)
+// Off unless set (#96); a value that does not read as dollars is said once, here.
+const CAPS = { each: dailyCap(env), total: totalCap(env) }
+if (capError(env)) log(capError(env)!)
 // Only the SDK runner enforces a grant, so with tmux panes no kagelet runs: their schedules are removed.
 // A kagelet over its daily cost cap is paused and flagged first, so this sync already drops its schedule.
 const kagelets = (now: number) => {
   let files = readKagelets(KAGELETS)
   if (!sdk && files.length) { if (!kageletsRefused) log('kagelets need the Agent SDK runner (not KAGE_RUNTIME=tmux), so none runs'); kageletsRefused = true; files = [] }
-  const rows = kageletRows(files, { runs: ledgers.text('runs'), costs: ledgers.text('costs'), now })
-  if (costCap(KAGELETS, rows, KAGELET_USD, (name, why) => {
+  const ran = ledgers.text('runs'), costs = ledgers.text('costs')
+  const rows = kageletRows(files, { runs: ran, costs, now })
+  // Cost monitoring (#96): one line per kagelet a day in the reports ledger, where Kage reads it, and the event log. No DM.
+  for (const f of costFlags(rows, { runs: ran, costs, reports: ledgers.text('reports') }, now)) { ledgers.add('reports', [`${COST_FLAG}${f.name}`, f.line, '']); log(`kagelet cost flag: ${f.line}`) }
+  if (costCap({ dir: KAGELETS, store, title: Title, tell: text => void slack.notifyOwner(text), flag: (name, why) => {
     const r = rows.find(x => x.name === name)!
-    ledgers.add('reports', [name, why, 'the owner to resume it, or a higher KAGE_KAGELET_DAILY_USD'])
+    ledgers.add('reports', [name, why, 'the owner to resume it, or a higher cap'])
     runs.emit(r.key!, 'cap-pause', why)
     ledgers.add('waiting', ['open', r.key!.split('#')[0]!, r.link ?? '', `kagelet ${name} ${why}`])
     log(`kagelet ${name} ${why}`)
-    void slack.notifyOwner(`Kagelet *${name}* is ${why}. Resume it with kage top or by asking ${Title}.`)
-  }).length) files = readKagelets(KAGELETS)
+  } }, rows, CAPS, now).length) files = readKagelets(KAGELETS)
   grants = syncKagelets(files, store, now, log, MAX_KAGELETS)
 }
 // The manager's side, for Kage's owner sessions (runtime/kage-tools.ts), and the owner's notes to a kagelet.
@@ -256,12 +260,10 @@ const sdk = sdkLib ? sdkSessions({
   ownerMemory: MEM.owner,
   onStart: () => store.saveSessions(d.saved()),
   onResult: (key, total, resumed) => {
-    const usd = turnCost(costTotals.get(key), total, resumed)
+    const usd = recordCost(key, total, resumed)
     runs.end(key, `$${(usd ?? 0).toFixed(2)}`, d.saved()[key] ? `${PROJECT}/${d.saved()[key]}.jsonl` : '')
-    if (usd === undefined) return
-    costTotals.set(key, total)
-    ledgers.add('costs', [key, String(usd), String(total)])
   },
+  budgetOf: key => key.includes('#side-kagelet-') ? budgetLeft(kageletRows(readKagelets(KAGELETS), { runs: '', costs: ledgers.text('costs'), now: Date.now() }), key, CAPS) : undefined,
   onBlocked: blocked,
   onTurn: (key, tasks, limit) => limits.turn(key, tasks, limit, Date.now()),
   // A lane whose file is gone keeps no tools, rather than falling back to approval cards.
@@ -308,13 +310,7 @@ restoreHolds(DIR, d, Date.now())
 // Schedules live in the store and run as tasks in their thread (runtime/scheduler.ts).
 const schedules = scheduler({
   store, failed,
-  // A kagelet's run carries what the owner wrote in its thread since its last one.
-  // The notes stay when the run never reached a session.
-  deliver: (key, task) => {
-    let r: ReturnType<typeof toSession> | undefined
-    if (key.includes('#side-kagelet-')) notes.take(key, said => (r = toSession(key, { ...task, content: `${task.content}\n\n${said}` })) !== 'failed')
-    return r ?? toSession(key, task)
-  },
+  deliver: kageletDeliver(notes, toSession),
   ready: key => d.ready(key),
   trusted: key => store.trust(key) === true,
   ran: j => ledgers.add('runs', [j.id, j.key]),

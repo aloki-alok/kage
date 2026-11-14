@@ -200,13 +200,70 @@ test('KAGE_DB_READ_COMMAND wins over a proposed command: the card names it witho
   assert.doesNotMatch(JSON.stringify(o.cards), /password/)
   assert.equal(t.store.load('db-read-command'), undefined)
   assert.equal(readCommand('env-read', t.store), 'env-read')
-  // Once approved, a later grant may use the stored command without proposing one.
+  // Once approved, a later grant may use the stored command without proposing one, and the yes stands for it (#96).
   const u = manager(), y = owner(true)
   await u.m.manage({ action: 'save', name: 'calls', ...calls }, 1, y.ask)
   const { read_command: _, ...noCommand } = calls
   assert.match(await u.m.manage({ action: 'save', name: 'other', ...noCommand }, 2, y.ask), /saved other/)
-  assert.equal(y.cards[1]!.read_command, '~/bin/read-sql --ro')
+  assert.equal(y.cards.length, 1)
   assert.equal(readCommand('env-read', u.store), 'env-read')
+})
+
+test('after the owner\'s yes, a later db_read save through the same command needs no card, and is logged with a reason', async () => {
+  const t = manager(), y = owner(true)
+  await t.m.manage({ action: 'save', name: 'calls', ...calls }, 1, y.ask)
+  assert.match(await t.m.manage({ action: 'save', name: 'other', ...calls }, Date.UTC(2026, 0, 3), y.ask), /saved other/)
+  // Saved again: no card either.
+  assert.match(await t.m.manage({ action: 'save', name: 'calls', ...calls, schedule: '0 10 * * *' }, 5, y.ask), /saved calls/)
+  assert.equal(y.cards.length, 1)
+  assert.match(readFileSync(`${t.dir}/other.md`, 'utf8'), /^granted: db_read by standing approval, 2026-01-03T00:00:00\.000Z$/m)
+  assert.deepEqual(t.grants.map(g => g.slice(0, 2)), [['calls', 'granted'], ['other', 'standing'], ['calls', 'standing']])
+  assert.match(t.grants[1]![2]!, /standing approval.*same read command/)
+  assert.match(t.logs.join('\n'), /kagelet other: db_read granted by the standing approval/)
+  assert.doesNotMatch(JSON.stringify(t.grants) + t.logs.join('') + JSON.stringify(t.store.load('standing-approvals')), /read-sql/)
+})
+
+test('a standing approval never covers a different read command, a changed settings command, or a session that cannot ask the owner', async () => {
+  const t = manager(), y = owner(true)
+  await t.m.manage({ action: 'save', name: 'calls', ...calls }, 1, y.ask)
+  await t.m.manage({ action: 'save', name: 'other', ...calls, read_command: '~/bin/other-sql' }, 2, y.ask)
+  assert.equal(y.cards.length, 2)
+  // No way to ask the owner (a teammate's session): refused, standing approval or not.
+  assert.match(await t.m.manage({ action: 'save', name: 'third', ...calls }, 3), /not saved/)
+  assert.equal(existsSync(`${t.dir}/third.md`), false)
+  const e = manager(10, 'env-read'), o = owner(true)
+  await e.m.manage({ action: 'save', name: 'calls', ...calls }, 1, o.ask)
+  await e.m.manage({ action: 'save', name: 'other', ...calls }, 2, o.ask)
+  assert.equal(o.cards.length, 1)
+  const changed = kageletManager({ dir: e.dir, max: 10, ledgers: { text: () => '', add: () => {} }, sync: () => {}, runNow: () => undefined, store: e.store, envCommand: 'env-read --host=new', log: () => {} })
+  await changed.manage({ action: 'save', name: 'third', ...calls }, 3, o.ask)
+  assert.equal(o.cards.length, 2)
+})
+
+test('revoking the standing approval takes db_read from every kagelet that got it by it, and the next one asks again', async () => {
+  const t = manager(), y = owner(true)
+  assert.match(await t.m.manage({ action: 'revoke', name: 'db_read' }, 1), /no standing approval/i)
+  await t.m.manage({ action: 'save', name: 'calls', ...calls }, 1, y.ask)
+  await t.m.manage({ action: 'save', name: 'other', ...calls }, 2, y.ask)
+  await t.m.manage({ action: 'save', name: 'third', ...calls }, 3, y.ask)
+  t.synced.length = 0
+  assert.match(await t.m.manage({ action: 'revoke', name: 'db_read' }, 4), /revoked.*other, third/)
+  assert.deepEqual(t.synced, [4])
+  for (const n of ['other', 'third']) assert.doesNotMatch(readFileSync(`${t.dir}/${n}.md`, 'utf8'), /db_read/)
+  // The kagelet the owner said yes to on its own card keeps it.
+  assert.match(readFileSync(`${t.dir}/calls.md`, 'utf8'), /^tools: WebSearch, db_read$/m)
+  assert.deepEqual(t.grants.slice(-2).map(g => g.slice(0, 2)), [['other', 'revoked'], ['third', 'revoked']])
+  await t.m.manage({ action: 'save', name: 'other', ...calls }, 5, y.ask)
+  assert.equal(y.cards.length, 2)
+})
+
+test('a revoke that stopped halfway (approval gone, a file still holding db_read by it) finishes when run again', async () => {
+  const t = manager(), y = owner(true)
+  await t.m.manage({ action: 'save', name: 'calls', ...calls }, 1, y.ask)
+  await t.m.manage({ action: 'save', name: 'other', ...calls }, 2, y.ask)
+  t.store.save('standing-approvals', undefined)
+  assert.match(await t.m.manage({ action: 'revoke', name: 'db_read' }, 3), /revoked.*other/)
+  assert.doesNotMatch(readFileSync(`${t.dir}/other.md`, 'utf8'), /db_read/)
 })
 
 test('the manager pauses, resumes, runs now and removes; a paused one does not run now', async () => {
@@ -223,23 +280,69 @@ test('the manager pauses, resumes, runs now and removes; a paused one does not r
   assert.match(await t.m.manage({ action: 'remove', name: 'status' }, 7), /no kagelet/i)
 })
 
-test('a kagelet over its daily cost cap is paused and flagged for the manager; one under it runs on', () => {
+function capped(names: string[]) {
   const dir = mkdtempSync(`${tmpdir()}/spec-`)
-  writeFileSync(`${dir}/dear.md`, file().text)
-  writeFileSync(`${dir}/cheap.md`, file().text)
-  writeFileSync(`${dir}/edge.md`, file().text)
-  const flags: string[] = []
+  for (const n of names) writeFileSync(`${dir}/${n}.md`, file().text)
+  const flags: string[] = [], dms: string[] = []
+  const store = openStore(':memory:')
+  const check = (rows: { name: string; state: 'runs' | 'paused'; costToday: number }[], caps: { each?: number; total?: number }, now: number) =>
+    costCap({ dir, store, title: 'Kage', flag: (name, why) => flags.push(`${name}: ${why}`), tell: t => dms.push(t) }, rows.map(r => ({ ...r, tools: [], avg7: 0 })), caps, now)
+  return { dir, flags, dms, check }
+}
+const day = (d: number, h = 12) => new Date(2026, 10, d, h).getTime()
+
+test('a kagelet over its daily cost cap is paused and flagged for the manager; one under it runs on', () => {
+  const t = capped(['dear', 'cheap', 'edge'])
   const rows = [
-    { name: 'dear', state: 'runs' as const, tools: [], costToday: 2.1 },
-    { name: 'cheap', state: 'runs' as const, tools: [], costToday: 0.4 },
-    { name: 'edge', state: 'runs' as const, tools: [], costToday: 2 },
-    { name: 'held', state: 'paused' as const, tools: [], costToday: 9 },
+    { name: 'dear', state: 'runs' as const, costToday: 2.1 },
+    { name: 'cheap', state: 'runs' as const, costToday: 0.4 },
+    { name: 'edge', state: 'runs' as const, costToday: 2 },
+    { name: 'held', state: 'paused' as const, costToday: 0.5 },
   ]
-  assert.deepEqual(costCap(dir, rows, 2, (name, why) => flags.push(`${name}: ${why}`)), ['dear', 'edge'])
-  assert.match(readFileSync(`${dir}/dear.md`, 'utf8'), /^paused: yes$/m)
-  assert.doesNotMatch(readFileSync(`${dir}/cheap.md`, 'utf8'), /paused/)
-  assert.equal(flags.length, 2)
-  assert.match(flags[0]!, /dear: .*\$2\.10.*\$2\.00/)
+  assert.deepEqual(t.check(rows, { each: 2, total: 10 }, day(14)), ['dear', 'edge'])
+  assert.match(readFileSync(`${t.dir}/dear.md`, 'utf8'), /^paused: yes$/m)
+  assert.doesNotMatch(readFileSync(`${t.dir}/cheap.md`, 'utf8'), /paused/)
+  assert.equal(t.flags.length, 2)
+  assert.match(t.flags[0]!, /dear: .*\$2\.10.*\$2\.00/)
+  assert.equal(t.dms.length, 2)
+})
+
+test('with no cap set, the hub pauses nothing and sends no DM, whatever a kagelet spent', () => {
+  const t = capped(['a'])
+  assert.deepEqual(t.check([{ name: 'a', state: 'runs' as const, costToday: 500 }], {}, day(14)), [])
+  assert.doesNotMatch(readFileSync(`${t.dir}/a.md`, 'utf8'), /paused/)
+  assert.deepEqual([t.flags, t.dms], [[], []])
+})
+
+test('the manager\'s list shows a kagelet\'s cost flag from today, not an older one', async () => {
+  const t = manager()
+  await t.m.manage({ action: 'save', name: 'status', ...job }, 1)
+  const now = new Date(2026, 10, 14, 15).getTime()
+  t.reports.push(`${new Date(2026, 10, 13, 9).toISOString()}\tcost:status\tstatus: old flag\t\n`)
+  assert.doesNotMatch(t.m.list(now), /cost flag/)
+  t.reports.push(`${new Date(2026, 10, 14, 9).toISOString()}\tcost:status\tstatus: spent $0.90 today, over 3x its 7-day average of $0.10\t\n`)
+  assert.match(t.m.list(now), /\n  cost flag today: status: spent \$0\.90 today/)
+})
+
+test('the total cap pauses every running kagelet with one DM; 80% of a cap warns once a day', () => {
+  const t = capped(['a', 'b'])
+  const near = [{ name: 'a', state: 'runs' as const, costToday: 1.7 }, { name: 'b', state: 'runs' as const, costToday: 1 }]
+  t.check(near, { each: 2, total: 10 }, day(14, 9))
+  t.check(near, { each: 2, total: 10 }, day(14, 10))
+  assert.deepEqual(t.dms.length, 1)
+  assert.match(t.dms[0]!, /\*a\* spent \$1\.70 today, 80%/)
+  // The next day it may warn again.
+  t.check(near, { each: 2, total: 10 }, day(15, 9))
+  assert.equal(t.dms.length, 2)
+  // At the total cap: both pause, one DM, and a resumed one paused again the same day sends no second DM.
+  const over = [{ name: 'a', state: 'runs' as const, costToday: 1.5 }, { name: 'b', state: 'runs' as const, costToday: 1.5 }]
+  assert.deepEqual(t.check(over, { each: 2, total: 3 }, day(15, 10)), ['a', 'b'])
+  assert.match(readFileSync(`${t.dir}/b.md`, 'utf8'), /^paused: yes$/m)
+  assert.equal(t.dms.length, 3)
+  assert.match(t.dms[2]!, /Every kagelet is paused/)
+  assert.deepEqual(t.check([{ ...over[0]!, costToday: 0 }, { ...over[1]!, state: 'paused' }], { each: 2, total: 1.5 }, day(15, 11)), ['a'])
+  assert.equal(t.dms.length, 3)
+  assert.equal(t.flags.length, 3)
 })
 
 test('the owner\'s words in a kagelet\'s thread reach its next run once, and only that thread\'s kagelets', () => {

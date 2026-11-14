@@ -1,7 +1,7 @@
 // The event log (#94): one row per thing a kagelet or a Kage session did, for the dream and learning jobs.
 // A row names what happened, never what was said: no message text, query rows or secrets. A run's text
 // stays in its transcript, and the row keeps only the path.
-export type EventKind = 'run.start' | 'run.end' | 'tool' | 'handoff' | 'grant' | 'refusal' | 'owner-note' | 'report' | 'cap-pause' | 'day-summary'
+export type EventKind = 'run.start' | 'run.end' | 'tool' | 'handoff' | 'grant' | 'refusal' | 'revoke' | 'owner-note' | 'report' | 'cap-pause' | 'cost-flag' | 'day-summary'
 // who: the kagelet's name, or the session key. trace: one run. chain: one chain of runs (#93), '' outside one.
 export type KageEvent = { at: string; kind: EventKind; who: string; trace: string; chain: string; detail: string; transcript: string }
 

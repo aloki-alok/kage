@@ -17,7 +17,7 @@ import { newLines, transcriptLine } from '../core/transcript.ts'
 import { HERO_BIG, HERO_SMALL } from '../core/hero.ts'
 import { schedulesIn } from '../runtime/store.ts'
 import { actionLine, dailyCap, PANEL_KEYS, panelLines, shownState, type PanelAction } from '../core/kagelet-view.ts'
-import { kageletRows, type KageletRow } from '../core/kagelets.ts'
+import { DB_READ, kageletRows, type KageletRow } from '../core/kagelets.ts'
 import { parseEnv } from '../core/settings.ts'
 import { kageletsDir, readKagelets } from '../runtime/kagelets.ts'
 import { ledgerText } from '../runtime/ledger.ts'
@@ -430,7 +430,7 @@ function kageletPanel(now: number) {
   for (let y = y0; y <= y1; y++) put(0, y, ' '.repeat(W), 'w')
   put(x0, y0, `┏${'━'.repeat(w - 1)}┓`, 'g'); put(x0, y1, `┗${'━'.repeat(w - 1)}┛`, 'g')
   for (let y = y0 + 1; y < y1; y++) { put(x0, y, '┃', 'g'); put(right, y, '┃', 'g') }
-  const head = clip(kageletsFailed || (live ? `cap $${CAP.toFixed(2)} a day each` : 'hub offline: the keys need it'), w - 20)
+  const head = clip(kageletsFailed || (live ? (CAP === undefined ? 'cost today, avg of the last 7 days' : `cap $${CAP.toFixed(2)} a day each`) : 'hub offline: the keys need it'), w - 20)
   put(x0 + 2, y0 + 1, `Kagelets (${kagelets.length})`, 'W'); put(right - head.length - 1, y0 + 1, head, live && !kageletsFailed ? 'm' : 'R')
   put(x0 + 2, y0 + 2, '─'.repeat(w - 3), 'k')
   if (!kagelets.length) put(x0 + 3, y0 + 4, 'no kagelets yet', 'm')
@@ -442,7 +442,7 @@ function kageletPanel(now: number) {
     put(x0 + 3, y, clip(line.main, w - 4), hot ? 'G' : SHOWN_TONE[shownState(r, CAP)]!)
     put(x0 + 5, y + 1, clip(line.report, w - 6), 'm')
   })
-  const keys = 'r run now   p pause   u resume   x remove   esc close'
+  const keys = 'r run now   p pause   u resume   x remove   v revoke standing   esc close'
   put(right - keys.length - 2, y1 - 1, keys, 'm')
 }
 
@@ -565,7 +565,7 @@ async function onKey(k: string) {
     else if (k === '\x1b' || k === 'l') panel = false
     else if (k === '\x1b[A' || k === 'k') pick = Math.max(0, pick - 1)
     else if (k === '\x1b[B' || k === 'j') pick = Math.min(kagelets.length - 1, pick + 1)
-    else if (action && name) { if (action === 'remove') confirmRemove = name; else await act(action, name) }
+    else if (action && name) { if (action === 'remove') confirmRemove = name; else await act(action, action === 'revoke' ? DB_READ : name) }
     return
   }
   if (searching) {

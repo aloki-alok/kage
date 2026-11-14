@@ -206,10 +206,10 @@ test('kage top runs, pauses, resumes and removes a kagelet through the manager; 
   }
   // finally: an open server keeps the test process alive, so a failed assertion would hang instead of failing.
   try {
-    for (const action of ['run', 'pause', 'resume', 'remove']) assert.deepEqual(await ask({ type: 'kagelet', action, name: 'deploys' }), { type: 'kagelet', text: `deploys: ${action} done` })
-    assert.deepEqual(await ask({ type: 'kagelet', action: 'save', name: 'deploys' }), { type: 'kagelet', refused: 'kage top runs, pauses, resumes or removes a kagelet, not save' })
+    for (const action of ['run', 'pause', 'resume', 'remove', 'revoke']) assert.deepEqual(await ask({ type: 'kagelet', action, name: 'deploys' }), { type: 'kagelet', text: `deploys: ${action} done` })
+    assert.deepEqual(await ask({ type: 'kagelet', action: 'save', name: 'deploys' }), { type: 'kagelet', refused: 'kage top runs, pauses, resumes or removes a kagelet, or revokes the standing approval, not save' })
     await ask({ type: 'kagelet', action: 'remove', name: 'deploys' }, 'B')
-    assert.deepEqual(done, ['run deploys', 'pause deploys', 'resume deploys', 'remove deploys'])
+    assert.deepEqual(done, ['run deploys', 'pause deploys', 'resume deploys', 'remove deploys', 'revoke deploys'])
   } finally { server.close() }
 })
 

@@ -1,6 +1,6 @@
 import { describe, test } from 'node:test'
 import assert from 'node:assert/strict'
-import { grantRefusal, parseKagelet, resultLine, rowLine, setPaused, kageletFile, kageletRows, starterFile } from './kagelets.ts'
+import { budgetLeft, capCheck, costFlags, grantRefusal, parseKagelet, resultLine, revokeStanding, rowLine, setPaused, kageletFile, kageletRows, standingApplies, starterFile, type Kagelet, type KageletRow, type Standing } from './kagelets.ts'
 
 const file = (head: string, body = 'Post a summary of the deploy log.') => `---\n${head}\n---\n${body}\n`
 const LINK = 'https://test.slack.com/archives/CTEST1/p1700000000123456'
@@ -145,7 +145,7 @@ describe('the rows kage list, kage top and the manager show', () => {
     assert.equal(rows[2]!.next, undefined)
   })
   test('a row reads as one line', () => {
-    assert.match(rowLine(rows[1]!, now), /^deploys\s+runs\s+0 9 \* \* \*\s+last 09:00\s+next Sun 09:00\s+\$0\.75 today$/)
+    assert.match(rowLine(rows[1]!, now), /^deploys\s+runs\s+0 9 \* \* \*\s+last 09:00\s+next Sun 09:00\s+\$0\.75 today, avg \$0\.71$/)
     assert.match(rowLine(rows[2]!, now), /^held\s+paused/)
     assert.match(rowLine(rows[0]!, now), /^broken\s+does not run: .*front matter/)
   })
@@ -203,5 +203,111 @@ describe('a run ledger row from before the rename', () => {
     const now = new Date(2026, 10, 14, 15, 0).getTime()
     const rows = kageletRows([{ name: 'deploys', text: file(`thread: ${LINK}\nschedule: 0 9 * * *`) }], { runs: `${new Date(2026, 10, 14, 9).toISOString()}\tspec-deploys\tC:1.1#side-spec-deploys\n`, costs: '', now })
     assert.equal(rows[0]!.lastRun, new Date(2026, 10, 14, 9).getTime())
+  })
+})
+
+describe('a standing approval (#96)', () => {
+  const f = { thread: LINK, schedule: '0 9 * * *', job: 'Count failed calls.', why: 'watch', by: 'kage' as const }
+  const yes: Standing = { tool: 'db_read', command: 'hash-a', at: 1 }
+  test('covers the same tool through the same read command, from the owner\'s session only', () => {
+    assert.equal(standingApplies(yes, { tool: 'db_read', command: 'hash-a', owner: true }), true)
+    assert.equal(standingApplies(undefined, { tool: 'db_read', command: 'hash-a', owner: true }), false)
+    // A different read command, a teammate's session, or another tool still needs the owner.
+    assert.equal(standingApplies(yes, { tool: 'db_read', command: 'hash-b', owner: true }), false)
+    assert.equal(standingApplies(yes, { tool: 'db_read', command: 'hash-a', owner: false }), false)
+    assert.equal(standingApplies(yes, { tool: 'mcp__mail__send', command: 'hash-a', owner: true }), false)
+    assert.equal(standingApplies({ ...yes, tool: 'mcp__mail__send' }, { tool: 'mcp__mail__send', command: 'hash-a', owner: true }), false)
+  })
+  test('a grant it gave reads back as standing; the owner\'s card yes does not', () => {
+    const auto = kageletFile({ ...f, tools: ['WebSearch', 'db_read'], granted: Date.UTC(2026, 0, 2), standing: true }) as string
+    assert.match(auto, /^granted: db_read by standing approval, 2026-01-02T00:00:00\.000Z$/m)
+    assert.deepEqual([(parseKagelet('x', auto) as Kagelet).standing, (parseKagelet('x', auto) as Kagelet).tools], [true, ['WebSearch', 'db_read']])
+    const card = kageletFile({ ...f, tools: ['db_read'], granted: 1 }) as string
+    assert.equal((parseKagelet('x', card) as Kagelet).standing, undefined)
+  })
+  test('revoking takes db_read out of every kagelet that got it by the standing approval, and leaves the rest', () => {
+    const auto = kageletFile({ ...f, tools: ['WebSearch', 'db_read'], granted: 1, standing: true }) as string
+    const card = kageletFile({ ...f, tools: ['db_read'], granted: 1 }) as string
+    const web = kageletFile({ ...f, tools: ['WebSearch'] }) as string
+    const out = revokeStanding([{ name: 'a', text: auto }, { name: 'b', text: card }, { name: 'c', text: web }, { name: 'd', text: auto.replace('WebSearch, ', '') }])
+    assert.deepEqual(out.map(o => o.name), ['a', 'd'])
+    for (const o of out) {
+      const k = parseKagelet(o.name, o.text) as Kagelet
+      assert.ok(!('error' in k), o.text)
+      assert.deepEqual([k.tools.includes('db_read'), k.granted, k.standing, k.job], [false, undefined, undefined, 'Count failed calls.'])
+    }
+    assert.deepEqual((parseKagelet('a', out[0]!.text) as Kagelet).tools, ['WebSearch'])
+  })
+})
+
+describe('the cost caps (#96)', () => {
+  const row = (name: string, costToday: number, state: KageletRow['state'] = 'runs'): KageletRow => ({ name, state, key: `C1:1.1#side-kagelet-${name}`, tools: [], costToday, avg7: 0 })
+  const caps = { each: 2, total: 10 }
+  test('no cap set: nothing pauses and no DM, whatever is spent; one cap set works alone', () => {
+    const rows = [row('a', 50), row('b', 70)]
+    assert.deepEqual(capCheck(rows, {}, [], 'Kage'), { pause: [], tell: [] })
+    assert.deepEqual(capCheck(rows, { total: 130 }, [], 'Kage').pause, [])
+    assert.deepEqual(capCheck(rows, { each: 60 }, [], 'Kage').pause.map(p => p.name), ['b'])
+  })
+  test('a kagelet at its own cap pauses, with a DM each time', () => {
+    const r = capCheck([row('dear', 2), row('cheap', 0.4), row('held', 5, 'paused')], caps, [], 'Kage')
+    assert.deepEqual(r.pause.map(p => p.name), ['dear'])
+    assert.match(r.pause[0]!.why, /^paused: it spent \$2\.00 today, at or over its daily cap of \$2\.00 \(KAGE_KAGELET_DAILY_USD\)$/)
+    assert.deepEqual(r.tell.map(t => t.id), [undefined])
+    assert.match(r.tell[0]!.text, /dear.*Kage/)
+  })
+  test('all kagelets together at the total cap pause every running one, with one DM a day', () => {
+    const rows = [row('a', 1.5), row('b', 1.9), row('c', 7, 'paused'), row('d', 0, 'broken')]
+    const r = capCheck(rows, caps, [], 'Kage')
+    assert.deepEqual(r.pause.map(p => p.name), ['a', 'b'])
+    assert.match(r.pause[0]!.why, /^paused: it spent \$1\.50 today.*together spent \$10\.40.*total daily cap of \$10\.00 \(KAGE_KAGELET_TOTAL_DAILY_USD\)/)
+    assert.deepEqual(r.tell.map(t => t.id), ['total'])
+    assert.deepEqual(capCheck(rows, caps, ['total'], 'Kage').tell, [])
+    // Below it, nothing pauses.
+    assert.deepEqual(capCheck([row('a', 1), row('b', 1)], caps, [], 'Kage').pause, [])
+  })
+  test('at 80% of either cap, one warning a day, not more', () => {
+    const r = capCheck([row('a', 1.6), row('b', 1.59)], { each: 2, total: 3.9 }, [], 'Kage')
+    assert.deepEqual(r.pause, [])
+    assert.deepEqual(r.tell.map(t => t.id), ['a', 'total-80'])
+    assert.match(r.tell[0]!.text, /a.*\$1\.60.*80%.*\$2\.00/)
+    assert.deepEqual(capCheck([row('a', 1.7), row('b', 1.59)], { each: 2, total: 3.9 }, ['a', 'total-80'], 'Kage').tell, [])
+  })
+  test('a run\'s budget is what is left under the lower of the two caps, never zero', () => {
+    // Its own cap binds for a, the total for c.
+    const rows = [row('a', 0.5), row('b', 7.7), row('c', 0, 'paused')]
+    assert.equal(budgetLeft(rows, 'C1:1.1#side-kagelet-a', caps), 1.5)
+    assert.equal(budgetLeft(rows, 'C1:1.1#side-kagelet-c', caps), 1.8)
+    assert.equal(budgetLeft([row('a', 3)], 'C1:1.1#side-kagelet-a', caps), 0.01)
+    // No cap set: no budget, so no run is stopped.
+    assert.equal(budgetLeft(rows, 'C1:1.1#side-kagelet-a', {}), undefined)
+    assert.equal(budgetLeft(rows, 'C1:1.1#side-kagelet-a', { total: 10 }), 1.8)
+  })
+})
+
+describe('cost monitoring (#96)', () => {
+  const now = new Date(2026, 10, 14, 15, 0).getTime()
+  const at = (d: number, h: number, m = 0) => new Date(2026, 10, d, h, m).toISOString()
+  const lane = (n: string) => `CTEST1:1700000000.123456#side-kagelet-${n}`
+  const files = ['spiky', 'steady', 'fresh', 'gaps', 'busy'].map(name => ({ name, text: file(`thread: ${LINK}\nschedule: 0 9 * * *`) }))
+  // spiky and steady spent $0.10 a day for the 7 days before today, busy $0.30; one row 8 days ago does not count.
+  const history = [7, 8, 9, 10, 11, 12, 13].flatMap(d => ['spiky', 'steady', 'busy'].map(n => `${at(d, 9)}\t${lane(n)}\t${n === 'busy' ? 0.3 : 0.1}\t0\n`)).join('') + `${at(6, 9)}\t${lane('spiky')}\t5\t0\n`
+  const today = `${at(14, 9, 1)}\t${lane('spiky')}\t0.61\t0\n${at(14, 9, 1)}\t${lane('steady')}\t0.25\t0\n${at(14, 9, 1)}\t${lane('fresh')}\t0.45\t0\n${at(14, 10, 1)}\t${lane('gaps')}\t0.05\t0\n${at(14, 9, 1)}\t${lane('busy')}\t0.8\t0\n`
+  // gaps ran at 9 (no costs row), 10 (one) and 14:30 (still running, under an hour).
+  const runs = [9, 10].map(h => `${at(14, h)}\tkagelet-gaps\t${lane('gaps')}\n`).join('') + `${at(14, 14, 30)}\tkagelet-gaps\t${lane('gaps')}\n`
+  const costs = history + today
+  const rows = kageletRows(files, { runs, costs, now })
+  test('each row has its 7-day daily average', () => {
+    assert.deepEqual(rows.map(r => [r.name, r.avg7]), [['busy', 0.3], ['fresh', 0], ['gaps', 0], ['spiky', 0.1], ['steady', 0.1]])
+  })
+  test('flags a kagelet over 3x its 7-day average and over the floor, and a finished run with no costs row', () => {
+    const flags = costFlags(rows, { runs, costs, reports: '' }, now)
+    assert.deepEqual(flags.map(f => f.name), ['gaps', 'spiky'])
+    assert.match(flags[0]!.line, /gaps: its 09:00 run wrote no costs row/)
+    assert.match(flags[1]!.line, /spiky: spent \$0\.61 today, over 3x its 7-day average of \$0\.10/)
+  })
+  test('at most one flag line per kagelet a day', () => {
+    const said = `${at(14, 11)}\tcost:spiky\tx\t\n${at(13, 11)}\tcost:gaps\tx\t\n`
+    assert.deepEqual(costFlags(rows, { runs, costs, reports: said }, now).map(f => f.name), ['gaps'])
   })
 })

@@ -450,12 +450,12 @@ export function sessionTools(o: {
     },
   }, {
     name: 'manage_kagelet',
-    description: 'Create or change (save), pause, resume, run now, or remove a kagelet: a recurring job that runs on its own schedule in its thread, with only the tools you grant, and reports to you. save needs name, thread (a Slack message link), schedule (5-field cron), tools, job, by and why. Owner tasks only.',
+    description: 'Create or change (save), pause, resume, run now, or remove a kagelet: a recurring job that runs on its own schedule in its thread, with only the tools you grant, and reports to you. save needs name, thread (a Slack message link), schedule (5-field cron), tools, job, by and why. revoke with name db_read when the owner says to revoke the standing db_read approval: it takes db_read from every kagelet that got it with no card. Owner tasks only.',
     shape: {
       channel: s.describe('channel attribute from the task tag'),
       thread_ts: s.describe('thread_ts attribute from the task tag'),
-      action: z.enum(['save', 'pause', 'resume', 'run', 'remove']),
-      name: s.describe('short lowercase name: letters, digits, dashes'),
+      action: z.enum(['save', 'pause', 'resume', 'run', 'remove', 'revoke']),
+      name: s.describe('short lowercase name: letters, digits, dashes. For revoke: db_read'),
       thread: s.optional().describe('save: the Slack link of the thread it posts in'),
       schedule: s.optional().describe('save: a 5-field cron in local time, e.g. "0 9 * * 1-5"'),
       tools: z.array(s).optional().describe('save: its grant. WebSearch and WebFetch, an outside MCP tool by full name when the owner asked for it, or db_read (the owner approves it on a card)'),

@@ -8,7 +8,10 @@ import { z } from 'zod'
 import { Dispatcher } from '../core/sessions.ts'
 import { sessionTools } from './kage-tools.ts'
 import type { Task, ToSession } from './protocol.ts'
-import { openLedgers } from './ledger.ts'
+import { costRecorder, openLedgers } from './ledger.ts'
+import { kageletDeliver, ownerNotes } from './kagelets.ts'
+import { scheduler } from './scheduler.ts'
+import { parseSessionKey } from '../core/conversations.ts'
 import { sdkSessions } from './sdk-sessions.ts'
 import { limitPause } from './limit-pause.ts'
 import { openStore } from './store.ts'
@@ -51,7 +54,7 @@ const tick = (ms = 5) => new Promise(r => setTimeout(r, ms))
 const ID = '11111111-1111-4111-8111-111111111111'
 const signal = () => new AbortController().signal
 
-function setup(o: { transcript?: boolean; silent?: boolean; dmFails?: boolean; grants?: Record<string, string[]>; manager?: boolean } = {}) {
+function setup(o: { transcript?: boolean; silent?: boolean; dmFails?: boolean; grants?: Record<string, string[]>; manager?: boolean; budgets?: Record<string, number>; onResult?: (key: string, total: number, resumed: boolean) => void } = {}) {
   const sdk = fakeSdk(o)
   const results: [string, number, boolean][] = []
   const blocks: [string, string[], string | null][] = []
@@ -84,7 +87,8 @@ function setup(o: { transcript?: boolean; silent?: boolean; dmFails?: boolean; g
     grantOf: key => o.grants?.[key],
     ownerMemory: '/owner',
     restartMs: 10,
-    onResult: (key, total, resumed) => { results.push([key, total, resumed]) },
+    onResult: (key, total, resumed) => { results.push([key, total, resumed]); o.onResult?.(key, total, resumed) },
+    budgetOf: key => o.budgets?.[key],
     onBlocked: (key, turn, category) => { blocks.push([key, turn.map(t => t.content), category]) },
     onTurn: (key, tasks, limit) => { turns.push([key, tasks.map(t => t.content), limit]) },
     onTool: (key, tool, refused) => { tools.push([key, tool, refused]) },
@@ -191,6 +195,23 @@ describe('Kage sessions on the Agent SDK', () => {
       await tick()
       assert.deepEqual(t.results, [['C1:5.5', 51.8, transcript]])
     }
+  })
+  test('a turn that ends on the usage limit still reports what it cost', async () => {
+    const t = setup()
+    t.d.task('C1:5.5', t.task(), 0)
+    await tick()
+    t.sdk.runs[0]!.emit({ type: 'assistant', parent_tool_use_id: null, error: 'rate_limit', message: { content: [] } })
+    t.sdk.runs[0]!.emit({ type: 'result', total_cost_usd: 1.25, is_error: true })
+    await tick()
+    assert.deepEqual(t.results, [['C1:5.5', 1.25, false]])
+  })
+  test('a kagelet lane opens with the budget left under its caps, so a long run stops at the cap mid-turn; other threads have none', async () => {
+    const LANE = 'C1:5.5#side-kagelet-calls'
+    const t = setup({ budgets: { [LANE]: 0.75 } })
+    t.d.task(LANE, t.task(), 0)
+    t.d.task('C1:6.6', t.task(), 0)
+    await tick()
+    assert.deepEqual(t.sdk.runs.map(r => r.options.maxBudgetUsd), [0.75, undefined])
   })
   test('a turn the safety check stops is reported once, with the task that caused it and its category', async () => {
     const t = setup()
@@ -325,6 +346,9 @@ describe('Kage sessions on the Agent SDK', () => {
     // The generic card is skipped for it: the tool raises its own. Any other save still asks.
     const posts = t.posts.length
     assert.equal((await t.sdk.runs[0]!.options.canUseTool('mcp__kage__manage_kagelet', { action: 'save', tools: ['db_read'] }, { signal: signal() })).behavior, 'allow')
+    assert.equal(t.posts.length, posts)
+    // Revoking only takes access away: the owner's word in chat is enough, with no card.
+    assert.equal((await t.sdk.runs[0]!.options.canUseTool('mcp__kage__manage_kagelet', { action: 'revoke', name: 'db_read' }, { signal: signal() })).behavior, 'allow')
     assert.equal(t.posts.length, posts)
     void t.sdk.runs[0]!.options.canUseTool('mcp__kage__manage_kagelet', { action: 'save', tools: ['WebSearch'] }, { signal: signal() })
     await tick()
@@ -560,4 +584,31 @@ test('the usage limit, whole: no post but the notice, the inbox message kept, an
   await tick()
   assert.deepEqual(store.unhandled(-1).map(r => r.source), ['slack:C1:8.8'])
   assert.equal(posts.length, 1)
+})
+
+test('every path that runs a kagelet turn writes a costs row (#96)', async () => {
+  // The paths on main that start a kagelet turn. When #93 lands, add its chain handoff and kagelet message here.
+  const LANE = 'C1:5.5#side-kagelet-calls'
+  const now = new Date(2026, 10, 14, 9, 0, 30).getTime()
+  const paths: Record<string, (x: { schedules: ReturnType<typeof scheduler>; notes: ReturnType<typeof ownerNotes> }) => void> = {
+    schedule: x => x.schedules.tick(now),
+    'run now': x => { x.schedules.runNow('kagelet-calls', now) },
+    'owner note': x => { x.notes.wrote([LANE], 'C1', '5.5', 'skip staging today'); x.schedules.tick(now) },
+  }
+  for (const [path, start] of Object.entries(paths)) {
+    const ledgers = openLedgers(mkdtempSync(join(tmpdir(), 'kage-costs-')))
+    const t = setup({ onResult: costRecorder(ledgers) })
+    const store = openStore(':memory:')
+    store.seen(LANE, parseSessionKey(LANE)!.conversation, 'calls (kagelet)', 0)
+    store.addSchedule({ id: 'kagelet-calls', key: LANE, cron: '0 9 * * *', prompt: 'Count failed calls.', recurring: true, fromOwner: false, created: now - 3_600_000, lastFired: 0 })
+    const notes = ownerNotes(store)
+    start({ notes, schedules: scheduler({ store, failed: () => {}, deliver: kageletDeliver(notes, (k, task) => t.d.task(k, task, now)), ready: k => t.d.ready(k), trusted: () => false }) })
+    await tick()
+    const run = t.sdk.runs.at(-1)
+    assert.ok(run, `${path}: no session started`)
+    assert.match(run.said.join('\n'), path === 'owner note' ? /Count failed calls[\s\S]*skip staging today/ : /Count failed calls/, path)
+    run.emit({ type: 'result', total_cost_usd: 0.42 })
+    await tick()
+    assert.match(ledgers.text('costs'), new RegExp(`\t${LANE.replace(/[.#]/g, '\\$&')}\t0\\.42\t0\\.42\n`), path)
+  }
 })
