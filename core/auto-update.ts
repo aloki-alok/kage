@@ -46,7 +46,9 @@ export function soakSince(boots: string, sha: string): number | undefined {
   for (const line of boots.split('\n').filter(Boolean).reverse()) {
     const [at = '', s = ''] = line.split('\t')
     if (!s || !(s.startsWith(sha) || sha.startsWith(s))) break
-    since = Date.parse(at)
+    const t = Date.parse(at)
+    if (Number.isNaN(t)) break   // a row with no readable time ends the run: the gate then waits
+    since = t
   }
   return since
 }

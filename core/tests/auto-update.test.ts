@@ -89,6 +89,11 @@ describe('soakSince: the clock runs from the first boot of an unbroken run on on
   })
   test('no rows, or a different newest commit, give no start', () => {
     assert.equal(soakSince('', 'aaa1111'), undefined)
+    assert.equal(soakSince(row(0, 'aaa1111'), 'bbb2222'), undefined)
+  })
+  test('a short sha in a row matches the full sha, and a row with a bad time never starts the clock', () => {
+    assert.equal(soakSince(row(3, 'aaa1111'), 'aaa1111abcdef'), at(3))
+    assert.equal(soakSince(`not a time\taaa1111`, 'aaa1111'), undefined)
   })
   test('a crash-loop DM inside the window still fails the gate', () => {
     assert.deepEqual(soakGate({ candidate: 'aaa1111xyz', running: 'aaa1111', since: at(0), crashDmAt: at(15), doctorOk: true, now: at(25) }), { fail: 'a crash-loop DM went out 10 hours ago' })
