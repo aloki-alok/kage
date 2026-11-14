@@ -53,6 +53,7 @@ The rest of this page is for doing it by hand, and for knowing how it works.
 4. Under **Basic Information > App-Level Tokens**, click **Generate**, add the scope `connections:write`, and copy the token (`xapp-...`).
 5. Under **Install App**, click **Install to Workspace**, allow it, and copy both tokens: User OAuth (`xoxp-...`) and Bot (`xoxb-...`).
 6. Paste the three tokens into the setup script. It checks each one with Slack and saves them to `~/.config/kage/env`, readable only by you.
+7. The setup starts Kage and waits for it to connect to Slack. When it says `Connected`, tag `@kage` in any thread. If it does not connect, run `kage doctor`: it names the fix.
 
 ## Start it
 
