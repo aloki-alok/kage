@@ -4,9 +4,11 @@
 
 ```sh
 npm ci              # once
-npm test            # every *.test.ts in core/, connectors/ and runtime/
+npm test            # every *.test.ts under core/, connectors/ and runtime/
 npm run typecheck   # tsc --noEmit
 ```
+
+Tests live in a `tests/` folder inside the folder of the code they test: `core/gate.ts` is tested by `core/tests/gate.test.ts`.
 
 There is no build. Node runs the TypeScript files as they are, so write only syntax it can strip (`erasableSyntaxOnly` in `tsconfig.json` enforces it). A running hub restarts into new code by itself once every session is quiet (`runtime/code-stamp.ts`).
 
@@ -32,7 +34,7 @@ Write logs to stderr only. In a tmux pane, stdout carries the channel protocol, 
 | `server.ts` | For tmux panes only: serves Kage's tools over MCP inside each pane and relays approvals. |
 | `private-data-guard.ts` | The plugin hook (`hooks/hooks.json`) that runs the rules in `core/guards.ts` inside tmux panes. The SDK runner applies the same rules in process. |
 | `config.ts` | Reads the env file and makes the Slack clients. |
-| `core/` | Pure rules, each with a `*.test.ts` beside it. See the table below. |
+| `core/` | Pure rules. See the table below. |
 | `connectors/` | Where Kage hears from. Each turns a message into a `Task` (`runtime/protocol.ts`). Who may drive Kage is decided in `core/gate.ts`, not here. |
 | `runtime/` | Where sessions run, and the hub's state. See the table below. |
 | `cli/` | The commands behind `kage <command>`. They run from source. |
@@ -77,7 +79,7 @@ Write logs to stderr only. In a tmux pane, stdout carries the channel protocol, 
 
 | File | Holds |
 |---|---|
-| `sdk-sessions.ts` | The default runner: an Agent SDK session per key, inside the hub. `fake-sdk.ts` is the fake SDK its tests drive. |
+| `sdk-sessions.ts` | The default runner: an Agent SDK session per key, inside the hub. `tests/fake-sdk.ts` is the fake SDK its tests drive. |
 | `tmux-panes.ts` | The other runner: a Claude Code pane per key. |
 | `kage-tools.ts` | A session's tools (reply, edit, delete, send a file, message people, waiting, prod log, schedules, away and back), its instructions, and the approval card. |
 | `session-link.ts` | The local socket that panes and the `kage` commands connect to. |
