@@ -7,10 +7,9 @@ import { log } from '../runtime/log.ts'
 import { claudeOnce, emptyRoom } from '../runtime/claude-once.ts'
 import { actOn, afkGuardPrompt, decideAfk, MAX_REPLIES, noteMention, noteOf, notePing, outsider, parseTriage, restoreTo, standInPrompt, standInReply, summaryOf, untilOf, type Afk, type AfkCommand, type Status } from '../core/afk.ts'
 import type { SlackMessage } from '../core/slack-message.ts'
-import { findSecret, safeReply } from '../core/outbound.ts'
+import { findSecret, guardVerdict, safeReply } from '../core/outbound.ts'
 import type { Saved } from '../runtime/store.ts'
 import type { JevAfk } from './jev.ts'
-import { guardVerdict } from '../core/whatsapp.ts'
 
 type Ids = { owner: string; bot: string; botDm: string; name: string; team?: string }
 const EMOJI = ':ninja:'

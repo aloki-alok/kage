@@ -7,8 +7,8 @@ import { log } from '../runtime/log.ts'
 import { claudeOnce, emptyRoom } from '../runtime/claude-once.ts'
 import { readBody } from './webhook.ts'
 import type { Inbox } from '../runtime/store.ts'
-import { findSecret } from '../core/outbound.ts'
-import { decideWhatsApp, fromWaha, guardPrompt, guardVerdict, standInPrompt, waTaskContent, type Arming, type WahaPayload, type WaLine } from '../core/whatsapp.ts'
+import { findSecret, guardVerdict } from '../core/outbound.ts'
+import { decideWhatsApp, fromWaha, guardPrompt, standInPrompt, waTaskContent, type Arming, type WahaPayload, type WaLine } from '../core/whatsapp.ts'
 
 export type WaTask = { chat: string; place: string; content: string }
 const ARM_MS = 60 * 60_000

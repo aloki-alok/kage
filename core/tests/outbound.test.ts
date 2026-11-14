@@ -1,6 +1,6 @@
 import { describe, test } from 'node:test'
 import assert from 'node:assert/strict'
-import { slackPlain, findSecret, layoutRefusal, safeReply, secretRefusal, splitForSlack } from '../outbound.ts'
+import { slackPlain, findSecret, guardVerdict, layoutRefusal, safeReply, secretRefusal, splitForSlack } from '../outbound.ts'
 
 describe('person mentions over Slack always use the user id, so they highlight', () => {
   test('a person mention stays <@U…> so Slack renders it as a real mention', () => {
@@ -129,4 +129,11 @@ describe('slackPlain', () => {
   test('escapes the three characters Slack treats as markup, so other people\'s text cannot ping or link', () => {
     assert.equal(slackPlain('<!channel> a & b <https://x.test|y>'), '&lt;!channel&gt; a &amp; b &lt;https://x.test|y&gt;')
   })
+})
+
+test('a guard lets a message out only on an exact SEND; anything else holds it', () => {
+  assert.deepEqual(guardVerdict('SEND'), { send: true, reason: '' })
+  assert.deepEqual(guardVerdict('send.\n'), { send: true, reason: '' })
+  assert.deepEqual(guardVerdict('HOLD: shares a server ip'), { send: false, reason: 'shares a server ip' })
+  for (const out of ['', 'SENDING it now', 'I think SEND', 'Sure! SEND']) assert.equal(guardVerdict(out).send, false, out)
 })
