@@ -44,7 +44,7 @@ function fakeSlack() {
   return { calls, posts, bot: client('bot'), user: client('owner') }
 }
 
-function setup(o: { hubDown?: boolean; dir?: string } = {}) {
+function setup(o: { hubDown?: boolean; dir?: string; kagelet?: string } = {}) {
   const slack = fakeSlack()
   const dir = o.dir ?? mkdtempSync(join(tmpdir(), 'kage-tools-'))
   const ledgers = openLedgers(dir)
@@ -58,6 +58,8 @@ function setup(o: { hubDown?: boolean; dir?: string } = {}) {
       list: () => jobs,
     },
     afk: async c => { out.push(`afk ${JSON.stringify(c)}`); return 'AFK on' },
+    kagelet: o.kagelet,
+    kagelets: { list: () => 'the list', manage: a => { out.push(`manage ${JSON.stringify(a)}`); return 'managed' } },
   })
   const call = (name: string, args: Record<string, unknown>) => t.tools.find(x => x.name === name)!.run(args)
   const task = (o: Partial<Task['meta']> & { fromOwner?: boolean } = {}): Task => ({
@@ -400,5 +402,33 @@ describe("a session's Kage tools", () => {
     assert.equal((await s.call('away', { channel: 'C1', thread_ts: '5.5', until: '6pm' })).isError, true)
     await s.call('back', { channel: 'C1', thread_ts: '5.5' })
     assert.deepEqual(s.out, ['afk {"kind":"afk","note":"lunch","minutes":60}', 'afk {"kind":"back"}'])
+  })
+
+  test('the manager tools work on the owner\'s task only, and never in a kagelet\'s own session', async () => {
+    const s = setup()
+    s.t.onTask(s.task({ fromOwner: false }))
+    assert.equal((await s.call('kagelets', { channel: 'C1', thread_ts: '5.5' })).isError, true)
+    assert.equal((await s.call('manage_kagelet', { channel: 'C1', thread_ts: '5.5', action: 'run', name: 'x' })).isError, true)
+    s.t.onTask(s.task())
+    assert.equal((await s.call('kagelets', { channel: 'C1', thread_ts: '5.5' })).text, 'the list')
+    assert.equal((await s.call('manage_kagelet', { channel: 'C1', thread_ts: '5.5', action: 'save', name: 'status', thread: 'L', schedule: '0 9 * * *', tools: ['WebSearch'], job: 'j', by: 'kage', why: 'w' })).text, 'managed')
+    assert.deepEqual(s.out, ['manage {"action":"save","name":"status","thread":"L","schedule":"0 9 * * *","tools":["WebSearch"],"job":"j","by":"kage","why":"w"}'])
+    const lane = setup({ kagelet: 'status' })
+    assert.equal(lane.t.tools.some(x => x.name === 'kagelets' || x.name === 'manage_kagelet'), false)
+    assert.equal(setup().t.tools.some(x => x.name === 'report'), false)
+  })
+  test('a kagelet reports one line per run; what it needs is posted in its thread and waits on the owner', async () => {
+    const s = setup({ kagelet: 'status' })
+    s.t.onTask({ ...s.task({ fromOwner: false }), scheduled: true })
+    assert.equal((await s.call('report', { channel: 'C1', thread_ts: '5.5', summary: 'all green' })).isError, undefined)
+    assert.match(s.ledgers.text('reports'), /\tstatus\tall green\t\n$/)
+    assert.equal(s.posts.length, 0)
+    await s.call('report', { channel: 'C1', thread_ts: '5.5', summary: 'no log', needs: 'read access to the deploy log' })
+    assert.match(s.ledgers.text('reports'), /\tstatus\tno log\tread access to the deploy log\n$/)
+    assert.deepEqual(s.posts.map(p => [p.channel, p.thread_ts]), [['C1', '5.5']])
+    assert.match(s.posts[0]!.text, /status needs:\* read access to the deploy log/)
+    assert.match((await s.call('waiting', {})).text, /status needs: read access to the deploy log/)
+    // Only its own thread.
+    assert.equal((await s.call('report', { channel: 'COTHER', thread_ts: '1.1', summary: 'x' })).isError, true)
   })
 })

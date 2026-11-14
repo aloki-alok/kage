@@ -17,8 +17,8 @@ Set up|save|[name]|Paste the three Slack tokens into hidden prompts; each is che
 Set up|doctor||Check every part, and print the command that fixes each problem|kage doctor
 Set up|link||Put the kage command on your PATH (~/.local/bin/kage)|./setup.sh link
 Set up|service|on or off|Let macOS or Linux keep Kage running: back after a crash, a reboot or a login|kage service on
-Run|start||Start Kage in the background (turns the service on the first time)|kage start
-Run|stop|[thread or specialist] [--now or --cut-running]|Stop Kage once every running turn ends, or now with --cut-running. With a thread (link, place or key): end only its session, after its turn or --now. With a specialist: pause it and keep its file|kage stop support
+Run|start|[kagelet]|Start Kage in the background (turns the service on the first time). With a kagelet: run it again after kage stop|kage start
+Run|stop|[thread or kagelet] [--now or --cut-running]|Stop Kage once every running turn ends, or now with --cut-running. With a thread (link, place or key): end only its session, after its turn or --now. With a kagelet: pause it and keep its file|kage stop support
 Run|restart|[--cut-running]|Restart the hub once every running turn ends; new messages wait and run after it|kage restart
 Run|reload||Read the settings file again with no restart: who may tag Kage changes at once|kage reload
 Run|status||One look at every session and what it is doing|kage status
@@ -30,9 +30,9 @@ Watch|schedules||Every schedule and reply watch, in every thread|kage schedules
 Watch|top||The live console: every thread, its feed, attach and stop, by mouse or keys|kage top
 Watch|watch|[place]|Follow every step every session takes, as it happens|kage watch support
 Watch|attach|[place or link]|Take a thread into this terminal, by its place or its Slack link in quotes; Kage gets it back when you quit|kage attach "https://example.slack.com/archives/C0123ABC/p1700000000123456"
-People|add|<person>, <app id> <owner> or specialist <name>|Let a person tag Kage (a mention, member id, email, name or @handle), or an agent with the person or agent it answers to. specialist <name> writes a paused starter file for a specialist|kage add priya
+People|add|<person>, <app id> <owner> or kagelet <name>|Let a person tag Kage (a mention, member id, email, name or @handle), or an agent with the person or agent it answers to. kagelet <name> writes a paused starter file for a kagelet|kage add priya
 People|remove|<person or app id>|Take a person or an agent off the list; whoever answers to them goes too|kage remove priya
-People|list||Who may tag Kage besides you: each person, with their agents under them. Then the specialists Kage manages: schedule, last and next run, cost today|kage list
+People|list||Who may tag Kage besides you: each person, with their agents under them. Then the kagelets Kage manages: schedule, last and next run, cost today|kage list
 People|tell|<place> <message>|Tell a thread something as you; its session takes it after the current turn|kage tell support use the staging db
 People|call||Kage phones you, and the call can do anything you can (needs KAGE_CALL_COMMAND)|kage call'
 
@@ -296,7 +296,8 @@ case "${1:-}" in
   link) mkdir -p ~/.local/bin && ln -sf "$PWD/setup.sh" ~/.local/bin/kage && echo "ok: run kage from anywhere (needs ~/.local/bin on PATH)" ;;
   service) ./service.sh "${2:-}" ;;
   run) exec node hub.ts ;;
-  start) cmd_start ;;
+  # A kagelet's name: resume it (cli/stop.ts). Otherwise the hub.
+  start) if [[ $# -gt 1 ]]; then node cli/stop.ts --resume "${@:2}"; else cmd_start; fi ;;
   # A thread (any word that is not a flag) or --now: one session (cli/stop.ts). Otherwise the whole hub.
   stop) if [[ " ${*:2} " == *" --now "* ]] || { [[ $# -gt 1 ]] && printf '%s\n' "${@:2}" | grep -qv '^--'; }; then node cli/stop.ts "${@:2}"; else cmd_stop "${@:2}"; fi ;;
   restart) cmd_restart "${@:2}" ;;

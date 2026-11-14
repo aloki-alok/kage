@@ -7,8 +7,8 @@ import { DatabaseSync } from 'node:sqlite'
 import { log } from '../config.ts'
 import { tsvRow } from '../core/ledgers.ts'
 
-export type LedgerName = 'waiting' | 'posted' | 'prod-actions' | 'costs' | 'runs' | 'commands'
-const NAMES: LedgerName[] = ['waiting', 'posted', 'prod-actions', 'costs', 'runs', 'commands']
+export type LedgerName = 'waiting' | 'posted' | 'prod-actions' | 'costs' | 'runs' | 'commands' | 'reports'
+const NAMES: LedgerName[] = ['waiting', 'posted', 'prod-actions', 'costs', 'runs', 'commands', 'reports']
 export type Ledgers = ReturnType<typeof openLedgers>
 
 export function openLedgers(dir: string, now = () => new Date().toISOString()) {

@@ -81,9 +81,9 @@ The first start installs the Agent SDK and turns on the service: macOS or Linux 
 | Give sessions your shell exports | Put them in `~/.config/kage/session.env` (mode 600), then `kage restart`. Sessions see only the service's environment, not your shell's. |
 | Use another supervisor (Docker, runit) | Have it run `kage run`: a non-zero exit means restart it, exit 0 means leave it down. Docker needs `--init`. |
 
-### Give a recurring job to a specialist
+### Give a recurring job to a kagelet
 
-A specialist is one file in `~/.config/kage/specialists/`, named after it (`deploys.md`). `kage add specialist deploys` writes a starter file, paused until you fill it in:
+A kagelet is one file in `~/.config/kage/kagelets/`, named after it (`deploys.md`). `kage add kagelet deploys` writes a starter file, paused until you fill it in:
 
 ```markdown
 ---
@@ -94,9 +94,11 @@ tools: WebFetch, WebSearch
 Every weekday at 9, check https://status.example.com and post a three-line summary in this thread.
 ```
 
-It runs on its schedule beside the thread's own session and posts in the thread. It has only the tools in `tools`, and teammate trust. Only web tools and outside MCP tools can be granted. It never gets a file, shell or agent tool, so it cannot change its own grant or read your tokens. WebFetch reaches http and https only. An MCP tool you grant by its full name runs with that tool's own reach. It approves nothing: when it needs a decision or another tool, it says so in the thread, and you decide there. A new, changed or deleted file applies within a minute, and `kage schedules` shows its runs. Specialists need the default runtime, not tmux panes.
+It runs on its schedule beside the thread's own session and posts in the thread. It has only the tools in `tools`, and teammate trust. Only web tools and outside MCP tools can be granted. It never gets a file, shell or agent tool, so it cannot change its own grant or read your tokens. WebFetch reaches http and https only. An MCP tool you grant by its full name runs with that tool's own reach. It approves nothing: when it needs a decision or another tool, it says so in the thread, and you decide there. A new, changed or deleted file applies within a minute, and `kage schedules` shows its runs. Kagelets need the default runtime, not tmux panes.
 
-`kage list` shows each specialist: its schedule, last and next run, and what it spent today. `kage stop deploys` pauses it by adding `paused: yes` to its file. Take that line out to run it again.
+Kage manages its kagelets. Ask it in Slack to make, pause, resume, run or remove one, or how they are doing. It also makes one on its own for a recurring job that needs only web search and fetch, and tells you in the thread. A kagelet Kage makes on its own gets only WebSearch and WebFetch. Each run ends with a one-line report to Kage. When a run needs something it cannot do, it posts that in its thread and it goes on your waiting list. Your own reply in a kagelet's thread, with no tag, reaches its next run. At most 10 kagelets run, and one that spends $2 in a day is paused (`KAGE_MAX_KAGELETS` and `KAGE_KAGELET_DAILY_USD` in [docs/settings.md](docs/settings.md)).
+
+`kage list` shows each kagelet: its schedule, last and next run, what it spent today, who made it and why, and its last report. `kage stop deploys` pauses it by adding `paused: yes` to its file. `kage start deploys` runs it again. Use it rather than deleting the line by hand: it also restarts the daily cost count. A `specialists/` folder from an earlier version moves to `kagelets/` at the next start, and the old setting names still read.
 
 ### Run threads as tmux panes instead
 

@@ -199,3 +199,19 @@ test('a watch is refused in the bot DM, where only the owner writes; other @word
   assert.match(t.s.add('dm', watch, 0)!, /only you write/)
   assert.match(t.s.add('C1:5.5', { ...watch, cron: '@daily' }, 0)!, /5 fields/)
 })
+
+test('run now hands a schedule to its thread at once, as a run with its own trust, and counts it; an unknown id is refused', () => {
+  const t = setup()
+  t.s.add('C1:5.5', job, at('2026-11-03T10:01:00'))
+  const id = t.store.schedules()[0]!.id
+  assert.equal(t.s.runNow(id, at('2026-11-03T10:02:00')), undefined)
+  assert.equal(t.sent.length, 1)
+  const [key, task] = t.sent[0]!
+  assert.equal(key, 'C1:5.5')
+  assert.equal(task.fromOwner, false)
+  assert.equal(task.job, id)
+  assert.match(task.content, /run now[\s\S]*check the queue/i)
+  assert.deepEqual(t.ran, [id])
+  assert.equal(t.store.schedules()[0]!.lastFired, at('2026-11-03T10:02:00'))
+  assert.match(t.s.runNow('nope', 0) ?? '', /no schedule/)
+})

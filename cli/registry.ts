@@ -10,27 +10,27 @@ import { findPeople, type Person } from '../core/gate.ts'
 import { add, kindOf, ownerPerson, registryIn, remove, withRegistry, type Entry } from '../core/registry.ts'
 import { pauseLine, type Live } from '../core/board.ts'
 import { askHub, DIR, ENV_FILE } from './home.ts'
-import { NAME, rowLine, specialistRows, starterFile } from '../core/specialists.ts'
+import { NAME, resultLine, rowLine, kageletRows, starterFile } from '../core/kagelets.ts'
 import { openLedgers } from '../runtime/ledger.ts'
-import { readSpecialists } from '../runtime/specialists.ts'
+import { kageletsDir, readKagelets } from '../runtime/kagelets.ts'
 import { reload, said } from './reload.ts'
 
-const SPECIALISTS = `${DIR}/specialists`
+const KAGELETS = kageletsDir(DIR)
 const die = (msg: string): never => { console.error(msg); process.exit(1) }
 const [cmd = '', ...args] = process.argv.slice(2)
 const USAGE = 'Usage: kage add <person> | kage add <app id> <owner> | kage remove <person or app id> | kage list'
 if (!['add', 'remove', 'list'].includes(cmd)) die(USAGE)
 // Before anything is read: a session, whoever's task it runs, never changes who reaches Kage.
 if (cmd !== 'list' && process.env.KAGE_CLAUDE) die(`This shell runs inside Kage, and a session cannot change who reaches Kage. The owner runs kage ${cmd} in their own terminal.`)
-// kage add specialist <name>: a starter file, paused until its owner fills it in (core/specialists.ts).
-if (cmd === 'add' && args[0] === 'specialist') {
+// kage add kagelet <name>: a starter file, paused until its owner fills it in (core/kagelets.ts).
+if (cmd === 'add' && args[0] === 'kagelet') {
   const name = args[1] ?? ''
-  if (args.length !== 2 || !NAME.test(name)) die('Usage: kage add specialist <name>, a short lowercase name: letters, digits, dashes')
-  const file = `${SPECIALISTS}/${name}.md`
+  if (args.length !== 2 || !NAME.test(name)) die('Usage: kage add kagelet <name>, a short lowercase name: letters, digits, dashes')
+  const file = `${KAGELETS}/${name}.md`
   if (existsSync(file)) die(`${file} already exists. Edit it, or pick another name.`)
-  mkdirSync(SPECIALISTS, { recursive: true, mode: 0o700 })
+  mkdirSync(KAGELETS, { recursive: true, mode: 0o700 })
   writeFileSync(file, starterFile(), { mode: 0o600, flag: 'wx' })
-  console.log(`Wrote ${file}, paused.\nFill in its thread, schedule, tools and job, then take out the paused line (or press p on it in kage top). It runs within a minute.`)
+  console.log(`Wrote ${file}, paused.\nFill in its thread, schedule, tools and job, then run kage start ${name}. It runs within a minute.`)
   process.exit(0)
 }
 if (!existsSync(ENV_FILE)) die(`No settings file at ${ENV_FILE}. Run kage setup first.`)
@@ -110,13 +110,13 @@ if (cmd === 'list') {
   // Everything the tree above did not print: no owner, an owner who is not listed, or a loop made by hand.
   const loose = now.filter(e => e.kind === 'agent' && !ownerPerson(now, e.id))
   if (loose.length) console.log(`Agents not tied to a listed person: ${loose.map(e => e.id).join(', ')}\n  One with no owner counts with any listed person's token. Tie one to its owner: kage add <app id> <owner>`)
-  // Kage's own specialists: it manages them, and they answer to it.
-  const files = readSpecialists(SPECIALISTS)
+  // Kage's own kagelets: it manages them, and they answer to it.
+  const files = readKagelets(KAGELETS)
   if (files.length) {
     const ledgers = openLedgers(DIR)
     const t = Date.now()
-    console.log(`\nSpecialists Kage manages (${files.length}):`)
-    for (const r of specialistRows(files, { runs: ledgers.text('runs'), costs: ledgers.text('costs'), now: t })) console.log(`  ${rowLine(r, t)}`)
+    console.log(`\nKagelets Kage manages (${files.length}):`)
+    for (const r of kageletRows(files, { runs: ledgers.text('runs'), costs: ledgers.text('costs'), reports: ledgers.text('reports'), now: t })) console.log(`  ${rowLine(r, t)}${r.state === 'broken' ? '' : `\n    made by ${r.by === 'kage' ? 'Kage' : 'you'}${r.why ? `: ${r.why}` : ''}. Last report: ${resultLine(r, t)}`}`)
     ledgers.close()
   }
 } else if (cmd === 'add' && args.length) {

@@ -41,7 +41,8 @@ import { openStore, type Inbox } from './runtime/store.ts'
 import { openLedgers } from './runtime/ledger.ts'
 import { claudeProject, tmuxPanes } from './runtime/tmux-panes.ts'
 import { codeStamp } from './runtime/code-stamp.ts'
-import { readSpecialists, syncSpecialists } from './runtime/specialists.ts'
+import { costCap, kageletManager, kageletsDir, ownerNotes, readKagelets, syncKagelets } from './runtime/kagelets.ts'
+import { kageletRows } from './core/kagelets.ts'
 import { askHub } from './cli/home.ts'
 import { hubLock } from './runtime/hub-lock.ts'
 import { npmCi, packagesStale, rotate } from './runtime/hub-log.ts'
@@ -155,7 +156,7 @@ const slack = await connectSlack({
       const key = sessionKey(c, { lane: 'main' })
       return mayStop(by, slack.ids.owner, starters, key) ? stopThread(key, cut) : 'Only the owner, or the teammate whose task started this thread, can stop it.'
     }, verdict: (id, behavior) => d.verdict(id, { type: 'verdict', request_id: id, behavior }), status, heard: m => schedules.heard(m),
-    posted: () => ledgers.text('posted'), ...inbox },
+    posted: () => ledgers.text('posted'), ownerWrote: (chat, thread, text) => notes.wrote(grants.keys(), chat, thread, text), ...inbox },
   // AFK mode is on unless KAGE_AFK=off. Its stand-in reads the owner's memory, read only.
   afk: env.KAGE_AFK === 'off' ? undefined : { memory: memoryDirs(process.env.HOME!, ENV_FILE, env).owner, model: env.KAGE_AFK_MODEL || 'sonnet', saved: store, call: phoneOwner },
 })
@@ -195,16 +196,32 @@ const sdkLib = env.KAGE_RUNTIME === 'tmux' ? undefined : await (async () => ({
 })
 // What each turn cost (core/ledgers.ts): `kage cost` reads it.
 const costTotals = lastTotals(ledgers.text('costs'))
-// Specialists (#57): one file each in the specialists folder, synced at start and each minute. Each runs on its
+// Kagelets (#57): one file each in the kagelets folder, synced at start and each minute. Each runs on its
 // schedule in a side lane of its thread, at teammate trust, with only its grant, and approves nothing.
 let grants = new Map<string, string[]>()
-// Only the SDK runner enforces a grant, so with tmux panes no specialist runs: their schedules are removed.
-const specialists = (now: number) => {
-  let files = readSpecialists(`${DIR}/specialists`)
-  if (!sdk && files.length) { if (!specialistsRefused) log('specialists need the Agent SDK runner (not KAGE_RUNTIME=tmux), so none runs'); specialistsRefused = true; files = [] }
-  grants = syncSpecialists(files, store, now, log)
+const KAGELETS = kageletsDir(DIR, log)
+// The names from before the rename still read.
+const MAX_KAGELETS = Number(env.KAGE_MAX_KAGELETS || env.KAGE_MAX_SPECIALISTS || 10)
+const KAGELET_USD = Number(env.KAGE_KAGELET_DAILY_USD || env.KAGE_SPECIALIST_DAILY_USD || 2)
+// Only the SDK runner enforces a grant, so with tmux panes no kagelet runs: their schedules are removed.
+// A kagelet over its daily cost cap is paused and flagged first, so this sync already drops its schedule.
+const kagelets = (now: number) => {
+  let files = readKagelets(KAGELETS)
+  if (!sdk && files.length) { if (!kageletsRefused) log('kagelets need the Agent SDK runner (not KAGE_RUNTIME=tmux), so none runs'); kageletsRefused = true; files = [] }
+  const rows = kageletRows(files, { runs: ledgers.text('runs'), costs: ledgers.text('costs'), now })
+  if (costCap(KAGELETS, rows, KAGELET_USD, (name, why) => {
+    const r = rows.find(x => x.name === name)!
+    ledgers.add('reports', [name, why, 'the owner to resume it, or a higher KAGE_KAGELET_DAILY_USD'])
+    ledgers.add('waiting', ['open', r.key!.split('#')[0]!, r.link ?? '', `kagelet ${name} ${why}`])
+    log(`kagelet ${name} ${why}`)
+    void slack.notifyOwner(`Kagelet *${name}* is ${why}. Resume it with kage top or by asking ${Title}.`)
+  }).length) files = readKagelets(KAGELETS)
+  grants = syncKagelets(files, store, now, log, MAX_KAGELETS)
 }
-let specialistsRefused = false
+// The manager's side, for Kage's owner sessions (runtime/kage-tools.ts), and the owner's notes to a kagelet.
+const manager = kageletManager({ dir: KAGELETS, max: MAX_KAGELETS, ledgers, sync: kagelets, runNow: (id, now) => schedules.runNow(id, now) })
+const notes = ownerNotes(store)
+let kageletsRefused = false
 const sdk = sdkLib ? sdkSessions({
   sdk: sdkLib.lib,
   hub: () => d,
@@ -212,6 +229,8 @@ const sdk = sdkLib ? sdkSessions({
     title: Title, bot, user, botDm: () => slack.ids.botDm, dir: DIR, ledgers, send, memory: MEM,
     schedules: { add: j => schedules.add(key, j, Date.now()), remove: id => schedules.remove(key, id), list: () => schedules.list(key) },
     afk: slack.afk?.command,
+    kagelet: key.split('#side-kagelet-')[1],
+    kagelets: { list: () => manager.list(Date.now()), manage: a => manager.manage(a, Date.now()) },
   }),
   hasTranscript: tmux.hasTranscript,
   toHub: (key, m) => routeReply(key, m, replies),
@@ -232,10 +251,11 @@ const sdk = sdkLib ? sdkSessions({
   onBlocked: blocked,
   onTurn: (key, tasks, limit) => limits.turn(key, tasks, limit, Date.now()),
   // A lane whose file is gone keeps no tools, rather than falling back to approval cards.
-  grantOf: key => grants.get(key) ?? (key.includes('#side-spec-') ? [] : undefined),
+  // A lane from before the rename (#side-spec-) gets no tools either.
+  grantOf: key => grants.get(key) ?? (key.includes('#side-kagelet-') || key.includes('#side-spec-') ? [] : undefined),
 }) : undefined
 if (sdk) mkdirSync(MEM.own, { recursive: true })
-specialists(Date.now())
+kagelets(Date.now())
 
 // A thread whose transcript is gone has nothing to resume, so it leaves the store. A pane that just
 // started has no transcript yet, so running panes are kept.
@@ -272,7 +292,13 @@ restoreHolds(DIR, d, Date.now())
 // Schedules live in the store and run as tasks in their thread (runtime/scheduler.ts).
 const schedules = scheduler({
   store, failed,
-  deliver: toSession,
+  // A kagelet's run carries what the owner wrote in its thread since its last one.
+  // The notes stay when the run never reached a session.
+  deliver: (key, task) => {
+    let r: ReturnType<typeof toSession> | undefined
+    if (key.includes('#side-kagelet-')) notes.take(key, said => (r = toSession(key, { ...task, content: `${task.content}\n\n${said}` })) !== 'failed')
+    return r ?? toSession(key, task)
+  },
   ready: key => d.ready(key),
   trusted: key => store.trust(key) === true,
   ran: j => ledgers.add('runs', [j.id, j.key]),
@@ -451,7 +477,7 @@ runJobs([
   { name: 'self-update', every: 60_000, run: selfUpdate },
   // hub.ts rotates the log at each start; a hub that runs for weeks rotates it here.
   { name: 'hub-log', every: 3_600_000, run: () => rotate(`${DIR}/hub.log`) },
-  { name: 'specialists', every: 60_000, run: specialists },
+  { name: 'kagelets', every: 60_000, run: kagelets },
   { name: 'dream', every: 10 * 60_000, run: dream },
   { name: 'retro', every: 10 * 60_000, run: weeklyRetro },
 ])

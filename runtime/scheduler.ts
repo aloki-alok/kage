@@ -82,6 +82,14 @@ export function scheduler(o: {
       }
       return { adopted, skipped }
     },
+    // A kagelet's "run now" (kage top, the manager's tool): one run at once, outside its cron. Returns why not.
+    runNow(id: string, now: number): string | undefined {
+      const s = store.schedules().find(x => x.id === id)
+      if (!s) return `no schedule ${id}: it is paused, removed, or not synced yet`
+      store.fired(id, now)
+      o.ran?.(s, now)
+      run(s, `Run now of job ${id}, asked for outside its schedule (${s.cron}). Nobody wrote a new message.\n${s.prompt}`)
+    },
     remove(key: string, id: string) { if (store.removeSchedule(id, key)) log('unscheduled', id, 'for', key) },
     list: (key: string) => store.schedules().filter(s => s.key === key),
     tick(now: number) {
