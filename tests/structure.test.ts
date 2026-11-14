@@ -10,6 +10,8 @@ const root = new URL('..', import.meta.url).pathname
 const files = execFileSync('git', ['ls-files', '*.ts', '*.js'], { cwd: root, encoding: 'utf8' }).split('\n')
   .filter(f => f && !/(^|\/)tests\//.test(f) && !f.startsWith('docs/'))
 const text = new Map(files.map(f => [f, readFileSync(`${root}/${f}`, 'utf8')]))
+// The source without line and block comments, so a rule reads code, not prose about it.
+const code = (f: string) => text.get(f)!.replace(/\/\*[\s\S]*?\*\//g, '').replace(/(^|\s)\/\/.*$/gm, '$1')
 const lines = (f: string) => text.get(f)!.split('\n').length - 1   // as wc -l counts
 const inDir = (d: string) => files.filter(f => f.startsWith(`${d}/`) && f.endsWith('.ts') && !f.slice(d.length + 1).includes('/'))
 
@@ -67,13 +69,13 @@ function check(name: string, found: string[], debt: string[]) {
 }
 
 test('core/ is pure: no I/O, no environment, no timers, and imports only core/ (ADR 0001)', () => {
-  const bad = /from '(node:)?(fs|child_process|net|http|https|os|dgram|tls)(\/promises)?'|process\.env|\bset(Timeout|Interval)\(|from '\.\.\//
-  check('impureCore', inDir('core').filter(f => bad.test(text.get(f)!)), DEBT.impureCore)
+  const bad = /(from|import\(|require\()\s*['"](node:)?(fs|child_process|net|http|https|os|dgram|tls)(\/promises)?['"]|process\.env|\bset(Timeout|Interval)\(|(from|import\(|require\()\s*['"]\.\.\//
+  check('impureCore', inDir('core').filter(f => bad.test(code(f))), DEBT.impureCore)
 })
 
 test('runtime/ and connectors/ never import a root file', () => {
-  const bad = /from '\.\.\/[^/']+'/
-  check('rootImports', [...inDir('runtime'), ...inDir('connectors')].filter(f => bad.test(text.get(f)!)), DEBT.rootImports)
+  const bad = /(from|import\(|require\()\s*['"]\.\.\/[^/'"]+['"]/
+  check('rootImports', [...inDir('runtime'), ...inDir('connectors')].filter(f => bad.test(code(f))), DEBT.rootImports)
 })
 
 test(`a source file is ${MAX_LINES} lines or fewer, and a long one never grows`, () => {
@@ -90,7 +92,11 @@ test('every core/ and runtime/ file is in the CONTRIBUTING.md code map', () => {
 
 test('every core/ export is used by another source file', () => {
   const unused: string[] = []
-  for (const f of inDir('core')) for (const [, name] of text.get(f)!.matchAll(/^export (?:async )?(?:function\*?|const|let|class|type|interface) (\w+)/gm)) {
+  const exported = (f: string) => [
+    ...[...code(f).matchAll(/^export (?:async )?(?:function\*?|const|let|class|type|interface) (\w+)/gm)].map(m => m[1]!),
+    ...[...code(f).matchAll(/^export (?:type )?\{([^}]*)\}/gm)].flatMap(m => m[1]!.split(',').map(x => x.trim().split(/\s+as\s+/).pop()!).filter(Boolean)),
+  ]
+  for (const f of inDir('core')) for (const name of exported(f)) {
     const word = new RegExp(`\\b${name}\\b`)
     if (!files.some(g => g !== f && word.test(text.get(g)!))) unused.push(`${f} ${name}`)
   }

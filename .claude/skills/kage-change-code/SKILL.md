@@ -56,7 +56,7 @@ Shared homes (update this table when you add one):
 |---|---|
 | Read a webhook body, check a bearer token | `connectors/webhook.ts` (`readBody`, `bearerOk`) |
 | A conversation, its session key, its connector | `core/conversations.ts` |
-| Store state across a restart | `runtime/store.ts` (`load`, `save`) |
+| Keep state across a restart | the store from `openStore` in `runtime/store.ts`: `store.load(name)` and `store.save(name, value)` (type `Saved`) |
 | Who may start a task, a task line | `core/gate.ts` |
 | What may go out | `core/outbound.ts` |
 
