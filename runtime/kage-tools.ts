@@ -557,7 +557,7 @@ export function sessionTools(o: {
     description: `Send ${o.title}'s meeting bot into a Google Meet call by its link. It joins under a name that says it takes notes, posts one line in the call's chat, answers out loud when someone says ${o.title}, and the notes come to the owner's DM when the call ends. The host may need to admit it. Owner tasks only.`,
     shape: { channel: s.describe('channel attribute from the task tag'), thread_ts: s.describe('thread_ts attribute from the task tag'), link: s.describe('the Meet link, https://meet.google.com/abc-defg-hij') },
     async run(args) {
-      if (!ownerOnly(args) || args.channel === 'voice') return { isError: true, text: "refused: only the owner's own task sends the meeting bot" }
+      if (!ownerOnly(args) || args.channel === 'voice' || agents.get(`${args.channel}:${args.thread_ts}`)) return { isError: true, text: "refused: only the owner's own task sends the meeting bot" }
       const why = meetbot.join(String(args.link))
       o.event?.('tool', `meeting_join ${why ? 'refused' : 'ok'}`)
       return why ? { isError: true, text: `meeting bot: ${why}` } : { text: 'The meeting bot is joining. Tell the owner the host may need to admit it.' }

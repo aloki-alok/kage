@@ -887,12 +887,13 @@ describe('the meeting bot (#63)', () => {
     assert.equal(bad.isError, true)
     assert.match(bad.text, /not a Google Meet link/)
   })
-  test("a teammate's task, a voice call and a kagelet never send the bot anywhere", async () => {
+  test("a teammate's task, a voice call, an agent and a kagelet never send the bot anywhere", async () => {
     const asked: string[] = []
     const s = setup({ meetbot: fakeBot(asked) })
     s.t.onTask(s.task({ fromOwner: false }))
     s.t.onTask(s.task({ channel: 'voice', thread_ts: 'voice:x', fromOwner: true }))
-    for (const [channel, thread_ts] of [['C1', '5.5'], ['voice', 'voice:x']]) {
+    s.t.onTask({ ...s.task({ channel: 'C2' }), agent: { app: 'ATEST0001' } })   // a listed agent, even in an owner thread
+    for (const [channel, thread_ts] of [['C1', '5.5'], ['voice', 'voice:x'], ['C2', '5.5']]) {
       const r = await s.call('meeting_join', { channel, thread_ts, link: 'https://meet.google.com/abc-defg-hij' })
       assert.equal(r.isError, true)
     }

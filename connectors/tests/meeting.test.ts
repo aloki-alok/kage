@@ -131,6 +131,9 @@ test('a join waits until the bot polls, then reaches it once; a poll after it ge
     assert.equal((await t.bot(`/meetbot/next?after=${cmds[0]!.seq}`)).status, 204)
     // A bot that lost the answer polls again from its old place and gets the command again.
     assert.equal((await t.bot('/meetbot/next?after=0')).status, 200)
+    // A join this old is for a call long gone: a restarted bot polling from 0 must not walk into the next meeting on that code.
+    t.later(5 * 60_000 + 1)
+    assert.equal((await t.bot('/meetbot/next?after=0')).status, 204)
   } finally { t.m.close() }
 })
 

@@ -75,12 +75,15 @@ export function connectMeeting(o: {
   }
   // Commands for the bot. Each has a seq, and a poll asks for those after the last it saw, so a poll whose
   // answer was lost gets the same commands again. The seq starts at the clock, so it still grows after a restart.
-  type Cmd = { seq: number; op: 'join'; link: string }
+  type Cmd = { seq: number; at: number; op: 'join'; link: string }
   const cmds: Cmd[] = []
   let seq = now()
   let waiter: { res: ServerResponse; after: number; timer: NodeJS.Timeout } | undefined
   let lastPoll = -Infinity
-  const newer = (after: number) => cmds.filter(c => c.seq > after)
+  // A command older than CMD_MS is for a moment that has passed: a bot that restarts and polls from 0 must not
+  // join a call that ended long ago, which on a weekly Meet code is the next meeting.
+  const CMD_MS = 5 * 60_000
+  const newer = (after: number) => cmds.filter(c => c.seq > after && now() - c.at < CMD_MS)
   const answer = () => {
     if (!waiter) return
     const due = newer(waiter.after)
@@ -94,7 +97,7 @@ export function connectMeeting(o: {
     const url = meetLink(link)
     if (!url) return 'not a Google Meet link (https://meet.google.com/abc-defg-hij)'
     if (!waiter && now() - lastPoll >= staleMs) return 'the meeting bot is not connected: start it on its machine and check it can reach this hub'
-    cmds.push({ seq: seq = Math.max(seq + 1, now()), op: 'join', link: url })
+    cmds.push({ seq: seq = Math.max(seq + 1, now()), at: now(), op: 'join', link: url })
     cmds.splice(0, cmds.length - 20)
     answer()
     return ''
@@ -112,7 +115,7 @@ export function connectMeeting(o: {
     }
     if (req.method === 'POST' && url.pathname === '/meetbot/segments') {
       void readBody(req, 1_000_000).then(raw => {
-        if (!raw) { res.writeHead(413).end(); return }
+        if (!raw) { res.writeHead(413).end(); req.destroy(); return }
         let s: ReturnType<typeof parseSegments>
         try { s = parseSegments(JSON.parse(raw.toString('utf8'))) } catch { s = undefined }
         if (!s) { res.writeHead(400).end(); return }
