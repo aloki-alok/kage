@@ -489,6 +489,8 @@ export function sessionTools(o: {
       read_command: s.optional().describe('save with db_read and no KAGE_DB_READ_COMMAND: one of the read commands the owner already approved. Leave out to keep this kagelet\'s own'),
       job: s.optional().describe('save: what to do on each run, complete on its own'),
       why: s.optional().describe('save: one line on why it exists'),
+      model: s.optional().describe('save: sonnet (the default, leave out), or opus, haiku, fable, for a job that needs it. Leave out to keep the kagelet\'s own'),
+      model_why: s.optional().describe('save: one line on why this kagelet needs a model beyond sonnet. Required with a new model; the owner sees it in the panel'),
     },
     async run(args) {
       const { channel: _c, thread_ts: _t, ...a } = args as Manage & { channel: string; thread_ts: string }

@@ -8,8 +8,26 @@ const LINK = 'https://test.slack.com/archives/CTEST1/p1700000000123456'
 describe('a kagelet file', () => {
   test('gives its thread lane, schedule, grant and job', () => {
     assert.deepEqual(parseKagelet('deploys', file(`thread: ${LINK}\nschedule: 0 9 * * 1-5\ntools: WebSearch,  WebFetch`)), {
-      name: 'deploys', key: 'CTEST1:1700000000.123456#side-kagelet-deploys', link: LINK, cron: '0 9 * * 1-5', tools: ['WebSearch', 'WebFetch'], job: 'Post a summary of the deploy log.', paused: false, by: 'owner', why: '',
+      name: 'deploys', key: 'CTEST1:1700000000.123456#side-kagelet-deploys', link: LINK, cron: '0 9 * * 1-5', tools: ['WebSearch', 'WebFetch'], job: 'Post a summary of the deploy log.', paused: false, by: 'owner', why: '', model: 'sonnet', modelWhy: '',
     })
+  })
+  test('a model line sets the model, sonnet when absent; a reason rides in model_why; a model that is not a name is broken', () => {
+    const head = `thread: ${LINK}\nschedule: 0 9 * * *`
+    assert.equal((parseKagelet('x', file(head)) as Kagelet).model, 'sonnet')
+    const k = parseKagelet('x', file(`${head}\nmodel: opus\nmodel_why: a big monthly roll-up`)) as Kagelet
+    assert.deepEqual([k.model, k.modelWhy], ['opus', 'a big monthly roll-up'])
+    assert.equal((parseKagelet('x', file(`${head}\nmodel: claude-opus-4-1`)) as Kagelet).model, 'claude-opus-4-1')
+    // A typo would pass here and then fail every run, so the file is held instead.
+    assert.match((parseKagelet('x', file(`${head}\nmodel: opuss`)) as { error: string }).error, /model/)
+  })
+  test('a saved file keeps its model and reason, and a default model writes no line', () => {
+    const f = { thread: LINK, schedule: '0 9 * * *', tools: [], job: 'Check.', by: 'kage' as const, why: 'w' }
+    const text = kageletFile({ ...f, model: 'opus', modelWhy: 'big job' }) as string
+    assert.match(text, /^model: opus$/m)
+    const k = parseKagelet('x', text) as Kagelet
+    assert.deepEqual([k.model, k.modelWhy], ['opus', 'big job'])
+    assert.doesNotMatch(kageletFile(f) as string, /model/)
+    assert.match((kageletFile({ ...f, model: 'opus\nmodel: haiku' }) as { error: string }).error, /one line/)
   })
   test('no tools line grants no tools', () => {
     assert.deepEqual((parseKagelet('x', file(`thread: ${LINK}\nschedule: 0 9 * * *`)) as { tools: string[] }).tools, [])

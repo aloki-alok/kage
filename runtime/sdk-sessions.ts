@@ -59,6 +59,8 @@ export function sdkSessions(o: {
   onTool?: (key: string, tool: string, refused?: string) => void
   // A kagelet lane: what it may spend before a cap (core/kagelets.ts budgetLeft). The SDK stops the run there.
   budgetOf?: (key: string) => number | undefined
+  // A kagelet lane: the model its file names (core/kagelets.ts). No set_model reaches a lane, so nothing overrides it.
+  modelOf?: (key: string) => string | undefined
   restartMs?: number
 }) {
   const sessions = new Map<string, Session>()
@@ -107,6 +109,7 @@ export function sdkSessions(o: {
       options: {
         ...o.options,
         ...(resumed ? { resume: s.id } : { sessionId: s.id }),
+        ...(o.modelOf?.(key) && { model: o.modelOf(key) }),
         ...picks.get(key),
         ...budget !== undefined && { maxBudgetUsd: budget },
         ...grant && { tools: builtinTools(grant) },

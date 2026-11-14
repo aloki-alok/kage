@@ -449,7 +449,7 @@ function kageletPanel(now: number) {
     put(x0 + 3, y, clip(line.main, w - 4), hot ? 'G' : SHOWN_TONE[shownState(r, CAP)]!)
     put(x0 + 5, y + 1, clip(line.report, w - 6), 'm')
   })
-  const keys = 'r run now   p pause   u resume   x remove   v revoke standing   esc close'
+  const keys = '⏎ thread   r run now   p pause   u resume   x remove   v revoke standing   esc close'
   put(right - keys.length - 2, y1 - 1, keys, 'm')
 }
 
@@ -570,6 +570,8 @@ async function onKey(k: string) {
     const name = kagelets[pick]?.name, action = PANEL_KEYS[k]
     if (k === 'q' || k === '\x03') quit()
     else if (k === '\x1b' || k === 'l') panel = false
+    // Its thread's feed, as ⏎ opens any thread: the lane's own session, once it has run.
+    else if (k === '\r') { const key = kagelets[pick]?.key; if (key) { panel = false; openThread(key) } }
     else if (k === '\x1b[A' || k === 'k') pick = Math.max(0, pick - 1)
     else if (k === '\x1b[B' || k === 'j') pick = Math.min(kagelets.length - 1, pick + 1)
     else if (action && name) {

@@ -22,7 +22,7 @@ const tick = (ms = 5) => new Promise(r => setTimeout(r, ms))
 const ID = '11111111-1111-4111-8111-111111111111'
 const signal = () => new AbortController().signal
 
-function setup(o: { transcript?: boolean; silent?: boolean; dmFails?: boolean; grants?: Record<string, string[]>; manager?: boolean; budgets?: Record<string, number>; onResult?: (key: string, total: number, resumed: boolean) => void } = {}) {
+function setup(o: { transcript?: boolean; silent?: boolean; dmFails?: boolean; grants?: Record<string, string[]>; manager?: boolean; budgets?: Record<string, number>; models?: Record<string, string>; onResult?: (key: string, total: number, resumed: boolean) => void } = {}) {
   const sdk = fakeSdk(o)
   const results: [string, number, boolean][] = []
   const blocks: [string, string[], string | null][] = []
@@ -58,6 +58,7 @@ function setup(o: { transcript?: boolean; silent?: boolean; dmFails?: boolean; g
     restartMs: 10,
     onResult: (key, total, resumed) => { results.push([key, total, resumed]); o.onResult?.(key, total, resumed) },
     budgetOf: key => o.budgets?.[key],
+    modelOf: key => o.models?.[key],
     onBlocked: (key, turn, category) => { blocks.push([key, turn.map(t => t.content), category]) },
     onTurn: (key, tasks, limit, done) => { turns.push([key, tasks.map(t => t.content), limit, done]) },
     onTool: (key, tool, refused) => { tools.push([key, tool, refused]) },
@@ -174,6 +175,15 @@ describe('Kage sessions on the Agent SDK', () => {
     t.sdk.runs[0]!.emit({ type: 'result', total_cost_usd: 1.25, is_error: true })
     await tick()
     assert.deepEqual(t.results, [['C1:5.5', 1.25, false]])
+  })
+  test('a kagelet lane runs on its own model, and a thread with none keeps the default', async () => {
+    const LANE = 'C1:5.5#side-kagelet-deploys'
+    const t = setup({ grants: { [LANE]: ['WebSearch'] }, models: { [LANE]: 'opus' } })
+    t.d.task(LANE, t.task(), 0)
+    t.d.task('C1:6.6', t.task(), 0)
+    await tick()
+    assert.equal(t.sdk.runs[0]!.options.model, 'opus')
+    assert.equal('model' in t.sdk.runs[1]!.options, false)
   })
   test('a kagelet lane opens with the budget left under its caps, so a long run stops at the cap mid-turn; other threads have none', async () => {
     const LANE = 'C1:5.5#side-kagelet-calls'
