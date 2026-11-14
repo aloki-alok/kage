@@ -3,21 +3,15 @@
 import { clockTime, whenLabel } from './board.ts'
 import { DEFAULT_MODEL, type KageletRow, type Report } from './kagelets.ts'
 
-// The cost caps are off unless set (#96). A set value that is not a number of dollars, or is below zero, is off
-// too, and capError names it, so the hub says so at start instead of guarding nothing in silence.
-type Env = Record<string, string | undefined>
-const dollars = (v: string | undefined) => { const n = Number(v); return v && Number.isFinite(n) && n >= 0 ? n : undefined }
-const daily = (env: Env) => env.KAGE_KAGELET_DAILY_USD || env.KAGE_SPECIALIST_DAILY_USD
-// KAGE_KAGELET_DAILY_USD, or its name from before the rename. The hub pauses a kagelet at it.
-export const dailyCap = (env: Env) => dollars(daily(env))
-// KAGE_KAGELET_TOTAL_DAILY_USD: all kagelets together. The hub pauses every one at it.
-export const totalCap = (env: Env) => dollars(env.KAGE_KAGELET_TOTAL_DAILY_USD)
-// KAGE_KAGELET_CHAIN_USD: one chain of kagelet handoffs and messages (#93). The hub stops the chain at it.
-export const chainCap = (env: Env) => dollars(env.KAGE_KAGELET_CHAIN_USD)
-export const capError = (env: Env) => [['KAGE_KAGELET_DAILY_USD', daily(env)], ['KAGE_KAGELET_TOTAL_DAILY_USD', env.KAGE_KAGELET_TOTAL_DAILY_USD],
-  ['KAGE_KAGELET_CHAIN_USD', env.KAGE_KAGELET_CHAIN_USD]]
-  .filter(([, v]) => v && dollars(v) === undefined).map(([k]) => `${k} is not a number of dollars, so that cap is off`).join('. ') || undefined
-
+// The cost caps are off unless set (#96). The schema takes only numbers of dollars at zero or more (core/config.ts).
+type Caps = { dailyUsd?: number | null; totalDailyUsd?: number | null; chainUsd?: number | null }
+const dollars = (v: number | null | undefined) => (typeof v === 'number' && Number.isFinite(v) && v >= 0 ? v : undefined)
+// kagelets.dailyUsd: what one kagelet may spend in a day. The hub pauses a kagelet at it.
+export const dailyCap = (k: Caps = {}) => dollars(k.dailyUsd)
+// kagelets.totalDailyUsd: all kagelets together. The hub pauses every one at it.
+export const totalCap = (k: Caps = {}) => dollars(k.totalDailyUsd)
+// kagelets.chainUsd: one chain of kagelet handoffs and messages (#93). The hub stops the chain at it.
+export const chainCap = (k: Caps = {}) => dollars(k.chainUsd)
 // On: enabled and waiting for its schedule (a run in progress shows in kage logs). Over cap: what it spent
 // today reached the cap, so the hub paused it (or will at its next sync). Only with a cap set.
 export const shownState = (r: KageletRow, cap: number | undefined) =>

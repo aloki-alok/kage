@@ -1,4 +1,4 @@
-// Prints the Slack app manifest for the name in KAGE_NAME (setup.sh calls this).
+// Prints the Slack app manifest for the name in name (setup.sh calls this).
 import { validName } from '../core/gate.ts'
 
 const name = process.env.KAGE_NAME || 'kage'

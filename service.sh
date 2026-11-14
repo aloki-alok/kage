@@ -2,13 +2,15 @@
 # Lets the OS keep the hub alive: a LaunchAgent on macOS, a systemd user unit on Linux. Both run node on hub.ts
 # at login (Linux: at boot, with linger), append its output to hub.log, and follow one rule: a non-zero exit
 # (a crash, or 75 for a self-update) restarts it within 10 s, and exit 0 (kage stop, a second hub) stays down.
-# Usage: ./service.sh on | off | start | stop | restart | running | installed | kind
+# Usage: ./service.sh on | off | start | stop | restart | running | installed | stale | kind
 set -euo pipefail
 DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ENV_FILE="${KAGE_ENV:-$HOME/.config/kage/env}"
-NAME="$(sed -n 's/^KAGE_NAME=//p' "$ENV_FILE" 2>/dev/null | tail -1)"; NAME="${NAME:-kage}"
-# Pinned at install, as hub.ts reads it: a different folder would forget every thread.
-WORK="${KAGE_CWD:-$HOME}"
+# Settings come from config.json (cli/config.ts); nothing prints when one is unset or the file is not there yet.
+cfg() { KAGE_ENV="$ENV_FILE" node "$DIR/cli/config.ts" get "$1" 2>/dev/null || true; }
+NAME="$(cfg name)"; NAME="${NAME:-kage}"
+# The folder the hub starts in. hub.ts reads harness.cwd itself, so the unit no longer carries it: a different folder would forget every thread.
+WORK="$(cfg harness.cwd)"; WORK="${WORK:-${KAGE_CWD:-$HOME}}"
 LABEL="dev.kage.hub.$NAME"
 PLIST="$HOME/Library/LaunchAgents/$LABEL.plist"
 UNIT="kage-$NAME.service"
@@ -36,7 +38,6 @@ plist_text() {
   <key>EnvironmentVariables</key><dict>
     <key>PATH</key><string>$PATH</string>
     <key>KAGE_ENV</key><string>$ENV_FILE</string>
-    <key>KAGE_CWD</key><string>$WORK</string>
   </dict>
   <key>WorkingDirectory</key><string>$WORK</string>
   <key>RunAtLoad</key><true/>
@@ -59,7 +60,7 @@ StartLimitIntervalSec=0
 [Service]
 ExecStart="$n" "$d/hub.ts"
 WorkingDirectory=$w
-Environment="PATH=$p" "KAGE_ENV=$e" "KAGE_CWD=$w"
+Environment="PATH=$p" "KAGE_ENV=$e"
 StandardOutput=append:$l
 StandardError=append:$l
 Restart=on-failure
@@ -87,7 +88,7 @@ remove_old_login_item() {
 }
 
 on() {
-  [[ "$DIR$ENV_FILE$WORK$PATH$NODE" =~ [\'\"\\\&\<\>] ]] && { echo "Move kage, its env file or KAGE_CWD, and every PATH folder, to paths without quotes, backslashes, & or angle brackets." >&2; exit 1; }
+  [[ "$DIR$ENV_FILE$WORK$PATH$NODE" =~ [\'\"\\\&\<\>] ]] && { echo "Move kage, its config folder or harness.cwd, and every PATH folder, to paths without quotes, backslashes, & or angle brackets." >&2; exit 1; }
   [[ -n $NODE ]] || { echo "node is not on PATH." >&2; exit 1; }
   # Run from a pane of the old tmux session, stopping that session would end this script before the service starts.
   if [[ -n "${TMUX:-}" && "$(tmux display-message -p '#S' 2>/dev/null)" == "$NAME" ]]; then
@@ -102,6 +103,8 @@ on() {
       mkdir -p "$(dirname "$PLIST")"
       plist_text >"$PLIST"
       launchctl bootout "$GUI/$LABEL" 2>/dev/null || true
+      # bootout returns before launchd lets go of the label, and a bootstrap in that gap fails with "5: Input/output error".
+      for _ in {1..50}; do launchctl print "$GUI/$LABEL" >/dev/null 2>&1 || break; sleep 0.2; done
       launchctl bootstrap "$GUI" "$PLIST"
       echo "On: macOS keeps $NAME running and starts it at login (LaunchAgent $LABEL)."
       remove_old_login_item ;;
@@ -127,6 +130,8 @@ off() {
 }
 
 installed() { [[ -f $PLIST || -f $UNIT_FILE ]]; }
+# An installed unit from before harness.cwd still pins KAGE_CWD: kage service on rewrites it (kage doctor says so).
+stale() { grep -qs KAGE_CWD "$PLIST" "$UNIT_FILE" && return 0; return 1; }
 
 running() {
   case "$(kind)" in
@@ -160,6 +165,6 @@ restart() {
 # Sourced by the tests, which call plist_text and unit_text.
 [[ "${BASH_SOURCE[0]}" == "$0" ]] || return 0
 case "${1:-}" in
-  on|off|start|stop|restart|running|installed|kind) "$1" ;;
+  on|off|start|stop|restart|running|installed|stale|kind) "$1" ;;
   *) echo "Usage: kage service on | off" >&2; exit 2 ;;
 esac

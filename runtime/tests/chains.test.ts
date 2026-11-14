@@ -57,7 +57,7 @@ async function hub(o: { chainUsd?: number; capUsd?: number; max?: number; memory
     sdk: { query: (x: any) => { if (fail.start) throw new Error('no claude'); return sdk.query(x) as any }, createSdkMcpServer, tool },
     hub: () => d,
     tools: () => ({ tools: [], instructions: '', onTask() {}, askOwner: async () => {} }) as any,
-    hasTranscript: () => false, toHub: () => {}, options: { cwd: dir, settingSources: [] }, ownerMemory: '/owner', envFile: '/cfg/env', restartMs: 10,
+    hasTranscript: () => false, toHub: () => {}, options: { cwd: dir, settingSources: [] }, ownerMemory: '/owner', envFile: '/cfg/env', codeDir: '/code/kage', restartMs: 10,
     onResult: (key, total, _resumed, limited) => { const usd = total - (totals.get(key) ?? 0); totals.set(key, total); routes.ended(key, usd, '', clock.now, limited) },
     onTurn: (key, ts, limit, done) => limits.turn(key, ts, limit, clock.now, done),
   })
@@ -213,7 +213,7 @@ test('the cost cap per chain stops it before the next step; each kagelet\'s dail
   await h.step('a', { output: 'https://example.com/v', usd: 0.1 })
   await h.step('b', { output: 'x', usd: 0.1 })
   assert.equal(h.tasks.length, 2)
-  assert.deepEqual(h.chains(), ['a > b > c  stopped before c: the chain spent $0.20, at or over its cap of $0.15 (KAGE_KAGELET_CHAIN_USD)'])
+  assert.deepEqual(h.chains(), ['a > b > c  stopped before c: the chain spent $0.20, at or over its cap of $0.15 (kagelets.chainUsd)'])
   // b spent $2 today: a's output waits for it instead of starting it.
   const k = await abc()
   k.ledgers.add('costs', [keyOf('b'), '2', '2'])

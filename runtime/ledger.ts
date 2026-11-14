@@ -9,7 +9,7 @@ import { lastTotals, tsvRow, turnCost } from '../core/ledgers.ts'
 import { eventRow, whoOf, type EventKind, type KageEvent } from '../core/events.ts'
 import { COST_FLAG } from '../core/kagelets.ts'
 
-export type LedgerName = 'waiting' | 'posted' | 'prod-actions' | 'costs' | 'runs' | 'commands' | 'reports' | 'db-reads' | 'grants'
+export type LedgerName = 'waiting' | 'posted' | 'prod-actions' | 'costs' | 'runs' | 'commands' | 'reports' | 'db-reads' | 'grants' | 'boots'
 const NAMES: LedgerName[] = ['waiting', 'posted', 'prod-actions', 'costs', 'runs', 'commands', 'reports', 'db-reads', 'grants']
 export type Ledgers = ReturnType<typeof openLedgers>
 

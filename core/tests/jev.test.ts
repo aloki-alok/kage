@@ -5,30 +5,30 @@ import { afkRequest, afkVerdict, JEV_MAX_CHARS, OTHER_BAR, OWNER_BAR, TRIAGE_MAX
 describe('the Jev settings', () => {
   test('no key leaves Jev off', () => {
     assert.equal(jevConfig({}), undefined)
-    assert.equal(jevConfig({ JEV_API_KEY: '  ' }), undefined)
+    assert.equal(jevConfig({}, '  '), undefined)
   })
   test('a key alone checks every listed agent at 0.5 on the latest model', () => {
-    assert.deepEqual(jevConfig({ JEV_API_KEY: 'apikey_test' }), { key: 'apikey_test', model: 'jev-latest', threshold: 0.5, agents: 'all' })
+    assert.deepEqual(jevConfig({}, 'apikey_test'), { key: 'apikey_test', model: 'jev-latest', threshold: 0.5, agents: 'all' })
   })
-  test('KAGE_JEV_AGENTS names the agents it checks; "all" or empty means every one', () => {
-    const c = jevConfig({ JEV_API_KEY: 'k', KAGE_JEV_AGENTS: 'A0123ABC, A0456DEF' })
+  test('jev.agents names the agents it checks; "all" or empty means every one', () => {
+    const c = jevConfig({ agents: ['A0123ABC', 'A0456DEF'] }, 'k')
     assert.ok(c && !('error' in c))
     assert.deepEqual(c.agents, ['A0123ABC', 'A0456DEF'])
     assert.equal(jevChecks(c, 'A0123ABC'), true)
     assert.equal(jevChecks(c, 'A0999ZZZ'), false)
-    const all = jevConfig({ JEV_API_KEY: 'k', KAGE_JEV_AGENTS: 'all' })
+    const all = jevConfig({ agents: ['all'] }, 'k')
     assert.ok(all && !('error' in all) && all.agents === 'all' && jevChecks(all, 'A0999ZZZ'))
   })
   test('a wrong threshold or agent id is an error that names the setting, never the key', () => {
-    for (const t of ['0', '1', 'high', '-0.2']) {
-      const c = jevConfig({ JEV_API_KEY: 'apikey_secret', KAGE_JEV_THRESHOLD: t })
-      assert.ok(c && 'error' in c && c.error.includes('KAGE_JEV_THRESHOLD') && !c.error.includes('apikey_secret'))
+    for (const t of [0, 1, -0.2]) {
+      const c = jevConfig({ threshold: t }, 'apikey_secret')
+      assert.ok(c && 'error' in c && c.error.includes('jev.threshold') && !c.error.includes('apikey_secret'))
     }
-    const c = jevConfig({ JEV_API_KEY: 'apikey_secret', KAGE_JEV_AGENTS: 'U0123ABC' })
-    assert.ok(c && 'error' in c && c.error.includes('KAGE_JEV_AGENTS') && !c.error.includes('apikey_secret'))
+    const c = jevConfig({ agents: ['U0123ABC'] }, 'apikey_secret')
+    assert.ok(c && 'error' in c && c.error.includes('jev.agents') && !c.error.includes('apikey_secret'))
   })
   test('a model and a threshold can be set', () => {
-    assert.deepEqual(jevConfig({ JEV_API_KEY: 'k', KAGE_JEV_MODEL: 'jev-1.14.0', KAGE_JEV_THRESHOLD: '0.7' }), { key: 'k', model: 'jev-1.14.0', threshold: 0.7, agents: 'all' })
+    assert.deepEqual(jevConfig({ model: 'jev-1.14.0', threshold: 0.7 }, 'k'), { key: 'k', model: 'jev-1.14.0', threshold: 0.7, agents: 'all' })
   })
 })
 

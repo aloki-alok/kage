@@ -8,7 +8,7 @@ import type { createSdkMcpServer, EffortLevel, Options, Query, SDKMessage, SDKUs
 import { z } from 'zod'
 import { log } from '../config.ts'
 import { senderOf, withoutInvisible, type Sender } from '../core/gate.ts'
-import { configRefusal, ownerMemoryRefusal, privateToolRefusal, slackSendRefusal, voiceToolRefusal } from '../core/guards.ts'
+import { configRefusal, protectConfig, ownerMemoryRefusal, privateToolRefusal, slackSendRefusal, voiceToolRefusal } from '../core/guards.ts'
 import { builtinTools, grantRefusal } from '../core/kagelets.ts'
 import { approvalPreview } from '../core/preview.ts'
 import type { Dispatcher, Runner } from '../core/sessions.ts'
@@ -44,6 +44,7 @@ export function sdkSessions(o: {
   toHub: (key: string, m: { type: 'mail' | 'wa' | 'voice'; text: string }) => void
   options: Options                                 // cwd, settings, settingSources, the claude binary
   ownerMemory: string
+  codeDir: string                                  // the folder the hub runs from: a restart runs it, so no shell may write there
   envFile: string                                 // its folder holds the tokens: only the owner's task touches it
   onStart?: () => void                            // a new id may have been minted: save the map
   // A turn ended: the session's running cost so far. limited: it ended on the usage limit, so it did no work.
@@ -68,9 +69,9 @@ export function sdkSessions(o: {
   // ponytail: lost on a hub restart, save it in the store if people mind.
   const picks = new Map<string, Pick>()
   // Kage's own tools, approved for every session (hub.ts does the same for panes). browser_act raises its own
-  // card, showing the control as the page labels it, so it is listed here to keep the owner from a second card. Approved in canUseTool, not
+  // card, showing the control as the page labels it, so it is listed here to keep the owner from a second card. set_setting is the same: a safe key needs no card, a power key raises its own. Approved in canUseTool, not
   // allowedTools, which would skip the callback and makes the SDK warn on every session.
-  const ALLOWED = ['reply', 'edit_message', 'delete_message', 'send_file', 'message_people', 'schedule', 'unschedule', 'schedules', 'set_model', 'kagelets', 'review_kagelet_memory', 'browser_tabs', 'browser_read', 'browser_screenshot', 'browser_snapshot', 'browser_act'].map(t => `mcp__kage__${t}`)
+  const ALLOWED = ['reply', 'edit_message', 'delete_message', 'send_file', 'message_people', 'schedule', 'unschedule', 'schedules', 'set_model', 'kagelets', 'review_kagelet_memory', 'browser_tabs', 'browser_read', 'browser_screenshot', 'browser_snapshot', 'browser_act', 'set_setting'].map(t => `mcp__kage__${t}`)
 
   function open(key: string, s: Session, carried: SDKUserMessage[] = []) {
     const inbox = makeInbox(carried)
@@ -100,14 +101,16 @@ export function sdkSessions(o: {
         return { content: [{ type: 'text' as const, text: `This thread now runs on ${pick.model ?? 'the default model'} at ${pick.effort ?? 'default'} effort.` }] }
       })],
     })
-    const { KAGE_THREAD: _, ...env } = process.env   // with it, the kage plugin's own channel would take the thread
+    const { KAGE_THREAD: _, ...env } = process.env   // with it, the kage plugin's own channel would take the thread. KAGE_SESSION below stays: kage set refuses on it.
     const resumed = o.hasTranscript(s.id)
     const budget = o.budgetOf?.(key)
     const grant = o.grantOf?.(key)
+    const walled = protectConfig(o.envFile, o.codeDir)
     const q = o.sdk.query({
       prompt: inbox,
       options: {
         ...o.options,
+        settings: { ...(o.options.settings as object), ...walled },
         ...(resumed ? { resume: s.id } : { sessionId: s.id }),
         ...(o.modelOf?.(key) && { model: o.modelOf(key) }),
         ...picks.get(key),
@@ -118,7 +121,7 @@ export function sdkSessions(o: {
         // Its jobs die with the session; the schedule tool replaces it.
         disallowedTools: [...o.options.disallowedTools ?? [], 'CronCreate', 'CronDelete', 'CronList'],
         // Claude Code sends session_state_changed, which busy() reads, only when asked.
-        env: { ...env, CLAUDE_CODE_EMIT_SESSION_STATE_EVENTS: '1' },
+        env: { ...env, CLAUDE_CODE_EMIT_SESSION_STATE_EVENTS: '1', KAGE_SESSION: '1' },
         // A kagelet's grant is its approval, checked first: beyond it, even Kage's tools that act as the owner, it
         // approves nothing and puts no card in front of the owner. The PreToolUse hook checks the same grant again.
         canUseTool: (name, input, x) => o.grantOf?.(key)

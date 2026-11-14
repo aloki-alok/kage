@@ -12,17 +12,16 @@ export const QUESTION = 'Does this message ask the recipient to do something or 
 // agents: the app ids Jev checks, or 'all' for every listed agent. threshold: the needs-reply score (0 to 1) a post needs to start a task.
 export type JevConfig = { key: string; model: string; threshold: number; agents: 'all' | string[] }
 
-// From the env file. No JEV_API_KEY: off (undefined). A wrong setting is an error naming the setting, never the key.
-export function jevConfig(env: Record<string, string | undefined>): JevConfig | { error: string } | undefined {
-  const key = env.JEV_API_KEY?.trim()
+// From config.json (jev) and secrets.json (jevKey). No key: off (undefined). A wrong setting is an error naming the setting, never the key.
+export function jevConfig(jev: { agents?: string[]; threshold?: number | null; model?: string | null } = {}, jevKey?: string | null): JevConfig | { error: string } | undefined {
+  const key = jevKey?.trim()
   if (!key) return undefined
-  const t = env.KAGE_JEV_THRESHOLD?.trim()
-  const threshold = t ? Number(t) : 0.5
-  if (!Number.isFinite(threshold) || threshold <= 0 || threshold >= 1) return { error: `KAGE_JEV_THRESHOLD "${t}" must be a number between 0 and 1, like 0.5` }
-  const list = (env.KAGE_JEV_AGENTS || '').split(',').map(s => s.trim()).filter(Boolean)
+  const threshold = jev.threshold ?? 0.5
+  if (!Number.isFinite(threshold) || threshold <= 0 || threshold >= 1) return { error: `jev.threshold ${threshold} must be a number between 0 and 1, like 0.5` }
+  const list = jev.agents ?? []
   const bad = list.find(a => a !== 'all' && appEntry(a)?.id !== a)
-  if (bad) return { error: `KAGE_JEV_AGENTS has "${bad.slice(0, 20)}", which is not a Slack app id like A0123ABC` }
-  return { key, model: env.KAGE_JEV_MODEL?.trim() || 'jev-latest', threshold, agents: !list.length || list.includes('all') ? 'all' : list }
+  if (bad) return { error: `jev.agents has "${bad.slice(0, 20)}", which is not a Slack app id like A0123ABC` }
+  return { key, model: jev.model?.trim() || 'jev-latest', threshold, agents: !list.length || list.includes('all') ? 'all' : list }
 }
 
 export const jevChecks = (c: JevConfig, app: string) => c.agents === 'all' || c.agents.includes(app)

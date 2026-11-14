@@ -5,7 +5,7 @@
 //   kage export-crons
 import { execFileSync } from 'node:child_process'
 import { readFileSync, renameSync, writeFileSync } from 'node:fs'
-import { DIR } from './home.ts'
+import { CWD, DIR } from './home.ts'
 import { DatabaseSync } from 'node:sqlite'
 import { cronJobsFromTranscript } from '../core/cron.ts'
 import { senderFile } from '../core/guards.ts'
@@ -13,7 +13,7 @@ import { claudeProject, paneProcessStart } from '../runtime/tmux-panes.ts'
 
 const HOME = process.env.HOME!
 const NAME = process.env.KAGE_NAME || 'kage'
-const PROJECT = claudeProject(process.env.KAGE_CWD || HOME)
+const PROJECT = claudeProject(CWD)
 
 const db = new DatabaseSync(`${DIR}/kage.db`, { readOnly: true })
 const keyOf = new Map((db.prepare('select key, claude_id from sessions').all() as { key: string; claude_id: string }[]).map(r => [r.claude_id, r.key]))
