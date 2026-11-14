@@ -9,7 +9,6 @@ const MAX_SEGMENTS = 200   // lines in one post; the bot posts about every secon
 
 export type Line = { speaker: string; text: string; self?: boolean }   // self: Kage's own speech
 
-
 // Only a meet.google.com meeting code, rebuilt from its parts, so the bot never opens anything else.
 export function meetLink(s: string): string | undefined {
   const m = /^<?(?:https?:\/\/)?meet\.google\.com\/([a-z]{3}-[a-z]{4}-[a-z]{3})(?:[?#][^\s<>]*)?>?$/i.exec(s.trim())

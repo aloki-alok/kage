@@ -6,8 +6,7 @@
 //    task the owner started.
 // Everything else is stored and ignored.
 
-import { oneLine } from './text.ts'
-import { noChannelTag } from './text.ts'
+import { noChannelTag, oneLine } from './text.ts'
 
 // fromMe: sent from the owner's account. viaApi: sent through WAHA, which only Kage uses, so it is
 // Kage's own message even though it is fromMe too.

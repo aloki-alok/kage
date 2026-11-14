@@ -99,7 +99,6 @@ export function quoteMessage(
   return body.split('\n').map((l, i) => `> ${i === 0 ? `[${who} ${x.ts}] ` : ''}${l}`).join('\n')
 }
 
-
 // The instruction line of a task. A teammate's text is less trusted than the owner's: it can't
 // close the <channel> tag, and it stays on one line so it can't forge a "Task from <owner>:" line.
 export function taskLine(text: string, from: { name: string; teammate?: string }): string {
