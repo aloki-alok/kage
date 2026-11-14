@@ -721,7 +721,7 @@ export function sessionTools(o: {
     async askOwner(p: { id: string; tool: string; description: string; preview: string }) {
       const MAX = 2500
       // The description may carry a model's words: cap it, and defuse <url|text> so a link cannot rename what is approved.
-      const description = slackPlain(p.description.length > 400 ? `${p.description.slice(0, 400)}...` : p.description)
+      const description = slackPlain((p.description.length > 400 ? `${p.description.slice(0, 400)}...` : p.description).replaceAll('```', "'''").replace(/\s*\n\s*/g, ' '))
       const preview = p.preview.replaceAll('```', "'''")
       const cut = preview.length > MAX ? `${preview.slice(0, MAX)}\n... ${preview.length - MAX} more chars NOT shown. Deny unless you checked it in the terminal.` : preview
       const r = await bot.chat.postMessage({
