@@ -1,6 +1,7 @@
 // Kage's Chrome extension (#114): polls the owner's own Kage hub for a command, runs it in this browser, and
 // posts the result back. It answers only its own hub, on this machine, with the token from its options.
-// The hub decides what a session may see (core/browser.ts); this side only reads.
+// The hub decides what a session may see and do (core/browser.ts, core/browser-act.ts). Every action that changes a
+// page reaches this side only after the owner's yes on the hub's approval card.
 
 const MAX_TEXT = 300_000   // the hub cuts further; this keeps one huge page from filling the post
 
@@ -27,6 +28,104 @@ const ops = {
     if (shown?.id !== t.id) throw new Error('the owner switched tabs during the capture, so it was thrown away')
     return { url: shown.url ?? '', png }
   },
+  async snapshot({ tabId }) {
+    const p = await run(tabId, controlsInPage)
+    if (!p) throw new Error('the page returned nothing')
+    return p
+  },
+  // What a ref is right now, for the approval card: the hub names the control from this, not from Kage's words.
+  async describe({ tabId, ref }) {
+    const p = await run(tabId, controlsInPage)
+    if (!p) throw new Error('the page returned nothing')
+    return { url: p.url, el: p.elements.find(e => e.ref === Number(ref)) }
+  },
+  async click({ tabId, ref }) {
+    const at = await run(tabId, controlInPage, [ref, false])
+    if (!at || at.gone) throw new Error('that control is no longer on the page: take a new snapshot')
+    const base = { x: at.x, y: at.y, button: 'left', clickCount: 1 }
+    await cdp(tabId, [['Input.dispatchMouseEvent', { ...base, type: 'mouseMoved' }], ['Input.dispatchMouseEvent', { ...base, type: 'mousePressed' }], ['Input.dispatchMouseEvent', { ...base, type: 'mouseReleased' }]])
+    return { url: at.url }
+  },
+  async type({ tabId, ref, text }) {
+    const at = await run(tabId, controlInPage, [ref, true])
+    if (!at || at.gone) throw new Error('that control is no longer on the page: take a new snapshot')
+    await cdp(tabId, [['Input.insertText', { text: String(text) }]])
+    return { url: at.url }
+  },
+  async press({ tabId, key }) {
+    const code = KEYCODES[key]
+    if (!code) throw new Error(`unknown key ${key}`)
+    const k = { key, code: key, windowsVirtualKeyCode: code, nativeVirtualKeyCode: code, ...(key === 'Enter' && { text: '\r' }) }
+    await cdp(tabId, [['Input.dispatchKeyEvent', { ...k, type: 'keyDown' }], ['Input.dispatchKeyEvent', { ...k, type: 'keyUp' }]])
+    return {}
+  },
+  async navigate({ tabId, url }) {
+    await chrome.tabs.update(Number(tabId), { url })
+    return { url }
+  },
+  async open({ url }) {
+    const tab = await chrome.tabs.create({ url, active: false })
+    await intoKageGroup(tab)
+    return { tabId: tab.id, url }
+  },
+}
+
+// In the page: every control a person could use, each marked with a data-kage-ref that stays while the page lives,
+// so a ref from the snapshot still points at the same control when the owner says yes.
+function controlsInPage() {
+  const SEL = 'a[href], button, input, select, textarea, summary, [role=button], [role=link], [role=checkbox], [role=radio], [role=tab], [role=menuitem], [role=option], [role=switch], [role=combobox], [role=textbox], [contenteditable=""], [contenteditable=true]'
+  const ROLE = { A: 'link', BUTTON: 'button', SELECT: 'combobox', TEXTAREA: 'textbox', SUMMARY: 'button' }
+  const inputRole = t => ({ checkbox: 'checkbox', radio: 'radio', submit: 'button', button: 'button', reset: 'button', image: 'button', range: 'slider', search: 'searchbox' })[t] ?? 'textbox'
+  let next = Math.max(0, ...[...document.querySelectorAll('[data-kage-ref]')].map(e => Number(e.dataset.kageRef) || 0)) + 1
+  const out = []
+  for (const el of document.querySelectorAll(SEL)) {
+    const r = el.getBoundingClientRect()
+    const style = getComputedStyle(el)
+    if (!r.width || !r.height || style.visibility === 'hidden' || style.display === 'none' || el.disabled) continue
+    if (el.type === 'hidden') continue
+    if (!el.dataset.kageRef) el.dataset.kageRef = String(next++)
+    const labelled = el.getAttribute('aria-labelledby')?.split(' ').map(id => document.getElementById(id)?.innerText ?? '').join(' ')
+    const name = (el.getAttribute('aria-label') || labelled || [...(el.labels ?? [])].map(l => l.innerText).join(' ') || el.innerText || el.getAttribute('placeholder') || el.getAttribute('title') || el.getAttribute('alt') || (['submit', 'button'].includes(el.type) ? el.value : '') || '').replace(/\s+/g, ' ').trim()
+    const role = el.getAttribute('role') || (el.tagName === 'INPUT' ? inputRole(el.type) : ROLE[el.tagName]) || (el.isContentEditable ? 'textbox' : 'element')
+    const e = { ref: Number(el.dataset.kageRef), role, name }
+    // A password's value never leaves the page: only whether it is filled.
+    if (el.type === 'password') e.value = el.value ? '(filled)' : ''
+    else if (el.tagName === 'SELECT') e.value = el.selectedOptions[0]?.text ?? ''
+    else if (el.type === 'checkbox' || el.type === 'radio') e.value = el.checked ? 'checked' : 'not checked'
+    else if ('value' in el && role !== 'button' && role !== 'link') e.value = String(el.value)
+    out.push(e)
+  }
+  return { title: document.title, url: location.href, elements: out }
+}
+
+// In the page: one control by its ref, scrolled into view, with its center in viewport pixels for a real click.
+function controlInPage(ref, focus) {
+  const el = document.querySelector(`[data-kage-ref="${Number(ref)}"]`)
+  if (!el) return { url: location.href, gone: true }
+  el.scrollIntoView({ block: 'center', inline: 'center' })
+  if (focus) { el.focus(); if (typeof el.select === 'function') el.select() }
+  const r = el.getBoundingClientRect()
+  return { url: location.href, x: r.left + r.width / 2, y: r.top + r.height / 2 }
+}
+
+const run = async (tabId, func, args = []) => (await chrome.scripting.executeScript({ target: { tabId: Number(tabId) }, func, args }))[0]?.result
+
+// Real input through the Chrome DevTools Protocol, so a page sees a trusted click or keystroke, as from a person.
+// Attached for one action only: Chrome shows its "is debugging this browser" bar meanwhile, which is the point.
+async function cdp(tabId, steps) {
+  const target = { tabId: Number(tabId) }
+  await chrome.debugger.attach(target, '1.3')
+  try { for (const [method, params] of steps) await chrome.debugger.sendCommand(target, method, params) }
+  finally { await chrome.debugger.detach(target).catch(() => {}) }
+}
+
+const KEYCODES = { Enter: 13, Tab: 9, Escape: 27, Backspace: 8, ArrowUp: 38, ArrowDown: 40, ArrowLeft: 37, ArrowRight: 39, PageUp: 33, PageDown: 34 }
+
+// Kage's own tabs sit in one group named Kage, so the owner sees at a glance what it opened.
+async function intoKageGroup(tab) {
+  const [g] = await chrome.tabGroups.query({ title: 'Kage', windowId: tab.windowId })
+  const groupId = await chrome.tabs.group({ tabIds: [tab.id], ...(g && { groupId: g.id }) })
+  if (!g) await chrome.tabGroups.update(groupId, { title: 'Kage', color: 'grey' })
 }
 
 const settings = () => chrome.storage.local.get({ hub: 'http://127.0.0.1:8791', token: '' })
