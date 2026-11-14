@@ -55,13 +55,13 @@ export function wahaHandler(hmac: string, inbox: Inbox, run: (p: WahaPayload, so
   }
 }
 
-export function startWhatsApp(o: { dir: string; name: string; owner: string; env: Record<string, string>; memory: string; inbox: Inbox; onTask: (t: WaTask) => void; notify: (text: string) => void }) {
+export function startWhatsApp(o: { dir: string; name: string; owner: string; whatsapp: { wahaUrl?: string | null; model?: string | null; hookHost?: string | null; hookPort?: number }; memory: string; inbox: Inbox; onTask: (t: WaTask) => void; notify: (text: string) => void }) {
   const waha = Object.fromEntries(readFileSync(`${o.dir}/waha/.env`, 'utf8').split('\n').filter(l => l.includes('='))
     .map(l => [l.slice(0, l.indexOf('=')), l.slice(l.indexOf('=') + 1)]))
-  const URL = o.env.KAGE_WAHA_URL || 'http://127.0.0.1:3198'
+  const URL = o.whatsapp.wahaUrl || 'http://127.0.0.1:3198'
   const HMAC = waha.WHATSAPP_HOOK_HMAC_KEY
   if (!HMAC) throw new Error('waha/.env has no WHATSAPP_HOOK_HMAC_KEY: the webhook would have no secret')
-  const MODEL = o.env.KAGE_WA_MODEL || 'sonnet'
+  const MODEL = o.whatsapp.model || 'sonnet'
   // An empty folder for the guard, so its Claude finds no CLAUDE.md or project memory.
   const ROOM = `${o.dir}/standin`
   mkdirSync(ROOM, { recursive: true, mode: 0o700 })
@@ -143,9 +143,9 @@ export function startWhatsApp(o: { dir: string; name: string; owner: string; env
   // A failed event stays unhandled, so the next start tries it again.
   const run = (p: WahaPayload, source?: string) => onEvent(p).then(() => { if (source) o.inbox.handled(source) }, err => log('whatsapp event failed', err))
   // Localhost by default. A WAHA container that reaches the host through a VM gateway needs
-  // KAGE_WA_HOOK_HOST=0.0.0.0: then only the HMAC guards it, so keep the port off the internet.
-  const HOST = o.env.KAGE_WA_HOOK_HOST || '127.0.0.1'
-  const PORT = Number(o.env.KAGE_WA_HOOK_PORT || 3199)
+  // connectors.whatsapp.hookHost 0.0.0.0: then only the HMAC guards it, so keep the port off the internet.
+  const HOST = o.whatsapp.hookHost || '127.0.0.1'
+  const PORT = o.whatsapp.hookPort || 3199
   const server = createServer(wahaHandler(HMAC, o.inbox, run))
   server.requestTimeout = 10_000
   server.listen(PORT, HOST, () => log(`whatsapp on: listening on ${HOST}:${PORT}`))

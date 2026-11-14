@@ -9,7 +9,7 @@
 import { spawnSync } from 'node:child_process'
 import { existsSync, readFileSync, statSync } from 'node:fs'
 import { connect, type Socket } from 'node:net'
-import { askHub, DIR, ENV_FILE } from './home.ts'
+import { askHub, CWD, DIR, settings } from './home.ts'
 import { DatabaseSync } from 'node:sqlite'
 import { ago, boardRows, nextRuns, limitLine, pauseLine, watchingNext, whenLabel, type Live, type Row, type State } from '../core/board.ts'
 import { filterRows, hit, layout, moreLine, STRING, type Layout } from '../core/loom.ts'
@@ -19,13 +19,12 @@ import { schedulesIn } from '../runtime/store.ts'
 import { actionLine, dailyCap, PANEL_KEYS, panelLines, shownState, type PanelAction } from '../core/kagelet-view.ts'
 import { kageletRows, type KageletRow } from '../core/kagelets.ts'
 import { kageletTier } from '../core/access.ts'
-import { parseEnv } from '../core/settings.ts'
 import { kageletsDir, readKagelets } from '../runtime/kagelets.ts'
 import { eventsOn, ledgerText } from '../runtime/ledger.ts'
 import { chainLine, chainViews } from '../core/events.ts'
 
 const HOME = process.env.HOME!
-const PROJECT = `${HOME}/.claude/projects/${(process.env.KAGE_CWD || HOME).replace(/[^A-Za-z0-9]/g, '-')}`
+const PROJECT = `${HOME}/.claude/projects/${CWD.replace(/[^A-Za-z0-9]/g, '-')}`
 const DB = `${DIR}/kage.db`, SOCK = `${DIR}/router.sock`
 const ONCE = process.argv.includes('--once')
 if (!existsSync(DB)) { console.error(`No ${DB} yet: start Kage first.`); process.exit(1) }
@@ -58,7 +57,7 @@ let suspended = false
 let L: Layout | undefined            // the layout of the last frame, for mouse hits
 let panel = false, pick = 0, confirmRemove = ''
 let kagelets: KageletRow[] = [], kageletsAt = 0, kageletsFailed = '', chains: string[] = []
-const CAP = dailyCap(parseEnv(existsSync(ENV_FILE) ? readFileSync(ENV_FILE, 'utf8') : ''))
+const CAP = dailyCap(settings().config.kagelets)
 const KAGELETS = kageletsDir(DIR)
 
 const mtime = (id: string) => { try { return statSync(`${PROJECT}/${id}.jsonl`).mtimeMs } catch { return 0 } }

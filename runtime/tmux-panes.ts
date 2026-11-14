@@ -76,7 +76,7 @@ export function tmuxPanes(o: {
         : hasSession() ? ['new-window', '-d', '-t', `=${o.name}:`, '-n', 'threads']
         : ['new-session', '-d', '-s', o.name, '-n', 'threads']
       const pane = tmux(...where, '-P', '-F', '#{pane_id}', '-c', process.cwd(),
-        '-e', `KAGE_THREAD=${key}`, '-e', `KAGE_ENV=${o.envFile}`, '-e', `KAGE_CLAUDE=${o.claude}`, run).trim()
+        '-e', `KAGE_THREAD=${key}`, '-e', 'KAGE_SESSION=1', '-e', `KAGE_ENV=${o.envFile}`, '-e', `KAGE_CLAUDE=${o.claude}`, run).trim()
       tmux('set-option', '-p', '-t', pane, '@kage', id)
       tmux('set-option', '-p', '-t', pane, '@kage_place', ` ${o.placeOf(key)} `)
       tmux('set-option', '-w', '-t', BOARD, 'pane-border-status', 'top')

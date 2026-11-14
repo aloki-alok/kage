@@ -1,7 +1,8 @@
 import { describe, test } from 'node:test'
 import assert from 'node:assert/strict'
 import { execSync } from 'node:child_process'
-import { ALIASES, Config, diff, fromEnv, KEYS, NOT_SETTINGS, toEnv, unknownNames } from '../config.ts'
+import { readFileSync } from 'node:fs'
+import { ALIASES, checkSettings, settingTier, Config, diff, fromEnv, KEYS, NOT_SETTINGS, toEnv, unknownNames } from '../config.ts'
 import { parseEnv } from '../settings.ts'
 
 // One line for every setting in the table, with fake values. Canonical forms: the shape toEnv writes.
@@ -126,6 +127,11 @@ describe('importing an env file', () => {
 })
 
 describe('the schema', () => {
+  test('a cost cap that is not a number of dollars, or a slash command that is not a name and an absolute path, is refused', () => {
+    for (const bad of ['two', -1, Number.NaN]) assert.throws(() => Config.parse({ version: 1, kagelets: { dailyUsd: bad } }), /dailyUsd/, String(bad))
+    for (const bad of [{ lookup: '/opt/x.mjs' }, { '/lookup': 'relative.mjs' }]) assert.throws(() => Config.parse({ version: 1, connectors: { commands: bad } }), /commands/, JSON.stringify(bad))
+    assert.deepEqual(fromEnv({ KAGE_KAGELET_DAILY_USD: 'two' }).config.unknown, { KAGE_KAGELET_DAILY_USD: 'two' })
+  })
   test('a typo in a key is refused with its name', () => {
     assert.throws(() => Config.parse({ version: 1, harness: { maxSesion: 6 } }), /maxSesion/)
   })
@@ -141,5 +147,71 @@ describe('diff', () => {
   })
   test('the same files differ in nothing', () => {
     assert.deepEqual(diff(a, fromEnv(parseEnv(FULL))), { live: [], restart: [] })
+  })
+})
+
+describe('people and the registry', () => {
+  test('entries go into config.people and come back the same', async () => {
+    const { registryOf, withRegistry } = await import('../config.ts')
+    const entries = [
+      { kind: 'person' as const, id: 'UTEST0001' },
+      { kind: 'agent' as const, id: 'ATEST0001', owner: 'UTEST0001', tag: 'UTEST0003' },
+      { kind: 'agent' as const, id: 'ATEST0009' },
+    ]
+    const c = Config.parse(withRegistry({ version: 1, name: 'kage' }, entries))
+    assert.deepEqual(registryOf(c), entries)
+    assert.equal(c.name, 'kage')
+    assert.equal(toEnv(c, {}).KAGE_TRUSTED_APPS, 'ATEST0001:UTEST0001:UTEST0003,ATEST0009')
+  })
+})
+
+describe('what the hub needs to run', () => {
+  const secrets = { slack: { app: 'xapp-fake', user: 'xoxp-fake', bot: 'xoxb-fake' } }
+  test('a good config gives the name and both people lists, an agent as app:owner:tag', () => {
+    const config = Config.parse({ version: 1, people: { teammates: ['UTEST0001'], agents: [{ app: 'ATEST0001', owner: 'UTEST0001', tag: 'UTEST0003' }, { app: 'ATEST0009' }] } })
+    assert.deepEqual(checkSettings(config, secrets), { name: 'kage', teammates: ['UTEST0001'], apps: ['ATEST0001:UTEST0001:UTEST0003', 'ATEST0009'] })
+  })
+  test('a missing token is refused by its path, and a bad name by itself', () => {
+    assert.match((checkSettings({ version: 1 }, { slack: { app: 'a', bot: 'b' } }) as { error: string }).error, /slack\.user/)
+    assert.match((checkSettings({ version: 1, name: 'Not A Name' }, secrets) as { error: string }).error, /name/)
+  })
+  test('a value the hub would exit or crash on is refused: a quote in a path, a port out of range', () => {
+    const bad = (c: object) => (checkSettings({ version: 1, ...c } as Config, secrets) as { error: string }).error
+    assert.match(bad({ harness: { memory: '/tmp/it\'s' } }), /harness\.memory/)
+    assert.match(bad({ harness: { ownerMemory: '/tmp/a"b' } }), /harness\.ownerMemory/)
+    assert.match(bad({ harness: { cwd: '/tmp/a\\b' } }), /harness\.cwd/)
+    assert.match(bad({ connectors: { whatsapp: { memory: "/tmp/x'y" } } }), /whatsapp\.memory/)
+    for (const [k, port] of [['voice', 0], ['github', 70000], ['voice', 80], ['meeting', 1023], ['meeting', -1], ['browser', 8791.5]] as const) assert.match(bad({ connectors: { [k]: { port } } }), new RegExp(`connectors\\.${k}\\.port`), k)
+    assert.match(bad({ connectors: { whatsapp: { hookPort: 99999 } } }), /whatsapp\.hookPort/)
+    assert.ok(!('error' in checkSettings({ version: 1, harness: { memory: '~/mem dir' }, connectors: { voice: { port: 8790 } } } as Config, secrets)))
+  })
+  test('a wrong people entry is refused by the schema, and an agent owner who is not a person or an agent too', () => {
+    assert.throws(() => Config.parse({ version: 1, people: { teammates: ['priya'] } }), /teammates/)
+    assert.throws(() => Config.parse({ version: 1, people: { agents: [{ app: 'ATEST0001', owner: 'priya' }] } }), /agents/)
+    assert.throws(() => Config.parse({ version: 1, people: { agents: [{ app: 'UTEST0001' }] } }), /agents/)
+  })
+})
+
+describe('docs/settings.md', () => {
+  // Regenerate the key list with the command at the top of the page.
+  test('names exactly the keys in the table, one row each', () => {
+    const docs = readFileSync(new URL('../../docs/settings.md', import.meta.url), 'utf8')
+    const listed = docs.split('\n').filter(l => l.startsWith('| `')).flatMap(l => [...l.split('|')[1]!.matchAll(/`([^`]+)`/g)].map(m => m[1]!))
+    const keys = KEYS.map(k => k.path)
+    assert.deepEqual(keys.filter(k => !listed.includes(k)), [], 'in the table, missing from the docs')
+    assert.deepEqual(listed.filter(k => !keys.includes(k)), [], 'in the docs, missing from the table')
+    assert.equal(new Set(listed).size, listed.length, 'a key listed twice')
+  })
+})
+
+describe('which keys a session may change on its own', () => {
+  test('limits, models, AFK, Jev thresholds, ports and the browser block list are safe', () => {
+    for (const k of ['kagelets.max', 'kagelets.dailyUsd', 'kagelets.totalDailyUsd', 'kagelets.chainUsd', 'afk.on', 'afk.model', 'jev.threshold', 'jev.model', 'connectors.voice.port', 'connectors.voice.max', 'connectors.github.perHour', 'connectors.browser.port', 'connectors.whatsapp.model', 'connectors.whatsapp.hookPort']) assert.equal(settingTier(k), 'safe', k)
+  })
+  test('anything that grants power needs the owner: people, a command, a connector on, harness, and any key not listed', () => {
+    for (const k of ['people.teammates', 'people.agents', 'connectors.call.command', 'kagelets.dbRead.command', 'kagelets.dbRead.maxRows', 'connectors.commands', 'connectors.email.on', 'connectors.voice.on', 'connectors.whatsapp.on', 'connectors.whatsapp.hookHost', 'harness.maxSessions', 'harness.route', 'harness.cwd', 'autoUpdate', 'name', 'connectors.email.address', 'jev.agents', 'connectors.browser.block']) assert.equal(settingTier(k), 'power', k)
+  })
+  test('secrets, the schema version and unplaced env lines are never settable, and a prototype path is refused', () => {
+    for (const k of ['secrets', 'secrets.slack.bot', 'version', 'unknown', 'unknown.KAGE_X', '__proto__.x', 'harness.__proto__.x', 'constructor.prototype.x', '']) assert.equal(settingTier(k), 'never', k)
   })
 })

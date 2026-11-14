@@ -1,7 +1,7 @@
 import { describe, test } from 'node:test'
 import assert from 'node:assert/strict'
 import { kageletRows } from '../kagelets.ts'
-import { modelLine, actionLine, CAP_PAUSE, capError, chainCap, dailyCap, totalCap, kageletRuns, PANEL_KEYS, panelLines, runLine, shownState } from '../kagelet-view.ts'
+import { modelLine, actionLine, CAP_PAUSE, chainCap, dailyCap, totalCap, kageletRuns, PANEL_KEYS, panelLines, runLine, shownState } from '../kagelet-view.ts'
 
 const LINK = 'https://test.slack.com/archives/CTEST1/p1700000000123456'
 const KEY = 'CTEST1:1700000000.123456#side-kagelet-deploys'
@@ -50,23 +50,16 @@ describe('the kagelets panel in kage top', () => {
   test('every line fits 100 columns', () => {
     for (const l of panelLines(rows, now, 2)) assert.ok(l.main.length <= 94, l.main)
   })
-  test('the caps are off unless the settings file sets them; the old name still reads', () => {
+  test('the caps are off unless config.json sets them', () => {
+    assert.equal(dailyCap(), undefined)
     assert.equal(dailyCap({}), undefined)
-    assert.equal(totalCap({}), undefined)
-    assert.equal(totalCap({ KAGE_KAGELET_TOTAL_DAILY_USD: '' }), undefined)   // an empty line in the file is off, not a $0 cap
-    assert.equal(dailyCap({ KAGE_KAGELET_DAILY_USD: '5' }), 5)
-    assert.equal(dailyCap({ KAGE_SPECIALIST_DAILY_USD: '3' }), 3)
-    assert.equal(dailyCap({ KAGE_KAGELET_DAILY_USD: '0' }), 0)
-    assert.equal(totalCap({ KAGE_KAGELET_TOTAL_DAILY_USD: '25' }), 25)
+    assert.equal(totalCap({ totalDailyUsd: null }), undefined)   // null is off, not a $0 cap
+    assert.equal(dailyCap({ dailyUsd: 5 }), 5)
+    assert.equal(dailyCap({ dailyUsd: 0 }), 0)
+    assert.equal(totalCap({ totalDailyUsd: 25 }), 25)
     assert.equal(chainCap({}), undefined)
-    assert.equal(chainCap({ KAGE_KAGELET_CHAIN_USD: '' }), undefined)
-    assert.equal(chainCap({ KAGE_KAGELET_CHAIN_USD: '0.5' }), 0.5)
-  })
-  test('a cap that is not a number, or below zero, is refused with the reason, so the hub can say it', () => {
-    for (const v of ['two', '-1', 'NaN', 'Infinity']) assert.match(String(capError({ KAGE_KAGELET_DAILY_USD: v })), /KAGE_KAGELET_DAILY_USD/, v)
-    assert.match(String(capError({ KAGE_KAGELET_TOTAL_DAILY_USD: 'lots' })), /KAGE_KAGELET_TOTAL_DAILY_USD/)
-    assert.match(String(capError({ KAGE_KAGELET_CHAIN_USD: 'five' })), /KAGE_KAGELET_CHAIN_USD/)
-    assert.equal(capError({ KAGE_KAGELET_DAILY_USD: '2', KAGE_KAGELET_TOTAL_DAILY_USD: '' }), undefined)
+    assert.equal(chainCap({ chainUsd: null }), undefined)
+    assert.equal(chainCap({ chainUsd: 0.5 }), 0.5)
   })
   test('a tool held by a standing approval shows on its line, within 100 columns', () => {
     const standing = kageletRows([{ name: 'spender-sixteen1', text: file('by: kage\ntools: mcp__gmail__send\nstanding: mcp__gmail__send') }], { runs: '', costs: '', now })

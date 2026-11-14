@@ -20,7 +20,8 @@ Set up|service|on or off|Let macOS or Linux keep Kage running: back after a cras
 Run|start|[kagelet]|Start Kage in the background (turns the service on the first time). With a kagelet: run it again after kage stop|kage start
 Run|stop|[thread or kagelet] [--now or --cut-running]|Stop Kage once every running turn ends, or now with --cut-running. With a thread (link, place or key): end only its session, after its turn or --now. With a kagelet: pause it and keep its file|kage stop support
 Run|restart|[--cut-running]|Restart the hub once every running turn ends; new messages wait and run after it|kage restart
-Run|reload||Read the settings file again with no restart: who may tag Kage changes at once|kage reload
+Run|reload||Read the settings files again with no restart: who may tag Kage changes at once|kage reload
+Run|set|key value|Change one setting in config.json, such as harness.maxSessions. A list is JSON|kage set harness.maxSessions 6
 Run|status||One look at every session and what it is doing|kage status
 Run|logs|[lines, -f or kagelet]|The last lines of the hub log (80 unless you say), or -f to follow it. With a kagelet: its last runs, newest first, with cost, ok or failed, and its report|kage logs -f
 Run|run||Run the hub in the foreground for a supervisor other than launchd or systemd (Docker: --init); output goes to kage logs|kage run
@@ -84,7 +85,7 @@ quiet_first() {
   node cli/quiet.ts $cut
 }
 
-kage_name() { NAME="$(env_get KAGE_NAME)"; NAME="${NAME:-kage}"; }
+kage_name() { NAME="$(cfg_get name)"; NAME="${NAME:-kage}"; }
 # A hub started before the service existed runs in a tmux session (start.sh). kage service on moves it.
 old_tmux() { command -v tmux >/dev/null && tmux has-session -t "=$NAME" 2>/dev/null; }
 running() { kage_name; ./service.sh running 2>/dev/null || old_tmux; }
@@ -100,7 +101,7 @@ cmd_start() {
   if ./service.sh installed; then ./service.sh start
   else ./service.sh on || return 1; fi
   echo "$NAME is starting. Check it in 20 s: kage doctor"
-  if [[ "$(env_get KAGE_RUNTIME)" == tmux && "$(env_get KAGE_ROUTE)" != plugin ]]; then
+  if [[ "$(cfg_get harness.runtime)" == tmux && "$(cfg_get harness.route)" != plugin ]]; then
     echo "Threads open as tmux panes (dev route): each new pane shows a warning screen. Confirm it in tmux attach -t $NAME."
   fi
 }
@@ -165,7 +166,7 @@ cmd_check() {
     || die "Node $(node -v) is too old: Kage runs TypeScript directly, which needs Node 22.18+."
   command -v claude >/dev/null || die "Claude Code is required: https://code.claude.com/docs/en/quickstart"
   local tm=""
-  if [[ "$(env_get KAGE_RUNTIME)" == tmux ]]; then
+  if [[ "$(cfg_get harness.runtime)" == tmux ]]; then
     command -v tmux >/dev/null || die "tmux is required for KAGE_RUNTIME=tmux (macOS: brew install tmux)"
     tm=", tmux"
   fi
@@ -200,10 +201,12 @@ slack_check() {  # $1 token: prints the Slack user id (or "ok"), fails with Slac
     | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const r=JSON.parse(s);if(!r.ok){console.error("Slack says: "+r.error);process.exit(1)}console.log(r.user_id||"ok")})'
 }
 
-env_get() { [[ -f "$ENV_FILE" ]] && sed -n "s/^$1=//p" "$ENV_FILE" | tail -1 || true; }
+# Settings come from config.json and secrets.json (cli/config.ts); an unset one prints nothing.
+cfg_get() { node cli/config.ts get "$1" 2>/dev/null || true; }
+has_settings() { [[ -f "$(dirname "$ENV_FILE")/config.json" || -f "$ENV_FILE" ]]; }
 
 cmd_save() {
-  valid_name "${1:-$(env_get KAGE_NAME)}"
+  valid_name "${1:-$(cfg_get name)}"
   # Tokens arrive on stdin in any order, one per line or space separated. Each is sorted by its prefix.
   local APP="" USR="" BOT="" t input
   if [[ -t 0 ]]; then  # a person at a terminal: hidden prompts, so the tokens never show
@@ -225,14 +228,10 @@ cmd_save() {
 
   mkdir -p "$(dirname "$ENV_FILE")" && chmod 700 "$(dirname "$ENV_FILE")"
   umask 077
-  # Keep any other settings already in the file (KAGE_ROUTE, KAGE_TEAMMATES).
-  local keep=""; [[ -f "$ENV_FILE" ]] && keep="$(grep -vE '^(KAGE_NAME|SLACK_APP_TOKEN|SLACK_USER_TOKEN|SLACK_BOT_TOKEN)=' "$ENV_FILE" || true)"
-  # Written beside it, then moved over it: a crash or a full disk midway leaves the old file whole.
-  local tmp; tmp="$(mktemp "$ENV_FILE.XXXXXX")"
-  { printf 'KAGE_NAME=%s\nSLACK_APP_TOKEN=%s\nSLACK_USER_TOKEN=%s\nSLACK_BOT_TOKEN=%s\n' "$NAME" "$APP" "$USR" "$BOT"
-    if [[ -n $keep ]]; then printf '%s\n' "$keep"; fi; } > "$tmp" || { rm -f "$tmp"; die "Could not write $ENV_FILE."; }
-  chmod 600 "$tmp" && mv -f "$tmp" "$ENV_FILE"
-  echo "ok: saved to $ENV_FILE (mode 600) for @$NAME, owner $OWNER"
+  # The tokens go to secrets.json and the name to config.json; every other setting stays (cli/config.ts). printf is a
+  # builtin, so the tokens never show in `ps`.
+  printf '%s %s %s\n' "$APP" "$USR" "$BOT" | node cli/config.ts save "$NAME" || die "Could not write the settings in $(dirname "$ENV_FILE")."
+  echo "ok: saved to $(dirname "$ENV_FILE")/secrets.json (mode 600) for @$NAME, owner $OWNER"
 }
 
 cmd_doctor() {
@@ -242,24 +241,31 @@ cmd_doctor() {
   note() { printf 'note  %s\n' "$*"; }
 
   (cmd_check >/dev/null 2>&1) && pass "tools: node 22.18+, claude" || fail "tools: run kage check for the missing one"
-  if [[ ! -f "$ENV_FILE" ]]; then
-    fail "tokens: no $ENV_FILE. Run kage app, then kage save"
+  if ! has_settings; then
+    fail "tokens: no settings in $(dirname "$ENV_FILE"). Run kage app, then kage save"
   else
-    [[ "$(stat -c %a "$ENV_FILE" 2>/dev/null || stat -f %Lp "$ENV_FILE")" == 600 ]] && pass "token file is private (600)" || fail "token file: run chmod 600 $ENV_FILE"
+    # The token file is secrets.json; an env file not yet imported holds the same tokens.
+    local tf="$(dirname "$ENV_FILE")/secrets.json"; [[ -f "$tf" ]] || tf="$ENV_FILE"
+    [[ "$(stat -c %a "$tf" 2>/dev/null || stat -f %Lp "$tf")" == 600 ]] && pass "token file is private (600)" || fail "token file: run chmod 600 $tf"
     local k
-    for k in SLACK_APP_TOKEN SLACK_USER_TOKEN SLACK_BOT_TOKEN; do
-      slack_check "$(env_get $k)" >/dev/null 2>&1 && pass "$k accepted by Slack" || fail "$k: missing or rejected. Run kage save again"
+    for k in app:SLACK_APP_TOKEN user:SLACK_USER_TOKEN bot:SLACK_BOT_TOKEN; do
+      node cli/config.ts check-slack "${k%%:*}" >/dev/null 2>&1 && pass "${k##*:} accepted by Slack" || fail "${k##*:}: missing or rejected. Run kage save again"
     done
-    # Jev, the classifier for agent posts (core/jev.ts): only when JEV_API_KEY is set. The key stays in the env file.
+    # Jev, the classifier for agent posts (core/jev.ts): only when a Jev key is set. The key stays in secrets.json.
     local jev
     if jev="$(KAGE_ENV="$ENV_FILE" node cli/jev-doctor.ts 2>/dev/null)"; then [[ -n "$jev" ]] && pass "$jev"; else fail "${jev:-jev: the check did not run}"; fi
   fi
-  NAME="$(env_get KAGE_NAME)"; NAME="${NAME:-kage}"
+  NAME="$(cfg_get name)"; NAME="${NAME:-kage}"
 
-  if [[ "$(env_get KAGE_RUNTIME)" != tmux ]]; then
+  # Every SDK session runs its shell in an OS sandbox that keeps it off the tokens and the settings, and a session never starts without it.
+  if [[ "$(cfg_get harness.runtime)" != tmux ]]; then
+    if [[ "$(uname)" == Darwin ]]; then [[ -x /usr/bin/sandbox-exec ]] && pass "shell sandbox available" || fail "shell sandbox: /usr/bin/sandbox-exec is missing, so sessions cannot start. Restore macOS's sandbox-exec"
+    else command -v bwrap >/dev/null 2>&1 && command -v socat >/dev/null 2>&1 && pass "shell sandbox available" || fail "shell sandbox: sessions cannot start without bubblewrap and socat. Run: sudo apt install bubblewrap socat"; fi
+  fi
+  if [[ "$(cfg_get harness.runtime)" != tmux ]]; then
     node -e 'import("@anthropic-ai/claude-agent-sdk").catch(()=>process.exit(1))' 2>/dev/null && pass "threads run on the Agent SDK, no prompts" \
       || fail "Agent SDK does not load: run npm ci, then restart (until then threads open as tmux panes)"
-  elif [[ "$(env_get KAGE_ROUTE)" == plugin ]]; then
+  elif [[ "$(cfg_get harness.route)" == plugin ]]; then
     claude plugin list --json 2>/dev/null | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>process.exit(JSON.parse(s).some(p=>p.id==="kage@kage"&&p.enabled)?0:1))' \
       && pass "plugin kage@kage installed and enabled" \
       || fail "plugin: run claude plugin marketplace add \"$PWD\" && claude plugin install kage@kage"
@@ -272,6 +278,7 @@ cmd_doctor() {
 
   if ./service.sh installed; then
     ./service.sh running && pass "the service keeps $NAME running" || fail "the service is on but $NAME is stopped: kage start"
+    ./service.sh stale && fail "the service unit still pins KAGE_CWD, so harness.cwd would not apply: kage service on"
   elif old_tmux; then
     fail "$NAME runs in tmux, which does not bring it back after a reboot or a kill: kage service on"
   else
@@ -290,7 +297,7 @@ cmd_doctor() {
     fail "not connected to Slack yet: wait 20 s after start, or run kage logs to see why"
   fi
   # The same rules as core/auto-update.ts, so a person sees why this install stays on its version.
-  if [[ "$(env_get KAGE_AUTO_UPDATE)" == off ]]; then note "auto-update is off (KAGE_AUTO_UPDATE=off)"
+  if [[ "$(cfg_get autoUpdate)" == false ]]; then note "auto-update is off (autoUpdate is false)"
   elif [[ ! -e .git ]]; then note "no auto-update: not a git checkout. Rerun the install line to make it one"
   elif [[ "$(git rev-parse --abbrev-ref HEAD 2>/dev/null)" != main ]]; then note "no auto-update: on branch $(git rev-parse --abbrev-ref HEAD 2>/dev/null), not main"
   elif [[ -n "$(git status --porcelain --untracked-files=no 2>/dev/null)" ]]; then note "no auto-update: the checkout has uncommitted changes"
@@ -298,7 +305,7 @@ cmd_doctor() {
   elif [[ -z $tag ]]; then note "no auto-update: origin has no stable tag yet, so this install stays on its version"
   fi
   # Kage in Chrome (#114): the hub notes each poll of the extension in browser-seen (router.ts).
-  if [[ -n "$(env_get KAGE_BROWSER_TOKEN)" ]] && running; then
+  if node cli/config.ts has secrets.browserToken 2>/dev/null && running; then
     local seen; seen="$(cat "$(dirname "$ENV_FILE")/browser-seen" 2>/dev/null || echo 0)"
     if (( $(date +%s) - ${seen:-0} / 1000 < 120 )); then pass "Chrome extension connected"
     else fail "Chrome extension not connected: load the extension folder in chrome://extensions and paste the token (kage add browser prints a new one)"; fi
@@ -328,7 +335,7 @@ cmd_interactive() {
 for a in "$@"; do [[ $a == -h || $a == --help ]] && { [[ $1 == "$a" || $1 == help ]] && cmd_help || cmd_help "$1"; exit 0; }; done
 
 case "${1:-}" in
-  "") if [[ -f "$ENV_FILE" ]]; then { running && echo "$NAME is running." || echo "$NAME is not running. Start it: kage start"; echo; cmd_short; }; else cmd_interactive; fi ;;
+  "") if has_settings; then { running && echo "$NAME is running." || echo "$NAME is not running. Start it: kage start"; echo; cmd_short; }; else cmd_interactive; fi ;;
   help) cmd_help "${2:-}" ;;
   setup) cmd_interactive ;;
   check) cmd_check ;;
@@ -344,6 +351,7 @@ case "${1:-}" in
   stop) if [[ " ${*:2} " == *" --now "* ]] || { [[ $# -gt 1 ]] && printf '%s\n' "${@:2}" | grep -qv '^--'; }; then node cli/stop.ts "${@:2}"; else cmd_stop "${@:2}"; fi ;;
   restart) cmd_restart "${@:2}" ;;
   reload) node cli/reload.ts ;;
+  set) node cli/config.ts set "${@:2}" ;;
   status) cmd_status ;;
   # A kagelet's name (it starts with a letter): its runs (cli/kagelet-logs.ts). Otherwise the hub log.
   logs) if [[ ${2:-} =~ ^[a-z] ]]; then node cli/kagelet-logs.ts "$2"; else cmd_logs "${2:-}"; fi ;;

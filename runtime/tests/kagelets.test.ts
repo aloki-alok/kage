@@ -225,7 +225,7 @@ test('db_read is a read tool through the install\'s own read command: no card, a
 test('a kagelet never gets a read command the install does not already have', async () => {
   const t = manager(), o = owner(true)
   // No settings command and none kept: refused, with no card.
-  assert.match(await t.m.manage({ action: 'save', name: 'calls', ...calls }, 1, o.ask), /not saved: .*KAGE_DB_READ_COMMAND/)
+  assert.match(await t.m.manage({ action: 'save', name: 'calls', ...calls }, 1, o.ask), /not saved: .*kagelets\.dbRead\.command/)
   assert.match(await t.m.manage({ action: 'save', name: 'calls', ...calls, read_command: '~/bin/new-sql' }, 1, o.ask), /not saved: .*read command/)
   assert.deepEqual(o.cards, [])
   assert.equal(readKagelets(t.dir).length, 0)

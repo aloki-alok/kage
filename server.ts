@@ -25,7 +25,7 @@ if (!THREAD) {
   await new Promise(() => {})
 }
 
-const { ENV_FILE, Title, env, bot, user } = load()
+const { ENV_FILE, Title, config, bot, user } = load()
 const SOCK = `${dirname(ENV_FILE)}/router.sock`
 process.on('unhandledRejection', e => log('unhandled', e))
 
@@ -35,7 +35,7 @@ const unsentAsks: string[] = []   // approvals asked while the hub restarted: it
 // ponytail: no away or back tools in a pane (AFK lives in the hub process); add a socket message when panes need it.
 const kage = sessionTools({
   title: Title, bot, user, botDm: () => botDm, dir: dirname(ENV_FILE), ledgers: openLedgers(dirname(ENV_FILE)),
-  memory: memoryDirs(process.env.HOME!, ENV_FILE, env),
+  memory: memoryDirs(process.env.HOME!, ENV_FILE, config.harness),
   send: m => { if (!router?.writable) return false; router.write(JSON.stringify(m) + '\n') },   // a dead socket loses it
   // Writes go through the hub, which files them under this pane's thread; reading the store is safe.
   schedules: {

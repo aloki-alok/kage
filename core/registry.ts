@@ -1,6 +1,6 @@
 // The registry: who may reach Kage besides the owner. A person is a Slack user id. An agent is a Slack app id
-// with one owner, who is a listed person or a listed agent (its manager). It lives in two lines of the env
-// file: KAGE_TEAMMATES=<user>,... and KAGE_TRUSTED_APPS=<app>:<owner>[:<tag>],... `kage add`, `remove` and `list` (cli/registry.ts) are its only writers.
+// with one owner, who is a listed person or a listed agent (its manager). It lives in config.json under
+// people (core/config.ts registryOf and withRegistry). `kage add`, `remove` and `list` (cli/registry.ts) are its only writers.
 
 export type Entry =
   | { kind: 'person'; id: string }
@@ -9,11 +9,11 @@ export type Entry =
   | { kind: 'agent'; id: string; owner?: string; tag?: string }
 
 export const validUserId = (id: string) => /^[UW][A-Z0-9]{2,}$/.test(id)
-// A Slack app id. It goes into the env file, so it is one plain word.
+// A Slack app id: one plain word.
 export const validAppId = (id: string) => /^A[A-Z0-9]{2,}$/.test(id)
 export const kindOf = (id: string): Entry['kind'] | undefined => (validUserId(id) ? 'person' : validAppId(id) ? 'agent' : undefined)
 
-// One entry of KAGE_TRUSTED_APPS: "<app>", "<app>:<owner>" or "<app>:<owner>:<tag>". Anything else is no entry.
+// One agent entry (config.json people.agents, or a KAGE_TRUSTED_APPS item in an old env file): "<app>", "<app>:<owner>" or "<app>:<owner>:<tag>". Anything else is no entry.
 export function appEntry(s: string): { id: string; owner?: string; tag?: string } | undefined {
   const [id = '', owner, tag, more] = s.split(':')
   if (!validAppId(id) || more !== undefined) return undefined
@@ -22,30 +22,6 @@ export function appEntry(s: string): { id: string; owner?: string; tag?: string 
   if (tag === undefined) return { id, owner }
   return validUserId(tag) ? { id, owner, tag } : undefined
 }
-
-// A comma separated list in the env file. Read the way core/settings.ts reads the file: optional indent, spaces and quotes.
-const listLine = (name: string) => new RegExp(`^\\s*${name}\\s*=\\s*["']?(.*?)["']?\\s*$`)
-export const listIn = (env: string, name: string) =>
-  (env.split('\n').map(l => listLine(name).exec(l)?.[1]).findLast(v => v !== undefined) ?? '')
-    .split(',').map(s => s.trim()).filter(Boolean)
-
-// The env file with that list set to these ids; every other line stays as it was.
-export function withList(env: string, name: string, ids: string[]): string {
-  const rest = env.replace(/\n+$/, '').split('\n').filter(l => !listLine(name).test(l))
-  const unique = [...new Set(ids)]
-  return [...rest, ...(unique.length ? [`${name}=${unique.join(',')}`] : [])].join('\n') + '\n'
-}
-
-export const registryIn = (env: string): Entry[] => [
-  ...listIn(env, 'KAGE_TEAMMATES').map(id => ({ kind: 'person' as const, id })),
-  ...listIn(env, 'KAGE_TRUSTED_APPS').flatMap(s => { const a = appEntry(s); return a ? [{ kind: 'agent' as const, ...a }] : [] }),
-]
-
-export const withRegistry = (env: string, entries: Entry[]): string =>
-  withList(
-    withList(env, 'KAGE_TEAMMATES', entries.filter(e => e.kind === 'person').map(e => e.id)),
-    'KAGE_TRUSTED_APPS', entries.flatMap(e => (e.kind === 'agent' ? [[e.id, ...(e.owner ? [e.owner, ...(e.tag ? [e.tag] : [])] : [])].join(':')] : [])),
-  )
 
 // The listed person at the top of an agent's owner chain. None for an agent with no owner, an owner who is
 // not listed, or a loop.

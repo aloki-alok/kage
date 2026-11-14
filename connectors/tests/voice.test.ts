@@ -7,19 +7,19 @@ import type { Delivery } from '../../core/sessions.ts'
 import type { Task } from '../../runtime/protocol.ts'
 import { Dispatcher } from '../../core/sessions.ts'
 import { openStore } from '../../runtime/store.ts'
-import { connectVoice } from '../voice.ts'
+import { connectVoice, type Voice } from '../voice.ts'
 
 const TOKEN = 'tok-test-1234567890'
 const open: { close: () => Promise<void> }[] = []
 afterEach(async () => { while (open.length) await open.pop()!.close() })
 
 // In-memory stand-ins for the hub: deliver records tasks, and reply() plays the router's replies.voice.
-async function setup(o: { waitMs?: number; delivery?: Delivery; env?: Record<string, string>; slot?: () => boolean; end?: (key: string) => void } = {}) {
+async function setup(o: { waitMs?: number; delivery?: Delivery; voice?: Voice; slot?: () => boolean; end?: (key: string) => void } = {}) {
   const clock = { now: 1_000_000 }
   const delivered: { key: string; place: string; task: Task }[] = []
   const failed: Task[] = []
   const v = connectVoice({
-    env: { KAGE_VOICE_TOKEN: TOKEN, KAGE_VOICE_PORT: '0', ...o.env }, name: 'kage', waitMs: o.waitMs ?? 2000,
+    voice: { token: TOKEN, port: 0, ...o.voice }, name: 'kage', waitMs: o.waitMs ?? 2000,
     now: () => clock.now, slot: o.slot ?? (() => true), end: o.end,
     deliver: (c, task, place) => { delivered.push({ key: `${c.connector}:${c.chat}`, place, task }); return o.delivery ?? 'sent' },
     failed: t => failed.push(t),
@@ -46,8 +46,8 @@ const until = async (ok: () => boolean) => { for (let i = 0; i < 200 && !ok(); i
 describe('the voice connector is opt-in', () => {
   const base = { name: 'kage', deliver: () => 'sent' as const, failed: () => {} }
   test('it is off without a token and with the kill switch', () => {
-    assert.equal(connectVoice({ ...base, env: {} }), undefined)
-    assert.equal(connectVoice({ ...base, env: { KAGE_VOICE_TOKEN: TOKEN, KAGE_VOICE: 'off' } }), undefined)
+    assert.equal(connectVoice({ ...base, voice: {} }), undefined)
+    assert.equal(connectVoice({ ...base, voice: { token: TOKEN, on: false } }), undefined)
   })
 })
 
@@ -93,7 +93,7 @@ describe('ask_kage', () => {
     assert.deepEqual(await p, { isError: false, text: 'It is on the way.' })
   })
   test('one conversation per MCP session: a follow-up reuses it, another call gets its own', async () => {
-    const s = await setup({ env: { KAGE_VOICE_MAX: '2' } })
+    const s = await setup({ voice: { max: 2 } })
     const a = await s.client()
     const b = await s.client()
     for (const [c, q] of [[a, 'one'], [a, 'two'], [b, 'three']] as const) {
@@ -231,7 +231,7 @@ describe('a voice call never costs the owner a slot', () => {
     assert.equal(s.delivered.length, 2)
   })
   test('KAGE_VOICE_MAX raises the number of calls', async () => {
-    const s = await setup({ waitMs: 30, env: { KAGE_VOICE_MAX: '2' } })
+    const s = await setup({ waitMs: 30, voice: { max: 2 } })
     const [a, b, c] = [await s.client(), await s.client(), await s.client()]
     await s.ask(a, '1'); await s.ask(b, '2')
     assert.equal(s.delivered.length, 2)
@@ -248,7 +248,7 @@ describe('a voice call never costs the owner a slot', () => {
     assert.equal(s.delivered.length, 1)
   })
   test('at most KAGE_VOICE_PER_HOUR new calls an hour, then they are allowed again', async () => {
-    const s = await setup({ waitMs: 20, env: { KAGE_VOICE_PER_HOUR: '2' } })
+    const s = await setup({ waitMs: 20, voice: { perHour: 2 } })
     for (const n of [1, 2]) { const c = await s.client(); await s.ask(c, `q${n}`); await s.end(c) }
     const c = await s.client()
     assert.match((await s.ask(c, 'q3')).text, /busy/i)
@@ -330,7 +330,7 @@ describe('with the real dispatcher', () => {
     const ownerTask = { type: 'task', content: 'x', fromOwner: true, meta: { channel: 'C1', thread_ts: '1.1', place: '#g', permalink: '' }, origin: { channel: 'C1', ts: '1.1' } } as Task
     const delivered: string[] = []
     const v = connectVoice({
-      env: { KAGE_VOICE_TOKEN: TOKEN, KAGE_VOICE_PORT: '0', KAGE_VOICE_MAX: '2' }, name: 'kage', waitMs: 20, now: () => clock.now,
+      voice: { token: TOKEN, port: 0, max: 2 }, name: 'kage', waitMs: 20, now: () => clock.now,
       deliver: (c, task) => { delivered.push(`${c.connector}:${c.chat}`); return d.task(`voice:${c.chat}`, task, clock.now) },
       slot: k => d.hasFreeSlot(k),
       end: k => d.end(k),
@@ -372,7 +372,7 @@ describe('a call Kage placed to the owner is the owner', () => {
     for (const re of [/one to three short spoken sentences/, /no markdown, no links/, /channel "voice"/]) assert.match(task.content, re)
   })
   test('no code, a wrong code, or an expired one is a stranger', async () => {
-    const s = await setup({ waitMs: 30, env: { KAGE_VOICE_MAX: '3' } })
+    const s = await setup({ waitMs: 30, voice: { max: 3 } })
     const code = s.v.issueCode()
     await s.ask(await s.client(), 'a')
     await s.ask(await s.client(), 'b', code.slice(1) + 'x')
@@ -381,7 +381,7 @@ describe('a call Kage placed to the owner is the owner', () => {
     assert.deepEqual(s.delivered.map(d => d.task.fromOwner), [false, false, false])
   })
   test('a code is good for one call only: another call that replays it is a stranger', async () => {
-    const s = await setup({ waitMs: 30, env: { KAGE_VOICE_MAX: '2' } })
+    const s = await setup({ waitMs: 30, voice: { max: 2 } })
     const code = s.v.issueCode()
     await s.ask(await s.client(), 'a', code)
     await s.ask(await s.client(), 'b', code)

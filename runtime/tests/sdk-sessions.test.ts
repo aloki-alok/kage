@@ -55,6 +55,7 @@ function setup(o: { transcript?: boolean; silent?: boolean; dmFails?: boolean; g
     grantOf: key => o.grants?.[key],
     ownerMemory: '/owner',
     envFile: '/cfg/env',
+    codeDir: '/code/kage',
     restartMs: 10,
     onResult: (key, total, resumed) => { results.push([key, total, resumed]); o.onResult?.(key, total, resumed) },
     budgetOf: key => o.budgets?.[key],
@@ -302,6 +303,21 @@ describe('Kage sessions on the Agent SDK', () => {
     assert.equal(t.s.runner.busy('C1:5.5'), false)
     assert.ok(t.sdk.runs[0]!.options.disallowedTools.includes('CronCreate'))   // why the runner tracks no jobs
   })
+  test('every session starts with the token files and config.json denied to the file tools and the shell sandbox (#116)', async () => {
+    const t = setup()
+    t.d.task('C1:5.5', t.task(), 0)
+    await tick()
+    const o = t.sdk.runs[0]!.options
+    assert.ok(o.settings.permissions.deny.includes('Read(//cfg/secrets.json)'))
+    assert.ok(o.settings.permissions.deny.includes('Read(//cfg/env*)'))
+    assert.ok(o.settings.permissions.deny.includes('Edit(//cfg/config.json)'))
+    assert.equal(o.settings.permissions.deny.some((r: string) => r.startsWith('Write(')), false, 'Edit rules cover Write, and a Write rule warns on every start')
+    assert.ok(o.settings.sandbox.filesystem.denyWrite.includes('/code/kage'), 'the hub code folder')
+    assert.equal(o.settings.sandbox.failIfUnavailable, true)
+    assert.equal(o.env.KAGE_SESSION, '1', 'the marker kage set refuses on, kept when KAGE_THREAD is stripped')
+    assert.ok(o.settings.sandbox.filesystem.denyRead.includes('/cfg/secrets.json*'))
+    assert.ok(o.settings.sandbox.filesystem.denyWrite.includes('/cfg/config.json*'))
+  })
   test("an approval goes to the owner's DM and their yes or no reaches only the session that asked", async () => {
     const t = setup()
     t.d.task('C1:5.5', t.task(), 0)
@@ -363,7 +379,7 @@ describe('Kage sessions on the Agent SDK', () => {
     t.d.sweep(Date.now() + 61_000)
     assert.equal(t.sdk.runs[0]!.closed, true)
   })
-  test("the guard hook refuses private sources on a teammate's task and the owner's memory always", async () => {
+  test("the guard hook refuses private sources on a teammate's task, the owner's memory always, and the token files on every task", async () => {
     const t = setup()
     t.d.task('C1:5.5', t.task({ fromOwner: false }), 0)
     await tick()
@@ -376,7 +392,10 @@ describe('Kage sessions on the Agent SDK', () => {
     t.d.task('C1:5.5', t.task(), 1)
     await tick()
     assert.deepEqual(await run('mcp__claude_ai_Gmail__search'), {})
-    assert.deepEqual(await run('Bash', { command: 'cat /cfg/env' }), {})
+    // The token files stay closed to the owner's task too; config.json does not.
+    assert.equal((await run('Bash', { command: 'cat /cfg/env' })).hookSpecificOutput.permissionDecision, 'deny')
+    assert.equal((await run('Read', { file_path: '/cfg/secrets.json' })).hookSpecificOutput.permissionDecision, 'deny')
+    assert.deepEqual(await run('Read', { file_path: '/cfg/config.json' }), {})
   })
   test('a kagelet lane gets only its grant, and approves nothing: a call that would ask is denied', async () => {
     const t = setup({ grants: { 'C1:5.5#side-kagelet-deploys': ['WebSearch'] } })
@@ -545,7 +564,7 @@ test('the usage limit, whole: no post but the notice, the inbox message kept, an
   const s = sdkSessions({
     sdk: { query: sdk.query as any, createSdkMcpServer, tool }, hub: () => d,
     tools: (_key, send) => sessionTools({ title: 'Kage', bot: slack as any, user: slack as any, botDm: () => 'DBOT', dir, ledgers: openLedgers(dir), send, memory: { own: '/own', owner: '/owner' } }),
-    hasTranscript: () => false, toHub: () => {}, options: { cwd: '/home' }, ownerMemory: '/owner', envFile: '/cfg/env', restartMs: 10,
+    hasTranscript: () => false, toHub: () => {}, options: { cwd: '/home' }, ownerMemory: '/owner', envFile: '/cfg/env', codeDir: '/code/kage', restartMs: 10,
     onTurn: (key, tasks, limit) => limits.turn(key, tasks, limit, 1000),
   })
   d = new Dispatcher<ToSession>(s.runner, { max: 2, idleMs: 60_000, connectMs: 60_000, evictMs: 1, newId: () => ID })
