@@ -486,13 +486,6 @@ function failed(m: ToSession) {
   else slack.failed(m)
 }
 
-// Kage updates itself: newer code (a merge, a pull, the install line again) takes over once
-// nothing would be cut off. It exits 75, and the supervisor (service.sh) starts it again.
-// ponytail: a live cron job inside the hub (SDK) counts as busy, so it delays the update; restart by hand then. A pane outlives the hub.
-// The change must be settled for 10s, so a merge still writing files is never picked up half-done.
-// Compared to the boot stamp, not the clock, so a file with a future time cannot restart the hub over and over.
-// Not in a usage-limit pause: the scheduled runs it owes live in memory (runtime/limit-pause.ts), and a hub
-// that held only those would start unpaused and run into the limit again.
 const digests = ownerDigests({ dir: DIR, ledgers, store, placeOf, costTracked: !!sdk, notify: t => slack.notifyOwner(t) })
 const dreaming = dreams({ dir: DIR, code: CODE, title: Title, botDm: slack.ids.botDm, mem: MEM, project: PROJECT, kagelets: KAGELETS, kmem, hasSdk: !!sdk,
   store, ledgers, placeOf, paused: () => !!limits.paused(), quiet: now => d.quietEverywhere(now), deliver, toSession })
