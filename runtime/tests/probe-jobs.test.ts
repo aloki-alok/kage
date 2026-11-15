@@ -292,14 +292,24 @@ test('a blocked lane tells the owner once after failPing ticks in a row, and eac
   assert.deepEqual([t.store.jobState('p1').undelivered, t.store.jobState('p1').blocked], [undefined, undefined])
 })
 
-test('tune: a job tuning itself posts one line and writes a decision row; an ignore that drops all the output is refused', async () => {
+test('a tune resets only the baseline: a pending note, a refusal and the delivery flags survive it', async () => {
   const t = setup()
   await baseline(t)
-  assert.equal(t.s.tune(KEY, 'p1', { cron: '*/5 * * * *' }, minute(2)), undefined)
-  assert.equal(t.pings.length, 0)                                   // the owner's own change needs no line
-  assert.equal(t.s.tune(KEY, 'p1', { ignore: ['^o'] }, minute(2), 'job') && 'refused', 'refused')
-  assert.equal(t.s.tune(KEY, 'p1', { ignore: ['^ts='] }, minute(2), 'job'), undefined)
-  await t.s.settled()
-  assert.deepEqual(t.pings.map(p => p.replace(/^p1: /, '')), ['Job p1 changed its own settings: ignore'])
-  assert.ok(t.tw('decision').some(e => e.detail === 'decision job=p1 what=tune why=ignore'))
+  t.store.setJobState('p1', { ...t.store.jobState('p1'), pending: { text: 'note', f: { job: 'p1' }, tries: 1 }, refused: 'x', undelivered: true, blocked: 2 })
+  assert.equal(t.s.tune(KEY, 'p1', { ignore: ['^ts='] }, minute(2)), undefined)
+  const st = t.store.jobState('p1')
+  assert.deepEqual([st.fp, st.last], [undefined, undefined])
+  assert.deepEqual([st.pending?.text, st.refused, st.undelivered, st.blocked], ['note', 'x', true, 2])
+})
+
+test('a pending note counts one try per tick, so the owner is told on the failPing-th tick', async () => {
+  const t = setup({ tripwires: { failPing: 3 } })
+  assert.equal(add(t, { command: 'exit 1' }), undefined)
+  t.state.pingOk = false
+  await tick(t, 1); await tick(t, 2); await tick(t, 3)             // the third failure makes the note: try 1
+  assert.equal(t.store.jobState('p1').pending?.tries, 1)
+  await tick(t, 4)
+  assert.deepEqual([t.store.jobState('p1').pending?.tries, t.dms.length], [2, 0])
+  await tick(t, 5)
+  assert.deepEqual([t.store.jobState('p1').pending?.tries, t.dms.length], [3, 1])
 })

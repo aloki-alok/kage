@@ -61,7 +61,7 @@ export function scheduleTools(c: ToolContext): KageTool[] {
     },
   }, ...(jobs.tune ? [{
     name: 'tune_job',
-    description: 'Change a probe job of this thread: its ignore regexes, reads, writes or cron. A new command needs the same yes as a new probe. Only the owner\'s task, or the run of that job itself, may call it. The job\'s own run may change cron and ignore only, and each such change is posted in the thread; a command, reads or writes change from it needs the owner\'s card. A new ignore or command restarts the job\'s baseline, so it wakes nothing by itself.',
+    description: 'Change a probe job of this thread: its ignore regexes, reads, writes, command or cron. Only the owner\'s task may call it, or a teammate\'s task with the owner\'s yes on a card. A run woken by a job may never call it: it puts the change it suggests in its report. A new ignore or command restarts the job\'s baseline, so it wakes nothing by itself.',
     shape: {
       id: s.describe('the job id'), channel: s.describe('channel attribute from the task tag'), thread_ts: s.describe('thread_ts attribute from the task tag'),
       cron: s.optional(), command: s.optional(),
@@ -69,17 +69,15 @@ export function scheduleTools(c: ToolContext): KageTool[] {
     },
     async run(args: Record<string, unknown>) {
       const { id, channel: _c, thread_ts: _t, ...change } = args as { id: string } & Record<string, unknown>
-      const own = ownerOnly(args), task = c.jobTask.get(`${String(args.channel)}:${String(args.thread_ts)}`)
-      if (!own && task !== id) return { isError: true, text: `only the owner, or job ${id} itself, may tune it` }
+      // A run woken by a job (clock, probe or watch) read outside text, so it may not change its trigger at all: not the command,
+      // reads or writes (what runs unpinned), nor ignore or cron (which can mute the job). It reports the change it wants instead.
+      if (c.jobTask.get(`${String(args.channel)}:${String(args.thread_ts)}`) !== undefined) return { isError: true, text: 'refused: a job\'s own run may not change its trigger. Put the change you suggest in your report: the owner or a teammate applies it.' }
       if (!Object.keys(change).length) return { isError: true, text: 'nothing to change: give cron, command, ignore, reads or writes' }
-      // The job's own run is steered by outside text, and a command, reads or writes change decides what runs unpinned in the hub:
-      // only the owner's task, or the owner's card, may make it. The job's own run may change cron and ignore.
-      const risky = (['command', 'reads', 'writes'] as const).filter(k => change[k] !== undefined)
-      if (risky.length && !own) {
-        const why = await probeCard(`Change job ${id}: ${risky.map(k => `${k} to ${JSON.stringify(change[k])}`).join(', ')}. Kage runs the command on its clock, as you, with no model. A path in reads or writes is not pinned, so a script listed there can change with no new yes.`, { id, ...Object.fromEntries(risky.map(k => [k, change[k]])) })
+      if (!ownerOnly(args)) {
+        const why = await probeCard(`Change job ${id}: ${Object.entries(change).map(([k, v]) => `${k} to ${JSON.stringify(v)}`).join(', ')}. Kage runs the command on its clock, as you, with no model. A path in reads or writes is not pinned, so a script listed there can change with no new yes.`, { id, ...change })
         if (why) return { isError: true, text: why }
       }
-      const no = jobs.tune!(id, change, own ? undefined : 'job')
+      const no = jobs.tune!(id, change)
       return no ? { isError: true, text: no } : { text: `tuned ${id}` }
     },
   } as KageTool] : []), {

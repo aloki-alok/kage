@@ -10,8 +10,7 @@ import { newLines } from './transcript-tail.ts'
 import type { Delivery } from '../core/sessions.ts'
 import type { Task } from '../core/task.ts'
 import { buildProbe, probeJobs, tripwireCfg, type ProbeArg, type TripwireSettings, type TuneArg } from './probe-jobs.ts'
-import { normalize, safePattern, type Trigger } from '../core/tripwire.ts'
-import { tripwireDetail } from '../core/events.ts'
+import { safePattern, type Trigger } from '../core/tripwire.ts'
 import { pin } from './probes.ts'
 import type { Store } from './store.ts'
 
@@ -155,8 +154,8 @@ export function scheduler(o: {
       run(s, `Run now of job ${id}, asked for outside its schedule (${s.cron}). Nobody wrote a new message.\n${s.prompt}`)
     },
     // Changes a probe job of this thread. A new command is pinned fresh, which is the owner's re-approval of a changed script.
-    // A new ignore or command restarts the baseline (the fingerprint changes with them), so it wakes nothing by itself.
-    tune(from: string, id: string, t: TuneArg, now: number, by?: 'job'): string | undefined {
+    // A new ignore or command restarts the baseline (the fingerprint changes with them), so it wakes nothing by itself. Who may call it is the tool's rule.
+    tune(from: string, id: string, t: TuneArg, now: number): string | undefined {
       const s = store.schedules().find(x => x.id === id && x.key === threadOfJobLane(from))
       if (!s) return `no probe job ${id} in this thread`
       if (s.trigger?.kind !== 'probe') return `${id} is not a probe job`
@@ -166,9 +165,6 @@ export function scheduler(o: {
       if (!nextRun(cron, new Date(now), RUNS_WITHIN)) return `${cron} never runs`
       const patternMax = tripwireCfg(o.tripwires?.() ?? {}).patternMax
       for (const r of t.ignore ?? []) { const why = safePattern(r, patternMax); if (why) return `ignore ${why}` }
-      // An ignore that would drop everything the probe shows now would silence the job.
-      const last = store.jobState(id).last
-      if (t.ignore && last && !normalize(last, t.ignore, tripwireCfg(o.tripwires?.() ?? {}).lineMax)) return 'that ignore would drop every line of the last output, which would silence the job'
       const command = t.command?.trim() ?? old.command
       if (!command) return 'the probe command is empty'
       const next = { command, ignore: t.ignore ?? old.ignore, reads: t.reads ?? old.reads, writes: t.writes ?? old.writes }
@@ -177,12 +173,6 @@ export function scheduler(o: {
       const pins = t.command === undefined ? Object.fromEntries(Object.entries(fresh).map(([p, h]) => [p, old.pins[p] ?? h])) : fresh
       store.tuneSchedule(id, cron, { kind: 'probe', probe: { ...next, pins } }, t.command !== undefined || t.ignore !== undefined)
       log('tuned', id, 'for', s.key)
-      // A job tunes itself on outside text's word: the thread and the log see every change.
-      if (by) {
-        const what = Object.keys(t).join(', ')
-        void o.ping?.(s, `Job ${id} changed its own settings: ${what}`)
-        o.event?.({ kind: 'tripwire', who: s.key, trace: '', detail: tripwireDetail('decision', { job: id, what: 'tune', why: Object.keys(t).join('+') }) })
-      }
     },
     settled: () => probes.settled(),
     remove(key: string, id: string) { if (store.removeSchedule(id, threadOfJobLane(key))) log('unscheduled', id, 'for', key) },

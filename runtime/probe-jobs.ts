@@ -90,7 +90,7 @@ export function probeJobs(o: {
     // The note is saved in the state first, then posted: a crash between the two repeats it, never loses it.
     if (d.ping) d.state.pending = { text: d.ping, f: run.refused ? { job: s.id, path: /^changed or missing: (\S+?)(,|$)/.exec(run.refused)?.[1] ?? '-' } : { job: s.id, fails: d.state.fails }, tries: 0 }
     o.store.setJobState(s.id, d.state)
-    await flush(s, t.failPing)
+    if (d.ping) await flush(s, t.failPing)   // an older note was tried at the start of this check: one try per tick
   }
 
   return {

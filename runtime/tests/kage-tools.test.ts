@@ -72,7 +72,7 @@ function setup(o: { settings?: { set(key: string, value: unknown): void }; hubDo
       add: j => { jobs.push({ ...j, key: 'C1:5.5', created: 0, lastFired: 0 }) },
       remove: id => { jobs.splice(jobs.findIndex(j => j.id === id), 1) },
       list: () => jobs,
-      tune: (id, t, by) => { tuned.push(by ? [id, t, by] : [id, t]) },
+      tune: (id, t) => { tuned.push([id, t]) },
     },
     afk: async c => { out.push(`afk ${JSON.stringify(c)}`); return 'AFK on' },
     kagelet: o.kagelet, dreaming: o.dreaming, settings: o.settings, kageletMemory: { propose: (name: string, a: unknown, thread: string) => { out.push(`propose ${name} ${thread} ${JSON.stringify(a)}`); return 'proposed' }, decide: (d: unknown) => { out.push(`decide ${JSON.stringify(d)}`); return 'decided' }, open: () => 'open ones', notes: () => [] } as any, dbRead: o.dbRead, approve: o.approve, browser: o.browser, meetbot: o.meetbot, event: (kind, detail) => { events.push(`${kind} ${detail}`) },
@@ -208,7 +208,7 @@ describe("a session's Kage tools", () => {
     // A plain schedule from a teammate needs no card, as before.
     assert.match((await pane.call('schedule', { cron: '*/5 * * * *', prompt: 'x' })).text, /^Kage schedule/)
   })
-  test('tune_job: the owner, or the job\'s own run, may change it; a changed command needs the same card as creating it', async () => {
+  test('tune_job: the owner changes a job at once, a teammate only with the card, and a job\'s own run never', async () => {
     const cards: string[] = []
     const ask = async (_t: string, d: string) => { cards.push(d); return true }
     const owner = setup({ approve: ask })
@@ -218,27 +218,31 @@ describe("a session's Kage tools", () => {
     assert.match((await owner.call('tune_job', { ...base, command: 'gh issue list' })).text, /tuned/)
     assert.deepEqual(owner.tuned, [['j1', { ignore: ['^ts='], cron: '*/10 * * * *' }], ['j1', { command: 'gh issue list' }]])
     assert.deepEqual(cards, [])                                      // the owner's own task stores it at once
-    const other = setup({ approve: ask })
-    other.t.onTask(other.task({ fromOwner: false }))
-    assert.equal((await other.call('tune_job', { ...base, ignore: ['x'] })).isError, true)   // neither the owner nor job j1's run
-    assert.deepEqual(other.tuned, [])
-    const own = setup({ approve: ask })
-    own.t.onTask({ ...own.task({ fromOwner: false }), scheduled: true, job: 'j1' })
-    assert.match((await own.call('tune_job', { ...base, ignore: ['^ts='], cron: '*/10 * * * *' })).text, /tuned/)
-    assert.equal(cards.length, 0)                                    // cron and ignore only: the job's own run needs no card
-    assert.deepEqual(own.tuned, [['j1', { ignore: ['^ts='], cron: '*/10 * * * *' }, 'job']])
-    // Outside text can steer a job's run, so a command, reads or writes change always needs the owner's card.
-    assert.match((await own.call('tune_job', { ...base, reads: ['/tmp/a'] })).text, /tuned/)
-    assert.match((await own.call('tune_job', { ...base, writes: ['/tmp/b'] })).text, /tuned/)
-    assert.match((await own.call('tune_job', { ...base, command: 'gh issue list' })).text, /tuned/)
-    assert.equal(cards.length, 3)
-    assert.match(cards[2]!, /gh issue list/)
+    assert.equal((await owner.call('tune_job', { ...base })).isError, true)   // nothing to change
+    // A teammate's task: any change needs the card, and a no or no card stops it.
+    const mate = setup({ approve: ask })
+    mate.t.onTask(mate.task({ fromOwner: false }))
+    assert.match((await mate.call('tune_job', { ...base, cron: '*/10 * * * *' })).text, /tuned/)
+    assert.equal(cards.length, 1)
+    const no = setup({ approve: async () => false })
+    no.t.onTask(no.task({ fromOwner: false }))
+    assert.equal((await no.call('tune_job', { ...base, ignore: ['x'] })).isError, true)
     const pane = setup()
-    pane.t.onTask({ ...pane.task({ fromOwner: false }), scheduled: true, job: 'j1' })
-    assert.equal((await pane.call('tune_job', { ...base, command: 'x' })).isError, true)    // no card: no new command
-    assert.equal((await pane.call('tune_job', { ...base, reads: ['/tmp/a'] })).isError, true)
-    assert.equal((await pane.call('tune_job', { ...base, writes: ['/tmp/a'] })).isError, true)
-    assert.equal((await pane.call('tune_job', { ...base })).isError, true)                  // nothing to change
+    pane.t.onTask(pane.task({ fromOwner: false }))
+    assert.equal((await pane.call('tune_job', { ...base, ignore: ['x'] })).isError, true)
+    assert.deepEqual([no.tuned, pane.tuned], [[], []])
+    // A run woken by the job's trigger reads outside text, so it may not change its trigger at all, with or without a card or the owner's trust. It reports instead.
+    for (const [name, t] of [['its own job', { ...mate.task({ fromOwner: false }), scheduled: true, job: 'j1' }], ['an owner job', { ...mate.task({ fromOwner: true }), scheduled: true, job: 'j1' }], ['another job', { ...mate.task({ fromOwner: true }), scheduled: true, job: 'j2' }]] as const) {
+      const run = setup({ approve: ask })
+      run.t.onTask(t)
+      for (const change of [{ cron: '0 0 1 1 *' }, { ignore: ['.'] }, { reads: ['/tmp/a'] }, { command: 'x' }]) {
+        const r = await run.call('tune_job', { ...base, ...change })
+        assert.equal(r.isError, true, name)
+        assert.match(r.text, /report/)
+      }
+      assert.deepEqual(run.tuned, [], name)
+    }
+    assert.equal(cards.length, 1)                                    // no new card for a refused run
   })
   test('a person mention keeps its <@id> on any task, so Slack highlights it', async () => {
     const s = setup()

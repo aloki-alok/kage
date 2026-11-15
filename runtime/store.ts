@@ -168,9 +168,10 @@ export function openStore(path: string) {
         .run(s.id, s.key, s.cron, s.prompt, s.recurring ? 1 : 0, s.fromOwner ? 1 : 0, s.created, s.lastFired, s.ends ?? null, s.lane ? 1 : null, s.trigger ? JSON.stringify(s.trigger) : null)
     },
     schedules: (): Schedule[] => (db.prepare('select * from schedules order by created').all() as Record<string, any>[]).map(toSchedule),
-    // A tuned probe job (runtime/scheduler.ts tune): its new cron and trigger, and a clean state when the baseline must restart.
-    tuneSchedule(id: string, cron: string, trigger: Trigger, resetState: boolean) {
-      db.prepare(`update schedules set cron = ?, trigger = ?${resetState ? ', job_state = null' : ''} where id = ?`).run(cron, JSON.stringify(trigger), id)
+    // A tuned probe job (runtime/scheduler.ts tune): its new cron and trigger, and a new baseline (fp and last only) when the fingerprint changes.
+    tuneSchedule(id: string, cron: string, trigger: Trigger, resetBaseline: boolean) {
+      db.prepare('update schedules set cron = ?, trigger = ? where id = ?').run(cron, JSON.stringify(trigger), id)
+      if (resetBaseline) { const { fp: _f, last: _l, ...kept } = this.jobState(id); this.setJobState(id, kept) }   // a pending note, a refusal and the flags stay
     },
     fired(id: string, at: number) { db.prepare('update schedules set last_fired = ? where id = ?').run(at, id) },
     // A tripwire job's state between runs (core/tripwire.ts decide), kept on its schedule row so it survives a restart and
