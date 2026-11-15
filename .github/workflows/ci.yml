@@ -18,7 +18,8 @@ jobs:
       - run: npm run typecheck
       - run: npm test
   meetbot:
-    runs-on: ubuntu-latest
+    # Playwright 1.60 has no Chromium for ubuntu-latest (26.04) yet. Move up with a Playwright that supports it.
+    runs-on: ubuntu-24.04
     defaults:
       run:
         working-directory: meetbot
