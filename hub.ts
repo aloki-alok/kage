@@ -89,6 +89,8 @@ function claudeCommand(route: string | undefined) {
     if ((statSync(sessionEnv).mode & 0o777) === 0o600) process.loadEnvFile(sessionEnv)
     else say(`${sessionEnv} is not private, so it was skipped. Run chmod 600 on it.`)
   }
+  // Kage's own Claude login (kage claude-login): sessions bill its seat. An API key in the environment would win over it.
+  if (sec.claudeToken) { process.env.CLAUDE_CODE_OAUTH_TOKEN = sec.claudeToken; delete process.env.ANTHROPIC_API_KEY }
   // Keys named in config.json sessionKeys leave the environment here, before any session copies it (runtime/hold-keys.ts, #182).
   await (await import('./runtime/hold-keys.ts')).holdKeys(Object.keys(cfg.sessionKeys ?? {}), say)
   // Kage keeps its own memory (core/guards.ts memoryDirs reads the same default).

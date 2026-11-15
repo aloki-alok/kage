@@ -45,6 +45,7 @@ Only a listed agent's post goes to Jev, at most its first 4,000 characters, with
 
 | Setting | Default | Effect |
 |---|---|---|
+| `claudeToken` | your own Claude login | secrets.json. Kage's own Claude login, so its sessions use its own seat and you see its usage apart from yours. `kage claude-login` saves it. It wins over an `ANTHROPIC_API_KEY` in the hub's environment. A session can print it, so use a login that holds nothing but Kage's work. |
 | `harness.maxSessions` | `4` | Sessions that run at once. A tag over the limit gets ⏳. |
 | `kagelets.max` | `10` | Kagelets that may run on this install. Past it, by name order, one runs nothing. Kage makes no new one while this many files exist, paused ones included. |
 | `kagelets.dailyUsd` | none (no cap) | What one kagelet may spend in a day, in dollars. Unset, no kagelet is ever paused for cost. To turn the cap on, set a number such as `2`. `0` is a cap of $0, which pauses every kagelet: leave the line out for no cap. At the cap the kagelet is paused (its file says so), and you get a DM and a waiting line. At 80% you get one DM that day. It stays paused until you resume it, and from then it counts only what it spends after the resume. A run in progress stops at the cap. A value that is not a number of dollars leaves the cap off, and the hub log says so at start. |

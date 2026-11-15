@@ -47,4 +47,8 @@ if (cmd === 'has') {
   if (!app || !user || !bot) die('Need all three tokens on stdin: xapp-..., xoxp-..., xoxb-...')
   updateSecrets(ENV_FILE, s => ({ ...s, slack: { app, user, bot } }))
   updateConfig(ENV_FILE, c => ({ ...c, name: key || c.name }))
-} else die('Usage: config.ts get <key> | has <key> | check-slack <app|user|bot> | set <key> <value> | save <name>')
+} else if (cmd === 'save-claude') {
+  const token = (await new Promise<string>(res => { let t = ''; process.stdin.on('data', d => t += d).on('end', () => res(t)) })).trim()
+  if (!/^sk-ant-oat\S+$/.test(token)) die('Not a Claude login token: run claude setup-token and paste the sk-ant-oat... line it prints.')
+  updateSecrets(ENV_FILE, s => ({ ...s, claudeToken: token }))
+} else die('Usage: config.ts get <key> | has <key> | check-slack <app|user|bot> | set <key> <value> | save <name> | save-claude')

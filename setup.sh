@@ -14,6 +14,7 @@ COMMANDS='Set up|setup||Walk through the first setup, one step at a time|kage se
 Set up|check||Check that node 22.18+ and claude are installed (and tmux, for KAGE_RUNTIME=tmux)|kage check
 Set up|app|[name]|Write the Slack app for the name you tag, and open the link that creates it|kage app kage
 Set up|save|[name]|Paste the three Slack tokens into hidden prompts; each is checked with Slack|kage save
+Set up|claude-login||Save the Claude login Kage runs on, so its sessions use their own seat. Get the token with claude setup-token, signed in as Kage|kage claude-login
 Set up|doctor||Check every part, and print the command that fixes each problem|kage doctor
 Set up|slack|upgrade|Add the Slack scopes Kage needs and the app lacks: opens the app manifest, names the scopes to add, and waits|kage slack upgrade
 Set up|link||Put the kage command on your PATH (~/.local/bin/kage)|./setup.sh link
@@ -263,6 +264,20 @@ cmd_save() {
   echo "ok: saved to $(dirname "$ENV_FILE")/secrets.json (mode 600) for @$NAME, owner $OWNER"
 }
 
+# Kage's own Claude login, so its sessions use their own seat. The prompt is hidden, so the token never shows on screen or in ps.
+cmd_claude_login() {
+  local t
+  if [[ -t 0 ]]; then
+    echo "Run claude setup-token signed in as Kage's own account, then paste the token it prints." >&2
+    read -r -s -p "Claude token (sk-ant-oat...): " t; echo >&2
+  else
+    t="$(cat)"
+  fi
+  umask 077
+  printf '%s\n' "$t" | node cli/config.ts save-claude || exit 1
+  echo "ok: saved to $(dirname "$ENV_FILE")/secrets.json. Kage restarts into it once its sessions are quiet."
+}
+
 cmd_interactive() {
   say "1/5  Checking tools"; cmd_check
   say "2/5  Pick a name"; read -r -p "What do you call it in Slack? [kage] " n; valid_name "$n"
@@ -290,6 +305,7 @@ case "${1:-}" in
   check) cmd_check ;;
   app) cmd_app "${2:-}" ;;
   save) cmd_save "${2:-}" ;;
+  claude-login) cmd_claude_login ;;
   doctor) node cli/doctor/run.ts ;;
   slack) node cli/slack.ts "${2:-}" ;;
   link) mkdir -p ~/.local/bin && ln -sf "$PWD/setup.sh" ~/.local/bin/kage && echo "ok: run kage from anywhere (needs ~/.local/bin on PATH)" ;;

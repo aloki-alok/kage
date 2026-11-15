@@ -149,6 +149,17 @@ describe('hub.ts: one hub run, with its log, its boot count and a crash-loop DM'
     rmSync(k.root, { recursive: true })
   })
 
+  test('a Claude token in secrets.json reaches sessions as their login, and an API key cannot override it', async () => {
+    const k = kageCopy()
+    writeFileSync(join(k.dir, 'hub', 'router.ts'), `console.log('oauth=' + (process.env.CLAUDE_CODE_OAUTH_TOKEN ?? 'none') + ' api=' + (process.env.ANTHROPIC_API_KEY ?? 'none'))`)
+    await hub(k, { ANTHROPIC_API_KEY: 'sk-fake' })
+    const secrets = join(k.conf, 'secrets.json')
+    writeFileSync(secrets, JSON.stringify({ ...JSON.parse(readFileSync(secrets, 'utf8')), claudeToken: 'oat-fake' }))
+    await hub(k, { ANTHROPIC_API_KEY: 'sk-fake' })
+    assert.match(logOf(k), /oauth=none api=sk-fake[\s\S]*oauth=oat-fake api=none/)
+    rmSync(k.root, { recursive: true })
+  })
+
   test('the hub gets the Claude command and the env file path; sessions inherit both', async () => {
     const k = kageCopy()
     writeFileSync(join(k.dir, 'hub', 'router.ts'), `console.log('claude=' + process.env.KAGE_CLAUDE + ' env=' + process.env.KAGE_ENV)`)
