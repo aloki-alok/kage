@@ -34,6 +34,22 @@ describe('runProbe', () => {
   })
 })
 
+describe('probe environment', () => {
+  const run = (env?: string[]) => runProbe(probe('printf "%s" "$SSH_AUTH_SOCK"'), { ...o, ...(env && { env }) })
+  test('a listed variable reaches the probe, an unlisted one does not, and an unset one is skipped', async () => {
+    process.env.SSH_AUTH_SOCK = '/tmp/agent.sock'
+    try {
+      assert.equal((await run(['PATH', 'SSH_AUTH_SOCK'])).out, '/tmp/agent.sock')
+      assert.equal((await run(['PATH'])).out, '')
+      assert.equal((await run(['PATH', 'KAGE_NOT_SET_ANYWHERE'])).ok, true)
+    } finally { delete process.env.SSH_AUTH_SOCK }
+  })
+  test('with no list given, SSH_AUTH_SOCK is passed by default', async () => {
+    process.env.SSH_AUTH_SOCK = '/tmp/agent.sock'
+    try { assert.equal((await run()).out, '/tmp/agent.sock') } finally { delete process.env.SSH_AUTH_SOCK }
+  })
+})
+
 describe('pins', () => {
   const dir = mkdtempSync(join(tmpdir(), 'probe-'))
   const script = join(dir, 'check.sh')

@@ -105,6 +105,7 @@ A tripwire runs a shell command on a clock and wakes a session only when the com
 | `tripwires.timeoutSec` | `60` | A command that runs longer is killed, with its child processes. |
 | `tripwires.maxKb` | `64` | Output past this size is cut and marked as truncated. |
 | `tripwires.failPing` | `3` | After this many failed runs in a row, you get one note. The tripwire keeps running. |
+| `tripwires.env` | `["PATH","HOME","LANG","USER","TMPDIR","SSH_AUTH_SOCK"]` | The variables of Kage's environment that a probe sees. Nothing else passes, so a probe never gets a token. A name that is not set is skipped. Add a name only when a probe needs it: it widens what a probe can read, so a session needs your yes to change it. |
 | `tripwires.shadowDays` | `2` | How many days a new tripwire only reports what it would have done before it wakes anything. |
 
 ## Email
