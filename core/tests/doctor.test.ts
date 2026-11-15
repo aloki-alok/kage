@@ -111,6 +111,7 @@ describe('decisions', () => {
     assert.equal((autoUpdateNote({ ...base, origin: 'failed' }) as { text: string }).text, 'auto-update cannot check origin: git ls-remote failed')
     assert.equal((autoUpdateNote({ ...base, origin: 'no-stable' }) as { text: string }).text, 'no auto-update: origin has no stable tag yet, so this install stays on its version')
     assert.equal(autoUpdateNote({ ...base, origin: 'stable' }), undefined)
+    assert.match((autoUpdateNote({ ...base, origin: 'diverged' }) as { text: string }).text, /stuck: the stable tag is not on this checkout's history/)
   })
   test('chrome: seen within 120 s is connected', () => {
     assert.equal(chromeLine(1_000_000_000_000 - 119_000, 1_000_000_000).kind, 'ok')

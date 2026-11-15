@@ -590,6 +590,7 @@ function selfUpdate(now: number) {
       try { npmCi(CODE) } catch {
         npmFailedFor = code
         log('npm ci failed for the newer code, so the hub stays on the code it runs. Run npm ci in', CODE)
+        void slack.notifyOwner(`Kage pulled new code, but \`npm ci\` failed, so it stays on the code it runs. Run \`npm ci\` in ${CODE}, then \`kage restart\`.`)
         return
       }
     }
