@@ -1,0 +1,28 @@
+name: meetbot
+# The meeting bot is its own package, so the main test run never reaches it. Its Chromium end-to-end test runs only
+# when the bot or the hub code it talks to changes.
+on:
+  push:
+    branches: [main]
+    paths: ['meetbot/**', 'connectors/meeting.ts', 'core/meetbot.ts', 'core/meeting.ts', '.github/workflows/meetbot.yml']
+  pull_request:
+    paths: ['meetbot/**', 'connectors/meeting.ts', 'core/meetbot.ts', 'core/meeting.ts', '.github/workflows/meetbot.yml']
+permissions:
+  contents: read
+jobs:
+  meetbot:
+    # Playwright 1.60 has no Chromium for ubuntu-latest (26.04) yet. Move up with a Playwright that supports it.
+    runs-on: ubuntu-24.04
+    defaults:
+      run:
+        working-directory: meetbot
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22.18
+      - run: npm ci   # the e2e test imports the hub's own code too
+        working-directory: .
+      - run: npm ci
+      - run: npx playwright-core install --with-deps chromium
+      - run: npm test
