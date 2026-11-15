@@ -53,6 +53,7 @@ Write logs to stderr only. In a tmux pane, stdout carries the channel protocol, 
 | `hub/updates.ts` | The hub's own code: the version it runs, the restart into newer code or changed settings, the auto-update to origin's stable tag, and the release the owner's hub makes. |
 | `hub/owner-digests.ts` | What the owner gets on a clock: the daily note (questions waiting a day, grants with no card) and the Monday retro. |
 | `hub/dreams.ts` | The nightly dreams: Kage's own over the day's threads, and each kagelet's over its runs. |
+| `hub/connectors.ts` | The connectors the hub starts beside Slack (GitHub, meetings and the meeting bot, email, voice, WhatsApp), how a reply reaches each, and how a stored message replays through its own connector. |
 | `plugin/server.ts` | For tmux panes only: serves Kage's tools over MCP inside each pane and relays approvals. |
 | `plugin/private-data-guard.ts` | The plugin hook (`hooks/hooks.json`) that runs the rules in `core/guards.ts` and `runtime/path-guards.ts` inside tmux panes. The SDK runner applies the same rules in process. |
 | `core/` | Pure rules. See the table below. |

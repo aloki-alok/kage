@@ -6,25 +6,19 @@
 // Still here: thread trust (noteTrust), how each connector shows a failure (failed), the daily
 // "still waiting" note, the self-restart into a newer build, and the auto-update that pulls one.
 // plugin/server.ts is the other end for tmux panes only: the Kage channel inside each pane's Claude Code.
-import { execFileSync, spawn, type ChildProcess } from 'node:child_process'
+import { execFileSync, spawn } from 'node:child_process'
 import { randomUUID } from 'node:crypto'
 import { existsSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { dirname } from 'node:path'
 import { load } from './config.ts'
-import { log, logKey, logRef } from '../runtime/log.ts'
-import { connectEmail } from '../connectors/email.ts'
+import { log, logKey } from '../runtime/log.ts'
 import { listenForCommands } from '../connectors/slack-commands.ts'
 import { connectSlack } from '../connectors/slack.ts'
 import { jevAfk, jevCheck, jevTriage } from '../connectors/jev.ts'
 import { jevConfig } from '../core/jev.ts'
-import { connectGithub } from '../connectors/github.ts'
-import { connectMeeting } from '../connectors/meeting.ts'
 import { connectBrowser } from '../connectors/browser.ts'
 import { blockList, unreadableBlocks } from '../core/browser.ts'
-import { meetCall } from '../core/meetbot.ts'
-import { connectVoice } from '../connectors/voice.ts'
-import { startWhatsApp } from '../connectors/whatsapp.ts'
 import { memoryDirs } from '../core/guards.ts'
 import { protectConfig } from '../runtime/path-guards.ts'
 import { limitLine, pauseLine, stopLine } from '../core/board.ts'
@@ -64,6 +58,7 @@ import { budgetLeft, COST_FLAG, costFlags, kageletRows } from '../core/kagelets.
 import { chainCap, dailyCap, totalCap } from '../core/kagelet-view.ts'
 import { hubLock } from '../runtime/hub-lock.ts'
 import { rotate } from '../runtime/hub-log.ts'
+import { startConnectors } from './connectors.ts'
 import { hubUpdates } from './updates.ts'
 import { ownerDigests } from './owner-digests.ts'
 import { dreams } from './dreams.ts'
@@ -414,66 +409,8 @@ function status(): string {
   ].join('\n')
 }
 
-// GitHub is on when githubSecret and connectors.github.login are set: a webhook through a tunnel.
-const github = secrets.githubSecret && conn.github?.login ? connectGithub({
-  saved: store, secret: secrets.githubSecret, login: conn.github.login, port: conn.github.port || 8789, botDm: slack.ids.botDm,
-  post: (text, thread) => bot.chat.postMessage({ channel: slack.ids.botDm, text, ...(thread && { thread_ts: thread }) }).then(r => r.ts, e => { log('github post failed', e); return undefined }),
-  deliver: (c, task, place) => deliver(c, task, place),
-  notify: text => void slack.notifyOwner(text),
-  perHour: conn.github.perHour || 20, inbox,
-}) : undefined
-void github?.listening.then(port => log(`github on: 127.0.0.1:${port}/github for @${conn.github?.login}`))
-// Meetings are on when meetingToken is set: a finished transcript gets notes in its own DM thread.
-const meeting = secrets.meetingToken ? connectMeeting({
-  token: secrets.meetingToken, port: conn.meeting?.port || 8790, botDm: slack.ids.botDm,
-  post: text => bot.chat.postMessage({ channel: slack.ids.botDm, text }).then(r => r.ts, e => { log('meeting post failed', e); return undefined }),
-  deliver: (c, task, place) => deliver(c, task, place),
-  notify: text => void slack.notifyOwner(text),
-  perHour: conn.meeting?.perHour || 10, inbox, untake: source => store.untake(source), name: NAME,
-  end: key => { if (meetCall(key)) d.end(key) },   // only the call's own session
-}) : undefined
-void meeting?.listening.then(port => { log(`meetings on: 127.0.0.1:${port}/meeting`); if (existsSync(`${CODE}/meetbot/node_modules`)) meetbot(port) })
-// The meeting bot runs as the hub's child when it is installed in this checkout (meetbot/node_modules): it waits
-// for a join and opens a headless browser only for a call, with only what a browser needs (never the hub's tokens). It restarts after a crash and ends with the hub.
-// A bot on another machine still works the same way, from its own config (meetbot/README.md).
-function meetbot(port: number) {
-  const child: ChildProcess = spawn(process.execPath, ['bot.ts'], { cwd: `${CODE}/meetbot`, stdio: ['ignore', 'pipe', 'pipe'],
-    env: { ...Object.fromEntries(['PATH', 'HOME', 'TMPDIR', 'LANG', 'DISPLAY', 'XDG_RUNTIME_DIR', 'PLAYWRIGHT_BROWSERS_PATH'].flatMap(k => (process.env[k] ? [[k, process.env[k]]] : []))), KAGE_MEETBOT_HUB: `http://127.0.0.1:${port}`, KAGE_MEETBOT_TOKEN: secrets.meetingToken ?? "", KAGE_MEETBOT_PIPELINE: conn.meeting?.agentApi && conn.meeting.agentId ? JSON.stringify({ api: conn.meeting.agentApi, agent: conn.meeting.agentId }) : "", KAGE_MEETBOT_PIPELINE_KEY: secrets.voiceAgentKey ?? "" } })
-  const lines = (b: Buffer) => { for (const l of b.toString().split('\n')) if (l.trim()) log(`meetbot: ${l.replace(/^\S+Z /, '')}`) }
-  child.stdout?.on('data', lines)
-  child.stderr?.on('data', lines)
-  child.on('exit', (code: number | null) => { log(`meetbot exited (${code}), starting it again in 10 s`); setTimeout(() => meetbot(port), 10_000).unref() })
-  process.once('exit', () => { child.kill() })
-}
-const email = connectEmail({
-  mail: { ...conn.email, accessKeyId: secrets.aws?.accessKeyId, secretAccessKey: secrets.aws?.secretAccessKey }, saved: store, name: NAME, deliver, inbox,
-  failed: task => void slack.notifyOwner(`Could not start a session for ${task.meta.place}.`),
-})
-// Voice is on when voiceToken is set, unless connectors.voice.on is false. A voice agent reaches it over a tunnel.
-const voice = connectVoice({
-  voice: { ...conn.voice, token: secrets.voiceToken }, name: NAME, deliver,
-  end: key => { if (key.startsWith('voice:')) d.end(key) },   // only the call's own session
-  slot: key => d.hasFreeSlot(key),   // a call never evicts or queues ahead of the owner's threads
-  failed: task => void slack.notifyOwner(`Could not start a session for ${task.meta.place}.`),
-})
+const { meeting, voice, replies, replayOf } = startConnectors({ secrets, conn, store, slack, bot, NAME, CODE, DIR, d, inbox, deliver, placeOf, failed })
 listenForCommands(slack.socket, { user, team: slack.ids.team!, commands: COMMANDS, ledgers })
-
-// WhatsApp is on when Kage's WAHA config exists, unless connectors.whatsapp.on is false (the kill switch).
-const whatsapp = conn.whatsapp?.on !== false && existsSync(`${DIR}/waha/.env`) ? startWhatsApp({
-  dir: DIR, name: NAME, owner: slack.ownerName, whatsapp: conn.whatsapp ?? {}, inbox,
-  notify: text => void slack.notifyOwner(text),
-  // The stand-in reads only this folder: notes the owner wrote for it, never their whole memory.
-  memory: conn.whatsapp?.memory || `${DIR}/wa-notes`,
-  onTask(t) {
-    const task: Task = {
-      type: 'task', content: t.content, fromOwner: true,
-      meta: { channel: 'whatsapp', thread_ts: t.chat, place: t.place, permalink: '' },
-      origin: { channel: 'whatsapp', ts: t.chat },
-    }
-    log('whatsapp task in', logRef(t.chat))
-    if (deliver({ connector: 'whatsapp', chat: t.chat, kind: 'chat' }, task, t.place) === 'failed') failed(task)
-  },
-}) : undefined
 
 // Each connector marks its own failures: ⚠️ on a Slack message, a DM line for an email or WhatsApp
 // chat or a scheduled run (it has no message to mark).
@@ -513,18 +450,6 @@ runJobs([
   { name: 'events', every: 3_600_000, run: now => ledgers.pruneEvents(new Date(now - EVENT_DAYS * 86_400_000).toISOString()) },
 ])
 
-const replies = {
-  voice: (key: string, text: string) => { if (!meeting?.say(key, text)) voice?.reply(key, text) },   // voice:meet-<call> is a Meet call (#63)
-  wa: (key: string, text: string) => void whatsapp?.send(key, text).catch(e => log('whatsapp send failed in', logRef(key), e)),
-  mail: (key: string, text: string) => void email?.send(key, text).catch(e => {
-    log('mail reply failed', logRef(key), e)
-    void slack.notifyOwner(`Email reply failed for ${placeOf(key)}: ${e}`)
-  }),
-}
-// How a stored message runs again: through its own connector, as if just heard.
-function replayOf(connector: string): ((source: string, payload: string) => Promise<unknown>) | undefined {
-  return ({ slack: slack.replay, github: github?.replay, meeting: meeting?.replay, whatsapp: whatsapp?.replay } as Record<string, ((source: string, payload: string) => Promise<unknown>) | undefined>)[connector]
-}
 // kage tell: the owner's words into a thread, typed on this machine. Same shape as a scheduled run (runtime/scheduler.ts).
 function tell(key: string, text: string): { ok: true; held?: true } | { refused: string } {
   const c = store.conversation(key)
