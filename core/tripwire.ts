@@ -20,22 +20,42 @@ export const normalize = (out: string, ignore: string[], lineMax: number): strin
 
 // The sha256 of normalize(all output), taken as the output arrives, so a probe can keep only part of its text and still
 // see a change anywhere. Push chunks, then end() for the hex.
-// ponytail: holds the current line in memory until its newline. A 60 s timeout bounds it. Upgrade: hash a line in pieces.
 export function lineHasher(ignore: string[], lineMax: number) {
   const res = ignore.map(r => new RegExp(r))
   const hash = createHash('sha256')
   let partial = '', started = false, blanks = 0 // blanks: empty lines held back, so trailing ones never count
+  // A line past lineMax is never dropped, so it streams into the hash as it arrives (linear time on a huge line with no
+  // newline). Only its trailing whitespace waits, so the hash is the same however the output is cut.
+  let long = false, ws = '', opened = false // opened: the long line has put non-space text in the hash
+  const open = () => { hash.update((started ? '\n' : '') + '\n'.repeat(blanks)); started = true; blanks = 0 }
+  const stream = (s: string) => {
+    let k = s.length
+    while (k > 0 && /\s/.test(s.charAt(k - 1))) k--
+    if (k === 0) { ws += s; return }
+    if (!opened) { open(); opened = true }
+    hash.update(ws + s.slice(0, k))
+    ws = s.slice(k)
+  }
+  const close = () => { if (!opened) blanks++; long = false }
   const line = (l: string) => {
     if (dropped(l, res, lineMax)) return
     const t = l.trimEnd()
     if (!t) { blanks++; return }
-    hash.update((started ? '\n' : '') + '\n'.repeat(blanks) + t)
-    started = true
-    blanks = 0
+    open()
+    hash.update(t)
+  }
+  const piece = (s: string, ends: boolean) => {
+    if (!long && partial.length + s.length > lineMax) { long = true; ws = ''; opened = false; stream(partial); partial = '' }
+    if (long) { stream(s); if (ends) close(); return }
+    if (ends) { line(partial + s); partial = '' } else partial += s
   }
   return {
-    push(chunk: string) { const parts = (partial + chunk).split('\n'); partial = parts.pop()!; parts.forEach(line) },
-    end() { line(partial); return hash.digest('hex') },
+    push(chunk: string) {
+      let at = 0
+      for (let i = chunk.indexOf('\n'); i >= 0; at = i + 1, i = chunk.indexOf('\n', at)) piece(chunk.slice(at, i), true)
+      piece(chunk.slice(at), false)
+    },
+    end() { if (long) close(); else line(partial); return hash.digest('hex') },
   }
 }
 

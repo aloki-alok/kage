@@ -38,6 +38,30 @@ describe('lineHasher', () => {
     const line = 'a'.repeat(20) + 'z'
     assert.equal(hashed([line], ['z$'], 10), sha(line))
   })
+  test('a long line cut across chunks hashes the same as whole, trailing spaces trimmed', () => {
+    const text = 'x\n' + 'ab '.repeat(10) + '  \t\n\ny'
+    const want = sha(normalize(text, [], 8))
+    assert.equal(hashed([text], [], 8), want)
+    assert.equal(hashed(text.split(''), [], 8), want)
+    assert.equal(hashed(['x\nab ab', ' ab ab ab ab ab ab ab ab   ', '\t\n', '\ny'], [], 8), want)
+  })
+  test('any text cut at random points hashes like the whole normalized text', () => {
+    const bits = ['a', 'b', ' ', '\t', '\n', '\n\n', 'ts=1', 'xxxxxxxxxxxx', '   \n']
+    for (let n = 0; n < 300; n++) {
+      let text = ''
+      for (let i = 0; i < 40; i++) text += bits[Math.floor(Math.random() * bits.length)]
+      const cuts: string[] = []
+      for (let at = 0; at < text.length;) { const len = 1 + Math.floor(Math.random() * 12); cuts.push(text.slice(at, at + len)); at += len }
+      assert.equal(hashed(cuts, ['^ts='], 8), sha(normalize(text, ['^ts='], 8)), JSON.stringify(cuts))
+    }
+  })
+  test('a huge line with no newline streams in linear time', () => {
+    const chunk = 'a'.repeat(65536), t = Date.now()
+    const h = lineHasher([], 2000)
+    for (let i = 0; i < 1280; i++) h.push(chunk) // 80 MB: the old split-per-chunk took about 6 s here
+    assert.match(h.end(), /^[0-9a-f]{64}$/)
+    assert.ok(Date.now() - t < 3000, `took ${Date.now() - t} ms`)
+  })
 })
 
 describe('safePattern', () => {
