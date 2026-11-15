@@ -17,6 +17,7 @@ import type { sessionTools } from './kage-tools.ts'
 import type { deferredApprovals } from './deferred-approvals.ts'
 import type { Limit } from './limit-pause.ts'
 import type { Task } from '../core/task.ts'
+import { MODELS } from '../core/config.ts'
 import type { ToSession } from './protocol.ts'
 
 type Kage = ReturnType<typeof sessionTools>
@@ -93,7 +94,7 @@ export function sdkSessions(o: {
         return { isError: r.isError, content: [{ type: 'text' as const, text: r.text }] }
       }, voiceToolOptions(voice, t.name))), o.sdk.tool('set_model', SET_MODEL, {
         // Aliases only: a typo'd full id would pass setModel and then fail every turn of the thread.
-        model: z.enum(['fable', 'opus', 'sonnet', 'haiku', 'default']).optional(),
+        model: z.enum([...MODELS, 'default']).optional(),
         effort: z.enum(['low', 'medium', 'high', 'xhigh', 'max', 'default']).optional().describe('reasoning effort; maximum or ultra means max'),
       }, async a => {
         // Only set keys go in the pick: an undefined one would override the hub's own options on reopen.

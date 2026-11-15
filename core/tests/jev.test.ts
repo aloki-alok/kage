@@ -8,7 +8,10 @@ describe('the Jev settings', () => {
     assert.equal(jevConfig({}, '  '), undefined)
   })
   test('a key alone checks every listed agent at 0.5 on the latest model', () => {
-    assert.deepEqual(jevConfig({}, 'apikey_test'), { key: 'apikey_test', model: 'jev-latest', threshold: 0.5, agents: 'all' })
+    assert.deepEqual(jevConfig({}, 'apikey_test'), { key: 'apikey_test', model: 'jev-latest', threshold: 0.5, agents: 'all', url: 'https://api.typesafe.ai/v1/systemone' })
+  })
+  test('jev.url points the check at another endpoint', () => {
+    assert.equal((jevConfig({ url: 'https://jev.example.com/v1' }, 'k') as { url: string }).url, 'https://jev.example.com/v1')
   })
   test('jev.agents names the agents it checks; "all" or empty means every one', () => {
     const c = jevConfig({ agents: ['A0123ABC', 'A0456DEF'] }, 'k')
@@ -28,7 +31,7 @@ describe('the Jev settings', () => {
     assert.ok(c && 'error' in c && c.error.includes('jev.agents') && !c.error.includes('apikey_secret'))
   })
   test('a model and a threshold can be set', () => {
-    assert.deepEqual(jevConfig({ model: 'jev-1.14.0', threshold: 0.7 }, 'k'), { key: 'k', model: 'jev-1.14.0', threshold: 0.7, agents: 'all' })
+    assert.deepEqual(jevConfig({ model: 'jev-1.14.0', threshold: 0.7 }, 'k'), { key: 'k', model: 'jev-1.14.0', threshold: 0.7, agents: 'all', url: 'https://api.typesafe.ai/v1/systemone' })
   })
 })
 

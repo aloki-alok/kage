@@ -1,6 +1,7 @@
 // Kagelets (#57): one file each in the kagelets folder, run on a schedule in a side lane of its thread, at
 // teammate trust, with only the tools its grant names. A kagelet approves nothing: what needs approval it says in
 // its thread, where its manager (this Kage) and the human owner read it.
+import { DEFAULT_MODEL, MODELS } from './config.ts'
 import { nextRun, parseCron } from './cron.ts'
 import { slackLinkKey } from './conversations.ts'
 import { clockTime, whenLabel } from './board.ts'
@@ -21,8 +22,7 @@ export type Kagelet = { name: string; key: string; link: string; cron: string; a
 
 // Sonnet unless the file says otherwise (#98). A name Claude Code knows: an alias or a full id.
 // A typo would pass the SDK's setup and then fail every run, so a name that is neither is held.
-export const DEFAULT_MODEL = 'sonnet'
-const MODEL = /^(fable|opus|sonnet|haiku|claude-[a-z0-9.-]+(\[1m\])?)$/
+const MODEL = new RegExp(`^(${MODELS.join('|')}|claude-[a-z0-9.-]+(\\[1m\\])?)$`)
 
 // Flat front matter (key: value lines between --- lines), then the job.
 export function parseKagelet(name: string, text: string): Kagelet | { error: string } {

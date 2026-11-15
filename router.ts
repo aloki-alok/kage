@@ -36,7 +36,7 @@ import { retro, retroDue } from './core/retro.ts'
 import { Dispatcher, mixRunners } from './core/sessions.ts'
 import { readSettings, setKey, sweepImported } from './runtime/config-files.ts'
 import { configWatcher } from './runtime/config-watch.ts'
-import { unknownNames } from './core/config.ts'
+import { DEFAULT_MODEL, unknownNames } from './core/config.ts'
 import type { Task } from './core/task.ts'
 import type { ToSession } from './runtime/protocol.ts'
 import { postAsKage, sessionTools } from './runtime/kage-tools.ts'
@@ -206,7 +206,7 @@ const slack = await connectSlack({
   // AFK mode is on unless afk.on is false. Its stand-in reads the owner's memory, read only.
   jev: jev && !('error' in jev) ? jevCheck(jev) : undefined,
   triage: jev && !('error' in jev) ? jevTriage(jev, (who, detail) => runs.emit(who, 'triage', detail)) : undefined,
-  afk: afk.on === false ? undefined : { memory: memoryDirs(process.env.HOME!, ENV_FILE, harness).owner, model: afk.model || 'sonnet', saved: store, call: phoneOwner, jev: jev && !('error' in jev) ? jevAfk(jev) : undefined },
+  afk: afk.on === false ? undefined : { memory: memoryDirs(process.env.HOME!, ENV_FILE, harness).owner, model: afk.model || DEFAULT_MODEL, saved: store, call: phoneOwner, jev: jev && !('error' in jev) ? jevAfk(jev) : undefined },
 })
 
 // threads.json came before the store: move it in once (the "dm" key needs the bot DM's id), then retire it.
@@ -331,7 +331,7 @@ const sdk = sdkLib ? sdkSessions({
     routes.ended(key, usd ?? 0, d.saved()[key] ? `${PROJECT}/${d.saved()[key]}.jsonl` : '', Date.now(), limited)
   },
   budgetOf: key => key.includes('#side-kagelet-') ? budgetLeft(kageletRows(readKagelets(KAGELETS), { runs: '', costs: ledgers.text('costs'), now: Date.now() }), key, CAPS) : undefined,
-  modelOf: key => key.includes('#side-kdream-') ? 'sonnet' : key.startsWith('voice:') && config.connectors?.voice?.model ? config.connectors.voice.model : models.get(key),
+  modelOf: key => key.includes('#side-kdream-') ? DEFAULT_MODEL : key.startsWith('voice:') && config.connectors?.voice?.model ? config.connectors.voice.model : models.get(key),
   onBlocked: blocked,
   onTurn: (key, tasks, limit, done) => limits.turn(key, tasks, limit, Date.now(), done),
   // A lane whose file is gone keeps no tools, rather than falling back to approval cards.

@@ -2,13 +2,13 @@
 // post is answered as before, and the loop guard (core/agents.ts) still caps an agent's turns. The log carries the
 // score and the reason only, never the key or the post.
 import { log } from '../runtime/log.ts'
-import { JEV_URL, afkRequest, afkVerdict, jevChecks, jevRequest, jevVerdict, triageRequest, triageSkips, triageVerdict, type JevConfig, type Urgency } from '../core/jev.ts'
+import { afkRequest, afkVerdict, jevChecks, jevRequest, jevVerdict, triageRequest, triageSkips, triageVerdict, type JevConfig, type Urgency } from '../core/jev.ts'
 
 // One POST to Jev. The answer, the HTTP status of a refusal, or the name of the error (a timeout, a body that is not JSON).
 type JevAnswer = { json: unknown } | { status: number } | { failed: string }
 async function jevPost(c: JevConfig, body: () => unknown, go: typeof fetch, timeoutMs: number): Promise<JevAnswer> {
   try {   // body is built inside, so a builder that throws still fails open
-    const r = await go(JEV_URL, {
+    const r = await go(c.url, {
       method: 'POST',
       headers: { Authorization: `Bearer ${c.key}`, 'Content-Type': 'application/json' },
       body: JSON.stringify(body()),

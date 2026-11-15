@@ -1,7 +1,8 @@
 // The kagelet manager: the tool Kage's owner sessions use to write, pause, run, remove and revoke kagelets,
 // and which tools each one is granted.
 import { existsSync, mkdirSync, readFileSync, renameSync, unlinkSync, writeFileSync } from 'node:fs'
-import { DEFAULT_MODEL, chainErrors, COST_FLAG, DB_READ, NAME, parseKagelet, resultLine, revokeStanding, rowLine, kageletFile, kageletRows, type Kagelet, type Standing } from '../core/kagelets.ts'
+import { DEFAULT_MODEL } from '../core/config.ts'
+import { chainErrors, COST_FLAG, DB_READ, NAME, parseKagelet, resultLine, revokeStanding, rowLine, kageletFile, kageletRows, type Kagelet, type Standing } from '../core/kagelets.ts'
 import { chainLine, chainViews } from '../core/events.ts'
 import { kageletTier } from '../core/access.ts'
 import type { Store } from './store.ts'

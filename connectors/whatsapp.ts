@@ -4,6 +4,7 @@ import { createHmac, timingSafeEqual } from 'node:crypto'
 import { mkdirSync, readFileSync } from 'node:fs'
 import { createServer, type RequestListener } from 'node:http'
 import { log, logRef } from '../runtime/log.ts'
+import { DEFAULT_MODEL } from '../core/config.ts'
 import { claudeOnce, emptyRoom } from '../runtime/claude-once.ts'
 import { readBody } from './webhook.ts'
 import type { Inbox } from '../runtime/store.ts'
@@ -61,7 +62,7 @@ export function startWhatsApp(o: { dir: string; name: string; owner: string; wha
   const URL = o.whatsapp.wahaUrl || 'http://127.0.0.1:3198'
   const HMAC = waha.WHATSAPP_HOOK_HMAC_KEY
   if (!HMAC) throw new Error('waha/.env has no WHATSAPP_HOOK_HMAC_KEY: the webhook would have no secret')
-  const MODEL = o.whatsapp.model || 'sonnet'
+  const MODEL = o.whatsapp.model || DEFAULT_MODEL
   const ROOM = emptyRoom(o.dir)   // the guard's Claude finds no CLAUDE.md or memory here
   mkdirSync(o.memory, { recursive: true, mode: 0o700 })
 

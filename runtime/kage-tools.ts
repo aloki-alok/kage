@@ -25,7 +25,7 @@ import type { Task } from '../core/task.ts'
 import type { AskOwner, Manage } from './kagelet-manager.ts'
 import type { kageletMemory } from './kagelet-memory.ts'
 import type { EventKind } from '../core/events.ts'
-import { settingTier } from '../core/config.ts'
+import { DEFAULT_MODEL, MODELS, settingTier } from '../core/config.ts'
 import { slackPlain } from '../core/outbound.ts'
 
 // The reaction each kind of reply leaves on the task message. An ack leaves none: 🥷 already says "picked up".
@@ -540,8 +540,8 @@ export function sessionTools(o: {
       read_command: s.optional().describe('save with db_read and no kagelets.dbRead.command: one of the read commands the owner already approved. Leave out to keep this kagelet\'s own'),
       job: s.optional().describe('save: what to do on each run, complete on its own'),
       why: s.optional().describe('save: one line on why it exists'),
-      model: s.optional().describe('save: sonnet (the default, leave out), or opus, haiku, fable, for a job that needs it. Leave out to keep the kagelet\'s own'),
-      model_why: s.optional().describe('save: one line on why this kagelet needs a model beyond sonnet. Required with a new model; the owner sees it in the panel'),
+      model: s.optional().describe(`save: ${DEFAULT_MODEL} (the default, leave out), or ${MODELS.filter(m => m !== DEFAULT_MODEL).join(', ')}, for a job that needs it. Leave out to keep the kagelet's own`),
+      model_why: s.optional().describe(`save: one line on why this kagelet needs a model beyond ${DEFAULT_MODEL}. Required with a new model; the owner sees it in the panel`),
     },
     async run(args) {
       const { channel: _c, thread_ts: _t, ...a } = args as Manage & { channel: string; thread_ts: string }
