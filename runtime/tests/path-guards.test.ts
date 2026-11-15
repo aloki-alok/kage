@@ -18,7 +18,7 @@ describe("the owner's memory takes only people notes", () => {
   })
   test('another spelling of the same folder is still the owner memory: case, ~, a notebook path', () => {
     no('Write', `${MEM.toUpperCase()}/FEEDBACK_X.md`)
-    assert.match(ownerMemoryRefusal('Write', { file_path: '~/.claude/projects/-home-o/memory/feedback_x.md' }, MEM, '/home/o') ?? '', /people notes/)
+    assert.match(ownerMemoryRefusal('Write', { file_path: '~/.claude/projects/-home-o/memory/feedback_x.md' }, MEM, undefined, '/home/o') ?? '', /people notes/)
     assert.match(ownerMemoryRefusal('NotebookEdit', { notebook_path: `${MEM}/x.ipynb` }, MEM) ?? '', /people notes/)
   })
   test('a link that points into the owner memory is followed', () => {
@@ -33,7 +33,53 @@ describe("the owner's memory takes only people notes", () => {
     assert.equal(ownerMemoryRefusal('Write', { file_path: join(root, 'dirlink', 'user_bob.md') }, mem), undefined)
   })
   test("Kage's own memory and other files are free, and reads are never blocked", () => {
-    ok('Write', '/home/o/.config/kage/memory/feedback_x.md'); ok('Read', `${MEM}/feedback_x.md`); ok('Write', '/tmp/x.md')
+    ok('Write', '/home/o/.config/kage/memory/feedback_x.md'); ok('Write', '/tmp/x.md')
+    assert.equal(ownerMemoryRefusal('Read', { file_path: '/home/o/.config/kage/memory/feedback_x.md' }, MEM, 'teammate'), undefined)
+  })
+})
+
+describe("a task not from the owner reads only people notes in the owner's memory (#228)", () => {
+  const MEM = '/home/o/.claude/projects/-home-o/memory'
+  const read = (sender: string | undefined, tool: string, key: string, path: string, home?: string) => ownerMemoryRefusal(tool, { [key]: path }, MEM, sender, home)
+  test('a teammate or voice Read, Grep or Glob of other memory is refused', () => {
+    for (const sender of ['teammate', 'voice', undefined]) {
+      assert.match(read(sender, 'Read', 'file_path', `${MEM}/feedback_x.md`) ?? '', /people notes/, `${sender} Read`)
+      assert.match(read(sender, 'Grep', 'path', MEM) ?? '', /people notes/, `${sender} Grep`)
+      assert.match(read(sender, 'Glob', 'path', MEM) ?? '', /people notes/, `${sender} Glob`)
+      assert.match(read(sender, 'Glob', 'pattern', `${MEM}/*.md`) ?? '', /people notes/, `${sender} Glob pattern`)
+    }
+  })
+  test('absolute, ~ and case-changed spellings are refused', () => {
+    assert.match(read('teammate', 'Read', 'file_path', '~/.claude/projects/-home-o/memory/project_y.md', '/home/o') ?? '', /people notes/)
+    assert.match(read('teammate', 'Read', 'file_path', `${MEM.toUpperCase()}/PROJECT_Y.MD`) ?? '', /people notes/)
+    assert.match(read('teammate', 'Read', 'file_path', `${MEM}/../memory/project_y.md`) ?? '', /people notes/)
+  })
+  test('a link into the owner memory is followed', () => {
+    const root = mkdtempSync(join(tmpdir(), 'kage-guard-'))
+    const mem = join(root, 'memory')
+    mkdirSync(mem)
+    symlinkSync(mem, join(root, 'dirlink'))
+    assert.match(ownerMemoryRefusal('Read', { file_path: join(root, 'dirlink', 'project_y.md') }, mem, 'teammate') ?? '', /people notes/)
+  })
+  test('people notes stay readable; the index, which names every project, does not', () => {
+    assert.equal(read('teammate', 'Read', 'file_path', `${MEM}/user_sam.md`), undefined)
+    assert.match(read('teammate', 'Read', 'file_path', `${MEM}/MEMORY.md`) ?? '', /people notes/)
+  })
+  test('a search from a folder above the memory is refused: no path (the home folder), the home folder, or a glob from there', () => {
+    const search = (tool: string, input: Record<string, string>) => ownerMemoryRefusal(tool, input, MEM, 'teammate', '/home/o', '/home/o')
+    assert.match(search('Grep', { pattern: 'token' }) ?? '', /outside/)
+    assert.match(search('Grep', { pattern: 'token', path: '/home/o' }) ?? '', /outside/)
+    assert.match(search('Glob', { pattern: '**/*.md' }) ?? '', /outside/)
+    assert.match(search('Glob', { pattern: '/home/o/.claude/**/*.md' }) ?? '', /outside/)
+    assert.equal(search('Grep', { pattern: 'token', path: '/home/o/code' }), undefined)
+    assert.match(search('Glob', { path: '/tmp', pattern: `${MEM}/*.md` }) ?? '', /people notes|outside/, 'an absolute pattern wins over path')
+    assert.match(search('Glob', { path: '/home/o/code', pattern: '../.claude/projects/-home-o/memory/*.md' }) ?? '', /people notes|outside/, '.. in a pattern')
+    assert.equal(ownerMemoryRefusal('Grep', { pattern: 'token' }, MEM, 'owner', '/home/o', '/home/o'), undefined)
+  })
+  test("the owner's own task reads anything", () => {
+    assert.equal(read('owner', 'Read', 'file_path', `${MEM}/feedback_x.md`), undefined)
+    assert.equal(read('owner', 'Grep', 'path', MEM), undefined)
+    assert.equal(read('owner', 'Glob', 'path', MEM), undefined)
   })
 })
 

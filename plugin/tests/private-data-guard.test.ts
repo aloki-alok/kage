@@ -22,10 +22,11 @@ test('with no sender file the hook still checks, as for a teammate: the token fi
   assert.ok(denied(run('mcp__claude_ai_Gmail__search', {})))
 })
 
-test("the owner's own pane reads ordinary files", () => {
+test("the hook reads the sender file: config.json is closed to others and open to the owner's own pane", () => {
+  assert.ok(denied(run('Read', { file_path: join(conf, 'config.json') })))
   mkdirSync(join(conf, 'sender'), { recursive: true })
   writeFileSync(join(conf, 'sender', 'C1_1.2'), 'owner')
-  assert.equal(run('Read', { file_path: '/tmp/notes.md' }), '')
+  assert.equal(run('Read', { file_path: join(conf, 'config.json') }), '')
 })
 
 test('both runners call the one refusal chain, so a rule added there reaches both', () => {
