@@ -1,7 +1,7 @@
 // The WhatsApp side of the router: WAHA (a linked device on the owner's own number) posts every
 // message here, signed. core/whatsapp.ts decides; this module does the I/O.
 import { createHmac, timingSafeEqual } from 'node:crypto'
-import { mkdirSync, readFileSync } from 'node:fs'
+import { mkdirSync } from 'node:fs'
 import { createServer, type RequestListener } from 'node:http'
 import { log, logRef } from '../runtime/log.ts'
 import { DEFAULT_MODEL } from '../core/config.ts'
@@ -56,12 +56,11 @@ export function wahaHandler(hmac: string, inbox: Inbox, run: (p: WahaPayload, so
   }
 }
 
-export function startWhatsApp(o: { dir: string; name: string; owner: string; whatsapp: { wahaUrl?: string | null; model?: string | null; hookHost?: string | null; hookPort?: number }; memory: string; inbox: Inbox; onTask: (t: WaTask) => void; notify: (text: string) => void }) {
-  const waha = Object.fromEntries(readFileSync(`${o.dir}/waha/.env`, 'utf8').split('\n').filter(l => l.includes('='))
-    .map(l => [l.slice(0, l.indexOf('=')), l.slice(l.indexOf('=') + 1)]))
+export function startWhatsApp(o: { dir: string; name: string; owner: string; waha: Record<string, string>; whatsapp: { wahaUrl?: string | null; model?: string | null; hookHost?: string | null; hookPort?: number }; memory: string; inbox: Inbox; onTask: (t: WaTask) => void; notify: (text: string) => void }) {
+  const waha = o.waha
   const URL = o.whatsapp.wahaUrl || 'http://127.0.0.1:3198'
   const HMAC = waha.WHATSAPP_HOOK_HMAC_KEY
-  if (!HMAC) throw new Error('waha/.env has no WHATSAPP_HOOK_HMAC_KEY: the webhook would have no secret')
+  if (!HMAC) throw new Error('secrets.json waha has no WHATSAPP_HOOK_HMAC_KEY: the webhook would have no secret')
   const MODEL = o.whatsapp.model || DEFAULT_MODEL
   const ROOM = emptyRoom(o.dir)   // the guard's Claude finds no CLAUDE.md or memory here
   mkdirSync(o.memory, { recursive: true, mode: 0o700 })

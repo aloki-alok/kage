@@ -71,6 +71,7 @@ function claudeCommand(route: string | undefined) {
     files = await import('./runtime/config-files.ts')
     const to = files.importLegacy(ENV_FILE)
     if (to) say(`imported the env file into config.json and secrets.json; the old file is now ${to} and goes in 7 days`)
+    if (files.syncWaha(ENV_FILE)) say('wrote waha/.env from secrets.json: restart the WhatsApp container so it reads the new keys')
   } catch (e) { say(`could not import the env file: ${e}`) }
   const json = (f: string) => { try { return JSON.parse(readFileSync(f, 'utf8')) } catch { return {} } }
   const cfg = json(`${CONF}/config.json`), sec = json(`${CONF}/secrets.json`)

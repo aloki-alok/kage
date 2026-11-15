@@ -142,7 +142,7 @@ When it is on, you type `@kage <task>` in any chat to hand Kage a task. The chat
 
 | Setting | Default | Effect |
 |---|---|---|
-| `connectors.whatsapp.on` | on | WhatsApp starts when `~/.config/kage/waha/.env` exists (`WAHA_API_KEY`, `WHATSAPP_HOOK_HMAC_KEY`). `false` turns it off. |
+| `connectors.whatsapp.on` | on | WhatsApp starts when secrets.json holds `waha` with `WAHA_API_KEY` and `WHATSAPP_HOOK_HMAC_KEY`: the WhatsApp container's env, name to value. Kage writes `~/.config/kage/waha/.env` from it for the container at each start, and a `waha/.env` made by hand moves into secrets.json once. After a key changes, restart the container. `false` turns it off. |
 | `connectors.whatsapp.memory` | `~/.config/kage/wa-notes` | The only folder the stand-in can read. Put notes there on how you write and what it may know. Never point it at your full memory, and put no symlinks to other folders in it: anyone in an armed chat can ask about what it reads. |
 | `connectors.whatsapp.model` | `sonnet` | The model the stand-in and the guard use. |
 | `connectors.whatsapp.wahaUrl` | `http://127.0.0.1:3198` | Where WAHA's API listens. |

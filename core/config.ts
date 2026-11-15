@@ -59,6 +59,8 @@ export const Secrets = z.strictObject({
   slack: z.strictObject({ app: sec, user: sec, bot: sec }).optional(),
   aws: z.strictObject({ accessKeyId: sec, secretAccessKey: sec }).optional(),
   voiceToken: sec, githubSecret: sec, meetingToken: sec, browserToken: sec, jevKey: sec, voiceAgentKey: sec, claudeToken: sec,
+  // The WhatsApp (WAHA) container's env, name to value. Kage writes ~/.config/kage/waha/.env from it (runtime/config-files.ts syncWaha).
+  waha: z.record(z.string().regex(/^[A-Z][A-Z0-9_]*$/), z.string()).optional(),
   cartesiaKey: sec,   // compat: remove after 2026-12-15 (Cartesia speech is gone; an old secrets.json still holds it, and the schema is strict)
   // Values of env lines the table does not know and whose names look like secrets: kept, never dropped.
   unknown: z.record(z.string(), z.string()).optional(),
