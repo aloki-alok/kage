@@ -1,6 +1,6 @@
 import { describe, test } from 'node:test'
 import assert from 'node:assert/strict'
-import { cadence, promptPreview, cronJobsFromTranscript, cronMatches, liveCronJobs, dueSchedules, nextRun, parseCron, REPLY, type Schedule } from '../cron.ts'
+import { cadence, promptPreview, cronJobsFromTranscript, cronMatches, liveCronJobs, dueSchedules, nextRun, parseCron, EVENT, REPLY, type Schedule } from '../cron.ts'
 
 // Local time, as Claude Code's CronCreate reads its expressions.
 const at = (s: string) => new Date(s)
@@ -141,4 +141,9 @@ test('a schedule prompt reads without the Slack ids the hub needs', () => {
   assert.equal(promptPreview('Stock alarm for #telephony thread C0TESTAAA11 / 1700000000.000001 (asked by Priya U0TESTBBB22). Steps:\nmore'), 'Stock alarm for #telephony. Steps:')
   assert.equal(promptPreview('Newsletter monitor (thread C0TESTCCC33 / 1700000000.000002). Check'), 'Newsletter monitor. Check')
   assert.equal(promptPreview('Check DASHBOARD and CUSTOMERS (see DEPLOYMENT notes)'), 'Check DASHBOARD and CUSTOMERS (see DEPLOYMENT notes)')
+})
+
+test('an event job never fires on the clock', () => {
+  const e: Schedule = { id: 'e', key: 'C1:1.1', cron: EVENT, prompt: 'p', recurring: true, fromOwner: false, created: 0, lastFired: 0 }
+  assert.deepEqual(dueSchedules([e], 3_600_000), { fire: [], drop: [] })
 })

@@ -14,6 +14,7 @@ import { builtinTools, grantRefusal } from '../core/kagelets.ts'
 import { approvalPreview } from '../core/preview.ts'
 import type { Dispatcher, Runner } from '../core/sessions.ts'
 import type { sessionTools } from './kage-tools.ts'
+import { eventNeedsCard } from '../core/tripwire.ts'
 import type { deferredApprovals } from './deferred-approvals.ts'
 import type { Limit } from './limit-pause.ts'
 import type { Task } from '../core/task.ts'
@@ -143,7 +144,7 @@ export function sdkSessions(o: {
           // A save is approved inside the tool by tier (runtime/kagelets.ts): Kage grants read, and a write tool raises
           // its own card, so the owner gets one, not two. A revoke only takes access away, so it needs none (the tool
           // still takes it from the owner's task only).
-          : ALLOWED.includes(name) || (voice && VOICE_READS.includes(name)) || (name === 'mcp__kage__manage_kagelet' && (input.action === 'save' || input.action === 'revoke')) ? Promise.resolve({ behavior: 'allow' as const, updatedInput: input })
+          : (ALLOWED.includes(name) && !eventNeedsCard(name, input, s.sender)) || (voice && VOICE_READS.includes(name)) || (name === 'mcp__kage__manage_kagelet' && (input.action === 'save' || input.action === 'revoke')) ? Promise.resolve({ behavior: 'allow' as const, updatedInput: input })
           : o.deferred?.take(key, name, input, Date.now()) ? Promise.resolve({ behavior: 'allow' as const, updatedInput: input })
           : o.deferred && s.turn.length ? defer(key, s, name, x.title ?? x.description ?? '', input)
           : ask(key, s, name, x.title ?? x.description ?? '', input, x.signal),

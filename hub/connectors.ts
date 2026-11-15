@@ -1,6 +1,6 @@
 // The connectors the hub starts beside Slack, each on when its secret or config is there: GitHub, meetings (and the
 // meeting bot as the hub's child), email, voice and WhatsApp. Also how a session's reply reaches each one, and how a
-// stored message replays through its own connector after a restart.
+// stored message replays through its own connector after a restart. Jobs an event wakes (hub/job-events.ts) start here too.
 import { spawn, type ChildProcess } from 'node:child_process'
 import { existsSync } from 'node:fs'
 import type { WebClient } from '@slack/web-api'
@@ -11,6 +11,7 @@ import { connectMeeting } from '../connectors/meeting.ts'
 import { connectVoice } from '../connectors/voice.ts'
 import { startWhatsApp } from '../connectors/whatsapp.ts'
 import type { connectSlack } from '../connectors/slack.ts'
+import { startJobEvents } from './job-events.ts'
 import { meetCall } from '../core/meetbot.ts'
 import type { Config, Secrets } from '../core/config.ts'
 import type { Conversation, Lane } from '../core/conversations.ts'
@@ -24,6 +25,7 @@ export function startConnectors(o: {
   NAME: string; CODE: string; DIR: string; d: Dispatcher<ToSession>; inbox: Inbox
   deliver: (c: Conversation, task: Task, place: string, lane?: Lane, by?: string) => Delivery
   placeOf: (key: string) => string; failed: (m: ToSession) => void
+  schedules: Parameters<typeof startJobEvents>[0]['schedules']; event: Parameters<typeof startJobEvents>[0]['event']; tripwires: Config['tripwires']
 }) {
   const { secrets, conn, store, slack, bot, NAME, CODE, DIR, d, inbox, deliver, placeOf, failed } = o
   // GitHub is on when githubSecret and connectors.github.login are set: a webhook through a tunnel.
@@ -86,6 +88,9 @@ export function startConnectors(o: {
     },
   }) : undefined
 
+  // Jobs an event wakes: Slack channel posts and each job's own webhook.
+  const jobs = startJobEvents({ store, inbox, bot, notify: text => void slack.notifyOwner(text), schedules: o.schedules, event: o.event, tripwires: o.tripwires })
+
   const replies = {
     voice: (key: string, text: string) => { if (!meeting?.say(key, text)) voice?.reply(key, text) },   // voice:meet-<call> is a Meet call (#63)
     wa: (key: string, text: string) => void whatsapp?.send(key, text).catch(e => log('whatsapp send failed in', logRef(key), e)),
@@ -96,8 +101,8 @@ export function startConnectors(o: {
   }
   // How a stored message runs again: through its own connector, as if just heard.
   function replayOf(connector: string): ((source: string, payload: string) => Promise<unknown>) | undefined {
-    return ({ slack: slack.replay, github: github?.replay, meeting: meeting?.replay, whatsapp: whatsapp?.replay } as Record<string, ((source: string, payload: string) => Promise<unknown>) | undefined>)[connector]
+    return ({ slack: slack.replay, github: github?.replay, meeting: meeting?.replay, whatsapp: whatsapp?.replay, hook: jobs.replay } as Record<string, ((source: string, payload: string) => Promise<unknown>) | undefined>)[connector]
   }
 
-  return { github, meeting, email, voice, whatsapp, replies, replayOf }
+  return { github, meeting, email, voice, whatsapp, replies, replayOf, jobs }
 }

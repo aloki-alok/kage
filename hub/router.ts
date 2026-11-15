@@ -182,11 +182,11 @@ if (jev && 'error' in jev) log(`jev is off: ${jev.error}`)
 else if (jev) log(`jev checks ${jev.agents === 'all' ? 'every listed agent' : jev.agents.join(', ')} at threshold ${jev.threshold}`)
 
 const slack = await connectSlack({
-  dir: DIR, appToken: secrets.slack!.app!, userToken: secrets.slack!.user!, bot, user, name: NAME, title: Title, teammates: TEAMMATES, apps: TRUSTED_APPS,
+  catchUpMax: () => config.tripwires?.catchUpMax || 1000, dir: DIR, appToken: secrets.slack!.app!, userToken: secrets.slack!.user!, bot, user, name: NAME, title: Title, teammates: TEAMMATES, apps: TRUSTED_APPS,
   hub: { deliver, stop: (c, cut, by) => {
       const key = sessionKey(c, { lane: 'main' })
       return mayStop(by, slack.ids.owner, starters, key) ? stopThread(key, cut) : 'Only the owner, or the teammate whose task started this thread, can stop it.'
-    }, verdict: (id, behavior) => d.verdict(id, { type: 'verdict', request_id: id, behavior }) || answerCard(id, behavior), status: () => commands.status(), heard: m => schedules.heard(m),
+    }, verdict: (id, behavior) => d.verdict(id, { type: 'verdict', request_id: id, behavior }) || answerCard(id, behavior), status: () => commands.status(), heard: m => schedules.heard(m), channelPost: p => jobs.channelPost(p), channelCatchUp: h => jobs.channelCatchUp(h), channelGap: () => jobs.channelGap(),
     posted: () => ledgers.text('posted'), ownerWrote: (chat, thread, text) => { for (const k of kag.notes.wrote(kag.lanes(), chat, thread, text)) runs.emit(k, 'owner-note', `${text.length} characters`) }, ...inbox },
   // AFK mode is on unless afk.on is false. Its stand-in reads the owner's memory, read only.
   jev: jev && !('error' in jev) ? jevCheck(jev) : undefined,
@@ -252,7 +252,7 @@ const sdk = sdkLib ? sdkSessions({
   hub: () => d,
   tools: (key, send, approve) => sessionTools({
     title: Title, bot, user, botDm: () => slack.ids.botDm, dir: DIR, ledgers, send, memory: MEM,
-    schedules: { add: j => schedules.add(key, j, Date.now()), remove: id => schedules.remove(key, id), list: () => schedules.list(key), tune: (id, t) => schedules.tune(key, id, t, Date.now()) },
+    schedules: { add: j => jobs.add(key, j, Date.now()), remove: id => jobs.remove(key, id), list: () => schedules.list(key), hookUrl: id => jobs.hookUrl(id), tune: (id, t) => schedules.tune(key, id, t, Date.now()) },
     afk: slack.afk?.command,
     settings: { set: (key, value) => setKey(ENV_FILE, key, value) },
     kagelet: key.split('#side-kagelet-')[1], dreaming: key.split('#side-kdream-')[1], kageletMemory: kag.kmem,
@@ -354,7 +354,7 @@ else if (existsSync(CRONS)) {
   }
 }
 
-const { meeting, voice, replies, replayOf } = startConnectors({ secrets, conn, store, slack, bot, NAME, CODE, DIR, d, inbox, deliver, placeOf, failed })
+const { meeting, voice, replies, replayOf, jobs } = startConnectors({ secrets, conn, store, slack, bot, NAME, CODE, DIR, d, inbox, deliver, placeOf, failed, schedules, event: ledgers.event, tripwires: config.tripwires })
 listenForCommands(slack.socket, { user, team: slack.ids.team!, commands: COMMANDS, ledgers })
 
 // Each connector marks its own failures: ⚠️ on a Slack message, a DM line for an email or WhatsApp
@@ -404,7 +404,7 @@ const watcher = configWatcher({
   restartWanted: yes => updates.restartWanted(yes),
 })
 const reload = watcher.check
-listenForSessions(`${DIR}/router.sock`, d, { ...replies, failed, schedules, tell: commands.tell, relay: commands.relay, reload, paused: () => limits.paused(), limitCounts: () => limits.counts,
+listenForSessions(`${DIR}/router.sock`, d, { ...replies, failed, schedules: jobs, tell: commands.tell, relay: commands.relay, reload, paused: () => limits.paused(), limitCounts: () => limits.counts,
   // kage restart and stop: a drain renewed by each ask. A turn that just ended does not hold them up: its follow-up
   // waits too. Nor does a thread open in a terminal: kage attach holds it again after the restart.
   end: (key, cut) => stopThread(key, cut), kagelet: (action, name) => kag.manager.manage({ action, name }, Date.now()),

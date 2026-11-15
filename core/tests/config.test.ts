@@ -22,6 +22,9 @@ KAGE_JOB_LANE_DEFAULT=off
 KAGE_TRIPWIRES_MAX_POSTS=30
 KAGE_TRIPWIRES_CATCH_UP_MAX=500
 KAGE_TRIPWIRES_SEEN_MAX=300
+KAGE_TRIPWIRES_HOOK_PORT=3198
+KAGE_TRIPWIRES_HOOK_HOST=127.0.0.2
+KAGE_TRIPWIRES_HOOK_PER_HOUR=30
 KAGE_TEAMMATES=UTEST0001,UTEST0002
 KAGE_TRUSTED_APPS=ATEST0001:UTEST0001:UTEST0003,ATEST0002:ATEST0001,ATEST0009
 KAGE_MAX_KAGELETS=7
@@ -210,6 +213,8 @@ describe('what the hub needs to run', () => {
     assert.match(bad({ connectors: { whatsapp: { memory: "/tmp/x'y" } } }), /whatsapp\.memory/)
     for (const [k, port] of [['voice', 0], ['github', 70000], ['voice', 80], ['meeting', 1023], ['meeting', -1], ['browser', 8791.5]] as const) assert.match(bad({ connectors: { [k]: { port } } }), new RegExp(`connectors\\.${k}\\.port`), k)
     assert.match(bad({ connectors: { whatsapp: { hookPort: 99999 } } }), /whatsapp\.hookPort/)
+    assert.match(bad({ tripwires: { hookPort: 80 } }), /tripwires\.hookPort/)
+    assert.equal(bad({ tripwires: { hookPort: 0 } }), undefined)
     assert.ok(!('error' in checkSettings({ version: 1, harness: { memory: '~/mem dir' }, connectors: { voice: { port: 8790 } } } as Config, secrets)))
   })
   test('a wrong people entry is refused by the schema, and an agent owner who is not a person or an agent too', () => {
@@ -233,10 +238,10 @@ describe('docs/settings.md', () => {
 
 describe('which keys a session may change on its own', () => {
   test('limits, models, AFK, Jev thresholds, job lanes, tripwire numbers, ports and the browser block list are safe', () => {
-    for (const k of ['kagelets.max', 'kagelets.dailyUsd', 'kagelets.totalDailyUsd', 'kagelets.chainUsd', 'afk.on', 'afk.model', 'harness.jobModel', 'harness.jobFreshEvery', 'harness.jobCarry', 'harness.jobCarryChars', 'harness.jobLaneDefault', 'jev.threshold', 'jev.model', 'tripwires.timeoutSec', 'tripwires.maxKb', 'tripwires.failPing', 'tripwires.patternMax', 'tripwires.lineMax', 'tripwires.maxPosts', 'tripwires.catchUpMax', 'tripwires.seenMax', 'connectors.voice.port', 'connectors.voice.max', 'connectors.github.perHour', 'connectors.browser.port', 'connectors.whatsapp.model', 'connectors.whatsapp.hookPort']) assert.equal(settingTier(k), 'safe', k)
+    for (const k of ['kagelets.max', 'kagelets.dailyUsd', 'kagelets.totalDailyUsd', 'kagelets.chainUsd', 'afk.on', 'afk.model', 'harness.jobModel', 'harness.jobFreshEvery', 'harness.jobCarry', 'harness.jobCarryChars', 'harness.jobLaneDefault', 'jev.threshold', 'jev.model', 'tripwires.timeoutSec', 'tripwires.maxKb', 'tripwires.failPing', 'tripwires.patternMax', 'tripwires.lineMax', 'tripwires.maxPosts', 'tripwires.catchUpMax', 'tripwires.seenMax', 'tripwires.hookPerHour', 'connectors.voice.port', 'connectors.voice.max', 'connectors.github.perHour', 'connectors.browser.port', 'connectors.whatsapp.model', 'connectors.whatsapp.hookPort']) assert.equal(settingTier(k), 'safe', k)
   })
   test('anything that grants power needs the owner: people, a command, a connector on, harness, and any key not listed', () => {
-    for (const k of ['people.teammates', 'people.agents', 'connectors.call.command', 'kagelets.dbRead.command', 'kagelets.dbRead.maxRows', 'connectors.commands', 'connectors.email.on', 'connectors.voice.on', 'connectors.whatsapp.on', 'connectors.whatsapp.hookHost', 'harness.maxSessions', 'harness.route', 'harness.cwd', 'autoUpdate', 'name', 'connectors.email.address', 'jev.agents', 'connectors.browser.block', 'sharedTools', 'tripwires.on', 'tripwires.env']) assert.equal(settingTier(k), 'power', k)
+    for (const k of ['people.teammates', 'people.agents', 'connectors.call.command', 'kagelets.dbRead.command', 'kagelets.dbRead.maxRows', 'connectors.commands', 'connectors.email.on', 'connectors.voice.on', 'connectors.whatsapp.on', 'connectors.whatsapp.hookHost', 'harness.maxSessions', 'harness.route', 'harness.cwd', 'autoUpdate', 'name', 'connectors.email.address', 'jev.agents', 'connectors.browser.block', 'sharedTools', 'tripwires.on', 'tripwires.env', 'tripwires.hookPort', 'tripwires.hookHost']) assert.equal(settingTier(k), 'power', k)
   })
   test('secrets, the schema version and unplaced env lines are never settable, and a prototype path is refused', () => {
     for (const k of ['secrets', 'secrets.slack.bot', 'version', 'unknown', 'unknown.KAGE_X', '__proto__.x', 'harness.__proto__.x', 'constructor.prototype.x', '']) assert.equal(settingTier(k), 'never', k)

@@ -8,6 +8,7 @@ import type { LimitCounts } from '../core/board.ts'
 import { PANEL_KEYS, type PanelAction } from '../core/kagelet-view.ts'
 import type { Dispatcher } from '../core/sessions.ts'
 import type { Reloaded } from '../core/settings.ts'
+import { isJobLane } from '../core/conversations.ts'
 import { log } from './log.ts'
 import type { FromSession, ToSession } from './protocol.ts'
 import type { scheduler } from './scheduler.ts'
@@ -146,7 +147,8 @@ export function listenForSessions(path: string, d: Dispatcher<ToSession>, o: Rep
             if (no) log('schedule refused', key, no)
           }
         } else if (m.type === 'unschedule' && key && typeof m.id === 'string') {
-          o.schedules.remove(key, m.id)
+          // A job lane only gets job runs, which read outside text: they never cancel a job (the tool's own rule, by key here).
+          if (isJobLane(key)) log('unschedule refused in a job lane', key); else o.schedules.remove(key, m.id)
         }
       }
     })

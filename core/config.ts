@@ -39,7 +39,7 @@ export const Config = z.strictObject({
   sharedTools: strings,
   afk: z.strictObject({ on: yes, model: text }).optional(),
   jev: z.strictObject({ agents: strings, threshold: money, model: text, url: text }).optional(),
-  tripwires: z.strictObject({ on: yes, timeoutSec: count, maxKb: count, failPing: count, patternMax: count, lineMax: count, maxPosts: count, catchUpMax: count, seenMax: count, env: strings }).optional(),
+  tripwires: z.strictObject({ on: yes, timeoutSec: count, maxKb: count, failPing: count, patternMax: count, lineMax: count, maxPosts: count, catchUpMax: count, seenMax: count, hookPort: count, hookHost: text, hookPerHour: count, env: strings }).optional(),
   connectors: z.strictObject({
     email: z.strictObject({ on: yes, address: text, queue: text, ownerEmail: text, region: text, teammateEmails: strings }).optional(),
     voice: z.strictObject({ on: yes, port: count, max: count, perHour: count, model: text }).optional(),
@@ -104,6 +104,7 @@ export const KEYS: Row[] = [
   R('KAGE_NAME', 'name'),
   R('KAGE_RUNTIME', 'harness.runtime'), R('KAGE_ROUTE', 'harness.route'), R('KAGE_CWD', 'harness.cwd'), R('KAGE_MEMORY', 'harness.memory'),
   R('KAGE_TRIPWIRES_MAX_POSTS', 'tripwires.maxPosts', int), R('KAGE_TRIPWIRES_CATCH_UP_MAX', 'tripwires.catchUpMax', int), R('KAGE_TRIPWIRES_SEEN_MAX', 'tripwires.seenMax', int),
+  R('KAGE_TRIPWIRES_HOOK_PORT', 'tripwires.hookPort', int), R('KAGE_TRIPWIRES_HOOK_HOST', 'tripwires.hookHost'), R('KAGE_TRIPWIRES_HOOK_PER_HOUR', 'tripwires.hookPerHour', int),
   R('KAGE_OWNER_MEMORY', 'harness.ownerMemory'), R('KAGE_MAX_SESSIONS', 'harness.maxSessions', int), R('KAGE_IDLE_MINUTES', 'harness.idleMinutes', int), R('KAGE_JOB_MODEL', 'harness.jobModel'), R('KAGE_JOB_FRESH_EVERY', 'harness.jobFreshEvery', int), R('KAGE_JOB_CARRY', 'harness.jobCarry', int), R('KAGE_JOB_CARRY_CHARS', 'harness.jobCarryChars', int), R('KAGE_JOB_LANE_DEFAULT', 'harness.jobLaneDefault', onoff),
   R('KAGE_TEAMMATES', 'people.teammates', people), R('KAGE_TRUSTED_APPS', 'people.agents', agents),
   R('KAGE_MAX_KAGELETS', 'kagelets.max', int), R('KAGE_KAGELET_DAILY_USD', 'kagelets.dailyUsd', num),
@@ -219,6 +220,8 @@ export function badValue(c: Config): string | undefined {
   const k = c.connectors
   for (const [path, v] of [['voice.port', k?.voice?.port], ['github.port', k?.github?.port], ['meeting.port', k?.meeting?.port], ['browser.port', k?.browser?.port], ['whatsapp.hookPort', k?.whatsapp?.hookPort]] as const)
     if (v != null && !(Number.isInteger(v) && v >= 1024 && v <= 65535)) return `connectors.${path} must be a port from 1024 to 65535`
+  const hook = c.tripwires?.hookPort   // 0 is off
+  if (hook && !(Number.isInteger(hook) && hook >= 1024 && hook <= 65535)) return 'tripwires.hookPort must be 0 (off) or a port from 1024 to 65535'
 }
 // What the hub needs to run: the three Slack tokens, a valid name, and the people lists as the strings the Slack
 // connector takes ("<app>:<owner>:<tag>"). The schema already refused a wrong list entry, so nothing else is checked here.
@@ -233,7 +236,7 @@ export function checkSettings(c: Config, s: Secrets): { name: string; teammates:
 
 // What a session may change through set_setting. safe: applies at once. power: grants reach or runs code, so the owner says yes
 // on a card first. never: not settable that way. A key not listed is power, so a new key starts closed.
-const SAFE = [/^kagelets\.(max|dailyUsd|totalDailyUsd|chainUsd)$/, /^afk\.(on|model)$/, /^harness\.(jobModel|jobFreshEvery|jobCarry|jobCarryChars|jobLaneDefault)$/, /^jev\.(threshold|model)$/, /^tripwires\.(timeoutSec|maxKb|failPing|patternMax|lineMax|maxPosts|catchUpMax|seenMax)$/,
+const SAFE = [/^kagelets\.(max|dailyUsd|totalDailyUsd|chainUsd)$/, /^afk\.(on|model)$/, /^harness\.(jobModel|jobFreshEvery|jobCarry|jobCarryChars|jobLaneDefault)$/, /^jev\.(threshold|model)$/, /^tripwires\.(timeoutSec|maxKb|failPing|patternMax|lineMax|maxPosts|catchUpMax|seenMax|hookPerHour)$/,
   /^connectors\.(voice|github|meeting|browser|whatsapp)\.(port|max|perHour|hookPort)$/, /^connectors\.whatsapp\.model$/]
 export function settingTier(key: string): 'safe' | 'power' | 'never' {
   const parts = key.split('.')

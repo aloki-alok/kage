@@ -1,5 +1,6 @@
 import { describe, test } from 'node:test'
 import assert from 'node:assert/strict'
+import { createHash } from 'node:crypto'
 import { existsSync, mkdtempSync, readFileSync, symlinkSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -57,7 +58,7 @@ function fakeSlack() {
   return { calls, posts, bot: client('bot'), user: client('owner') }
 }
 
-function setup(o: { settings?: { set(key: string, value: unknown): void }; hubDown?: boolean; dir?: string; kagelet?: string; dreaming?: string; dbRead?: { command: () => string | undefined; maxRows: number; timeoutMs?: number }; approve?: (tool: string, description: string, input: Record<string, unknown>) => Promise<boolean>; browser?: { call(op: string, args: Record<string, unknown>): Promise<unknown>; block: string[] }; meetbot?: { join(link: string): string } } = {}) {
+function setup(o: { noHook?: boolean; settings?: { set(key: string, value: unknown): void }; hubDown?: boolean; dir?: string; kagelet?: string; dreaming?: string; dbRead?: { command: () => string | undefined; maxRows: number; timeoutMs?: number }; approve?: (tool: string, description: string, input: Record<string, unknown>) => Promise<boolean>; browser?: { call(op: string, args: Record<string, unknown>): Promise<unknown>; block: string[] }; meetbot?: { join(link: string): string } } = {}) {
   const slack = fakeSlack()
   const dir = o.dir ?? mkdtempSync(join(tmpdir(), 'kage-tools-'))
   const ledgers = openLedgers(dir)
@@ -73,6 +74,7 @@ function setup(o: { settings?: { set(key: string, value: unknown): void }; hubDo
       remove: id => { jobs.splice(jobs.findIndex(j => j.id === id), 1) },
       list: () => jobs,
       tune: (id, t) => { tuned.push([id, t]) },
+      hookUrl: id => o.noHook ? undefined : `http://127.0.0.1:3198/hook/${id}`,
     },
     afk: async c => { out.push(`afk ${JSON.stringify(c)}`); return 'AFK on' },
     kagelet: o.kagelet, dreaming: o.dreaming, settings: o.settings, kageletMemory: { propose: (name: string, a: unknown, thread: string) => { out.push(`propose ${name} ${thread} ${JSON.stringify(a)}`); return 'proposed' }, decide: (d: unknown) => { out.push(`decide ${JSON.stringify(d)}`); return 'decided' }, open: () => 'open ones', notes: () => [] } as any, dbRead: o.dbRead, approve: o.approve, browser: o.browser, meetbot: o.meetbot, event: (kind, detail) => { events.push(`${kind} ${detail}`) },
@@ -180,8 +182,8 @@ describe("a session's Kage tools", () => {
     assert.deepEqual(liveCronJobs([{ timestamp: new Date().toISOString(), text: r.text }], 0, Date.now()), [])
     assert.deepEqual(s.jobs.map(j => [j.cron, j.prompt, j.recurring]), [['*/15 * * * *', 'check the queue', true]])
     assert.match((await s.call('schedules', {})).text, /check the queue/)
-    assert.equal((await s.call('unschedule', { id: 'ffffffff' })).isError, true)    // not this thread's
-    assert.equal((await s.call('unschedule', { id: s.jobs[0].id })).isError, undefined)
+    assert.equal((await s.call('unschedule', { channel: 'C1', thread_ts: '5.5', id: 'ffffffff' })).isError, true)    // not this thread's
+    assert.equal((await s.call('unschedule', { channel: 'C1', thread_ts: '5.5', id: s.jobs[0].id })).isError, undefined)
     assert.deepEqual(s.jobs, [])
   })
   test('a probe schedule from the owner is stored at once; a teammate\'s waits for one card that shows the command, and none without a card', async () => {
@@ -243,6 +245,73 @@ describe("a session's Kage tools", () => {
       assert.deepEqual(run.tuned, [], name)
     }
     assert.equal(cards.length, 1)                                    // no new card for a refused run
+  })
+  test('a channel job is stored with a channel trigger and no clock, and bots wake it unless asked otherwise', async () => {
+    const s = setup({ approve: async () => true })
+    s.t.onTask(s.task({ fromOwner: true }))
+    const r = await s.call('schedule', { on_channel: { channel: 'C0TEST9', match: '^disk' }, prompt: 'look at the alert' })
+    assert.match(r.text, /^Kage schedule [0-9a-f]{8} set, wakes on a post in channel C0TEST9/)
+    assert.deepEqual(s.jobs.map(j => [j.cron, j.trigger]), [['@event', { kind: 'channel', channel: 'C0TEST9', match: '^disk', bots: true }]])
+    await s.call('schedule', { on_channel: { channel: 'C0TEST9', bots: false }, prompt: 'people only' })
+    assert.deepEqual(s.jobs[1].trigger, { kind: 'channel', channel: 'C0TEST9', bots: false })
+  })
+  test('a hook job keeps only the token hash, and shows the URL and the token once', async () => {
+    const s = setup({ approve: async () => true })
+    s.t.onTask(s.task({ fromOwner: true }))
+    const r = await s.call('schedule', { hook: true, prompt: 'look at the call' })
+    const token = /Token: (\S+)/.exec(r.text)![1]!
+    assert.match(r.text, new RegExp(`URL: http://127\\.0\\.0\\.1:3198/hook/${s.jobs[0].id}`))
+    assert.deepEqual(s.jobs[0].trigger, { kind: 'hook', tokenHash: createHash('sha256').update(token).digest('hex') })
+    assert.equal(JSON.stringify(s.jobs).includes(token), false)
+    assert.equal(JSON.stringify((await s.call('schedules', {})).text).includes(token), false)
+  })
+  test('a hook is refused while the webhook is off, and a job needs exactly one of cron, channel or hook', async () => {
+    const off = setup({ noHook: true, approve: async () => true })
+    off.t.onTask(off.task({ fromOwner: true }))
+    assert.match((await off.call('schedule', { hook: true, prompt: 'x' })).text, /tripwires\.hookPort/)
+    const s = setup({ approve: async () => true })
+    s.t.onTask(s.task({ fromOwner: true }))
+    assert.equal((await s.call('schedule', { prompt: 'x' })).isError, true)
+    assert.equal((await s.call('schedule', { cron: '*/5 * * * *', hook: true, prompt: 'x' })).isError, true)
+    assert.equal((await s.call('schedule', { on_channel: { channel: 'C0TEST9' }, hook: true, prompt: 'x' })).isError, true)
+    assert.deepEqual(s.jobs, [])
+    const pane = setup()   // no card possible (a tmux pane): neither a hook nor a channel watch
+    pane.t.onTask(pane.task({ fromOwner: true }))
+    assert.equal((await pane.call('schedule', { on_channel: { channel: 'C0TEST9' }, prompt: 'x' })).isError, true)
+    assert.equal((await pane.call('schedule', { hook: true, prompt: 'x' })).isError, true)
+  })
+  test("a job's own run may not cancel a probe, channel or hook job: it reports instead, and any other task still can", async () => {
+    const triggers = { p1: { kind: 'probe', probe: { command: 'x' } }, c1: { kind: 'channel', channel: 'C0TEST9', bots: true }, h1: { kind: 'hook', tokenHash: 'h' } }
+    for (const [id, trigger] of Object.entries(triggers)) {
+      const run = setup()
+      run.jobs.push({ id, key: 'C1:5.5', cron: '*/5 * * * *', prompt: 'p', recurring: true, trigger })
+      run.t.onTask({ ...run.task({ fromOwner: true }), scheduled: true, job: id })
+      const r = await run.call('unschedule', { channel: 'C1', thread_ts: '5.5', id })
+      assert.equal(r.isError, true, id)
+      assert.match(r.text, /Put the change you suggest in your report/)
+      assert.equal(run.jobs.length, 1, id)
+      const person = setup()
+      person.jobs.push({ id, key: 'C1:5.5', cron: '*/5 * * * *', prompt: 'p', recurring: true, trigger })
+      person.t.onTask(person.task({ fromOwner: true }))
+      assert.equal((await person.call('unschedule', { channel: 'C1', thread_ts: '5.5', id })).isError, undefined)
+      assert.deepEqual(person.jobs, [])
+    }
+  })
+  test("a job run is refused unschedule and tune_job whatever channel and thread_ts it passes, and an owner task after it in the same session is allowed", async () => {
+    const s = setup({ approve: async () => true })
+    s.jobs.push({ id: 'c1', key: 'C1:5.5', cron: '@event', prompt: 'p', recurring: true, trigger: { kind: 'channel', channel: 'C0TEST9', bots: true } })
+    s.t.onTask({ ...s.task({ fromOwner: false }), scheduled: true, job: 'c1' })
+    for (const where of [{ channel: 'C1', thread_ts: '5.5' }, { channel: 'CMADEUP', thread_ts: '1.1' }]) {
+      for (const [tool, extra] of [['unschedule', {}], ['tune_job', { ignore: ['x'] }]] as const) {
+        const r = await s.call(tool, { ...where, id: 'c1', ...extra })
+        assert.equal(r.isError, true, `${tool} ${where.channel}`)
+        assert.match(r.text, /report/)
+      }
+    }
+    assert.equal(s.jobs.length, 1)
+    assert.deepEqual(s.tuned, [])
+    s.t.onTask(s.task({ fromOwner: true }))
+    assert.equal((await s.call('unschedule', { channel: 'C1', thread_ts: '5.5', id: 'c1' })).isError, undefined)
   })
   test('a person mention keeps its <@id> on any task, so Slack highlights it', async () => {
     const s = setup()

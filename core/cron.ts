@@ -48,6 +48,8 @@ export function nextRun(expr: string, from: Date, withinMs: number): Date | unde
 
 // The cron of a watch: it runs when someone writes in its thread (runtime/scheduler.ts heard).
 export const REPLY = '@reply'
+// The cron of a job that only an event wakes (a Slack channel post or a webhook call, see its trigger): never the clock.
+export const EVENT = '@event'
 
 export type Schedule = {
   id: string
@@ -72,7 +74,7 @@ export function dueSchedules(all: Schedule[], now: number): { fire: Schedule[]; 
   const fire: Schedule[] = [], drop: string[] = []
   for (const s of all) {
     if (s.ends && now >= s.ends) { drop.push(s.id); continue }
-    if (s.cron === REPLY) continue   // a watch runs on messages (runtime/scheduler.ts heard), never on the clock
+    if (s.cron === REPLY || s.cron === EVENT) continue   // a watch runs on messages (runtime/scheduler.ts heard), never on the clock
     let c: Cron
     try { c = parseCron(s.cron) } catch { continue }   // added through schedule(), which checks it
     if (!s.recurring) {

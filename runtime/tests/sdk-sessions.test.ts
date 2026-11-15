@@ -426,6 +426,22 @@ describe('Kage sessions on the Agent SDK', () => {
     assert.equal((await use({ command: 'ls' })).behavior, 'deny')
     assert.equal(t.posts.length, 2)
   })
+  test("a teammate's schedule with a hook waits for the owner's card, a plain schedule does not, and the yes lets one retry through", async () => {
+    const t = setup({ deferred: true })
+    t.d.task('C1:5.5', t.task({ fromOwner: false }), 0)
+    await tick()
+    const use = (input: object) => Promise.race([t.sdk.runs[0]!.options.canUseTool('mcp__kage__schedule', input, { signal: signal() }), tick(30).then(() => ({ behavior: 'held on the owner' }))])
+    assert.equal((await use({ cron: '*/5 * * * *', prompt: 'p' })).behavior, 'allow')
+    assert.equal(t.posts.length, 0)
+    const first = await use({ hook: true, prompt: 'p' })
+    assert.equal(first.behavior, 'deny')
+    assert.equal(first.interrupt, true)
+    assert.equal(t.posts.length, 1)
+    t.approvals.answer(t.idOf(t.posts[0]!), 'allow', Date.now())
+    assert.equal((await use({ hook: true, prompt: 'p' })).behavior, 'allow')
+    assert.equal((await use({ hook: true, prompt: 'p' })).behavior, 'deny')   // the yes was spent
+    assert.equal((await use({ on_channel: { channel: 'C0TEST9' }, prompt: 'p' })).interrupt, true)   // a channel watch needs the card too
+  })
   test('a stored yes is spent even when no turn is open', async () => {
     const t = setup({ deferred: true })
     t.d.task('C1:5.5', t.task(), 0)
