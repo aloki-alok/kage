@@ -21,7 +21,7 @@ Only your own terminal runs `kage set`: it refuses inside a Kage session. No ses
 | Setting | Default | Effect |
 |---|---|---|
 | `slack.app` | required | secrets.json. The `xapp-` token for Socket Mode. `kage save` writes it. |
-| `slack.user` | required | secrets.json. The `xoxp-` token. Its owner is the only person who drives Kage. |
+| `slack.user` | required | secrets.json. The `xoxp-` token. Its owner is Kage's owner: the only person with full access. Others drive Kage only with the limits below (`people`, email, voice). |
 | `slack.bot` | required | secrets.json. The `xoxb-` token Kage posts with. |
 | `name` | `kage` | The word you tag (`@kage`), the tmux session name, and the label on posts. |
 | `people.teammates` | empty | A list of Slack user ids who may also tag Kage. Use `kage add`. |
@@ -163,4 +163,4 @@ When it is on, you type `@kage <task>` in any chat to hand Kage a task. The chat
 
 ## Set by Kage itself
 
-`KAGE_CLAUDE` (the command that starts Claude Code) and `KAGE_THREAD` (a pane's session key) are set by `hub.ts` and the hub, and so are `KAGE_SSM_TOKEN` and `KAGE_SSM_SOCK` (a session's SSM relay), `KAGE_KEYS_TOKEN` and `KAGE_KEYS_SOCK` (a session's key proxy), and `KAGE_PANE_SETTINGS` (the sandbox settings a pane starts Claude Code with). Do not put them in the settings files.
+`KAGE_CLAUDE` (the command that starts Claude Code) and `KAGE_THREAD` (a pane's session key) are set by `hub.ts` and the hub, and so are `KAGE_SSM_TOKEN` and `KAGE_SSM_SOCK` (a session's SSM relay), `KAGE_KEYS_TOKEN` and `KAGE_KEYS_SOCK` (a session's key proxy), `KAGE_PANE_SETTINGS` (the sandbox settings a pane starts Claude Code with), `KAGE_MEETBOT_*` (the meeting bot's hub, token and voice agent), `KAGE_CALL_CODE` and `KAGE_CALL_REASON` (a call Kage places to the owner), `KAGE_SETUP_WAIT` and `KAGE_SLACK_API` (setup and tests). Do not put them in the settings files.

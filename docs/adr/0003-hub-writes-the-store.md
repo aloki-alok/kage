@@ -8,7 +8,7 @@ The store is one SQLite file that holds every conversation, the Claude session i
 
 ## Decision
 
-Only the hub process writes the store tables (`runtime/store.ts:3`). Sessions, panes and the CLI read, or ask the hub to write. One exception: tmux panes also write the `ledger` table in the same file (`runtime/ledger.ts:24`).
+Only the hub process writes the store tables (`runtime/store.ts`). Sessions, panes and the CLI read, or ask the hub to write. One exception: tmux panes also write the `ledger` table in the same file (`runtime/ledger.ts`).
 
 ## Consequences
 

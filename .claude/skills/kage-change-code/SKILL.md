@@ -52,6 +52,8 @@ Copy the nearest sibling before you write anything new. `CONTRIBUTING.md` has th
 8. When you replace code, delete the old path in the same PR. A migration that must stay a while gets `// compat: remove after YYYY-MM-DD`, and the test fails after that date.
 9. Never add to a debt list in `tests/structure.test.ts`. When your change fixes a listed break, remove it from the list.
 
+A new setting needs four things in one PR, and `core/tests/config.test.ts` fails without any of them: the schema key in `core/config.ts`, its env import row (`R(...)` in the same file), its row in `docs/settings.md`, and its line in the test's env fixture.
+
 Privacy and trust (each was a real leak, fixed in #193, #206, #207):
 
 10. A log line or stored row holds no content: no message text, captions, subjects, addresses or phone numbers. Log a count, a kind, or `logRef(x)` and `logKey(key)` from `runtime/log.ts`. A `place` is logged and shown, so it never holds a subject or a number either.

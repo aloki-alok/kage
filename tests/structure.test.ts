@@ -29,18 +29,11 @@ const DEBT = {
   rootImports: [] as string[],
   // A source file over MAX_LINES lines (import lines not counted), with the most it may have. Split it; lower the number as it shrinks.
   longFiles: {
-    'runtime/kage-tools.ts': 781, 'router.ts': 666, 'cli/top.ts': 607,
+    'runtime/kage-tools.ts': 781, 'router.ts': 665, 'cli/top.ts': 607,
     'runtime/sdk-sessions.ts': 334, 'core/sessions.ts': 323,
   } as Record<string, number>,
   // A core/ or runtime/ file missing from the CONTRIBUTING.md code map.
-  unmapped: [
-    'core/cli-help.ts', 'core/dream.ts', 'core/github.ts',
-    'core/kagelet-memory.ts', 'core/log-repeats.ts', 'core/meeting.ts',
-    'core/quiet.ts', 'core/retro.ts', 'core/settings.ts',
-    'core/skill-lessons.ts', 'core/socket-watch.ts', 'runtime/config-watch.ts',
-    'runtime/hold-keys.ts', 'runtime/jobs.ts', 'runtime/kagelet-memory.ts',
-    'runtime/key-proxy.ts', 'runtime/memory-snapshot.ts', 'runtime/repo-access.ts',
-  ] as string[],
+  unmapped: [] as string[],
   // A core/ export no other file needs: over-exported (drop the export) or dead (only a test uses it: delete both).
   unusedCoreExports: [
     'core/config.ts NOT_SETTINGS', 'core/config.ts toEnv',   // leave with the old env import (compat PR)

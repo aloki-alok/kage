@@ -8,7 +8,7 @@ The dream and learning jobs read the event log to find patterns. A log that held
 
 ## Decision
 
-An event row names the kind, who, the trace and chain ids, and a short detail. It holds no message text, query rows or secrets. A run's text stays in its transcript, and the row keeps only the path (`core/events.ts:2`).
+An event row names the kind, who, the trace and chain ids, and a short detail. It holds no message text, query rows or secrets. A run's text stays in its transcript, and the row keeps only the path (`core/events.ts`).
 
 ## Consequences
 

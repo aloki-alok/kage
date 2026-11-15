@@ -1,6 +1,6 @@
 # 0006. Settings in `config.json`, tokens in `secrets.json`
 
-Status: Accepted, in progress (#116)
+Status: Accepted, built (#116)
 
 ## Context
 
@@ -14,7 +14,7 @@ Settings go in `~/.config/kage/config.json`, typed by one schema. Tokens go in `
 
 - A bad key is refused with a message, and the last good config stays.
 - Agents may read and edit `config.json`, but never the tokens.
-- Until #116 merges, the env file is still the source (`config.ts`, `docs/settings.md`) and `core/guards.ts` `configRefusal` blocks non-owner tasks from the config folder.
+- The old env file is read once, to import it into `config.json` and `secrets.json` (`runtime/config-files.ts`). `core/guards.ts` `configRefusal` and `protectConfig` keep sessions out of the token files.
 - Cost: every setting read moves behind one loader, so each setting needs a small PR.
 
 ## How it is checked

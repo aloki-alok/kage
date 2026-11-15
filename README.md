@@ -3,7 +3,7 @@
   <img src="docs/brand/hero-light.png" alt="@kage cover for me, and its shadow: Kage set your status, answered 5 of 6 people, and kept 1 refund for your yes" width="100%">
 </picture>
 
-Kage is your own Claude Code, reachable from Slack. Tag `@kage` in any thread and a Claude Code session on your machine does the work and answers there, with your setup and your access. Only you can drive it.
+Kage is your own Claude Code, reachable from Slack. Tag `@kage` in any thread and a Claude Code session on your machine does the work and answers there, with your setup and your access. You choose who else may tag it: teammates and their agents get a teammate's limits, and a voice caller or a Meet gets a guest's.
 
 **Learn more in the [docs](https://aloki-alok.github.io/kage/docs/).**
 

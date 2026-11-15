@@ -8,7 +8,7 @@ A Slack server's own send tool posts as the owner with no sign of Kage. A model 
 
 ## Decision
 
-A session posts only through Kage's tools (`reply`, `message_people`). Any other Slack server's send, post, schedule or reply tool is refused (`slackSendRefusal`, `core/guards.ts:24`). Every post passes the outbound checks in `core/outbound.ts`: `secretRefusal`, `layoutRefusal` and `safeReply`, called from `runtime/kage-tools.ts:148`.
+A session posts only through Kage's tools (`reply`, `message_people`). Any other Slack server's send, post, schedule or reply tool is refused (`slackSendRefusal`, `core/guards.ts`). Every post passes the outbound checks in `core/outbound.ts`: `secretRefusal`, `layoutRefusal` and `safeReply`, called from `runtime/kage-tools.ts`.
 
 ## Consequences
 
