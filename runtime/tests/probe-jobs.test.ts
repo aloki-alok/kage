@@ -160,6 +160,7 @@ test('a probe that hangs past the timeout counts as a failure, pings after failP
   await tick(t, 3)
   assert.equal(t.pings.length, 1)                                // one ping, not one per run
   assert.deepEqual(t.tw('tick').map(e => /outcome=(\w+)/.exec(e.detail)![1]), ['failed', 'failed', 'failed'])
+  assert.ok(t.tw('tick').every(e => / why=timeout$/.test(e.detail)), 'a failed tick names why, with no output in the row')
   assert.deepEqual(t.tw('ping').map(e => e.detail), ['ping job=p1 fails=2'])
   assert.equal(t.sent.length, 0)
 })

@@ -71,7 +71,8 @@ export function probeJobs(o: {
     const live = o.store.schedules().find(x => x.id === s.id)
     if (!live || JSON.stringify(live.trigger) !== JSON.stringify(s.trigger)) return emit(s, 'tick', { job: s.id, outcome: 'discarded', ms: run.ms, kb: 0 })
     const d = decide(o.store.jobState(s.id), run, probe, { failPing: t.failPing, lineMax: t.lineMax })
-    emit(s, 'tick', { job: s.id, outcome: run.refused ? 'refused' : !run.ok ? 'failed' : d.wake ? 'changed' : 'same', ms: run.ms, kb: Math.ceil(Buffer.byteLength(run.out) / 1024) })
+    emit(s, 'tick', { job: s.id, outcome: run.refused ? 'refused' : !run.ok ? 'failed' : d.wake ? 'changed' : 'same', ms: run.ms, kb: Math.ceil(Buffer.byteLength(run.out) / 1024), ...run.why && { why: run.why } })
+    if (run.why) log('tripwire probe failed', s.id, run.why, run.err.trim().split('\n').pop() ?? '')
     if (d.wake) {
       let res: 'sent' | 'busy' | 'blocked' | 'failed' = 'failed', threw = false
       try { res = o.wake(s, wakeText(s, d.wake), now) } catch (e) { threw = true; log('tripwire wake failed', s.id, e) }
