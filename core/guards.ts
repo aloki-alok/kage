@@ -8,6 +8,13 @@ export function privateToolRefusal(tool: string, sender: string | undefined): st
   if (!PRIVATE_TOOL.test(tool) || sender === 'owner') return undefined
   return `${tool} reads the owner's private data, and this task did not come from the owner. Reply that this needs the owner, and stop.`
 }
+// Any MCP server is the owner's unless they share it: a task not from the owner gets Kage's own tools and the
+// prefixes in sharedTools (config.json), so a server added later stays closed until the owner lists it (#271).
+const OWN_TOOLS = /^mcp__(kage|plugin_kage_kage)__/
+export function mcpToolRefusal(tool: string, sender: string | undefined, shared: readonly string[] = []): string | undefined {
+  if (sender === 'owner' || !tool.startsWith('mcp__') || OWN_TOOLS.test(tool) || shared.some(p => tool.startsWith(p))) return undefined
+  return `${tool} is not among the tools the owner shares with other people's tasks (sharedTools). Reply that this needs the owner, and stop.`
+}
 // A voice call may be anyone, and its session holds the owner's memory in context, so it gets its
 // reply tool and nothing else: no shell, no files, no web (a URL can carry that context out), no
 // posting, no schedules, no other MCP tools. Its approval prompts never reach the owner either.

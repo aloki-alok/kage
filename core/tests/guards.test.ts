@@ -1,6 +1,6 @@
 import { describe, test } from 'node:test'
 import assert from 'node:assert/strict'
-import { privateToolRefusal, slackSendRefusal, voiceToolRefusal } from '../guards.ts'
+import { privateToolRefusal, slackSendRefusal, voiceToolRefusal, mcpToolRefusal } from '../guards.ts'
 
 describe('private sources on a teammate task', () => {
   const MAIL = 'mcp__claude_ai_Gmail__search_threads'
@@ -42,5 +42,21 @@ describe("Slack posts go through Kage's own tools", () => {
   })
   test('reading Slack, drafts and canvases still work, and so do Kage tools', () => {
     for (const t of ['mcp__claude_ai_Slack__slack_read_thread', 'mcp__claude_ai_Slack__slack_send_message_draft', 'mcp__claude_ai_Slack__slack_create_canvas', 'mcp__kage__reply', 'mcp__kage__message_people']) assert.equal(slackSendRefusal(t), undefined)
+  })
+})
+
+describe("MCP tools on a task not from the owner: Kage's own and the owner's shared list only (#271)", () => {
+  const shared = ['mcp__claude_ai_Claude_Docs__', 'mcp__slack__slack_read_']
+  test('a server nobody listed is refused for a teammate or an email task, and the owner uses it', () => {
+    assert.match(mcpToolRefusal('mcp__new_crm__read_deals', 'teammate', shared) ?? '', /shares/)
+    assert.match(mcpToolRefusal('mcp__new_crm__read_deals', undefined, shared) ?? '', /shares/)
+    assert.equal(mcpToolRefusal('mcp__new_crm__read_deals', 'owner', shared), undefined)
+  })
+  test("Kage's own tools, a listed prefix and the built-in tools pass", () => {
+    for (const t of ['mcp__kage__reply', 'mcp__plugin_kage_kage__reply', 'mcp__claude_ai_Claude_Docs__batch', 'mcp__slack__slack_read_thread', 'Read', 'Bash'])
+      assert.equal(mcpToolRefusal(t, 'teammate', shared), undefined, t)
+  })
+  test('a listed prefix covers only what it names', () => {
+    assert.match(mcpToolRefusal('mcp__slack__slack_send_message', 'teammate', shared) ?? '', /shares/)
   })
 })

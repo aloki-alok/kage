@@ -20,6 +20,7 @@ test('the tmux hook runs for every tool, so file reads and the shell reach the s
 test('with no sender file the hook still checks, as for a teammate: the token file stays closed', () => {
   assert.ok(denied(run('Read', { file_path: join(conf, 'secrets.json') })))
   assert.ok(denied(run('mcp__claude_ai_Gmail__search', {})))
+  assert.ok(denied(run('mcp__new_crm__read_deals', {})), 'an MCP server nobody shared')
 })
 
 test("the hook reads the sender file: config.json is closed to others and open to the owner's own pane", () => {
