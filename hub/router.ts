@@ -21,10 +21,9 @@ import { connectBrowser } from '../connectors/browser.ts'
 import { blockList, unreadableBlocks } from '../core/browser.ts'
 import { memoryDirs } from '../core/guards.ts'
 import { protectConfig } from '../runtime/path-guards.ts'
-import { limitLine, pauseLine, stopLine } from '../core/board.ts'
+import { stopLine } from '../core/board.ts'
 import { placeFor, sessionKey, type Conversation, type Lane } from '../core/conversations.ts'
 import { mayStop, senderOf } from '../core/gate.ts'
-import { openWaiting } from '../core/ledgers.ts'
 import { Dispatcher, mixRunners } from '../core/sessions.ts'
 import { readSettings, setKey, sweepImported } from '../runtime/config-files.ts'
 import { configWatcher } from '../runtime/config-watch.ts'
@@ -39,7 +38,6 @@ import { answerDeferred, deferredApprovals } from '../runtime/deferred-approvals
 import { limitPause } from '../runtime/limit-pause.ts'
 import { ssmRelay } from '../runtime/ssm-relay.ts'
 import { keyProxy } from '../runtime/key-proxy.ts'
-import { ssmEligible } from '../core/ssm.ts'
 import { askSocket } from '../runtime/hub-client.ts'
 import { listenForSessions, restoreHolds, routeReply } from '../runtime/session-link.ts'
 import { openStore, type Inbox } from '../runtime/store.ts'
@@ -47,17 +45,12 @@ import { costRecorder, openLedgers, runEvents } from '../runtime/ledger.ts'
 import { EVENT_DAYS } from '../core/events.ts'
 import { claudeProject, tmuxPanes } from '../runtime/tmux-panes.ts'
 import { clearUpdatedFrom, updatedNote } from '../runtime/auto-update.ts'
-import { kageletMemory } from '../runtime/kagelet-memory.ts'
-import { costCap } from '../runtime/kagelet-cost-cap.ts'
-import { kageletsDir, readKagelets } from '../runtime/kagelet-files.ts'
-import { kageletManager, readCommand } from '../runtime/kagelet-manager.ts'
-import { kageletDeliver, ownerNotes } from '../runtime/kagelet-notes.ts'
-import { kageletRoutes } from '../runtime/kagelet-routes.ts'
-import { syncKagelets } from '../runtime/kagelet-sync.ts'
-import { budgetLeft, COST_FLAG, costFlags, kageletRows } from '../core/kagelets.ts'
-import { chainCap, dailyCap, totalCap } from '../core/kagelet-view.ts'
+import { readCommand } from '../runtime/kagelet-manager.ts'
+import { kageletDeliver } from '../runtime/kagelet-notes.ts'
 import { hubLock } from '../runtime/hub-lock.ts'
 import { rotate } from '../runtime/hub-log.ts'
+import { hubKagelets } from './kagelets.ts'
+import { ownerCommands } from './owner-commands.ts'
 import { startConnectors } from './connectors.ts'
 import { hubUpdates } from './updates.ts'
 import { ownerDigests } from './owner-digests.ts'
@@ -193,8 +186,8 @@ const slack = await connectSlack({
   hub: { deliver, stop: (c, cut, by) => {
       const key = sessionKey(c, { lane: 'main' })
       return mayStop(by, slack.ids.owner, starters, key) ? stopThread(key, cut) : 'Only the owner, or the teammate whose task started this thread, can stop it.'
-    }, verdict: (id, behavior) => d.verdict(id, { type: 'verdict', request_id: id, behavior }) || answerCard(id, behavior), status, heard: m => schedules.heard(m),
-    posted: () => ledgers.text('posted'), ownerWrote: (chat, thread, text) => { for (const k of notes.wrote(grants.keys(), chat, thread, text)) runs.emit(k, 'owner-note', `${text.length} characters`) }, ...inbox },
+    }, verdict: (id, behavior) => d.verdict(id, { type: 'verdict', request_id: id, behavior }) || answerCard(id, behavior), status: () => commands.status(), heard: m => schedules.heard(m),
+    posted: () => ledgers.text('posted'), ownerWrote: (chat, thread, text) => { for (const k of kag.notes.wrote(kag.lanes(), chat, thread, text)) runs.emit(k, 'owner-note', `${text.length} characters`) }, ...inbox },
   // AFK mode is on unless afk.on is false. Its stand-in reads the owner's memory, read only.
   jev: jev && !('error' in jev) ? jevCheck(jev) : undefined,
   triage: jev && !('error' in jev) ? jevTriage(jev, (who, detail) => runs.emit(who, 'triage', detail)) : undefined,
@@ -249,42 +242,10 @@ const sdkLib = harness.runtime === 'tmux' ? undefined : await (async () => ({
   console.error(`Agent SDK not usable (${e.message}), so threads open as tmux panes. Run npm ci, then restart.`)
   return undefined
 })
-// Kagelets (#57): one file each in the kagelets folder, synced at start and each minute. Each runs on its
-// schedule in a side lane of its thread, at teammate trust, with only its grant, and approves nothing.
-let grants = new Map<string, string[]>()
-let models = new Map<string, string>()   // lane key -> the model its file names
-const KAGELETS = kageletsDir(DIR)
-// Each kagelet's own memory and the dream's proposals waiting on Kage (#98). It never reads or writes MEM.
-const kmem = kageletMemory({ dir: KAGELETS, forbid: () => [MEM.own, MEM.owner], event: e => ledgers.event(e), waiting: cells => ledgers.add('waiting', cells) })
-const MAX_KAGELETS = kl.max || 10
-// Off unless set (#96); a value that does not read as dollars is said once, here.
-const CAPS = { each: dailyCap(kl), total: totalCap(kl), chain: chainCap(kl) }
-// Only the SDK runner enforces a grant, so with tmux panes no kagelet runs: their schedules are removed.
-// A kagelet over its daily cost cap is paused and flagged first, so this sync already drops its schedule.
-const kagelets = (now: number) => {
-  let files = readKagelets(KAGELETS)
-  if (!sdk && files.length) { if (!kageletsRefused) log('kagelets need the Agent SDK runner (harness.runtime is not tmux), so none runs'); kageletsRefused = true; files = [] }
-  const ran = ledgers.text('runs'), costs = ledgers.text('costs')
-  const rows = kageletRows(files, { runs: ran, costs, now })
-  // Cost monitoring (#96): one line per kagelet a day in the reports ledger, where Kage reads it, and the event log. No DM.
-  for (const f of costFlags(rows, { runs: ran, costs, reports: ledgers.text('reports') }, now)) { ledgers.add('reports', [`${COST_FLAG}${f.name}`, f.line, '']); log(`kagelet cost flag: ${f.line}`) }
-  if (costCap({ dir: KAGELETS, store, title: Title, tell: text => void slack.notifyOwner(text), flag: (name, why) => {
-    const r = rows.find(x => x.name === name)!
-    ledgers.add('reports', [name, why, 'the owner to resume it, or a higher cap'])
-    runs.emit(r.key!, 'cap-pause', why)
-    ledgers.add('waiting', ['open', r.key!.split('#')[0]!, r.link ?? '', `kagelet ${name} ${why}`])
-    log(`kagelet ${name} ${why}`)
-  } }, rows, CAPS, now).length) files = readKagelets(KAGELETS)
-  grants = syncKagelets(files, store, now, log, MAX_KAGELETS, name => kmem.notes(name))
-  models = new Map(rows.filter(r => r.key && r.model && grants.has(r.key)).map(r => [r.key!, r.model!]))
-}
-// The manager's side, for Kage's owner sessions (runtime/kage-tools.ts), and the owner's notes to a kagelet.
-const manager = kageletManager({ dir: KAGELETS, max: MAX_KAGELETS, ledgers, sync: kagelets, runNow: (id, now) => schedules.runNow(id, now), store, envCommand: kl.dbRead?.command ?? undefined, log })
-const notes = ownerNotes(store)
-// Chains and kagelet messages (#93): the hub hands one kagelet's output or message to another, with no Kage turn.
-const routes = kageletRoutes({ dir: KAGELETS, store, ledgers, runs, deliver: (key, task) => toSession(key, task),
-  idle: key => !isClosed(key) && d.ready(key) === 'ready' && d.startsNow(key, Date.now()), paused: now => limits.paused(now)?.until, capUsd: CAPS.each, chainUsd: CAPS.chain, log, memory: name => kmem.notes(name) })
-let kageletsRefused = false
+// Kagelets (#57), their memory, the manager's side and the chains between them (hub/kagelets.ts).
+const kag = hubKagelets({ dir: DIR, kl, mem: MEM, store, ledgers, runs, title: Title, notify: text => void slack.notifyOwner(text), hasSdk: () => !!sdk,
+  runNow: (id, now) => schedules.runNow(id, now), toSession: (key, task) => toSession(key, task),
+  idle: key => !isClosed(key) && d.ready(key) === 'ready' && d.startsNow(key, Date.now()), paused: now => limits.paused(now)?.until })
 const sdk = sdkLib ? sdkSessions({
   sdk: sdkLib.lib,
   deferred,
@@ -294,13 +255,13 @@ const sdk = sdkLib ? sdkSessions({
     schedules: { add: j => schedules.add(key, j, Date.now()), remove: id => schedules.remove(key, id), list: () => schedules.list(key) },
     afk: slack.afk?.command,
     settings: { set: (key, value) => setKey(ENV_FILE, key, value) },
-    kagelet: key.split('#side-kagelet-')[1], dreaming: key.split('#side-kdream-')[1], kageletMemory: kmem,
+    kagelet: key.split('#side-kagelet-')[1], dreaming: key.split('#side-kdream-')[1], kageletMemory: kag.kmem,
     browser: browser && { call: browser.call, block: BROWSER_BLOCK },
     meetbot: meeting && { join: meeting.join },
     dbRead: { command: () => readCommand(kl.dbRead?.command ?? undefined, store, key.split('#side-kagelet-')[1] ?? ''), maxRows: kl.dbRead?.maxRows || 200 },
-    kagelets: { list: () => manager.list(Date.now()), manage: (a, ask) => manager.manage(a, Date.now(), ask) }, approve,
+    kagelets: { list: () => kag.manager.list(Date.now()), manage: (a, ask) => kag.manager.manage(a, Date.now(), ask) }, approve,
     event: (kind, detail) => runs.emit(key, kind, detail),
-    onReport: r => routes.reported(key, r), message: (to, text) => routes.message(key, to, text),
+    onReport: r => kag.routes.reported(key, r), message: (to, text) => kag.routes.message(key, to, text),
   }),
   hasTranscript: tmux.hasTranscript,
   toHub: (key, m) => routeReply(key, m, replies),
@@ -320,18 +281,18 @@ const sdk = sdkLib ? sdkSessions({
   onStart: () => store.saveSessions(d.saved()),
   onResult: (key, total, resumed, limited) => {
     const usd = recordCost(key, total, resumed)
-    routes.ended(key, usd ?? 0, d.saved()[key] ? `${PROJECT}/${d.saved()[key]}.jsonl` : '', Date.now(), limited)
+    kag.routes.ended(key, usd ?? 0, d.saved()[key] ? `${PROJECT}/${d.saved()[key]}.jsonl` : '', Date.now(), limited)
   },
-  budgetOf: key => key.includes('#side-kagelet-') ? budgetLeft(kageletRows(readKagelets(KAGELETS), { runs: '', costs: ledgers.text('costs'), now: Date.now() }), key, CAPS) : undefined,
-  modelOf: key => key.includes('#side-kdream-') ? DEFAULT_MODEL : key.startsWith('voice:') && config.connectors?.voice?.model ? config.connectors.voice.model : models.get(key),
+  budgetOf: kag.budgetOf,
+  modelOf: key => key.includes('#side-kdream-') ? DEFAULT_MODEL : key.startsWith('voice:') && config.connectors?.voice?.model ? config.connectors.voice.model : kag.modelOf(key),
   onBlocked: blocked,
   onTurn: (key, tasks, limit, done) => limits.turn(key, tasks, limit, Date.now(), done),
   // A lane whose file is gone keeps no tools, rather than falling back to approval cards.
-  grantOf: key => grants.get(key) ?? (key.includes('#side-kagelet-') || key.includes('#side-kdream-') ? [] : undefined),
+  grantOf: kag.grantOf,
   onTool: (key, tool, refused) => runs.emit(key, refused ? 'refusal' : 'tool', refused ? `${tool}: ${refused}` : tool),
 }) : undefined
 if (sdk) mkdirSync(MEM.own, { recursive: true })
-kagelets(Date.now())
+kag.sync(Date.now())
 
 // A thread whose transcript is gone has nothing to resume, so it leaves the store. A pane that just
 // started has no transcript yet, so running panes are kept.
@@ -349,7 +310,7 @@ const d: Dispatcher<ToSession> = new Dispatcher<ToSession>(runner, {
 })
 // The usage-limit pause: a turn that ends on the limit keeps its message and replays it at the reset (runtime/limit-pause.ts).
 const limits = limitPause({
-  store, log, settle: (tasks, done) => routes.settle(tasks, done),
+  store, log, settle: (tasks, done) => kag.routes.settle(tasks, done),
   tellOwner: text => void slack.notifyOwner(text),
   end: key => d.end(key).filter(m => m.type === 'task'),
   // A tmux pane reports no turn end, so its messages are handled at delivery, as before.
@@ -369,7 +330,7 @@ restoreHolds(DIR, d)
 // Schedules live in the store and run as tasks in their thread (runtime/scheduler.ts).
 const schedules = scheduler({
   store, failed,
-  deliver: kageletDeliver(notes, toSession),
+  deliver: kageletDeliver(kag.notes, toSession),
   ready: key => d.ready(key),
   trusted: key => store.trust(key) === true,
   ran: j => ledgers.add('runs', [j.id, j.key]),
@@ -392,22 +353,6 @@ else if (existsSync(CRONS)) {
   }
 }
 
-function status(): string {
-  const s = d.status(Date.now())
-  const min = (ms: number) => `${Math.round(ms / 60_000)} min`
-  const lines = s.live.map(l => `• ${placeOf(l.key)}: ${l.state}${l.state === 'quiet' ? ` for ${min(l.quietMs)}` : ''}`)
-  const open = openWaiting(ledgers.text('waiting')).length
-  const paused = limits.paused()
-  return [
-    ...(paused ? [`*${pauseLine(paused)}*`] : []),
-    ...[limitLine(limits.counts)].filter((l): l is string => !!l),
-    `*${s.live.length} of ${MAX} sessions*${s.waiting.length ? `, ${s.waiting.length} waiting for a slot` : ''}`,
-    ...lines,
-    ...s.waiting.map(k => `• ${placeOf(k)}: waiting for a slot`),
-    ...s.held.map(k => `• ${placeOf(k)}: open in your terminal (kage attach), tasks wait`),
-    `${open} question${open === 1 ? '' : 's'} waiting on you`,
-  ].join('\n')
-}
 
 const { meeting, voice, replies, replayOf } = startConnectors({ secrets, conn, store, slack, bot, NAME, CODE, DIR, d, inbox, deliver, placeOf, failed })
 listenForCommands(slack.socket, { user, team: slack.ids.team!, commands: COMMANDS, ledgers })
@@ -424,7 +369,7 @@ function failed(m: ToSession) {
 }
 
 const digests = ownerDigests({ dir: DIR, ledgers, store, placeOf, costTracked: !!sdk, notify: t => slack.notifyOwner(t) })
-const dreaming = dreams({ dir: DIR, code: CODE, title: Title, botDm: slack.ids.botDm, mem: MEM, project: PROJECT, kagelets: KAGELETS, kmem, hasSdk: !!sdk,
+const dreaming = dreams({ dir: DIR, code: CODE, title: Title, botDm: slack.ids.botDm, mem: MEM, project: PROJECT, kagelets: kag.dir, kmem: kag.kmem, hasSdk: !!sdk,
   store, ledgers, placeOf, paused: () => !!limits.paused(), quiet: now => d.quietEverywhere(now), deliver, toSession })
 const updates = hubUpdates({ code: CODE, dir: DIR, ledgers, quiet: now => d.quietEverywhere(now) && !limits.paused(now), notify: t => slack.notifyOwner(t) })
 const VERSION = updates.VERSION
@@ -441,47 +386,16 @@ runJobs([
   { name: 'auto-release', every: 3_600_000, run: updates.autoRelease },
   // hub.ts rotates the log at each start; a hub that runs for weeks rotates it here.
   { name: 'hub-log', every: 3_600_000, run: () => rotate(`${DIR}/hub.log`) },
-  { name: 'kagelets', every: 60_000, run: kagelets },
+  { name: 'kagelets', every: 60_000, run: kag.sync },
   { name: 'dream', every: 10 * 60_000, run: dreaming.dream },
   { name: 'kagelet dreams', every: 10 * 60_000, run: dreaming.kageletDreams },
   { name: 'retro', every: 10 * 60_000, run: digests.weeklyRetro },
   // A kagelet message waits until its target is idle, then starts a run of its own (runtime/kagelets.ts).
-  { name: 'kagelet messages', every: 20_000, run: now => routes.pump(now) },
+  { name: 'kagelet messages', every: 20_000, run: now => kag.routes.pump(now) },
   { name: 'events', every: 3_600_000, run: now => ledgers.pruneEvents(new Date(now - EVENT_DAYS * 86_400_000).toISOString()) },
 ])
 
-// kage tell: the owner's words into a thread, typed on this machine. Same shape as a scheduled run (runtime/scheduler.ts).
-function tell(key: string, text: string): { ok: true; held?: true } | { refused: string } {
-  const c = store.conversation(key)
-  if (!c) return { refused: 'no thread with that key' }
-  // ponytail: Slack only, like schedules; email and WhatsApp tasks need their connector's own meta, add when wanted.
-  if (c.conversation.connector !== 'slack') return { refused: 'tell works on Slack threads only for now' }
-  // Typed words have no inbox message to replay, so they are refused instead of lost.
-  const paused = limits.paused()
-  if (paused) return { refused: `Kage is paused by the usage limit, so it would be lost. ${pauseLine(paused)} Tell it again after that` }
-  const task: Task = {
-    type: 'task', fromOwner: true, content: `From the owner, typed in the terminal: ${text}`,
-    meta: { channel: c.conversation.chat, thread_ts: c.conversation.thread ?? '', place: c.place, permalink: '' },
-    origin: { channel: c.conversation.chat, ts: '' },
-  }
-  log('tell', c.place)
-  closedTo(key, task)   // the owner's words reopen a closed thread
-  noteTrust(key, task)
-  const r = d.task(key, task, Date.now())
-  if (r === 'failed') { failed(task); return { refused: 'could not start a session there' } }
-  return r === 'held' ? { ok: true, held: true } : { ok: true }
-}
-// kage relay allow, deny and list: which threads may use the SSM relay beyond the owner-trusted ones. deny cuts the live token too.
-function relay(action: string, key?: string): { ok: true; keys: string[] } | { refused: string } {
-  if (action !== 'list') {
-    if (!key || !ssmEligible(key) || key.includes('#')) return { refused: 'that is not a Slack thread key (lanes are not listed)' }
-    if (action === 'allow' && !store.conversation(key)) return { refused: 'no thread with that key' }
-    store.setRelayAllow(key, action === 'allow')
-    if (action === 'deny') { ssm.drop(key); keys.drop(key) }
-    log('relay', action, key)
-  }
-  return { ok: true, keys: store.relayAllowed() }
-}
+const commands = ownerCommands({ d, store, ledgers, limits, MAX, placeOf, closedTo, noteTrust, failed, dropRelay: key => { ssm.drop(key); keys.drop(key) } })
 // Changed settings (runtime/config-watch.ts): the people lists apply to the next message with no turn cut, any other key
 // restarts the hub once every session is quiet (selfUpdate below), and a wrong file is refused. kage reload runs the same check.
 const watcher = configWatcher({
@@ -490,10 +404,10 @@ const watcher = configWatcher({
   restartWanted: yes => updates.restartWanted(yes),
 })
 const reload = watcher.check
-listenForSessions(`${DIR}/router.sock`, d, { ...replies, failed, schedules, tell, relay, reload, paused: () => limits.paused(), limitCounts: () => limits.counts,
+listenForSessions(`${DIR}/router.sock`, d, { ...replies, failed, schedules, tell: commands.tell, relay: commands.relay, reload, paused: () => limits.paused(), limitCounts: () => limits.counts,
   // kage restart and stop: a drain renewed by each ask. A turn that just ended does not hold them up: its follow-up
   // waits too. Nor does a thread open in a terminal: kage attach holds it again after the restart.
-  end: (key, cut) => stopThread(key, cut), kagelet: (action, name) => manager.manage({ action, name }, Date.now()),
+  end: (key, cut) => stopThread(key, cut), kagelet: (action, name) => kag.manager.manage({ action, name }, Date.now()),
   quiesce: () => { const now = Date.now(); limits.drain(now); return d.unquiet(now).filter(u => u.why !== 'just active' && u.why !== 'open in a terminal') }, callCode: voice?.issueCode })
 
 await slack.start()
@@ -519,7 +433,7 @@ void checkScopes({ user: secrets.slack?.user, bot: secrets.slack?.bot }).then(m 
 // Email needs no replay: SQS resends a mail until it is deleted after handling.
 store.prune(Date.now() - 7 * 86_400_000)
 // Kagelet messages the last run stored but no run read go again (runtime/kagelets.ts kageletRoutes).
-routes.replay(Date.now())
+kag.routes.replay(Date.now())
 const missed = store.unhandled(Date.now() - 10 * 60_000)
 if (missed.length) log(`replaying ${missed.length} message${missed.length === 1 ? '' : 's'} the last run heard but never handled`)
 for (const r of missed) {
