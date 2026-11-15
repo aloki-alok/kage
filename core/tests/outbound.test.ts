@@ -143,6 +143,8 @@ describe('a post from the owner account shows it is Kage at its foot', () => {
     assert.equal(kageFooter('Kage'), '🥷 Kage')
     assert.equal(kageFooter('Kage', { asked: 'Sam' }), '🥷 Kage · asked by Sam')
     assert.equal(kageFooter('Kage', { from: 'Sam' }), '🥷 Kage · from Sam')
+    assert.equal(kageFooter('Kage', { via: 'price-watch' }), '🥷 Kage · price-watch')
+    assert.equal(kageFooter('Kage', { via: 'price-watch', asked: 'Sam' }), '🥷 Kage · price-watch · asked by Sam')
   })
   test('Slack gets the text in sections and the footer as a marked context line; the plain text carries the footer too', () => {
     const m = ownerPost('Kage', 'We meet at 3 pm.', { asked: 'Sam' })

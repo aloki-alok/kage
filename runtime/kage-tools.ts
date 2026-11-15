@@ -52,7 +52,8 @@ export async function postAsKage(o: { title: string; bot: WebClient; user: WebCl
 export async function postAsKage(o: { title: string; bot: WebClient; user: WebClient }, channel: string, thread_ts: string | undefined, text: string,
   signer: Signer = {}, asOwner = true): Promise<Posted | undefined> {
   try {
-    const r = await o.bot.chat.postMessage({ channel, thread_ts, text, unfurl_links: false })
+    // The bot's own name says Kage, so its post gets the footer only when it adds who: a kagelet or a teammate.
+    const r = await o.bot.chat.postMessage({ channel, thread_ts, ...signer.via || signer.asked ? ownerPost(o.title, text, signer) : { text }, unfurl_links: false })
     return { ts: r.ts!, by: 'bot' }
   } catch (e: any) {
     if (!['not_in_channel', 'channel_not_found'].includes(e?.data?.error)) throw e
@@ -151,13 +152,13 @@ export function sessionTools(o: {
     let parts = splitForSlack(safeReply(text).trim() || '(empty reply)')
     if (to.noReply) parts[parts.length - 1] += `\n${NO_REPLY}`
     if (to.tag) parts = addressed(parts, to.tag)
-    const asked = askers.get(key)?.name
+    const signer = { asked: askers.get(key)?.name, via: o.kagelet }
     let via = Title, sent: string[] = []
     for (const part of parts) {
-      const r = ack ? await postAsKage(o, channel, thread_ts, part, { asked }, false) : await postAsKage(o, channel, thread_ts, part, { asked })
+      const r = ack ? await postAsKage(o, channel, thread_ts, part, signer, false) : await postAsKage(o, channel, thread_ts, part, signer)
       if (!r) return { via: 'nobody: not posted, because the pickup reaction already says it from the owner\'s account', where: `channel ${channel}` }
       append('posted', [channel, r.ts, r.by, key])
-      if (r.by === 'owner') footers.set(`${channel}:${r.ts}`, { asked })
+      if (r.by === 'owner') footers.set(`${channel}:${r.ts}`, signer)
       sent.push(r.ts)
       if (r.by === 'owner') via = `your account (${Title} is not in this conversation)`
     }

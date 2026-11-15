@@ -108,9 +108,10 @@ export function guardVerdict(out: string): { send: boolean; reason: string } {
 // The context block's id is how the gate knows the post later (core/gate.ts quoteMessage); the plain text, which
 // notifications and other agents read, carries the same footer as an italic line.
 export const FOOTER_ID = 'kage-footer'
-export type Signer = { asked?: string; from?: string }
+// via: the kagelet that posted, so a reader can tell which job spoke.
+export type Signer = { asked?: string; from?: string; via?: string }
 export const kageFooter = (title: string, s: Signer = {}) =>
-  `🥷 ${title}${s.asked ? ` · asked by ${s.asked}` : s.from ? ` · from ${s.from}` : ''}`
+  `🥷 ${title}${s.via ? ` · ${s.via}` : ''}${s.asked ? ` · asked by ${s.asked}` : s.from ? ` · from ${s.from}` : ''}`
 
 // Slack caps a section at 3000 characters, so a longer part becomes several sections.
 export function ownerPost(title: string, text: string, s: Signer = {}) {
