@@ -10,7 +10,8 @@ import { newLines } from './transcript-tail.ts'
 import type { Delivery } from '../core/sessions.ts'
 import type { Task } from '../core/task.ts'
 import { buildProbe, probeJobs, tripwireCfg, type ProbeArg, type TripwireSettings, type TuneArg } from './probe-jobs.ts'
-import { safePattern, type Trigger } from '../core/tripwire.ts'
+import { normalize, safePattern, type Trigger } from '../core/tripwire.ts'
+import { tripwireDetail } from '../core/events.ts'
 import { pin } from './probes.ts'
 import type { Store } from './store.ts'
 
@@ -43,7 +44,8 @@ export function scheduler(o: {
   // Tripwire probe jobs (runtime/probe-jobs.ts). tripwires: the settings. event: one event row. ping: a short line to the job's thread as Kage.
   tripwires?: () => TripwireSettings
   event?: (e: { kind: 'tripwire'; who: string; trace: string; detail: string }) => void
-  ping?: (s: Schedule, text: string) => void
+  ping?: (s: Schedule, text: string) => Promise<boolean>
+  owner?: (text: string) => void
   job: { end: (key: string) => void; freshEvery: () => number; carryCount: () => number; carryChars: () => number; laneDefault: () => boolean; posted: () => string; project: string }
 }) {
   const { store } = o
@@ -90,13 +92,14 @@ export function scheduler(o: {
   // state, so the next probe run wakes it again. Its text holds outside output, so it never carries owner trust (as a watch).
   const wakeSince = new Map<string, number>()
   const probes = probeJobs({
-    store, settings: () => o.tripwires?.() ?? {}, event: e => o.event?.(e), ping: (s, text) => o.ping?.(s, text),
+    store, settings: () => o.tripwires?.() ?? {}, event: e => o.event?.(e), ping: async (s, text) => await o.ping?.(s, text) ?? false, owner: t => o.owner?.(t),
     wake(s, text, now) {
       const r = o.ready(laneOf(s))
-      if (r === 'blocked' || (r === 'busy' && now - (wakeSince.get(s.id) ?? wakeSince.set(s.id, now).get(s.id)!) < BUSY_WAIT)) return false
+      if (r === 'blocked') return 'blocked'
+      if (r === 'busy' && now - (wakeSince.get(s.id) ?? wakeSince.set(s.id, now).get(s.id)!) < BUSY_WAIT) return 'busy'
       wakeSince.delete(s.id)
       o.ran?.(s, now)
-      return run(s, text, false, !store.jobState(s.id).undelivered)   // one DM per job until a wake gets through
+      return run(s, text, false, !store.jobState(s.id).undelivered) ? 'sent' : 'failed'   // one DM per job until a wake gets through
     },
   })
   return {
@@ -153,7 +156,7 @@ export function scheduler(o: {
     },
     // Changes a probe job of this thread. A new command is pinned fresh, which is the owner's re-approval of a changed script.
     // A new ignore or command restarts the baseline (the fingerprint changes with them), so it wakes nothing by itself.
-    tune(from: string, id: string, t: TuneArg, now: number): string | undefined {
+    tune(from: string, id: string, t: TuneArg, now: number, by?: 'job'): string | undefined {
       const s = store.schedules().find(x => x.id === id && x.key === threadOfJobLane(from))
       if (!s) return `no probe job ${id} in this thread`
       if (s.trigger?.kind !== 'probe') return `${id} is not a probe job`
@@ -163,6 +166,9 @@ export function scheduler(o: {
       if (!nextRun(cron, new Date(now), RUNS_WITHIN)) return `${cron} never runs`
       const patternMax = tripwireCfg(o.tripwires?.() ?? {}).patternMax
       for (const r of t.ignore ?? []) { const why = safePattern(r, patternMax); if (why) return `ignore ${why}` }
+      // An ignore that would drop everything the probe shows now would silence the job.
+      const last = store.jobState(id).last
+      if (t.ignore && last && !normalize(last, t.ignore, tripwireCfg(o.tripwires?.() ?? {}).lineMax)) return 'that ignore would drop every line of the last output, which would silence the job'
       const command = t.command?.trim() ?? old.command
       if (!command) return 'the probe command is empty'
       const next = { command, ignore: t.ignore ?? old.ignore, reads: t.reads ?? old.reads, writes: t.writes ?? old.writes }
@@ -171,6 +177,12 @@ export function scheduler(o: {
       const pins = t.command === undefined ? Object.fromEntries(Object.entries(fresh).map(([p, h]) => [p, old.pins[p] ?? h])) : fresh
       store.tuneSchedule(id, cron, { kind: 'probe', probe: { ...next, pins } }, t.command !== undefined || t.ignore !== undefined)
       log('tuned', id, 'for', s.key)
+      // A job tunes itself on outside text's word: the thread and the log see every change.
+      if (by) {
+        const what = Object.keys(t).join(', ')
+        void o.ping?.(s, `Job ${id} changed its own settings: ${what}`)
+        o.event?.({ kind: 'tripwire', who: s.key, trace: '', detail: tripwireDetail('decision', { job: id, what: 'tune', why: Object.keys(t).join('+') }) })
+      }
     },
     settled: () => probes.settled(),
     remove(key: string, id: string) { if (store.removeSchedule(id, threadOfJobLane(key))) log('unscheduled', id, 'for', key) },

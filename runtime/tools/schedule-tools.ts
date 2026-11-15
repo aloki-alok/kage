@@ -61,7 +61,7 @@ export function scheduleTools(c: ToolContext): KageTool[] {
     },
   }, ...(jobs.tune ? [{
     name: 'tune_job',
-    description: 'Change a probe job of this thread: its ignore regexes, reads, writes or cron. A new command needs the same yes as a new probe. Only the owner\'s task, or the run of that job itself, may call it. A new ignore or command restarts the job\'s baseline, so it wakes nothing by itself.',
+    description: 'Change a probe job of this thread: its ignore regexes, reads, writes or cron. A new command needs the same yes as a new probe. Only the owner\'s task, or the run of that job itself, may call it. The job\'s own run may change cron and ignore only, and each such change is posted in the thread; a command, reads or writes change from it needs the owner\'s card. A new ignore or command restarts the job\'s baseline, so it wakes nothing by itself.',
     shape: {
       id: s.describe('the job id'), channel: s.describe('channel attribute from the task tag'), thread_ts: s.describe('thread_ts attribute from the task tag'),
       cron: s.optional(), command: s.optional(),
@@ -72,11 +72,14 @@ export function scheduleTools(c: ToolContext): KageTool[] {
       const own = ownerOnly(args), task = c.jobTask.get(`${String(args.channel)}:${String(args.thread_ts)}`)
       if (!own && task !== id) return { isError: true, text: `only the owner, or job ${id} itself, may tune it` }
       if (!Object.keys(change).length) return { isError: true, text: 'nothing to change: give cron, command, ignore, reads or writes' }
-      if (change.command !== undefined && !own) {
-        const why = await probeCard(`Change the command of job ${id} to ${String(change.command)}. Kage runs it on its clock, as you, with no model. Scripts it names are pinned.`, { id, command: change.command })
+      // The job's own run is steered by outside text, and a command, reads or writes change decides what runs unpinned in the hub:
+      // only the owner's task, or the owner's card, may make it. The job's own run may change cron and ignore.
+      const risky = (['command', 'reads', 'writes'] as const).filter(k => change[k] !== undefined)
+      if (risky.length && !own) {
+        const why = await probeCard(`Change job ${id}: ${risky.map(k => `${k} to ${JSON.stringify(change[k])}`).join(', ')}. Kage runs the command on its clock, as you, with no model. A path in reads or writes is not pinned, so a script listed there can change with no new yes.`, { id, ...Object.fromEntries(risky.map(k => [k, change[k]])) })
         if (why) return { isError: true, text: why }
       }
-      const no = jobs.tune!(id, change)
+      const no = jobs.tune!(id, change, own ? undefined : 'job')
       return no ? { isError: true, text: no } : { text: `tuned ${id}` }
     },
   } as KageTool] : []), {

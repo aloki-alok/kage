@@ -19,9 +19,9 @@ function setup(o: { tripwires?: Record<string, unknown>; store?: ReturnType<type
   const store = o.store ?? openStore(':memory:')
   store.seen(KEY, { connector: 'slack', chat: 'C1', thread: '5.5', kind: 'channel' }, '#ops', 0)
   const sent: [string, Task][] = [], events: { kind: string; who: string; detail: string }[] = [], pings: string[] = [], failed: Task[] = []
-  const ran: string[] = [], busy = new Set<string>()
+  const ran: string[] = [], busy = new Set<string>(), blocked = new Set<string>(), dms: string[] = []
   const conf = { on: true, timeoutSec: 5, failPing: 3, ...o.tripwires }
-  const state = { delivery: 'sent' as Delivery | 'throw', seenState: [] as (string | undefined)[] }
+  const state = { pingOk: true, delivery: 'sent' as Delivery | 'throw', seenState: [] as (string | undefined)[] }
   const make = () => scheduler({
     job: { end: () => {}, freshEvery: () => 0, carryCount: () => 0, carryChars: () => 0, laneDefault: () => true, posted: () => '', project: dir },
     store, failed: t => failed.push(t), ran: j => ran.push(j.id),
@@ -31,14 +31,14 @@ function setup(o: { tripwires?: Record<string, unknown>; store?: ReturnType<type
       if (state.delivery === 'sent') sent.push([key, task])
       return state.delivery
     },
-    ready: key => busy.has(key) ? 'busy' : 'ready',
+    ready: key => blocked.has(key) ? 'blocked' : busy.has(key) ? 'busy' : 'ready',
     trusted: () => true,
-    tripwires: () => conf, event: e => events.push(e), ping: (s, text) => pings.push(`${s.id}: ${text}`),
+    tripwires: () => conf, event: e => events.push(e), ping: async (s, text) => { if (!state.pingOk) return false; pings.push(`${s.id}: ${text}`); return true }, owner: text => dms.push(text),
   })
   const data = join(dir, 'data.txt'), script = join(dir, 'probe.sh')
   writeFileSync(data, 'one\n'); writeFileSync(script, `cat ${data}\n`)
   const tw = (action: string) => events.filter(e => e.kind === 'tripwire' && e.detail.startsWith(`${action} `))
-  return { dir, store, s: make(), make, sent, events, pings, failed, ran, busy, conf, state, tw, data, script, command: `sh ${script}` }
+  return { dir, store, s: make(), make, sent, events, pings, dms, failed, ran, busy, blocked, conf, state, tw, data, script, command: `sh ${script}` }
 }
 type T = ReturnType<typeof setup>
 const add = (t: T, probe: Record<string, unknown> = { command: t.command }, extra: Record<string, unknown> = {}) =>
@@ -239,4 +239,67 @@ test('a wake that cannot be delivered DMs once per job, writes a row per attempt
   const again = t.make()                                                    // a restart keeps the flag in the saved state
   again.tick(minute(7)); await again.settled()
   assert.equal(t.failed.length, 2)
+})
+
+test('a ping that fails to post is kept in the job state and retried each tick; the owner is told once when it keeps failing', async () => {
+  const t = setup({ tripwires: { timeoutSec: 1, failPing: 2 } })
+  assert.equal(add(t, { command: 'exit 1' }), undefined)
+  t.state.pingOk = false
+  await tick(t, 1); await tick(t, 2)                     // the second failure makes the ping
+  assert.equal(t.pings.length, 0)
+  assert.match(t.store.jobState('p1').pending?.text ?? '', /failed 2 times/)
+  await tick(t, 3); await tick(t, 4)
+  assert.deepEqual(t.dms.length, 1)                       // the thread post keeps failing: one DM, not one per tick
+  t.state.pingOk = true
+  await tick(t, 5)
+  assert.equal(t.pings.length, 1)
+  assert.equal(t.store.jobState('p1').pending, undefined)
+  await tick(t, 6)
+  assert.equal(t.pings.length, 1)
+  assert.equal(t.tw('ping').filter(e => /fails=2/.test(e.detail)).length, 1)
+})
+
+test('a check that throws, and one whose job was tuned while it ran, each leave a tick row', async () => {
+  const t = setup()
+  await baseline(t)
+  writeFileSync(t.data, 'two\n')
+  const save = t.store.setJobState
+  t.store.setJobState = () => { throw new Error('crash') }
+  await tick(t, 2)
+  t.store.setJobState = save
+  assert.match(t.tw('tick').at(-1)!.detail, /outcome=error/)
+  const slow = setup()
+  assert.equal(add(slow, { command: 'sleep 1' }), undefined)
+  slow.s.tick(minute(1))
+  assert.equal(slow.s.tune(KEY, 'p1', { ignore: ['^x'] }, minute(1)), undefined)   // the trigger changes mid-run
+  await slow.s.settled()
+  assert.match(slow.tw('tick').at(-1)!.detail, /outcome=discarded/)
+})
+
+test('a blocked lane tells the owner once after failPing ticks in a row, and each tick leaves a row', async () => {
+  const t = setup({ tripwires: { failPing: 2 } })
+  await baseline(t)
+  writeFileSync(t.data, 'two\n')
+  t.blocked.add(`${KEY}#side-job-p1`)
+  await tick(t, 2); assert.equal(t.dms.length, 0)
+  await tick(t, 3); await tick(t, 4)
+  assert.equal(t.dms.length, 1)
+  assert.equal(t.tw('wake').filter(e => /reason=blocked/.test(e.detail)).length, 3)
+  assert.equal(t.store.jobState('p1').undelivered, true)    // the flag a failed delivery uses, so one DM covers both
+  t.blocked.clear()
+  await tick(t, 5)
+  assert.equal(t.sent.length, 1)
+  assert.deepEqual([t.store.jobState('p1').undelivered, t.store.jobState('p1').blocked], [undefined, undefined])
+})
+
+test('tune: a job tuning itself posts one line and writes a decision row; an ignore that drops all the output is refused', async () => {
+  const t = setup()
+  await baseline(t)
+  assert.equal(t.s.tune(KEY, 'p1', { cron: '*/5 * * * *' }, minute(2)), undefined)
+  assert.equal(t.pings.length, 0)                                   // the owner's own change needs no line
+  assert.equal(t.s.tune(KEY, 'p1', { ignore: ['^o'] }, minute(2), 'job') && 'refused', 'refused')
+  assert.equal(t.s.tune(KEY, 'p1', { ignore: ['^ts='] }, minute(2), 'job'), undefined)
+  await t.s.settled()
+  assert.deepEqual(t.pings.map(p => p.replace(/^p1: /, '')), ['Job p1 changed its own settings: ignore'])
+  assert.ok(t.tw('decision').some(e => e.detail === 'decision job=p1 what=tune why=ignore'))
 })

@@ -63,7 +63,7 @@ function setup(o: { settings?: { set(key: string, value: unknown): void }; hubDo
   const ledgers = openLedgers(dir)
   const out: string[] = []
   const jobs: any[] = []
-  const tuned: [string, unknown][] = []
+  const tuned: unknown[][] = []
   const events: string[] = []
   const routed: string[] = []
   const t = sessionTools({
@@ -72,7 +72,7 @@ function setup(o: { settings?: { set(key: string, value: unknown): void }; hubDo
       add: j => { jobs.push({ ...j, key: 'C1:5.5', created: 0, lastFired: 0 }) },
       remove: id => { jobs.splice(jobs.findIndex(j => j.id === id), 1) },
       list: () => jobs,
-      tune: (id, t) => { tuned.push([id, t]) },
+      tune: (id, t, by) => { tuned.push(by ? [id, t, by] : [id, t]) },
     },
     afk: async c => { out.push(`afk ${JSON.stringify(c)}`); return 'AFK on' },
     kagelet: o.kagelet, dreaming: o.dreaming, settings: o.settings, kageletMemory: { propose: (name: string, a: unknown, thread: string) => { out.push(`propose ${name} ${thread} ${JSON.stringify(a)}`); return 'proposed' }, decide: (d: unknown) => { out.push(`decide ${JSON.stringify(d)}`); return 'decided' }, open: () => 'open ones', notes: () => [] } as any, dbRead: o.dbRead, approve: o.approve, browser: o.browser, meetbot: o.meetbot, event: (kind, detail) => { events.push(`${kind} ${detail}`) },
@@ -224,14 +224,20 @@ describe("a session's Kage tools", () => {
     assert.deepEqual(other.tuned, [])
     const own = setup({ approve: ask })
     own.t.onTask({ ...own.task({ fromOwner: false }), scheduled: true, job: 'j1' })
+    assert.match((await own.call('tune_job', { ...base, ignore: ['^ts='], cron: '*/10 * * * *' })).text, /tuned/)
+    assert.equal(cards.length, 0)                                    // cron and ignore only: the job's own run needs no card
+    assert.deepEqual(own.tuned, [['j1', { ignore: ['^ts='], cron: '*/10 * * * *' }, 'job']])
+    // Outside text can steer a job's run, so a command, reads or writes change always needs the owner's card.
     assert.match((await own.call('tune_job', { ...base, reads: ['/tmp/a'] })).text, /tuned/)
-    assert.equal(cards.length, 0)
+    assert.match((await own.call('tune_job', { ...base, writes: ['/tmp/b'] })).text, /tuned/)
     assert.match((await own.call('tune_job', { ...base, command: 'gh issue list' })).text, /tuned/)
-    assert.equal(cards.length, 1)
-    assert.match(cards[0]!, /gh issue list/)
+    assert.equal(cards.length, 3)
+    assert.match(cards[2]!, /gh issue list/)
     const pane = setup()
     pane.t.onTask({ ...pane.task({ fromOwner: false }), scheduled: true, job: 'j1' })
     assert.equal((await pane.call('tune_job', { ...base, command: 'x' })).isError, true)    // no card: no new command
+    assert.equal((await pane.call('tune_job', { ...base, reads: ['/tmp/a'] })).isError, true)
+    assert.equal((await pane.call('tune_job', { ...base, writes: ['/tmp/a'] })).isError, true)
     assert.equal((await pane.call('tune_job', { ...base })).isError, true)                  // nothing to change
   })
   test('a person mention keeps its <@id> on any task, so Slack highlights it', async () => {

@@ -6,8 +6,10 @@ import { createHash } from 'node:crypto'
 // reads: paths the probe reads as data, whose change is the point. writes: paths the probe writes besides a redirect or tee.
 // Neither is pinned: a probe that edits its own output must not refuse itself.
 export type Probe = { command: string; pins: Record<string, string>; ignore: string[]; reads: string[]; writes: string[] }
-// undelivered: a wake failed to reach a session and the owner was told. It clears when a wake is delivered.
-export type JobState = { fp?: string; last?: string; fails: number; refused?: string; undelivered?: true }
+// undelivered: the owner was told that a wake cannot reach a session (a failed start, or a blocked lane), so one DM covers
+// both. It clears when a wake is delivered. blocked: consecutive ticks a wake found its lane blocked.
+// pending: a thread note that did not post yet (its tracked row fields f, the tries, and dm once the owner was told), retried each tick.
+export type JobState = { fp?: string; last?: string; fails: number; refused?: string; undelivered?: true; blocked?: number; pending?: { text: string; f: Record<string, string | number>; tries: number; dm?: true } }
 // What wakes a job besides its clock (ADR 0015): a probe run on the clock that wakes only on a change, a post in a
 // Slack channel, or a POST to the job's own webhook (only the token's hash is kept).
 export type Trigger =
