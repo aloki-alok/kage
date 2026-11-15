@@ -3,7 +3,7 @@
 // A voice task is a stranger (anyone may be on the call): core/gate.ts senderOf and core/guards.ts
 // voiceToolRefusal enforce it. The one exception is a call Kage placed to the owner itself: `kage call`
 // gets a one-time code (issueCode), the dialer hands it to the agent, and the first call that asks with
-// it is the owner for its whole length. Caller ID is never trusted: anyone can fake a number. The reply comes back through replies.voice in router.ts.
+// it is the owner for its whole length. Caller ID is never trusted: anyone can fake a number. The reply comes back through replies.voice in hub/router.ts.
 import { oneLine } from '../core/text.ts'
 import { randomBytes, randomUUID } from 'node:crypto'
 import { createServer, type IncomingMessage } from 'node:http'

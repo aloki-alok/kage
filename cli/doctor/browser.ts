@@ -1,4 +1,4 @@
-// Kage in Chrome (#114): the hub notes each poll of the extension in browser-seen (router.ts). Checked only when a token is set and the hub runs.
+// Kage in Chrome (#114): the hub notes each poll of the extension in browser-seen (hub/router.ts). Checked only when a token is set and the hub runs.
 import { readFileSync } from 'node:fs'
 import { chromeLine } from '../../core/doctor.ts'
 import { settings } from '../home.ts'

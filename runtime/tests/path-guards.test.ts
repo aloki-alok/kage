@@ -169,7 +169,7 @@ describe('protectConfig: what the sandbox and the file rules close', () => {
       for (const m of readFileSync(join(root, f), 'utf8').matchAll(/\$\{(?:DIR|CONF|o\.dir)\}\/([A-Za-z0-9_.*-]+)/g)) seen.add(m[1]!.replace(/\.$/, ''))
     }
     // Names under the code folder, or kept open on purpose.
-    const open = new Set(['files', 'memory', 'server.ts', 'node_modules', 'package-lock.json', 'browser-pair.sh', 'version', 'status', 'standin'])
+    const open = new Set(['files', 'memory', 'plugin/server.ts', 'node_modules', 'package-lock.json', 'browser-pair.sh', 'version', 'status', 'standin'])
     const missing = [...seen].filter(n => !covered(n) && !open.has(n))
     assert.deepEqual(missing, [], 'add these to CONFIG_NAMES in runtime/path-guards.ts, or to the open list here if a session needs to write them')
   })

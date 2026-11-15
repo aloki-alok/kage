@@ -1,4 +1,4 @@
-// The hub log and the packages, for hub.ts at start and router.ts while it runs. Node modules only: hub.ts must
+// The hub log and the packages, for hub.ts at start and hub/router.ts while it runs. Node modules only: hub.ts must
 // load even when the packages are broken.
 import { copyFileSync, statSync, truncateSync } from 'node:fs'
 import { execFileSync } from 'node:child_process'

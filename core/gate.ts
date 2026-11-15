@@ -91,7 +91,7 @@ export function quoteMessage(
   self?: { bot: string; title: string },
 ): string {
   // The owner's id without client_msg_id is an app posting with their token, not them. Kage's own
-  // fallback posts are those, marked "*Kage:*" (server.ts post).
+  // fallback posts are those, marked "*Kage:*" (plugin/server.ts post).
   const mine = self && (x.user === self.bot || (x.user === owner && !x.client_msg_id && (x.text ?? '').startsWith(`*${self.title}:*`)))
   const who = mine ? `you (${self.title})`
     : x.user !== owner ? `other:${x.user ?? 'bot'}` : x.client_msg_id ? 'owner' : 'app-as-owner'

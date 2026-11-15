@@ -23,7 +23,7 @@ export function settings(dir = join(homedir(), '.config', 'kage-meetbot')): Sett
   const read = (f: string) => { try { return JSON.parse(readFileSync(join(dir, f), 'utf8')) as Record<string, unknown> } catch { return {} } }
   const c = read('config.json'), s = read('secrets.json')
   const str = (v: unknown, d = '') => typeof v === 'string' && v.trim() ? v.trim() : d
-  // The hub passes its own address and token when it runs the bot as its child (router.ts meetbot).
+  // The hub passes its own address and token when it runs the bot as its child (hub/router.ts meetbot).
   const hub = str(process.env.KAGE_MEETBOT_HUB || c.hub).replace(/\/+$/, '')
   if (!/^https?:\/\/[^\s/]+$/.test(hub)) throw new Error(`config.json: hub must be the hub's address, like http://my-mac:8790 (got "${hub}")`)
   const token = str(process.env.KAGE_MEETBOT_TOKEN || s.meetingToken)

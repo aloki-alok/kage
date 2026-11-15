@@ -22,7 +22,7 @@ function setup() {
   const said: string[] = []
   const dms: string[] = []
   const c = closedThreads({ store, reset: k => d.reset(k), say: (_k, _t, text) => said.push(text), tellOwner: t => dms.push(t) })
-  // What router.ts deliver() does with it.
+  // What hub/router.ts deliver() does with it.
   const deliver = (key: string, t: Task) => (c.closedTo(key, t) ? 'sent' : d.task(key, t, 0))
   const mate = (text = 'list the holes'): Task => ({
     type: 'task', fromOwner: false, content: `Teammate task (UMATETEST1, sam, not the owner): ${text}`,

@@ -50,6 +50,7 @@ import { limitPause } from '../runtime/limit-pause.ts'
 import { ssmRelay } from '../runtime/ssm-relay.ts'
 import { keyProxy } from '../runtime/key-proxy.ts'
 import { ssmEligible } from '../core/ssm.ts'
+import { askSocket } from '../runtime/hub-client.ts'
 import { listenForSessions, restoreHolds, routeReply } from '../runtime/session-link.ts'
 import { openStore, type Inbox } from '../runtime/store.ts'
 import { costRecorder, openLedgers, runEvents } from '../runtime/ledger.ts'
@@ -68,7 +69,6 @@ import { kageletRoutes } from '../runtime/kagelet-routes.ts'
 import { syncKagelets } from '../runtime/kagelet-sync.ts'
 import { budgetLeft, COST_FLAG, costFlags, kageletRows } from '../core/kagelets.ts'
 import { chainCap, dailyCap, totalCap } from '../core/kagelet-view.ts'
-import { askHub } from '../cli/home.ts'
 import { hubLock } from '../runtime/hub-lock.ts'
 import { npmCi, packagesStale, rotate } from '../runtime/hub-log.ts'
 import { closedThreads } from '../runtime/closed-threads.ts'
@@ -82,7 +82,7 @@ const CODE = dirname(dirname(fileURLToPath(import.meta.url)))   // the repo root
 // One hub per machine, checked before the store and Slack: two hubs on one Slack app split its events. A hub
 // that answers on the socket in 2 s is running, so this one exits 0 and its supervisor leaves it down. A bare
 // connect is not enough, because a hung hub still takes connects.
-if (await askHub({ type: 'board' }, 2000).then(() => true, () => false)) {
+if (await askSocket(`${DIR}/router.sock`, { type: 'board' }, 2000).then(() => true, () => false)) {
   log('another hub is running and answers on its socket, so this one exits')
   process.exit(0)
 }

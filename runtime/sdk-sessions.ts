@@ -148,7 +148,7 @@ export function sdkSessions(o: {
           : o.deferred?.take(key, name, input, Date.now()) ? Promise.resolve({ behavior: 'allow' as const, updatedInput: input })
           : o.deferred && s.turn.length ? defer(key, s, name, x.title ?? x.description ?? '', input)
           : ask(key, s, name, x.title ?? x.description ?? '', input, x.signal),
-        // The same rules as private-data-guard.ts, in-process. A failed check blocks the call.
+        // The same rules as plugin/private-data-guard.ts, in-process. A failed check blocks the call.
         hooks: {
           PreToolUse: [{
             onFailure: 'block',
@@ -263,7 +263,7 @@ export function sdkSessions(o: {
   }
 
   // The owner's card without the session waiting: the call is refused with an interrupt, so the turn ends and the
-  // slot frees. The owner's yes (router.ts) starts a turn that retries the same call, which passes once.
+  // slot frees. The owner's yes (hub/router.ts) starts a turn that retries the same call, which passes once.
   async function defer(key: string, s: Session, tool: string, description: string, input: Record<string, unknown>) {
     const store = o.deferred!
     const id = requestId()

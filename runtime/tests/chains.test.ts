@@ -1,6 +1,6 @@
 // Chains and kagelet messages end to end (#93) on a hub built from its real parts: the store, ledgers and event
 // log, the scheduler, the manager, the dispatcher, the Agent SDK runner (on a fake SDK) and the limit pause, wired
-// as router.ts wires them. The test plays each kagelet: it reports, then its turn ends with a result or a limit.
+// as hub/router.ts wires them. The test plays each kagelet: it reports, then its turn ends with a result or a limit.
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { mkdirSync, mkdtempSync } from 'node:fs'
@@ -46,7 +46,7 @@ async function hub(o: { chainUsd?: number; capUsd?: number; max?: number; memory
   let d!: Dispatcher<ToSession>
   let routes!: ReturnType<typeof kageletRoutes>
   let limits!: ReturnType<typeof limitPause>
-  // router.ts toSession, without the teammate trust and closed threads.
+  // hub/router.ts toSession, without the teammate trust and closed threads.
   const toSession = (key: string, task: Task): Delivery => {
     if (limits.hold(key, task, clock.now)) return 'held'
     const r = d.task(key, task, clock.now)

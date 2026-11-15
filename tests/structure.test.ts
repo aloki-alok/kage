@@ -54,6 +54,11 @@ test('runtime/ and connectors/ never import the hub, the plugin or a root file',
   check('rootImports', [...inDir('runtime'), ...inDir('connectors')].filter(f => bad.test(code(f))), DEBT.rootImports)
 })
 
+test('the hub and the plugin never import a kage command (cli/)', () => {
+  const bad = /(from|import\(|require\()\s*['"]\.\.\/cli\//
+  assert.deepEqual([...inDir('hub'), ...inDir('plugin')].filter(f => bad.test(code(f))), [], 'move what both need into runtime/ or core/')
+})
+
 test(`a source file is ${MAX_LINES} lines or fewer, imports aside, and a long one never grows`, () => {
   const long = files.filter(f => lines(f) > MAX_LINES)
   check('longFiles', long, Object.keys(DEBT.longFiles))
@@ -61,9 +66,10 @@ test(`a source file is ${MAX_LINES} lines or fewer, imports aside, and a long on
   assert.deepEqual(grew, [], 'longFiles: these grew. Split them instead')
 })
 
-test('every core/ and runtime/ file is in the CONTRIBUTING.md code map', () => {
+test('every core/, runtime/, hub/ and plugin/ file is in the CONTRIBUTING.md code map', () => {
   const map = readFileSync(`${root}/CONTRIBUTING.md`, 'utf8')
   check('unmapped', [...inDir('core'), ...inDir('runtime')].filter(f => !map.includes(`\`${basename(f)}\``)), DEBT.unmapped)
+  assert.deepEqual([...inDir('hub'), ...inDir('plugin')].filter(f => !map.includes(`\`${f}\``)), [], 'add a row for each to the code map')
 })
 
 test('a core/ export is used outside its file: by another source file, or by its own file and a test', () => {

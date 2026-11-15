@@ -120,7 +120,7 @@ export async function readBoots(root: string, text: string, now: number): Promis
   return boots
 }
 
-// The hub's hourly check (router.ts): release the newest commit that completed a clean 24 hours on this hub and
+// The hub's hourly check (hub/router.ts): release the newest commit that completed a clean 24 hours on this hub and
 // that the stable tag lacks (core/auto-update.ts soakGate). A skip is a log line and no DM. Only the repo admin's hub
 // gets past the first line. `candidate` skips say which commit is next and when its gate opens.
 export async function releaseIfSoaked(root: string, dir: string, boots: string, now: number): Promise<Release | { skip: string; candidate?: true }> {

@@ -7,7 +7,7 @@ import { chmodSync, copyFileSync, cpSync, existsSync, mkdirSync, mkdtempSync, re
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 
-const REPO = join(import.meta.dirname, '../..')
+const REPO = join(import.meta.dirname, '..')
 const exe = (path: string, text: string) => { writeFileSync(path, text); chmodSync(path, 0o755) }
 
 // A Kage folder with the real setup.sh and a fake service.sh. The fake service's `on` starts a
@@ -20,7 +20,7 @@ function world() {
   copyFileSync(join(REPO, 'setup.sh'), join(dir, 'setup.sh'))
   for (const f of ['manifest.ts', 'config.ts', 'home.ts']) copyFileSync(join(REPO, 'cli', f), join(dir, 'cli', f))
   mkdirSync(join(dir, 'runtime'))
-  copyFileSync(join(REPO, 'runtime/config-files.ts'), join(dir, 'runtime/config-files.ts'))
+  for (const f of ['config-files.ts', 'hub-client.ts']) copyFileSync(join(REPO, 'runtime', f), join(dir, 'runtime', f))
   symlinkSync(join(REPO, 'node_modules'), join(dir, 'node_modules'))
   for (const f of readdirSync(join(REPO, 'core')).filter(f => f.endsWith('.ts'))) cpSync(join(REPO, 'core', f), join(dir, 'core', f))
   const env = join(conf, 'env')

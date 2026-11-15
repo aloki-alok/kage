@@ -18,4 +18,4 @@ A session posts only through Kage's tools (`reply`, `message_people`). Any other
 
 ## How it is checked
 
-`core/tests/guards.test.ts` (`slackSendRefusal`) and `core/tests/outbound.test.ts`. The tmux route runs the same rules in `private-data-guard.ts`.
+`core/tests/guards.test.ts` (`slackSendRefusal`) and `core/tests/outbound.test.ts`. The tmux route runs the same rules in `plugin/private-data-guard.ts`.

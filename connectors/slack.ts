@@ -41,7 +41,7 @@ export type Hub = {
 } & Inbox
 
 // Into the inbox before the ack: Slack sends again only what was not acked, so a crash after the
-// write is replayed from the store on the next start (router.ts), and a redelivery runs once.
+// write is replayed from the store on the next start (hub/router.ts), and a redelivery runs once.
 // A failed write throws before the ack, so Slack sends the event again.
 // The owner typed in a thread with no tag: a note for the kagelets working there. Nobody else's words steer one.
 export const ownerNote = (m: SlackMessage, ids: { owner: string; botDm: string }, reason: string) =>

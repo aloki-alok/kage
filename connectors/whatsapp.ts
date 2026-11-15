@@ -18,7 +18,7 @@ const ARM_MS = 60 * 60_000
 const MAX_BODY = 1_000_000
 
 // A signed WAHA webhook body, into the inbox before WAHA hears 200: a hub that dies while handling it
-// replays it from the store on the next start (router.ts), and a redelivered message id runs once.
+// replays it from the store on the next start (hub/router.ts), and a redelivered message id runs once.
 // Returns the message to run, or nothing (another event, or a repeat).
 export function wahaIntake(body: string, inbox: Inbox): { source?: string; payload: WahaPayload } | undefined {
   const e = JSON.parse(body) as { event?: string; payload?: WahaPayload }

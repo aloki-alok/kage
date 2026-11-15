@@ -1,5 +1,5 @@
 // Kage's tools inside one session (reply, edit, delete, send a file, message people, waiting, prod log, away, back), its instructions, and the
-// approval prompt. No transport here: server.ts serves them over MCP stdio for a tmux pane, and an
+// approval prompt. No transport here: plugin/server.ts serves them over MCP stdio for a tmux pane, and an
 // SDK session can serve them in-process. One instance per session.
 import { instructions } from '../core/instructions.ts'
 import { voiceSlackTools } from './voice-slack-tools.ts'
