@@ -68,6 +68,7 @@ KAGE_MEETING_TOKEN=meet-fake
 KAGE_BROWSER_TOKEN=browser-fake
 JEV_API_KEY=jev-fake
 KAGE_VOICE_AGENT_KEY=voice-agent-fake
+KAGE_CLAUDE_TOKEN=sk-ant-oat01-fake
 `
 
 describe('importing an env file', () => {
