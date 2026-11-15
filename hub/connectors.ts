@@ -58,7 +58,7 @@ export function startConnectors(o: {
     process.once('exit', () => { child.kill() })
   }
   const email = connectEmail({
-    mail: { ...conn.email, accessKeyId: secrets.aws?.accessKeyId, secretAccessKey: secrets.aws?.secretAccessKey }, saved: store, name: NAME, deliver, inbox, dir: DIR,
+    mail: { ...conn.email, accessKeyId: secrets.aws?.accessKeyId, secretAccessKey: secrets.aws?.secretAccessKey }, saved: store, name: NAME, nameOf: slack.nameOf, deliver, inbox, dir: DIR,
     notify: text => void slack.notifyOwner(text),
     failed: task => void slack.notifyOwner(`Could not start a session for ${task.meta.place}.`),
   })

@@ -271,5 +271,5 @@ export async function connectSlack(o: { dir: string; appToken: string; userToken
   const replay = (source: string, payload: string) => hear(JSON.parse(payload) as SlackMessage, source)
   // kage reload: the gate reads both lists from ids on every message, so the next message sees the new ones.
   const allow = (l: { teammates: string[]; apps: string[] }) => { ids.teammates = l.teammates; ids.apps = l.apps }
-  return { ids, ownerName, botUser: botAuth.user, socket, failed, notifyOwner, placeOf, afk, replay, allow, start: () => socket.start() }
+  return { ids, ownerName, botUser: botAuth.user, socket, failed, notifyOwner, placeOf, nameOf, afk, replay, allow, start: () => socket.start() }
 }

@@ -98,8 +98,20 @@ export async function emailVerdict(
 
 const clean = (v: string) => v.replace(/[\r\n]+/g, ' ').trim()
 
+function emailText(text: string, names: Record<string, string> = {}): string {
+  return text.split(/(```[\s\S]*?```|`[^`\n]+`)/g).map(part => {
+    if (part.startsWith('```')) return part.slice(3, -3)
+    if (part.startsWith('`')) return part.slice(1, -1)
+    return part.replace(/<@([UW][A-Z0-9]+)(?:\|[^>]*)?>/g, (_, id: string) => names[id] ?? '')
+      .replace(/<((?:https?:\/\/|mailto:)[^>|]+)(?:\|([^>]+))?>/g,
+        (_, url: string, label?: string) => label && label !== url ? `${label} (${url})` : url)
+      .replace(/(?<!\w)([*_~])(?=\S)([^\n]*?\S)\1(?!\w)/g, '$2')
+  }).join('').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&amp;/g, '&')
+}
+
 export function composeReply(r: {
   from: string; to: string[]; cc: string[]; subject: string; inReplyTo: string; references: string[]; text: string
+  name: string; names?: Record<string, string>
 }): string {
   const subject = clean(r.subject)
   const headers = [
@@ -113,7 +125,7 @@ export function composeReply(r: {
     'Content-Type: text/plain; charset=UTF-8',
     'Content-Transfer-Encoding: base64',
   ].filter(Boolean)
-  const body = Buffer.from(r.text).toString('base64').replace(/.{76}/g, '$&\r\n')
+  const body = Buffer.from(`${emailText(r.text, r.names).trimEnd()}\n\n${clean(r.name)}`).toString('base64').replace(/.{76}/g, '$&\r\n')
   return `${headers.join('\r\n')}\r\n\r\n${body}\r\n`
 }
 
@@ -121,6 +133,6 @@ export function composeReply(r: {
 // so anything that needs the owner's yes still waits for it in Slack. One line, no channel tag.
 export function emailTaskLine(from: string, sender: 'owner' | 'teammate', ask: string): string {
   const t = quotedLine(ask)
-  return `Email task (${noChannelTag(from).replace(/\s+/g, ' ')}, ${sender}, by email: teammate limits apply): ${t}`
+  return `Email task (${noChannelTag(from).replace(/\s+/g, ' ')}, ${sender}, by email: teammate limits apply): ${t} (Write plain sentences, with no Slack markup and no tables. The reply tool adds your sign-off.)`
 }
 

@@ -25,6 +25,7 @@ export function connectEmail(o: {
   mail: Mail
   saved: Saved
   name: string
+  nameOf: (id: string) => Promise<string>
   deliver: (c: Conversation, task: Task, place: string) => Delivery
   failed: (task: Task) => void
   inbox: Inbox
@@ -39,7 +40,7 @@ export function connectEmail(o: {
     domains: [mail.ownerEmail.split('@')[1]!],
   }
   const send = startMailbox({
-    mail: { ...mail, queue: mail.queue }, saved: o.saved, cfg, inbox: o.inbox, dir: o.dir, notify: o.notify,
+    mail: { ...mail, queue: mail.queue }, saved: o.saved, cfg, inbox: o.inbox, dir: o.dir, notify: o.notify, nameOf: o.nameOf,
     onTask(t) {
       const place = `email thread ${logRef(t.key)}`   // a place is logged and shown: never the subject
       const content = [
@@ -74,7 +75,7 @@ const dkimResolver = (name: string, rr: string) => resolver.resolve(name, rr) as
 const list = (v?: string | string[]) => (Array.isArray(v) ? v : v ? v.split(/\s+/) : []).filter(Boolean)
 
 function startMailbox(o: {
-  mail: Mail & { queue: string }; saved: Saved; cfg: MailConfig; inbox: Inbox; dir: string; notify: (text: string) => void; onTask: (t: MailTaskOut) => void
+  mail: Mail & { queue: string }; saved: Saved; cfg: MailConfig; inbox: Inbox; dir: string; notify: (text: string) => void; onTask: (t: MailTaskOut) => void; nameOf: (id: string) => Promise<string>
 }) {
   const region = o.mail.region || 'us-west-1'
   const credentials = { accessKeyId: o.mail.accessKeyId!, secretAccessKey: o.mail.secretAccessKey! }
@@ -147,8 +148,14 @@ function startMailbox(o: {
       o.notify(`Held an email reply to ${[...to, ...cc].join(', ')} (${verdict.reason}). Send it yourself if it is fine:\n${text}`)
       return
     }
+    const ids = [...new Set([...text.matchAll(/<@([UW][A-Z0-9]+)(?:\|[^>]*)?>/g)].map(m => m[1]!))]
+    const names = Object.fromEntries(await Promise.all(ids.map(async id => {
+      const name = await o.nameOf(id).catch(() => id)
+      return [id, name === id || name === 'unknown' ? '' : name]
+    })))
+    const name = `${o.cfg.name[0]!.toUpperCase()}${o.cfg.name.slice(1)}`
     const raw = composeReply({
-      from: `${o.cfg.name[0]!.toUpperCase()}${o.cfg.name.slice(1)} <${o.cfg.self}>`, to, cc, subject: t.mail.subject,
+      from: `${name} <${o.cfg.self}>`, name, names, to, cc, subject: t.mail.subject,
       inReplyTo: t.mail.messageId, references: [...t.mail.references, t.mail.messageId], text,
     })
     await ses.send(new SendEmailCommand({ FromEmailAddress: o.cfg.self, Content: { Raw: { Data: Buffer.from(raw) } } }))

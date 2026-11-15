@@ -94,9 +94,16 @@ describe('replies', () => {
     const r = replyTargets(mail({ from: 'Kage@kage.example.com', to: ['kage@kage.example.com', 'a@client.test'], cc: [] }), cfg)
     assert.deepEqual(r, { to: [], cc: ['a@client.test'] })
   })
+  test('plain email text replaces Slack links, mentions and formatting and signs with the install name', () => {
+    const raw = composeReply({ from: 'Shadow <shadow@example.com>', to: ['reader@example.com'], cc: [], subject: 'Update',
+      inReplyTo: '<test@example.com>', references: [], name: 'Shadow', names: { UTEST1: 'Sam' },
+      text: '*Done*. _Ready_ for ~old~ `new_value`. <https://example.com|Open> <https://example.com/docs> <@UTEST1> <@UTEST2> &amp; &lt;ok&gt;' })
+    assert.equal(Buffer.from(raw.split('\r\n\r\n')[1]!, 'base64').toString(),
+      'Done. Ready for old new_value. Open (https://example.com) https://example.com/docs Sam  & <ok>\n\nShadow')
+  })
   test('thread under the original with In-Reply-To and References', () => {
     const raw = composeReply({ from: 'Kage <kage@kage.example.com>', to: ['owner@example.com'], cc: [], subject: '[WARNING] x',
-      inReplyTo: '<b@g>', references: ['<a@s>', '<b@g>'], text: 'Found it.\nLine 2 é' })
+      inReplyTo: '<b@g>', references: ['<a@s>', '<b@g>'], text: 'Found it.\nLine 2 é', name: 'Kage' })
     assert.match(raw, /^Subject: Re: \[WARNING\] x$/m)
     assert.match(raw, /^In-Reply-To: <b@g>$/m)
     assert.match(raw, /^References: <a@s> <b@g>$/m)
@@ -104,7 +111,7 @@ describe('replies', () => {
     assert.match(Buffer.from(raw.split('\r\n\r\n')[1]!, 'base64').toString(), /Line 2 é/)
   })
   test('a header value cannot inject another header', () => {
-    const raw = composeReply({ from: 'K <k@k>', to: ['a@b'], cc: [], subject: 'x\r\nBcc: evil@x.com', inReplyTo: '<b@g>', references: [], text: 'y' })
+    const raw = composeReply({ from: 'K <k@k>', to: ['a@b'], cc: [], subject: 'x\r\nBcc: evil@x.com', inReplyTo: '<b@g>', references: [], text: 'y', name: 'K' })
     assert.doesNotMatch(raw, /^Bcc:/m)
   })
 })
