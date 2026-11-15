@@ -72,6 +72,8 @@ describe("a task not from the owner reads only people notes in the owner's memor
     assert.match(search('Glob', { pattern: '**/*.md' }) ?? '', /outside/)
     assert.match(search('Glob', { pattern: '/home/o/.claude/**/*.md' }) ?? '', /outside/)
     assert.equal(search('Grep', { pattern: 'token', path: '/home/o/code' }), undefined)
+    assert.match(search('Glob', { path: '/tmp', pattern: `${MEM}/*.md` }) ?? '', /people notes|outside/, 'an absolute pattern wins over path')
+    assert.match(search('Glob', { path: '/home/o/code', pattern: '../.claude/projects/-home-o/memory/*.md' }) ?? '', /people notes|outside/, '.. in a pattern')
     assert.equal(ownerMemoryRefusal('Grep', { pattern: 'token' }, MEM, 'owner', '/home/o', '/home/o'), undefined)
   })
   test("the owner's own task reads anything", () => {

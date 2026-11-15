@@ -93,8 +93,10 @@ export function ownerMemoryRefusal(
   if (!write && !read) return
   const dir = realish(ownerMemory).toLowerCase()
   // Where a search starts: its path, a Glob pattern's fixed part, or the session's folder when it names none.
-  const glob = tool === 'Glob' && input.pattern ? input.pattern.split(/[*?[{]/)[0]! : ''
-  const raw = input.file_path ?? input.notebook_path ?? input.path ?? (glob.startsWith('/') || glob.startsWith('~/') ? glob : read && tool !== 'Read' ? cwd : undefined)
+  // A Glob resolves its pattern's fixed part from its path, so an absolute pattern or a .. in it counts.
+  const tilde = (p: string) => p.replace(/^~(?=\/|$)/, home)
+  const raw = tool === 'Glob' ? resolve(tilde(input.path ?? cwd), tilde((input.pattern ?? '').split(/[*?[{]/)[0]!))
+    : input.file_path ?? input.notebook_path ?? input.path ?? (read && tool !== 'Read' ? cwd : undefined)
   if (!raw) return
   // Compare real paths, lowercased: links are followed, and macOS treats Memory and memory alike.
   const file = realish(raw.replace(/^~(?=\/)/, home)).replace(/\/$/, '').toLowerCase()
