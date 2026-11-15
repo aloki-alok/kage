@@ -372,6 +372,14 @@ describe("a session's Kage tools", () => {
     assert.ok(s.calls.includes('owner post CPRIV Done.\n_🥷 Kage · asked by Sam_'), s.calls.join('\n'))
     assert.equal(s.posts.at(-1)!.blocks!.at(-1)!.block_id, 'kage-footer')
   })
+  test("an edit of the owner's own message_people post is judged as the owner's for secrets", async () => {
+    const s = setup()
+    s.t.onTask(s.task())
+    await s.call('message_people', { channel: 'C1', thread_ts: '5.5', users: ['UBO000001'], text: 'hi' })
+    const r = await s.call('edit_message', { channel: 'G-UBO000001', ts: '9.1', text: 'key AKIAABCDEFGHIJKLMNOP' })
+    assert.equal(r.isError, true)
+    assert.match(r.text, /owner_asked/)
+  })
   test("an \"On it\" ack is not posted from the owner's account: the pickup reaction already says it", async () => {
     const s = setup()
     s.t.onTask(s.task({ channel: 'CPRIV' }))
