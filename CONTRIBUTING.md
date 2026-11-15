@@ -177,6 +177,7 @@ Write logs to stderr only. In a tmux pane, stdout carries the channel protocol, 
 | `repo-access.ts` | Whether this install may push to the Kage repo, which marks the repo owner's hub. |
 | `channel-watch.ts` | Jobs that watch a Slack channel (tripwire rung 2): which jobs a post is for (channel, match, bots allowed), the recent post ids seen per channel, the catch-up cursor, the quoted posts held until the job takes them, and the catch-up after a socket gap, one channel at a time. The hub wires it to `channelPost` and `channelCatchUp` in `connectors/slack.ts`. |
 | `probes.ts` | The runtime of a tripwire probe: best-effort pins of every swappable file a command names (except its `reads`, `writes` and redirect targets), and one run with a timeout, an output cap (the fingerprint still covers all output) and a refusal when a pin changed or an ignore pattern is unsafe. |
+| `probe-jobs.ts` | Probe jobs (tripwire rung 1): when a probe job is due, the hub runs its command with no model, wakes the job only when the output changed (the wake goes out before the new state is saved), pings the job's thread on repeated failures or a refusal, and writes one `tripwire` event row per step. `scheduler.ts` calls it, and `runtime/tools/schedule-tools.ts` sets and tunes the jobs. |
 | `release.ts` | The git and gh calls of a release, and the owner hub's daily check (`kage release`, ADR 0013). |
 
 ## Add a connector

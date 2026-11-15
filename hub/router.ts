@@ -252,7 +252,7 @@ const sdk = sdkLib ? sdkSessions({
   hub: () => d,
   tools: (key, send, approve) => sessionTools({
     title: Title, bot, user, botDm: () => slack.ids.botDm, dir: DIR, ledgers, send, memory: MEM,
-    schedules: { add: j => schedules.add(key, j, Date.now()), remove: id => schedules.remove(key, id), list: () => schedules.list(key) },
+    schedules: { add: j => schedules.add(key, j, Date.now()), remove: id => schedules.remove(key, id), list: () => schedules.list(key), tune: (id, t) => schedules.tune(key, id, t, Date.now()) },
     afk: slack.afk?.command,
     settings: { set: (key, value) => setKey(ENV_FILE, key, value) },
     kagelet: key.split('#side-kagelet-')[1], dreaming: key.split('#side-kdream-')[1], kageletMemory: kag.kmem,
@@ -334,6 +334,7 @@ const schedules = scheduler({
   ready: key => d.ready(key),
   trusted: key => store.trust(key) === true, job: { end: k => d.reset(k), project: PROJECT, carryChars: () => config.harness?.jobCarryChars ?? 500, laneDefault: () => config.harness?.jobLaneDefault ?? true, freshEvery: () => config.harness?.jobFreshEvery ?? 20, carryCount: () => config.harness?.jobCarry ?? 5, posted: () => ledgers.text('posted') },
   ran: j => ledgers.add('runs', [j.id, j.key]),
+  tripwires: () => config.tripwires ?? {}, event: e => ledgers.event(e), owner: t => void slack.notifyOwner(t), ping: async (s, text) => { const c = store.conversation(s.key)?.conversation; if (!c) return false; return postAsKage({ title: Title, bot, user }, c.chat, c.thread, text).then(r => { ledgers.add('posted', [c.chat, r.ts, r.by, s.key]); return true }, e => { log('could not post a tripwire ping', s.id, e?.data?.error ?? e); return false }) },
 })
 // CronCreate jobs moved out of stopped tmux panes (cli/export-crons.ts): adopted once, then retired.
 // Only when no pane survived this start: a pane still running would run each job a second time.
@@ -352,7 +353,6 @@ else if (existsSync(CRONS)) {
     void slack.notifyOwner('Could not read the cron jobs exported from the panes (crons-import.json.bad). Watchers may need setting up again.')
   }
 }
-
 
 const { meeting, voice, replies, replayOf } = startConnectors({ secrets, conn, store, slack, bot, NAME, CODE, DIR, d, inbox, deliver, placeOf, failed })
 listenForCommands(slack.socket, { user, team: slack.ids.team!, commands: COMMANDS, ledgers })
