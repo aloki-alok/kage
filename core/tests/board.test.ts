@@ -1,6 +1,6 @@
 import { describe, test } from 'node:test'
 import assert from 'node:assert/strict'
-import { ago, boardRows, nextRuns, watchingNext, whenLabel, type Live, clockTime, limitLine, pauseLine, stopLine } from '../board.ts'
+import { ago, boardRows, statusSummary, nextRuns, watchingNext, whenLabel, type Live, clockTime, limitLine, pauseLine, stopLine } from '../board.ts'
 import type { Schedule } from '../cron.ts'
 
 const MIN = 60_000, HOUR = 60 * MIN, DAY = 24 * HOUR
@@ -144,5 +144,16 @@ describe('the answer to a stop', () => {
     assert.equal(stopLine({ refused: 'closed' }, ['x']), 'No session runs in this thread. Its schedule keeps running: x.')
     assert.equal(stopLine({ ok: true, ending: true, asking: true, dropped: 0 }, []), 'It waits on an approval, so it stops once that is answered. stop now cuts it. The next tag starts it again.')
     assert.equal(stopLine({ ok: true, dropped: 0 }, [], 1), 'Stopped. Its side lane stops too. The next tag starts it again.')
+  })
+})
+
+describe('kage status summary', () => {
+  test('one line: uptime, restarts, schedules and spend, then where to look next', () => {
+    const [line, next] = statusSummary({ upSec: 6 * 3600, boots24h: 2, schedules: 4, spentToday: 3.2, turnsToday: 12 })
+    assert.equal(line, 'hub up 6h · 2 starts in 24 h · 4 schedules · $3.20 today over 12 turns')
+    assert.match(next!, /kage top/)
+  })
+  test('many restarts point at the doctor, and a hub with no pid says so', () => {
+    assert.match(statusSummary({ boots24h: 48, schedules: 0, spentToday: 0, turnsToday: 0 })[0]!, /^hub up: unknown · 48 starts in 24 h \(kage doctor says why\) · no schedules · nothing spent today$/)
   })
 })

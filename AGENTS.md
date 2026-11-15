@@ -57,7 +57,7 @@ The install line puts `kage` on your PATH (in a git checkout, run `./setup.sh li
 | Task | Command |
 |---|---|
 | Health check | `kage doctor` |
-| One look at every session | `kage status` |
+| One look at the hub and every session | `kage status`: how long the hub has run, its starts in 24 h, schedules and today's spend, then each session, then where to look next |
 | The live console (mouse or keys: `↑↓` pick, `⏎` open the feed, `a` attach, `x` cut, `s` schedules, `l` kagelets, `/` search, `q` quit) | `kage top` |
 | Watch and fix kagelets | `kage top`, then `l`: each kagelet's state (on, paused, broken, or over cap when a cap is set), last run and report, next run, cost today against its 7-day daily average, and who made it. In the panel, `r` runs one now, `p` pauses it, `u` resumes it, `x` removes it after you confirm, and `v` revokes the standing approval of each write tool that kagelet holds, taking that tool from every kagelet that got it with no card. The keys act through the hub, so they need Kage running. `kage logs <kagelet>` lists its last 20 runs, newest first: time, cost, its status (ok, failed, running, or paused for cost when a cap is set) and its report, then today's chains it was a step of (`a > b > c` and where it stopped) and its messages to and from other kagelets (queued, delivered, read or failed). |
 | Follow every step | `kage watch`, or `kage watch support` for threads whose place contains "support" |

@@ -115,3 +115,14 @@ export function stopLine(r: { ok: true; ending?: true; asking?: true; cut?: 'bus
   const side = !lanes ? '' : lanes === 1 ? ' Its side lane stops too.' : ` Its ${lanes} side lanes stop too.`
   return `${what}${let_go}${side}${kept} The next tag starts it again.`
 }
+
+// The two lines kage status opens with: how long the hub has run, how often it started, and today's work and spend.
+export function statusSummary(f: { upSec?: number; boots24h: number; schedules: number; spentToday: number; turnsToday: number }): string[] {
+  const plural = (n: number, one: string) => `${n} ${one}${n === 1 ? '' : 's'}`
+  return [[
+    f.upSec === undefined ? 'hub up: unknown' : `hub up ${ago(f.upSec * 1000)}`,
+    `${plural(f.boots24h, 'start')} in 24 h${f.boots24h > 10 ? ' (kage doctor says why)' : ''}`,
+    f.schedules ? plural(f.schedules, 'schedule') : 'no schedules',
+    f.turnsToday ? `$${f.spentToday.toFixed(2)} today over ${plural(f.turnsToday, 'turn')}` : 'nothing spent today',
+  ].join(' · '), 'More: kage top (live, with controls), kage logs, kage cost 7, kage doctor']
+}
