@@ -67,7 +67,7 @@ Write logs to stderr only. In a tmux pane, stdout carries the channel protocol, 
 | `docs/adr/` | One file per architecture decision: the rule, why, and how it is checked. |
 | `tests/` | Tests of the repo as a whole: `structure.test.ts` (ADR 0014). |
 | `docs/settings.md` | Every setting in config.json and secrets.json, with its default. |
-| `AGENTS.md` | Setup steps for a coding agent. `CLAUDE.md` loads it and this file. |
+| `CLAUDE.md` | The one file coding agents read first: setup steps, the commands that run Kage, and this file (loaded with `@CONTRIBUTING.md`). |
 | `extension/` | Kage's Chrome extension (#114): plain JS, no build. It polls the hub (`connectors/browser.ts`), reads tabs, and acts in them through Chrome's debugger, one action at a time; a major step waits for the owner's yes (core/browser-act.ts majorAct). |
 | `meetbot/` | Kage's meeting bot (#63): its own package, run on any machine with a screen or Xvfb. It drives its own Chromium into a Google Meet and talks to the hub at the meeting webhook (`connectors/meeting.ts`). All of Meet's page knowledge is `meetbot/page.js`. |
 | `skills/` | Skills every Kage session loads (the router passes the repo as a plugin, `hub/router.ts`). Generic lessons only: no names, ids, customers, dates or quotes. |

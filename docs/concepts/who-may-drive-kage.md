@@ -26,4 +26,4 @@ An ordinary voice caller can only receive an answer. A call Kage placed can clai
 
 Messages without the required tag, listing, or proof drop before Claude reads them.
 
-See [AGENTS.md](../../AGENTS.md) for the controls that manage teammates and agents.
+See [CLAUDE.md](../../CLAUDE.md) for the controls that manage teammates and agents.

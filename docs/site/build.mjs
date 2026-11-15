@@ -143,7 +143,7 @@ function show(id){
  const first=(body.match(/^[^#\\n].+$/m)||[''])[0];
  const rest=body.replace(first,'');
  const words=plain(p.md).split(' ').length;
- const html=marked.parse(rest.replace(/\\]\\(([a-z-]+)\\.md\\)/g,'](#$1)').replace(/\\]\\(\\.\\.\\/settings\\.md\\)/g,'](https://github.com/aloki-alok/kage/blob/main/docs/settings.md)').replace(/\\]\\(\\.\\.\\/\\.\\.\\/AGENTS\\.md\\)/g,'](https://github.com/aloki-alok/kage/blob/main/AGENTS.md)'));
+ const html=marked.parse(rest.replace(/\\]\\(([a-z-]+)\\.md\\)/g,'](#$1)').replace(/\\]\\(\\.\\.\\/settings\\.md\\)/g,'](https://github.com/aloki-alok/kage/blob/main/docs/settings.md)').replace(/\\]\\(\\.\\.\\/\\.\\.\\/CLAUDE\\.md\\)/g,'](https://github.com/aloki-alok/kage/blob/main/CLAUDE.md)'));
  $('#hero').innerHTML='<div class="fade"><div class="eyebrow">'+num(i)+' / '+(i?'CONCEPTS':'START HERE')+'</div><h1>'+esc(p.title)+'</h1><p class="stand">'+marked.parseInline(first)+'</p>'+
   '<dl class="meta"><div><dt>MODE</dt><dd>Explanation</dd></div><div><dt>READ</dt><dd>'+Math.max(1,Math.round(words/220))+' min</dd></div><div><dt>SOURCE</dt><dd><code>docs/concepts/'+p.file+'</code></dd></div></dl></div>';
  $('#main').innerHTML='<div class="fade">'+(fig?'<pre class="m">'+esc(fig)+'</pre>':'')+'<div class="prose">'+html+'</div>'+
