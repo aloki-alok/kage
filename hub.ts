@@ -56,7 +56,7 @@ function claudeCommand(route: string | undefined) {
   tools += ` --disallowedTools CronCreate CronDelete CronList`
   // The plugin route only works once your org approves the channel, so it is opt-in: KAGE_ROUTE=plugin.
   if (route === 'plugin') return `claude --channels plugin:kage@kage --allowedTools${tools}`
-  const mcp = JSON.stringify({ mcpServers: { kage: { command: process.execPath, args: [join(DIR, 'server.ts')] } } })
+  const mcp = JSON.stringify({ mcpServers: { kage: { command: process.execPath, args: [join(DIR, 'plugin', 'server.ts')] } } })
   return `claude --mcp-config '${mcp}' --allowedTools${tools} --dangerously-load-development-channels server:kage`
 }
 
@@ -102,7 +102,7 @@ function claudeCommand(route: string | undefined) {
   // harness.cwd wins over a KAGE_CWD an older service unit still sets (kage service on rewrites the unit without it).
   process.env.KAGE_CWD = home(cfg.harness?.cwd ?? envValue(legacy, 'KAGE_CWD') ?? '') || process.env.KAGE_CWD || process.env.HOME!
   process.chdir(process.env.KAGE_CWD)
-  try { await import('./router.ts') } catch (e) {
+  try { await import('./hub/router.ts') } catch (e) {
     console.error(e)
     // An npm ci that failed or stopped midway leaves the packages behind the lock: install them, then exit 75 so the
     // supervisor starts a fresh process. Node keeps a failed lookup for the life of this one.

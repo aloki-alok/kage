@@ -28,7 +28,7 @@ function kageCopy() {
   for (const f of ['config.ts', 'home.ts']) copyFileSync(join(REPO, 'cli', f), join(dir, 'cli', f))
   cpSync(join(REPO, 'core'), join(dir, 'core'), { recursive: true })
   symlinkSync(join(REPO, 'node_modules/zod'), join(dir, 'node_modules/zod'))
-  writeFileSync(join(dir, 'router.ts'), FAKE_HUB)
+  mkdirSync(join(dir, 'hub'), { recursive: true }); writeFileSync(join(dir, 'hub', 'router.ts'), FAKE_HUB)
   // The packages are current: the lock is older than npm's stamp.
   writeFileSync(join(dir, 'package-lock.json'), '{}')
   utimesSync(join(dir, 'package-lock.json'), new Date(0), new Date(0))
@@ -93,7 +93,7 @@ describe('hub.ts: one hub run, with its log, its boot count and a crash-loop DM'
 
   test('a hub that cannot even load (a bad pull) exits 1, and the DM quotes the error, not its stack frames', async () => {
     const k = kageCopy()
-    writeFileSync(join(k.dir, 'router.ts'), 'this is not ( typescript')
+    writeFileSync(join(k.dir, 'hub', 'router.ts'), 'this is not ( typescript')
     calls.length = 0
     for (let i = 0; i < 3; i++) assert.equal(await hub(k), 1)
     const text = new URLSearchParams(calls.find(c => c.path === '/chat.postMessage')!.body).get('text')!
@@ -104,7 +104,7 @@ describe('hub.ts: one hub run, with its log, its boot count and a crash-loop DM'
 
   test('a hub whose packages are behind the lock runs npm ci once and exits 75, and the next start loads', async () => {
     const k = kageCopy()
-    writeFileSync(join(k.dir, 'router.ts'), `import 'fakepkg'; console.log('loaded after npm ci')`)
+    writeFileSync(join(k.dir, 'hub', 'router.ts'), `import 'fakepkg'; console.log('loaded after npm ci')`)
     const later = new Date(Date.now() + 5000)
     utimesSync(join(k.dir, 'package-lock.json'), later, later)   // the lock moved: packages are behind
     // A stand-in npm that installs the one package and stamps the install, as npm ci does.
@@ -140,7 +140,7 @@ describe('hub.ts: one hub run, with its log, its boot count and a crash-loop DM'
 
   test('session.env reaches the hub only when the file is private (600)', async () => {
     const k = kageCopy()
-    writeFileSync(join(k.dir, 'router.ts'), `console.log('secret=' + (process.env.TEST_SECRET ?? 'none'))`)
+    writeFileSync(join(k.dir, 'hub', 'router.ts'), `console.log('secret=' + (process.env.TEST_SECRET ?? 'none'))`)
     writeFileSync(join(k.conf, 'session.env'), 'TEST_SECRET=s3\n', { mode: 0o644 })
     await hub(k)
     chmodSync(join(k.conf, 'session.env'), 0o600)
@@ -151,7 +151,7 @@ describe('hub.ts: one hub run, with its log, its boot count and a crash-loop DM'
 
   test('the hub gets the Claude command and the env file path; sessions inherit both', async () => {
     const k = kageCopy()
-    writeFileSync(join(k.dir, 'router.ts'), `console.log('claude=' + process.env.KAGE_CLAUDE + ' env=' + process.env.KAGE_ENV)`)
+    writeFileSync(join(k.dir, 'hub', 'router.ts'), `console.log('claude=' + process.env.KAGE_CLAUDE + ' env=' + process.env.KAGE_ENV)`)
     await hub(k)
     assert.match(logOf(k), /claude=claude --mcp-config .*server\.ts.* --dangerously-load-development-channels server:kage env=.*conf\/env/)
     rmSync(k.root, { recursive: true })
@@ -264,7 +264,7 @@ describe('the hub: one per machine', () => {
     const sock = join(k.conf, 'router.sock')
     const live = net(s => s.on('data', () => s.write('{"type":"board","live":[]}\n'))).listen(sock)
     await new Promise(r => live.once('listening', r))
-    const r = await new Promise<Run>(res => execFile(process.execPath, [join(REPO, 'router.ts')], { env: { PATH: process.env.PATH!, HOME: k.root, KAGE_ENV: k.envFile } },
+    const r = await new Promise<Run>(res => execFile(process.execPath, [join(REPO, 'hub', 'router.ts')], { env: { PATH: process.env.PATH!, HOME: k.root, KAGE_ENV: k.envFile } },
       (e, so, se) => res({ code: e ? (e.code as number) : 0, out: so + se })))
     live.close()
     assert.equal(r.code, 0)
@@ -279,7 +279,7 @@ describe('the hub: one per machine', () => {
     await new Promise(r => hung.once('listening', r))
     const t0 = Date.now()
     // With no KAGE_CLAUDE the hub stops at its next step, which proves it got past the check.
-    const r = await new Promise<Run>(res => execFile(process.execPath, [join(REPO, 'router.ts')], { env: { PATH: process.env.PATH!, HOME: k.root, KAGE_ENV: k.envFile } },
+    const r = await new Promise<Run>(res => execFile(process.execPath, [join(REPO, 'hub', 'router.ts')], { env: { PATH: process.env.PATH!, HOME: k.root, KAGE_ENV: k.envFile } },
       (e, so, se) => res({ code: e ? (e.code as number) : 0, out: so + se })))
     hung.close()
     assert.match(r.out, /KAGE_CLAUDE is not set/)

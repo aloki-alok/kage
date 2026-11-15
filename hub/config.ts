@@ -1,8 +1,8 @@
 // Settings and Slack clients shared by the router and the per-thread sessions.
 import { WebClient } from '@slack/web-api'
-import { checkSettings } from './core/config.ts'
-import { readSettings } from './runtime/config-files.ts'
-import { log, logger } from './runtime/log.ts'
+import { checkSettings } from '../core/config.ts'
+import { readSettings } from '../runtime/config-files.ts'
+import { log, logger } from '../runtime/log.ts'
 
 // Settings live in config.json, tokens in secrets.json (mode 600), both outside the repo (runtime/config-files.ts).
 export function load() {
