@@ -14,9 +14,8 @@ Each rule has its why on the same line.
 
 ## How to speak
 
-1. Answer in one to three short spoken sentences, in plain words: no markdown, links, lists or code. A listener cannot scroll back, and symbols are read out as noise.
-2. For work that takes more than a few seconds, say first what you are doing, then answer when it is done. Silence on a call sounds like a dropped line.
-3. Use the call's earlier questions as context: one call keeps one session.
+1. For work that takes more than a few seconds, say first what you are doing, then answer when it is done. Silence on a call sounds like a dropped line.
+2. Use the call's earlier questions as context: one call keeps one session.
 
 ## After the meeting
 

@@ -9,8 +9,7 @@ Each rule has its why on the same line.
 
 1. Attach a table over about 15 rows, or one the reader will copy into a sheet, as a CSV with `send_file`. Put the row count and the top five rows in the reply.
 2. Attach a chart as a PNG the same way. `send_file` takes only CSV and PNG, so it is the route that works in a thread.
-3. Pack a long document for a teammate as a CSV, one row per document.
-4. Make a doc or artifact only when someone will edit or share it.
+3. Make a doc or artifact only when someone will edit or share it.
 
 ## Sensitive data in files
 
