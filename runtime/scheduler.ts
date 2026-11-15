@@ -66,7 +66,7 @@ export function scheduler(o: {
     return { reset, carry: reset ? jobCarry(o.job.posted(), lane, o.job.carryCount(), texts, o.job.carryChars()) : '', next: reset ? 1 : n + 1 }
   }
   // true when the task was handed to a session.
-  function run(s: Schedule, content: string, fromOwner = s.fromOwner): boolean {
+  function run(s: Schedule, content: string, fromOwner = s.fromOwner, notify = true): boolean {
     const c = store.conversation(s.key)
     if (!c) { log('schedule for an unknown thread', s.id, s.key); return false }
     const task: Task = {
@@ -82,7 +82,7 @@ export function scheduler(o: {
       if (fresh.carry) task.content = `${fresh.carry}\n${task.content}`
       if (fresh.reset) o.job.end(key)
     }
-    if (o.deliver(key, task) === 'failed') { o.failed(task); return false }
+    if (o.deliver(key, task) === 'failed') { if (notify) o.failed(task); return false }
     if (fresh) store.save('jobRuns', { ...(store.load('jobRuns') as Record<string, number> ?? {}), [key]: fresh.next })
     return true
   }
@@ -96,7 +96,7 @@ export function scheduler(o: {
       if (r === 'blocked' || (r === 'busy' && now - (wakeSince.get(s.id) ?? wakeSince.set(s.id, now).get(s.id)!) < BUSY_WAIT)) return false
       wakeSince.delete(s.id)
       o.ran?.(s, now)
-      return run(s, text, false)
+      return run(s, text, false, !store.jobState(s.id).undelivered)   // one DM per job until a wake gets through
     },
   })
   return {

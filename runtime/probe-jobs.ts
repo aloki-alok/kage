@@ -54,10 +54,11 @@ export function probeJobs(o: {
     const d = decide(o.store.jobState(s.id), run, probe, { failPing: t.failPing, lineMax: t.lineMax })
     emit(s, 'tick', { job: s.id, outcome: run.refused ? 'refused' : !run.ok ? 'failed' : d.wake ? 'changed' : 'same', ms: run.ms, kb: Math.ceil(Buffer.byteLength(run.out) / 1024) })
     if (d.wake) {
-      let delivered = false
-      try { delivered = o.wake(s, wakeText(s, d.wake), now) } catch (e) { log('tripwire wake failed', s.id, e) }
+      let delivered = false, threw = false
+      try { delivered = o.wake(s, wakeText(s, d.wake), now) } catch (e) { threw = true; log('tripwire wake failed', s.id, e) }
       emit(s, 'wake', { job: s.id, reason: delivered ? 'changed' : 'undelivered' })
-      if (!delivered) return
+      if (!delivered) { if (!threw) o.store.setJobState(s.id, { ...o.store.jobState(s.id), undelivered: true }); return }   // the old fp stays, so the next tick wakes again
+      delete d.state.undelivered
     }
     // A ping goes before the state is saved: a crash between the two repeats the ping, never loses it.
     if (d.ping) {

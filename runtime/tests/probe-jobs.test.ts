@@ -99,11 +99,12 @@ test('a failed delivery keeps the old state, so the next tick wakes again', asyn
   writeFileSync(t.data, 'two\n')
   t.state.delivery = 'failed'
   await tick(t, 2)
-  assert.deepEqual(t.store.jobState('p1'), was)
+  assert.deepEqual(t.store.jobState('p1'), { ...was, undelivered: true })
   t.state.delivery = 'sent'
   await tick(t, 3)
   assert.equal(t.sent.length, 1)
-  assert.notDeepEqual(t.store.jobState('p1'), was)
+  assert.equal(t.store.jobState('p1').undelivered, undefined)
+  assert.notEqual(t.store.jobState('p1').fp, was.fp)
   assert.ok(t.tw('wake').some(e => /reason=undelivered/.test(e.detail)))
 })
 
@@ -218,4 +219,24 @@ test('tune changes ignore, reads, writes and cron, resets the baseline for a new
   assert.equal(t.s.add(KEY, { id: 'plain', cron: '* * * * *', prompt: 'x', recurring: true }, T0), undefined)
   assert.match(t.s.tune(KEY, 'plain', { cron: '* * * * *' }, minute(2)) ?? '', /not a probe/)
   assert.match(t.s.tune('C2:1.1', 'p1', { cron: '* * * * *' }, minute(2)) ?? '', /no probe job/)
+})
+
+test('a wake that cannot be delivered DMs once per job, writes a row per attempt, and DMs again after a delivery', async () => {
+  const t = setup()
+  await baseline(t)
+  writeFileSync(t.data, 'two\n')
+  t.state.delivery = 'failed'
+  await tick(t, 2); await tick(t, 3); await tick(t, 4)
+  assert.equal(t.failed.length, 1)                                          // one DM, though the wake is retried each tick
+  assert.equal(t.tw('wake').filter(e => /reason=undelivered/.test(e.detail)).length, 3)
+  t.state.delivery = 'sent'
+  await tick(t, 5)
+  assert.equal(t.sent.length, 1)
+  writeFileSync(t.data, 'three\n')
+  t.state.delivery = 'failed'
+  await tick(t, 6)
+  assert.equal(t.failed.length, 2)                                          // a delivery in between re-arms the notice
+  const again = t.make()                                                    // a restart keeps the flag in the saved state
+  again.tick(minute(7)); await again.settled()
+  assert.equal(t.failed.length, 2)
 })
