@@ -121,6 +121,11 @@ test('a watch never fires on the clock, and is dropped once it ends', () => {
 })
 
 describe('a schedule in words', () => {
+  test('a job only an event wakes has no next run, and says what wakes it', () => {
+    assert.equal(nextRun(EVENT, new Date(), 24 * 3600_000), undefined)
+    assert.equal(nextRun(REPLY, new Date(), 24 * 3600_000), undefined)
+    assert.equal(cadence(EVENT), 'when its trigger fires')
+  })
   test('the shapes people set read as plain English; anything else stays as written', () => {
     assert.equal(cadence('*/30 * * * *'), 'every 30 min')
     assert.equal(cadence('*/15 9-18 * * 1-5'), 'every 15 min, 09:00 to 18:59, weekdays')

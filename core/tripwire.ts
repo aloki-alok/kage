@@ -16,6 +16,11 @@ export type Trigger =
   | { kind: 'probe'; probe: Probe }
   | { kind: 'channel'; channel: string; match?: string; bots: boolean }
   | { kind: 'hook'; tokenHash: string }
+// What wakes a job, as `kage schedules` prints it.
+export const triggerLine = (t: Trigger) =>
+  t.kind === 'probe' ? `probe: ${t.probe.command}`
+    : t.kind === 'channel' ? `watches ${t.channel}${t.match ? ` for /${t.match}/` : ''}${t.bots ? ', bots too' : ', every post by a person'}`
+      : 'webhook'
 
 // The token of a job's webhook is shown once, so only its hash is kept (the trigger's tokenHash).
 export const hookTokenHash = (token: string) => createHash('sha256').update(token).digest('hex')
