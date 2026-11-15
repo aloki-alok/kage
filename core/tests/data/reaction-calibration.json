@@ -1,0 +1,29 @@
+{
+  "date": "2026-11-15",
+  "model": "jev-latest",
+  "fingerprint": "292ce9296b0274de",
+  "cases": 111,
+  "runs": [
+    {
+      "correct": 97,
+      "wrong_emoji": 4,
+      "reacted_when_it_should_not": 0,
+      "missed": 10,
+      "errors": 0
+    },
+    {
+      "correct": 96,
+      "wrong_emoji": 5,
+      "reacted_when_it_should_not": 0,
+      "missed": 10,
+      "errors": 0
+    },
+    {
+      "correct": 97,
+      "wrong_emoji": 4,
+      "reacted_when_it_should_not": 0,
+      "missed": 10,
+      "errors": 0
+    }
+  ]
+}

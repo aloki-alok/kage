@@ -1,6 +1,39 @@
 import { describe, test } from 'node:test'
 import assert from 'node:assert/strict'
-import { afkRequest, afkVerdict, JEV_MAX_CHARS, OTHER_BAR, OWNER_BAR, TRIAGE_MAX_CHARS, jevChecks, jevConfig, jevRequest, jevVerdict, triageRequest, triageSkips, triageVerdict } from '../jev.ts'
+import { afkRequest, afkVerdict, JEV_MAX_CHARS, OTHER_BAR, OWNER_BAR, TRIAGE_MAX_CHARS, REACTIONS, reactionVerdict, jevChecks, jevConfig, jevRequest, jevVerdict, triageRequest, triageSkips, triageVerdict } from '../jev.ts'
+import { createHash } from 'node:crypto'
+import { readFileSync } from 'node:fs'
+
+test('reaction wording and Slack names match their recorded live calibration', () => {
+  const calibration = JSON.parse(readFileSync(new URL('./data/reaction-calibration.json', import.meta.url), 'utf8'))
+  const fingerprint = createHash('sha256').update(JSON.stringify({ questions: triageRequest('', calibration.model).questions, reactions: REACTIONS })).digest('hex').slice(0, 16)
+  assert.equal(fingerprint, calibration.fingerprint, 'Run cli/calibrate-reactions.ts after a wording change')
+  const data = JSON.parse(readFileSync(new URL('./data/reaction-eval.json', import.meta.url), 'utf8'))
+  assert.ok(data.cases.length >= 80)
+  assert.equal(data.cases.length, calibration.cases)
+  assert.equal(calibration.runs.length, 3)
+  for (const run of calibration.runs) {
+    assert.equal(run.reacted_when_it_should_not, 0)
+    assert.equal(run.errors, 0)
+    assert.equal(run.correct + run.wrong_emoji + run.reacted_when_it_should_not + run.missed + run.errors, calibration.cases)
+  }
+})
+
+test('reaction confidence selects a registered emoji, none, or the eyes fallback', () => {
+  const answer = (choice: unknown, confidence: unknown) => ({ answers: { reaction: { choice, confidence } } })
+  assert.deepEqual(reactionVerdict(answer('folded_hands', 0.6)), { key: 'folded_hands', emoji: 'pray', confidence: 0.6 })
+  assert.deepEqual(reactionVerdict(answer('none', 1)), { key: 'none', emoji: null, confidence: 1 })
+  assert.deepEqual(reactionVerdict(answer('fire', 0.59)), { key: 'fire', emoji: 'eyes', confidence: 0.59 })
+  for (const body of [null, {}, answer('made_up', 1), answer('__proto__', 1), answer('fire', NaN), answer('fire', -1), answer('fire', 2)])
+    assert.deepEqual(reactionVerdict(body), { key: 'eyes', emoji: 'eyes', confidence: 0 })
+})
+
+test('intake asks for a fitting reaction in the same Jev request', () => {
+  const q = triageRequest('thanks', 'test').questions as Record<string, any>
+  assert.equal(q.reaction?.type, 'choice')
+  assert.match(q.reaction.criteria.folded_hands, /gratitude/)
+  assert.match(q.reaction.criteria.cat_playful, /cat/)
+})
 
 describe('the Jev settings', () => {
   test('no key leaves Jev off', () => {

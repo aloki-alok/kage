@@ -2,7 +2,7 @@
 // post is answered as before, and the loop guard (core/agents.ts) still caps an agent's turns. The log carries the
 // score and the reason only, never the key or the post.
 import { log } from '../runtime/log.ts'
-import { afkRequest, afkVerdict, jevChecks, jevRequest, jevVerdict, triageRequest, triageSkips, triageVerdict, type JevConfig, type Urgency } from '../core/jev.ts'
+import { afkRequest, afkVerdict, jevChecks, jevRequest, jevVerdict, reactionVerdict, triageRequest, triageSkips, triageVerdict, type JevConfig, type Urgency } from '../core/jev.ts'
 
 // One POST to Jev. The answer, the HTTP status of a refusal, or the name of the error (a timeout, a body that is not JSON).
 type JevAnswer = { json: unknown } | { status: number } | { failed: string }
@@ -35,25 +35,27 @@ export function jevCheck(c: JevConfig, o: { fetch?: typeof fetch; timeoutMs?: nu
   }
 }
 
-export type Triage = (who: string, sender: 'owner' | 'other', text: string, o: { hasFiles: boolean; inThread: boolean }) => Promise<{ pick: 'session' | 'react'; why: string }>
+export type Triage = (who: string, sender: 'owner' | 'other', text: string, o: { hasFiles: boolean; inThread: boolean; context?: () => Promise<string> }) => Promise<{ pick: 'session' | 'react'; why: string; reaction?: ReturnType<typeof reactionVerdict> }>
 
 // Intake triage (rules in core/jev.ts). who: the thread. Every call ends in an event with the pick and the score, never the text (ADR 0010).
 // It fails open: a timeout, an HTTP error or an answer it cannot read is `session`.
 export function jevTriage(c: JevConfig, emit: (who: string, detail: string) => void, o: { fetch?: typeof fetch; timeoutMs?: number } = {}): Triage {
   const go = o.fetch ?? fetch
   return async (who, sender, text, skips) => {
-    const done = (pick: 'session' | 'react', why: string) => {
-      emit(who, `${pick}: ${why}`)
-      return { pick, why }
+    const done = (pick: 'session' | 'react', why: string, reaction = { key: 'none', emoji: null as string | null, confidence: 0 }) => {
+      emit(who, `${pick}: ${why}, reaction ${reaction.key} ${reaction.confidence.toFixed(2)}`)
+      return { pick, why, reaction }
     }
     const skip = triageSkips(text, skips)
     if (skip) return done('session', `no jev call, ${skip}`)
-    const a = await jevPost(c, () => triageRequest(text, c.model), go, o.timeoutMs ?? 4000)
+    let context = ''
+    try { context = await skips.context?.() ?? '' } catch { return done('session', 'conversation unavailable') }
+    const a = await jevPost(c, () => triageRequest(text, c.model, context), go, o.timeoutMs ?? 4000)
     if ('failed' in a) return done('session', `jev failed (${a.failed})`)
     if ('status' in a) return done('session', `jev answered HTTP ${a.status}`)
     const v = triageVerdict(a.json, sender)
     if ('error' in v) return done('session', `jev: ${v.error}`)
-    return done(v.pick, `${sender} react ${v.score.toFixed(2)}`)
+    return done(v.pick, `${sender} react ${v.score.toFixed(2)}`, reactionVerdict(a.json))
   }
 }
 

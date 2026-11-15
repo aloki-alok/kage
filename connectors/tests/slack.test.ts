@@ -14,6 +14,7 @@ const msg = { type: 'message', channel: 'CTEST1', ts: '5.5', user: 'UTEST1', tex
 test('a Slack triage decision writes one log line and keeps its database event', async () => {
   const dir = mkdtempSync(join(tmpdir(), 'kage-triage-'))
   const lines: string[] = []
+  const reactions: string[] = []
   const original = console.error
   console.error = (...args) => { lines.push(args.join(' ')) }
   const ledger = openLedgers(dir, () => '2026-01-01T00:00:00Z', log)
@@ -21,9 +22,9 @@ test('a Slack triage decision writes one log line and keeps its database event',
     const runs = runEvents(ledger, () => 'test-trace')
     const client = {
       auth: { test: async () => ({ team_id: 'TTEST', user_id: 'UTEST1' }) },
-      conversations: { open: async () => ({ channel: { id: 'DTEST' } }) },
+      conversations: { open: async () => ({ channel: { id: 'DTEST' } }), history: async () => ({ messages: [] }) },
       users: { info: async () => ({ user: { real_name: 'Sam Test' } }) },
-      reactions: { add: async () => ({ ok: true }) },
+      reactions: { add: async (o: { name: string }) => { reactions.push(o.name); return { ok: true } } },
     }
     const slack = await connectSlack({
       dir, appToken: 'test', userToken: 'test', bot: client as never, user: client as never,
@@ -31,13 +32,14 @@ test('a Slack triage decision writes one log line and keeps its database event',
       hub: { posted: () => '', handled: () => {}, deliver: () => assert.fail('a thanks needs no session') } as never,
       triage: jevTriage({ key: 'test', model: 'test', threshold: 0.5, agents: 'all', url: 'https://jev.example.com' },
         (who, detail) => runs.emit(who, 'triage', detail),
-        { fetch: (async () => Response.json({ answers: { intake: { choice: 'react', probabilities: { react: 0.99 } } } })) as typeof fetch }),
+        { fetch: (async () => Response.json({ answers: { intake: { choice: 'react', probabilities: { react: 0.99 } }, reaction: { choice: 'folded_hands', confidence: 1 } } })) as typeof fetch }),
     })
     await slack.replay('test-source', JSON.stringify({ ...msg, client_msg_id: 'test', text: '@kage thanks' }))
     const events = ledger.events('2026-01-01')
     assert.equal(events.length, 1)
     assert.equal(events[0]!.kind, 'triage')
-    assert.equal(events[0]!.detail, 'react: owner react 0.99')
+    assert.equal(events[0]!.detail, 'react: owner react 0.99, reaction folded_hands 1.00')
+    assert.deepEqual(reactions, ['pray'])
     assert.equal(lines.filter(l => l.includes('triage ')).length, 1, lines.join('\n'))
   } finally {
     ledger.close()

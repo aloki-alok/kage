@@ -64,13 +64,35 @@ describe('intake triage of a tagged message', () => {
     assert.equal(v.pick, 'react')
     assert.equal(calls[0]!.url, config.url)
     assert.equal(JSON.parse(String(calls[0]!.init.body)).questions.intake.type, 'choice')
-    assert.deepEqual(events, ['C1:5.5 react: other react 0.97'])
+    assert.deepEqual(events, ['C1:5.5 react: other react 0.97, reaction eyes 0.00'])
     assert.ok(!events.join().includes('thanks') && !events.join().includes('apikey_secret'))
   })
   test('a request gets a session', async () => {
     const { triage, events } = run(answering(200, answer('session', 0.02)).f)
     assert.equal((await triage('C1:5.5', 'other', 'deploy the fix', top)).pick, 'session')
     assert.match(events[0]!, /session: other react 0.02/)
+  })
+  test('conversation context reaches both questions, and work wins over an emoji pick', async () => {
+    const body = answer('session', 0.01) as any
+    body.answers.reaction = { choice: 'fire', confidence: 1 }
+    const { f, calls } = answering(200, body)
+    const v = await run(f).triage('CTEST:1', 'other', 'ship it', { ...top, context: async () => 'The build is ready.' })
+    assert.equal(v.pick, 'session')
+    assert.equal(v.reaction?.emoji, 'fire')
+    const request = JSON.parse(String(calls[0]!.init.body))
+    assert.match(request.state, /The build is ready/)
+    assert.deepEqual(Object.keys(request.questions).sort(), ['intake', 'reaction'])
+    assert.equal(calls.length, 1)
+  })
+  test('an unavailable conversation starts a session, and skips never fetch context', async () => {
+    const { f, calls } = answering(200, answer('react', 1))
+    let contexts = 0
+    const context = async () => { contexts++; throw new Error('Slack is down') }
+    const { triage } = run(f)
+    assert.equal((await triage('CTEST:1', 'other', 'thanks', { ...top, context })).pick, 'session')
+    assert.equal((await triage('CTEST:1', 'other', 'thanks', { ...top, inThread: true, context })).pick, 'session')
+    assert.equal(contexts, 1)
+    assert.equal(calls.length, 0)
   })
   test('the owner\'s message needs a stricter bar than a teammate\'s', async () => {
     const f = answering(200, answer('react', 0.9)).f
