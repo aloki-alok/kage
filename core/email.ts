@@ -98,8 +98,33 @@ export async function emailVerdict(
 
 const clean = (v: string) => v.replace(/[\r\n]+/g, ' ').trim()
 
+export function emailBody(text: string, name: string, names: Record<string, string> = {}): string {
+  const strip = (part: string) => part.replace(/(?<!\w)([*_~])(?=\S)([^\n]*?\S)\1(?!\w)/g, '$2')
+  const render = (part: string): string => {
+    if (part.startsWith('```')) return part.slice(3, -3)
+    if (part.startsWith('`')) return part.slice(1, -1)
+    const mention = /^<@([UW][A-Z0-9]+)(?:\|[^>]*)?>$/.exec(part)
+    if (mention) return names[mention[1]!] ?? ''
+    const link = /^<((?:https?:\/\/|mailto:)[^>|]+)(?:\|([^>]+))?>$/.exec(part)
+    if (link) return link[2] && link[2] !== link[1] ? `${strip(link[2])} (${link[1]})` : link[1]!
+    return part
+  }
+  // Protect literal code, URLs and resolved names while removing formatting around them.
+  const tokens: string[] = []
+  let marker = '\0'
+  while (text.includes(marker)) marker += '\0'
+  const protectedText = text.replace(/```[\s\S]*?```|`[^`\n]+`|<[^>\n]+>|https?:\/\/[^\s<>]+/g, part => {
+    tokens.push(render(part))
+    return `${marker}${tokens.length - 1}${marker}`
+  })
+  const plain = strip(protectedText).replace(new RegExp(`${marker}(\\d+)${marker}`, 'g'), (_, index: string) => tokens[Number(index)]!)
+    .replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&amp;/g, '&')
+  return `${plain.trimEnd()}\n\n${clean(name)}`
+}
+
 export function composeReply(r: {
   from: string; to: string[]; cc: string[]; subject: string; inReplyTo: string; references: string[]; text: string
+  name: string; names?: Record<string, string>
 }): string {
   const subject = clean(r.subject)
   const headers = [
@@ -113,7 +138,7 @@ export function composeReply(r: {
     'Content-Type: text/plain; charset=UTF-8',
     'Content-Transfer-Encoding: base64',
   ].filter(Boolean)
-  const body = Buffer.from(r.text).toString('base64').replace(/.{76}/g, '$&\r\n')
+  const body = Buffer.from(emailBody(r.text, r.name, r.names)).toString('base64').replace(/.{76}/g, '$&\r\n')
   return `${headers.join('\r\n')}\r\n\r\n${body}\r\n`
 }
 
@@ -121,6 +146,6 @@ export function composeReply(r: {
 // so anything that needs the owner's yes still waits for it in Slack. One line, no channel tag.
 export function emailTaskLine(from: string, sender: 'owner' | 'teammate', ask: string): string {
   const t = quotedLine(ask)
-  return `Email task (${noChannelTag(from).replace(/\s+/g, ' ')}, ${sender}, by email: teammate limits apply): ${t}`
+  return `Email task (${noChannelTag(from).replace(/\s+/g, ' ')}, ${sender}, by email: teammate limits apply): ${t} (Write plain sentences, with no Slack markup and no tables. The reply tool adds your sign-off.)`
 }
 

@@ -1,6 +1,6 @@
 import { describe, test } from 'node:test'
 import assert from 'node:assert/strict'
-import { composeReply, emailTaskLine, emailVerdict, mailTask, newPart, replyTargets, type InboundMail } from '../email.ts'
+import { composeReply, emailBody, emailTaskLine, emailVerdict, mailTask, newPart, replyTargets, type InboundMail } from '../email.ts'
 
 const cfg = { self: 'kage@kage.example.com', name: 'kage', owner: 'owner@example.com', teammates: ['sam@example.com'], domains: ['example.com'] }
 const PASS = { spam: 'PASS', virus: 'PASS', dmarc: 'PASS' }
@@ -78,6 +78,10 @@ describe('quoted text is not the ask', () => {
 })
 
 describe('replies', () => {
+  test('formatting around links is removed without editing link targets or code', () => {
+    assert.equal(emailBody('*Open <https://example.test/?q=_build_|the report>* and `*literal*`', 'Shadow'),
+      'Open the report (https://example.test/?q=_build_) and *literal*\n\nShadow')
+  })
   test('an internal thread goes to the sender, everyone else in Cc, never back to Kage', () => {
     const r = replyTargets(mail({ to: ['kage@kage.example.com', 'Lee@example.com'], cc: ['sam@example.com', 'LEE@example.com'] }), cfg)
     assert.deepEqual(r, { to: ['owner@example.com'], cc: ['lee@example.com', 'sam@example.com'] })
@@ -94,9 +98,16 @@ describe('replies', () => {
     const r = replyTargets(mail({ from: 'Kage@kage.example.com', to: ['kage@kage.example.com', 'a@client.test'], cc: [] }), cfg)
     assert.deepEqual(r, { to: [], cc: ['a@client.test'] })
   })
+  test('plain email text replaces Slack links, mentions and formatting and signs with the install name', () => {
+    const raw = composeReply({ from: 'Shadow <shadow@example.com>', to: ['reader@example.com'], cc: [], subject: 'Update',
+      inReplyTo: '<test@example.com>', references: [], name: 'Shadow', names: { UTEST1: 'Sam' },
+      text: '*Done*. _Ready_ for ~old~ `new_value`. <https://example.com/?q=_build_|Open> <https://example.com/docs> <@UTEST1> <@UTEST2> &amp; &lt;ok&gt;' })
+    assert.equal(Buffer.from(raw.split('\r\n\r\n')[1]!, 'base64').toString(),
+      'Done. Ready for old new_value. Open (https://example.com/?q=_build_) https://example.com/docs Sam  & <ok>\n\nShadow')
+  })
   test('thread under the original with In-Reply-To and References', () => {
     const raw = composeReply({ from: 'Kage <kage@kage.example.com>', to: ['owner@example.com'], cc: [], subject: '[WARNING] x',
-      inReplyTo: '<b@g>', references: ['<a@s>', '<b@g>'], text: 'Found it.\nLine 2 é' })
+      inReplyTo: '<b@g>', references: ['<a@s>', '<b@g>'], text: 'Found it.\nLine 2 é', name: 'Kage' })
     assert.match(raw, /^Subject: Re: \[WARNING\] x$/m)
     assert.match(raw, /^In-Reply-To: <b@g>$/m)
     assert.match(raw, /^References: <a@s> <b@g>$/m)
@@ -104,7 +115,7 @@ describe('replies', () => {
     assert.match(Buffer.from(raw.split('\r\n\r\n')[1]!, 'base64').toString(), /Line 2 é/)
   })
   test('a header value cannot inject another header', () => {
-    const raw = composeReply({ from: 'K <k@k>', to: ['a@b'], cc: [], subject: 'x\r\nBcc: evil@x.com', inReplyTo: '<b@g>', references: [], text: 'y' })
+    const raw = composeReply({ from: 'K <k@k>', to: ['a@b'], cc: [], subject: 'x\r\nBcc: evil@x.com', inReplyTo: '<b@g>', references: [], text: 'y', name: 'K' })
     assert.doesNotMatch(raw, /^Bcc:/m)
   })
 })
