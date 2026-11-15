@@ -12,11 +12,11 @@ if (thread) {
   const { tool_name, tool_input } = JSON.parse(readFileSync(0, 'utf8'))
   const envFile = envFilePath()
   const dir = dirname(envFile)
-  let harness
-  try { harness = readSettings(envFile).config.harness } catch {}   // no settings: the default memory folders
+  let harness, sharedTools
+  try { ({ harness, sharedTools } = readSettings(envFile).config) } catch {}   // no settings: the default memory folders
   let sender: string | undefined
   try { sender = readFileSync(senderFile(dir, thread), 'utf8').trim() } catch {}
   // No sender file reads as not the owner: every rule still runs, as for a teammate.
-  const reason = toolRefusal(tool_name, tool_input ?? {}, sender, { ownerMemory: memoryDirs(process.env.HOME!, envFile, harness).owner, envFile })
+  const reason = toolRefusal(tool_name, tool_input ?? {}, sender, { ownerMemory: memoryDirs(process.env.HOME!, envFile, harness).owner, envFile, sharedTools })
   if (reason) console.log(JSON.stringify({ hookSpecificOutput: { hookEventName: 'PreToolUse', permissionDecision: 'deny', permissionDecisionReason: reason } }))
 }

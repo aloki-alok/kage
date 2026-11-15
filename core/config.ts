@@ -36,6 +36,7 @@ export const Config = z.strictObject({
     host: z.string().regex(/^[a-z0-9]([a-z0-9.-]*[a-z0-9])?$/), header: z.string().regex(/^[A-Za-z][A-Za-z0-9-]*$/).optional(), prefix: z.string().optional(),
   })).optional(),
   autoUpdate: yes,
+  sharedTools: strings,
   afk: z.strictObject({ on: yes, model: text }).optional(),
   jev: z.strictObject({ agents: strings, threshold: money, model: text, url: text }).optional(),
   connectors: z.strictObject({
@@ -106,7 +107,7 @@ export const KEYS: Row[] = [
   R('KAGE_MAX_KAGELETS', 'kagelets.max', int), R('KAGE_KAGELET_DAILY_USD', 'kagelets.dailyUsd', num),
   R('KAGE_KAGELET_TOTAL_DAILY_USD', 'kagelets.totalDailyUsd', num), R('KAGE_KAGELET_CHAIN_USD', 'kagelets.chainUsd', num),
   R('KAGE_DB_READ_COMMAND', 'kagelets.dbRead.command'), R('KAGE_DB_READ_MAX_ROWS', 'kagelets.dbRead.maxRows', int),
-  R('KAGE_AUTO_UPDATE', 'autoUpdate', onoff),
+  R('KAGE_AUTO_UPDATE', 'autoUpdate', onoff), R('KAGE_SHARED_TOOLS', 'sharedTools', list),
   R('KAGE_AFK', 'afk.on', onoff), R('KAGE_AFK_MODEL', 'afk.model'),
   R('KAGE_JEV_AGENTS', 'jev.agents', list), R('KAGE_JEV_THRESHOLD', 'jev.threshold', num), R('KAGE_JEV_MODEL', 'jev.model'), R('KAGE_JEV_URL', 'jev.url'),
   R('KAGE_EMAIL', 'connectors.email.on', onoff), R('KAGE_MAIL_ADDRESS', 'connectors.email.address'), R('KAGE_MAIL_QUEUE', 'connectors.email.queue'),

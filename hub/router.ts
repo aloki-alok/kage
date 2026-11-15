@@ -273,7 +273,7 @@ const sdk = sdkLib ? sdkSessions({
     settings: { autoMemoryDirectory: MEM.own },
     pathToClaudeCodeExecutable: sdkLib.claude,
   },
-  ownerMemory: MEM.owner,
+  ownerMemory: MEM.owner, sharedTools: config.sharedTools,
   envFile: ENV_FILE,
   codeDir: CODE,
   ssm: { sock: SSM_SOCK, shim: SSM_SHIM, issue: key => ssm.issue(key), drop: key => ssm.drop(key) },

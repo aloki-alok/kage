@@ -47,7 +47,7 @@ export function sdkSessions(o: {
   hasTranscript: (id: string) => boolean
   toHub: (key: string, m: { type: 'mail' | 'wa' | 'voice'; text: string }) => void
   options: Options                                 // cwd, settings, settingSources, the claude binary
-  ownerMemory: string
+  ownerMemory: string; sharedTools?: readonly string[]
   codeDir: string                                  // the folder the hub runs from: a restart runs it, so no shell may write there
   envFile: string                                 // its folder holds the tokens: only the owner's task touches it
   onStart?: () => void                            // a new id may have been minted: save the map
