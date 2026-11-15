@@ -2,6 +2,7 @@
 // They follow links, so they read the filesystem and live here, not in core/ (ADR 0001).
 import { existsSync, readdirSync, realpathSync } from 'node:fs'
 import { basename, dirname, join, posix, resolve } from 'node:path'
+import { privateToolRefusal, slackSendRefusal, voiceToolRefusal } from '../core/guards.ts'
 
 // The config folder holds the tokens (secrets.json, and an env file until its import is deleted). No session may read
 // those, the owner's included: Kage's own tools post as the bot, so no session needs a token. The owner's sessions may
@@ -104,4 +105,9 @@ function realish(p: string): string {
     if (dirname(cur) === cur) return resolve(p)
     rest.unshift(basename(cur))
   }
+}
+// Every hook rule in one chain. The SDK runner and the tmux hook both call it, so a rule added here reaches both (#272).
+export function toolRefusal(tool: string, input: Record<string, unknown>, sender: string | undefined, o: { ownerMemory: string; envFile: string }): string | undefined {
+  return privateToolRefusal(tool, sender) ?? voiceToolRefusal(tool, sender) ?? slackSendRefusal(tool)
+    ?? ownerMemoryRefusal(tool, input as { file_path?: string; notebook_path?: string }, o.ownerMemory) ?? configRefusal(tool, input, sender, o.envFile)
 }

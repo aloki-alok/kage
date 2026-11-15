@@ -4,8 +4,8 @@
 import { readFileSync } from 'node:fs'
 import { dirname } from 'node:path'
 import { envFilePath, readSettings } from '../runtime/config-files.ts'
-import { memoryDirs, privateToolRefusal, senderFile, slackSendRefusal, voiceToolRefusal } from '../core/guards.ts'
-import { configRefusal, ownerMemoryRefusal } from '../runtime/path-guards.ts'
+import { memoryDirs, senderFile } from '../core/guards.ts'
+import { toolRefusal } from '../runtime/path-guards.ts'
 
 const thread = process.env.KAGE_THREAD
 if (thread) {
@@ -16,9 +16,7 @@ if (thread) {
   try { harness = readSettings(envFile).config.harness } catch {}   // no settings: the default memory folders
   let sender: string | undefined
   try { sender = readFileSync(senderFile(dir, thread), 'utf8').trim() } catch {}
-  // ponytail: this tmux route fails open (no sender file, no guard), so voice limits hold fully only on the SDK runtime.
-  const reason = privateToolRefusal(tool_name, sender) ?? voiceToolRefusal(tool_name, sender) ?? slackSendRefusal(tool_name)
-    ?? ownerMemoryRefusal(tool_name, tool_input ?? {}, memoryDirs(process.env.HOME!, envFile, harness).owner)
-    ?? configRefusal(tool_name, tool_input ?? {}, sender, envFile)
+  // No sender file reads as not the owner: every rule still runs, as for a teammate.
+  const reason = toolRefusal(tool_name, tool_input ?? {}, sender, { ownerMemory: memoryDirs(process.env.HOME!, envFile, harness).owner, envFile })
   if (reason) console.log(JSON.stringify({ hookSpecificOutput: { hookEventName: 'PreToolUse', permissionDecision: 'deny', permissionDecisionReason: reason } }))
 }
