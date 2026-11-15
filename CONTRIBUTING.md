@@ -106,6 +106,7 @@ Write logs to stderr only. In a tmux pane, stdout carries the channel protocol, 
 | `release.ts` | The next version and the release notes from merged PR titles. |
 | `preview.ts` | How an approval shows the call it asks about. |
 | `transcript.ts` | Turning a Claude Code transcript line into a line a person can follow. `runtime/transcript-tail.ts` reads the new lines from disk. |
+| `stats.ts` | What `kage stats` shows: spend per day and per connector, runs, refusals, turn time and hub starts, from rows Kage already keeps (no content). `cli/stats.ts` reads them. |
 | `task.ts` | `Task`: what a connector turns a message into, and what a runner takes (ADR 0002). |
 | `instructions.ts` | What every Kage session reads first: who it is, whom it serves, how it answers, and each kind of task's limits. |
 | `text.ts` | Text helpers every rule shares: `oneLine`, and `quotedLine` for someone else's text (no `<channel>` tag survives). |
