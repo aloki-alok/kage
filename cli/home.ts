@@ -1,13 +1,12 @@
 // Where this Kage keeps its env, database and ledgers, shared by every kage command.
-import { existsSync } from 'node:fs'
-import { connect } from 'node:net'
 import { dirname } from 'node:path'
 import { DatabaseSync } from 'node:sqlite'
 import { placeFor } from '../core/conversations.ts'
 import { tilde } from '../core/config.ts'
-import { hasSettings, readSettings } from '../runtime/config-files.ts'
+import { envFilePath, hasSettings, readSettings } from '../runtime/config-files.ts'
+import { askSocket } from '../runtime/hub-client.ts'
 
-export const ENV_FILE = process.env.KAGE_ENV || `${process.env.HOME}/.config/kage/env`
+export const ENV_FILE = envFilePath()
 export const DIR = dirname(ENV_FILE)
 export const settingsExist = () => hasSettings(ENV_FILE)
 // The settings, or empty ones when there are none yet (a command that only wants to know a switch).
@@ -27,23 +26,5 @@ export function placeNamer(): (key: string) => string {
   }
 }
 
-// One question to the running hub over its socket, and its one-line answer. Rejects with 'down' when no hub
-// is there, and with 'silent' when it does not answer in time (a hung hub, or one from before the question existed).
-export function askHub<T>(question: object, timeoutMs = 5000): Promise<T> {
-  const SOCK = `${DIR}/router.sock`
-  return new Promise((res, rej) => {
-    if (!existsSync(SOCK)) return rej(new Error('down'))
-    const s = connect(SOCK)
-    let buf = ''
-    s.setTimeout(timeoutMs, () => { s.destroy(); rej(new Error('silent')) })
-    s.on('connect', () => s.write(JSON.stringify(question) + '\n'))
-    s.on('data', b => {
-      buf += b
-      const i = buf.indexOf('\n')
-      if (i < 0) return
-      s.destroy()
-      res(JSON.parse(buf.slice(0, i)) as T)
-    })
-    s.on('error', () => rej(new Error('down')))
-  })
-}
+// One question to the running hub over its socket (runtime/hub-client.ts).
+export const askHub = <T>(question: object, timeoutMs = 5000) => askSocket<T>(`${DIR}/router.sock`, question, timeoutMs)

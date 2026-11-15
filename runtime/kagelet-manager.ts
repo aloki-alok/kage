@@ -143,7 +143,7 @@ export function kageletManager(o: { dir: string; max: number; ledgers: { text(na
       mkdirSync(o.dir, { recursive: true, mode: 0o700 })
       writeFileSync(`${file}.new`, text, { mode: 0o600 })
       renameSync(`${file}.new`, file)
-      // What it got new, by whose yes. The owner hears of the no-card ones in the daily note (router.ts).
+      // What it got new, by whose yes. The owner hears of the no-card ones in the daily note (hub/router.ts).
       const reads = fresh.filter(t => kageletTier(t) === 'read')
       if (reads.length) row(a.name, 'read', 'read tools: Kage grants them with no card', reads)
       if (card.length) row(a.name, 'granted', 'the owner said yes on the card, and the yes stands for later kagelets', card)

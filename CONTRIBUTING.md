@@ -127,10 +127,11 @@ Write logs to stderr only. In a tmux pane, stdout carries the channel protocol, 
 
 | File | Holds |
 |---|---|
-| `sdk-sessions.ts` | The default runner: an Agent SDK session per key, inside the hub. `tests/fake-sdk.ts` is the fake SDK its tests drive. |
+| `sdk-sessions.ts` | The default runner: an Agent SDK session per key, inside the hub. `runtime/tests/fake-sdk.ts` is the fake SDK its tests drive. |
 | `tmux-panes.ts` | The other runner: a Claude Code pane per key. |
 | `kage-tools.ts` | A session's tools (about 28: replies and edits, files, messages to people, schedules and watches, kagelets, settings, AFK, the browser, prod log) and the approval card. The instructions every session reads are `core/instructions.ts`. |
 | `session-link.ts` | The local socket that panes and the `kage` commands connect to. |
+| `hub-client.ts` | The client end of that socket: one question to the running hub, one answer. Node modules only, because the shell scripts read settings through `cli/home.ts`, which imports it. |
 | `protocol.ts` | The messages on that socket. |
 | `voice-slack-tools.ts` | The two Slack read tools only an owner-verified voice call gets (`slack_search`, `slack_read`), loaded up front so a live call skips tool discovery. |
 | `claude-once.ts` | One isolated `claude -p` answer for the guards and stand-ins (WhatsApp, Slack AFK): no MCP, no settings, nothing saved, run in an empty folder. |

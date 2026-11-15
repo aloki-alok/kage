@@ -686,7 +686,7 @@ test('the usage limit, whole: no post but the notice, the inbox message kept, an
     onTurn: (key, tasks, limit) => limits.turn(key, tasks, limit, 1000),
   })
   d = new Dispatcher<ToSession>(s.runner, { max: 2, idleMs: 60_000, connectMs: 60_000, evictMs: 1, newId: () => ID })
-  // What the hub does with one Slack message (router.ts toSession, then the connector's handled).
+  // What the hub does with one Slack message (hub/router.ts toSession, then the connector's handled).
   const hear = (ts: string, now: number) => {
     const task: Task = { type: 'task', content: `Task from Sam: ${ts}`, fromOwner: false, meta: { channel: 'C1', thread_ts: '5.5', place: '#general', permalink: '' }, origin: { channel: 'C1', ts } }
     store.take(`slack:C1:${ts}`, 'slack', `original event ${ts}`, now)

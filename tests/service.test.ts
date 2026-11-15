@@ -1,5 +1,5 @@
 // What keeps the hub alive (hub.ts, service.sh, the hub lock), run for real from a temp copy with a fake
-// hub (router.ts) and a fake Slack API. Nothing here talks to Slack, launchd or systemd.
+// hub (hub/router.ts) and a fake Slack API. Nothing here talks to Slack, launchd or systemd.
 import { describe, test, before, after } from 'node:test'
 import assert from 'node:assert/strict'
 import { execFile, spawn } from 'node:child_process'
@@ -8,7 +8,7 @@ import { createServer, type Server } from 'node:http'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 
-const REPO = join(import.meta.dirname, '../..')
+const REPO = join(import.meta.dirname, '..')
 const FAKE_HUB = `console.log('fake hub up in ' + process.cwd()); console.error('boom ' + process.env.FAKE_EXIT); process.exit(Number(process.env.FAKE_EXIT ?? 0))`
 
 type Run = { code: number | null; out: string }
@@ -24,7 +24,7 @@ function kageCopy() {
   for (const f of ['hub.ts', 'service.sh']) copyFileSync(join(REPO, f), join(dir, f))
   mkdirSync(join(dir, 'runtime'))
   mkdirSync(join(dir, 'cli'))
-  for (const f of ['hub-log.ts', 'config-files.ts', 'hold-keys.ts', 'key-proxy.ts']) copyFileSync(join(REPO, 'runtime', f), join(dir, 'runtime', f))
+  for (const f of ['hub-log.ts', 'config-files.ts', 'hold-keys.ts', 'key-proxy.ts', 'hub-client.ts']) copyFileSync(join(REPO, 'runtime', f), join(dir, 'runtime', f))
   for (const f of ['config.ts', 'home.ts']) copyFileSync(join(REPO, 'cli', f), join(dir, 'cli', f))
   cpSync(join(REPO, 'core'), join(dir, 'core'), { recursive: true })
   symlinkSync(join(REPO, 'node_modules/zod'), join(dir, 'node_modules/zod'))

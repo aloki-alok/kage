@@ -86,7 +86,7 @@ export function connectGithub(o: {
       const body = raw.toString('utf8')
       if (!signedByGithub(o.secret, body, req.headers['x-hub-signature-256'] as string | undefined)) { res.writeHead(401).end(); return }
       // Into the inbox first: GitHub does not resend a delivery by itself, so a hub that dies while
-      // handling it replays it from the store on the next start (router.ts). A redelivered id runs once.
+      // handling it replays it from the store on the next start (hub/router.ts). A redelivered id runs once.
       const type = String(req.headers['x-github-event'] ?? '')
       const id = String(req.headers['x-github-delivery'] ?? '')
       const source = id ? `github:${id}` : undefined

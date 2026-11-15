@@ -3,9 +3,9 @@
 // read now, so a new token from kage add browser reaches the extension with no paste. stdout is Chrome's channel:
 // nothing else may be written to it.
 import { frame, unframe } from '../core/browser-pair.ts'
-import { readSettings } from '../runtime/config-files.ts'
+import { envFilePath, readSettings } from '../runtime/config-files.ts'
 
-const ENV_FILE = process.env.KAGE_ENV || `${process.env.HOME}/.config/kage/env`
+const ENV_FILE = envFilePath()
 
 function answer(): unknown {
   let s

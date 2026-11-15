@@ -6,6 +6,10 @@ import { dirname, join } from 'node:path'
 import { badValue, Config, fromEnv, Secrets, settingTier } from '../core/config.ts'
 import { parseEnv } from '../core/settings.ts'
 
+// Where the settings live: KAGE_ENV, else the default folder. Named after the old env file, which config.json and secrets.json sit beside.
+// hub.ts keeps its own copy: it runs before the packages are checked, so it imports no file of ours.
+export const envFilePath = () => process.env.KAGE_ENV || `${process.env.HOME}/.config/kage/env`
+
 export const files = (envFile: string) => ({ dir: dirname(envFile), config: join(dirname(envFile), 'config.json'), secrets: join(dirname(envFile), 'secrets.json'), legacy: envFile })
 export const hasSettings = (envFile: string) => existsSync(files(envFile).config) || existsSync(envFile)
 

@@ -44,9 +44,9 @@ export function listenForSessions(path: string, d: Dispatcher<ToSession>, o: Rep
   failed: (m: ToSession) => void
   schedules: Pick<ReturnType<typeof scheduler>, 'add' | 'remove'>
   callCode?: () => string
-  // kage tell: the owner's words into one thread, as a task (router.ts decides how).
+  // kage tell: the owner's words into one thread, as a task (hub/router.ts decides how).
   tell?: (key: string, text: string) => { ok: true; held?: true } | { refused: string }
-  // kage relay: change or read the SSM relay's allow list (router.ts decides what may be listed).
+  // kage relay: change or read the SSM relay's allow list (hub/router.ts decides what may be listed).
   relay?: (action: string, key?: string) => { ok: true; keys: string[] } | { refused: string }
   // kage reload: read the settings file again (core/settings.ts).
   reload?: () => Reloaded

@@ -1,5 +1,5 @@
 // The hub's entry: what launchd or systemd runs (service.sh), or `kage run` under any other supervisor.
-// It uses only Node's own modules and loads router.ts last, so a bad pull that breaks the hub's code or its
+// It uses only Node's own modules and loads hub/router.ts last, so a bad pull that breaks the hub's code or its
 // packages is still caught here: logged, counted, and after 3 starts in 10 minutes sent to the owner as a DM.
 // The supervisor's rule: a non-zero exit restarts the hub, and exit 0 (kage stop, a second hub) leaves it down.
 import { existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from 'node:fs'

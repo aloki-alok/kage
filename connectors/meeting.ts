@@ -211,7 +211,7 @@ export function connectMeeting(o: {
       if (!raw) { res.writeHead(413).end(); req.destroy(); return }
       const body = raw.toString('utf8')
       // Into the inbox first, keyed by the body: a sender that retries runs once, and a hub that dies
-      // while handling it replays it on the next start (router.ts).
+      // while handling it replays it on the next start (hub/router.ts).
       const source = `meeting:${createHash('sha256').update(body).digest('hex').slice(0, 32)}`
       if (!o.inbox.take(source, 'meeting', body)) { res.writeHead(202).end(); return }
       run(body, source)

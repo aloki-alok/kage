@@ -9,7 +9,7 @@
     "node": ">=22.18"
   },
   "scripts": {
-    "test": "node --test 'core/**/*.test.ts' 'connectors/**/*.test.ts' 'runtime/**/*.test.ts' 'cli/**/*.test.ts' 'tests/*.test.ts'",
+    "test": "node --test 'core/**/*.test.ts' 'connectors/**/*.test.ts' 'runtime/**/*.test.ts' 'cli/**/*.test.ts' 'hub/**/*.test.ts' 'plugin/**/*.test.ts' 'tests/*.test.ts'",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {

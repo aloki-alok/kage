@@ -3,27 +3,16 @@
 // outside this repo) places the call with that code in $KAGE_CALL_CODE. The call that brings the code
 // back is the owner (connectors/voice.ts). The code is never printed.
 import { spawnSync } from 'node:child_process'
-import { connect } from 'node:net'
-import { dirname } from 'node:path'
-import { load } from '../hub/config.ts'
+import { askHub, settings } from './home.ts'
 
-const { config, ENV_FILE } = load()
+const { config } = settings()
 const command = config.connectors?.call?.command
 if (!command) {
   console.error(`Run kage set connectors.call.command '<command that places the call>'. It gets the code in $KAGE_CALL_CODE.`)
   process.exit(1)
 }
-const sock = connect(`${dirname(ENV_FILE)}/router.sock`)
-sock.on('error', () => { console.error('Kage is not running. Start it with kage start'); process.exit(1) })
-sock.write(JSON.stringify({ type: 'callcode' }) + '\n')
-let buf = ''
-sock.on('data', chunk => {
-  buf += chunk
-  const i = buf.indexOf('\n')
-  if (i < 0) return
-  sock.destroy()
-  const r = JSON.parse(buf.slice(0, i)) as { code?: string; refused?: string }
-  if (!r.code) { console.error(`No call: ${r.refused ?? 'the hub gave no code'}. Set voiceToken in secrets.json and restart.`); process.exit(1) }
-  const run = spawnSync(command, { shell: true, stdio: 'inherit', env: { ...process.env, KAGE_CALL_CODE: r.code } })
-  process.exit(run.status ?? 1)
-})
+const r = await askHub<{ code?: string; refused?: string }>({ type: 'callcode' })
+  .catch(() => { console.error('Kage is not running. Start it with kage start'); process.exit(1) })
+if (!r.code) { console.error(`No call: ${r.refused ?? 'the hub gave no code'}. Set voiceToken in secrets.json and restart.`); process.exit(1) }
+const run = spawnSync(command, { shell: true, stdio: 'inherit', env: { ...process.env, KAGE_CALL_CODE: r.code } })
+process.exit(run.status ?? 1)

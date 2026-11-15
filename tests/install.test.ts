@@ -5,9 +5,9 @@ import { execFileSync } from 'node:child_process'
 import { chmodSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
-import { pullMain } from '../auto-update.ts'
+import { pullMain } from '../runtime/auto-update.ts'
 
-const REPO = join(import.meta.dirname, '../..')
+const REPO = join(import.meta.dirname, '..')
 const git = (cwd: string, ...args: string[]) => execFileSync('git', args, { cwd, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }).trim()
 const commit = (cwd: string, file: string, text: string) => {
   writeFileSync(join(cwd, file), text)

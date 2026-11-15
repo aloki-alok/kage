@@ -163,7 +163,7 @@ cmd_status() {
   node cli/status.ts
 }
 
-# The version the hub read at its start (router.ts writes it), and the version of the code on disk.
+# The version the hub read at its start (hub/router.ts writes it), and the version of the code on disk.
 running_version() { cat "$(dirname "$ENV_FILE")/version" 2>/dev/null || echo unknown; }
 disk_version() { node -e 'import("./runtime/auto-update.ts").then(m=>console.log(m.version(process.cwd())))'; }
 cmd_version() {

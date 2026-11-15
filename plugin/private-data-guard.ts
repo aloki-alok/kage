@@ -3,14 +3,14 @@
 // It also keeps the owner's memory read-only for Kage, except notes about people.
 import { readFileSync } from 'node:fs'
 import { dirname } from 'node:path'
-import { readSettings } from '../runtime/config-files.ts'
+import { envFilePath, readSettings } from '../runtime/config-files.ts'
 import { memoryDirs, privateToolRefusal, senderFile, slackSendRefusal, voiceToolRefusal } from '../core/guards.ts'
 import { configRefusal, ownerMemoryRefusal } from '../runtime/path-guards.ts'
 
 const thread = process.env.KAGE_THREAD
 if (thread) {
   const { tool_name, tool_input } = JSON.parse(readFileSync(0, 'utf8'))
-  const envFile = process.env.KAGE_ENV || `${process.env.HOME}/.config/kage/env`
+  const envFile = envFilePath()
   const dir = dirname(envFile)
   let harness
   try { harness = readSettings(envFile).config.harness } catch {}   // no settings: the default memory folders
