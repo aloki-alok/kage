@@ -18,9 +18,9 @@ Read the ADRs in `docs/adr/` that match what you touch. Do not copy their text i
 | tool limits for a kind of sender | 0005 |
 | settings, tokens, `config.ts`, the env file | 0006 |
 | a test file | 0007 |
-| auto-update or the `stable` tag | 0008 |
+| auto-update, a release, or the `stable` tag | 0008, 0013 |
 | anything that posts to Slack or another channel | 0009 |
-| the event log or a ledger | 0010 |
+| the event log or a ledger | 0010, 0011 |
 | a specialist kagelet, or a rule every install should learn | 0012 (add or edit a skill in `skills/`) |
 | any new file, a file near 300 lines, an export, or a move between folders | 0014 |
 

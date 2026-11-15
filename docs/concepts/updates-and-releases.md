@@ -33,4 +33,4 @@ After pulling, the hub waits until every session is quiet. It then restarts and 
 
 Release tags are not signed yet. Issue #58 tracks that remaining trust gap.
 
-See [AGENTS.md](../../AGENTS.md) for the supported update commands.
+See [CLAUDE.md](../../CLAUDE.md) for the supported update commands.

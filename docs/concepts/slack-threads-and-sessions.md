@@ -21,4 +21,4 @@ The dispatcher limits concurrent sessions. Extra work waits, while a quiet sessi
 
 Side lanes provide another session for the same conversation. They keep long work from blocking the main lane.
 
-See [AGENTS.md](../../AGENTS.md) for commands that inspect, attach to, or stop sessions.
+See [CLAUDE.md](../../CLAUDE.md) for commands that inspect, attach to, or stop sessions.

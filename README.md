@@ -27,7 +27,7 @@ You need macOS or Linux, Node 22.18 or newer, and [Claude Code](https://code.cla
 2. Follow the setup. It opens your Slack app with everything filled in. You click **Create** and **Allow**, then paste three tokens into the terminal.
 3. Tag `@kage` in any Slack thread.
 
-Or let a coding agent do it: paste `Set up Kage for me by following AGENTS.md in https://github.com/aloki-alok/kage` into Claude Code. It stops only for the clicks a person has to make.
+Or let a coding agent do it: paste `Set up Kage for me by following CLAUDE.md in https://github.com/aloki-alok/kage` into Claude Code. It stops only for the clicks a person has to make.
 
 If something is off, run `kage doctor`. It names the fix.
 

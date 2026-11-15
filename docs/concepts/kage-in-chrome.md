@@ -29,4 +29,4 @@ The card names the real site and the control's current page label. A front tab c
 
 Kage checks the site and selected control again after approval. A change to either cancels the action.
 
-See [AGENTS.md](../../AGENTS.md) for browser setup and [the settings reference](../settings.md) for browser policy.
+See [CLAUDE.md](../../CLAUDE.md) for browser setup and [the settings reference](../settings.md) for browser policy.
