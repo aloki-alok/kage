@@ -27,7 +27,7 @@ const DEBT = {
   rootImports: [] as string[],
   // A source file over MAX_LINES lines (import lines not counted), with the most it may have. Split it; lower the number as it shrinks.
   longFiles: {
-    'hub/router.ts': 393, 'cli/top.ts': 607,
+    'hub/router.ts': 393, 'cli/top.ts': 490,
     'runtime/sdk-sessions.ts': 334, 'core/sessions.ts': 323,
   } as Record<string, number>,
   // A core/ or runtime/ file missing from the CONTRIBUTING.md code map.

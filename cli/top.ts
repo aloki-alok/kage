@@ -15,7 +15,8 @@ import { ago, boardRows, nextRuns, limitLine, pauseLine, watchingNext, whenLabel
 import { filterRows, hit, layout, moreLine, STRING, type Layout } from '../core/loom.ts'
 import { transcriptLine } from '../core/transcript.ts'
 import { newLines } from '../runtime/transcript-tail.ts'
-import { HERO_BIG, HERO_SMALL } from '../core/hero.ts'
+import { BG, clamp, clean, clear, clip, glitch, H, put, resize, toText, W } from './top-screen.ts'
+import { cutString, drawHero, path, string } from './top-art.ts'
 import { schedulesIn } from '../runtime/store.ts'
 import { actionLine, dailyCap, PANEL_KEYS, panelLines, shownState, type PanelAction } from '../core/kagelet-view.ts'
 import { kageletRows, type KageletRow } from '../core/kagelets.ts'
@@ -182,123 +183,6 @@ async function pollHub() {
   if (r?.type === 'board') { live = r; liveAt = Date.now() }
 }
 
-// ---- the screen: a grid of cells, each a character and a colour class
-
-let W = 100, H = 38
-const COL: Record<string, [number, number, number]> = {
-  w: [244, 241, 234], W: [255, 255, 255], m: [163, 158, 148], d: [86, 82, 100], k: [48, 45, 60],
-  r: [208, 20, 30], R: [255, 77, 61], g: [212, 175, 55], G: [255, 215, 94], f: [70, 66, 86],
-}
-const BG = '\x1b[48;2;15;14;19m'
-type Cell = [string, string]
-let G: Cell[][] = []
-const clear = () => { G = Array.from({ length: H }, () => Array.from({ length: W }, (): Cell => [' ', 'w'])) }
-const put = (x: number, y: number, s: string, k: string) => {
-  x = Math.round(x); y = Math.round(y)
-  if (y < 0 || y >= H) return
-  for (const ch of s) { if (x >= 0 && x < W) G[y]![x] = [ch, k]; x++ }
-}
-const clean = (s: string) => s.replace(/[\x00-\x1f\x7f]/g, ' ')
-const clip = (s: string, n: number) => { const a = [...clean(s)]; return a.length <= n ? a.join('') : `${a.slice(0, Math.max(0, n - 1)).join('')}…` }
-const clamp = (v: number, a = 0, b = 1) => Math.max(a, Math.min(b, v))
-// Deterministic noise, so the start looks the same each run.
-const rnd = (i: number) => { const x = Math.sin(i * 12.9898) * 43758.5453; return x - Math.floor(x) }
-
-function toText(): string[] {
-  return G.map(row => {
-    let out = BG, cur = '', buf = ''
-    const flush = () => { if (buf) { const [r, g, b] = COL[cur]!; out += `\x1b[38;2;${r};${g};${b}m${buf}`; buf = '' } }
-    for (const [c, k] of row) { if (k !== cur) { flush(); cur = k } buf += c }
-    flush()
-    return `${out}\x1b[0m`
-  })
-}
-
-// Kage, whole. During the start it assembles from noise, a bright line sweeps down now and then, and
-// the star glints.
-const HEROES = { big: HERO_BIG, small: HERO_SMALL }
-function drawHero(l: Layout, t: number, since: number) {
-  const h = HEROES[l.mode as 'big' | 'small']
-  const R = h.chars.length, C = h.chars[0]!.length
-  const scan = ((t - boot) / 70) % (R * 6)
-  for (let r = 0; r < R; r++) for (let c = 0; c < C; c++) {
-    let k = h.cls[r]![c]!
-    const ch = h.chars[r]![c]!
-    if (since < rnd(r * C + c + 1) * 500 + r * 10) {
-      if (rnd(r * 97 + c * 13 + Math.floor(t / 60)) > 0.55) put(l.hero!.x + c, l.hero!.y + r, String.fromCharCode(0x2800 + Math.floor(rnd(c * r + t / 50) * 255)), 'f')
-      continue
-    }
-    if (Math.abs(r - scan) < 0.6 && ch !== ' ') k = k === 'r' ? 'R' : 'W'
-    else if (k === 'g' && rnd(r * 7 + c + Math.floor(t / 300)) > 0.7) k = 'G'
-    if (ch !== ' ') put(l.hero!.x + c, l.hero!.y + r, ch, k)
-  }
-}
-
-// A string is the path of cells between two points, each with the box character for its slope.
-function path(x0: number, y0: number, x1: number, y1: number): [number, number, string][] {
-  x0 = Math.round(x0); y0 = Math.round(y0); x1 = Math.round(x1); y1 = Math.round(y1)
-  const pts: [number, number, string][] = []
-  const dx = Math.abs(x1 - x0), dy = -Math.abs(y1 - y0), sx = x0 < x1 ? 1 : -1, sy = y0 < y1 ? 1 : -1
-  let err = dx + dy, x = x0, y = y0
-  for (;;) {
-    const px = x, py = y
-    if (x === x1 && y === y1) { pts.push([x, y, pts.length ? pts[pts.length - 1]![2] : '│']); break }
-    const e2 = 2 * err
-    let mx = 0, my = 0
-    if (e2 >= dy) { err += dy; x += sx; mx = sx }
-    if (e2 <= dx) { err += dx; y += sy; my = sy }
-    pts.push([px, py, mx && my ? (mx === my ? '╲' : '╱') : my ? '│' : '─'])
-  }
-  return pts
-}
-const QUIET: Record<string, string> = { '│': '┊', '─': '┄', '╲': '·', '╱': '·' }
-
-function string(pts: [number, number, string][], kind: string, t: number, i: number, t0: number, since: number) {
-  const n = pts.length
-  const grown = Math.floor(clamp((since - 500 - i * 60) / 300) * n)
-  if (kind === 'grow') {
-    const m = Math.floor(clamp((t - t0) / 1800) * n)
-    for (let j = 0; j < m; j++) put(pts[j]![0], pts[j]![1], pts[j]![2], 'g')
-    if (m < n && m > 0) put(pts[m]![0], pts[m]![1], '✦', 'G')
-    return
-  }
-  for (let j = 0; j < Math.min(grown, n); j++) {
-    let [x, y, ch] = pts[j]!, k = 'm'
-    if (kind === 'pulse') {
-      k = 'r'
-      const p = ((t / 45) + i * 7) % (n + 8)
-      if (j === Math.floor(p)) { ch = '●'; k = 'R' } else if (j === Math.floor(p) - 1) { ch = '•'; k = 'R' } else if (j === Math.floor(p) - 2) k = 'R'
-    } else if (kind === 'blink') {
-      k = Math.floor(t / 450) % 2 ? 'G' : 'g'
-      if (j === Math.floor(n / 2)) ch = '◆'
-    } else if (kind === 'drift') {
-      k = 'w'
-      if (j === Math.floor(((t / 110) + i * 11) % (n * 3))) { ch = '∘'; k = 'W' }
-    } else { ch = QUIET[ch] ?? ch; k = 'm' }
-    put(x, y, ch, k)
-  }
-}
-
-// A cut string splits at its middle: the star's half draws back, the other half falls as dust.
-function cutString(pts: [number, number, string][], t: number, t0: number) {
-  const n = pts.length, e = clamp((t - t0) / 1600), mid = Math.floor(n / 2)
-  for (let j = 0; j < Math.floor(mid * (1 - e)); j++) put(pts[j]![0], pts[j]![1], pts[j]![2], 'm')
-  for (let j = mid; j < n; j++) {
-    const fall = e * e * 14 + rnd(j) * e * 4, drift = (rnd(j * 3) - 0.5) * e * 6
-    put(pts[j]![0] + drift, pts[j]![1] + fall, e < 0.15 ? pts[j]![2] : '·˙∙.'[j % 4]!, e < 0.4 ? 'r' : e < 0.75 ? 'm' : 'd')
-  }
-}
-
-// One rare row shifts sideways for a moment.
-function glitch(t: number) {
-  const slot = Math.floor(t / 2600)
-  if (rnd(slot) > 0.55 && t % 2600 < 90) {
-    const y = Math.floor(rnd(slot * 5) * H), shift = rnd(slot * 7) > 0.5 ? 2 : -2
-    const row = G[y]!.slice()
-    for (let x = 0; x < W; x++) { const s = row[(x - shift + W) % W]!; G[y]![x] = [s[0], s[1] === 'w' || s[1] === 'W' ? 'r' : s[1]] }
-  }
-}
-
 // ---- one frame
 
 const TONE: Record<string, string> = { red: 'R', gold: 'G', white: 'w', muted: 'm', dim: 'd' }
@@ -327,7 +211,7 @@ function frame(t: number, since: number): string[] {
   lastY.clear()
   for (const r of l.live) lastY.set(r.key, r.y)
 
-  if (l.hero) drawHero(l, t, since)
+  if (l.hero) drawHero(l, t, since, boot)
   const star = l.star
   const p = l.hero ? clamp((since - 900) / 500) : 1, ease = p * p * (3 - 2 * p)
   const cx = l.hero ? l.hero.x + l.hero.cols / 2 : 0, cy = l.hero ? l.hero.y + l.hero.rows / 2 : 0
@@ -479,7 +363,7 @@ const size = () => ({ cols: Number(process.env.COLUMNS) || process.stdout.column
 const intro = () => (view.live.length && L?.hero ? Date.now() - boot : 1e9)
 function draw() {
   if (suspended) return
-  ;({ cols: W, rows: H } = size())
+  resize(size())
   const now = Date.now()
   if (now - lastRefresh > 1000) { lastRefresh = now; refresh(now) }
   const text = frame(now, intro())
@@ -489,7 +373,7 @@ let lastRefresh = 0
 
 if (ONCE) {
   await pollHub()
-  ;({ cols: W, rows: H } = size())
+  resize(size())
   refresh(Date.now())
   frame(boot, 1e9)           // lays out, so the selection exists
   // Piped (a script, a Kage session): one plain line per open thread instead of the picture.
