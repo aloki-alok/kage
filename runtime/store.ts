@@ -5,6 +5,7 @@ import { existsSync, readFileSync, renameSync } from 'node:fs'
 import { DatabaseSync } from 'node:sqlite'
 import { isJobLane, parseSessionKey, threadOfJobLane, type Conversation } from '../core/conversations.ts'
 import type { Schedule } from '../core/cron.ts'
+import type { JobState } from '../core/tripwire.ts'
 import type { KageletMessage, MessageState } from '../core/kagelet-message.ts'
 
 const SCHEMA = `
@@ -70,6 +71,7 @@ export type Inbox = { take(source: string, connector: string, payload: string | 
 const toSchedule = (r: Record<string, any>): Schedule => ({
   id: r.id, key: r.key, cron: r.cron, prompt: r.prompt, recurring: r.recurring === 1, fromOwner: r.from_owner === 1,
   created: Number(r.created), lastFired: Number(r.last_fired), ...(r.ends != null && { ends: Number(r.ends) }), ...(r.lane === 1 && { lane: true as const }),
+  ...(r.trigger != null && { trigger: JSON.parse(r.trigger) }),
 })
 
 // One thread's schedules (every thread's with no key), read without opening the store for writing: for a session's own process,
@@ -88,7 +90,11 @@ export function openStore(path: string) {
   db.exec(SCHEMA)
   // A store from before the usage-limit pause gains its two inbox columns. Older code ignores them.
   const inboxCols = new Set((db.prepare('pragma table_info(inbox)').all() as { name: string }[]).map(c => c.name))
-  if (!(db.prepare('pragma table_info(schedules)').all() as { name: string }[]).some(c => c.name === 'lane')) db.exec('alter table schedules add column lane integer')
+  // A store from before job lanes and triggers gains their columns once. Older rows read as plain thread runs.
+  const scheduleCols = new Set((db.prepare('pragma table_info(schedules)').all() as { name: string }[]).map(c => c.name))
+  if (!scheduleCols.has('lane')) db.exec('alter table schedules add column lane integer')
+  if (!scheduleCols.has('trigger')) db.exec('alter table schedules add column trigger text')       // JSON: core/tripwire.ts Trigger
+  if (!scheduleCols.has('job_state')) db.exec('alter table schedules add column job_state text')   // JSON: core/tripwire.ts JobState
   if (!inboxCols.has('delivered')) db.exec('alter table inbox add column delivered integer not null default 0')
   if (!inboxCols.has('held_until')) db.exec('alter table inbox add column held_until integer')
   const upsertConversation = db.prepare(`insert into conversations (key, connector, chat, thread, kind, agent_dm, place, first_seen, last_seen)
@@ -158,11 +164,18 @@ export function openStore(path: string) {
     },
     // Repeating checks the hub runs (core/cron.ts). Adding an id that exists changes nothing.
     addSchedule(s: Schedule) {
-      db.prepare('insert into schedules (id, key, cron, prompt, recurring, from_owner, created, last_fired, ends, lane) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?) on conflict (id) do nothing')
-        .run(s.id, s.key, s.cron, s.prompt, s.recurring ? 1 : 0, s.fromOwner ? 1 : 0, s.created, s.lastFired, s.ends ?? null, s.lane ? 1 : null)
+      db.prepare('insert into schedules (id, key, cron, prompt, recurring, from_owner, created, last_fired, ends, lane, trigger) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) on conflict (id) do nothing')
+        .run(s.id, s.key, s.cron, s.prompt, s.recurring ? 1 : 0, s.fromOwner ? 1 : 0, s.created, s.lastFired, s.ends ?? null, s.lane ? 1 : null, s.trigger ? JSON.stringify(s.trigger) : null)
     },
     schedules: (): Schedule[] => (db.prepare('select * from schedules order by created').all() as Record<string, any>[]).map(toSchedule),
     fired(id: string, at: number) { db.prepare('update schedules set last_fired = ? where id = ?').run(at, id) },
+    // A tripwire job's state between runs (core/tripwire.ts decide), kept on its schedule row so it survives a restart and
+    // goes when the schedule goes. A job that never ran, or is gone, reads as a clean state.
+    jobState(id: string): JobState {
+      const r = db.prepare('select job_state from schedules where id = ?').get(id) as { job_state: string | null } | undefined
+      return r?.job_state ? JSON.parse(r.job_state) : { fails: 0 }
+    },
+    setJobState(id: string, state: JobState) { db.prepare('update schedules set job_state = ? where id = ?').run(JSON.stringify(state), id) },
     // Only the thread that owns a schedule may remove it; the hub drops expired ones with key undefined.
     removeSchedule(id: string, key?: string): boolean {
       const r = key === undefined ? db.prepare('delete from schedules where id = ?').run(id) : db.prepare('delete from schedules where id = ? and key = ?').run(id, key)

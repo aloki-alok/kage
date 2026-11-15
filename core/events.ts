@@ -2,7 +2,10 @@
 // A row names what happened, never what was said: no message text, query rows or secrets. A run's text
 // stays in its transcript, and the row keeps only the path.
 import { oneLine } from './text.ts'
-export type EventKind = 'run.start' | 'run.end' | 'tool' | 'handoff' | 'grant' | 'refusal' | 'revoke' | 'owner-note' | 'report' | 'cap-pause' | 'cost-flag' | 'config.live' | 'config.restart' | 'config.refused' | 'memory-proposal' | 'memory-decision' | 'day-summary' | 'triage'
+export type EventKind = 'run.start' | 'run.end' | 'tool' | 'handoff' | 'grant' | 'refusal' | 'revoke' | 'owner-note' | 'report' | 'cap-pause' | 'cost-flag' | 'config.live' | 'config.restart' | 'config.refused' | 'memory-proposal' | 'memory-decision' | 'day-summary' | 'triage' | 'tripwire'
+// A tripwire row (ADR 0015) has detail "<action> k=v ...", ids and counts only: tick (job, outcome same|changed|failed|refused,
+// ms, kb), wake (job, reason), ping (job, fails or path), match (job, channel, ts), catchup (channel, read, capped), hook (job,
+// status), decision (job, what, why). who is the schedule's thread key.
 // who: the kagelet's name, or the session key. trace: one run. chain: one chain of runs (#93), '' outside one.
 export type KageEvent = { at: string; kind: EventKind; who: string; trace: string; chain: string; detail: string; transcript: string }
 
