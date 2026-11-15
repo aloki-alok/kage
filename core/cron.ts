@@ -41,6 +41,7 @@ const minuteOf = (t: number) => Math.floor(t / MINUTE) * MINUTE
 
 // The first run after `from`, within `withinMs`.
 export function nextRun(expr: string, from: Date, withinMs: number): Date | undefined {
+  if (expr === REPLY || expr === EVENT) return undefined
   const c = parseCron(expr)
   for (let t = minuteOf(from.getTime()) + MINUTE; t <= from.getTime() + withinMs; t += MINUTE) if (cronMatches(c, new Date(t))) return new Date(t)
   return undefined
@@ -157,6 +158,7 @@ const DAYS = ['Sundays', 'Mondays', 'Tuesdays', 'Wednesdays', 'Thursdays', 'Frid
 const two = (n: string) => n.padStart(2, '0')
 export function cadence(cron: string): string {
   if (cron === REPLY) return 'when someone writes'
+  if (cron === EVENT) return 'when its trigger fires'
   const f = cron.trim().split(/\s+/)
   if (f.length !== 5) return cron
   const [min, hour, dom, mon, dow] = f as [string, string, string, string, string]

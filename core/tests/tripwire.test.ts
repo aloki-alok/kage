@@ -1,7 +1,7 @@
 import { describe, test } from 'node:test'
 import assert from 'node:assert/strict'
 import { createHash } from 'node:crypto'
-import { commandWords, decide, eventNeedsCard, hookTokenHash, lineHasher, normalize, pinsChanged, safePattern, type JobState, type Probe } from '../tripwire.ts'
+import { commandWords, decide, eventNeedsCard, triggerLine, hookTokenHash, lineHasher, normalize, pinsChanged, safePattern, type JobState, type Probe } from '../tripwire.ts'
 
 const probe: Probe = { command: 'x', pins: {}, ignore: [], reads: [], writes: [] }
 const sha = (t: string) => createHash('sha256').update(t).digest('hex')
@@ -169,5 +169,15 @@ describe('webhook jobs', () => {
     assert.equal(eventNeedsCard('mcp__kage__schedule', { on_channel: { channel: 'CTEST9' } }, 'teammate'), true)   // a channel job reads a channel as the owner's hub: same card
     assert.equal(eventNeedsCard('mcp__kage__schedule', { on_channel: { channel: 'CTEST9' } }, 'owner'), false)
     assert.equal(eventNeedsCard('mcp__kage__reply', { hook: true }, 'teammate'), false)
+  })
+})
+
+describe('a job trigger in one line, for kage schedules', () => {
+  test('each kind names what wakes the job', () => {
+    const probe: Probe = { command: 'check.sh | grep TOTAL=', pins: {}, ignore: [], reads: [], writes: [] }
+    assert.equal(triggerLine({ kind: 'probe', probe }), 'probe: check.sh | grep TOTAL=')
+    assert.equal(triggerLine({ kind: 'channel', channel: 'CTEST1', match: 'fatal|error', bots: true }), 'watches CTEST1 for /fatal|error/, bots too')
+    assert.equal(triggerLine({ kind: 'channel', channel: 'CTEST1', bots: false }), 'watches CTEST1, every post by a person')
+    assert.equal(triggerLine({ kind: 'hook', tokenHash: 'abc' }), 'webhook')
   })
 })

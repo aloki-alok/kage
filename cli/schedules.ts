@@ -4,6 +4,7 @@
 import { DIR, placeNamer } from './home.ts'
 import { whenLabel } from '../core/board.ts'
 import { REPLY, cadence, nextRun, promptPreview } from '../core/cron.ts'
+import { triggerLine } from '../core/tripwire.ts'
 import { schedulesIn } from '../runtime/store.ts'
 
 const all = schedulesIn(`${DIR}/kage.db`)
@@ -18,5 +19,6 @@ for (const s of all) {
     ? `${cadence(s.cron)}, until ${s.ends ? day(s.ends) : 'cancelled'}`
     : `${cadence(s.cron)}${s.recurring ? '' : ', once'}${next ? `, next ${whenLabel(next.getTime(), Date.now())}` : ''}`
   console.log(fit(`${s.id}  ${place(s.key)}${s.fromOwner ? '' : ' (teammate)'}  ${when}`))
+  if (s.trigger) console.log(fit(`    ${triggerLine(s.trigger)}`))
   console.log(fit(`    ${promptPreview(s.prompt)}`))
 }
