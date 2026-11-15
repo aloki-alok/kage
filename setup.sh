@@ -159,7 +159,7 @@ cmd_restart() {
 cmd_status() {
   running || { echo "$NAME is not running. Start it: kage start"; return 1; }
   echo "Kage $(running_version)"
-  node cli/top.ts --once
+  node cli/status.ts
 }
 
 # The version the hub read at its start (router.ts writes it), and the version of the code on disk.
