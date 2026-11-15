@@ -54,3 +54,4 @@ The docs site shows the pages in this order. A new page needs its file here and 
 10. [Voice and calls](voice-and-calls.md): caller limits and owner call verification.
 11. [Settings and tokens](settings-and-tokens.md): where settings and tokens live, and why no session reads the tokens.
 12. [Updates and releases](updates-and-releases.md): how tested code reaches installed hubs through `stable`.
+13. [How Kage keeps monitors cheap](how-kage-keeps-monitors-cheap.md): how a repeating check moves from a model poll to a tripwire or an event.
