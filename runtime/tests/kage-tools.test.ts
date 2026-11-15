@@ -297,6 +297,22 @@ describe("a session's Kage tools", () => {
       assert.deepEqual(person.jobs, [])
     }
   })
+  test("a job run is refused unschedule and tune_job whatever channel and thread_ts it passes, and an owner task after it in the same session is allowed", async () => {
+    const s = setup({ approve: async () => true })
+    s.jobs.push({ id: 'c1', key: 'C1:5.5', cron: '@event', prompt: 'p', recurring: true, trigger: { kind: 'channel', channel: 'C0TEST9', bots: true } })
+    s.t.onTask({ ...s.task({ fromOwner: false }), scheduled: true, job: 'c1' })
+    for (const where of [{ channel: 'C1', thread_ts: '5.5' }, { channel: 'CMADEUP', thread_ts: '1.1' }]) {
+      for (const [tool, extra] of [['unschedule', {}], ['tune_job', { ignore: ['x'] }]] as const) {
+        const r = await s.call(tool, { ...where, id: 'c1', ...extra })
+        assert.equal(r.isError, true, `${tool} ${where.channel}`)
+        assert.match(r.text, /report/)
+      }
+    }
+    assert.equal(s.jobs.length, 1)
+    assert.deepEqual(s.tuned, [])
+    s.t.onTask(s.task({ fromOwner: true }))
+    assert.equal((await s.call('unschedule', { channel: 'C1', thread_ts: '5.5', id: 'c1' })).isError, undefined)
+  })
   test('a person mention keeps its <@id> on any task, so Slack highlights it', async () => {
     const s = setup()
     s.t.onTask(s.task({ fromOwner: false }))

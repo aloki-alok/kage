@@ -55,7 +55,7 @@ export function startJobEvents(o: {
       if (!o.store.schedules().some(s => s.id === id)) ev.stopped(id)
     },
     hookUrl: (id: string) => hooks && `http://${host}:${t.hookPort}/hook/${id}`,
-    channelPost: off ? () => {} : ev.channelPost,
+    channelPost: (p: Parameters<typeof ev.channelPost>[0]) => { if (off) return; try { ev.channelPost(p) } catch (e) { log('channel post failed', e); track('hub', 'match failed=1') } },
     channelCatchUp: (h: Parameters<typeof ev.channelCatchUp>[0]) => { if (!off) void ev.channelCatchUp(h).catch(e => log('channel catch-up failed', e)) },
     channelGap: off ? () => {} : ev.channelGap,
     // With no webhook server the stored call cannot run, so the owner hears it, and it leaves the inbox.

@@ -139,7 +139,8 @@ export async function connectSlack(o: { dir: string; appToken: string; userToken
   const isChannelPost = (m: SlackMessage) => !!m.channel && !m.channel.startsWith('D') && m.channel_type !== 'im' && m.channel_type !== 'mpim' && m.user !== ids.bot && POST_SUBTYPES.has(m.subtype)
 
   async function onMessage(m: SlackMessage) {
-    if (isChannelPost(m)) o.hub.channelPost?.(postOf(m))
+    // A throw in a channel job's hook never stops the tag handling below.
+    if (isChannelPost(m)) try { o.hub.channelPost?.(postOf(m)) } catch (e) { log('channel post hook failed', e) }
     // AFK sees every message: it watches threads that mention the owner, and mutes threads the owner types in.
     afk?.heard(m)
     const thread = `${m.channel}:${m.thread_ts ?? m.ts}`

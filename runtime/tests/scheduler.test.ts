@@ -407,3 +407,22 @@ test('a wake whose delivery throws keeps its sources undone, so the inbox replay
   assert.equal(done, 1)
   assert.match(t.sent.at(-1)![1].content, /> x/)
 })
+
+test("a wake whose delivery comes back 'failed' keeps its events: told, not done, and delivered once on the next tick", () => {
+  for (const trigger of [hook, { kind: 'channel' as const, channel: 'CTEST9', bots: true }]) {
+    const t = setup()
+    t.s.add('C1:5.5', { id: 'e1', cron: EVENT, prompt: 'p', recurring: true, trigger }, at('2026-11-03T10:01:00'))
+    let done = 0
+    const failed: string[] = []
+    t.fresh.failing = true
+    t.s.wake('e1', ['> x'], { done: () => done++, failed: s => failed.push(s.id) })
+    t.s.tick(at('2026-11-03T10:02:00'))
+    assert.deepEqual([done, failed], [0, ['e1']], trigger.kind)
+    t.fresh.failing = false
+    t.sent.length = 0
+    t.s.tick(at('2026-11-03T10:03:00'))
+    t.s.tick(at('2026-11-03T10:04:00'))
+    assert.deepEqual([done, t.sent.length], [1, 1], trigger.kind)
+    assert.match(t.sent[0]![1].content, /> x/)
+  }
+})

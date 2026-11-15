@@ -41,7 +41,7 @@ export type ToolContext = {
   change: (a: { channel: string; ts: string; text?: string; wide?: boolean }, ping: boolean) => Promise<Result>
   nameMentions: (text: string) => Promise<void>
   append: Ledgers['add']; ledger: Ledgers['text']; filesOf: (channel: string, thread_ts: string) => string
-  jobTask: Map<string, string | undefined>   // channel:thread_ts to the job whose run this task is
+  jobRun: () => boolean   // the latest task this session took is a job's run, so it read outside text (never from the model's own arguments)
   ownerOnly: (a: Record<string, unknown>) => boolean; pingIn: (channel: string) => boolean
   name: string | undefined   // this session's kagelet, if it is one
 }
@@ -115,7 +115,7 @@ export function sessionTools(o: {
   const taskChannels = new Set<string>()
   // channel:thread_ts -> whether the thread's latest task came from the owner.
   const ownerTask = new Map<string, boolean>()
-  const jobTask = new Map<string, string | undefined>()
+  let jobRun = false
   // The message that started each thread's latest task, so the first reply can mark it answered.
   // A list, because a question keeps the task open and the answer arrives as a new task message.
   const unanswered = new Map<string, { channel: string; ts: string }[]>()
@@ -205,7 +205,7 @@ export function sessionTools(o: {
 
   const ownerOnly = (a: Record<string, unknown>) => ownerTask.get(`${String(a.channel)}:${String(a.thread_ts)}`) === true
   const pingIn = (channel: string) => [...ownerTask].some(([k, owner]) => owner && k.startsWith(`${channel}:`))
-  const c: ToolContext = { o, Title, bot, user, s: z.string(), taskChannels, ownerTask, unanswered, askers, agents, sentForPeople, dmThread, links, react, post, change, nameMentions, names, append, ledger, filesOf, jobTask, ownerOnly, pingIn, name: o.kagelet }
+  const c: ToolContext = { o, Title, bot, user, s: z.string(), taskChannels, ownerTask, unanswered, askers, agents, sentForPeople, dmThread, links, react, post, change, nameMentions, names, append, ledger, filesOf, jobRun: () => jobRun, ownerOnly, pingIn, name: o.kagelet }
   // Kept in this order: the reply tools first, as a session reads them.
   const tools = [...slackTools(c), ...scheduleTools(c), ...kageletTools(c), ...ownerTools(c), ...browserTools(c)]
   const browser = o.browser
@@ -220,7 +220,7 @@ export function sessionTools(o: {
       try { mkdirSync(filesOf(m.meta.channel, m.meta.thread_ts), { recursive: true, mode: 0o700 }) } catch (e) { log('files folder', e) }
       taskChannels.add(m.meta.channel)
       ownerTask.set(key, m.fromOwner === true)
-      jobTask.set(key, m.job)
+      jobRun = m.job !== undefined
       askers.set(key, teammateOf(m.content))
       agents.set(key, m.agent)
       if (m.origin.channel === o.botDm() && m.origin.thread) dmThread.set(key, m.origin.thread)

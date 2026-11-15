@@ -71,7 +71,7 @@ export function scheduleTools(c: ToolContext): KageTool[] {
     shape: { id: s, channel: s.describe('channel attribute from the task tag'), thread_ts: s.describe('thread_ts attribute from the task tag') },
     async run(args) {
       // A run woken by a job read outside text: it may not remove its own trigger, which would silence the job. It reports instead.
-      if (c.jobTask.get(`${String(args.channel)}:${String(args.thread_ts)}`) !== undefined) return { isError: true, text: 'refused: a job\'s own run may not cancel a job. Put the change you suggest in your report: the owner or a teammate applies it.' }
+      if (c.jobRun()) return { isError: true, text: 'refused: a job\'s own run may not cancel a job. Put the change you suggest in your report: the owner or a teammate applies it.' }
       if (!jobs.list().some(j => j.id === args.id)) return { isError: true, text: `no schedule ${String(args.id)} in this thread` }
       jobs.remove(String(args.id))
       return { text: `cancelled ${String(args.id)}` }
@@ -88,7 +88,7 @@ export function scheduleTools(c: ToolContext): KageTool[] {
       const { id, channel: _c, thread_ts: _t, ...change } = args as { id: string } & Record<string, unknown>
       // A run woken by a job (clock, probe or watch) read outside text, so it may not change its trigger at all: not the command,
       // reads or writes (what runs unpinned), nor ignore or cron (which can mute the job). It reports the change it wants instead.
-      if (c.jobTask.get(`${String(args.channel)}:${String(args.thread_ts)}`) !== undefined) return { isError: true, text: 'refused: a job\'s own run may not change its trigger. Put the change you suggest in your report: the owner or a teammate applies it.' }
+      if (c.jobRun()) return { isError: true, text: 'refused: a job\'s own run may not change its trigger. Put the change you suggest in your report: the owner or a teammate applies it.' }
       if (!Object.keys(change).length) return { isError: true, text: 'nothing to change: give cron, command, ignore, reads or writes' }
       if (!ownerOnly(args)) {
         const why = await probeCard(`Change job ${id}: ${Object.entries(change).map(([k, v]) => `${k} to ${JSON.stringify(v)}`).join(', ')}. Kage runs the command on its clock, as you, with no model. A path in reads or writes is not pinned, so a script listed there can change with no new yes.`, { id, ...change })

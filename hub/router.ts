@@ -404,7 +404,7 @@ const watcher = configWatcher({
   restartWanted: yes => updates.restartWanted(yes),
 })
 const reload = watcher.check
-listenForSessions(`${DIR}/router.sock`, d, { ...replies, failed, schedules, tell: commands.tell, relay: commands.relay, reload, paused: () => limits.paused(), limitCounts: () => limits.counts,
+listenForSessions(`${DIR}/router.sock`, d, { ...replies, failed, schedules: jobs, tell: commands.tell, relay: commands.relay, reload, paused: () => limits.paused(), limitCounts: () => limits.counts,
   // kage restart and stop: a drain renewed by each ask. A turn that just ended does not hold them up: its follow-up
   // waits too. Nor does a thread open in a terminal: kage attach holds it again after the restart.
   end: (key, cut) => stopThread(key, cut), kagelet: (action, name) => kag.manager.manage({ action, name }, Date.now()),

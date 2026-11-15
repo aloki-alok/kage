@@ -115,6 +115,28 @@ test("a session's schedule always lands in its own thread, whatever key the mess
   server.close()
 })
 
+test("a job lane's session cannot unschedule over the socket", async () => {
+  const d = new Dispatcher<ToSession>(
+    { start: () => {}, stop: () => {}, lastActivity: () => 0, busy: () => false },
+    { max: 2, idleMs: 9e9, connectMs: 9e9, evictMs: 0, newId: () => 'id1' },
+  )
+  d.task('C1:5.5#side-job-j1', task('a'), 0)
+  const removed: string[] = []
+  const sock = join(mkdtempSync(join(tmpdir(), 'kage-link-')), 's.sock')
+  const server = listenForSessions(sock, d, {
+    mail: () => {}, wa: () => {}, voice: () => {}, failed: () => {},
+    schedules: { add: () => undefined, remove: (key, id) => { removed.push(`${key} ${id}`) } },
+  })
+  await until(() => server.listening)
+  const c = connect(sock)
+  c.write(JSON.stringify({ type: 'hello', key: 'C1:5.5#side-job-j1' }) + '\n')
+  c.write(JSON.stringify({ type: 'unschedule', key: 'x', id: 'j1' }) + '\n')
+  await new Promise(r => setTimeout(r, 100))
+  assert.deepEqual(removed, [])
+  c.end()
+  server.close()
+})
+
 test('the console reads the live board and stops a quiet session over the socket, and a session cannot', async () => {
   const stopped: string[] = []
   const d = new Dispatcher<ToSession>(
