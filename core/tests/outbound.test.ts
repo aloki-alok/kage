@@ -141,7 +141,7 @@ test('a guard lets a message out only on an exact SEND; anything else holds it',
 describe('a post from the owner account shows it is Kage at its foot', () => {
   test('the footer names the asker, or who the news is from, and nobody on the owner\'s own ask', () => {
     assert.equal(kageFooter('Kage'), '🥷 Kage')
-    assert.equal(kageFooter('Kage', { asked: 'Jay' }), '🥷 Kage · asked by Jay')
+    assert.equal(kageFooter('Kage', { asked: 'Sam' }), '🥷 Kage · asked by Sam')
     assert.equal(kageFooter('Kage', { from: 'Sam' }), '🥷 Kage · from Sam')
   })
   test('Slack gets the text in sections and the footer as a marked context line; the plain text carries the footer too', () => {
