@@ -47,13 +47,18 @@ describe("Slack posts go through Kage's own tools", () => {
 
 describe("MCP tools on a task not from the owner: Kage's own and the owner's shared list only (#271)", () => {
   const shared = ['mcp__claude_ai_Claude_Docs__', 'mcp__slack__slack_read_']
+  test("a claude.ai connector acts as the owner's account, so a teammate never gets it, even listed", () => {
+    for (const t of ['mcp__claude_ai_Claude_Docs__batch', 'mcp__claude_ai_Acme_CRM__getDeal'])
+      assert.match(mcpToolRefusal(t, 'teammate', [...shared, 'mcp__claude_ai_']) ?? '', /owner's own account/, t)
+    assert.equal(mcpToolRefusal('mcp__claude_ai_Acme_CRM__getDeal', 'owner', shared), undefined)
+  })
   test('a server nobody listed is refused for a teammate or an email task, and the owner uses it', () => {
     assert.match(mcpToolRefusal('mcp__new_crm__read_deals', 'teammate', shared) ?? '', /shares/)
     assert.match(mcpToolRefusal('mcp__new_crm__read_deals', undefined, shared) ?? '', /shares/)
     assert.equal(mcpToolRefusal('mcp__new_crm__read_deals', 'owner', shared), undefined)
   })
   test("Kage's own tools, a listed prefix and the built-in tools pass", () => {
-    for (const t of ['mcp__kage__reply', 'mcp__plugin_kage_kage__reply', 'mcp__claude_ai_Claude_Docs__batch', 'mcp__slack__slack_read_thread', 'Read', 'Bash'])
+    for (const t of ['mcp__kage__reply', 'mcp__plugin_kage_kage__reply', 'mcp__slack__slack_read_thread', 'Read', 'Bash'])
       assert.equal(mcpToolRefusal(t, 'teammate', shared), undefined, t)
   })
   test('a listed prefix covers only what it names', () => {
