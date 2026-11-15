@@ -1,6 +1,6 @@
 import { describe, test } from 'node:test'
 import assert from 'node:assert/strict'
-import { slackPlain, findSecret, guardVerdict, layoutRefusal, safeReply, secretRefusal, splitForSlack } from '../outbound.ts'
+import { slackPlain, findSecret, guardVerdict, layoutRefusal, safeReply, secretRefusal, splitForSlack, kageFooter, ownerPost, FOOTER_ID } from '../outbound.ts'
 
 describe('person mentions over Slack always use the user id, so they highlight', () => {
   test('a person mention stays <@U…> so Slack renders it as a real mention', () => {
@@ -136,4 +136,26 @@ test('a guard lets a message out only on an exact SEND; anything else holds it',
   assert.deepEqual(guardVerdict('send.\n'), { send: true, reason: '' })
   assert.deepEqual(guardVerdict('HOLD: shares a server ip'), { send: false, reason: 'shares a server ip' })
   for (const out of ['', 'SENDING it now', 'I think SEND', 'Sure! SEND']) assert.equal(guardVerdict(out).send, false, out)
+})
+
+describe('a post from the owner account shows it is Kage at its foot', () => {
+  test('the footer names the asker, or who the news is from, and nobody on the owner\'s own ask', () => {
+    assert.equal(kageFooter('Kage'), '🥷 Kage')
+    assert.equal(kageFooter('Kage', { asked: 'Sam' }), '🥷 Kage · asked by Sam')
+    assert.equal(kageFooter('Kage', { from: 'Sam' }), '🥷 Kage · from Sam')
+  })
+  test('Slack gets the text in sections and the footer as a marked context line; the plain text carries the footer too', () => {
+    const m = ownerPost('Kage', 'We meet at 3 pm.', { asked: 'Sam' })
+    assert.equal(m.text, 'We meet at 3 pm.\n_🥷 Kage · asked by Sam_')
+    assert.deepEqual(m.blocks, [
+      { type: 'section', text: { type: 'mrkdwn', text: 'We meet at 3 pm.' } },
+      { type: 'context', block_id: FOOTER_ID, elements: [{ type: 'mrkdwn', text: '🥷 Kage · asked by Sam' }] },
+    ])
+  })
+  test('a part longer than one Slack section splits into several sections', () => {
+    const long = Array.from({ length: 120 }, (_, i) => `line ${i} ${'x'.repeat(30)}`).join('\n')
+    const sections = ownerPost('Kage', long).blocks.filter(b => b.type === 'section') as { text: { text: string } }[]
+    assert.ok(sections.length > 1)
+    assert.ok(sections.every(b => b.text.text.length <= 3000))
+  })
 })

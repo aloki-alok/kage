@@ -1,6 +1,7 @@
 // Who may drive Kage and what Claude reads: the sender gate, the task line, quoting, teammates.
 import { noChannelTag, oneLine, quotedLine } from './text.ts'
 import { needsNoReply } from './agents.ts'
+import { FOOTER_ID } from './outbound.ts'
 import { agentTag, filesTag, postedByTrustedApp, typedByPerson, type SlackMessage } from './slack-message.ts'
 
 // owner: the person whose user token hears messages. bot: the app's bot user.
@@ -87,12 +88,13 @@ export function classify(m: SlackMessage, ids: Ids, card?: string): Trigger {
 // Other people's words go to Claude quoted and labelled by Slack id (names can be
 // set to anything), and can't close the <channel> tag they arrive in.
 export function quoteMessage(
-  x: { user?: string; ts?: string; text?: string; client_msg_id?: string }, owner: string,
+  x: { user?: string; ts?: string; text?: string; client_msg_id?: string; blocks?: { block_id?: string }[] }, owner: string,
   self?: { bot: string; title: string },
 ): string {
   // The owner's id without client_msg_id is an app posting with their token, not them. Kage's own
-  // fallback posts are those, marked "*Kage:*" (plugin/server.ts post).
-  const mine = self && (x.user === self.bot || (x.user === owner && !x.client_msg_id && (x.text ?? '').startsWith(`*${self.title}:*`)))
+  // posts from there carry the footer block (core/outbound.ts ownerPost); older ones start "*Kage:*".
+  const footed = x.blocks?.some(b => b.block_id === FOOTER_ID) || (x.text ?? '').startsWith(`*${self?.title}:*`)
+  const mine = self && (x.user === self.bot || (x.user === owner && !x.client_msg_id && footed))
   const who = mine ? `you (${self.title})`
     : x.user !== owner ? `other:${x.user ?? 'bot'}` : x.client_msg_id ? 'owner' : 'app-as-owner'
   const body = noChannelTag(x.text ?? '')

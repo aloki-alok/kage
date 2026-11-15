@@ -12,14 +12,14 @@ import type { Task } from '../../core/task.ts'
 // A fake Slack: records posts, edits, deletes and reactions; the bot is not in channel "CPRIV" and cannot see group DM "GDM".
 function fakeSlack() {
   const calls: string[] = []
-  const posts: { channel: string; thread_ts?: string; text: string }[] = []
+  const posts: { channel: string; thread_ts?: string; text: string; blocks?: { block_id?: string }[] }[] = []
   let n = 0
   const client = (who: string) => ({
     chat: {
-      postMessage: async (a: { channel: string; thread_ts?: string; text: string }) => {
+      postMessage: async (a: { channel: string; thread_ts?: string; text: string; blocks?: { block_id?: string }[] }) => {
         if (who === 'bot' && a.channel === 'CPRIV') throw Object.assign(new Error('x'), { data: { error: 'not_in_channel' } })
         if (who === 'bot' && a.channel === 'GDM') throw Object.assign(new Error('x'), { data: { error: 'channel_not_found' } })
-        posts.push({ channel: a.channel, thread_ts: a.thread_ts, text: a.text })
+        posts.push({ channel: a.channel, thread_ts: a.thread_ts, text: a.text, blocks: a.blocks })
         calls.push(`${who} post ${a.channel} ${a.text}`)
         return { ts: `9.${++n}` }
       },
@@ -145,7 +145,7 @@ describe("a session's Kage tools", () => {
     const s = setup()
     s.t.onTask(s.task({ channel: 'CPRIV' }))
     await s.call('reply', { channel: 'CPRIV', thread_ts: '5.5', text: 'done' })
-    assert.ok(s.calls.includes('owner post CPRIV *Kage:* done'))
+    assert.ok(s.calls.includes('owner post CPRIV done\n_🥷 Kage_'))
     assert.ok(s.calls.includes('owner react CPRIV crossed_swords'))
   })
   test('the reaction says what the reply was: an ack marks nothing, a question waits, a quick answer and a finished task differ', async () => {
@@ -259,18 +259,18 @@ describe("a session's Kage tools", () => {
     const r = await s.call('message_people', { channel: 'C1', thread_ts: '5.5', users: ['UBO000001', 'USAM00001'], text: 'We meet at 3 pm about growth.' })
     assert.equal(r.isError, undefined)
     assert.ok(s.calls.includes('owner open UBO000001,USAM00001'))
-    assert.ok(s.calls.includes('owner post G-UBO000001,USAM00001 *Kage:* We meet at 3 pm about growth.'))
+    assert.ok(s.calls.includes('owner post G-UBO000001,USAM00001 We meet at 3 pm about growth.\n_🥷 Kage_'))
     assert.match(r.text, /https:\/\/x\/G-UBO000001,USAM00001\//)
     assert.equal((await s.call('edit_message', { channel: 'G-UBO000001,USAM00001', ts: '9.1', text: 'We meet at 4 pm.' })).text, 'edited')
     // Sent from the owner's account, so the edit keeps saying it was Kage.
-    assert.ok(s.calls.includes('owner edit G-UBO000001,USAM00001 9.1 *Kage:* We meet at 4 pm.'), s.calls.join('\n'))
+    assert.ok(s.calls.includes('owner edit G-UBO000001,USAM00001 9.1 We meet at 4 pm.\n_🥷 Kage_'), s.calls.join('\n'))
   })
   test('a call the owner proved with the one-time code may message people; a stranger on a call may not', async () => {
     const s = setup()
     s.t.onTask(s.task({ channel: 'voice', thread_ts: 'voice:own', fromOwner: true }))
     const r = await s.call('message_people', { channel: 'voice', thread_ts: 'voice:own', users: ['UBO000001'], text: 'The link is ready.' })
     assert.equal(r.isError, undefined, r.text)
-    assert.ok(s.calls.includes('owner post G-UBO000001 *Kage:* The link is ready.'), s.calls.join('\n'))
+    assert.ok(s.calls.includes('owner post G-UBO000001 The link is ready.\n_🥷 Kage_'), s.calls.join('\n'))
     const t = setup()
     t.t.onTask(t.task({ channel: 'voice', thread_ts: 'voice:who', fromOwner: false }))
     assert.equal((await t.call('message_people', { channel: 'voice', thread_ts: 'voice:who', users: ['UBO000001'], text: 'hi' })).isError, true)
@@ -280,10 +280,10 @@ describe("a session's Kage tools", () => {
     s.t.onTask({ ...s.task({ fromOwner: false }), content: 'Teammate task (USAM00001, Sam, not the owner): tell Bo we meet at 3' })
     await s.call('message_people', { channel: 'C1', thread_ts: '5.5', users: ['UBO000001'], text: 'We meet at 3 pm.' })
     assert.ok(s.calls.includes('owner open UBO000001,USAM00001'))
-    assert.ok(s.calls.includes('owner post G-UBO000001,USAM00001 *Kage:* We meet at 3 pm.\n_asked by Sam_'))
+    assert.ok(s.calls.includes('owner post G-UBO000001,USAM00001 We meet at 3 pm.\n_🥷 Kage · asked by Sam_'))
     // An edit keeps the tag and the look of the first post.
     assert.equal((await s.call('edit_message', { channel: 'G-UBO000001,USAM00001', ts: '9.1', text: 'Sam approves the discount.' })).text, 'edited')
-    assert.ok(s.calls.includes('owner edit G-UBO000001,USAM00001 9.1 *Kage:* Sam approves the discount.\n_asked by Sam_'))
+    assert.ok(s.calls.includes('owner edit G-UBO000001,USAM00001 9.1 Sam approves the discount.\n_🥷 Kage · asked by Sam_'))
     assert.equal((await s.call('message_people', { channel: 'C1', thread_ts: '5.5', users: ['UBO000001'], text: 'key AKIAABCDEFGHIJKLMNOP' })).isError, true)
   })
   test('an approval card is recorded by its message id, and no session can edit or delete it', async () => {
@@ -325,7 +325,7 @@ describe("a session's Kage tools", () => {
     b.t.onTask({ ...b.task({ fromOwner: false }), content: 'Teammate task (USAM00001, Sam, not the owner): x' })
     await b.call('reply', { channel: 'C1', thread_ts: '5.5', text: 'On it', mark: 'ack' })   // b's own posts start at 9.2
     await b.call('message_people', { channel: 'C1', thread_ts: '5.5', users: ['UBO000001'], text: 'hi' })
-    assert.ok(b.calls.includes('owner post G-UBO000001,USAM00001 *Kage:* hi\n_asked by Sam_'))
+    assert.ok(b.calls.includes('owner post G-UBO000001,USAM00001 hi\n_🥷 Kage · asked by Sam_'))
     assert.equal((await b.call('edit_message', { channel: 'G-UBO000001,USAM00001', ts: '9.1', text: 'changed' })).isError, true)
     assert.equal((await b.call('delete_message', { channel: 'G-UBO000001,USAM00001', ts: '9.1' })).isError, true)
     // Not even a session whose task came from that group DM itself.
@@ -338,19 +338,19 @@ describe("a session's Kage tools", () => {
     s.t.onTask(s.task())
     await s.call('message_people', { channel: 'C1', thread_ts: '5.5', users: ['UBO000001'], from: 'USAM00001', text: 'We meet at 3 pm.' })
     assert.ok(s.calls.includes('owner open UBO000001,USAM00001'))
-    assert.ok(s.calls.includes('owner post G-UBO000001,USAM00001 *Kage:* We meet at 3 pm.\n_asked by Sam_'), s.calls.join('\n'))
+    assert.ok(s.calls.includes('owner post G-UBO000001,USAM00001 We meet at 3 pm.\n_🥷 Kage · from Sam_'), s.calls.join('\n'))
   })
   test("a teammate cannot sign a message with someone else's name", async () => {
     const s = setup()
     s.t.onTask({ ...s.task({ fromOwner: false }), content: 'Teammate task (USAM00001, Sam, not the owner): x' })
     await s.call('message_people', { channel: 'C1', thread_ts: '5.5', users: ['UBO000001'], from: 'UBOSS0001', text: 'hi' })
-    assert.ok(s.calls.includes('owner post G-UBO000001,USAM00001 *Kage:* hi\n_asked by Sam_'))
+    assert.ok(s.calls.includes('owner post G-UBO000001,USAM00001 hi\n_🥷 Kage · asked by Sam_'))
   })
   test("a non-owner task whose line names no teammate still gets the tag", async () => {
     const s = setup()
     s.t.onTask(s.task({ channel: 'C9', fromOwner: false }))
     await s.call('message_people', { channel: 'C9', thread_ts: '5.5', users: ['UBO000001'], text: 'hi' })
-    assert.ok(s.calls.includes('owner post G-UBO000001 *Kage:* hi\n_asked by A teammate_'))
+    assert.ok(s.calls.includes('owner post G-UBO000001 hi\n_🥷 Kage · asked by A teammate_'))
   })
   test('telling people is refused from a thread with no task, for a bad id, a crowd, or without the scope', async () => {
     const s = setup()
@@ -365,12 +365,39 @@ describe("a session's Kage tools", () => {
     assert.match((await no(['UNOSCOPE'])).text, /mpim:write/)
     assert.ok(!s.calls.some(c => c.includes(' post ')))
   })
+  test("a post from the owner's account carries the footer block, and names the teammate who asked", async () => {
+    const s = setup()
+    s.t.onTask({ ...s.task({ channel: 'CPRIV', fromOwner: false }), content: 'Teammate task (USAM00001, Sam, not the owner): x' })
+    await s.call('reply', { channel: 'CPRIV', thread_ts: '5.5', text: 'Done.' })
+    assert.ok(s.calls.includes('owner post CPRIV Done.\n_🥷 Kage · asked by Sam_'), s.calls.join('\n'))
+    assert.equal(s.posts.at(-1)!.blocks!.at(-1)!.block_id, 'kage-footer')
+  })
+  test("an edit of the owner's own message_people post is judged as the owner's for secrets", async () => {
+    const s = setup()
+    s.t.onTask(s.task())
+    await s.call('message_people', { channel: 'C1', thread_ts: '5.5', users: ['UBO000001'], text: 'hi' })
+    const r = await s.call('edit_message', { channel: 'G-UBO000001', ts: '9.1', text: 'key AKIAABCDEFGHIJKLMNOP' })
+    assert.equal(r.isError, true)
+    assert.match(r.text, /owner_asked/)
+  })
+  test("an \"On it\" ack is not posted from the owner's account: the pickup reaction already says it", async () => {
+    const s = setup()
+    s.t.onTask(s.task({ channel: 'CPRIV' }))
+    const r = await s.call('reply', { channel: 'CPRIV', thread_ts: '5.5', text: 'On it: x', mark: 'ack' })
+    assert.equal(r.isError, undefined)
+    assert.match(r.text, /not posted/)
+    assert.ok(!s.calls.some(c => c.startsWith('owner post')), s.calls.join('\n'))
+    // Where the bot is a member, the ack still posts.
+    s.t.onTask(s.task())
+    await s.call('reply', { channel: 'C1', thread_ts: '5.5', text: 'On it: y', mark: 'ack' })
+    assert.ok(s.calls.includes('bot post C1 On it: y'))
+  })
   test('edit and delete work only on what this session posted, with the token that posted it', async () => {
     const s = setup()
     s.t.onTask(s.task({ channel: 'CPRIV' }))
     await s.call('reply', { channel: 'CPRIV', thread_ts: '5.5', text: 'v1' })
     assert.equal((await s.call('edit_message', { channel: 'CPRIV', ts: '9.1', text: 'v2' })).text, 'edited')
-    assert.ok(s.calls.includes('owner edit CPRIV 9.1 *Kage:* v2'))
+    assert.ok(s.calls.includes('owner edit CPRIV 9.1 v2\n_🥷 Kage_'))
     assert.equal((await s.call('edit_message', { channel: 'CPRIV', ts: '0.1', text: 'x' })).isError, true)   // not ours
     assert.equal((await s.call('delete_message', { channel: 'COTHER', ts: '9.1' })).isError, true)          // not this session's
     assert.equal((await s.call('delete_message', { channel: 'CPRIV', ts: '9.1' })).text, 'deleted')
@@ -617,7 +644,7 @@ describe('a line the hub posts as Kage', () => {
     assert.deepEqual(await postAsKage(o, 'C1', '5.5', 'Paused'), { ts: '9.1', by: 'bot' })
     assert.deepEqual(await postAsKage(o, 'GDM', '5.5', 'Paused'), { ts: '9.2', by: 'owner' })
     assert.deepEqual(await postAsKage(o, 'CPRIV', '5.5', 'Paused'), { ts: '9.3', by: 'owner' })
-    assert.deepEqual(s.calls, ['bot post C1 Paused', 'owner post GDM *Kage:* Paused', 'owner post CPRIV *Kage:* Paused'])
+    assert.deepEqual(s.calls, ['bot post C1 Paused', 'owner post GDM Paused\n_🥷 Kage_', 'owner post CPRIV Paused\n_🥷 Kage_'])
   })
 })
 
