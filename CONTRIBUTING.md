@@ -103,7 +103,7 @@ Write logs to stderr only. In a tmux pane, stdout carries the channel protocol, 
 | `slack-files.ts` | Files attached to a Slack task: which the hub downloads (not canvases or quip docs, 25 MB each, 10 per task), the saved name, and the lines that list them in the task text. `runtime/slack-files.ts` downloads them with the user token into the thread's files folder. |
 | `ssm.ts` | The relay's header line and its checks (instance id, port, region), and which session keys may hold a token. |
 | `cron.ts` | Cron expressions, which schedules are due, and reading Claude Code's own cron jobs. |
-| `email.ts` | Email as a way to tag Kage: who may (the provider's DKIM signature, not only DMARC), the ask in the new text, and the reply-all kept to the owner's domains. The SES, S3 and SQS calls are `connectors/email.ts`. |
+| `email.ts` | Email as a way to tag Kage: who may (the provider's DKIM signature, not only DMARC), the ask in the new text, the reply-all, and the guard on a reply that leaves the owner's domains. The SES, S3 and SQS calls are `connectors/email.ts`. |
 | `whatsapp.ts` | The owner's WhatsApp: the owner's tag is the only way in, the armed-chat stand-in, and the guard that reads every message before it leaves as the owner. The WAHA webhook and calls are `connectors/whatsapp.ts`. |
 | `afk.ts` | AFK mode: which threads the stand-in watches, when it posts or phones the owner, and what it may say. |
 | `blocks.ts` | When the safety check stops a turn: the line in the thread, the owner's DM, and whether the thread closes. |
