@@ -14,10 +14,10 @@ test('a dream runs every night, between 02:00 and 06:00 local time, only when ev
   assert.equal(dreamDue(sun, sun - DAY + 20 * 60_000, true), true)          // last night, a little later
 })
 test('the dream reads the threads that moved since the last dream, never its own', () => {
-  const sessions = { 'C1:1.1': 'a', 'C2:2.2': 'b', 'dm#side-dream': 'c', 'dm': 'd' }
-  const mtime: Record<string, number> = { a: sun - HOUR, b: sun - 2 * DAY, c: sun - HOUR }
+  const sessions = { 'C1:1.1': 'a', 'C2:2.2': 'b', 'dm#side-dream': 'c', 'dm': 'd', 'C1:1.1#side-job-j1': 'e' }
+  const mtime: Record<string, number> = { a: sun - HOUR, b: sun - 2 * DAY, c: sun - HOUR, e: sun - HOUR }
   const got = threadsSince(sessions, id => mtime[id], sun - DAY)
-  assert.deepEqual(got, [{ key: 'C1:1.1', id: 'a' }])                      // b is old, c is the dream, d has no transcript
+  assert.deepEqual(got, [{ key: 'C1:1.1', id: 'a' }])                      // b is old, c is the dream, e is a job lane (the same prompt every tick), d has no transcript
 })
 test('the dream may change only its own memory, archives instead of deleting, and only reads the owner\'s', () => {
   const t = dreamTask({ own: '/m/kage', owner: '/m/owner' }, [], '2026-11-08T00:00:00.000Z')

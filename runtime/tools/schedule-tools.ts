@@ -18,14 +18,15 @@ export function scheduleTools(c: ToolContext): KageTool[] {
       cron: s.describe('"@reply" to run on each new message here, or a 5-field cron in local time: minute hour day-of-month month day-of-week, e.g. "*/15 9-18 * * 1-5"'),
       prompt: s.describe('what to do on each run, complete on its own: name the thread, the check, and when to stay quiet'),
       recurring: z.boolean().optional().describe('false runs it once, at the next match. Default true'),
+      lane: z.boolean().optional().describe('true runs each run in its own lane beside this thread, so it never replays this thread\'s history (it keeps its own); false runs it in this thread. Default: the install\'s setting, usually true. Ignored for @reply'),
     },
     async run(args) {
-      const a = args as { cron: string; prompt: string; recurring?: boolean }
+      const a = args as { cron: string; prompt: string; recurring?: boolean; lane?: boolean }
       if (a.cron !== REPLY) try { parseCron(a.cron) } catch (e) { return { isError: true, text: (e as Error).message } }
       if (!a.prompt.trim()) return { isError: true, text: 'the prompt is empty' }
       const id = randomBytes(4).toString('hex')
       const recurring = a.recurring !== false
-      const no = await jobs.add({ id, cron: a.cron, prompt: a.prompt, recurring })
+      const no = await jobs.add({ id, cron: a.cron, prompt: a.prompt, recurring, ...(a.lane !== undefined && { lane: a.lane ? true as const : undefined }) })
       if (no) return { isError: true, text: no }
       if (a.cron === REPLY) return { text: `Watching: job ${id} runs each time someone writes in this thread, for 7 days. Kept by Kage: it survives restarts.` }
       const next = nextRun(a.cron, new Date(), 366 * 24 * 3600_000)

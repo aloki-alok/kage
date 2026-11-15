@@ -22,7 +22,7 @@ import { blockList, unreadableBlocks } from '../core/browser.ts'
 import { memoryDirs } from '../core/guards.ts'
 import { protectConfig } from '../runtime/path-guards.ts'
 import { stopLine } from '../core/board.ts'
-import { placeFor, sessionKey, type Conversation, type Lane } from '../core/conversations.ts'
+import { modelFor, placeFor, sessionKey, type Conversation, type Lane } from '../core/conversations.ts'
 import { mayStop, senderOf } from '../core/gate.ts'
 import { Dispatcher, mixRunners } from '../core/sessions.ts'
 import { readSettings, setKey, sweepImported } from '../runtime/config-files.ts'
@@ -284,7 +284,7 @@ const sdk = sdkLib ? sdkSessions({
     kag.routes.ended(key, usd ?? 0, d.saved()[key] ? `${PROJECT}/${d.saved()[key]}.jsonl` : '', Date.now(), limited)
   },
   budgetOf: kag.budgetOf,
-  modelOf: key => key.includes('#side-kdream-') ? DEFAULT_MODEL : key.startsWith('voice:') && config.connectors?.voice?.model ? config.connectors.voice.model : kag.modelOf(key),
+  modelOf: key => modelFor(key, config.harness?.jobModel, k => k.includes('#side-kdream-') ? DEFAULT_MODEL : k.startsWith('voice:') && config.connectors?.voice?.model ? config.connectors.voice.model : kag.modelOf(k)),
   onBlocked: blocked,
   onTurn: (key, tasks, limit, done) => limits.turn(key, tasks, limit, Date.now(), done),
   // A lane whose file is gone keeps no tools, rather than falling back to approval cards.
@@ -332,7 +332,7 @@ const schedules = scheduler({
   store, failed,
   deliver: kageletDeliver(kag.notes, toSession),
   ready: key => d.ready(key),
-  trusted: key => store.trust(key) === true,
+  trusted: key => store.trust(key) === true, job: { end: k => d.reset(k), project: PROJECT, carryChars: () => config.harness?.jobCarryChars ?? 500, laneDefault: () => config.harness?.jobLaneDefault ?? true, freshEvery: () => config.harness?.jobFreshEvery ?? 20, carryCount: () => config.harness?.jobCarry ?? 5, posted: () => ledgers.text('posted') },
   ran: j => ledgers.add('runs', [j.id, j.key]),
 })
 // CronCreate jobs moved out of stopped tmux panes (cli/export-crons.ts): adopted once, then retired.

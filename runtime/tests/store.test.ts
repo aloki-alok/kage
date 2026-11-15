@@ -2,8 +2,9 @@ import { describe, test } from 'node:test'
 import assert from 'node:assert/strict'
 import { existsSync, mkdtempSync, readdirSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 import { DatabaseSync } from 'node:sqlite'
-import { kageletMessages, openStore } from '../store.ts'
+import { kageletMessages, openStore, schedulesIn } from '../store.ts'
 
 const DM = 'DBOT00001'
 
@@ -249,4 +250,37 @@ test('the relay allow list is kept by key, and a thread passes when trusted or l
   s.setRelayAllow('C1:5.5', false)
   assert.equal(s.relayOk('C1:5.5'), false)
   assert.deepEqual(s.relayAllowed(), [])
+})
+
+test('a lane has its thread\'s trust: a thread that loses it takes its lanes\' with it, and a run adds nothing of its own', () => {
+  const s = openStore(':memory:')
+  const lane = 'C1:5.5#side-job-j1'
+  s.noteTask('C1:5.5', true, false)
+  assert.equal(s.trust(lane), true)
+  assert.equal(s.relayOk(lane), true)
+  s.noteTask(lane, false, false)                        // a run is not a person's task: it moves nothing
+  assert.equal(s.trust('C1:5.5'), true)
+  s.noteTask('C1:5.5', false, false)
+  assert.equal(s.trust(lane), false)
+  assert.equal(s.relayOk(lane), false)
+})
+
+test('a pane reads its thread\'s schedules from its lane key', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'kage-sched-'))
+  const s = openStore(join(dir, 'kage.db'))
+  s.addSchedule({ id: 'j1', key: 'C1:5.5', cron: '* * * * *', prompt: 'p', recurring: true, fromOwner: false, created: 1, lastFired: 0 })
+  assert.deepEqual(schedulesIn(join(dir, 'kage.db'), 'C1:5.5#side-job-j1').map(x => x.id), ['j1'])
+})
+
+test('a store made before schedules had a lane opens, adds the column once, and reads old rows as thread runs', () => {
+  const file = join(mkdtempSync(join(tmpdir(), 'kage-mig-')), 'kage.db')
+  const raw = new DatabaseSync(file)
+  raw.exec("create table schedules (id text primary key, key text not null, cron text not null, prompt text not null, recurring integer not null, from_owner integer not null, created integer not null, last_fired integer not null default 0, ends integer)")
+  raw.exec("insert into schedules values ('old', 'C1:5.5', '* * * * *', 'p', 1, 0, 1, 0, null)")
+  raw.close()
+  openStore(file).close()
+  const s = openStore(file)                                  // a second open must not fail on the column it already added
+  assert.equal(s.schedules()[0]!.lane, undefined)
+  s.addSchedule({ id: 'new', key: 'C1:5.5', cron: '* * * * *', prompt: 'p', recurring: true, fromOwner: false, created: 2, lastFired: 0, lane: true })
+  assert.equal(s.schedules().find(x => x.id === 'new')!.lane, true)
 })

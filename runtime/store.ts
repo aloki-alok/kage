@@ -3,7 +3,7 @@
 // keep across a restart (state). The hub is the only writer of these tables. tmux panes also write the ledger table in the same file (runtime/ledger.ts).
 import { existsSync, readFileSync, renameSync } from 'node:fs'
 import { DatabaseSync } from 'node:sqlite'
-import { parseSessionKey, type Conversation } from '../core/conversations.ts'
+import { isJobLane, parseSessionKey, threadOfJobLane, type Conversation } from '../core/conversations.ts'
 import type { Schedule } from '../core/cron.ts'
 import type { KageletMessage, MessageState } from '../core/kagelet-message.ts'
 
@@ -69,7 +69,7 @@ export type Inbox = { take(source: string, connector: string, payload: string | 
 
 const toSchedule = (r: Record<string, any>): Schedule => ({
   id: r.id, key: r.key, cron: r.cron, prompt: r.prompt, recurring: r.recurring === 1, fromOwner: r.from_owner === 1,
-  created: Number(r.created), lastFired: Number(r.last_fired), ...(r.ends != null && { ends: Number(r.ends) }),
+  created: Number(r.created), lastFired: Number(r.last_fired), ...(r.ends != null && { ends: Number(r.ends) }), ...(r.lane === 1 && { lane: true as const }),
 })
 
 // One thread's schedules (every thread's with no key), read without opening the store for writing: for a session's own process,
@@ -77,7 +77,7 @@ const toSchedule = (r: Record<string, any>): Schedule => ({
 export function schedulesIn(path: string, key?: string): Schedule[] {
   try {
     const db = new DatabaseSync(path, { readOnly: true })
-    try { return (db.prepare(`select * from schedules ${key === undefined ? '' : 'where key = ?'} order by created`).all(...(key === undefined ? [] : [key])) as Record<string, any>[]).map(toSchedule) } finally { db.close() }
+    try { return (db.prepare(`select * from schedules ${key === undefined ? '' : 'where key = ?'} order by created`).all(...(key === undefined ? [] : [threadOfJobLane(key)])) as Record<string, any>[]).map(toSchedule) } finally { db.close() }
   } catch { return [] }
 }
 
@@ -88,6 +88,7 @@ export function openStore(path: string) {
   db.exec(SCHEMA)
   // A store from before the usage-limit pause gains its two inbox columns. Older code ignores them.
   const inboxCols = new Set((db.prepare('pragma table_info(inbox)').all() as { name: string }[]).map(c => c.name))
+  if (!(db.prepare('pragma table_info(schedules)').all() as { name: string }[]).some(c => c.name === 'lane')) db.exec('alter table schedules add column lane integer')
   if (!inboxCols.has('delivered')) db.exec('alter table inbox add column delivered integer not null default 0')
   if (!inboxCols.has('held_until')) db.exec('alter table inbox add column held_until integer')
   const upsertConversation = db.prepare(`insert into conversations (key, connector, chat, thread, kind, agent_dm, place, first_seen, last_seen)
@@ -157,8 +158,8 @@ export function openStore(path: string) {
     },
     // Repeating checks the hub runs (core/cron.ts). Adding an id that exists changes nothing.
     addSchedule(s: Schedule) {
-      db.prepare('insert into schedules (id, key, cron, prompt, recurring, from_owner, created, last_fired, ends) values (?, ?, ?, ?, ?, ?, ?, ?, ?) on conflict (id) do nothing')
-        .run(s.id, s.key, s.cron, s.prompt, s.recurring ? 1 : 0, s.fromOwner ? 1 : 0, s.created, s.lastFired, s.ends ?? null)
+      db.prepare('insert into schedules (id, key, cron, prompt, recurring, from_owner, created, last_fired, ends, lane) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?) on conflict (id) do nothing')
+        .run(s.id, s.key, s.cron, s.prompt, s.recurring ? 1 : 0, s.fromOwner ? 1 : 0, s.created, s.lastFired, s.ends ?? null, s.lane ? 1 : null)
     },
     schedules: (): Schedule[] => (db.prepare('select * from schedules order by created').all() as Record<string, any>[]).map(toSchedule),
     fired(id: string, at: number) { db.prepare('update schedules set last_fired = ? where id = ?').run(at, id) },
@@ -168,7 +169,7 @@ export function openStore(path: string) {
       return Number(r.changes) > 0
     },
     trust(key: string): boolean | undefined {
-      const r = db.prepare('select owner_only from trust where key = ?').get(key) as { owner_only: number } | undefined
+      const r = db.prepare('select owner_only from trust where key = ?').get(threadOfJobLane(key)) as { owner_only: number } | undefined
       return r && r.owner_only === 1
     },
     // The SSM relay's allow list: threads the owner approved with kage relay allow. Exact keys, so a lane is never covered by its thread.
@@ -183,6 +184,7 @@ export function openStore(path: string) {
     // A task reached the thread. It stays owner-trusted only while every task came from the owner.
     // `known`: the thread had a session before trust was recorded, so its history is unknown.
     noteTask(key: string, fromOwner: boolean, known: boolean) {
+      if (isJobLane(key)) return   // a run is no person's task: a lane has its thread's trust (trust above)
       this.setTrust(key, (this.trust(key) ?? !known) && fromOwner)
     },
     setTrust(key: string, ownerOnly: boolean) {

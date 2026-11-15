@@ -1,6 +1,6 @@
 import { describe, test } from 'node:test'
 import assert from 'node:assert/strict'
-import { matchThreads, parseSessionKey, placeFor, sessionKey, slackConversation, slackLinkKey, type Conversation } from '../conversations.ts'
+import { isJobLane, jobLane, modelFor, matchThreads, threadOfJobLane, parseSessionKey, placeFor, sessionKey, slackConversation, slackLinkKey, type Conversation } from '../conversations.ts'
 
 const DM = 'DBOT00001'
 
@@ -107,4 +107,21 @@ describe('finding a thread by what you typed, for kage attach, tell and stop', (
     assert.deepEqual(matchThreads(rows, 'https://test.slack.com/archives/CTEST9/p1700000009000000'), [])
   })
   test('nothing typed matches nothing', () => assert.deepEqual(matchThreads(rows, ''), []))
+})
+
+test('a job lane is the thread key plus the job id, and its thread is found by stripping it', () => {
+  assert.equal(jobLane('C1:5.5', 'j1'), 'C1:5.5#side-job-j1')
+  assert.equal(jobLane('C1:5.5#side-kagelet-ops', 'j1'), 'C1:5.5#side-kagelet-ops')   // a kagelet's run is already in its own lane
+  assert.equal(threadOfJobLane('C1:5.5#side-job-j1'), 'C1:5.5')
+  assert.equal(threadOfJobLane('C1:5.5#side-6.6'), 'C1:5.5#side-6.6')
+  assert.equal(isJobLane('ops/C1:5.5#side-job-j1'), true)
+  assert.equal(isJobLane('C1:5.5'), false)
+})
+
+test('a job lane runs on harness.jobModel, or the sessions\' own model when unset; any other key asks its own rule', () => {
+  const other = (k: string) => `other:${k}`
+  assert.equal(modelFor('C1:5.5#side-job-j1', 'haiku', other), 'haiku')
+  assert.equal(modelFor('C1:5.5#side-job-j1', undefined, other), undefined)
+  assert.equal(modelFor('C1:5.5#side-job-j1', '', other), undefined)
+  assert.equal(modelFor('C1:5.5', 'haiku', other), 'other:C1:5.5')
 })

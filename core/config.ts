@@ -22,7 +22,7 @@ const strings = z.array(z.string()).optional()
 export const Config = z.strictObject({
   version: z.literal(1),
   name: z.string().optional(),
-  harness: z.strictObject({ runtime: text, route: text, cwd: text, memory: text, ownerMemory: text, maxSessions: count, idleMinutes: count }).optional(),
+  harness: z.strictObject({ runtime: text, route: text, cwd: text, memory: text, ownerMemory: text, maxSessions: count, idleMinutes: count, jobModel: text, jobFreshEvery: count, jobCarry: count, jobCarryChars: count, jobLaneDefault: yes }).optional(),
   people: z.strictObject({
     teammates: z.array(z.string().refine(validUserId)).optional(),
     agents: z.array(z.strictObject({ app: z.string(), owner: z.string().optional(), tag: z.string().optional() }).refine(a => appEntry(agentLine(a)) !== undefined)).optional(),
@@ -103,7 +103,7 @@ const R = (env: string, path: string, codec: Codec = str, secret?: true): Row =>
 export const KEYS: Row[] = [
   R('KAGE_NAME', 'name'),
   R('KAGE_RUNTIME', 'harness.runtime'), R('KAGE_ROUTE', 'harness.route'), R('KAGE_CWD', 'harness.cwd'), R('KAGE_MEMORY', 'harness.memory'),
-  R('KAGE_OWNER_MEMORY', 'harness.ownerMemory'), R('KAGE_MAX_SESSIONS', 'harness.maxSessions', int), R('KAGE_IDLE_MINUTES', 'harness.idleMinutes', int),
+  R('KAGE_OWNER_MEMORY', 'harness.ownerMemory'), R('KAGE_MAX_SESSIONS', 'harness.maxSessions', int), R('KAGE_IDLE_MINUTES', 'harness.idleMinutes', int), R('KAGE_JOB_MODEL', 'harness.jobModel'), R('KAGE_JOB_FRESH_EVERY', 'harness.jobFreshEvery', int), R('KAGE_JOB_CARRY', 'harness.jobCarry', int), R('KAGE_JOB_CARRY_CHARS', 'harness.jobCarryChars', int), R('KAGE_JOB_LANE_DEFAULT', 'harness.jobLaneDefault', onoff),
   R('KAGE_TEAMMATES', 'people.teammates', people), R('KAGE_TRUSTED_APPS', 'people.agents', agents),
   R('KAGE_MAX_KAGELETS', 'kagelets.max', int), R('KAGE_KAGELET_DAILY_USD', 'kagelets.dailyUsd', num),
   R('KAGE_KAGELET_TOTAL_DAILY_USD', 'kagelets.totalDailyUsd', num), R('KAGE_KAGELET_CHAIN_USD', 'kagelets.chainUsd', num),
@@ -232,7 +232,7 @@ export function checkSettings(c: Config, s: Secrets): { name: string; teammates:
 
 // What a session may change through set_setting. safe: applies at once. power: grants reach or runs code, so the owner says yes
 // on a card first. never: not settable that way. A key not listed is power, so a new key starts closed.
-const SAFE = [/^kagelets\.(max|dailyUsd|totalDailyUsd|chainUsd)$/, /^afk\.(on|model)$/, /^jev\.(threshold|model)$/, /^tripwires\.(timeoutSec|maxKb|failPing|patternMax|lineMax)$/,
+const SAFE = [/^kagelets\.(max|dailyUsd|totalDailyUsd|chainUsd)$/, /^afk\.(on|model)$/, /^harness\.(jobModel|jobFreshEvery|jobCarry|jobCarryChars|jobLaneDefault)$/, /^jev\.(threshold|model)$/, /^tripwires\.(timeoutSec|maxKb|failPing|patternMax|lineMax)$/,
   /^connectors\.(voice|github|meeting|browser|whatsapp)\.(port|max|perHour|hookPort)$/, /^connectors\.whatsapp\.model$/]
 export function settingTier(key: string): 'safe' | 'power' | 'never' {
   const parts = key.split('.')
