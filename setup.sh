@@ -128,7 +128,8 @@ cmd_update() {
   [[ -z "${KAGE_CLAUDE:-}" ]] || die "This shell runs inside Kage, so kage update would end this session too. Run it in your own terminal."
   [[ -d .git ]] || die "This install is not a git checkout. Run the install line again to update it."
   [[ -z "$(git status --porcelain --untracked-files=no)" ]] || die "This checkout has local changes, so it was left as it is: $(git status --porcelain --untracked-files=no | awk '{print $2}' | tr '\n' ' ')"
-  git fetch -q origin main --tags
+  # --force: the stable tag moves with each release, and git keeps a moved tag's old copy without it.
+  git fetch -q --force origin main --tags
   [[ "$(git rev-list --count "$ref..HEAD")" == 0 ]] || die "This checkout has commits that are not on $ref, so it was left as it is."
   old="$(git rev-parse --short HEAD)"
   git merge -q --ff-only "$ref"

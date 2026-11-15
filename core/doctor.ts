@@ -87,7 +87,7 @@ export const slackLines = (f: { connected: boolean; status: string; version: str
 
 // The same rules as core/auto-update.ts, so a person sees why this install stays on its version.
 // 'ask-origin' means the caller must ls-remote the stable tag and ask again with origin set.
-export function autoUpdateNote(f: { off: boolean; git: boolean; branch?: string; dirty: boolean; origin?: 'failed' | 'no-stable' | 'stable' }): Line | 'ask-origin' | undefined {
+export function autoUpdateNote(f: { off: boolean; git: boolean; branch?: string; dirty: boolean; origin?: 'failed' | 'no-stable' | 'stable' | 'diverged' }): Line | 'ask-origin' | undefined {
   if (f.off) return note('auto-update is off (autoUpdate is false)')
   if (!f.git) return note('no auto-update: not a git checkout. Rerun the install line to make it one')
   if (f.branch !== 'main') return note(`no auto-update: on branch ${f.branch}, not main`)
@@ -95,6 +95,8 @@ export function autoUpdateNote(f: { off: boolean; git: boolean; branch?: string;
   if (!f.origin) return 'ask-origin'
   if (f.origin === 'failed') return note('auto-update cannot check origin: git ls-remote failed')
   if (f.origin === 'no-stable') return note('no auto-update: origin has no stable tag yet, so this install stays on its version')
+  // A moved or rewritten tag: neither commit holds the other, so a fast-forward never comes and the install would wait forever.
+  if (f.origin === 'diverged') return note("auto-update is stuck: the stable tag is not on this checkout's history, and this checkout is not on its. Run kage update to move to origin's main")
   return undefined
 }
 
