@@ -57,10 +57,10 @@ Write logs to stderr only. In a tmux pane, stdout carries the channel protocol, 
 | `cli/` | The commands behind `kage <command>`. They run from source. `cli/config.ts` reads and changes settings for the shell scripts and `kage set`. `cli/doctor/` is `kage doctor`: one file per check group, and `run.ts` prints their lines. |
 | `setup.sh` | The `kage` command: setup steps, start, stop, logs. `doctor` calls `cli/doctor/run.ts`. |
 | `service.sh` | The LaunchAgent (macOS) or systemd user unit (Linux) that keeps the hub running. A non-zero exit restarts it, and exit 0 leaves it down. |
-| `hub.ts` | The hub's entry, run by the service: the log file's size, the boot count and the crash-loop DM, then `router.ts`. Node modules only, so a bad pull is still caught. `start.sh` only forwards old login items to `kage start`. |
+| `hub.ts` | The hub's entry, run by the service: the log file's size, the boot count and the crash-loop DM, then `router.ts`. Node modules only, so a bad pull is still caught. `start.sh` only forwards old login items to `kage start`, until 2026-12-15. |
 | `docs/adr/` | One file per architecture decision: the rule, why, and how it is checked. |
 | `tests/` | Tests of the repo as a whole: `structure.test.ts` (ADR 0014). |
-| `docs/settings.md` | Every setting in the env file. |
+| `docs/settings.md` | Every setting in config.json and secrets.json, with its default. |
 | `AGENTS.md` | Setup steps for a coding agent. `CLAUDE.md` loads it and this file. |
 | `extension/` | Kage's Chrome extension (#114): plain JS, no build. It polls the hub (`connectors/browser.ts`), reads tabs, and acts in them through Chrome's debugger, one action at a time; a major step waits for the owner's yes (core/browser-act.ts majorAct). |
 | `meetbot/` | Kage's meeting bot (#63): its own package, run on any machine with a screen or Xvfb. It drives its own Chromium into a Google Meet and talks to the hub at the meeting webhook (`connectors/meeting.ts`). All of Meet's page knowledge is `meetbot/page.js`. |
@@ -72,7 +72,7 @@ Write logs to stderr only. In a tmux pane, stdout carries the channel protocol, 
 | File | Rule |
 |---|---|
 | `gate.ts` | Who may start a task, the task line Claude reads, quoting the thread, teammates. |
-| `agents.ts` | Talking to another agent: the tag on every part of a post, the "no reply needed" marker, and the loop guard. |
+| `agents.ts` | Talking to another agent: the tag on every part of a post that must reach it (only with `tag_agent`), the "no reply needed" marker, and the loop guard. |
 | `doctor.ts` | What `kage doctor` decides from the facts `cli/doctor/` gathers: each ok, FAIL or note line, and the closing "All good" that the release soak gate reads. |
 | `jev.ts` | Whether a listed agent's post needs a reply: the Jev settings, which agents it checks, the question, and how its score decides. The call is `connectors/jev.ts`, and `cli/jev-doctor.ts` is the doctor's line. |
 | `config.ts` | The settings schema (one zod schema for config.json and secrets.json), the fixed table from old env names to its keys, the import and the flat env built back from it, and which changed keys apply live. |
@@ -110,6 +110,17 @@ Write logs to stderr only. In a tmux pane, stdout carries the channel protocol, 
 | `task.ts` | `Task`: what a connector turns a message into, and what a runner takes (ADR 0002). |
 | `instructions.ts` | What every Kage session reads first: who it is, whom it serves, how it answers, and each kind of task's limits. |
 | `text.ts` | Text helpers every rule shares: `oneLine`, and `quotedLine` for someone else's text (no `<channel>` tag survives). |
+| `cli-help.ts` | The closest real `kage` command to a mistyped one. |
+| `dream.ts` | The nightly dream job: what it reads for lessons, how it tidies Kage's memory, and which lessons may leave this machine. |
+| `github.ts` | Which GitHub events are the owner's business (a review or failed checks on their PR, an issue or review request given to them, a mention). |
+| `kagelet-memory.ts` | A kagelet's own memory folder (#98): what its prompt reads, and the one path into the folder. |
+| `log-repeats.ts` | One log line for a burst of the same line, with its count. |
+| `meeting.ts` | A finished meeting's transcript as one task: notes, decisions, owners, open questions, and proposed actions that wait for the owner's yes. |
+| `quiet.ts` | `kage stop` and `kage restart`: drain the hub, then wait for every thread to end its turn, naming each one. |
+| `retro.ts` | The weekly retro: what Kage's own ledgers say to change. It proposes; the owner decides. |
+| `settings.ts` | The old env file read once for import, the answer `kage reload` gives, and which settings apply without a restart. |
+| `skill-lessons.ts` | The check a lesson passes before the dream shares it with every install: nothing that tells whose Kage learned it. |
+| `socket-watch.ts` | When to restart the Slack socket by hand, because its own reconnect can stay down. |
 | `board.ts`, `loom.ts`, `hero.ts` | What `kage top` shows, its layout, and Kage's picture (generated by `cli/make-hero.ts`). |
 
 ### runtime/
@@ -118,7 +129,7 @@ Write logs to stderr only. In a tmux pane, stdout carries the channel protocol, 
 |---|---|
 | `sdk-sessions.ts` | The default runner: an Agent SDK session per key, inside the hub. `tests/fake-sdk.ts` is the fake SDK its tests drive. |
 | `tmux-panes.ts` | The other runner: a Claude Code pane per key. |
-| `kage-tools.ts` | A session's tools (reply, edit, delete, send a file, message people, post as Kage in another channel (owner only), waiting, prod log, schedules, away and back), its instructions, and the approval card. |
+| `kage-tools.ts` | A session's tools (about 28: replies and edits, files, messages to people, schedules and watches, kagelets, settings, AFK, the browser, prod log) and the approval card. The instructions every session reads are `core/instructions.ts`. |
 | `session-link.ts` | The local socket that panes and the `kage` commands connect to. |
 | `protocol.ts` | The messages on that socket. |
 | `voice-slack-tools.ts` | The two Slack read tools only an owner-verified voice call gets (`slack_search`, `slack_read`), loaded up front so a live call skips tool discovery. |
@@ -143,6 +154,13 @@ Write logs to stderr only. In a tmux pane, stdout carries the channel protocol, 
 | `config-files.ts` | config.json and secrets.json on disk (the schema and the env import table are `core/config.ts`): reading, changing, the first-start import of the old env file, and deleting that file after 7 days. |
 | `code-stamp.ts` | When the code changed, so the hub knows to restart into it. |
 | `auto-update.ts` | The version line, and the git calls that pull origin's `stable` tag (the decision is `core/auto-update.ts`). |
+| `config-watch.ts` | Watching config.json and secrets.json: a `people` change applies now, any other key restarts the hub once it is quiet, and a wrong file is refused and DMed. |
+| `hold-keys.ts` | Taking `sessionKeys` out of the environment before the router loads, so no session copies one (#182). |
+| `jobs.ts` | The hub's timed work on one clock: each job on its own period, retried next period when it fails. |
+| `kagelet-memory.ts` | A kagelet's memory folder on disk and the proposals waiting on Kage's review. |
+| `key-proxy.ts` | The key proxy (#182): a unix socket that adds a held key to requests for its one host, so the session never sees it. |
+| `memory-snapshot.ts` | A copy of Kage's memory before a dream, so `kage dream undo` restores it. |
+| `repo-access.ts` | Whether this install may push to the Kage repo, which marks the repo owner's hub. |
 | `release.ts` | The git and gh calls of a release, and the owner hub's daily check (`kage release`, ADR 0013). |
 
 ## Add a connector
@@ -152,5 +170,5 @@ A connector touches more places than it should today. Copy `connectors/email.ts`
 1. `Conversation['connector']` and the key prefix in `core/conversations.ts`.
 2. `senderOf` in `core/gate.ts`, if its sender is not plainly the owner or a teammate.
 3. The reply type in `runtime/protocol.ts`, `routeReply` in `runtime/session-link.ts`, and the `reply` tool in `runtime/kage-tools.ts`.
-4. `replies` and `failed` in `router.ts`.
+4. `replies` and `failed` in `router.ts`, and the connector names written out in `core/blocks.ts`, `core/loom.ts` and the reply tool in `runtime/kage-tools.ts` (one connector table is planned).
 5. The inbox (`Inbox` in `runtime/store.ts`): `take` each message with a unique source id before you acknowledge it, and `handled` after. If the source does not resend by itself, add a `replay` to `replayers` in `router.ts`.

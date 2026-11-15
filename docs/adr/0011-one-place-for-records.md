@@ -4,7 +4,7 @@ Status: Accepted, partly built (#119, #52)
 
 ## Context
 
-Kage, kagelets and connectors each leave records. The event log and ledgers are rows in `kage.db` (`runtime/ledger.ts:1`, opened at `router.ts:88`). The hub's output is text in `hub.log` (`runtime/hub-log.ts:6`). Small state files sit loose in the config folder: `boots` (`hub.ts:69`), `browser-seen` (`router.ts:215`), `daily-sent`, `retro-sent`, `dream-sent` (`router.ts:379-405`), `version` (`router.ts:495`), `status` (read at `setup.sh:93`) and `canvas-events.jsonl` (`connectors/slack.ts:221`). To see what happened, a person must look in many places.
+Kage, kagelets and connectors each leave records. The event log and ledgers are rows in `kage.db` (`runtime/ledger.ts`, opened at `router.ts`). The hub's output is text in `hub.log` (`runtime/hub-log.ts`). Small state files sit loose in the config folder: `boots` (`hub.ts`, starts in the last 24 h; the `boots` ledger keeps each start's version), `browser-seen` (`router.ts`), `daily-sent`, `retro-sent`, `dream-sent` (`router.ts`), `version` (`router.ts`), `status` (read at `setup.sh`). To see what happened, a person must look in many places.
 
 ## Decision
 

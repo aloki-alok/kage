@@ -13,8 +13,9 @@ A connector turns a message into a `Task` (`core/task.ts`) and sets `fromOwner`.
 ## Consequences
 
 - Changing who may drive Kage means editing one file in `core/` and its test.
-- Connectors stay thin. Most set `fromOwner: false` (`connectors/github.ts:68`, `connectors/email.ts:45`, `connectors/meeting.ts:55`).
+- Connectors stay thin. Most set `fromOwner: false` (`connectors/github.ts`, `connectors/email.ts`, `connectors/meeting.ts`).
 - Cost: a connector cannot special-case a sender, even for a good reason. It needs a core rule first.
+- Known break: `connectors/voice.ts` decides the owner itself, from a one-time code. Moving that check into `core/` is part of #105.
 
 ## How it is checked
 

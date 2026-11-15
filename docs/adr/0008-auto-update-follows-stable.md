@@ -18,4 +18,4 @@ The hub moves its checkout only to origin's `stable` tag, with a fast-forward me
 
 ## How it is checked
 
-`core/tests/auto-update.test.ts` tests the skip rules (`core/auto-update.ts:15`). The 24-hour rule is `soakGate` in `core/auto-update.ts`, tested in `core/tests/auto-update.test.ts`.
+`core/tests/auto-update.test.ts` tests the skip rules (`core/auto-update.ts`). The 24-hour rule is `soakGate` in `core/auto-update.ts`, tested in `core/tests/auto-update.test.ts`.

@@ -8,7 +8,7 @@ Anyone can post as the owner with a token, forward an email, or play a recording
 
 ## Decision
 
-A task is `owner` only when the owner typed it. Slack requires `client_msg_id` and no `app_id` (`core/slack-message.ts:28`). Email is never the owner, whatever the address (`core/gate.ts:149`). A voice call is the owner only if Kage placed it and the voice connector flagged it. Agents, teammates, email and voice callers never count as the owner. `senderOf` returns `owner`, `teammate` or `voice`.
+A task is `owner` only when the owner typed it. Slack requires `client_msg_id` and no `app_id` (`core/slack-message.ts`). Email is never the owner, whatever the address (`core/gate.ts`). A voice call is the owner only if Kage placed it and the voice connector flagged it. Agents, teammates, email and voice callers never count as the owner. `senderOf` returns `owner`, `teammate` or `voice`.
 
 ## Consequences
 
