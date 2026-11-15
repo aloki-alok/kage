@@ -7,6 +7,12 @@ import { createHash } from 'node:crypto'
 // Neither is pinned: a probe that edits its own output must not refuse itself.
 export type Probe = { command: string; pins: Record<string, string>; ignore: string[]; reads: string[]; writes: string[] }
 export type JobState = { fp?: string; last?: string; fails: number; refused?: string }
+// What wakes a job besides its clock (ADR 0015): a probe run on the clock that wakes only on a change, a post in a
+// Slack channel, or a POST to the job's own webhook (only the token's hash is kept).
+export type Trigger =
+  | { kind: 'probe'; probe: Probe }
+  | { kind: 'channel'; channel: string; match?: string; bots: boolean }
+  | { kind: 'hook'; tokenHash: string }
 
 // A line an ignore regex drops. A line longer than lineMax is never dropped: a regex that sees only part of it proves nothing.
 const dropped = (l: string, res: RegExp[], lineMax: number) => l.length <= lineMax && res.some(r => r.test(l))

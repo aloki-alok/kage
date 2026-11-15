@@ -284,3 +284,32 @@ test('a store made before schedules had a lane opens, adds the column once, and 
   s.addSchedule({ id: 'new', key: 'C1:5.5', cron: '* * * * *', prompt: 'p', recurring: true, fromOwner: false, created: 2, lastFired: 0, lane: true })
   assert.equal(s.schedules().find(x => x.id === 'new')!.lane, true)
 })
+
+test('a schedule keeps its trigger, and a job\'s state is saved per schedule and goes with it', () => {
+  const s = openStore(':memory:')
+  const probe = { command: 'df -h /', pins: {}, ignore: ['^ts='], reads: [], writes: [] }
+  s.addSchedule({ id: 'p1', key: 'C1:5.5', cron: '*/5 * * * *', prompt: 'p', recurring: true, fromOwner: true, created: 1, lastFired: 0, lane: true, trigger: { kind: 'probe', probe } })
+  s.addSchedule({ id: 'c1', key: 'C1:5.5', cron: '@channel', prompt: 'p', recurring: true, fromOwner: true, created: 2, lastFired: 0, trigger: { kind: 'channel', channel: 'CALARM', match: 'ALARM', bots: true } })
+  s.addSchedule({ id: 'plain', key: 'C1:5.5', cron: '0 9 * * *', prompt: 'p', recurring: true, fromOwner: true, created: 3, lastFired: 0 })
+  const byId = Object.fromEntries(s.schedules().map(x => [x.id, x]))
+  assert.deepEqual(byId.p1!.trigger, { kind: 'probe', probe })
+  assert.deepEqual(byId.c1!.trigger, { kind: 'channel', channel: 'CALARM', match: 'ALARM', bots: true })
+  assert.equal(byId.plain!.trigger, undefined)
+  assert.deepEqual(s.jobState('p1'), { fails: 0 })                // never ran: a clean state
+  s.setJobState('p1', { fp: 'abc', last: 'out', fails: 2, refused: '/x' })
+  assert.deepEqual(s.jobState('p1'), { fp: 'abc', last: 'out', fails: 2, refused: '/x' })
+  s.removeSchedule('p1')
+  assert.deepEqual(s.jobState('p1'), { fails: 0 })                // its state went with it
+})
+
+test('a store from before triggers opens twice, adds both columns once, and reads old rows with no trigger', () => {
+  const file = join(mkdtempSync(join(tmpdir(), 'kage-mig-')), 'kage.db')
+  const raw = new DatabaseSync(file)
+  raw.exec("create table schedules (id text primary key, key text not null, cron text not null, prompt text not null, recurring integer not null, from_owner integer not null, created integer not null, last_fired integer not null default 0, ends integer, lane integer)")
+  raw.exec("insert into schedules values ('old', 'C1:5.5', '* * * * *', 'p', 1, 0, 1, 0, null, null)")
+  raw.close()
+  openStore(file).close()
+  const s = openStore(file)
+  assert.equal(s.schedules()[0]!.trigger, undefined)
+  assert.deepEqual(s.jobState('old'), { fails: 0 })
+})

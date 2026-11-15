@@ -1,6 +1,7 @@
 // Schedules the hub owns: cron expressions read the way Claude Code's CronCreate reads them (5
 // fields, local time), which of them fire now, and the jobs a Claude Code transcript still holds.
 // A schedule here survives a hub restart and does not need its session to stay open.
+import type { Trigger } from './tripwire.ts'
 
 const FIELDS = [['minute', 0, 59], ['hour', 0, 23], ['day of month', 1, 31], ['month', 1, 12], ['day of week', 0, 7]] as const
 type Cron = { sets: Set<number>[]; anyDay: boolean; anyWeekday: boolean }
@@ -58,6 +59,7 @@ export type Schedule = {
   created: number
   lastFired: number
   lane?: true            // runs in its own job lane. Unset: runs in the thread, as every schedule did before lanes
+  trigger?: Trigger      // what else wakes it (core/tripwire.ts). Unset: only its cron
   ends?: number          // when set: the schedule is dropped from then on (jobs adopted from CronCreate, and every watch)
 }
 
