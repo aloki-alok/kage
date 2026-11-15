@@ -97,9 +97,9 @@ describe('replies', () => {
   test('plain email text replaces Slack links, mentions and formatting and signs with the install name', () => {
     const raw = composeReply({ from: 'Shadow <shadow@example.com>', to: ['reader@example.com'], cc: [], subject: 'Update',
       inReplyTo: '<test@example.com>', references: [], name: 'Shadow', names: { UTEST1: 'Sam' },
-      text: '*Done*. _Ready_ for ~old~ `new_value`. <https://example.com|Open> <https://example.com/docs> <@UTEST1> <@UTEST2> &amp; &lt;ok&gt;' })
+      text: '*Done*. _Ready_ for ~old~ `new_value`. <https://example.com/?q=_build_|Open> <https://example.com/docs> <@UTEST1> <@UTEST2> &amp; &lt;ok&gt;' })
     assert.equal(Buffer.from(raw.split('\r\n\r\n')[1]!, 'base64').toString(),
-      'Done. Ready for old new_value. Open (https://example.com) https://example.com/docs Sam  & <ok>\n\nShadow')
+      'Done. Ready for old new_value. Open (https://example.com/?q=_build_) https://example.com/docs Sam  & <ok>\n\nShadow')
   })
   test('thread under the original with In-Reply-To and References', () => {
     const raw = composeReply({ from: 'Kage <kage@kage.example.com>', to: ['owner@example.com'], cc: [], subject: '[WARNING] x',

@@ -98,15 +98,18 @@ export async function emailVerdict(
 
 const clean = (v: string) => v.replace(/[\r\n]+/g, ' ').trim()
 
-function emailText(text: string, names: Record<string, string> = {}): string {
-  return text.split(/(```[\s\S]*?```|`[^`\n]+`)/g).map(part => {
+export function emailBody(text: string, name: string, names: Record<string, string> = {}): string {
+  const strip = (part: string) => part.replace(/(?<!\w)([*_~])(?=\S)([^\n]*?\S)\1(?!\w)/g, '$2')
+  const plain = text.split(/(```[\s\S]*?```|`[^`\n]+`|<[^>\n]+>|https?:\/\/[^\s<>]+)/g).map(part => {
     if (part.startsWith('```')) return part.slice(3, -3)
     if (part.startsWith('`')) return part.slice(1, -1)
-    return part.replace(/<@([UW][A-Z0-9]+)(?:\|[^>]*)?>/g, (_, id: string) => names[id] ?? '')
-      .replace(/<((?:https?:\/\/|mailto:)[^>|]+)(?:\|([^>]+))?>/g,
-        (_, url: string, label?: string) => label && label !== url ? `${label} (${url})` : url)
-      .replace(/(?<!\w)([*_~])(?=\S)([^\n]*?\S)\1(?!\w)/g, '$2')
+    const mention = /^<@([UW][A-Z0-9]+)(?:\|[^>]*)?>$/.exec(part)
+    if (mention) return names[mention[1]!] ?? ''
+    const link = /^<((?:https?:\/\/|mailto:)[^>|]+)(?:\|([^>]+))?>$/.exec(part)
+    if (link) return link[2] && link[2] !== link[1] ? `${strip(link[2])} (${link[1]})` : link[1]
+    return /^https?:\/\//.test(part) ? part : strip(part)
   }).join('').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&amp;/g, '&')
+  return `${plain.trimEnd()}\n\n${clean(name)}`
 }
 
 export function composeReply(r: {
@@ -125,7 +128,7 @@ export function composeReply(r: {
     'Content-Type: text/plain; charset=UTF-8',
     'Content-Transfer-Encoding: base64',
   ].filter(Boolean)
-  const body = Buffer.from(`${emailText(r.text, r.names).trimEnd()}\n\n${clean(r.name)}`).toString('base64').replace(/.{76}/g, '$&\r\n')
+  const body = Buffer.from(emailBody(r.text, r.name, r.names)).toString('base64').replace(/.{76}/g, '$&\r\n')
   return `${headers.join('\r\n')}\r\n\r\n${body}\r\n`
 }
 
