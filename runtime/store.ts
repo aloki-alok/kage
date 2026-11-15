@@ -5,7 +5,7 @@ import { existsSync, readFileSync, renameSync } from 'node:fs'
 import { DatabaseSync } from 'node:sqlite'
 import { isJobLane, parseSessionKey, threadOfJobLane, type Conversation } from '../core/conversations.ts'
 import type { Schedule } from '../core/cron.ts'
-import type { JobState } from '../core/tripwire.ts'
+import type { JobState, Trigger } from '../core/tripwire.ts'
 import type { KageletMessage, MessageState } from '../core/kagelet-message.ts'
 
 const SCHEMA = `
@@ -168,6 +168,10 @@ export function openStore(path: string) {
         .run(s.id, s.key, s.cron, s.prompt, s.recurring ? 1 : 0, s.fromOwner ? 1 : 0, s.created, s.lastFired, s.ends ?? null, s.lane ? 1 : null, s.trigger ? JSON.stringify(s.trigger) : null)
     },
     schedules: (): Schedule[] => (db.prepare('select * from schedules order by created').all() as Record<string, any>[]).map(toSchedule),
+    // A tuned probe job (runtime/scheduler.ts tune): its new cron and trigger, and a clean state when the baseline must restart.
+    tuneSchedule(id: string, cron: string, trigger: Trigger, resetState: boolean) {
+      db.prepare(`update schedules set cron = ?, trigger = ?${resetState ? ', job_state = null' : ''} where id = ?`).run(cron, JSON.stringify(trigger), id)
+    },
     fired(id: string, at: number) { db.prepare('update schedules set last_fired = ? where id = ?').run(at, id) },
     // A tripwire job's state between runs (core/tripwire.ts decide), kept on its schedule row so it survives a restart and
     // goes when the schedule goes. A job that never ran, or is gone, reads as a clean state.

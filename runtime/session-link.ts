@@ -2,6 +2,7 @@
 // private to this user.
 import { chmodSync, mkdirSync, readdirSync, readFileSync, rmSync, unlinkSync, writeFileSync } from 'node:fs'
 import { createServer } from 'node:net'
+import type { ProbeArg } from './probe-jobs.ts'
 import { dirname, join } from 'node:path'
 import type { LimitCounts } from '../core/board.ts'
 import { PANEL_KEYS, type PanelAction } from '../core/kagelet-view.ts'
@@ -139,9 +140,9 @@ export function listenForSessions(path: string, d: Dispatcher<ToSession>, o: Rep
           routeReply(key, { type: m.type, text: m.text }, o)
         } else if (m.type === 'schedule' && key) {
           // Always for the session's own thread, whatever the message says.
-          const j = m as Partial<{ id: string; cron: string; prompt: string; recurring: boolean; lane: boolean }>
+          const j = m as Partial<{ id: string; cron: string; prompt: string; recurring: boolean; lane: boolean; probe: ProbeArg }>
           if (typeof j.id === 'string' && typeof j.cron === 'string' && typeof j.prompt === 'string') {
-            const no = o.schedules.add(key, { id: j.id, cron: j.cron, prompt: j.prompt, recurring: j.recurring !== false, ...(typeof j.lane === 'boolean' && { lane: j.lane ? true as const : undefined }) }, Date.now())
+            const no = o.schedules.add(key, { id: j.id, cron: j.cron, prompt: j.prompt, recurring: j.recurring !== false, ...(typeof j.lane === 'boolean' && { lane: j.lane ? true as const : undefined }), ...(j.probe && { probe: j.probe }) }, Date.now())
             if (no) log('schedule refused', key, no)
           }
         } else if (m.type === 'unschedule' && key && typeof m.id === 'string') {

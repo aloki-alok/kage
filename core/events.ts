@@ -15,6 +15,9 @@ export const EVENT_DAYS = 30
 export const eventRow = (e: Omit<KageEvent, 'at' | 'chain' | 'transcript'> & Partial<Pick<KageEvent, 'chain' | 'transcript'>>): Omit<KageEvent, 'at'> =>
   ({ chain: '', transcript: '', ...e, detail: oneLine(e.detail).slice(0, 200) })
 
+// "<action> k=v k=v" for a tripwire row. Values are ids and counts, never text.
+export const tripwireDetail = (action: string, f: Record<string, string | number>) => `${action} ${Object.entries(f).map(([k, v]) => `${k}=${v}`).join(' ')}`
+
 export const whoOf = (key: string) => key.split('#side-kagelet-')[1] ?? key
 
 // A handoff row's detail (runtime/kagelets.ts kageletRoutes): "to <kagelet>, <link|note|file>: ok", the same with

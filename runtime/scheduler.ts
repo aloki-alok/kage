@@ -9,6 +9,9 @@ import { sentTexts } from '../core/transcript.ts'
 import { newLines } from './transcript-tail.ts'
 import type { Delivery } from '../core/sessions.ts'
 import type { Task } from '../core/task.ts'
+import { buildProbe, probeJobs, tripwireCfg, type ProbeArg, type TripwireSettings, type TuneArg } from './probe-jobs.ts'
+import { safePattern, type Trigger } from '../core/tripwire.ts'
+import { pin } from './probes.ts'
 import type { Store } from './store.ts'
 
 const PER_THREAD = 50
@@ -37,6 +40,10 @@ export function scheduler(o: {
   // end: close a lane's session (its stored id is dropped by the scheduler). freshEvery: harness.jobFreshEvery, the runs on one
   // lane before the next starts a new session (0: never). carryCount, carryChars: harness.jobCarry and jobCarryChars. project: the
   // folder of session transcripts, where the old session's own posts are read from; posted: the ledger, for when they are gone.
+  // Tripwire probe jobs (runtime/probe-jobs.ts). tripwires: the settings. event: one event row. ping: a short line to the job's thread as Kage.
+  tripwires?: () => TripwireSettings
+  event?: (e: { kind: 'tripwire'; who: string; trace: string; detail: string }) => void
+  ping?: (s: Schedule, text: string) => void
   job: { end: (key: string) => void; freshEvery: () => number; carryCount: () => number; carryChars: () => number; laneDefault: () => boolean; posted: () => string; project: string }
 }) {
   const { store } = o
@@ -58,9 +65,10 @@ export function scheduler(o: {
     const texts = reset && old ? sentTexts(newLines(`${o.job.project}/${old}.jsonl`, 0).lines) : []
     return { reset, carry: reset ? jobCarry(o.job.posted(), lane, o.job.carryCount(), texts, o.job.carryChars()) : '', next: reset ? 1 : n + 1 }
   }
-  function run(s: Schedule, content: string, fromOwner = s.fromOwner) {
+  // true when the task was handed to a session.
+  function run(s: Schedule, content: string, fromOwner = s.fromOwner): boolean {
     const c = store.conversation(s.key)
-    if (!c) return log('schedule for an unknown thread', s.id, s.key)
+    if (!c) { log('schedule for an unknown thread', s.id, s.key); return false }
     const task: Task = {
       type: 'task', fromOwner, content,
       meta: { channel: c.conversation.chat, thread_ts: c.conversation.thread ?? '', place: c.place, permalink: '' },
@@ -74,12 +82,26 @@ export function scheduler(o: {
       if (fresh.carry) task.content = `${fresh.carry}\n${task.content}`
       if (fresh.reset) o.job.end(key)
     }
-    if (o.deliver(key, task) === 'failed') return o.failed(task)
+    if (o.deliver(key, task) === 'failed') { o.failed(task); return false }
     if (fresh) store.save('jobRuns', { ...(store.load('jobRuns') as Record<string, number> ?? {}), [key]: fresh.next })
+    return true
   }
+  // A probe job's wake waits for its lane like a clock run does (a busy lane at most BUSY_WAIT). A false keeps the job's old
+  // state, so the next probe run wakes it again. Its text holds outside output, so it never carries owner trust (as a watch).
+  const wakeSince = new Map<string, number>()
+  const probes = probeJobs({
+    store, settings: () => o.tripwires?.() ?? {}, event: e => o.event?.(e), ping: (s, text) => o.ping?.(s, text),
+    wake(s, text, now) {
+      const r = o.ready(laneOf(s))
+      if (r === 'blocked' || (r === 'busy' && now - (wakeSince.get(s.id) ?? wakeSince.set(s.id, now).get(s.id)!) < BUSY_WAIT)) return false
+      wakeSince.delete(s.id)
+      o.ran?.(s, now)
+      return run(s, text, false)
+    },
+  })
   return {
     // Returns why it was refused, or undefined when added.
-    add(from: string, j: Pick<Schedule, 'id' | 'cron' | 'prompt' | 'recurring' | 'lane'>, now: number): string | undefined {
+    add(from: string, j: Pick<Schedule, 'id' | 'cron' | 'prompt' | 'recurring' | 'lane'> & { probe?: ProbeArg }, now: number): string | undefined {
       const key = threadOfJobLane(from) // a session in a job lane makes a schedule for the thread, never a lane of a lane
       const watch = j.cron === REPLY
       if (!watch) {
@@ -91,7 +113,16 @@ export function scheduler(o: {
       if (c?.connector !== 'slack') return 'schedules work in Slack threads only'
       if (watch && c.agentDm) return 'a watch needs a thread other people write in; only you write in this DM'
       if (this.list(key).length >= PER_THREAD) return `this thread already has ${PER_THREAD} schedules`
-      store.addSchedule({ ...j, key, fromOwner: o.trusted(key), created: now, lastFired: 0, ...(!watch && (j.lane ?? o.job.laneDefault()) ? { lane: true } : { lane: undefined }), ...(watch && { recurring: true, ends: now + WATCH_DAYS * DAY }) })
+      let trigger: Trigger | undefined
+      if (j.probe) {
+        if (watch) return 'a probe needs a clock schedule, not @reply'
+        if (!j.recurring) return 'a probe job must recur: it only wakes on a change'
+        const p = buildProbe(j.probe, tripwireCfg(o.tripwires?.() ?? {}).patternMax)
+        if (typeof p === 'string') return p
+        trigger = { kind: 'probe', probe: p }
+      }
+      const { probe: _, ...plain } = j
+      store.addSchedule({ ...plain, ...(trigger && { trigger }), key, fromOwner: o.trusted(key), created: now, lastFired: 0, ...(!watch && (j.lane ?? o.job.laneDefault()) ? { lane: true } : { lane: undefined }), ...(watch && { recurring: true, ends: now + WATCH_DAYS * DAY }) })
       log('scheduled', j.id, j.cron, 'for', key)
     },
     // Jobs moved out of tmux panes (cli/export-crons.ts) when they stopped. `ranUntil` is when the export
@@ -120,6 +151,28 @@ export function scheduler(o: {
       o.ran?.(s, now)
       run(s, `Run now of job ${id}, asked for outside its schedule (${s.cron}). Nobody wrote a new message.\n${s.prompt}`)
     },
+    // Changes a probe job of this thread. A new command is pinned fresh, which is the owner's re-approval of a changed script.
+    // A new ignore or command restarts the baseline (the fingerprint changes with them), so it wakes nothing by itself.
+    tune(from: string, id: string, t: TuneArg, now: number): string | undefined {
+      const s = store.schedules().find(x => x.id === id && x.key === threadOfJobLane(from))
+      if (!s) return `no probe job ${id} in this thread`
+      if (s.trigger?.kind !== 'probe') return `${id} is not a probe job`
+      const old = s.trigger.probe
+      const cron = t.cron ?? s.cron
+      try { parseCron(cron) } catch (e) { return (e as Error).message }
+      if (!nextRun(cron, new Date(now), RUNS_WITHIN)) return `${cron} never runs`
+      const patternMax = tripwireCfg(o.tripwires?.() ?? {}).patternMax
+      for (const r of t.ignore ?? []) { const why = safePattern(r, patternMax); if (why) return `ignore ${why}` }
+      const command = t.command?.trim() ?? old.command
+      if (!command) return 'the probe command is empty'
+      const next = { command, ignore: t.ignore ?? old.ignore, reads: t.reads ?? old.reads, writes: t.writes ?? old.writes }
+      const fresh = pin(command, next)
+      // Same command: a script keeps the hash approved before. A new command takes today's hashes.
+      const pins = t.command === undefined ? Object.fromEntries(Object.entries(fresh).map(([p, h]) => [p, old.pins[p] ?? h])) : fresh
+      store.tuneSchedule(id, cron, { kind: 'probe', probe: { ...next, pins } }, t.command !== undefined || t.ignore !== undefined)
+      log('tuned', id, 'for', s.key)
+    },
+    settled: () => probes.settled(),
     remove(key: string, id: string) { if (store.removeSchedule(id, threadOfJobLane(key))) log('unscheduled', id, 'for', key) },
     list: (key: string) => store.schedules().filter(s => s.key === threadOfJobLane(key)),
     tick(now: number) {
@@ -156,6 +209,8 @@ export function scheduler(o: {
       // One at a time, each on its own: a failure in one run never costs another.
       for (const s of fire) {
         try {
+          // A probe runs off the tick: the model is not asked unless the output changed. Off, it polls like any clock run.
+          if (s.trigger?.kind === 'probe' && tripwireCfg(o.tripwires?.() ?? {}).on) { store.fired(s.id, now); probes.start(s, now); continue }
           const r = o.ready(laneOf(s))
           if (r === 'blocked') { dueSince.delete(s.id); continue }   // the 5 minutes count busy time only
           if (r === 'busy' && now - (dueSince.get(s.id) ?? dueSince.set(s.id, now).get(s.id)!) < BUSY_WAIT) continue

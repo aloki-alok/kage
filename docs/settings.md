@@ -106,7 +106,7 @@ A tripwire runs a shell command on a clock and wakes a session only when the com
 
 | Setting | Default | Effect |
 |---|---|---|
-| `tripwires.on` | on | `false` turns every tripwire off. |
+| `tripwires.on` | on | `false` turns every tripwire off. A probe job then runs as a plain clock run: a model polls on its schedule, so nothing goes silent. |
 | `tripwires.timeoutSec` | `60` | A command that runs longer is killed, with its child processes. |
 | `tripwires.maxKb` | `64` | Output text past this size is cut and marked as truncated. A change in the cut part still wakes the session. |
 | `tripwires.failPing` | `3` | After this many failed runs in a row, you get one note. The tripwire keeps running. |

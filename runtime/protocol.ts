@@ -1,6 +1,7 @@
 // What the hub and a thread's session say to each other over the local socket, one JSON object per line.
 import type { PanelAction } from '../core/kagelet-view.ts'
 import type { Task } from '../core/task.ts'
+import type { ProbeArg } from './probe-jobs.ts'
 
 export type Verdict = { type: 'verdict'; request_id: string; behavior: 'allow' | 'deny' }
 export type ToSession = Task | Verdict
@@ -24,7 +25,7 @@ export type FromSession =
   | { type: 'hello'; key: string }
   | { type: 'permission'; id: string }
   | { type: 'mail'; text: string }
-  | { type: 'schedule'; id: string; cron: string; prompt: string; recurring: boolean }   // its own thread; the hub decides trust
+  | { type: 'schedule'; id: string; cron: string; prompt: string; recurring: boolean; probe?: ProbeArg }   // its own thread; the hub decides trust
   | { type: 'unschedule'; id: string }
   | { type: 'wa'; text: string }
   | { type: 'voice'; text: string }

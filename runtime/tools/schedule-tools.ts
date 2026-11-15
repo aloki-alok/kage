@@ -4,6 +4,7 @@ import { z } from 'zod'
 import { awayCommand } from '../../core/afk.ts'
 import { nextRun, parseCron, REPLY } from '../../core/cron.ts'
 import type { KageTool, ToolContext } from '../kage-tools.ts'
+import type { ProbeArg } from '../probe-jobs.ts'
 
 export function scheduleTools(c: ToolContext): KageTool[] {
   const { o, s, ownerOnly } = c
@@ -11,6 +12,11 @@ export function scheduleTools(c: ToolContext): KageTool[] {
   // Schedules the hub keeps for this thread: they survive restarts and closed sessions, and end
   // only when cancelled. Each run arrives as a task with the trust of the task that set it up.
   const jobs = o.schedules
+  // A command the hub runs on its own needs the owner's yes, unless the owner's own task set it. Returns why not, or nothing.
+  const probeCard = async (description: string, input: Record<string, unknown>) => {
+    if (!o.approve) return 'refused: a probe from a teammate\'s task needs the owner\'s yes on a card, and this session cannot show one'
+    return await o.approve('schedule', description, input) ? undefined : 'The owner said no. Nothing was scheduled.'
+  }
   if (jobs) tools.push({
     name: 'schedule',
     description: 'Run a prompt in this thread on a schedule (or once at a set time), or each time someone writes here. Use it instead of CronCreate: CronCreate jobs die when this session closes or Kage restarts, these do not. To wait for someone\'s message, use cron "@reply", never a minute cron: it runs only when a message arrives, and ends by itself after 7 days. A clock schedule runs until you cancel it with unschedule.',
@@ -19,14 +25,26 @@ export function scheduleTools(c: ToolContext): KageTool[] {
       prompt: s.describe('what to do on each run, complete on its own: name the thread, the check, and when to stay quiet'),
       recurring: z.boolean().optional().describe('false runs it once, at the next match. Default true'),
       lane: z.boolean().optional().describe('true runs each run in its own lane beside this thread, so it never replays this thread\'s history (it keeps its own); false runs it in this thread. Default: the install\'s setting, usually true. Ignored for @reply'),
+      probe: z.object({
+        command: z.string().describe('a fixed shell command Kage runs on the clock with no model. The model wakes only when its output changes, so the prompt then says what to do about the change'),
+        ignore: z.array(z.string()).optional().describe('regexes: a line that matches one is dropped before the output is compared (timestamps, counters)'),
+        reads: z.array(z.string()).optional().describe('files the command reads as data, whose change is the point. They are not pinned'),
+        writes: z.array(z.string()).optional().describe('files the command writes besides a redirect or tee. They are not pinned'),
+      }).optional().describe('a clock schedule only. The command is pinned when set, with every script it names: an edited script stops the probe until a new yes. A teammate\'s probe needs the owner\'s yes on a card'),
+      channel: s.optional().describe('with probe: channel attribute from the task tag'),
+      thread_ts: s.optional().describe('with probe: thread_ts attribute from the task tag'),
     },
     async run(args) {
-      const a = args as { cron: string; prompt: string; recurring?: boolean; lane?: boolean }
+      const a = args as { cron: string; prompt: string; recurring?: boolean; lane?: boolean; probe?: ProbeArg }
       if (a.cron !== REPLY) try { parseCron(a.cron) } catch (e) { return { isError: true, text: (e as Error).message } }
       if (!a.prompt.trim()) return { isError: true, text: 'the prompt is empty' }
       const id = randomBytes(4).toString('hex')
       const recurring = a.recurring !== false
-      const no = await jobs.add({ id, cron: a.cron, prompt: a.prompt, recurring, ...(a.lane !== undefined && { lane: a.lane ? true as const : undefined }) })
+      if (a.probe && !ownerOnly(args)) {
+        const why = await probeCard(`Run the command ${a.probe.command} on a clock (${a.cron}), as you, with no model, and wake a session when its output changes. Scripts it names are pinned.`, { cron: a.cron, probe: a.probe })
+        if (why) return { isError: true, text: why }
+      }
+      const no = await jobs.add({ id, cron: a.cron, prompt: a.prompt, recurring, ...(a.lane !== undefined && { lane: a.lane ? true as const : undefined }), ...(a.probe && { probe: a.probe }) })
       if (no) return { isError: true, text: no }
       if (a.cron === REPLY) return { text: `Watching: job ${id} runs each time someone writes in this thread, for 7 days. Kept by Kage: it survives restarts.` }
       const next = nextRun(a.cron, new Date(), 366 * 24 * 3600_000)
@@ -41,7 +59,27 @@ export function scheduleTools(c: ToolContext): KageTool[] {
       jobs.remove(String(args.id))
       return { text: `cancelled ${String(args.id)}` }
     },
-  }, {
+  }, ...(jobs.tune ? [{
+    name: 'tune_job',
+    description: 'Change a probe job of this thread: its ignore regexes, reads, writes or cron. A new command needs the same yes as a new probe. Only the owner\'s task, or the run of that job itself, may call it. A new ignore or command restarts the job\'s baseline, so it wakes nothing by itself.',
+    shape: {
+      id: s.describe('the job id'), channel: s.describe('channel attribute from the task tag'), thread_ts: s.describe('thread_ts attribute from the task tag'),
+      cron: s.optional(), command: s.optional(),
+      ignore: z.array(z.string()).optional(), reads: z.array(z.string()).optional(), writes: z.array(z.string()).optional(),
+    },
+    async run(args: Record<string, unknown>) {
+      const { id, channel: _c, thread_ts: _t, ...change } = args as { id: string } & Record<string, unknown>
+      const own = ownerOnly(args), task = c.jobTask.get(`${String(args.channel)}:${String(args.thread_ts)}`)
+      if (!own && task !== id) return { isError: true, text: `only the owner, or job ${id} itself, may tune it` }
+      if (!Object.keys(change).length) return { isError: true, text: 'nothing to change: give cron, command, ignore, reads or writes' }
+      if (change.command !== undefined && !own) {
+        const why = await probeCard(`Change the command of job ${id} to ${String(change.command)}. Kage runs it on its clock, as you, with no model. Scripts it names are pinned.`, { id, command: change.command })
+        if (why) return { isError: true, text: why }
+      }
+      const no = jobs.tune!(id, change)
+      return no ? { isError: true, text: no } : { text: `tuned ${id}` }
+    },
+  } as KageTool] : []), {
     name: 'schedules',
     description: 'List this thread\'s schedules.',
     shape: {},
