@@ -116,6 +116,9 @@ A tripwire runs a shell command on a clock and wakes a session only when the com
 | `tripwires.maxPosts` | `20` | The most channel posts a job that watches a Slack channel keeps until it runs. The oldest go first. |
 | `tripwires.catchUpMax` | `1000` | The most posts Kage reads per watched channel in one catch-up after the Slack socket was down. It reads the oldest missed posts first, so a bigger backlog only waits for the next catch-up: no post is skipped. |
 | `tripwires.seenMax` | `500` | How many recent post ids Kage remembers per watched channel, so a post that arrives twice wakes a job once. |
+| `tripwires.hookPort` | `0` | The port of the webhook that wakes a job (`POST /hook/<job id>` with the job's bearer token). `0` leaves the server off. Any other value must be from 1024 to 65535. |
+| `tripwires.hookHost` | `127.0.0.1` | Where the job webhook listens. Reach it through a tunnel, and keep the port off the internet unless the tunnel is the only way in. |
+| `tripwires.hookPerHour` | `60` | The most calls per hour one job's webhook accepts. Past it, the webhook answers 429. |
 
 ## Email
 

@@ -2,7 +2,8 @@
 import { randomBytes } from 'node:crypto'
 import { z } from 'zod'
 import { awayCommand } from '../../core/afk.ts'
-import { nextRun, parseCron, REPLY } from '../../core/cron.ts'
+import { EVENT, nextRun, parseCron, REPLY } from '../../core/cron.ts'
+import { hookTokenHash, type Trigger } from '../../core/tripwire.ts'
 import type { KageTool, ToolContext } from '../kage-tools.ts'
 import type { ProbeArg } from '../probe-jobs.ts'
 
@@ -21,9 +22,11 @@ export function scheduleTools(c: ToolContext): KageTool[] {
     name: 'schedule',
     description: 'Run a prompt in this thread on a schedule (or once at a set time), or each time someone writes here. Use it instead of CronCreate: CronCreate jobs die when this session closes or Kage restarts, these do not. To wait for someone\'s message, use cron "@reply", never a minute cron: it runs only when a message arrives, and ends by itself after 7 days. A clock schedule runs until you cancel it with unschedule.',
     shape: {
-      cron: s.describe('"@reply" to run on each new message here, or a 5-field cron in local time: minute hour day-of-month month day-of-week, e.g. "*/15 9-18 * * 1-5"'),
+      cron: s.optional().describe('"@reply" to run on each new message here, or a 5-field cron in local time: minute hour day-of-month month day-of-week, e.g. "*/15 9-18 * * 1-5"'),
       prompt: s.describe('what to do on each run, complete on its own: name the thread, the check, and when to stay quiet'),
       recurring: z.boolean().optional().describe('false runs it once, at the next match. Default true'),
+      on_channel: z.object({ channel: s.describe('the Slack channel id'), match: s.optional().describe('a regex a post must match'), bots: z.boolean().optional().describe('false ignores posts by bots and apps. Default true') }).optional().describe('instead of cron: wake this job on each matching post in a channel, with no model between posts. A burst becomes one run'),
+      hook: z.boolean().optional().describe('instead of cron: give this job a webhook. The result holds its URL and token once: give both to whoever sends the calls. A teammate\'s ask needs the owner\'s yes on a card'),
       lane: z.boolean().optional().describe('true runs each run in its own lane beside this thread, so it never replays this thread\'s history (it keeps its own); false runs it in this thread. Default: the install\'s setting, usually true. Ignored for @reply'),
       probe: z.object({
         command: z.string().describe('a fixed shell command Kage runs on the clock with no model. The model wakes only when its output changes, so the prompt then says what to do about the change'),
@@ -35,26 +38,40 @@ export function scheduleTools(c: ToolContext): KageTool[] {
       thread_ts: s.optional().describe('with probe: thread_ts attribute from the task tag'),
     },
     async run(args) {
-      const a = args as { cron: string; prompt: string; recurring?: boolean; lane?: boolean; probe?: ProbeArg }
-      if (a.cron !== REPLY) try { parseCron(a.cron) } catch (e) { return { isError: true, text: (e as Error).message } }
+      const a = args as { cron?: string; prompt: string; recurring?: boolean; lane?: boolean; probe?: ProbeArg; on_channel?: { channel: string; match?: string; bots?: boolean }; hook?: boolean }
+      if (!a.cron && !a.on_channel && !a.hook) return { isError: true, text: 'give one of cron, on_channel or hook' }
+      if (+!!a.cron + +!!a.on_channel + +!!a.hook > 1) return { isError: true, text: 'a job has one trigger: cron, on_channel or hook' }
+      if (a.probe && !a.cron) return { isError: true, text: 'a probe needs a clock cron' }
+      // An event job has no clock. A hook is a door into the hub: its URL needs the port set, and a card for a teammate (sdk-sessions.ts).
+      const token = a.hook ? randomBytes(24).toString('hex') : undefined
+      const url = a.hook ? jobs.hookUrl?.('<id>') : undefined
+      if (a.hook && !url) return { isError: true, text: 'webhook jobs are off: the owner sets tripwires.hookPort first' }
+      if ((a.hook || a.on_channel) && !o.approve) return { isError: true, text: 'webhook and channel jobs need the Agent SDK runner: this session cannot show the owner a card' }
+      const trigger: Trigger | undefined = a.on_channel ? { kind: 'channel', channel: a.on_channel.channel, bots: a.on_channel.bots !== false, ...(a.on_channel.match !== undefined && { match: a.on_channel.match }) } : token ? { kind: 'hook', tokenHash: hookTokenHash(token) } : undefined
+      const cron = trigger ? EVENT : a.cron!
+      if (cron !== REPLY && !trigger) try { parseCron(cron) } catch (e) { return { isError: true, text: (e as Error).message } }
       if (!a.prompt.trim()) return { isError: true, text: 'the prompt is empty' }
       const id = randomBytes(4).toString('hex')
       const recurring = a.recurring !== false
       if (a.probe && !ownerOnly(args)) {
-        const why = await probeCard(`Run the command ${a.probe.command} on a clock (${a.cron}), as you, with no model, and wake a session when its output changes. Scripts it names are pinned.`, { cron: a.cron, probe: a.probe })
+        const why = await probeCard(`Run the command ${a.probe.command} on a clock (${cron}), as you, with no model, and wake a session when its output changes. Scripts it names are pinned.`, { cron, probe: a.probe })
         if (why) return { isError: true, text: why }
       }
-      const no = await jobs.add({ id, cron: a.cron, prompt: a.prompt, recurring, ...(a.lane !== undefined && { lane: a.lane ? true as const : undefined }), ...(a.probe && { probe: a.probe }) })
+      const no = await jobs.add({ id, cron, prompt: a.prompt, recurring, ...(trigger && { trigger }), ...(a.lane !== undefined && { lane: a.lane ? true as const : undefined }), ...(a.probe && { probe: a.probe }) })
       if (no) return { isError: true, text: no }
+      if (trigger?.kind === 'channel') return { text: `Kage schedule ${id} set, wakes on a post in channel ${trigger.channel}${trigger.match !== undefined ? ` matching ${trigger.match}` : ''}${trigger.bots ? ', bots included' : ''}. No model runs between posts. Kept by Kage: it survives restarts and runs until unschedule.` }
+      if (token) return { text: `Kage schedule ${id} set, wakes on a call to its webhook. Shown once, give both to whoever sends the calls:\nURL: ${jobs.hookUrl!(id)}\nToken: ${token}\nSend: POST with the header "Authorization: Bearer <token>". The body reaches the job as data. Kept by Kage: it survives restarts and runs until unschedule.` }
       if (a.cron === REPLY) return { text: `Watching: job ${id} runs each time someone writes in this thread, for 7 days. Kept by Kage: it survives restarts.` }
-      const next = nextRun(a.cron, new Date(), 366 * 24 * 3600_000)
-      return { text: `Kage schedule ${id} set, ${recurring ? 'recurring' : 'one-shot'} (${a.cron}). Next run: ${next?.toLocaleString() ?? 'none within a year'}. Kept by Kage: it survives restarts and runs until unschedule.` }
+      const next = nextRun(cron, new Date(), 366 * 24 * 3600_000)
+      return { text: `Kage schedule ${id} set, ${recurring ? 'recurring' : 'one-shot'} (${cron}). Next run: ${next?.toLocaleString() ?? 'none within a year'}. Kept by Kage: it survives restarts and runs until unschedule.` }
     },
   }, {
     name: 'unschedule',
     description: 'Cancel one of this thread\'s schedules by its id.',
-    shape: { id: s },
+    shape: { id: s, channel: s.describe('channel attribute from the task tag'), thread_ts: s.describe('thread_ts attribute from the task tag') },
     async run(args) {
+      // A run woken by a job read outside text: it may not remove its own trigger, which would silence the job. It reports instead.
+      if (c.jobTask.get(`${String(args.channel)}:${String(args.thread_ts)}`) !== undefined) return { isError: true, text: 'refused: a job\'s own run may not cancel a job. Put the change you suggest in your report: the owner or a teammate applies it.' }
       if (!jobs.list().some(j => j.id === args.id)) return { isError: true, text: `no schedule ${String(args.id)} in this thread` }
       jobs.remove(String(args.id))
       return { text: `cancelled ${String(args.id)}` }

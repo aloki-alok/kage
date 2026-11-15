@@ -17,6 +17,13 @@ export type Trigger =
   | { kind: 'channel'; channel: string; match?: string; bots: boolean }
   | { kind: 'hook'; tokenHash: string }
 
+// The token of a job's webhook is shown once, so only its hash is kept (the trigger's tokenHash).
+export const hookTokenHash = (token: string) => createHash('sha256').update(token).digest('hex')
+// A hook is a door into the hub, and a channel watch reads a channel as the owner's hub, so anyone but the owner asking
+// for either needs the owner's card first.
+export const eventNeedsCard = (tool: string, input: Record<string, unknown>, sender?: string) =>
+  tool === 'mcp__kage__schedule' && (input.hook === true || input.on_channel != null) && sender !== 'owner'
+
 // A line an ignore regex drops. A line longer than lineMax is never dropped: a regex that sees only part of it proves nothing.
 const dropped = (l: string, res: RegExp[], lineMax: number) => l.length <= lineMax && res.some(r => r.test(l))
 

@@ -1,7 +1,7 @@
 import { describe, test } from 'node:test'
 import assert from 'node:assert/strict'
 import { createHash } from 'node:crypto'
-import { commandWords, decide, lineHasher, normalize, pinsChanged, safePattern, type JobState, type Probe } from '../tripwire.ts'
+import { commandWords, decide, eventNeedsCard, hookTokenHash, lineHasher, normalize, pinsChanged, safePattern, type JobState, type Probe } from '../tripwire.ts'
 
 const probe: Probe = { command: 'x', pins: {}, ignore: [], reads: [], writes: [] }
 const sha = (t: string) => createHash('sha256').update(t).digest('hex')
@@ -155,5 +155,19 @@ describe('decide', () => {
   test('stderr does not change the fingerprint, so a warning cannot wake', () => {
     const first = decide({ fails: 0 }, { ...ok('v1'), err: 'warn 1' }, probe, o)
     assert.equal(decide(first.state, { ...ok('v1'), err: 'warn 2' }, probe, o).wake, undefined)
+  })
+})
+
+describe('webhook jobs', () => {
+  test('only the sha256 of a token is kept', () => {
+    assert.equal(hookTokenHash('t0k'), sha('t0k'))
+  })
+  test('a teammate or agent asking for a hook or a channel watch needs the owner card, the owner does not, and a plain schedule never does', () => {
+    assert.equal(eventNeedsCard('mcp__kage__schedule', { hook: true }, 'teammate'), true)
+    assert.equal(eventNeedsCard('mcp__kage__schedule', { hook: true }, 'owner'), false)
+    assert.equal(eventNeedsCard('mcp__kage__schedule', { cron: '* * * * *' }, 'teammate'), false)
+    assert.equal(eventNeedsCard('mcp__kage__schedule', { on_channel: { channel: 'CTEST9' } }, 'teammate'), true)   // a channel job reads a channel as the owner's hub: same card
+    assert.equal(eventNeedsCard('mcp__kage__schedule', { on_channel: { channel: 'CTEST9' } }, 'owner'), false)
+    assert.equal(eventNeedsCard('mcp__kage__reply', { hook: true }, 'teammate'), false)
   })
 })
