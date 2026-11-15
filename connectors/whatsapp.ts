@@ -9,7 +9,7 @@ import { claudeOnce, emptyRoom } from '../runtime/claude-once.ts'
 import { readBody } from './webhook.ts'
 import type { Inbox } from '../runtime/store.ts'
 import { findSecret, guardVerdict } from '../core/outbound.ts'
-import { decideWhatsApp, fromWaha, guardPrompt, standInPrompt, waTaskContent, type Arming, type WahaPayload, type WaLine } from '../core/whatsapp.ts'
+import { decideWhatsApp, fromWaha, guardPrompt, standInPrompt, waOutgoing, waTaskContent, withoutFooter, type Arming, type WahaPayload, type WaLine } from '../core/whatsapp.ts'
 
 export type WaTask = { chat: string; place: string; content: string }
 const ARM_MS = 60 * 60_000
@@ -75,8 +75,8 @@ export function startWhatsApp(o: { dir: string; name: string; owner: string; wha
     return r.json() as Promise<any>
   }
   async function history(chat: string): Promise<WaLine[]> {
-    const rows = await api(`/api/default/chats/${encodeURIComponent(chat)}/messages?limit=20&downloadMedia=false`).catch(() => []) as { fromMe?: boolean; body?: string; timestamp?: number }[]
-    return rows.filter(r => r.body).sort((a, b) => (a.timestamp ?? 0) - (b.timestamp ?? 0)).map(r => ({ fromMe: !!r.fromMe, text: r.body! }))
+    const rows = await api(`/api/default/chats/${encodeURIComponent(chat)}/messages?limit=50&downloadMedia=false`).catch(() => []) as { fromMe?: boolean; body?: string; timestamp?: number }[]
+    return rows.filter(r => r.body).sort((a, b) => (a.timestamp ?? 0) - (b.timestamp ?? 0)).map(r => ({ fromMe: !!r.fromMe, text: withoutFooter(r.body!) }))
   }
   // Every message leaving as the owner passes the key check and the guard first; a held one goes to their DM.
   async function send(chat: string, text: string, hist?: WaLine[]) {
@@ -88,7 +88,7 @@ export function startWhatsApp(o: { dir: string; name: string; owner: string; wha
       o.notify(`Held a WhatsApp message to ${chat.split('@')[0]} (${verdict.reason}). Send it yourself if it is fine:\n${text}`)
       return 'held'
     }
-    await sendText(chat, text)
+    await sendText(chat, waOutgoing(text, `${o.name[0]!.toUpperCase()}${o.name.slice(1)}`))
     return 'sent'
   }
   const sendText = (chatId: string, text: string) => api('/api/sendText', { method: 'POST', body: JSON.stringify({ session: 'default', chatId, text }) })
