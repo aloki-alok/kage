@@ -4,7 +4,7 @@ import { execFileSync } from 'node:child_process'
 import { mkdirSync, mkdtempSync, readFileSync, realpathSync, symlinkSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { configRefusal, protectConfig, ownerMemoryRefusal } from '../path-guards.ts'
+import { certFileEnv, configRefusal, protectConfig, ownerMemoryRefusal } from '../path-guards.ts'
 
 describe("the owner's memory takes only people notes", () => {
   const MEM = '/home/o/.claude/projects/-home-o/memory'
@@ -182,5 +182,17 @@ describe('protectConfig: what the sandbox and the file rules close', () => {
     assert.ok(w.permissions.deny.every(r => !r.startsWith('Write(')))
     assert.ok(w.permissions.deny.includes(`Edit(/${real(dir)}/config.json)`))
     assert.equal(w.sandbox.failIfUnavailable, true)
+  })
+})
+
+describe('Go tools verify TLS inside the macOS sandbox (#226)', () => {
+  const has = () => true
+  test('a mac session reads certificates from the system file, since the sandbox blocks the trust service', () => {
+    assert.deepEqual(certFileEnv('darwin', {}, has), { SSL_CERT_FILE: '/etc/ssl/cert.pem' })
+  })
+  test("the owner's own setting wins, Linux needs nothing, and a missing file sets nothing", () => {
+    assert.deepEqual(certFileEnv('darwin', { SSL_CERT_FILE: '/mine.pem' }, has), {})
+    assert.deepEqual(certFileEnv('linux', {}, has), {})
+    assert.deepEqual(certFileEnv('darwin', {}, () => false), {})
   })
 })
