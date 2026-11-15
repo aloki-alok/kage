@@ -14,15 +14,15 @@ A monitor is a ladder, and Kage moves each job down it when that is safe for the
 |---|---|---|
 | 0. Model poll | a model turn on the clock | full |
 | 1. Tripwire | a fixed probe command on the clock; the model wakes only when the normalized output changes | none |
-| 2. Event | a subscription to a Slack channel; a matching post (bots included) wakes the model at once | none |
+| 2. Event | a subscription to a Slack channel, or a POST to the job's own webhook; a matching post or call wakes the model at once | none |
 | 3. Distilled rule (later) | a rule built from the model's own past decisions; the model wakes on input unlike any it has seen | rare |
 | 4. Retro note (later) | a line in the weekly retro when nobody reacts to a job's posts | none |
 
 Three kinds of thing, kept apart:
 
-1. **Capabilities, tested in code:** probes, channel subscriptions, a job's own session lane (`<thread>#side-job-<id>`), replay over past data, and live shadow runs.
-2. **Judgment, the model's:** which rung a job uses, the probe and its ignore lines, the model a job runs on, and how much proof a job needs before it moves (replay depth, shadow length). Kage weighs what a missed catch costs, how often the event happens, how much history exists, and whether the asker relies on it. It tells the asker in one line what it chose and why.
-3. **Mechanics, fixed in code, never the model's call:** a probe command is fixed when the job is made, and every script it runs is pinned by its content hash (a changed script stops the probe until a new yes). After a Slack reconnect, each watched channel is re-read from the last post seen. A job is never stopped silently: a probe that keeps failing pings the asker and keeps trying.
+1. **Capabilities, tested in code:** probes, channel subscriptions, per-job webhooks, and a job's own session lane (`<thread>#side-job-<id>`).
+2. **Judgment, the model's:** which rung a job uses, the probe and its ignore lines, the model a job runs on, and how much proof a job needs before it moves (how much history to read, how long to keep the old job beside the new one). Kage weighs what a missed catch costs, how often the event happens, how much history exists, and whether the asker relies on it. It tells the asker in one line what it chose and why.
+3. **Mechanics, fixed in code, never the model's call:** a probe command is fixed when the job is made, and every script it runs is pinned by its content hash (a changed script stops the probe until a new yes). After a Slack reconnect, each watched channel is re-read from the last post seen. A job is never stopped silently: a probe that keeps failing pings the asker and keeps trying. A run the job woke read outside text, so it may never change or remove its own trigger, cron included: it suggests the change in its report, and a person's task applies it.
 
 Every number is a setting with a default (`tripwires.*`, `harness.jobModel`, see docs/settings.md), and the owner or Kage may change it at runtime. Nothing about a job's pace, model or proof is hardcoded.
 

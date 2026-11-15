@@ -25,11 +25,11 @@ A monitor that asks a model what changed pays for a full run to learn that nothi
 4. **Distilled rule, later.** The model's past decisions would become a tested rule.
 5. **Retro note, later.** A job that nobody reacts to would get one line in the weekly retro.
 
-Only steps 1 to 3 exist today. Each wake runs in the job's own lane, so its session keeps only its own earlier wakes and not the whole thread.
+Only steps 1 to 3 exist today. Step 3 also takes webhooks: an alert or a deploy can call the job's own URL, and the call wakes it at once. Each wake runs in the job's own lane, so its session keeps only its own earlier wakes and not the whole thread.
 
 ## Kage judges the proof
 
-No fixed test gates a move. Before Kage moves a job to a cheaper step, it picks the proof that fits that job. It has two tools for this. It may replay the job's probe or rule over past data, and it chooses how far back. It may also run the old and the new way side by side, live, and it chooses for how long.
+No fixed test gates a move. Before Kage moves a job to a cheaper step, it picks the proof that fits that job. It can read the channel's past posts, or run the probe command now and compare the result with what the old job reported. It can also keep the old job running until the new one has caught a real event, and only then remove the old one.
 
 Kage weighs four things. How much does a missed catch cost: an alarm on live calls is not a weekly report. How often does the event happen. How much history exists. Does the asker rely on the job. A rare, costly event needs more proof than a common, harmless one.
 
@@ -52,3 +52,7 @@ A probe runs in the hub, outside any session's sandbox. So the rules are strict.
 3. If a session edits a pinned script, the probe refuses to run. Kage asks again, and the changed script needs a new yes.
 
 Editing a file can therefore never run new code in the hub. This is the same trust model as [Kagelets](kagelets.md) use for their database read, and it follows [Approvals](approvals.md).
+
+## A woken job never retunes itself
+
+A run that a job woke has read outside text: probe output, a post, a webhook body. That text could carry instructions, so the run may never change or remove its own job, not even its clock, because any of those could mute it. It writes the change it suggests in its report, and a person's task applies it.
