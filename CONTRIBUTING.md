@@ -105,7 +105,7 @@ Write logs to stderr only. In a tmux pane, stdout carries the channel protocol, 
 | `cron.ts` | Cron expressions, which schedules are due, and reading Claude Code's own cron jobs. |
 | `email.ts` | Email as a way to tag Kage: who may (the provider's DKIM signature, not only DMARC), the ask in the new text, the reply-all, and the guard on a reply that leaves the owner's domains. The SES, S3 and SQS calls are `connectors/email.ts`. |
 | `whatsapp.ts` | The owner's WhatsApp: the owner's tag is the only way in, the armed-chat stand-in, and the guard that reads every message before it leaves as the owner. The WAHA webhook and calls are `connectors/whatsapp.ts`. |
-| `tripwire.ts` | Tripwires: the pure rules of a probe that wakes a session only when its output changes. How output is normalized and fingerprinted, which files a command runs, which ignore patterns are safe, whether a pin changed, and what one run does to a job's state (a wake, a failure ping). |
+| `tripwire.ts` | Tripwires: the pure rules of a probe that wakes a session only when its output changes. How output is normalized and fingerprinted, the words of a command, which ignore patterns are safe, whether a pin changed, and what one run does to a job's state (a wake, a failure ping). |
 | `afk.ts` | AFK mode: which threads the stand-in watches, when it posts or phones the owner, and what it may say. |
 | `blocks.ts` | When the safety check stops a turn: the line in the thread, the owner's DM, and whether the thread closes. |
 | `commands.ts` | Local slash commands (`connectors.commands`). |
@@ -175,7 +175,7 @@ Write logs to stderr only. In a tmux pane, stdout carries the channel protocol, 
 | `key-proxy.ts` | The key proxy (#182): a unix socket that adds a held key to requests for its one host, so the session never sees it. |
 | `memory-snapshot.ts` | A copy of Kage's memory before a dream, so `kage dream undo` restores it. |
 | `repo-access.ts` | Whether this install may push to the Kage repo, which marks the repo owner's hub. |
-| `probes.ts` | The runtime of a tripwire probe: the sha256 pin of each writable file a command runs, and one run with a timeout, an output cap and a refusal when a pin changed or an ignore pattern is unsafe. |
+| `probes.ts` | The runtime of a tripwire probe: best-effort pins of every swappable file a command names (except its `reads`), and one run with a timeout, an output cap (the fingerprint still covers all output) and a refusal when a pin changed or an ignore pattern is unsafe. |
 | `release.ts` | The git and gh calls of a release, and the owner hub's daily check (`kage release`, ADR 0013). |
 
 ## Add a connector

@@ -1,17 +1,41 @@
 // Tripwires: a shell probe runs on a clock and wakes a session only when its normalized output changes. Pure: the
 // process and the file hashes are runtime/probes.ts, and the stored JobState is the caller's.
 import { createHash } from 'node:crypto'
-import { basename, resolve } from 'node:path'
 
 // pins: absolute script path to its sha256 hex, taken when the owner approved the probe.
-export type Probe = { command: string; pins: Record<string, string>; ignore: string[] }
+// reads: paths the probe reads as data, whose change is the point. They are never pinned.
+export type Probe = { command: string; pins: Record<string, string>; ignore: string[]; reads: string[] }
 export type JobState = { fp?: string; last?: string; fails: number }
 
+// A line an ignore regex drops. A line longer than lineMax is never dropped: a regex that sees only part of it proves nothing.
+const dropped = (l: string, res: RegExp[], lineMax: number) => l.length <= lineMax && res.some(r => r.test(l))
+
 // Drops lines that match any ignore regex (a timestamp, a counter) so only real change shows, and trims trailing space.
-// A regex reads at most lineMax characters of a line. The patterns passed safePattern when the probe was made.
+// The patterns passed safePattern when the probe was made.
 export const normalize = (out: string, ignore: string[], lineMax: number): string => {
   const res = ignore.map(r => new RegExp(r))
-  return out.split('\n').filter(l => !res.some(r => r.test(l.slice(0, lineMax)))).map(l => l.trimEnd()).join('\n').trimEnd()
+  return out.split('\n').filter(l => !dropped(l, res, lineMax)).map(l => l.trimEnd()).join('\n').trimEnd()
+}
+
+// The sha256 of normalize(all output), taken as the output arrives, so a probe can keep only part of its text and still
+// see a change anywhere. Push chunks, then end() for the hex.
+// ponytail: holds the current line in memory until its newline. A 60 s timeout bounds it. Upgrade: hash a line in pieces.
+export function lineHasher(ignore: string[], lineMax: number) {
+  const res = ignore.map(r => new RegExp(r))
+  const hash = createHash('sha256')
+  let partial = '', started = false, blanks = 0 // blanks: empty lines held back, so trailing ones never count
+  const line = (l: string) => {
+    if (dropped(l, res, lineMax)) return
+    const t = l.trimEnd()
+    if (!t) { blanks++; return }
+    hash.update((started ? '\n' : '') + '\n'.repeat(blanks) + t)
+    started = true
+    blanks = 0
+  }
+  return {
+    push(chunk: string) { const parts = (partial + chunk).split('\n'); partial = parts.pop()!; parts.forEach(line) },
+    end() { line(partial); return hash.digest('hex') },
+  }
 }
 
 // Why an ignore pattern is refused, or undefined when it is fine. Patterns are model-authored and run in the hub, so a
@@ -36,28 +60,13 @@ export function safePattern(p: string, patternMax: number): string | undefined {
   }
 }
 
-export const fingerprint = (text: string): string => createHash('sha256').update(text).digest('hex')
-
-const DEFAULT_INTERPRETERS = ['sh', 'bash', 'zsh', 'python', 'python3', 'node', 'ruby', 'perl', 'bun', 'deno']
-const unquote = (w: string) => w.replace(/^['"]|['"]$/g, '')
-
-// The files a command runs: the head word of each segment (split on ; && || | & and newlines) when it is a path, and the
-// first non-flag word after an interpreter. `cd <dir>` moves where later relative paths resolve. A word that only names
-// data (`wc -l app.log`) is not here. Paths are absolute, ~ is expanded, and a ./ path resolves against cwd or the cd.
-export function scriptPaths(command: string, home: string, cwd: string, interpreters: string[] = DEFAULT_INTERPRETERS): string[] {
-  const where = (w: string, dir: string) => (w.startsWith('~/') ? home + w.slice(1) : w.startsWith('/') ? w : resolve(dir, w))
-  const found: string[] = []
-  let dir = cwd
-  for (const seg of command.split(/&&|\|\||[;|&\n]/)) {
-    const words = seg.split(/\s+/).filter(Boolean).map(unquote)
-    while (/^[A-Za-z_]\w*=/.test(words[0] ?? '')) words.shift()
-    const [head, ...rest] = words
-    if (!head) continue
-    if (head === 'cd') { if (rest[0]) dir = where(rest[0], dir); continue }
-    if (/^(\/|~\/|\.{1,2}\/)/.test(head)) found.push(where(head, dir))
-    if (interpreters.includes(basename(head))) { const arg = rest.find(w => !w.startsWith('-')); if (arg) found.push(where(arg, dir)) }
-  }
-  return found
+// The words of a command, after splitting on whitespace and shell punctuation (; & | ( ) $ ` " ' < > =) with ~ and $HOME
+// expanded, and the words that follow a cd. Shell parsing is never complete, so this only has to over-collect: the caller
+// (runtime/probes.ts pin) pins the words that turn out to be files.
+export function commandWords(command: string, home: string): { words: string[]; cds: string[] } {
+  const words = command.replace(/\$\{?HOME\}?/g, home).split(/[\s;&|()$`"'<>=]+/).filter(Boolean)
+    .map(w => (w === '~' ? home : w.startsWith('~/') ? home + w.slice(1) : w))
+  return { words, cds: words.filter((_, i) => words[i - 1] === 'cd') }
 }
 
 // The pinned paths whose hash differs now. A missing file (undefined) counts as changed.
@@ -69,15 +78,15 @@ const firstLine = (s: string) => (s.split('\n').map(l => l.trim()).find(Boolean)
 
 // One run's outcome. A failure never stops the job: it counts, and pings once when the count reaches failPing, naming
 // the first line of stderr (or of stdout when stderr is empty). A change wakes with the previous text, so the session
-// sees what moved. Only stdout is fingerprinted, so a stderr warning cannot wake. The first good run only records a baseline.
-export function decide(state: JobState, run: { ok: boolean; out: string; err?: string }, probe: Probe, o: { failPing: number; lineMax: number }): { state: JobState; wake?: { before?: string; after: string }; ping?: string } {
+// sees what moved. Only stdout is fingerprinted (run.fp covers all of it, even past the text the run kept), so a stderr warning cannot wake. The first good run only records a baseline.
+export function decide(state: JobState, run: { ok: boolean; out: string; fp: string; err?: string }, probe: Probe, o: { failPing: number; lineMax: number }): { state: JobState; wake?: { before?: string; after: string }; ping?: string } {
   if (!run.ok) {
     const fails = state.fails + 1
     const why = firstLine(run.err ?? '') || firstLine(run.out)
     return { state: { ...state, fails }, ...(fails === o.failPing && { ping: `A tripwire probe failed ${fails} times in a row: ${probe.command}${why && `\nError: ${why}`}` }) }
   }
   const after = normalize(run.out, probe.ignore, o.lineMax)
-  const fp = fingerprint(after)
+  const fp = run.fp
   const next = { ...state, fp, last: after, fails: 0 }
   if (state.fp === fp) return { state: { ...state, fails: 0 } }
   if (state.fp === undefined) return { state: next }

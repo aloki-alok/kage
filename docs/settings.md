@@ -97,18 +97,17 @@ The hub fetches `https://api.example.com/v1/things` and adds the key in the head
 
 ## Tripwires
 
-A tripwire runs a shell command on a clock and wakes a session only when the command's output changes. The first good run records the baseline and wakes nothing. A command that edits itself, or a script it runs that changed, is refused until you approve it again.
+A tripwire runs a shell command on a clock and wakes a session only when the command's output changes. The first good run records the baseline and wakes nothing. A command that edits itself, or a file it names that you could change, is refused when that file changes, until you approve it again. Pinning is best effort: the approval card lists the files a probe reads as data, and those are the only files whose change does not stop it.
 
 | Setting | Default | Effect |
 |---|---|---|
 | `tripwires.on` | on | `false` turns every tripwire off. |
 | `tripwires.timeoutSec` | `60` | A command that runs longer is killed, with its child processes. |
-| `tripwires.maxKb` | `64` | Output past this size is cut and marked as truncated. |
+| `tripwires.maxKb` | `64` | Output text past this size is cut and marked as truncated. A change in the cut part still wakes the session. |
 | `tripwires.failPing` | `3` | After this many failed runs in a row, you get one note. The tripwire keeps running. |
 | `tripwires.env` | `["PATH","HOME","LANG","USER","TMPDIR","SSH_AUTH_SOCK"]` | The variables of Kage's environment that a probe sees. Nothing else passes, so a probe never gets a token. A name that is not set is skipped. Add a name only when a probe needs it: it widens what a probe can read, so a session needs your yes to change it. |
-| `tripwires.interpreters` | `["sh","bash","zsh","python","python3","node","ruby","perl","bun","deno"]` | Program names that run a script file. The first file after one of them is pinned, as is a file a command runs by its path. A pin applies only to a file you can write, so a data file or a system binary is never pinned and a change to it never stops the probe. |
 | `tripwires.patternMax` | `200` | The longest `ignore` pattern a probe may have. A longer one, an invalid one, or one with a nested repeat such as `(a+)+` is refused when the probe is made. |
-| `tripwires.lineMax` | `2000` | An `ignore` pattern reads only this many characters of each output line. |
+| `tripwires.lineMax` | `2000` | An output line longer than this is never dropped by an `ignore` pattern. |
 
 ## Email
 
