@@ -14,17 +14,17 @@ const probe = (command: string, pins: Record<string, string> = {}) => ({ command
 describe('runProbe', () => {
   test('returns the output and ok for a command that exits 0', async () => {
     const r = await runProbe(probe('printf hello'), o)
-    assert.deepEqual([r.ok, r.out, r.refused], [true, 'hello', undefined])
+    assert.deepEqual([r.ok, r.out, r.refused, r.why], [true, 'hello', undefined, undefined])
     assert.ok(r.ms >= 0)
   })
   test('is not ok when the command exits non-zero, and keeps its output', async () => {
     const r = await runProbe(probe('printf oops; exit 3'), o)
-    assert.deepEqual([r.ok, r.out], [false, 'oops'])
+    assert.deepEqual([r.ok, r.out, r.why], [false, 'oops', 'exit-3'])
   })
   test('kills a command that outlives the timeout, children included', async () => {
     const t = Date.now()
     const r = await runProbe(probe('sleep 30 & sleep 30'), { ...o, timeoutMs: 200 })
-    assert.equal(r.ok, false)
+    assert.deepEqual([r.ok, r.why], [false, 'timeout'])
     assert.ok(Date.now() - t < 3000, 'returned long after the timeout')
   })
   test('truncates output past maxBytes and marks it', async () => {

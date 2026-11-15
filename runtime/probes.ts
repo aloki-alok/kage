@@ -53,7 +53,8 @@ export function pin(command: string, o: { home?: string; cwd?: string; reads?: s
 // The variables a probe sees when tripwires.env is not set.
 const DEFAULT_ENV = ['PATH', 'HOME', 'LANG', 'USER', 'TMPDIR', 'SSH_AUTH_SOCK']
 
-export type ProbeRun = { ok: boolean; out: string; err: string; fp: string; truncated: boolean; refused?: string; ms: number }
+// why: a failed run's cause with no output in it (exit-<code>, timeout, spawn), safe for the event log (ADR 0010).
+export type ProbeRun = { ok: boolean; out: string; err: string; fp: string; truncated: boolean; refused?: string; ms: number; why?: string }
 
 // Runs `/bin/sh -c` in its own process group, so a timeout kills the children too. Stdout and stderr stay apart and each text is capped at maxBytes (a cut stdout is marked and
 // `truncated`), but `fp` hashes all of stdout after ignore, so a change past the cap still shows. It does not run at all when an ignore pattern is unsafe, or when a pinned file changed or is gone: the owner approved that script, not the new one.
@@ -75,12 +76,13 @@ export async function runProbe(p: Probe, o: { timeoutMs: number; maxBytes: numbe
       const child = spawn('/bin/sh', ['-c', p.command], { detached: true, stdio: ['ignore', 'pipe', 'pipe'], env })
       const hasher = lineHasher(p.ignore, o.lineMax), decoder = new StringDecoder('utf8')
       let buf = Buffer.alloc(0), errBuf = Buffer.alloc(0), truncated = false, timedOut = false, done = false
-      const finish = (ok: boolean) => {
+      const finish = (code: number | null | 'spawn') => {
         if (done) return
         done = true
         clearTimeout(timer)
         hasher.push(decoder.end())
-        resolve({ ok: ok && !timedOut, out: buf.toString('utf8') + (truncated ? '\n[truncated]' : ''), err: errBuf.toString('utf8'), fp: hasher.end(), truncated, ms: Date.now() - start })
+        const why = timedOut ? 'timeout' : code === 'spawn' ? 'spawn' : code === 0 ? undefined : `exit-${code ?? 'signal'}`
+        resolve({ ok: !why, ...why && { why }, out: buf.toString('utf8') + (truncated ? '\n[truncated]' : ''), err: errBuf.toString('utf8'), fp: hasher.end(), truncated, ms: Date.now() - start })
       }
       const take = (d: Buffer) => {
         hasher.push(decoder.write(d))
@@ -91,8 +93,8 @@ export async function runProbe(p: Probe, o: { timeoutMs: number; maxBytes: numbe
       child.stdout.on('data', take)
       child.stderr.on('data', (d: Buffer) => { errBuf = Buffer.concat([errBuf, d.subarray(0, Math.max(0, o.maxBytes - errBuf.length))]) })
       const timer = setTimeout(() => { timedOut = true; try { process.kill(-child.pid!, 'SIGKILL') } catch {} }, o.timeoutMs)
-      child.on('error', () => finish(false))
-      child.on('close', code => finish(code === 0))
+      child.on('error', () => finish('spawn'))
+      child.on('close', code => finish(code))
     })
   } catch (e) {
     return refuse(`could not run: ${(e as Error).message}`)
