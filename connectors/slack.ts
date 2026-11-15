@@ -178,8 +178,8 @@ export async function connectSlack(o: { dir: string; appToken: string; userToken
       const j = await o.triage(thread, !m.user || m.user === ids.owner ? 'owner' : 'other', t.text,
         { hasFiles: !!(m.files?.length || (m as { attachments?: unknown[] }).attachments?.length), inThread: !!m.thread_ts && m.thread_ts !== m.ts,
           context: async () => (await contextOf(m, true)).text })
-      // A reaction that fails to land starts the session instead: a request is never dropped silently.
-      if (j.pick === 'react' && (!j.reaction?.emoji || await react(m.channel, m.ts, j.reaction.emoji))) return
+      // A reaction that fails to land starts the session instead: a request is never dropped silently. No emoji picked: the eyes.
+      if (j.pick === 'react' && await react(m.channel, m.ts, j.reaction?.emoji ?? 'eyes')) return
     }
     const agent = t.agent ? { app: t.agent, tag: (ids.apps ?? []).map(appEntry).find(e => e?.id === t.agent)?.tag } : undefined
     react(m.channel, m.ts, PICKED_UP)
