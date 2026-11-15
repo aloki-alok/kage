@@ -54,6 +54,8 @@ Write logs to stderr only. In a tmux pane, stdout carries the channel protocol, 
 | `hub/owner-digests.ts` | What the owner gets on a clock: the daily note (questions waiting a day, grants with no card) and the Monday retro. |
 | `hub/dreams.ts` | The nightly dreams: Kage's own over the day's threads, and each kagelet's over its runs. |
 | `hub/connectors.ts` | The connectors the hub starts beside Slack (GitHub, meetings and the meeting bot, email, voice, WhatsApp), how a reply reaches each, and how a stored message replays through its own connector. |
+| `hub/kagelets.ts` | Kagelets in the hub: the minute sync of their files into schedules and grants, the cost flags and caps, their memory, the manager's side, the owner's notes to one, and the chains between them. |
+| `hub/owner-commands.ts` | What the owner asks from their terminal or DM: the status line, `kage tell` and `kage relay`. |
 | `plugin/server.ts` | For tmux panes only: serves Kage's tools over MCP inside each pane and relays approvals. |
 | `plugin/private-data-guard.ts` | The plugin hook (`hooks/hooks.json`) that runs the rules in `core/guards.ts` and `runtime/path-guards.ts` inside tmux panes. The SDK runner applies the same rules in process. |
 | `core/` | Pure rules. See the table below. |
@@ -181,5 +183,5 @@ A connector touches more places than it should today. Copy `connectors/email.ts`
 1. `Conversation['connector']` and the key prefix in `core/conversations.ts`.
 2. `senderOf` in `core/gate.ts`, if its sender is not plainly the owner or a teammate.
 3. The reply type in `runtime/protocol.ts`, `routeReply` in `runtime/session-link.ts`, and the `reply` tool in `runtime/kage-tools.ts`.
-4. `replies` and `failed` in `hub/router.ts`, and the connector names written out in `core/blocks.ts`, `core/loom.ts` and the reply tool in `runtime/kage-tools.ts` (one connector table is planned).
-5. The inbox (`Inbox` in `runtime/store.ts`): `take` each message with a unique source id before you acknowledge it, and `handled` after. If the source does not resend by itself, add a `replay` to `replayers` in `hub/router.ts`.
+4. `replies` in `hub/connectors.ts` and `failed` in `hub/router.ts`, and the connector names written out in `core/blocks.ts`, `core/loom.ts` and the reply tool in `runtime/kage-tools.ts` (one connector table is planned).
+5. The inbox (`Inbox` in `runtime/store.ts`): `take` each message with a unique source id before you acknowledge it, and `handled` after. If the source does not resend by itself, add its `replay` to `replayOf` in `hub/connectors.ts`.
