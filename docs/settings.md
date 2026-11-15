@@ -62,20 +62,13 @@ Only a listed agent's post goes to Jev, at most its first 4,000 characters, with
 
 ## ssh to hosts behind AWS SSM
 
-A session's shell runs in an OS sandbox. `session-manager-plugin` opens its own websocket and ignores the sandbox's proxy, so `ssh <host>` with an `aws ssm start-session` ProxyCommand hangs inside a session. Kage fixes this with a relay: the hub, outside the sandbox, runs `aws ssm start-session` and passes the bytes through a unix socket (`ssm.sock` in the config folder, mode 600).
+A session's shell runs in an OS sandbox. `aws ssm start-session` makes its API call through the sandbox's proxy, then starts `session-manager-plugin`, which opens its own websocket and ignores that proxy. So it hangs inside a session. Kage fixes this for every host, account and region with no setup: whatever `ssh` does in your terminal also works in an owner thread, and `~/.ssh/config` needs nothing from Kage.
 
-Only an owner-only Slack thread gets a relay token (`KAGE_SSM_TOKEN`) and the socket path (`KAGE_SSM_SOCK`) in its env. Teammate, agent, email, WhatsApp, voice and kagelet sessions get none, and the hub refuses them. The hub accepts only an instance id (`i-...` or `mi-...`) and a port from 1 to 65535, allows 8 relays at once, and logs the target and the exit of each, never the traffic.
+Only an owner-only Slack thread gets a relay token (`KAGE_SSM_TOKEN`), the socket path (`KAGE_SSM_SOCK`) and a PATH that starts with Kage's own folder `cli/ssm-plugin-shim`. That folder holds a stand-in `session-manager-plugin`. The aws CLI runs it, and it sends aws's arguments to the hub over a unix socket (`ssm.sock` in the config folder, mode 600). Teammate, agent, email, WhatsApp, voice and kagelet sessions get none, and the hub refuses them.
+
+The hub then runs the real `session-manager-plugin` outside the sandbox with exactly those arguments, and passes the bytes both ways. It runs only a `StartSession` call whose stream URL is `wss://ssmmessages.<region>.amazonaws.com` (or the `.com.cn` host) and whose endpoint is `https://ssm.<region>.amazonaws.com`. It allows 8 relays at once. It logs the region, the instance id and the exit of each, never the token, the stream URL or the traffic. The hub finds the real plugin once at start in its own PATH, so install it where the hub's PATH sees it. `kage doctor` notes when it is missing. The stand-in needs `node` on the session's PATH.
 
 A thread that a teammate asked for work (a schedule a teammate set up, for example) is not owner-only, so it gets no token. To let one such thread use the relay, run `kage relay allow <place or key>` in your own terminal. `kage relay deny <same>` removes it and cuts its live token, and `kage relay list` shows the keys. The list holds exact thread keys, so a lane of a listed thread, a kagelet and every non-Slack session stay refused. The hub checks the list again on every connection. A session that is already running keeps its old env: it gets the token at its next start.
-
-To use it, add one `Match` block per region at the top of `~/.ssh/config`, above the `Host` blocks (ssh keeps the first ProxyCommand it finds). It applies only when `KAGE_SSM_TOKEN` is set, so your own terminal keeps its direct ProxyCommand.
-
-```sshconfig
-Match originalhost web,web-prod exec "test -n \"$KAGE_SSM_TOKEN\""
-    ProxyCommand /path/to/kage/cli/ssm-proxy.ts %h %p us-west-1
-```
-
-The last argument is the AWS region of those hosts. The script needs `node` on the PATH of the ssh process. `kage doctor` warns when `~/.ssh/config` has an `aws ssm start-session` ProxyCommand and no `ssm-proxy` line. The hub's own `aws` must be on its PATH and logged in.
 
 ## Keys that stay out of sessions
 
