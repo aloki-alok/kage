@@ -20,7 +20,7 @@ export function paneProcessStart(pane: string): number {
 // The folder Claude Code keeps a session's transcripts in: named after the working directory.
 export const claudeProject = (cwd: string) => `${process.env.HOME}/.claude/projects/${cwd.replace(/[^A-Za-z0-9]/g, '-')}`
 
-// The tmux arguments that start a pane. claude gets the same settings an SDK session gets (core/guards.ts protectConfig),
+// The tmux arguments that start a pane. claude gets the same settings an SDK session gets (runtime/path-guards.ts protectConfig),
 // so the sandbox holds even if the pane's shell unsets KAGE_SESSION. One --settings flag only: a second would replace the first.
 // The settings travel in an env var so no quoting can break them.
 export function paneArgs(a: {

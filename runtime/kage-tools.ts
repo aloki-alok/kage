@@ -706,7 +706,7 @@ export function sessionTools(o: {
     })
   }
   // The owner's own task may change a setting here, and no other tool changes config.json: the file tools are closed to every session
-  // (core/guards.ts protectConfig). A safe key applies; one that grants power waits for the owner's yes on a card.
+  // (runtime/path-guards.ts protectConfig). A safe key applies; one that grants power waits for the owner's yes on a card.
   if (!name && o.settings) tools.push({
     name: 'set_setting',
     description: `Change one ${Title} setting when the owner's own task asks for it: key is the dotted path in config.json (kagelets.dailyUsd, afk.model, connectors.voice.port) and value is JSON. Limits, models, AFK, Jev thresholds, ports and the browser block list apply at once. Anything that grants power (people, a command, a connector on, harness) puts a card in front of the owner first, and nothing changes without their yes. Tokens are never settable.`,
