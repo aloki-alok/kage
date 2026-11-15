@@ -67,8 +67,8 @@ export function sdkSessions(o: {
   budgetOf?: (key: string) => number | undefined
   // A kagelet lane: the model its file names (core/kagelets.ts). No set_model reaches a lane, so nothing overrides it.
   modelOf?: (key: string) => string | undefined
-  // The SSM relay (runtime/ssm-relay.ts): an owner-only thread's env carries a token and the socket, so its ssh reaches AWS through the hub. issue returns nothing for any other thread.
-  ssm?: { sock: string; issue: (key: string) => string | undefined; drop: (key: string) => void }
+  // The SSM relay (runtime/ssm-relay.ts): an owner-only thread's env carries a token, the socket and the stand-in session-manager-plugin first on PATH (cli/ssm-plugin-shim), so its ssh reaches AWS through the hub. issue returns nothing for any other thread.
+  ssm?: { sock: string; shim: string; issue: (key: string) => string | undefined; drop: (key: string) => void }
   // Approvals that wait outside the session (#177): a card ends the turn instead of holding it, and the owner's yes
   // starts a new turn that retries the call. Absent: the card holds the session until the owner answers.
   deferred?: ReturnType<typeof deferredApprovals>
@@ -135,7 +135,7 @@ export function sdkSessions(o: {
         // Its jobs die with the session; the schedule tool replaces it.
         disallowedTools: [...o.options.disallowedTools ?? [], 'CronCreate', 'CronDelete', 'CronList'],
         // Claude Code sends session_state_changed, which busy() reads, only when asked.
-        env: { ...env, ...certFileEnv(), CLAUDE_CODE_EMIT_SESSION_STATE_EVENTS: '1', KAGE_SESSION: '1', ...ssmToken && { KAGE_SSM_TOKEN: ssmToken, KAGE_SSM_SOCK: o.ssm!.sock }, ...keysToken && { KAGE_KEYS_TOKEN: keysToken, KAGE_KEYS_SOCK: o.keys!.sock } },
+        env: { ...env, ...certFileEnv(), CLAUDE_CODE_EMIT_SESSION_STATE_EVENTS: '1', KAGE_SESSION: '1', ...ssmToken && { KAGE_SSM_TOKEN: ssmToken, KAGE_SSM_SOCK: o.ssm!.sock, PATH: `${o.ssm!.shim}:${env.PATH}` }, ...keysToken && { KAGE_KEYS_TOKEN: keysToken, KAGE_KEYS_SOCK: o.keys!.sock } },
         // A kagelet's grant is its approval, checked first: beyond it, even Kage's tools that act as the owner, it
         // approves nothing and puts no card in front of the owner. The PreToolUse hook checks the same grant again.
         canUseTool: (name, input, x) => o.grantOf?.(key)

@@ -25,11 +25,11 @@ export const claudeProject = (cwd: string) => `${process.env.HOME}/.claude/proje
 // The settings travel in an env var so no quoting can break them.
 export function paneArgs(a: {
   key: string; id: string; project: string; cwd: string; envFile: string; claude: string
-  settings: object; ssm?: { token: string; sock: string }
+  settings: object; ssm?: { token: string; sock: string; shim: string }
 }): string[] {
   const run = `while true; do if [ -f '${a.project}/${a.id}.jsonl' ]; then eval "$KAGE_CLAUDE --settings \"\$KAGE_PANE_SETTINGS\" --resume ${a.id}"; else eval "$KAGE_CLAUDE --settings \"\$KAGE_PANE_SETTINGS\" --session-id ${a.id}"; fi; echo 'restarting in 3s'; sleep 3; done`
   const env = [`KAGE_THREAD=${a.key}`, 'KAGE_SESSION=1', `KAGE_ENV=${a.envFile}`, `KAGE_CLAUDE=${a.claude}`, `KAGE_PANE_SETTINGS=${JSON.stringify(a.settings)}`,
-    ...a.ssm ? [`KAGE_SSM_TOKEN=${a.ssm.token}`, `KAGE_SSM_SOCK=${a.ssm.sock}`] : []]
+    ...a.ssm ? [`KAGE_SSM_TOKEN=${a.ssm.token}`, `KAGE_SSM_SOCK=${a.ssm.sock}`, `PATH=${a.ssm.shim}:${process.env.PATH}`] : []]
   return ['-P', '-F', '#{pane_id}', '-c', a.cwd, ...env.flatMap(e => ['-e', e]), run]
 }
 
@@ -38,7 +38,7 @@ export function tmuxPanes(o: {
   envFile: string
   claude: string                              // the command hub.ts built, with the kage channel
   settings: () => object                      // read at each pane start: protectConfig lists the config folder's entries then
-  ssm?: { sock: string; issue: (key: string) => string | undefined; drop: (key: string) => void }   // owner-only threads get a token, as in sdk-sessions.ts
+  ssm?: { sock: string; shim: string; issue: (key: string) => string | undefined; drop: (key: string) => void }   // owner-only threads get a token, as in sdk-sessions.ts
   idOf: (key: string) => string | undefined   // the thread's session id
   placeOf: (key: string) => string            // the pane's label
   onStart: () => void                         // a new id may have been minted: save the map
@@ -91,7 +91,7 @@ export function tmuxPanes(o: {
         : ['new-session', '-d', '-s', o.name, '-n', 'threads']
       const token = o.ssm?.issue(key)
       const pane = tmux(...where, ...paneArgs({ key, id, project: PROJECT, cwd: process.cwd(), envFile: o.envFile, claude: o.claude, settings: o.settings(),
-        ...token && { ssm: { token, sock: o.ssm!.sock } } })).trim()
+        ...token && { ssm: { token, sock: o.ssm!.sock, shim: o.ssm!.shim } } })).trim()
       tmux('set-option', '-p', '-t', pane, '@kage', id)
       tmux('set-option', '-p', '-t', pane, '@kage_place', ` ${o.placeOf(key)} `)
       tmux('set-option', '-w', '-t', BOARD, 'pane-border-status', 'top')

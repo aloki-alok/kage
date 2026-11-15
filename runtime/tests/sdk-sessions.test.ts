@@ -65,7 +65,7 @@ function setup(o: { transcript?: boolean; silent?: boolean; dmFails?: boolean; g
     ownerMemory: '/owner',
     envFile: '/cfg/env',
     codeDir: '/code/kage',
-    ssm: { sock: '/cfg/ssm.sock', issue: key => o.trusted?.includes(key) ? `tok-${key}` : undefined, drop: key => { dropped.push(key) } },
+    ssm: { sock: '/cfg/ssm.sock', shim: '/code/kage/cli/ssm-plugin-shim', issue: key => o.trusted?.includes(key) ? `tok-${key}` : undefined, drop: key => { dropped.push(key) } },
     keys: { sock: '/cfg/keys.sock', issue: key => o.trusted?.includes(key) ? `key-${key}` : undefined, drop: key => { keysDropped.push(key) } },
     restartMs: 10,
     ...o.deferred && { deferred: approvals },
@@ -383,10 +383,13 @@ describe('Kage sessions on the Agent SDK', () => {
     const own = t.sdk.runs[0]!.options
     assert.equal(own.env.KAGE_SSM_TOKEN, 'tok-C1:5.5')
     assert.equal(own.env.KAGE_SSM_SOCK, '/cfg/ssm.sock')
+    assert.ok(own.env.PATH.startsWith('/code/kage/cli/ssm-plugin-shim:'), 'the stand-in plugin comes first on PATH')
+    assert.ok(own.env.PATH.endsWith(`:${process.env.PATH}`))
     assert.equal(own.settings.sandbox.excludedCommands, undefined)
     const other = t.sdk.runs[1]!.options
     assert.equal(other.env.KAGE_SSM_TOKEN, undefined)
     assert.equal(other.env.KAGE_SSM_SOCK, undefined)
+    assert.equal(other.env.PATH, process.env.PATH, 'no token, no stand-in on PATH')
   })
   test('a trusted thread gets the key proxy token and socket, any other thread gets neither, and it is dropped with the session (#182)', async () => {
     const t = setup({ trusted: ['C1:5.5'] })

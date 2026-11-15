@@ -1,6 +1,6 @@
 import { test, describe } from 'node:test'
 import assert from 'node:assert/strict'
-import { autoUpdateNote, bootNotes, chromeLine, jevLine, keyLines, lingerLine, nodeOk, pathNote, render, report, serviceLines, sessionLines, slackLines, sandboxLine, sshLine, tokenLines, toolsLine } from '../doctor.ts'
+import { autoUpdateNote, bootNotes, chromeLine, jevLine, keyLines, lingerLine, nodeOk, pathNote, render, report, serviceLines, sessionLines, slackLines, pluginLine, sandboxLine, tokenLines, toolsLine } from '../doctor.ts'
 
 const text = (ls: { kind: string; text: string }[]) => ls.map(l => `${l.kind}:${l.text}`)
 
@@ -62,12 +62,11 @@ describe('decisions', () => {
     assert.ok(!lines.some(l => l.text.includes('fake-secret')))
     assert.deepEqual(keyLines(undefined), [])
   })
-  test('ssh: an SSM ProxyCommand with no relay is a note, with the relay an ok, with neither nothing', () => {
-    const ssm = 'Host i-*\n  ProxyCommand aws ssm start-session --target %h'
-    assert.equal(sshLine(ssm)?.kind, 'note')
-    assert.equal(sshLine(ssm + '\nMatch exec x\n  ProxyCommand node cli/ssm-proxy.ts')?.kind, 'ok')
-    assert.equal(sshLine('Host a\n  User b'), undefined)
-    assert.equal(sshLine(undefined), undefined)
+  test('ssm plugin: on the hub PATH is an ok, missing is a note that says what stops working', () => {
+    assert.equal(pluginLine(true).kind, 'ok')
+    const n = pluginLine(false)
+    assert.equal(n.kind, 'note')
+    assert.match(n.text, /session-manager-plugin/)
   })
   test('session: SDK must load; tmux plugin route needs plugin and org approval; dev route is a note', () => {
     assert.deepEqual(text(sessionLines({ runtime: 'sdk', sdkLoads: true })), ['ok:threads run on the Agent SDK, no prompts'])

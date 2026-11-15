@@ -42,12 +42,9 @@ export function sandboxLine(f: { platform: string; sandboxExec: boolean; bwrap: 
   return f.bwrap && f.socat ? ok('shell sandbox available') : fail('shell sandbox: sessions cannot start without bubblewrap and socat. Run: sudo apt install bubblewrap socat')
 }
 
-// A session's sandbox cannot reach AWS, so ssh to an SSM host needs the hub's relay (docs/settings.md).
-export function sshLine(sshConfig: string | undefined): Line | undefined {
-  if (!sshConfig || !/^[ \t]*ProxyCommand.*aws ssm start-session/im.test(sshConfig)) return undefined
-  return sshConfig.includes('cli/ssm-proxy') ? ok('ssh config sends SSM hosts through the relay')
-    : note('ssh: ~/.ssh/config has an aws ssm start-session ProxyCommand but no Match block for the relay, so ssh hangs inside a session. See docs/settings.md, "ssh to hosts behind AWS SSM"')
-}
+// ssh to an SSM host from an owner thread runs the real session-manager-plugin in the hub (runtime/ssm-relay.ts), so the hub's PATH needs it.
+export const pluginLine = (onPath: boolean): Line => onPath ? ok('session-manager-plugin found: ssh to SSM hosts works in owner threads')
+  : note('ssm: session-manager-plugin is not on the PATH, so ssh to SSM hosts fails in owner threads. Install it (AWS docs: "Install the Session Manager plugin") and restart Kage')
 
 // Each proxied key by name (#182), never its value: where it may go and in which header.
 export const keyLines = (keys: Record<string, { host: string; header?: string }> = {}): Line[] =>

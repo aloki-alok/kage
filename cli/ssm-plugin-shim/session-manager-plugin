@@ -1,0 +1,32 @@
+#!/usr/bin/env node
+// A stand-in for session-manager-plugin, first on PATH in a session that holds a relay token. A sandboxed session cannot reach AWS:
+// the real plugin opens its own websocket and ignores the sandbox's proxy. So this sends aws's arguments to the hub (runtime/ssm-relay.ts),
+// which checks them and runs the real plugin outside the sandbox, then pipes stdin and stdout both ways. Plain JS: node cannot strip types here.
+import { connect } from 'node:net'
+
+const FROM_ENV = 'AWS_SSM_START_SESSION_RESPONSE'   // a new plugin gets the response in this env var, named in argv[0] (awscli sessionmanager.py)
+const args = process.argv.slice(2)
+const die = why => { process.stderr.write(`kage ssm: ${why}\n`); process.exit(1) }
+
+// aws asks the version first. Any version at or above its recommended minimum keeps it quiet.
+if (args[0] === '--version') { process.stdout.write('1.2.764.0\n'); process.exit(0) }
+
+const { KAGE_SSM_TOKEN: token, KAGE_SSM_SOCK: path } = process.env
+if (!token || !path) die('KAGE_SSM_TOKEN is not set: this is not an owner thread of Kage, so the SSM relay is off')
+if (args[0] === FROM_ENV) args[0] = process.env[FROM_ENV] ?? args[0]
+
+const s = connect({ path, allowHalfOpen: true })
+let head = ''
+s.on('connect', () => s.write(`${JSON.stringify({ token, args })}\n`))
+s.on('error', e => die(`cannot reach the hub: ${e.message}`))
+s.on('data', function onData(chunk) {
+  head += chunk.toString('binary')
+  const i = head.indexOf('\n')
+  if (i < 0) return
+  s.off('data', onData)
+  if (head.slice(0, i) !== 'ok') die(head.slice(0, i).replace(/^error: /, ''))
+  process.stdout.write(Buffer.from(head.slice(i + 1), 'binary'))
+  s.pipe(process.stdout)
+  process.stdin.pipe(s)
+})
+s.on('end', () => { if (!head.includes('\n')) die('the hub closed the connection') })
