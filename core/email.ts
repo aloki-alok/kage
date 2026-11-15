@@ -42,7 +42,7 @@ export function newPart(text: string): string {
 }
 
 // known: the last mail Kage took in a thread. The sender writes References, so a thread is resumed only by
-// someone already in it; anyone else starts their own, and cannot read another thread's session.
+// someone already in a stored thread; with no stored mail, or any other sender, a mail starts its own, and cannot read another thread's session.
 export function mailTask(m: InboundMail, c: MailConfig, known: (key: string) => InboundMail | undefined = () => undefined): MailTask {
   for (const v of ['spam', 'virus', 'dmarc'] as const) {
     if (m.verdicts[v] !== 'PASS') return { drop: `${v} verdict ${m.verdicts[v]}` }
@@ -59,9 +59,9 @@ export function mailTask(m: InboundMail, c: MailConfig, known: (key: string) => 
   const ask = newPart(m.text)
   if (!new RegExp(`@${c.name}\\b`, 'i').test(ask)) return { drop: 'not tagged in the new text' }
   const keyOf = (chat: string) => sessionKey({ connector: 'email', chat, kind: 'mail' })
-  const thread = keyOf(m.references[0] ?? m.inReplyTo ?? m.messageId)
-  const prior = known(thread)
-  const key = !prior || [prior.from, ...prior.to, ...prior.cc].map(lower).includes(from) ? thread : keyOf(m.messageId)
+  // Any message this one replies to may be the first mail Kage took, which keys its thread (Kage may join partway).
+  const inThread = (k: string) => { const p = known(k); return !!p && [p.from, ...p.to, ...p.cc].map(lower).includes(from) }
+  const key = [...m.references, m.inReplyTo].filter((id): id is string => !!id).map(keyOf).find(inThread) ?? keyOf(m.messageId)
   const quoted = m.text.slice(m.text.indexOf(ask) + ask.length).trim()
   return { key, sender, ask, quoted }
 }

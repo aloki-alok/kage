@@ -19,8 +19,9 @@ const mail = (o: Partial<InboundMail> = {}): InboundMail => ({
 })
 
 describe('who can drive Kage by email', () => {
-  test('the owner, signed by Google for example.com, tagging Kage, gets a task keyed by the thread root', () => {
-    const t = mailTask(mail(), cfg)
+  test('the owner, signed by Google for example.com, tagging Kage, gets a task keyed by the stored thread root', () => {
+    const prior = mail({ from: 'alerts@status.example.com', to: ['owner@example.com'], cc: [] })
+    const t = mailTask(mail(), cfg, k => (k === 'mail:<a@amazonses.com>' ? prior : undefined))
     assert.ok(t && 'key' in t)
     assert.equal(t.key, 'mail:<a@amazonses.com>')
     assert.equal(t.sender, 'owner')
@@ -55,6 +56,18 @@ describe('who can drive Kage by email', () => {
     const t = mailTask(mail({ inReplyTo: undefined, references: [] }), cfg)
     assert.ok(t && 'key' in t)
     assert.equal(t.key, 'mail:<b@mail.gmail.com>')
+  })
+  test('a mail whose References names a thread with no stored mail starts its own, keyed by its Message-ID', () => {
+    const t = mailTask(mail({ messageId: '<n@mail.gmail.com>' }), cfg, () => undefined)
+    assert.ok(t && 'key' in t)
+    assert.equal(t.key, 'mail:<n@mail.gmail.com>')
+  })
+  test('a thread Kage joined partway stays one session: a later reply finds the first mail Kage took among its References', () => {
+    const first = mail({ messageId: '<j@mail.gmail.com>', references: ['<root@x.example.com>'], from: 'owner@example.com', to: ['kage@kage.example.com'], cc: ['lee@example.com'] })
+    const known = (k: string) => (k === 'mail:<j@mail.gmail.com>' ? first : undefined)
+    const t = mailTask(mail({ messageId: '<r@mail.gmail.com>', references: ['<root@x.example.com>', '<j@mail.gmail.com>'] }), cfg, known)
+    assert.ok(t && 'key' in t)
+    assert.equal(t.key, 'mail:<j@mail.gmail.com>')
   })
   test('a sender who was not in a known thread starts a new one, though their headers name its root', () => {
     const prior = mail({ from: 'owner@example.com', to: ['kage@kage.example.com'], cc: ['lee@example.com'] })
