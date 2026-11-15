@@ -765,7 +765,7 @@ test('every path that runs a kagelet turn writes a costs row (#96)', async () =>
     runs.start(SRC, 'scheduled', { fresh: true })   // src's run, open
     const routes = kageletRoutes({ dir: `${dir}/kagelets`, store, ledgers, runs, deliver,
       idle: k => t.d.ready(k) === 'ready' && t.d.hasFreeSlot(k), paused: () => undefined, log: () => {} })
-    start({ notes, runs, routes, schedules: scheduler({ store, failed: () => {}, deliver, ready: k => t.d.ready(k), trusted: () => false }) })
+    start({ notes, runs, routes, schedules: scheduler({ store, failed: () => {}, deliver, ready: k => t.d.ready(k), trusted: () => false, job: { end: () => {}, freshEvery: () => 0, carryCount: () => 0, carryChars: () => 0, laneDefault: () => false, posted: () => '', project: '' } }) })
     await tick()
     const run = t.sdk.runs.at(-1)
     assert.ok(run, `${path}: no session started`)

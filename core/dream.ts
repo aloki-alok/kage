@@ -1,3 +1,5 @@
+import { isJobLane } from './conversations.ts'
+
 // Dreaming: every night, while nobody is working, Kage reads the day's threads for lessons, tidies its
 // own memory and checks the owner's, read only. Copied from OpenClaw's dreaming and Hermes' curator:
 // archive, never delete; keep a ledger of every move so one line can undo it.
@@ -11,10 +13,10 @@ export function dreamDue(now: number, last: number | undefined, quiet: boolean):
   return quiet && hour >= 2 && hour < 6 && (last === undefined || now - last >= GAP)
 }
 
-// The sessions whose transcript changed since `since`, leaving out the dream's own lane.
+// The sessions whose transcript changed since `since`, leaving out the dream's own lane and every job lane (a job's prompt repeats each tick, which is no repeated ask).
 export function threadsSince(sessions: Record<string, string>, mtime: (id: string) => number | undefined, since: number): { key: string; id: string }[] {
   return Object.entries(sessions)
-    .filter(([key, id]) => !key.endsWith('#side-dream') && (mtime(id) ?? 0) >= since)
+    .filter(([key, id]) => !key.endsWith('#side-dream') && !isJobLane(key) && (mtime(id) ?? 0) >= since)
     .map(([key, id]) => ({ key, id }))
 }
 

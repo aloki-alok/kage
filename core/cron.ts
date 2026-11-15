@@ -57,6 +57,7 @@ export type Schedule = {
   fromOwner: boolean     // who asked for it: each run gets the same trust as that first task
   created: number
   lastFired: number
+  lane?: true            // runs in its own job lane. Unset: runs in the thread, as every schedule did before lanes
   ends?: number          // when set: the schedule is dropped from then on (jobs adopted from CronCreate, and every watch)
 }
 

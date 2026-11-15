@@ -20,6 +20,14 @@ export function slackConversation(m: { channel: string; ts: string; thread_ts?: 
   return { connector: 'slack', chat: m.channel, thread: m.thread_ts ?? m.ts, kind }
 }
 
+// A clock schedule runs in its own lane, so a run never replays the thread's history. A key that is
+// already a lane (a kagelet's) keeps its own.
+export const jobLane = (key: string, id: string) => key.includes('#') ? key : `${key}#side-job-${id}`
+export const isJobLane = (key: string) => key.includes('#side-job-')
+export const threadOfJobLane = (key: string) => key.replace(/#side-job-[^#]*$/, '')
+// A job lane runs on harness.jobModel; unset keeps the sessions' own model. Any other key asks its own rule.
+export const modelFor = (key: string, jobModel: string | null | undefined, other: (key: string) => string | undefined) => isJobLane(key) ? jobModel || undefined : other(key)
+
 // The default agent's keys are exactly the ones Kage has always used ("dm", "C1:5.5", "mail:<id>",
 // "wa:<chat>", "voice:<id>"), so every saved thread keeps its session. Another agent's keys carry "<agent>/".
 export function sessionKey(c: Conversation, o: { agent?: string; lane?: Lane } = {}): string {

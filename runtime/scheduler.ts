@@ -2,7 +2,11 @@
 // live in the store, so a hub restart, a closed session or a runtime switch loses none of them;
 // only unschedule ends one (a watch also ends on its own, see WATCH_DAYS).
 import { log } from './log.ts'
+import { jobLane, isJobLane, threadOfJobLane } from '../core/conversations.ts'
 import { dueSchedules, nextRun, parseCron, REPLY, type Schedule } from '../core/cron.ts'
+import { jobCarry } from '../core/ledgers.ts'
+import { sentTexts } from '../core/transcript.ts'
+import { newLines } from './transcript-tail.ts'
 import type { Delivery } from '../core/sessions.ts'
 import type { Task } from '../core/task.ts'
 import type { Store } from './store.ts'
@@ -30,13 +34,30 @@ export function scheduler(o: {
   trusted: (key: string) => boolean
   // Each run handed to its thread, for the run ledger the weekly retro counts (core/retro.ts).
   ran?: (s: Schedule, at: number) => void
+  // end: close a lane's session (its stored id is dropped by the scheduler). freshEvery: harness.jobFreshEvery, the runs on one
+  // lane before the next starts a new session (0: never). carryCount, carryChars: harness.jobCarry and jobCarryChars. project: the
+  // folder of session transcripts, where the old session's own posts are read from; posted: the ledger, for when they are gone.
+  job: { end: (key: string) => void; freshEvery: () => number; carryCount: () => number; carryChars: () => number; laneDefault: () => boolean; posted: () => string; project: string }
 }) {
   const { store } = o
   const dueSince = new Map<string, number>()   // job id -> when a run first found its thread busy
   // Watch id -> messages heard since the last tick. A burst becomes one run. ponytail: in memory, so a
   // hub restart drops at most one tick of messages; the run can read the thread itself.
   const heardFor = new Map<string, string[]>()
-  // One run of a schedule, as a task in its thread with the trust it was set up with (or less).
+  // One run of a schedule, as a task with the trust it was set up with (or less). A clock run of a schedule made with
+  // a lane goes to its job lane. A watch, and a schedule from before lanes, run in the thread's own session.
+  const laneOf = (s: Schedule) => s.lane && s.cron !== REPLY ? jobLane(s.key, s.id) : s.key
+  // Before a run on a lane. After freshEvery runs, an idle lane is due a new session, and `carry` is the text its first task
+  // holds (the old session's last posts). A busy lane keeps going and resets on its next idle run. Nothing is forgotten here:
+  // the stored session stays until the new one replaces it, so a failed delivery loses nothing and the reset is tried again.
+  function planFresh(lane: string) {
+    const every = o.job.freshEvery()
+    const n = ((store.load('jobRuns') ?? {}) as Record<string, number>)[lane] ?? 0
+    const reset = every > 0 && n >= every && o.ready(lane) === 'ready'
+    const old = store.sessions()[lane]
+    const texts = reset && old ? sentTexts(newLines(`${o.job.project}/${old}.jsonl`, 0).lines) : []
+    return { reset, carry: reset ? jobCarry(o.job.posted(), lane, o.job.carryCount(), texts, o.job.carryChars()) : '', next: reset ? 1 : n + 1 }
+  }
   function run(s: Schedule, content: string, fromOwner = s.fromOwner) {
     const c = store.conversation(s.key)
     if (!c) return log('schedule for an unknown thread', s.id, s.key)
@@ -46,11 +67,20 @@ export function scheduler(o: {
       origin: { channel: c.conversation.chat, ts: '' },
       scheduled: true, job: s.id,
     }
-    if (o.deliver(s.key, task) === 'failed') o.failed(task)
+    const key = laneOf(s)
+    const fresh = key !== s.key ? planFresh(key) : undefined
+    if (fresh) {
+      store.seen(key, c.conversation, `${c.place} (job)`, Date.now())
+      if (fresh.carry) task.content = `${fresh.carry}\n${task.content}`
+      if (fresh.reset) o.job.end(key)
+    }
+    if (o.deliver(key, task) === 'failed') return o.failed(task)
+    if (fresh) store.save('jobRuns', { ...(store.load('jobRuns') as Record<string, number> ?? {}), [key]: fresh.next })
   }
   return {
     // Returns why it was refused, or undefined when added.
-    add(key: string, j: Pick<Schedule, 'id' | 'cron' | 'prompt' | 'recurring'>, now: number): string | undefined {
+    add(from: string, j: Pick<Schedule, 'id' | 'cron' | 'prompt' | 'recurring' | 'lane'>, now: number): string | undefined {
+      const key = threadOfJobLane(from) // a session in a job lane makes a schedule for the thread, never a lane of a lane
       const watch = j.cron === REPLY
       if (!watch) {
         try { parseCron(j.cron) } catch (e) { return (e as Error).message }
@@ -61,7 +91,7 @@ export function scheduler(o: {
       if (c?.connector !== 'slack') return 'schedules work in Slack threads only'
       if (watch && c.agentDm) return 'a watch needs a thread other people write in; only you write in this DM'
       if (this.list(key).length >= PER_THREAD) return `this thread already has ${PER_THREAD} schedules`
-      store.addSchedule({ ...j, key, fromOwner: o.trusted(key), created: now, lastFired: 0, ...(watch && { recurring: true, ends: now + WATCH_DAYS * DAY }) })
+      store.addSchedule({ ...j, key, fromOwner: o.trusted(key), created: now, lastFired: 0, ...(!watch && (j.lane ?? o.job.laneDefault()) ? { lane: true } : { lane: undefined }), ...(watch && { recurring: true, ends: now + WATCH_DAYS * DAY }) })
       log('scheduled', j.id, j.cron, 'for', key)
     },
     // Jobs moved out of tmux panes (cli/export-crons.ts) when they stopped. `ranUntil` is when the export
@@ -90,10 +120,18 @@ export function scheduler(o: {
       o.ran?.(s, now)
       run(s, `Run now of job ${id}, asked for outside its schedule (${s.cron}). Nobody wrote a new message.\n${s.prompt}`)
     },
-    remove(key: string, id: string) { if (store.removeSchedule(id, key)) log('unscheduled', id, 'for', key) },
-    list: (key: string) => store.schedules().filter(s => s.key === key),
+    remove(key: string, id: string) { if (store.removeSchedule(id, threadOfJobLane(key))) log('unscheduled', id, 'for', key) },
+    list: (key: string) => store.schedules().filter(s => s.key === threadOfJobLane(key)),
     tick(now: number) {
       const { fire, drop } = dueSchedules(store.schedules(), now)
+      // A lane whose schedule is gone ends once idle, and its stored session goes: no orphan lanes (a running one waits).
+      const live = new Set(store.schedules().map(s => jobLane(s.key, s.id)))   // a lane of a schedule with no lane flag is orphaned too
+      const counts = (store.load('jobRuns') ?? {}) as Record<string, number>
+      for (const k of new Set([...Object.keys(store.sessions()), ...Object.keys(counts)])) {
+        if (!isJobLane(k) || live.has(k) || o.ready(k) !== 'ready') continue
+        o.job.end(k); store.forget(k)
+        delete counts[k]; store.save('jobRuns', counts)
+      }
       const firing = new Set(fire.map(s => s.id))
       for (const id of dueSince.keys()) if (!firing.has(id)) dueSince.delete(id)
       const byId = new Map(store.schedules().map(s => [s.id, s]))
@@ -118,7 +156,7 @@ export function scheduler(o: {
       // One at a time, each on its own: a failure in one run never costs another.
       for (const s of fire) {
         try {
-          const r = o.ready(s.key)
+          const r = o.ready(laneOf(s))
           if (r === 'blocked') { dueSince.delete(s.id); continue }   // the 5 minutes count busy time only
           if (r === 'busy' && now - (dueSince.get(s.id) ?? dueSince.set(s.id, now).get(s.id)!) < BUSY_WAIT) continue
           dueSince.delete(s.id)

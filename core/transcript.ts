@@ -42,3 +42,17 @@ export function transcriptLine(raw: string): string | undefined {
   }
   return out.length ? out.join('\n') : undefined
 }
+
+// The text of every post a session sent (its reply and post_as_kage calls), oldest first, read from its transcript lines.
+export function sentTexts(lines: string[]): string[] {
+  const out: string[] = []
+  for (const raw of lines) {
+    let r: { type?: string; message?: { content?: unknown } }
+    try { r = JSON.parse(raw) } catch { continue }
+    if (r.type !== 'assistant' || !Array.isArray(r.message?.content)) continue
+    for (const b of r.message!.content as { type?: string; name?: string; input?: { text?: unknown } }[]) {
+      if (b.type === 'tool_use' && /^mcp__(plugin_kage_)?kage__(reply|post_as_kage)$/.test(b.name ?? '') && typeof b.input?.text === 'string') out.push(b.input.text)
+    }
+  }
+  return out
+}

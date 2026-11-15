@@ -72,7 +72,7 @@ async function hub(o: { chainUsd?: number; capUsd?: number; max?: number; memory
     redeliver: (key, t) => { toSession(key, t) }, log: () => {}, tellOwner: () => {}, settle: (ts, done) => routes.settle(ts, done),
   })
   const sync = (now: number) => syncKagelets(readKagelets(kagelets), store, now, () => {})
-  const schedules = scheduler({ store, deliver: toSession, failed: m => limits.turn('', [m], undefined, clock.now), ready: key => d.ready(key), trusted: () => false, ran: j => ledgers.add('runs', [j.id, j.key]) })
+  const schedules = scheduler({ store, deliver: toSession, failed: m => limits.turn('', [m], undefined, clock.now), ready: key => d.ready(key), trusted: () => false, job: { end: () => {}, freshEvery: () => 0, carryCount: () => 0, carryChars: () => 0, laneDefault: () => false, posted: () => '', project: '' }, ran: j => ledgers.add('runs', [j.id, j.key]) })
   const manager = kageletManager({ dir: kagelets, max: 10, ledgers, sync, runNow: (id, now) => schedules.runNow(id, now), store, log: () => {} })
   const routesOn = () => kageletRoutes({ dir: kagelets, store, ledgers, runs, deliver: toSession,
     idle: key => d.ready(key) === 'ready' && d.startsNow(key, Date.now()), paused: now => limits.paused(now)?.until, capUsd: o.capUsd ?? 2, chainUsd: o.chainUsd, log: () => {}, memory: o.memory })

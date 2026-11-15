@@ -14,7 +14,7 @@ node -e "import('./core/config.ts').then(m => console.log(m.KEYS.map(k => k.path
 
 ## Who may change a setting
 
-Only your own terminal runs `kage set`: it refuses inside a Kage session. No session reads `secrets.json` or an env file, and none writes `config.json`. In your own task, a session changes a setting with `set_setting`. Limits, models, AFK, Jev thresholds (0.3 or more) and ports (1024 to 65535) apply at once. People, any `command`, a connector turned on, the browser block list, and every `harness` key wait for your yes on a card. Tokens cannot be set that way.
+Only your own terminal runs `kage set`: it refuses inside a Kage session. No session reads `secrets.json` or an env file, and none writes `config.json`. In your own task, a session changes a setting with `set_setting`. Limits, models, AFK, Jev thresholds (0.3 or more) and ports (1024 to 65535) apply at once. People, any `command`, a connector turned on, the browser block list, and every other `harness` key wait for your yes on a card. Tokens cannot be set that way.
 
 ## Slack and identity
 
@@ -56,6 +56,11 @@ Only a listed agent's post goes to Jev, at most its first 4,000 characters, with
 | `kagelets.dbRead.command` | none | The command `db_read` runs, for a kagelet you granted `db_read`. Point it at the read command this install already uses: a script that runs one query in a read-only transaction and prints the rows, one per line. Kage passes the query as the last argument, quoted, so `my-db-read --flag` runs as `my-db-read --flag '<query>'`. Kage holds no database login of its own, so a kagelet never reads more than this command can. Never create a new database login for Kage. Unset, a kagelet's `db_read` uses a read command you approved on a card before tiers (kept in `kage.db`, also after you remove the kagelet that brought it), and with none kept a kagelet gets no `db_read`. Set, this one wins. |
 | `kagelets.dbRead.maxRows` | `200` | The most rows one `db_read` query returns. Kage wraps the query as `select * from (<query>) limit <rows>`. |
 | `harness.idleMinutes` | `30` | A quiet session closes after this long. Its next tag resumes it. |
+| `harness.jobModel` | the sessions' own default | The model a scheduled run uses. Each schedule runs in its own lane beside its thread, so a run never replays the thread's history. Unset, a run keeps the model every session uses, so a job only moves to a smaller model when you or Kage choose it. A session may change this one. |
+| `harness.jobFreshEvery` | `20` | After this many runs on one schedule's lane, the next run starts a new session, so a job's own history stays small. `0` always resumes. A session may change this one. |
+| `harness.jobCarry` | `5` | When a lane starts a new session, its first task quotes the text of this many of the job's latest posts, read from the old session's own transcript (their place, when that transcript is gone), so the job does not report the same thing twice. `0` lists none. A session may change this one. |
+| `harness.jobCarryChars` | `500` | The most characters kept of each post a new lane session is told about. A session may change this one. |
+| `harness.jobLaneDefault` | `on` | A new schedule runs in its own lane, so a run never replays the thread's history. `off` runs new schedules in the thread. The `schedule` tool's `lane` argument sets one schedule either way. A schedule made before lanes keeps running in its thread. A session may change this one. |
 | `harness.runtime` | SDK | `tmux` runs each thread as a Claude Code pane instead of an Agent SDK session in the hub. |
 | `harness.route` | `dev` | With `harness.runtime` set to `tmux` only. `plugin` starts panes with no warning screen, once your org approves the channel. |
 | `harness.cwd` | your home folder | The folder sessions start in. |
