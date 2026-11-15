@@ -14,6 +14,8 @@ export type SlackMessage = {
   thread_ts?: string
   channel_type?: string
   files?: { name?: string }[]
+  attachments?: { title?: string; text?: string; fallback?: string; pretext?: string; fields?: { title?: string; value?: string }[] }[]
+  blocks?: { block_id?: string }[]
 }
 
 // Claude sees no attachment unless the text names it; it then reads the file with the Slack tools.
@@ -42,3 +44,20 @@ export const postedByTrustedApp = (m: SlackMessage, apps: string[]) =>
 // One optional space after it is part of the match, so removing the tag leaves no gap.
 export const agentTag = (bot: string, name: string) =>
   new RegExp(`(?:<@${bot}>|(?<![\\w@.])@${name}(?![\\w.-]))[ \\t]?`, 'gi')
+
+// Every `text` string inside a block (section, header, context, rich_text at any depth).
+const blockStrings = (b: unknown): string[] => {
+  if (Array.isArray(b)) return b.flatMap(blockStrings)
+  if (!b || typeof b !== 'object') return []
+  return Object.entries(b).flatMap(([k, v]) => k === 'text' && typeof v === 'string' ? [v] : blockStrings(v))
+}
+
+// What a post says, for matching and for the job to read. Alerting apps (CloudWatch) leave `text` empty and put the
+// alarm in attachments or blocks. An attachment's fallback is its plain copy, so it counts only when it has nothing else.
+export function postText(m: Pick<SlackMessage, 'text' | 'attachments' | 'blocks'>): string {
+  const parts = [m.text ?? '', ...(m.attachments ?? []).flatMap(a => {
+    const own = [a.pretext, a.title, a.text, ...(a.fields ?? []).map(f => [f.title, f.value].filter(Boolean).join(': '))].filter(Boolean) as string[]
+    return own.length ? own : [a.fallback ?? '']
+  }), ...blockStrings(m.blocks)]
+  return [...new Set(parts.flatMap(p => p.split('\n')).map(l => l.trimEnd()).filter(Boolean))].join('\n')
+}

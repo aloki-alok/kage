@@ -113,6 +113,9 @@ A tripwire runs a shell command on a clock and wakes a session only when the com
 | `tripwires.env` | `["PATH","HOME","LANG","USER","TMPDIR","SSH_AUTH_SOCK"]` | The variables of Kage's environment that a probe sees. Nothing else passes, so a probe never gets a token. A name that is not set is skipped. Add a name only when a probe needs it: it widens what a probe can read, so a session needs your yes to change it. |
 | `tripwires.patternMax` | `200` | The longest `ignore` pattern a probe may have. A longer one, an invalid one, or one with a nested repeat such as `(a+)+` is refused when the probe is made. |
 | `tripwires.lineMax` | `2000` | An output line longer than this is never dropped by an `ignore` pattern. |
+| `tripwires.maxPosts` | `20` | The most channel posts a job that watches a Slack channel keeps until it runs. The oldest go first. |
+| `tripwires.catchUpMax` | `1000` | The most posts Kage reads per watched channel in one catch-up after the Slack socket was down. It reads the oldest missed posts first, so a bigger backlog only waits for the next catch-up: no post is skipped. |
+| `tripwires.seenMax` | `500` | How many recent post ids Kage remembers per watched channel, so a post that arrives twice wakes a job once. |
 
 ## Email
 
