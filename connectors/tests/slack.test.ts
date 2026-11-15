@@ -48,6 +48,34 @@ test('a Slack triage decision writes one log line and keeps its database event',
   }
 })
 
+test('a message triage sends to react, with no emoji picked, still gets the eyes, so it is never dropped without a sign', async () => {
+  const dir = mkdtempSync(join(tmpdir(), 'kage-triage-'))
+  const reactions: string[] = []
+  const ledger = openLedgers(dir, () => '2026-01-01T00:00:00Z', log)
+  try {
+    const runs = runEvents(ledger, () => 'test-trace')
+    const client = {
+      auth: { test: async () => ({ team_id: 'TTEST', user_id: 'UTEST1' }) },
+      conversations: { open: async () => ({ channel: { id: 'DTEST' } }), history: async () => ({ messages: [] }) },
+      users: { info: async () => ({ user: { real_name: 'Sam Test' } }) },
+      reactions: { add: async (o: { name: string }) => { reactions.push(o.name); return { ok: true } } },
+    }
+    const slack = await connectSlack({
+      dir, appToken: 'test', userToken: 'test', bot: client as never, user: client as never,
+      name: 'kage', title: 'Kage', teammates: [], apps: [],
+      hub: { posted: () => '', handled: () => {}, deliver: () => assert.fail('an ok needs no session') } as never,
+      triage: jevTriage({ key: 'test', model: 'test', threshold: 0.5, agents: 'all', url: 'https://jev.example.com' },
+        (who, detail) => runs.emit(who, 'triage', detail),
+        { fetch: (async () => Response.json({ answers: { intake: { choice: 'react', probabilities: { react: 0.99 } }, reaction: { choice: 'none', confidence: 0.9 } } })) as typeof fetch }),
+    })
+    await slack.replay('test-source', JSON.stringify({ ...msg, client_msg_id: 'test', text: '@kage ok' }))
+    assert.deepEqual(reactions, ['eyes'])
+  } finally {
+    ledger.close()
+    rmSync(dir, { recursive: true, force: true })
+  }
+})
+
 describe('a Slack event reaches the inbox before Slack is told it arrived', () => {
   test('the write comes before the ack, then the message is handled with its source id', async () => {
     const steps: string[] = []
