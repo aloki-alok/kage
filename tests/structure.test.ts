@@ -22,9 +22,7 @@ const MAX_LINES = 300
 
 const DEBT = {
   // ADR 0001: core/ does no I/O, reads no environment, sets no timers, and imports only core/.
-  impureCore: [
-    'core/guards.ts',
-  ] as string[],
+  impureCore: [] as string[],
   // runtime/ and connectors/ never import a file in the repo root (router.ts, config.ts, ...).
   rootImports: [] as string[],
   // A source file over MAX_LINES lines (import lines not counted), with the most it may have. Split it; lower the number as it shrinks.

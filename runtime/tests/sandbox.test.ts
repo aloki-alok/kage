@@ -1,4 +1,4 @@
-// A real Claude Code session with the settings every Kage session starts with (core/guards.ts protectConfig): the writes and
+// A real Claude Code session with the settings every Kage session starts with (runtime/path-guards.ts protectConfig): the writes and
 // reads a session must not make fail on the disk, and the ones it may make succeed. It runs a real model on the smallest
 // tier, a few cents. Skipped unless KAGE_LIVE_TESTS=1 (see CONTRIBUTING.md), and then only when this machine has no OS sandbox or no claude command.
 import { test } from 'node:test'
@@ -8,7 +8,7 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, writeFi
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { query } from '@anthropic-ai/claude-agent-sdk'
-import { protectConfig } from '../../core/guards.ts'
+import { protectConfig } from '../path-guards.ts'
 import { ssmRelay } from '../ssm-relay.ts'
 import { hold, keyProxy } from '../key-proxy.ts'
 import { paneArgs } from '../tmux-panes.ts'

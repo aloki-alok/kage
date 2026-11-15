@@ -21,7 +21,7 @@ uv run --with playwright python -m playwright install chromium        # once
 uv run --with playwright python extension/tests/e2e/run.py               # 22 checks, exits 1 on a failure
 ```
 
-One test calls a real model, so `npm test` skips it. It starts a real session with the sandbox and permission settings and checks that the token files, the settings and the hub code stay closed. Run it after any change to `protectConfig` in `core/guards.ts` or to the sandbox or permission settings of a session. It costs a few cents. It also runs one tmux pane (skipped without tmux) that unsets `KAGE_SESSION` and tries to write `config.json` and read `secrets.json`:
+One test calls a real model, so `npm test` skips it. It starts a real session with the sandbox and permission settings and checks that the token files, the settings and the hub code stay closed. Run it after any change to `protectConfig` in `runtime/path-guards.ts` or to the sandbox or permission settings of a session. It costs a few cents. It also runs one tmux pane (skipped without tmux) that unsets `KAGE_SESSION` and tries to write `config.json` and read `secrets.json`:
 
 ```sh
 KAGE_LIVE_TESTS=1 node --test runtime/tests/sandbox.test.ts
@@ -49,7 +49,7 @@ Write logs to stderr only. In a tmux pane, stdout carries the channel protocol, 
 |---|---|
 | `router.ts` | The hub, loaded by `hub.ts`: wires connectors, the dispatcher, the runner and the store. Its header names the few rules still in it. |
 | `server.ts` | For tmux panes only: serves Kage's tools over MCP inside each pane and relays approvals. |
-| `private-data-guard.ts` | The plugin hook (`hooks/hooks.json`) that runs the rules in `core/guards.ts` inside tmux panes. The SDK runner applies the same rules in process. |
+| `private-data-guard.ts` | The plugin hook (`hooks/hooks.json`) that runs the rules in `core/guards.ts` and `runtime/path-guards.ts` inside tmux panes. The SDK runner applies the same rules in process. |
 | `config.ts` | Reads the settings files and makes the Slack clients. Only `router.ts`, `server.ts` and `cli/` import it; everything else logs through `runtime/log.ts`. |
 | `core/` | Pure rules. See the table below. |
 | `connectors/` | Where Kage hears from. Each turns a message into a `Task` (`core/task.ts`). Who may drive Kage is decided in `core/gate.ts`, not here. |
@@ -81,7 +81,7 @@ Write logs to stderr only. In a tmux pane, stdout carries the channel protocol, 
 | `conversations.ts` | A conversation and its session key, both ways. |
 | `sessions.ts` | The dispatcher: one session per key, the slot limit, idle close, eviction, holds for `kage attach`. |
 | `outbound.ts` | What may go out: no crowd pings, no secrets in a thread, Slack-sized parts, code blocks narrow enough for the thread panel, and a guard's SEND or HOLD on a message leaving as the owner. |
-| `guards.ts` | Hook rules: private sources, voice calls, the owner's memory, the config folder that holds the tokens (secrets.json and env files closed to every session, the owner's too; the rest owner-only, a thread's files folder excepted), Slack posts only through Kage's tools. |
+| `guards.ts` | Hook rules that need only the tool name and the sender: private sources, voice calls, Slack posts only through Kage's tools. Where the two memory folders are. |
 | `ledgers.ts` | Reading the ledgers: questions waiting on the owner, what Kage posted, what turns cost, the daily note. |
 | `events.ts` | The event log's row (what happened, never what was said), its 30 days, and a chain read back as `a > b > c` and where it stopped. |
 | `kagelets.ts` | A kagelet file (thread, schedule or `after:`, grant, job), the grant check, the chain check (no cycle, no missing kagelet, at most 5 deep), standing approvals per write tool and their revoke, the cost caps (off unless set) and the cost flags. |
@@ -144,6 +144,7 @@ Write logs to stderr only. In a tmux pane, stdout carries the channel protocol, 
 | `closed-threads.ts` | A thread the safety check stopped: it starts on a new session, and a teammate's stays closed until the owner writes in it. |
 | `hub-lock.ts` | One hub per machine: a listening socket the OS frees when the hub dies. |
 | `hub-log.ts` | The hub log's rotation and the package check, shared by `hub.ts` and the hub. |
+| `path-guards.ts` | Hook rules that follow real paths on disk: the config folder that holds the tokens (secrets.json and env files closed to every session, the owner's too; the rest owner-only, a thread's files folder excepted), the sandbox and file rules each session starts with, and the owner's memory taking only people notes. |
 | `log.ts` | Kage's log line (stderr only) and the logger the Slack clients get. |
 | `kagelet-files.ts` | The kagelets folder on disk: where it is, its `.md` files, and the paused line. |
 | `kagelet-sync.ts` | The folder synced into schedules and grants each minute (#57), and the prompt each run reads first. |

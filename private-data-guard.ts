@@ -4,7 +4,8 @@
 import { readFileSync } from 'node:fs'
 import { dirname } from 'node:path'
 import { readSettings } from './runtime/config-files.ts'
-import { configRefusal, memoryDirs, ownerMemoryRefusal, privateToolRefusal, senderFile, slackSendRefusal, voiceToolRefusal } from './core/guards.ts'
+import { memoryDirs, privateToolRefusal, senderFile, slackSendRefusal, voiceToolRefusal } from './core/guards.ts'
+import { configRefusal, ownerMemoryRefusal } from './runtime/path-guards.ts'
 
 const thread = process.env.KAGE_THREAD
 if (thread) {

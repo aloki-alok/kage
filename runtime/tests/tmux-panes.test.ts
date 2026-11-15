@@ -1,7 +1,7 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { paneArgs, tmuxPanes } from '../tmux-panes.ts'
-import { protectConfig } from '../../core/guards.ts'
+import { protectConfig } from '../path-guards.ts'
 
 // Under launchd or systemd the hub runs with no tmux session, and often with no tmux at all.
 test('with no tmux session for this name, no pane is running and nothing throws', () => {
@@ -10,7 +10,7 @@ test('with no tmux session for this name, no pane is running and nothing throws'
   assert.equal(t.runner.busy('C1:1.1'), false)
 })
 
-// A pane's claude gets the settings an SDK session gets (core/guards.ts protectConfig), so the config folder stays closed
+// A pane's claude gets the settings an SDK session gets (runtime/path-guards.ts protectConfig), so the config folder stays closed
 // even when the pane's shell unsets KAGE_SESSION. One --settings flag: a second one would replace the first.
 test('a pane launches claude with the sandbox settings, and the SSM token only when one was issued', () => {
   const settings = { autoMemoryDirectory: '/m', ...protectConfig('/c/kage/env', '/code', '/home/o') }

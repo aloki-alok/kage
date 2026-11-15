@@ -14,7 +14,7 @@ Settings go in `~/.config/kage/config.json`, typed by one schema. Tokens go in `
 
 - A bad key is refused with a message, and the last good config stays.
 - Agents may read and edit `config.json`, but never the tokens.
-- The old env file is read once, to import it into `config.json` and `secrets.json` (`runtime/config-files.ts`). `core/guards.ts` `configRefusal` and `protectConfig` keep sessions out of the token files.
+- The old env file is read once, to import it into `config.json` and `secrets.json` (`runtime/config-files.ts`). `runtime/path-guards.ts` `configRefusal` and `protectConfig` keep sessions out of the token files.
 - Cost: every setting read moves behind one loader, so each setting needs a small PR.
 
 ## How it is checked
