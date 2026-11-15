@@ -62,6 +62,13 @@ describe('who can drive Kage by email', () => {
     assert.ok(t && 'key' in t)
     assert.equal(t.key, 'mail:<n@mail.gmail.com>')
   })
+  test('a thread Kage joined partway stays one session: a later reply finds the first mail Kage took among its References', () => {
+    const first = mail({ messageId: '<j@mail.gmail.com>', references: ['<root@x.example.com>'], from: 'owner@example.com', to: ['kage@kage.example.com'], cc: ['lee@example.com'] })
+    const known = (k: string) => (k === 'mail:<j@mail.gmail.com>' ? first : undefined)
+    const t = mailTask(mail({ messageId: '<r@mail.gmail.com>', references: ['<root@x.example.com>', '<j@mail.gmail.com>'] }), cfg, known)
+    assert.ok(t && 'key' in t)
+    assert.equal(t.key, 'mail:<j@mail.gmail.com>')
+  })
   test('a sender who was not in a known thread starts a new one, though their headers name its root', () => {
     const prior = mail({ from: 'owner@example.com', to: ['kage@kage.example.com'], cc: ['lee@example.com'] })
     const known = (k: string) => (k === 'mail:<a@amazonses.com>' ? prior : undefined)
