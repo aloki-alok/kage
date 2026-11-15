@@ -100,15 +100,25 @@ const clean = (v: string) => v.replace(/[\r\n]+/g, ' ').trim()
 
 export function emailBody(text: string, name: string, names: Record<string, string> = {}): string {
   const strip = (part: string) => part.replace(/(?<!\w)([*_~])(?=\S)([^\n]*?\S)\1(?!\w)/g, '$2')
-  const plain = text.split(/(```[\s\S]*?```|`[^`\n]+`|<[^>\n]+>|https?:\/\/[^\s<>]+)/g).map(part => {
+  const render = (part: string): string => {
     if (part.startsWith('```')) return part.slice(3, -3)
     if (part.startsWith('`')) return part.slice(1, -1)
     const mention = /^<@([UW][A-Z0-9]+)(?:\|[^>]*)?>$/.exec(part)
     if (mention) return names[mention[1]!] ?? ''
     const link = /^<((?:https?:\/\/|mailto:)[^>|]+)(?:\|([^>]+))?>$/.exec(part)
-    if (link) return link[2] && link[2] !== link[1] ? `${strip(link[2])} (${link[1]})` : link[1]
-    return /^https?:\/\//.test(part) ? part : strip(part)
-  }).join('').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&amp;/g, '&')
+    if (link) return link[2] && link[2] !== link[1] ? `${strip(link[2])} (${link[1]})` : link[1]!
+    return part
+  }
+  // Protect literal code, URLs and resolved names while removing formatting around them.
+  const tokens: string[] = []
+  let marker = '\0'
+  while (text.includes(marker)) marker += '\0'
+  const protectedText = text.replace(/```[\s\S]*?```|`[^`\n]+`|<[^>\n]+>|https?:\/\/[^\s<>]+/g, part => {
+    tokens.push(render(part))
+    return `${marker}${tokens.length - 1}${marker}`
+  })
+  const plain = strip(protectedText).replace(new RegExp(`${marker}(\\d+)${marker}`, 'g'), (_, index: string) => tokens[Number(index)]!)
+    .replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&amp;/g, '&')
   return `${plain.trimEnd()}\n\n${clean(name)}`
 }
 

@@ -1,6 +1,6 @@
 import { describe, test } from 'node:test'
 import assert from 'node:assert/strict'
-import { composeReply, emailTaskLine, emailVerdict, mailTask, newPart, replyTargets, type InboundMail } from '../email.ts'
+import { composeReply, emailBody, emailTaskLine, emailVerdict, mailTask, newPart, replyTargets, type InboundMail } from '../email.ts'
 
 const cfg = { self: 'kage@kage.example.com', name: 'kage', owner: 'owner@example.com', teammates: ['sam@example.com'], domains: ['example.com'] }
 const PASS = { spam: 'PASS', virus: 'PASS', dmarc: 'PASS' }
@@ -78,6 +78,10 @@ describe('quoted text is not the ask', () => {
 })
 
 describe('replies', () => {
+  test('formatting around links is removed without editing link targets or code', () => {
+    assert.equal(emailBody('*Open <https://example.test/?q=_build_|the report>* and `*literal*`', 'Shadow'),
+      'Open the report (https://example.test/?q=_build_) and *literal*\n\nShadow')
+  })
   test('an internal thread goes to the sender, everyone else in Cc, never back to Kage', () => {
     const r = replyTargets(mail({ to: ['kage@kage.example.com', 'Lee@example.com'], cc: ['sam@example.com', 'LEE@example.com'] }), cfg)
     assert.deepEqual(r, { to: ['owner@example.com'], cc: ['lee@example.com', 'sam@example.com'] })
