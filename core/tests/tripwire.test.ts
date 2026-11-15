@@ -3,7 +3,7 @@ import assert from 'node:assert/strict'
 import { createHash } from 'node:crypto'
 import { commandWords, decide, lineHasher, normalize, pinsChanged, safePattern, type JobState, type Probe } from '../tripwire.ts'
 
-const probe: Probe = { command: 'x', pins: {}, ignore: [], reads: [] }
+const probe: Probe = { command: 'x', pins: {}, ignore: [], reads: [], writes: [] }
 const sha = (t: string) => createHash('sha256').update(t).digest('hex')
 const fpOf = (out: string, ignore: string[] = []) => { const h = lineHasher(ignore, 2000); h.push(out); return h.end() }
 const o = { failPing: 3, lineMax: 2000 }
@@ -59,6 +59,12 @@ describe('commandWords and pinsChanged', () => {
       ['env', './x', 'if', './y', 'then', './z', './q', '/home/sam/a', '/home/sam/b', './c', './d', './e'])
     assert.deepEqual(w('node --require=./h ${HOME}/app.js ~'), ['node', '--require', './h', '/home/sam/app.js', '/home/sam'])
   })
+  test('lists the file words after >, >>, 2>, &> and tee as outputs, and not 2>&1', () => {
+    const outs = (c: string) => commandWords(c, '/home/sam').outs
+    assert.deepEqual(outs('curl u > /tmp/out.json; x >> log; y 2> e; z &> "a b"; w >~/h'), ['/tmp/out.json', 'log', 'e', 'a', '/home/sam/h'])
+    assert.deepEqual(outs('x | tee f; y | tee -a g h | cat'), ['f', 'g', 'h'])
+    assert.deepEqual(outs('x 2>&1; y >&2; a < in'), [])
+  })
   test('lists the word after each cd as a directory', () => {
     assert.deepEqual(commandWords('(cd /a; ./x) && cd ~ && sh -c "cd rel && ./y"', '/home/sam').cds, ['/a', '/home/sam', 'rel'])
   })
@@ -97,6 +103,18 @@ describe('decide', () => {
     assert.deepEqual(pings.map(Boolean), [false, false, true, false, false])
     assert.equal(s.fails, 5)
     assert.equal(s.fp, 'f')
+  })
+  test('a refused run pings at once, naming the path and the fix, and pings again only for a new refusal', () => {
+    const refused = (why: string) => ({ ok: false, out: '', fp: '', refused: why })
+    const r1 = decide({ fails: 0 }, refused('changed or missing: /opt/x.sh'), probe, o)
+    assert.match(r1.ping!, /\/opt\/x\.sh/)
+    assert.match(r1.ping!, /reads.*writes.*approve/)
+    assert.equal(r1.wake, undefined)
+    assert.equal(decide(r1.state, refused('changed or missing: /opt/x.sh'), probe, o).ping, undefined)
+    assert.match(decide(r1.state, refused('changed or missing: /opt/y.sh'), probe, o).ping!, /y\.sh/)
+    const good = decide(r1.state, ok('v1'), probe, o)
+    assert.equal(good.state.refused, undefined)
+    assert.match(decide(good.state, refused('changed or missing: /opt/x.sh'), probe, o).ping!, /x\.sh/)
   })
   test('a good run resets fails', () => {
     assert.equal(decide({ fp: fpOf('v1'), last: 'v1', fails: 2 }, ok('v1'), probe, o).state.fails, 0)

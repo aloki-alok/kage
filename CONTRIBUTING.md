@@ -175,7 +175,7 @@ Write logs to stderr only. In a tmux pane, stdout carries the channel protocol, 
 | `key-proxy.ts` | The key proxy (#182): a unix socket that adds a held key to requests for its one host, so the session never sees it. |
 | `memory-snapshot.ts` | A copy of Kage's memory before a dream, so `kage dream undo` restores it. |
 | `repo-access.ts` | Whether this install may push to the Kage repo, which marks the repo owner's hub. |
-| `probes.ts` | The runtime of a tripwire probe: best-effort pins of every swappable file a command names (except its `reads`), and one run with a timeout, an output cap (the fingerprint still covers all output) and a refusal when a pin changed or an ignore pattern is unsafe. |
+| `probes.ts` | The runtime of a tripwire probe: best-effort pins of every swappable file a command names (except its `reads`, `writes` and redirect targets), and one run with a timeout, an output cap (the fingerprint still covers all output) and a refusal when a pin changed or an ignore pattern is unsafe. |
 | `release.ts` | The git and gh calls of a release, and the owner hub's daily check (`kage release`, ADR 0013). |
 
 ## Add a connector

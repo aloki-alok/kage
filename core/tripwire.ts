@@ -3,9 +3,10 @@
 import { createHash } from 'node:crypto'
 
 // pins: absolute script path to its sha256 hex, taken when the owner approved the probe.
-// reads: paths the probe reads as data, whose change is the point. They are never pinned.
-export type Probe = { command: string; pins: Record<string, string>; ignore: string[]; reads: string[] }
-export type JobState = { fp?: string; last?: string; fails: number }
+// reads: paths the probe reads as data, whose change is the point. writes: paths the probe writes besides a redirect or tee.
+// Neither is pinned: a probe that edits its own output must not refuse itself.
+export type Probe = { command: string; pins: Record<string, string>; ignore: string[]; reads: string[]; writes: string[] }
+export type JobState = { fp?: string; last?: string; fails: number; refused?: string }
 
 // A line an ignore regex drops. A line longer than lineMax is never dropped: a regex that sees only part of it proves nothing.
 const dropped = (l: string, res: RegExp[], lineMax: number) => l.length <= lineMax && res.some(r => r.test(l))
@@ -61,12 +62,16 @@ export function safePattern(p: string, patternMax: number): string | undefined {
 }
 
 // The words of a command, after splitting on whitespace and shell punctuation (; & | ( ) $ ` " ' < > =) with ~ and $HOME
-// expanded, and the words that follow a cd. Shell parsing is never complete, so this only has to over-collect: the caller
-// (runtime/probes.ts pin) pins the words that turn out to be files.
-export function commandWords(command: string, home: string): { words: string[]; cds: string[] } {
-  const words = command.replace(/\$\{?HOME\}?/g, home).split(/[\s;&|()$`"'<>=]+/).filter(Boolean)
-    .map(w => (w === '~' ? home : w.startsWith('~/') ? home + w.slice(1) : w))
-  return { words, cds: words.filter((_, i) => words[i - 1] === 'cd') }
+// expanded, the words that follow a cd, and the outputs (the word after >, >>, 2>, &> and the file words after tee).
+// Shell parsing is never complete, so this only has to over-collect: the caller (runtime/probes.ts pin) pins the words
+// that turn out to be files, except outputs.
+export function commandWords(command: string, home: string): { words: string[]; cds: string[]; outs: string[] } {
+  const expand = (w: string) => (w === '~' ? home : w.startsWith('~/') ? home + w.slice(1) : w)
+  const text = command.replace(/\$\{?HOME\}?/g, home)
+  const words = text.split(/[\s;&|()$`"'<>=]+/).filter(Boolean).map(expand)
+  const redirects = [...text.matchAll(/(?:\d|&)?>>?\s*['"]?([^\s;&|()<>'"]+)/g)].map(m => m[1]!)
+  const tees = [...text.matchAll(/\btee((?:\s+[^\s;&|()<>]+)+)/g)].flatMap(m => m[1]!.trim().split(/\s+/)).filter(w => !w.startsWith('-'))
+  return { words, cds: words.filter((_, i) => words[i - 1] === 'cd'), outs: [...redirects, ...tees].map(expand) }
 }
 
 // The pinned paths whose hash differs now. A missing file (undefined) counts as changed.
@@ -79,7 +84,12 @@ const firstLine = (s: string) => (s.split('\n').map(l => l.trim()).find(Boolean)
 // One run's outcome. A failure never stops the job: it counts, and pings once when the count reaches failPing, naming
 // the first line of stderr (or of stdout when stderr is empty). A change wakes with the previous text, so the session
 // sees what moved. Only stdout is fingerprinted (run.fp covers all of it, even past the text the run kept), so a stderr warning cannot wake. The first good run only records a baseline.
-export function decide(state: JobState, run: { ok: boolean; out: string; fp: string; err?: string }, probe: Probe, o: { failPing: number; lineMax: number }): { state: JobState; wake?: { before?: string; after: string }; ping?: string } {
+export function decide(state: JobState, run: { ok: boolean; out: string; fp: string; err?: string; refused?: string }, probe: Probe, o: { failPing: number; lineMax: number }): { state: JobState; wake?: { before?: string; after: string }; ping?: string } {
+  if (run.refused) {
+    // A refusal never fixes itself, so it pings at once, once per distinct refusal.
+    const ping = run.refused === state.refused ? undefined : `A tripwire probe is stopped: ${probe.command}\n${run.refused}\nFix: add a file the probe reads to reads, a file it writes to writes, or approve the probe again.`
+    return { state: { ...state, refused: run.refused }, ...(ping && { ping }) }
+  }
   if (!run.ok) {
     const fails = state.fails + 1
     const why = firstLine(run.err ?? '') || firstLine(run.out)
@@ -87,8 +97,9 @@ export function decide(state: JobState, run: { ok: boolean; out: string; fp: str
   }
   const after = normalize(run.out, probe.ignore, o.lineMax)
   const fp = run.fp
-  const next = { ...state, fp, last: after, fails: 0 }
-  if (state.fp === fp) return { state: { ...state, fails: 0 } }
+  const { refused: _, ...kept } = state
+  const next = { ...kept, fp, last: after, fails: 0 }
+  if (state.fp === fp) return { state: { ...kept, fails: 0 } }
   if (state.fp === undefined) return { state: next }
   return { state: next, wake: { before: state.last, after } }
 }

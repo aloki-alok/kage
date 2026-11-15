@@ -31,14 +31,15 @@ const expand = (w: string, home: string) => (w === '~' ? home : w.startsWith('~/
 // Best-effort pins for a probe command. Shell parsing is never complete, so this does not guess what runs: every word of
 // the command that is a file this user could swap is pinned (its sha256, or ABSENT if the path does not exist yet, for a
 // word with a slash). Relative words resolve against cwd and against each `cd` target. Files in `reads` are data the
-// probe watches, so they are not pinned. The approval card and `reads` are the contract.
-export function pin(command: string, o: { home?: string; cwd?: string; reads?: string[] } = {}): Record<string, string> {
+// probe watches, and files in `writes` or after a redirect or tee are its own output, so none of them is pinned. The approval card and `reads` are the contract.
+export function pin(command: string, o: { home?: string; cwd?: string; reads?: string[]; writes?: string[] } = {}): Record<string, string> {
   const home = o.home ?? homedir(), cwd = o.cwd ?? process.cwd()
-  const { words, cds } = commandWords(command, home)
+  const { words, cds, outs } = commandWords(command, home)
   const dirs = [cwd, ...cds.map(c => resolve(cwd, c))]
-  const skip = new Set((o.reads ?? []).map(r => resolve(cwd, expand(r, home))))
+  const skip = new Set([...(o.reads ?? []), ...(o.writes ?? [])].map(r => resolve(cwd, expand(r, home))))
   const pins: Record<string, string> = {}
   for (const w of words) {
+    if (outs.includes(w)) continue
     for (const d of dirs) {
       const path = resolve(d, w)
       if (skip.has(path) || pins[path] !== undefined || !swappable(path)) continue

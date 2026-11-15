@@ -9,7 +9,7 @@ import { pin, runProbe } from '../probes.ts'
 const fingerprintOf = (text: string, ignore: string[]) => { const h = lineHasher(ignore, 2000); h.push(text); return h.end() }
 
 const o = { timeoutMs: 5000, maxBytes: 1024, patternMax: 200, lineMax: 2000 }
-const probe = (command: string, pins: Record<string, string> = {}) => ({ command, pins, ignore: [], reads: [] })
+const probe = (command: string, pins: Record<string, string> = {}) => ({ command, pins, ignore: [], reads: [], writes: [] })
 
 describe('runProbe', () => {
   test('returns the output and ok for a command that exits 0', async () => {
@@ -54,7 +54,7 @@ describe('runProbe', () => {
 describe('unsafe ignore patterns', () => {
   test('a probe with a nested-quantifier or invalid ignore is refused and never runs', async () => {
     for (const ignore of ['(a+)+', '(']) {
-      const r = await runProbe({ command: 'printf ran', pins: {}, ignore: [ignore], reads: [] }, o)
+      const r = await runProbe({ command: 'printf ran', pins: {}, ignore: [ignore], reads: [], writes: [] }, o)
       assert.deepEqual([r.ok, r.out], [false, ''])
       assert.match(r.refused!, /^ignore pattern/)
     }
@@ -81,7 +81,7 @@ describe('pins', () => {
   const dir = mkdtempSync(join(tmpdir(), 'probe-'))
   const other = mkdtempSync(join(tmpdir(), 'probe-cwd-'))
   const make = (name: string, body: string, mode = 0o755) => { const f = join(dir, name); writeFileSync(f, body, { mode }); chmodSync(f, mode); return f }
-  const pinIn = (command: string, reads: string[] = [], cwd = other) => pin(command, { home: dir, cwd, reads })
+  const pinIn = (command: string, reads: string[] = [], cwd = other, writes: string[] = []) => pin(command, { home: dir, cwd, reads, writes })
   const refusedAfterEdit = async (command: string, file: string, cwd = other) => {
     const p = probe(command, pinIn(command, [], cwd))
     assert.ok(file in p.pins, `${command} did not pin ${file}`)
@@ -152,6 +152,26 @@ describe('pins', () => {
   })
   test('a missing file in a folder the user cannot write is not pinned', () => {
     assert.deepEqual(pinIn('/no/such/file'), {})
+  })
+  test('a probe that writes its own output does not refuse itself on the next run', async () => {
+    let n = 0
+    for (const shape of ['printf x > F', 'printf x >> F', 'printf x 2> F', 'printf x &> F', 'printf x | tee F', 'printf x | tee -a F']) {
+      const f = join(dir, `out${n++}.json`)
+      const command = shape.replace('F', f)
+      const p = probe(command, pinIn(command))
+      assert.deepEqual(p.pins, {}, command)
+      assert.equal((await runProbe(p, o)).refused, undefined, command)
+      assert.equal((await runProbe(p, o)).refused, undefined, command)
+    }
+  })
+  test('a file the probe writes by an option goes in writes, and then is not pinned', async () => {
+    const f = join(dir, 'made.txt')
+    const command = `touch ${f}`
+    assert.ok(f in pinIn(command))
+    const p = probe(command, pinIn(command, [], other, [f]))
+    assert.deepEqual(p.pins, {})
+    assert.equal((await runProbe(p, o)).refused, undefined)
+    assert.equal((await runProbe(p, o)).refused, undefined)
   })
   test('is refused when a pinned file is gone', async () => {
     const gone = make('gone.sh', 'x')
