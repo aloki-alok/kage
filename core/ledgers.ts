@@ -69,7 +69,7 @@ export function dailyDue(now: number, lastSent: string | undefined): string | un
 // ponytail: that first resumed turn reads as free, one turn per thread; per-turn usage would fix it.
 export const turnCost = (last: number | undefined, total: number, resumed = false) =>
   !(total > 0) ? undefined : last === undefined ? (resumed ? 0 : total) : total < last ? total : Math.round((total - last) * 1e6) / 1e6
-const costRows = (tsv: string) => tsv.split('\n').filter(Boolean).map(l => {
+export const costRows = (tsv: string) => tsv.split('\n').filter(Boolean).map(l => {
   const [when = '', key = '', usd = '', total = ''] = l.split('\t')
   return { at: Date.parse(when), key, usd: Number(usd), total: Number(total) }
 }).filter(r => r.key && Number.isFinite(r.usd))
