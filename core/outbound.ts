@@ -114,8 +114,11 @@ export const kageFooter = (title: string, s: Signer = {}) =>
   `🥷 ${title}${s.via ? ` · ${s.via}` : ''}${s.asked ? ` · asked by ${s.asked}` : s.from ? ` · from ${s.from}` : ''}`
 
 // Slack caps a section at 3000 characters, so a longer part becomes several sections.
-export function ownerPost(title: string, text: string, s: Signer = {}) {
+export function ownerPost(title: string, typed: string, s: Signer = {}) {
   const foot = kageFooter(title, s)
+  // A session that reads its earlier posts back copies their footer into the text: drop it, the block adds the real one.
+  const name = title.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+  const text = typed.replace(new RegExp(`\\s*_?(?:🥷|:ninja:) ${name}(?: · [^\\n]*?)?_?\\s*$`, 'u'), '')
   const blocks: Record<string, unknown>[] = splitForSlack(text, 3000).map(t => ({ type: 'section', text: { type: 'mrkdwn', text: t } }))
   blocks.push({ type: 'context', block_id: FOOTER_ID, elements: [{ type: 'mrkdwn', text: foot }] })
   return { text: `${text}\n_${foot}_`, blocks }
