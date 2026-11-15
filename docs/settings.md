@@ -97,7 +97,7 @@ The hub fetches `https://api.example.com/v1/things` and adds the key in the head
 
 ## Tripwires
 
-A tripwire runs a shell command on a clock and wakes a session only when the command's output changes. The first good run records the baseline and wakes nothing. A command that edits itself, or a script it names that changed, is refused until you approve it again.
+A tripwire runs a shell command on a clock and wakes a session only when the command's output changes. The first good run records the baseline and wakes nothing. A command that edits itself, or a script it runs that changed, is refused until you approve it again.
 
 | Setting | Default | Effect |
 |---|---|---|
@@ -106,7 +106,9 @@ A tripwire runs a shell command on a clock and wakes a session only when the com
 | `tripwires.maxKb` | `64` | Output past this size is cut and marked as truncated. |
 | `tripwires.failPing` | `3` | After this many failed runs in a row, you get one note. The tripwire keeps running. |
 | `tripwires.env` | `["PATH","HOME","LANG","USER","TMPDIR","SSH_AUTH_SOCK"]` | The variables of Kage's environment that a probe sees. Nothing else passes, so a probe never gets a token. A name that is not set is skipped. Add a name only when a probe needs it: it widens what a probe can read, so a session needs your yes to change it. |
-| `tripwires.shadowDays` | `2` | How many days a new tripwire only reports what it would have done before it wakes anything. |
+| `tripwires.interpreters` | `["sh","bash","zsh","python","python3","node","ruby","perl","bun","deno"]` | Program names that run a script file. The first file after one of them is pinned, as is a file a command runs by its path. A pin applies only to a file you can write, so a data file or a system binary is never pinned and a change to it never stops the probe. |
+| `tripwires.patternMax` | `200` | The longest `ignore` pattern a probe may have. A longer one, an invalid one, or one with a nested repeat such as `(a+)+` is refused when the probe is made. |
+| `tripwires.lineMax` | `2000` | An `ignore` pattern reads only this many characters of each output line. |
 
 ## Email
 

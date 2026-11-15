@@ -1,15 +1,20 @@
 import { describe, test } from 'node:test'
 import assert from 'node:assert/strict'
-import { decide, fingerprint, normalize, pinsChanged, scriptPaths, type JobState, type Probe } from '../tripwire.ts'
+import { decide, fingerprint, normalize, pinsChanged, safePattern, scriptPaths, type JobState, type Probe } from '../tripwire.ts'
 
 const probe: Probe = { command: 'x', pins: {}, ignore: [] }
-const o = { failPing: 3 }
+const o = { failPing: 3, lineMax: 2000 }
 const ok = (out: string) => ({ ok: true, out })
 const bad = { ok: false, out: '' }
 
 describe('normalize and fingerprint', () => {
   test('drops lines matching an ignore regex and trims trailing space', () => {
-    assert.equal(normalize('a  \nts=12\nb\t', ['^ts=']), 'a\nb')
+    assert.equal(normalize('a  \nts=12\nb\t', ['^ts='], 2000), 'a\nb')
+  })
+  test('a regex sees only the first lineMax characters of a line', () => {
+    const line = 'a'.repeat(20) + 'z'
+    assert.equal(normalize(line, ['z$'], 2000), '')
+    assert.equal(normalize(line, ['z$'], 10), line)
   })
   test('the same text gives the same sha256 hex, and different text a different one', () => {
     assert.match(fingerprint('a'), /^[0-9a-f]{64}$/)
@@ -18,9 +23,36 @@ describe('normalize and fingerprint', () => {
   })
 })
 
+describe('safePattern', () => {
+  test('accepts a plain pattern', () => assert.equal(safePattern('^ts=\\d+$', 200), undefined))
+  test('refuses an invalid pattern', () => assert.match(safePattern('(', 200)!, /invalid/))
+  test('refuses a pattern longer than the cap', () => assert.match(safePattern('a'.repeat(11), 10)!, /long/))
+  test('refuses a nested quantifier, even through an inner group', () => {
+    for (const p of ['(a+)+', '(.*)*', '(a|b+)*', '((a+)b)+', '(a{2,})+']) assert.match(safePattern(p, 200)!, /nested/, p)
+  })
+  test('accepts a quantified group with no quantifier inside, and an escaped or class plus', () => {
+    for (const p of ['(ab)+', '(a\\+)+', '([+*])+', 'a+b*']) assert.equal(safePattern(p, 200), undefined, p)
+  })
+})
+
 describe('scriptPaths and pinsChanged', () => {
-  test('finds words that start with / ~/ or ./ and expands ~', () => {
-    assert.deepEqual(scriptPaths('/bin/sh ~/bin/check.sh ./local.py --flag=1 plain', '/home/sam'), ['/bin/sh', '/home/sam/bin/check.sh', './local.py'])
+  const sp = (c: string, interp?: string[]) => scriptPaths(c, '/home/sam', '/work', interp)
+  test('a command segment head that is a path runs, with ~ expanded and ./ resolved against the cwd', () => {
+    assert.deepEqual(sp('~/bin/check.sh --flag; ./local.sh'), ['/home/sam/bin/check.sh', '/work/local.sh'])
+  })
+  test('a data file argument is not a script', () => {
+    assert.deepEqual(sp('wc -l /var/log/app.log | grep x /tmp/y'), [])
+  })
+  test('the first non-flag argument after an interpreter is a script, with or without ./', () => {
+    assert.deepEqual(sp('python3 check.py a.txt'), ['/work/check.py'])
+    assert.deepEqual(sp('/bin/sh -e ./x.sh'), ['/bin/sh', '/work/x.sh'])
+    assert.deepEqual(sp('ruby a.rb', ['sh']), [])
+  })
+  test('cd moves later relative paths, and segments split on && || | ; and newlines', () => {
+    assert.deepEqual(sp('cd /opt/x && ./run.sh || ./b.sh\n./c.sh | ./d.sh'), ['/opt/x/run.sh', '/opt/x/b.sh', '/opt/x/c.sh', '/opt/x/d.sh'])
+  })
+  test('quotes around a word are dropped', () => {
+    assert.deepEqual(sp(`"/a/b.sh" 'x'`), ['/a/b.sh'])
   })
   test('lists a pin whose hash changed or whose file is gone, and nothing when all match', () => {
     const pins = { '/a': 'h1', '/b': 'h2', '/c': 'h3' }
@@ -61,7 +93,17 @@ describe('decide', () => {
   test('a good run resets fails', () => {
     assert.equal(decide({ fp: fingerprint('v1'), last: 'v1', fails: 2 }, ok('v1'), probe, o).state.fails, 0)
   })
-  test('shadowUntil is kept', () => {
-    assert.equal(decide({ fails: 0, shadowUntil: 99 }, ok('v1'), probe, o).state.shadowUntil, 99)
+  test('the failure ping carries the first line of stderr, capped', () => {
+    const r = decide({ fails: 2 }, { ok: false, out: 'stdout line', err: '\nboom: no route\nsecond' }, probe, o)
+    assert.match(r.ping!, /boom: no route/)
+    assert.doesNotMatch(r.ping!, /second|stdout line/)
+    assert.ok(decide({ fails: 2 }, { ok: false, out: '', err: 'e'.repeat(1000) }, probe, o).ping!.length < 400)
+  })
+  test('with no stderr the ping falls back to the first line of stdout', () => {
+    assert.match(decide({ fails: 2 }, { ok: false, out: 'only out\nmore' }, probe, o).ping!, /only out/)
+  })
+  test('stderr does not change the fingerprint, so a warning cannot wake', () => {
+    const first = decide({ fails: 0 }, { ok: true, out: 'v1', err: 'warn 1' }, probe, o)
+    assert.equal(decide(first.state, { ok: true, out: 'v1', err: 'warn 2' }, probe, o).wake, undefined)
   })
 })

@@ -1,11 +1,11 @@
 import { describe, test } from 'node:test'
 import assert from 'node:assert/strict'
-import { mkdtempSync, writeFileSync, rmSync } from 'node:fs'
+import { mkdtempSync, writeFileSync, rmSync, chmodSync, appendFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { pin, runProbe } from '../probes.ts'
 
-const o = { timeoutMs: 5000, maxBytes: 1024 }
+const o = { timeoutMs: 5000, maxBytes: 1024, patternMax: 200 }
 const probe = (command: string, pins: Record<string, string> = {}) => ({ command, pins, ignore: [] })
 
 describe('runProbe', () => {
@@ -28,9 +28,23 @@ describe('runProbe', () => {
     const r = await runProbe(probe("head -c 100000 /dev/zero | tr '\\0' a"), { ...o, maxBytes: 100 })
     assert.equal(r.out, 'a'.repeat(100) + '\n[truncated]')
   })
-  test('never throws, even when the home folder does not exist', async () => {
-    const r = await runProbe(probe('printf x'), { ...o, home: '/no/such/dir' })
-    assert.equal(typeof r.ok, 'boolean')
+  test('a missing home folder does not stop the probe: HOME is set to it and the command runs', async () => {
+    const r = await runProbe(probe('printf "%s" "$HOME"'), { ...o, home: '/no/such/dir' })
+    assert.deepEqual([r.ok, r.out], [true, '/no/such/dir'])
+  })
+  test('keeps stderr apart from stdout', async () => {
+    const r = await runProbe(probe('printf out; printf err >&2'), o)
+    assert.deepEqual([r.out, r.err], ['out', 'err'])
+  })
+})
+
+describe('unsafe ignore patterns', () => {
+  test('a probe with a nested-quantifier or invalid ignore is refused and never runs', async () => {
+    for (const ignore of ['(a+)+', '(']) {
+      const r = await runProbe({ command: 'printf ran', pins: {}, ignore: [ignore] }, o)
+      assert.deepEqual([r.ok, r.out], [false, ''])
+      assert.match(r.refused!, /^ignore pattern/)
+    }
   })
 })
 
@@ -44,25 +58,40 @@ describe('probe environment', () => {
       assert.equal((await run(['PATH', 'KAGE_NOT_SET_ANYWHERE'])).ok, true)
     } finally { delete process.env.SSH_AUTH_SOCK }
   })
-  test('with no list given, SSH_AUTH_SOCK is passed by default', async () => {
-    process.env.SSH_AUTH_SOCK = '/tmp/agent.sock'
-    try { assert.equal((await run()).out, '/tmp/agent.sock') } finally { delete process.env.SSH_AUTH_SOCK }
+  test('a name not in the setting never reaches the probe', async () => {
+    process.env.KAGE_TEST_SECRET = 's3cret'
+    try { assert.equal((await runProbe(probe('printf "%s" "$KAGE_TEST_SECRET"'), { ...o, env: ['PATH'] })).out, '') } finally { delete process.env.KAGE_TEST_SECRET }
   })
 })
 
 describe('pins', () => {
   const dir = mkdtempSync(join(tmpdir(), 'probe-'))
-  const script = join(dir, 'check.sh')
-  writeFileSync(script, 'printf one')
+  const make = (name: string, body: string, mode = 0o755) => { const f = join(dir, name); writeFileSync(f, body, { mode }); chmodSync(f, mode); return f }
+  const script = make('check.sh', 'printf one')
 
-  test('pin hashes an existing script and skips a missing path', () => {
-    const p = pin(`/bin/sh ${script} /no/such/file`)
-    assert.deepEqual(Object.keys(p).sort(), ['/bin/sh', script].sort())
+  test('pin hashes a writable script that runs, and skips a missing path', () => {
+    const p = pin(`${script}; /no/such/file`, dir)
+    assert.deepEqual(Object.keys(p), [script])
     assert.match(p[script]!, /^[0-9a-f]{64}$/)
   })
+  test('a data file the probe reads is not pinned, so appending to it still runs', async () => {
+    const log = make('app.log', 'one\n')
+    const command = `wc -l ${log}`
+    const p = probe(command, pin(command, dir))
+    assert.deepEqual(p.pins, {})
+    const before = await runProbe(p, o)
+    appendFileSync(log, 'two\n')
+    const after = await runProbe(p, o)
+    assert.deepEqual([before.ok, after.ok, after.refused], [true, true, undefined])
+    assert.notEqual(before.out, after.out)
+  })
+  test('a non-writable executable is not pinned', () => {
+    const ro = make('ro.sh', 'printf x', 0o555)
+    assert.deepEqual(pin(`${ro}`, dir), {})
+    assert.deepEqual(pin('/bin/sh -c true', dir), {})
+  })
   test('a pinned script runs, then is refused after an edit, with its path named', async () => {
-    const command = `/bin/sh ${script}`
-    const p = probe(command, pin(command))
+    const p = probe(`${script}`, pin(`${script}`, dir))
     assert.equal((await runProbe(p, o)).out, 'one')
     writeFileSync(script, 'printf two')
     const r = await runProbe(p, o)
@@ -70,19 +99,35 @@ describe('pins', () => {
     assert.match(r.refused!, new RegExp(script))
     assert.equal(r.out, '')
   })
+  test('python3 ./check.py is pinned and refused after an edit', async () => {
+    const py = make('check.py', 'print(1)', 0o644)
+    const command = `python3 ${py}`
+    const p = probe(command, pin(command, dir))
+    assert.deepEqual(Object.keys(p.pins), [py])
+    assert.equal((await runProbe(p, o)).out.trim(), '1')
+    writeFileSync(py, 'print(2)')
+    assert.match((await runProbe(p, o)).refused!, /check\.py/)
+  })
+  test('cd dir && ./run.sh is pinned against dir and refused after an edit', async () => {
+    const run = make('run.sh', 'printf ran')
+    const command = `cd ${dir} && ./run.sh`
+    const p = probe(command, pin(command, dir))
+    assert.deepEqual(Object.keys(p.pins), [run])
+    assert.equal((await runProbe(p, o)).out, 'ran')
+    writeFileSync(run, 'printf changed')
+    assert.match((await runProbe(p, o)).refused!, /run\.sh/)
+  })
   test('is refused when a pinned file is gone', async () => {
-    const gone = join(dir, 'gone.sh')
-    writeFileSync(gone, 'x')
-    const command = `/bin/sh ${gone}`
-    const p = probe(command, pin(command))
+    const gone = make('gone.sh', 'x')
+    const p = probe(gone, pin(gone, dir))
     rmSync(gone)
     assert.match((await runProbe(p, o)).refused!, /gone\.sh/)
   })
   test('a pin in the home folder reads ~ through the home option', async () => {
-    writeFileSync(join(dir, 'home.sh'), 'printf home')
-    const command = '/bin/sh ~/home.sh'
+    const h = make('home.sh', 'printf home')
+    const command = '~/home.sh'
     const p = probe(command, pin(command, dir))
-    assert.deepEqual(Object.keys(p.pins), ['/bin/sh', join(dir, 'home.sh')])
+    assert.deepEqual(Object.keys(p.pins), [h])
     assert.equal((await runProbe(p, { ...o, home: dir })).out, 'home')
   })
 })
