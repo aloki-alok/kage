@@ -177,7 +177,6 @@ export async function connectSlack(o: { dir: string; appToken: string; userToken
     if (t.kind === 'task' && !t.agent && o.triage) {
       const j = await o.triage(thread, !m.user || m.user === ids.owner ? 'owner' : 'other', t.text,
         { hasFiles: !!(m.files?.length || (m as { attachments?: unknown[] }).attachments?.length), inThread: !!m.thread_ts && m.thread_ts !== m.ts })
-      log(`triage ${thread}: ${j.pick}, ${j.why}`)
       // A reaction that fails to land starts the session instead: a request is never dropped silently.
       if (j.pick === 'react' && await react(m.channel, m.ts, SEEN)) return
     }

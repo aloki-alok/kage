@@ -1,9 +1,50 @@
 import { describe, test } from 'node:test'
 import assert from 'node:assert/strict'
-import { intake, ownerNote } from '../slack.ts'
+import { intake, ownerNote, connectSlack } from '../slack.ts'
+import { jevTriage } from '../jev.ts'
+import { openLedgers, runEvents } from '../../runtime/ledger.ts'
+import { log } from '../../runtime/log.ts'
+import { mkdtempSync, rmSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 import type { SlackMessage } from '../../core/slack-message.ts'
 
 const msg = { type: 'message', channel: 'CTEST1', ts: '5.5', user: 'UTEST1', text: 'hi' } as SlackMessage
+
+test('a Slack triage decision writes one log line and keeps its database event', async () => {
+  const dir = mkdtempSync(join(tmpdir(), 'kage-triage-'))
+  const lines: string[] = []
+  const original = console.error
+  console.error = (...args) => { lines.push(args.join(' ')) }
+  const ledger = openLedgers(dir, () => '2026-01-01T00:00:00Z', log)
+  try {
+    const runs = runEvents(ledger, () => 'test-trace')
+    const client = {
+      auth: { test: async () => ({ team_id: 'TTEST', user_id: 'UTEST1' }) },
+      conversations: { open: async () => ({ channel: { id: 'DTEST' } }) },
+      users: { info: async () => ({ user: { real_name: 'Sam Test' } }) },
+      reactions: { add: async () => ({ ok: true }) },
+    }
+    const slack = await connectSlack({
+      dir, appToken: 'test', userToken: 'test', bot: client as never, user: client as never,
+      name: 'kage', title: 'Kage', teammates: [], apps: [],
+      hub: { posted: () => '', handled: () => {}, deliver: () => assert.fail('a thanks needs no session') } as never,
+      triage: jevTriage({ key: 'test', model: 'test', threshold: 0.5, agents: 'all', url: 'https://jev.example.com' },
+        (who, detail) => runs.emit(who, 'triage', detail),
+        { fetch: (async () => Response.json({ answers: { intake: { choice: 'react', probabilities: { react: 0.99 } } } })) as typeof fetch }),
+    })
+    await slack.replay('test-source', JSON.stringify({ ...msg, client_msg_id: 'test', text: '@kage thanks' }))
+    const events = ledger.events('2026-01-01')
+    assert.equal(events.length, 1)
+    assert.equal(events[0]!.kind, 'triage')
+    assert.equal(events[0]!.detail, 'react: owner react 0.99')
+    assert.equal(lines.filter(l => l.includes('triage ')).length, 1, lines.join('\n'))
+  } finally {
+    ledger.close()
+    console.error = original
+    rmSync(dir, { recursive: true, force: true })
+  }
+})
 
 describe('a Slack event reaches the inbox before Slack is told it arrived', () => {
   test('the write comes before the ack, then the message is handled with its source id', async () => {
