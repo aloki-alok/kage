@@ -1,6 +1,6 @@
 import { describe, test } from 'node:test'
 import assert from 'node:assert/strict'
-import { composeReply, emailTaskLine, mailTask, newPart, replyTargets, type InboundMail } from '../email.ts'
+import { composeReply, emailTaskLine, emailVerdict, mailTask, newPart, replyTargets, type InboundMail } from '../email.ts'
 
 const cfg = { self: 'kage@kage.example.com', name: 'kage', owner: 'owner@example.com', teammates: ['sam@example.com'], domains: ['example.com'] }
 const PASS = { spam: 'PASS', virus: 'PASS', dmarc: 'PASS' }
@@ -78,9 +78,21 @@ describe('quoted text is not the ask', () => {
 })
 
 describe('replies', () => {
-  test('go to the sender and our-domain participants only, never back to Kage or a subdomain sender', () => {
-    const r = replyTargets(mail({ to: ['alerts@status.example.com', 'kage@kage.example.com', 'customer@gmail.com'] }), cfg)
-    assert.deepEqual(r, { to: ['owner@example.com'], cc: ['sam@example.com', 'lee@example.com'] })
+  test('an internal thread goes to the sender, everyone else in Cc, never back to Kage', () => {
+    const r = replyTargets(mail({ to: ['kage@kage.example.com', 'Lee@example.com'], cc: ['sam@example.com', 'LEE@example.com'] }), cfg)
+    assert.deepEqual(r, { to: ['owner@example.com'], cc: ['lee@example.com', 'sam@example.com'] })
+  })
+  test('a customer in Cc gets the reply', () => {
+    const r = replyTargets(mail({ cc: ['customer@client.test'] }), cfg)
+    assert.deepEqual(r, { to: ['owner@example.com'], cc: ['alerts@status.example.com', 'customer@client.test'] })
+  })
+  test('a customer who sent the mail gets the reply in To', () => {
+    const r = replyTargets(mail({ from: 'Customer@Client.test', to: ['kage@kage.example.com', 'owner@example.com'], cc: [] }), cfg)
+    assert.deepEqual(r, { to: ['customer@client.test'], cc: ['owner@example.com'] })
+  })
+  test('Kage never replies to itself, even as the sender', () => {
+    const r = replyTargets(mail({ from: 'Kage@kage.example.com', to: ['kage@kage.example.com', 'a@client.test'], cc: [] }), cfg)
+    assert.deepEqual(r, { to: [], cc: ['a@client.test'] })
   })
   test('thread under the original with In-Reply-To and References', () => {
     const raw = composeReply({ from: 'Kage <kage@kage.example.com>', to: ['owner@example.com'], cc: [], subject: '[WARNING] x',
@@ -94,6 +106,34 @@ describe('replies', () => {
   test('a header value cannot inject another header', () => {
     const raw = composeReply({ from: 'K <k@k>', to: ['a@b'], cc: [], subject: 'x\r\nBcc: evil@x.com', inReplyTo: '<b@g>', references: [], text: 'y' })
     assert.doesNotMatch(raw, /^Bcc:/m)
+  })
+})
+
+describe('the guard for mail that leaves our domains', () => {
+  const draft = 'Your invoice is fixed.'
+  const asks = (out: string | Error) => {
+    const calls: string[] = []
+    return { calls, ask: async (_system: string, prompt: string) => { calls.push(prompt); if (out instanceof Error) throw out; return out } }
+  }
+  const outside = { to: ['customer@client.test'], cc: ['owner@example.com'] }
+  test('an internal-only reply skips the guard', async () => {
+    const g = asks('HOLD: nope')
+    assert.deepEqual(await emailVerdict(mail(), { to: ['owner@example.com'], cc: ['sam@example.com'] }, draft, cfg, g.ask), { send: true, reason: '' })
+    assert.equal(g.calls.length, 0)
+  })
+  test('SEND lets an outside reply go, and the guard saw the draft and the recipients', async () => {
+    const g = asks('SEND')
+    assert.equal((await emailVerdict(mail(), outside, draft, cfg, g.ask)).send, true)
+    assert.match(g.calls[0]!, /Your invoice is fixed/)
+    assert.match(g.calls[0]!, /customer@client\.test/)
+  })
+  test('HOLD keeps an outside reply back with the reason', async () => {
+    assert.deepEqual(await emailVerdict(mail(), outside, draft, cfg, asks('HOLD: names a customer').ask), { send: false, reason: 'names a customer' })
+  })
+  test('a guard error holds the reply', async () => {
+    const v = await emailVerdict(mail(), outside, draft, cfg, asks(new Error('claude exited 1')).ask)
+    assert.equal(v.send, false)
+    assert.match(v.reason, /guard failed/)
   })
 })
 

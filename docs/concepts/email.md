@@ -4,7 +4,12 @@ flowchart LR
     Checks -->|Fail| Drop[Drop]
     Checks -->|Pass| Key[Mail thread session key]
     Key --> Session[Kage session with teammate limits]
-    Session --> Reply[Reply all within the owner's domain]
+    Session --> Reply[Reply all]
+    Reply --> Outside{Anyone outside the owner's domains?}
+    Outside -->|No| Send[Send]
+    Outside -->|Yes| Guard{SEND or HOLD check}
+    Guard -->|SEND| Send
+    Guard -->|HOLD or error| Hold[Send nothing, tell the owner in Slack]
 ```
 
 # Email
@@ -19,6 +24,8 @@ Every email task gets teammate limits. Even mail from the owner address cannot a
 
 Earlier mail stays quoted as data. Only the new part becomes the task.
 
-Replies keep the mail thread. Reply-all targets stay inside the owner's email domain.
+Replies keep the mail thread. Kage replies to everyone on it: the sender, To and Cc, except its own address.
+
+If anyone is outside the owner's email domains, a check reads the reply first. It answers SEND or HOLD. On HOLD, Kage sends nothing. It tells the owner in Slack with the reason and the draft. If the check fails or times out, the reply is held too. Mail inside the owner's domains skips the check.
 
 See [the settings reference](../settings.md) for the email controls.
