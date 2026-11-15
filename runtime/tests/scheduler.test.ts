@@ -426,3 +426,20 @@ test("a wake whose delivery comes back 'failed' keeps its events: told, not done
     assert.match(t.sent[0]![1].content, /> x/)
   }
 })
+
+test('an event job whose wake keeps failing tells the owner once, not every tick, and a delivered wake re-arms that', () => {
+  const t = setup()
+  t.s.add('C1:5.5', { id: 'e1', cron: EVENT, prompt: 'p', recurring: true, trigger: hook }, at('2026-11-03T10:01:00'))
+  t.fresh.failing = true
+  t.s.wake('e1', ['> x'], { done: () => {}, failed: () => {} })
+  t.s.tick(at('2026-11-03T10:02:00'))
+  t.s.tick(at('2026-11-03T10:03:00'))
+  t.s.tick(at('2026-11-03T10:04:00'))
+  assert.equal(t.failed.length, 1)                                    // three failed ticks, one notice
+  t.fresh.failing = false
+  t.s.tick(at('2026-11-03T10:05:00'))                                 // delivered: the flag clears
+  t.fresh.failing = true
+  t.s.wake('e1', ['> y'], { done: () => {}, failed: () => {} })
+  t.s.tick(at('2026-11-03T10:06:00'))
+  assert.equal(t.failed.length, 2)                                    // a new failure after a delivery tells again
+})
