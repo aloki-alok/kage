@@ -95,6 +95,18 @@ The hub fetches `https://api.example.com/v1/things` and adds the key in the head
 | `afk.on` | on | `false` turns AFK mode off. On, tell Kage you are stepping away in any words ("cover for me, lunch for an hour"). It watches threads that mention or DM you and stays quiet unless you are mentioned again or it is urgent. A P0 phones you through `connectors.call.command`. Say you are back in any words for the summary. Threads run as tmux panes cannot switch it yet. |
 | `afk.model` | `sonnet` | The model the stand-in uses. |
 
+## Tripwires
+
+A tripwire runs a shell command on a clock and wakes a session only when the command's output changes. The first good run records the baseline and wakes nothing. A command that edits itself, or a script it names that changed, is refused until you approve it again.
+
+| Setting | Default | Effect |
+|---|---|---|
+| `tripwires.on` | on | `false` turns every tripwire off. |
+| `tripwires.timeoutSec` | `60` | A command that runs longer is killed, with its child processes. |
+| `tripwires.maxKb` | `64` | Output past this size is cut and marked as truncated. |
+| `tripwires.failPing` | `3` | After this many failed runs in a row, you get one note. The tripwire keeps running. |
+| `tripwires.shadowDays` | `2` | How many days a new tripwire only reports what it would have done before it wakes anything. |
+
 ## Email
 
 Email is on when `connectors.email.address`, `connectors.email.queue` and `connectors.email.ownerEmail` are set, unless `connectors.email.on` is `false`. It also needs the AWS keys.

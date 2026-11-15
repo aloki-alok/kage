@@ -39,6 +39,7 @@ export const Config = z.strictObject({
   sharedTools: strings,
   afk: z.strictObject({ on: yes, model: text }).optional(),
   jev: z.strictObject({ agents: strings, threshold: money, model: text, url: text }).optional(),
+  tripwires: z.strictObject({ on: yes, timeoutSec: count, maxKb: count, failPing: count, shadowDays: count }).optional(),
   connectors: z.strictObject({
     email: z.strictObject({ on: yes, address: text, queue: text, ownerEmail: text, region: text, teammateEmails: strings }).optional(),
     voice: z.strictObject({ on: yes, port: count, max: count, perHour: count, model: text }).optional(),
@@ -110,6 +111,8 @@ export const KEYS: Row[] = [
   R('KAGE_AUTO_UPDATE', 'autoUpdate', onoff), R('KAGE_SHARED_TOOLS', 'sharedTools', list),
   R('KAGE_AFK', 'afk.on', onoff), R('KAGE_AFK_MODEL', 'afk.model'),
   R('KAGE_JEV_AGENTS', 'jev.agents', list), R('KAGE_JEV_THRESHOLD', 'jev.threshold', num), R('KAGE_JEV_MODEL', 'jev.model'), R('KAGE_JEV_URL', 'jev.url'),
+  R('KAGE_TRIPWIRES', 'tripwires.on', onoff), R('KAGE_TRIPWIRES_TIMEOUT_SEC', 'tripwires.timeoutSec', int), R('KAGE_TRIPWIRES_MAX_KB', 'tripwires.maxKb', int),
+  R('KAGE_TRIPWIRES_FAIL_PING', 'tripwires.failPing', int), R('KAGE_TRIPWIRES_SHADOW_DAYS', 'tripwires.shadowDays', int),
   R('KAGE_EMAIL', 'connectors.email.on', onoff), R('KAGE_MAIL_ADDRESS', 'connectors.email.address'), R('KAGE_MAIL_QUEUE', 'connectors.email.queue'),
   R('KAGE_OWNER_EMAIL', 'connectors.email.ownerEmail'), R('KAGE_AWS_REGION', 'connectors.email.region'), R('KAGE_TEAMMATE_EMAILS', 'connectors.email.teammateEmails', list),
   R('KAGE_VOICE', 'connectors.voice.on', onoff), R('KAGE_VOICE_PORT', 'connectors.voice.port', int), R('KAGE_VOICE_MAX', 'connectors.voice.max', int),
@@ -228,7 +231,7 @@ export function checkSettings(c: Config, s: Secrets): { name: string; teammates:
 
 // What a session may change through set_setting. safe: applies at once. power: grants reach or runs code, so the owner says yes
 // on a card first. never: not settable that way. A key not listed is power, so a new key starts closed.
-const SAFE = [/^kagelets\.(max|dailyUsd|totalDailyUsd|chainUsd)$/, /^afk\.(on|model)$/, /^jev\.(threshold|model)$/,
+const SAFE = [/^kagelets\.(max|dailyUsd|totalDailyUsd|chainUsd)$/, /^afk\.(on|model)$/, /^jev\.(threshold|model)$/, /^tripwires\.(timeoutSec|maxKb|failPing|shadowDays)$/,
   /^connectors\.(voice|github|meeting|browser|whatsapp)\.(port|max|perHour|hookPort)$/, /^connectors\.whatsapp\.model$/]
 export function settingTier(key: string): 'safe' | 'power' | 'never' {
   const parts = key.split('.')
