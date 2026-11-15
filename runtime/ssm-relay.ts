@@ -1,14 +1,26 @@
 // The SSM relay (#161). A sandboxed session cannot reach AWS: session-manager-plugin opens its own websocket and ignores the sandbox's
-// proxy. So the hub, outside the sandbox, runs `aws ssm start-session` for it. The session's ssh ProxyCommand (cli/ssm-proxy.ts) connects
-// to this unix socket, sends one header line (core/ssm.ts), reads `ok` or `error: <why>`, then pipes ssh's bytes both ways.
-// Only owner-only Slack threads get a token (issue), and trust is checked again on every connection. The log holds target and exit, never bytes.
+// proxy. So the session's stand-in plugin (cli/ssm-plugin-shim) connects to this unix socket and sends one JSON line: its token and the
+// arguments aws gave it. The hub checks them (core/ssm.ts startSessionCall), runs the real plugin outside the sandbox with exactly those
+// arguments, answers `ok` or `error: <why>`, then pipes bytes both ways. Only owner-only Slack threads get a token, and trust is checked
+// again on every connection. The log holds the region, the target and the exit, never the token, the stream URL or the bytes.
 import { spawn } from 'node:child_process'
 import { randomBytes } from 'node:crypto'
-import { chmodSync, unlinkSync } from 'node:fs'
+import { accessSync, chmodSync, constants, realpathSync, unlinkSync } from 'node:fs'
 import { createServer, type Socket } from 'node:net'
-import { relayHeader, ssmEligible } from '../core/ssm.ts'
+import { delimiter } from 'node:path'
+import { ssmEligible, startSessionCall } from '../core/ssm.ts'
 
-export function ssmRelay(o: { path: string; trusted: (key: string) => boolean; log: (...a: unknown[]) => void; aws?: string; max?: number }) {
+// The real plugin on the hub's own PATH, found once at start. A directory in skip (the stand-in's) never counts, so the hub cannot run the stand-in.
+export function findPlugin(pathEnv = process.env.PATH ?? '', skip: string[] = []): string | undefined {
+  const real = (d: string) => { try { return realpathSync(d) } catch { return d } }
+  for (const dir of pathEnv.split(delimiter).filter(Boolean)) {
+    if (skip.some(x => real(x) === real(dir))) continue
+    const f = `${dir}/session-manager-plugin`
+    try { accessSync(f, constants.X_OK); return f } catch {}
+  }
+}
+
+export function ssmRelay(o: { path: string; trusted: (key: string) => boolean; log: (...a: unknown[]) => void; plugin: string | undefined; max?: number }) {
   const tokens = new Map<string, string>()   // token -> session key
   const keyOf = new Map<string, string>()    // session key -> token
   let active = 0
@@ -19,21 +31,23 @@ export function ssmRelay(o: { path: string; trusted: (key: string) => boolean; l
     const onData = (chunk: Buffer) => {
       buf += chunk
       const i = buf.indexOf('\n')
-      if (i < 0) { if (buf.length > 512) { s.off('data', onData); refuse(s, 'header too long') } return }
+      if (i < 0) { if (buf.length > 16384) { s.off('data', onData); refuse(s, 'header too long') } return }
       s.off('data', onData)
       s.pause()
       const rest = Buffer.from(buf.slice(i + 1), 'binary')
-      const h = relayHeader(buf.slice(0, i))
-      if ('error' in h) return refuse(s, h.error)
+      const h = (() => { try { const j = JSON.parse(buf.slice(0, i)) as { token?: unknown; args?: unknown }; return typeof j.token === 'string' ? { token: j.token, args: j.args } : undefined } catch { return undefined } })()
+      if (!h) return refuse(s, 'expected one JSON line: {token, args}')
       const key = tokens.get(h.token)
       if (!key || !o.trusted(key)) return refuse(s, 'no relay for this session')
+      const c = startSessionCall(h.args)
+      if ('error' in c) { o.log('ssm relay refused for', key, c.error); return refuse(s, c.error) }
+      if (!o.plugin) return refuse(s, "session-manager-plugin is not on the hub's PATH")
       if (active >= (o.max ?? 8)) return refuse(s, 'too many relays')
       active++
-      const args = ['ssm', 'start-session', '--target', h.target, '--document-name', 'AWS-StartSSHSession', '--parameters', `portNumber=${h.port}`, ...h.region ? ['--region', h.region] : []]
-      const p = spawn(o.aws ?? 'aws', args, { stdio: ['pipe', 'pipe', 'ignore'] })
+      const p = spawn(o.plugin, c.args, { stdio: ['pipe', 'pipe', 'ignore'] })
       let done = false
-      const end = (why: string) => { if (done) return; done = true; active--; o.log('ssm relay', h.target, 'for', key, why); s.end() }
-      p.on('error', e => { if (!done) { done = true; active--; o.log('ssm relay', h.target, 'for', key, `failed ${(e as NodeJS.ErrnoException).code}`); refuse(s, 'aws did not start') } })
+      const end = (why: string) => { if (done) return; done = true; active--; o.log('ssm relay', c.region, c.target, 'for', key, why); s.end() }
+      p.on('error', e => { if (!done) { done = true; active--; o.log('ssm relay', c.region, c.target, 'for', key, `failed ${(e as NodeJS.ErrnoException).code}`); refuse(s, 'the plugin did not start') } })
       p.on('spawn', () => {
         s.write('ok\n')
         if (rest.length) p.stdin.write(rest)

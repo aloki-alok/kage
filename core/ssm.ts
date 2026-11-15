@@ -1,6 +1,6 @@
 // The SSM relay's rules (runtime/ssm-relay.ts): which threads may hold a token, and the one call the hub runs for a session.
 // aws runs `session-manager-plugin <response> <region> StartSession <profile> <parameters> <endpoint>` (awscli customizations/sessionmanager.py).
-export type PluginCall = { args: string[]; region: string; target: string }
+type PluginCall = { args: string[]; region: string; target: string }
 
 const REGION = /^[a-z]{2}(-[a-z]+)+-\d{1,2}$/
 const PROFILE = /^[\w.@+=,-]{0,128}$/
