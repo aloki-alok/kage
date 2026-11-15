@@ -129,7 +129,12 @@ Write logs to stderr only. In a tmux pane, stdout carries the channel protocol, 
 |---|---|
 | `sdk-sessions.ts` | The default runner: an Agent SDK session per key, inside the hub. `runtime/tests/fake-sdk.ts` is the fake SDK its tests drive. |
 | `tmux-panes.ts` | The other runner: a Claude Code pane per key. |
-| `kage-tools.ts` | A session's tools (about 28: replies and edits, files, messages to people, schedules and watches, kagelets, settings, AFK, the browser, prod log) and the approval card. The instructions every session reads are `core/instructions.ts`. |
+| `kage-tools.ts` | A session's tools (about 28): the state they share about its tasks (where each came from, who sent it, what Kage posted), and the approval card. The instructions every session reads are `core/instructions.ts`. |
+| `runtime/tools/slack-tools.ts` | Replies, edits and deletes of Kage's own posts, telling people, attaching a file, the waiting list, the prod log, and a post as Kage where no task came from. |
+| `runtime/tools/schedule-tools.ts` | A thread's schedules in the hub, and AFK mode on and off. |
+| `runtime/tools/kagelet-tools.ts` | A kagelet's tools (report, message another, db_read), its dream's (propose_memory), and the manager's. |
+| `runtime/tools/browser-tools.ts` | The owner's Chrome: list, read, capture, snapshot and act, a major step on the owner's yes. |
+| `runtime/tools/owner-tools.ts` | Only the owner's own Slack task: the meeting bot and changing a setting. |
 | `session-link.ts` | The local socket that panes and the `kage` commands connect to. |
 | `hub-client.ts` | The client end of that socket: one question to the running hub, one answer. Node modules only, because the shell scripts read settings through `cli/home.ts`, which imports it. |
 | `protocol.ts` | The messages on that socket. |

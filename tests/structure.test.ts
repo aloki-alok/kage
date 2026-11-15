@@ -27,7 +27,7 @@ const DEBT = {
   rootImports: [] as string[],
   // A source file over MAX_LINES lines (import lines not counted), with the most it may have. Split it; lower the number as it shrinks.
   longFiles: {
-    'runtime/kage-tools.ts': 781, 'hub/router.ts': 665, 'cli/top.ts': 607,
+    'hub/router.ts': 665, 'cli/top.ts': 607,
     'runtime/sdk-sessions.ts': 334, 'core/sessions.ts': 323,
   } as Record<string, number>,
   // A core/ or runtime/ file missing from the CONTRIBUTING.md code map.
@@ -66,10 +66,10 @@ test(`a source file is ${MAX_LINES} lines or fewer, imports aside, and a long on
   assert.deepEqual(grew, [], 'longFiles: these grew. Split them instead')
 })
 
-test('every core/, runtime/, hub/ and plugin/ file is in the CONTRIBUTING.md code map', () => {
+test('every core/, runtime/, runtime/tools/, hub/ and plugin/ file is in the CONTRIBUTING.md code map', () => {
   const map = readFileSync(`${root}/CONTRIBUTING.md`, 'utf8')
   check('unmapped', [...inDir('core'), ...inDir('runtime')].filter(f => !map.includes(`\`${basename(f)}\``)), DEBT.unmapped)
-  assert.deepEqual([...inDir('hub'), ...inDir('plugin')].filter(f => !map.includes(`\`${f}\``)), [], 'add a row for each to the code map')
+  assert.deepEqual([...inDir('hub'), ...inDir('plugin'), ...inDir('runtime/tools')].filter(f => !map.includes(`\`${f}\``)), [], 'add a row for each to the code map')
 })
 
 test('a core/ export is used outside its file: by another source file, or by its own file and a test', () => {
