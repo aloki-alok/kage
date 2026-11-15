@@ -6,10 +6,9 @@
 // Still here: thread trust (noteTrust), how each connector shows a failure (failed), the daily
 // "still waiting" note, the self-restart into a newer build, and the auto-update that pulls one.
 // plugin/server.ts is the other end for tmux panes only: the Kage channel inside each pane's Claude Code.
-import { execFile, execFileSync, spawn, type ChildProcess } from 'node:child_process'
-import { canPushToKage } from '../runtime/repo-access.ts'
+import { execFileSync, spawn, type ChildProcess } from 'node:child_process'
 import { randomUUID } from 'node:crypto'
-import { existsSync, mkdirSync, readFileSync, renameSync, rmSync, statSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { dirname } from 'node:path'
 import { load } from './config.ts'
@@ -31,9 +30,7 @@ import { protectConfig } from '../runtime/path-guards.ts'
 import { limitLine, pauseLine, stopLine } from '../core/board.ts'
 import { placeFor, sessionKey, type Conversation, type Lane } from '../core/conversations.ts'
 import { mayStop, senderOf } from '../core/gate.ts'
-import { dailyDue, grantsLine, openWaiting, staleWaiting } from '../core/ledgers.ts'
-import { dreamDue, dreamTask, threadsSince } from '../core/dream.ts'
-import { retro, retroDue } from '../core/retro.ts'
+import { openWaiting } from '../core/ledgers.ts'
 import { Dispatcher, mixRunners } from '../core/sessions.ts'
 import { readSettings, setKey, sweepImported } from '../runtime/config-files.ts'
 import { configWatcher } from '../runtime/config-watch.ts'
@@ -43,7 +40,6 @@ import type { ToSession } from '../runtime/protocol.ts'
 import { postAsKage, sessionTools } from '../runtime/kage-tools.ts'
 import { scheduler } from '../runtime/scheduler.ts'
 import { runJobs } from '../runtime/jobs.ts'
-import { snapshotMemory } from '../runtime/memory-snapshot.ts'
 import { sdkSessions } from '../runtime/sdk-sessions.ts'
 import { answerDeferred, deferredApprovals } from '../runtime/deferred-approvals.ts'
 import { limitPause } from '../runtime/limit-pause.ts'
@@ -56,11 +52,8 @@ import { openStore, type Inbox } from '../runtime/store.ts'
 import { costRecorder, openLedgers, runEvents } from '../runtime/ledger.ts'
 import { EVENT_DAYS } from '../core/events.ts'
 import { claudeProject, tmuxPanes } from '../runtime/tmux-panes.ts'
-import { codeStamp } from '../runtime/code-stamp.ts'
-import { clearUpdatedFrom, markUpdatedFrom, pullMain, updatedNote, version } from '../runtime/auto-update.ts'
-import { releaseIfSoaked } from '../runtime/release.ts'
+import { clearUpdatedFrom, updatedNote } from '../runtime/auto-update.ts'
 import { kageletMemory } from '../runtime/kagelet-memory.ts'
-import { dreamInput, dreamsDue, kageletDreamTask } from '../core/kagelet-memory.ts'
 import { costCap } from '../runtime/kagelet-cost-cap.ts'
 import { kageletsDir, readKagelets } from '../runtime/kagelet-files.ts'
 import { kageletManager, readCommand } from '../runtime/kagelet-manager.ts'
@@ -70,7 +63,10 @@ import { syncKagelets } from '../runtime/kagelet-sync.ts'
 import { budgetLeft, COST_FLAG, costFlags, kageletRows } from '../core/kagelets.ts'
 import { chainCap, dailyCap, totalCap } from '../core/kagelet-view.ts'
 import { hubLock } from '../runtime/hub-lock.ts'
-import { npmCi, packagesStale, rotate } from '../runtime/hub-log.ts'
+import { rotate } from '../runtime/hub-log.ts'
+import { hubUpdates } from './updates.ts'
+import { ownerDigests } from './owner-digests.ts'
+import { dreams } from './dreams.ts'
 import { closedThreads } from '../runtime/closed-threads.ts'
 import { checkScopes } from '../runtime/slack-scopes.ts'
 import { scopeDm } from '../core/slack-scopes.ts'
@@ -401,7 +397,6 @@ else if (existsSync(CRONS)) {
   }
 }
 
-const readFile = (f: string) => { try { return readFileSync(f, 'utf8') } catch { return '' } }
 function status(): string {
   const s = d.status(Date.now())
   const min = (ms: number) => `${Math.round(ms / 60_000)} min`
@@ -419,81 +414,6 @@ function status(): string {
   ].join('\n')
 }
 
-// Once a day from 05:00 UTC, the owner gets the questions that have waited on them for a day or more.
-const DAILY = `${DIR}/daily-sent`
-async function dailyNote(now: number) {
-  const today = dailyDue(now, readFile(DAILY).trim() || undefined)
-  if (!today) return
-  const stale = staleWaiting(ledgers.text('waiting'), now, 24 * 3600_000)
-  // The day before this note's 05:00 UTC, so a retried note neither skips nor repeats a grant.
-  const at = Date.parse(`${today}T05:00:00Z`)
-  const noCard = grantsLine(ledgers.text('grants'), at - 24 * 3600_000, at)
-  const parts = [...stale.length ? [[`*Still waiting on you (${stale.length})*`,
-    ...stale.map(i => `• ${i.link ? `<${i.link}|${i.what}>` : i.what} (since ${i.when.slice(0, 10)})`)].join('\n')] : [], ...noCard ? [noCard] : []]
-  const sent = !parts.length || await slack.notifyOwner(parts.join('\n\n'))
-  // Marked only once the note went out (or there was nothing to say), so a failed post retries.
-  if (sent) writeFileSync(DAILY, today, { mode: 0o600 })
-}
-// Monday morning, the owner gets the weekly retro: what Kage's own ledgers say to change (core/retro.ts).
-const RETRO = `${DIR}/retro-sent`
-async function weeklyRetro(now: number) {
-  const last = Number(readFile(RETRO)) || undefined
-  if (!retroDue(now, last)) return
-  const lines = retro({ schedules: store.schedules(), placeOf, runs: ledgers.text('runs'), posted: ledgers.text('posted'), costs: ledgers.text('costs'), costTracked: !!sdk, now })
-  const sent = !lines.length || await slack.notifyOwner(['*Weekly retro*, from what Kage did this week.', ...lines].join('\n'))
-  if (sent) writeFileSync(RETRO, String(now), { mode: 0o600 })
-}
-// Every night in the small hours, while every session is quiet, Kage learns from the day's threads and
-// tidies its own memory (core/dream.ts). A side lane of the bot DM, so the DM's own conversation is
-// untouched. The hub snapshots the memory first, so `kage dream undo` restores it whatever the dream did.
-const DREAMT = `${DIR}/dream-sent`
-// Asked once: push access to the Kage repo is what makes this the repo owner's hub (runtime/repo-access.ts).
-const OWNS_REPO = canPushToKage(args => new Promise((ok, no) => execFile('gh', args, { timeout: 15_000 }, (e, out) => e ? no(e) : ok(out))))
-async function dream(now: number) {
-  const last = Number(readFile(DREAMT).trim()) || undefined
-  if (limits.paused() || !dreamDue(now, last, d.quietEverywhere(now))) return   // a dream in the pause would only hit the limit
-  const snap = snapshotMemory(MEM.own, now)
-  // At most a day back, so a Mac that slept through a few nights is not handed a week of threads.
-  const since = Math.max(last ?? 0, now - 24 * 3600_000)
-  const file = (id: string) => `${PROJECT}/${id}.jsonl`
-  const threads = threadsSince(store.sessions(), id => { try { return statSync(file(id)).mtimeMs } catch { return undefined } }, since)
-    .map(t => ({ place: placeOf(t.key), file: file(t.id) }))
-  const c: Conversation = { connector: 'slack', chat: slack.ids.botDm, kind: 'dm', agentDm: true }
-  const task: Task = {
-    type: 'task', fromOwner: true, content: dreamTask(MEM, threads, new Date(since).toISOString(), { dir: `${CODE}/skills`, pr: await OWNS_REPO }),
-    meta: { channel: slack.ids.botDm, thread_ts: '', place: `DM with ${Title} (dream)`, permalink: '' },
-    origin: { channel: slack.ids.botDm, ts: '' },
-    scheduled: true,
-  }
-  log('dream starts, memory saved to', snap)
-  if (deliver(c, task, task.meta.place, 'side-dream') !== 'failed') writeFileSync(DREAMT, String(now), { mode: 0o600 })
-}
-// Each night a kagelet that ran gets its own dream (#98): a lane with no tool but propose_memory, which reads its notes,
-// its events and its reports, and proposes edits. Nothing applies: Kage reviews each one (review_kagelet_memory).
-const SCOPES_TOLD = 'slack-scopes-told'
-const KDREAMT = 'kagelet-dream-last'
-function kageletDreams(now: number) {
-  if (!sdk || limits.paused()) return
-  const rows = kageletRows(readKagelets(KAGELETS), { runs: ledgers.text('runs'), costs: '', now })
-  const last = new Map(Object.entries((store.load(KDREAMT) ?? {}) as Record<string, number>))
-  for (const name of dreamsDue(rows, new Map(rows.flatMap(r => r.lastRun ? [[r.name, r.lastRun] as const] : [])), last, now, d.quietEverywhere(now))) {
-    const lane = rows.find(r => r.name === name)!.key!
-    const conv = store.conversation(lane)
-    if (!conv) continue
-    const since = new Date(Math.max(last.get(name) ?? 0, now - 24 * 3600_000)).toISOString()
-    // UTC days: today's and yesterday's rows cover at most the 24 hours back.
-    const days = [new Date(now - 86_400_000), new Date(now)].flatMap(t => ledgers.events(t.toISOString().slice(0, 10)))
-    const input = dreamInput(name, since, days, ledgers.text('reports'))
-    const key = lane.replace('#side-kagelet-', '#side-kdream-')
-    store.seen(key, conv.conversation, `${name} (dream)`, now)
-    const { chat, thread } = conv.conversation
-    const task: Task = { type: 'task', fromOwner: false, scheduled: true, content: kageletDreamTask(name, kmem.notes(name), input.events, input.reports, since),
-      meta: { channel: chat, thread_ts: thread ?? '', place: `${name} (dream)`, permalink: '' }, origin: { channel: chat, ts: '' } }
-    log(`kagelet ${name} dreams`)
-    if (toSession(key, task) !== 'failed') store.save(KDREAMT, { ...Object.fromEntries(last), [name]: now })
-    return   // one a tick: its session is not quiet now, and the next tick picks the next kagelet
-  }
-}
 // GitHub is on when githubSecret and connectors.github.login are set: a webhook through a tunnel.
 const github = secrets.githubSecret && conn.github?.login ? connectGithub({
   saved: store, secret: secrets.githubSecret, login: conn.github.login, port: conn.github.port || 8789, botDm: slack.ids.botDm,
@@ -573,52 +493,11 @@ function failed(m: ToSession) {
 // Compared to the boot stamp, not the clock, so a file with a future time cannot restart the hub over and over.
 // Not in a usage-limit pause: the scheduled runs it owes live in memory (runtime/limit-pause.ts), and a hub
 // that held only those would start unpaused and run into the limit again.
-const BOOT_CODE = codeStamp(CODE)
-// The version of the code this hub runs, read once: kage status and kage doctor show it from this file.
-const VERSION = version(CODE)
-writeFileSync(`${DIR}/version`, `${VERSION}\n`, { mode: 0o600 })
-let configRestart = false   // set by the settings watcher below: restart once every session is quiet
-// Each boot with its commit: the auto-release soak runs from the first boot on one commit (core/auto-update.ts soakRuns).
-ledgers.add('boots', [VERSION.split(' ')[0]!])
-let npmFailedFor = 0   // the code stamp whose npm ci failed: not tried again until the code moves
-function selfUpdate(now: number) {
-  const code = codeStamp(CODE)
-  const newCode = code && code !== BOOT_CODE && now - code > 10_000
-  if ((newCode || configRestart) && d.quietEverywhere(now) && !limits.paused(now)) {
-    // New code may need new packages: npm stamps node_modules/.package-lock.json on each install.
-    if (newCode && packagesStale(CODE)) {
-      if (npmFailedFor === code) return
-      try { npmCi(CODE) } catch {
-        npmFailedFor = code
-        log('npm ci failed for the newer code, so the hub stays on the code it runs. Run npm ci in', CODE)
-        void slack.notifyOwner(`Kage pulled new code, but \`npm ci\` failed, so it stays on the code it runs. Run \`npm ci\` in ${CODE}, then \`kage restart\`.`)
-        return
-      }
-    }
-    log(newCode ? 'newer code is in place and every session is quiet: restarting into it' : 'settings changed and every session is quiet: restarting to apply them')
-    process.exit(75)
-  }
-}
-
-// Auto-update moves a clean main checkout to origin's stable tag (core/auto-update.ts); selfUpdate above then restarts into it.
-// ponytail: no signature check yet (#58), so a bad move of the stable tag reaches this install within 6 hours.
-async function autoUpdate() {
-  const r = await pullMain(CODE)
-  if (r === 'pulled') { markUpdatedFrom(DIR, VERSION); log('auto-update pulled the stable tag: the hub restarts into it once every session is quiet') }
-  else if (r !== 'current') log(`auto-update did nothing: ${r.skip}`)
-}
-
-// The owner's hub makes the release that other installs follow (ADR 0013). A skip logs one line and DMs nothing.
-// Hourly, because the job clock restarts with the hub: a daily period would never fire on a hub that restarts daily.
-// A line about the next release candidate and when its gate opens goes out every hour, so kage logs answers "when is the next release?". Other skips repeat once.
-let lastSkip = ''
-async function autoRelease(now: number) {
-  const r = await releaseIfSoaked(CODE, DIR, ledgers.text('boots'), now).catch(e => ({ skip: `failed: ${e}`, broke: true, candidate: undefined }))
-  if ('broke' in r) void slack.notifyOwner(`Kage's release stopped part way: ${r.skip}.`)
-  if ('skip' in r) { if (r.candidate || r.skip !== lastSkip) log(`auto-release did nothing: ${r.skip}`); lastSkip = r.skip; return }
-  log(`auto-release made v${r.version}`)
-  void slack.notifyOwner(`Released Kage v${r.version}. <${r.url}|Release notes>`)
-}
+const digests = ownerDigests({ dir: DIR, ledgers, store, placeOf, costTracked: !!sdk, notify: t => slack.notifyOwner(t) })
+const dreaming = dreams({ dir: DIR, code: CODE, title: Title, botDm: slack.ids.botDm, mem: MEM, project: PROJECT, kagelets: KAGELETS, kmem, hasSdk: !!sdk,
+  store, ledgers, placeOf, paused: () => !!limits.paused(), quiet: now => d.quietEverywhere(now), deliver, toSession })
+const updates = hubUpdates({ code: CODE, dir: DIR, ledgers, quiet: now => d.quietEverywhere(now) && !limits.paused(now), notify: t => slack.notifyOwner(t) })
+const VERSION = updates.VERSION
 
 // Every timed job of the hub, on one clock (runtime/jobs.ts).
 runJobs([
@@ -626,16 +505,16 @@ runJobs([
   { name: 'schedules', every: 20_000, run: now => { if (!limits.draining(now)) schedules.tick(now) } },
   { name: 'sweep', every: 60_000, run: now => d.sweep(now).forEach(failed) },
   { name: 'limit pause', every: 20_000, run: now => limits.tick(now) },
-  { name: 'daily note', every: 10 * 60_000, run: dailyNote },
-  { name: 'self-update', every: 60_000, run: selfUpdate },
-  ...config.autoUpdate === false ? [] : [{ name: 'auto-update', every: 6 * 3_600_000, run: autoUpdate }],
-  { name: 'auto-release', every: 3_600_000, run: autoRelease },
+  { name: 'daily note', every: 10 * 60_000, run: digests.dailyNote },
+  { name: 'self-update', every: 60_000, run: updates.selfUpdate },
+  ...config.autoUpdate === false ? [] : [{ name: 'auto-update', every: 6 * 3_600_000, run: updates.autoUpdate }],
+  { name: 'auto-release', every: 3_600_000, run: updates.autoRelease },
   // hub.ts rotates the log at each start; a hub that runs for weeks rotates it here.
   { name: 'hub-log', every: 3_600_000, run: () => rotate(`${DIR}/hub.log`) },
   { name: 'kagelets', every: 60_000, run: kagelets },
-  { name: 'dream', every: 10 * 60_000, run: dream },
-  { name: 'kagelet dreams', every: 10 * 60_000, run: kageletDreams },
-  { name: 'retro', every: 10 * 60_000, run: weeklyRetro },
+  { name: 'dream', every: 10 * 60_000, run: dreaming.dream },
+  { name: 'kagelet dreams', every: 10 * 60_000, run: dreaming.kageletDreams },
+  { name: 'retro', every: 10 * 60_000, run: digests.weeklyRetro },
   // A kagelet message waits until its target is idle, then starts a run of its own (runtime/kagelets.ts).
   { name: 'kagelet messages', every: 20_000, run: now => routes.pump(now) },
   { name: 'events', every: 3_600_000, run: now => ledgers.pruneEvents(new Date(now - EVENT_DAYS * 86_400_000).toISOString()) },
@@ -690,7 +569,7 @@ function relay(action: string, key?: string): { ok: true; keys: string[] } | { r
 const watcher = configWatcher({
   envFile: ENV_FILE, boot: { config, secrets }, log, apply: slack.allow, tell: text => void slack.notifyOwner(text),
   event: (kind, keys) => ledgers.event({ kind, who: 'config', trace: '', detail: keys.join(', ') }),
-  restartWanted: yes => { configRestart = yes },
+  restartWanted: yes => updates.restartWanted(yes),
 })
 const reload = watcher.check
 listenForSessions(`${DIR}/router.sock`, d, { ...replies, failed, schedules, tell, relay, reload, paused: () => limits.paused(), limitCounts: () => limits.counts,
@@ -712,6 +591,7 @@ if (unplaced && (existsSync(told) ? readFileSync(told, 'utf8') : '') !== unplace
     .then(sent => { if (sent) writeFileSync(told, unplaced) })
 }
 // An app keeps the scopes of the manifest it was made from. The owner hears each distinct missing set once (kage slack upgrade fixes it).
+const SCOPES_TOLD = 'slack-scopes-told'
 void checkScopes({ user: secrets.slack?.user, bot: secrets.slack?.bot }).then(m => {
   const { send, told } = scopeDm(m, store.load(SCOPES_TOLD) as string | undefined)
   if (send) void slack.notifyOwner(send).then(sent => { if (sent) store.save(SCOPES_TOLD, told) })

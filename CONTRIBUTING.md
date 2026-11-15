@@ -50,6 +50,9 @@ Write logs to stderr only. In a tmux pane, stdout carries the channel protocol, 
 | `hub.ts` | The hub's entry, run by the service: the log file's size, the boot count and the crash-loop DM, then `hub/router.ts`. Node modules only, so a bad pull is still caught. It stays at the root because every install's service runs this path. `start.sh` only forwards old login items to `kage start`, until 2026-12-15. |
 | `hub/router.ts` | The hub, loaded by `hub.ts`: wires connectors, the dispatcher, the runner and the store. Its header names the few rules still in it. |
 | `hub/config.ts` | Reads the settings files and makes the Slack clients. Only `hub/router.ts`, `plugin/server.ts` and `cli/` import it; everything else logs through `runtime/log.ts`. |
+| `hub/updates.ts` | The hub's own code: the version it runs, the restart into newer code or changed settings, the auto-update to origin's stable tag, and the release the owner's hub makes. |
+| `hub/owner-digests.ts` | What the owner gets on a clock: the daily note (questions waiting a day, grants with no card) and the Monday retro. |
+| `hub/dreams.ts` | The nightly dreams: Kage's own over the day's threads, and each kagelet's over its runs. |
 | `plugin/server.ts` | For tmux panes only: serves Kage's tools over MCP inside each pane and relays approvals. |
 | `plugin/private-data-guard.ts` | The plugin hook (`hooks/hooks.json`) that runs the rules in `core/guards.ts` and `runtime/path-guards.ts` inside tmux panes. The SDK runner applies the same rules in process. |
 | `core/` | Pure rules. See the table below. |
