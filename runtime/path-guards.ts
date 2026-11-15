@@ -1,6 +1,6 @@
 // Hook rules that compare real paths on disk: the config folder that holds the tokens, and the owner's memory.
 // They follow links, so they read the filesystem and live here, not in core/ (ADR 0001).
-import { readdirSync, realpathSync } from 'node:fs'
+import { existsSync, readdirSync, realpathSync } from 'node:fs'
 import { basename, dirname, join, posix, resolve } from 'node:path'
 
 // The config folder holds the tokens (secrets.json, and an env file until its import is deleted). No session may read
@@ -69,6 +69,12 @@ export function protectConfig(envFile: string, codeDir: string, home = process.e
       },
     },
   }
+}
+// Go tools (gh, wrangler's helpers, terraform) verify TLS on macOS through trustd, which the shell sandbox blocks
+// (x509: OSStatus -26276). With SSL_CERT_FILE set, Go reads the system PEM instead, so the sandbox stays whole (#226).
+export function certFileEnv(platform = process.platform, env: NodeJS.ProcessEnv = process.env, exists = existsSync): Record<string, string> {
+  const file = '/etc/ssl/cert.pem'
+  return platform === 'darwin' && !env.SSL_CERT_FILE && exists(file) ? { SSL_CERT_FILE: file } : {}
 }
 const CLOSED_WRITE = `Settings and token files are closed to every session: only the owner's own terminal changes them (kage set). Say what you wanted changed, and the owner runs it.`
 // Kage keeps its own memory; in the owner's it may write only notes about people (user_*.md) and
