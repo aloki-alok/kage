@@ -104,7 +104,7 @@ export async function connectSlack(o: { dir: string; appToken: string; userToken
     const msgs = (res?.messages ?? []).filter(x => x.ts !== m.ts)
     if (!m.thread_ts) msgs.reverse()
     const lines = msgs.map(x =>
-      quoteMessage({ user: x.user, ts: x.ts, text: (x.text ?? '') + filesTag(x), client_msg_id: (x as { client_msg_id?: string }).client_msg_id }, ids.owner, { bot: ids.bot, title: o.title }))
+      quoteMessage({ user: x.user, ts: x.ts, text: (x.text ?? '') + filesTag(x), client_msg_id: (x as { client_msg_id?: string }).client_msg_id, blocks: (x as { blocks?: { block_id?: string }[] }).blocks }, ids.owner, { bot: ids.bot, title: o.title }))
     // Names help Claude read the thread; ids are what it trusts (anyone can set a display name).
     // Senders and people mentioned as <@U...>, so Claude can name them in a reply.
     const mentioned = msgs.flatMap(x => [...(x.text ?? '').matchAll(/<@([UW][A-Z0-9]+)>/g)].map(r => r[1]))
@@ -132,7 +132,7 @@ export async function connectSlack(o: { dir: string; appToken: string; userToken
       if (t.reason !== 'not-tagged') log(`dropped ${m.channel}:${m.thread_ts ?? m.ts} from ${m.user ?? 'no user'}${m.app_id ? ` (app ${m.app_id})` : ''}: ${t.reason}, ${DROPS[t.reason]}`)
       // The owner answering in person needs no watch to run as well.
       if (typedByPerson(m) && m.channel !== ids.botDm && m.user !== ids.owner) {
-        const quoted = quoteMessage({ user: m.user, ts: m.ts, text: m.text, client_msg_id: m.client_msg_id }, ids.owner, { bot: ids.bot, title: o.title })
+        const quoted = quoteMessage({ user: m.user, ts: m.ts, text: m.text, client_msg_id: m.client_msg_id, blocks: (m as { blocks?: { block_id?: string }[] }).blocks }, ids.owner, { bot: ids.bot, title: o.title })
         o.hub.heard({ chat: m.channel, ...(m.thread_ts && { thread: m.thread_ts }), quoted })
       }
       // The owner's untagged reply in a thread: a kagelet working there reads it on its next run (runtime/kagelets.ts).

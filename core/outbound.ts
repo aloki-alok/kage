@@ -103,3 +103,20 @@ export function guardVerdict(out: string): { send: boolean; reason: string } {
   if (/^SEND\.?$/i.test(line.trim())) return { send: true, reason: '' }
   return { send: false, reason: line.replace(/^HOLD:?\s*/i, '') || 'no verdict' }
 }
+
+// How a post from the owner's account shows it is Kage's: a footer under the text, never a name typed into it.
+// The context block's id is how the gate knows the post later (core/gate.ts quoteMessage); the plain text, which
+// notifications and other agents read, carries the same footer as an italic line.
+export const FOOTER_ID = 'kage-footer'
+export type Signer = { asked?: string; from?: string }
+export const kageFooter = (title: string, s: Signer = {}) =>
+  `🥷 ${title}${s.asked ? ` · asked by ${s.asked}` : s.from ? ` · from ${s.from}` : ''}`
+
+// Slack caps a section at 3000 characters, so a longer part becomes several sections.
+export function ownerPost(title: string, text: string, s: Signer = {}) {
+  const foot = kageFooter(title, s)
+  const blocks: Record<string, unknown>[] = splitForSlack(text, 3000).map(t => ({ type: 'section', text: { type: 'mrkdwn', text: t } }))
+  blocks.push({ type: 'context', block_id: FOOTER_ID, elements: [{ type: 'mrkdwn', text: foot }] })
+  return { text: `${text}\n_${foot}_`, blocks }
+}
+

@@ -14,7 +14,7 @@ import { filesFolderName } from '../core/conversations.ts'
 import { plainName, teammateOf } from '../core/gate.ts'
 import { openWaiting, postedBy } from '../core/ledgers.ts'
 import type { Ledgers } from './ledger.ts'
-import { layoutRefusal, safeReply, secretRefusal, splitForSlack } from '../core/outbound.ts'
+import { layoutRefusal, ownerPost, safeReply, secretRefusal, splitForSlack, type Signer } from '../core/outbound.ts'
 import type { Task } from '../core/task.ts'
 import type { AskOwner, Manage } from './kagelet-manager.ts'
 import type { kageletMemory } from './kagelet-memory.ts'
@@ -33,10 +33,10 @@ type SessionOptions = Parameters<typeof sessionTools>[0]
 export type ToolContext = {
   o: SessionOptions; Title: string; bot: WebClient; user: WebClient; s: z.ZodString
   taskChannels: Set<string>; ownerTask: Map<string, boolean>; unanswered: Map<string, { channel: string; ts: string }[]>
-  askers: Map<string, { id: string; name: string } | undefined>; agents: Map<string, Task['agent']>; sentForPeople: Map<string, string>
+  askers: Map<string, { id: string; name: string } | undefined>; agents: Map<string, Task['agent']>; sentForPeople: Map<string, Signer>
   dmThread: Map<string, string>; links: Map<string, string>; names: Record<string, string>
   react: (channel: string, ts: string, name: string) => void
-  post: (key: string, channel: string, thread_ts: string | undefined, text: string, to?: { tag?: string; noReply?: boolean }) => Promise<{ via: string; where: string }>
+  post: (key: string, channel: string, thread_ts: string | undefined, text: string, to?: { tag?: string; noReply?: boolean }, ack?: boolean) => Promise<{ via: string; where: string }>
   change: (a: { channel: string; ts: string; text?: string; wide?: boolean }, ping: boolean) => Promise<Result>
   nameMentions: (text: string) => Promise<void>
   append: Ledgers['add']; ledger: Ledgers['text']; filesOf: (channel: string, thread_ts: string) => string
@@ -45,15 +45,21 @@ export type ToolContext = {
 }
 
 // One message as Kage, the way a reply goes. The hub's own lines (the usage-limit notice) use it too.
-export async function postAsKage(o: { title: string; bot: WebClient; user: WebClient }, channel: string, thread_ts: string | undefined, text: string): Promise<{ ts: string; by: 'bot' | 'owner' }> {
+// asOwner false: where the bot is not a member, post nothing (undefined) rather than speak from the owner's account.
+type Posted = { ts: string; by: 'bot' | 'owner' }
+export async function postAsKage(o: { title: string; bot: WebClient; user: WebClient }, channel: string, thread_ts: string | undefined, text: string, signer?: Signer): Promise<Posted>
+export async function postAsKage(o: { title: string; bot: WebClient; user: WebClient }, channel: string, thread_ts: string | undefined, text: string, signer: Signer, asOwner: false): Promise<Posted | undefined>
+export async function postAsKage(o: { title: string; bot: WebClient; user: WebClient }, channel: string, thread_ts: string | undefined, text: string,
+  signer: Signer = {}, asOwner = true): Promise<Posted | undefined> {
   try {
     const r = await o.bot.chat.postMessage({ channel, thread_ts, text, unfurl_links: false })
     return { ts: r.ts!, by: 'bot' }
   } catch (e: any) {
     if (!['not_in_channel', 'channel_not_found'].includes(e?.data?.error)) throw e
-    // The bot is not a member here (a DM, a group DM, a private channel): post as the owner, marked with the name.
+    if (!asOwner) return
+    // The bot is not a member here (a DM, a group DM, a private channel): post as the owner, with Kage's footer.
     // These posts carry no client_msg_id, so the gate never reads them back as tasks.
-    const r = await o.user.chat.postMessage({ channel, thread_ts, text: `*${o.title}:* ${text}`, unfurl_links: false })
+    const r = await o.user.chat.postMessage({ channel, thread_ts, ...ownerPost(o.title, text, signer), unfurl_links: false })
     return { ts: r.ts!, by: 'owner' }
   }
 }
@@ -116,7 +122,9 @@ export function sessionTools(o: {
   // channel:ts -> the tag of each message_people post from this session ('' on the owner's task).
   // Only this session may change them, and an edit keeps the tag: the posted ledger marks them 'people',
   // which postedBy never matches, so other sessions are refused.
-  const sentForPeople = new Map<string, string>()
+  const sentForPeople = new Map<string, Signer>()
+  // channel:ts -> the footer of each reply this session posted from the owner's account, so an edit keeps it.
+  const footers = new Map<string, Signer>()
   // channel:thread_ts -> the DM thread the owner wrote the latest task in, so a private reply answers there, not as a new DM message.
   const dmThread = new Map<string, string>()
   // channel:thread_ts -> the thread's Slack link, for the ledgers.
@@ -138,14 +146,18 @@ export function sessionTools(o: {
 
   // key: the session that answered, so the retro credits a private reply to the thread it answers.
   // to: an agent this post is for. Every part tags it, and a post that needs no answer says so at its end (core/agents.ts).
-  async function post(key: string, channel: string, thread_ts: string | undefined, text: string, to: { tag?: string; noReply?: boolean } = {}) {
+  // ack: an "On it" line, which the 🥷 pickup reaction already says, so it never goes out from the owner's account.
+  async function post(key: string, channel: string, thread_ts: string | undefined, text: string, to: { tag?: string; noReply?: boolean } = {}, ack = false) {
     let parts = splitForSlack(safeReply(text).trim() || '(empty reply)')
     if (to.noReply) parts[parts.length - 1] += `\n${NO_REPLY}`
     if (to.tag) parts = addressed(parts, to.tag)
+    const asked = askers.get(key)?.name
     let via = Title, sent: string[] = []
     for (const part of parts) {
-      const r = await postAsKage(o, channel, thread_ts, part)
+      const r = ack ? await postAsKage(o, channel, thread_ts, part, { asked }, false) : await postAsKage(o, channel, thread_ts, part, { asked })
+      if (!r) return { via: 'nobody: not posted, because the pickup reaction already says it from the owner\'s account', where: `channel ${channel}` }
       append('posted', [channel, r.ts, r.by, key])
+      if (r.by === 'owner') footers.set(`${channel}:${r.ts}`, { asked })
       sent.push(r.ts)
       if (r.by === 'owner') via = `your account (${Title} is not in this conversation)`
     }
@@ -164,9 +176,9 @@ export function sessionTools(o: {
         sentForPeople.delete(`${a.channel}:${a.ts}`)
         return { text: 'deleted' }
       }
-      const no = secretRefusal(a.text, { fromOwner: !tag }) ?? layoutRefusal(a.text)
+      const no = secretRefusal(a.text, { fromOwner: !tag.asked && !tag.from }) ?? layoutRefusal(a.text)
       if (no) return { isError: true, text: no }
-      await user.chat.update({ channel: a.channel, ts: a.ts, text: `*${Title}:* ${safeReply(a.text).trim()}${tag}` })
+      await user.chat.update({ channel: a.channel, ts: a.ts, ...ownerPost(Title, safeReply(a.text).trim(), tag) })
       return { text: 'edited' }
     }
     if (a.channel !== o.botDm() && !taskChannels.has(a.channel)) return { isError: true, text: `refused: no task in this session came from ${a.channel}` }
@@ -183,7 +195,7 @@ export function sessionTools(o: {
     const layout = layoutRefusal(a.text, a)
     if (layout) return { isError: true, text: layout }
     const text = safeReply(a.text).trim()
-    await client.chat.update({ channel: a.channel, ts: a.ts, text: by === 'owner' ? `*${Title}:* ${text}` : text })
+    await client.chat.update({ channel: a.channel, ts: a.ts, ...by === 'owner' ? ownerPost(Title, text, footers.get(`${a.channel}:${a.ts}`)) : { text } })
     return { text: 'edited' }
   }
 

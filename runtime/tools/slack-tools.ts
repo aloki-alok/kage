@@ -4,7 +4,7 @@ import { readFileSync, realpathSync, statSync } from 'node:fs'
 import { basename, extname } from 'node:path'
 import { z } from 'zod'
 import { openWaiting } from '../../core/ledgers.ts'
-import { findSecret, layoutRefusal, safeReply, secretRefusal, splitForSlack } from '../../core/outbound.ts'
+import { findSecret, layoutRefusal, ownerPost, safeReply, secretRefusal, splitForSlack } from '../../core/outbound.ts'
 import type { KageTool, ToolContext } from '../kage-tools.ts'
 
 // The reaction each kind of reply leaves on the task message. An ack leaves none: 🥷 already says "picked up".
@@ -48,7 +48,7 @@ export function slackTools(c: ToolContext): KageTool[] {
       }
       const layout = layoutRefusal(a.text, a)
       if (layout) return { isError: true, text: layout }
-      const { via, where: at } = a.private ? await post(key, o.botDm(), dmThread.get(key), a.text) : await post(key, a.channel, a.thread_ts, a.text, a.tag_agent ? { tag: agents.get(key)?.tag, noReply: a.no_reply_needed } : {})
+      const { via, where: at } = a.private ? await post(key, o.botDm(), dmThread.get(key), a.text) : await post(key, a.channel, a.thread_ts, a.text, a.tag_agent ? { tag: agents.get(key)?.tag, noReply: a.no_reply_needed } : {}, a.mark === 'ack')
       // A question keeps the task open, so its final reply still marks the task.
       const emoji = MARKS[a.mark ?? 'done']
       if (emoji) {
@@ -65,13 +65,13 @@ export function slackTools(c: ToolContext): KageTool[] {
     run: args => change(args as { channel: string; ts: string; text: string; wide?: boolean }, pingIn(String(args.channel))),
   }, {
     name: 'message_people',
-    description: `Tell people something in Slack: posts in the group DM of the owner and these people, from the owner's account (${Title} cannot join a group DM), starting with "${Title}:" so people see it is ${Title}. It ends with "asked by <name>" for the person it is from: the asker on a teammate's task, or from on the owner's, and that person is added to the group. Returns the link: share it in the task thread with reply.`,
+    description: `Tell people something in Slack: posts in the group DM of the owner and these people, from the owner's account (${Title} cannot join a group DM), with ${Title}'s footer under it so people see it is ${Title}. The footer names who asked on a teammate's task, or whom the news is from when you pass from on the owner's, and that person is added to the group. Returns the link: share it in the task thread with reply.`,
     shape: {
       channel: s.describe('channel attribute from the task tag'),
       thread_ts: s.describe('thread_ts attribute from the task tag'),
       users: z.array(s).describe('Slack user ids (U...) of the people to tell, at most 8; the owner is always in the group'),
       from: s.optional().describe('Slack user id of the person the message is from, when the owner passes on someone else\'s news. Ignored on a teammate\'s task: it is always the asker.'),
-      text: s.describe('the message, complete on its own: what and when. The tool adds the sign-off, so do not write "From X:"'),
+      text: s.describe('the message, complete on its own: what and when. The tool adds the footer, so do not write "From X:" or sign it'),
     },
     async run(args) {
       const a = args as { channel: string; thread_ts: string; users: string[]; text: string; from?: string }
@@ -92,9 +92,7 @@ export function slackTools(c: ToolContext): KageTool[] {
       if (refusal) return { isError: true, text: refusal }
       const layout = layoutRefusal(a.text)
       if (layout) return { isError: true, text: layout }
-      const tag = signer ? `\n_asked by ${signer.name}_` : ''
-      // Sent from the owner's account, so it says it is Kage, like every other post from there.
-      const text = `*${Title}:* ${safeReply(a.text).trim()}${tag}`
+      const foot = asker ? { asked: asker.name } : signer ? { from: signer.name } : {}
       let dm: string
       try {
         dm = (await user.conversations.open({ users: people.join(',') })).channel!.id!
@@ -102,9 +100,10 @@ export function slackTools(c: ToolContext): KageTool[] {
         if (e?.data?.error === 'missing_scope') return { isError: true, text: `not sent: the Slack app needs the user scopes mpim:write and im:write. Put a draft in the group DM for the owner to send instead.` }
         throw e
       }
-      const r = await user.chat.postMessage({ channel: dm, text, unfurl_links: false })
+      // Sent from the owner's account, so it carries Kage's footer like every other post from there.
+      const r = await user.chat.postMessage({ channel: dm, ...ownerPost(Title, safeReply(a.text).trim(), foot), unfurl_links: false })
       append('posted', [dm, r.ts!, 'people'])
-      sentForPeople.set(`${dm}:${r.ts}`, tag)
+      sentForPeople.set(`${dm}:${r.ts}`, foot)
       const link = await user.chat.getPermalink({ channel: dm, message_ts: r.ts! }).then(x => x.permalink ?? '').catch(() => '')
       return { text: `sent from the owner's account, marked ${Title}: ${link || dm} (channel ${dm}, ts ${r.ts}; pass these to edit_message or delete_message)` }
     },
