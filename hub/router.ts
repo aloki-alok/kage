@@ -36,7 +36,7 @@ import { runJobs } from '../runtime/jobs.ts'
 import { sdkSessions } from '../runtime/sdk-sessions.ts'
 import { answerDeferred, deferredApprovals } from '../runtime/deferred-approvals.ts'
 import { limitPause } from '../runtime/limit-pause.ts'
-import { ssmRelay } from '../runtime/ssm-relay.ts'
+import { findPlugin, ssmRelay } from '../runtime/ssm-relay.ts'
 import { keyProxy } from '../runtime/key-proxy.ts'
 import { askSocket } from '../runtime/hub-client.ts'
 import { listenForSessions, restoreHolds, routeReply } from '../runtime/session-link.ts'
@@ -94,8 +94,8 @@ const store = openStore(`${DIR}/kage.db`)
 // A card that waited outside its session (#177): the owner's answer starts a turn in that thread, which retries the call or drops it.
 const deferred = deferredApprovals(store)
 const answerCard = (id: string, behavior: 'allow' | 'deny') => answerDeferred(deferred, (key, task) => { if (toSession(key, task) === 'failed') failed(task) }, id, behavior, Date.now())
-const SSM_SOCK = `${DIR}/ssm.sock`
-const ssm = ssmRelay({ path: SSM_SOCK, trusted: key => store.relayOk(key), log })
+const SSM_SOCK = `${DIR}/ssm.sock`, SSM_SHIM = `${CODE}/cli/ssm-plugin-shim`
+const ssm = ssmRelay({ path: SSM_SOCK, plugin: findPlugin(undefined, [SSM_SHIM]), trusted: key => store.relayOk(key), log })
 const KEYS_SOCK = `${DIR}/keys.sock`
 const keys = keyProxy({ path: KEYS_SOCK, routes: config.sessionKeys ?? {}, trusted: key => store.relayOk(key), log })   // the same allow list as the SSM relay
 // What connectors keep across a restart, in the same file. The old JSON files move in once.
@@ -211,7 +211,7 @@ void (async () => {
 const tmux = tmuxPanes({
   name: NAME, envFile: ENV_FILE, claude: CLAUDE,
   settings: () => ({ autoMemoryDirectory: MEM.own, ...protectConfig(ENV_FILE, CODE) }),
-  ssm: { sock: SSM_SOCK, issue: key => ssm.issue(key), drop: key => ssm.drop(key) },
+  ssm: { sock: SSM_SOCK, shim: SSM_SHIM, issue: key => ssm.issue(key), drop: key => ssm.drop(key) },
   idOf: key => d.saved()[key],
   placeOf,
   onStart: () => store.saveSessions(d.saved()),
@@ -276,7 +276,7 @@ const sdk = sdkLib ? sdkSessions({
   ownerMemory: MEM.owner,
   envFile: ENV_FILE,
   codeDir: CODE,
-  ssm: { sock: SSM_SOCK, issue: key => ssm.issue(key), drop: key => ssm.drop(key) },
+  ssm: { sock: SSM_SOCK, shim: SSM_SHIM, issue: key => ssm.issue(key), drop: key => ssm.drop(key) },
   keys: { sock: KEYS_SOCK, issue: key => keys.issue(key), drop: key => keys.drop(key) },
   onStart: () => store.saveSessions(d.saved()),
   onResult: (key, total, resumed, limited) => {
