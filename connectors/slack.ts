@@ -8,7 +8,7 @@ import { log, logger } from '../runtime/log.ts'
 import { agentNote, loopGuard } from '../core/agents.ts'
 import { appEntry } from '../core/registry.ts'
 import { classify, DROPS, plainName, quoteMessage, taskLine, type Ids } from '../core/gate.ts'
-import { filesTag, typedByPerson, type SlackMessage } from '../core/slack-message.ts'
+import { filesTag, postText, typedByPerson, type SlackMessage } from '../core/slack-message.ts'
 import type { SlackFile } from '../core/slack-files.ts'
 import { saveFiles } from '../runtime/slack-files.ts'
 import { filesFolderName, parseSessionKey, sessionKey, slackConversation, type Conversation, type Lane } from '../core/conversations.ts'
@@ -19,6 +19,7 @@ import { startAfk } from './slack-afk.ts'
 import type { JevAfk, JevCheck, Triage } from './jev.ts'
 import { socketWatch } from '../core/socket-watch.ts'
 import type { Inbox, Saved } from '../runtime/store.ts'
+import { channelHistory, type ChannelHistory, type ChannelPost } from '../runtime/channel-watch.ts'
 
 const PICKED_UP = 'ninja'
 const WAITING = 'hourglass_flowing_sand'
@@ -35,6 +36,13 @@ export type Hub = {
   heard(m: { chat: string; thread?: string; quoted: string }): void
   // The owner wrote in a thread without a tag: notes for the kagelets working there.
   ownerWrote?(chat: string, thread: string, text: string): void
+  // Every post in a channel, bots included, tagged or not (runtime/channel-watch.ts). The hub decides which jobs it wakes.
+  channelPost?(post: ChannelPost): void
+  // The socket (re)connected: reads each watched channel's posts since its catch-up cursor, so a gap loses none.
+  // The fetch says truncated when it hit the cap, so the hub can tell the asker that posts may have been skipped.
+  channelCatchUp?(history: ChannelHistory): void
+  // The socket went down: a gap is open until the next catch-up completes.
+  channelGap?(): void
   // The posted ledger: every message Kage posted, with the thread whose task posted it (runtime/kage-tools.ts).
   posted(): string
 } & Inbox
@@ -54,7 +62,7 @@ export async function intake(m: SlackMessage, ack: () => Promise<void>, hub: Pic
   if (fresh) await hear(m, source ?? '')
 }
 
-export async function connectSlack(o: { dir: string; appToken: string; userToken: string; bot: WebClient; user: WebClient; name: string; title: string; teammates: string[]; apps: string[]; hub: Hub
+export async function connectSlack(o: { dir: string; appToken: string; userToken: string; bot: WebClient; user: WebClient; name: string; title: string; teammates: string[]; apps: string[]; hub: Hub; catchUpMax?: () => number
   // AFK mode (connectors/slack-afk.ts); absent means off.
   afk?: { memory: string; model: string; saved: Saved; call?: (reason: string) => Promise<string>; jev?: JevAfk }
   // The Jev classifier (connectors/jev.ts); absent means every listed agent's tagged post is answered.
@@ -122,7 +130,16 @@ export async function connectSlack(o: { dir: string; appToken: string; userToken
   }
 
 
+  // A channel post as a watching job reads it: the text quoted as data, like every other person's words.
+  const postOf = (m: SlackMessage): ChannelPost => ({
+    channel: m.channel, ts: m.ts, ...(m.user && { user: m.user }), ...(m.app_id && { app_id: m.app_id }), ...((m.bot_id || m.app_id) && { bot: true }), text: postText(m),
+    quoted: quoteMessage({ user: m.user, ts: m.ts, text: postText(m) + filesTag(m), client_msg_id: m.client_msg_id, blocks: (m as { blocks?: { block_id?: string }[] }).blocks }, ids.owner, { bot: ids.bot, title: o.title }),
+  })
+  const POST_SUBTYPES = new Set([undefined, 'bot_message', 'thread_broadcast', 'file_share'])
+  const isChannelPost = (m: SlackMessage) => !!m.channel && !m.channel.startsWith('D') && m.channel_type !== 'im' && m.channel_type !== 'mpim' && m.user !== ids.bot && POST_SUBTYPES.has(m.subtype)
+
   async function onMessage(m: SlackMessage) {
+    if (isChannelPost(m)) o.hub.channelPost?.(postOf(m))
     // AFK sees every message: it watches threads that mention the owner, and mutes threads the owner types in.
     afk?.heard(m)
     const thread = `${m.channel}:${m.thread_ts ?? m.ts}`
@@ -251,9 +268,13 @@ export async function connectSlack(o: { dir: string; appToken: string; userToken
   const status = (state: 'connected' | 'disconnected') => {
     try { writeFileSync(`${o.dir}/status`, `${state} ${new Date().toISOString()} pid ${process.pid} as @${o.name}\n`, { mode: 0o600 }) } catch {}
   }
-  socket.on('connected', () => { watch.connected(); status('connected'); log('slack socket connected') })
-  socket.on('disconnected', () => { watch.down(Date.now()); status('disconnected'); log('slack socket disconnected') })
-  socket.on('reconnecting', () => { watch.down(Date.now()); status('disconnected'); log('slack socket reconnecting') })
+  socket.on('connected', () => {
+    watch.connected(); status('connected'); log('slack socket connected')
+    o.hub.channelCatchUp?.(channelHistory(a => o.user.conversations.history(a), o.catchUpMax?.() ?? 1000,
+      (m, channel) => { const x = { ...(m as object), channel } as SlackMessage; return isChannelPost(x) ? [postOf(x)] : [] }))
+  })
+  socket.on('disconnected', () => { o.hub.channelGap?.(); watch.down(Date.now()); status('disconnected'); log('slack socket disconnected') })
+  socket.on('reconnecting', () => { o.hub.channelGap?.(); watch.down(Date.now()); status('disconnected'); log('slack socket reconnecting') })
   // Armed by the first connection, and one restart at a time: a second start() while another is
   // still opening leaves two sockets, which split Slack events at random.
   let armed = false, restarting = false

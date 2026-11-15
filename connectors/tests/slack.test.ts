@@ -115,3 +115,58 @@ describe('the owner\'s untagged reply in a thread is a note for its kagelets; no
     assert.equal(ownerNote(m({ client_msg_id: undefined, bot_id: 'B1' }), ids, 'not-tagged'), false)
   })
 })
+
+test('a bot post in a channel reaches channelPost, quoted, and is still dropped as untagged; a DM post does not reach it', async () => {
+  const dir = mkdtempSync(join(tmpdir(), 'kage-channel-post-'))
+  const heard: { channel: string; bot?: boolean; app_id?: string; quoted: string }[] = []
+  try {
+    const client = {
+      auth: { test: async () => ({ team_id: 'TTEST', user_id: 'UTEST1' }) },
+      conversations: { open: async () => ({ channel: { id: 'DTEST' } }), history: async () => ({ messages: [] }) },
+      users: { info: async () => ({ user: { real_name: 'Sam Test' } }) },
+      reactions: { add: async () => ({ ok: true }) },
+    }
+    const slack = await connectSlack({
+      dir, appToken: 'test', userToken: 'test', bot: client as never, user: client as never,
+      name: 'kage', title: 'Kage', teammates: [], apps: [],
+      hub: { posted: () => '', handled: () => {}, heard: () => {}, deliver: () => assert.fail('an untagged post starts no task'), channelPost: (p: (typeof heard)[number]) => void heard.push(p) } as never,
+    })
+    await slack.replay('s1', JSON.stringify({ type: 'message', subtype: 'bot_message', bot_id: 'BTEST1', app_id: 'ATEST9', channel: 'CTEST2', ts: '7.7', text: 'disk full on web-1' }))
+    await slack.replay('s2', JSON.stringify({ type: 'message', channel: 'DTEST9', channel_type: 'im', ts: '8.8', user: 'UTEST2', client_msg_id: 'x', text: 'hello' }))
+    assert.equal(heard.length, 1)
+    assert.equal(heard[0]!.channel, 'CTEST2')
+    assert.equal(heard[0]!.bot, true)
+    assert.match(heard[0]!.quoted, /^> \[other:bot 7\.7\] disk full on web-1$/)
+  } finally {
+    rmSync(dir, { recursive: true, force: true })
+  }
+})
+
+test('an alarm post with empty text still reaches channelPost with its attachment and block text, quoted', async () => {
+  const dir = mkdtempSync(join(tmpdir(), 'kage-channel-post-'))
+  const heard: { text: string; quoted: string }[] = []
+  try {
+    const client = {
+      auth: { test: async () => ({ team_id: 'TTEST', user_id: 'UTEST1' }) },
+      conversations: { open: async () => ({ channel: { id: 'DTEST' } }), history: async () => ({ messages: [] }) },
+      users: { info: async () => ({ user: { real_name: 'Sam Test' } }) },
+      reactions: { add: async () => ({ ok: true }) },
+    }
+    const slack = await connectSlack({
+      dir, appToken: 'test', userToken: 'test', bot: client as never, user: client as never,
+      name: 'kage', title: 'Kage', teammates: [], apps: [],
+      hub: { posted: () => '', handled: () => {}, heard: () => {}, deliver: () => {}, channelPost: (p: (typeof heard)[number]) => void heard.push(p) } as never,
+    })
+    await slack.replay('s1', JSON.stringify({ type: 'message', subtype: 'bot_message', bot_id: 'BTEST1', app_id: 'ATEST9', channel: 'CTEST2', ts: '7.7', text: '',
+      attachments: [{ title: 'ALARM: web-1 disk', text: 'Threshold crossed', fields: [{ title: 'Region', value: 'eu-test-1' }] }],
+      blocks: [{ type: 'section', text: { type: 'mrkdwn', text: 'block says paged' } }, { type: 'rich_text', elements: [{ type: 'rich_text_section', elements: [{ type: 'text', text: 'rich says urgent' }] }] }] }))
+    assert.equal(heard.length, 1)
+    for (const word of ['ALARM: web-1 disk', 'Threshold crossed', 'Region', 'eu-test-1', 'block says paged', 'rich says urgent']) {
+      assert.ok(heard[0]!.text.includes(word), `text lacks ${word}`)
+      assert.ok(heard[0]!.quoted.includes(word), `quoted lacks ${word}`)
+    }
+    assert.ok(heard[0]!.quoted.split('\n').every(l => l.startsWith('> ')))
+  } finally {
+    rmSync(dir, { recursive: true, force: true })
+  }
+})
