@@ -1,7 +1,7 @@
 // config.json and secrets.json on disk: reading them, changing them, and the one-time import of the old env file.
 // The pure schema and table are core/config.ts. KAGE_ENV still names a file in the config folder (the old env file), so
 // service units that set it keep working: the folder is its dirname.
-import { existsSync, readdirSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, readdirSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { badValue, Config, fromEnv, Secrets, settingTier } from '../core/config.ts'
 import { parseEnv } from '../core/settings.ts'
@@ -74,6 +74,23 @@ export function importLegacy(envFile: string, now = new Date()): string | undefi
   const to = `${f.legacy}.imported-${stamp(now)}`
   renameSync(f.legacy, to)
   return to
+}
+
+// The WhatsApp container reads waha/.env, and secrets.json holds its keys. A waha/.env made by hand before moves in once.
+// After that, the file is written from secrets.json. True when it changed, because the container reads it only at its own start.
+export function syncWaha(envFile: string): boolean {
+  const f = files(envFile), file = join(f.dir, 'waha', '.env')
+  const s = existsSync(f.secrets) ? parse(Secrets, f.secrets) : {}
+  const onDisk = existsSync(file) ? parseEnv(readFileSync(file, 'utf8')) : undefined
+  if (!s.waha) {
+    if (onDisk) write(f.secrets, checked(Secrets, 'secrets.json', { ...s, waha: onDisk }))
+    return false
+  }
+  if (JSON.stringify(onDisk) === JSON.stringify(s.waha)) return false
+  mkdirSync(dirname(file), { recursive: true, mode: 0o700 })
+  writeFileSync(`${file}.new`, Object.entries(s.waha).map(([k, v]) => `${k}=${v}\n`).join(''), { mode: 0o600 })
+  renameSync(`${file}.new`, file)
+  return true
 }
 
 // The imported env file holds every token, so it goes 7 days after the import.

@@ -69,9 +69,9 @@ export function startConnectors(o: {
     slot: key => d.hasFreeSlot(key),   // a call never evicts or queues ahead of the owner's threads
     failed: task => void slack.notifyOwner(`Could not start a session for ${task.meta.place}.`),
   })
-  // WhatsApp is on when Kage's WAHA config exists, unless connectors.whatsapp.on is false (the kill switch).
-  const whatsapp = conn.whatsapp?.on !== false && existsSync(`${DIR}/waha/.env`) ? startWhatsApp({
-    dir: DIR, name: NAME, owner: slack.ownerName, whatsapp: conn.whatsapp ?? {}, inbox,
+  // WhatsApp is on when secrets.json holds the WAHA keys, unless connectors.whatsapp.on is false (the kill switch).
+  const whatsapp = conn.whatsapp?.on !== false && secrets.waha?.WAHA_API_KEY ? startWhatsApp({
+    dir: DIR, name: NAME, owner: slack.ownerName, waha: secrets.waha, whatsapp: conn.whatsapp ?? {}, inbox,
     notify: text => void slack.notifyOwner(text),
     // The stand-in reads only this folder: notes the owner wrote for it, never their whole memory.
     memory: conn.whatsapp?.memory || `${DIR}/wa-notes`,

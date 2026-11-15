@@ -1,9 +1,9 @@
 import { describe, test } from 'node:test'
 import assert from 'node:assert/strict'
-import { existsSync, mkdtempSync, readdirSync, readFileSync, statSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, statSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { hasSettings, importLegacy, setKey, readSettings, sweepImported, updateConfig, updateSecrets } from '../config-files.ts'
+import { hasSettings, importLegacy, setKey, readSettings, sweepImported, syncWaha, updateConfig, updateSecrets } from '../config-files.ts'
 
 const ENV = 'KAGE_NAME=kagetest\nKAGE_MAX_SESSIONS=6\nKAGE_TEAMMATES=UTEST0001\nSLACK_APP_TOKEN=xapp-fake\nSLACK_USER_TOKEN=xoxp-fake\nSLACK_BOT_TOKEN=xoxb-fake\nKAGE_ODD_TOKEN=xoxb-secret-fake\n'
 const world = (text = ENV) => {
@@ -152,5 +152,28 @@ describe('a retired setting', () => {
     const w = world('')
     writeFileSync(join(w.dir, 'config.json'), JSON.stringify({ version: 1, harness: { maxSesion: 4 } }))
     assert.throws(() => readSettings(w.env), /maxSesion/)
+  })
+})
+
+describe('the WhatsApp container keys live in secrets.json', () => {
+  test('a hand-made waha/.env moves in once, then secrets.json is the source and waha/.env is written from it', () => {
+    const w = world(); importLegacy(w.env)
+    const file = join(w.dir, 'waha', '.env')
+    mkdirSync(join(w.dir, 'waha'))
+    writeFileSync(file, 'WAHA_API_KEY=k1\nWHATSAPP_HOOK_HMAC_KEY=h1\n', { mode: 0o600 })
+    assert.equal(syncWaha(w.env), false, 'the import changes nothing the container reads')
+    assert.deepEqual(readSettings(w.env).secrets.waha, { WAHA_API_KEY: 'k1', WHATSAPP_HOOK_HMAC_KEY: 'h1' })
+    updateSecrets(w.env, s => ({ ...s, waha: { WAHA_API_KEY: 'k2', WHATSAPP_HOOK_HMAC_KEY: 'h1' } }))
+    assert.equal(syncWaha(w.env), true, 'a changed key rewrites the file')
+    assert.equal(readFileSync(file, 'utf8'), 'WAHA_API_KEY=k2\nWHATSAPP_HOOK_HMAC_KEY=h1\n')
+    assert.equal(mode(file), 0o600)
+    assert.equal(syncWaha(w.env), false, 'the same keys leave the file alone')
+  })
+
+  test('with no WhatsApp at all, nothing is written', () => {
+    const w = world(); importLegacy(w.env)
+    assert.equal(syncWaha(w.env), false)
+    assert.ok(!existsSync(join(w.dir, 'waha')))
+    assert.equal(readSettings(w.env).secrets.waha, undefined)
   })
 })
