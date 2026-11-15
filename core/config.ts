@@ -106,7 +106,7 @@ export const KEYS: Row[] = [
   R('KAGE_DB_READ_COMMAND', 'kagelets.dbRead.command'), R('KAGE_DB_READ_MAX_ROWS', 'kagelets.dbRead.maxRows', int),
   R('KAGE_AUTO_UPDATE', 'autoUpdate', onoff),
   R('KAGE_AFK', 'afk.on', onoff), R('KAGE_AFK_MODEL', 'afk.model'),
-  R('KAGE_JEV_AGENTS', 'jev.agents', list), R('KAGE_JEV_THRESHOLD', 'jev.threshold', num), R('KAGE_JEV_MODEL', 'jev.model'),
+  R('KAGE_JEV_AGENTS', 'jev.agents', list), R('KAGE_JEV_THRESHOLD', 'jev.threshold', num), R('KAGE_JEV_MODEL', 'jev.model'), R('KAGE_JEV_URL', 'jev.url'),
   R('KAGE_EMAIL', 'connectors.email.on', onoff), R('KAGE_MAIL_ADDRESS', 'connectors.email.address'), R('KAGE_MAIL_QUEUE', 'connectors.email.queue'),
   R('KAGE_OWNER_EMAIL', 'connectors.email.ownerEmail'), R('KAGE_AWS_REGION', 'connectors.email.region'), R('KAGE_TEAMMATE_EMAILS', 'connectors.email.teammateEmails', list),
   R('KAGE_VOICE', 'connectors.voice.on', onoff), R('KAGE_VOICE_PORT', 'connectors.voice.port', int), R('KAGE_VOICE_MAX', 'connectors.voice.max', int),

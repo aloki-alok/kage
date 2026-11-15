@@ -28,6 +28,7 @@ KAGE_AFK_MODEL=haiku
 KAGE_JEV_AGENTS=ATEST0001,ATEST0002
 KAGE_JEV_THRESHOLD=0.7
 KAGE_JEV_MODEL=jev-1.0.0
+KAGE_JEV_URL=https://jev.example.com/v1
 KAGE_EMAIL=off
 KAGE_MAIL_ADDRESS=kage@example.test
 KAGE_MAIL_QUEUE=https://sqs.example.test/q
