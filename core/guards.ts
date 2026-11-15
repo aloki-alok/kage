@@ -11,8 +11,12 @@ export function privateToolRefusal(tool: string, sender: string | undefined): st
 // Any MCP server is the owner's unless they share it: a task not from the owner gets Kage's own tools and the
 // prefixes in sharedTools (config.json), so a server added later stays closed until the owner lists it (#271).
 const OWN_TOOLS = /^mcp__(kage|plugin_kage_kage)__/
+// A claude.ai connector runs as the owner's own login on that service, so listing it cannot share it.
+const OWNER_ACCOUNT = /^mcp__claude_ai_/
 export function mcpToolRefusal(tool: string, sender: string | undefined, shared: readonly string[] = []): string | undefined {
-  if (sender === 'owner' || !tool.startsWith('mcp__') || OWN_TOOLS.test(tool) || shared.some(p => tool.startsWith(p))) return undefined
+  if (sender === 'owner' || !tool.startsWith('mcp__') || OWN_TOOLS.test(tool)) return undefined
+  if (OWNER_ACCOUNT.test(tool)) return `${tool} acts as the owner's own account, so only the owner's task may use it. Do the task with your other tools, or reply that this part needs the owner.`
+  if (shared.some(p => tool.startsWith(p))) return undefined
   return `${tool} is not among the tools the owner shares with other people's tasks (sharedTools). Reply that this needs the owner, and stop.`
 }
 // A voice call may be anyone, and its session holds the owner's memory in context, so it gets its
