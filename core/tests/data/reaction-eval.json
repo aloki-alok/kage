@@ -1,0 +1,934 @@
+{
+  "about": "Made-up messages only. null means no reaction. The copied wording is checked in its Slack request shape.",
+  "cases": [
+    {
+      "context": "",
+      "message": "what are your prices?",
+      "acceptable": [
+        null
+      ]
+    },
+    {
+      "context": "",
+      "message": "hello",
+      "acceptable": [
+        null
+      ]
+    },
+    {
+      "context": "",
+      "message": "hi",
+      "acceptable": [
+        null
+      ]
+    },
+    {
+      "context": "",
+      "message": "hey there",
+      "acceptable": [
+        null
+      ]
+    },
+    {
+      "context": "Agent: The Pro plan is ₹1,999 a month.",
+      "message": "can I get a discount?",
+      "acceptable": [
+        null
+      ]
+    },
+    {
+      "context": "Agent: Your refund is processed.",
+      "message": "it's been 10 days and I still don't have my money",
+      "acceptable": [
+        null
+      ]
+    },
+    {
+      "context": "",
+      "message": "my father passed away, I need to cancel his plan",
+      "acceptable": [
+        null
+      ]
+    },
+    {
+      "context": "Agent: Sorry for the delay.",
+      "message": "this is the worst service ever",
+      "acceptable": [
+        null
+      ]
+    },
+    {
+      "context": "",
+      "message": "mera order abhi tak nahi aaya",
+      "acceptable": [
+        null
+      ]
+    },
+    {
+      "context": "",
+      "message": "paisa kat gaya par recharge nahi hua",
+      "acceptable": [
+        null
+      ]
+    },
+    {
+      "context": "Agent: Booked for 5 pm tomorrow.",
+      "message": "can we do 6 instead?",
+      "acceptable": [
+        null
+      ]
+    },
+    {
+      "context": "",
+      "message": "is this a scam?",
+      "acceptable": [
+        null
+      ]
+    },
+    {
+      "context": "Agent: Your subscription renews tomorrow.",
+      "message": "cancel it now",
+      "acceptable": [
+        null
+      ]
+    },
+    {
+      "context": "",
+      "message": "I'm in the hospital, can someone call me",
+      "acceptable": [
+        null
+      ]
+    },
+    {
+      "context": "Agent: Anything else?",
+      "message": "yes, how do I reset my password",
+      "acceptable": [
+        null
+      ]
+    },
+    {
+      "context": "",
+      "message": "stop messaging me",
+      "acceptable": [
+        null
+      ]
+    },
+    {
+      "context": "Agent: Thanks for interviewing today.",
+      "message": "when will I hear back?",
+      "acceptable": [
+        null
+      ]
+    },
+    {
+      "context": "Agent: Your order was cancelled.",
+      "message": "ok",
+      "acceptable": [
+        null
+      ]
+    },
+    {
+      "context": "Agent: Unfortunately we couldn't approve your loan.",
+      "message": "ok thanks",
+      "acceptable": [
+        null
+      ]
+    },
+    {
+      "context": "Agent: Sorry, that slot is taken.",
+      "message": "fine",
+      "acceptable": [
+        null
+      ]
+    },
+    {
+      "context": "",
+      "message": "😡😡😡",
+      "acceptable": [
+        null
+      ]
+    },
+    {
+      "context": "",
+      "message": "lol your bot is so dumb",
+      "acceptable": [
+        null
+      ]
+    },
+    {
+      "context": "Agent: Your payment failed.",
+      "message": "why??",
+      "acceptable": [
+        null
+      ]
+    },
+    {
+      "context": "",
+      "message": "नमस्ते, मुझे मदद चाहिए",
+      "acceptable": [
+        null
+      ]
+    },
+    {
+      "context": "Agent: Your flight is delayed by 3 hours.",
+      "message": "ok",
+      "acceptable": [
+        null
+      ]
+    },
+    {
+      "context": "Agent: Sorry, we are out of stock.",
+      "message": "alright",
+      "acceptable": [
+        null
+      ]
+    },
+    {
+      "context": "Agent: Your application was not selected this time.",
+      "message": "okay, thanks for letting me know",
+      "acceptable": [
+        null
+      ]
+    },
+    {
+      "context": "Agent: The doctor is unavailable today.",
+      "message": "fine, tomorrow then",
+      "acceptable": [
+        null
+      ]
+    },
+    {
+      "context": "Agent: Your card was declined.",
+      "message": "hmm ok",
+      "acceptable": [
+        null
+      ]
+    },
+    {
+      "context": "",
+      "message": "my dog is very sick, can I reschedule?",
+      "acceptable": [
+        null
+      ]
+    },
+    {
+      "context": "",
+      "message": "I lost my job last week, can I pause billing?",
+      "acceptable": [
+        null
+      ]
+    },
+    {
+      "context": "",
+      "message": "your agent was rude to me",
+      "acceptable": [
+        null
+      ]
+    },
+    {
+      "context": "",
+      "message": "I want to speak to a human",
+      "acceptable": [
+        null
+      ]
+    },
+    {
+      "context": "",
+      "message": "do you have a store in Pune?",
+      "acceptable": [
+        null
+      ]
+    },
+    {
+      "context": "Agent: Your parcel is delayed.",
+      "message": "great, just great 🙄",
+      "acceptable": [
+        null
+      ]
+    },
+    {
+      "context": "",
+      "message": "happy birthday to me, and you still haven't fixed my issue",
+      "acceptable": [
+        null
+      ]
+    },
+    {
+      "context": "",
+      "message": "hello?? anyone there??",
+      "acceptable": [
+        null
+      ]
+    },
+    {
+      "context": "Agent: Please share your email.",
+      "message": "rahul.k@gmail.com",
+      "acceptable": [
+        null
+      ]
+    },
+    {
+      "context": "",
+      "message": "kab tak aayega mera refund",
+      "acceptable": [
+        null
+      ]
+    },
+    {
+      "context": "",
+      "message": "I have a complaint",
+      "acceptable": [
+        null
+      ]
+    },
+    {
+      "context": "Agent: Booked for 5 pm tomorrow.",
+      "message": "ok got it",
+      "acceptable": [
+        "+1",
+        "ok_hand",
+        "saluting_face"
+      ]
+    },
+    {
+      "context": "Agent: Your delivery is confirmed for today.",
+      "message": "ok",
+      "acceptable": [
+        "+1",
+        "ok_hand",
+        null
+      ]
+    },
+    {
+      "context": "Agent: Done, address updated.",
+      "message": "noted",
+      "acceptable": [
+        "+1",
+        "ok_hand",
+        "saluting_face",
+        null
+      ]
+    },
+    {
+      "context": "Agent: We'll meet at 11 am Monday.",
+      "message": "sounds good",
+      "acceptable": [
+        "ok_hand",
+        "+1"
+      ]
+    },
+    {
+      "context": "Agent: How about Tuesday at 3?",
+      "message": "that works perfectly",
+      "acceptable": [
+        "ok_hand",
+        "+1"
+      ]
+    },
+    {
+      "context": "Agent: Please upload the documents by Friday.",
+      "message": "sure, will do",
+      "acceptable": [
+        "saluting_face",
+        "+1",
+        "ok_hand"
+      ]
+    },
+    {
+      "context": "Agent: Could you send your ID proof?",
+      "message": "on it, sending in 5 mins",
+      "acceptable": [
+        "saluting_face",
+        "+1"
+      ]
+    },
+    {
+      "context": "Agent: So we go with the annual plan at ₹18,000?",
+      "message": "deal",
+      "acceptable": [
+        "handshake",
+        "+1",
+        "ok_hand"
+      ]
+    },
+    {
+      "context": "Agent: Shall we sign the contract then?",
+      "message": "yes, let's go ahead",
+      "acceptable": [
+        "handshake",
+        "+1",
+        "saluting_face",
+        "ok_hand"
+      ]
+    },
+    {
+      "context": "Agent: Quality matters more than speed here.",
+      "message": "exactly, 100%",
+      "acceptable": [
+        "100",
+        "+1"
+      ]
+    },
+    {
+      "context": "Agent: Customers hate waiting on hold.",
+      "message": "so true",
+      "acceptable": [
+        "100",
+        "+1"
+      ]
+    },
+    {
+      "context": "Agent: Your ticket is resolved.",
+      "message": "thanks a lot!",
+      "acceptable": [
+        "pray",
+        "heart",
+        "+1",
+        "smiling_face_with_3_hearts"
+      ]
+    },
+    {
+      "context": "Agent: Your ticket is resolved.",
+      "message": "thank you so much",
+      "acceptable": [
+        "pray",
+        "heart",
+        "+1",
+        "smiling_face_with_3_hearts"
+      ]
+    },
+    {
+      "context": "Agent: Your ticket is resolved.",
+      "message": "dhanyavaad 🙏",
+      "acceptable": [
+        "pray",
+        "heart",
+        "+1",
+        "smiling_face_with_3_hearts"
+      ]
+    },
+    {
+      "context": "Agent: Your ticket is resolved.",
+      "message": "shukriya bhai",
+      "acceptable": [
+        "pray",
+        "heart",
+        "+1",
+        "smiling_face_with_3_hearts"
+      ]
+    },
+    {
+      "context": "Agent: Your ticket is resolved.",
+      "message": "धन्यवाद",
+      "acceptable": [
+        "pray",
+        "heart",
+        "+1",
+        "smiling_face_with_3_hearts"
+      ]
+    },
+    {
+      "context": "Agent: Your ticket is resolved.",
+      "message": "thanks, that helps!",
+      "acceptable": [
+        "pray",
+        "heart",
+        "+1",
+        "smiling_face_with_3_hearts"
+      ]
+    },
+    {
+      "context": "Agent: Your ticket is resolved.",
+      "message": "great thanks",
+      "acceptable": [
+        "pray",
+        "heart",
+        "+1",
+        "smiling_face_with_3_hearts"
+      ]
+    },
+    {
+      "context": "Agent: Anything else?",
+      "message": "no that's all, you've been super helpful",
+      "acceptable": [
+        "pray",
+        "heart",
+        "smiling_face_with_3_hearts",
+        "+1"
+      ]
+    },
+    {
+      "context": "Agent: Happy to help anytime.",
+      "message": "you guys are the best, love you",
+      "acceptable": [
+        "heart",
+        "smiling_face_with_3_hearts",
+        "pray"
+      ]
+    },
+    {
+      "context": "Agent: Here is your invoice.",
+      "message": "you're so sweet, always so patient with me 🥹",
+      "acceptable": [
+        "smiling_face_with_3_hearts",
+        "heart",
+        "pray"
+      ]
+    },
+    {
+      "context": "Agent: Here's a photo of the new design.",
+      "message": "omg I'm in love with this",
+      "acceptable": [
+        "heart_eyes",
+        "heart",
+        "star-struck",
+        "fire"
+      ]
+    },
+    {
+      "context": "Agent: Here's the finished website.",
+      "message": "wow, I'm speechless, this is incredible",
+      "acceptable": [
+        "star-struck",
+        "heart_eyes",
+        "fire",
+        "heart",
+        "clap"
+      ]
+    },
+    {
+      "context": "Agent: Your new dashboard is live.",
+      "message": "this is insane 🔥🔥 can't wait to use it",
+      "acceptable": [
+        "fire",
+        "star-struck",
+        "rocket",
+        "tada"
+      ]
+    },
+    {
+      "context": "Agent: Your refund went through.",
+      "message": "finally!! what a relief",
+      "acceptable": [
+        "raised_hands",
+        "tada",
+        "pray"
+      ]
+    },
+    {
+      "context": "Agent: The bug is fixed now.",
+      "message": "at last, it works!",
+      "acceptable": [
+        "raised_hands",
+        "tada",
+        "+1",
+        "clap"
+      ]
+    },
+    {
+      "context": "",
+      "message": "I just got my first job offer!!",
+      "acceptable": [
+        "tada",
+        "heart",
+        "raised_hands",
+        "clap"
+      ]
+    },
+    {
+      "context": "Agent: Congratulations, you are shortlisted!",
+      "message": "omg thank you so much!!",
+      "acceptable": [
+        "tada",
+        "heart",
+        "pray",
+        "smiling_face_with_3_hearts",
+        "raised_hands"
+      ]
+    },
+    {
+      "context": "",
+      "message": "I passed my exams today 😁",
+      "acceptable": [
+        "tada",
+        "clap",
+        "raised_hands"
+      ]
+    },
+    {
+      "context": "",
+      "message": "we launched our app today!",
+      "acceptable": [
+        "rocket",
+        "tada",
+        "fire",
+        "clap"
+      ]
+    },
+    {
+      "context": "",
+      "message": "I've been working on this project for 6 months and it's finally done",
+      "acceptable": [
+        "clap",
+        "tada",
+        "raised_hands",
+        "muscle"
+      ]
+    },
+    {
+      "context": "",
+      "message": "tomorrow is my final interview, I'm going to crack it",
+      "acceptable": [
+        "muscle",
+        "crossed_fingers",
+        "fire"
+      ]
+    },
+    {
+      "context": "",
+      "message": "starting my own bakery next month",
+      "acceptable": [
+        "rocket",
+        "tada",
+        "muscle",
+        "fire"
+      ]
+    },
+    {
+      "context": "Agent: Results come out on Friday.",
+      "message": "hope I get selected 🤞",
+      "acceptable": [
+        "crossed_fingers",
+        "pray"
+      ]
+    },
+    {
+      "context": "Agent: The shortlist is announced tomorrow.",
+      "message": "fingers crossed",
+      "acceptable": [
+        "crossed_fingers"
+      ]
+    },
+    {
+      "context": "Agent: I've shared the demo link.",
+      "message": "will check it out tonight",
+      "acceptable": [
+        "eyes",
+        "+1",
+        "saluting_face"
+      ]
+    },
+    {
+      "context": "Agent: The new feature ships next week.",
+      "message": "ooh can't wait to see it",
+      "acceptable": [
+        "eyes",
+        "fire",
+        "star-struck",
+        "tada"
+      ]
+    },
+    {
+      "context": "Agent: Anything else?",
+      "message": "nope, having a great day today 😄",
+      "acceptable": [
+        "smile",
+        "heart",
+        "+1"
+      ]
+    },
+    {
+      "context": "Agent: We close at 9 pm.",
+      "message": "haha I'll definitely be late then 😂",
+      "acceptable": [
+        "joy",
+        "smile",
+        null
+      ]
+    },
+    {
+      "context": "Agent: Your order has 12 pizzas.",
+      "message": "don't judge me, it's for one person 😂",
+      "acceptable": [
+        "joy",
+        "smile"
+      ]
+    },
+    {
+      "context": "Agent: You're our 1000th customer!",
+      "message": "do I get a free lifetime subscription then 😉",
+      "acceptable": [
+        "wink",
+        "joy",
+        "smile",
+        "tada"
+      ]
+    },
+    {
+      "context": "Agent: Anything else?",
+      "message": "no, bye! have a good day",
+      "acceptable": [
+        "wave",
+        "pray",
+        "heart",
+        "+1"
+      ]
+    },
+    {
+      "context": "Agent: Talk soon.",
+      "message": "see you, take care",
+      "acceptable": [
+        "wave",
+        "heart",
+        "pray"
+      ]
+    },
+    {
+      "context": "",
+      "message": "good morning!",
+      "acceptable": [
+        "sunny",
+        "wave",
+        "smile"
+      ]
+    },
+    {
+      "context": "Agent: See you tomorrow.",
+      "message": "good night",
+      "acceptable": [
+        "crescent_moon",
+        "wave"
+      ]
+    },
+    {
+      "context": "",
+      "message": "Eid Mubarak to the whole team!",
+      "acceptable": [
+        "crescent_moon",
+        "sparkles",
+        "heart",
+        "pray"
+      ]
+    },
+    {
+      "context": "",
+      "message": "Happy Diwali to you and your family",
+      "acceptable": [
+        "diya_lamp",
+        "sparkles",
+        "heart",
+        "pray"
+      ]
+    },
+    {
+      "context": "",
+      "message": "Happy Holi!! 🎨",
+      "acceptable": [
+        "rainbow",
+        "sparkles",
+        "tada",
+        "heart"
+      ]
+    },
+    {
+      "context": "",
+      "message": "Merry Christmas 🎄",
+      "acceptable": [
+        "christmas_tree",
+        "sparkles",
+        "heart"
+      ]
+    },
+    {
+      "context": "",
+      "message": "Happy New Year team!",
+      "acceptable": [
+        "fireworks",
+        "tada",
+        "sparkles",
+        "heart"
+      ]
+    },
+    {
+      "context": "",
+      "message": "Happy Onam!",
+      "acceptable": [
+        "sparkles",
+        "heart",
+        "pray",
+        "tada"
+      ]
+    },
+    {
+      "context": "",
+      "message": "today is my birthday 🥳",
+      "acceptable": [
+        "birthday",
+        "tada",
+        "heart",
+        null
+      ]
+    },
+    {
+      "context": "",
+      "message": "Ganesh Chaturthi ki shubhkamnayein",
+      "acceptable": [
+        "sparkles",
+        "pray",
+        "heart"
+      ]
+    },
+    {
+      "context": "Agent: Anything else I can help with?",
+      "message": "meowww 😺",
+      "acceptable": [
+        "smiley_cat",
+        "heart_eyes_cat"
+      ]
+    },
+    {
+      "context": "Agent: Your order is on its way.",
+      "message": "nyaa~ thank you",
+      "acceptable": [
+        "smiley_cat",
+        "heart_eyes_cat",
+        "pray"
+      ]
+    },
+    {
+      "context": "Agent: Done, your address is updated.",
+      "message": "purrrr, perfect",
+      "acceptable": [
+        "smiley_cat",
+        "heart_eyes_cat",
+        "ok_hand"
+      ]
+    },
+    {
+      "context": "",
+      "message": "my cat just knocked my coffee all over the laptop lol",
+      "acceptable": [
+        "joy_cat",
+        "joy"
+      ]
+    },
+    {
+      "context": "",
+      "message": "I'm adopting a kitten tomorrow!!",
+      "acceptable": [
+        "heart_eyes_cat",
+        "tada",
+        "heart"
+      ]
+    },
+    {
+      "context": "Agent: Here's a photo of our office cat.",
+      "message": "omg look at him, I want to squeeze him",
+      "acceptable": [
+        "heart_eyes_cat",
+        "heart_eyes",
+        "heart"
+      ]
+    },
+    {
+      "context": "Agent: Your trial ends tomorrow.",
+      "message": "hehe, meow 😼 extend it for me?",
+      "acceptable": [
+        "smirk_cat",
+        "smiley_cat",
+        null
+      ]
+    },
+    {
+      "context": "Agent: Thanks for your patience!",
+      "message": "*purrs* you're the best 😽",
+      "acceptable": [
+        "heart_eyes_cat",
+        "smiley_cat",
+        "heart",
+        "smiling_face_with_3_hearts"
+      ]
+    },
+    {
+      "context": "Agent: Your plan price is going up next month.",
+      "message": "MEOW?! 🙀 no way",
+      "acceptable": [
+        "smirk_cat",
+        null
+      ]
+    },
+    {
+      "context": "",
+      "message": "my cat Mochi says hi",
+      "acceptable": [
+        "smiley_cat",
+        "wave"
+      ]
+    },
+    {
+      "context": "",
+      "message": "my cat is very sick, can I get a callback?",
+      "acceptable": [
+        null
+      ]
+    },
+    {
+      "context": "",
+      "message": "meow",
+      "acceptable": [
+        "smiley_cat",
+        "smirk_cat"
+      ]
+    },
+    {
+      "context": "",
+      "message": ":3",
+      "acceptable": [
+        "kissing_cat"
+      ]
+    },
+    {
+      "context": "Agent: Your order ships today.",
+      "message": "yayy thank you :3",
+      "acceptable": [
+        "kissing_cat",
+        "pray",
+        "heart_eyes_cat"
+      ]
+    },
+    {
+      "context": "Agent: Booked for 5 pm tomorrow.",
+      "message": "okie :3",
+      "acceptable": [
+        "kissing_cat",
+        "+1"
+      ]
+    },
+    {
+      "context": "Agent: Here's your new logo.",
+      "message": "hehe I love it :3",
+      "acceptable": [
+        "kissing_cat",
+        "heart_eyes_cat",
+        "heart",
+        "heart_eyes"
+      ]
+    },
+    {
+      "context": "",
+      "message": "mwah meow, you guys are the best",
+      "acceptable": [
+        "kissing_cat",
+        "heart_eyes_cat",
+        "heart"
+      ]
+    },
+    {
+      "context": "Agent: Your refund is delayed by a week.",
+      "message": "ok :3",
+      "acceptable": [
+        null
+      ]
+    }
+  ]
+}

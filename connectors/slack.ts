@@ -21,7 +21,6 @@ import { socketWatch } from '../core/socket-watch.ts'
 import type { Inbox, Saved } from '../runtime/store.ts'
 
 const PICKED_UP = 'ninja'
-const SEEN = 'eyes'
 const WAITING = 'hourglass_flowing_sand'
 const FAILED = 'warning'
 
@@ -97,10 +96,11 @@ export async function connectSlack(o: { dir: string; appToken: string; userToken
   }
 
   // The conversation around the tag: the whole thread, or the last few channel messages.
-  async function contextOf(m: SlackMessage): Promise<{ text: string; files: SlackFile[] }> {
+  async function contextOf(m: SlackMessage, required = false): Promise<{ text: string; files: SlackFile[] }> {
     const res = m.thread_ts
       ? await user.conversations.replies({ channel: m.channel, ts: m.thread_ts, limit: 200 }).catch(() => null)
       : await user.conversations.history({ channel: m.channel, latest: m.ts, limit: 12 }).catch(() => null)
+    if (required && !res) throw new Error('conversation unavailable')
     const msgs = (res?.messages ?? []).filter(x => x.ts !== m.ts)
     if (!m.thread_ts) msgs.reverse()
     const lines = msgs.map(x =>
@@ -176,9 +176,10 @@ export async function connectSlack(o: { dir: string; appToken: string; userToken
     // A person's tag that needs no work (an ack, a thanks) gets a reaction in code, not a session.
     if (t.kind === 'task' && !t.agent && o.triage) {
       const j = await o.triage(thread, !m.user || m.user === ids.owner ? 'owner' : 'other', t.text,
-        { hasFiles: !!(m.files?.length || (m as { attachments?: unknown[] }).attachments?.length), inThread: !!m.thread_ts && m.thread_ts !== m.ts })
+        { hasFiles: !!(m.files?.length || (m as { attachments?: unknown[] }).attachments?.length), inThread: !!m.thread_ts && m.thread_ts !== m.ts,
+          context: async () => (await contextOf(m, true)).text })
       // A reaction that fails to land starts the session instead: a request is never dropped silently.
-      if (j.pick === 'react' && await react(m.channel, m.ts, SEEN)) return
+      if (j.pick === 'react' && (!j.reaction?.emoji || await react(m.channel, m.ts, j.reaction.emoji))) return
     }
     const agent = t.agent ? { app: t.agent, tag: (ids.apps ?? []).map(appEntry).find(e => e?.id === t.agent)?.tag } : undefined
     react(m.channel, m.ts, PICKED_UP)

@@ -21,7 +21,7 @@ test('a Slack triage decision writes one log line and keeps its database event',
     const runs = runEvents(ledger, () => 'test-trace')
     const client = {
       auth: { test: async () => ({ team_id: 'TTEST', user_id: 'UTEST1' }) },
-      conversations: { open: async () => ({ channel: { id: 'DTEST' } }) },
+      conversations: { open: async () => ({ channel: { id: 'DTEST' } }), history: async () => ({ messages: [] }) },
       users: { info: async () => ({ user: { real_name: 'Sam Test' } }) },
       reactions: { add: async () => ({ ok: true }) },
     }
@@ -37,7 +37,7 @@ test('a Slack triage decision writes one log line and keeps its database event',
     const events = ledger.events('2026-01-01')
     assert.equal(events.length, 1)
     assert.equal(events[0]!.kind, 'triage')
-    assert.equal(events[0]!.detail, 'react: owner react 0.99')
+    assert.equal(events[0]!.detail, 'react: owner react 0.99, reaction eyes 0.00')
     assert.equal(lines.filter(l => l.includes('triage ')).length, 1, lines.join('\n'))
   } finally {
     ledger.close()
