@@ -5,7 +5,7 @@
 import { spawnSync } from 'node:child_process'
 import { connect } from 'node:net'
 import { dirname } from 'node:path'
-import { load } from '../config.ts'
+import { load } from '../hub/config.ts'
 
 const { config, ENV_FILE } = load()
 const command = config.connectors?.call?.command

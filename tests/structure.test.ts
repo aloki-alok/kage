@@ -23,11 +23,11 @@ const MAX_LINES = 300
 const DEBT = {
   // ADR 0001: core/ does no I/O, reads no environment, sets no timers, and imports only core/.
   impureCore: [] as string[],
-  // runtime/ and connectors/ never import a file in the repo root (router.ts, config.ts, ...).
+  // runtime/ and connectors/ never import hub/, plugin/ or a file in the repo root: those wire the layers below them.
   rootImports: [] as string[],
   // A source file over MAX_LINES lines (import lines not counted), with the most it may have. Split it; lower the number as it shrinks.
   longFiles: {
-    'runtime/kage-tools.ts': 781, 'router.ts': 665, 'cli/top.ts': 607,
+    'runtime/kage-tools.ts': 781, 'hub/router.ts': 665, 'cli/top.ts': 607,
     'runtime/sdk-sessions.ts': 334, 'core/sessions.ts': 323,
   } as Record<string, number>,
   // A core/ or runtime/ file missing from the CONTRIBUTING.md code map.
@@ -49,8 +49,8 @@ test('core/ is pure: no I/O, no environment, no timers, and imports only core/ (
   check('impureCore', inDir('core').filter(f => bad.test(code(f))), DEBT.impureCore)
 })
 
-test('runtime/ and connectors/ never import a root file', () => {
-  const bad = /(from|import\(|require\()\s*['"]\.\.\/[^/'"]+['"]/
+test('runtime/ and connectors/ never import the hub, the plugin or a root file', () => {
+  const bad = /(from|import\(|require\()\s*['"]\.\.\/(?:(?:hub|plugin)\/)?[^/'"]+['"]/
   check('rootImports', [...inDir('runtime'), ...inDir('connectors')].filter(f => bad.test(code(f))), DEBT.rootImports)
 })
 
@@ -96,7 +96,7 @@ test('code marked "compat: remove after <date>" is gone by that date', () => {
 
 // A child process gets the hub's whole environment only when it is trusted with it: git, the doctor, the owner's own
 // call command. Anything that opens outside content (a browser, a fetched page) gets a short allowlist (#207).
-const FULL_ENV_CHILDREN = ['router.ts', 'cli/call.ts', 'cli/doctor/context.ts', 'runtime/release.ts']
+const FULL_ENV_CHILDREN = ['hub/router.ts', 'cli/call.ts', 'cli/doctor/context.ts', 'runtime/release.ts']
 test('only a trusted child process gets ...process.env', () => {
   const spread = files.filter(f => /\.\.\.process\.env\b/.test(code(f)))
   assert.deepEqual(spread.filter(f => !FULL_ENV_CHILDREN.includes(f)), [], 'give this child an env allowlist, or add it to FULL_ENV_CHILDREN with the reason')

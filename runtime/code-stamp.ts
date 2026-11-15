@@ -2,7 +2,7 @@ import { readdirSync, statSync } from 'node:fs'
 import { join } from 'node:path'
 
 // The folders the hub runs code from. A merge or an update changes a file in one of them.
-const CODE_DIRS = ['.', 'core', 'connectors', 'runtime']
+const CODE_DIRS = ['.', 'hub', 'plugin', 'core', 'connectors', 'runtime']
 
 // The newest change to the code the hub runs: its .ts files (not tests) and package-lock.json.
 // The hub restarts when this moves, so a merge or a reinstall is a deploy.

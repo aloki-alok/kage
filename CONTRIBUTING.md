@@ -41,30 +41,30 @@ Write logs to stderr only. In a tmux pane, stdout carries the channel protocol, 
 | runner | Where sessions run: an Agent SDK session inside the hub (default), or a tmux pane. |
 | place | The label people read for a conversation, such as `#general` or `DM with Kage`. |
 | lane | A second session on the same conversation (`@kage side: ...`). |
-| hub | The long-running process (`router.ts`) that owns Slack, the dispatcher and the store. |
+| hub | The long-running process (`hub/router.ts`) that owns Slack, the dispatcher and the store. |
 
 ## Where things are
 
 | Folder or file | Holds |
 |---|---|
-| `router.ts` | The hub, loaded by `hub.ts`: wires connectors, the dispatcher, the runner and the store. Its header names the few rules still in it. |
-| `server.ts` | For tmux panes only: serves Kage's tools over MCP inside each pane and relays approvals. |
-| `private-data-guard.ts` | The plugin hook (`hooks/hooks.json`) that runs the rules in `core/guards.ts` and `runtime/path-guards.ts` inside tmux panes. The SDK runner applies the same rules in process. |
-| `config.ts` | Reads the settings files and makes the Slack clients. Only `router.ts`, `server.ts` and `cli/` import it; everything else logs through `runtime/log.ts`. |
+| `hub.ts` | The hub's entry, run by the service: the log file's size, the boot count and the crash-loop DM, then `hub/router.ts`. Node modules only, so a bad pull is still caught. It stays at the root because every install's service runs this path. `start.sh` only forwards old login items to `kage start`, until 2026-12-15. |
+| `hub/router.ts` | The hub, loaded by `hub.ts`: wires connectors, the dispatcher, the runner and the store. Its header names the few rules still in it. |
+| `hub/config.ts` | Reads the settings files and makes the Slack clients. Only `hub/router.ts`, `plugin/server.ts` and `cli/` import it; everything else logs through `runtime/log.ts`. |
+| `plugin/server.ts` | For tmux panes only: serves Kage's tools over MCP inside each pane and relays approvals. |
+| `plugin/private-data-guard.ts` | The plugin hook (`hooks/hooks.json`) that runs the rules in `core/guards.ts` and `runtime/path-guards.ts` inside tmux panes. The SDK runner applies the same rules in process. |
 | `core/` | Pure rules. See the table below. |
 | `connectors/` | Where Kage hears from. Each turns a message into a `Task` (`core/task.ts`). Who may drive Kage is decided in `core/gate.ts`, not here. |
 | `runtime/` | Where sessions run, and the hub's state. See the table below. |
 | `cli/` | The commands behind `kage <command>`. They run from source. `cli/config.ts` reads and changes settings for the shell scripts and `kage set`. `cli/doctor/` is `kage doctor`: one file per check group, and `run.ts` prints their lines. |
 | `setup.sh` | The `kage` command: setup steps, start, stop, logs. `doctor` calls `cli/doctor/run.ts`. |
 | `service.sh` | The LaunchAgent (macOS) or systemd user unit (Linux) that keeps the hub running. A non-zero exit restarts it, and exit 0 leaves it down. |
-| `hub.ts` | The hub's entry, run by the service: the log file's size, the boot count and the crash-loop DM, then `router.ts`. Node modules only, so a bad pull is still caught. `start.sh` only forwards old login items to `kage start`, until 2026-12-15. |
 | `docs/adr/` | One file per architecture decision: the rule, why, and how it is checked. |
 | `tests/` | Tests of the repo as a whole: `structure.test.ts` (ADR 0014). |
 | `docs/settings.md` | Every setting in config.json and secrets.json, with its default. |
 | `AGENTS.md` | Setup steps for a coding agent. `CLAUDE.md` loads it and this file. |
 | `extension/` | Kage's Chrome extension (#114): plain JS, no build. It polls the hub (`connectors/browser.ts`), reads tabs, and acts in them through Chrome's debugger, one action at a time; a major step waits for the owner's yes (core/browser-act.ts majorAct). |
 | `meetbot/` | Kage's meeting bot (#63): its own package, run on any machine with a screen or Xvfb. It drives its own Chromium into a Google Meet and talks to the hub at the meeting webhook (`connectors/meeting.ts`). All of Meet's page knowledge is `meetbot/page.js`. |
-| `skills/` | Skills every Kage session loads (the router passes the repo as a plugin, `router.ts`). Generic lessons only: no names, ids, customers, dates or quotes. |
+| `skills/` | Skills every Kage session loads (the router passes the repo as a plugin, `hub/router.ts`). Generic lessons only: no names, ids, customers, dates or quotes. |
 | `.claude-plugin/`, `.mcp.json`, `hooks/` | Used only when Kage is installed as a Claude Code plugin (tmux panes on the plugin route). |
 
 ### core/
@@ -171,5 +171,5 @@ A connector touches more places than it should today. Copy `connectors/email.ts`
 1. `Conversation['connector']` and the key prefix in `core/conversations.ts`.
 2. `senderOf` in `core/gate.ts`, if its sender is not plainly the owner or a teammate.
 3. The reply type in `runtime/protocol.ts`, `routeReply` in `runtime/session-link.ts`, and the `reply` tool in `runtime/kage-tools.ts`.
-4. `replies` and `failed` in `router.ts`, and the connector names written out in `core/blocks.ts`, `core/loom.ts` and the reply tool in `runtime/kage-tools.ts` (one connector table is planned).
-5. The inbox (`Inbox` in `runtime/store.ts`): `take` each message with a unique source id before you acknowledge it, and `handled` after. If the source does not resend by itself, add a `replay` to `replayers` in `router.ts`.
+4. `replies` and `failed` in `hub/router.ts`, and the connector names written out in `core/blocks.ts`, `core/loom.ts` and the reply tool in `runtime/kage-tools.ts` (one connector table is planned).
+5. The inbox (`Inbox` in `runtime/store.ts`): `take` each message with a unique source id before you acknowledge it, and `handled` after. If the source does not resend by itself, add a `replay` to `replayers` in `hub/router.ts`.

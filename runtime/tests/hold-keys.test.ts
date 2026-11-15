@@ -19,5 +19,5 @@ test('hub.ts holds the keys before it loads the router', () => {
   const hub = readFileSync(new URL('../../hub.ts', import.meta.url), 'utf8')
   const held = hub.indexOf('holdKeys(')
   assert.ok(held > 0, 'hub.ts never calls holdKeys')
-  assert.ok(held < hub.indexOf("import('./router.ts')"), 'holdKeys runs after the router loads')
+  assert.ok(held < hub.indexOf("import('./hub/router.ts')"), 'holdKeys runs after the router loads')
 })
