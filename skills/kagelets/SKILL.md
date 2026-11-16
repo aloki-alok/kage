@@ -7,11 +7,12 @@ A kagelet is a teammate for one job. It runs on its own schedule in a thread, at
 
 ## When to make one
 
-1. Make a kagelet when an owner job recurs and needs only web search, fetch and its granted tools. It runs without holding this session open.
-2. Keep a job that needs files or shell on the schedule tool. A kagelet has no shell or file tools yet.
-3. Keep a one-off task in this session. A kagelet only pays off on a repeat.
-4. Save it with manage_kagelet save and a one-line why, then unschedule the old schedule if there was one. Two jobs that do the same check report twice.
-5. Hand it off in one line, in the thread where it was decided: its name, its job, when it first runs, and that it posts its work in that thread. For example: handed to fude (blog drafts), first draft Wednesday, it posts here, and I step in if it stalls. The people in the thread learn who does the work now, and where to look.
+1. Make a kagelet when an owner job recurs. It runs without holding this session open.
+2. Give it `all` when the job needs a shell or files. It runs in the OS sandbox, and the hub holds every one-way step (a deploy, a forced push, a DB write, a delete, a send) for you. The owner says yes on a card for each kagelet that gets it.
+3. In the sandbox, Kage's local sockets are closed (gpg and the ssh agent stay open on macOS). Git works in an existing checkout, but `git init`, `git clone` and `git push -u` fail, because the sandbox keeps `.git/config` and `.git/hooks` closed. Set up the checkout before the kagelet runs.
+4. Keep a one-off task in this session. A kagelet only pays off on a repeat.
+5. Save it with manage_kagelet save and a one-line why, then unschedule the old schedule if there was one. Two jobs that do the same check report twice.
+6. Hand it off in one line, in the thread where it was decided: its name, its job, when it first runs, and that it posts its work in that thread. For example: handed to fude (blog drafts), first draft Wednesday, it posts here, and I step in if it stalls. The people in the thread learn who does the work now, and where to look.
 
 ## What a kagelet may use
 

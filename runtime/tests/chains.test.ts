@@ -563,6 +563,12 @@ test('a message or an after: handoff never reaches a kagelet whose grant is wide
   h.schedules.runNow('kagelet-tools', NINE)
   await tick()
   assert.match(h.routes.message(keyOf('tools'), 'web', 'done', NINE), QUEUED('web'))   // fewer tools: allowed
+  await h.save('wide', { schedule: '0 11 * * *', tools: ['all'] })   // all covers the built-in tools, never an MCP tool
+  h.schedules.runNow('kagelet-wide', NINE)
+  await tick()
+  assert.match(h.routes.message(keyOf('wide'), 'tools', 'upload this', NINE), /not sent: tools holds mcp__store__upload, which wide does not/)
+  await h.save('fetch', { schedule: '0 12 * * *', tools: ['WebFetch'] })
+  assert.doesNotMatch(h.routes.message(keyOf('wide'), 'fetch', 'read this', NINE), /not sent/)   // a built-in tool: all holds it
 })
 
 test('the loop guard holds 20 messages a minute per pair, across chains', async () => {

@@ -10,7 +10,7 @@ import { z } from 'zod'
 import { log, logKey } from './log.ts'
 import { senderOf, withoutInvisible, type Sender } from '../core/gate.ts'
 import { certFileEnv, protectConfig, toolRefusal } from './path-guards.ts'
-import { builtinTools, grantRefusal } from '../core/kagelets.ts'
+import { grantRefusal, laneOptions, shellGrant } from '../core/kagelets.ts'
 import { approvalPreview } from '../core/preview.ts'
 import type { Dispatcher, Runner } from '../core/sessions.ts'
 import type { sessionTools } from './kage-tools.ts'
@@ -117,7 +117,7 @@ export function sdkSessions(o: {
     const resumed = o.hasTranscript(s.id)
     const budget = o.budgetOf?.(key)
     const grant = o.grantOf?.(key)
-    const walled = protectConfig(o.envFile, o.codeDir, undefined, o.sandbox?.() === true)
+    const walled = protectConfig(o.envFile, o.codeDir, undefined, shellGrant(grant) ? 'kagelet' : o.sandbox?.() === true)   // a kagelet's shell runs on text it read
     const ssmToken = grant ? undefined : o.ssm?.issue(key)   // a kagelet lane never gets one
     const keysToken = grant ? undefined : o.keys?.issue(key)
     const q = o.sdk.query({
@@ -129,7 +129,7 @@ export function sdkSessions(o: {
         ...(o.modelOf?.(key) && { model: o.modelOf(key) }),
         ...picks.get(key),
         ...budget !== undefined && { maxBudgetUsd: budget },
-        ...grant && { tools: builtinTools(grant) },
+        ...grant && laneOptions(grant),
         systemPrompt: { type: 'preset', preset: 'claude_code' },
         mcpServers: { ...o.options.mcpServers, kage: server },
         // Its jobs die with the session; the schedule tool replaces it.

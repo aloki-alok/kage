@@ -27,6 +27,12 @@ Two tests call a real model, so `npm test` skips them. `sandbox.test.ts` starts 
 KAGE_LIVE_TESTS=1 node --test runtime/tests/sandbox.test.ts runtime/tests/sandbox-off.test.ts
 ```
 
+A third, `kagelet-all-live.test.ts`, runs a session set up as a `tools: all` kagelet: everyday git and web work runs, a forced push and a sending web request are held, and the tokens, the settings, its `job.md` and Kage's code stay closed. Run it after any change to `core/held.ts` or the kagelet grant check:
+
+```sh
+KAGE_LIVE_TESTS=1 node --test runtime/tests/kagelet-all-live.test.ts
+```
+
 There is no build. Node runs the TypeScript files as they are, so write only syntax it can strip (`erasableSyntaxOnly` in `tsconfig.json` enforces it). A running hub restarts into new code by itself once every session is quiet (`runtime/code-stamp.ts`).
 
 Write logs to stderr only. In a tmux pane, stdout carries the channel protocol, so a stray `console.log` breaks it.
@@ -95,6 +101,7 @@ Write logs to stderr only. In a tmux pane, stdout carries the channel protocol, 
 | `kagelets.ts` | A kagelet file (thread, schedule or `after:`, grant, job), the grant check, the chain check (no cycle, no missing kagelet, at most 5 deep), standing approvals per write tool and their revoke, the cost caps (off unless set) and the cost flags. |
 | `kagelet-message.ts` | The message one kagelet sends another (an `after:` handoff or `message_kagelet`): its fields, named after A2A's Message, its delivery states, and the check where it enters the hub. |
 | `kagelet-view.ts` | What a terminal shows of kagelets: the `kage top` panel, its keys, and `kage logs <kagelet>`. |
+| `held.ts` | The hub's check on a kagelet's shell (`tools: all`, ADR 0018): which commands are one-way steps (a deploy, a forced push, a DB write, a delete, a send), held for Kage. It stands behind the OS sandbox, never in place of it. |
 | `access.ts` | The access tiers: whether a kagelet's tool is read, write or act, from its name. |
 | `db-read.ts` | The check a `db_read` query passes: one read statement, capped. |
 | `browser.ts` | What a session may see of the owner's Chrome (#114): the block list, tabs shown by id, and a page's text quoted as data. |

@@ -16,8 +16,13 @@ const ACT_WORDS = new Set(['delete', 'remove', 'destroy', 'drop', 'purge', 'eras
   'sql', 'shell', 'command', 'invite', 'grant', 'revoke', 'permission', 'permissions', 'role', 'roles', 'share', 'ban', 'kick', 'cancel',
   'terminate', 'kill', 'customer', 'customers', 'prod', 'production', 'secret', 'secrets', 'token', 'tokens', 'key', 'keys', 'password'])
 
+// tools: all (ADR 0018): every built-in tool behind the hub's check (core/held.ts), in the OS sandbox. A write, so the
+// owner says yes on a card for each kagelet. Never a standing approval: one yes would hand a shell to every later kagelet.
+export const ALL = 'all'
+
 export function kageletTier(tool: string): Verb {
   if (READ_TOOLS.includes(tool)) return 'read'
+  if (tool === ALL) return 'write'
   const m = /^mcp__(.+?)__(.+)$/.exec(tool)
   // Kage's own tools act as the owner; every other built-in (shell, files, agents) could rewrite a grant.
   if (!m || tool.startsWith('mcp__kage__') || tool.startsWith('mcp__plugin_kage_')) return 'act'

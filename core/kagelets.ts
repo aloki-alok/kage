@@ -7,7 +7,8 @@ import { slackLinkKey } from './conversations.ts'
 import { clockTime, whenLabel } from './board.ts'
 import { spendSince } from './ledgers.ts'
 import { CAP_PAUSE } from './kagelet-view.ts'
-import { DB_READ, kageletTier } from './access.ts'
+import { ALL, DB_READ, kageletTier } from './access.ts'
+import { heldCommand } from './held.ts'
 
 export { DB_READ }
 
@@ -107,7 +108,8 @@ export function chainErrors(ks: { name: string; after?: string; tools?: string[]
   const errors = new Map<string, string>()
   for (const k of ks) {
     if (!k.after) continue
-    const wider = (k.tools ?? []).find(t => tools.has(k.after!) && !tools.get(k.after!)!.includes(t))
+    const before = tools.get(k.after)
+    const wider = before && (k.tools ?? []).find(t => !covers(before, t))
     if (wider) { errors.set(k.name, `${k.name} holds ${wider}, which ${k.after} does not: a step holds only tools the one before it holds`); continue }
     const seen = [k.name]
     for (let at = k.after; at; at = after.get(at)!) {
@@ -172,14 +174,25 @@ const THREAD_TOOLS = [...['reply', 'edit_message', 'delete_message', 'report', '
 const WEB_TOOLS = ['WebFetch', 'WebSearch']
 // The built-in tools a kagelet's session loads: its granted web tools and ToolSearch. Claude Code's default set leaves
 // WebFetch out (a subagent stands in for it), so the session names them.
-export const builtinTools = (grant: string[]) => [...grant.filter(t => WEB_TOOLS.includes(t)), 'ToolSearch']
+// tools: all hands a kagelet a shell, so its session always runs in the OS sandbox (ADR 0018).
+export const shellGrant = (grant: string[] | undefined) => !!grant?.includes(ALL)
+// Whether a grant holds a tool: all holds the built-in tools, never an MCP tool or db_read it was not given.
+export const covers = (grant: string[], tool: string) => grant.includes(tool) || (shellGrant(grant) && !tool.startsWith('mcp__') && tool !== DB_READ)
+export const builtinTools = (grant: string[]) => shellGrant(grant) ? undefined : [...grant.filter(t => WEB_TOOLS.includes(t)), 'ToolSearch']
+// A lane's tool options: its built-in tools, or with all every tool and none of the owner's own settings, whose allow rules would widen it.
+export const laneOptions = (grant: string[]) => shellGrant(grant) ? { settingSources: [] } : { tools: builtinTools(grant)! }
 
 // The grant only shrinks: a tool outside it is denied.
 export function grantRefusal(tool: string, grant: string[], input: Record<string, unknown> = {}) {
   if (THREAD_TOOLS.includes(tool)) return undefined
+  // tools: all covers the built-in tools (shell, files, web, agents), never Kage's own or an MCP tool it was not granted.
+  if (tool === 'WebFetch' && !/^https?:\/\//i.test(String(input.url ?? ''))) return 'A kagelet fetches only http and https addresses.'
+  if (shellGrant(grant) && !tool.startsWith('mcp__')) {
+    const held = tool === 'Bash' ? heldCommand(String(input.command ?? '')) : undefined
+    return held && `Held: ${held} is a one-way step. Do not try it another way. Put the exact step and why in your report's needs: your manager decides.`
+  }
   if (tool === `mcp__kage__${DB_READ}`) return grant.includes(DB_READ) ? undefined : `${DB_READ} is outside this kagelet's grant. Say in the thread what you needed: your manager decides.`
   if (kageletTier(tool) === 'act') return `A kagelet never holds ${tool}, whatever its grant says. Say in the thread what you needed: your manager asks the owner.`
-  if (tool === 'WebFetch' && !/^https?:\/\//i.test(String(input.url ?? ''))) return 'A kagelet fetches only http and https addresses.'
   return grant.includes(tool) ? undefined
     : `${tool} is outside this kagelet's grant (${grant.join(', ') || 'no tools'}). Say in the thread what you needed: your manager decides.`
 }

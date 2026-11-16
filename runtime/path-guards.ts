@@ -54,23 +54,29 @@ export function configRefusal(tool: string, input: Record<string, unknown>, send
 const CONFIG_NAMES = ['session.env', 'telemetry-id', 'kagelets', 'config.json*', 'crons-import.json*', 'waha', 'threads.json*', 'afk.json*', 'github-threads.json*', 'mail-threads.json*',
   'kage.db*', 'hub.lock', 'hub.log*', 'router.sock', 'ssm.sock', 'keys.sock', '.archive', 'updated-from', 'browser-seen', 'wa-notes', 'retro-sent', 'dream-sent', 'daily-sent', 'crash-dm-at',
   'config-unknown-told', 'boots', 'held', 'sender', 'ledgers']
-export function protectConfig(envFile: string, codeDir: string, home = process.env.HOME ?? '', sandbox = false) {
+// sandbox 'kagelet' (tools: all): its file tools may not edit Kage's code or the login folders either, since the sandbox binds
+// only the shell. It also closes unix sockets, because the hub's router.sock takes a tell that speaks as the owner. macOS keeps
+// gpg's folder and the ssh agent's own socket open, so commits sign and pushes reach the agent (Linux cannot filter by path).
+export function protectConfig(envFile: string, codeDir: string, home = process.env.HOME ?? '', sandbox: boolean | 'kagelet' = false) {
   const dirs = [...new Set([dirname(envFile), realish(dirname(envFile))])]
   const tokens = dirs.flatMap(d => [`${d}/secrets.json*`, `${d}/env*`, `${d}/session.env*`, `${d}/waha/.env*`])
   const kept = new Set(['files', 'memory'])
   const folder = dirs.flatMap(d => [...new Set([...CONFIG_NAMES,
     ...(() => { try { return readdirSync(d) } catch { return [] } })().filter(n => !kept.has(n))])].map(n => `${d}/${n}`))
   const deny = (f: string) => [`Edit(/${f})`]
-  const permissions = { deny: dirs.flatMap(d => [`Read(/${d}/secrets.json)`, `Read(/${d}/env*)`, `Read(/${d}/session.env)`, `Read(/${d}/waha/.env)`, ...['secrets.json', 'env*', 'config.json', 'session.env', 'waha/.env'].flatMap(f => deny(`${d}/${f}`))]) }
+  const logins = [`${home}/Library/LaunchAgents`, `${home}/.config/systemd`]
+  const permissions = { deny: [...dirs.flatMap(d => [`Read(/${d}/secrets.json)`, `Read(/${d}/env*)`, `Read(/${d}/session.env)`, `Read(/${d}/waha/.env)`, ...['secrets.json', 'env*', 'config.json', 'session.env', 'waha/.env'].flatMap(f => deny(`${d}/${f}`))]),
+    ...sandbox === 'kagelet' ? [...new Set([codeDir, realish(codeDir), ...logins])].flatMap(d => deny(`${d}/**`)) : []] }
   if (!sandbox) return { permissions }
   return {
     permissions,
     sandbox: {
       enabled: true, failIfUnavailable: true, autoAllowBashIfSandboxed: false, allowUnsandboxedCommands: false,
-      network: { allowedDomains: ['*'], allowLocalBinding: true, allowAllUnixSockets: true },
+      network: { allowedDomains: ['*'], allowLocalBinding: true, allowAllUnixSockets: sandbox !== 'kagelet',
+        ...sandbox === 'kagelet' && { allowUnixSockets: [process.env.GNUPGHOME ?? `${home}/.gnupg`, process.env.SSH_AUTH_SOCK].filter((s): s is string => !!s) } },
       filesystem: {
         allowWrite: ['/'], denyRead: tokens,
-        denyWrite: [...new Set([...tokens, ...folder, ...[codeDir, realish(codeDir)], `${home}/Library/LaunchAgents`, `${home}/.config/systemd`])],
+        denyWrite: [...new Set([...tokens, ...folder, ...[codeDir, realish(codeDir)], ...logins])],
       },
     },
   }

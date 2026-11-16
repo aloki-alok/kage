@@ -576,6 +576,28 @@ describe('Kage sessions on the Agent SDK', () => {
     assert.equal((await run('Agent')).hookSpecificOutput.permissionDecision, 'deny')
     assert.equal((await run('WebSearch')).hookSpecificOutput.permissionDecision, 'deny')
   })
+  test('a tools: all lane loads every tool, always in the OS sandbox, and the hub holds a one-way shell step', async () => {
+    const t = setup({ sandbox: false, grants: { 'C1:5.5#side-kagelet-ops': ['all'] } })
+    t.d.task('C1:5.5#side-kagelet-ops', t.task({ fromOwner: false }), 0)
+    t.d.task('C2:5.5', t.task({ channel: 'C2' }), 0)
+    await tick()
+    const lane = t.sdk.runs[0]!.options
+    assert.equal(lane.tools, undefined)
+    assert.equal(lane.settings.sandbox.enabled, true)                       // even with harness.sandbox off
+    assert.ok(lane.settings.sandbox.filesystem.denyWrite.includes('/code/kage'))
+    assert.equal(lane.settings.sandbox.network.allowAllUnixSockets, false)  // the hub's sockets stay closed to its shell
+    assert.deepEqual(lane.settingSources, [])                                // the owner's own settings never widen it
+    assert.ok(lane.settings.permissions.deny.some((p: string) => p.startsWith('Edit(/') && p.includes('/code/kage')))
+    assert.equal(t.sdk.runs[1]!.options.settings.sandbox, undefined)       // every other session keeps the setting
+    const run = (tool_name: string, tool_input = {}) => lane.hooks.PreToolUse[0].hooks[0]({ hook_event_name: 'PreToolUse', tool_name, tool_input }, undefined, { signal: signal() })
+    assert.deepEqual(await run('Bash', { command: 'git log -3' }), {})
+    assert.deepEqual(await run('Edit', { file_path: '/tmp/x', old_string: 'a', new_string: 'b' }), {})
+    const held = await run('Bash', { command: 'kubectl apply -f prod.yaml' })
+    assert.match(held.hookSpecificOutput.permissionDecisionReason, /^Held: a deploy/)
+    assert.equal((await run('mcp__kage__away')).hookSpecificOutput.permissionDecision, 'deny')
+    const asked = await lane.canUseTool('Bash', { command: 'git push --force' }, { signal: signal() })
+    assert.equal(asked.behavior, 'deny')
+  })
   test("each tool call in a kagelet lane is logged with its refusal, if any; other sessions' calls are not", async () => {
     const t = setup({ grants: { 'C1:5.5#side-kagelet-deploys': ['WebSearch'] } })
     t.d.task('C1:5.5#side-kagelet-deploys', t.task(), 0)

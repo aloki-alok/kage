@@ -4,7 +4,7 @@ import { readFileSync, unlinkSync } from 'node:fs'
 import { DEFAULT_MODEL } from '../core/config.ts'
 import { chainErrors, COST_FLAG, DB_READ, NAME, parseKagelet, resultLine, revokeStanding, rowLine, kageletFile, kageletRows, type Kagelet, type Standing } from '../core/kagelets.ts'
 import { chainLine, chainViews } from '../core/events.ts'
-import { kageletTier } from '../core/access.ts'
+import { ALL, kageletTier } from '../core/access.ts'
 import type { Store } from './store.ts'
 import type { Ledgers } from './ledger.ts'
 import { folderFree, hasKagelet, jobPath, pauseKagelet, readKagelets, writeJob } from './kagelet-files.ts'
@@ -131,14 +131,15 @@ export function kageletManager(o: { dir: string; max: number; ledgers: { text(na
       // take one card. Only a session that can ask the owner grants a write tool, standing approval or not.
       const yes = standings(o.store)
       const writes = tools.filter(t => kageletTier(t) === 'write')
-      const kept = writes.filter(t => had?.tools.includes(t) && !had.standing?.includes(t))
-      const standing = writes.filter(t => !kept.includes(t) && yes[t] !== undefined)
-      const card = writes.filter(t => !kept.includes(t) && yes[t] === undefined)
+      // A new job for a kagelet with a shell is a new grant: all asks again.
+      const kept = writes.filter(t => had?.tools.includes(t) && !had.standing?.includes(t) && (t !== ALL || had.job.trim() === (a.job ?? '').trim()))
+      const standing = writes.filter(t => t !== ALL && !kept.includes(t) && yes[t] !== undefined)
+      const card = writes.filter(t => !kept.includes(t) && yes[t] === undefined), stands = card.filter(t => t !== ALL)
       if ((card.length || standing.some(t => fresh.includes(t))) && !ask) return refuse(`only the owner grants ${[...card, ...standing].join(', ')}, and this session cannot ask them`)
       if (card.length && !await ask!({ kagelet: a.name, tools: card.join(', '), job: (a.job ?? '').trim().split('\n')[0]!.slice(0, 300) })) return refuse(`the owner did not approve ${card.join(', ')}`)
       const text = fileText(true, standing)
       if (typeof text !== 'string') return refuse(text.error)
-      if (card.length) o.store.save(STANDING, { ...yes, ...Object.fromEntries(card.map(t => [t, now])) })
+      if (stands.length) o.store.save(STANDING, { ...yes, ...Object.fromEntries(stands.map(t => [t, now])) })
       if (command) o.store.save(READ_COMMANDS, { ...commands(o.store), [a.name]: command })
       writeJob(o.dir, a.name, text)
       // What it got new, by whose yes. The owner hears of the no-card ones in the daily note (hub/router.ts).

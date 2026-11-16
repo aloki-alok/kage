@@ -7,6 +7,15 @@ import { readOnlyQuery } from '../../core/db-read.ts'
 import { type Manage } from '../kagelet-manager.ts'
 import { DEFAULT_MODEL, MODELS } from '../../core/config.ts'
 import type { KageTool, ToolContext } from '../kage-tools.ts'
+import { ALL } from '../../core/access.ts'
+
+// The owner's card for a kagelet's new tools. tools: all is for this kagelet only; any other write tool's yes stands.
+export const grantCard = (card: { kagelet: string; tools: string }) => {
+  const asked = card.tools.split(', '), named = asked.filter(t => t !== ALL)
+  return [`Grant kagelet ${card.kagelet}:`,
+    ...asked.includes(ALL) ? ['all tools (shell, files, web, agents), run in a sandbox that keeps the tokens, the settings and Kage\'s code closed. A one-way step (a deploy, a forced push, a DB write, a delete, a send) is held and comes to Kage. This yes is for this kagelet only.'] : [],
+    ...named.length ? [`${named.join(', ')}. Your yes stands: a later kagelet that asks for ${named.join(', ')} gets it with no card, until you revoke it (v in kage top, or ask). Your daily note lists each grant made with no card.`] : []].join(' ')
+}
 
 export function kageletTools(c: ToolContext): KageTool[] {
   const { o, s, ownerTask, links, post, append, ownerOnly } = c
@@ -166,7 +175,7 @@ export function kageletTools(c: ToolContext): KageTool[] {
       thread: s.optional().describe('save: the Slack link of the thread it posts in'),
       schedule: s.optional().describe('save: a 5-field cron in local time, e.g. "0 9 * * 1-5"'),
       after: s.optional().describe('save: the kagelet whose report output starts this one, as a chain step (at most 5 deep, no cycles); schedule may then be left out'),
-      tools: z.array(s).optional().describe('save: its grant, by full tool name: WebSearch, WebFetch, db_read, outside MCP tools'),
+      tools: z.array(s).optional().describe('save: its grant, by full tool name: WebSearch, WebFetch, db_read, outside MCP tools, or all for every built-in tool (shell, files, web) in a sandbox with one-way steps held; an MCP tool is still named'),
       read_command: s.optional().describe('save with db_read and no kagelets.dbRead.command: one of the read commands the owner already approved. Leave out to keep this kagelet\'s own'),
       job: s.optional().describe('save: what to do on each run, complete on its own'),
       why: s.optional().describe('save: one line on why it exists'),
@@ -180,7 +189,7 @@ export function kageletTools(c: ToolContext): KageTool[] {
         return { isError: true, text: 'only the owner\'s task can manage kagelets' }
       }
       const approve = o.approve
-      return { text: await team.manage(a, approve && (card => approve('grant_kagelet', `Grant kagelet ${card.kagelet}: ${card.tools}. Your yes stands: a later kagelet that asks for ${card.tools} gets it with no card, until you revoke it (v in kage top, or ask). Your daily note lists each grant made with no card.`, card))) }
+      return { text: await team.manage(a, approve && (card => approve('grant_kagelet', grantCard(card), card))) }
     },
   })
   return tools
