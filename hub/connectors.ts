@@ -25,7 +25,7 @@ export function startConnectors(o: {
   NAME: string; CODE: string; DIR: string; d: Dispatcher<ToSession>; inbox: Inbox
   deliver: (c: Conversation, task: Task, place: string, lane?: Lane, by?: string) => Delivery
   placeOf: (key: string) => string; failed: (m: ToSession) => void
-  schedules: Parameters<typeof startJobEvents>[0]['schedules']; event: Parameters<typeof startJobEvents>[0]['event']; tripwires: Config['tripwires']
+  schedules: Parameters<typeof startJobEvents>[0]['schedules']; event: Parameters<typeof startJobEvents>[0]['event']; ledgers: Parameters<typeof startJobEvents>[0]['ledgers']; tripwires: Config['tripwires']
 }) {
   const { secrets, conn, store, slack, bot, NAME, CODE, DIR, d, inbox, deliver, placeOf, failed } = o
   // GitHub is on when githubSecret and connectors.github.login are set: a webhook through a tunnel.
@@ -89,7 +89,7 @@ export function startConnectors(o: {
   }) : undefined
 
   // Jobs an event wakes: Slack channel posts and each job's own webhook.
-  const jobs = startJobEvents({ store, inbox, bot, notify: text => void slack.notifyOwner(text), schedules: o.schedules, event: o.event, tripwires: o.tripwires })
+  const jobs = startJobEvents({ store, inbox, bot, notify: text => void slack.notifyOwner(text), schedules: o.schedules, event: o.event, ledgers: o.ledgers, tripwires: o.tripwires })
 
   const replies = {
     voice: (key: string, text: string) => { if (!meeting?.say(key, text)) voice?.reply(key, text) },   // voice:meet-<call> is a Meet call (#63)

@@ -106,7 +106,7 @@ export function scheduler(o: {
   })
   return {
     // Returns why it was refused, or undefined when added.
-    add(from: string, j: Pick<Schedule, 'id' | 'cron' | 'prompt' | 'recurring' | 'lane' | 'trigger'> & { probe?: ProbeArg }, now: number): string | undefined {
+    add(from: string, j: Pick<Schedule, 'id' | 'cron' | 'prompt' | 'recurring' | 'lane' | 'trigger'> & { probe?: ProbeArg; shadow?: { of: string; live: string } }, now: number): string | undefined {
       const key = threadOfJobLane(from) // a session in a job lane makes a schedule for the thread, never a lane of a lane
       const watch = j.cron === REPLY, event = j.cron === EVENT
       if (!watch && !event) {
@@ -126,8 +126,15 @@ export function scheduler(o: {
         if (typeof p === 'string') return p
         trigger = { kind: 'probe', probe: p }
       }
-      const { probe: _, ...plain } = j
+      // A twin shadows one live job of the same thread, never another twin (ADR 0017).
+      if (j.shadow) {
+        const of = j.shadow.of
+        if (!this.list(key).some(s => s.id === of)) return `no job ${of} in this thread to shadow`
+        if (store.jobState(of).shadow) return `${of} is itself a twin: shadow the job it shadows`
+      }
+      const { probe: _, shadow, ...plain } = j
       store.addSchedule({ ...plain, ...(trigger && { trigger }), key, fromOwner: o.trusted(key), created: now, lastFired: 0, ...(!watch && (event || (j.lane ?? o.job.laneDefault())) ? { lane: true } : { lane: undefined }), ...(watch && { recurring: true, ends: now + WATCH_DAYS * DAY }), ...(event && { recurring: true }) })
+      if (shadow) store.setJobState(j.id, { ...store.jobState(j.id), shadow: { of: shadow.of, live: shadow.live, since: now } })
       log('scheduled', j.id, j.cron, 'for', key)
     },
     // Jobs moved out of tmux panes (cli/export-crons.ts) when they stopped. `ranUntil` is when the export

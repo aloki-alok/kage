@@ -173,6 +173,7 @@ export function openStore(path: string) {
       db.prepare('update schedules set cron = ?, trigger = ? where id = ?').run(cron, JSON.stringify(trigger), id)
       if (resetBaseline) { const { fp: _f, last: _l, ...kept } = this.jobState(id); this.setJobState(id, kept) }   // a pending note, a refusal and the flags stay
     },
+    setPrompt(id: string, prompt: string) { db.prepare('update schedules set prompt = ? where id = ?').run(prompt, id) },   // a twin swapping in or back (ADR 0017)
     fired(id: string, at: number) { db.prepare('update schedules set last_fired = ? where id = ?').run(at, id) },
     // A tripwire job's state between runs (core/tripwire.ts decide), kept on its schedule row so it survives a restart and
     // goes when the schedule goes. A job that never ran, or is gone, reads as a clean state.

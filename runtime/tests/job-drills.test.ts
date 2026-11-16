@@ -41,7 +41,7 @@ async function hub(o: { store?: ReturnType<typeof openStore>; hookPerHour?: numb
   const port = o.hookPort ?? await freePort()
   const j = startJobEvents({
     store, inbox, bot: { chat: { postMessage: async (a: { text: string }) => { pings.push(a.text) } } } as never, notify: t => pings.push(`owner: ${t}`),
-    schedules: sch, event: e => { events.push(`${e.who} ${e.detail}`); ledgers.event(e) },
+    schedules: sch, event: e => { events.push(`${e.who} ${e.detail}`); ledgers.event(e) }, ledgers,
     tripwires: { hookPort: port, hookPerHour: o.hookPerHour ?? 60, maxKb: 1, ...(o.on === false && { on: false }) },
   })
   open.push(j)

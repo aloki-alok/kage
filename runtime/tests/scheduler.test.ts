@@ -443,3 +443,14 @@ test('an event job whose wake keeps failing tells the owner once, not every tick
   t.s.tick(at('2026-11-03T10:06:00'))
   assert.equal(t.failed.length, 2)                                    // a new failure after a delivery tells again
 })
+
+test('a twin made with shadow_of keeps its link, live prompt and start in its job state; an unknown or twin target is refused (ADR 0017)', () => {
+  const t = setup()
+  const now = at('2026-11-16T10:00:00')
+  assert.equal(t.s.add('C1:5.5', job, now), undefined)
+  assert.equal(t.s.add('C1:5.5', { ...job, id: 'tw', prompt: 'SHADOW of j1', shadow: { of: 'j1', live: 'the live prompt' } }, now), undefined)
+  assert.deepEqual(t.store.jobState('tw').shadow, { of: 'j1', live: 'the live prompt', since: now })
+  assert.match(t.s.add('C1:5.5', { ...job, id: 'x1', shadow: { of: 'nope', live: 'l' } }, now) ?? '', /no job nope in this thread/)
+  assert.match(t.s.add('C1:5.5', { ...job, id: 'x2', shadow: { of: 'tw', live: 'l' } }, now) ?? '', /tw is itself a twin/)
+  assert.match(t.s.add('C2:1.1', { ...job, id: 'x3', shadow: { of: 'j1', live: 'l' } }, now) ?? '', /no job j1 in this thread/)
+})

@@ -119,6 +119,9 @@ A tripwire runs a shell command on a clock and wakes a session only when the com
 | `tripwires.hookPort` | `0` | The port of the webhook that wakes a job (`POST /hook/<job id>` with the job's bearer token). `0` leaves the server off. Any other value must be from 1024 to 65535. |
 | `tripwires.hookHost` | `127.0.0.1` | Where the job webhook listens. Reach it through a tunnel, and keep the port off the internet unless the tunnel is the only way in. |
 | `tripwires.hookPerHour` | `60` | The most calls per hour one job's webhook accepts. Past it, the webhook answers 429. |
+| `tripwires.swapAfter` | `3` | A twin job swaps in by itself once it agrees with the job it shadows on this many real events, with no miss (ADR 0017). |
+| `tripwires.shadowWindowMin` | `30` | How many minutes apart the old job's act and the twin's verdict may be and still pair. |
+| `tripwires.swapUndoDays` | `7` | How long a swapped-out job is kept, so "undo the swap" can bring it back. |
 
 ## Email
 

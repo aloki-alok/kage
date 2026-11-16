@@ -252,7 +252,7 @@ const sdk = sdkLib ? sdkSessions({
   hub: () => d,
   tools: (key, send, approve) => sessionTools({
     title: Title, bot, user, botDm: () => slack.ids.botDm, dir: DIR, ledgers, send, memory: MEM,
-    schedules: { add: j => jobs.add(key, j, Date.now()), remove: id => jobs.remove(key, id), list: () => schedules.list(key), hookUrl: id => jobs.hookUrl(id), tune: (id, t) => schedules.tune(key, id, t, Date.now()) },
+    schedules: { add: j => jobs.add(key, j, Date.now()), remove: id => jobs.remove(key, id), list: () => schedules.list(key), hookUrl: id => jobs.hookUrl(id), tune: (id, t) => schedules.tune(key, id, t, Date.now()), restore: id => jobs.swaps.restore(key, id, Date.now()) },
     afk: slack.afk?.command,
     settings: { set: (key, value) => setKey(ENV_FILE, key, value) },
     kagelet: key.split('#side-kagelet-')[1], dreaming: key.split('#side-kdream-')[1], kageletMemory: kag.kmem,
@@ -354,7 +354,7 @@ else if (existsSync(CRONS)) {
   }
 }
 
-const { meeting, voice, replies, replayOf, jobs } = startConnectors({ secrets, conn, store, slack, bot, NAME, CODE, DIR, d, inbox, deliver, placeOf, failed, schedules, event: ledgers.event, tripwires: config.tripwires })
+const { meeting, voice, replies, replayOf, jobs } = startConnectors({ secrets, conn, store, slack, bot, NAME, CODE, DIR, d, inbox, deliver, placeOf, failed, schedules, event: ledgers.event, ledgers, tripwires: config.tripwires })
 listenForCommands(slack.socket, { user, team: slack.ids.team!, commands: COMMANDS, ledgers })
 
 // Each connector marks its own failures: ⚠️ on a Slack message, a DM line for an email or WhatsApp
@@ -377,7 +377,7 @@ const VERSION = updates.VERSION
 // Every timed job of the hub, on one clock (runtime/jobs.ts).
 runJobs([
   // A drain for kage restart or stop starts no scheduled run: one due now runs after the restart.
-  { name: 'schedules', every: 20_000, run: now => { if (!limits.draining(now)) schedules.tick(now) } },
+  { name: 'schedules', every: 20_000, run: now => { if (!limits.draining(now)) schedules.tick(now); jobs.swaps.tick(now) } },
   { name: 'sweep', every: 60_000, run: now => d.sweep(now).forEach(failed) },
   { name: 'limit pause', every: 20_000, run: now => limits.tick(now) },
   { name: 'daily note', every: 10 * 60_000, run: digests.dailyNote },

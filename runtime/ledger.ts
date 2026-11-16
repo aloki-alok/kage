@@ -9,8 +9,8 @@ import { lastTotals, trailEvent, trailLine, tsvRow, turnCost } from '../core/led
 import { eventRow, whoOf, type EventKind, type KageEvent } from '../core/events.ts'
 import { COST_FLAG } from '../core/kagelets.ts'
 
-export type LedgerName = 'waiting' | 'posted' | 'prod-actions' | 'costs' | 'runs' | 'commands' | 'reports' | 'db-reads' | 'grants' | 'boots'
-const NAMES: LedgerName[] = ['waiting', 'posted', 'prod-actions', 'costs', 'runs', 'commands', 'reports', 'db-reads', 'grants']
+export type LedgerName = 'waiting' | 'posted' | 'prod-actions' | 'costs' | 'runs' | 'commands' | 'reports' | 'db-reads' | 'grants' | 'verdicts' | 'boots'
+const NAMES: LedgerName[] = ['waiting', 'posted', 'prod-actions', 'costs', 'runs', 'commands', 'reports', 'db-reads', 'grants', 'verdicts']
 export type Ledgers = ReturnType<typeof openLedgers>
 
 // trail: the hub passes its log, so every row and event is a line in hub.log too. Panes pass none.

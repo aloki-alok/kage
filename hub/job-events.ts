@@ -3,8 +3,10 @@
 import type { WebClient } from '@slack/web-api'
 import { jobHooks } from '../connectors/job-hooks.ts'
 import type { Config } from '../core/config.ts'
+import type { Schedule } from '../core/cron.ts'
 import type { KageEvent } from '../core/events.ts'
 import { jobEvents } from '../runtime/job-events.ts'
+import { shadowSwaps } from '../runtime/shadow-swap.ts'
 import { log } from '../runtime/log.ts'
 import type { scheduler } from '../runtime/scheduler.ts'
 import type { Inbox, Store } from '../runtime/store.ts'
@@ -13,6 +15,7 @@ export function startJobEvents(o: {
   store: Store; inbox: Inbox; bot: WebClient; notify: (text: string) => void
   schedules: Pick<ReturnType<typeof scheduler>, 'add' | 'remove' | 'wake'>
   event: (e: Omit<KageEvent, 'at' | 'chain' | 'transcript'>) => void
+  ledgers: Parameters<typeof shadowSwaps>[0]['ledgers']
   tripwires: Config['tripwires']
 }) {
   const t = o.tripwires ?? {}
@@ -26,6 +29,10 @@ export function startJobEvents(o: {
   }
   const ev = jobEvents({ saved: o.store, schedules: () => o.store.schedules(), wake: o.schedules.wake, track, ping,
     cfg: () => ({ patternMax: t.patternMax || 200, maxPosts: t.maxPosts || 20, seenMax: t.seenMax || 500 }) })
+  // Twins graded against the job they shadow, and swapped in once proven (ADR 0017). Removal and restore go through
+  // the facade below, so a channel watch leaves and returns with its job.
+  const swaps = shadowSwaps({ store: o.store, ledgers: o.ledgers, settings: () => t, owner: o.notify, ping, event: d => track('hub', d),
+    remove: id => { const s = o.store.schedules().find(x => x.id === id); if (s) facade.remove(s.key, id) }, restore: s => facade.restore(s) })
   if (!off) { ev.rebuild(); o.store.save('job-off-told', undefined) }
   else {
     // Off stops stored event jobs without a word, so say it: one DM per set of paused jobs, and a row for each.
@@ -42,7 +49,7 @@ export function startJobEvents(o: {
   const hooks = t.hookPort && !off ? jobHooks({ host, port: t.hookPort, inbox: o.inbox, maxKb: () => t.maxKb || 64, perHour: () => t.hookPerHour || 60, hookOf,
     deliver: (job, quote, done) => ev.wake(job, [quote], done), track }) : undefined
   void hooks?.listening.then(port => log(`job webhooks on: ${host}:${port}/hook/<job id>`))
-  return {
+  const facade = {
     add(key: string, j: Parameters<typeof o.schedules.add>[1], now: number): string | undefined {
       const no = off && j.trigger ? 'tripwires are off: run `kage set tripwires.on true` first' : ev.refuse(j.trigger)
       if (no) return no
@@ -54,6 +61,8 @@ export function startJobEvents(o: {
       o.schedules.remove(key, id)
       if (!o.store.schedules().some(s => s.id === id)) ev.stopped(id)
     },
+    // A swapped-out job put back as it was (runtime/shadow-swap.ts restore), with its watch.
+    restore(s: Schedule) { o.store.addSchedule(s); ev.started(s.id, s.trigger) },
     hookUrl: (id: string) => hooks && `http://${host}:${t.hookPort}/hook/${id}`,
     channelPost: (p: Parameters<typeof ev.channelPost>[0]) => { if (off) return; try { ev.channelPost(p) } catch (e) { log('channel post failed', e); track('hub', 'match failed=1') } },
     channelCatchUp: (h: Parameters<typeof ev.channelCatchUp>[0]) => { if (!off) void ev.channelCatchUp(h).catch(e => log('channel catch-up failed', e)) },
@@ -65,4 +74,5 @@ export function startJobEvents(o: {
     }),
     close: () => hooks?.close(),
   }
+  return { ...facade, swaps }
 }

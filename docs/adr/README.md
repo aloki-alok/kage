@@ -19,6 +19,7 @@ Each file records one rule Kage follows, why, and how it is checked. Read the on
 | [0013](0013-releases-are-made-by-the-owners-hub.md) | The owner's hub makes releases and moves `stable` | Accepted |
 | [0014](0014-structure-is-a-test.md) | Structure rules are a test, and their debt only shrinks | Accepted |
 | [0015](0015-monitors-climb-down-a-ladder.md) | Monitors climb down a ladder, and the hub records every step | Accepted |
+| [0017](0017-a-twin-swaps-itself-when-the-hub-proves-it.md) | A twin swaps itself in when the hub proves it matches | Accepted |
 
 ## Format
 
