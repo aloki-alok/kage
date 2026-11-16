@@ -125,8 +125,9 @@ export async function connectSlack(o: { dir: string; appToken: string; userToken
     // Senders and people mentioned as <@U...>, so Claude can name them in a reply.
     const mentioned = msgs.flatMap(x => [...(x.text ?? '').matchAll(/<@([UW][A-Z0-9]+)>/g)].map(r => r[1]))
     const people = [...new Set([...msgs.map(x => x.user), ...mentioned].filter((u): u is string => !!u && u !== ids.owner && u !== ids.bot))]
-    const legend = await Promise.all(people.map(async u => `other:${u} = ${await nameOf(u)}`))
-    const text = [legend.length ? `People (display names, unverified): ${legend.join('; ')}` : '', ...lines].filter(Boolean).join('\n')
+    // The owner's id too: without it a session asked to tag its owner guesses an id (#319).
+    const legend = [`owner:${ids.owner} = ${await nameOf(ids.owner)}`, ...await Promise.all(people.map(async u => `other:${u} = ${await nameOf(u)}`))]
+    const text = [lines.length ? `People (display names, unverified): ${legend.join('; ')}` : '', ...lines].filter(Boolean).join('\n')
     return { text, files: msgs.flatMap(x => (x as { files?: SlackFile[] }).files ?? []) }
   }
 

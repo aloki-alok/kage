@@ -152,6 +152,31 @@ test('a held message that starts on its replay loses the hourglass, so only the 
   }
 })
 
+test('the thread a session reads names the owner\'s Slack id, so a tag for the owner never needs a guessed id (#319)', async () => {
+  const dir = mkdtempSync(join(tmpdir(), 'kage-legend-'))
+  const tasks: string[] = []
+  try {
+    const client = {
+      auth: { test: async () => ({ team_id: 'TTEST', user_id: 'UTEST1' }) },
+      conversations: { open: async () => ({ channel: { id: 'DTEST' } }), history: async () => ({ messages: [] }), info: async () => ({ channel: { name: 'general' } }),
+        replies: async () => ({ messages: [{ user: 'UTEST2', ts: '6.0', text: 'confirm it with your owner first' }] }) },
+      users: { info: async () => ({ user: { real_name: 'Sam Test' } }) },
+      chat: { getPermalink: async () => ({ permalink: '' }) },
+      reactions: { add: async () => ({ ok: true }), remove: async () => ({ ok: true }) },
+    }
+    const slack = await connectSlack({
+      dir, appToken: 'test', userToken: 'test', bot: client as never, user: client as never,
+      name: 'kage', title: 'Kage', teammates: [], apps: [],
+      hub: { posted: () => '', handled: () => {}, deliver: (_c: unknown, task: { content: string }) => { tasks.push(task.content); return 'sent' } } as never,
+    })
+    await slack.replay('test-legend', JSON.stringify({ ...msg, client_msg_id: 'a', ts: '6.6', thread_ts: '6.0', text: '<@UTEST1> check the logs' }))
+    assert.equal(tasks.length, 1)
+    assert.match(tasks[0]!, /People \(display names, unverified\): owner:UTEST1 = Sam Test; other:UTEST2 = Sam Test\n/)
+  } finally {
+    rmSync(dir, { recursive: true, force: true })
+  }
+})
+
 describe('a Slack event reaches the inbox before Slack is told it arrived', () => {
   test('the write comes before the ack, then the message is handled with its source id', async () => {
     const steps: string[] = []
