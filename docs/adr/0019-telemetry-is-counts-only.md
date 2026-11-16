@@ -4,7 +4,7 @@ Status: Accepted. The `report_bug` tool is not built.
 
 ## Decision
 
-An install may send telemetry to one OTLP endpoint (`telemetry.endpoint`). Two layers go there:
+Every install sends telemetry to one OTLP endpoint: the Kage team's receiver by default, or `telemetry.endpoint`. The owner gets one DM saying so before anything is sent. Two layers go there:
 
 | Layer | Source | What leaves |
 |---|---|---|

@@ -1,7 +1,7 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import type { EventKind, KageEvent } from '../events.ts'
-import { crashFingerprint, sessionTelemetryEnv, telemetryEndpoint, toTelemetry } from '../telemetry.ts'
+import { crashFingerprint, sessionTelemetryEnv, TELEMETRY_URL, telemetryEndpoint, toTelemetry } from '../telemetry.ts'
 
 const KINDS: EventKind[] = ['run.start', 'run.end', 'tool', 'handoff', 'grant', 'refusal', 'revoke', 'owner-note', 'report', 'cap-pause', 'cost-flag', 'config.live', 'config.restart', 'config.refused', 'memory-proposal', 'memory-decision', 'day-summary', 'triage', 'tripwire', 'crash']
 const PLANTED = ['Priya', 'U0TESTUSER1', 'C0TESTCHAN1', 'priya@acme.com', '/Users/priya', 'refund the customer', 'sk-live-123', 'acme']
@@ -55,14 +55,15 @@ test('a crash fingerprint names the error class and the first frame inside the r
   assert.match(crashFingerprint('a thrown string', '/x'), /^[0-9a-f]{12}$/)
 })
 
-test('telemetry sends only with an endpoint, and DO_NOT_TRACK, KAGE_TELEMETRY=off or on:false turn it off', () => {
-  assert.equal(telemetryEndpoint(undefined, {}), undefined)
-  assert.equal(telemetryEndpoint({ endpoint: '' }, {}), undefined)
+test('telemetry is on by default to the Kage receiver, and on:false, KAGE_TELEMETRY=off or DO_NOT_TRACK turn it off', () => {
+  assert.equal(telemetryEndpoint(undefined, {}), TELEMETRY_URL)
+  assert.equal(telemetryEndpoint({ endpoint: '' }, {}), TELEMETRY_URL)
   assert.equal(telemetryEndpoint({ endpoint: 'http://127.0.0.1:4318/otlp/' }, {}), 'http://127.0.0.1:4318/otlp')
+  assert.equal(telemetryEndpoint({ on: false }, {}), undefined)
   assert.equal(telemetryEndpoint({ endpoint: 'http://x/otlp', on: false }, {}), undefined)
-  assert.equal(telemetryEndpoint({ endpoint: 'http://x/otlp' }, { DO_NOT_TRACK: '1' }), undefined)
-  assert.equal(telemetryEndpoint({ endpoint: 'http://x/otlp' }, { DO_NOT_TRACK: '0' }), 'http://x/otlp')
-  assert.equal(telemetryEndpoint({ endpoint: 'http://x/otlp' }, { KAGE_TELEMETRY: 'off' }), undefined)
+  assert.equal(telemetryEndpoint(undefined, { DO_NOT_TRACK: '1' }), undefined)
+  assert.equal(telemetryEndpoint(undefined, { DO_NOT_TRACK: '0' }), TELEMETRY_URL)
+  assert.equal(telemetryEndpoint(undefined, { KAGE_TELEMETRY: 'off' }), undefined)
 })
 
 test('sessions export Claude Code telemetry as logs only, and turn every flag that sends prompts, replies or tool input to 0', () => {

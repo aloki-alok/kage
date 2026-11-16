@@ -23,7 +23,7 @@ if (process.argv[2] === 'show') {
   console.log(JSON.stringify(JSON.parse(otlpLogs(rows.map(toTelemetry), { 'service.name': 'kage', 'service.version': version, 'kage.install': id, 'os.type': platform(), 'host.arch': arch() })), null, 2))
   console.error(`${rows.length} records wait${endpoint ? '' : ', and none will leave: telemetry is off'}`)
 } else {
-  const why = !t?.endpoint ? 'no telemetry.endpoint set' : t.on === false ? 'telemetry.on is false' : process.env.KAGE_TELEMETRY === 'off' ? 'KAGE_TELEMETRY=off' : 'DO_NOT_TRACK is set'
+  const why = t?.on === false ? 'telemetry.on is false' : process.env.KAGE_TELEMETRY === 'off' ? 'KAGE_TELEMETRY=off' : 'DO_NOT_TRACK is set'
   console.log(endpoint ? `on: counts and failure codes go to ${endpoint}, install ${id}` : `off: ${why}`)
   console.log('Never sent: message text, prompts, replies, tool input. Claude Code adds the signed-in account (email and ids) to its own records. kage telemetry show prints Kage\'s next batch.')
 }
