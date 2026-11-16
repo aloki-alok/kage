@@ -53,7 +53,7 @@ export const Config = z.strictObject({
     github: z.strictObject({ login: text, port: count, perHour: count }).optional(),
     meeting: z.strictObject({ port: count, perHour: count, agentApi: text, agentId: count }).optional(),
     browser: z.strictObject({ port: count, block: strings }).optional(),
-    whatsapp: z.strictObject({ on: yes, memory: text, model: text, wahaUrl: text, hookHost: text, hookPort: count }).optional(),
+    whatsapp: z.strictObject({ on: yes, memory: text, model: text, wahaUrl: text, hookHost: text, hookPort: count, checkMinutes: count }).optional(),
     commands: z.record(z.string().regex(/^\/[a-z][a-z0-9-]{1,30}$/), z.string().regex(/^\/\S+$/)).optional(),
   }).optional(),
   // Env lines the table does not know. A secret-looking one keeps only its name here (null) and its value in secrets.json.
@@ -132,7 +132,7 @@ export const KEYS: Row[] = [
   R('KAGE_MEETING_PORT', 'connectors.meeting.port', int), R('KAGE_MEETING_PER_HOUR', 'connectors.meeting.perHour', int), R('KAGE_MEETING_AGENT_API', 'connectors.meeting.agentApi'), R('KAGE_MEETING_AGENT_ID', 'connectors.meeting.agentId', int),
   R('KAGE_BROWSER_PORT', 'connectors.browser.port', int), R('KAGE_BROWSER_BLOCK', 'connectors.browser.block', list),
   R('KAGE_WHATSAPP', 'connectors.whatsapp.on', onoff), R('KAGE_WA_MEMORY', 'connectors.whatsapp.memory'), R('KAGE_WA_MODEL', 'connectors.whatsapp.model'),
-  R('KAGE_WAHA_URL', 'connectors.whatsapp.wahaUrl'), R('KAGE_WA_HOOK_HOST', 'connectors.whatsapp.hookHost'), R('KAGE_WA_HOOK_PORT', 'connectors.whatsapp.hookPort', int),
+  R('KAGE_WAHA_URL', 'connectors.whatsapp.wahaUrl'), R('KAGE_WA_HOOK_HOST', 'connectors.whatsapp.hookHost'), R('KAGE_WA_HOOK_PORT', 'connectors.whatsapp.hookPort', int), R('KAGE_WA_CHECK_MINUTES', 'connectors.whatsapp.checkMinutes', int),
   R('KAGE_COMMANDS', 'connectors.commands', commands),
   R('SLACK_APP_TOKEN', 'slack.app', str, true), R('SLACK_USER_TOKEN', 'slack.user', str, true), R('SLACK_BOT_TOKEN', 'slack.bot', str, true),
   R('KAGE_AWS_ACCESS_KEY_ID', 'aws.accessKeyId', str, true), R('KAGE_AWS_SECRET_ACCESS_KEY', 'aws.secretAccessKey', str, true),
@@ -252,7 +252,7 @@ export function checkSettings(c: Config, s: Secrets): { name: string; teammates:
 // What a session may change through set_setting. safe: applies at once. power: grants reach or runs code, so the owner says yes
 // on a card first. never: not settable that way. A key not listed is power, so a new key starts closed.
 const SAFE = [/^kagelets\.(max|dailyUsd|totalDailyUsd|chainUsd|needsPerDay|measureMinutes|trendRuns)$/, /^waiting\.expireHours$/, /^afk\.(on|model)$/, /^harness\.(jobModel|jobFreshEvery|jobCarry|jobCarryChars|jobLaneDefault)$/, /^jev\.(threshold|model|ackWords)$/, /^tripwires\.(timeoutSec|maxKb|failPing|patternMax|lineMax|maxPosts|catchUpMax|seenMax|hookPerHour|swapAfter|shadowWindowMin|swapUndoDays)$/,
-  /^connectors\.(voice|github|meeting|browser|whatsapp)\.(port|max|perHour|hookPort)$/, /^connectors\.whatsapp\.model$/]
+  /^connectors\.(voice|github|meeting|browser|whatsapp)\.(port|max|perHour|hookPort)$/, /^connectors\.whatsapp\.(model|checkMinutes)$/]
 export function settingTier(key: string): 'safe' | 'power' | 'never' {
   const parts = key.split('.')
   if (!key || parts.some(p => !p || ['__proto__', 'constructor', 'prototype'].includes(p)) || ['secrets', 'version', 'unknown'].includes(parts[0]!)) return 'never'

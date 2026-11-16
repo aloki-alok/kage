@@ -9,7 +9,8 @@ import { claudeOnce, emptyRoom } from '../runtime/claude-once.ts'
 import { readBody } from './webhook.ts'
 import type { Inbox } from '../runtime/store.ts'
 import { findSecret, guardVerdict } from '../core/outbound.ts'
-import { bridgeAlert, bridgeProblem, decideWhatsApp, fromWaha, guardPrompt, standInPrompt, waOutgoing, waTaskContent, withoutFooter, type Arming, type BridgeSeen, type WahaPayload, type WaLine } from '../core/whatsapp.ts'
+import type { Job } from '../runtime/jobs.ts'
+import { bridgeAlert, decideWhatsApp, fromWaha, guardPrompt, standInPrompt, waOutgoing, waTaskContent, withoutFooter, type Arming, type BridgeSeen, type WahaPayload, type WaLine } from '../core/whatsapp.ts'
 
 export const wahaUrl = (set?: string | null) => set || 'http://127.0.0.1:3198'
 
@@ -156,13 +157,20 @@ export async function wahaSeen(url: string, key: string, ms = 5_000): Promise<Br
   } catch { return { reached: false } }
 }
 
-// The hub's job: one look per run, and a DM only when the bridge goes down or comes back (core/whatsapp.ts bridgeAlert).
-// The state is in the store, so a restart while the bridge is down sends no second DM.
-export function bridgeWatch(o: { look: () => Promise<BridgeSeen>; at: { url: string; qr: string }; state: { load(name: string): unknown; save(name: string, value: unknown): void }; notify: (text: string) => void }) {
-  return async () => {
-    const problem = bridgeProblem(await o.look(), o.at)
-    const r = bridgeAlert(o.state.load('whatsapp-bridge-down') === true, problem)
-    if (r.dm) { log(`whatsapp bridge ${r.down ? `down: ${problem}` : 'back'}`); o.notify(r.dm) }
-    o.state.save('whatsapp-bridge-down', r.down || undefined)
-  }
+// The hub's job: one look every connectors.whatsapp.checkMinutes, and a DM only when the bridge goes down or comes back
+// (core/whatsapp.ts bridgeAlert). The down flag is in the store, so a restart while the bridge is down sends no second DM.
+// It is saved only after Slack took the DM, so a failed DM is sent again on the next look. Off clears it: no stray "back" later.
+const DOWN = 'whatsapp-bridge-down'
+export function bridgeClock(o: { on: boolean; minutes?: number; look: () => Promise<BridgeSeen>; at: { url: string; qr: string }; state: { load(name: string): unknown; save(name: string, value: unknown): void }; notify: (text: string) => Promise<boolean> }): Job[] {
+  if (!o.on) { o.state.save(DOWN, undefined); return [] }
+  let starting = false   // in memory: after a hub restart, one STARTING look is again no change
+  return [{ name: 'whatsapp bridge', every: (o.minutes || 5) * 60_000, run: async () => {
+    const r = bridgeAlert({ down: o.state.load(DOWN) === true, starting }, await o.look(), o.at)
+    if (r.dm) {
+      log(`whatsapp bridge ${r.down ? 'down' : 'back'}`)
+      if (!(await o.notify(r.dm))) return
+    }
+    starting = r.starting
+    o.state.save(DOWN, r.down || undefined)
+  } }]
 }

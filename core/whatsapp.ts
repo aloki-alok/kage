@@ -115,7 +115,12 @@ export function bridgeProblem(s: BridgeSeen, at: { url: string; qr: string }): s
 }
 
 // The hub's check on its clock: one DM when the bridge goes down, one when it is back, none while nothing changed.
-export function bridgeAlert(wasDown: boolean, problem: string | undefined): { down: boolean; dm?: string } {
-  if (!problem) return wasDown ? { down: false, dm: 'WhatsApp is back: @kage tags in WhatsApp are heard again.' } : { down: false }
-  return wasDown ? { down: true } : { down: true, dm: `WhatsApp is down, so @kage tags in WhatsApp are not heard. ${problem}` }
+// Every container restart passes through STARTING, so one look at it changes nothing. STARTING twice in a row is down.
+type BridgeState = { down: boolean; starting: boolean }
+export function bridgeAlert(was: BridgeState, seen: BridgeSeen, at: { url: string; qr: string }): BridgeState & { dm?: string } {
+  const starting = seen.reached && seen.status === 'STARTING'
+  if (starting && !was.starting) return { down: was.down, starting }
+  const problem = bridgeProblem(seen, at)
+  if (!problem) return was.down ? { down: false, starting, dm: 'WhatsApp is back: @kage tags in WhatsApp are heard again.' } : { down: false, starting }
+  return was.down ? { down: true, starting } : { down: true, starting, dm: `WhatsApp is down, so @kage tags in WhatsApp are not heard. ${problem}` }
 }

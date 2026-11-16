@@ -5,7 +5,7 @@ import { createServer } from 'node:http'
 import type { AddressInfo } from 'node:net'
 import { tmpdir } from 'node:os'
 import { openStore } from '../../runtime/store.ts'
-import { bridgeWatch, wahaHandler, wahaIntake, wahaSeen } from '../whatsapp.ts'
+import { bridgeClock, wahaHandler, wahaIntake, wahaSeen } from '../whatsapp.ts'
 import type { BridgeSeen } from '../../core/whatsapp.ts'
 
 describe('a WhatsApp webhook reaches the inbox before WAHA hears 200', () => {
@@ -134,12 +134,55 @@ describe('a look at the WAHA bridge', () => {
 describe('the hub checks the bridge on its clock and DMs only on a change', () => {
   const at = { url: 'http://127.0.0.1:3198', qr: '/kage/waha/qr.sh' }
   const DOWN: BridgeSeen = { reached: false }, UP: BridgeSeen = { reached: true, code: 200, status: 'WORKING' }
-  function hub(store = openStore(':memory:')) {
+  const STARTING: BridgeSeen = { reached: true, code: 200, status: 'STARTING' }
+  function hub(store = openStore(':memory:'), o: { on?: boolean; minutes?: number } = {}) {
     const dms: string[] = []
-    let now = UP
-    const check = bridgeWatch({ look: async () => now, at, state: store, notify: t => { dms.push(t) } })
-    return { store, dms, check, set: (s: BridgeSeen) => { now = s } }
+    let now = UP, slackUp = true
+    const jobs = bridgeClock({ on: o.on ?? true, minutes: o.minutes, look: async () => now, at, state: store, notify: async t => { if (slackUp) dms.push(t); return slackUp } })
+    return { store, dms, jobs, check: () => jobs[0]!.run(0), set: (s: BridgeSeen) => { now = s }, slack: (up: boolean) => { slackUp = up } }
   }
+  test('the job runs every connectors.whatsapp.checkMinutes, 5 when unset', () => {
+    assert.equal(hub(undefined, { minutes: 2 }).jobs[0]!.every, 2 * 60_000)
+    assert.equal(hub().jobs[0]!.every, 5 * 60_000)
+  })
+  test('a container restart (STARTING, then WORKING) sends nothing', async () => {
+    const h = hub()
+    h.set(STARTING); await h.check()
+    h.set(UP); await h.check()
+    assert.deepEqual(h.dms, [])
+  })
+  test('STARTING on two looks in a row is down: one DM', async () => {
+    const h = hub()
+    h.set(STARTING); await h.check(); await h.check(); await h.check()
+    assert.equal(h.dms.length, 1)
+    assert.match(h.dms[0]!, /STARTING.*wait a minute/)
+  })
+  test('STARTING while down keeps it down, so WORKING after it says it is back', async () => {
+    const h = hub()
+    h.set(DOWN); await h.check()
+    h.set(STARTING); await h.check()
+    assert.equal(h.store.load('whatsapp-bridge-down'), true)
+    h.set(UP); await h.check()
+    assert.equal(h.dms.length, 2)
+    assert.match(h.dms[1]!, /back/)
+  })
+  test('a DM Slack refused is sent again on the next look, not lost', async () => {
+    const h = hub()
+    h.slack(false); h.set(DOWN); await h.check()
+    assert.equal(h.store.load('whatsapp-bridge-down'), undefined)
+    h.slack(true); await h.check()
+    assert.equal(h.dms.length, 1)
+    assert.match(h.dms[0]!, /down/)
+    assert.equal(h.store.load('whatsapp-bridge-down'), true)
+  })
+  test('WhatsApp turned off while down, then on: no stray back DM', async () => {
+    const first = hub()
+    first.set(DOWN); await first.check()
+    assert.deepEqual(hub(first.store, { on: false }).jobs, [])
+    const again = hub(first.store)
+    await again.check()
+    assert.deepEqual(again.dms, [])
+  })
   test('down, down, up, up: one DM down and one back', async () => {
     const h = hub()
     h.set(DOWN); await h.check(); await h.check()
@@ -159,7 +202,11 @@ describe('the hub checks the bridge on its clock and DMs only on a change', () =
   })
   test('a bridge that was always up never DMs', async () => {
     const h = hub()
-    await h.check(); await h.check()
+    for (let i = 0; i < 5; i++) await h.check()
     assert.deepEqual(h.dms, [])
+    assert.equal(h.store.load('whatsapp-bridge-down'), undefined)
+    // The same hub does DM when the bridge goes down, so the silence above is the rule, not a notify that never fires.
+    h.set(DOWN); await h.check()
+    assert.equal(h.dms.length, 1)
   })
 })
