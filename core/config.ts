@@ -178,6 +178,13 @@ export function toEnv(config: Config, secrets: Secrets): Env {
     const v = get(k.secret ? secrets : config, k.path)
     if (v !== undefined && v !== null) env[k.env] = k.codec.write(v)
   }
+  return { ...env, ...unknownEnv(config, secrets) }
+}
+
+// The old env file's lines Kage has no setting for (a person's own keys, such as a tool's API key). Before 0.4.0 the hub
+// loaded that file into its environment, so sessions had them; the hub exports these at start to keep that.
+export function unknownEnv(config: Config, secrets: Secrets): Env {
+  const env: Env = {}
   for (const [name, value] of Object.entries(config.unknown ?? {})) if (value !== null) env[name] = value
   for (const [name, value] of Object.entries(secrets.unknown ?? {})) env[name] = value
   return env

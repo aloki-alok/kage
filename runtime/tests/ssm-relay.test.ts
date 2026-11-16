@@ -48,8 +48,15 @@ describe('finding the real plugin', () => {
     for (const d of [a, b]) { writeFileSync(`${d}/session-manager-plugin`, '#!/bin/sh\n'); chmodSync(`${d}/session-manager-plugin`, 0o755) }
     assert.equal(findPlugin(`${a}:${b}`), `${a}/session-manager-plugin`)
     assert.equal(findPlugin(`${a}:${b}`, [a]), `${b}/session-manager-plugin`)
-    assert.equal(findPlugin(`${a}`, [a]), undefined)
-    assert.equal(findPlugin(''), undefined)
+    assert.equal(findPlugin(`${a}`, [a], []), undefined)
+    assert.equal(findPlugin('', [], []), undefined)
+  })
+  test('a LaunchAgent PATH without Homebrew still finds the plugin in its install folder, after anything on PATH', () => {
+    const [onPath, brew, empty] = [mkdtempSync(join(tmpdir(), 'kage-p-')), mkdtempSync(join(tmpdir(), 'kage-brew-')), mkdtempSync(join(tmpdir(), 'kage-e-'))]
+    for (const d of [onPath, brew]) { writeFileSync(`${d}/session-manager-plugin`, '#!/bin/sh\n'); chmodSync(`${d}/session-manager-plugin`, 0o755) }
+    assert.equal(findPlugin(`/usr/bin:${empty}`, [], [brew]), `${brew}/session-manager-plugin`)
+    assert.equal(findPlugin(onPath, [], [brew]), `${onPath}/session-manager-plugin`)
+    assert.equal(findPlugin('/usr/bin', [brew], [brew]), undefined)
   })
 })
 
