@@ -188,7 +188,9 @@ Email is on when `connectors.email.address`, `connectors.email.queue` and `conne
 
 ## WhatsApp
 
-WhatsApp runs through [WAHA](https://github.com/devlikeapro/waha), an unofficial WhatsApp Web bridge linked to your own number. WhatsApp's terms do not allow unofficial clients, so the number you link can be banned. Use it at your own risk.
+**Ban risk first:** WhatsApp's terms do not allow unofficial clients, so the number you link can be banned. Use it at your own risk, and link only a number you can afford to lose.
+
+WhatsApp runs through [WAHA](https://github.com/devlikeapro/waha), an unofficial WhatsApp Web bridge linked to your own number. The bridge runs in Docker from the files in `waha/` in the Kage folder.
 
 When it is on, you type `@kage <task>` in any chat to hand Kage a task. The chat is also armed for an hour: a stand-in answers new messages there as you, until you type in the chat yourself. A guard reads every message before it leaves, and holds anything internal for you in your Slack DM.
 
@@ -200,6 +202,27 @@ When it is on, you type `@kage <task>` in any chat to hand Kage a task. The chat
 | `connectors.whatsapp.wahaUrl` | `http://127.0.0.1:3198` | Where WAHA's API listens. |
 | `connectors.whatsapp.hookHost` | `127.0.0.1` | Where Kage listens for WAHA's signed webhook. Use `0.0.0.0` only when WAHA runs in a container that reaches the host through a VM gateway, and keep the port off the internet. |
 | `connectors.whatsapp.hookPort` | `3199` | The webhook port. Point WAHA at `http://<host>:<port>/waha`. |
+
+### Set up WhatsApp
+
+Run the commands from the Kage folder: the git checkout, or `~/.local/share/kage` for an install from the install line.
+
+1. Install Docker: Docker Desktop on macOS, Docker Engine on Linux. Check: `docker compose version` prints a version.
+2. Make two random keys. Run `openssl rand -hex 32` two times and keep both lines.
+3. Add the keys to `~/.config/kage/secrets.json`, with the first key as `WAHA_API_KEY` and the second as `WHATSAPP_HOOK_HMAC_KEY`. Keep the other keys in the file, and keep the file at mode 600.
+   ```json
+   "waha": { "WAHA_API_KEY": "<first key>", "WHATSAPP_HOOK_HMAC_KEY": "<second key>" }
+   ```
+4. If you run Linux, let the container reach Kage's webhook: `kage set connectors.whatsapp.hookHost 0.0.0.0`. If a firewall such as ufw is on, allow only Docker's networks: `sudo ufw allow from 172.16.0.0/12 to any port 3199 proto tcp`. Keep port 3199 closed to the internet.
+5. Run `kage restart`. At its start, Kage writes the keys to `~/.config/kage/waha/.env` for the container.
+6. Start the bridge: `docker compose -f waha/compose.yaml up -d`. On an ARM machine, such as a Mac with Apple silicon, run `WAHA_TAG=arm-2026.10.1 docker compose -f waha/compose.yaml up -d` instead.
+7. Link your phone: `waha/qr.sh`. It repeats the ban risk and asks you to type `yes`. Then it shows a QR code. On your phone, open WhatsApp > Settings > Linked devices > Link a device, and scan the code.
+8. Check: `kage doctor` shows `ok    WhatsApp bridge up, session WORKING`.
+9. Try it: in any chat, type `@kage` and a task.
+
+### When the bridge stops
+
+If the bridge stops or the phone unlinks, Kage hears no `@kage` tag from WhatsApp. `kage doctor` then prints a FAIL line with the fix, such as `docker start kage-waha` or `waha/qr.sh`. The hub checks the bridge every 5 minutes. It DMs you once when the bridge goes down, and once more when it is back. A `docker stop` keeps the container down until you start it again.
 
 ## Slash commands
 
