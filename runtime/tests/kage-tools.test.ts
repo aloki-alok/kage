@@ -656,6 +656,15 @@ describe("a session's Kage tools", () => {
     assert.equal((await s.call('waiting', {})).text, 'nothing is waiting')
     assert.match(s.ledgers.text('posted'), /C1\t9\.1\tbot\tC1:5\.5\n/)
   })
+  test('the same question asked again in one thread stays one open question', async () => {
+    const s = setup()
+    s.t.onTask(s.task())
+    await s.call('reply', { channel: 'C1', thread_ts: '5.5', text: 'PR?', waiting: 'Open a PR?' })
+    await s.call('reply', { channel: 'C1', thread_ts: '5.5', text: 'PR? (again)', waiting: ' open a pr? ' })
+    assert.equal(s.ledgers.text('waiting').split('\n').filter(l => l.includes('\topen\t')).length, 1)
+    await s.call('reply', { channel: 'C1', thread_ts: '5.5', text: 'And deploy?', waiting: 'Deploy it?' })
+    assert.equal(s.ledgers.text('waiting').split('\n').filter(l => l.includes('\topen\t')).length, 2)
+  })
   test('a scheduled run in the thread does not answer its open question', async () => {
     const s = setup()
     s.t.onTask(s.task())

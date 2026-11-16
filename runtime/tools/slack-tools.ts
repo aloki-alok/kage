@@ -55,7 +55,8 @@ export function slackTools(c: ToolContext): KageTool[] {
         for (const origin of unanswered.get(key) ?? []) react(origin.channel, origin.ts, emoji)
         if (a.mark !== 'question') unanswered.delete(key)
       }
-      if (a.waiting?.trim()) append('waiting', ['open', key, links.get(key) ?? key, a.waiting])
+      const ask = a.waiting?.trim()
+      if (ask && !openWaiting(ledger('waiting')).some(i => i.thread === key && i.what.trim().toLowerCase() === ask.toLowerCase())) append('waiting', ['open', key, links.get(key) ?? key, ask])
       return { text: `sent via ${via} (${at}; pass these to edit_message or delete_message)` }
     },
   }, {

@@ -1,6 +1,6 @@
 import { describe, test } from 'node:test'
 import assert from 'node:assert/strict'
-import { trailEvent, trailLine, askedFrom, cardAt, dailyDue, grantsLine, lastTotals, openWaiting, postedBy, spendSince, staleWaiting, tsvRow, turnCost } from '../ledgers.ts'
+import { trailEvent, trailLine, askedFrom, cardAt, dailyDue, expiredWaiting, grantsLine, lastTotals, openWaiting, postedBy, spendSince, staleWaiting, tsvRow, turnCost } from '../ledgers.ts'
 
 
 describe('the daily note of what waits on the owner', () => {
@@ -45,6 +45,24 @@ describe('the ledgers', () => {
       tsvRow(['t3', 'answered', 'C1:1.1', '', '']),
     ].join('')
     assert.deepEqual(openWaiting(rows), [{ when: 't2', thread: 'C2:2.2', link: 'link2', what: 'Restart the router?' }])
+  })
+  test('an expired question is closed like an answered one', () => {
+    const rows = [tsvRow(['t1', 'open', 'C1:1.1', 'l', 'old']), tsvRow(['t2', 'expired', 'C1:1.1', '', ''])].join('')
+    assert.deepEqual(openWaiting(rows), [])
+  })
+  test('a thread expires only when its newest open question is past the limit', () => {
+    const day = 24 * 3600_000, now = Date.parse('2026-11-10T05:00:00Z')
+    const rows = [
+      tsvRow(['2026-11-01T00:00:00Z', 'open', 'C1:1.1', 'l', 'old one']),
+      tsvRow(['2026-11-02T00:00:00Z', 'open', 'C1:1.1', 'l', 'old two']),
+      tsvRow(['2026-11-01T00:00:00Z', 'open', 'C2:2.2', 'l', 'old, but its thread asked again']),
+      tsvRow(['2026-11-09T12:00:00Z', 'open', 'C2:2.2', 'l', 'fresh']),
+    ].join('')
+    assert.deepEqual(expiredWaiting(rows, now, 3 * day).map(i => i.what), ['old one', 'old two'])
+  })
+  test('a question whose time does not parse never expires its thread', () => {
+    const rows = tsvRow(['not a time', 'open', 'C1:1.1', 'l', 'odd'])
+    assert.deepEqual(expiredWaiting(rows, Date.parse('2026-11-10T05:00:00Z'), 3600_000), [])
   })
   test('a new question after an answer opens again', () => {
     const rows = [

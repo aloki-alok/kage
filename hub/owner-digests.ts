@@ -2,28 +2,37 @@
 // card, and the Monday retro of what Kage's own ledgers say to change (core/retro.ts). Each marks its file only once
 // its DM went out, so a failed post retries.
 import { readFileSync, writeFileSync } from 'node:fs'
-import { dailyDue, grantsLine, staleWaiting } from '../core/ledgers.ts'
+import { dailyDue, expiredWaiting, grantsLine, staleWaiting } from '../core/ledgers.ts'
 import { retro, retroDue } from '../core/retro.ts'
 import type { Ledgers } from '../runtime/ledger.ts'
 import type { Store } from '../runtime/store.ts'
 
 const readFile = (f: string) => { try { return readFileSync(f, 'utf8') } catch { return '' } }
 
-export function ownerDigests(o: { dir: string; ledgers: Ledgers; store: Store; placeOf: (key: string) => string; costTracked: boolean; notify: (text: string) => Promise<boolean> }) {
+export function ownerDigests(o: { dir: string; ledgers: Ledgers; store: Store; placeOf: (key: string) => string; costTracked: boolean; expireHours: () => number; notify:(text: string) => Promise<boolean> }) {
   const DAILY = `${o.dir}/daily-sent`, RETRO = `${o.dir}/retro-sent`
   return {
     // Once a day from 05:00 UTC.
     async dailyNote(now: number) {
       const today = dailyDue(now, readFile(DAILY).trim() || undefined)
       if (!today) return
-      const stale = staleWaiting(o.ledgers.text('waiting'), now, 24 * 3600_000)
+      const hours = o.expireHours(), tsv = o.ledgers.text('waiting')
+      const expired = expiredWaiting(tsv, now, hours * 3600_000)
+      const gone = new Set(expired.map(i => i.thread))
+      const stale = staleWaiting(tsv, now, 24 * 3600_000).filter(i => !gone.has(i.thread))
       // The day before this note's 05:00 UTC, so a retried note neither skips nor repeats a grant.
       const at = Date.parse(`${today}T05:00:00Z`)
       const noCard = grantsLine(o.ledgers.text('grants'), at - 24 * 3600_000, at)
-      const parts = [...stale.length ? [[`*Still waiting on you (${stale.length})*`,
-        ...stale.map(i => `• ${i.link ? `<${i.link}|${i.what}>` : i.what} (since ${i.when.slice(0, 10)})`)].join('\n')] : [], ...noCard ? [noCard] : []]
+      const list = (title: string, items: typeof stale) => items.length ? [[`*${title} (${items.length})*`,
+        ...items.map(i => `• ${i.link ? `<${i.link}|${i.what}>` : i.what} (since ${i.when.slice(0, 10)})`)].join('\n')] : []
+      const parts = [...list('Still waiting on you', stale), ...list(`Dropped after ${hours} h. Reply in its thread if one still matters`, expired), ...noCard ? [noCard] : []]
       const sent = !parts.length || await o.notify(parts.join('\n\n'))
-      if (sent) writeFileSync(DAILY, today, { mode: 0o600 })
+      if (!sent) return
+      // Closed only once the note named them, so a failed post names them again on the retry.
+      // Read again: a thread that asked while the note posted is fresh now and stays open.
+      const still = new Set(expiredWaiting(o.ledgers.text('waiting'), now, hours * 3600_000).map(i => i.thread))
+      for (const thread of gone) if (still.has(thread)) o.ledgers.add('waiting', ['expired', thread, '', ''])
+      writeFileSync(DAILY, today, { mode: 0o600 })
     },
     async weeklyRetro(now: number) {
       const last = Number(readFile(RETRO)) || undefined
