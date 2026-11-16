@@ -2,7 +2,7 @@
 // live in the store, so a hub restart, a closed session or a runtime switch loses none of them;
 // only unschedule ends one (a watch also ends on its own, see WATCH_DAYS).
 import { log } from './log.ts'
-import { jobLane, isJobLane, threadOfJobLane } from '../core/conversations.ts'
+import { jobLane, isJobLane, parseSessionKey, threadOfJobLane } from '../core/conversations.ts'
 import { dueSchedules, EVENT, nextRun, parseCron, REPLY, type Schedule } from '../core/cron.ts'
 import { jobCarry } from '../core/ledgers.ts'
 import { sentTexts } from '../core/transcript.ts'
@@ -187,6 +187,20 @@ export function scheduler(o: {
     settled: () => probes.settled(),
     remove(key: string, id: string) { if (store.removeSchedule(id, threadOfJobLane(key))) log('unscheduled', id, 'for', key) },
     list: (key: string) => store.schedules().filter(s => s.key === threadOfJobLane(key)),
+    // A job taken to another Slack thread, same id and state. Its runs keep owner trust only if the new thread has it.
+    move(from: string, id: string, to: string, now: number): string | undefined {
+      const key = threadOfJobLane(from)
+      if (!this.list(key).some(s => s.id === id)) return `no job ${id} in this thread`
+      if (to === key) return `job ${id} is already in that thread`
+      const c = store.conversation(to)?.conversation ?? parseSessionKey(to)?.conversation
+      if (c?.connector !== 'slack') return 'jobs move to Slack threads only'
+      if (c.agentDm || !c.thread || to.includes('#')) return 'give a Slack thread: a channel and a thread_ts'
+      if (this.list(to).length >= PER_THREAD) return `that thread already has ${PER_THREAD} schedules`
+      if (store.jobState(id).shadow || store.schedules().some(s => store.jobState(s.id).shadow?.of === id)) return `job ${id} is in a twin pair: end the twin first, then move the job`
+      if (!store.conversation(to)) store.seen(to, c, store.conversation(key)?.conversation.chat === c.chat ? store.conversation(key)!.place : c.chat, now)
+      store.moveSchedule(id, key, to, store.schedules().find(s => s.id === id)!.fromOwner && o.trusted(to))
+      log('moved', id, 'from', key, 'to', to)
+    },
     tick(now: number) {
       const { fire, drop } = dueSchedules(store.schedules(), now)
       // A lane whose schedule is gone ends once idle, and its stored session goes: no orphan lanes (a running one waits).

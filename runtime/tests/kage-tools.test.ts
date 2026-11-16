@@ -41,7 +41,7 @@ function fakeSlack() {
       },
       replies: async (a: { channel: string; ts: string; limit: number; cursor?: string }) => {
         calls.push(`${who} replies ${JSON.stringify(a)}`)
-        return { messages: [{ user: 'U0TEST1', text: 'Test thread data.', ts: '1.2' }], has_more: false }
+        return { messages: [{ user: 'U0TEST1', text: 'Test thread data.', ts: a.ts.startsWith('9.') ? a.ts : '1.2' }], has_more: false }
       },
       open: async (a: { users: string }) => {
         if (a.users.includes('UNOSCOPE')) throw Object.assign(new Error('x'), { data: { error: 'missing_scope' } })
@@ -77,6 +77,7 @@ function setup(o: { noHook?: boolean; settings?: { set(key: string, value: unkno
       list: () => jobs,
       tune: (id, t) => { tuned.push([id, t]) },
       hookUrl: id => o.noHook ? undefined : `http://127.0.0.1:3198/hook/${id}`,
+      move: (id, to) => { if (!jobs.some(j => j.id === id)) return `no job ${id} in this thread`; jobs.find(j => j.id === id).key = to },
     },
     afk: async c => { out.push(`afk ${JSON.stringify(c)}`); return 'AFK on' },
     kagelet: o.kagelet, dreaming: o.dreaming, settings: o.settings, kageletMemory: { propose: (name: string, a: unknown, thread: string) => { out.push(`propose ${name} ${thread} ${JSON.stringify(a)}`); return 'proposed' }, decide: (d: unknown) => { out.push(`decide ${JSON.stringify(d)}`); return 'decided' }, open: () => 'open ones', notes: () => [] } as any, dbRead: o.dbRead, approve: o.approve, browser: o.browser, meetbot: o.meetbot, event: (kind, detail) => { events.push(`${kind} ${detail}`) },
@@ -281,6 +282,27 @@ describe("a session's Kage tools", () => {
     pane.t.onTask(pane.task({ fromOwner: true }))
     assert.equal((await pane.call('schedule', { on_channel: { channel: 'C0TEST9' }, prompt: 'x' })).isError, true)
     assert.equal((await pane.call('schedule', { hook: true, prompt: 'x' })).isError, true)
+  })
+  test('move_job takes a job to a real thread: a teammate within this channel, the owner anywhere, never a job run', async () => {
+    const a = { channel: 'C1', thread_ts: '5.5', id: 'j1' }
+    const mate = setup()
+    mate.jobs.push({ id: 'j1', key: 'C1:5.5', cron: '*/15 * * * *', prompt: 'p', recurring: true })
+    mate.t.onTask(mate.task({ fromOwner: false }))
+    assert.match((await mate.call('move_job', { ...a, to_thread_ts: '1.9' })).text, /no thread starts at 1\.9/)   // a reply's ts, or nothing there
+    assert.match((await mate.call('move_job', { ...a, to_channel: 'C2', to_thread_ts: '9.1' })).text, /only the owner/)
+    assert.equal(mate.jobs[0].key, 'C1:5.5')
+    assert.equal((await mate.call('move_job', { ...a, to_thread_ts: '9.1' })).isError, undefined)
+    assert.equal(mate.jobs[0].key, 'C1:9.1')
+    const owner = setup()
+    owner.jobs.push({ id: 'j1', key: 'C1:5.5', cron: '*/15 * * * *', prompt: 'p', recurring: true })
+    owner.t.onTask(owner.task({ fromOwner: true }))
+    assert.equal((await owner.call('move_job', { ...a, to_channel: 'C2', to_thread_ts: '9.1' })).isError, undefined)
+    assert.equal(owner.jobs[0].key, 'C2:9.1')
+    const run = setup()
+    run.jobs.push({ id: 'j1', key: 'C1:5.5', cron: '*/15 * * * *', prompt: 'p', recurring: true })
+    run.t.onTask({ ...run.task({ fromOwner: true }), scheduled: true, job: 'j1' })
+    assert.match((await run.call('move_job', { ...a, to_thread_ts: '9.1' })).text, /own run may not move/)
+    assert.equal(run.jobs[0].key, 'C1:5.5')
   })
   test("a job's own run may not cancel a probe, channel or hook job: it reports instead, and any other task still can", async () => {
     const triggers = { p1: { kind: 'probe', probe: { command: 'x' } }, c1: { kind: 'channel', channel: 'C0TEST9', bots: true }, h1: { kind: 'hook', tokenHash: 'h' } }
