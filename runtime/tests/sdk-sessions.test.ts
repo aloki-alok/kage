@@ -204,6 +204,19 @@ describe('Kage sessions on the Agent SDK', () => {
     assert.equal(t.s.runner.busy('C1:5.5'), true)
     t.s.runner.stop('C1:5.5')
   })
+  test("a reopened process that never starts does not hold its slot: the sweep closes it and hands its task back (#317)", async () => {
+    const opts = { browser: true, transcript: true, silent: false }
+    const t = setup(opts)
+    t.d.task('C1:5.5', t.task({ fromOwner: false, content: 'Task from Sam: one' }), 0)
+    await tick()
+    t.sdk.runs[0]!.emit({ type: 'result' })
+    await tick()
+    opts.silent = true   // the next Claude process never starts
+    t.d.task('C1:5.5', t.task({ content: 'Task from the owner: two' }), 1)
+    await tick(30)
+    assert.equal(t.sdk.runs.length, 2)
+    assert.equal(t.s.runner.busy('C1:5.5'), false)
+  })
   test("with no state events, a session with a task still open takes the next message as it is, and reopens once the turn is empty (#317)", async () => {
     const t = setup({ browser: true, transcript: true })
     t.d.task('C1:5.5', t.task({ fromOwner: false, content: 'Task from Sam: one' }), 0)

@@ -88,8 +88,8 @@ export function sdkSessions(o: {
   const ALLOWED = ['reply', 'edit_message', 'delete_message', 'send_file', 'message_people', 'schedule', 'unschedule', 'schedules', 'set_model', 'kagelets', 'review_kagelet_memory', 'browser_tabs', 'browser_read', 'browser_screenshot', 'browser_snapshot', 'browser_act', 'set_setting', 'meeting_join'].map(t => `mcp__kage__${t}`)
 
   function open(key: string, s: Session, carried: SDKUserMessage[] = []) {
+    const carries = carried.length > 0   // the inbox takes the array itself, so its length changes
     const inbox = makeInbox(carried)
-    if (carried.length) s.state = 'running'   // busy with what it carries, until Claude says idle
     const full = s.ownerTools
     const voice = key.startsWith('voice:')
     const server = o.sdk.createSdkMcpServer({
@@ -185,7 +185,8 @@ export function sdkSessions(o: {
     s.run = { q, inbox, send, started: Date.now() }
     let connected = false
     // Connected at the handshake, or else its first message. One that never starts leaves its tasks to the dispatcher.
-    const connect = () => { if (!connected && !s.stopped) connected = o.hub().connect(key, send) }
+    // Once started, it is busy with what it carries until Claude says idle. One that never starts holds no slot.
+    const connect = () => { if (connected || s.stopped) return; connected = o.hub().connect(key, send); if (carries) s.state = 'running' }
     q.initializationResult().then(connect, () => {})
     void (async () => {
       let blocked = false   // once per turn: a new CLI sends the system event and the refused assistant frame
