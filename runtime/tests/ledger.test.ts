@@ -152,7 +152,7 @@ describe('runs: each event lands on the trace of the run its session is in', () 
   test('a run starts once, its tool calls and report share its trace, and its end says whether it reported', () => {
     const l = openLedgers(dir(), () => '2026-11-14T09:00:00.000Z')
     let n = 0
-    const runs = runEvents(l, () => `t${++n}`)
+    const runs = runEvents(l, () => `t${++n}`, () => 0)
     const key = 'C1:5.5#side-kagelet-deploys'
     runs.start(key, 'scheduled')
     runs.start(key, 'owner')                 // a second task mid-run is the same run
@@ -169,23 +169,37 @@ describe('runs: each event lands on the trace of the run its session is in', () 
       ['run.start', 'deploys', 't1', 'scheduled', ''],
       ['tool', 'deploys', 't1', 'WebSearch', ''],
       ['report', 'deploys', 't1', 'ok', ''],
-      ['run.end', 'deploys', 't1', '$0.10, reported', '/p/s.jsonl'],
+      ['run.end', 'deploys', 't1', '$0.10, reported, ms=0', '/p/s.jsonl'],
       ['run.start', 'C1:5.5', 't2', 'owner', ''],
-      ['run.end', 'C1:5.5', 't2', '$0.01, no report', ''],
+      ['run.end', 'C1:5.5', 't2', '$0.01, no report, ms=0', ''],
       ['run.start', 'C1:5.5', 't3', 'next turn', ''],
       ['tool', 'C1:5.5', 't3', 'WebFetch', ''],
       ['owner-note', 'C1:5.5', 't3', '5 characters', ''],
     ])
   })
+  test('a run end says how long it took, and how long until its first post when it posted', () => {
+    const l = openLedgers(dir(), () => '2026-11-14T09:00:00.000Z')
+    let now = 1000
+    const runs = runEvents(l, () => 't1', () => now)
+    runs.start('C1:5.5', 'task from the teammate')
+    now = 5200
+    runs.posted('C1:5.5')
+    now = 9000
+    runs.posted('C1:5.5')                     // only the first post counts
+    now = 31_000
+    runs.end('C1:5.5', '$0.19')
+    runs.posted('C9:1.1')                     // no run open: nothing
+    assert.equal(l.events('2026-11-14').at(-1)!.detail, '$0.19, no report, ms=30000 first_post_ms=4200')
+  })
   test('a scheduled run starts fresh: a run left open (its session cut) ends as cut first', () => {
     const l = openLedgers(dir(), () => '2026-11-14T09:00:00.000Z')
     let n = 0
-    const runs = runEvents(l, () => `t${++n}`)
+    const runs = runEvents(l, () => `t${++n}`, () => 0)
     runs.start('k', 'scheduled', { fresh: true, chain: 'c1' })
     runs.start('k', 'scheduled', { fresh: true })
     assert.deepEqual(l.events('2026-11-14').map(e => [e.kind, e.trace, e.chain, e.detail]), [
       ['run.start', 't1', 'c1', 'scheduled'],
-      ['run.end', 't1', 'c1', 'cut: no result, no report'],
+      ['run.end', 't1', 'c1', 'cut: no result, no report, ms=0'],
       ['run.start', 't2', '', 'scheduled'],
     ])
   })

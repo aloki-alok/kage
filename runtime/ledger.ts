@@ -14,7 +14,8 @@ const NAMES: LedgerName[] = ['waiting', 'posted', 'prod-actions', 'costs', 'runs
 export type Ledgers = ReturnType<typeof openLedgers>
 
 // trail: the hub passes its log, so every row and event is a line in hub.log too. Panes pass none.
-export function openLedgers(dir: string, now = () => new Date().toISOString(), trail?: (line: string) => void) {
+// added: every row, as written, for a listener in the same process (the hub's run timing hears posted rows).
+export function openLedgers(dir: string, now = () => new Date().toISOString(), trail?: (line: string) => void, added?: (name: LedgerName, cells: string[]) => void) {
   const db = new DatabaseSync(`${dir}/kage.db`)
   db.exec('pragma journal_mode = wal; pragma busy_timeout = 5000')
   db.exec(`create table if not exists ledger (
@@ -69,6 +70,7 @@ export function openLedgers(dir: string, now = () => new Date().toISOString(), t
     add(name: LedgerName, cells: string[]) {
       try { insert.run(name, now(), JSON.stringify(cells.map(c => c.replace(/[\t\r\n]+/g, ' ')))) } catch (e) { log('ledger write failed', name, e) }
       trail?.(trailLine(name, cells.map(c => c.replace(/[\t\r\n]+/g, ' '))))
+      added?.(name, cells)
       // Every grants row is an event too, from whichever process wrote it: read (Kage's grant), granted (a card),
       // standing (a standing approval), revoked or refused. A row from before tiers has no tools cell: it was db_read.
       // So is the hub's cost flag (cost:<name>).
@@ -119,8 +121,9 @@ export const eventsOn = (db: DatabaseSync, day: string) =>
 
 // Which run each session key is in, so its tool calls and report land on that run's trace. In memory: a hub
 // restart cuts every run anyway. fresh: a scheduled run is a run of its own, even when the last one never ended.
-export function runEvents(l: Pick<Ledgers, 'event'>, newId: () => string) {
+export function runEvents(l: Pick<Ledgers, 'event'>, newId: () => string, clock = Date.now) {
   const open = new Map<string, { trace: string; chain: string; hops: number; reported: boolean; refused: boolean }>()
+  const times = new Map<string, { at: number; posted?: number }>()   // when each open run started, and ms to its first post
   const emit = (key: string, kind: EventKind, detail: string, transcript = ''): void => {
     // A task sent mid-turn is read by the next turn, after the first one's end: its first call opens its run.
     if (!open.has(key) && (kind === 'tool' || kind === 'refusal' || kind === 'report')) start(key, 'next turn')
@@ -130,20 +133,24 @@ export function runEvents(l: Pick<Ledgers, 'event'>, newId: () => string) {
     l.event({ kind, who: whoOf(key), trace: r?.trace ?? '', chain: r?.chain ?? '', detail, transcript })
   }
   const end = (key: string, detail: string, transcript = '') => {
-    const r = open.get(key)
+    const r = open.get(key), t = times.get(key) ?? { at: clock() }
     if (!r) return
-    emit(key, 'run.end', `${detail}, ${r.reported ? 'reported' : 'no report'}`, transcript)
+    emit(key, 'run.end', `${detail}, ${r.reported ? 'reported' : 'no report'}, ms=${clock() - t.at}${t.posted != null ? ` first_post_ms=${t.posted}` : ''}`, transcript)
     open.delete(key)
+    times.delete(key)
   }
   // chain, hops: a kagelet message's run (runtime/kagelets.ts), which the hub starts only in an idle session.
   function start(key: string, detail: string, o: { fresh?: boolean; chain?: string; hops?: number } = {}) {
     if (open.has(key) && !o.fresh) return
     end(key, 'cut: no result')
     open.set(key, { trace: newId(), chain: o.chain ?? '', hops: o.hops ?? 0, reported: false, refused: false })
+    times.set(key, { at: clock() })
     emit(key, 'run.start', detail)
   }
   // of: the open run, which the chain router (runtime/kagelets.ts) reads and gives a chain id.
-  return { start, emit, end, of: (key: string) => open.get(key) }
+  // A post from the session (the posted ledger): the first one in a run is its time to first reply.
+  const posted = (key: string) => { const t = times.get(key); if (t && t.posted == null) t.posted = clock() - t.at }
+  return { start, emit, end, posted, of: (key: string) => open.get(key) }
 }
 
 // What each turn cost (core/ledgers.ts turnCost): one costs row per result whose total grew. `kage cost`, the

@@ -8,7 +8,7 @@ Every install sends telemetry to one OTLP endpoint: the Kage team's receiver by 
 
 | Layer | Source | What leaves |
 |---|---|---|
-| Kage | event rows, through `core/telemetry.ts` `toTelemetry` | per kind, fixed words and numbers only: a run's cost and trigger, and whether the owner or a teammate asked, a tool's outcome, a tripwire's action and duration, a crash fingerprint, each usage-limit pause (which window, how long), and every 15 minutes the seat's plan and how full each usage window is |
+| Kage | event rows, through `core/telemetry.ts` `toTelemetry` | per kind, fixed words and numbers only: a run's cost and trigger, and whether the owner or a teammate asked, a tool's outcome, a tripwire's action and duration, a crash fingerprint, each usage-limit pause (which window, how long), every 15 minutes the seat's plan and how full each usage window is, a run's length and time to first post, how the hub's last run ended (update, stop, crash, killed), a fixed code for each error short of a crash, and once a day which connectors are on and how many schedules, watches, kagelets and teammates |
 | Claude Code | each session's own OpenTelemetry, logs only | cost, tokens, tool names and results, API errors. Prompts, replies and tool input stay redacted: no `OTEL_LOG_*` flag is ever set |
 
 Claude Code's layer also carries the signed-in account: email, account and organization ids, and the names of loaded plugins and MCP servers (seen on a real run, 2026-11-16). Kage cannot strip them on the way out, so the Kage receiver (`https://monitor.omnidim.io/kage`) keeps only an allow list of fields per service before storing: for Claude Code, counts, model, timing and outcome.
