@@ -1,6 +1,6 @@
 import { describe, test } from 'node:test'
 import assert from 'node:assert/strict'
-import { intake, ownerNote, connectSlack } from '../slack.ts'
+import { intake, ownerNote, connectSlack, HEARD } from '../slack.ts'
 import { jevTriage } from '../jev.ts'
 import { openLedgers, runEvents } from '../../runtime/ledger.ts'
 import { log } from '../../runtime/log.ts'
@@ -72,6 +72,33 @@ test('a message triage sends to react, with no emoji picked, still gets the eyes
     assert.deepEqual(reactions, ['eyes'])
   } finally {
     ledger.close()
+    rmSync(dir, { recursive: true, force: true })
+  }
+})
+
+test('a listed agent\'s post that Jev says needs no reply gets one Kage-voiced line that tags no one, so the thread never looks ignored', async () => {
+  const dir = mkdtempSync(join(tmpdir(), 'kage-jev-'))
+  const posts: { thread_ts?: string; text: string }[] = []
+  try {
+    const client = {
+      auth: { test: async () => ({ team_id: 'TTEST', user_id: 'UTEST1' }) },
+      conversations: { open: async () => ({ channel: { id: 'DTEST' } }), history: async () => ({ messages: [] }) },
+      users: { info: async () => ({ user: { real_name: 'Sam Test' } }) },
+      reactions: { add: async () => ({ ok: true }) },
+      chat: { postMessage: async (o: { thread_ts?: string; text: string }) => { posts.push(o); return { ok: true } } },
+    }
+    const slack = await connectSlack({
+      dir, appToken: 'test', userToken: 'test', bot: client as never, user: client as never,
+      name: 'kage', title: 'Kage', teammates: ['UMATE0002'], apps: ['ATEST0001'],
+      hub: { posted: () => '', handled: () => {}, deliver: () => assert.fail('a post that needs no reply starts no session') } as never,
+      jev: async () => ({ reply: false, why: 'jev needs_reply 0.10 (threshold 0.5)' }),
+    })
+    await slack.replay('test-source', JSON.stringify({ ...msg, user: 'UMATE0002', app_id: 'ATEST0001', bot_id: 'BTEST0001', text: '<@UTEST1> done, no reply needed' }))
+    assert.equal(posts.length, 1)
+    assert.equal(posts[0]!.thread_ts, '5.5')
+    assert.ok(HEARD.includes(posts[0]!.text))
+    assert.ok(!posts[0]!.text.includes('<@'), 'no tag, so the agent is not woken')
+  } finally {
     rmSync(dir, { recursive: true, force: true })
   }
 })
