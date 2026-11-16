@@ -43,6 +43,23 @@ describe('who can drive the agent', () => {
     assert.deepEqual(classify(appPost({ user: MATE }), { ...two, apps: [`ATEST0002:${MATE}`, 'ATEST0001:ATEST0002'] }), { kind: 'drop', reason: 'not-proven' })
     assert.deepEqual(classify(appPost({ user: MATE }), { ...two, apps: ['ATEST0001:'] }), { kind: 'drop', reason: 'not-proven' })
   })
+  test('an agent posting as its own bot user is a task only when its entry names that bot user and a listed owner', () => {
+    const AGENT = 'UAGENT001'
+    const own = (o: Record<string, unknown>) => msg({ user: AGENT, client_msg_id: undefined, bot_id: 'BTEST0001', app_id: 'ATEST0001', text: `<@${BOT}> pull forms`, ...o })
+    const tied = { ...ids, apps: [`ATEST0001:${MATE}:${AGENT}`] }
+    assert.deepEqual(classify(own({}), tied), { kind: 'task', text: 'pull forms', agent: 'ATEST0001' })
+    // No tag saved, or another bot user: the app id alone does not prove which bot posted.
+    assert.deepEqual(classify(own({}), { ...ids, apps: ['ATEST0001'] }), { kind: 'drop', reason: 'not-listed' })
+    assert.deepEqual(classify(own({}), { ...ids, apps: [`ATEST0001:${MATE}`] }), { kind: 'drop', reason: 'not-listed' })
+    assert.deepEqual(classify(own({ user: 'UAGENT002' }), tied), { kind: 'drop', reason: 'not-listed' })
+    assert.deepEqual(classify(own({ app_id: 'AOTHER001' }), tied), { kind: 'drop', reason: 'not-listed' })
+    // Its owner is no longer listed, or the post is an edit.
+    assert.deepEqual(classify(own({}), { ...tied, teammates: [] }), { kind: 'drop', reason: 'not-listed' })
+    assert.deepEqual(classify(own({ subtype: 'message_changed' }), tied), { kind: 'drop', reason: 'not-listed' })
+    // Never the owner, even when an entry names the owner's id as its tag.
+    assert.deepEqual(classify(own({ user: OWNER }), { ...ids, apps: [`ATEST0001:${MATE}:${OWNER}`] }), { kind: 'drop', reason: 'not-proven' })
+    assert.deepEqual(classify(own({ text: `<@${BOT}> stop` }), tied), { kind: 'task', text: 'stop', agent: 'ATEST0001' })
+  })
   test('an agent\'s post that says no reply is needed starts no task; the same words from a person do', () => {
     const two = { ...ids, apps: [`ATEST0001:${MATE}`] }
     const appPost = (text: string) => msg({ user: MATE, client_msg_id: undefined, bot_id: 'BTEST0001', app_id: 'ATEST0001', text })
