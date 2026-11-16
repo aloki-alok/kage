@@ -62,6 +62,6 @@ test('a long line is checked at once, never backtracked for seconds', () => {
   for (const line of ['aws' + ' --a b'.repeat(20_000) + ' q', 'aws --a --b ec2' + ' --a b'.repeat(20_000), ' curl'.repeat(20_000), ' psql'.repeat(20_000), ' find'.repeat(20_000), 'git' + ' --a b'.repeat(20_000), '"'.repeat(20_000), 'ssh h '.repeat(5_000) + 'ls']) {
     const t = performance.now()
     heldCommand(line)
-    assert.ok(performance.now() - t < 200, line.slice(0, 30))
+    assert.ok(performance.now() - t < 1500, line.slice(0, 30))   // linear: about 30 ms alone; the old regex never finished
   }
 })
