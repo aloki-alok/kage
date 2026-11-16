@@ -13,10 +13,13 @@ const gitNow = (root: string, ...args: string[]) =>
 // A .git of the folder's own: the code may sit inside someone's bigger repo (a dotfiles home), which is never pulled.
 const isCheckout = (root: string) => existsSync(join(root, '.git'))
 
-// The code in root as people read it: short sha and commit date, like "2ae579e (2026-11-14)".
+// The code in root as people read it: short sha, commit date and release, like "2ae579e (2026-11-14, v0.4.2)".
 export function version(root: string): string {
   if (!isCheckout(root)) return 'unknown (not a git checkout)'
-  try { const [sha, date] = gitNow(root, 'log', '-1', '--format=%h %cs').split(' '); return `${sha} (${date})` }
+  let release = ''
+  try { release = `, v${(JSON.parse(readFileSync(join(root, 'package.json'), 'utf8')) as { version: string }).version}` } catch { /* no package.json: sha and date only */ }
+  // The sha stays the first word: the boots ledger, the soak gate and the update link read it.
+  try { const [sha, date] = gitNow(root, 'log', '-1', '--format=%h %cs').split(' '); return `${sha} (${date}${release})` }
   catch { return 'unknown (git log failed)' }
 }
 
