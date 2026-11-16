@@ -129,6 +129,29 @@ test('with jev.ackWords off, a skipped agent post gets a green tick and no reply
   }
 })
 
+test('a held message that starts on its replay loses the hourglass, so only the ninja shows it is being worked', async () => {
+  const dir = mkdtempSync(join(tmpdir(), 'kage-held-'))
+  const removed: string[] = []
+  try {
+    const client = {
+      auth: { test: async () => ({ team_id: 'TTEST', user_id: 'UTEST1' }) },
+      conversations: { open: async () => ({ channel: { id: 'DTEST' } }), history: async () => ({ messages: [] }), replies: async () => ({ messages: [] }), info: async () => ({ channel: { name: 'general' } }) },
+      users: { info: async () => ({ user: { real_name: 'Sam Test' } }) },
+      chat: { getPermalink: async () => ({ permalink: '' }) },
+      reactions: { add: async () => ({ ok: true }), remove: async (o: { name: string; timestamp: string }) => { removed.push(`${o.timestamp} ${o.name}`); return { ok: true } } },
+    }
+    const slack = await connectSlack({
+      dir, appToken: 'test', userToken: 'test', bot: client as never, user: client as never,
+      name: 'kage', title: 'Kage', teammates: [], apps: [],
+      hub: { posted: () => '', handled: () => {}, deliver: () => 'sent' } as never,
+    })
+    await slack.replay('test-a', JSON.stringify({ ...msg, client_msg_id: 'a', ts: '6.6', text: '<@UTEST1> check the logs' }))
+    assert.deepEqual(removed, ['6.6 hourglass_flowing_sand'])
+  } finally {
+    rmSync(dir, { recursive: true, force: true })
+  }
+})
+
 describe('a Slack event reaches the inbox before Slack is told it arrived', () => {
   test('the write comes before the ack, then the message is handled with its source id', async () => {
     const steps: string[] = []

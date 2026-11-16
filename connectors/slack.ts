@@ -85,6 +85,10 @@ export async function connectSlack(o: { dir: string; appToken: string; userToken
   const ids: Ids = { owner: me.user_id!, bot: botAuth.user_id!, botDm: dm.channel!.id!, name: o.name, teammates: o.teammates, apps: o.apps, team: me.team_id! }
   const react = (channel: string, ts: string, name: string) =>
     (channel === ids.botDm ? bot : user).reactions.add({ channel, timestamp: ts, name }).then(() => true, () => false)
+  const unreact = (channel: string, ts: string, name: string) =>
+    void (channel === ids.botDm ? bot : user).reactions.remove({ channel, timestamp: ts, name }).catch(() => {})
+  // Messages replayed after a hold or a restart: one that now starts loses the hourglass it got when it waited.
+  const replaying = new Set<string>()
 
   const names = new Map<string, string>()
   async function nameOf(id?: string): Promise<string> {
@@ -242,6 +246,7 @@ export async function connectSlack(o: { dir: string; appToken: string; userToken
       ? o.hub.deliver(asked, task, place)
       : o.hub.deliver(slackConversation(m, ids.botDm), task, t.side ? `${place} (side)` : place, t.side ? `side-${m.ts}` : 'main', m.user)
     if (r === 'queued' || r === 'held') react(m.channel, m.ts, WAITING)
+    else if (r === 'sent' && replaying.has(m.ts)) unreact(m.channel, m.ts, WAITING)
     if (r === 'failed') failed(task)
   }
 
@@ -297,7 +302,11 @@ export async function connectSlack(o: { dir: string; appToken: string; userToken
   }, 30_000).unref()
 
   // A message the last run took but never handled, from the inbox. It runs as if just heard.
-  const replay = (source: string, payload: string) => hear(JSON.parse(payload) as SlackMessage, source)
+  const replay = async (source: string, payload: string) => {
+    const m = JSON.parse(payload) as SlackMessage
+    replaying.add(m.ts)
+    try { await hear(m, source) } finally { replaying.delete(m.ts) }
+  }
   // kage reload: the gate reads both lists from ids on every message, so the next message sees the new ones.
   const allow = (l: { teammates: string[]; apps: string[] }) => { ids.teammates = l.teammates; ids.apps = l.apps }
   return { ids, ownerName, botUser: botAuth.user, socket, failed, notifyOwner, placeOf, nameOf, afk, replay, allow, start: () => socket.start() }
