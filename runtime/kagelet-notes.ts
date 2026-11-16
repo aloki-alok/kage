@@ -1,4 +1,4 @@
-// The owner's words for a kagelet's next run.
+// The owner's words, and Kage's answers, for a kagelet's next run.
 import type { Store } from './store.ts'
 import type { Task } from '../core/task.ts'
 import type { Delivery } from '../core/sessions.ts'
@@ -17,12 +17,18 @@ export function ownerNotes(store: Pick<Store, 'load' | 'save'>) {
       if (hit.length) store.save(NOTES, notes)
       return hit
     },
+    // Kage's answer to one kagelet (tell_kagelet), marked as its manager's.
+    tell(lane: string, text: string) {
+      const notes = all()
+      notes[lane] = [...notes[lane] ?? [], `Kage, your manager: ${text.slice(0, 2000)}`].slice(-10)
+      store.save(NOTES, notes)
+    },
     // deliver: hands the run over with the notes; false means it never reached a session, so they stay.
     take(key: string, deliver: (text: string) => boolean): string | undefined {
       const notes = all()
       const mine = notes[key]
       if (!mine?.length) return undefined
-      const text = `The owner wrote in this thread since your last run. Their words to you, to follow within your job and your grant:\n${mine.map(t => t.split('\n').map(l => `> ${l}`).join('\n')).join('\n')}`
+      const text = `Since your last run, the owner or Kage (your manager) wrote to you. Their words, to follow within your job and your grant:\n${mine.map(t => t.split('\n').map(l => `> ${l}`).join('\n')).join('\n')}`
       if (!deliver(text)) return text
       delete notes[key]
       store.save(NOTES, Object.keys(notes).length ? notes : undefined)

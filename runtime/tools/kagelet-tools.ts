@@ -16,7 +16,7 @@ export function kageletTools(c: ToolContext): KageTool[] {
   const name = o.kagelet
   if (name) tools.push({
     name: 'report',
-    description: 'End every run with this: one line for your manager on what you found or did. If the job needed something you could not do (a tool, an access, a decision), put it in needs: it is posted in this thread and flagged for your manager and the owner.',
+    description: 'End every run with this: one line for your manager on what you found or did. If the job needed something you could not do (a tool, an access, a decision), put it in needs: it is posted in this thread and goes to your manager, Kage, who answers or asks the owner.',
     shape: {
       channel: s.describe('channel attribute from the task tag'),
       thread_ts: s.describe('thread_ts attribute from the task tag'),
@@ -34,8 +34,29 @@ export function kageletTools(c: ToolContext): KageTool[] {
       o.onReport?.({ needs, output: a.output?.trim() ?? '' })
       if (!needs) return { text: 'reported' }
       await post(key, a.channel, a.thread_ts, `*${name} needs:* ${needs}`)
+      // Kage handles it, and asks the owner only for what it cannot give (ADR 0018). Without the hub's route, the owner's list.
+      if (o.toManager) return { text: `reported. Your manager has your need (${o.toManager(needs)}): its answer comes with a later run.` }
       append('waiting', ['open', key, links.get(key) ?? key, `${name} needs: ${needs}`])
       return { text: 'reported, and what you need is posted in the thread for your manager and the owner' }
+    },
+  })
+  // Kage answers a kagelet: its words reach the kagelet's next run, as the owner's notes do. A run that handles a need
+  // answers only that kagelet; the owner's own task may tell any. Never from a kagelet's own session.
+  const tell = o.tellKagelet
+  if (!name && !o.dreaming && tell) tools.push({
+    name: 'tell_kagelet',
+    description: 'Answer a kagelet as its manager: your words reach its next run. Use it for the need a kagelet sent you, or when the owner asks you to tell one something. run_now starts that run at once.',
+    shape: {
+      channel: s.describe('channel attribute from the task tag'), thread_ts: s.describe('thread_ts attribute from the task tag'),
+      name: s.describe('the kagelet\'s name'), text: s.describe('what it should know or do, within its job'),
+      run_now: z.boolean().optional().describe('true runs it now with your words. Default false: its next scheduled run reads them'),
+    },
+    async run(args) {
+      const a = args as { name: string; text: string; run_now?: boolean }
+      const need = c.need()
+      if (need !== undefined && a.name !== need) return { isError: true, text: `this run handles ${need}'s need, so it may only answer ${need}` }
+      if (need === undefined && (c.jobRun() || !ownerOnly(args))) return { isError: true, text: 'only the owner\'s own task, or the run that handles a kagelet\'s need, may tell a kagelet something. A job\'s run puts it in its report' }
+      return { text: await tell(a.name, String(a.text ?? ''), a.run_now === true) }
     },
   })
   // A kagelet asks another kagelet of this install, never a person: the hub starts or queues the other's run with it.

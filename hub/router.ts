@@ -166,7 +166,7 @@ const { blocked, closedTo, isClosed } = closedThreads({
 // there runs with owner trust, anywhere else with a teammate's. Kept in the store so a restart keeps
 // it. A thread with a session from before this was recorded starts untrusted: its history is unknown.
 const noteTrust = (key: string, t: Task) =>
-  store.noteTask(key, senderOf(t) === 'owner', key in d.saved())
+  t.need || store.noteTask(key, senderOf(t) === 'owner', key in d.saved())   // a kagelet's need is no person's task
 // AFK's P0 call, the same route as `kage call` (cli/call.ts): a one-time code, then the dialer.
 // The dialer may pass $KAGE_CALL_REASON to the voice agent. Resolves '' once placed, else why not.
 function phoneOwner(reason: string): Promise<string> {
@@ -262,7 +262,7 @@ const sdk = sdkLib ? sdkSessions({
     dbRead: { command: () => readCommand(kl.dbRead?.command ?? undefined, store, key.split('#side-kagelet-')[1] ?? ''), maxRows: kl.dbRead?.maxRows || 200 },
     kagelets: { list: () => kag.manager.list(Date.now()), manage: (a, ask) => kag.manager.manage(a, Date.now(), ask) }, approve,
     event: (kind, detail) => runs.emit(key, kind, detail),
-    onReport: r => kag.routes.reported(key, r), message: (to, text) => kag.routes.message(key, to, text),
+    onReport: r => kag.routes.reported(key, r), message: (to, text) => kag.routes.message(key, to, text), toManager: needs => kag.needs.add(key, key.split('#side-kagelet-')[1] ?? '', needs, Date.now()), tellKagelet: (name, text, now) => kag.tell(name, text, now),
   }),
   hasTranscript: tmux.hasTranscript,
   toHub: (key, m) => routeReply(key, m, replies),
@@ -311,7 +311,7 @@ const d: Dispatcher<ToSession> = new Dispatcher<ToSession>(runner, {
 })
 // The usage-limit pause: a turn that ends on the limit keeps its message and replays it at the reset (runtime/limit-pause.ts).
 const limits = limitPause({
-  store, log, settle: (tasks, done) => kag.routes.settle(tasks, done),
+  store, log, settle: (tasks, done) => { kag.routes.settle(tasks, done); kag.needs.settle(tasks, done) },
   tellOwner: text => void slack.notifyOwner(text),
   end: key => d.end(key).filter(m => m.type === 'task'),
   // A tmux pane reports no turn end, so its messages are handled at delivery, as before.
@@ -392,7 +392,7 @@ runJobs([
   { name: 'kagelet dreams', every: 10 * 60_000, run: dreaming.kageletDreams },
   { name: 'retro', every: 10 * 60_000, run: digests.weeklyRetro },
   // A kagelet message waits until its target is idle, then starts a run of its own (runtime/kagelets.ts).
-  { name: 'kagelet messages', every: 20_000, run: now => kag.routes.pump(now) },
+  { name: 'kagelet messages', every: 20_000, run: now => { kag.routes.pump(now); kag.needs.pump(now) } },
   { name: 'events', every: 3_600_000, run: now => ledgers.pruneEvents(new Date(now - EVENT_DAYS * 86_400_000).toISOString()) }, ...startTelemetry({ config: config.telemetry, dir: DIR, code: CODE, ledgers, state: store, notify: t => slack.notifyOwner(t) }),
 ])
 
@@ -434,7 +434,7 @@ void checkScopes({ user: secrets.slack?.user, bot: secrets.slack?.bot }).then(m 
 // Email needs no replay: SQS resends a mail until it is deleted after handling.
 store.prune(Date.now() - 7 * 86_400_000)
 // Kagelet messages the last run stored but no run read go again (runtime/kagelets.ts kageletRoutes).
-kag.routes.replay(Date.now())
+kag.routes.replay(Date.now()); kag.needs.replay(Date.now())
 const missed = store.unhandled(Date.now() - 10 * 60_000)
 if (missed.length) log(`replaying ${missed.length} message${missed.length === 1 ? '' : 's'} the last run heard but never handled`)
 for (const r of missed) {

@@ -16,4 +16,5 @@ export type Task = {
   // A kagelet message this run carries (runtime/kagelets.ts kageletRoutes): its chain, its id, which only this
   // turn's normal end acknowledges, and its hop count.
   handoff?: { chain: string; message: string; hops: number }
+  need?: { name: string; id: string }   // the kagelet need this run handles (runtime/kagelet-needs.ts): its words are data, and only a normal end settles it
 }

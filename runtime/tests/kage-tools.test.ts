@@ -81,7 +81,8 @@ function setup(o: { noHook?: boolean; settings?: { set(key: string, value: unkno
     },
     afk: async c => { out.push(`afk ${JSON.stringify(c)}`); return 'AFK on' },
     kagelet: o.kagelet, dreaming: o.dreaming, settings: o.settings, kageletMemory: { propose: (name: string, a: unknown, thread: string) => { out.push(`propose ${name} ${thread} ${JSON.stringify(a)}`); return 'proposed' }, decide: (d: unknown) => { out.push(`decide ${JSON.stringify(d)}`); return 'decided' }, open: () => 'open ones', notes: () => [] } as any, dbRead: o.dbRead, approve: o.approve, browser: o.browser, meetbot: o.meetbot, event: (kind, detail) => { events.push(`${kind} ${detail}`) },
-    onReport: r => { routed.push(`report ${JSON.stringify(r)}`) }, message: (to, text) => { routed.push(`message ${to} ${text}`); return `sent to ${to}` },
+    onReport: r => { routed.push(`report ${JSON.stringify(r)}`) }, toManager: text => { routed.push(`manager ${text}`); return 'sent' },
+    tellKagelet: (name, text, run) => { routed.push(`tell ${name}${run ? ' now' : ''}: ${text}`); return `told ${name}` }, message: (to, text) => { routed.push(`message ${to} ${text}`); return `sent to ${to}` },
     kagelets: { list: () => 'the list', manage: async (a, ask) => { out.push(`manage ${JSON.stringify(a)}`); return ask ? `asked: ${await ask({ kagelet: a.name, tools: 'mcp__gmail__send', job: 'j' })}` : 'managed' } },
   })
   const call = (name: string, args: Record<string, unknown>) => t.tools.find(x => x.name === name)!.run(args)
@@ -835,7 +836,26 @@ describe("a session's Kage tools", () => {
     const s = setup({ kagelet: 'calls', dbRead: { ...reader(dir), maxRows: 2 }, dir })
     assert.match((await s.call('db_read', { sql: 'select 1' })).text, /may be capped at 2 rows/)
   })
-  test('a kagelet reports one line per run; what it needs is posted in its thread and waits on the owner', async () => {
+  test('tell_kagelet answers the kagelet whose need this run handles, or any kagelet on the owner\'s task; a need run reads outside text', async () => {
+    const a = { channel: 'C1', thread_ts: '5.5' }
+    const s = setup()
+    s.t.onTask({ ...s.task({ fromOwner: false }), scheduled: true, need: { name: 'fude', id: 'n1' } })
+    assert.equal((await s.call('tell_kagelet', { ...a, name: 'fude', text: 'use the drafts folder', run_now: true })).isError, undefined)
+    assert.ok(s.routed.includes('tell fude now: use the drafts folder'))
+    assert.match((await s.call('tell_kagelet', { ...a, name: 'kane', text: 'x' })).text, /only answer fude/)
+    s.jobs.push({ id: 'j1', key: 'C1:5.5', cron: '*/5 * * * *', prompt: 'p', recurring: true })
+    assert.equal((await s.call('unschedule', { ...a, id: 'j1' })).isError, true)   // the need's words are data, like a job run's
+    s.t.onTask(s.task({ fromOwner: false }))
+    assert.match((await s.call('tell_kagelet', { ...a, name: 'fude', text: 'x' })).text, /only the owner/)
+    s.t.onTask({ ...s.task({ fromOwner: true }), scheduled: true, job: 'j1' })
+    assert.match((await s.call('tell_kagelet', { ...a, name: 'fude', text: 'x' })).text, /only the owner/)   // an owner's job run read outside text
+    s.t.onTask(s.task({ fromOwner: true }))
+    assert.equal((await s.call('tell_kagelet', { ...a, name: 'kane', text: 'pause the drafts' })).isError, undefined)
+    assert.ok(s.routed.includes('tell kane: pause the drafts'))
+    const k = setup({ kagelet: 'fude' })
+    assert.equal(k.t.tools.some(x => x.name === 'tell_kagelet'), false)   // a kagelet never tells another one this way
+  })
+  test('a kagelet reports one line per run; what it needs is posted in its thread and goes to Kage, not the owner', async () => {
     const s = setup({ kagelet: 'status' })
     s.t.onTask({ ...s.task({ fromOwner: false }), scheduled: true })
     assert.equal((await s.call('report', { channel: 'C1', thread_ts: '5.5', summary: 'all green' })).isError, undefined)
@@ -845,7 +865,8 @@ describe("a session's Kage tools", () => {
     assert.match(s.ledgers.text('reports'), /\tstatus\tno log\tread access to the deploy log\n$/)
     assert.deepEqual(s.posts.map(p => [p.channel, p.thread_ts]), [['C1', '5.5']])
     assert.match(s.posts[0]!.text, /status needs:\* read access to the deploy log/)
-    assert.match((await s.call('waiting', {})).text, /status needs: read access to the deploy log/)
+    assert.ok(s.routed.includes('manager read access to the deploy log'))
+    assert.doesNotMatch((await s.call('waiting', {})).text, /deploy log/)
     // The event log gets whether it needed something, not its words.
     assert.deepEqual(s.events, ['report ok', 'report needs'])
     // Its output goes to the hub for a kagelet that runs after it (#93).

@@ -13,6 +13,7 @@ import { kageletsDir, migrateKagelets, readKagelets } from '../runtime/kagelet-f
 import { kageletManager } from '../runtime/kagelet-manager.ts'
 import { kageletMemory } from '../runtime/kagelet-memory.ts'
 import { ownerNotes } from '../runtime/kagelet-notes.ts'
+import { kageletNeeds } from '../runtime/kagelet-needs.ts'
 import { kageletRoutes } from '../runtime/kagelet-routes.ts'
 import { syncKagelets } from '../runtime/kagelet-sync.ts'
 import type { Ledgers, runEvents } from '../runtime/ledger.ts'
@@ -58,8 +59,18 @@ export function hubKagelets(o: {
   const manager = kageletManager({ dir: KAGELETS, max: MAX, ledgers, sync, runNow: o.runNow, store, envCommand: kl.dbRead?.command ?? undefined, log })
   const routes = kageletRoutes({ dir: KAGELETS, store, ledgers, runs: o.runs, deliver: o.toSession,
     idle: o.idle, paused: o.paused, capUsd: CAPS.each, chainUsd: CAPS.chain, log, memory: name => kmem.notes(name) })
+  const notes = ownerNotes(store)
+  // A kagelet's needs go to Kage in its thread (ADR 0018); Kage's answer waits in its notes for its next run.
+  const needs = kageletNeeds({ store, deliver: o.toSession, idle: o.idle, paused: o.paused, waiting: cells => ledgers.add('waiting', cells), perDay: () => kl.needsPerDay || 5, log })
+  const tell = async (name: string, text: string, runNow: boolean, now = Date.now()): Promise<string> => {
+    const lane = kageletRows(readKagelets(KAGELETS), { runs: '', costs: '', now }).find(r => r.name === name)?.key
+    if (!lane || !grants.has(lane)) return `no kagelet named "${name}" runs here`
+    notes.tell(lane, text)
+    o.runs.emit(lane, 'owner-note', `${text.length} characters, from Kage`)
+    return runNow ? `told ${name}. ${await manager.manage({ action: 'run', name }, now)}` : `told ${name}: its next run reads it`
+  }
   return {
-    dir: KAGELETS, kmem, manager, routes, sync, notes: ownerNotes(store),
+    dir: KAGELETS, kmem, manager, routes, sync, notes, needs, tell,
     lanes: () => grants.keys(),
     // A lane whose file is gone keeps no tools, rather than falling back to approval cards.
     grantOf: (key: string) => grants.get(key) ?? (key.includes('#side-kagelet-') || key.includes('#side-kdream-') ? [] : undefined),
