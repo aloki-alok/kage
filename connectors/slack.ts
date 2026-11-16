@@ -69,6 +69,7 @@ export async function connectSlack(o: { dir: string; appToken: string; userToken
   afk?: { memory: string; model: string; saved: Saved; call?: (reason: string) => Promise<string>; jev?: JevAfk }
   // The Jev classifier (connectors/jev.ts); absent means every listed agent's tagged post is answered.
   jev?: JevCheck
+  ackWords?: boolean   // jev.ackWords: false puts a green tick on the post instead of the words
   heard?: (post: string) => Promise<string>   // writes the line under an agent post that needs no reply; absent means a small model (connectors/slack-heard.ts)
   // Intake triage (connectors/jev.ts): a message that needs no work gets a reaction and no session; absent means every tag starts one.
   triage?: Triage }) {
@@ -193,7 +194,8 @@ export async function connectSlack(o: { dir: string; appToken: string; userToken
       const j = await o.jev(t.agent, t.text)
       log(`${j.reply ? 'answering' : 'dropped'} ${thread} from app ${t.agent}: ${j.why}`)
       // One line says it was read, so the thread never looks ignored. It tags no one, so the agent is not woken by it.
-      if (!j.reply) return void heardLine(t.text, m.ts, o.heard ?? writeHeard(emptyRoom(o.dir))).then(text => bot.chat.postMessage({ channel: m.channel, thread_ts: m.thread_ts ?? m.ts, text })).catch(e => log('could not post the heard line', e?.data?.error ?? e))
+      if (!j.reply && o.ackWords === false) return void react(m.channel, m.ts, 'white_check_mark')
+      if (!j.reply) return void heardLine(t.text, o.heard ?? writeHeard(emptyRoom(o.dir))).then(text => bot.chat.postMessage({ channel: m.channel, thread_ts: m.thread_ts ?? m.ts, text })).catch(e => log('could not post the heard line', e?.data?.error ?? e))
     }
     // A person's tag that needs no work (an ack, a thanks) gets a reaction in code, not a session.
     if (t.kind === 'task' && !t.agent && o.triage) {
