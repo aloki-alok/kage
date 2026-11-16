@@ -121,6 +121,13 @@ describe("the token file on a task the owner did not send (#117)", () => {
     }
     no('Grep', { pattern: 'xox', path: '/home/o/.config/kage' }, 'owner')
   })
+  test('the owner\'s shell may use Kage\'s memory and files folders, as the file tools may, and nothing else in the folder', () => {
+    yes('Bash', { command: "echo '- [Cancel a wait](cancel.md): cancel the job' >> ~/.config/kage/memory/MEMORY.md" }, 'owner')
+    yes('Bash', { command: 'cat /home/o/.config/kage/files/C1/report.txt' }, 'owner')
+    no('Bash', { command: 'cat ~/.config/kage/memory/../secrets.json' }, 'owner')
+    no('Bash', { command: 'cat ~/.config/kage/memory/x ~/.config/kage/kage.db' }, 'owner')
+    no('Bash', { command: 'ls ~/.config/kage/' }, 'owner')
+  })
   test('the owner may read and edit config.json and the folder listing', () => {
     yes('Read', { file_path: '/home/o/.config/kage/config.json' }, 'owner')
     yes('Read', { file_path: '/home/o/.config/kage/./config.json' }, 'owner')
