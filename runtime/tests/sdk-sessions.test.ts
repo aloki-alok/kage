@@ -779,8 +779,10 @@ test('every path that runs a kagelet turn writes a costs row (#96)', async () =>
     store.seen(LANE, parseSessionKey(LANE)!.conversation, 'calls (kagelet)', 0)
     store.addSchedule({ id: 'kagelet-calls', key: LANE, cron: '0 9 * * *', prompt: 'Count failed calls.', recurring: true, fromOwner: false, created: now - 3_600_000, lastFired: 0 })
     mkdirSync(`${dir}/kagelets`)
-    const kagelet = (name: string, f: { schedule?: string; after?: string }, job: string) =>
-      writeFileSync(`${dir}/kagelets/${name}.md`, kageletFile({ thread: LINK, schedule: f.schedule ?? '', ...f.after && { after: f.after }, tools: ['WebFetch'], job, by: 'owner', why: 'w' }) as string)
+    const kagelet = (name: string, f: { schedule?: string; after?: string }, job: string) => {
+      mkdirSync(`${dir}/kagelets/${name}`, { recursive: true })
+      writeFileSync(`${dir}/kagelets/${name}/job.md`, kageletFile({ thread: LINK, schedule: f.schedule ?? '', ...f.after && { after: f.after }, tools: ['WebFetch'], job, by: 'owner', why: 'w' }) as string)
+    }
     kagelet('src', { schedule: '0 8 * * *' }, 'Fetch the calls.')
     kagelet('calls', { after: 'src' }, 'Count failed calls.')
     const notes = ownerNotes(store)

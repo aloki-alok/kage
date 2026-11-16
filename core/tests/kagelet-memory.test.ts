@@ -8,7 +8,7 @@ const forbid = ['/h/mem/kage', '/h/mem/owner']
 
 describe('where a kagelet memory file may live', () => {
   test('only a plain .md file inside its own folder under the kagelets folder', () => {
-    assert.deepEqual(memoryPath(DIR, 'deploys', 'status-page.md', forbid), { path: '/h/kagelets/memory/deploys/status-page.md' })
+    assert.deepEqual(memoryPath(DIR, 'deploys', 'status-page.md', forbid), { path: '/h/kagelets/deploys/memory/status-page.md' })
     for (const f of ['../x.md', '/h/mem/owner/x.md', 'a/b.md', '.hidden.md', 'x.txt', 'x.md/', '', 'a\0.md', '..']) {
       assert.ok('error' in memoryPath(DIR, 'deploys', f, forbid), f)
     }

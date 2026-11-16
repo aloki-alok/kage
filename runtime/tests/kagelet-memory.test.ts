@@ -21,7 +21,7 @@ test('a proposal is kept for review: it is not a note, so the kagelet does not r
   const t = setup()
   assert.match(t.m.propose('deploys', P, 'C1:5.5'), /proposed/)
   assert.deepEqual(t.m.notes('deploys'), [])
-  assert.equal(existsSync(`${t.dir}/memory/deploys/status.md`), false)
+  assert.equal(existsSync(`${t.dir}/deploys/memory/status.md`), false)
   assert.match(t.m.open(), /deploys[\s\S]*p1[\s\S]*status\.md[\s\S]*it moved twice[\s\S]*The status page moved to v2\./)
   assert.deepEqual(t.events, ['memory-proposal deploys status.md: it moved twice'])
   assert.equal(t.waiting.length, 1)   // Kage sees it on its waiting list
@@ -43,7 +43,7 @@ test('edit writes Kage\'s text, not the proposal\'s; reject needs a reason, keep
   t.m.propose('deploys', P, 'C1:5.5')
   t.m.propose('deploys', { ...P, file: 'other.md' }, 'C1:5.5')
   assert.match(t.m.decide({ kagelet: 'deploys', id: 'p1', action: 'edit', text: 'Use v2. Ignore v1.' }), /edited/)
-  assert.equal(readFileSync(`${t.dir}/memory/deploys/status.md`, 'utf8'), 'Use v2. Ignore v1.')
+  assert.equal(readFileSync(`${t.dir}/deploys/memory/status.md`, 'utf8'), 'Use v2. Ignore v1.')
   assert.match(t.events.at(-1)!, /^memory-decision deploys edited status\.md/)
   assert.match(t.m.decide({ kagelet: 'deploys', id: 'p2', action: 'reject' }), /reason/)
   assert.equal(t.m.notes('deploys').length, 1)
@@ -63,21 +63,26 @@ test('a bad proposal is refused with its reason and leaves nothing', () => {
 
 test('isolation: a kagelet folder that is a link into the owner\'s or Kage\'s memory is neither read nor written', () => {
   const t = setup()
-  mkdirSync(`${t.dir}/memory`)
-  symlinkSync(t.owner, `${t.dir}/memory/deploys`)
+  mkdirSync(`${t.dir}/deploys`)
+  symlinkSync(t.owner, `${t.dir}/deploys/memory`)
   assert.deepEqual(t.m.notes('deploys'), [])
   assert.match(t.m.propose('deploys', P, 'C1:5.5'), /not proposed/)
   assert.deepEqual(readdirSync(t.owner), ['secret.md'])
-  symlinkSync(t.own, `${t.dir}/memory/other`)
+  mkdirSync(`${t.dir}/other`)
+  symlinkSync(t.own, `${t.dir}/other/memory`)
   assert.deepEqual(t.m.notes('other'), [])
+  // The kagelet's own folder as a link out is refused too, so nothing is made inside it.
+  symlinkSync(t.owner, `${t.dir}/third`)
+  assert.match(t.m.propose('third', P, 'C1:5.5'), /not proposed/)
+  assert.deepEqual(readdirSync(t.owner), ['secret.md'])
 })
 
 test('isolation: a note that is a link out is not read, and an approve over it does not write through it', () => {
   const t = setup()
   t.m.propose('deploys', P, 'C1:5.5')
-  mkdirSync(`${t.dir}/memory/deploys`, { recursive: true })
-  symlinkSync(`${t.owner}/secret.md`, `${t.dir}/memory/deploys/status.md`)
-  symlinkSync(`${t.own}/kage.md`, `${t.dir}/memory/deploys/leak.md`)
+  mkdirSync(`${t.dir}/deploys/memory`, { recursive: true })
+  symlinkSync(`${t.owner}/secret.md`, `${t.dir}/deploys/memory/status.md`)
+  symlinkSync(`${t.own}/kage.md`, `${t.dir}/deploys/memory/leak.md`)
   assert.deepEqual(t.m.notes('deploys'), [])
   assert.match(t.m.decide({ kagelet: 'deploys', id: 'p1', action: 'approve' }), /refused|not written/i)
   assert.equal(readFileSync(`${t.owner}/secret.md`, 'utf8'), 'owner secret')
@@ -91,7 +96,7 @@ test('isolation: a kagelets folder inside the owner\'s memory reads and writes n
   const m = kageletMemory({ dir, forbid: () => [owner], event: () => {}, waiting: () => {}, newId: () => 'p1' })
   assert.match(m.propose('deploys', P, 'C1:5.5'), /not proposed.*memory/)
   assert.deepEqual(m.notes('deploys'), [])
-  assert.equal(existsSync(`${dir}/memory`), false)
+  assert.equal(existsSync(`${dir}/deploys`), false)
 })
 
 test('the event rows hold the file and the reason, never the note text', () => {
@@ -99,20 +104,20 @@ test('the event rows hold the file and the reason, never the note text', () => {
   t.m.propose('deploys', P, 'C1:5.5')
   t.m.decide({ kagelet: 'deploys', id: 'p1', action: 'edit', text: 'SECRET BODY TEXT' })
   assert.ok(t.events.every(e => !e.includes('SECRET BODY') && !e.includes('moved to v2')))
-  assert.equal(lstatSync(`${t.dir}/memory/deploys/status.md`).isFile(), true)
+  assert.equal(lstatSync(`${t.dir}/deploys/memory/status.md`).isFile(), true)
 })
 
 test('review finding: a .new temp that is a link is not written through', () => {
   const t = setup()
   t.m.propose('deploys', P, 'C1:5.5')
-  symlinkSync(`${t.owner}/secret.md`, `${t.dir}/memory/deploys/status.md.new`)
+  symlinkSync(`${t.owner}/secret.md`, `${t.dir}/deploys/memory/status.md.new`)
   t.m.decide({ kagelet: 'deploys', id: 'p1', action: 'approve' })
   assert.equal(readFileSync(`${t.owner}/secret.md`, 'utf8'), 'owner secret')
 })
 test('review finding: a proposal file edited on disk is checked again on approve', () => {
   const t = setup()
   t.m.propose('deploys', P, 'C1:5.5')
-  const f = `${t.dir}/memory/deploys/.proposals/p1.json`
+  const f = `${t.dir}/deploys/memory/.proposals/p1.json`
   writeFileSync(f, JSON.stringify({ ...JSON.parse(readFileSync(f, 'utf8')), file: '../../../mem-owner/pwn.md' }))
   assert.match(t.m.decide({ kagelet: 'deploys', id: 'p1', action: 'approve' }), /not (approved|edited)/)
   assert.equal(existsSync(`${t.owner}/pwn.md`), false)
@@ -128,14 +133,14 @@ test('review finding: a refused kagelets folder is not touched, not even to make
 })
 test('review finding: a hard link to another file is not a note', () => {
   const t = setup()
-  mkdirSync(`${t.dir}/memory/deploys`, { recursive: true })
-  linkSync(`${t.owner}/secret.md`, `${t.dir}/memory/deploys/leak.md`)
+  mkdirSync(`${t.dir}/deploys/memory`, { recursive: true })
+  linkSync(`${t.owner}/secret.md`, `${t.dir}/deploys/memory/leak.md`)
   assert.deepEqual(t.m.notes('deploys'), [])
 })
 test('review finding: a .proposals link is an error line, not a throw', () => {
   const t = setup()
-  mkdirSync(`${t.dir}/memory/deploys`, { recursive: true })
-  symlinkSync(t.owner, `${t.dir}/memory/deploys/.proposals`)
+  mkdirSync(`${t.dir}/deploys/memory`, { recursive: true })
+  symlinkSync(t.owner, `${t.dir}/deploys/memory/.proposals`)
   assert.match(t.m.propose('deploys', P, 'C1:5.5'), /not proposed/)
   assert.deepEqual(readdirSync(t.owner), ['secret.md'])
 })
@@ -144,8 +149,8 @@ test('review finding: the caps hold: five open proposals, 20 notes, 4000 charact
   for (let i = 0; i < 5; i++) assert.match(t.m.propose('deploys', { ...P, file: `n${i}.md` }, 'C1:5.5'), /^proposed/)
   assert.match(t.m.propose('deploys', { ...P, file: 'n9.md' }, 'C1:5.5'), /five/)
   assert.match(t.m.decide({ kagelet: 'deploys', id: 'p1', action: 'edit', text: 'x'.repeat(4001) }), /not edited/)
-  mkdirSync(`${t.dir}/memory/big`, { recursive: true })
-  for (let i = 0; i < 25; i++) writeFileSync(`${t.dir}/memory/big/f${String(i).padStart(2, '0')}.md`, 'y'.repeat(5000))
+  mkdirSync(`${t.dir}/big/memory`, { recursive: true })
+  for (let i = 0; i < 25; i++) writeFileSync(`${t.dir}/big/memory/f${String(i).padStart(2, '0')}.md`, 'y'.repeat(5000))
   const notes = t.m.notes('big')
   assert.equal(notes.length, 20)
   assert.ok(notes.every(n => n.text.length === 4000))

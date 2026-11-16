@@ -1,7 +1,7 @@
 // A kagelet's memory folder (core/kagelet-memory.ts) and the proposals waiting on Kage's review. The dream only
 // proposes: a proposal is a file under .proposals/ that no prompt reads. A note lands in the folder only by decide(),
 // which is Kage's tool, so the owner's session. No path here reaches Kage's or the owner's memory: the folder must be a
-// real directory at exactly <kagelets>/memory/<name> (no link along the way), and a note must be a regular file.
+// real directory at exactly <kagelets>/<name>/memory (no link along the way), and a note must be a regular file.
 import { randomUUID } from 'node:crypto'
 import { existsSync, lstatSync, mkdirSync, readdirSync, readFileSync, realpathSync, renameSync, rmSync, unlinkSync, writeFileSync } from 'node:fs'
 import { memoryPath, proposalFrom, type Proposal } from '../core/kagelet-memory.ts'
@@ -26,14 +26,17 @@ export function kageletMemory(o: {
   function folder(name: string, create = false): { path: string } | { error: string } {
     const ok = memoryPath(o.dir, name, 'x.md', o.forbid())
     if ('error' in ok) return ok
-    const memory = `${o.dir}/memory`, mine = `${memory}/${name}`
+    const kagelet = `${o.dir}/${name}`, mine = `${kagelet}/memory`
     // Before anything is made: a kagelets folder that is a link into forbidden memory is refused untouched.
     const root = real(o.dir)
     if (create && root && o.forbid().some(f => { const r = real(f); return !!r && (within(root, r) || within(r, root)) })) return { error: `${o.dir} reaches Kage's or the owner's memory` }
-    if (create) for (const p of [memory, mine]) if (!linked(p)) mkdirSync(p, { mode: 0o700 })
-    if (!isDir(memory) || !isDir(mine)) return { error: create ? `${mine} is not a plain folder` : 'no folder' }
+    // One folder at a time: a kagelet folder that is a link stops before anything is made through it.
+    for (const p of [kagelet, mine]) {
+      if (create && !linked(p)) mkdirSync(p, { mode: 0o700 })
+      if (!isDir(p)) return { error: create ? `${p} is not a plain folder` : 'no folder' }
+    }
     const at = real(mine), base = real(o.dir)
-    if (!at || !base || at !== `${base}/memory/${name}` || o.forbid().some(f => { const r = real(f); return !!r && (within(at, r) || within(r, at)) })) return { error: `${mine} reaches outside the kagelets folder` }
+    if (!at || !base || at !== `${base}/${name}/memory` || o.forbid().some(f => { const r = real(f); return !!r && (within(at, r) || within(r, at)) })) return { error: `${mine} reaches outside the kagelets folder` }
     return { path: mine }
   }
   // A plain file with one name: a hard link to another file (the owner's note) is not a note.
@@ -43,7 +46,7 @@ export function kageletMemory(o: {
     if ('error' in f || !isDir(`${f.path}/.proposals`)) return []
     return readdirSync(`${f.path}/.proposals`).filter(n => /^[a-z0-9]+\.json$/.test(n)).flatMap(n => { try { return [JSON.parse(readFileSync(`${f.path}/.proposals/${n}`, 'utf8')) as Saved] } catch { return [] } })
   }
-  const names = () => { try { return readdirSync(`${o.dir}/memory`).filter(n => NAME.test(n)).sort() } catch { return [] } }
+  const names = () => { try { return readdirSync(o.dir).filter(n => NAME.test(n) && isDir(`${o.dir}/${n}/memory`)).sort() } catch { return [] } }
 
   return {
     // The approved notes the kagelet reads: plain files only, never a link.

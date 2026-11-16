@@ -4,8 +4,7 @@
 import { existsSync } from 'node:fs'
 import { askHub, DIR } from './home.ts'
 import { pickThread } from './pick-thread.ts'
-import { kageletsDir, pauseKagelet } from '../runtime/kagelet-files.ts'
-import { NAME } from '../core/kagelets.ts'
+import { hasKagelet, kageletsDir, pauseKagelet } from '../runtime/kagelet-files.ts'
 
 if (process.env.KAGE_CLAUDE) { console.error('This shell runs inside Kage: a session cannot stop a thread. The owner runs kage stop in their own terminal, or writes "@kage stop" in the thread.'); process.exit(1) }
 const args = process.argv.slice(2)
@@ -14,7 +13,7 @@ const args = process.argv.slice(2)
 const resume = args.includes('--resume')
 const name = args.filter(a => a !== '--now' && a !== '--resume').join(' ')
 const KAGELETS = kageletsDir(DIR)
-if (NAME.test(name) && existsSync(`${KAGELETS}/${name}.md`)) { console.log(pauseKagelet(KAGELETS, name, !resume)); process.exit(0) }
+if (hasKagelet(KAGELETS, name)) { console.log(pauseKagelet(KAGELETS, name, !resume)); process.exit(0) }
 if (resume) { console.error(`There is no kagelet named "${name}". kage list shows them.`); process.exit(1) }
 if (!existsSync(`${DIR}/kage.db`) || !existsSync(`${DIR}/router.sock`)) { console.error('Kage is not running: start it with kage start'); process.exit(1) }
 const cut = args.includes('--now')

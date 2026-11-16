@@ -13,7 +13,7 @@ export function memoryPath(root: string, name: string, file: string, forbid: str
   if (!NAME.test(name)) return { error: `"${name}" is not a kagelet name` }
   if (!FILE.test(file) || file.includes('..')) return { error: `file must be a plain name like notes.md: lowercase letters, digits, . _ -, ending in .md` }
   if (forbid.some(f => within(root, f) || within(f, root))) return { error: `the kagelets folder overlaps Kage's or the owner's memory, so no kagelet memory is read or written` }
-  return { path: `${root.replace(/\/$/, '')}/memory/${name}/${file}` }
+  return { path: `${root.replace(/\/$/, '')}/${name}/memory/${file}` }
 }
 
 export type Proposal = { file: string; text: string; why: string }

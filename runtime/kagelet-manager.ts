@@ -1,13 +1,13 @@
 // The kagelet manager: the tool Kage's owner sessions use to write, pause, run, remove and revoke kagelets,
 // and which tools each one is granted.
-import { existsSync, mkdirSync, readFileSync, renameSync, unlinkSync, writeFileSync } from 'node:fs'
+import { readFileSync, unlinkSync } from 'node:fs'
 import { DEFAULT_MODEL } from '../core/config.ts'
 import { chainErrors, COST_FLAG, DB_READ, NAME, parseKagelet, resultLine, revokeStanding, rowLine, kageletFile, kageletRows, type Kagelet, type Standing } from '../core/kagelets.ts'
 import { chainLine, chainViews } from '../core/events.ts'
 import { kageletTier } from '../core/access.ts'
 import type { Store } from './store.ts'
 import type { Ledgers } from './ledger.ts'
-import { pauseKagelet, readKagelets } from './kagelet-files.ts'
+import { folderFree, hasKagelet, jobPath, pauseKagelet, readKagelets, writeJob } from './kagelet-files.ts'
 
 // The command a kagelet's db_read runs: kagelets.dbRead.command wins, else the one this kagelet saved with.
 // Read on each call, so a change applies with no restart.
@@ -58,8 +58,7 @@ export function kageletManager(o: { dir: string; max: number; ledgers: { text(na
         const out = revokeStanding(readKagelets(o.dir), tool)
         if (!out.length && yes[tool] === undefined) return `There is no standing approval for ${tool}.`
         for (const f of out) {
-          writeFileSync(`${o.dir}/${f.name}.md.new`, f.text, { mode: 0o600 })
-          renameSync(`${o.dir}/${f.name}.md.new`, `${o.dir}/${f.name}.md`)
+          writeJob(o.dir, f.name, f.text)
           row(f.name, 'revoked', 'the owner revoked its standing approval', [tool])
           o.log(`kagelet ${f.name}: ${tool} revoked with the standing approval`)
         }
@@ -69,15 +68,15 @@ export function kageletManager(o: { dir: string; max: number; ledgers: { text(na
         return `revoked the standing approval for ${tool}. ${out.length ? `It no longer grants it to ${out.map(f => f.name).join(', ')}.` : 'No kagelet held it by that approval.'} The next kagelet that asks for it asks the owner on a card.`
       }
       if (!NAME.test(a.name)) return `"${a.name}" is not a kagelet name: a short lowercase name, letters, digits, dashes.`
-      const file = `${o.dir}/${a.name}.md`
+      const file = jobPath(o.dir, a.name)
       if (a.action === 'pause' || a.action === 'resume') {
         const said = pauseKagelet(o.dir, a.name, a.action === 'pause', now)
         o.sync(now)
         return said
       }
-      if (!existsSync(file) && a.action !== 'save') return `There is no kagelet named "${a.name}".`
+      if (!hasKagelet(o.dir, a.name) && a.action !== 'save') return `There is no kagelet named "${a.name}".`
       if (a.action === 'remove') {
-        // Its read command stays: the owner approved it for the install, and no card can bring one back.
+        // Its read command and its memory folder stay: the owner approved the command for the install, and no card can bring one back.
         unlinkSync(file)
         o.sync(now)
         return `removed ${a.name}: its file and its schedule are gone.`
@@ -91,7 +90,7 @@ export function kageletManager(o: { dir: string; max: number; ledgers: { text(na
       // Kage approves by tier (core/access.ts), from code: the model writes every field of this call, in the
       // owner's sessions too (thread content can steer one), so none of them can widen a grant.
       const tools = a.tools ?? []
-      const old = existsSync(file) ? parseKagelet(a.name, readFileSync(file, 'utf8')) : undefined
+      const old = hasKagelet(o.dir, a.name) ? parseKagelet(a.name, readFileSync(file, 'utf8')) : undefined
       const had = old && !('error' in old) ? old : undefined
       const fresh = tools.filter(t => !had?.tools.includes(t))
       // Every refused save that would have granted something new leaves a ledger row and a log line.
@@ -99,6 +98,7 @@ export function kageletManager(o: { dir: string; max: number; ledgers: { text(na
         if (fresh.length) { row(a.name, 'refused', why, fresh); o.log(`kagelet ${a.name}: ${fresh.join(', ')} refused: ${why}`) }
         return `not saved: ${why}`
       }
+      if (!folderFree(o.dir, a.name)) return refuse(`${o.dir}/${a.name} is not a plain folder, so no kagelet is written there`)
       if (!old && readKagelets(o.dir).length >= o.max) return refuse(`this install has at most ${o.max} kagelets (kagelets.max). Remove one first, or ask the owner to raise it.`)
       // after: refused when it names a missing kagelet, closes a cycle or goes too deep, with this file in place.
       const others = readKagelets(o.dir).filter(f => f.name !== a.name).map(f => parseKagelet(f.name, f.text)).filter((p): p is Kagelet => !('error' in p))
@@ -140,9 +140,7 @@ export function kageletManager(o: { dir: string; max: number; ledgers: { text(na
       if (typeof text !== 'string') return refuse(text.error)
       if (card.length) o.store.save(STANDING, { ...yes, ...Object.fromEntries(card.map(t => [t, now])) })
       if (command) o.store.save(READ_COMMANDS, { ...commands(o.store), [a.name]: command })
-      mkdirSync(o.dir, { recursive: true, mode: 0o700 })
-      writeFileSync(`${file}.new`, text, { mode: 0o600 })
-      renameSync(`${file}.new`, file)
+      writeJob(o.dir, a.name, text)
       // What it got new, by whose yes. The owner hears of the no-card ones in the daily note (hub/router.ts).
       const reads = fresh.filter(t => kageletTier(t) === 'read')
       if (reads.length) row(a.name, 'read', 'read tools: Kage grants them with no card', reads)
