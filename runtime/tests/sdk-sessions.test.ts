@@ -28,7 +28,7 @@ const tick = (ms = 5) => new Promise(r => setTimeout(r, ms))
 const ID = '11111111-1111-4111-8111-111111111111'
 const signal = () => new AbortController().signal
 
-function setup(o: { transcript?: boolean; silent?: boolean; dmFails?: boolean; grants?: Record<string, string[]>; allows?: Record<string, string[]>; manager?: boolean; budgets?: Record<string, number>; models?: Record<string, string>; trusted?: string[]; deferred?: boolean; browser?: boolean; restartMs?: number; sandbox?: boolean; onResult?: (key: string, total: number, resumed: boolean) => void } = {}) {
+function setup(o: { transcript?: boolean; silent?: boolean; dmFails?: boolean; grants?: Record<string, string[]>; allows?: Record<string, string[]>; review?: boolean; manager?: boolean; budgets?: Record<string, number>; models?: Record<string, string>; trusted?: string[]; deferred?: boolean; browser?: boolean; restartMs?: number; sandbox?: boolean; onResult?: (key: string, total: number, resumed: boolean) => void } = {}) {
   const sdk = fakeSdk(o)
   const dropped: string[] = []
   const keysDropped: string[] = []
@@ -63,6 +63,7 @@ function setup(o: { transcript?: boolean; silent?: boolean; dmFails?: boolean; g
     options: { cwd: '/home', settingSources: ['user'] },
     grantOf: key => o.grants?.[key],
     allowOf: key => o.allows?.[key] ?? [],
+    ...o.review !== undefined && { reviewHeld: async () => o.review! },
     ownerMemory: '/owner',
     envFile: '/cfg/env',
     codeDir: '/code/kage', sandbox: () => o.sandbox ?? true,
@@ -741,6 +742,16 @@ describe('Kage sessions on the Agent SDK', () => {
     assert.equal((await run('mcp__kage__away')).hookSpecificOutput.permissionDecision, 'deny')
     const asked = await lane.canUseTool('Bash', { command: 'git push --force' }, { signal: signal() })
     assert.equal(asked.behavior, 'deny')
+  })
+  test('a held step the reviewer lets run is allowed in the hook; a path guard always wins over the reviewer', async () => {
+    const key = 'C1:5.5#side-kagelet-ops'
+    for (const [review, command, want] of [[true, 'rm -rf build', 'allow'], [false, 'rm -rf build', 'deny'], [true, 'rm -rf /cfg/env', 'deny']] as const) {
+      const t = setup({ grants: { [key]: ['all'] }, review })
+      t.d.task(key, t.task({ fromOwner: false }), 0)
+      await tick()
+      const out = await t.sdk.runs[0]!.options.hooks.PreToolUse[0].hooks[0]({ hook_event_name: 'PreToolUse', tool_name: 'Bash', tool_input: { command } }, undefined, { signal: signal() })
+      assert.equal(out.hookSpecificOutput?.permissionDecision, want, `${review} ${command}`)
+    }
   })
   test('an owner\'s allow line lets the held step it names run in the lane, and holds the rest', async () => {
     const key = 'C1:5.5#side-kagelet-ops'

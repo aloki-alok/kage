@@ -62,7 +62,7 @@ export function sdkSessions(o: {
   // done: the turn ended with its result, so it finished these tasks; with no done, they were cut or closed.
   onTurn?: (key: string, tasks: Task[], limit?: Limit, done?: true) => void
   // A kagelet lane (core/kagelets.ts): its grant (only these tools, and it approves nothing) and the owner's allow lines.
-  grantOf?: (key: string) => string[] | undefined; allowOf?: (key: string) => string[]
+  grantOf?: (key: string) => string[] | undefined; allowOf?: (key: string) => string[]; reviewHeld?: (key: string, command: string) => Promise<boolean>
   // A kagelet lane's tool call, for the event log: the tool's name and why it was refused, never its input.
   onTool?: (key: string, tool: string, refused?: string) => void
   // A kagelet lane: what it may spend before a cap (core/kagelets.ts budgetLeft). The SDK stops the run there.
@@ -158,9 +158,11 @@ export function sdkSessions(o: {
             hooks: [async input => {
               const i = input as { tool_name: string; tool_input?: Record<string, string> }
               const grant = o.grantOf?.(key)
-              const reason = (grant && grantRefusal(i.tool_name, grant, i.tool_input ?? {}, o.allowOf?.(key))) || toolRefusal(i.tool_name, i.tool_input ?? {}, s.sender, o)
+              const path = toolRefusal(i.tool_name, i.tool_input ?? {}, s.sender, o), held = grant && grantRefusal(i.tool_name, grant, i.tool_input ?? {}, o.allowOf?.(key))
+              // Only a grant hold may be let through by the reviewer, never a path guard; allow here, so canUseTool's grant check never sees it.
+              const released = !!held && !path && i.tool_name === 'Bash' && !!await o.reviewHeld?.(key, String(i.tool_input?.command ?? '')), reason = released ? undefined : held || path
               if (grant) o.onTool?.(key, i.tool_name, reason || undefined)
-              return reason ? { hookSpecificOutput: { hookEventName: 'PreToolUse', permissionDecision: 'deny', permissionDecisionReason: reason } } : {}
+              return reason ? { hookSpecificOutput: { hookEventName: 'PreToolUse', permissionDecision: 'deny', permissionDecisionReason: reason } } : released ? { hookSpecificOutput: { hookEventName: 'PreToolUse', permissionDecision: 'allow' } } : {}
             }],
           }],
         },
