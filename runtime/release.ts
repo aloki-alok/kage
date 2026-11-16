@@ -71,7 +71,7 @@ export async function release(root: string, dryRun: boolean, at = 'HEAD'): Promi
   await sh(root, 'git', 'worktree', 'add', '-q', '--detach', wt, sha)
   try {
     writeVersion(wt, version)
-    await sh(wt, 'git', 'commit', '-q', '-m', `Release ${tag}`, '--', 'package.json', 'package-lock.json', '.claude-plugin/plugin.json')
+    await sh(wt, 'git', 'commit', '-q', '-m', `Release ${tag}`, '--', 'package.json', '.claude-plugin/plugin.json')
     const rel = await sh(wt, 'git', 'rev-parse', 'HEAD')
     await sh(root, 'git', 'tag', '-a', tag, '-m', tag, rel)
     // A merge that conflicts, or a push that fails, leaves nothing behind. A push that landed but timed out is
