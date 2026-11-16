@@ -92,9 +92,12 @@ export function scheduleTools(c: ToolContext): KageTool[] {
     },
     async run(args: Record<string, unknown>) {
       if (c.jobRun()) return { isError: true, text: 'refused: a job\'s own run may not move a job. Put the move you suggest in your report.' }
-      const to = String(args.to_channel ?? args.channel), ts = String(args.to_thread_ts)
+      // The job's real channel comes from the hub's row, never from the arguments, which the model writes.
+      const job = jobs.list().find(j => j.id === String(args.id))
+      if (!job) return { isError: true, text: `no job ${String(args.id)} in this thread` }
+      const here = job.key.split(':')[0]!, to = String(args.to_channel ?? here), ts = String(args.to_thread_ts)
       // A teammate moves a job within the channel where it already posts; taking it to another channel is the owner's call.
-      if (to !== String(args.channel) && !ownerOnly(args)) return { isError: true, text: 'only the owner\'s own task may move a job to another channel. Ask the owner in this thread.' }
+      if (to !== here && !ownerOnly(args)) return { isError: true, text: 'only the owner\'s own task may move a job to another channel. Ask the owner in this thread.' }
       const r = await c.user.conversations.replies({ channel: to, ts, limit: 1 }).catch(() => undefined)
       const first = r?.messages?.[0]
       if (!first || first.ts !== ts || (first.thread_ts && first.thread_ts !== ts)) return { isError: true, text: `no thread starts at ${ts} in ${to}: give the ts of its first message` }

@@ -290,6 +290,7 @@ describe("a session's Kage tools", () => {
     mate.t.onTask(mate.task({ fromOwner: false }))
     assert.match((await mate.call('move_job', { ...a, to_thread_ts: '1.9' })).text, /no thread starts at 1\.9/)   // a reply's ts, or nothing there
     assert.match((await mate.call('move_job', { ...a, to_channel: 'C2', to_thread_ts: '9.1' })).text, /only the owner/)
+    assert.match((await mate.call('move_job', { ...a, channel: 'C2', to_channel: 'C2', to_thread_ts: '9.1' })).text, /only the owner/)   // a forged channel argument
     assert.equal(mate.jobs[0].key, 'C1:5.5')
     assert.equal((await mate.call('move_job', { ...a, to_thread_ts: '9.1' })).isError, undefined)
     assert.equal(mate.jobs[0].key, 'C1:9.1')
