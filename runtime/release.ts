@@ -25,9 +25,10 @@ export async function aheadOfStable(root: string, sha: string): Promise<boolean>
 export const fetchRefs = (root: string) =>
   sh(root, 'git', 'fetch', '-q', '--force', 'origin', 'main', 'refs/tags/stable:refs/tags/stable').catch(() => sh(root, 'git', 'fetch', '-q', 'origin', 'main'))
 
-// The three files that carry the version. Plugin installs update only when plugin.json's changes.
+// The files that carry the version. Plugin installs update only when plugin.json's changes. package-lock.json keeps its old
+// version on purpose: a changed lockfile makes every hub run npm ci on update, and npm ci accepts the lag.
 function writeVersion(root: string, version: string) {
-  for (const f of ['package.json', 'package-lock.json', '.claude-plugin/plugin.json']) {
+  for (const f of ['package.json', '.claude-plugin/plugin.json']) {
     const j = JSON.parse(readFileSync(join(root, f), 'utf8'))
     j.version = version
     if (j.packages?.['']) j.packages[''].version = version
