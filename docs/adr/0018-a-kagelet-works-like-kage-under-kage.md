@@ -8,7 +8,7 @@ Status: Accepted. Builds on 0015 and 0016. Changes 0004 and 0005 for kagelets on
 
 ```
 kagelets/<name>/
-  job.md     front matter (goal, number, manager, schedule, tools), then the job and its rules in plain words
+  job.md     front matter (goal, number, manager, schedule, tools, people), then the job and its rules in plain words
   memory/    what it learned
 ```
 
@@ -28,6 +28,7 @@ A scheduled run's asker is its manager, Kage.
 
 ### Rules
 
+0. **Kage is for the owner and the teammates the owner added. Everyone else talks to kagelets.** Kage holds the owner's write access and prod data, so only the owner and the teammates added with `kage add` reach Kage. Kage opens a kagelet to more people by naming them in its `people:` line. A person named there talks to that kagelet only, inside that kagelet's access, and never reaches Kage through it.
 1. **One instruction text.** Kage and every kagelet read `core/instructions.ts`, with the role named. There is no separate kagelet prompt.
 2. **`tools: all`** gives a kagelet Kage's tools behind the hub's action check. Without it, a kagelet keeps its tool list. The tokens file, Kage's code and the kagelet's own `job.md` stay closed by path either way.
 3. **Always allow.** Any yes can be "always allow", which adds one plain rule line to `job.md`.
