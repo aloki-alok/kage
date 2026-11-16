@@ -19,7 +19,7 @@ function wordMatches(rule: string, word: string): boolean {
     if (next < at || !safeFill(word.slice(at, next))) return false
     at = next + part.length
   }
-  return true
+  return !/\.\.|%2e/i.test(word)   // a literal part next to a * could finish a step up the fill began
 }
 // A rule is the owner's (ADR 0018): it starts with a literal command word, so it names the tool it releases.
 export const badRule = (rule: string) => /^\S*\*/.test(rule.trim())

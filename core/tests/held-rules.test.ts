@@ -26,12 +26,16 @@ describe('an owner\'s rule line', () => {
       'kubectl apply -f staging/x?yaml', 'kubectl apply -f staging/[ab].yaml', 'kubectl apply -f staging/%2e%2e/prod', 'curl -X POST https://hooks.example.com/staging/{1..9999}',
       'curl -X POST https://hooks.example.com/staging/$HOME', 'curl -X POST https://hooks.example.com/staging/~root', 'curl -X POST -o/etc/x', 'curl -X POST --upload-file=/etc/passwd',
       'kubectl apply -f staging/', 'kubectl apply -f staging/a#b']) assert.equal(allowedBy(r, c), undefined, c)
+    assert.equal(allowedBy(['kubectl apply -f staging/*./x'], 'kubectl apply -f staging/../x'), undefined)   // a literal part cannot finish a step up
     assert.equal(allowedBy(r, 'kubectl\tapply -f  staging/web.yaml'), r[1])   // tabs and doubled spaces read as one space
   })
   test('a push to a protected branch is the owner\'s every time, even when a rule names it', () => {
     assert.equal(heldCommand('git push --force origin main'), 'a push to a protected branch')
     assert.equal(allowedBy(['git push --force origin main', 'git push origin *'], 'git push --force origin main'), undefined)
     assert.equal(allowedBy(['git push origin *'], 'git push origin production'), undefined)
+    // A push whose branch the command does not name may land on a protected one.
+    for (const c of ['git push -f', 'git push --force origin', 'git push --force origin HEAD', 'git push --force origin @', 'git push --force origin feat/x:heads/main'])
+      assert.equal(heldCommand(c), 'a push to a protected branch', c)
   })
   test('each owner-only kind is one a command really gets, so a renamed kind cannot slip out of the list', () => {
     for (const c of ['sudo ls', 'dd if=/dev/zero of=x', 'chmod -R 777 a', 'crontab -r', 'echo x > /etc/hosts', 'reboot', 'git push origin main', `bash -c "${'bash -c '.repeat(6)}ls"`])
