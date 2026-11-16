@@ -2,7 +2,7 @@
 // card, and the Monday retro of what Kage's own ledgers say to change (core/retro.ts). Each marks its file only once
 // its DM went out, so a failed post retries.
 import { readFileSync, writeFileSync } from 'node:fs'
-import { dailyDue, expiredWaiting, grantsLine, staleWaiting } from '../core/ledgers.ts'
+import { dailyDue, expiredWaiting, grantsLine, heldLine, staleWaiting } from '../core/ledgers.ts'
 import { retro, retroDue } from '../core/retro.ts'
 import type { Ledgers } from '../runtime/ledger.ts'
 import type { Store } from '../runtime/store.ts'
@@ -23,9 +23,10 @@ export function ownerDigests(o: { dir: string; ledgers: Ledgers; store: Store; p
       // The day before this note's 05:00 UTC, so a retried note neither skips nor repeats a grant.
       const at = Date.parse(`${today}T05:00:00Z`)
       const noCard = grantsLine(o.ledgers.text('grants'), at - 24 * 3600_000, at)
+      const released = heldLine([...o.ledgers.events(new Date(at - 24 * 3600_000).toISOString().slice(0, 10)), ...o.ledgers.events(today)], at - 24 * 3600_000, at)
       const list = (title: string, items: typeof stale) => items.length ? [[`*${title} (${items.length})*`,
         ...items.map(i => `• ${i.link ? `<${i.link}|${i.what}>` : i.what} (since ${i.when.slice(0, 10)})`)].join('\n')] : []
-      const parts = [...list('Still waiting on you', stale), ...list(`Dropped after ${hours} h. Reply in its thread if one still matters`, expired), ...noCard ? [noCard] : []]
+      const parts = [...list('Still waiting on you', stale), ...list(`Dropped after ${hours} h. Reply in its thread if one still matters`, expired), ...noCard ? [noCard] : [], ...released ? [released] : []]
       const sent = !parts.length || await o.notify(parts.join('\n\n'))
       if (!sent) return
       // Closed only once the note named them, so a failed post names them again on the retry.

@@ -106,6 +106,20 @@ export function grantsLine(tsv: string, from: number, to: number): string | unde
   return got.length ? `*Kagelet grants with no card*: ${got.join('; ')}. To end a write tool's standing yes: v in kage top, or ask me. A read grant ends when the kagelet is saved without it or removed.` : undefined
 }
 
+// What the reviewer let run in the note's day (core/held-review.ts, kagelets.release review), by kagelet and kind, so a
+// wrong release is seen the same day. A step it kept is already the owner's card or the kagelet's needs.
+export function heldLine(events: KageEvent[], from: number, to: number): string | undefined {
+  const counts = new Map<string, number>()
+  for (const e of events) {
+    const at = Date.parse(e.at)
+    if (e.kind !== 'held' || at < from || at >= to || !e.detail.startsWith('released by reviewer: ')) continue
+    const line = `${e.who}: ${e.detail.slice('released by reviewer: '.length)}`
+    counts.set(line, (counts.get(line) ?? 0) + 1)
+  }
+  const total = [...counts.values()].reduce((a, b) => a + b, 0)
+  return total ? [`*Let run by the reviewer (${total})*`, ...[...counts].map(([line, n]) => `• ${line}${n > 1 ? ` ×${n}` : ''}`)].join('\n') : undefined
+}
+
 // One plain line per ledger row or event for the hub log (runtime/ledger.ts), so kage logs tells what happened
 // in order. What happened, never what was said: the cells hold keys, costs and the owner's open questions.
 const cap = (s: string) => s.length > 300 ? `${s.slice(0, 299)}…` : s
