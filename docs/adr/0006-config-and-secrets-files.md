@@ -2,21 +2,12 @@
 
 Status: Accepted, built (#116)
 
-## Context
-
-`~/.config/kage/env` mixes 8 secrets with about 41 untyped settings. A typo in a name is ignored with no message. Only two settings apply without a restart.
-
 ## Decision
 
-Settings go in `~/.config/kage/config.json`, typed by one schema. Tokens go in `~/.config/kage/secrets.json`, mode 600, and no session may read it, the owner's included. Kage posts to other channels with its own tool (`post_as_kage`, #133), not with a token a session holds. Code migrates the old `env` file once. It never passes through a Claude session.
+Settings go in `~/.config/kage/config.json`, typed by one schema (`core/config.ts`). A bad key is refused with a message, and the last good config stays. Tokens go in `~/.config/kage/secrets.json`, mode 600, and no session may read it, the owner's included. Kage posts to other channels with its own tool (`post_as_kage`), not with a token a session holds.
 
-## Consequences
-
-- A bad key is refused with a message, and the last good config stays.
-- Agents may read and edit `config.json`, but never the tokens.
-- The old env file is read once, to import it into `config.json` and `secrets.json` (`runtime/config-files.ts`). `runtime/path-guards.ts` `configRefusal` and `protectConfig` keep sessions out of the token files.
-- Cost: every setting read moves behind one loader, so each setting needs a small PR.
+Code imports the old `env` file once (`runtime/config-files.ts`). It never passes through a Claude session. `configRefusal` and `protectConfig` in `runtime/path-guards.ts` keep sessions out of the token files.
 
 ## How it is checked
 
-Not yet enforced: issue #116. A guard test for the secrets file comes with it.
+`core/tests/config.test.ts` (schema, import table, settings doc). The token files' guards: `runtime/tests/sandbox.test.ts` and `runtime/tests/sandbox-off.test.ts` (live, see CONTRIBUTING).
