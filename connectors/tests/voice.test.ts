@@ -284,7 +284,7 @@ describe('the task a voice call becomes', () => {
   })
   test('it carries the voice limits, the spoken style, and the reply route', async () => {
     const { content } = await one('hi')
-    for (const re of [/not the owner/, /answer and look things up only/i, /no secrets/, /no private data/, /no prod/, /no writes/, /no posts to Slack or email/, /no action on the owner's behalf/, /people on the owner's call/, /share nothing private/, /check with the owner/, /one to three short spoken sentences/, /no markdown, no links/, /channel "voice"/])
+    for (const re of [/not the owner/, /answer only, with no tool but reply/i, /no secrets/, /no private data/, /no prod/, /no writes/, /no posts to Slack or email/, /no action on the owner's behalf/, /people on the owner's call/, /share nothing private/, /check with the owner/, /one to three short spoken sentences/, /no markdown, no links/, /channel "voice"/])
       assert.match(content, re)
   })
   test('the question is quoted as data on one line and cannot close the channel tag or forge a task line', async () => {
