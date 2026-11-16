@@ -69,7 +69,7 @@ export function hubKagelets(o: {
   const reviewHeld = kageletReview({
     settings: () => ({ release: kl.release ?? 'rules', perDay: kl.reviewsPerDay || 10, model: kl.reviewModel || 'haiku' }),
     kagelet: key => parsed().find(k => k.key === key),
-    ask: a => claudeOnce({ ...a, cwd: emptyRoom(o.dir), tools: '' }),
+    ask: a => claudeOnce({ ...a, cwd: emptyRoom(o.dir), tools: '', timeoutMs: 30_000 }),   // the step waits in the hook meanwhile; a timeout keeps it held
     event: (key, detail) => o.runs.emit(key, 'held', detail),
     today: () => new Date().toISOString().slice(0, 10),
   })

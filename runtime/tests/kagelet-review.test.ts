@@ -43,3 +43,16 @@ test('a failed model call keeps the step held', async () => {
   const s = kageletReview({ settings: () => ({ release: 'review', perDay: 10, model: 'haiku' }), kagelet: () => ops, ask: async () => { throw new Error('claude exited 1') }, event: () => {}, today: () => 'd' })
   assert.equal(await s(KEY, 'rm -rf build'), false)
 })
+test('parallel calls never pass the daily cap', async () => {
+  const s = setup({ perDay: 2 })
+  const all = await Promise.all(Array.from({ length: 6 }, () => s.r(KEY, 'rm -rf build')))
+  assert.equal(all.filter(Boolean).length, 2)
+  assert.equal(s.asked.length, 2)
+})
+test('a HOLD gives its slot back, so only released steps count', async () => {
+  let answer = 'HOLD: no'
+  const r = kageletReview({ settings: () => ({ release: 'review', perDay: 1, model: 'haiku' }), kagelet: () => ops, ask: async () => answer, event: () => {}, today: () => 'd' })
+  assert.equal(await r(KEY, 'rm -rf build'), false)
+  answer = 'RUN'
+  assert.equal(await r(KEY, 'rm -rf build'), true)
+})

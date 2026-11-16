@@ -19,10 +19,12 @@ export function kageletReview(o: {
     const s = o.settings(), k = o.kagelet(key)
     if (s.release !== 'review' || !k || !shellGrant(k.tools) || !reviewable(command)) return false
     const day = `${k.name} ${o.today()}`
+    // The slot is taken before the call, so parallel calls in one turn cannot pass the cap; a HOLD gives it back.
     if ((released.get(day) ?? 0) >= s.perDay) return false
+    released.set(day, (released.get(day) ?? 0) + 1)
     const kind = heldCommand(command)!
     const runs = await o.ask({ model: s.model, ...reviewAsk({ kagelet: k.name, job: k.job, objective: k.objective?.objective, command, kind }) }).then(reviewRuns, () => false)
-    if (runs) released.set(day, (released.get(day) ?? 0) + 1)
+    if (!runs) released.set(day, released.get(day)! - 1)
     o.event(key, `${runs ? 'released' : 'kept'} by reviewer: ${kind}`)
     return runs
   }

@@ -51,7 +51,7 @@ Only a listed agent's post goes to Jev, at most its first 4,000 characters, with
 | `kagelets.max` | `10` | Kagelets that may run on this install. Past it, by name order, one runs nothing. Kage makes no new one while this many files exist, paused ones included. |
 | `kagelets.needsPerDay` | `5` | Needs one kagelet may send Kage in a day. A need goes to Kage in the kagelet's thread, which answers it or asks you once. Past this many, or after a day with no free session there, a need goes on your waiting list instead. The same need again within a day counts once. |
 | `kagelets.measureMinutes` | `60` | How often Kage runs each kagelet's measure, with no model. Each run reads the latest number. |
-| `kagelets.release` | `rules` | Who answers a held shell step of a `tools: all` kagelet that no `allow:` line covers. `rules`: you, each time. `review`: a cheap model may let a low-stakes one run (a local delete, a forced push to a branch that is not protected, a git step that drops work, stopping a process). Every prod, customer, money or access step still comes to you. |
+| `kagelets.release` | `rules` | Who answers a held shell step of a `tools: all` kagelet that no `allow:` line covers. `rules`: you, each time. `review`: a cheap model may let a low-stakes one run (a local delete, a forced push to a branch that is not protected, a git step that drops work). Every prod, customer, money or access step still comes to you. |
 | `kagelets.reviewsPerDay` | `10` | At `review`, the most held steps the reviewer lets run per kagelet a day. Past it, they come to you. |
 | `kagelets.reviewModel` | `haiku` | The model the reviewer asks. |
 | `kagelets.trendRuns` | `5` | How many past measures a run sees as its trend. |
