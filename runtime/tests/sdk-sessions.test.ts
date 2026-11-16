@@ -757,6 +757,21 @@ describe('Kage sessions on the Agent SDK', () => {
     assert.equal((await run({ command: 'kubectl apply -f prod.yaml', description: 'retry the deploy' })).hookSpecificOutput.permissionDecision, 'allow')
     assert.equal((await run({ command: 'kubectl apply -f prod.yaml' })).hookSpecificOutput.permissionDecision, 'deny')   // spent
     assert.equal(t.posts.length, 2)
+    // The open card is asked once: the same step again posts nothing, and a yes for one command never runs another.
+    assert.match((await run({ command: 'kubectl apply -f prod.yaml' })).hookSpecificOutput.permissionDecisionReason, /card is posted/)
+    assert.equal(t.posts.length, 2)
+    t.approvals.answer(t.idOf(t.posts[1]!), 'allow', Date.now())
+    assert.equal((await run({ command: 'kubectl apply -f other.yaml' })).hookSpecificOutput.permissionDecision, 'deny')
+  })
+  test('a kagelet has at most a few open cards: past them, a held step goes to its needs as before', async () => {
+    const key = 'C1:5.5#side-kagelet-ops'
+    const t = setup({ grants: { [key]: ['all'] }, deferred: true })
+    t.d.task(key, t.task({ fromOwner: false }), 0)
+    await tick()
+    const run = (command: string) => t.sdk.runs[0]!.options.hooks.PreToolUse[0].hooks[0]({ hook_event_name: 'PreToolUse', tool_name: 'Bash', tool_input: { command } }, undefined, { signal: signal() })
+    for (let i = 0; i < 8; i++) await run(`kubectl apply -f s${i}.yaml`)
+    assert.equal(t.posts.length, 5)
+    assert.match((await run('kubectl apply -f s9.yaml')).hookSpecificOutput.permissionDecisionReason, /needs/)
   })
   test('a held step the reviewer lets run is allowed in the hook; a path guard always wins over the reviewer', async () => {
     const key = 'C1:5.5#side-kagelet-ops'
