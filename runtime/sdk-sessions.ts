@@ -2,12 +2,13 @@
 // Kage's tools served in-process. It fills the same Runner interface as tmux-panes.ts, so the
 // dispatcher does not know which one runs. Unlike a tmux pane, a session here lives and dies with
 // the hub process, crons included.
-// The SDK comes in as an argument: the hub imports it only when this runtime is on, so a tmux-only
-// install needs no SDK.
+// The SDK comes in as an argument: the hub imports it only when this runtime is on, so a tmux-only install needs none.
 import { VOICE_READS, VOICE_READS_LINE, voiceToolOptions } from './voice-slack-tools.ts'
 import type { createSdkMcpServer, EffortLevel, Options, Query, SDKMessage, SDKUserMessage, tool } from '@anthropic-ai/claude-agent-sdk'
 import { z } from 'zod'
 import { log, logKey } from './log.ts'
+import { makeInbox, type Inbox } from './sdk-inbox.ts'
+import { ownerOnlyTool } from '../core/guards.ts'
 import { senderOf, withoutInvisible, type Sender } from '../core/gate.ts'
 import { certFileEnv, protectConfig, toolRefusal } from './path-guards.ts'
 import { grantRefusal, laneOptions, shellGrant } from '../core/kagelets.ts'
@@ -38,6 +39,7 @@ type Session = {
   stopped: boolean
   run?: { q: Query; inbox: Inbox; send: (m: ToSession) => void; started: number }
   asks: Map<string, (b: 'allow' | 'deny') => void>
+  ownerTools: boolean; carry: SDKUserMessage[]   // the next process opens with the owner's own tools; what it starts on (#317)
 }
 
 export function sdkSessions(o: {
@@ -86,11 +88,13 @@ export function sdkSessions(o: {
   const ALLOWED = ['reply', 'edit_message', 'delete_message', 'send_file', 'message_people', 'schedule', 'unschedule', 'schedules', 'set_model', 'kagelets', 'review_kagelet_memory', 'browser_tabs', 'browser_read', 'browser_screenshot', 'browser_snapshot', 'browser_act', 'set_setting', 'meeting_join'].map(t => `mcp__kage__${t}`)
 
   function open(key: string, s: Session, carried: SDKUserMessage[] = []) {
+    const carries = carried.length > 0   // the inbox takes the array itself, so its length changes
     const inbox = makeInbox(carried)
+    const full = s.ownerTools
     const voice = key.startsWith('voice:')
     const server = o.sdk.createSdkMcpServer({
       name: 'kage', instructions: s.kage.instructions + (voice ? VOICE_READS_LINE : ''),
-      tools: [...(voice ? [...s.kage.tools, ...s.kage.voiceTools] : s.kage.tools).map(t => o.sdk.tool(t.name, t.description, t.shape, async args => {
+      tools: [...(voice ? [...s.kage.tools, ...s.kage.voiceTools] : s.kage.tools).filter(t => full || !ownerOnlyTool(`mcp__kage__${t.name}`)).map(t => o.sdk.tool(t.name, t.description, t.shape, async args => {
         const r = await t.run(args)
         return { isError: r.isError, content: [{ type: 'text' as const, text: r.text }] }
       }, voiceToolOptions(voice, t.name))), o.sdk.tool('set_model', SET_MODEL, {
@@ -124,7 +128,7 @@ export function sdkSessions(o: {
       prompt: inbox,
       options: {
         ...o.options,
-        settings: { ...(o.options.settings as object), ...walled },
+        settings: { ...(o.options.settings as object), ...walled, ...!full && { disableClaudeAiConnectors: true } },
         ...(resumed ? { resume: s.id } : { sessionId: s.id }),
         ...(o.modelOf?.(key) && { model: o.modelOf(key) }),
         ...picks.get(key),
@@ -132,8 +136,7 @@ export function sdkSessions(o: {
         ...grant && laneOptions(grant),
         systemPrompt: { type: 'preset', preset: 'claude_code' },
         mcpServers: { ...o.options.mcpServers, kage: server },
-        // Its jobs die with the session; the schedule tool replaces it.
-        disallowedTools: [...o.options.disallowedTools ?? [], 'CronCreate', 'CronDelete', 'CronList'],
+        disallowedTools: [...o.options.disallowedTools ?? [], 'CronCreate', 'CronDelete', 'CronList'],   // its jobs die with the session: the schedule tool replaces it
         // Claude Code sends session_state_changed, which busy() reads, only when asked.
         env: { ...env, ...certFileEnv(), CLAUDE_CODE_EMIT_SESSION_STATE_EVENTS: '1', KAGE_SESSION: '1', ...ssmToken && { KAGE_SSM_TOKEN: ssmToken, KAGE_SSM_SOCK: o.ssm!.sock, PATH: `${o.ssm!.shim}:${env.PATH}` }, ...keysToken && { KAGE_KEYS_TOKEN: keysToken, KAGE_KEYS_SOCK: o.keys!.sock } },
         // A kagelet's grant is its approval, checked first: beyond it, even Kage's tools that act as the owner, it
@@ -163,23 +166,29 @@ export function sdkSessions(o: {
         },
       },
     })
+    let sawState = false, unseen = false   // unseen: a message went in since Claude last said running, so an idle may predate it
+    // Once the owner wrote here, a message that finds this process idle starts a new one with the owner's tools, and goes
+    // in first. Claude Code says idle only after it read every message (measured); with no state events, only an empty turn counts.
     const send = (m: ToSession) => {
       if (m.type === 'verdict') { s.asks.get(m.request_id)?.(m.behavior); return }
       s.sender = senderOf(m)
+      if (s.sender === 'owner') s.ownerTools = true
+      const reopen = s.ownerTools && !full && s.state === 'idle' && (sawState ? !unseen : !s.turn.length)
+      if (reopen && s.turn.length) o.onTurn?.(key, s.turn.splice(0).map(x => x.task), undefined, true)   // idle: it read and answered them
       s.turn.push({ task: m, mid: s.state !== 'idle' })
       s.kage.onTask(m)
       s.state = 'running'
       s.last = Date.now()
-      inbox.push({ type: 'user', message: { role: 'user', content: channelTag(m) }, parent_tool_use_id: null } as SDKUserMessage)
+      // Nothing more goes to a closing process: it may take a message and die before it answers.
+      if (reopen || s.carry.length) { s.carry.push(userMessage(m)); q.close() } else { inbox.push(userMessage(m)); unseen = true }
     }
     s.run = { q, inbox, send, started: Date.now() }
     let connected = false
-    // Connected once Claude Code has started: the handshake, or failing that its first message. A
-    // process that never starts leaves its tasks with the dispatcher, which reports them after connectMs.
-    const connect = () => { if (!connected && !s.stopped) connected = o.hub().connect(key, send) }
+    // Connected at the handshake, or else its first message. One that never starts leaves its tasks to the dispatcher.
+    // Once started, it is busy with what it carries until Claude says idle. One that never starts holds no slot.
+    const connect = () => { if (connected || s.stopped) return; connected = o.hub().connect(key, send); if (carries) s.state = 'running' }
     q.initializationResult().then(connect, () => {})
     void (async () => {
-      let sawState = false
       let blocked = false   // once per turn: a new CLI sends the system event and the refused assistant frame
       let limit: Limit['kind'] | undefined   // this turn's top-level answer was the usage limit or an overload
       let resetsAt: number | undefined, window: string | undefined   // the reset time and usage window Claude last gave with a rejection
@@ -187,7 +196,7 @@ export function sdkSessions(o: {
         for await (const m of q as AsyncIterable<SDKMessage>) {
           s.last = Date.now()
           connect()
-          if (m.type === 'system' && m.subtype === 'session_state_changed') { sawState = true; s.state = m.state }
+          if (m.type === 'system' && m.subtype === 'session_state_changed') { sawState = true; s.state = m.state; if (m.state === 'running') unseen = false }
           // A Claude Code that never sends the state event: the turn's result is the best idle signal.
           // The system event carries the category. An older CLI only marks stop_reason on the assistant frame.
           // A subagent's refusal ends only its own answer, not the thread.
@@ -226,9 +235,8 @@ export function sdkSessions(o: {
       } catch (e) { log('session ended', logKey(key), e) }
       // The process went away on the limit before it sent a result: its tasks go back the same way.
       if (limit && s.turn.length) o.onTurn?.(key, s.turn.splice(0).map(x => x.task), { kind: limit, ...(limit === 'rate_limit' && resetsAt && { until: resetsAt }), ...(limit === 'rate_limit' && window && { window }) })
-      // The Claude process is gone: its open approvals go with it. Unless the dispatcher closed it,
-      // it comes back on the same conversation, like the shell loop in a tmux pane, and takes the
-      // tasks this process never read.
+      // The Claude process is gone, and its open approvals with it. Unless the dispatcher closed it, it comes back on
+      // the same conversation, like the shell loop in a tmux pane, and takes the tasks this process never read.
       denyAll(s)
       s.state = 'idle'
       if (s.stopped) return
@@ -238,8 +246,8 @@ export function sdkSessions(o: {
       o.hub().disconnect(key, send)
       // Nor does the new process take one it never read: the store hands it out again.
       const gone = new Set(lost.map(x => channelTag(x.task)))
-      const unread = inbox.drain().filter(u => !gone.has(u.message.content as string))
-      setTimeout(() => { if (!s.stopped) open(key, s, unread) }, o.restartMs ?? 3000)
+      const unread = [...inbox.drain(), ...s.carry.splice(0)].filter(u => !gone.has(u.message.content as string))
+      setTimeout(() => { if (!s.stopped) open(key, s, unread) }, s.ownerTools && !full ? 0 : o.restartMs ?? 3000)
     })()
   }
 
@@ -277,10 +285,10 @@ export function sdkSessions(o: {
 
   const denyAll = (s: Session) => { for (const done of [...s.asks.values()]) done('deny') }
 
-  const runner: Runner = {
-    start(key, id) {
+  const runner: Runner<ToSession> = {
+    start(key, id, first) {
       const s: Session = sessions.get(key) ?? {
-        id, state: 'idle', last: 0, stopped: false, asks: new Map(), turn: [],
+        id, state: 'idle', last: 0, stopped: false, asks: new Map(), turn: [], carry: [], ownerTools: key.startsWith('voice:') || (first?.type === 'task' && senderOf(first) === 'owner'),   // a live call never reopens
         kage: o.tools(key, m => o.toHub(key, m), (tool, description, input) => ask(key, s, tool, description, input, new AbortController().signal).then(r => r.behavior === 'allow')),
       }
       Object.assign(s, { id, stopped: false })
@@ -317,6 +325,8 @@ const SET_MODEL = 'Switch the model or reasoning effort of this thread, when the
 
 // A task as Claude Code shows a channel message. Attributes are escaped, and the content cannot
 // open or close a channel tag of its own.
+const userMessage = (m: Task) => ({ type: 'user', message: { role: 'user', content: channelTag(m) }, parent_tool_use_id: null }) as SDKUserMessage
+
 export function channelTag(m: Task) {
   const attr = (v: string) => withoutInvisible(v).replaceAll('&', '&amp;').replaceAll('"', '&quot;').replaceAll('<', '&lt;')
   const attrs = Object.entries({ channel: m.meta.channel, thread_ts: m.meta.thread_ts, place: m.meta.place, permalink: m.meta.permalink })
@@ -328,23 +338,4 @@ export function channelTag(m: Task) {
 function requestId() {
   const abc = 'abcdefghijkmnopqrstuvwxyz'
   return Array.from({ length: 5 }, () => abc[Math.floor(Math.random() * abc.length)]).join('')
-}
-
-type Inbox = AsyncIterable<SDKUserMessage> & { push(m: SDKUserMessage): void; close(): void; drain(): SDKUserMessage[] }
-// The session's input: tasks go in as they arrive, and the query reads them as one long stream.
-function makeInbox(items: SDKUserMessage[] = []): Inbox {
-  let wake: (() => void) | undefined, closed = false
-  return {
-    push(m) { items.push(m); wake?.() },
-    close() { closed = true; wake?.() },
-    drain: () => items.splice(0),
-    async *[Symbol.asyncIterator]() {
-      while (true) {
-        while (items.length) yield items.shift()!
-        if (closed) return
-        await new Promise<void>(r => { wake = r })
-        wake = undefined
-      }
-    },
-  }
 }

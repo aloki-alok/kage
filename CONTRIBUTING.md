@@ -153,6 +153,7 @@ Write logs to stderr only. In a tmux pane, stdout carries the channel protocol, 
 | File | Holds |
 |---|---|
 | `sdk-sessions.ts` | The default runner: an Agent SDK session per key, inside the hub. `runtime/tests/fake-sdk.ts` is the fake SDK its tests drive. |
+| `sdk-inbox.ts` | A session's input on the Agent SDK: the tasks waiting for its process, read as one stream. |
 | `tmux-panes.ts` | The other runner: a Claude Code pane per key. |
 | `kage-tools.ts` | A session's tools (about 28): the state they share about its tasks (where each came from, who sent it, what Kage posted), and the approval card. The instructions every session reads are `core/instructions.ts`. |
 | `runtime/tools/slack-tools.ts` | Replies, edits and deletes of Kage's own posts, telling people, attaching a file, the waiting list, the prod log, and a post as Kage where no task came from. |

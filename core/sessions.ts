@@ -8,15 +8,15 @@ type Unquiet = 'busy' | 'asking' | 'starting' | 'watching' | 'just active' | 'wa
 // start/stop run a session (start throws if it can't). lastActivity: when it last wrote
 // its transcript (ms). busy: Claude is mid-turn, which a long tool call can be with no writes; 'watching': idle, kept
 // only because a timed check (cron job) of its own is alive. outlivesHub: the session keeps running when the hub
-// restarts (a tmux pane); a session inside the hub dies with it.
-export type Runner = { start(key: string, id: string): void; stop(key: string): void; lastActivity(key: string): number; busy(key: string): boolean | 'watching'; outlivesHub?(key: string): boolean }
+// restarts (a tmux pane); a session inside the hub dies with it. first: the task that starts it.
+export type Runner<M = unknown> = { start(key: string, id: string, first?: M): void; stop(key: string): void; lastActivity(key: string): number; busy(key: string): boolean | 'watching'; outlivesHub?(key: string): boolean }
 
 // A runtime switch without closing anything: threads whose pane ran when the hub started keep it,
 // and every session started from now on runs on `next`. A closed pane's thread resumes on `next`.
-export function mixRunners(panes: Runner, next: Runner, onPane: Set<string>): Runner {
+export function mixRunners<M>(panes: Runner<M>, next: Runner<M>, onPane: Set<string>): Runner<M> {
   const of = (k: string) => (onPane.has(k) ? panes : next)
   return {
-    start: (k, id) => { onPane.delete(k); next.start(k, id) },
+    start: (k, id, first) => { onPane.delete(k); next.start(k, id, first) },
     stop: k => { const w = of(k); onPane.delete(k); w.stop(k) },
     lastActivity: k => of(k).lastActivity(k),
     busy: k => of(k).busy(k),
@@ -27,7 +27,7 @@ export function mixRunners(panes: Runner, next: Runner, onPane: Set<string>): Ru
 // Routes tasks to one session per thread. Each thread keeps its session id for good, so a
 // session that closed or restarted resumes the same conversation. At most `max` sessions run.
 export class Dispatcher<M> {
-  #runner: Runner
+  #runner: Runner<M>
   #opts: { max: number; idleMs: number; connectMs: number; evictMs: number; newId: () => string }
   #ids: Map<string, string>
   #live = new Set<string>()
@@ -42,7 +42,7 @@ export class Dispatcher<M> {
   #startedAt = new Map<string, number>()
 
   // evictMs: how long a session must sit quiet before a new thread may take its slot.
-  constructor(w: Runner, o: { max: number; idleMs: number; connectMs: number; evictMs: number; newId: () => string; saved?: Record<string, string> }) {
+  constructor(w: Runner<M>, o: { max: number; idleMs: number; connectMs: number; evictMs: number; newId: () => string; saved?: Record<string, string> }) {
     this.#runner = w
     this.#opts = o
     this.#ids = new Map(Object.entries(o.saved ?? {}))
@@ -312,7 +312,7 @@ export class Dispatcher<M> {
   #start(key: string, now: number): boolean {
     if (!this.#ids.has(key)) this.#ids.set(key, this.#opts.newId())
     try {
-      this.#runner.start(key, this.#ids.get(key)!)
+      this.#runner.start(key, this.#ids.get(key)!, this.#pending.get(key)?.[0])
     } catch {
       return false
     }
