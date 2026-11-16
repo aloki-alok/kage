@@ -29,7 +29,9 @@ export function ownerDigests(o: { dir: string; ledgers: Ledgers; store: Store; p
       const sent = !parts.length || await o.notify(parts.join('\n\n'))
       if (!sent) return
       // Closed only once the note named them, so a failed post names them again on the retry.
-      for (const thread of gone) o.ledgers.add('waiting', ['expired', thread, '', ''])
+      // Read again: a thread that asked while the note posted is fresh now and stays open.
+      const still = new Set(expiredWaiting(o.ledgers.text('waiting'), now, hours * 3600_000).map(i => i.thread))
+      for (const thread of gone) if (still.has(thread)) o.ledgers.add('waiting', ['expired', thread, '', ''])
       writeFileSync(DAILY, today, { mode: 0o600 })
     },
     async weeklyRetro(now: number) {

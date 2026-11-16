@@ -56,7 +56,8 @@ export function askedFrom(tsv: string, dm: string, ts: string): string | undefin
 // answer does, so a thread that asked again recently keeps its older questions too.
 export function expiredWaiting(tsv: string, now: number, ageMs: number) {
   const open = openWaiting(tsv)
-  const fresh = new Set(open.filter(i => now - Date.parse(i.when) < ageMs).map(i => i.thread))
+  // Written as !(age >= limit), so a time that does not parse (NaN) counts as fresh and never expires a thread.
+  const fresh = new Set(open.filter(i => !(now - Date.parse(i.when) >= ageMs)).map(i => i.thread))
   return open.filter(i => !fresh.has(i.thread))
 }
 

@@ -30,6 +30,16 @@ describe('the daily note drops a question nobody answered in time', () => {
     assert.doesNotMatch(s.notes[0]!.split('Still waiting')[1]!.split('Dropped')[0]!, /Merge the old PR/)
     assert.deepEqual(openWaiting(s.ledgers.text('waiting')).map(i => i.what), ['Run the new check?'])
   })
+  test('a thread that asks again while the note posts stays open', async () => {
+    const dir = mkdtempSync(`${tmpdir()}/digests-`)
+    const ledgers = openLedgers(dir, () => '2026-11-06T00:00:00Z')
+    ledgers.add('waiting', ['open', 'C1:1.1', 'l1', 'Merge the old PR?'])
+    const late = openLedgers(dir, () => '2026-11-10T05:09:00Z')
+    const d = ownerDigests({ dir, ledgers, store: {} as Store, placeOf: k => k, costTracked: false, expireHours: () => 72,
+      notify: async () => { late.add('waiting', ['open', 'C1:1.1', 'l1', 'And the new one?']); return true } })
+    await d.dailyNote(now)
+    assert.deepEqual(openWaiting(ledgers.text('waiting')).map(i => i.what), ['Merge the old PR?', 'And the new one?'])
+  })
   test('a note that failed to post closes nothing, so the retry names it again', async () => {
     const s = setup(false)
     await s.d.dailyNote(now)

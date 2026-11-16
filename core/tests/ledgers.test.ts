@@ -60,6 +60,10 @@ describe('the ledgers', () => {
     ].join('')
     assert.deepEqual(expiredWaiting(rows, now, 3 * day).map(i => i.what), ['old one', 'old two'])
   })
+  test('a question whose time does not parse never expires its thread', () => {
+    const rows = tsvRow(['not a time', 'open', 'C1:1.1', 'l', 'odd'])
+    assert.deepEqual(expiredWaiting(rows, Date.parse('2026-11-10T05:00:00Z'), 3600_000), [])
+  })
   test('a new question after an answer opens again', () => {
     const rows = [
       tsvRow(['t1', 'open', 'C1:1.1', 'l', 'first']),

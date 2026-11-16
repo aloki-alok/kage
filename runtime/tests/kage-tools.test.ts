@@ -662,6 +662,8 @@ describe("a session's Kage tools", () => {
     await s.call('reply', { channel: 'C1', thread_ts: '5.5', text: 'PR?', waiting: 'Open a PR?' })
     await s.call('reply', { channel: 'C1', thread_ts: '5.5', text: 'PR? (again)', waiting: ' open a pr? ' })
     assert.equal(s.ledgers.text('waiting').split('\n').filter(l => l.includes('\topen\t')).length, 1)
+    await s.call('reply', { channel: 'C1', thread_ts: '5.5', text: 'And deploy?', waiting: 'Deploy it?' })
+    assert.equal(s.ledgers.text('waiting').split('\n').filter(l => l.includes('\topen\t')).length, 2)
   })
   test('a scheduled run in the thread does not answer its open question', async () => {
     const s = setup()
