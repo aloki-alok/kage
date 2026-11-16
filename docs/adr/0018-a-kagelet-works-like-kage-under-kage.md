@@ -1,6 +1,6 @@
 # 0018. A kagelet works like Kage, under Kage
 
-Status: Proposed. Builds on 0015 and 0016. Changes 0004 and 0005 for kagelets only.
+Status: Accepted. Builds on 0015 and 0016. Changes 0004 and 0005 for kagelets only.
 
 ## Decision
 
