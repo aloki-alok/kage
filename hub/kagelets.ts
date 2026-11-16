@@ -96,8 +96,22 @@ export function hubKagelets(o: {
     o.runs.emit(lane, 'owner-note', `${text.length} characters, from Kage`)
     return runNow ? `told ${name}. ${await manager.manage({ action: 'run', name }, now)}` : `told ${name}: its next run reads it`
   }
+  // The kagelets posting in a thread that name people, for the gate. A paused one takes no asks.
+  const inThread = (chat: string, thread: string) => parsed().filter(k => !k.paused && k.people && k.key.startsWith(`${chat}:${thread}#side-kagelet-`))
+  // A person on a kagelet's people line asked it for work: a note it reads, and a run when it is idle and under
+  // kagelets.askRunsPerHour. Returns the line posted under their message.
+  const ask = (chat: string, thread: string, name: string, from: string, text: string, now = Date.now()): string => {
+    const k = inThread(chat, thread).find(x => x.name === name && x.people!.includes(from))
+    if (!k) return ''
+    notes.asked(k.key, from, text)
+    o.runs.emit(k.key, 'people-ask', `${text.length} characters`)
+    if (!notes.mayRun(k.key, o.idle(k.key), now, kl.askRunsPerHour ?? 4)) return `Noted for ${name}. It reads this on its next run.`
+    manager.manage({ action: 'run', name }, now).catch(e => log('kagelet ask run failed', e))
+    return `Asked ${name}. It answers here.`
+  }
   return {
-    dir: KAGELETS, kmem, manager, routes, sync, notes, needs, tell, board, measures,
+    dir: KAGELETS, kmem, manager, routes, sync, notes, needs, tell, board, measures, ask,
+    peopleIn: (chat: string, thread: string) => inThread(chat, thread).map(k => ({ name: k.name, people: k.people! })),
     measure: (now: number) => measures.tick(parsed(), now).catch(e => log('kagelet measure failed', e)),
     lanes: () => grants.keys(),
     // A lane whose file is gone keeps no tools, rather than falling back to approval cards.
