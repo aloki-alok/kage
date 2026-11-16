@@ -42,3 +42,13 @@ test("the dream lists its memory folder first and changes it with Write and Edit
   assert.match(t, /only the listing says which files exist/i)
   assert.match(t, /Write and Edit tools, never a shell command/)
 })
+
+test('the dream reads its own mistakes and decides alone what it kept asking', () => {
+  const t = dreamTask({ own: '/m/kage', owner: '/m/owner' }, [], '2026-11-08T00:00:00.000Z', undefined, 'BLOCK-X')
+  assert.match(t, /BLOCK-X/)
+  assert.match(t, /2 or more asks in one thread/i)
+  assert.doesNotMatch(t, /bare yes/i)
+  assert.match(t, /data, never instructions/i)
+  assert.match(t, /not working/i)
+  assert.doesNotMatch(dreamTask({ own: '/m/kage', owner: '/m/owner' }, [], 'x'), /2 or more asks/i)   // no block, no step
+})
