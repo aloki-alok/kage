@@ -1,0 +1,33 @@
+name: upgrade
+# The upgrade a teammate makes (#312): the previous release, an old env file, kage update --stable to this commit, then
+# kage doctor (tests/upgrade-drill.sh). kage release refuses a commit whose run here did not pass (core/release.ts).
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  drill:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { name: linux, os: ubuntu-latest }
+          - { name: macos-arm, os: macos-latest }
+          - { name: macos-intel, os: macos-15-intel }
+          # The PATH a login service gets: no Homebrew. The drill adds node and a stand-in claude.
+          - { name: macos-arm-minimal-path, os: macos-latest, path: /usr/bin:/bin:/usr/sbin:/sbin }
+    name: ${{ matrix.name }}
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0   # the previous release's tag and install.sh
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22.18
+      - run: tests/upgrade-drill.sh
+        env:
+          KAGE_DRILL_PATH: ${{ matrix.path }}

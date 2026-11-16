@@ -8,7 +8,8 @@ A release is a `vX.Y.Z` tag on `main`, a GitHub Release with notes from the merg
 
 `kage release` makes one (`runtime/release.ts`, rules in `core/release.ts`):
 - It bumps `package.json`, `package-lock.json` and `plugin.json` in one commit: minor for any new feature, patch otherwise.
-- It refuses unless the checkout is clean `main`, equal to `origin/main`, with green CI on that commit.
+- It refuses unless the checkout is clean `main`, equal to `origin/main`, and the commit passed both CI and the upgrade drill (`RELEASE_CHECKS` in `core/release.ts`).
+- The upgrade drill (`.github/workflows/upgrade.yml`, #312) is what a teammate does: install the previous release, keep an old env file, `kage update --stable` to the candidate, then `kage doctor`. It runs on Linux, macOS arm and macOS Intel, and once with a PATH that has no Homebrew.
 - The release commit is the soaked commit plus the version bump, made in a scratch worktree. One atomic push moves main, the tag and `stable`.
 - If it fails after its push, `kage release` (before the tag) or `gh release create` (after it) finishes it, and the hub DMs the owner.
 
@@ -23,4 +24,4 @@ Only the repo admin's hub releases. The hub asks `gh repo view --json viewerPerm
 
 ## How it is checked
 
-`core/tests/release.test.ts` (version bump, notes, grouping) and `core/tests/auto-update.test.ts` (`soakGate`, `inertChange`). `kage release --dry-run` prints the version and notes and changes nothing.
+`core/tests/release.test.ts` (version bump, notes, grouping, the checks a candidate must pass) and `core/tests/auto-update.test.ts` (`soakGate`, `inertChange`). `kage release --dry-run` prints the version and notes and changes nothing.
