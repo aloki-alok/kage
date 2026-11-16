@@ -1,15 +1,18 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { openStore } from '../store.ts'
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs'
+import { existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, symlinkSync, writeFileSync } from 'node:fs'
+import { execFileSync } from 'node:child_process'
 import { tmpdir } from 'node:os'
 import { costCap } from '../kagelet-cost-cap.ts'
-import { pauseKagelet, readKagelets } from '../kagelet-files.ts'
+import { migrateKagelets, pauseKagelet, readKagelets } from '../kagelet-files.ts'
 import { kageletManager, readCommand, type Manage } from '../kagelet-manager.ts'
 import { ownerNotes } from '../kagelet-notes.ts'
 import { syncKagelets } from '../kagelet-sync.ts'
 
 const LINK = 'https://test.slack.com/archives/CTEST1/p1700000000123456'
+// A kagelet's job.md in the folder layout (ADR 0018).
+const put = (dir: string, name: string, text: string) => { mkdirSync(`${dir}/${name}`, { recursive: true }); writeFileSync(`${dir}/${name}/job.md`, text) }
 const KEY = 'CTEST1:1700000000.123456#side-kagelet-deploys'
 const file = (cron = '0 9 * * 1-5', tools = 'WebFetch') => ({ name: 'deploys', text: `---\nthread: ${LINK}\nschedule: ${cron}\ntools: ${tools}\n---\nSummarise the deploy log.\n` })
 
@@ -75,31 +78,68 @@ test('a paused kagelet keeps its grant but has no schedule; resumed, it waits fo
   assert.equal(store.schedules()[0]!.created, 3000)
 })
 
-test('the folder reads as name and text per .md file, and a missing folder as none', () => {
+test('the folder reads as name and text per kagelet folder with a job.md, and a missing folder as none', () => {
   const dir = mkdtempSync(`${tmpdir()}/spec-`)
-  writeFileSync(`${dir}/deploys.md`, 'x')
-  writeFileSync(`${dir}/notes.txt`, 'y')
+  mkdirSync(`${dir}/deploys`); writeFileSync(`${dir}/deploys/job.md`, 'x')
+  mkdirSync(`${dir}/empty`)                          // a folder with no job.md is no kagelet
+  writeFileSync(`${dir}/stale.md`, 'y')             // a file in the old layout is not read
   assert.deepEqual(readKagelets(dir), [{ name: 'deploys', text: 'x' }])
   assert.deepEqual(readKagelets(`${dir}/none`), [])
-  mkdirSync(`${dir}/folder.md`)   // one that cannot be read is left out, not the whole list
+  mkdirSync(`${dir}/broken/job.md`, { recursive: true })   // one that cannot be read is left out, not the whole list
   assert.deepEqual(readKagelets(dir), [{ name: 'deploys', text: 'x' }])
+})
+
+test('the old layout moves into one folder per kagelet, memory too, and a rerun changes nothing', () => {
+  const dir = mkdtempSync(`${tmpdir()}/spec-`)
+  writeFileSync(`${dir}/deploys.md`, 'job one')
+  writeFileSync(`${dir}/alerts.md`, 'job two')
+  mkdirSync(`${dir}/memory/deploys/.proposals`, { recursive: true })
+  writeFileSync(`${dir}/memory/deploys/notes.md`, 'a note')
+  writeFileSync(`${dir}/memory/deploys/.proposals/p1.json`, '{}')
+  const outside = mkdtempSync(`${tmpdir()}/outside-`)
+  writeFileSync(`${outside}/owner.md`, 'private')
+  symlinkSync(outside, `${dir}/memory/alerts`)       // a linked memory folder is never moved or followed
+  migrateKagelets(dir)
+  assert.equal(readFileSync(`${dir}/deploys/job.md`, 'utf8'), 'job one')
+  assert.equal(readFileSync(`${dir}/deploys/memory/notes.md`, 'utf8'), 'a note')
+  assert.ok(existsSync(`${dir}/deploys/memory/.proposals/p1.json`))
+  assert.equal(readFileSync(`${dir}/alerts/job.md`, 'utf8'), 'job two')
+  assert.ok(!existsSync(`${dir}/alerts/memory`))
+  assert.equal(readFileSync(`${outside}/owner.md`, 'utf8'), 'private')
+  assert.ok(lstatSync(`${dir}/memory/alerts`).isSymbolicLink())
+  assert.deepEqual(readKagelets(dir).map(f => f.name).sort(), ['alerts', 'deploys'])
+  const tree = () => execFileSync('find', [dir, '-print'], { encoding: 'utf8' }).split('\n').sort().join('\n')
+  const before = tree()
+  migrateKagelets(dir)
+  assert.equal(tree(), before)
+})
+
+test('a half-done move finishes, and a job.md written meanwhile wins over the old file', () => {
+  const dir = mkdtempSync(`${tmpdir()}/spec-`)
+  mkdirSync(`${dir}/deploys/memory`, { recursive: true })   // its memory moved, the file did not yet
+  writeFileSync(`${dir}/deploys.md`, 'old')
+  mkdirSync(`${dir}/alerts`); writeFileSync(`${dir}/alerts/job.md`, 'new')
+  writeFileSync(`${dir}/alerts.md`, 'stale')
+  migrateKagelets(dir)
+  assert.equal(readFileSync(`${dir}/deploys/job.md`, 'utf8'), 'old')
+  assert.equal(readFileSync(`${dir}/alerts/job.md`, 'utf8'), 'new')
 })
 
 test('pausing by name rewrites only that file, keeps it, and says when nothing matches', () => {
   const dir = mkdtempSync(`${tmpdir()}/spec-`)
-  writeFileSync(`${dir}/deploys.md`, file().text)
+  mkdirSync(`${dir}/deploys`); writeFileSync(`${dir}/deploys/job.md`, file().text)
   assert.match(pauseKagelet(dir, 'deploys', true), /paused/)
-  assert.match(readFileSync(`${dir}/deploys.md`, 'utf8'), /^paused: yes$/m)
+  assert.match(readFileSync(`${dir}/deploys/job.md`, 'utf8'), /^paused: yes$/m)
   assert.match(pauseKagelet(dir, 'deploys', true), /already paused/)
   assert.match(pauseKagelet(dir, 'deploys', false, Date.UTC(2026, 10, 14)), /runs again/)
   // A resume stamps its time (the daily cost cap counts from it); nothing else changes.
-  assert.equal(readFileSync(`${dir}/deploys.md`, 'utf8'), file().text.replace('---\nSummarise', 'resumed: 2026-11-14T00:00:00.000Z\n---\nSummarise'))
+  assert.equal(readFileSync(`${dir}/deploys/job.md`, 'utf8'), file().text.replace('---\nSummarise', 'resumed: 2026-11-14T00:00:00.000Z\n---\nSummarise'))
   assert.match(pauseKagelet(dir, 'nobody', true), /no kagelet/i)
   // A name that steps out of the folder is refused even when the file there exists.
-  mkdirSync(`${dir}/in`)
-  writeFileSync(`${dir}/out.md`, file().text)
+  mkdirSync(`${dir}/in`); mkdirSync(`${dir}/out`)
+  writeFileSync(`${dir}/out/job.md`, file().text)
   assert.match(pauseKagelet(`${dir}/in`, '../out', true), /no kagelet/i)
-  assert.equal(readFileSync(`${dir}/out.md`, 'utf8'), file().text)
+  assert.equal(readFileSync(`${dir}/out/job.md`, 'utf8'), file().text)
 })
 
 test('no more than the cap run: past it, a kagelet is logged and gets no schedule and no grant', () => {
@@ -134,7 +174,7 @@ test('the manager saves a kagelet file the hub syncs at once, and lists who made
   const t = manager()
   assert.match(await t.m.manage({ action: 'save', name: 'status', ...job }, 5000), /saved status/i)
   assert.deepEqual(t.synced, [5000])
-  const sp = readFileSync(`${t.dir}/status.md`, 'utf8')
+  const sp = readFileSync(`${t.dir}/status/job.md`, 'utf8')
   assert.match(sp, /^by: kage$/m)
   const list = t.m.list(5000)
   assert.match(list, /status\s+runs/)
@@ -176,12 +216,12 @@ test('a write tool asks the owner once; that yes stands for every later kagelet,
   assert.equal(readKagelets(u.dir).length, 0)
   const yes = owner(true)
   assert.match(await u.m.manage({ action: 'save', name: 'x', ...gmail }, 2, yes.ask), /saved x/)
-  assert.match(readFileSync(`${u.dir}/x.md`, 'utf8'), /^tools: WebSearch, mcp__gmail__send$/m)
-  assert.doesNotMatch(readFileSync(`${u.dir}/x.md`, 'utf8'), /standing/)
+  assert.match(readFileSync(`${u.dir}/x/job.md`, 'utf8'), /^tools: WebSearch, mcp__gmail__send$/m)
+  assert.doesNotMatch(readFileSync(`${u.dir}/x/job.md`, 'utf8'), /standing/)
   // Saved again, and a second kagelet for the same tool: no card.
   await u.m.manage({ action: 'save', name: 'x', ...gmail, schedule: '0 10 * * *' }, 3, yes.ask)
   assert.match(await u.m.manage({ action: 'save', name: 'y', ...gmail }, 4, yes.ask), /saved y/)
-  assert.match(readFileSync(`${u.dir}/y.md`, 'utf8'), /^standing: mcp__gmail__send$/m)
+  assert.match(readFileSync(`${u.dir}/y/job.md`, 'utf8'), /^standing: mcp__gmail__send$/m)
   assert.equal(yes.cards.length, 1)
   // A session that cannot ask the owner never adds a write tool, standing approval or not.
   assert.match(await u.m.manage({ action: 'save', name: 'w', ...gmail }, 4), /not saved: .*cannot ask/)
@@ -204,10 +244,10 @@ test('an act tool is never saved, with no card: the kagelet says what it needs a
 test('who made it comes from the file, never the model: a new one is Kage\'s, and a hand-written one stays the owner\'s', async () => {
   const u = manager()
   await u.m.manage({ action: 'save', name: 'new', ...job, by: 'owner' } as Manage, 1)
-  assert.match(readFileSync(`${u.dir}/new.md`, 'utf8'), /^by: kage$/m)
-  writeFileSync(`${u.dir}/mine.md`, file().text)
+  assert.match(readFileSync(`${u.dir}/new/job.md`, 'utf8'), /^by: kage$/m)
+  put(`${u.dir}`, 'mine', file().text)
   await u.m.manage({ action: 'save', name: 'mine', ...job, by: 'kage' } as Manage, 2)
-  assert.match(readFileSync(`${u.dir}/mine.md`, 'utf8'), /^by: owner$/m)
+  assert.match(readFileSync(`${u.dir}/mine/job.md`, 'utf8'), /^by: owner$/m)
 })
 
 // The owner's answer to the approval card, and every card it was shown.
@@ -271,11 +311,11 @@ test('revoking one tool takes it from every kagelet that got it by standing appr
   t.synced.length = 0
   assert.match(await t.m.manage({ action: 'revoke', name: 'mcp__gmail__send' }, 4), /revoked.*other, third/)
   assert.deepEqual(t.synced, [4])
-  assert.match(readFileSync(`${t.dir}/other.md`, 'utf8'), /^tools: WebSearch$/m)
+  assert.match(readFileSync(`${t.dir}/other/job.md`, 'utf8'), /^tools: WebSearch$/m)
   // The other write tool's standing approval and grant stay.
-  assert.match(readFileSync(`${t.dir}/third.md`, 'utf8'), /^tools: mcp__notion__update_page$/m)
+  assert.match(readFileSync(`${t.dir}/third/job.md`, 'utf8'), /^tools: mcp__notion__update_page$/m)
   // The kagelet the owner said yes to on its own card keeps it.
-  assert.match(readFileSync(`${t.dir}/mail.md`, 'utf8'), /^tools: WebSearch, mcp__gmail__send$/m)
+  assert.match(readFileSync(`${t.dir}/mail/job.md`, 'utf8'), /^tools: WebSearch, mcp__gmail__send$/m)
   assert.deepEqual(t.grants.filter(g => g[1] === 'revoked').map(g => [g[0], g[3]]), [['other', 'mcp__gmail__send'], ['third', 'mcp__gmail__send']])
   await t.m.manage({ action: 'save', name: 'other', ...gmail }, 5, y.ask)
   assert.equal(y.cards.length, 3)
@@ -289,14 +329,14 @@ test('a revoke that stopped halfway (approval gone, a file still holding the too
   await t.m.manage({ action: 'save', name: 'other', ...gmail }, 2, y.ask)
   t.store.save('standing-approvals', undefined)
   assert.match(await t.m.manage({ action: 'revoke', name: 'mcp__gmail__send' }, 3), /revoked.*other/)
-  assert.doesNotMatch(readFileSync(`${t.dir}/other.md`, 'utf8'), /gmail/)
+  assert.doesNotMatch(readFileSync(`${t.dir}/other/job.md`, 'utf8'), /gmail/)
 })
 
 test('an install from before tiers: its db_read standing approval goes once, and its kagelets keep db_read', async () => {
   const t = manager(), y = owner(true)
   t.store.save('standing-approvals', { tool: 'db_read', command: 'hash-a', at: 1 })
   t.store.save('db-read-commands', { calls: '~/bin/read-sql --ro' })
-  writeFileSync(`${t.dir}/calls.md`, `---\nthread: ${LINK}\nschedule: 0 9 * * *\ntools: WebSearch, db_read\nby: kage\nwhy: w\ngranted: db_read by standing approval, 2026-01-02T00:00:00.000Z\n---\nCount.\n`)
+  put(`${t.dir}`, 'calls', `---\nthread: ${LINK}\nschedule: 0 9 * * *\ntools: WebSearch, db_read\nby: kage\nwhy: w\ngranted: db_read by standing approval, 2026-01-02T00:00:00.000Z\n---\nCount.\n`)
   kageletManager({ dir: t.dir, max: 10, ledgers: { text: () => '', add: () => {}, events: () => [] }, sync: () => {}, runNow: () => undefined, store: t.store, log: () => {} })
   assert.equal(t.store.load('standing-approvals'), undefined)
   assert.match(t.m.list(1), /calls\s+runs/)
@@ -316,13 +356,13 @@ test('the manager pauses, resumes, runs now and removes; a paused one does not r
   assert.deepEqual(t.ran, ['kagelet-status'])
   assert.match(await t.m.manage({ action: 'resume', name: 'status' }, 5), /runs again/)
   assert.match(await t.m.manage({ action: 'remove', name: 'status' }, 6), /removed/)
-  assert.equal(existsSync(`${t.dir}/status.md`), false)
+  assert.equal(existsSync(`${t.dir}/status/job.md`), false)
   assert.match(await t.m.manage({ action: 'remove', name: 'status' }, 7), /no kagelet/i)
 })
 
 function capped(names: string[]) {
   const dir = mkdtempSync(`${tmpdir()}/spec-`)
-  for (const n of names) writeFileSync(`${dir}/${n}.md`, file().text)
+  for (const n of names) put(`${dir}`, `${n}`, file().text)
   const flags: string[] = [], dms: string[] = []
   const store = openStore(':memory:')
   const check = (rows: { name: string; state: 'runs' | 'paused'; costToday: number }[], caps: { each?: number; total?: number }, now: number) =>
@@ -340,8 +380,8 @@ test('a kagelet over its daily cost cap is paused and flagged for the manager; o
     { name: 'held', state: 'paused' as const, costToday: 0.5 },
   ]
   assert.deepEqual(t.check(rows, { each: 2, total: 10 }, day(14)), ['dear', 'edge'])
-  assert.match(readFileSync(`${t.dir}/dear.md`, 'utf8'), /^paused: yes$/m)
-  assert.doesNotMatch(readFileSync(`${t.dir}/cheap.md`, 'utf8'), /paused/)
+  assert.match(readFileSync(`${t.dir}/dear/job.md`, 'utf8'), /^paused: yes$/m)
+  assert.doesNotMatch(readFileSync(`${t.dir}/cheap/job.md`, 'utf8'), /paused/)
   assert.equal(t.flags.length, 2)
   assert.match(t.flags[0]!, /dear: .*\$2\.10.*\$2\.00/)
   assert.equal(t.dms.length, 2)
@@ -350,7 +390,7 @@ test('a kagelet over its daily cost cap is paused and flagged for the manager; o
 test('with no cap set, the hub pauses nothing and sends no DM, whatever a kagelet spent', () => {
   const t = capped(['a'])
   assert.deepEqual(t.check([{ name: 'a', state: 'runs' as const, costToday: 500 }], {}, day(14)), [])
-  assert.doesNotMatch(readFileSync(`${t.dir}/a.md`, 'utf8'), /paused/)
+  assert.doesNotMatch(readFileSync(`${t.dir}/a/job.md`, 'utf8'), /paused/)
   assert.deepEqual([t.flags, t.dms], [[], []])
 })
 
@@ -377,7 +417,7 @@ test('the total cap pauses every running kagelet with one DM; 80% of a cap warns
   // At the total cap: both pause, one DM, and a resumed one paused again the same day sends no second DM.
   const over = [{ name: 'a', state: 'runs' as const, costToday: 1.5 }, { name: 'b', state: 'runs' as const, costToday: 1.5 }]
   assert.deepEqual(t.check(over, { each: 2, total: 3 }, day(15, 10)), ['a', 'b'])
-  assert.match(readFileSync(`${t.dir}/b.md`, 'utf8'), /^paused: yes$/m)
+  assert.match(readFileSync(`${t.dir}/b/job.md`, 'utf8'), /^paused: yes$/m)
   assert.equal(t.dms.length, 3)
   assert.match(t.dms[2]!, /Every kagelet is paused/)
   assert.deepEqual(t.check([{ ...over[0]!, costToday: 0 }, { ...over[1]!, state: 'paused' }], { each: 2, total: 1.5 }, day(15, 11)), ['a'])
@@ -411,15 +451,15 @@ test('a sync runs no kagelet whose after: line makes a cycle, and logs why once'
 test('a model Kage picks beyond the default needs a one-line reason; the reason shows in the list; an unchanged model needs none', async () => {
   const t = manager()
   assert.match(await t.m.manage({ action: 'save', name: 'big', ...job, model: 'opus' }, 1), /not saved: .*model_why/)
-  assert.equal(existsSync(`${t.dir}/big.md`), false)
+  assert.equal(existsSync(`${t.dir}/big/job.md`), false)
   assert.match(await t.m.manage({ action: 'save', name: 'big', ...job, model: 'opus', model_why: 'a long monthly roll-up' }, 2), /saved big/)
   assert.match(t.m.list(2), /opus[\s\S]*a long monthly roll-up/)
   // A later save that leaves the model alone keeps it and its reason.
   assert.match(await t.m.manage({ action: 'save', name: 'big', ...job, schedule: '0 10 * * *' }, 3), /saved big/)
-  assert.match(readFileSync(`${t.dir}/big.md`, 'utf8'), /^model: opus$[\s\S]*^model_why: a long monthly roll-up$/m)
+  assert.match(readFileSync(`${t.dir}/big/job.md`, 'utf8'), /^model: opus$[\s\S]*^model_why: a long monthly roll-up$/m)
   // The default needs no reason, and writes no line.
   assert.match(await t.m.manage({ action: 'save', name: 'small', ...job, model: 'sonnet' }, 4), /saved small/)
-  assert.doesNotMatch(readFileSync(`${t.dir}/small.md`, 'utf8'), /model/)
+  assert.doesNotMatch(readFileSync(`${t.dir}/small/job.md`, 'utf8'), /model/)
 })
 
 test('a kagelet\'s approved memory notes ride in its schedule prompt, and a new note replaces the schedule within a sync', () => {

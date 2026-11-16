@@ -18,7 +18,7 @@ import { pauseLine, type Live } from '../core/board.ts'
 import { askHub, DIR, ENV_FILE, settingsExist } from './home.ts'
 import { NAME, resultLine, rowLine, kageletRows, starterFile } from '../core/kagelets.ts'
 import { openLedgers } from '../runtime/ledger.ts'
-import { kageletsDir, readKagelets } from '../runtime/kagelet-files.ts'
+import { jobPath, kageletsDir, readKagelets } from '../runtime/kagelet-files.ts'
 import { reload, said } from './reload.ts'
 
 const KAGELETS = kageletsDir(DIR)
@@ -32,9 +32,9 @@ if (cmd !== 'list' && process.env.KAGE_CLAUDE) die(`This shell runs inside Kage,
 if (cmd === 'add' && args[0] === 'kagelet') {
   const name = args[1] ?? ''
   if (args.length !== 2 || !NAME.test(name)) die('Usage: kage add kagelet <name>, a short lowercase name: letters, digits, dashes')
-  const file = `${KAGELETS}/${name}.md`
+  const file = jobPath(KAGELETS, name)
   if (existsSync(file)) die(`${file} already exists. Edit it, or pick another name.`)
-  mkdirSync(KAGELETS, { recursive: true, mode: 0o700 })
+  mkdirSync(`${KAGELETS}/${name}`, { recursive: true, mode: 0o700 })
   writeFileSync(file, starterFile(), { mode: 0o600, flag: 'wx' })
   console.log(`Wrote ${file}, paused.\nFill in its thread, schedule, tools and job, then run kage start ${name}. It runs within a minute.`)
   process.exit(0)

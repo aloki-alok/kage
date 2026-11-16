@@ -11,8 +11,9 @@ import { DB_READ, kageletTier } from './access.ts'
 
 export { DB_READ }
 
-// A kagelet's name, which is also its file name: no dots or slashes, so it never leaves the folder.
-export const NAME = /^[a-z][a-z0-9-]{0,30}$/
+// A kagelet's name, which is also its folder's name: no dots or slashes, so it never leaves the kagelets folder. Never
+// memory, the old layout's memory folder (runtime/kagelet-files.ts migrateKagelets).
+export const NAME = /^(?!memory$)[a-z][a-z0-9-]{0,30}$/
 
 // Who made it, from its file: Kage's tool wrote it first, or the owner did by hand (no by line). Provenance only.
 type Maker = 'owner' | 'kage'

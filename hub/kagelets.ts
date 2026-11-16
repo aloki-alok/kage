@@ -9,7 +9,7 @@ import { chainCap, dailyCap, totalCap } from '../core/kagelet-view.ts'
 import type { Config } from '../core/config.ts'
 import { log } from '../runtime/log.ts'
 import { costCap } from '../runtime/kagelet-cost-cap.ts'
-import { kageletsDir, readKagelets } from '../runtime/kagelet-files.ts'
+import { kageletsDir, migrateKagelets, readKagelets } from '../runtime/kagelet-files.ts'
 import { kageletManager } from '../runtime/kagelet-manager.ts'
 import { kageletMemory } from '../runtime/kagelet-memory.ts'
 import { ownerNotes } from '../runtime/kagelet-notes.ts'
@@ -38,6 +38,7 @@ export function hubKagelets(o: {
   const CAPS = { each: dailyCap(kl), total: totalCap(kl), chain: chainCap(kl) }
   // With tmux panes their schedules are removed. A kagelet over its daily cost cap is paused and flagged first, so this sync already drops its schedule.
   const sync = (now: number) => {
+    migrateKagelets(KAGELETS)
     let files = readKagelets(KAGELETS)
     if (!o.hasSdk() && files.length) { if (!refused) log('kagelets need the Agent SDK runner (harness.runtime is not tmux), so none runs'); refused = true; files = [] }
     const ran = ledgers.text('runs'), costs = ledgers.text('costs')

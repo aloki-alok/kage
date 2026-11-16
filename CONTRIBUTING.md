@@ -163,7 +163,7 @@ Write logs to stderr only. In a tmux pane, stdout carries the channel protocol, 
 | `hub-log.ts` | The hub log's rotation and the package check, shared by `hub.ts` and the hub. |
 | `path-guards.ts` | Hook rules that follow real paths on disk: the config folder that holds the tokens (secrets.json and env files closed to every session, the owner's too; the rest owner-only, a thread's files folder excepted), the sandbox and file rules each session starts with, and the owner's memory taking only people notes. |
 | `log.ts` | Kage's log line (stderr only) and the logger the Slack clients get. |
-| `kagelet-files.ts` | The kagelets folder on disk: where it is, its `.md` files, and the paused line. |
+| `kagelet-files.ts` | The kagelets folder on disk: one folder per kagelet (`<name>/job.md`, ADR 0018), the paused line, and the one-time move from the old `<name>.md` layout. |
 | `kagelet-sync.ts` | The folder synced into schedules and grants each minute (#57), and the prompt each run reads first. |
 | `kagelet-manager.ts` | The manager's tool (save, pause, resume, run, remove, revoke) and which tools each kagelet is granted: read with no card, a write tool on the owner's first yes, which then stands for that tool, act never. |
 | `kagelet-cost-cap.ts` | The cost caps on the hub's job loop: a kagelet over a cap is paused and flagged, and the owner is told once a day. |

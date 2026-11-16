@@ -6,6 +6,9 @@ const file = (head: string, body = 'Post a summary of the deploy log.') => `---\
 const LINK = 'https://test.slack.com/archives/CTEST1/p1700000000123456'
 
 describe('a kagelet file', () => {
+  test('is never named memory, the old memory folder\'s name', () => {
+    assert.match((parseKagelet('memory', file(`thread: ${LINK}\nschedule: 0 9 * * 1-5`)) as { error: string }).error, /name/)
+  })
   test('gives its thread lane, schedule, grant and job', () => {
     assert.deepEqual(parseKagelet('deploys', file(`thread: ${LINK}\nschedule: 0 9 * * 1-5\ntools: WebSearch,  WebFetch`)), {
       name: 'deploys', key: 'CTEST1:1700000000.123456#side-kagelet-deploys', link: LINK, cron: '0 9 * * 1-5', tools: ['WebSearch', 'WebFetch'], job: 'Post a summary of the deploy log.', paused: false, by: 'owner', why: '', model: 'sonnet', modelWhy: '',
