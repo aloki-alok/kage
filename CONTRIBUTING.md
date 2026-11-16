@@ -84,7 +84,7 @@ Write logs to stderr only. In a tmux pane, stdout carries the channel protocol, 
 | `CLAUDE.md` | The one file coding agents read first: setup steps, the commands that run Kage, and this file (loaded with `@CONTRIBUTING.md`). |
 | `extension/` | Kage's Chrome extension (#114): plain JS, no build. It polls the hub (`connectors/browser.ts`), reads tabs, and acts in them through Chrome's debugger, one action at a time; a major step waits for the owner's yes (core/browser-act.ts majorAct). |
 | `meetbot/` | Kage's meeting bot (#63): its own package, run on any machine with a screen or Xvfb. It drives its own Chromium into a Google Meet and talks to the hub at the meeting webhook (`connectors/meeting.ts`). All of Meet's page knowledge is `meetbot/page.js`. |
-| `waha/` | Kage's WhatsApp bridge (#351): `compose.yaml` runs WAHA in Docker, and `qr.sh` links the owner's phone. No keys: the container reads `waha/.env` in the config folder, which the hub writes from secrets.json. Steps are in docs/settings.md, "WhatsApp". |
+| `waha/` | Kage's WhatsApp bridge (#351): `compose.yaml` runs WAHA in Docker, `up.sh` starts it on the ports in the settings, and `qr.sh` links the owner's phone. No keys: the container reads `waha/.env` in the config folder, which the hub writes from secrets.json. Steps are in docs/settings.md, "WhatsApp". |
 | `skills/` | Skills every Kage session loads (the router passes the repo as a plugin, `hub/router.ts`). Generic lessons only: no names, ids, customers, dates or quotes. |
 | `.claude-plugin/`, `.mcp.json`, `hooks/` | Used only when Kage is installed as a Claude Code plugin (tmux panes on the plugin route). |
 

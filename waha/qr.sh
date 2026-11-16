@@ -1,6 +1,6 @@
 #!/bin/sh
 # Links your phone to Kage's WhatsApp bridge: starts WAHA's default session, shows its QR code, and waits until it works.
-# Run it after the container is up (docker compose -f waha/compose.yaml up -d). Steps: docs/settings.md, "WhatsApp".
+# Run it after the container is up (waha/up.sh). Steps: docs/settings.md, "WhatsApp".
 set -eu
 ROOT=$(cd "$(dirname "$0")/.." && pwd)
 CONF=$(dirname "${KAGE_ENV:-$HOME/.config/kage/env}")
@@ -15,7 +15,7 @@ api() { curl -sS --max-time 10 -H "X-Api-Key: $KEY" -H 'Content-Type: applicatio
 field() { node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{try{process.stdout.write(String(JSON.parse(s)[process.argv[1]]??""))}catch{}})' "$1"; }
 status() { api "$URL/api/sessions/default" 2>/dev/null | field status; }
 
-api "$URL/ping" >/dev/null 2>&1 || die "the bridge does not answer at $URL. Start it: docker compose -f $ROOT/waha/compose.yaml up -d"
+api "$URL/ping" >/dev/null 2>&1 || die "the bridge does not answer at $URL. Start it: $ROOT/waha/up.sh"
 s=$(status)
 [ "$s" = WORKING ] && { echo "ok: WhatsApp is already linked and WORKING."; exit 0; }
 
