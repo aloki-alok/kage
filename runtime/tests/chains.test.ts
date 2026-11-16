@@ -78,7 +78,7 @@ async function hub(o: { chainUsd?: number; capUsd?: number; max?: number; memory
     idle: key => d.ready(key) === 'ready' && d.startsNow(key, Date.now()), paused: now => limits.paused(now)?.until, capUsd: o.capUsd ?? 2, chainUsd: o.chainUsd, log: () => {}, memory: o.memory })
   routes = routesOn()
   // The fake Claude process a kagelet's session runs in: the newest one that read its prompt.
-  const proc = (name: string) => [...sdk.runs].reverse().find(r => r.said.some(x => x.includes(`You are the kagelet "${name}"`)))!
+  const proc = (name: string) => [...sdk.runs].reverse().find(r => r.said.some(x => x.includes(`Run of the kagelet "${name}"`)))!
   const spent = new Map<string, number>()
   // One kagelet's turn: what the report tool does, then the turn's result, with its cost.
   const step = async (name: string, x: { output?: string; needs?: string; report?: false; usd?: number } = {}) => {

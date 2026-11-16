@@ -117,7 +117,7 @@ Write logs to stderr only. In a tmux pane, stdout carries the channel protocol, 
 | `transcript.ts` | Turning a Claude Code transcript line into a line a person can follow. `runtime/transcript-tail.ts` reads the new lines from disk. |
 | `stats.ts` | What `kage stats` shows: spend per day and per connector, runs, refusals, turn time and hub starts, from rows Kage already keeps (no content). `cli/stats.ts` reads them. |
 | `task.ts` | `Task`: what a connector turns a message into, and what a runner takes (ADR 0002). |
-| `instructions.ts` | What every Kage session reads first: who it is, whom it serves, how it answers, and each kind of task's limits. |
+| `instructions.ts` | What every session reads first: who it is (Kage, a kagelet, or a kagelet's nightly dream), whom it serves, how it answers, and each kind of task's limits. A kagelet reads Kage's door rules word for word. |
 | `text.ts` | Text helpers every rule shares: `oneLine`, and `quotedLine` for someone else's text (no `<channel>` tag survives). |
 | `cli-help.ts` | The closest real `kage` command to a mistyped one. |
 | `dream.ts` | The nightly dream job: what it reads for lessons, how it tidies Kage's memory, and which lessons may leave this machine. |

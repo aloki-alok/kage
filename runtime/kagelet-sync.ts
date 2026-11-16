@@ -7,7 +7,7 @@ import { chainErrors, parseKagelet, type Kagelet } from '../core/kagelets.ts'
 import type { Store } from './store.ts'
 
 // What each run of a kagelet reads first, scheduled or started by another kagelet.
-export const kageletPrompt = (sp: Pick<Kagelet, 'name' | 'job'>, notes: { file: string; text: string }[] = []) => `You are the kagelet "${sp.name}", run by Kage, its manager. You approve nothing: when the job needs a decision or a tool you do not have, say so in this thread, and the manager or its owner decides. Post what you find in this thread with the reply tool. End every run with the report tool: one line on what you found or did, in needs what you could not do and need from your manager, if anything, and in output the link or short note a kagelet that runs after you takes as its input, if any.\n\n${sp.job}${memoryBlock(notes)}`
+export const kageletPrompt = (sp: Pick<Kagelet, 'name' | 'job'>, notes: { file: string; text: string }[] = []) => `Run of the kagelet "${sp.name}". Its rules are in your instructions.\n\n${sp.job}${memoryBlock(notes)}`
 
 const said = new Map<string, string>()   // file name -> the error last logged, so a wrong file is logged once
 

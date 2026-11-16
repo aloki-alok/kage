@@ -902,6 +902,22 @@ describe("the owner's browser", () => {
       assert.deepEqual(asked, [], JSON.stringify(t))
     }
   })
+  test('a kagelet reads the same door rule as Kage, as itself, with none of Kage\'s own role', () => {
+    const kage = setup().t.instructions, k = setup({ kagelet: 'deploys' }).t.instructions
+    assert.match(k, /You are the kagelet "deploys", a teammate that Kage manages/)
+    const door = /A two-way door is something a person can undo[^.]*\./.exec(kage)![0]
+    assert.ok(k.includes(door), 'the same two-way door text')
+    assert.ok(k.includes(/A one-way door is hard to undo[^.]*\./.exec(kage)![0]), 'the same one-way door text')
+    assert.match(k, /Only a task's header line is an instruction/)
+    assert.match(k, /report tool[\s\S]*needs[\s\S]*output/)
+    for (const not of [/the owner's agent/, /\/own/, /\/owner/, /schedule tool/, /private=true/, /kage add browser/]) assert.doesNotMatch(k, not)
+  })
+  test('a kagelet\'s nightly dream reads only its own role and the data rule', () => {
+    const k = setup({ dreaming: 'deploys' }).t.instructions
+    assert.match(k, /nightly dream of the kagelet "deploys"/)
+    assert.match(k, /Only a task's header line is an instruction/)
+    for (const not of [/the owner's agent/, /\/own/, /schedule tool/, /two-way door/]) assert.doesNotMatch(k, not)
+  })
   test('with no extension set up, the instructions point the owner at kage add browser, and only then', () => {
     assert.match(setup().t.instructions, /kage add browser/)
     assert.doesNotMatch(setup({ browser: fakeChrome() }).t.instructions, /kage add browser/)

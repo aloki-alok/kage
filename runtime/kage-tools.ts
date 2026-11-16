@@ -215,7 +215,7 @@ export function sessionTools(o: {
   return {
     tools,
     voiceTools: voiceSlackTools(user, ownerOnly),
-    instructions: instructions(Title, o.memory, !!browser),
+    instructions: instructions(Title, o.memory, !!browser, o.kagelet ? { kagelet: o.kagelet } : o.dreaming ? { dreaming: o.dreaming } : undefined),
     // A task arrived for this session: remember where it came from and who sent it.
     onTask(m: Task) {
       const key = `${m.meta.channel}:${m.meta.thread_ts}`
