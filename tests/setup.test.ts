@@ -89,10 +89,11 @@ describe('kage save writes the tokens to secrets.json, private, and keeps the ot
 
 // A checkout with an origin one commit ahead, a fake service that logs stop and start, and a fake npm that logs whether the hub
 // was up while it ran. npm ci deletes node_modules first, so a hub or a kage command running then crashes (seen on 0.4.0 to 0.4.1).
-async function updateWorld(lockChanges: boolean) {
+async function updateWorld(lockChanges: boolean, hubUp = true) {
   const w = world()
   const ops = join(w.root, 'ops')
-  for (const f of ['quiet.ts']) copyFileSync(join(REPO, 'cli', f), join(w.dir, 'cli', f))
+  // A drain holds every new message until each running turn ends (#309), so update must never start one.
+  writeFileSync(join(w.dir, 'cli', 'quiet.ts'), `import { appendFileSync } from 'node:fs'\nappendFileSync(${JSON.stringify(ops)}, 'drain\\n')\n`)
   exe(join(w.dir, 'service.sh'), `#!/usr/bin/env bash
 case "$1" in
   installed) true ;;
@@ -103,6 +104,8 @@ case "$1" in
 esac
 `)
   exe(join(w.root, 'bin', 'npm'), `#!/bin/sh\necho "npm $1 hub=$([ -f "${w.root}/hub-up" ] && echo up || echo down)" >> "${ops}"\n`)
+  // Logs each node run on the new commit: node beside the hub's own npm ci crashes on a half-deleted package (#302).
+  exe(join(w.root, 'bin', 'node'), `#!/bin/sh\n[ "$(git -C "${w.dir}" log -1 --format=%s)" = two ] && echo "node after merge" >> "${ops}"\nexec "${process.execPath}" "$@"\n`)
   writeFileSync(join(w.dir, 'package-lock.json'), '{"version":"1"}\n')
   writeFileSync(join(w.dir, '.gitignore'), 'node_modules\n')
   const git = (cwd: string, ...a: string[]) => new Promise<void>((res, rej) => execFile('git', ['-c', 'user.name=t', '-c', 'user.email=t@example.test', ...a], { cwd }, e => e ? rej(e) : res()))
@@ -112,21 +115,29 @@ esac
   await git(w.root, 'clone', '-q', origin, other)
   writeFileSync(join(other, lockChanges ? 'package-lock.json' : 'README.md'), '{"version":"2"}\n')
   await git(other, 'add', '-A'); await git(other, 'commit', '-qm', 'two'); await git(other, 'push', '-q', 'origin', 'main')
-  touch(join(w.root, 'hub-up'))
+  if (hubUp) touch(join(w.root, 'hub-up'))
   const r = await w.run(['update'], '')
-  return { r, ops: existsSync(ops) ? readFileSync(ops, 'utf8').trim().split('\n') : [] }
+  return { r, ops: existsSync(ops) ? readFileSync(ops, 'utf8').trim().split('\n').filter(Boolean) : [] }
 }
 const touch = (f: string) => writeFileSync(f, '')
 
-describe('kage update installs new packages with the hub stopped', () => {
-  test('a changed lockfile stops the hub, runs npm ci, then starts it', async () => {
+// The running hub restarts into new code at its next quiet moment and runs npm ci itself first (hub/updates.ts selfUpdate),
+// so update only moves the checkout. Holding messages for a drain, or a kage command beside the hub's npm ci, are both gone.
+describe('kage update moves the code and leaves the restart to the hub', () => {
+  test('with the hub up and a changed lockfile, it holds no message and runs no npm', async () => {
     const { r, ops } = await updateWorld(true)
     assert.equal(r.code, 0, r.out)
-    assert.deepEqual(ops, ['stop', 'npm ci hub=down', 'start'], r.out)
+    assert.deepEqual(ops, [], r.out)
+    assert.match(r.out, /next quiet moment/)
   })
-  test('an unchanged lockfile runs no npm and restarts as before', async () => {
+  test('with the hub up and the same lockfile, it holds no message and restarts nothing', async () => {
     const { r, ops } = await updateWorld(false)
     assert.equal(r.code, 0, r.out)
-    assert.deepEqual(ops, ['restart'], r.out)
+    assert.deepEqual(ops, [], r.out)
+  })
+  test('with the hub down, it installs the new packages itself', async () => {
+    const { r, ops } = await updateWorld(true, false)
+    assert.equal(r.code, 0, r.out)
+    assert.deepEqual(ops, ['npm ci hub=down'], r.out)
   })
 })

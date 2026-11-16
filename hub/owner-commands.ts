@@ -41,7 +41,7 @@ export function ownerCommands(o: {
     if (c.conversation.connector !== 'slack') return { refused: 'tell works on Slack threads only for now' }
     // Typed words have no inbox message to replay, so they are refused instead of lost.
     const paused = limits.paused()
-    if (paused) return { refused: `Kage is paused by the usage limit, so it would be lost. ${pauseLine(paused)} Tell it again after that` }
+    if (paused) return { refused: `${paused.draining ? 'Kage is stopping for a restart or a stop' : 'Kage is paused by the usage limit'}, so it would be lost. ${pauseLine(paused)} Tell it again after that` }
     const task: Task = {
       type: 'task', fromOwner: true, content: `From the owner, typed in the terminal: ${text}`,
       meta: { channel: c.conversation.chat, thread_ts: c.conversation.thread ?? '', place: c.place, permalink: '' },
