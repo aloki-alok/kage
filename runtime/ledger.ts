@@ -85,6 +85,10 @@ export function openLedgers(dir: string, now = () => new Date().toISOString(), t
     event,
     // One UTC day (YYYY-MM-DD), in the order written.
     events: (day: string) => eventsOn(db, day),
+    // Rows after an id, oldest first, for the telemetry exporter (runtime/telemetry-export.ts). Day summaries are rollups, not events.
+    eventsAfter: (id: number, limit: number) => db.prepare("select id, at, kind, who, trace, chain, detail, transcript from events where id > ? and kind != 'day-summary' order by id limit ?")
+      .all(id, limit).map(r => ({ ...r }) as KageEvent & { id: number }),
+    maxEventId: () => Number((db.prepare('select coalesce(max(id), 0) n from events').get() as { n: number }).n),
     // Every event of a day before the cutoff's folds into one day-summary row per day ("tool 12, run.end 3"), in one transaction.
     // The cutoff drops to its day's midnight, so an hourly prune never folds part of a day.
     pruneEvents(cutoff: string) {

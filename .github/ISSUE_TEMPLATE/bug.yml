@@ -1,0 +1,29 @@
+name: Bug
+description: Kage did something wrong, or stopped.
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: Leave out message text, names, Slack ids, emails and tokens. Kage reads private messages, and this issue is public.
+  - type: textarea
+    id: what
+    attributes: { label: What happened, description: What you saw. Quote errors exactly. }
+    validations: { required: true }
+  - type: textarea
+    id: expected
+    attributes: { label: What you expected }
+    validations: { required: true }
+  - type: textarea
+    id: steps
+    attributes: { label: Steps to see it again, placeholder: "1. Tag @kage in a thread with ...\n2. ..." }
+  - type: input
+    id: version
+    attributes: { label: Version, description: The first line of kage status. }
+    validations: { required: true }
+  - type: dropdown
+    id: os
+    attributes: { label: System, options: [macOS, Linux, other] }
+    validations: { required: true }
+  - type: textarea
+    id: doctor
+    attributes: { label: kage doctor output, render: text }

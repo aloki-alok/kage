@@ -1,0 +1,29 @@
+name: Report from Kage
+description: Filed by a Kage install about its own bug, after its owner approved it.
+labels: [bug, from-agent]
+body:
+  - type: markdown
+    attributes:
+      value: Kage fills this form. The fingerprint line lets a second install add to this issue instead of opening a new one.
+  - type: input
+    id: fingerprint
+    attributes: { label: Fingerprint, description: "kage-fp: plus 12 hex, from core/telemetry.ts crashFingerprint, or none." }
+    validations: { required: true }
+  - type: textarea
+    id: what
+    attributes: { label: What happened }
+    validations: { required: true }
+  - type: textarea
+    id: expected
+    attributes: { label: What should have happened }
+    validations: { required: true }
+  - type: textarea
+    id: steps
+    attributes: { label: Steps to see it again }
+  - type: input
+    id: version
+    attributes: { label: Version and system, placeholder: 0.4.1 darwin arm64 sdk }
+    validations: { required: true }
+  - type: textarea
+    id: log
+    attributes: { label: Last log lines, description: Scrubbed of names, ids, emails, paths and quotes before filing., render: text }
