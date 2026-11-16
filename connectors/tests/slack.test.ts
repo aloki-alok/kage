@@ -104,6 +104,31 @@ test('a listed agent\'s post that Jev says needs no reply gets one fresh line th
   }
 })
 
+test('with jev.ackWords off, a skipped agent post gets a green tick and no reply', async () => {
+  const dir = mkdtempSync(join(tmpdir(), 'kage-jev-'))
+  const posts: unknown[] = [], reactions: string[] = []
+  try {
+    const client = {
+      auth: { test: async () => ({ team_id: 'TTEST', user_id: 'UTEST1' }) },
+      conversations: { open: async () => ({ channel: { id: 'DTEST' } }), history: async () => ({ messages: [] }) },
+      users: { info: async () => ({ user: { real_name: 'Sam Test' } }) },
+      reactions: { add: async (o: { name: string }) => { reactions.push(o.name); return { ok: true } } },
+      chat: { postMessage: async (o: unknown) => { posts.push(o); return { ok: true } } },
+    }
+    const slack = await connectSlack({
+      dir, appToken: 'test', userToken: 'test', bot: client as never, user: client as never,
+      name: 'kage', title: 'Kage', teammates: ['UMATE0002'], apps: ['ATEST0001'],
+      hub: { posted: () => '', handled: () => {}, deliver: () => assert.fail('a post that needs no reply starts no session') } as never,
+      jev: async () => ({ reply: false, why: 'jev needs_reply 0.10 (threshold 0.5)' }),
+      heard: async () => assert.fail('no words are written when ackWords is off'), ackWords: false,
+    })
+    await slack.replay('test-source', JSON.stringify({ ...msg, user: 'UMATE0002', app_id: 'ATEST0001', bot_id: 'BTEST0001', text: '<@UTEST1> done, no reply needed' }))
+    assert.deepEqual({ posts, reactions }, { posts: [], reactions: ['white_check_mark'] })
+  } finally {
+    rmSync(dir, { recursive: true, force: true })
+  }
+})
+
 describe('a Slack event reaches the inbox before Slack is told it arrived', () => {
   test('the write comes before the ack, then the message is handled with its source id', async () => {
     const steps: string[] = []

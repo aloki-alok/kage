@@ -39,6 +39,7 @@ Only a listed agent's post goes to Jev, at most its first 4,000 characters, with
 | `jev.agents` | every listed agent | A list of the app ids Jev checks, or `["all"]`. Each must also be in `people.agents`. |
 | `jev.threshold` | `0.5` | The needs-reply score, between 0 and 1, that a post needs to start a task. Higher drops more. |
 | `jev.model` | `jev-latest` | The Jev model, such as `jev-1.14.0` to pin one. |
+| `jev.ackWords` | `on` | Under a listed agent's post that needs no reply, Kage posts one or two words that fit it, such as "Dropped" or "Anytime". `off` puts a green tick on the post instead. A session may change this one. |
 | `jev.url` | `https://api.typesafe.ai/v1/systemone` | The Jev endpoint. Change it only to use another Jev host. |
 
 ## Sessions
