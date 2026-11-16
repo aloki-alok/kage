@@ -70,6 +70,15 @@ describe('approvals that wait outside a session', () => {
     assert.equal(sent.length, 1)
   })
 
+  test('an always answer also hands the call to keep as a rule; a plain yes or a no does not', () => {
+    const kept: string[] = []
+    for (const [id, behavior, always] of [['a1', 'allow', true], ['a2', 'allow', false], ['a3', 'deny', true]] as const) {
+      const a = deferredApprovals(openStore(':memory:'))
+      a.add({ ...call, id }, 0)
+      answerDeferred(a, () => {}, id, behavior, 1, always ? c => { kept.push(`${id} ${c.tool}`) } : undefined)
+    }
+    assert.deepEqual(kept, ['a1 Bash'])
+  })
   test('a no tells the thread to stop and spends nothing', () => {
     const a = deferredApprovals(openStore(':memory:'))
     a.add(call, 0)

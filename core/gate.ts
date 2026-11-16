@@ -23,7 +23,7 @@ type Trigger =
   | { kind: 'stop'; now: boolean }
   // card: the owner wrote something other than yes or no in an approval card's thread.
   | { kind: 'card'; request_id: string }
-  | { kind: 'verdict'; request_id: string; behavior: 'allow' | 'deny' }
+  | { kind: 'verdict'; request_id: string; behavior: 'allow' | 'deny'; always?: true }
   | { kind: 'drop'; reason: Drop }
 
 // Every reason the gate drops a message, with what the hub log says for it.
@@ -54,6 +54,9 @@ const task = (text: string, isOwner: boolean, files: string, agent?: string): Tr
 // on the card for a plain answer. A no denies on its first word, since a wrong deny is always safe.
 const CARD_YES = /^(y|yes|ok|okay|sure|approve|approved|go)\b(?!.*\b(no|not|don'?t|never|wait|but|stop|cancel|hold|later|after|first|away|until)\b)/i
 const CARD_NO = /^(n|no|deny|stop|cancel)\b/i
+// "always": a yes the owner wants kept, so the same step never asks again (a kagelet's held step becomes an allow line).
+// Strict, one line and nothing else, since it writes a lasting rule: a hedged always ("unless prod", "for now") stays on the card.
+const CARD_ALWAYS = /^always(,? (allow|allow it|fine|ok))?[.!]?$/i
 // card: the request id of the approval card this message replies under, if it does.
 export function classify(m: SlackMessage, ids: Ids, card?: string): Trigger {
   const isOwner = m.user === ids.owner
@@ -78,6 +81,7 @@ export function classify(m: SlackMessage, ids: Ids, card?: string): Trigger {
     if (card) {
       // Never a task: a new session for this thread would ask for the same tool call again.
       const behavior = CARD_YES.test(plain) ? 'allow' : CARD_NO.test(plain) ? 'deny' : null
+      if (CARD_ALWAYS.test(plain)) return { kind: 'verdict', request_id: card, behavior: 'allow', always: true }
       return behavior ? { kind: 'verdict', request_id: card, behavior } : { kind: 'card', request_id: card }
     }
     return task(text, true, filesTag(m))

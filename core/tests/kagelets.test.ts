@@ -1,6 +1,6 @@
 import { describe, test } from 'node:test'
 import assert from 'node:assert/strict'
-import { builtinTools, budgetLeft, capCheck, chainErrors, costFlags, grantRefusal, parseKagelet, resultLine, revokeStanding, rowLine, setPaused, kageletFile, kageletRows, starterFile, type Kagelet, type KageletRow } from '../kagelets.ts'
+import { builtinTools, budgetLeft, capCheck, chainErrors, costFlags, grantRefusal, parseKagelet, resultLine, revokeStanding, rowLine, setPaused, addAllow, kageletFile, kageletRows, starterFile, type Kagelet, type KageletRow } from '../kagelets.ts'
 
 const file = (head: string, body = 'Post a summary of the deploy log.') => `---\n${head}\n---\n${body}\n`
 const LINK = 'https://test.slack.com/archives/CTEST1/p1700000000123456'
@@ -140,6 +140,19 @@ describe('the grant', () => {
   })
 
 
+})
+
+describe('the owner\'s always allow', () => {
+  const LINKED = `---\nthread: https://test.slack.com/archives/CTEST1/p1700000000123456\nschedule: 0 9 * * *\ntools: all\n---\nDeploy staging.\n`
+  test('adds one exact allow line for the command, once, and keeps the rest of the file', () => {
+    const once = addAllow(LINKED, 'kubectl apply -f staging/web.yaml')!
+    assert.deepEqual((parseKagelet('x', once) as Kagelet).allow, ['kubectl apply -f staging/web.yaml'])
+    assert.equal(addAllow(once, 'kubectl apply -f staging/web.yaml'), once)
+    assert.match(once, /\n---\nDeploy staging\.\n$/)
+  })
+  test('writes nothing for a command no rule may hold: an owner-only kind, a * that would widen it, or more than one line', () => {
+    for (const c of ['sudo reboot', 'git push --force origin main', 'kubectl apply -f staging/*.yaml', 'kubectl apply -f a.yaml\nrm -rf ~', 'kubectl apply -f "a b.yaml"', "kubectl apply -f 'a b.yaml'", 'kubectl apply -f a\\ b.yaml']) assert.equal(addAllow(LINKED, c), undefined, c)
+  })
 })
 
 describe('pausing a kagelet', () => {

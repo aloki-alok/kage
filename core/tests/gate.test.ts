@@ -186,6 +186,10 @@ describe('replies in an approval card thread', () => {
       assert.deepEqual(reply(text), { kind: 'verdict', request_id: card, behavior: 'allow' }, text)
     }
   })
+  test('"always" approves and says to keep the yes as a rule; a hedged always stays on the card', () => {
+    for (const text of ['always', 'Always allow', 'always, fine', 'always ok', 'always.']) assert.deepEqual(reply(text), { kind: 'verdict', request_id: card, behavior: 'allow', always: true }, text)
+    for (const text of ['always ask me first', 'always ask me', 'always no', 'always wait', 'always unless prod', 'always only for staging', 'always except fridays', 'always for now', 'always (this once)', 'always\nbut never on prod', 'always\nnot for prod', 'always though']) assert.equal(reply(text).kind, 'card', text)
+  })
   test('a plain no denies that card', () => {
     for (const text of ['no', 'No, wait', 'deny']) {
       assert.deepEqual(reply(text), { kind: 'verdict', request_id: card, behavior: 'deny' }, text)

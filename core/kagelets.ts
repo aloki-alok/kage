@@ -65,6 +65,18 @@ export function parseKagelet(name: string, text: string): Kagelet | { error: str
 // Fails closed: any value but none, no or false pauses it, so a typo never starts a kagelet.
 const isPaused = (v = '') => !['', 'no', 'false'].includes(v.toLowerCase())
 
+// The owner's "always" on a held step's card: one exact allow line for that command, added once. undefined when no rule
+// could hold it (an owner-only kind, a * that would widen it, a quote, more than one line), so nothing is written.
+export function addAllow(text: string, command: string): string | undefined {
+  const rule = command.trim()
+  // A quote or backslash makes one shell word from several, which the word-by-word match would read as several: no rule.
+  if (/[\r\n*'"\\]/.test(rule) || badRule(rule) || allowedBy([rule], rule) !== rule) return undefined
+  const m = /^(---\r?\n)([\s\S]*?\r?\n)(---)/.exec(text)
+  if (!m) return undefined
+  if (m[2]!.split(/\r?\n/).some(l => l.trim() === `allow: ${rule}`)) return text
+  return `${m[1]}${m[2]}allow: ${rule}\n${text.slice(m[1]!.length + m[2]!.length)}`
+}
+
 // Pause or resume by the paused line in the front matter, so the file stays the one place a kagelet is set.
 // now: a resume also stamps its time, so the daily cost cap counts only what it spends after it.
 export function setPaused(text: string, paused: boolean, now?: number) {

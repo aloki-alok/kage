@@ -55,10 +55,12 @@ export function deferredApprovals(store: Saved) {
 }
 
 // The owner's reply to a waiting card: starts a turn in the thread that asked. false: no such open card.
-export function answerDeferred(a: ReturnType<typeof deferredApprovals>, send: (key: string, task: Task) => void, id: string, behavior: 'allow' | 'deny', now: number): boolean {
+// always: the owner's "always" on a yes, handed the call so the hub can keep it as a rule.
+export function answerDeferred(a: ReturnType<typeof deferredApprovals>, send: (key: string, task: Task) => void, id: string, behavior: 'allow' | 'deny', now: number, always?: (c: Call) => void): boolean {
   const c = a.answer(id, behavior, now)
   if (!c) return false
   const text = behavior === 'allow' ? `The owner said yes to the card for ${c.tool}. Run that same call again now, with the same input.` : `The owner said no to the card for ${c.tool}. Do not run it. Tell the thread you stopped.`
   send(c.key, { ...c.task, content: `Approval answer: ${text}` })
+  if (behavior === 'allow') always?.(c)
   return true
 }

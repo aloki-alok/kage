@@ -32,7 +32,7 @@ export type Hub = {
   deliver(c: Conversation, task: Task, place: string, lane?: Lane, by?: string): Delivery
   // "@kage stop" in a thread: the answer to post there. by: who asked; the hub decides if they may.
   stop(c: Conversation, cut: boolean, by: string): string
-  verdict(requestId: string, behavior: 'allow' | 'deny'): boolean
+  verdict(requestId: string, behavior: 'allow' | 'deny', always?: true): boolean
   status(): string
   // Someone other than the owner wrote without starting a task: wakes the reply watches on that conversation (runtime/scheduler.ts).
   heard(m: { chat: string; thread?: string; quoted: string }): void
@@ -172,7 +172,7 @@ export async function connectSlack(o: { dir: string; appToken: string; userToken
     // Answers to a card go under the card, so the owner sees what happened to their yes.
     const underCard = (text: string) => bot.chat.postMessage({ channel: m.channel, thread_ts: m.thread_ts ?? m.ts, text }).catch(() => {})
     if (t.kind === 'verdict') {
-      if (o.hub.verdict(t.request_id, t.behavior)) return void react(m.channel, m.ts, t.behavior === 'allow' ? 'white_check_mark' : 'x')
+      if (o.hub.verdict(t.request_id, t.behavior, t.always)) return void react(m.channel, m.ts, t.behavior === 'allow' ? 'white_check_mark' : 'x')
       log('no running session asked for', t.request_id)
       return void underCard(`Request \`${t.request_id}\` is no longer waiting (its session ended or it was already answered). Tag the original thread again to redo it.`)
     }
