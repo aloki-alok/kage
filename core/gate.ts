@@ -78,7 +78,9 @@ export function classify(m: SlackMessage, ids: Ids, card?: string, kagelets: { n
     const text = oneLine(withoutInvisible(raw.replace(tag, ''))).replace(/\s+/g, ' ').trim()
     // On two of this thread's kagelets, the ask names the one it is for, or it reaches neither.
     const theirs = kagelets.filter(k => k.people.includes(m.user ?? ''))
-    const k = theirs.length === 1 ? theirs[0] : theirs.find(k => new RegExp(`\\b${k.name}\\b`, 'i').test(text))
+    // A name with letters, digits or a dash on either side is part of another word or another name (fude in fude-2).
+    const named = theirs.filter(k => new RegExp(`(?<![\\w-])${k.name}(?![\\w-])`, 'i').test(text))
+    const k = theirs.length === 1 ? theirs[0] : named.length === 1 ? named[0] : undefined
     if (k) return { kind: 'kagelet-ask', name: k.name, text }
   }
   if (!isOwner && !itself && !ids.teammates.includes(m.user ?? '')) return drop('not-listed')

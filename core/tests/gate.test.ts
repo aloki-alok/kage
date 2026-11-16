@@ -33,6 +33,10 @@ describe('who can drive the agent', () => {
     const two = [{ name: 'fude', people: [PERSON] }, { name: 'scout', people: [PERSON] }]
     assert.deepEqual(ask({ text: `<@${BOT}> scout, find three leads` }, two), { kind: 'kagelet-ask', name: 'scout', text: 'scout, find three leads' })
     assert.deepEqual(ask({}, two), { kind: 'drop', reason: 'not-listed' })
+    // A dashed name is its own name, and an ask that names both reaches neither.
+    const dashed = [{ name: 'fude', people: [PERSON] }, { name: 'fude-2', people: [PERSON] }]
+    assert.deepEqual(ask({ text: `<@${BOT}> fude-2, draft one` }, dashed), { kind: 'kagelet-ask', name: 'fude-2', text: 'fude-2, draft one' })
+    assert.deepEqual(ask({ text: `<@${BOT}> scout, not fude` }, two), { kind: 'drop', reason: 'not-listed' })
     // The owner and a listed teammate still reach Kage in that thread.
     assert.deepEqual(ask({ user: MATE }), { kind: 'task', text: 'draft one on pricing' })
     assert.deepEqual(ask({ user: OWNER }), { kind: 'task', text: 'draft one on pricing' })

@@ -210,6 +210,10 @@ test('a new person on a people line takes the owner\'s card; one already there, 
   assert.equal(cards.length, 1)
   assert.match(grantCard({ kagelet: 'status', tools: '', people: 'U0AAA1' }), /<@U0AAA1>[\s\S]*inside its grant/)
   assert.doesNotMatch(grantCard({ kagelet: 'status', tools: '', people: 'U0AAA1' }), /Your yes stands/)   // no tool asked, no tool line
+  // Moved to another thread, everyone on the line is new there.
+  const moved = '/archives/CTEST9/p1700000000999999'
+  assert.match(await yes.m.manage({ action: 'save', name: 'status', ...job, thread: `https://test.slack.com${moved}` }, 7000, async c => { cards.push(c); return true }), /saved status/i)
+  assert.deepEqual(cards.map(c => c.people), ['U0AAA1', 'U0AAA1'])
   const no = manager()
   assert.match(await no.m.manage({ action: 'save', name: 'status', ...job, people: ['U0AAA1'] }, 5000, async () => false), /not saved/)
   assert.match(await no.m.manage({ action: 'save', name: 'status', ...job, people: ['U0AAA1'] }, 5000), /not saved: only the owner/)
@@ -559,6 +563,13 @@ test('how many notes a kagelet keeps and how long each may be are the owner\'s s
   assert.doesNotMatch(said, /first|ask o/)
   assert.match(said, /> secon\n> third/)
   assert.match(said, /<@UPEOPLE01>: ask t\n> <@UPEOPLE01>: ask t$/)
+  // Kage's answers obey the same cap, and 0 keeps none at all.
+  const none = ownerNotes(store, () => ({ kept: 0, chars: 5 }))
+  none.tell(KEY, 'answer'); none.asked(KEY, 'UPEOPLE01', 'ask'); none.wrote([KEY], 'CTEST1', '1700000000.123456', 'note')
+  assert.equal(none.take(KEY, () => true), undefined)
+  const two = ownerNotes(store, () => ({ kept: 2, chars: 50 }))
+  for (const t of ['a1', 'a2', 'a3']) two.tell(KEY, t)
+  assert.doesNotMatch(two.take(KEY, () => true) ?? '', /a1/)
 })
 test('an ask from a person on the people line is kept apart from the owner\'s notes, labelled as theirs, and read once', () => {
   const store = openStore(':memory:')

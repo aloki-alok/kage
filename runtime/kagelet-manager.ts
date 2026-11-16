@@ -143,7 +143,9 @@ export function kageletManager(o: { dir: string; max: number; ledgers: { text(na
       const standing = writes.filter(t => t !== ALL && !kept.includes(t) && yes[t] !== undefined)
       const card = writes.filter(t => !kept.includes(t) && yes[t] === undefined), stands = card.filter(t => t !== ALL)
       // A person new to its people line can steer every tool it holds, so only the owner adds one.
-      const newPeople = (a.people ?? []).filter(p => !had?.people?.includes(p)).join(', ')
+      // A kagelet moved to another thread meets new people there, so everyone on its line counts as new.
+      const people = a.people ?? had?.people ?? [], moved = !!had && (a.thread ?? '') !== had.link
+      const newPeople = people.filter(p => moved || !had?.people?.includes(p)).join(', ')
       const extra = [...measure ? [`the measure ${measure}`] : [], ...newPeople ? [`asks from ${newPeople}`] : []]
       const asked = [...card, ...standing.filter(t => fresh.includes(t)), ...extra].join(', ')
       if (asked && !ask) return refuse(`only the owner grants ${asked}, and this session cannot ask them`)

@@ -11,6 +11,8 @@ const NOTES = 'kagelet-notes'
 const ASKS = 'kagelet-asks'
 const ASK_RUNS = 'kagelet-ask-runs'
 const HOUR = 3600_000
+// The newest n of a list. slice(-0) would keep them all, so 0 keeps none.
+const last = <T>(list: T[], n: number) => n > 0 ? list.slice(-n) : []
 // The defaults of kagelets.notesKept and kagelets.noteChars (docs/settings.md).
 export const NOTE_CAP = { kept: 10, chars: 2000 }
 // cap: those settings, read on each write so a change applies at once.
@@ -22,7 +24,7 @@ export function ownerNotes(store: Pick<Store, 'load' | 'save'>, cap: () => { kep
     asked(lane: string, from: string, text: string) {
       const a = asks()
       const { kept, chars } = cap()
-      a[lane] = [...a[lane] ?? [], { from, text: text.slice(0, chars) }].slice(-kept)
+      a[lane] = last([...a[lane] ?? [], { from, text: text.slice(0, chars) }], kept)
       store.save(ASKS, a)
     },
     // Whether this ask may start a run now: the lane is idle and fewer than perHour asks started one in the last hour.
@@ -40,7 +42,7 @@ export function ownerNotes(store: Pick<Store, 'load' | 'save'>, cap: () => { kep
       const notes = all()
       const hit = [...lanes].filter(k => k.startsWith(`${chat}:${thread}#side-kagelet-`))
       const { kept, chars } = cap()
-      for (const k of hit) notes[k] = [...notes[k] ?? [], text.slice(0, chars)].slice(-kept)
+      for (const k of hit) notes[k] = last([...notes[k] ?? [], text.slice(0, chars)], kept)
       if (hit.length) store.save(NOTES, notes)
       return hit
     },
@@ -48,7 +50,7 @@ export function ownerNotes(store: Pick<Store, 'load' | 'save'>, cap: () => { kep
     tell(lane: string, text: string) {
       const notes = all()
       const { kept, chars } = cap()
-      notes[lane] = [...notes[lane] ?? [], `Kage, your manager: ${text.slice(0, chars)}`].slice(-kept)
+      notes[lane] = last([...notes[lane] ?? [], `Kage, your manager: ${text.slice(0, chars)}`], kept)
       store.save(NOTES, notes)
     },
     // deliver: hands the run over with the notes; false means it never reached a session, so they stay.
