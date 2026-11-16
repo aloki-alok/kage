@@ -38,7 +38,7 @@ test('a Slack triage decision writes one log line and keeps its database event',
     const events = ledger.events('2026-01-01')
     assert.equal(events.length, 1)
     assert.equal(events[0]!.kind, 'triage')
-    assert.equal(events[0]!.detail, 'react: owner react 0.99, reaction folded_hands 1.00')
+    assert.match(events[0]!.detail, /^react: owner react 0\.99, reaction folded_hands 1\.00, \d+ ms$/)
     assert.deepEqual(reactions, ['pray'])
     assert.equal(lines.filter(l => l.includes('triage ')).length, 1, lines.join('\n'))
   } finally {

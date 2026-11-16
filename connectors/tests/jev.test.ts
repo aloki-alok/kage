@@ -64,7 +64,9 @@ describe('intake triage of a tagged message', () => {
     assert.equal(v.pick, 'react')
     assert.equal(calls[0]!.url, config.url)
     assert.equal(JSON.parse(String(calls[0]!.init.body)).questions.intake.type, 'choice')
-    assert.deepEqual(events, ['C1:5.5 react: other react 0.97, reaction eyes 0.00'])
+    assert.equal(events.length, 1)
+    // The ack emoji waits on this call, so the event says how long it took.
+    assert.match(events[0]!, /^C1:5\.5 react: other react 0\.97, reaction eyes 0\.00, \d+ ms$/)
     assert.ok(!events.join().includes('thanks') && !events.join().includes('apikey_secret'))
   })
   test('a request gets a session', async () => {
