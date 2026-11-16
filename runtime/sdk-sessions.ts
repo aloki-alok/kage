@@ -39,7 +39,7 @@ type Session = {
   stopped: boolean
   run?: { q: Query; inbox: Inbox; send: (m: ToSession) => void; started: number }
   asks: Map<string, (b: 'allow' | 'deny') => void>
-  owners: boolean; held: Task[]   // the next process opens with the owner's own tools; tasks waiting for it (#317)
+  owners: boolean; carry: SDKUserMessage[]   // the next process opens with the owner's own tools; what it starts on (#317)
 }
 
 export function sdkSessions(o: {
@@ -165,34 +165,28 @@ export function sdkSessions(o: {
         },
       },
     })
-    const deliver = (m: Task, mid = s.state !== 'idle') => {
+    let sawState = false
+    // Once the owner wrote here, a message that finds this process idle starts a new one with the owner's tools, and goes
+    // in first. Claude Code says idle only after it read every message (measured); with no state events, only an empty turn counts.
+    const reopenNow = () => s.owners && !full && s.state === 'idle' && (sawState || !s.turn.length)
+    const send = (m: ToSession) => {
+      if (m.type === 'verdict') { s.asks.get(m.request_id)?.(m.behavior); return }
       s.sender = senderOf(m)
-      s.turn.push({ task: m, mid })
+      if (s.sender === 'owner') s.owners = true
+      const reopen = reopenNow()
+      if (reopen && s.turn.length) o.onTurn?.(key, s.turn.splice(0).map(x => x.task), undefined, true)   // idle: it read and answered them
+      s.turn.push({ task: m, mid: s.state !== 'idle' })
       s.kage.onTask(m)
       s.state = 'running'
       s.last = Date.now()
-      inbox.push(userMessage(m))
-    }
-    const send = (m: ToSession) => {
-      if (m.type === 'verdict') { s.asks.get(m.request_id)?.(m.behavior); return }
-      // The owner's message, and every one after it, waits for a process with their tools. Resume keeps the transcript.
-      if (senderOf(m) === 'owner') s.owners = true
-      if (s.owners && !full) { s.held.push(m); reopenIfDue() } else deliver(m)
+      // Nothing more goes to a closing process: it may take a message and die before it answers.
+      if (reopen || s.carry.length) { s.carry.push(userMessage(m)); q.close() } else inbox.push(userMessage(m))
     }
     s.run = { q, inbox, send, started: Date.now() }
-    let sawState = false
-    // Claude Code says idle only once it has read every message sent (measured), so what it read is done. With no state
-    // events, idle is a guess from the result, so it waits until no task it was sent is open.
-    const reopenIfDue = () => {
-      if (!s.held.length || full || s.state !== 'idle' || (!sawState && s.turn.length)) return
-      if (s.turn.length) o.onTurn?.(key, s.turn.splice(0).map(x => x.task), undefined, true)
-      q.close()
-    }
     let connected = false
     // Connected at the handshake, or else its first message. One that never starts leaves its tasks to the dispatcher.
     const connect = () => { if (!connected && !s.stopped) connected = o.hub().connect(key, send) }
     q.initializationResult().then(connect, () => {})
-    for (const m of s.held.splice(0)) deliver(m, false)   // a reopen with the owner's tools takes what waited, all in its first turn
     void (async () => {
       let blocked = false   // once per turn: a new CLI sends the system event and the refused assistant frame
       let limit: Limit['kind'] | undefined   // this turn's top-level answer was the usage limit or an overload
@@ -236,7 +230,6 @@ export function sdkSessions(o: {
             if (done.length) o.onTurn?.(key, done, undefined, true)
           }
           if (m.type === 'result' && !sawState) s.state = 'idle'
-          reopenIfDue()
         }
       } catch (e) { log('session ended', logKey(key), e) }
       // The process went away on the limit before it sent a result: its tasks go back the same way.
@@ -252,8 +245,8 @@ export function sdkSessions(o: {
       o.hub().disconnect(key, send)
       // Nor does the new process take one it never read: the store hands it out again.
       const gone = new Set(lost.map(x => channelTag(x.task)))
-      const unread = inbox.drain().filter(u => !gone.has(u.message.content as string))
-      setTimeout(() => { if (!s.stopped) open(key, s, unread) }, s.held.length && !full ? 0 : o.restartMs ?? 3000)
+      const unread = [...inbox.drain(), ...s.carry.splice(0)].filter(u => !gone.has(u.message.content as string))
+      setTimeout(() => { if (!s.stopped) open(key, s, unread) }, s.owners && !full ? 0 : o.restartMs ?? 3000)
     })()
   }
 
@@ -294,7 +287,7 @@ export function sdkSessions(o: {
   const runner: Runner<ToSession> = {
     start(key, id, first) {
       const s: Session = sessions.get(key) ?? {
-        id, state: 'idle', last: 0, stopped: false, asks: new Map(), turn: [], held: [], owners: key.startsWith('voice:') || (first?.type === 'task' && senderOf(first) === 'owner'),   // a live call never reopens
+        id, state: 'idle', last: 0, stopped: false, asks: new Map(), turn: [], carry: [], owners: key.startsWith('voice:') || (first?.type === 'task' && senderOf(first) === 'owner'),   // a live call never reopens
         kage: o.tools(key, m => o.toHub(key, m), (tool, description, input) => ask(key, s, tool, description, input, new AbortController().signal).then(r => r.behavior === 'allow')),
       }
       Object.assign(s, { id, stopped: false })
@@ -307,7 +300,7 @@ export function sdkSessions(o: {
       if (!s) return
       s.stopped = true
       // Closed with tasks in hand: nothing waits for their turn any more.
-      if (s.turn.length || s.held.length) o.onTurn?.(key, [...s.turn.splice(0).map(x => x.task), ...s.held.splice(0)])
+      if (s.turn.length) o.onTurn?.(key, s.turn.splice(0).map(x => x.task))
       denyAll(s)
       o.ssm?.drop(key)
       o.keys?.drop(key)
