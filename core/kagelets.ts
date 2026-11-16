@@ -8,7 +8,8 @@ import { clockTime, whenLabel } from './board.ts'
 import { spendSince } from './ledgers.ts'
 import { CAP_PAUSE } from './kagelet-view.ts'
 import { ALL, DB_READ, kageletTier } from './access.ts'
-import { allowedBy, badRule, heldCommand } from './held.ts'
+import { heldCommand } from './held.ts'
+import { allowedBy, badRule } from './held-rules.ts'
 import { objectiveOf, type Objective } from './objective.ts'
 
 export { DB_READ }

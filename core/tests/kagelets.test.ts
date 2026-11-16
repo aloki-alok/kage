@@ -89,7 +89,7 @@ describe('the grant', () => {
   test('tools: all gives every built-in tool behind the hub check: a one-way shell step is held, Kage\'s owner tools and act tools never pass, an MCP tool still needs its own grant', () => {
     const all = ['all']
     for (const t of ['Bash', 'Read', 'Edit', 'Write', 'Glob', 'Grep', 'Task', 'WebSearch', 'ToolSearch']) assert.equal(grantRefusal(t, all, { command: 'git status' }), undefined, t)
-    assert.match(grantRefusal('Bash', all, { command: 'git push --force origin main' }) ?? '', /^Held: a forced push.*needs/)
+    assert.match(grantRefusal('Bash', all, { command: 'git push --force origin feat' }) ?? '', /^Held: a forced push.*needs/)
     assert.match(grantRefusal('WebFetch', all, { url: 'file:///etc/passwd' }) ?? '', /http/)
     for (const t of ['mcp__kage__message_people', 'mcp__kage__away', 'mcp__kage__schedule', 'mcp__kage__manage_kagelet', 'mcp__plugin_kage_kage__away']) assert.ok(grantRefusal(t, all), t)
     assert.equal(grantRefusal('mcp__kage__report', all), undefined)
@@ -99,7 +99,7 @@ describe('the grant', () => {
     // An owner's rule line releases the held step it names, and only that one.
     const rule = ['git push --force origin feat/*']
     assert.equal(grantRefusal('Bash', all, { command: 'git push --force origin feat/a' }, rule), undefined)
-    assert.match(grantRefusal('Bash', all, { command: 'git push --force origin main' }, rule) ?? '', /^Held/)
+    assert.match(grantRefusal('Bash', all, { command: 'git push --force origin fix/a' }, rule) ?? '', /^Held/)
     assert.equal(builtinTools(all), undefined)                      // no tool list: the session loads them all
     assert.deepEqual(builtinTools(['WebFetch', 'mcp__x__y']), ['WebFetch', 'ToolSearch'])
   })

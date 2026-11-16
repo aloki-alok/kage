@@ -149,8 +149,8 @@ function gitStep(args: string[]): string | undefined {
     const forced = short(rest, 'f') || short(rest, 'd') || rest.some(a => /^--(force|delete|mirror|prune)/.test(a))
     const refs = positional(rest, ['-o', '--push-option', '--repo', '--receive-pack', '--exec']).slice(1)
     const dest = (r: string) => r.slice(r.indexOf(':') + 1).replace(/^\+/, '').replace(/^refs\/heads\//, '')
-    const risky = refs.some(r => r.startsWith('+') || r.startsWith(':') || PROTECTED.has(dest(r)))
-    return forced || risky ? 'a forced push, a branch delete or a push to a protected branch' : undefined
+    if (refs.some(r => PROTECTED.has(dest(r)))) return 'a push to a protected branch'
+    return forced || refs.some(r => r.startsWith('+') || r.startsWith(':')) ? 'a forced push or a branch delete' : undefined
   }
   const drops = (sub === 'reset' && rest.includes('--hard')) || (sub === 'clean' && (short(rest, 'f') || rest.includes('--force')))
     || (sub === 'branch' && (short(rest, 'D') || (short(rest, 'd') && short(rest, 'f')) || (rest.includes('--delete') && rest.includes('--force'))))
@@ -270,18 +270,3 @@ function check(line: string, depth: number): string | undefined {
 
 // The kind of one-way step a shell command takes, or undefined when it holds none.
 export const heldCommand = (command: string): string | undefined => check(command, 0)
-
-// Kinds only the owner releases, one step at a time: no rule line, reviewer or learned rule covers them.
-const OWNER_ONLY = new Set(['a command as root', 'erasing a disk or file', 'a recursive permission change', 'a cron change', 'a write to a system folder', 'a shutdown', 'a command nested too deep to read'])
-// A rule's * stands for one word with no space, quote or shell syntax, so a rule never matches a second command chained after the one it names.
-const WORD = String.raw`[^\s;&|<>()\`$'"\\]+`
-const ruleRegex = (rule: string) => new RegExp(`^${rule.trim().split(/\s+/).map(w => w.split('*').map(p => p.replace(/[.+?^${}()|[\]\\]/g, '\\$&')).join(WORD)).join(' ')}$`)
-// A rule is the owner's (ADR 0018): it starts with a literal command word, so it names the tool it releases.
-export const badRule = (rule: string) => /^\S*\*/.test(rule.trim()) || /[\r\n]/.test(rule)
-// The owner's rule line that releases this held step, matched by code with no model. A command on more than one line never matches.
-export function allowedBy(rules: string[], command: string): string | undefined {
-  const kind = heldCommand(command)
-  if (!kind || OWNER_ONLY.has(kind) || /[\r\n]/.test(command)) return undefined
-  const line = command.trim().split(/[ \t]+/).join(' ')
-  return rules.find(r => !badRule(r) && ruleRegex(r).test(line))
-}

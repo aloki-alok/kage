@@ -37,7 +37,7 @@ async function session(): Promise<true | string> {
   const steps = [
     `git -C ${work}/repo -c user.name=k -c user.email=k@example.com commit -q --allow-empty -m first && git -C ${work}/repo branch feat2 && git -C ${work}/repo checkout -q -b feat && echo git-ok > ${work}/git.out`,
     `curl -s -o /dev/null -w '%{http_code}' https://api.github.com/zen > ${work}/web.out`,
-    `git -C ${work}/repo push --force origin main`,
+    `git -C ${work}/repo push --force origin feat`,
     `git -C ${work}/repo branch -D feat2`,
     `curl -s -X POST https://api.github.com/zen > ${work}/post.out`,
     `python3 -c "import socket; s=socket.socket(socket.AF_UNIX); s.connect('${work}/hub.sock'); print('connected')" > ${work}/sock.out 2>&1; echo ran >> ${work}/sock.out`,
