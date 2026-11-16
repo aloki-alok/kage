@@ -16,6 +16,8 @@ import { kageletDeliver, ownerNotes } from '../runtime/kagelet-notes.ts'
 import { kageletMeasures } from '../runtime/kagelet-measures.ts'
 import { kageletNeeds } from '../runtime/kagelet-needs.ts'
 import { kageletRoutes } from '../runtime/kagelet-routes.ts'
+import { kageletReview } from '../runtime/kagelet-review.ts'
+import { claudeOnce, emptyRoom } from '../runtime/claude-once.ts'
 import { syncKagelets } from '../runtime/kagelet-sync.ts'
 import type { Ledgers, runEvents } from '../runtime/ledger.ts'
 import type { Store } from '../runtime/store.ts'
@@ -64,6 +66,13 @@ export function hubKagelets(o: {
   const parsed = () => readKagelets(KAGELETS).map(f => parseKagelet(f.name, f.text)).filter((k): k is Kagelet => !('error' in k))
   const measures = kageletMeasures({ store, tripwires: () => o.tripwires() ?? {}, settings: () => ({ measureMinutes: kl.measureMinutes || 60, trendRuns: kl.trendRuns || 5 }),
     event: (who, detail) => ledgers.event({ kind: 'objective', who, trace: '', chain: '', detail }) })
+  const reviewHeld = kageletReview({
+    settings: () => ({ release: kl.release ?? 'rules', perDay: kl.reviewsPerDay || 10, model: kl.reviewModel || 'haiku' }),
+    kagelet: key => parsed().find(k => k.key === key),
+    ask: a => claudeOnce({ ...a, cwd: emptyRoom(o.dir), tools: '', timeoutMs: 30_000 }),   // the step waits in the hook meanwhile; a timeout keeps it held
+    event: (key, detail) => o.runs.emit(key, 'held', detail),
+    today: () => new Date().toISOString().slice(0, 10),
+  })
   const board = (key: string) => { const k = parsed().find(x => x.key === key); return k && measures.board(k.name, k.objective) }
   const manager = kageletManager({ dir: KAGELETS, max: MAX, ledgers, sync, runNow: o.runNow, store, envCommand: kl.dbRead?.command ?? undefined, log, measures })
   const notes = ownerNotes(store)
@@ -86,6 +95,7 @@ export function hubKagelets(o: {
     grantOf: (key: string) => grants.get(key) ?? (key.includes('#side-kagelet-') || key.includes('#side-kdream-') ? [] : undefined),
     modelOf: (key: string) => models.get(key),
     allowOf: (key: string) => allows.get(key) ?? [],
+    reviewHeld,
     budgetOf: (key: string) => key.includes('#side-kagelet-') ? budgetLeft(kageletRows(readKagelets(KAGELETS), { runs: '', costs: ledgers.text('costs'), now: Date.now() }), key, CAPS) : undefined,
   }
 }
