@@ -65,3 +65,4 @@ test('a long line is checked at once, never backtracked for seconds', () => {
     assert.ok(performance.now() - t < 1500, line.slice(0, 30))   // linear: about 30 ms alone; the old regex never finished
   }
 })
+

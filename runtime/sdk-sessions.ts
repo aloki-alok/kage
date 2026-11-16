@@ -61,8 +61,8 @@ export function sdkSessions(o: {
   // overload, so it did none of them (runtime/limit-pause.ts).
   // done: the turn ended with its result, so it finished these tasks; with no done, they were cut or closed.
   onTurn?: (key: string, tasks: Task[], limit?: Limit, done?: true) => void
-  // A kagelet lane (core/kagelets.ts): its grant. Only these tools, and it approves nothing.
-  grantOf?: (key: string) => string[] | undefined
+  // A kagelet lane (core/kagelets.ts): its grant (only these tools, and it approves nothing) and the owner's allow lines.
+  grantOf?: (key: string) => string[] | undefined; allowOf?: (key: string) => string[]
   // A kagelet lane's tool call, for the event log: the tool's name and why it was refused, never its input.
   onTool?: (key: string, tool: string, refused?: string) => void
   // A kagelet lane: what it may spend before a cap (core/kagelets.ts budgetLeft). The SDK stops the run there.
@@ -142,7 +142,7 @@ export function sdkSessions(o: {
         // A kagelet's grant is its approval, checked first: beyond it, even Kage's tools that act as the owner, it
         // approves nothing and puts no card in front of the owner. The PreToolUse hook checks the same grant again.
         canUseTool: (name, input, x) => o.grantOf?.(key)
-          ? Promise.resolve(grantRefusal(name, o.grantOf(key)!, input) ? { behavior: 'deny' as const, message: 'A kagelet approves nothing. Say in the thread what you needed and why: your manager decides.' }
+          ? Promise.resolve(grantRefusal(name, o.grantOf(key)!, input, o.allowOf?.(key)) ? { behavior: 'deny' as const, message: 'A kagelet approves nothing. Say in the thread what you needed and why: your manager decides.' }
             : { behavior: 'allow' as const, updatedInput: input })
           // A save is approved inside the tool by tier (runtime/kagelets.ts): Kage grants read, and a write tool raises
           // its own card, so the owner gets one, not two. A revoke only takes access away, so it needs none (the tool
@@ -158,7 +158,7 @@ export function sdkSessions(o: {
             hooks: [async input => {
               const i = input as { tool_name: string; tool_input?: Record<string, string> }
               const grant = o.grantOf?.(key)
-              const reason = (grant && grantRefusal(i.tool_name, grant, i.tool_input ?? {})) || toolRefusal(i.tool_name, i.tool_input ?? {}, s.sender, o)
+              const reason = (grant && grantRefusal(i.tool_name, grant, i.tool_input ?? {}, o.allowOf?.(key))) || toolRefusal(i.tool_name, i.tool_input ?? {}, s.sender, o)
               if (grant) o.onTool?.(key, i.tool_name, reason || undefined)
               return reason ? { hookSpecificOutput: { hookEventName: 'PreToolUse', permissionDecision: 'deny', permissionDecisionReason: reason } } : {}
             }],

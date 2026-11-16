@@ -33,6 +33,7 @@ export function hubKagelets(o: {
   const KAGELETS = kageletsDir(o.dir)
   let grants = new Map<string, string[]>()
   let models = new Map<string, string>()   // lane key -> the model its file names
+  let allows = new Map<string, string[]>()   // lane key -> the owner's allow lines (core/held.ts allowedBy)
   let refused = false
   // Each kagelet's own memory and the dream's proposals waiting on Kage. It never reads or writes the owner's or Kage's memory.
   const kmem = kageletMemory({ dir: KAGELETS, forbid: () => [o.mem.own, o.mem.owner], event: e => ledgers.event(e), waiting: cells => ledgers.add('waiting', cells) })
@@ -57,6 +58,7 @@ export function hubKagelets(o: {
     } }, rows, CAPS, now).length) files = readKagelets(KAGELETS)
     grants = syncKagelets(files, store, now, log, MAX, name => kmem.notes(name))
     models = new Map(rows.filter(r => r.key && r.model && grants.has(r.key)).map(r => [r.key!, r.model!]))
+    allows = new Map(files.map(f => parseKagelet(f.name, f.text)).flatMap(k => 'allow' in k && k.allow && grants.has(k.key) ? [[k.key, k.allow] as const] : []))
   }
   // Each objective's measure, run by the hub with no model (ADR 0016), and the scoreboard every run of it reads.
   const parsed = () => readKagelets(KAGELETS).map(f => parseKagelet(f.name, f.text)).filter((k): k is Kagelet => !('error' in k))
@@ -83,6 +85,7 @@ export function hubKagelets(o: {
     // A lane whose file is gone keeps no tools, rather than falling back to approval cards.
     grantOf: (key: string) => grants.get(key) ?? (key.includes('#side-kagelet-') || key.includes('#side-kdream-') ? [] : undefined),
     modelOf: (key: string) => models.get(key),
+    allowOf: (key: string) => allows.get(key) ?? [],
     budgetOf: (key: string) => key.includes('#side-kagelet-') ? budgetLeft(kageletRows(readKagelets(KAGELETS), { runs: '', costs: ledgers.text('costs'), now: Date.now() }), key, CAPS) : undefined,
   }
 }

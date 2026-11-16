@@ -108,6 +108,7 @@ Write logs to stderr only. In a tmux pane, stdout carries the channel protocol, 
 | `kagelet-message.ts` | The message one kagelet sends another (an `after:` handoff or `message_kagelet`): its fields, named after A2A's Message, its delivery states, and the check where it enters the hub. |
 | `kagelet-view.ts` | What a terminal shows of kagelets: the `kage top` panel, its keys, and `kage logs <kagelet>`. |
 | `held.ts` | The hub's check on a kagelet's shell (`tools: all`, ADR 0018): which commands are one-way steps (a deploy, a forced push, a DB write, a delete, a send), held for Kage. It stands behind the OS sandbox, never in place of it. |
+| `held-rules.ts` | The owner's `allow:` lines in a kagelet's `job.md`: which held step each releases, word by word with no model, and the kinds no rule ever releases. |
 | `objective.ts` | A kagelet's objective (ADR 0016): the three lines in its file, the one `value: <n>` line a measure prints, the target check, and the scoreboard every run reads. |
 | `access.ts` | The access tiers: whether a kagelet's tool is read, write or act, from its name. |
 | `db-read.ts` | The check a `db_read` query passes: one read statement, capped. |

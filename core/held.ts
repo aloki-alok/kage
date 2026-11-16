@@ -148,9 +148,10 @@ function gitStep(args: string[]): string | undefined {
     if (rest.includes('--dry-run') || short(rest, 'n')) return undefined
     const forced = short(rest, 'f') || short(rest, 'd') || rest.some(a => /^--(force|delete|mirror|prune)/.test(a))
     const refs = positional(rest, ['-o', '--push-option', '--repo', '--receive-pack', '--exec']).slice(1)
-    const dest = (r: string) => r.slice(r.indexOf(':') + 1).replace(/^\+/, '').replace(/^refs\/heads\//, '')
-    const risky = refs.some(r => r.startsWith('+') || r.startsWith(':') || PROTECTED.has(dest(r)))
-    return forced || risky ? 'a forced push, a branch delete or a push to a protected branch' : undefined
+    const dest = (r: string) => r.slice(r.indexOf(':') + 1).replace(/^\+/, '').replace(/^(refs\/)?heads\//, '')
+    // A forced push that names no branch (none, HEAD or @) goes to the current one, which may be protected.
+    if (refs.some(r => PROTECTED.has(dest(r))) || (forced && !refs.slice(1).length && ['', 'HEAD', '@'].includes(dest(refs[0] ?? '')))) return 'a push to a protected branch'
+    return forced || refs.some(r => r.startsWith('+') || r.startsWith(':')) ? 'a forced push or a branch delete' : undefined
   }
   const drops = (sub === 'reset' && rest.includes('--hard')) || (sub === 'clean' && (short(rest, 'f') || rest.includes('--force')))
     || (sub === 'branch' && (short(rest, 'D') || (short(rest, 'd') && short(rest, 'f')) || (rest.includes('--delete') && rest.includes('--force'))))
