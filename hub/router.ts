@@ -246,7 +246,7 @@ const sdkLib = harness.runtime === 'tmux' ? undefined : await (async () => ({
 // Kagelets (#57), their memory, the manager's side and the chains between them (hub/kagelets.ts).
 const kag = hubKagelets({ dir: DIR, kl, mem: MEM, store, ledgers, runs, title: Title, notify: text => void slack.notifyOwner(text), hasSdk: () => !!sdk,
   runNow: (id, now) => schedules.runNow(id, now), toSession: (key, task) => toSession(key, task),
-  idle: key => !isClosed(key) && d.ready(key) === 'ready' && d.startsNow(key, Date.now()), paused: now => limits.paused(now)?.until })
+  idle: key => !isClosed(key) && d.ready(key) === 'ready' && d.startsNow(key, Date.now()), paused: now => limits.paused(now)?.until, tripwires: () => config.tripwires })
 const sdk = sdkLib ? sdkSessions({
   sdk: sdkLib.lib,
   deferred,
@@ -331,7 +331,7 @@ restoreHolds(DIR, d)
 // Schedules live in the store and run as tasks in their thread (runtime/scheduler.ts).
 const schedules = scheduler({
   store, failed,
-  deliver: kageletDeliver(kag.notes, toSession),
+  deliver: kageletDeliver(kag.notes, toSession, kag.board),
   ready: key => d.ready(key),
   trusted: key => store.trust(key) === true, job: { end: k => d.reset(k), project: PROJECT, carryChars: () => config.harness?.jobCarryChars ?? 500, laneDefault: () => config.harness?.jobLaneDefault ?? true, freshEvery: () => config.harness?.jobFreshEvery ?? 20, carryCount: () => config.harness?.jobCarry ?? 5, posted: () => ledgers.text('posted') },
   ran: j => ledgers.add('runs', [j.id, j.key]),
@@ -392,7 +392,7 @@ runJobs([
   { name: 'kagelet dreams', every: 10 * 60_000, run: dreaming.kageletDreams },
   { name: 'retro', every: 10 * 60_000, run: digests.weeklyRetro },
   // A kagelet message waits until its target is idle, then starts a run of its own (runtime/kagelets.ts).
-  { name: 'kagelet messages', every: 20_000, run: now => { kag.routes.pump(now); kag.needs.pump(now) } },
+  { name: 'kagelet messages', every: 20_000, run: now => { kag.routes.pump(now); kag.needs.pump(now); kag.measure(now) } },
   { name: 'events', every: 3_600_000, run: now => ledgers.pruneEvents(new Date(now - EVENT_DAYS * 86_400_000).toISOString()) }, ...startTelemetry({ config: config.telemetry, dir: DIR, code: CODE, ledgers, state: store, notify: t => slack.notifyOwner(t), usage: sdk?.usage }),
 ])
 

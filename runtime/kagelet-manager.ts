@@ -5,6 +5,7 @@ import { DEFAULT_MODEL } from '../core/config.ts'
 import { chainErrors, COST_FLAG, DB_READ, NAME, parseKagelet, resultLine, revokeStanding, rowLine, kageletFile, kageletRows, type Kagelet, type Standing } from '../core/kagelets.ts'
 import { chainLine, chainViews } from '../core/events.ts'
 import { ALL, kageletTier } from '../core/access.ts'
+import { objectiveOf } from '../core/objective.ts'
 import type { Store } from './store.ts'
 import type { Ledgers } from './ledger.ts'
 import { folderFree, hasKagelet, jobPath, pauseKagelet, readKagelets, writeJob } from './kagelet-files.ts'
@@ -22,15 +23,16 @@ export const readCommand = (envCommand: string | undefined, store: Pick<Store, '
 const standings = (store: Pick<Store, 'load'>) => (store.load(STANDING) ?? {}) as Standing
 
 // The owner's answer to Kage's approval card (runtime/sdk-sessions.ts): true only on their yes.
-// tools: the write tools the card grants.
-export type AskOwner = (card: { kagelet: string; tools: string; job: string }) => Promise<boolean>
+// tools: the write tools the card grants. measure: a command Kage wrote for the hub to run with no model.
+export type AskOwner = (card: { kagelet: string; tools: string; job: string; measure?: string }) => Promise<boolean>
 
 // The manager's side (Kage's owner sessions, runtime/kage-tools.ts): write, pause, run and remove kagelet files.
 // The hub syncs right after a change, so run works at once; the minute sync applies it anyway.
 // read_command: names one of the install's read commands for db_read. revoke: name is the tool.
 // No field here says who asked: the model fills every one, so none may widen a grant.
-export type Manage = { action: 'save' | 'pause' | 'resume' | 'run' | 'remove' | 'revoke'; name: string; thread?: string; schedule?: string; after?: string; tools?: string[]; job?: string; why?: string; model?: string; model_why?: string; read_command?: string }
-export function kageletManager(o: { dir: string; max: number; ledgers: { text(name: 'runs' | 'costs' | 'reports'): string } & Pick<Ledgers, 'add' | 'events'>; sync: (now: number) => void; runNow: (id: string, now: number) => string | undefined; store: Pick<Store, 'load' | 'save'>; envCommand?: string; log: (line: string) => void }) {
+export type Manage = { action: 'save' | 'pause' | 'resume' | 'run' | 'remove' | 'revoke'; name: string; thread?: string; schedule?: string; after?: string; tools?: string[]; job?: string; why?: string; model?: string; model_why?: string; read_command?: string; objective?: string; measure?: string; target?: string }
+export function kageletManager(o: { dir: string; max: number; ledgers: { text(name: 'runs' | 'costs' | 'reports'): string } & Pick<Ledgers, 'add' | 'events'>; sync: (now: number) => void; runNow: (id: string, now: number) => string | undefined; store: Pick<Store, 'load' | 'save'>; envCommand?: string; log: (line: string) => void
+  measures?: { approved: (name: string) => string | undefined; approve: (name: string, command: string) => string | undefined; forget: (name: string) => void } }) {
   // Once: the standing approval from before tiers ({ tool, command, at }) covered db_read alone, which is read now.
   if (typeof (o.store.load(STANDING) as { tool?: unknown } | undefined)?.tool === 'string') o.store.save(STANDING, undefined)
   const rows = (now: number) => kageletRows(readKagelets(o.dir), { runs: o.ledgers.text('runs'), costs: o.ledgers.text('costs'), reports: o.ledgers.text('reports'), now })
@@ -78,6 +80,7 @@ export function kageletManager(o: { dir: string; max: number; ledgers: { text(na
       if (a.action === 'remove') {
         // Its read command and its memory folder stay: the owner approved the command for the install, and no card can bring one back.
         unlinkSync(file)
+        o.measures?.forget(a.name)
         o.sync(now)
         return `removed ${a.name}: its file and its schedule are gone.`
       }
@@ -113,7 +116,11 @@ export function kageletManager(o: { dir: string; max: number; ledgers: { text(na
       const model = a.model ?? had?.model ?? DEFAULT_MODEL
       const modelWhy = a.model_why ?? (model === had?.model ? had.modelWhy : '')
       if (model !== DEFAULT_MODEL && model !== had?.model && !modelWhy.trim()) return refuse(`${model} needs a one-line model_why: the owner sees it in the panel`)
-      const fileText = (approved: boolean, standing: string[] = []) => kageletFile({ thread: a.thread ?? '', schedule: a.schedule ?? '', ...(a.after && { after: a.after }), tools, job: a.job ?? '', by, why: a.why ?? '', model, modelWhy, paused: !!had?.paused, approved, standing })
+      // An objective (ADR 0016): all three lines, or none to keep the file's own. Kage's measure runs on the owner's yes.
+      const goal = a.objective || a.measure || a.target ? objectiveOf(new Map(Object.entries({ objective: a.objective ?? '', measure: a.measure ?? '', target: a.target ?? '' }))) : had?.objective
+      if (goal && 'error' in goal) return refuse(goal.error)
+      const measure = goal && o.measures?.approved(a.name) !== goal.measure ? goal.measure : undefined
+      const fileText = (approved: boolean, standing: string[] = []) => kageletFile({ thread: a.thread ?? '', schedule: a.schedule ?? '', ...(a.after && { after: a.after }), tools, job: a.job ?? '', by, why: a.why ?? '', model, modelWhy, paused: !!had?.paused, approved, standing, ...(goal && { objective: goal }) })
       // Checked as if approved first, so an act tool or a file that would not run is refused before any card.
       const valid = fileText(true)
       if (typeof valid !== 'string') return refuse(valid.error)
@@ -135,8 +142,11 @@ export function kageletManager(o: { dir: string; max: number; ledgers: { text(na
       const kept = writes.filter(t => had?.tools.includes(t) && !had.standing?.includes(t) && (t !== ALL || had.job.trim() === (a.job ?? '').trim()))
       const standing = writes.filter(t => t !== ALL && !kept.includes(t) && yes[t] !== undefined)
       const card = writes.filter(t => !kept.includes(t) && yes[t] === undefined), stands = card.filter(t => t !== ALL)
-      if ((card.length || standing.some(t => fresh.includes(t))) && !ask) return refuse(`only the owner grants ${[...card, ...standing].join(', ')}, and this session cannot ask them`)
-      if (card.length && !await ask!({ kagelet: a.name, tools: card.join(', '), job: (a.job ?? '').trim().split('\n')[0]!.slice(0, 300) })) return refuse(`the owner did not approve ${card.join(', ')}`)
+      const asked = [...card, ...standing.filter(t => fresh.includes(t)), ...measure ? [`the measure ${measure}`] : []].join(', ')
+      if (asked && !ask) return refuse(`only the owner grants ${asked}, and this session cannot ask them`)
+      if ((card.length || measure) && !await ask!({ kagelet: a.name, tools: card.join(', '), job: (a.job ?? '').trim().split('\n')[0]!.slice(0, 300), ...measure && { measure } })) return refuse(`the owner did not approve ${[...card, ...measure ? [`the measure ${measure}`] : []].join(', ')}`)
+      const unpinned = measure && (o.measures ? o.measures.approve(a.name, measure) : 'this hub runs no measures')
+      if (unpinned) return refuse(unpinned)
       const text = fileText(true, standing)
       if (typeof text !== 'string') return refuse(text.error)
       if (stands.length) o.store.save(STANDING, { ...yes, ...Object.fromEntries(stands.map(t => [t, now])) })

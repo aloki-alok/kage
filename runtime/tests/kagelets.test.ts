@@ -188,13 +188,15 @@ function manager(max = 10, envCommand?: string) {
   const ran: string[] = [], synced: number[] = [], logs: string[] = [], grants: string[][] = []
   const reports: string[] = []
   const store = openStore(':memory:')
+  const measured: Record<string, string> = {}
   const m = kageletManager({
     dir, max, ledgers: { events: () => [], text: (n: string) => n === 'reports' ? reports.join('') : '', add: (n, cells) => { if (n === 'grants') grants.push(cells) } },
     sync: now => { synced.push(now) },
     runNow: id => { ran.push(id); return undefined },
     store, envCommand, log: l => logs.push(l),
+    measures: { approved: n => measured[n], approve: (n, c) => c.includes('changed-under-pin') ? 'the file changed' : void (measured[n] = c), forget: n => { delete measured[n] } },
   })
-  return { dir, m, ran, synced, reports, store, logs, grants }
+  return { dir, m, ran, synced, reports, store, logs, grants, measured }
 }
 const job = { thread: LINK, schedule: '0 9 * * *', tools: ['WebSearch'], job: 'Check the status page.', why: 'a daily check the owner asked for twice' }
 
@@ -303,6 +305,29 @@ test('who made it comes from the file, never the model: a new one is Kage\'s, an
 })
 
 // The owner's answer to the approval card, and every card it was shown.
+test('an objective Kage writes runs its measure only after the owner said yes to that exact command', async () => {
+  const u = manager()
+  const goal = { ...job, objective: 'Keep signup errors low', measure: '/srv/errors.sh', target: '<= 2' }
+  assert.match(await u.m.manage({ action: 'save', name: 'x', ...goal }, 1), /not saved: .*owner/)
+  const no = owner(false)
+  assert.match(await u.m.manage({ action: 'save', name: 'x', ...goal }, 1, no.ask), /not saved: the owner did not approve/)
+  assert.equal(no.cards[0]!.measure, '/srv/errors.sh')
+  assert.equal(readKagelets(u.dir).length, 0)
+  const yes = owner(true)
+  assert.match(await u.m.manage({ action: 'save', name: 'x', ...goal }, 2, yes.ask), /saved x/)
+  assert.match(readFileSync(`${u.dir}/x/job.md`, 'utf8'), /^objective: Keep signup errors low\nmeasure: \/srv\/errors.sh\ntarget: <= 2$/m)
+  assert.equal(u.measured.x, '/srv/errors.sh')
+  await u.m.manage({ action: 'save', name: 'x', ...job, schedule: '0 10 * * *' }, 3, yes.ask)   // no objective lines: it keeps its own
+  assert.match(readFileSync(`${u.dir}/x/job.md`, 'utf8'), /^measure: \/srv\/errors.sh$/m)
+  assert.equal(yes.cards.length, 1)
+  await u.m.manage({ action: 'save', name: 'x', ...goal, measure: '/srv/errors.sh --all' }, 4, yes.ask)   // a new command, a new yes
+  assert.equal(yes.cards.length, 2)
+  assert.match(await u.m.manage({ action: 'save', name: 'x', ...goal, target: 'about 2' }, 5, yes.ask), /not saved: target must be a comparison/)
+  assert.match(await u.m.manage({ action: 'save', name: 'y', ...goal, measure: '/srv/changed-under-pin.sh' }, 6, yes.ask), /not saved: the file changed/)
+  assert.equal(yes.cards.length, 3)
+  assert.equal(readKagelets(u.dir).length, 1)
+})
+
 const owner = (yes: boolean) => {
   const cards: Record<string, string>[] = []
   return { cards, ask: async (c: Record<string, string>) => { cards.push(c); return yes } }

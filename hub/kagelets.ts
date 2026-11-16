@@ -4,7 +4,7 @@
 // chains and messages between kagelets (#93), which the hub hands on with no Kage turn.
 import type { Delivery } from '../core/sessions.ts'
 import type { Task } from '../core/task.ts'
-import { budgetLeft, COST_FLAG, costFlags, kageletRows } from '../core/kagelets.ts'
+import { budgetLeft, COST_FLAG, costFlags, kageletRows, parseKagelet, type Kagelet } from '../core/kagelets.ts'
 import { chainCap, dailyCap, totalCap } from '../core/kagelet-view.ts'
 import type { Config } from '../core/config.ts'
 import { log } from '../runtime/log.ts'
@@ -12,7 +12,8 @@ import { costCap } from '../runtime/kagelet-cost-cap.ts'
 import { kageletsDir, migrateKagelets, readKagelets } from '../runtime/kagelet-files.ts'
 import { kageletManager } from '../runtime/kagelet-manager.ts'
 import { kageletMemory } from '../runtime/kagelet-memory.ts'
-import { ownerNotes } from '../runtime/kagelet-notes.ts'
+import { kageletDeliver, ownerNotes } from '../runtime/kagelet-notes.ts'
+import { kageletMeasures } from '../runtime/kagelet-measures.ts'
 import { kageletNeeds } from '../runtime/kagelet-needs.ts'
 import { kageletRoutes } from '../runtime/kagelet-routes.ts'
 import { syncKagelets } from '../runtime/kagelet-sync.ts'
@@ -26,6 +27,7 @@ export function hubKagelets(o: {
   runNow: (id: string, now: number) => string | undefined
   toSession: (key: string, task: Task) => Delivery
   idle: (key: string) => boolean; paused: (now: number) => number | undefined
+  tripwires: () => Config['tripwires']
 }) {
   const { kl, store, ledgers } = o
   const KAGELETS = kageletsDir(o.dir)
@@ -56,10 +58,15 @@ export function hubKagelets(o: {
     grants = syncKagelets(files, store, now, log, MAX, name => kmem.notes(name))
     models = new Map(rows.filter(r => r.key && r.model && grants.has(r.key)).map(r => [r.key!, r.model!]))
   }
-  const manager = kageletManager({ dir: KAGELETS, max: MAX, ledgers, sync, runNow: o.runNow, store, envCommand: kl.dbRead?.command ?? undefined, log })
-  const routes = kageletRoutes({ dir: KAGELETS, store, ledgers, runs: o.runs, deliver: o.toSession,
-    idle: o.idle, paused: o.paused, capUsd: CAPS.each, chainUsd: CAPS.chain, log, memory: name => kmem.notes(name) })
+  // Each objective's measure, run by the hub with no model (ADR 0016), and the scoreboard every run of it reads.
+  const parsed = () => readKagelets(KAGELETS).map(f => parseKagelet(f.name, f.text)).filter((k): k is Kagelet => !('error' in k))
+  const measures = kageletMeasures({ store, tripwires: () => o.tripwires() ?? {}, settings: () => ({ measureMinutes: kl.measureMinutes || 60, trendRuns: kl.trendRuns || 5 }),
+    event: (who, detail) => ledgers.event({ kind: 'objective', who, trace: '', chain: '', detail }) })
+  const board = (key: string) => { const k = parsed().find(x => x.key === key); return k && measures.board(k.name, k.objective) }
+  const manager = kageletManager({ dir: KAGELETS, max: MAX, ledgers, sync, runNow: o.runNow, store, envCommand: kl.dbRead?.command ?? undefined, log, measures })
   const notes = ownerNotes(store)
+  const routes = kageletRoutes({ dir: KAGELETS, store, ledgers, runs: o.runs, deliver: kageletDeliver(notes, o.toSession, board),
+    idle: o.idle, paused: o.paused, capUsd: CAPS.each, chainUsd: CAPS.chain, log, memory: name => kmem.notes(name) })
   // A kagelet's needs go to Kage in its thread (ADR 0018); Kage's answer waits in its notes for its next run.
   const needs = kageletNeeds({ store, deliver: o.toSession, idle: o.idle, paused: o.paused, waiting: cells => ledgers.add('waiting', cells), perDay: () => kl.needsPerDay || 5, log })
   const tell = async (name: string, text: string, runNow: boolean, now = Date.now()): Promise<string> => {
@@ -70,7 +77,8 @@ export function hubKagelets(o: {
     return runNow ? `told ${name}. ${await manager.manage({ action: 'run', name }, now)}` : `told ${name}: its next run reads it`
   }
   return {
-    dir: KAGELETS, kmem, manager, routes, sync, notes, needs, tell,
+    dir: KAGELETS, kmem, manager, routes, sync, notes, needs, tell, board, measures,
+    measure: (now: number) => measures.tick(parsed(), now).catch(e => log('kagelet measure failed', e)),
     lanes: () => grants.keys(),
     // A lane whose file is gone keeps no tools, rather than falling back to approval cards.
     grantOf: (key: string) => grants.get(key) ?? (key.includes('#side-kagelet-') || key.includes('#side-kdream-') ? [] : undefined),

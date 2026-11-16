@@ -9,6 +9,7 @@ import { spendSince } from './ledgers.ts'
 import { CAP_PAUSE } from './kagelet-view.ts'
 import { ALL, DB_READ, kageletTier } from './access.ts'
 import { heldCommand } from './held.ts'
+import { objectiveOf, type Objective } from './objective.ts'
 
 export { DB_READ }
 
@@ -20,7 +21,7 @@ export const NAME = /^(?!memory$)[a-z][a-z0-9-]{0,30}$/
 type Maker = 'owner' | 'kage'
 // standing: its write tools held by a standing approval (runtime/kagelets.ts), so a revoke of that tool takes them.
 // after: the kagelet whose output starts this one (#93). cron: '' when it runs only after another.
-export type Kagelet = { name: string; key: string; link: string; cron: string; after?: string; tools: string[]; job: string; paused: boolean; by: Maker; why: string; model: string; modelWhy: string; resumed?: number; standing?: string[] }
+export type Kagelet = { name: string; key: string; link: string; cron: string; after?: string; tools: string[]; job: string; paused: boolean; by: Maker; why: string; model: string; modelWhy: string; resumed?: number; standing?: string[]; objective?: Objective }
 
 // Sonnet unless the file says otherwise (#98). A name Claude Code knows: an alias or a full id.
 // A typo would pass the SDK's setup and then fail every run, so a name that is neither is held.
@@ -49,9 +50,11 @@ export function parseKagelet(name: string, text: string): Kagelet | { error: str
   // Checked on every read, so a hand-written file with an act tool shows as broken, not running with its calls refused.
   const act = tools.find(t => kageletTier(t) === 'act')
   if (act) return { error: `a kagelet never holds ${act}: it is an act tool (prod, money, customers, access or a delete) or not a web or MCP tool. The kagelet says in its thread what it needs, and Kage asks the owner each time.` }
+  const objective = objectiveOf(head)
+  if (objective && 'error' in objective) return objective
   return { name, key: `${thread}#side-kagelet-${name}`, link, cron, ...(after && { after }), tools, job, paused: isPaused(head.get('paused')),
     by: head.get('by') === 'kage' ? 'kage' : 'owner', why: head.get('why') ?? '', model, modelWhy: head.get('model_why') ?? '',
-    ...(Date.parse(head.get('resumed') ?? '') >= 0 && { resumed: Date.parse(head.get('resumed')!) }), ...(standing.length && { standing }) }
+    ...(Date.parse(head.get('resumed') ?? '') >= 0 && { resumed: Date.parse(head.get('resumed')!) }), ...(standing.length && { standing }), ...(objective && { objective }) }
 }
 
 // Fails closed: any value but none, no or false pauses it, so a typo never starts a kagelet.
@@ -83,16 +86,16 @@ Say what to check, where, and what to post in the thread. For example: every wee
 // model steers every save, the owner's sessions too.
 // approved: the owner said yes to its write tools (a card, a standing approval, or a grant it already held).
 // standing: those of its write tools that a standing approval covers.
-export function kageletFile(f: { thread: string; schedule: string; after?: string; tools: string[]; job: string; by: Maker; why: string; model?: string; modelWhy?: string; paused?: boolean; approved?: boolean; standing?: string[] }): string | { error: string } {
+export function kageletFile(f: { thread: string; schedule: string; after?: string; tools: string[]; job: string; by: Maker; why: string; model?: string; modelWhy?: string; paused?: boolean; approved?: boolean; standing?: string[]; objective?: Objective }): string | { error: string } {
   // One line each, so no value can add a front matter line of its own (a second tools or paused line).
-  for (const [k, v] of Object.entries({ thread: f.thread, schedule: f.schedule, after: f.after ?? '', why: f.why, model: f.model ?? '', model_why: f.modelWhy ?? '', tool: f.tools.join(',') })) if (/[\r\n]/.test(v)) return { error: `the ${k} must be one line` }
+  for (const [k, v] of Object.entries({ thread: f.thread, schedule: f.schedule, after: f.after ?? '', why: f.why, model: f.model ?? '', model_why: f.modelWhy ?? '', tool: f.tools.join(','), objective: f.objective?.objective ?? '', measure: f.objective?.measure ?? '' })) if (/[\r\n]/.test(v)) return { error: `the ${k} must be one line` }
   // A comma or space in one name reads back as two tools, so the card would not name what the file grants.
   const odd = f.tools.find(t => !/^[\w-]+$/.test(t))
   if (odd) return { error: `"${odd}" is not one tool name: letters, digits, _ and - only` }
   const wide = !f.approved && f.tools.find(t => kageletTier(t) === 'write')
   if (wide) return { error: `${wide} needs the owner's yes on Kage's card: it sends or changes something` }
   const standing = (f.standing ?? []).filter(t => f.tools.includes(t))
-  const text = `---\nthread: ${f.thread}\n${f.schedule || !f.after ? `schedule: ${f.schedule}\n` : ''}${f.after ? `after: ${f.after}\n` : ''}tools: ${f.tools.join(', ')}\nby: ${f.by}\nwhy: ${f.why}\n${f.model && f.model !== DEFAULT_MODEL ? `model: ${f.model}\n${f.modelWhy ? `model_why: ${f.modelWhy}\n` : ''}` : ''}${standing.length ? `standing: ${standing.join(', ')}\n` : ''}${f.paused ? 'paused: yes\n' : ''}---\n${f.job.trim()}\n`
+  const text = `---\nthread: ${f.thread}\n${f.schedule || !f.after ? `schedule: ${f.schedule}\n` : ''}${f.after ? `after: ${f.after}\n` : ''}tools: ${f.tools.join(', ')}\nby: ${f.by}\nwhy: ${f.why}\n${f.model && f.model !== DEFAULT_MODEL ? `model: ${f.model}\n${f.modelWhy ? `model_why: ${f.modelWhy}\n` : ''}` : ''}${standing.length ? `standing: ${standing.join(', ')}\n` : ''}${f.objective ? `objective: ${f.objective.objective}\nmeasure: ${f.objective.measure}\ntarget: ${f.objective.target.op} ${f.objective.target.n}\n` : ''}${f.paused ? 'paused: yes\n' : ''}---\n${f.job.trim()}\n`
   const sp = parseKagelet('check', text)
   return 'error' in sp ? sp : text
 }

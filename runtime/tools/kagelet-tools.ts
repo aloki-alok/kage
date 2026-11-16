@@ -10,10 +10,11 @@ import type { KageTool, ToolContext } from '../kage-tools.ts'
 import { ALL } from '../../core/access.ts'
 
 // The owner's card for a kagelet's new tools. tools: all is for this kagelet only; any other write tool's yes stands.
-export const grantCard = (card: { kagelet: string; tools: string }) => {
+export const grantCard = (card: { kagelet: string; tools: string; measure?: string }) => {
   const asked = card.tools.split(', '), named = asked.filter(t => t !== ALL)
   return [`Grant kagelet ${card.kagelet}:`,
     ...asked.includes(ALL) ? ['all tools (shell, files, web, agents), run in a sandbox that keeps the tokens, the settings and Kage\'s code closed. A one-way step (a deploy, a forced push, a DB write, a delete, a send) is held and comes to Kage. This yes is for this kagelet only.'] : [],
+    ...card.measure ? [`Its measure, a command the hub runs on its own clock with no model: ${card.measure}. Your yes is for this exact command and file: a change asks again.`] : [],
     ...named.length ? [`${named.join(', ')}. Your yes stands: a later kagelet that asks for ${named.join(', ')} gets it with no card, until you revoke it (v in kage top, or ask). Your daily note lists each grant made with no card.`] : []].join(' ')
 }
 
@@ -181,6 +182,9 @@ export function kageletTools(c: ToolContext): KageTool[] {
       why: s.optional().describe('save: one line on why it exists'),
       model: s.optional().describe(`save: ${DEFAULT_MODEL} (the default, leave out), or ${MODELS.filter(m => m !== DEFAULT_MODEL).join(', ')}, for a job that needs it. Leave out to keep the kagelet's own`),
       model_why: s.optional().describe(`save: one line on why this kagelet needs a model beyond ${DEFAULT_MODEL}. Required with a new model; the owner sees it in the panel`),
+      objective: s.optional().describe('save: the outcome it works toward, in plain words. With measure and target, or leave all three out to keep its own'),
+      measure: s.optional().describe('save: a command the hub runs with no model that prints exactly one line, value: <n>. A new or changed one needs the owner\'s yes on a card'),
+      target: s.optional().describe('save: the number to reach, as a comparison: "<= 2" or ">= 500". Every run sees the number and keeps working, met or not'),
     },
     async run(args) {
       const { channel: _c, thread_ts: _t, ...a } = args as Manage & { channel: string; thread_ts: string }
