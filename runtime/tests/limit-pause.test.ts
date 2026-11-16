@@ -17,7 +17,7 @@ const run = (job: string, channel = 'C1', thread = '5.5'): Task => ({
 // A hub around the pause: a real store, and lists of what the pause asked the hub to do.
 function hub() {
   const store = openStore(':memory:')
-  const notices: string[] = [], toldOwner: string[] = [], ended: string[] = [], replayed: string[] = [], redelivered: string[] = [], logged: string[] = []
+  const notices: string[] = [], events: string[] = [], toldOwner: string[] = [], ended: string[] = [], replayed: string[] = [], redelivered: string[] = [], logged: string[] = []
   let failReplay = false
   const pendingAtEnd: Task[] = []   // tasks the dispatcher still had for the thread when its session closed
   const p = limitPause({
@@ -28,6 +28,7 @@ function hub() {
     redeliver: (key, task) => redelivered.push(`${key} ${task.job}`),
     log: (...a) => logged.push(a.join(' ')),
     tellOwner: text => toldOwner.push(text),
+    event: d => events.push(d),
   })
   // What a connector and the hub do with one Slack message: take it, deliver it (or hold it), then call handled.
   const hear = (key: string, t: Task, now: number, payload = `event ${t.origin.ts}`) => {
@@ -41,7 +42,7 @@ function hub() {
     if (!held && paused && paused.until > now && !paused.draining) { p.turn(key, [t], { kind: 'rate_limit', until: paused.until }, now); return true }
     return held
   }
-  return { store, p, notices, toldOwner, ended, replayed, redelivered, logged, hear, pendingAtEnd, failReplays: () => { failReplay = true } }
+  return { store, p, notices, events, toldOwner, ended, replayed, redelivered, logged, hear, pendingAtEnd, failReplays: () => { failReplay = true } }
 }
 
 describe('a turn that ends on the usage limit', () => {
@@ -132,6 +133,15 @@ describe('a turn that ends on the usage limit', () => {
     h.p.turn('C1:5.5', [next], { kind: 'rate_limit', until: 140 * MIN }, 83 * MIN)
     assert.equal(h.notices.length, 2)
   })
+  test('each limit it meets is one event: its kind, window, seconds to the reset and tasks held, never the thread', () => {
+    const h = hub()
+    const t = slackTask('7.7')
+    h.hear('C1:5.5', t, 0)
+    h.p.turn('C1:5.5', [t], { kind: 'rate_limit', until: 55 * MIN, window: 'five_hour' }, 10 * MIN)
+    h.p.turn('C2:1.1', [], { kind: 'overloaded' }, 20 * MIN)
+    assert.deepEqual(h.events, ['rate_limit window=five_hour wait_s=2700 held=1', 'overloaded wait_s=2100 held=0'])
+  })
+
   test('a limit with no reset time tries again in 15 minutes; an overload in 5, and says so', () => {
     const a = hub()
     const t = slackTask('7.7')

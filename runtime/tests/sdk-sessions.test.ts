@@ -157,12 +157,12 @@ describe('Kage sessions on the Agent SDK', () => {
     await tick()
     const run = t.sdk.runs[0]!
     t.d.task('C1:5.5', t.task({ content: 'Task from Sam: two, sent mid-turn' }), 1)
-    run.emit({ type: 'rate_limit_event', rate_limit_info: { status: 'rejected', resetsAt: 1_800_000_000 } })
+    run.emit({ type: 'rate_limit_event', rate_limit_info: { status: 'rejected', resetsAt: 1_800_000_000, rateLimitType: 'seven_day' } })
     run.emit({ type: 'assistant', parent_tool_use_id: null, error: 'rate_limit', message: { stop_reason: 'stop_sequence', content: [] } })
     run.emit({ type: 'result', total_cost_usd: 0, is_error: true })
     await tick()
     // Both tasks: the one sent mid-turn was not read either.
-    assert.deepEqual(t.turns, [['C1:5.5', ['Task from Sam: one', 'Task from Sam: two, sent mid-turn'], { kind: 'rate_limit', until: 1_800_000_000_000 }, undefined]])
+    assert.deepEqual(t.turns, [['C1:5.5', ['Task from Sam: one', 'Task from Sam: two, sent mid-turn'], { kind: 'rate_limit', until: 1_800_000_000_000, window: 'seven_day' }, undefined]])
     assert.deepEqual(t.posts, [])
     // Closing the session afterwards reports nothing more for those tasks.
     t.d.end('C1:5.5')

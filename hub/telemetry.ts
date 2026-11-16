@@ -5,15 +5,17 @@ import { randomUUID } from 'node:crypto'
 import { existsSync, readFileSync, writeFileSync } from 'node:fs'
 import { arch, platform } from 'node:os'
 import type { Config } from '../core/config.ts'
-import { crashFingerprint, sessionTelemetryEnv, TELEMETRY_NOTICE, telemetryEndpoint } from '../core/telemetry.ts'
+import { crashFingerprint, planDetail, sessionTelemetryEnv, TELEMETRY_NOTICE, telemetryEndpoint } from '../core/telemetry.ts'
 import { log } from '../runtime/log.ts'
 import { telemetryExporter, type ExportDeps } from '../runtime/telemetry-export.ts'
 
 type Deps = {
   config: Config['telemetry']; dir: string; code: string
-  ledgers: { eventsAfter: ExportDeps['events']; maxEventId: () => number; event: (e: { kind: 'crash'; who: string; trace: string; detail: string }) => void }
+  ledgers: { eventsAfter: ExportDeps['events']; maxEventId: () => number; event: (e: { kind: 'crash' | 'plan'; who: string; trace: string; detail: string }) => void }
   state: { load: (name: string) => unknown; save: (name: string, v: unknown) => void }
   notify: (text: string) => Promise<boolean>
+  // How full the seat's usage windows are, read through a live session; undefined with none running.
+  usage?: () => Promise<Parameters<typeof planDetail>[0]> | undefined
 }
 
 // A random id made once per install: it links one machine's records to each other and to nothing else.
@@ -51,5 +53,9 @@ export function startTelemetry(o: Deps) {
       sessionsOn()
     }
     await exporter.run()
+  } }, { name: 'plan usage', every: 15 * 60_000, run: async () => {
+    // ponytail: rides the SDK's experimental usage call, so a release that renames it only stops these rows.
+    const d = told() ? planDetail(await o.usage?.()?.catch(() => undefined) ?? { subscription_type: null, rate_limits: null }) : undefined
+    if (d) o.ledgers.event({ kind: 'plan', who: 'hub', trace: '', detail: d })
   } }]
 }
