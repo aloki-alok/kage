@@ -49,10 +49,11 @@ describe('decisions', () => {
     assert.deepEqual(jevLine({ status: 1, out: '' }), { kind: 'fail', text: 'jev: the check did not run' })
   })
   test('sandbox: sandbox-exec on a Mac, bubblewrap and socat on Linux', () => {
-    assert.equal(sandboxLine({ platform: 'darwin', sandboxExec: true, bwrap: false, socat: false }).kind, 'ok')
-    assert.equal(sandboxLine({ platform: 'darwin', sandboxExec: false, bwrap: true, socat: true }).kind, 'fail')
-    assert.equal(sandboxLine({ platform: 'linux', sandboxExec: false, bwrap: true, socat: false }).kind, 'fail')
-    assert.equal(sandboxLine({ platform: 'linux', sandboxExec: false, bwrap: true, socat: true }).kind, 'ok')
+    assert.equal(sandboxLine({ on: false, platform: 'linux', sandboxExec: false, bwrap: false, socat: false }).kind, 'ok', 'off: a missing sandbox blocks nothing')
+    assert.equal(sandboxLine({ on: true, platform: 'darwin', sandboxExec: true, bwrap: false, socat: false }).kind, 'ok')
+    assert.equal(sandboxLine({ on: true, platform: 'darwin', sandboxExec: false, bwrap: true, socat: true }).kind, 'fail')
+    assert.equal(sandboxLine({ on: true, platform: 'linux', sandboxExec: false, bwrap: true, socat: false }).kind, 'fail')
+    assert.equal(sandboxLine({ on: true, platform: 'linux', sandboxExec: false, bwrap: true, socat: true }).kind, 'ok')
   })
   test('session keys: one ok line per key, with its name, host and header, and no value', () => {
     const lines = keyLines({ API_KEY: { host: 'api.example.test', header: 'x-api-key', value: 'fake-secret' } as never, TOKEN_B: { host: 'b.example.test' } })

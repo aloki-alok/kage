@@ -49,7 +49,7 @@ export function sdkSessions(o: {
   toHub: (key: string, m: { type: 'mail' | 'wa' | 'voice'; text: string }) => void
   options: Options                                 // cwd, settings, settingSources, the claude binary
   ownerMemory: string; sharedTools?: readonly string[]
-  codeDir: string                                  // the folder the hub runs from: a restart runs it, so no shell may write there
+  codeDir: string; sandbox?: () => boolean          // the hub's code folder (a sandboxed shell may not write there); harness.sandbox, read at each session start
   envFile: string                                 // its folder holds the tokens: only the owner's task touches it
   onStart?: () => void                            // a new id may have been minted: save the map
   // A turn ended: the session's running cost so far. limited: it ended on the usage limit, so it did no work.
@@ -117,7 +117,7 @@ export function sdkSessions(o: {
     const resumed = o.hasTranscript(s.id)
     const budget = o.budgetOf?.(key)
     const grant = o.grantOf?.(key)
-    const walled = protectConfig(o.envFile, o.codeDir)
+    const walled = protectConfig(o.envFile, o.codeDir, undefined, o.sandbox?.() === true)
     const ssmToken = grant ? undefined : o.ssm?.issue(key)   // a kagelet lane never gets one
     const keysToken = grant ? undefined : o.keys?.issue(key)
     const q = o.sdk.query({

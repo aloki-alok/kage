@@ -9,7 +9,8 @@ import { mcpToolRefusal, privateToolRefusal, slackSendRefusal, voiceToolRefusal 
 // read config.json. Anyone else's task never touches the folder. Its files/ (each thread's files, for send_file and
 // reports) and memory/ (Kage's own lessons) stay open to every task.
 // configRefusal is the fallback: a path match cannot stop a shell. protectConfig below is the wall (Claude Code's own
-// permission rules for the file tools, the OS sandbox for the shell), measured in the #105 spike and for #116.
+// permission rules for the file tools, the OS sandbox for the shell when harness.sandbox is on), measured in the #105 spike and for #116.
+// With it off, a shell is stopped only by this word match, which a reworded command (cd in steps, a glob) gets past.
 const CONFIG_TOOLS = new Set(['Read', 'Grep', 'Glob', 'Edit', 'MultiEdit', 'Write', 'NotebookEdit', 'Bash'])
 const CONFIG_WRITES = new Set(['Edit', 'MultiEdit', 'Write', 'NotebookEdit'])
 const NOT_PATHS = new Set(['content', 'old_string', 'new_string', 'new_source', 'description', 'edits'])
@@ -30,7 +31,7 @@ export function configRefusal(tool: string, input: Record<string, unknown>, send
   if (sender === 'owner') {
     const first = (r: string) => r.split('/')[0]!
     const closed = `Kage's token files (secrets.json and the env files) are closed to every session, the owner's too. Kage's own tools post as Kage, so no session needs a token. Use the reply or message_people tool.`
-    // A shell can name the folder a hundred ways (cd, a glob, a variable), so it may not name it at all. The sandbox (protectConfig) is the real wall.
+    // A shell can name the folder a hundred ways (cd, a glob, a variable), so it may not name it at all. Only the sandbox (protectConfig, harness.sandbox on) is a real wall.
     if (tool === 'Bash') return at.length ? closed : undefined
     if (CONFIG_WRITES.has(tool)) return at.some(r => first(r) === 'config.json' || TOKEN_FILE.test(first(r))) ? CLOSED_WRITE : undefined
     return at.some(r => r === '' || r === '.' || /[*?[{]/.test(r) || TOKEN_FILE.test(first(r))) ? closed : undefined
@@ -45,22 +46,24 @@ export function configRefusal(tool: string, input: Record<string, unknown>, send
 // but files/ and memory/ (CONFIG_NAMES below, session.env is loaded into the hub's environment, kagelets/ holds the tools kagelets get), and
 // the hub's own code folder (a restart runs it) and the login files the OS starts the hub from. The hub writes all of those
 // itself, so a session needs none. An allowWrite does not reopen a denied path, so the folder's entries are listed one by one.
-// failIfUnavailable: a session never starts without the wall. Writes elsewhere and the network stay open, as without a sandbox.
+// harness.sandbox (off by default) adds the OS sandbox for the shell. failIfUnavailable: a session that asked for it never starts without it. Writes elsewhere and the network stay open, as without a sandbox.
 // Every name the hub reads or writes in the config folder (grep '${DIR}/' and '${CONF}/'; a test in runtime/tests/path-guards.test.ts fails when a
 // new one is missing). The hub does the writing itself, so a shell needs none. A name absent today must be listed too: the hub adopts a
 // crons-import.json, a threads.json or a waha/.env it finds at its next start. The folder's own entries are added at session start.
 const CONFIG_NAMES = ['session.env', 'kagelets', 'config.json*', 'crons-import.json*', 'waha', 'threads.json*', 'afk.json*', 'github-threads.json*', 'mail-threads.json*',
   'kage.db*', 'hub.lock', 'hub.log*', 'router.sock', 'ssm.sock', 'keys.sock', '.archive', 'updated-from', 'browser-seen', 'wa-notes', 'retro-sent', 'dream-sent', 'daily-sent', 'crash-dm-at',
   'config-unknown-told', 'boots', 'held', 'sender', 'ledgers']
-export function protectConfig(envFile: string, codeDir: string, home = process.env.HOME ?? '') {
+export function protectConfig(envFile: string, codeDir: string, home = process.env.HOME ?? '', sandbox = false) {
   const dirs = [...new Set([dirname(envFile), realish(dirname(envFile))])]
   const tokens = dirs.flatMap(d => [`${d}/secrets.json*`, `${d}/env*`, `${d}/session.env*`, `${d}/waha/.env*`])
   const kept = new Set(['files', 'memory'])
   const folder = dirs.flatMap(d => [...new Set([...CONFIG_NAMES,
     ...(() => { try { return readdirSync(d) } catch { return [] } })().filter(n => !kept.has(n))])].map(n => `${d}/${n}`))
   const deny = (f: string) => [`Edit(/${f})`]
+  const permissions = { deny: dirs.flatMap(d => [`Read(/${d}/secrets.json)`, `Read(/${d}/env*)`, `Read(/${d}/session.env)`, `Read(/${d}/waha/.env)`, ...['secrets.json', 'env*', 'config.json', 'session.env', 'waha/.env'].flatMap(f => deny(`${d}/${f}`))]) }
+  if (!sandbox) return { permissions }
   return {
-    permissions: { deny: dirs.flatMap(d => [`Read(/${d}/secrets.json)`, `Read(/${d}/env*)`, `Read(/${d}/session.env)`, `Read(/${d}/waha/.env)`, ...['secrets.json', 'env*', 'config.json', 'session.env', 'waha/.env'].flatMap(f => deny(`${d}/${f}`))]) },
+    permissions,
     sandbox: {
       enabled: true, failIfUnavailable: true, autoAllowBashIfSandboxed: false, allowUnsandboxedCommands: false,
       network: { allowedDomains: ['*'], allowLocalBinding: true, allowAllUnixSockets: true },

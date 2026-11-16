@@ -177,20 +177,34 @@ describe('the token files behind every path form, and config.json closed to writ
   })
 })
 
+describe('harness.sandbox: off by default, the file rules stay', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'kage-nosandbox-'))
+  test('with no setting a session gets no OS sandbox, so its shell works like the owner\'s terminal', () => {
+    assert.equal('sandbox' in protectConfig(`${dir}/env`, dir, '/home/o'), false)
+  })
+  test('the token files stay closed to the file tools with the sandbox off', () => {
+    const w = protectConfig(`${dir}/env`, dir, '/home/o')
+    for (const n of ['secrets.json', 'session.env']) assert.ok(w.permissions.deny.includes(`Read(/${realpathSync(dir)}/${n})`), n)
+  })
+  test('on, it is the wall every session had before', () => {
+    assert.equal(protectConfig(`${dir}/env`, dir, '/home/o', true).sandbox?.enabled, true)
+  })
+})
+
 describe('protectConfig: what the sandbox and the file rules close', () => {
   const dir = mkdtempSync(join(tmpdir(), 'kage-protect-'))
   const code = mkdtempSync(join(tmpdir(), 'kage-code-'))
   for (const f of ['config.json', 'secrets.json', 'afk.json', 'hub.log']) writeFileSync(join(dir, f), '')
   for (const d of ['files', 'memory', 'sender']) mkdirSync(join(dir, d))
-  const w = protectConfig(`${dir}/env`, code, '/home/o')
+  const w = protectConfig(`${dir}/env`, code, '/home/o', true)
   const real = (p: string) => realpathSync(p)
   test('a shell may not write anything in the config folder but files/ and memory/, whether or not it exists yet', () => {
-    const deny = w.sandbox.filesystem.denyWrite
+    const deny = w.sandbox!.filesystem.denyWrite
     for (const n of ['session.env', 'kagelets', 'config.json*', 'secrets.json*', 'env*', 'afk.json', 'hub.log', 'sender']) assert.ok(deny.includes(`${real(dir)}/${n}`), n)
     for (const n of ['files', 'memory']) assert.ok(!deny.some(d => d === `${real(dir)}/${n}` || d === real(dir)), n)
   })
   test('no session reads session.env or the waha key file, though only secrets.json and env* were named before', () => {
-    const read = w.sandbox.filesystem.denyRead
+    const read = w.sandbox!.filesystem.denyRead
     for (const n of ['secrets.json*', 'env*', 'session.env*', 'waha/.env*']) assert.ok(read.includes(`${real(dir)}/${n}`), n)
     for (const n of ['session.env', 'waha/.env']) assert.ok(w.permissions.deny.includes(`Read(/${real(dir)}/${n})`), n)
     for (const n of ['session.env', 'waha/.env']) assert.ok(w.permissions.deny.includes(`Edit(/${real(dir)}/${n})`), n)
@@ -203,12 +217,12 @@ describe('protectConfig: what the sandbox and the file rules close', () => {
     assert.equal(configRefusal('Glob', { path: `${real(dir)}/memory`, pattern: '.archive/*' }, 'owner', `${dir}/env`, '/home/o'), undefined)
   })
   test('a name the hub reads when it is absent (crons-import.json, waha, threads.json) cannot be created, though the folder lacks it now', () => {
-    const deny = w.sandbox.filesystem.denyWrite
+    const deny = w.sandbox!.filesystem.denyWrite
     for (const n of ['crons-import.json*', 'waha', 'threads.json*', 'afk.json*', 'github-threads.json*', 'mail-threads.json*', 'kage.db*', 'hub.lock', 'router.sock']) assert.ok(deny.includes(`${real(dir)}/${n}`), n)
   })
   test('every name the code builds under the config folder with ${DIR}/, ${CONF}/ or ${o.dir}/ is on that list or is files/ or memory/', () => {
     const root = new URL('../../', import.meta.url).pathname
-    const names = w.sandbox.filesystem.denyWrite.map(d => d.split('/').pop()!)
+    const names = w.sandbox!.filesystem.denyWrite.map(d => d.split('/').pop()!)
     const covered = (n: string) => names.some(d => d === n || (d.endsWith('*') && n.startsWith(d.slice(0, -1))))
     const seen = new Set<string>()
     for (const f of execFileSync('git', ['ls-files', '*.ts', '*.sh'], { cwd: root, encoding: 'utf8' }).split('\n').filter(f => f && !f.includes('tests/'))) {
@@ -220,14 +234,14 @@ describe('protectConfig: what the sandbox and the file rules close', () => {
     assert.deepEqual(missing, [], 'add these to CONFIG_NAMES in runtime/path-guards.ts, or to the open list here if a session needs to write them')
   })
   test('the hub code folder and the files the OS reads at login are closed to writes too', () => {
-    const deny = w.sandbox.filesystem.denyWrite
+    const deny = w.sandbox!.filesystem.denyWrite
     assert.ok(deny.includes(real(code)))
     assert.ok(deny.includes('/home/o/Library/LaunchAgents') && deny.includes('/home/o/.config/systemd'))
   })
   test('the file rules use Edit, which covers Write, and the sandbox must start', () => {
     assert.ok(w.permissions.deny.every(r => !r.startsWith('Write(')))
     assert.ok(w.permissions.deny.includes(`Edit(/${real(dir)}/config.json)`))
-    assert.equal(w.sandbox.failIfUnavailable, true)
+    assert.equal(w.sandbox!.failIfUnavailable, true)
   })
 })
 

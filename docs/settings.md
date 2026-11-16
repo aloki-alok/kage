@@ -60,6 +60,7 @@ Only a listed agent's post goes to Jev, at most its first 4,000 characters, with
 | `harness.jobFreshEvery` | `20` | After this many runs on one schedule's lane, the next run starts a new session, so a job's own history stays small. `0` always resumes. A session may change this one. |
 | `harness.jobCarry` | `5` | When a lane starts a new session, its first task quotes the text of this many of the job's latest posts, read from the old session's own transcript (their place, when that transcript is gone), so the job does not report the same thing twice. `0` lists none. A session may change this one. |
 | `harness.jobCarryChars` | `500` | The most characters kept of each post a new lane session is told about. A session may change this one. |
+| `harness.sandbox` | `off` | `on` runs every session's shell in the OS sandbox: it cannot read the token files or write Kage's settings, code or start files. Turn it on for a hub that serves people you trust less. It needs `/usr/bin/sandbox-exec` on macOS, or `bubblewrap` and `socat` on Linux. With it off, the token files and settings stay closed to the file tools, and the hook refuses a shell command that names the config folder, but a reworded command gets past the hook. So turn it on when people you trust less tag your Kage. |
 | `harness.jobLaneDefault` | `on` | A new schedule runs in its own lane, so a run never replays the thread's history. `off` runs new schedules in the thread. The `schedule` tool's `lane` argument sets one schedule either way. A schedule made before lanes keeps running in its thread. A session may change this one. |
 | `harness.runtime` | SDK | `tmux` runs each thread as a Claude Code pane instead of an Agent SDK session in the hub. |
 | `harness.route` | `dev` | With `harness.runtime` set to `tmux` only. `plugin` starts panes with no warning screen, once your org approves the channel. |
@@ -69,7 +70,7 @@ Only a listed agent's post goes to Jev, at most its first 4,000 characters, with
 
 ## ssh to hosts behind AWS SSM
 
-A session's shell runs in an OS sandbox. `aws ssm start-session` makes its API call through the sandbox's proxy, then starts `session-manager-plugin`, which opens its own websocket and ignores that proxy. So it hangs inside a session. Kage fixes this for every host, account and region with no setup: whatever `ssh` does in your terminal also works in an owner thread, and `~/.ssh/config` needs nothing from Kage.
+With `harness.sandbox` on, a session's shell runs in an OS sandbox. `aws ssm start-session` makes its API call through the sandbox's proxy, then starts `session-manager-plugin`, which opens its own websocket and ignores that proxy. So it hangs inside a session. Kage fixes this for every host, account and region with no setup: whatever `ssh` does in your terminal also works in an owner thread, and `~/.ssh/config` needs nothing from Kage.
 
 Only an owner-only Slack thread gets a relay token (`KAGE_SSM_TOKEN`), the socket path (`KAGE_SSM_SOCK`) and a PATH that starts with Kage's own folder `cli/ssm-plugin-shim`. That folder holds a stand-in `session-manager-plugin`. The aws CLI runs it, and it sends aws's arguments to the hub over a unix socket (`ssm.sock` in the config folder, mode 600). Teammate, agent, email, WhatsApp, voice and kagelet sessions get none, and the hub refuses them.
 
