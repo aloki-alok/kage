@@ -14,7 +14,7 @@ const field = (detail: string, k: string) => detail.match(new RegExp(`(?:^| )${k
 const WINDOWS = ['five_hour', 'seven_day', 'seven_day_opus', 'seven_day_sonnet', 'seven_day_overage_included', 'overage']
 
 // How the hub's run before this boot ended, from the end of its log: the lines between the last two "hub start" lines
-// (hub.ts), or all of them when only one is there. killed: that run left no goodbye line, so the machine slept or
+// (hub.ts), or the lines before the only one. The lines after the last start are this boot's own. killed: that run left no goodbye line, so the machine slept or
 // lost power, or something killed it (kill -9, out of memory).
 const BOOT_WHYS = ['update', 'settings', 'stop', 'crash', 'duplicate', 'killed', 'first']
 const ENDINGS: [RegExp, string][] = [
@@ -24,7 +24,7 @@ const ENDINGS: [RegExp, string][] = [
 export function bootWhy(logTail: string) {
   const lines = logTail.split('\n').filter(l => l.trim())
   const starts = lines.flatMap((l, i) => l.includes(' hub.ts: hub start ') ? [i] : [])
-  const end = starts.at(-1) === lines.length - 1 ? starts.pop()! : lines.length
+  const end = starts.pop() ?? lines.length
   const run = lines.slice((starts.at(-1) ?? -1) + 1, end)
   for (const line of run.reverse()) for (const [re, why] of ENDINGS) if (re.test(line)) return why
   return run.length ? 'killed' : 'first'
