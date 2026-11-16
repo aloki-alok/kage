@@ -4,7 +4,7 @@
 // chains and messages between kagelets (#93), which the hub hands on with no Kage turn.
 import type { Delivery } from '../core/sessions.ts'
 import type { Task } from '../core/task.ts'
-import { addAllow, budgetLeft, COST_FLAG, costFlags, kageletRows, parseKagelet, type Kagelet } from '../core/kagelets.ts'
+import { addAllow, askable, budgetLeft, COST_FLAG, costFlags, kageletRows, parseKagelet, type Kagelet } from '../core/kagelets.ts'
 import { heldCommand } from '../core/held.ts'
 import { chainCap, dailyCap, totalCap } from '../core/kagelet-view.ts'
 import type { Config } from '../core/config.ts'
@@ -13,7 +13,7 @@ import { costCap } from '../runtime/kagelet-cost-cap.ts'
 import { kageletsDir, migrateKagelets, readKagelets, writeJob } from '../runtime/kagelet-files.ts'
 import { kageletManager } from '../runtime/kagelet-manager.ts'
 import { kageletMemory } from '../runtime/kagelet-memory.ts'
-import { kageletDeliver, ownerNotes } from '../runtime/kagelet-notes.ts'
+import { kageletDeliver, NOTE_CAP, ownerNotes } from '../runtime/kagelet-notes.ts'
 import { kageletMeasures } from '../runtime/kagelet-measures.ts'
 import { kageletNeeds } from '../runtime/kagelet-needs.ts'
 import { kageletRoutes } from '../runtime/kagelet-routes.ts'
@@ -84,7 +84,7 @@ export function hubKagelets(o: {
   }
   const board = (key: string) => { const k = parsed().find(x => x.key === key); return k && measures.board(k.name, k.objective) }
   const manager = kageletManager({ dir: KAGELETS, max: MAX, ledgers, sync, runNow: o.runNow, store, envCommand: kl.dbRead?.command ?? undefined, log, measures })
-  const notes = ownerNotes(store)
+  const notes = ownerNotes(store, () => ({ kept: kl.notesKept ?? NOTE_CAP.kept, chars: kl.noteChars ?? NOTE_CAP.chars }))
   const routes = kageletRoutes({ dir: KAGELETS, store, ledgers, runs: o.runs, deliver: kageletDeliver(notes, o.toSession, board),
     idle: o.idle, paused: o.paused, capUsd: CAPS.each, chainUsd: CAPS.chain, log, memory: name => kmem.notes(name) })
   // A kagelet's needs go to Kage in its thread (ADR 0018); Kage's answer waits in its notes for its next run.
@@ -96,12 +96,10 @@ export function hubKagelets(o: {
     o.runs.emit(lane, 'owner-note', `${text.length} characters, from Kage`)
     return runNow ? `told ${name}. ${await manager.manage({ action: 'run', name }, now)}` : `told ${name}: its next run reads it`
   }
-  // The kagelets posting in a thread that name people, for the gate. A paused one takes no asks.
-  const inThread = (chat: string, thread: string) => parsed().filter(k => !k.paused && k.people && k.key.startsWith(`${chat}:${thread}#side-kagelet-`))
   // A person on a kagelet's people line asked it for work: a note it reads, and a run when it is idle and under
   // kagelets.askRunsPerHour. Returns the line posted under their message.
   const ask = (chat: string, thread: string, name: string, from: string, text: string, now = Date.now()): string => {
-    const k = inThread(chat, thread).find(x => x.name === name && x.people!.includes(from))
+    const [k] = askable(parsed(), chat, thread, name, from)
     if (!k) return ''
     notes.asked(k.key, from, text)
     o.runs.emit(k.key, 'people-ask', `${text.length} characters`)
@@ -111,7 +109,7 @@ export function hubKagelets(o: {
   }
   return {
     dir: KAGELETS, kmem, manager, routes, sync, notes, needs, tell, board, measures, ask,
-    peopleIn: (chat: string, thread: string) => inThread(chat, thread).map(k => ({ name: k.name, people: k.people! })),
+    peopleIn: (chat: string, thread: string) => askable(parsed(), chat, thread).map(k => ({ name: k.name, people: k.people! })),
     measure: (now: number) => measures.tick(parsed(), now).catch(e => log('kagelet measure failed', e)),
     lanes: () => grants.keys(),
     // A lane whose file is gone keeps no tools, rather than falling back to approval cards.

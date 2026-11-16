@@ -24,7 +24,7 @@ const standings = (store: Pick<Store, 'load'>) => (store.load(STANDING) ?? {}) a
 
 // The owner's answer to Kage's approval card (runtime/sdk-sessions.ts): true only on their yes.
 // tools: the write tools the card grants. measure: a command Kage wrote for the hub to run with no model.
-export type AskOwner = (card: { kagelet: string; tools: string; job: string; measure?: string }) => Promise<boolean>
+export type AskOwner = (card: { kagelet: string; tools: string; job: string; measure?: string; people?: string }) => Promise<boolean>
 
 // The manager's side (Kage's owner sessions, runtime/kage-tools.ts): write, pause, run and remove kagelet files.
 // The hub syncs right after a change, so run works at once; the minute sync applies it anyway.
@@ -142,9 +142,12 @@ export function kageletManager(o: { dir: string; max: number; ledgers: { text(na
       const kept = writes.filter(t => had?.tools.includes(t) && !had.standing?.includes(t) && (t !== ALL || had.job.trim() === (a.job ?? '').trim()))
       const standing = writes.filter(t => t !== ALL && !kept.includes(t) && yes[t] !== undefined)
       const card = writes.filter(t => !kept.includes(t) && yes[t] === undefined), stands = card.filter(t => t !== ALL)
-      const asked = [...card, ...standing.filter(t => fresh.includes(t)), ...measure ? [`the measure ${measure}`] : []].join(', ')
+      // A person new to its people line can steer every tool it holds, so only the owner adds one.
+      const newPeople = (a.people ?? []).filter(p => !had?.people?.includes(p)).join(', ')
+      const extra = [...measure ? [`the measure ${measure}`] : [], ...newPeople ? [`asks from ${newPeople}`] : []]
+      const asked = [...card, ...standing.filter(t => fresh.includes(t)), ...extra].join(', ')
       if (asked && !ask) return refuse(`only the owner grants ${asked}, and this session cannot ask them`)
-      if ((card.length || measure) && !await ask!({ kagelet: a.name, tools: card.join(', '), job: (a.job ?? '').trim().split('\n')[0]!.slice(0, 300), ...measure && { measure } })) return refuse(`the owner did not approve ${[...card, ...measure ? [`the measure ${measure}`] : []].join(', ')}`)
+      if ((card.length || extra.length) && !await ask!({ kagelet: a.name, tools: card.join(', '), job: (a.job ?? '').trim().split('\n')[0]!.slice(0, 300), ...measure && { measure }, ...newPeople && { people: newPeople } })) return refuse(`the owner did not approve ${[...card, ...extra].join(', ')}`)
       const unpinned = measure && (o.measures ? o.measures.approve(a.name, measure) : 'this hub runs no measures')
       if (unpinned) return refuse(unpinned)
       const text = fileText(true, standing)

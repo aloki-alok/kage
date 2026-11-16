@@ -70,6 +70,13 @@ export function parseKagelet(name: string, text: string): Kagelet | { error: str
     ...(Date.parse(head.get('resumed') ?? '') >= 0 && { resumed: Date.parse(head.get('resumed')!) }), ...(standing.length && { standing }), ...(objective && { objective }), ...(allow.length && { allow }), ...(people.length && { people }) }
 }
 
+// The kagelets that take asks in a thread (ADR 0018 rule 0): running, posting in exactly that thread, with a people
+// line. With name and from, only that kagelet, and only when from is on its line.
+export function askable(ks: Kagelet[], chat: string, thread: string, name?: string, from?: string): Kagelet[] {
+  return ks.filter(k => !k.paused && k.people && k.key.startsWith(`${chat}:${thread}#side-kagelet-`)
+    && (name === undefined || (k.name === name && k.people.includes(from ?? ''))))
+}
+
 // Fails closed: any value but none, no or false pauses it, so a typo never starts a kagelet.
 const isPaused = (v = '') => !['', 'no', 'false'].includes(v.toLowerCase())
 

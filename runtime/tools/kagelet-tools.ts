@@ -10,10 +10,11 @@ import type { KageTool, ToolContext } from '../kage-tools.ts'
 import { ALL } from '../../core/access.ts'
 
 // The owner's card for a kagelet's new tools. tools: all is for this kagelet only; any other write tool's yes stands.
-export const grantCard = (card: { kagelet: string; tools: string; measure?: string }) => {
-  const asked = card.tools.split(', '), named = asked.filter(t => t !== ALL)
+export const grantCard = (card: { kagelet: string; tools: string; measure?: string; people?: string }) => {
+  const asked = card.tools.split(', ').filter(Boolean), named = asked.filter(t => t !== ALL)
   return [`Grant kagelet ${card.kagelet}:`,
     ...asked.includes(ALL) ? ['all tools (shell, files, web, agents), run in a sandbox that keeps the tokens, the settings and Kage\'s code closed. A one-way step (a deploy, a forced push, a DB write, a delete, a send) is held and comes to Kage. This yes is for this kagelet only.'] : [],
+    ...card.people ? [`Let ${card.people.split(', ').map(p => `<@${p}>`).join(', ')} ask it for work in its thread. Their asks run inside its grant and never reach Kage.`] : [],
     ...card.measure ? [`Its measure, a command the hub runs on its own clock with no model: ${card.measure}. Your yes is for this exact command and file: a change asks again.`] : [],
     ...named.length ? [`${named.join(', ')}. Your yes stands: a later kagelet that asks for ${named.join(', ')} gets it with no card, until you revoke it (v in kage top, or ask). Your daily note lists each grant made with no card.`] : []].join(' ')
 }

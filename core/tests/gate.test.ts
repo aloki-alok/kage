@@ -29,6 +29,10 @@ describe('who can drive the agent', () => {
     assert.deepEqual(ask({ client_msg_id: undefined, app_id: 'AX', bot_id: 'BX' }), { kind: 'drop', reason: 'not-listed' })
     assert.deepEqual(ask({ subtype: 'message_changed' }), { kind: 'drop', reason: 'not-listed' })
     assert.deepEqual(ask({ user: 'UOTHER' }), { kind: 'drop', reason: 'not-listed' })
+    // On two kagelets in one thread: the ask names which one, or it reaches neither.
+    const two = [{ name: 'fude', people: [PERSON] }, { name: 'scout', people: [PERSON] }]
+    assert.deepEqual(ask({ text: `<@${BOT}> scout, find three leads` }, two), { kind: 'kagelet-ask', name: 'scout', text: 'scout, find three leads' })
+    assert.deepEqual(ask({}, two), { kind: 'drop', reason: 'not-listed' })
     // The owner and a listed teammate still reach Kage in that thread.
     assert.deepEqual(ask({ user: MATE }), { kind: 'task', text: 'draft one on pricing' })
     assert.deepEqual(ask({ user: OWNER }), { kind: 'task', text: 'draft one on pricing' })

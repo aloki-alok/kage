@@ -75,8 +75,11 @@ export function classify(m: SlackMessage, ids: Ids, card?: string, kagelets: { n
   // Someone who is neither the owner nor a listed teammate, typing a reply in a kagelet's thread, with that kagelet's
   // people line naming them. Their words become one plain line: no hidden characters, no lines posing as a manager's.
   if (!isOwner && !ids.teammates.includes(m.user ?? '') && m.thread_ts && m.thread_ts !== m.ts && typedByPerson(m)) {
-    const k = kagelets.find(k => k.people.includes(m.user ?? ''))
-    if (k) return { kind: 'kagelet-ask', name: k.name, text: oneLine(withoutInvisible(raw.replace(tag, ''))).replace(/\s+/g, ' ').trim() }
+    const text = oneLine(withoutInvisible(raw.replace(tag, ''))).replace(/\s+/g, ' ').trim()
+    // On two of this thread's kagelets, the ask names the one it is for, or it reaches neither.
+    const theirs = kagelets.filter(k => k.people.includes(m.user ?? ''))
+    const k = theirs.length === 1 ? theirs[0] : theirs.find(k => new RegExp(`\\b${k.name}\\b`, 'i').test(text))
+    if (k) return { kind: 'kagelet-ask', name: k.name, text }
   }
   if (!isOwner && !itself && !ids.teammates.includes(m.user ?? '')) return drop('not-listed')
   if (!typedByPerson(m) && (isOwner || !(itself || postedByTrustedApp(m, ids.apps ?? [])))) return drop('not-proven')

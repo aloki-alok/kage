@@ -11,37 +11,44 @@ const NOTES = 'kagelet-notes'
 const ASKS = 'kagelet-asks'
 const ASK_RUNS = 'kagelet-ask-runs'
 const HOUR = 3600_000
-export function ownerNotes(store: Pick<Store, 'load' | 'save'>) {
+// The defaults of kagelets.notesKept and kagelets.noteChars (docs/settings.md).
+export const NOTE_CAP = { kept: 10, chars: 2000 }
+// cap: those settings, read on each write so a change applies at once.
+export function ownerNotes(store: Pick<Store, 'load' | 'save'>, cap: () => { kept: number; chars: number } = () => NOTE_CAP) {
   const all = () => (store.load(NOTES) ?? {}) as Record<string, string[]>
   const asks = () => (store.load(ASKS) ?? {}) as Record<string, { from: string; text: string }[]>
   return {
     // from: the asker's Slack id. text: one plain line from the gate (core/gate.ts classify).
     asked(lane: string, from: string, text: string) {
       const a = asks()
-      a[lane] = [...a[lane] ?? [], { from, text: text.slice(0, 2000) }].slice(-10)
+      const { kept, chars } = cap()
+      a[lane] = [...a[lane] ?? [], { from, text: text.slice(0, chars) }].slice(-kept)
       store.save(ASKS, a)
     },
     // Whether this ask may start a run now: the lane is idle and fewer than perHour asks started one in the last hour.
     mayRun(lane: string, idle: boolean, now: number, perHour: number): boolean {
-      const runs = (store.load(ASK_RUNS) ?? {}) as Record<string, number[]>
-      const recent = (runs[lane] ?? []).filter(t => now - t < HOUR)
-      if (!idle || recent.length >= perHour) return false
-      runs[lane] = [...recent, now]
-      store.save(ASK_RUNS, runs)
-      return true
+      // Every lane drops runs over an hour old, and a lane with none left goes, so a removed kagelet keeps nothing.
+      const runs = Object.fromEntries(Object.entries((store.load(ASK_RUNS) ?? {}) as Record<string, number[]>)
+        .map(([k, ts]) => [k, ts.filter(t => now - t < HOUR)] as const).filter(([, ts]) => ts.length))
+      const ok = idle && (runs[lane]?.length ?? 0) < perHour
+      if (ok) runs[lane] = [...runs[lane] ?? [], now]
+      store.save(ASK_RUNS, Object.keys(runs).length ? runs : undefined)
+      return ok
     },
     // lanes: every kagelet's lane key (the grants). Each lane in this thread keeps the last 10. Returns the lanes it reached.
     wrote(lanes: Iterable<string>, chat: string, thread: string, text: string) {
       const notes = all()
       const hit = [...lanes].filter(k => k.startsWith(`${chat}:${thread}#side-kagelet-`))
-      for (const k of hit) notes[k] = [...notes[k] ?? [], text.slice(0, 2000)].slice(-10)
+      const { kept, chars } = cap()
+      for (const k of hit) notes[k] = [...notes[k] ?? [], text.slice(0, chars)].slice(-kept)
       if (hit.length) store.save(NOTES, notes)
       return hit
     },
     // Kage's answer to one kagelet (tell_kagelet), marked as its manager's.
     tell(lane: string, text: string) {
       const notes = all()
-      notes[lane] = [...notes[lane] ?? [], `Kage, your manager: ${text.slice(0, 2000)}`].slice(-10)
+      const { kept, chars } = cap()
+      notes[lane] = [...notes[lane] ?? [], `Kage, your manager: ${text.slice(0, chars)}`].slice(-kept)
       store.save(NOTES, notes)
     },
     // deliver: hands the run over with the notes; false means it never reached a session, so they stay.
