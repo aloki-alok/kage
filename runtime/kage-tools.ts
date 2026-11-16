@@ -227,7 +227,7 @@ export function sessionTools(o: {
       taskChannels.add(m.meta.channel)
       ownerTask.set(key, m.fromOwner === true)
       job = m.job
-      need = m.need
+      need = m.need?.name
       jobThread = key
       askers.set(key, teammateOf(m.content))
       agents.set(key, m.agent)

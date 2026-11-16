@@ -55,7 +55,7 @@ export function kageletTools(c: ToolContext): KageTool[] {
       const a = args as { name: string; text: string; run_now?: boolean }
       const need = c.need()
       if (need !== undefined && a.name !== need) return { isError: true, text: `this run handles ${need}'s need, so it may only answer ${need}` }
-      if (need === undefined && !ownerOnly(args)) return { isError: true, text: 'only the owner\'s task, or the run that handles a kagelet\'s need, may tell a kagelet something' }
+      if (need === undefined && (c.jobRun() || !ownerOnly(args))) return { isError: true, text: 'only the owner\'s own task, or the run that handles a kagelet\'s need, may tell a kagelet something. A job\'s run puts it in its report' }
       return { text: await tell(a.name, String(a.text ?? ''), a.run_now === true) }
     },
   })

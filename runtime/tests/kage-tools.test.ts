@@ -839,7 +839,7 @@ describe("a session's Kage tools", () => {
   test('tell_kagelet answers the kagelet whose need this run handles, or any kagelet on the owner\'s task; a need run reads outside text', async () => {
     const a = { channel: 'C1', thread_ts: '5.5' }
     const s = setup()
-    s.t.onTask({ ...s.task({ fromOwner: false }), scheduled: true, need: 'fude' })
+    s.t.onTask({ ...s.task({ fromOwner: false }), scheduled: true, need: { name: 'fude', id: 'n1' } })
     assert.equal((await s.call('tell_kagelet', { ...a, name: 'fude', text: 'use the drafts folder', run_now: true })).isError, undefined)
     assert.ok(s.routed.includes('tell fude now: use the drafts folder'))
     assert.match((await s.call('tell_kagelet', { ...a, name: 'kane', text: 'x' })).text, /only answer fude/)
@@ -847,6 +847,8 @@ describe("a session's Kage tools", () => {
     assert.equal((await s.call('unschedule', { ...a, id: 'j1' })).isError, true)   // the need's words are data, like a job run's
     s.t.onTask(s.task({ fromOwner: false }))
     assert.match((await s.call('tell_kagelet', { ...a, name: 'fude', text: 'x' })).text, /only the owner/)
+    s.t.onTask({ ...s.task({ fromOwner: true }), scheduled: true, job: 'j1' })
+    assert.match((await s.call('tell_kagelet', { ...a, name: 'fude', text: 'x' })).text, /only the owner/)   // an owner's job run read outside text
     s.t.onTask(s.task({ fromOwner: true }))
     assert.equal((await s.call('tell_kagelet', { ...a, name: 'kane', text: 'pause the drafts' })).isError, undefined)
     assert.ok(s.routed.includes('tell kane: pause the drafts'))

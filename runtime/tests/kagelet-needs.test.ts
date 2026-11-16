@@ -25,7 +25,7 @@ test('a need goes to Kage in the kagelet\'s own thread, quoted as data, at teamm
   assert.equal(key, 'C1:5.5')
   assert.equal(task.fromOwner, false)
   assert.equal(task.scheduled, true)
-  assert.equal(task.need, 'fude')
+  assert.equal(task.need!.name, 'fude')
   assert.deepEqual(task.meta, { channel: 'C1', thread_ts: '5.5', place: '#blog', permalink: '' })
   assert.match(task.content, /Kagelet "fude"/)
   assert.match(task.content, /\n> the blog's admin login/)
@@ -48,8 +48,16 @@ test('a busy thread or a usage pause keeps the need until the thread is free; a 
   assert.equal(t.sent.length, 1)
   t.needs.pump(4)
   assert.equal(t.sent.length, 1)                          // handed once
-  assert.equal(t.needs.add(LANE, 'fude', 'admin login', 5), 'folded')   // already with Kage today
-  assert.equal(t.needs.add(LANE, 'fude', 'admin login', DAY + 6), 'sent')   // a day later it may ask again
+  t.needs.settle([t.sent[0]![1]], false, 4)                  // the turn was cut or hit the limit: it waits again
+  t.needs.pump(5)
+  assert.equal(t.sent.length, 2)
+  t.needs.replay(6)                                        // the hub restarted mid-turn
+  assert.equal(t.sent.length, 3)
+  t.needs.settle([t.sent[2]![1]], true, 6)
+  t.needs.replay(7)
+  assert.equal(t.sent.length, 3)                          // done is done
+  assert.equal(t.needs.add(LANE, 'fude', 'admin login', 8), 'folded')   // already with Kage today
+  assert.equal(t.needs.add(LANE, 'fude', 'admin login', DAY + 9), 'sent')   // a day later it may ask again
 })
 
 test('past the daily cap, or a day with no free thread, a need goes on the owner\'s waiting list instead', () => {
@@ -58,6 +66,8 @@ test('past the daily cap, or a day with no free thread, a need goes on the owner
   t.needs.add(LANE, 'fude', 'b', 0)
   assert.equal(t.needs.add(LANE, 'fude', 'c', 0), 'capped')
   assert.deepEqual(t.waiting, [['open', 'C1:5.5', '', 'fude needs: c']])
+  assert.equal(t.needs.add(LANE, 'fude', 'C', 0), 'folded')   // a stuck kagelet adds one row, not one per repeat
+  assert.equal(t.waiting.length, 1)
   assert.equal(t.needs.add('C1:5.5#side-kagelet-kane', 'kane', 'x', 0), 'sent')   // the cap is per kagelet
   const v = setup()
   v.store.seen('C3:7.7#side-kagelet-zeni', { connector: 'slack', chat: 'C3', thread: '7.7', kind: 'channel' }, 'zeni (kagelet)', 0)
