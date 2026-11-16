@@ -14,6 +14,15 @@ describe('a kagelet file', () => {
       name: 'deploys', key: 'CTEST1:1700000000.123456#side-kagelet-deploys', link: LINK, cron: '0 9 * * 1-5', tools: ['WebSearch', 'WebFetch'], job: 'Post a summary of the deploy log.', paused: false, by: 'owner', why: '', model: 'sonnet', modelWhy: '',
     })
   })
+  test('a people line names who may ask it for work: Slack ids, kept on save; a bad id or a second line is refused', () => {
+    const k = parseKagelet('x', file(`thread: ${LINK}\nschedule: 0 9 * * *\npeople: U0AAA1, W0BBB2`)) as Kagelet
+    assert.deepEqual(k.people, ['U0AAA1', 'W0BBB2'])
+    const text = kageletFile({ thread: LINK, schedule: '0 9 * * *', tools: [], job: 'Report.', by: 'kage', why: '', people: k.people }) as string
+    assert.deepEqual((parseKagelet('x', text) as Kagelet).people, ['U0AAA1', 'W0BBB2'])
+    assert.equal((parseKagelet('x', file(`thread: ${LINK}\nschedule: 0 9 * * *`)) as Kagelet).people, undefined)
+    assert.match((parseKagelet('x', file(`thread: ${LINK}\nschedule: 0 9 * * *\npeople: alice`)) as { error: string }).error, /people/)
+    assert.match((parseKagelet('x', file(`thread: ${LINK}\nschedule: 0 9 * * *\npeople: U0AAA1\npeople: U0CCC3`)) as { error: string }).error, /people/)
+  })
   test('allow lines are the owner\'s rules: one per line, kept on save, and a rule must start with a command word', () => {
     const head = `thread: ${LINK}\nschedule: 0 9 * * *\ntools: all\nallow: git push --force origin feat/*\nallow:   curl -X POST https://hooks.example.com/staging/*  `
     const k = parseKagelet('x', file(head)) as Kagelet

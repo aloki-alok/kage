@@ -30,7 +30,7 @@ export type AskOwner = (card: { kagelet: string; tools: string; job: string; mea
 // The hub syncs right after a change, so run works at once; the minute sync applies it anyway.
 // read_command: names one of the install's read commands for db_read. revoke: name is the tool.
 // No field here says who asked: the model fills every one, so none may widen a grant.
-export type Manage = { action: 'save' | 'pause' | 'resume' | 'run' | 'remove' | 'revoke'; name: string; thread?: string; schedule?: string; after?: string; tools?: string[]; job?: string; why?: string; model?: string; model_why?: string; read_command?: string; objective?: string; measure?: string; target?: string }
+export type Manage = { action: 'save' | 'pause' | 'resume' | 'run' | 'remove' | 'revoke'; name: string; thread?: string; schedule?: string; after?: string; tools?: string[]; job?: string; why?: string; model?: string; model_why?: string; read_command?: string; objective?: string; measure?: string; target?: string; people?: string[] }
 export function kageletManager(o: { dir: string; max: number; ledgers: { text(name: 'runs' | 'costs' | 'reports'): string } & Pick<Ledgers, 'add' | 'events'>; sync: (now: number) => void; runNow: (id: string, now: number) => string | undefined; store: Pick<Store, 'load' | 'save'>; envCommand?: string; log: (line: string) => void
   measures?: { approved: (name: string) => string | undefined; approve: (name: string, command: string) => string | undefined; forget: (name: string) => void } }) {
   // Once: the standing approval from before tiers ({ tool, command, at }) covered db_read alone, which is read now.
@@ -120,7 +120,7 @@ export function kageletManager(o: { dir: string; max: number; ledgers: { text(na
       const goal = a.objective || a.measure || a.target ? objectiveOf(new Map(Object.entries({ objective: a.objective ?? '', measure: a.measure ?? '', target: a.target ?? '' }))) : had?.objective
       if (goal && 'error' in goal) return refuse(goal.error)
       const measure = goal && o.measures?.approved(a.name) !== goal.measure ? goal.measure : undefined
-      const fileText = (approved: boolean, standing: string[] = []) => kageletFile({ thread: a.thread ?? '', schedule: a.schedule ?? '', ...(a.after && { after: a.after }), tools, job: a.job ?? '', by, why: a.why ?? '', model, modelWhy, paused: !!had?.paused, approved, standing, ...(goal && { objective: goal }), ...(had?.allow && { allow: had.allow }) })
+      const fileText = (approved: boolean, standing: string[] = []) => kageletFile({ thread: a.thread ?? '', schedule: a.schedule ?? '', ...(a.after && { after: a.after }), tools, job: a.job ?? '', by, why: a.why ?? '', model, modelWhy, paused: !!had?.paused, approved, standing, ...(goal && { objective: goal }), ...(had?.allow && { allow: had.allow }), ...((a.people ?? had?.people) && { people: a.people ?? had!.people }) })
       // Checked as if approved first, so an act tool or a file that would not run is refused before any card.
       const valid = fileText(true)
       if (typeof valid !== 'string') return refuse(valid.error)

@@ -185,6 +185,7 @@ export function kageletTools(c: ToolContext): KageTool[] {
       objective: s.optional().describe('save: the outcome it works toward, in plain words. With measure and target, or leave all three out to keep its own'),
       measure: s.optional().describe('save: a command the hub runs with no model that prints exactly one line, value: <n>. A new or changed one needs the owner\'s yes on a card'),
       target: s.optional().describe('save: the number to reach, as a comparison: "<= 2" or ">= 500". Every run sees the number and keeps working, met or not'),
+      people: z.array(s).optional().describe('save: Slack member ids (U...) of people who are not the owner or a listed teammate and may ask this kagelet for work by tagging Kage in its thread. Their ask runs inside its grant, never reaches you. Leave out to keep its own'),
     },
     async run(args) {
       const { channel: _c, thread_ts: _t, ...a } = args as Manage & { channel: string; thread_ts: string }

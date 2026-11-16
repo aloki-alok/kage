@@ -200,6 +200,14 @@ function manager(max = 10, envCommand?: string) {
 }
 const job = { thread: LINK, schedule: '0 9 * * *', tools: ['WebSearch'], job: 'Check the status page.', why: 'a daily check the owner asked for twice' }
 
+test('the manager writes a people line on save, keeps it when a later save leaves it out, and refuses a bad id', async () => {
+  const t = manager()
+  assert.match(await t.m.manage({ action: 'save', name: 'status', ...job, people: ['U0AAA1'] }, 5000), /saved status/i)
+  assert.match(readFileSync(`${t.dir}/status/job.md`, 'utf8'), /^people: U0AAA1$/m)
+  assert.match(await t.m.manage({ action: 'save', name: 'status', ...job }, 6000), /saved status/i)
+  assert.match(readFileSync(`${t.dir}/status/job.md`, 'utf8'), /^people: U0AAA1$/m)
+  assert.doesNotMatch(await t.m.manage({ action: 'save', name: 'status', ...job, people: ['bob'] }, 7000), /saved status/i)
+})
 test('the manager saves a kagelet file the hub syncs at once, and lists who made it and why', async () => {
   const t = manager()
   assert.match(await t.m.manage({ action: 'save', name: 'status', ...job }, 5000), /saved status/i)
