@@ -1,6 +1,6 @@
 import { describe, test } from 'node:test'
 import assert from 'node:assert/strict'
-import { trailEvent, trailLine, askedFrom, cardAt, dailyDue, expiredWaiting, grantsLine, lastTotals, openWaiting, postedBy, spendSince, staleWaiting, selfReview, tsvRow, turnCost } from '../ledgers.ts'
+import { trailEvent, trailLine, askedFrom, cardAt, dailyDue, expiredWaiting, grantsLine, heldLine, lastTotals, openWaiting, postedBy, spendSince, staleWaiting, selfReview, tsvRow, turnCost } from '../ledgers.ts'
 
 
 describe('the daily note of what waits on the owner', () => {
@@ -191,4 +191,14 @@ describe('what the dream reads of Kage\'s own mistakes', () => {
     assert.match(selfReview(rows + w('2026-11-15T01:00:00Z', 'open', 'C1:1.1', 'a?') + w('2026-11-15T02:00:00Z', 'open', 'C1:1.1', 'b?'), [], since, k => k), /C1:1\.1: 2 open, 0 answered/)
   })
   test('nothing to say gives an empty block', () => assert.equal(selfReview('', [], since, k => k), ''))
+})
+
+test('the daily note lists what the reviewer let run in the day before it, by kagelet and kind; kept steps and other rows are left out', () => {
+  const ev = (at: string, kind: string, who: string, detail: string) => ({ at, kind, who, trace: '', chain: '', detail, transcript: '' }) as any
+  const rows = [ev('2026-11-16T06:00:00Z', 'held', 'ops', 'released by reviewer: a forced or recursive delete'), ev('2026-11-16T07:00:00Z', 'held', 'ops', 'released by reviewer: a forced or recursive delete'),
+    ev('2026-11-16T08:00:00Z', 'held', 'docs', 'released by reviewer: a git step that drops work'), ev('2026-11-16T09:00:00Z', 'held', 'ops', 'kept by reviewer: a forced push or a branch delete'),
+    ev('2026-11-16T10:00:00Z', 'tool', 'ops', 'Bash'), ev('2026-11-15T04:00:00Z', 'held', 'ops', 'released by reviewer: a forced or recursive delete')]
+  assert.equal(heldLine(rows, Date.parse('2026-11-16T05:00:00Z'), Date.parse('2026-11-17T05:00:00Z')),
+    '*Let run by the reviewer (3)*\n• ops: a forced or recursive delete ×2\n• docs: a git step that drops work')
+  assert.equal(heldLine(rows, Date.parse('2026-11-17T05:00:00Z'), Date.parse('2026-11-18T05:00:00Z')), undefined)
 })
