@@ -2,14 +2,6 @@
 
 Status: Proposed
 
-## Context
-
-A kagelet today has a job (a prompt), a schedule and a grant. It can do a task again and again, but it cannot tell whether the work is winning, or when it is done. People hand work over in steps: first a task, then an outcome, then the whole job. Kage stops at the first step.
-
-Once execution is cheap, the work that fails is the goal, not the doing. An outcome Kage can check by itself needs a number, so the number has to be part of the job, not something the model makes up each run.
-
-A first draft put three lines on the kagelet file and said "its measure becomes a probe". A fresh review found no mechanism behind that sentence: a kagelet is a file with no trigger, and a probe wakes on any change of output, not when a target is crossed. A met number that moved from 1.2 to 1.5 would wake the model for nothing. This version builds the objective on the probe instead.
-
 ## Decision
 
 An objective is a probe (ADR 0015) with a target.
@@ -30,13 +22,7 @@ How it runs:
 
 Every number is a setting with a default: `objectives.holdRuns` (3) and `objectives.trendRuns` (5). The hub writes one event row per measure and per state change (`working`, `met`, `slipped`, `failed`) with ids and the state only. The value itself stays out of the event log (ADR 0010) and goes only to the woken run and its report.
 
-## Consequences
-
-- An outcome becomes something a job can own: it knows whether it is winning without asking.
-- A met objective costs no model at all while it holds.
-- A bad measure makes a job chase the wrong number. Every report shows the measure and its value, so a person sees what is being chased.
-- The measure carries the probe's trust rules: pinned scripts, the owner's card for a teammate, and only a person may change it.
-- A measure that fails with exit 0 and prints nothing is caught: no `value:` line is a failed measure.
+A met objective costs no model while it holds. Every report shows the measure and its value, so a person sees what is being chased.
 
 ## How it is checked
 
