@@ -134,13 +134,22 @@ cmd_update() {
   git fetch -q --force origin main --tags
   [[ "$(git rev-list --count "$ref..HEAD")" == 0 ]] || die "This checkout has commits that are not on $ref, so it was left as it is."
   old="$(git rev-parse --short HEAD)"
+  [[ "$(git rev-parse HEAD)" != "$(git rev-parse "$ref^{commit}")" ]] || { echo "Already up to date ($old)."; return; }
+  # New packages install with the hub stopped, before the pull: npm ci deletes node_modules first, and a hub that sees the
+  # new lockfile runs its own npm ci, so a hub or a kage command running meanwhile crashes on a half-deleted package.
+  local packages="" was=""
+  git diff --quiet HEAD "$ref" -- package-lock.json || packages=1
+  if [[ -n $packages ]] && running && ./service.sh installed; then quiet_first restart; ./service.sh stop; was=1; fi
   git merge -q --ff-only "$ref"
   new="$(git rev-parse --short HEAD)"
-  if [[ $old == "$new" ]]; then echo "Already up to date ($new)."; return; fi
   echo "Updated $old to $new:"
   git log --format='  %s' "$old..$new"
-  # start.sh installs packages when the lockfile changed; a restart now picks up the new code.
-  if running; then cmd_restart; else echo "Kage is not running. Start it: kage start"; fi
+  if [[ -n $packages ]]; then
+    echo "Installing the packages the new code needs."
+    npm ci --no-audit --no-fund --loglevel=error || die "npm ci failed. Run npm ci in $PWD, then kage start."
+  fi
+  if [[ -n $was ]]; then ./service.sh start && echo "Restarted the hub; it is back in about 10 s. Open sessions resume on their next tag."
+  elif running; then cmd_restart; else echo "Kage is not running. Start it: kage start"; fi
 }
 
 # A change to KAGE_ROUTE, KAGE_RUNTIME, KAGE_CWD or KAGE_MEMORY needs kage stop, then kage start.
