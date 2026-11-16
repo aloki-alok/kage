@@ -28,7 +28,7 @@ const tick = (ms = 5) => new Promise(r => setTimeout(r, ms))
 const ID = '11111111-1111-4111-8111-111111111111'
 const signal = () => new AbortController().signal
 
-function setup(o: { transcript?: boolean; silent?: boolean; dmFails?: boolean; grants?: Record<string, string[]>; manager?: boolean; budgets?: Record<string, number>; models?: Record<string, string>; trusted?: string[]; deferred?: boolean; sandbox?: boolean; onResult?: (key: string, total: number, resumed: boolean) => void } = {}) {
+function setup(o: { transcript?: boolean; silent?: boolean; dmFails?: boolean; grants?: Record<string, string[]>; manager?: boolean; budgets?: Record<string, number>; models?: Record<string, string>; trusted?: string[]; deferred?: boolean; browser?: boolean; sandbox?: boolean; onResult?: (key: string, total: number, resumed: boolean) => void } = {}) {
   const sdk = fakeSdk(o)
   const dropped: string[] = []
   const keysDropped: string[] = []
@@ -55,7 +55,7 @@ function setup(o: { transcript?: boolean; silent?: boolean; dmFails?: boolean; g
   const s = sdkSessions({
     sdk: { query: sdk.query as any, createSdkMcpServer: (c => { servers.push(c); return createSdkMcpServer(c) }) as typeof createSdkMcpServer, tool },
     hub: () => d,
-    tools: (_key, send, approve) => sessionTools({ title: 'Kage', bot: slack as any, user: slack as any, botDm: () => 'DBOT', dir, ledgers: openLedgers(dir), send, memory: { own: '/own', owner: '/owner' }, approve,
+    tools: (_key, send, approve) => sessionTools({ title: 'Kage', bot: slack as any, user: slack as any, botDm: () => 'DBOT', dir, ledgers: openLedgers(dir), send, memory: { own: '/own', owner: '/owner' }, approve, ...o.browser && { browser: { call: async () => [], block: [] } },
       // A manager that only asks the card and says the answer.
       ...o.manager && { kagelets: { list: () => '', manage: async (a, ask) => `yes: ${await ask!({ kagelet: a.name, tools: 'mcp__gmail__send', job: 'Mail the count.' })}` } } }),
     hasTranscript: () => o.transcript ?? false,
@@ -88,24 +88,66 @@ function setup(o: { transcript?: boolean; silent?: boolean; dmFails?: boolean; g
   return { sdk, posts, d, s, task, idOf, approvals, results, blocks, turns, call, servers, tools, keysDropped }
 }
 
+// The actual MCP manifest of the Kage server a fake SDK run was opened with.
+async function kageTools(run: { options: any }) {
+  const server = run.options.mcpServers.kage.instance
+  const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair()
+  const client = new Client({ name: 'test-manifest', version: '1' })
+  try {
+    await server.connect(serverTransport)
+    await client.connect(clientTransport)
+    return (await client.listTools()).tools
+  } finally { await client.close(); await server.close() }
+}
+
 describe('Kage sessions on the Agent SDK', () => {
+  test("a session another person's task opens loads none of the owner's tools; the owner's message reopens it with them on the same conversation (#317)", async () => {
+    const owners = async (run: { options: any }) => ({ connectors: run.options.settings.disableClaudeAiConnectors !== true, browser: (await kageTools(run)).some(x => x.name.startsWith('browser_')) })
+    for (const other of [{ fromOwner: false }, { channel: 'email' }]) {
+      const t = setup({ browser: true, transcript: true })
+      t.d.task('C1:5.5', t.task({ ...other, content: 'Task from Sam: hi' }), 0)
+      await tick()
+      assert.deepEqual(await owners(t.sdk.runs[0]!), { connectors: false, browser: false })
+      // Mid-turn the owner's message waits: the teammate's turn is not cut, and it never reaches the session without the tools.
+      assert.equal(t.d.task('C1:5.5', t.task({ content: 'Task from the owner: go on' }), 1), 'sent')
+      await tick()
+      assert.equal(t.sdk.runs.length, 1)
+      assert.ok(!t.sdk.runs[0]!.said.some(x => /go on/.test(x)))
+      t.sdk.runs[0]!.emit({ type: 'result', total_cost_usd: 1 })
+      await tick(30)
+      assert.equal(t.sdk.runs.length, 2)
+      assert.ok(t.sdk.runs[0]!.closed)
+      assert.equal(t.sdk.runs[1]!.options.resume, `${ID.slice(0, -1)}0`)
+      assert.deepEqual(await owners(t.sdk.runs[1]!), { connectors: true, browser: true })
+      assert.match(t.sdk.runs[1]!.said.join('\n'), /go on/)
+      t.sdk.runs[1]!.emit({ type: 'result', total_cost_usd: 2 })
+      await tick()
+      assert.deepEqual(t.turns.map(x => x[1]), [['Task from Sam: hi'], ['Task from the owner: go on']])
+      t.s.runner.stop('C1:5.5')
+    }
+  })
+  test("the owner's first task opens the full set at once, and an idle teammate session reopens on the owner's next message (#317)", async () => {
+    const t = setup({ browser: true, transcript: true })
+    t.d.task('C1:5.5', t.task(), 0)
+    await tick()
+    assert.equal(t.sdk.runs[0]!.options.settings.disableClaudeAiConnectors, undefined)
+    assert.ok((await kageTools(t.sdk.runs[0]!)).some(x => x.name === 'browser_tabs'))
+    t.d.task('C2:5.5', t.task({ fromOwner: false, channel: 'C2' }), 1)
+    await tick()
+    t.sdk.runs[1]!.emit({ type: 'result' })
+    await tick()
+    t.d.task('C2:5.5', t.task({ channel: 'C2', content: 'Task from the owner: now' }), 2)
+    await tick(30)
+    assert.equal(t.sdk.runs.length, 3)
+    assert.match(t.sdk.runs[2]!.said.join('\n'), /now/)
+    t.s.runner.stop('C1:5.5'); t.s.runner.stop('C2:5.5')
+  })
   test('voice sessions load reply and read-only Slack tools without ToolSearch; other sessions keep deferral', async () => {
     const t = setup()
     t.d.task('voice:test-call', t.task({ channel: 'voice' }), 0)
     t.d.task('C0TEST1:5.5', t.task({ channel: 'C0TEST1' }), 0)
-    const list = async (i: number) => {
-      // Inspect the actual MCP manifest of the server passed in the fake SDK's query options.
-      const server = t.sdk.runs[i]!.options.mcpServers.kage.instance
-      const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair()
-      const client = new Client({ name: 'test-manifest', version: '1' })
-      try {
-        await server.connect(serverTransport)
-        await client.connect(clientTransport)
-        return (await client.listTools()).tools
-      } finally { await client.close(); await server.close() }
-    }
     try {
-      const voice = await list(0), thread = await list(1)
+      const voice = await kageTools(t.sdk.runs[0]!), thread = await kageTools(t.sdk.runs[1]!)
       assert.deepEqual(voice.filter(tool => tool._meta?.['anthropic/alwaysLoad'] === true).map(tool => tool.name), ['reply', 'slack_search', 'slack_read'])
       for (const name of ['slack_search', 'slack_read']) assert.equal(voice.find(tool => tool.name === name)?.annotations?.readOnlyHint, true)
       assert.ok(!thread.some(tool => tool._meta?.['anthropic/alwaysLoad'] === true))
