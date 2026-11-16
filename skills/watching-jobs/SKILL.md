@@ -39,6 +39,7 @@ To move a live job, make the cheaper job a twin: `schedule` with `shadow_of` set
 3. Read the job back after the change and say what it now ignores.
 4. When a job wakes you with real changes, leave it alone. The wake is the point.
 5. A probe that fails keeps retrying and pings the asker after a few misses. Fix the command with tune_job from a person's task. A monitor is never stopped on its own.
+6. When the source a timed job watches goes idle, suggest a slower schedule in the run's report and say when to speed it back up. A fast check on an idle source spends turns on nothing.
 
 ## Tell the asker how it wakes
 
