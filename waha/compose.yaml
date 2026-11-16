@@ -1,0 +1,27 @@
+# Kage's WhatsApp bridge: WAHA, linked to your own number. Steps and the ban risk: docs/settings.md, "WhatsApp".
+# Start it with: docker compose -f waha/compose.yaml up -d
+# The keys come from waha/.env in Kage's config folder, which Kage writes from secrets.json at each hub start.
+name: kage-waha
+services:
+  waha:
+    # An exact tag, so an upstream release never changes the bridge under you. On an ARM machine, run with WAHA_TAG=arm-2026.10.1.
+    image: devlikeapro/waha:${WAHA_TAG:-latest-2026.10.1}
+    container_name: kage-waha
+    # A crash or a reboot brings it back. A docker stop keeps it down, and Kage's doctor line and DM say so.
+    restart: unless-stopped
+    ports:
+      - 127.0.0.1:3198:3000
+    env_file:
+      - ${HOME}/.config/kage/waha/.env
+    environment:
+      # Kage's webhook (connectors.whatsapp.hookPort). The HMAC key that signs each call is WHATSAPP_HOOK_HMAC_KEY in the env file.
+      WHATSAPP_HOOK_URL: http://host.docker.internal:3199/waha
+      WHATSAPP_HOOK_EVENTS: message.any
+      WHATSAPP_RESTART_ALL_SESSIONS: "True"
+    extra_hosts:
+      - host.docker.internal:host-gateway
+    volumes:
+      # The linked session survives a container restart, so the phone stays linked.
+      - sessions:/app/.sessions
+volumes:
+  sessions:

@@ -84,6 +84,7 @@ Write logs to stderr only. In a tmux pane, stdout carries the channel protocol, 
 | `CLAUDE.md` | The one file coding agents read first: setup steps, the commands that run Kage, and this file (loaded with `@CONTRIBUTING.md`). |
 | `extension/` | Kage's Chrome extension (#114): plain JS, no build. It polls the hub (`connectors/browser.ts`), reads tabs, and acts in them through Chrome's debugger, one action at a time; a major step waits for the owner's yes (core/browser-act.ts majorAct). |
 | `meetbot/` | Kage's meeting bot (#63): its own package, run on any machine with a screen or Xvfb. It drives its own Chromium into a Google Meet and talks to the hub at the meeting webhook (`connectors/meeting.ts`). All of Meet's page knowledge is `meetbot/page.js`. |
+| `waha/` | Kage's WhatsApp bridge (#351): `compose.yaml` runs WAHA in Docker, and `qr.sh` links the owner's phone. No keys: the container reads `waha/.env` in the config folder, which the hub writes from secrets.json. Steps are in docs/settings.md, "WhatsApp". |
 | `skills/` | Skills every Kage session loads (the router passes the repo as a plugin, `hub/router.ts`). Generic lessons only: no names, ids, customers, dates or quotes. |
 | `.claude-plugin/`, `.mcp.json`, `hooks/` | Used only when Kage is installed as a Claude Code plugin (tmux panes on the plugin route). |
 
@@ -122,7 +123,7 @@ Write logs to stderr only. In a tmux pane, stdout carries the channel protocol, 
 | `ssm.ts` | The one call the SSM relay runs for a session (the arguments aws gives `session-manager-plugin`: operation, region, stream and endpoint hosts), and which session keys may hold a token. |
 | `cron.ts` | Cron expressions, which schedules are due (an `@event` job never is), and reading Claude Code's own cron jobs. |
 | `email.ts` | Email as a way to tag Kage: who may (the provider's DKIM signature, not only DMARC), the ask in the new text, the reply-all, and the guard on a reply that leaves the owner's domains. The SES, S3 and SQS calls are `connectors/email.ts`. |
-| `whatsapp.ts` | The owner's WhatsApp: the owner's tag is the only way in, the armed-chat stand-in, and the guard that reads every message before it leaves as the owner. The WAHA webhook and calls are `connectors/whatsapp.ts`. |
+| `whatsapp.ts` | The owner's WhatsApp: the owner's tag is the only way in, the armed-chat stand-in, the guard that reads every message before it leaves as the owner, and what a look at the WAHA bridge means: the problem line with its fix, and the hub's one DM down and one back. The WAHA webhook, calls and the bridge look are `connectors/whatsapp.ts`, and `cli/doctor/whatsapp.ts` is the doctor line. |
 | `tripwire.ts` | Tripwires: the pure rules of a probe that wakes a session only when its output changes. How output is normalized and fingerprinted, the words of a command, which ignore patterns are safe, whether a pin changed, what one run does to a job's state (a wake, a failure ping), the hash kept of a job webhook's token, and when a hook needs the owner's card. |
 | `shadow.ts` | Self-swap (ADR 0017): a twin's link to the job it shadows, and the pairing of that job's acts (own-thread posts and prod writes) with the twin's verdicts into matches and misses, and when a swap is due. |
 | `afk.ts` | AFK mode: which threads the stand-in watches, when it posts or phones the owner, and what it may say. |
