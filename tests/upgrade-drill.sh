@@ -53,12 +53,17 @@ git -C "$origin" tag -f stable "$candidate" >/dev/null
 (cd "$dir" && run "$home/.local/bin/kage" update --stable) || die "kage update --stable failed"
 [[ "$(git -C "$dir" rev-parse HEAD)" == "$candidate" ]] || die "the checkout is on $(git -C "$dir" rev-parse --short HEAD), not ${candidate:0:7}"
 
-say "The hub's first start imports the env file and loads"
-# Its fake Slack tokens keep it from connecting, so it runs a few seconds and is stopped. Its log says what it did.
-(cd "$dir" && run node hub.ts > "$root/hub.out" 2>&1 & pid=$!; sleep 20; kill "$pid" 2>/dev/null; wait "$pid" 2>/dev/null) || true
+say "The hub's first start imports the env file and loads all its code"
+# With fake tokens it gets as far as asking Slack, which refuses them, and exits. Reaching Slack means every module loaded.
+(cd "$dir" && exec env -i HOME="$home" PATH="$drill_path" SHELL=/bin/bash LANG=C.UTF-8 node hub.ts) > "$root/hub.out" 2>&1 &
+pid=$!
+for _ in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 21 22 23 24 25 26 27 28 29 30; do kill -0 "$pid" 2>/dev/null || break; sleep 1; done
+kill "$pid" 2>/dev/null || true
 log="$(cat "$home/.config/kage/hub.log" "$root/hub.out" 2>/dev/null || true)"
-grep -q 'imported the env file' <<<"$log" || { printf '%s\n' "$log" | tail -30; die "the hub did not import the env file"; }
-! grep -Eq 'could not (load|import|export)|ERR_MODULE_NOT_FOUND' <<<"$log" || { printf '%s\n' "$log" | tail -30; die "the hub could not start on the new code"; }
+show() { printf '%s\n' "$log" | tail -30; die "$1"; }
+grep -q 'imported the env file' <<<"$log" || show "the hub did not import the env file"
+grep -q 'invalid_auth' <<<"$log" || show "the hub did not get as far as Slack"
+! grep -Eq "ERR_MODULE_NOT_FOUND|could not (import|export)|packages are behind" <<<"$log" || show "the hub could not start on the new code"
 (cd "$dir" && run node tests/upgrade-env-kept.ts "$home/.config/kage" "$root/env.before") || die "a setting was lost in the import"
 
 say "kage doctor"
