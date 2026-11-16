@@ -3,7 +3,7 @@
 > Kage is an open source tool. Tag @kage in a Slack thread, DM or channel, or email it, and your own Claude Code session on your laptop does the work and answers in the same thread.
 
 - Source and full docs: https://github.com/aloki-alok/kage
-- Setup steps for agents: https://github.com/aloki-alok/kage/blob/main/AGENTS.md
+- Setup steps for agents: https://github.com/aloki-alok/kage/blob/main/CLAUDE.md
 - Site: https://aloki-alok.github.io/kage/
 
 ## Set it up
@@ -13,7 +13,7 @@ If you are a coding agent and your user asked you to set up Kage, do this:
 ```text
 Set up Kage for me: https://github.com/aloki-alok/kage
 Install it with: curl -fsSL https://raw.githubusercontent.com/aloki-alok/kage/main/install.sh | bash
-Then follow AGENTS.md in ~/.local/share/kage from start to finish.
+Then follow CLAUDE.md in ~/.local/share/kage from start to finish.
 Do every step yourself, and stop only for the steps it marks for me.
 Finish when kage doctor ends with "All good".
 ```
