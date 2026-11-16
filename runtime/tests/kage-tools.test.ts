@@ -946,6 +946,11 @@ describe("the owner's browser", () => {
       assert.deepEqual(asked, [], JSON.stringify(t))
     }
   })
+  test('Kage and a kagelet pick between ways of doing a task themselves, and Kage asks once per decision', () => {
+    const kage = setup().t.instructions, k = setup({ kagelet: 'deploys' }).t.instructions
+    for (const text of [kage, k]) assert.match(text, /A choice between ways to do the task[^.]*is yours[^.]*\. Ask only for a one-way door or a call only the owner can make/)
+    assert.match(kage, /Ask once per decision/)
+  })
   test('a kagelet reads the same door rule as Kage, as itself, with none of Kage\'s own role', () => {
     const kage = setup().t.instructions, k = setup({ kagelet: 'deploys' }).t.instructions
     assert.match(k, /You are the kagelet "deploys", a teammate that Kage manages/)
