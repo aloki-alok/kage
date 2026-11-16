@@ -139,7 +139,7 @@ describe('a turn that ends on the usage limit', () => {
     h.hear('C1:5.5', t, 0)
     h.p.turn('C1:5.5', [t], { kind: 'rate_limit', until: 55 * MIN, window: 'five_hour' }, 10 * MIN)
     h.p.turn('C2:1.1', [], { kind: 'overloaded' }, 20 * MIN)
-    assert.deepEqual(h.events, ['rate_limit window=five_hour wait_s=2700 held=1', 'overloaded wait_s=2100 held=0'])
+    assert.deepEqual(h.events, ['rate_limit window=five_hour wait_s=2700 held=1', 'overloaded wait_s=300 held=0'])
   })
 
   test('a limit with no reset time tries again in 15 minutes; an overload in 5, and says so', () => {

@@ -55,7 +55,7 @@ export function startTelemetry(o: Deps) {
     await exporter.run()
   } }, { name: 'plan usage', every: 15 * 60_000, run: async () => {
     // ponytail: rides the SDK's experimental usage call, so a release that renames it only stops these rows.
-    const d = told() ? planDetail(await o.usage?.()?.catch(() => undefined) ?? { subscription_type: null, rate_limits: null }) : undefined
+    const d = told() ? planDetail(await Promise.race([o.usage?.()?.catch(() => undefined), new Promise<undefined>(r => setTimeout(r, 30_000))]) ?? { subscription_type: null, rate_limits: null }) : undefined
     if (d) o.ledgers.event({ kind: 'plan', who: 'hub', trace: '', detail: d })
   } }]
 }

@@ -115,12 +115,13 @@ export function limitPause(o: {
       if (probing === threadOf(key)) probing = undefined
       counts.limitHits++
       kind = limit.kind
-      until = Math.max(until ?? 0, limit.until && limit.until > now ? limit.until : now + RETRY[limit.kind])
+      const resets = limit.until && limit.until > now ? limit.until : now + RETRY[limit.kind]
+      until = Math.max(until ?? 0, resets)
       o.log(`${limit.kind === 'overloaded' ? 'overload' : 'usage limit'} hit in ${key}: paused until ${new Date(until).toISOString()}, ${tasks.length} task${tasks.length === 1 ? '' : 's'} held`)
       // The session closes first: what the dispatcher still had for it was never read, and is held with the rest.
       // A kagelet message's task has no job, so it is never owed: its message waits in the store (runtime/kagelets.ts).
       const all = [...tasks, ...o.end(key) ?? []]
-      o.event?.(`${limit.kind}${limit.window ? ` window=${limit.window}` : ''} wait_s=${Math.round((until - now) / 1000)} held=${all.length}`)
+      o.event?.(`${limit.kind}${limit.window ? ` window=${limit.window}` : ''} wait_s=${Math.round((resets - now) / 1000)} held=${all.length}`)
       o.settle?.(all, false)
       for (const t of all) if (!keep(key, t, limit, now) && !t.handoff) o.log('cannot hold a task with no inbox message', logKey(key), t.meta.place)
     },

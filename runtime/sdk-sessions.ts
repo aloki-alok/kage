@@ -213,7 +213,7 @@ export function sdkSessions(o: {
             s.turn = []
             blocked = false
             o.onTurn?.(key, tasks, { kind: limit, ...(limit === 'rate_limit' && resetsAt && { until: resetsAt }), ...(limit === 'rate_limit' && window && { window }) })
-            limit = undefined
+            limit = window = resetsAt = undefined
           } else if (m.type === 'result') {
             // A task sent mid-turn may be read by the next turn instead, so it stays one turn longer.
             blocked = false
