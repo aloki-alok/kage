@@ -5,14 +5,14 @@ import { quotedLine } from './text.ts'
 // One ledger row. Cells never hold a tab or newline, so a row is always one line.
 export const tsvRow = (cells: (string | undefined)[]) => cells.map(c => (c ?? '').replace(/[\t\r\n]+/g, ' ')).join('\t') + '\n'
 
-// The waiting ledger (runtime/ledger.ts; every thread's pane writes it): when, open|answered, thread, link, what.
-// A question stays open until its thread gets a new task.
+// The waiting ledger (runtime/ledger.ts; every thread's pane writes it): when, open|answered|expired, thread, link, what.
+// A question stays open until its thread gets a new task, or the daily note expires it (expiredWaiting).
 // ponytail: any new task closes it, even from someone else in the thread; match the asker if that bites.
 export function openWaiting(tsv: string): { when: string; thread: string; link: string; what: string }[] {
   const open = new Map<string, { when: string; thread: string; link: string; what: string }[]>()
   for (const line of tsv.split('\n')) {
     const [when = '', status, thread = '', link = '', what = ''] = line.split('\t')
-    if (status === 'answered') open.delete(thread)
+    if (status === 'answered' || status === 'expired') open.delete(thread)
     else if (status === 'open') open.set(thread, [...(open.get(thread) ?? []), { when, thread, link, what }])
   }
   return [...open.values()].flat()
@@ -52,7 +52,15 @@ export function askedFrom(tsv: string, dm: string, ts: string): string | undefin
 }
 
 // The daily note to the owner: questions that have waited on them for ageMs or more.
-export const staleWaiting = (tsv: string, now: number, ageMs: number) =>
+// The open questions of each thread whose newest one waited ageMs: an expired row then closes the whole thread, as an
+// answer does, so a thread that asked again recently keeps its older questions too.
+export function expiredWaiting(tsv: string, now: number, ageMs: number) {
+  const open = openWaiting(tsv)
+  const fresh = new Set(open.filter(i => now - Date.parse(i.when) < ageMs).map(i => i.thread))
+  return open.filter(i => !fresh.has(i.thread))
+}
+
+export const staleWaiting =(tsv: string, now: number, ageMs: number) =>
   openWaiting(tsv).filter(i => now - Date.parse(i.when) >= ageMs)
 
 // Due once a UTC day from 05:00 UTC: returns today's date to record as sent.

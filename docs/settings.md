@@ -95,6 +95,12 @@ curl --unix-socket "$KAGE_KEYS_SOCK" "http://kage/$KAGE_KEYS_TOKEN/api.example.c
 
 The hub fetches `https://api.example.com/v1/things` and adds the key in the header. A request for any other host gets a 403 and no key. The hub does not follow redirects, so a key never leaves its host. Who gets a token follows the SSM relay: owner-only Slack threads, and a thread run with `kage relay allow`. `kage doctor` lists each key by name, host and header, never its value. A tool that reads the key from an environment variable no longer finds it, and a tmux pane has no proxy token, so panes lose these keys too.
 
+## Questions waiting on you
+
+| Setting | Default | Effect |
+|---|---|---|
+| `waiting.expireHours` | `72` | A question that waited this long with no answer is dropped. The next daily note names it once under "Dropped", and a reply in its thread opens it again. |
+
 ## AFK mode
 
 | Setting | Default | Effect |

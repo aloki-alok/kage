@@ -368,7 +368,7 @@ function failed(m: ToSession) {
   else slack.failed(m)
 }
 
-const digests = ownerDigests({ dir: DIR, ledgers, store, placeOf, costTracked: !!sdk, notify: t => slack.notifyOwner(t) })
+const digests = ownerDigests({ dir: DIR, ledgers, store, placeOf, costTracked: !!sdk, expireHours: () => config.waiting?.expireHours ?? 72, notify: t => slack.notifyOwner(t) })
 const dreaming = dreams({ dir: DIR, code: CODE, title: Title, botDm: slack.ids.botDm, mem: MEM, project: PROJECT, kagelets: kag.dir, kmem: kag.kmem, hasSdk: !!sdk,
   store, ledgers, placeOf, paused: () => !!limits.paused(), quiet: now => d.quietEverywhere(now), deliver, toSession })
 const updates = hubUpdates({ code: CODE, dir: DIR, ledgers, quiet: now => d.quietEverywhere(now) && !limits.paused(now), notify: t => slack.notifyOwner(t) })
