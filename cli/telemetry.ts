@@ -25,5 +25,5 @@ if (process.argv[2] === 'show') {
 } else {
   const why = !t?.endpoint ? 'no telemetry.endpoint set' : t.on === false ? 'telemetry.on is false' : process.env.KAGE_TELEMETRY === 'off' ? 'KAGE_TELEMETRY=off' : 'DO_NOT_TRACK is set'
   console.log(endpoint ? `on: counts and failure codes go to ${endpoint}, install ${id}` : `off: ${why}`)
-  console.log('Never sent: message text, prompts, tool input, names, ids, paths. kage telemetry show prints the next batch.')
+  console.log('Never sent: message text, prompts, replies, tool input. Claude Code adds the signed-in account (email and ids) to its own records. kage telemetry show prints Kage\'s next batch.')
 }

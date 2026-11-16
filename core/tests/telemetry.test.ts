@@ -65,7 +65,7 @@ test('telemetry sends only with an endpoint, and DO_NOT_TRACK, KAGE_TELEMETRY=of
   assert.equal(telemetryEndpoint({ endpoint: 'http://x/otlp' }, { KAGE_TELEMETRY: 'off' }), undefined)
 })
 
-test('sessions export Claude Code telemetry as logs only, and never turn on a flag that sends prompts, replies or tool input', () => {
+test('sessions export Claude Code telemetry as logs only, and turn every flag that sends prompts, replies or tool input to 0', () => {
   const env = sessionTelemetryEnv('http://x/otlp', { 'service.name': 'kage', 'kage.install': 'a b,c' })
   assert.equal(env.CLAUDE_CODE_ENABLE_TELEMETRY, '1')
   assert.equal(env.OTEL_LOGS_EXPORTER, 'otlp')
@@ -73,5 +73,6 @@ test('sessions export Claude Code telemetry as logs only, and never turn on a fl
   assert.equal(env.OTEL_EXPORTER_OTLP_ENDPOINT, 'http://x/otlp')
   assert.equal(env.OTEL_EXPORTER_OTLP_PROTOCOL, 'http/json')
   assert.equal(env.OTEL_RESOURCE_ATTRIBUTES, 'kage.install=a%20b%2Cc')
-  for (const k of Object.keys(env)) assert.ok(!/^OTEL_LOG_|RAW_API|TOOL_CONTENT/.test(k), k)
+  for (const [k, v] of Object.entries(env)) if (/^OTEL_LOG_/.test(k)) assert.equal(v, '0', k)
+  for (const k of ['OTEL_LOG_USER_PROMPTS', 'OTEL_LOG_ASSISTANT_RESPONSES', 'OTEL_LOG_TOOL_DETAILS', 'OTEL_LOG_TOOL_CONTENT', 'OTEL_LOG_RAW_API_BODIES']) assert.equal(env[k], '0', k)
 })

@@ -60,7 +60,8 @@ export function telemetryEndpoint(t: { on?: boolean | null; endpoint?: string | 
 }
 
 // Claude Code's own telemetry for each session (code.claude.com/docs/en/monitoring-usage): logs only, to the same
-// endpoint, tagged with this install. Its prompts, replies and tool input stay redacted: no OTEL_LOG_* flag is ever set.
+// endpoint, tagged with this install. Its prompts, replies and tool input stay redacted: every content flag is set to 0,
+// over any the hub inherited. Claude Code still adds the signed-in account's email and ids (ADR 0019).
 // service.name is Claude Code's own (claude-code), so the two layers stay apart on the board.
 export const sessionTelemetryEnv = (endpoint: string, resource: Record<string, string>): Record<string, string> => ({
   CLAUDE_CODE_ENABLE_TELEMETRY: '1',
@@ -68,5 +69,6 @@ export const sessionTelemetryEnv = (endpoint: string, resource: Record<string, s
   OTEL_METRICS_EXPORTER: 'none',
   OTEL_EXPORTER_OTLP_ENDPOINT: endpoint,
   OTEL_EXPORTER_OTLP_PROTOCOL: 'http/json',
+  OTEL_LOG_USER_PROMPTS: '0', OTEL_LOG_ASSISTANT_RESPONSES: '0', OTEL_LOG_TOOL_DETAILS: '0', OTEL_LOG_TOOL_CONTENT: '0', OTEL_LOG_RAW_API_BODIES: '0',
   OTEL_RESOURCE_ATTRIBUTES: Object.entries(resource).filter(([k]) => k !== 'service.name').map(([k, v]) => `${k}=${encodeURIComponent(v)}`).join(','),
 })

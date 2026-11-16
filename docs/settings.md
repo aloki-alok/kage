@@ -110,7 +110,7 @@ The hub fetches `https://api.example.com/v1/things` and adds the key in the head
 
 ## Telemetry
 
-Counts and failure codes from this install, sent to an OpenTelemetry (OTLP) endpoint so the people who build Kage see what breaks. Message text, prompts, tool input, names, ids and paths are never sent (ADR 0019). `kage telemetry` says whether it is on, and `kage telemetry show` prints the exact next batch.
+Counts and failure codes from this install, sent to an OpenTelemetry (OTLP) endpoint so the people who build Kage see what breaks. Message text, prompts, replies and tool input are never sent. Kage's own records hold no names, ids or paths. Claude Code's records add the signed-in Claude account's email and ids (ADR 0019). `kage telemetry` says whether it is on, and `kage telemetry show` prints the exact next batch.
 
 | Setting | Default | Effect |
 |---|---|---|

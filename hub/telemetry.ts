@@ -29,7 +29,8 @@ export function startTelemetry(o: Deps) {
   // Before the router's own handler, which exits. The row is local; the next start sends it.
   // ponytail: a crash before the job list is built is not counted, move this up if startup crashes matter.
   process.prependListener('uncaughtException', e => { try { o.ledgers.event({ kind: 'crash', who: 'hub', trace: '', detail: crashFingerprint(e, o.code) }) } catch { /* dying anyway */ } })
-  if (!endpoint) return []
+  // Off: forget the cursor, so turning it on again sends only what happens after, not the off months.
+  if (!endpoint) { o.state.save('telemetry-cursor', undefined); return [] }
   const version = (JSON.parse(readFileSync(`${o.code}/package.json`, 'utf8')) as { version: string }).version
   const resource = { 'service.name': 'kage', 'service.version': version, 'kage.install': installId(o.dir), 'os.type': platform(), 'host.arch': arch() }
   Object.assign(process.env, sessionTelemetryEnv(endpoint, resource))

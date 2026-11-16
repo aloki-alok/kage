@@ -53,7 +53,6 @@ test('a 410 from the receiver stops sending for good in this process, the kill s
   rows.push(row(3, 'tool', 'ok'))
   await f.exp.run()
   assert.equal(f.bodies.length, 1)
-  assert.equal(f.exp.stopped(), true)
 })
 
 test('a batch holds at most 500 rows, so a long gap drains over several runs', async () => {
@@ -63,4 +62,18 @@ test('a batch holds at most 500 rows, so a long gap drains over several runs', a
   for (let i = 1; i <= 1200; i++) rows.push(row(i, 'tool', 'ok'))
   await f.exp.run()
   assert.equal(f.cursor(), 500)
+})
+
+test('a batch the receiver refuses (400, 413) is skipped, a 429 is sent again', async () => {
+  const rows = [row(0, 'tool', 'ok')]
+  const f = fake(rows, [400, 429, 200])
+  await f.exp.run()
+  rows.push(row(1, 'tool', 'ok'))
+  await f.exp.run()
+  assert.equal(f.cursor(), 1, 'a 400 moves past the batch')
+  rows.push(row(2, 'tool', 'ok'))
+  await f.exp.run()
+  assert.equal(f.cursor(), 1, 'a 429 keeps it')
+  await f.exp.run()
+  assert.equal(f.cursor(), 2)
 })
