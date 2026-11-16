@@ -1,6 +1,6 @@
 import { describe, test } from 'node:test'
 import assert from 'node:assert/strict'
-import { intake, ownerNote, connectSlack, HEARD } from '../slack.ts'
+import { intake, ownerNote, connectSlack } from '../slack.ts'
 import { jevTriage } from '../jev.ts'
 import { openLedgers, runEvents } from '../../runtime/ledger.ts'
 import { log } from '../../runtime/log.ts'
@@ -76,7 +76,7 @@ test('a message triage sends to react, with no emoji picked, still gets the eyes
   }
 })
 
-test('a listed agent\'s post that Jev says needs no reply gets one Kage-voiced line that tags no one, so the thread never looks ignored', async () => {
+test('a listed agent\'s post that Jev says needs no reply gets one fresh line that tags no one, so the thread never looks ignored', async () => {
   const dir = mkdtempSync(join(tmpdir(), 'kage-jev-'))
   const posts: { thread_ts?: string; text: string }[] = []
   try {
@@ -92,11 +92,12 @@ test('a listed agent\'s post that Jev says needs no reply gets one Kage-voiced l
       name: 'kage', title: 'Kage', teammates: ['UMATE0002'], apps: ['ATEST0001'],
       hub: { posted: () => '', handled: () => {}, deliver: () => assert.fail('a post that needs no reply starts no session') } as never,
       jev: async () => ({ reply: false, why: 'jev needs_reply 0.10 (threshold 0.5)' }),
+      heard: async post => `Read: ${post.length} chars, blade stays home.`,
     })
     await slack.replay('test-source', JSON.stringify({ ...msg, user: 'UMATE0002', app_id: 'ATEST0001', bot_id: 'BTEST0001', text: '<@UTEST1> done, no reply needed' }))
     assert.equal(posts.length, 1)
     assert.equal(posts[0]!.thread_ts, '5.5')
-    assert.ok(HEARD.includes(posts[0]!.text))
+    assert.match(posts[0]!.text, /^Read: \d+ chars, blade stays home\.$/)
     assert.ok(!posts[0]!.text.includes('<@'), 'no tag, so the agent is not woken')
   } finally {
     rmSync(dir, { recursive: true, force: true })

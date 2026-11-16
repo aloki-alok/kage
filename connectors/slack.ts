@@ -17,13 +17,13 @@ import type { Delivery } from '../core/sessions.ts'
 import type { Task } from '../core/task.ts'
 import { startAfk } from './slack-afk.ts'
 import type { JevAfk, JevCheck, Triage } from './jev.ts'
+import { heardLine, writeHeard } from './slack-heard.ts'
+import { emptyRoom } from '../runtime/claude-once.ts'
 import { socketWatch } from '../core/socket-watch.ts'
 import type { Inbox, Saved } from '../runtime/store.ts'
 import { channelHistory, type ChannelHistory, type ChannelPost } from '../runtime/channel-watch.ts'
 
 const PICKED_UP = 'ninja'
-// The line under an agent's post that needs nothing from Kage: read, and the blade stays sheathed. Picked by the post's ts.
-export const HEARD = [':ninja: Heard. Nothing for me to do here, so the blade stays sheathed.', ':scroll: Read and filed. Nothing for me to act on.', ':crossed_swords: Seen. Standing down, nothing needs me here.']
 const WAITING = 'hourglass_flowing_sand'
 const FAILED = 'warning'
 
@@ -69,6 +69,7 @@ export async function connectSlack(o: { dir: string; appToken: string; userToken
   afk?: { memory: string; model: string; saved: Saved; call?: (reason: string) => Promise<string>; jev?: JevAfk }
   // The Jev classifier (connectors/jev.ts); absent means every listed agent's tagged post is answered.
   jev?: JevCheck
+  heard?: (post: string) => Promise<string>   // writes the line under an agent post that needs no reply; absent means a small model (connectors/slack-heard.ts)
   // Intake triage (connectors/jev.ts): a message that needs no work gets a reaction and no session; absent means every tag starts one.
   triage?: Triage }) {
   const { bot, user } = o
@@ -192,7 +193,7 @@ export async function connectSlack(o: { dir: string; appToken: string; userToken
       const j = await o.jev(t.agent, t.text)
       log(`${j.reply ? 'answering' : 'dropped'} ${thread} from app ${t.agent}: ${j.why}`)
       // One line says it was read, so the thread never looks ignored. It tags no one, so the agent is not woken by it.
-      if (!j.reply) return void bot.chat.postMessage({ channel: m.channel, thread_ts: m.thread_ts ?? m.ts, text: HEARD[Number(m.ts.replace('.', '')) % HEARD.length]! }).catch(e => log('could not post the noted line', e?.data?.error ?? e))
+      if (!j.reply) return void heardLine(t.text, m.ts, o.heard ?? writeHeard(emptyRoom(o.dir))).then(text => bot.chat.postMessage({ channel: m.channel, thread_ts: m.thread_ts ?? m.ts, text })).catch(e => log('could not post the heard line', e?.data?.error ?? e))
     }
     // A person's tag that needs no work (an ack, a thanks) gets a reaction in code, not a session.
     if (t.kind === 'task' && !t.agent && o.triage) {
