@@ -1,9 +1,9 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import type { EventKind, KageEvent } from '../events.ts'
-import { crashFingerprint, planDetail, sessionTelemetryEnv, TELEMETRY_URL, telemetryEndpoint, toTelemetry } from '../telemetry.ts'
+import { bootWhy, crashFingerprint, errorCode, planDetail, sessionTelemetryEnv, TELEMETRY_URL, telemetryEndpoint, toTelemetry } from '../telemetry.ts'
 
-const KINDS: EventKind[] = ['run.start', 'run.end', 'tool', 'handoff', 'grant', 'refusal', 'revoke', 'owner-note', 'report', 'cap-pause', 'cost-flag', 'config.live', 'config.restart', 'config.refused', 'memory-proposal', 'memory-decision', 'day-summary', 'triage', 'tripwire', 'crash', 'limit', 'plan']
+const KINDS: EventKind[] = ['run.start', 'run.end', 'tool', 'handoff', 'grant', 'refusal', 'revoke', 'owner-note', 'report', 'cap-pause', 'cost-flag', 'config.live', 'config.restart', 'config.refused', 'memory-proposal', 'memory-decision', 'day-summary', 'triage', 'tripwire', 'crash', 'limit', 'plan', 'objective', 'boot', 'error', 'shape']
 const PLANTED = ['Priya', 'U0TESTUSER1', 'C0TESTCHAN1', 'priya@acme.com', '/Users/priya', 'refund the customer', 'sk-live-123', 'acme']
 const ev = (kind: EventKind, detail: string): KageEvent =>
   ({ at: '2026-11-16T10:00:00.000Z', kind, who: 'C0TESTCHAN1:1700000000.000100', trace: 'U0TESTUSER1-t1', chain: 'acme-chain', detail, transcript: '/Users/priya/t.jsonl' })
@@ -30,6 +30,12 @@ test('every string value that leaves is a fixed word, every other value a finite
 test('the known shapes give their counts and codes', () => {
   assert.deepEqual(toTelemetry(ev('run.end', '$0.19, no report'))?.attrs, { cost_usd: 0.19, report: 'no' })
   assert.deepEqual(toTelemetry(ev('run.end', '$1.05, reported'))?.attrs, { cost_usd: 1.05, report: 'yes' })
+  assert.deepEqual(toTelemetry(ev('run.end', '$0.19, no report, ms=30000 first_post_ms=4200'))?.attrs, { cost_usd: 0.19, report: 'no', ms: 30000, first_post_ms: 4200 })
+  assert.deepEqual(toTelemetry(ev('boot', 'update'))?.attrs, { why: 'update' })
+  assert.deepEqual(toTelemetry(ev('boot', 'Priya'))?.attrs, { why: 'other' })
+  assert.deepEqual(toTelemetry(ev('error', 'post_failed'))?.attrs, { code: 'post_failed' })
+  assert.deepEqual(toTelemetry(ev('error', 'Priya failed'))?.attrs, { code: 'other' })
+  assert.deepEqual(toTelemetry(ev('shape', 'email=1 voice=0 schedules=11 tripwires=3 priya=5'))?.attrs, { email: 1, voice: 0, schedules: 11, tripwires: 3 })
   assert.deepEqual(toTelemetry(ev('run.start', 'scheduled 93af72f6'))?.attrs, { trigger: 'scheduled' })
   assert.deepEqual(toTelemetry(ev('run.start', 'Priya asked for x'))?.attrs, { trigger: 'other' })
   assert.deepEqual(toTelemetry(ev('run.start', 'task from the teammate'))?.attrs, { trigger: 'task', from: 'teammate' })
@@ -52,6 +58,33 @@ test("a plan row is the seat's plan and how full each window is, and nothing for
   assert.equal(planDetail({ subscription_type: 'team', rate_limits: rl }), 'type=team five_hour=60 seven_day=9.4 extra=on')
   assert.deepEqual(toTelemetry(ev('plan', planDetail({ subscription_type: 'team', rate_limits: rl })!))?.attrs, { type: 'team', five_hour: 60, seven_day: 9.4, extra: 'on' })
   assert.equal(planDetail({ subscription_type: null, rate_limits: null }), undefined)
+})
+
+test('a boot says how the run before it ended, from the last lines that run wrote', () => {
+  const at = (s: string) => `2026-11-16T14:22:29.873Z [kage] ${s}`
+  assert.equal(bootWhy(at('newer code is in place and every session is quiet: restarting into it')), 'update')
+  assert.equal(bootWhy(at('settings changed and every session is quiet: restarting to apply them')), 'settings')
+  assert.equal(bootWhy([at('posted in C1 for C1:5.5 (owner)'), at('stopped by SIGTERM')].join('\n')), 'stop')
+  assert.equal(bootWhy(at('crashed TypeError: x')), 'crash')
+  assert.equal(bootWhy(at('another hub holds the hub lock, so this one exits')), 'duplicate')
+  assert.equal(bootWhy(at('posted in C1 for C1:5.5 (owner)')), 'killed')   // no goodbye: power, sleep, kill -9 or out of memory
+  assert.equal(bootWhy(''), 'first')
+  // Only the run between the last two starts counts: one killed after a few lines is not read as the update before it.
+  const start = '2026-11-16T15:50:00.666Z hub.ts: hub start 1 in the last 10 minutes'
+  assert.equal(bootWhy([at('newer code is in place and every session is quiet: restarting into it'), start, at('listening as kage'), start].join('\n')), 'killed')
+  // A crash whose error prints many lines after it is still a crash.
+  assert.equal(bootWhy([at('crashed TypeError: x'), ...Array(8).fill('  code: 42,'), '}', start].join('\n')), 'crash')
+})
+
+test('an error code comes only from a fixed list of our own log lines', () => {
+  assert.equal(errorCode('could not post the pause notice'), 'post_failed')
+  assert.equal(errorCode('whatsapp send failed in'), 'post_failed')
+  assert.equal(errorCode('replay failed'), 'replay_failed')
+  assert.equal(errorCode('could not deliver to a session:'), 'deliver_failed')
+  assert.equal(errorCode('session ended'), 'session_ended')
+  assert.equal(errorCode('slack socket restart failed'), 'slack_socket')
+  assert.equal(errorCode('Priya failed'), undefined)
+  assert.equal(errorCode(42), undefined)
 })
 
 test('a crash fingerprint names the error class and the first frame inside the repo, not the message or the home path', () => {

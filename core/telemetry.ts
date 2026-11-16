@@ -13,6 +13,38 @@ const field = (detail: string, k: string) => detail.match(new RegExp(`(?:^| )${k
 
 const WINDOWS = ['five_hour', 'seven_day', 'seven_day_opus', 'seven_day_sonnet', 'seven_day_overage_included', 'overage']
 
+// How the hub's run before this boot ended, from the end of its log: the lines between the last two "hub start" lines
+// (hub.ts), or all of them when only one is there. killed: that run left no goodbye line, so the machine slept or
+// lost power, or something killed it (kill -9, out of memory).
+const BOOT_WHYS = ['update', 'settings', 'stop', 'crash', 'duplicate', 'killed', 'first']
+const ENDINGS: [RegExp, string][] = [
+  [/\] newer code is in place/, 'update'], [/\] settings changed and every session is quiet/, 'settings'], [/\] stopped by SIG/, 'stop'],
+  [/\] crashed\b|\] the hub could not load|\] npm ci failed/, 'crash'], [/\] another hub (is running|holds the hub lock)/, 'duplicate'],
+]
+export function bootWhy(logTail: string) {
+  const lines = logTail.split('\n').filter(l => l.trim())
+  const starts = lines.flatMap((l, i) => l.includes(' hub.ts: hub start ') ? [i] : [])
+  const end = starts.at(-1) === lines.length - 1 ? starts.pop()! : lines.length
+  const run = lines.slice((starts.at(-1) ?? -1) + 1, end)
+  for (const line of run.reverse()) for (const [re, why] of ENDINGS) if (re.test(line)) return why
+  return run.length ? 'killed' : 'first'
+}
+
+// Our own log lines that mean something went wrong short of a crash, by the fixed text they start with. Only the
+// code leaves: a line's other words may be someone's message or name.
+const ERRORS: [RegExp, string][] = [
+  [/^could not post|^(owner DM|channel post|github post|meeting post|mail reply|whatsapp send) failed/, 'post_failed'],
+  [/^could not deliver to a session/, 'deliver_failed'], [/^replay failed/, 'replay_failed'], [/^session ended$/, 'session_ended'],
+  [/^slack socket restart failed/, 'slack_socket'], [/^message handling failed/, 'slack_message'], [/^command( reply)? failed/, 'slack_command'],
+  [/^(mail handling|mail poll) failed/, 'email'], [/^whatsapp (event|stand-in) failed/, 'whatsapp'], [/^voice request failed/, 'voice'],
+  [/^meeting transcript failed/, 'meeting'], [/^github event failed/, 'github'], [/^afk \w+( \w+)? failed/, 'afk'],
+  [/^channel catch-up failed/, 'catchup'], [/^kagelet measure failed/, 'kagelet'], [/^unhandled$/, 'unhandled'],
+]
+export const errorCode = (first: unknown) => typeof first === 'string' ? ERRORS.find(([re]) => re.test(first))?.[1] : undefined
+
+// What one install has switched on, once a day: connectors 0 or 1, the rest counts.
+const SHAPE = ['email', 'voice', 'whatsapp', 'github', 'meeting', 'browser', 'schedules', 'tripwires', 'kagelets', 'teammates']
+
 const ATTRS: Partial<Record<KageEvent['kind'], (d: string) => Attrs>> = {
   'run.start': d => {
     const from = d.match(/^task from the (\w+)/)?.[1]
@@ -20,7 +52,8 @@ const ATTRS: Partial<Record<KageEvent['kind'], (d: string) => Attrs>> = {
   },
   'run.end': d => {
     const cost = num(d.match(/^\$(\d+(?:\.\d+)?),/)?.[1])
-    return { ...cost != null && { cost_usd: cost }, report: /no report/.test(d) ? 'no' : 'yes' }
+    const ms = num(field(d, 'ms')), first = num(field(d, 'first_post_ms'))
+    return { ...cost != null && { cost_usd: cost }, report: /no report/.test(d) ? 'no' : 'yes', ...ms != null && { ms }, ...first != null && { first_post_ms: first } }
   },
   tool: d => ({ outcome: /\brefused\b/.test(d) ? 'refused' : /\bfailed\b/.test(d) ? 'failed' : 'ok' }),
   report: d => ({ outcome: oneOf(d.split(' ')[0], ['ok', 'needs', 'failed']) }),
@@ -39,6 +72,9 @@ const ATTRS: Partial<Record<KageEvent['kind'], (d: string) => Attrs>> = {
     return { type: oneOf(field(d, 'type'), ['pro', 'max', 'team', 'enterprise']), ...pct, extra: field(d, 'extra') === 'on' ? 'on' : 'off' }
   },
   objective: d => ({ state: oneOf(d.split(' ')[1], ['met', 'working', 'failed']) }),
+  boot: d => ({ why: oneOf(d, BOOT_WHYS) }),
+  error: d => ({ code: oneOf(d, ERRORS.map(e => e[1])) }),
+  shape: d => Object.fromEntries(SHAPE.flatMap(k => { const n = num(field(d, k)); return n != null ? [[k, n]] : [] })),
   crash: (d): Attrs => /^[0-9a-f]{12}$/.test(d) ? { fp: d } : {},
 }
 
@@ -78,7 +114,7 @@ export const otlpLogs = (records: TelemetryRecord[], resource: Record<string, st
 // never land (ADR 0019). An owner may point telemetry.endpoint elsewhere, such as their own collector.
 export const TELEMETRY_URL = 'https://monitor.omnidim.io/kage'
 // The one DM an owner gets before anything is sent.
-export const TELEMETRY_NOTICE = 'Kage now sends anonymous counts to its makers, so we see what breaks: runs, cost, usage-limit pauses, failure codes and crash fingerprints. Never message text, prompts, names or ids. See exactly what goes with `kage telemetry show`. Stop it with `kage set telemetry.on false`.'
+export const TELEMETRY_NOTICE = 'Kage now sends anonymous counts to its makers, so we see what breaks: runs, cost, usage-limit pauses, restarts, error codes, features in use and crash fingerprints. Never message text, prompts, names or ids. See exactly what goes with `kage telemetry show`. Stop it with `kage set telemetry.on false`.'
 
 // Where telemetry goes, or undefined for nowhere. On by default to the Kage team's receiver. The owner's off wins over
 // everything: on false, KAGE_TELEMETRY=off, or DO_NOT_TRACK set to anything but 0 (consoledonottrack.com).
