@@ -9,7 +9,8 @@ import { connectEmail } from '../connectors/email.ts'
 import { connectGithub } from '../connectors/github.ts'
 import { connectMeeting } from '../connectors/meeting.ts'
 import { connectVoice } from '../connectors/voice.ts'
-import { startWhatsApp } from '../connectors/whatsapp.ts'
+import { bridgeWatch, startWhatsApp, wahaSeen, wahaUrl } from '../connectors/whatsapp.ts'
+import type { Job } from '../runtime/jobs.ts'
 import type { connectSlack } from '../connectors/slack.ts'
 import { startJobEvents } from './job-events.ts'
 import { meetCall } from '../core/meetbot.ts'
@@ -88,6 +89,12 @@ export function startConnectors(o: {
     },
   }) : undefined
 
+  // The bridge check on the hub's clock (#351): WAHA can stop while the webhook still listens, and then tags vanish.
+  const url = wahaUrl(conn.whatsapp?.wahaUrl)
+  const clock: Job[] = whatsapp ? [{ name: 'whatsapp bridge', every: 5 * 60_000, run: bridgeWatch({
+    look: () => wahaSeen(url, secrets.waha!.WAHA_API_KEY!), at: { url, qr: `${CODE}/waha/qr.sh` }, state: store, notify: text => void slack.notifyOwner(text),
+  }) }] : []
+
   // Jobs an event wakes: Slack channel posts and each job's own webhook.
   const jobs = startJobEvents({ store, inbox, bot, notify: text => void slack.notifyOwner(text), schedules: o.schedules, event: o.event, ledgers: o.ledgers, tripwires: o.tripwires })
 
@@ -104,5 +111,5 @@ export function startConnectors(o: {
     return ({ slack: slack.replay, github: github?.replay, meeting: meeting?.replay, whatsapp: whatsapp?.replay, hook: jobs.replay } as Record<string, ((source: string, payload: string) => Promise<unknown>) | undefined>)[connector]
   }
 
-  return { github, meeting, email, voice, whatsapp, replies, replayOf, jobs }
+  return { github, meeting, email, voice, whatsapp, replies, replayOf, jobs, clock }
 }
