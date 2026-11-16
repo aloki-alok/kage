@@ -111,6 +111,19 @@ describe('a look at the WAHA bridge', () => {
     assert.deepEqual(await wahaSeen(w.url, 'bad'), { reached: true, code: 401 })
     w.close()
   })
+  test('a bridge that hangs past the timeout is not reached', async () => {
+    const server = createServer(() => {})
+    await new Promise<void>(ok => server.listen(0, '127.0.0.1', ok))
+    assert.deepEqual(await wahaSeen(`http://127.0.0.1:${(server.address() as AddressInfo).port}`, 'k1', 200), { reached: false })
+    server.closeAllConnections(); server.close()
+  })
+  test('a failed ping comes back as its code, and the session is not asked', async () => {
+    const seen: string[] = []
+    const w = await waha(path => { seen.push(path); return [502, {}] })
+    assert.deepEqual(await wahaSeen(w.url, 'k1'), { reached: true, code: 502 })
+    assert.deepEqual(seen, ['/ping'])
+    w.close()
+  })
   test('nothing listening is not reached', async () => {
     const w = await waha(() => [200, {}])
     w.close()

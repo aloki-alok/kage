@@ -215,7 +215,7 @@ Run the commands from the Kage folder: the git checkout, or `~/.local/share/kage
    ```
 4. If you run Linux, let the container reach Kage's webhook: `kage set connectors.whatsapp.hookHost 0.0.0.0`. If a firewall such as ufw is on, allow only Docker's networks: `sudo ufw allow from 172.16.0.0/12 to any port 3199 proto tcp`. Keep port 3199 closed to the internet.
 5. Run `kage restart`. At its start, Kage writes the keys to `~/.config/kage/waha/.env` for the container.
-6. Start the bridge: `docker compose -f waha/compose.yaml up -d`. On an ARM machine, such as a Mac with Apple silicon, run `WAHA_TAG=arm-2026.10.1 docker compose -f waha/compose.yaml up -d` instead.
+6. Start the bridge: `docker compose -f waha/compose.yaml up -d`. On an ARM machine, such as a Mac with Apple silicon, run `WAHA_TAG=gows-arm-2026.10.1 docker compose -f waha/compose.yaml up -d` instead.
 7. Link your phone: `waha/qr.sh`. It repeats the ban risk and asks you to type `yes`. Then it shows a QR code. On your phone, open WhatsApp > Settings > Linked devices > Link a device, and scan the code.
 8. Check: `kage doctor` shows `ok    WhatsApp bridge up, session WORKING`.
 9. Try it: in any chat, type `@kage` and a task.

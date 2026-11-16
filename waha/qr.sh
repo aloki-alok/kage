@@ -22,7 +22,7 @@ s=$(status)
 echo "WhatsApp does not allow unofficial clients such as WAHA, so the number you link can be banned."
 echo "Link a number only if you accept that risk."
 printf 'Type yes to link a phone: '
-read -r answer
+read -r answer || answer=
 [ "$answer" = yes ] || die "nothing linked."
 
 case "$s" in
