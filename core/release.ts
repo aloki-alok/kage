@@ -28,3 +28,10 @@ export function releasePlan(current: string, titles: string[]): { version: strin
     .map(([head, k]) => `## ${head}\n${by(k).map(t => `- ${t}`).join('\n')}`)
   return { version: bumpVersion(current, bump), bump, notes: sections.join('\n\n') || 'Internal changes only.' }
 }
+
+// The workflows a candidate's commit must pass before it is released: the tests, and the upgrade a teammate makes (#312).
+export const RELEASE_CHECKS = ['ci.yml', 'upgrade.yml'] as const
+// runs: gh's "status conclusion" of each workflow's newest run on the commit, absent when it has none. One problem per check.
+export function checkProblems(sha: string, runs: Partial<Record<(typeof RELEASE_CHECKS)[number], string>>): string[] {
+  return RELEASE_CHECKS.filter(w => runs[w] !== 'completed success').map(w => `${w} on ${sha.slice(0, 7)} is not green (${runs[w] ?? 'no run found'})`)
+}

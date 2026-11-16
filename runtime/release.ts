@@ -6,7 +6,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { promisify } from 'node:util'
 import { compareUrl, inertChange, soakGate, type Boot } from '../core/auto-update.ts'
-import { releasePlan } from '../core/release.ts'
+import { checkProblems, RELEASE_CHECKS, releasePlan } from '../core/release.ts'
 
 const sh = async (root: string, cmd: string, ...args: string[]) =>
   (await promisify(execFile)(cmd, args, { cwd: root, encoding: 'utf8', timeout: 120_000, env: { ...process.env, GIT_TERMINAL_PROMPT: '0' } })).stdout.trim()
@@ -50,8 +50,8 @@ export async function release(root: string, dryRun: boolean, at = 'HEAD'): Promi
   if (await sh(root, 'git', 'rev-parse', 'HEAD') !== await sh(root, 'git', 'rev-parse', 'origin/main')) problems.push('main is not the same commit as origin/main')
   const sha = await sh(root, 'git', 'rev-parse', `${at}^{commit}`)
   if (await tryOut(root, 'git', 'merge-base', '--is-ancestor', sha, 'origin/main') === undefined) problems.push(`${sha.slice(0, 7)} is not on main`)
-  const ci = await tryOut(root, 'gh', 'run', 'list', '--workflow', 'ci.yml', '--commit', sha, '--limit', '1', '--json', 'status,conclusion', '-q', '.[0] | "\\(.status) \\(.conclusion)"')
-  if (ci !== 'completed success') problems.push(`CI on ${sha.slice(0, 7)} is not green (${ci ?? 'no run found'})`)
+  const runs = Object.fromEntries(await Promise.all(RELEASE_CHECKS.map(async w => [w, await tryOut(root, 'gh', 'run', 'list', '--workflow', w, '--commit', sha, '--limit', '1', '--json', 'status,conclusion', '-q', '.[0] | "\\(.status) \\(.conclusion)"') || undefined])))
+  problems.push(...checkProblems(sha, runs))
 
   const last = (await sh(root, 'git', 'tag', '--list', 'v*', '--sort=-v:refname')).split('\n')[0] || undefined
   // ponytail: with no earlier release the notes list the last 30 merges, not all history.

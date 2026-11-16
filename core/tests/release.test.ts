@@ -1,6 +1,6 @@
 import { describe, test } from 'node:test'
 import assert from 'node:assert/strict'
-import { bumpVersion, releasePlan } from '../release.ts'
+import { bumpVersion, checkProblems, releasePlan } from '../release.ts'
 
 describe('bumpVersion', () => {
   test('minor resets the patch, patch adds one', () => {
@@ -47,5 +47,16 @@ describe('releasePlan', () => {
   })
   test('no merges gives no release', () => {
     assert.equal(releasePlan('0.3.0', []), undefined)
+  })
+})
+
+describe('checkProblems', () => {
+  const sha = 'abcdef1234567'
+  test('a candidate is released only when both its tests and its upgrade drill passed on that commit (#312)', () => {
+    assert.deepEqual(checkProblems(sha, { 'ci.yml': 'completed success', 'upgrade.yml': 'completed success' }), [])
+    assert.deepEqual(checkProblems(sha, { 'ci.yml': 'completed success', 'upgrade.yml': 'completed failure' }), ['upgrade.yml on abcdef1 is not green (completed failure)'])
+    assert.deepEqual(checkProblems(sha, { 'ci.yml': 'completed success', 'upgrade.yml': 'in_progress ' }), ['upgrade.yml on abcdef1 is not green (in_progress )'])
+    assert.deepEqual(checkProblems(sha, { 'upgrade.yml': 'completed success' }), ['ci.yml on abcdef1 is not green (no run found)'])
+    assert.deepEqual(checkProblems(sha, {}), ['ci.yml on abcdef1 is not green (no run found)', 'upgrade.yml on abcdef1 is not green (no run found)'])
   })
 })

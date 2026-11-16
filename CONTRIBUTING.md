@@ -33,6 +33,12 @@ A third, `kagelet-all-live.test.ts`, runs a session set up as a `tools: all` kag
 KAGE_LIVE_TESTS=1 node --test runtime/tests/kagelet-all-live.test.ts
 ```
 
+`tests/upgrade-drill.sh` installs the previous release from a local copy of this repo, keeps an old env file, runs `kage update --stable` to your commit, starts the hub once (it stops at Slack, which refuses its fake tokens), and checks the settings and `kage doctor`. CI runs it on every pull request (`.github/workflows/upgrade.yml`), and `kage release` refuses a commit where it failed. Run it after a change to `install.sh`, `setup.sh`, the settings import or the packages. It upgrades to HEAD, so commit first:
+
+```sh
+tests/upgrade-drill.sh
+```
+
 There is no build. Node runs the TypeScript files as they are, so write only syntax it can strip (`erasableSyntaxOnly` in `tsconfig.json` enforces it). A running hub restarts into new code by itself once every session is quiet (`runtime/code-stamp.ts`).
 
 Write logs to stderr only. In a tmux pane, stdout carries the channel protocol, so a stray `console.log` breaks it.
