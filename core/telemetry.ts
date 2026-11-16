@@ -13,16 +13,21 @@ const field = (detail: string, k: string) => detail.match(new RegExp(`(?:^| )${k
 
 const WINDOWS = ['five_hour', 'seven_day', 'seven_day_opus', 'seven_day_sonnet', 'seven_day_overage_included', 'overage']
 
-// How the hub's run before this boot ended, read from the last lines it wrote. killed: it left no goodbye line,
-// so the machine slept or lost power, or something killed it (kill -9, out of memory).
+// How the hub's run before this boot ended, from the end of its log: the lines between the last two "hub start" lines
+// (hub.ts), or all of them when only one is there. killed: that run left no goodbye line, so the machine slept or
+// lost power, or something killed it (kill -9, out of memory).
 const BOOT_WHYS = ['update', 'settings', 'stop', 'crash', 'duplicate', 'killed', 'first']
 const ENDINGS: [RegExp, string][] = [
   [/\] newer code is in place/, 'update'], [/\] settings changed and every session is quiet/, 'settings'], [/\] stopped by SIG/, 'stop'],
   [/\] crashed\b|\] the hub could not load|\] npm ci failed/, 'crash'], [/\] another hub (is running|holds the hub lock)/, 'duplicate'],
 ]
-export function bootWhy(lastLines: string) {
-  for (const line of lastLines.split('\n').filter(Boolean).reverse()) for (const [re, why] of ENDINGS) if (re.test(line)) return why
-  return lastLines.trim() ? 'killed' : 'first'
+export function bootWhy(logTail: string) {
+  const lines = logTail.split('\n').filter(l => l.trim())
+  const starts = lines.flatMap((l, i) => l.includes(' hub.ts: hub start ') ? [i] : [])
+  const end = starts.at(-1) === lines.length - 1 ? starts.pop()! : lines.length
+  const run = lines.slice((starts.at(-1) ?? -1) + 1, end)
+  for (const line of run.reverse()) for (const [re, why] of ENDINGS) if (re.test(line)) return why
+  return run.length ? 'killed' : 'first'
 }
 
 // Our own log lines that mean something went wrong short of a crash, by the fixed text they start with. Only the

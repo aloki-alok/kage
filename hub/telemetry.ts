@@ -28,12 +28,9 @@ export function installId(dir: string): string {
   return id
 }
 
-// How the run before this one ended: its last lines, just above this boot's "hub start" line (hub.ts).
+// How the run before this one ended (core/telemetry.ts bootWhy), from the end of the log.
 function lastRunWhy(file: string) {
-  let lines: string[] = []
-  try { lines = readFileSync(file, 'utf8').split('\n').slice(-400) } catch { /* no log yet: a first start */ }
-  const start = lines.findLastIndex(l => l.includes(' hub.ts: hub start '))
-  return bootWhy(lines.slice(0, start < 0 ? lines.length : start).filter(l => l.trim() && !/^\s*at /.test(l)).slice(-5).join('\n'))
+  try { return bootWhy(readFileSync(file, 'utf8').split('\n').slice(-2000).join('\n')) } catch { return 'first' }
 }
 
 export function startTelemetry(o: Deps) {
@@ -47,6 +44,14 @@ export function startTelemetry(o: Deps) {
   // ponytail: one row per code a minute, so a flood counts as one; a count field if the rate matters.
   const lastError = new Map<string, number>()
   tapLog(first => { const c = errorCode(first), now = Date.now(); if (c && now - (lastError.get(c) ?? 0) > 60_000) { lastError.set(c, now); event('error', c) } })
+  // Once a UTC day, tried at start and hourly: the job clock restarts with the hub, which may restart within the hour.
+  const shape = () => {
+    const day = new Date().toISOString().slice(0, 10)
+    if (!o.shape || o.state.load('shape-day') === day) return
+    o.state.save('shape-day', day)
+    event('shape', Object.entries(o.shape()).map(([k, v]) => `${k}=${v}`).join(' '))
+  }
+  shape()
   // Off: forget the cursor, so turning it on again sends only what happens after, not the off months.
   if (!endpoint) { o.state.save('telemetry-cursor', undefined); return [] }
   const version = (JSON.parse(readFileSync(`${o.code}/package.json`, 'utf8')) as { version: string }).version
@@ -72,11 +77,5 @@ export function startTelemetry(o: Deps) {
     // ponytail: rides the SDK's experimental usage call, so a release that renames it only stops these rows.
     const d = told() ? planDetail(await Promise.race([o.usage?.()?.catch(() => undefined), new Promise<undefined>(r => setTimeout(r, 30_000))]) ?? { subscription_type: null, rate_limits: null }) : undefined
     if (d) o.ledgers.event({ kind: 'plan', who: 'hub', trace: '', detail: d })
-  } }, { name: 'shape', every: 3_600_000, run: () => {
-    // Hourly, once a UTC day: the job clock restarts with the hub, so a daily period might never come round.
-    const day = new Date().toISOString().slice(0, 10)
-    if (!o.shape || o.state.load('shape-day') === day) return
-    o.state.save('shape-day', day)
-    event('shape', Object.entries(o.shape()).map(([k, v]) => `${k}=${v}`).join(' '))
-  } }]
+  } }, { name: 'shape', every: 3_600_000, run: shape }]
 }

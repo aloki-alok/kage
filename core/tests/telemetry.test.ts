@@ -69,6 +69,11 @@ test('a boot says how the run before it ended, from the last lines that run wrot
   assert.equal(bootWhy(at('another hub holds the hub lock, so this one exits')), 'duplicate')
   assert.equal(bootWhy(at('posted in C1 for C1:5.5 (owner)')), 'killed')   // no goodbye: power, sleep, kill -9 or out of memory
   assert.equal(bootWhy(''), 'first')
+  // Only the run between the last two starts counts: one killed after a few lines is not read as the update before it.
+  const start = '2026-11-16T15:50:00.666Z hub.ts: hub start 1 in the last 10 minutes'
+  assert.equal(bootWhy([at('newer code is in place and every session is quiet: restarting into it'), start, at('listening as kage'), start].join('\n')), 'killed')
+  // A crash whose error prints many lines after it is still a crash.
+  assert.equal(bootWhy([at('crashed TypeError: x'), ...Array(8).fill('  code: 42,'), '}', start].join('\n')), 'crash')
 })
 
 test('an error code comes only from a fixed list of our own log lines', () => {
