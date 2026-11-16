@@ -210,6 +210,17 @@ describe('protectConfig: what the sandbox and the file rules close', () => {
     for (const n of ['session.env', 'kagelets', 'config.json*', 'secrets.json*', 'env*', 'afk.json', 'hub.log', 'sender']) assert.ok(deny.includes(`${real(dir)}/${n}`), n)
     for (const n of ['files', 'memory']) assert.ok(!deny.some(d => d === `${real(dir)}/${n}` || d === real(dir)), n)
   })
+  test('a tools: all kagelet: its file tools cannot edit Kage\'s code or the login folders, and only gpg and the ssh agent keep their sockets', () => {
+    const was = { gnupg: process.env.GNUPGHOME, ssh: process.env.SSH_AUTH_SOCK }
+    process.env.GNUPGHOME = '/g/home'; process.env.SSH_AUTH_SOCK = '/tmp/agent.sock'
+    try {
+      const k = protectConfig(`${dir}/env`, code, '/home/o', 'kagelet')
+      for (const p of [`Edit(/${code}/**)`, 'Edit(//home/o/Library/LaunchAgents/**)', 'Edit(//home/o/.config/systemd/**)']) assert.ok(k.permissions.deny.includes(p), p)
+      assert.deepEqual(k.sandbox!.network.allowUnixSockets, ['/g/home', '/tmp/agent.sock'])
+      assert.equal(k.sandbox!.network.allowAllUnixSockets, false)
+      assert.ok(!w.permissions.deny.some(p => p.includes(code)))   // other sessions keep their file tools on the code
+    } finally { process.env.GNUPGHOME = was.gnupg; process.env.SSH_AUTH_SOCK = was.ssh; if (was.gnupg === undefined) delete process.env.GNUPGHOME; if (was.ssh === undefined) delete process.env.SSH_AUTH_SOCK }
+  })
   test('no session reads session.env or the waha key file, though only secrets.json and env* were named before', () => {
     const read = w.sandbox!.filesystem.denyRead
     for (const n of ['secrets.json*', 'env*', 'session.env*', 'waha/.env*']) assert.ok(read.includes(`${real(dir)}/${n}`), n)

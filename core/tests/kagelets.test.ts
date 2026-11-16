@@ -1,6 +1,6 @@
 import { describe, test } from 'node:test'
 import assert from 'node:assert/strict'
-import { budgetLeft, capCheck, chainErrors, costFlags, grantRefusal, parseKagelet, resultLine, revokeStanding, rowLine, setPaused, kageletFile, kageletRows, starterFile, type Kagelet, type KageletRow } from '../kagelets.ts'
+import { builtinTools, budgetLeft, capCheck, chainErrors, costFlags, grantRefusal, parseKagelet, resultLine, revokeStanding, rowLine, setPaused, kageletFile, kageletRows, starterFile, type Kagelet, type KageletRow } from '../kagelets.ts'
 
 const file = (head: string, body = 'Post a summary of the deploy log.') => `---\n${head}\n---\n${body}\n`
 const LINK = 'https://test.slack.com/archives/CTEST1/p1700000000123456'
@@ -76,6 +76,27 @@ describe('the db_read grant', () => {
 })
 
 describe('the grant', () => {
+  test('tools: all gives every built-in tool behind the hub check: a one-way shell step is held, Kage\'s owner tools and act tools never pass, an MCP tool still needs its own grant', () => {
+    const all = ['all']
+    for (const t of ['Bash', 'Read', 'Edit', 'Write', 'Glob', 'Grep', 'Task', 'WebSearch', 'ToolSearch']) assert.equal(grantRefusal(t, all, { command: 'git status' }), undefined, t)
+    assert.match(grantRefusal('Bash', all, { command: 'git push --force origin main' }) ?? '', /^Held: a forced push.*needs/)
+    assert.match(grantRefusal('WebFetch', all, { url: 'file:///etc/passwd' }) ?? '', /http/)
+    for (const t of ['mcp__kage__message_people', 'mcp__kage__away', 'mcp__kage__schedule', 'mcp__kage__manage_kagelet', 'mcp__plugin_kage_kage__away']) assert.ok(grantRefusal(t, all), t)
+    assert.equal(grantRefusal('mcp__kage__report', all), undefined)
+    assert.match(grantRefusal('mcp__gmail__send_message', all) ?? '', /grant/)
+    assert.equal(grantRefusal('mcp__gmail__send_message', [...all, 'mcp__gmail__send_message']), undefined)
+    assert.match(grantRefusal('mcp__stripe__create_refund', [...all, 'mcp__stripe__create_refund']) ?? '', /never holds/)
+    assert.equal(builtinTools(all), undefined)                      // no tool list: the session loads them all
+    assert.deepEqual(builtinTools(['WebFetch', 'mcp__x__y']), ['WebFetch', 'ToolSearch'])
+  })
+  test('a file may say tools: all; a step after an all kagelet may hold any built-in tool, never an MCP tool or db_read it lacks', () => {
+    const k = parseKagelet('worker', file(`thread: ${LINK}\nschedule: 0 9 * * *\ntools: all`)) as Kagelet
+    assert.deepEqual(k.tools, ['all'])
+    assert.deepEqual([...chainErrors([{ name: 'a', tools: ['all'] }, { name: 'b', after: 'a', tools: ['WebSearch', 'Bash'] }])], [])
+    assert.match(chainErrors([{ name: 'a', tools: ['all'] }, { name: 'b', after: 'a', tools: ['WebSearch', 'mcp__x__y'] }]).get('b') ?? '', /holds mcp__x__y/)
+    assert.match(chainErrors([{ name: 'a', tools: ['all'] }, { name: 'b', after: 'a', tools: ['db_read'] }]).get('b') ?? '', /holds db_read/)
+    assert.match(chainErrors([{ name: 'a', tools: ['WebSearch'] }, { name: 'b', after: 'a', tools: ['all'] }]).get('b') ?? '', /holds all/)
+  })
   test('a tool outside the grant is refused; Kage\'s own tools for its thread are always there', () => {
     assert.equal(grantRefusal('WebSearch', ['WebSearch']), undefined)
     assert.match(grantRefusal('WebSearch', ['WebFetch']) ?? '', /grant/)

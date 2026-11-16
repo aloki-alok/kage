@@ -241,6 +241,22 @@ test('a read tool is Kage\'s to grant: saved with no card, logged once with its 
   assert.match(await u.m.manage({ action: 'save', name: 'y', ...job, tools: ['mcp__x__get_thing'] }, 3), /not saved: .*owner/)
 })
 
+test('tools: all takes the owner\'s card for each kagelet: its yes never stands for the next one', async () => {
+  const u = manager()
+  const yes = owner(true)
+  const all = { ...job, tools: ['all'] }
+  assert.match(await u.m.manage({ action: 'save', name: 'x', ...all }, 1, yes.ask), /saved x/)
+  assert.match(readFileSync(`${u.dir}/x/job.md`, 'utf8'), /^tools: all$/m)
+  assert.match(await u.m.manage({ action: 'save', name: 'y', ...all }, 2, yes.ask), /saved y/)
+  assert.doesNotMatch(readFileSync(`${u.dir}/y/job.md`, 'utf8'), /standing/)
+  assert.deepEqual(yes.cards.map(c => c.tools), ['all', 'all'])
+  assert.match(await u.m.manage({ action: 'save', name: 'z', ...all }, 3), /not saved: .*owner/)   // no card, no all
+  await u.m.manage({ action: 'save', name: 'x', ...all, schedule: '0 10 * * *' }, 4, yes.ask)   // same job: no card
+  assert.equal(yes.cards.length, 2)
+  assert.match(await u.m.manage({ action: 'save', name: 'x', ...all, job: 'Delete the old branches.' }, 5), /not saved: .*owner/)   // a new job for a shell is the owner's call
+  assert.match(await u.m.manage({ action: 'save', name: 'x', ...all, job: 'Delete the old branches.' }, 5, yes.ask), /saved x/)
+  assert.equal(yes.cards.length, 3)
+})
 test('a write tool asks the owner once; that yes stands for every later kagelet, logged as standing, with no card and no DM', async () => {
   const u = manager()
   const gmail = { ...job, tools: ['WebSearch', 'mcp__gmail__send'] }

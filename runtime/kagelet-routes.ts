@@ -1,6 +1,6 @@
 // Routing one kagelet's output or message to another (#93).
 import { randomUUID } from 'node:crypto'
-import { MAX_CHAIN, parseKagelet, kageletRows, type Kagelet } from '../core/kagelets.ts'
+import { covers, MAX_CHAIN, parseKagelet, kageletRows, type Kagelet } from '../core/kagelets.ts'
 import { handoffDetail, whoOf } from '../core/events.ts'
 import { loopGuard } from '../core/agents.ts'
 import { messageInput, parseMessage, type KageletMessage } from '../core/kagelet-message.ts'
@@ -55,7 +55,7 @@ export function kageletRoutes(o: {
     const from = rows.find(r => r.name === m.from)
     const c = chainOf(m.contextId, now)
     // A message is untrusted input (its sender may read the web): it never reaches a kagelet that holds more.
-    const wider = row?.tools.find(t => !(from?.tools ?? []).includes(t))
+    const wider = row?.tools.find(t => !covers(from?.tools ?? [], t))
     const why = !row || !sp ? `there is no kagelet named "${m.to}"`
       : row.state === 'broken' ? `${m.to} is broken (${row.error})`
       : wider ? `${m.to} holds ${wider}, which ${m.from} does not. A kagelet messages only one with the same tools or fewer.`
