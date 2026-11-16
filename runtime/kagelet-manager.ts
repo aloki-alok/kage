@@ -1,13 +1,13 @@
 // The kagelet manager: the tool Kage's owner sessions use to write, pause, run, remove and revoke kagelets,
 // and which tools each one is granted.
-import { existsSync, readFileSync, unlinkSync } from 'node:fs'
+import { readFileSync, unlinkSync } from 'node:fs'
 import { DEFAULT_MODEL } from '../core/config.ts'
 import { chainErrors, COST_FLAG, DB_READ, NAME, parseKagelet, resultLine, revokeStanding, rowLine, kageletFile, kageletRows, type Kagelet, type Standing } from '../core/kagelets.ts'
 import { chainLine, chainViews } from '../core/events.ts'
 import { kageletTier } from '../core/access.ts'
 import type { Store } from './store.ts'
 import type { Ledgers } from './ledger.ts'
-import { jobPath, pauseKagelet, readKagelets, writeJob } from './kagelet-files.ts'
+import { hasKagelet, jobPath, pauseKagelet, readKagelets, writeJob } from './kagelet-files.ts'
 
 // The command a kagelet's db_read runs: kagelets.dbRead.command wins, else the one this kagelet saved with.
 // Read on each call, so a change applies with no restart.
@@ -74,7 +74,7 @@ export function kageletManager(o: { dir: string; max: number; ledgers: { text(na
         o.sync(now)
         return said
       }
-      if (!existsSync(file) && a.action !== 'save') return `There is no kagelet named "${a.name}".`
+      if (!hasKagelet(o.dir, a.name) && a.action !== 'save') return `There is no kagelet named "${a.name}".`
       if (a.action === 'remove') {
         // Its read command and its memory folder stay: the owner approved the command for the install, and no card can bring one back.
         unlinkSync(file)
@@ -90,7 +90,7 @@ export function kageletManager(o: { dir: string; max: number; ledgers: { text(na
       // Kage approves by tier (core/access.ts), from code: the model writes every field of this call, in the
       // owner's sessions too (thread content can steer one), so none of them can widen a grant.
       const tools = a.tools ?? []
-      const old = existsSync(file) ? parseKagelet(a.name, readFileSync(file, 'utf8')) : undefined
+      const old = hasKagelet(o.dir, a.name) ? parseKagelet(a.name, readFileSync(file, 'utf8')) : undefined
       const had = old && !('error' in old) ? old : undefined
       const fresh = tools.filter(t => !had?.tools.includes(t))
       // Every refused save that would have granted something new leaves a ledger row and a log line.

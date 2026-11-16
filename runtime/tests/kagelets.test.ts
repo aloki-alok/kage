@@ -1,11 +1,11 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { openStore } from '../store.ts'
-import { existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, symlinkSync, writeFileSync } from 'node:fs'
+import { existsSync, lstatSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, symlinkSync, writeFileSync } from 'node:fs'
 import { execFileSync } from 'node:child_process'
 import { tmpdir } from 'node:os'
 import { costCap } from '../kagelet-cost-cap.ts'
-import { migrateKagelets, pauseKagelet, readKagelets } from '../kagelet-files.ts'
+import { migrateKagelets, pauseKagelet, readKagelets, writeJob } from '../kagelet-files.ts'
 import { kageletManager, readCommand, type Manage } from '../kagelet-manager.ts'
 import { ownerNotes } from '../kagelet-notes.ts'
 import { syncKagelets } from '../kagelet-sync.ts'
@@ -112,6 +112,34 @@ test('the old layout moves into one folder per kagelet, memory too, and a rerun 
   const before = tree()
   migrateKagelets(dir)
   assert.equal(tree(), before)
+})
+
+test('a kagelet folder that is a link is never read, moved into, written through or removed through', () => {
+  const dir = mkdtempSync(`${tmpdir()}/spec-`)
+  const outside = mkdtempSync(`${tmpdir()}/outside-`)
+  writeFileSync(`${outside}/job.md`, file().text)
+  symlinkSync(outside, `${dir}/foo`)
+  writeFileSync(`${dir}/foo.md`, 'old job')
+  mkdirSync(`${dir}/memory/foo`, { recursive: true }); writeFileSync(`${dir}/memory/foo/a.md`, 'note')
+  migrateKagelets(dir)
+  assert.deepEqual(readdirSync(outside), ['job.md'])
+  assert.deepEqual(readKagelets(dir), [])
+  assert.match(pauseKagelet(dir, 'foo', true), /no kagelet/i)
+  assert.throws(() => writeJob(dir, 'foo', 'x'), /plain folder/)
+  assert.equal(readFileSync(`${outside}/job.md`, 'utf8'), file().text)
+  // A job.md that is itself a link out is no kagelet either.
+  mkdirSync(`${dir}/bar`); symlinkSync(`${outside}/job.md`, `${dir}/bar/job.md`)
+  assert.deepEqual(readKagelets(dir), [])
+})
+
+test('a plain file in a kagelet\'s place stops only that move, never the sync', () => {
+  const dir = mkdtempSync(`${tmpdir()}/spec-`)
+  writeFileSync(`${dir}/foo`, 'not a folder')
+  writeFileSync(`${dir}/foo.md`, 'job')
+  mkdirSync(`${dir}/memory/foo`, { recursive: true })
+  writeFileSync(`${dir}/ok.md`, 'job ok')
+  migrateKagelets(dir)
+  assert.equal(readFileSync(`${dir}/ok/job.md`, 'utf8'), 'job ok')
 })
 
 test('a half-done move finishes, and a job.md written meanwhile wins over the old file', () => {
