@@ -6,7 +6,7 @@ flowchart TD
   GT -->|no proof| X["Dropped. Nothing runs."]
   GT --> DS["Dispatcher: one session per conversation"]
   SC["Schedules and kagelets"] --> DS
-  DS --> SE["Claude Code session, in a sandbox"]
+  DS --> SE["Claude Code session"]
   SE --> TL["Kage tools"]
   TL -->|risky call| AP["Approval card in your DM"]:::you
   TL --> OB["Outbound guard: no secrets, no crowd pings"]
@@ -36,7 +36,7 @@ A session works with Kage's tools. A call that acts as you, such as posting some
 
 ## Nothing secret leaves
 
-Tokens live in `secrets.json`, and only the hub reads them. Every session runs in a sandbox that cannot open that file. Every outgoing message passes one guard that blocks secrets and crowd pings.
+Tokens live in `secrets.json`, and only the hub reads them. No session's file tools may open that file, and with `harness.sandbox` on, its shell cannot either. Every outgoing message passes one guard that blocks secrets and crowd pings.
 
 ## Every page
 
@@ -54,3 +54,4 @@ The docs site shows the pages in this order. A new page needs its file here and 
 10. [Voice and calls](voice-and-calls.md): caller limits and owner call verification.
 11. [Settings and tokens](settings-and-tokens.md): where settings and tokens live, and why no session reads the tokens.
 12. [Updates and releases](updates-and-releases.md): how tested code reaches installed hubs through `stable`.
+13. [How Kage keeps monitors cheap](how-kage-keeps-monitors-cheap.md): how a repeating check moves from a model poll to a tripwire or an event.

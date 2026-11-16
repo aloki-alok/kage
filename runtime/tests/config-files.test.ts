@@ -177,3 +177,17 @@ describe('the WhatsApp container keys live in secrets.json', () => {
     assert.equal(readSettings(w.env).secrets.waha, undefined)
   })
 })
+
+describe('an install from before 0.4.0 keeps its own keys (a teammate lost a tool key this way)', () => {
+  test('a key of the person\'s own in the old env file reaches the hub environment after the first-start import', async () => {
+    const w = world(`${ENV}MY_TOOL_API_KEY=sk-test-1234567890abcdef\nMY_TOOL_URL=https://tool.test\n`)
+    importLegacy(w.env, new Date('2026-11-14T10:15:00Z'))
+    // hub.ts reads both files as plain JSON, then exports what the import could not place.
+    const raw = (f: string) => JSON.parse(readFileSync(join(w.dir, f), 'utf8'))
+    const { unknownEnv } = await import('../../core/config.ts')
+    const env = unknownEnv(raw('config.json'), raw('secrets.json'))
+    assert.equal(env.MY_TOOL_API_KEY, 'sk-test-1234567890abcdef')
+    assert.equal(env.MY_TOOL_URL, 'https://tool.test')
+    assert.equal(env.SLACK_BOT_TOKEN, undefined, 'Kage\'s own tokens stay out')
+  })
+})

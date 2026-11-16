@@ -38,7 +38,7 @@ test('a Slack triage decision writes one log line and keeps its database event',
     const events = ledger.events('2026-01-01')
     assert.equal(events.length, 1)
     assert.equal(events[0]!.kind, 'triage')
-    assert.equal(events[0]!.detail, 'react: owner react 0.99, reaction folded_hands 1.00')
+    assert.match(events[0]!.detail, /^react: owner react 0\.99, reaction folded_hands 1\.00, \d+ ms$/)
     assert.deepEqual(reactions, ['pray'])
     assert.equal(lines.filter(l => l.includes('triage ')).length, 1, lines.join('\n'))
   } finally {
@@ -72,6 +72,107 @@ test('a message triage sends to react, with no emoji picked, still gets the eyes
     assert.deepEqual(reactions, ['eyes'])
   } finally {
     ledger.close()
+    rmSync(dir, { recursive: true, force: true })
+  }
+})
+
+test('a listed agent\'s post that Jev says needs no reply gets one fresh line that tags no one, so the thread never looks ignored', async () => {
+  const dir = mkdtempSync(join(tmpdir(), 'kage-jev-'))
+  const posts: { thread_ts?: string; text: string }[] = []
+  try {
+    const client = {
+      auth: { test: async () => ({ team_id: 'TTEST', user_id: 'UTEST1' }) },
+      conversations: { open: async () => ({ channel: { id: 'DTEST' } }), history: async () => ({ messages: [] }) },
+      users: { info: async () => ({ user: { real_name: 'Sam Test' } }) },
+      reactions: { add: async () => ({ ok: true }) },
+      chat: { postMessage: async (o: { thread_ts?: string; text: string }) => { posts.push(o); return { ok: true } } },
+    }
+    const slack = await connectSlack({
+      dir, appToken: 'test', userToken: 'test', bot: client as never, user: client as never,
+      name: 'kage', title: 'Kage', teammates: ['UMATE0002'], apps: ['ATEST0001'],
+      hub: { posted: () => '', handled: () => {}, deliver: () => assert.fail('a post that needs no reply starts no session') } as never,
+      jev: async () => ({ reply: false, why: 'jev needs_reply 0.10 (threshold 0.5)' }),
+      heard: async () => 'Dropped',
+    })
+    await slack.replay('test-source', JSON.stringify({ ...msg, user: 'UMATE0002', app_id: 'ATEST0001', bot_id: 'BTEST0001', text: '<@UTEST1> done, no reply needed' }))
+    assert.equal(posts.length, 1)
+    assert.equal(posts[0]!.thread_ts, '5.5')
+    assert.equal(posts[0]!.text, 'Dropped :ninja:')
+    assert.ok(!posts[0]!.text.includes('<@'), 'no tag, so the agent is not woken')
+  } finally {
+    rmSync(dir, { recursive: true, force: true })
+  }
+})
+
+test('with jev.ackWords off, a skipped agent post gets a green tick and no reply', async () => {
+  const dir = mkdtempSync(join(tmpdir(), 'kage-jev-'))
+  const posts: unknown[] = [], reactions: string[] = []
+  try {
+    const client = {
+      auth: { test: async () => ({ team_id: 'TTEST', user_id: 'UTEST1' }) },
+      conversations: { open: async () => ({ channel: { id: 'DTEST' } }), history: async () => ({ messages: [] }) },
+      users: { info: async () => ({ user: { real_name: 'Sam Test' } }) },
+      reactions: { add: async (o: { name: string }) => { reactions.push(o.name); return { ok: true } } },
+      chat: { postMessage: async (o: unknown) => { posts.push(o); return { ok: true } } },
+    }
+    const slack = await connectSlack({
+      dir, appToken: 'test', userToken: 'test', bot: client as never, user: client as never,
+      name: 'kage', title: 'Kage', teammates: ['UMATE0002'], apps: ['ATEST0001'],
+      hub: { posted: () => '', handled: () => {}, deliver: () => assert.fail('a post that needs no reply starts no session') } as never,
+      jev: async () => ({ reply: false, why: 'jev needs_reply 0.10 (threshold 0.5)' }),
+      heard: async () => assert.fail('no words are written when ackWords is off'), ackWords: false,
+    })
+    await slack.replay('test-source', JSON.stringify({ ...msg, user: 'UMATE0002', app_id: 'ATEST0001', bot_id: 'BTEST0001', text: '<@UTEST1> done, no reply needed' }))
+    assert.deepEqual({ posts, reactions }, { posts: [], reactions: ['white_check_mark'] })
+  } finally {
+    rmSync(dir, { recursive: true, force: true })
+  }
+})
+
+test('a held message that starts on its replay loses the hourglass, so only the ninja shows it is being worked', async () => {
+  const dir = mkdtempSync(join(tmpdir(), 'kage-held-'))
+  const removed: string[] = []
+  try {
+    const client = {
+      auth: { test: async () => ({ team_id: 'TTEST', user_id: 'UTEST1' }) },
+      conversations: { open: async () => ({ channel: { id: 'DTEST' } }), history: async () => ({ messages: [] }), replies: async () => ({ messages: [] }), info: async () => ({ channel: { name: 'general' } }) },
+      users: { info: async () => ({ user: { real_name: 'Sam Test' } }) },
+      chat: { getPermalink: async () => ({ permalink: '' }) },
+      reactions: { add: async () => ({ ok: true }), remove: async (o: { name: string; timestamp: string }) => { removed.push(`${o.timestamp} ${o.name}`); return { ok: true } } },
+    }
+    const slack = await connectSlack({
+      dir, appToken: 'test', userToken: 'test', bot: client as never, user: client as never,
+      name: 'kage', title: 'Kage', teammates: [], apps: [],
+      hub: { posted: () => '', handled: () => {}, deliver: () => 'sent' } as never,
+    })
+    await slack.replay('test-a', JSON.stringify({ ...msg, client_msg_id: 'a', ts: '6.6', text: '<@UTEST1> check the logs' }))
+    assert.deepEqual(removed, ['6.6 hourglass_flowing_sand'])
+  } finally {
+    rmSync(dir, { recursive: true, force: true })
+  }
+})
+
+test('the thread a session reads names the owner\'s Slack id, so a tag for the owner never needs a guessed id (#319)', async () => {
+  const dir = mkdtempSync(join(tmpdir(), 'kage-legend-'))
+  const tasks: string[] = []
+  try {
+    const client = {
+      auth: { test: async () => ({ team_id: 'TTEST', user_id: 'UTEST1' }) },
+      conversations: { open: async () => ({ channel: { id: 'DTEST' } }), history: async () => ({ messages: [] }), info: async () => ({ channel: { name: 'general' } }),
+        replies: async () => ({ messages: [{ user: 'UTEST2', ts: '6.0', text: 'confirm it with your owner first' }] }) },
+      users: { info: async () => ({ user: { real_name: 'Sam Test' } }) },
+      chat: { getPermalink: async () => ({ permalink: '' }) },
+      reactions: { add: async () => ({ ok: true }), remove: async () => ({ ok: true }) },
+    }
+    const slack = await connectSlack({
+      dir, appToken: 'test', userToken: 'test', bot: client as never, user: client as never,
+      name: 'kage', title: 'Kage', teammates: [], apps: [],
+      hub: { posted: () => '', handled: () => {}, deliver: (_c: unknown, task: { content: string }) => { tasks.push(task.content); return 'sent' } } as never,
+    })
+    await slack.replay('test-legend', JSON.stringify({ ...msg, client_msg_id: 'a', ts: '6.6', thread_ts: '6.0', text: '<@UTEST1> check the logs' }))
+    assert.equal(tasks.length, 1)
+    assert.match(tasks[0]!, /People \(display names, unverified\): owner:UTEST1 = Sam Test; other:UTEST2 = Sam Test\n/)
+  } finally {
     rmSync(dir, { recursive: true, force: true })
   }
 })
@@ -166,6 +267,29 @@ test('an alarm post with empty text still reaches channelPost with its attachmen
       assert.ok(heard[0]!.quoted.includes(word), `quoted lacks ${word}`)
     }
     assert.ok(heard[0]!.quoted.split('\n').every(l => l.startsWith('> ')))
+  } finally {
+    rmSync(dir, { recursive: true, force: true })
+  }
+})
+
+test('a throw in channelPost never stops the next hook or the handling of the message', async () => {
+  const dir = mkdtempSync(join(tmpdir(), 'kage-channel-throw-'))
+  let heardBy = 0
+  try {
+    const client = {
+      auth: { test: async () => ({ team_id: 'TTEST', user_id: 'UTEST1' }) },
+      conversations: { open: async () => ({ channel: { id: 'DTEST' } }), history: async () => ({ messages: [] }), info: async () => ({ channel: { name: 'test' } }), replies: async () => ({ messages: [] }) },
+      chat: { getPermalink: async () => ({ permalink: 'https://test.invalid/p' }) },
+      users: { info: async () => ({ user: { real_name: 'Sam Test' } }) },
+      reactions: { add: async () => ({ ok: true }) },
+    }
+    const slack = await connectSlack({
+      dir, appToken: 'test', userToken: 'test', bot: client as never, user: client as never,
+      name: 'kage', title: 'Kage', teammates: ['UTEST2'], apps: [],
+      hub: { posted: () => '', handled: () => {}, heard: () => {}, deliver: () => { heardBy++; return 'sent' }, channelPost: () => { throw new Error('boom') } } as never,
+    })
+    await slack.replay('s1', JSON.stringify({ type: 'message', channel: 'CTEST2', ts: '7.7', user: 'UTEST2', client_msg_id: 'm1', text: `<@${slack.ids.bot}> hello` }))
+    assert.equal(heardBy, 1)   // a teammate's tag still started its task after the hook threw
   } finally {
     rmSync(dir, { recursive: true, force: true })
   }

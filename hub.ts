@@ -90,6 +90,10 @@ function claudeCommand(route: string | undefined) {
     if ((statSync(sessionEnv).mode & 0o777) === 0o600) process.loadEnvFile(sessionEnv)
     else say(`${sessionEnv} is not private, so it was skipped. Run chmod 600 on it.`)
   }
+  // The old env file's own keys (a tool's API key) were in the hub's environment before the import moved them into the
+  // settings files, so they still are. session.env and the shell win over them.
+  try { for (const [k, v] of Object.entries((await import('./core/config.ts')).unknownEnv(cfg, sec))) process.env[k] ??= v }
+  catch (e) { say(`could not export the env file's own keys: ${e}`) }
   // Kage's own Claude login (kage claude-login): sessions bill its seat. An API key in the environment would win over it.
   if (sec.claudeToken) { process.env.CLAUDE_CODE_OAUTH_TOKEN = sec.claudeToken; delete process.env.ANTHROPIC_API_KEY }
   // Keys named in config.json sessionKeys leave the environment here, before any session copies it (runtime/hold-keys.ts, #182).

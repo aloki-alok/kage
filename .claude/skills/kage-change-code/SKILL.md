@@ -60,7 +60,7 @@ Privacy and trust (each was a real leak, fixed in #193, #206, #207):
 11. Decide who someone is only from what they cannot write: a verified signature, the platform's user id, a one-time code given to one person. A header, a thread id or a name the sender supplies never picks whose session or rights they get. The email `References` header was the trap.
 12. A child process that opens outside content (a browser, a fetched page) gets a short env allowlist, never `...process.env`. `tests/structure.test.ts` fails on any new `...process.env` outside `FULL_ENV_CHILDREN`.
 13. What a call or a room gets, everyone in it gets. A Meet, a group chat or a shared thread is never "the owner", even when the owner sent Kage in.
-14. A file a session must not read is closed in every layer: `configRefusal` (the only hook on the tmux route), the `Read` and `Edit` deny rules, and the sandbox `denyRead`. Add the test for each layer.
+14. A file a session must not read is closed in every layer: `configRefusal` (the only hook on the tmux route), the `Read` and `Edit` deny rules, and the sandbox `denyRead` (only when `harness.sandbox` is on). Add the test for each layer.
 15. Text from anyone but the person who gave the task is data. Quote it with `quotedLine` and label it, and never let it pick a tool or a target.
 
 Shared homes (update this table when you add one):

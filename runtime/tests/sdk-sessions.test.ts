@@ -28,7 +28,7 @@ const tick = (ms = 5) => new Promise(r => setTimeout(r, ms))
 const ID = '11111111-1111-4111-8111-111111111111'
 const signal = () => new AbortController().signal
 
-function setup(o: { transcript?: boolean; silent?: boolean; dmFails?: boolean; grants?: Record<string, string[]>; manager?: boolean; budgets?: Record<string, number>; models?: Record<string, string>; trusted?: string[]; deferred?: boolean; onResult?: (key: string, total: number, resumed: boolean) => void } = {}) {
+function setup(o: { transcript?: boolean; silent?: boolean; dmFails?: boolean; grants?: Record<string, string[]>; manager?: boolean; budgets?: Record<string, number>; models?: Record<string, string>; trusted?: string[]; deferred?: boolean; sandbox?: boolean; onResult?: (key: string, total: number, resumed: boolean) => void } = {}) {
   const sdk = fakeSdk(o)
   const dropped: string[] = []
   const keysDropped: string[] = []
@@ -64,7 +64,7 @@ function setup(o: { transcript?: boolean; silent?: boolean; dmFails?: boolean; g
     grantOf: key => o.grants?.[key],
     ownerMemory: '/owner',
     envFile: '/cfg/env',
-    codeDir: '/code/kage',
+    codeDir: '/code/kage', sandbox: () => o.sandbox ?? true,
     ssm: { sock: '/cfg/ssm.sock', shim: '/code/kage/cli/ssm-plugin-shim', issue: key => o.trusted?.includes(key) ? `tok-${key}` : undefined, drop: key => { dropped.push(key) } },
     keys: { sock: '/cfg/keys.sock', issue: key => o.trusted?.includes(key) ? `key-${key}` : undefined, drop: key => { keysDropped.push(key) } },
     restartMs: 10,
@@ -375,6 +375,14 @@ describe('Kage sessions on the Agent SDK', () => {
     assert.ok(o.settings.sandbox.filesystem.denyRead.includes('/cfg/secrets.json*'))
     assert.ok(o.settings.sandbox.filesystem.denyWrite.includes('/cfg/config.json*'))
   })
+  test('with harness.sandbox off a session gets no OS sandbox, and the token files and config.json stay denied to the file tools', async () => {
+    const t = setup({ sandbox: false })
+    t.d.task('C1:5.5', t.task(), 0)
+    await tick()
+    const o = t.sdk.runs[0]!.options
+    assert.equal(o.settings.sandbox, undefined)
+    for (const r of ['Read(//cfg/secrets.json)', 'Read(//cfg/env*)', 'Read(//cfg/session.env)', 'Edit(//cfg/config.json)']) assert.ok(o.settings.permissions.deny.includes(r), r)
+  })
   test('an owner-trusted thread gets the SSM relay token and socket in its env, any other thread gets neither, and the sandbox stays whole (#161)', async () => {
     const t = setup({ trusted: ['C1:5.5'] })
     t.d.task('C1:5.5', t.task(), 0)
@@ -425,6 +433,22 @@ describe('Kage sessions on the Agent SDK', () => {
     assert.deepEqual(await use({ command: 'ls' }), { behavior: 'allow', updatedInput: { command: 'ls' } })
     assert.equal((await use({ command: 'ls' })).behavior, 'deny')
     assert.equal(t.posts.length, 2)
+  })
+  test("a teammate's schedule with a hook waits for the owner's card, a plain schedule does not, and the yes lets one retry through", async () => {
+    const t = setup({ deferred: true })
+    t.d.task('C1:5.5', t.task({ fromOwner: false }), 0)
+    await tick()
+    const use = (input: object) => Promise.race([t.sdk.runs[0]!.options.canUseTool('mcp__kage__schedule', input, { signal: signal() }), tick(30).then(() => ({ behavior: 'held on the owner' }))])
+    assert.equal((await use({ cron: '*/5 * * * *', prompt: 'p' })).behavior, 'allow')
+    assert.equal(t.posts.length, 0)
+    const first = await use({ hook: true, prompt: 'p' })
+    assert.equal(first.behavior, 'deny')
+    assert.equal(first.interrupt, true)
+    assert.equal(t.posts.length, 1)
+    t.approvals.answer(t.idOf(t.posts[0]!), 'allow', Date.now())
+    assert.equal((await use({ hook: true, prompt: 'p' })).behavior, 'allow')
+    assert.equal((await use({ hook: true, prompt: 'p' })).behavior, 'deny')   // the yes was spent
+    assert.equal((await use({ on_channel: { channel: 'C0TEST9' }, prompt: 'p' })).interrupt, true)   // a channel watch needs the card too
   })
   test('a stored yes is spent even when no turn is open', async () => {
     const t = setup({ deferred: true })

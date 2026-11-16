@@ -1,6 +1,6 @@
 {
   "name": "kage",
-  "version": "0.3.1",
+  "version": "0.4.1",
   "description": "Your own Claude Code, reachable from Slack, WhatsApp, email, phone calls, meetings and your browser. It works on your machine with your setup and answers where you asked.",
   "license": "PolyForm-Noncommercial-1.0.0",
   "type": "module",

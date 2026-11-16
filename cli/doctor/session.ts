@@ -16,7 +16,7 @@ export const session: Group = async () => {
   }
   const sdkLoads = await import('@anthropic-ai/claude-agent-sdk').then(() => true, () => false)
   return [
-    sandboxLine({ platform: process.platform, sandboxExec: executable('/usr/bin/sandbox-exec'), bwrap: onPath('bwrap'), socat: onPath('socat') }),
+    sandboxLine({ on: config.harness?.sandbox === true, platform: process.platform, sandboxExec: executable('/usr/bin/sandbox-exec'), bwrap: onPath('bwrap'), socat: onPath('socat') }),
     pluginLine(onPath('session-manager-plugin')),
     ...keyLines(config.sessionKeys),
     ...sessionLines({ runtime, sdkLoads }),

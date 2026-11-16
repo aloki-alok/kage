@@ -1,6 +1,6 @@
 # 0016. A kagelet can own an objective, measured by a number
 
-Status: Proposed
+Status: Accepted
 
 ## Decision
 

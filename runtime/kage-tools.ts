@@ -9,6 +9,7 @@ import { z } from 'zod'
 import { log } from './log.ts'
 import type { AfkCommand } from '../core/afk.ts'
 import type { Schedule } from '../core/cron.ts'
+import type { ProbeArg, TuneArg } from './probe-jobs.ts'
 import { addressed, NO_REPLY } from '../core/agents.ts'
 import { filesFolderName } from '../core/conversations.ts'
 import { plainName, teammateOf } from '../core/gate.ts'
@@ -40,6 +41,8 @@ export type ToolContext = {
   change: (a: { channel: string; ts: string; text?: string; wide?: boolean }, ping: boolean) => Promise<Result>
   nameMentions: (text: string) => Promise<void>
   append: Ledgers['add']; ledger: Ledgers['text']; filesOf: (channel: string, thread_ts: string) => string
+  jobRun: () => boolean   // the latest task this session took is a job's run, so it read outside text (never from the model's own arguments)
+  job: () => string | undefined   // that job's id, so its acts in its own thread are recorded under it (ADR 0017)
   ownerOnly: (a: Record<string, unknown>) => boolean; pingIn: (channel: string) => boolean
   name: string | undefined   // this session's kagelet, if it is one
 }
@@ -77,7 +80,7 @@ export function sessionTools(o: {
   // This thread's schedules in the hub; each runtime reaches the hub its own way (a direct call in the
   // SDK runtime, the socket from a tmux pane). add gives why the hub refused it, or nothing once the
   // hub holds it. Trust is the hub's call.
-  schedules?: { add(j: Pick<Schedule, 'id' | 'cron' | 'prompt' | 'recurring' | 'lane'>): string | void | Promise<string | void>; remove(id: string): void; list(): Schedule[] }
+  schedules?: { add(j: Pick<Schedule, 'id' | 'cron' | 'prompt' | 'recurring' | 'lane' | 'trigger'> & { probe?: ProbeArg; shadow?: { of: string; live: string } }): string | void | Promise<string | void>; remove(id: string): void; list(): Schedule[]; tune?(id: string, t: TuneArg): string | void; hookUrl?(id: string): string | undefined; restore?(id: string): string | undefined }
   // AFK on or off in the hub; resolves the line for the owner. Absent: AFK mode is off.
   afk?: (c: AfkCommand) => Promise<string>
   // This session is the lane of this kagelet (core/kagelets.ts): it gets the report tool and none of the manager's.
@@ -113,6 +116,7 @@ export function sessionTools(o: {
   const taskChannels = new Set<string>()
   // channel:thread_ts -> whether the thread's latest task came from the owner.
   const ownerTask = new Map<string, boolean>()
+  let job: string | undefined, jobThread = ''   // the job of the latest task, and the thread that task came from
   // The message that started each thread's latest task, so the first reply can mark it answered.
   // A list, because a question keeps the task open and the answer arrives as a new task message.
   const unanswered = new Map<string, { channel: string; ts: string }[]>()
@@ -157,7 +161,8 @@ export function sessionTools(o: {
     for (const part of parts) {
       const r = ack ? await postAsKage(o, channel, thread_ts, part, signer, false) : await postAsKage(o, channel, thread_ts, part, signer)
       if (!r) return { via: 'nobody: not posted, because the pickup reaction already says it from the owner\'s account', where: `channel ${channel}` }
-      append('posted', [channel, r.ts, r.by, key])
+      // A job run's post into its own thread is one of that job's acts (ADR 0017); a private DM to the owner is not.
+      append('posted', [channel, r.ts, r.by, key, ...job && key === jobThread && key.startsWith(`${channel}:`) ? [job] : []])
       if (r.by === 'owner') footers.set(`${channel}:${r.ts}`, signer)
       sent.push(r.ts)
       if (r.by === 'owner') via = `your account (${Title} is not in this conversation)`
@@ -202,7 +207,7 @@ export function sessionTools(o: {
 
   const ownerOnly = (a: Record<string, unknown>) => ownerTask.get(`${String(a.channel)}:${String(a.thread_ts)}`) === true
   const pingIn = (channel: string) => [...ownerTask].some(([k, owner]) => owner && k.startsWith(`${channel}:`))
-  const c: ToolContext = { o, Title, bot, user, s: z.string(), taskChannels, ownerTask, unanswered, askers, agents, sentForPeople, dmThread, links, react, post, change, nameMentions, names, append, ledger, filesOf, ownerOnly, pingIn, name: o.kagelet }
+  const c: ToolContext = { o, Title, bot, user, s: z.string(), taskChannels, ownerTask, unanswered, askers, agents, sentForPeople, dmThread, links, react, post, change, nameMentions, names, append, ledger, filesOf, jobRun: () => job !== undefined, job: () => job, ownerOnly, pingIn, name: o.kagelet }
   // Kept in this order: the reply tools first, as a session reads them.
   const tools = [...slackTools(c), ...scheduleTools(c), ...kageletTools(c), ...ownerTools(c), ...browserTools(c)]
   const browser = o.browser
@@ -217,6 +222,8 @@ export function sessionTools(o: {
       try { mkdirSync(filesOf(m.meta.channel, m.meta.thread_ts), { recursive: true, mode: 0o700 }) } catch (e) { log('files folder', e) }
       taskChannels.add(m.meta.channel)
       ownerTask.set(key, m.fromOwner === true)
+      job = m.job
+      jobThread = key
       askers.set(key, teammateOf(m.content))
       agents.set(key, m.agent)
       if (m.origin.channel === o.botDm() && m.origin.thread) dmThread.set(key, m.origin.thread)

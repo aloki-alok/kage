@@ -37,7 +37,8 @@ export function jevLine(r: { status: number; out: string }): Line | undefined {
   return fail(r.out || 'jev: the check did not run')
 }
 
-export function sandboxLine(f: { platform: string; sandboxExec: boolean; bwrap: boolean; socat: boolean }): Line {
+export function sandboxLine(f: { on: boolean; platform: string; sandboxExec: boolean; bwrap: boolean; socat: boolean }): Line {
+  if (!f.on) return ok('shell sandbox off (harness.sandbox)')
   if (f.platform === 'darwin') return f.sandboxExec ? ok('shell sandbox available') : fail("shell sandbox: /usr/bin/sandbox-exec is missing, so sessions cannot start. Restore macOS's sandbox-exec")
   return f.bwrap && f.socat ? ok('shell sandbox available') : fail('shell sandbox: sessions cannot start without bubblewrap and socat. Run: sudo apt install bubblewrap socat')
 }

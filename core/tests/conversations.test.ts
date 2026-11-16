@@ -100,6 +100,11 @@ describe('finding a thread by what you typed, for kage attach, tell and stop', (
     assert.deepEqual(matchThreads(rows, 'support').length, 2)
     assert.deepEqual(matchThreads(rows, 'dm').map(r => r.key), ['dm'])
   })
+  test('an exact key wins over places that only contain it', () => {
+    const more = [...rows, { key: 'DTEST1:1700000002.000001', place: 'DM with Kage', chat: 'DTEST1', agent_dm: 1 }]
+    assert.deepEqual(matchThreads(more, 'dm').map(r => r.key), ['dm'])
+    assert.deepEqual(matchThreads(more, 'DM with').length, 2)
+  })
   test('by a Slack link: the thread and its side lanes; a top-level DM message finds the one DM session', () => {
     assert.deepEqual(matchThreads(rows, 'https://test.slack.com/archives/CTEST1/p1700000000123456').map(r => r.key),
       ['CTEST1:1700000000.123456', 'CTEST1:1700000000.123456#side-1'])

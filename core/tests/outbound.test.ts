@@ -154,6 +154,11 @@ describe('a post from the owner account shows it is Kage at its foot', () => {
       { type: 'context', block_id: FOOTER_ID, elements: [{ type: 'mrkdwn', text: '🥷 Kage · asked by Sam' }] },
     ])
   })
+  test('a footer the session typed itself is dropped, so the post shows one footer', () => {
+    for (const typed of ['We meet at 3 pm.\n_🥷 Kage · asked by Sam_', 'We meet at 3 pm. _:ninja: Kage · asked by Sam_', 'We meet at 3 pm.\n🥷 Kage\n'])
+      assert.equal(ownerPost('Kage', typed, { asked: 'Sam' }).text, 'We meet at 3 pm.\n_🥷 Kage · asked by Sam_', typed)
+    assert.equal(ownerPost('Kage', 'Ask Kage · it knows.').text, 'Ask Kage · it knows.\n_🥷 Kage_')
+  })
   test('a part longer than one Slack section splits into several sections', () => {
     const long = Array.from({ length: 120 }, (_, i) => `line ${i} ${'x'.repeat(30)}`).join('\n')
     const sections = ownerPost('Kage', long).blocks.filter(b => b.type === 'section') as { text: { text: string } }[]

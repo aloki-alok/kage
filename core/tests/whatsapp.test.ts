@@ -109,7 +109,7 @@ describe('what each side gets to read', () => {
     assert.match(c, /^> \[them\] can you send the deck\?/m)
     assert.match(c, /thread_ts "c1"/)
     assert.match(c, /Always answer in this chat/)
-    assert.match(c, /private=true \(their Slack DM\) only when you need Sam's permission/)
+    assert.match(c, /private=true \(their Slack DM\) only for a message to Sam alone/)
   })
   test('the stand-in gets his brief as its rules, the chat as a transcript without his tags', () => {
     const { system, prompt } = standInPrompt('say tomorrow', history, 'kage', 'Sam')

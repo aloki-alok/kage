@@ -42,8 +42,10 @@ export type Triage = (who: string, sender: 'owner' | 'other', text: string, o: {
 export function jevTriage(c: JevConfig, emit: (who: string, detail: string) => void, o: { fetch?: typeof fetch; timeoutMs?: number } = {}): Triage {
   const go = o.fetch ?? fetch
   return async (who, sender, text, skips) => {
+    // The pickup emoji waits on this call (connectors/slack.ts), so the event carries its time.
+    const t0 = Date.now()
     const done = (pick: 'session' | 'react', why: string, reaction = { key: 'none', emoji: null as string | null, confidence: 0 }) => {
-      emit(who, `${pick}: ${why}, reaction ${reaction.key} ${reaction.confidence.toFixed(2)}`)
+      emit(who, `${pick}: ${why}, reaction ${reaction.key} ${reaction.confidence.toFixed(2)}, ${Date.now() - t0} ms`)
       return { pick, why, reaction }
     }
     const skip = triageSkips(text, skips)

@@ -1,7 +1,7 @@
 import { describe, test } from 'node:test'
 import assert from 'node:assert/strict'
 import { createHash } from 'node:crypto'
-import { commandWords, decide, lineHasher, normalize, pinsChanged, safePattern, type JobState, type Probe } from '../tripwire.ts'
+import { commandWords, decide, eventNeedsCard, triggerLine, hookTokenHash, lineHasher, normalize, pinsChanged, safePattern, type JobState, type Probe } from '../tripwire.ts'
 
 const probe: Probe = { command: 'x', pins: {}, ignore: [], reads: [], writes: [] }
 const sha = (t: string) => createHash('sha256').update(t).digest('hex')
@@ -155,5 +155,29 @@ describe('decide', () => {
   test('stderr does not change the fingerprint, so a warning cannot wake', () => {
     const first = decide({ fails: 0 }, { ...ok('v1'), err: 'warn 1' }, probe, o)
     assert.equal(decide(first.state, { ...ok('v1'), err: 'warn 2' }, probe, o).wake, undefined)
+  })
+})
+
+describe('webhook jobs', () => {
+  test('only the sha256 of a token is kept', () => {
+    assert.equal(hookTokenHash('t0k'), sha('t0k'))
+  })
+  test('a teammate or agent asking for a hook or a channel watch needs the owner card, the owner does not, and a plain schedule never does', () => {
+    assert.equal(eventNeedsCard('mcp__kage__schedule', { hook: true }, 'teammate'), true)
+    assert.equal(eventNeedsCard('mcp__kage__schedule', { hook: true }, 'owner'), false)
+    assert.equal(eventNeedsCard('mcp__kage__schedule', { cron: '* * * * *' }, 'teammate'), false)
+    assert.equal(eventNeedsCard('mcp__kage__schedule', { on_channel: { channel: 'CTEST9' } }, 'teammate'), true)   // a channel job reads a channel as the owner's hub: same card
+    assert.equal(eventNeedsCard('mcp__kage__schedule', { on_channel: { channel: 'CTEST9' } }, 'owner'), false)
+    assert.equal(eventNeedsCard('mcp__kage__reply', { hook: true }, 'teammate'), false)
+  })
+})
+
+describe('a job trigger in one line, for kage schedules', () => {
+  test('each kind names what wakes the job', () => {
+    const probe: Probe = { command: 'check.sh | grep TOTAL=', pins: {}, ignore: [], reads: [], writes: [] }
+    assert.equal(triggerLine({ kind: 'probe', probe }), 'probe: check.sh | grep TOTAL=')
+    assert.equal(triggerLine({ kind: 'channel', channel: 'CTEST1', match: 'fatal|error', bots: true }), 'watches CTEST1 for /fatal|error/, bots too')
+    assert.equal(triggerLine({ kind: 'channel', channel: 'CTEST1', bots: false }), 'watches CTEST1, every post by a person')
+    assert.equal(triggerLine({ kind: 'hook', tokenHash: 'abc' }), 'webhook')
   })
 })

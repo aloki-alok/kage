@@ -86,7 +86,8 @@ export function matchThreads<R extends ThreadRow>(rows: R[], arg: string): R[] {
     return own.length ? own : rows.filter(r => r.agent_dm && linked.startsWith(`${r.chat}:`))
   }
   const want = arg.trim().toLowerCase()
-  return want ? rows.filter(r => r.key === arg.trim() || r.place.toLowerCase().includes(want)) : []
+  const exact = rows.filter(r => r.key === arg.trim())   // an exact key wins: "dm" must not also match every "DM with Kage"
+  return exact.length ? exact : want ? rows.filter(r => r.place.toLowerCase().includes(want)) : []
 }
 
 // The folder a thread's files live in, under the files folder: send_file sends and a kagelet message carries only

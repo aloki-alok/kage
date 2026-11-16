@@ -182,14 +182,14 @@ if (jev && 'error' in jev) log(`jev is off: ${jev.error}`)
 else if (jev) log(`jev checks ${jev.agents === 'all' ? 'every listed agent' : jev.agents.join(', ')} at threshold ${jev.threshold}`)
 
 const slack = await connectSlack({
-  dir: DIR, appToken: secrets.slack!.app!, userToken: secrets.slack!.user!, bot, user, name: NAME, title: Title, teammates: TEAMMATES, apps: TRUSTED_APPS,
+  catchUpMax: () => config.tripwires?.catchUpMax || 1000, dir: DIR, appToken: secrets.slack!.app!, userToken: secrets.slack!.user!, bot, user, name: NAME, title: Title, teammates: TEAMMATES, apps: TRUSTED_APPS,
   hub: { deliver, stop: (c, cut, by) => {
       const key = sessionKey(c, { lane: 'main' })
       return mayStop(by, slack.ids.owner, starters, key) ? stopThread(key, cut) : 'Only the owner, or the teammate whose task started this thread, can stop it.'
-    }, verdict: (id, behavior) => d.verdict(id, { type: 'verdict', request_id: id, behavior }) || answerCard(id, behavior), status: () => commands.status(), heard: m => schedules.heard(m),
+    }, verdict: (id, behavior) => d.verdict(id, { type: 'verdict', request_id: id, behavior }) || answerCard(id, behavior), status: () => commands.status(), heard: m => schedules.heard(m), channelPost: p => jobs.channelPost(p), channelCatchUp: h => jobs.channelCatchUp(h), channelGap: () => jobs.channelGap(),
     posted: () => ledgers.text('posted'), ownerWrote: (chat, thread, text) => { for (const k of kag.notes.wrote(kag.lanes(), chat, thread, text)) runs.emit(k, 'owner-note', `${text.length} characters`) }, ...inbox },
   // AFK mode is on unless afk.on is false. Its stand-in reads the owner's memory, read only.
-  jev: jev && !('error' in jev) ? jevCheck(jev) : undefined,
+  jev: jev && !('error' in jev) ? jevCheck(jev) : undefined, ackWords: config.jev?.ackWords !== false,
   triage: jev && !('error' in jev) ? jevTriage(jev, (who, detail) => runs.emit(who, 'triage', detail)) : undefined,
   afk: afk.on === false ? undefined : { memory: memoryDirs(process.env.HOME!, ENV_FILE, harness).owner, model: afk.model || DEFAULT_MODEL, saved: store, call: phoneOwner, jev: jev && !('error' in jev) ? jevAfk(jev) : undefined },
 })
@@ -210,7 +210,7 @@ void (async () => {
 
 const tmux = tmuxPanes({
   name: NAME, envFile: ENV_FILE, claude: CLAUDE,
-  settings: () => ({ autoMemoryDirectory: MEM.own, ...protectConfig(ENV_FILE, CODE) }),
+  settings: () => ({ autoMemoryDirectory: MEM.own, ...protectConfig(ENV_FILE, CODE, undefined, config.harness?.sandbox === true) }),
   ssm: { sock: SSM_SOCK, shim: SSM_SHIM, issue: key => ssm.issue(key), drop: key => ssm.drop(key) },
   idOf: key => d.saved()[key],
   placeOf,
@@ -252,7 +252,7 @@ const sdk = sdkLib ? sdkSessions({
   hub: () => d,
   tools: (key, send, approve) => sessionTools({
     title: Title, bot, user, botDm: () => slack.ids.botDm, dir: DIR, ledgers, send, memory: MEM,
-    schedules: { add: j => schedules.add(key, j, Date.now()), remove: id => schedules.remove(key, id), list: () => schedules.list(key) },
+    schedules: { add: j => jobs.add(key, j, Date.now()), remove: id => jobs.remove(key, id), list: () => schedules.list(key), hookUrl: id => jobs.hookUrl(id), tune: (id, t) => schedules.tune(key, id, t, Date.now()), restore: id => jobs.swaps.restore(key, id, Date.now()) },
     afk: slack.afk?.command,
     settings: { set: (key, value) => setKey(ENV_FILE, key, value) },
     kagelet: key.split('#side-kagelet-')[1], dreaming: key.split('#side-kdream-')[1], kageletMemory: kag.kmem,
@@ -275,7 +275,7 @@ const sdk = sdkLib ? sdkSessions({
   },
   ownerMemory: MEM.owner, sharedTools: config.sharedTools,
   envFile: ENV_FILE,
-  codeDir: CODE,
+  codeDir: CODE, sandbox: () => config.harness?.sandbox === true,
   ssm: { sock: SSM_SOCK, shim: SSM_SHIM, issue: key => ssm.issue(key), drop: key => ssm.drop(key) },
   keys: { sock: KEYS_SOCK, issue: key => keys.issue(key), drop: key => keys.drop(key) },
   onStart: () => store.saveSessions(d.saved()),
@@ -334,6 +334,7 @@ const schedules = scheduler({
   ready: key => d.ready(key),
   trusted: key => store.trust(key) === true, job: { end: k => d.reset(k), project: PROJECT, carryChars: () => config.harness?.jobCarryChars ?? 500, laneDefault: () => config.harness?.jobLaneDefault ?? true, freshEvery: () => config.harness?.jobFreshEvery ?? 20, carryCount: () => config.harness?.jobCarry ?? 5, posted: () => ledgers.text('posted') },
   ran: j => ledgers.add('runs', [j.id, j.key]),
+  tripwires: () => config.tripwires ?? {}, event: e => ledgers.event(e), owner: t => void slack.notifyOwner(t), ping: async (s, text) => { const c = store.conversation(s.key)?.conversation; if (!c) return false; return postAsKage({ title: Title, bot, user }, c.chat, c.thread, text).then(r => { ledgers.add('posted', [c.chat, r.ts, r.by, s.key]); return true }, e => { log('could not post a tripwire ping', s.id, e?.data?.error ?? e); return false }) },
 })
 // CronCreate jobs moved out of stopped tmux panes (cli/export-crons.ts): adopted once, then retired.
 // Only when no pane survived this start: a pane still running would run each job a second time.
@@ -353,8 +354,7 @@ else if (existsSync(CRONS)) {
   }
 }
 
-
-const { meeting, voice, replies, replayOf } = startConnectors({ secrets, conn, store, slack, bot, NAME, CODE, DIR, d, inbox, deliver, placeOf, failed })
+const { meeting, voice, replies, replayOf, jobs } = startConnectors({ secrets, conn, store, slack, bot, NAME, CODE, DIR, d, inbox, deliver, placeOf, failed, schedules, event: ledgers.event, ledgers, tripwires: config.tripwires })
 listenForCommands(slack.socket, { user, team: slack.ids.team!, commands: COMMANDS, ledgers })
 
 // Each connector marks its own failures: ⚠️ on a Slack message, a DM line for an email or WhatsApp
@@ -377,7 +377,7 @@ const VERSION = updates.VERSION
 // Every timed job of the hub, on one clock (runtime/jobs.ts).
 runJobs([
   // A drain for kage restart or stop starts no scheduled run: one due now runs after the restart.
-  { name: 'schedules', every: 20_000, run: now => { if (!limits.draining(now)) schedules.tick(now) } },
+  { name: 'schedules', every: 20_000, run: now => { if (!limits.draining(now)) schedules.tick(now); jobs.swaps.tick(now) } },
   { name: 'sweep', every: 60_000, run: now => d.sweep(now).forEach(failed) },
   { name: 'limit pause', every: 20_000, run: now => limits.tick(now) },
   { name: 'daily note', every: 10 * 60_000, run: digests.dailyNote },
@@ -404,7 +404,7 @@ const watcher = configWatcher({
   restartWanted: yes => updates.restartWanted(yes),
 })
 const reload = watcher.check
-listenForSessions(`${DIR}/router.sock`, d, { ...replies, failed, schedules, tell: commands.tell, relay: commands.relay, reload, paused: () => limits.paused(), limitCounts: () => limits.counts,
+listenForSessions(`${DIR}/router.sock`, d, { ...replies, failed, schedules: jobs, tell: commands.tell, relay: commands.relay, reload, paused: () => limits.paused(), limitCounts: () => limits.counts,
   // kage restart and stop: a drain renewed by each ask. A turn that just ended does not hold them up: its follow-up
   // waits too. Nor does a thread open in a terminal: kage attach holds it again after the restart.
   end: (key, cut) => stopThread(key, cut), kagelet: (action, name) => kag.manager.manage({ action, name }, Date.now()),

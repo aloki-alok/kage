@@ -25,9 +25,10 @@ export async function aheadOfStable(root: string, sha: string): Promise<boolean>
 export const fetchRefs = (root: string) =>
   sh(root, 'git', 'fetch', '-q', '--force', 'origin', 'main', 'refs/tags/stable:refs/tags/stable').catch(() => sh(root, 'git', 'fetch', '-q', 'origin', 'main'))
 
-// The three files that carry the version. Plugin installs update only when plugin.json's changes.
+// The files that carry the version. Plugin installs update only when plugin.json's changes. package-lock.json keeps its old
+// version on purpose: a changed lockfile makes every hub run npm ci on update, and npm ci accepts the lag.
 function writeVersion(root: string, version: string) {
-  for (const f of ['package.json', 'package-lock.json', '.claude-plugin/plugin.json']) {
+  for (const f of ['package.json', '.claude-plugin/plugin.json']) {
     const j = JSON.parse(readFileSync(join(root, f), 'utf8'))
     j.version = version
     if (j.packages?.['']) j.packages[''].version = version
@@ -70,7 +71,7 @@ export async function release(root: string, dryRun: boolean, at = 'HEAD'): Promi
   await sh(root, 'git', 'worktree', 'add', '-q', '--detach', wt, sha)
   try {
     writeVersion(wt, version)
-    await sh(wt, 'git', 'commit', '-q', '-m', `Release ${tag}`, '--', 'package.json', 'package-lock.json', '.claude-plugin/plugin.json')
+    await sh(wt, 'git', 'commit', '-q', '-m', `Release ${tag}`, '--', 'package.json', '.claude-plugin/plugin.json')
     const rel = await sh(wt, 'git', 'rev-parse', 'HEAD')
     await sh(root, 'git', 'tag', '-a', tag, '-m', tag, rel)
     // A merge that conflicts, or a push that fails, leaves nothing behind. A push that landed but timed out is

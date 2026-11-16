@@ -17,6 +17,8 @@ import type { Delivery } from '../core/sessions.ts'
 import type { Task } from '../core/task.ts'
 import { startAfk } from './slack-afk.ts'
 import type { JevAfk, JevCheck, Triage } from './jev.ts'
+import { heardLine, writeHeard } from './slack-heard.ts'
+import { emptyRoom } from '../runtime/claude-once.ts'
 import { socketWatch } from '../core/socket-watch.ts'
 import type { Inbox, Saved } from '../runtime/store.ts'
 import { channelHistory, type ChannelHistory, type ChannelPost } from '../runtime/channel-watch.ts'
@@ -67,6 +69,8 @@ export async function connectSlack(o: { dir: string; appToken: string; userToken
   afk?: { memory: string; model: string; saved: Saved; call?: (reason: string) => Promise<string>; jev?: JevAfk }
   // The Jev classifier (connectors/jev.ts); absent means every listed agent's tagged post is answered.
   jev?: JevCheck
+  ackWords?: boolean   // jev.ackWords: false puts a green tick on the post instead of the words
+  heard?: (post: string) => Promise<string>   // writes the line under an agent post that needs no reply; absent means a small model (connectors/slack-heard.ts)
   // Intake triage (connectors/jev.ts): a message that needs no work gets a reaction and no session; absent means every tag starts one.
   triage?: Triage }) {
   const { bot, user } = o
@@ -81,6 +85,10 @@ export async function connectSlack(o: { dir: string; appToken: string; userToken
   const ids: Ids = { owner: me.user_id!, bot: botAuth.user_id!, botDm: dm.channel!.id!, name: o.name, teammates: o.teammates, apps: o.apps, team: me.team_id! }
   const react = (channel: string, ts: string, name: string) =>
     (channel === ids.botDm ? bot : user).reactions.add({ channel, timestamp: ts, name }).then(() => true, () => false)
+  const unreact = (channel: string, ts: string, name: string) =>
+    void (channel === ids.botDm ? bot : user).reactions.remove({ channel, timestamp: ts, name }).catch(() => {})
+  // Messages replayed after a hold or a restart: one that now starts loses the hourglass it got when it waited.
+  const replaying = new Set<string>()
 
   const names = new Map<string, string>()
   async function nameOf(id?: string): Promise<string> {
@@ -117,8 +125,9 @@ export async function connectSlack(o: { dir: string; appToken: string; userToken
     // Senders and people mentioned as <@U...>, so Claude can name them in a reply.
     const mentioned = msgs.flatMap(x => [...(x.text ?? '').matchAll(/<@([UW][A-Z0-9]+)>/g)].map(r => r[1]))
     const people = [...new Set([...msgs.map(x => x.user), ...mentioned].filter((u): u is string => !!u && u !== ids.owner && u !== ids.bot))]
-    const legend = await Promise.all(people.map(async u => `other:${u} = ${await nameOf(u)}`))
-    const text = [legend.length ? `People (display names, unverified): ${legend.join('; ')}` : '', ...lines].filter(Boolean).join('\n')
+    // The owner's id too: without it a session asked to tag its owner guesses an id (#319).
+    const legend = [`owner:${ids.owner} = ${await nameOf(ids.owner)}`, ...await Promise.all(people.map(async u => `other:${u} = ${await nameOf(u)}`))]
+    const text = [lines.length ? `People (display names, unverified): ${legend.join('; ')}` : '', ...lines].filter(Boolean).join('\n')
     return { text, files: msgs.flatMap(x => (x as { files?: SlackFile[] }).files ?? []) }
   }
 
@@ -139,7 +148,8 @@ export async function connectSlack(o: { dir: string; appToken: string; userToken
   const isChannelPost = (m: SlackMessage) => !!m.channel && !m.channel.startsWith('D') && m.channel_type !== 'im' && m.channel_type !== 'mpim' && m.user !== ids.bot && POST_SUBTYPES.has(m.subtype)
 
   async function onMessage(m: SlackMessage) {
-    if (isChannelPost(m)) o.hub.channelPost?.(postOf(m))
+    // A throw in a channel job's hook never stops the tag handling below.
+    if (isChannelPost(m)) try { o.hub.channelPost?.(postOf(m)) } catch (e) { log('channel post hook failed', e) }
     // AFK sees every message: it watches threads that mention the owner, and mutes threads the owner types in.
     afk?.heard(m)
     const thread = `${m.channel}:${m.thread_ts ?? m.ts}`
@@ -188,7 +198,9 @@ export async function connectSlack(o: { dir: string; appToken: string; userToken
     if (t.kind === 'task' && t.agent && o.jev) {
       const j = await o.jev(t.agent, t.text)
       log(`${j.reply ? 'answering' : 'dropped'} ${thread} from app ${t.agent}: ${j.why}`)
-      if (!j.reply) return
+      // One line says it was read, so the thread never looks ignored. It tags no one, so the agent is not woken by it.
+      if (!j.reply && o.ackWords === false) return void react(m.channel, m.ts, 'white_check_mark')
+      if (!j.reply) return void heardLine(t.text, o.heard ?? writeHeard(emptyRoom(o.dir))).then(text => bot.chat.postMessage({ channel: m.channel, thread_ts: m.thread_ts ?? m.ts, text })).catch(e => log('could not post the heard line', e?.data?.error ?? e))
     }
     // A person's tag that needs no work (an ack, a thanks) gets a reaction in code, not a session.
     if (t.kind === 'task' && !t.agent && o.triage) {
@@ -235,6 +247,7 @@ export async function connectSlack(o: { dir: string; appToken: string; userToken
       ? o.hub.deliver(asked, task, place)
       : o.hub.deliver(slackConversation(m, ids.botDm), task, t.side ? `${place} (side)` : place, t.side ? `side-${m.ts}` : 'main', m.user)
     if (r === 'queued' || r === 'held') react(m.channel, m.ts, WAITING)
+    else if (r === 'sent' && replaying.has(m.ts)) unreact(m.channel, m.ts, WAITING)
     if (r === 'failed') failed(task)
   }
 
@@ -290,7 +303,11 @@ export async function connectSlack(o: { dir: string; appToken: string; userToken
   }, 30_000).unref()
 
   // A message the last run took but never handled, from the inbox. It runs as if just heard.
-  const replay = (source: string, payload: string) => hear(JSON.parse(payload) as SlackMessage, source)
+  const replay = async (source: string, payload: string) => {
+    const m = JSON.parse(payload) as SlackMessage
+    replaying.add(m.ts)
+    try { await hear(m, source) } finally { replaying.delete(m.ts) }
+  }
   // kage reload: the gate reads both lists from ids on every message, so the next message sees the new ones.
   const allow = (l: { teammates: string[]; apps: string[] }) => { ids.teammates = l.teammates; ids.apps = l.apps }
   return { ids, ownerName, botUser: botAuth.user, socket, failed, notifyOwner, placeOf, nameOf, afk, replay, allow, start: () => socket.start() }

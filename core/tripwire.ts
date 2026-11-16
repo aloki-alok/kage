@@ -1,18 +1,35 @@
 // Tripwires: a shell probe runs on a clock and wakes a session only when its normalized output changes. Pure: the
 // process and the file hashes are runtime/probes.ts, and the stored JobState is the caller's.
 import { createHash } from 'node:crypto'
+import type { Shadow } from './shadow.ts'
 
 // pins: absolute script path to its sha256 hex, taken when the owner approved the probe.
 // reads: paths the probe reads as data, whose change is the point. writes: paths the probe writes besides a redirect or tee.
 // Neither is pinned: a probe that edits its own output must not refuse itself.
 export type Probe = { command: string; pins: Record<string, string>; ignore: string[]; reads: string[]; writes: string[] }
-export type JobState = { fp?: string; last?: string; fails: number; refused?: string }
+// undelivered: the owner was told that a wake cannot reach a session (a failed start, or a blocked lane), so one DM covers
+// both. It clears when a wake is delivered. blocked: consecutive ticks a wake found its lane blocked.
+// pending: a thread note that did not post yet (its tracked row fields f, the tries, and dm once the owner was told), retried each tick.
+// shadow: this job is a twin of another, graded by the hub (core/shadow.ts, ADR 0017).
+export type JobState = { shadow?: Shadow; fp?: string; last?: string; fails: number; refused?: string; undelivered?: true; blocked?: number; pending?: { text: string; f: Record<string, string | number>; tries: number; dm?: true } }
 // What wakes a job besides its clock (ADR 0015): a probe run on the clock that wakes only on a change, a post in a
 // Slack channel, or a POST to the job's own webhook (only the token's hash is kept).
 export type Trigger =
   | { kind: 'probe'; probe: Probe }
   | { kind: 'channel'; channel: string; match?: string; bots: boolean }
   | { kind: 'hook'; tokenHash: string }
+// What wakes a job, as `kage schedules` prints it.
+export const triggerLine = (t: Trigger) =>
+  t.kind === 'probe' ? `probe: ${t.probe.command}`
+    : t.kind === 'channel' ? `watches ${t.channel}${t.match ? ` for /${t.match}/` : ''}${t.bots ? ', bots too' : ', every post by a person'}`
+      : 'webhook'
+
+// The token of a job's webhook is shown once, so only its hash is kept (the trigger's tokenHash).
+export const hookTokenHash = (token: string) => createHash('sha256').update(token).digest('hex')
+// A hook is a door into the hub, and a channel watch reads a channel as the owner's hub, so anyone but the owner asking
+// for either needs the owner's card first.
+export const eventNeedsCard = (tool: string, input: Record<string, unknown>, sender?: string) =>
+  tool === 'mcp__kage__schedule' && (input.hook === true || input.on_channel != null) && sender !== 'owner'
 
 // A line an ignore regex drops. A line longer than lineMax is never dropped: a regex that sees only part of it proves nothing.
 const dropped = (l: string, res: RegExp[], lineMax: number) => l.length <= lineMax && res.some(r => r.test(l))

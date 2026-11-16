@@ -41,6 +41,7 @@ const minuteOf = (t: number) => Math.floor(t / MINUTE) * MINUTE
 
 // The first run after `from`, within `withinMs`.
 export function nextRun(expr: string, from: Date, withinMs: number): Date | undefined {
+  if (expr === REPLY || expr === EVENT) return undefined
   const c = parseCron(expr)
   for (let t = minuteOf(from.getTime()) + MINUTE; t <= from.getTime() + withinMs; t += MINUTE) if (cronMatches(c, new Date(t))) return new Date(t)
   return undefined
@@ -48,6 +49,8 @@ export function nextRun(expr: string, from: Date, withinMs: number): Date | unde
 
 // The cron of a watch: it runs when someone writes in its thread (runtime/scheduler.ts heard).
 export const REPLY = '@reply'
+// The cron of a job that only an event wakes (a Slack channel post or a webhook call, see its trigger): never the clock.
+export const EVENT = '@event'
 
 export type Schedule = {
   id: string
@@ -72,7 +75,7 @@ export function dueSchedules(all: Schedule[], now: number): { fire: Schedule[]; 
   const fire: Schedule[] = [], drop: string[] = []
   for (const s of all) {
     if (s.ends && now >= s.ends) { drop.push(s.id); continue }
-    if (s.cron === REPLY) continue   // a watch runs on messages (runtime/scheduler.ts heard), never on the clock
+    if (s.cron === REPLY || s.cron === EVENT) continue   // a watch runs on messages (runtime/scheduler.ts heard), never on the clock
     let c: Cron
     try { c = parseCron(s.cron) } catch { continue }   // added through schedule(), which checks it
     if (!s.recurring) {
@@ -155,6 +158,7 @@ const DAYS = ['Sundays', 'Mondays', 'Tuesdays', 'Wednesdays', 'Thursdays', 'Frid
 const two = (n: string) => n.padStart(2, '0')
 export function cadence(cron: string): string {
   if (cron === REPLY) return 'when someone writes'
+  if (cron === EVENT) return 'when its trigger fires'
   const f = cron.trim().split(/\s+/)
   if (f.length !== 5) return cron
   const [min, hour, dom, mon, dow] = f as [string, string, string, string, string]

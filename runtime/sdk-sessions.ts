@@ -14,6 +14,7 @@ import { builtinTools, grantRefusal } from '../core/kagelets.ts'
 import { approvalPreview } from '../core/preview.ts'
 import type { Dispatcher, Runner } from '../core/sessions.ts'
 import type { sessionTools } from './kage-tools.ts'
+import { eventNeedsCard } from '../core/tripwire.ts'
 import type { deferredApprovals } from './deferred-approvals.ts'
 import type { Limit } from './limit-pause.ts'
 import type { Task } from '../core/task.ts'
@@ -48,7 +49,7 @@ export function sdkSessions(o: {
   toHub: (key: string, m: { type: 'mail' | 'wa' | 'voice'; text: string }) => void
   options: Options                                 // cwd, settings, settingSources, the claude binary
   ownerMemory: string; sharedTools?: readonly string[]
-  codeDir: string                                  // the folder the hub runs from: a restart runs it, so no shell may write there
+  codeDir: string; sandbox?: () => boolean          // the hub's code folder (a sandboxed shell may not write there); harness.sandbox, read at each session start
   envFile: string                                 // its folder holds the tokens: only the owner's task touches it
   onStart?: () => void                            // a new id may have been minted: save the map
   // A turn ended: the session's running cost so far. limited: it ended on the usage limit, so it did no work.
@@ -116,7 +117,7 @@ export function sdkSessions(o: {
     const resumed = o.hasTranscript(s.id)
     const budget = o.budgetOf?.(key)
     const grant = o.grantOf?.(key)
-    const walled = protectConfig(o.envFile, o.codeDir)
+    const walled = protectConfig(o.envFile, o.codeDir, undefined, o.sandbox?.() === true)
     const ssmToken = grant ? undefined : o.ssm?.issue(key)   // a kagelet lane never gets one
     const keysToken = grant ? undefined : o.keys?.issue(key)
     const q = o.sdk.query({
@@ -143,7 +144,7 @@ export function sdkSessions(o: {
           // A save is approved inside the tool by tier (runtime/kagelets.ts): Kage grants read, and a write tool raises
           // its own card, so the owner gets one, not two. A revoke only takes access away, so it needs none (the tool
           // still takes it from the owner's task only).
-          : ALLOWED.includes(name) || (voice && VOICE_READS.includes(name)) || (name === 'mcp__kage__manage_kagelet' && (input.action === 'save' || input.action === 'revoke')) ? Promise.resolve({ behavior: 'allow' as const, updatedInput: input })
+          : (ALLOWED.includes(name) && !eventNeedsCard(name, input, s.sender)) || (voice && VOICE_READS.includes(name)) || (name === 'mcp__kage__manage_kagelet' && (input.action === 'save' || input.action === 'revoke')) ? Promise.resolve({ behavior: 'allow' as const, updatedInput: input })
           : o.deferred?.take(key, name, input, Date.now()) ? Promise.resolve({ behavior: 'allow' as const, updatedInput: input })
           : o.deferred && s.turn.length ? defer(key, s, name, x.title ?? x.description ?? '', input)
           : ask(key, s, name, x.title ?? x.description ?? '', input, x.signal),

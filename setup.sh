@@ -22,7 +22,7 @@ Set up|service|on or off|Let macOS or Linux keep Kage running: back after a cras
 Run|start|[kagelet]|Start Kage in the background (turns the service on the first time). With a kagelet: run it again after kage stop|kage start
 Run|stop|[thread or kagelet] [--now or --cut-running]|Stop Kage once every running turn ends, or now with --cut-running. With a thread (link, place or key): end only its session, after its turn or --now. With a kagelet: pause it and keep its file|kage stop support
 Run|restart|[--cut-running]|Restart the hub once every running turn ends; new messages wait and run after it|kage restart
-Run|update|[--stable]|Pull the newest Kage now (or the latest release with --stable) and restart into it; local changes are left as they are|kage update
+Run|update|[--stable]|Pull the newest Kage now (or the latest release with --stable) and restart into it at the next quiet moment; local changes are left as they are|kage update
 Run|reload||Read the settings files again with no restart: who may tag Kage changes at once|kage reload
 Run|set|key value|Change one setting in config.json, such as harness.maxSessions. A list is JSON|kage set harness.maxSessions 6
 Run|status||One look at every session and what it is doing|kage status
@@ -134,13 +134,26 @@ cmd_update() {
   git fetch -q --force origin main --tags
   [[ "$(git rev-list --count "$ref..HEAD")" == 0 ]] || die "This checkout has commits that are not on $ref, so it was left as it is."
   old="$(git rev-parse --short HEAD)"
+  [[ "$(git rev-parse HEAD)" != "$(git rev-parse "$ref^{commit}")" ]] || { echo "Already up to date ($old)."; return; }
+  # A running hub restarts into the new code at its next quiet moment and runs npm ci itself first (hub/updates.ts), so update
+  # never drains: a drain held every new message until each running turn ended (#309). No node runs after the merge, because
+  # node beside the hub's npm ci crashes on a half-deleted package (#302); running is asked first for that reason.
+  local packages="" up=""
+  git diff --quiet HEAD "$ref" -- package-lock.json || packages=1
+  running && up=1
   git merge -q --ff-only "$ref"
   new="$(git rev-parse --short HEAD)"
-  if [[ $old == "$new" ]]; then echo "Already up to date ($new)."; return; fi
   echo "Updated $old to $new:"
   git log --format='  %s' "$old..$new"
-  # start.sh installs packages when the lockfile changed; a restart now picks up the new code.
-  if running; then cmd_restart; else echo "Kage is not running. Start it: kage start"; fi
+  if [[ -n $up ]]; then
+    echo "The hub restarts into it at its next quiet moment${packages:+, after it installs the new packages}. No message waits meanwhile. kage status shows the version it runs."
+    return
+  fi
+  if [[ -n $packages ]]; then
+    echo "Installing the packages the new code needs."
+    npm ci --no-audit --no-fund --loglevel=error || die "npm ci failed. Run npm ci in $PWD, then kage start."
+  fi
+  echo "Kage is not running. Start it: kage start"
 }
 
 # A change to KAGE_ROUTE, KAGE_RUNTIME, KAGE_CWD or KAGE_MEMORY needs kage stop, then kage start.

@@ -10,10 +10,14 @@ import { createServer, type Socket } from 'node:net'
 import { delimiter } from 'node:path'
 import { ssmEligible, startSessionCall } from '../core/ssm.ts'
 
-// The real plugin on the hub's own PATH, found once at start. A directory in skip (the stand-in's) never counts, so the hub cannot run the stand-in.
-export function findPlugin(pathEnv = process.env.PATH ?? '', skip: string[] = []): string | undefined {
+// Where the plugin's installers put it (Homebrew on Apple silicon and Intel, AWS's own installer). A LaunchAgent's PATH
+// often lacks them, and a relay that cannot find the plugin leaves every SSM tunnel refused in its sessions.
+const INSTALL_DIRS = ['/opt/homebrew/bin', '/usr/local/bin', '/usr/local/sessionmanagerplugin/bin']
+
+// The real plugin on the hub's own PATH, then in INSTALL_DIRS, found once at start. A directory in skip (the stand-in's) never counts, so the hub cannot run the stand-in.
+export function findPlugin(pathEnv = process.env.PATH ?? '', skip: string[] = [], installDirs = INSTALL_DIRS): string | undefined {
   const real = (d: string) => { try { return realpathSync(d) } catch { return d } }
-  for (const dir of pathEnv.split(delimiter).filter(Boolean)) {
+  for (const dir of [...pathEnv.split(delimiter).filter(Boolean), ...installDirs]) {
     if (skip.some(x => real(x) === real(dir))) continue
     const f = `${dir}/session-manager-plugin`
     try { accessSync(f, constants.X_OK); return f } catch {}

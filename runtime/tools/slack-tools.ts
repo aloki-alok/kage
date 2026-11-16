@@ -164,7 +164,8 @@ export function slackTools(c: ToolContext): KageTool[] {
     async run(args) {
       const p = args as { channel: string; thread_ts: string; what: string; command: string; result: string }
       const key = `${p.channel}:${p.thread_ts}`
-      append('prod-actions', [ownerTask.get(key) ? 'owner' : 'teammate', links.get(key) ?? key, p.what, p.command, p.result])
+      const job = c.job()   // a job run's prod write is one of that job's acts (ADR 0017)
+      append('prod-actions', [ownerTask.get(key) ? 'owner' : 'teammate', links.get(key) ?? key, p.what, p.command, p.result, ...job ? [job] : []])
       return { text: 'logged to the prod-actions ledger' }
     },
   }]

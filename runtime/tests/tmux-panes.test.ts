@@ -13,7 +13,7 @@ test('with no tmux session for this name, no pane is running and nothing throws'
 // A pane's claude gets the settings an SDK session gets (runtime/path-guards.ts protectConfig), so the config folder stays closed
 // even when the pane's shell unsets KAGE_SESSION. One --settings flag: a second one would replace the first.
 test('a pane launches claude with the sandbox settings, and the SSM token only when one was issued', () => {
-  const settings = { autoMemoryDirectory: '/m', ...protectConfig('/c/kage/env', '/code', '/home/o') }
+  const settings = { autoMemoryDirectory: '/m', ...protectConfig('/c/kage/env', '/code', '/home/o', true) }
   const a = paneArgs({ key: 'C1:1.1', id: 'id1', project: '/p', cwd: '/w', envFile: '/c/kage/env', claude: 'claude --x', settings })
   const run = a.at(-1)!
   assert.equal(run.match(/--settings/g)?.length, 2, 'one per branch of the resume/new loop')
