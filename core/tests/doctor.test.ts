@@ -1,6 +1,6 @@
 import { test, describe } from 'node:test'
 import assert from 'node:assert/strict'
-import { autoUpdateNote, bootNotes, chromeLine, jevLine, keyLines, lingerLine, nodeOk, pathNote, render, report, serviceLines, sessionLines, slackLines, pluginLine, sandboxLine, tokenLines, toolsLine } from '../doctor.ts'
+import { autoUpdateNote, bootNotes, chromeLine, jevLine, keyLines, lingerLine, nodeOk, pathNote, render, report, serviceLines, sessionLines, slackLines, pluginLine, sandboxLine, tokenLines, toolsLine, whatsappLine } from '../doctor.ts'
 
 const text = (ls: { kind: string; text: string }[]) => ls.map(l => `${l.kind}:${l.text}`)
 
@@ -130,5 +130,12 @@ describe('decisions', () => {
   test('path note only when kage is not on PATH', () => {
     assert.equal(pathNote(true), undefined)
     assert.equal(pathNote(false)?.kind, 'note')
+  })
+  test('whatsapp: ok for a WORKING session, else FAIL with the fix', () => {
+    const at = { url: 'http://127.0.0.1:3198', qr: '/kage/waha/qr.sh' }
+    assert.deepEqual(whatsappLine({ reached: true, code: 200, status: 'WORKING' }, at), { kind: 'ok', text: 'WhatsApp bridge up, session WORKING' })
+    const down = whatsappLine({ reached: false }, at)
+    assert.equal(down.kind, 'fail')
+    assert.match(down.text, /docker start kage-waha/)
   })
 })
