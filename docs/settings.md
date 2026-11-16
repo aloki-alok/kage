@@ -199,9 +199,12 @@ When it is on, you type `@kage <task>` in any chat to hand Kage a task. The chat
 | `connectors.whatsapp.on` | on | WhatsApp starts when secrets.json holds `waha` with `WAHA_API_KEY` and `WHATSAPP_HOOK_HMAC_KEY`: the WhatsApp container's env, name to value. Kage writes `~/.config/kage/waha/.env` from it for the container at each start, and a `waha/.env` made by hand moves into secrets.json once. After a key changes, restart the container. `false` turns it off. |
 | `connectors.whatsapp.memory` | `~/.config/kage/wa-notes` | The only folder the stand-in can read. Put notes there on how you write and what it may know. Never point it at your full memory, and put no symlinks to other folders in it: anyone in an armed chat can ask about what it reads. |
 | `connectors.whatsapp.model` | `sonnet` | The model the stand-in and the guard use. |
-| `connectors.whatsapp.wahaUrl` | `http://127.0.0.1:3198` | Where WAHA's API listens. |
+| `connectors.whatsapp.wahaUrl` | `http://127.0.0.1:3198` | Where WAHA's API listens. `waha/up.sh` publishes the container on this URL's port. |
 | `connectors.whatsapp.hookHost` | `127.0.0.1` | Where Kage listens for WAHA's signed webhook. Use `0.0.0.0` only when WAHA runs in a container that reaches the host through a VM gateway, and keep the port off the internet. |
-| `connectors.whatsapp.hookPort` | `3199` | The webhook port. Point WAHA at `http://<host>:<port>/waha`. |
+| `connectors.whatsapp.hookPort` | `3199` | The webhook port. `waha/up.sh` points WAHA at `http://host.docker.internal:<port>/waha`. |
+| `connectors.whatsapp.checkMinutes` | `5` | How often the hub checks the bridge, in minutes. |
+
+`waha/compose.yaml` takes its ports and its config folder from `waha/up.sh`, which reads them from these settings and from `KAGE_ENV`. After you change `wahaUrl` or `hookPort`, run `waha/up.sh` again. It remakes the container on the new ports and keeps the linked session. If you start the bridge with `docker compose` yourself, set `WAHA_PORT`, `WAHA_HOOK_PORT` and `WAHA_CONF` to match, or the hub and the container use different ports.
 
 ### Set up WhatsApp
 
@@ -213,16 +216,28 @@ Run the commands from the Kage folder: the git checkout, or `~/.local/share/kage
    ```json
    "waha": { "WAHA_API_KEY": "<first key>", "WHATSAPP_HOOK_HMAC_KEY": "<second key>" }
    ```
-4. If you run Linux, let the container reach Kage's webhook: `kage set connectors.whatsapp.hookHost 0.0.0.0`. If a firewall such as ufw is on, allow only Docker's networks: `sudo ufw allow from 172.16.0.0/12 to any port 3199 proto tcp`. Keep port 3199 closed to the internet.
+4. If you run Linux, let the container reach Kage's webhook: `kage set connectors.whatsapp.hookHost 0.0.0.0`. If a firewall such as ufw is on, allow only Docker's networks: `sudo ufw allow from 172.16.0.0/12 to any port 3199 proto tcp` (use your `hookPort` if you changed it). Keep that port closed to the internet.
 5. Run `kage restart`. At its start, Kage writes the keys to `~/.config/kage/waha/.env` for the container.
-6. Start the bridge: `docker compose -f waha/compose.yaml up -d`. On an ARM machine, such as a Mac with Apple silicon, run `WAHA_TAG=gows-arm-2026.10.1 docker compose -f waha/compose.yaml up -d` instead.
+6. Start the bridge: `waha/up.sh`. On an ARM machine, such as a Mac with Apple silicon, run `WAHA_TAG=gows-arm-2026.10.1 waha/up.sh` instead. If you already run WAHA, do the steps in "Move an existing WAHA to Kage's bridge" below first.
 7. Link your phone: `waha/qr.sh`. It repeats the ban risk and asks you to type `yes`. Then it shows a QR code. On your phone, open WhatsApp > Settings > Linked devices > Link a device, and scan the code.
 8. Check: `kage doctor` shows `ok    WhatsApp bridge up, session WORKING`.
 9. Try it: in any chat, type `@kage` and a task.
 
+### Move an existing WAHA to Kage's bridge
+
+`waha/compose.yaml` makes a new container (`kage-waha`) with a new volume for the session. Your old container's session does not move into it.
+
+1. Find the old container: `docker ps -a --filter ancestor=devlikeapro/waha`.
+2. Stop and remove it: `docker rm -f <name>`. This frees its port. Its volume stays, so you can go back to it.
+3. Do steps 6 and 7 above. You scan the QR code again, because the new volume holds no session.
+
+The GOWS engine applies only to a session WAHA makes. A session you bring over by hand keeps its old engine, and Kage then loses the forwarded and edited flags.
+
+To keep your own compose file instead, skip these steps and make it match Kage's: the `wahaUrl` port published to 3000, `WHATSAPP_HOOK_URL` at `http://host.docker.internal:<hookPort>/waha`, `WHATSAPP_HOOK_EVENTS: message.any`, `WHATSAPP_DEFAULT_ENGINE: GOWS`, and the keys from `~/.config/kage/waha/.env`. The doctor and the DM name the container `kage-waha`, so their fix lines then need your container's name.
+
 ### When the bridge stops
 
-If the bridge stops or the phone unlinks, Kage hears no `@kage` tag from WhatsApp. `kage doctor` then prints a FAIL line with the fix, such as `docker start kage-waha` or `waha/qr.sh`. The hub checks the bridge every 5 minutes. It DMs you once when the bridge goes down, and once more when it is back. A `docker stop` keeps the container down until you start it again.
+If the bridge stops or the phone unlinks, Kage hears no `@kage` tag from WhatsApp. `kage doctor` then prints a FAIL line with the fix, such as `docker start kage-waha` or `waha/qr.sh`. The hub checks the bridge every `connectors.whatsapp.checkMinutes` (5 by default). It DMs you once when the bridge goes down, and once more when it is back. A session seen STARTING once is not down, because every container restart passes through it. It is down if it is still STARTING on the next check. If Slack refuses the DM, the hub sends it again on the next check. A `docker stop` keeps the container down until you start it again.
 
 ## Slash commands
 
