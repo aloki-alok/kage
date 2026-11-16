@@ -193,7 +193,7 @@ export async function connectSlack(o: { dir: string; appToken: string; userToken
       const j = await o.jev(t.agent, t.text)
       log(`${j.reply ? 'answering' : 'dropped'} ${thread} from app ${t.agent}: ${j.why}`)
       // One line says it was read, so the thread never looks ignored. It tags no one, so the agent is not woken by it.
-      if (!j.reply) return void heardLine(t.text, m.ts, o.heard ?? writeHeard(emptyRoom(o.dir))).then(text => bot.chat.postMessage({ channel: m.channel, thread_ts: m.thread_ts ?? m.ts, text })).catch(e => log('could not post the heard line', e?.data?.error ?? e))
+      if (!j.reply) return void heardLine(t.text, o.heard ?? writeHeard(emptyRoom(o.dir))).then(text => bot.chat.postMessage({ channel: m.channel, thread_ts: m.thread_ts ?? m.ts, text })).catch(e => log('could not post the heard line', e?.data?.error ?? e))
     }
     // A person's tag that needs no work (an ack, a thanks) gets a reaction in code, not a session.
     if (t.kind === 'task' && !t.agent && o.triage) {

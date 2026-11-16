@@ -92,12 +92,12 @@ test('a listed agent\'s post that Jev says needs no reply gets one fresh line th
       name: 'kage', title: 'Kage', teammates: ['UMATE0002'], apps: ['ATEST0001'],
       hub: { posted: () => '', handled: () => {}, deliver: () => assert.fail('a post that needs no reply starts no session') } as never,
       jev: async () => ({ reply: false, why: 'jev needs_reply 0.10 (threshold 0.5)' }),
-      heard: async post => `Read: ${post.length} chars, blade stays home.`,
+      heard: async () => 'Dropped',
     })
     await slack.replay('test-source', JSON.stringify({ ...msg, user: 'UMATE0002', app_id: 'ATEST0001', bot_id: 'BTEST0001', text: '<@UTEST1> done, no reply needed' }))
     assert.equal(posts.length, 1)
     assert.equal(posts[0]!.thread_ts, '5.5')
-    assert.match(posts[0]!.text, /^Read: \d+ chars, blade stays home\.$/)
+    assert.equal(posts[0]!.text, 'Dropped :ninja:')
     assert.ok(!posts[0]!.text.includes('<@'), 'no tag, so the agent is not woken')
   } finally {
     rmSync(dir, { recursive: true, force: true })
