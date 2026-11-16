@@ -37,10 +37,13 @@ export function ownerNotes(store: Pick<Store, 'load' | 'save'>) {
   }
 }
 
-// The scheduler's deliver: a kagelet's run carries what the owner wrote in its thread since its last one.
-// The notes stay when the run never reached a session.
-export const kageletDeliver = (notes: ReturnType<typeof ownerNotes>, toSession: (key: string, task: Task) => Delivery) => (key: string, task: Task): Delivery => {
+// The scheduler's deliver: a kagelet's run carries its scoreboard (ADR 0016) and what the owner or Kage wrote in its
+// thread since its last one. The notes stay when the run never reached a session.
+export const kageletDeliver = (notes: ReturnType<typeof ownerNotes>, toSession: (key: string, task: Task) => Delivery, board: (key: string) => string | undefined = () => undefined) => (key: string, task: Task): Delivery => {
+  if (!key.includes('#side-kagelet-')) return toSession(key, task)
+  const b = board(key)
+  const t = b ? { ...task, content: `${b}\n\n${task.content}` } : task
   let r: Delivery | undefined
-  if (key.includes('#side-kagelet-')) notes.take(key, said => (r = toSession(key, { ...task, content: `${task.content}\n\n${said}` })) !== 'failed')
-  return r ?? toSession(key, task)
+  notes.take(key, said => (r = toSession(key, { ...t, content: `${t.content}\n\n${said}` })) !== 'failed')
+  return r ?? toSession(key, t)
 }

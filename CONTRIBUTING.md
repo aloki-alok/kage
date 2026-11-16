@@ -102,6 +102,7 @@ Write logs to stderr only. In a tmux pane, stdout carries the channel protocol, 
 | `kagelet-message.ts` | The message one kagelet sends another (an `after:` handoff or `message_kagelet`): its fields, named after A2A's Message, its delivery states, and the check where it enters the hub. |
 | `kagelet-view.ts` | What a terminal shows of kagelets: the `kage top` panel, its keys, and `kage logs <kagelet>`. |
 | `held.ts` | The hub's check on a kagelet's shell (`tools: all`, ADR 0018): which commands are one-way steps (a deploy, a forced push, a DB write, a delete, a send), held for Kage. It stands behind the OS sandbox, never in place of it. |
+| `objective.ts` | A kagelet's objective (ADR 0016): the three lines in its file, the one `value: <n>` line a measure prints, the target check, and the scoreboard every run reads. |
 | `access.ts` | The access tiers: whether a kagelet's tool is read, write or act, from its name. |
 | `db-read.ts` | The check a `db_read` query passes: one read statement, capped. |
 | `browser.ts` | What a session may see of the owner's Chrome (#114): the block list, tabs shown by id, and a page's text quoted as data. |
@@ -176,6 +177,7 @@ Write logs to stderr only. In a tmux pane, stdout carries the channel protocol, 
 | `kagelet-cost-cap.ts` | The cost caps on the hub's job loop: a kagelet over a cap is paused and flagged, and the owner is told once a day. |
 | `kagelet-notes.ts` | The owner's words typed in a kagelet's thread, and Kage's answers (`tell_kagelet`), carried to its next run. |
 | `kagelet-needs.ts` | A kagelet's needs to Kage in its thread (ADR 0018): kept in the store until Kage's session there is free, a repeat folded, and past `kagelets.needsPerDay` or a day unhandled, the owner's waiting list. |
+| `kagelet-measures.ts` | Each kagelet's measure on the hub's clock, with no model: pinned like a probe, run only on the owner's yes when Kage wrote it, and the last readings kept for the scoreboard. The value never goes to the event log. |
 | `kagelet-routes.ts` | The one route a kagelet's output or message takes to another kagelet (#93), with the loop guard and the chain cap. |
 | `config-files.ts` | config.json and secrets.json on disk (the schema and the env import table are `core/config.ts`): reading, changing, the first-start import of the old env file, and deleting that file after 7 days. |
 | `code-stamp.ts` | When the code changed, so the hub knows to restart into it. |
