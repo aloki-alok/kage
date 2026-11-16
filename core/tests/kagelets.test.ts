@@ -151,7 +151,7 @@ describe('the owner\'s always allow', () => {
     assert.match(once, /\n---\nDeploy staging\.\n$/)
   })
   test('writes nothing for a command no rule may hold: an owner-only kind, a * that would widen it, or more than one line', () => {
-    for (const c of ['sudo reboot', 'git push --force origin main', 'kubectl apply -f staging/*.yaml', 'kubectl apply -f a.yaml\nrm -rf ~']) assert.equal(addAllow(LINKED, c), undefined, c)
+    for (const c of ['sudo reboot', 'git push --force origin main', 'kubectl apply -f staging/*.yaml', 'kubectl apply -f a.yaml\nrm -rf ~', 'kubectl apply -f "a b.yaml"', "kubectl apply -f 'a b.yaml'", 'kubectl apply -f a\\ b.yaml']) assert.equal(addAllow(LINKED, c), undefined, c)
   })
 })
 

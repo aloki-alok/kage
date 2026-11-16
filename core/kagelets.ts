@@ -66,10 +66,11 @@ export function parseKagelet(name: string, text: string): Kagelet | { error: str
 const isPaused = (v = '') => !['', 'no', 'false'].includes(v.toLowerCase())
 
 // The owner's "always" on a held step's card: one exact allow line for that command, added once. undefined when no rule
-// could hold it (an owner-only kind, a * that would widen it, more than one line), so nothing is written.
+// could hold it (an owner-only kind, a * that would widen it, a quote, more than one line), so nothing is written.
 export function addAllow(text: string, command: string): string | undefined {
   const rule = command.trim()
-  if (/[\r\n*]/.test(rule) || badRule(rule) || allowedBy([rule], rule) !== rule) return undefined
+  // A quote or backslash makes one shell word from several, which the word-by-word match would read as several: no rule.
+  if (/[\r\n*'"\\]/.test(rule) || badRule(rule) || allowedBy([rule], rule) !== rule) return undefined
   const m = /^(---\r?\n)([\s\S]*?\r?\n)(---)/.exec(text)
   if (!m) return undefined
   if (m[2]!.split(/\r?\n/).some(l => l.trim() === `allow: ${rule}`)) return text

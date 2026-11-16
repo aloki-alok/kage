@@ -55,7 +55,8 @@ const task = (text: string, isOwner: boolean, files: string, agent?: string): Tr
 const CARD_YES = /^(y|yes|ok|okay|sure|approve|approved|go)\b(?!.*\b(no|not|don'?t|never|wait|but|stop|cancel|hold|later|after|first|away|until)\b)/i
 const CARD_NO = /^(n|no|deny|stop|cancel)\b/i
 // "always": a yes the owner wants kept, so the same step never asks again (a kagelet's held step becomes an allow line).
-const CARD_ALWAYS = /^always\b(?!.*\b(no|not|don'?t|never|wait|but|stop|cancel|hold|later|after|first|away|until|ask)\b)/i
+// Strict, one line and nothing else, since it writes a lasting rule: a hedged always ("unless prod", "for now") stays on the card.
+const CARD_ALWAYS = /^always(,? (allow|allow it|fine|ok))?[.!]?$/i
 // card: the request id of the approval card this message replies under, if it does.
 export function classify(m: SlackMessage, ids: Ids, card?: string): Trigger {
   const isOwner = m.user === ids.owner
