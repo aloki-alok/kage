@@ -51,7 +51,7 @@ export function configRefusal(tool: string, input: Record<string, unknown>, send
 // Every name the hub reads or writes in the config folder (grep '${DIR}/' and '${CONF}/'; a test in runtime/tests/path-guards.test.ts fails when a
 // new one is missing). The hub does the writing itself, so a shell needs none. A name absent today must be listed too: the hub adopts a
 // crons-import.json, a threads.json or a waha/.env it finds at its next start. The folder's own entries are added at session start.
-const CONFIG_NAMES = ['session.env', 'kagelets', 'config.json*', 'crons-import.json*', 'waha', 'threads.json*', 'afk.json*', 'github-threads.json*', 'mail-threads.json*',
+const CONFIG_NAMES = ['session.env', 'telemetry-id', 'kagelets', 'config.json*', 'crons-import.json*', 'waha', 'threads.json*', 'afk.json*', 'github-threads.json*', 'mail-threads.json*',
   'kage.db*', 'hub.lock', 'hub.log*', 'router.sock', 'ssm.sock', 'keys.sock', '.archive', 'updated-from', 'browser-seen', 'wa-notes', 'retro-sent', 'dream-sent', 'daily-sent', 'crash-dm-at',
   'config-unknown-told', 'boots', 'held', 'sender', 'ledgers']
 export function protectConfig(envFile: string, codeDir: string, home = process.env.HOME ?? '', sandbox = false) {

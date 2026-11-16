@@ -56,6 +56,7 @@ Write logs to stderr only. In a tmux pane, stdout carries the channel protocol, 
 | `hub/connectors.ts` | The connectors the hub starts beside Slack (GitHub, meetings and the meeting bot, email, voice, WhatsApp), how a reply reaches each, and how a stored message replays through its own connector. |
 | `hub/job-events.ts` | Jobs that an event wakes: it builds the channel watches and the job webhook server (`connectors/job-hooks.ts`) from the `tripwires.*` settings, rebuilds every watch from the stored triggers at start, and gives the router one place for `schedule`, `unschedule`, the Slack hooks and the webhook replay. |
 | `hub/kagelets.ts` | Kagelets in the hub: the minute sync of their files into schedules and grants, the cost flags and caps, their memory, the manager's side, the owner's notes to one, and the chains between them. |
+| `hub/telemetry.ts` | Telemetry in the hub (ADR 0019): the install id, the minute export job, Claude Code's telemetry env for every session, and the crash code written before exit. |
 | `hub/owner-commands.ts` | What the owner asks from their terminal or DM: the status line, `kage tell` and `kage relay`. |
 | `plugin/server.ts` | For tmux panes only: serves Kage's tools over MCP inside each pane and relays approvals. |
 | `plugin/private-data-guard.ts` | The plugin hook (`hooks/hooks.json`) that runs the rules in `core/guards.ts` and `runtime/path-guards.ts` inside tmux panes. The SDK runner applies the same rules in process. |
@@ -115,6 +116,7 @@ Write logs to stderr only. In a tmux pane, stdout carries the channel protocol, 
 | `release.ts` | The next version and the release notes from merged PR titles. |
 | `preview.ts` | How an approval shows the call it asks about. |
 | `transcript.ts` | Turning a Claude Code transcript line into a line a person can follow. `runtime/transcript-tail.ts` reads the new lines from disk. |
+| `telemetry.ts` | What an event row may tell the world (ADR 0019): fixed words and numbers per kind, the crash fingerprint, the OTLP body, whether telemetry is on, and the session env that never sends content. |
 | `stats.ts` | What `kage stats` shows: spend per day and per connector, runs, refusals, turn time and hub starts, from rows Kage already keeps (no content). `cli/stats.ts` reads them. |
 | `task.ts` | `Task`: what a connector turns a message into, and what a runner takes (ADR 0002). |
 | `instructions.ts` | What every session reads first: who it is (Kage, a kagelet, or a kagelet's nightly dream), whom it serves, how it answers, and each kind of task's limits. A kagelet reads Kage's door rules word for word. |
@@ -182,6 +184,7 @@ Write logs to stderr only. In a tmux pane, stdout carries the channel protocol, 
 | `probes.ts` | The runtime of a tripwire probe: best-effort pins of every swappable file a command names (except its `reads`, `writes` and redirect targets), and one run with a timeout, an output cap (the fingerprint still covers all output) and a refusal when a pin changed or an ignore pattern is unsafe. |
 | `probe-jobs.ts` | Probe jobs (tripwire rung 1): when a probe job is due, the hub runs its command with no model, wakes the job only when the output changed (the wake goes out before the new state is saved), pings the job's thread on repeated failures or a refusal, and writes one `tripwire` event row per step. `scheduler.ts` calls it, and `runtime/tools/schedule-tools.ts` sets and tunes the jobs. |
 | `shadow-swap.ts` | Self-swap on the hub's clock (ADR 0017): grades each twin from the ledgers, tells the owner once per miss, swaps a proven twin in (saves the old job, makes the twin live, then removes the old job), finishes a swap a crash cut short, and the owner's restore. `hub/job-events.ts` wires it. |
+| `telemetry-export.ts` | The minute export of gated event rows: a cursor that starts at the newest row, at most 500 a batch, kept on a failed send, and a 410 that stops it. |
 | `release.ts` | The git and gh calls of a release, and the owner hub's daily check (`kage release`, ADR 0013). |
 
 ## Add a connector

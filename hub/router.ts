@@ -58,6 +58,7 @@ import { dreams } from './dreams.ts'
 import { closedThreads } from '../runtime/closed-threads.ts'
 import { checkScopes } from '../runtime/slack-scopes.ts'
 import { scopeDm } from '../core/slack-scopes.ts'
+import { startTelemetry } from './telemetry.ts'
 
 const { ENV_FILE, NAME, Title, TEAMMATES, TRUSTED_APPS, config, secrets, bot, user } = load()
 const { harness = {}, kagelets: kl = {}, afk = {}, connectors: conn = {} } = config
@@ -392,7 +393,7 @@ runJobs([
   { name: 'retro', every: 10 * 60_000, run: digests.weeklyRetro },
   // A kagelet message waits until its target is idle, then starts a run of its own (runtime/kagelets.ts).
   { name: 'kagelet messages', every: 20_000, run: now => kag.routes.pump(now) },
-  { name: 'events', every: 3_600_000, run: now => ledgers.pruneEvents(new Date(now - EVENT_DAYS * 86_400_000).toISOString()) },
+  { name: 'events', every: 3_600_000, run: now => ledgers.pruneEvents(new Date(now - EVENT_DAYS * 86_400_000).toISOString()) }, ...startTelemetry({ config: config.telemetry, dir: DIR, code: CODE, ledgers, state: store }),
 ])
 
 const commands = ownerCommands({ d, store, ledgers, limits, MAX, placeOf, closedTo, noteTrust, failed, dropRelay: key => { ssm.drop(key); keys.drop(key) } })

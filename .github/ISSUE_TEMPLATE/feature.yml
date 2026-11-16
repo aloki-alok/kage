@@ -1,0 +1,11 @@
+name: Idea
+description: Something Kage should do for you.
+labels: [idea]
+body:
+  - type: textarea
+    id: job
+    attributes: { label: The job, description: What you do by hand today that Kage could own. }
+    validations: { required: true }
+  - type: textarea
+    id: done
+    attributes: { label: How you would know it works, description: A number or an outcome you would check. }

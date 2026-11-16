@@ -1,0 +1,74 @@
+// Telemetry (ADR 0019): what one event row may tell the world. An allowlist per kind of fixed words and numbers;
+// who, trace, chain, transcript and the detail text never leave. A new kind exports its name and nothing else.
+import { createHash } from 'node:crypto'
+import type { KageEvent } from './events.ts'
+
+type Attrs = Record<string, string | number>
+type TelemetryRecord = { at: string; name: string; attrs: Attrs }
+
+// The word if it is one of the set, else 'other': a string that leaves is always one we wrote.
+const oneOf = (w: string | undefined, set: readonly string[]) => w && set.includes(w) ? w : 'other'
+const num = (s: string | undefined) => { const n = Number(s); return s != null && s !== '' && Number.isFinite(n) ? n : undefined }
+const field = (detail: string, k: string) => detail.match(new RegExp(`(?:^| )${k}=([^ ]+)`))?.[1]
+
+const ATTRS: Partial<Record<KageEvent['kind'], (d: string) => Attrs>> = {
+  'run.start': d => ({ trigger: oneOf(d.split(' ')[0], ['scheduled', 'task', 'next']) }),
+  'run.end': d => {
+    const cost = num(d.match(/^\$(\d+(?:\.\d+)?),/)?.[1])
+    return { ...cost != null && { cost_usd: cost }, report: /no report/.test(d) ? 'no' : 'yes' }
+  },
+  tool: d => ({ outcome: /\brefused\b/.test(d) ? 'refused' : /\bfailed\b/.test(d) ? 'failed' : 'ok' }),
+  report: d => ({ outcome: oneOf(d.split(' ')[0], ['ok', 'needs', 'failed']) }),
+  tripwire: d => {
+    const ms = num(field(d, 'ms'))
+    const outcome = field(d, 'outcome')
+    return { action: oneOf(d.split(' ')[0], ['tick', 'wake', 'ping', 'match', 'catchup', 'hook', 'decision']), ...outcome && { outcome: oneOf(outcome, ['same', 'changed', 'failed', 'refused']) }, ...ms != null && { ms } }
+  },
+  crash: (d): Attrs => /^[0-9a-f]{12}$/.test(d) ? { fp: d } : {},
+}
+
+export const toTelemetry = (e: KageEvent): TelemetryRecord => ({ at: e.at, name: `kage.${e.kind}`, attrs: ATTRS[e.kind]?.(e.detail) ?? {} })
+
+// The same bug on any machine gives the same 12 hex: the error's class and its first frame inside the repo,
+// with the repo path cut off. The message never counts, since it may quote what Kage was reading.
+export function crashFingerprint(err: unknown, root: string): string {
+  const name = err instanceof Error ? err.name : typeof err
+  const stack = err instanceof Error ? err.stack ?? '' : ''
+  const frames = stack.split('\n').slice(1).map(l => l.trim().match(/^at (?:(\S+) \()?(.+?):\d+:\d+\)?$/)).map(m => m ? { fn: m[1] ?? '', file: m[2] ?? '' } : undefined)
+  const frame = frames.find(f => f && !f.file.startsWith('node:') && !f.file.includes('node_modules'))
+  const rel = frame ? `${frame.fn} ${frame.file.replace(/^.*?\/(hub|core|runtime|connectors|cli|plugin)\//, '$1/').replace(root, '')}` : ''
+  return createHash('sha256').update(`${name} ${rel}`).digest('hex').slice(0, 12)
+}
+
+// One OTLP/HTTP JSON logs body (opentelemetry-proto, logs/v1): the resource once, then one log record per event.
+// The body is the event's name, so a backend that shows only the body still says what happened.
+const otlpValue = (v: string | number) => typeof v === 'string' ? { stringValue: v } : Number.isInteger(v) ? { intValue: v } : { doubleValue: v }
+const otlpAttrs = (a: Record<string, string | number>) => Object.entries(a).map(([key, v]) => ({ key, value: otlpValue(v) }))
+export const otlpLogs = (records: TelemetryRecord[], resource: Record<string, string>) => JSON.stringify({
+  resourceLogs: [{
+    resource: { attributes: otlpAttrs(resource) },
+    scopeLogs: [{ scope: { name: 'kage' }, logRecords: records.map(r => ({ timeUnixNano: String(Date.parse(r.at) * 1_000_000), severityText: 'INFO', body: { stringValue: r.name }, attributes: otlpAttrs(r.attrs) })) }],
+  }],
+})
+
+// Where telemetry goes, or undefined for nowhere. The owner's off wins over everything: on false, KAGE_TELEMETRY=off,
+// or DO_NOT_TRACK set to anything but 0 (consoledonottrack.com).
+export function telemetryEndpoint(t: { on?: boolean | null; endpoint?: string | null } | undefined, env: Record<string, string | undefined>) {
+  if (!t?.endpoint || t.on === false || env.KAGE_TELEMETRY === 'off') return undefined
+  if (env.DO_NOT_TRACK && env.DO_NOT_TRACK !== '0') return undefined
+  return t.endpoint.replace(/\/+$/, '')
+}
+
+// Claude Code's own telemetry for each session (code.claude.com/docs/en/monitoring-usage): logs only, to the same
+// endpoint, tagged with this install. Its prompts, replies and tool input stay redacted: every content flag is set to 0,
+// over any the hub inherited. Claude Code still adds the signed-in account's email and ids (ADR 0019).
+// service.name is Claude Code's own (claude-code), so the two layers stay apart on the board.
+export const sessionTelemetryEnv = (endpoint: string, resource: Record<string, string>): Record<string, string> => ({
+  CLAUDE_CODE_ENABLE_TELEMETRY: '1',
+  OTEL_LOGS_EXPORTER: 'otlp',
+  OTEL_METRICS_EXPORTER: 'none',
+  OTEL_EXPORTER_OTLP_ENDPOINT: endpoint,
+  OTEL_EXPORTER_OTLP_PROTOCOL: 'http/json',
+  OTEL_LOG_USER_PROMPTS: '0', OTEL_LOG_ASSISTANT_RESPONSES: '0', OTEL_LOG_TOOL_DETAILS: '0', OTEL_LOG_TOOL_CONTENT: '0', OTEL_LOG_RAW_API_BODIES: '0',
+  OTEL_RESOURCE_ATTRIBUTES: Object.entries(resource).filter(([k]) => k !== 'service.name').map(([k, v]) => `${k}=${encodeURIComponent(v)}`).join(','),
+})

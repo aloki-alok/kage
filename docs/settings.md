@@ -108,6 +108,15 @@ The hub fetches `https://api.example.com/v1/things` and adds the key in the head
 | `afk.on` | on | `false` turns AFK mode off. On, tell Kage you are stepping away in any words ("cover for me, lunch for an hour"). It watches threads that mention or DM you and stays quiet unless you are mentioned again or it is urgent. A P0 phones you through `connectors.call.command`. Say you are back in any words for the summary. Threads run as tmux panes cannot switch it yet. |
 | `afk.model` | `sonnet` | The model the stand-in uses. |
 
+## Telemetry
+
+Counts and failure codes from this install, sent to an OpenTelemetry (OTLP) endpoint so the people who build Kage see what breaks. Message text, prompts, replies and tool input are never sent. Kage's own records hold no names, ids or paths. Claude Code's records add the signed-in Claude account's email and ids (ADR 0019). `kage telemetry` says whether it is on, and `kage telemetry show` prints the exact next batch.
+
+| Setting | Default | Effect |
+|---|---|---|
+| `telemetry.endpoint` | none | The OTLP/HTTP base URL. Kage posts to `<endpoint>/v1/logs`, and each session's Claude Code sends its own logs there too. With none, nothing is sent. |
+| `telemetry.on` | on | `false` sends nothing. `KAGE_TELEMETRY=off` or `DO_NOT_TRACK=1` in the hub's environment does the same. |
+
 ## Tripwires
 
 A tripwire runs a shell command on a clock and wakes a session only when the command's output changes. The first good run records the baseline and wakes nothing. A command that edits itself, or a file it names that you could change, is refused when that file changes, until you approve it again. Pinning is best effort: the approval card lists the files a probe reads as data, and those are the only files whose change does not stop it.
