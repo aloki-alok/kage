@@ -179,6 +179,31 @@ describe('Kage sessions on the Agent SDK', () => {
     assert.deepEqual(t.turns.map(x => [x[1], x[3]]), [[['Task from Sam: one'], true], [['Task from Sam: handoff'], undefined]])
     t.s.runner.stop('C1:5.5')
   })
+  test("an idle event sent before Claude read the last message does not reopen the session, and a reopened session is busy with what it carries (#317)", async () => {
+    const t = setup({ browser: true, transcript: true })
+    const state = (x: string) => t.sdk.runs.at(-1)!.emit({ type: 'system', subtype: 'session_state_changed', state: x })
+    t.d.task('C1:5.5', t.task({ fromOwner: false, content: 'Task from Sam: one' }), 0)
+    await tick()
+    state('running')
+    t.d.task('C1:5.5', t.task({ content: 'Task from the owner: two' }), 1)
+    t.sdk.runs[0]!.emit({ type: 'result' })
+    await tick()
+    t.d.task('C1:5.5', t.task({ fromOwner: false, content: 'Task from Sam: three' }), 2)   // pushed after the result
+    state('idle')   // decided before it read three
+    await tick()
+    t.d.task('C1:5.5', t.task({ fromOwner: false, content: 'Task from Sam: four' }), 3)
+    await tick(30)
+    assert.equal(t.sdk.runs.length, 1)
+    assert.deepEqual(said(t.sdk.runs[0]!), ['Sam: one', 'owner: two', 'Sam: three', 'Sam: four'])
+    state('running'); state('idle')   // it read three and four, and answered them
+    await tick()
+    t.d.task('C1:5.5', t.task({ fromOwner: false, content: 'Task from Sam: five' }), 4)
+    await tick(30)
+    assert.equal(t.sdk.runs.length, 2)
+    assert.deepEqual(said(t.sdk.runs[1]!), ['Sam: five'])
+    assert.equal(t.s.runner.busy('C1:5.5'), true)
+    t.s.runner.stop('C1:5.5')
+  })
   test("with no state events, a session with a task still open takes the next message as it is, and reopens once the turn is empty (#317)", async () => {
     const t = setup({ browser: true, transcript: true })
     t.d.task('C1:5.5', t.task({ fromOwner: false, content: 'Task from Sam: one' }), 0)
