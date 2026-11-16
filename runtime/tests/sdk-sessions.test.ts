@@ -28,7 +28,7 @@ const tick = (ms = 5) => new Promise(r => setTimeout(r, ms))
 const ID = '11111111-1111-4111-8111-111111111111'
 const signal = () => new AbortController().signal
 
-function setup(o: { transcript?: boolean; silent?: boolean; dmFails?: boolean; grants?: Record<string, string[]>; manager?: boolean; budgets?: Record<string, number>; models?: Record<string, string>; trusted?: string[]; deferred?: boolean; onResult?: (key: string, total: number, resumed: boolean) => void } = {}) {
+function setup(o: { transcript?: boolean; silent?: boolean; dmFails?: boolean; grants?: Record<string, string[]>; manager?: boolean; budgets?: Record<string, number>; models?: Record<string, string>; trusted?: string[]; deferred?: boolean; sandbox?: boolean; onResult?: (key: string, total: number, resumed: boolean) => void } = {}) {
   const sdk = fakeSdk(o)
   const dropped: string[] = []
   const keysDropped: string[] = []
@@ -64,7 +64,7 @@ function setup(o: { transcript?: boolean; silent?: boolean; dmFails?: boolean; g
     grantOf: key => o.grants?.[key],
     ownerMemory: '/owner',
     envFile: '/cfg/env',
-    codeDir: '/code/kage',
+    codeDir: '/code/kage', sandbox: () => o.sandbox ?? true,
     ssm: { sock: '/cfg/ssm.sock', shim: '/code/kage/cli/ssm-plugin-shim', issue: key => o.trusted?.includes(key) ? `tok-${key}` : undefined, drop: key => { dropped.push(key) } },
     keys: { sock: '/cfg/keys.sock', issue: key => o.trusted?.includes(key) ? `key-${key}` : undefined, drop: key => { keysDropped.push(key) } },
     restartMs: 10,
@@ -374,6 +374,14 @@ describe('Kage sessions on the Agent SDK', () => {
     assert.equal(o.env.KAGE_SESSION, '1', 'the marker kage set refuses on, kept when KAGE_THREAD is stripped')
     assert.ok(o.settings.sandbox.filesystem.denyRead.includes('/cfg/secrets.json*'))
     assert.ok(o.settings.sandbox.filesystem.denyWrite.includes('/cfg/config.json*'))
+  })
+  test('with harness.sandbox off a session gets no OS sandbox, and the token files and config.json stay denied to the file tools', async () => {
+    const t = setup({ sandbox: false })
+    t.d.task('C1:5.5', t.task(), 0)
+    await tick()
+    const o = t.sdk.runs[0]!.options
+    assert.equal(o.settings.sandbox, undefined)
+    for (const r of ['Read(//cfg/secrets.json)', 'Read(//cfg/env*)', 'Read(//cfg/session.env)', 'Edit(//cfg/config.json)']) assert.ok(o.settings.permissions.deny.includes(r), r)
   })
   test('an owner-trusted thread gets the SSM relay token and socket in its env, any other thread gets neither, and the sandbox stays whole (#161)', async () => {
     const t = setup({ trusted: ['C1:5.5'] })

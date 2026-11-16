@@ -55,7 +55,7 @@ async function session(): Promise<boolean> {
     options: {
       cwd: work, model: 'haiku', maxTurns: 30, settingSources: [], pathToClaudeCodeExecutable: claude,
       tools: ['Bash', 'Read', 'Write', 'Edit'], permissionMode: 'dontAsk',
-      settings: { permissions: { allow: ['Bash', 'Read', 'Write', 'Edit'], ...protectConfig(`${cfg}/env`, code).permissions }, sandbox: protectConfig(`${cfg}/env`, code).sandbox } as any,
+      settings: { permissions: { allow: ['Bash', 'Read', 'Write', 'Edit'], ...protectConfig(`${cfg}/env`, code, undefined, true).permissions }, sandbox: protectConfig(`${cfg}/env`, code, undefined, true).sandbox } as any,
     },
   })
   for await (const m of q) if (m.type === 'user') for (const c of (m.message.content as any[]) ?? []) if (c.type === 'tool_result') seen.push(typeof c.content === 'string' ? c.content : JSON.stringify(c.content))
@@ -98,7 +98,7 @@ async function keysSession(): Promise<boolean> {
     options: {
       cwd: work, model: 'haiku', maxTurns: 10, settingSources: [], pathToClaudeCodeExecutable: claude,
       tools: ['Bash'], permissionMode: 'dontAsk',
-      settings: { permissions: { allow: ['Bash'], ...protectConfig(`${cfg}/env`, code).permissions }, sandbox: protectConfig(`${cfg}/env`, code).sandbox } as any,
+      settings: { permissions: { allow: ['Bash'], ...protectConfig(`${cfg}/env`, code, undefined, true).permissions }, sandbox: protectConfig(`${cfg}/env`, code, undefined, true).sandbox } as any,
     },
   })
   try { for await (const _ of q); } finally { keys.close() }
@@ -124,7 +124,7 @@ async function pane(): Promise<boolean> {
   writeFileSync(`${cfg}/secrets.json`, '{"slack":{"bot":"xoxb-FAKE-SECRET"}}')
   writeFileSync(`${cfg}/config.json`, '{"version":1}')
   const prompt = `Run each with its own Bash call and never stop at a failure: 1) echo ok > ${cfg}/files/ok.txt 2) echo bad > ${cfg}/config.json 3) cat ${cfg}/secrets.json > ${work}/secret.out. Say done.`
-  const a = paneArgs({ key: 'C1:5.5', id: 'x', project: root, cwd: work, envFile: `${cfg}/env`, claude: '', settings: { permissions: { allow: ['Bash'], ...protectConfig(`${cfg}/env`, code).permissions }, sandbox: protectConfig(`${cfg}/env`, code).sandbox } })
+  const a = paneArgs({ key: 'C1:5.5', id: 'x', project: root, cwd: work, envFile: `${cfg}/env`, claude: '', settings: { permissions: { allow: ['Bash'], ...protectConfig(`${cfg}/env`, code, undefined, true).permissions }, sandbox: protectConfig(`${cfg}/env`, code, undefined, true).sandbox } })
   const run = `unset KAGE_SESSION; ${claude} -p --model haiku --max-turns 10 --setting-sources "" --permission-mode dontAsk --tools Bash --settings "$KAGE_PANE_SETTINGS" '${prompt}' > ${root}/log 2>&1; touch ${root}/done`
   const name = `kagetest-sbx-${process.pid}`
   try {
