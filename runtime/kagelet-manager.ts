@@ -7,7 +7,7 @@ import { chainLine, chainViews } from '../core/events.ts'
 import { kageletTier } from '../core/access.ts'
 import type { Store } from './store.ts'
 import type { Ledgers } from './ledger.ts'
-import { hasKagelet, jobPath, pauseKagelet, readKagelets, writeJob } from './kagelet-files.ts'
+import { folderFree, hasKagelet, jobPath, pauseKagelet, readKagelets, writeJob } from './kagelet-files.ts'
 
 // The command a kagelet's db_read runs: kagelets.dbRead.command wins, else the one this kagelet saved with.
 // Read on each call, so a change applies with no restart.
@@ -98,6 +98,7 @@ export function kageletManager(o: { dir: string; max: number; ledgers: { text(na
         if (fresh.length) { row(a.name, 'refused', why, fresh); o.log(`kagelet ${a.name}: ${fresh.join(', ')} refused: ${why}`) }
         return `not saved: ${why}`
       }
+      if (!folderFree(o.dir, a.name)) return refuse(`${o.dir}/${a.name} is not a plain folder, so no kagelet is written there`)
       if (!old && readKagelets(o.dir).length >= o.max) return refuse(`this install has at most ${o.max} kagelets (kagelets.max). Remove one first, or ask the owner to raise it.`)
       // after: refused when it names a missing kagelet, closes a cycle or goes too deep, with this file in place.
       const others = readKagelets(o.dir).filter(f => f.name !== a.name).map(f => parseKagelet(f.name, f.text)).filter((p): p is Kagelet => !('error' in p))

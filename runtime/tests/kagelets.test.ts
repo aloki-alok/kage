@@ -210,6 +210,14 @@ test('the manager saves a kagelet file the hub syncs at once, and lists who made
   assert.match(list, /no report yet/)
 })
 
+test('the manager says not saved, and writes nothing, when the kagelet\'s folder is a link', async () => {
+  const t = manager()
+  const outside = mkdtempSync(`${tmpdir()}/outside-`)
+  symlinkSync(outside, `${t.dir}/status`)
+  assert.match(await t.m.manage({ action: 'save', name: 'status', ...job }, 5000), /^not saved: .*plain folder/)
+  assert.deepEqual(readdirSync(outside), [])
+})
+
 test('the manager is refused a new kagelet past the cap and a tool v1 cannot grant', async () => {
   const t = manager(1)
   await t.m.manage({ action: 'save', name: 'one', ...job }, 1)

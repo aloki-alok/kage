@@ -16,6 +16,8 @@ function ownFolder(dir: string, name: string, create = false) {
   if (create && !stat(`${dir}/${name}`)) { mkdirSync(dir, { recursive: true, mode: 0o700 }); mkdirSync(`${dir}/${name}`, { mode: 0o700 }) }
   return plainDir(`${dir}/${name}`)
 }
+// Whether a kagelet's folder can be made or used here: nothing there yet, or a plain folder.
+export const folderFree = (dir: string, name: string) => { const s = stat(`${dir}/${name}`); return !s || (s.isDirectory() && !s.isSymbolicLink()) }
 // A kagelet that exists: a plain folder holding a plain job.md.
 export const hasKagelet = (dir: string, name: string) => ownFolder(dir, name) && !!stat(jobPath(dir, name))?.isFile()
 
