@@ -31,8 +31,9 @@ export function configRefusal(tool: string, input: Record<string, unknown>, send
   if (sender === 'owner') {
     const first = (r: string) => r.split('/')[0]!
     const closed = `Kage's token files (secrets.json and the env files) are closed to every session, the owner's too. Kage's own tools post as Kage, so no session needs a token. Use the reply or message_people tool.`
-    // A shell can name the folder a hundred ways (cd, a glob, a variable), so it may not name it at all. Only the sandbox (protectConfig, harness.sandbox on) is a real wall.
-    if (tool === 'Bash') return at.length ? closed : undefined
+    // A shell may name only files/ and memory/ in the folder, as the file tools may; anything else there (a token, the folder, a glob of it) is refused.
+    // A shell can still reach the folder other ways (cd in steps, a variable): only the sandbox (protectConfig, harness.sandbox on) is a real wall.
+    if (tool === 'Bash') return at.some(r => !/^(?:files|memory)\//.test(r)) ? closed : undefined
     if (CONFIG_WRITES.has(tool)) return at.some(r => first(r) === 'config.json' || TOKEN_FILE.test(first(r))) ? CLOSED_WRITE : undefined
     return at.some(r => r === '' || r === '.' || /[*?[{]/.test(r) || TOKEN_FILE.test(first(r))) ? closed : undefined
   }
