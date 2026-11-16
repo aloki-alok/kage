@@ -5,7 +5,7 @@ import { randomUUID } from 'node:crypto'
 import { existsSync, readFileSync, writeFileSync } from 'node:fs'
 import { arch, platform } from 'node:os'
 import type { Config } from '../core/config.ts'
-import { crashFingerprint, sessionTelemetryEnv, telemetryEndpoint } from '../core/telemetry.ts'
+import { crashFingerprint, sessionTelemetryEnv, TELEMETRY_NOTICE, telemetryEndpoint } from '../core/telemetry.ts'
 import { log } from '../runtime/log.ts'
 import { telemetryExporter, type ExportDeps } from '../runtime/telemetry-export.ts'
 
@@ -13,6 +13,7 @@ type Deps = {
   config: Config['telemetry']; dir: string; code: string
   ledgers: { eventsAfter: ExportDeps['events']; maxEventId: () => number; event: (e: { kind: 'crash'; who: string; trace: string; detail: string }) => void }
   state: { load: (name: string) => unknown; save: (name: string, v: unknown) => void }
+  notify: (text: string) => Promise<boolean>
 }
 
 // A random id made once per install: it links one machine's records to each other and to nothing else.
@@ -33,12 +34,22 @@ export function startTelemetry(o: Deps) {
   if (!endpoint) { o.state.save('telemetry-cursor', undefined); return [] }
   const version = (JSON.parse(readFileSync(`${o.code}/package.json`, 'utf8')) as { version: string }).version
   const resource = { 'service.name': 'kage', 'service.version': version, 'kage.install': installId(o.dir), 'os.type': platform(), 'host.arch': arch() }
-  Object.assign(process.env, sessionTelemetryEnv(endpoint, resource))
+  // Nothing leaves before the owner's one DM about it is out; the exporter then starts after the newest row.
+  const told = () => o.state.load('telemetry-told') === true
+  const sessionsOn = () => Object.assign(process.env, sessionTelemetryEnv(endpoint, resource))
+  if (told()) sessionsOn()
   const exporter = telemetryExporter({
     events: o.ledgers.eventsAfter, maxId: o.ledgers.maxEventId, resource,
     cursor: { load: () => o.state.load('telemetry-cursor') as number | undefined, save: id => o.state.save('telemetry-cursor', id) },
     post: async body => (await fetch(`${endpoint}/v1/logs`, { method: 'POST', headers: { 'content-type': 'application/json' }, body, signal: AbortSignal.timeout(10_000) })).status,
   })
   log(`telemetry on: ${endpoint}, install ${resource['kage.install']}`)
-  return [{ name: 'telemetry', every: 60_000, run: () => exporter.run() }]
+  return [{ name: 'telemetry', every: 60_000, run: async () => {
+    if (!told()) {
+      if (!await o.notify(TELEMETRY_NOTICE)) return
+      o.state.save('telemetry-told', true)
+      sessionsOn()
+    }
+    await exporter.run()
+  } }]
 }

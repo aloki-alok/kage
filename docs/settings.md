@@ -110,12 +110,12 @@ The hub fetches `https://api.example.com/v1/things` and adds the key in the head
 
 ## Telemetry
 
-Counts and failure codes from this install, sent to an OpenTelemetry (OTLP) endpoint so the people who build Kage see what breaks. Message text, prompts, replies and tool input are never sent. Kage's own records hold no names, ids or paths. Claude Code's records add the signed-in Claude account's email and ids (ADR 0019). `kage telemetry` says whether it is on, and `kage telemetry show` prints the exact next batch.
+Counts and failure codes from this install, sent to an OpenTelemetry (OTLP) endpoint so the people who build Kage see what breaks. Message text, prompts, replies and tool input are never sent. Kage's own records hold no names, ids or paths. Claude Code's records also carry the signed-in account's email and ids, and the Kage receiver drops them before storing (ADR 0019). `kage telemetry` says whether it is on, and `kage telemetry show` prints the exact next batch.
 
 | Setting | Default | Effect |
 |---|---|---|
-| `telemetry.endpoint` | none | The OTLP/HTTP base URL. The Kage team's receiver is `https://monitor.omnidim.io/kage`, which keeps only counts and codes. Kage posts to `<endpoint>/v1/logs`, and each session's Claude Code sends its own logs there too. With none, nothing is sent. |
-| `telemetry.on` | on | `false` sends nothing. `KAGE_TELEMETRY=off` or `DO_NOT_TRACK=1` in the hub's environment does the same. |
+| `telemetry.endpoint` | `https://monitor.omnidim.io/kage` | The OTLP/HTTP base URL: the Kage team's receiver, which keeps only counts and codes. Point it at your own collector to keep the data yourself. Kage posts to `<endpoint>/v1/logs`, and each session's Claude Code sends its own logs there too. |
+| `telemetry.on` | on | You get one DM before anything is sent. `false` sends nothing. `KAGE_TELEMETRY=off` or `DO_NOT_TRACK=1` in the hub's environment does the same. |
 
 ## Tripwires
 

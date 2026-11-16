@@ -51,12 +51,18 @@ export const otlpLogs = (records: TelemetryRecord[], resource: Record<string, st
   }],
 })
 
-// Where telemetry goes, or undefined for nowhere. The owner's off wins over everything: on false, KAGE_TELEMETRY=off,
-// or DO_NOT_TRACK set to anything but 0 (consoledonottrack.com).
+// The Kage team's receiver. It keeps only Kage installs and an allow list of fields, so Claude Code's account fields
+// never land (ADR 0019). An owner may point telemetry.endpoint elsewhere, such as their own collector.
+export const TELEMETRY_URL = 'https://monitor.omnidim.io/kage'
+// The one DM an owner gets before anything is sent.
+export const TELEMETRY_NOTICE = 'Kage now sends anonymous counts to its makers, so we see what breaks: runs, cost, failure codes and crash fingerprints. Never message text, prompts, names or ids. See exactly what goes with `kage telemetry show`. Stop it with `kage set telemetry.on false`.'
+
+// Where telemetry goes, or undefined for nowhere. On by default to the Kage team's receiver. The owner's off wins over
+// everything: on false, KAGE_TELEMETRY=off, or DO_NOT_TRACK set to anything but 0 (consoledonottrack.com).
 export function telemetryEndpoint(t: { on?: boolean | null; endpoint?: string | null } | undefined, env: Record<string, string | undefined>) {
-  if (!t?.endpoint || t.on === false || env.KAGE_TELEMETRY === 'off') return undefined
+  if (t?.on === false || env.KAGE_TELEMETRY === 'off') return undefined
   if (env.DO_NOT_TRACK && env.DO_NOT_TRACK !== '0') return undefined
-  return t.endpoint.replace(/\/+$/, '')
+  return (t?.endpoint || TELEMETRY_URL).replace(/\/+$/, '')
 }
 
 // Claude Code's own telemetry for each session (code.claude.com/docs/en/monitoring-usage): logs only, to the same
