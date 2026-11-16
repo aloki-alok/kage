@@ -28,7 +28,7 @@ const tick = (ms = 5) => new Promise(r => setTimeout(r, ms))
 const ID = '11111111-1111-4111-8111-111111111111'
 const signal = () => new AbortController().signal
 
-function setup(o: { transcript?: boolean; silent?: boolean; dmFails?: boolean; grants?: Record<string, string[]>; manager?: boolean; budgets?: Record<string, number>; models?: Record<string, string>; trusted?: string[]; deferred?: boolean; browser?: boolean; restartMs?: number; sandbox?: boolean; onResult?: (key: string, total: number, resumed: boolean) => void } = {}) {
+function setup(o: { transcript?: boolean; silent?: boolean; dmFails?: boolean; grants?: Record<string, string[]>; allows?: Record<string, string[]>; manager?: boolean; budgets?: Record<string, number>; models?: Record<string, string>; trusted?: string[]; deferred?: boolean; browser?: boolean; restartMs?: number; sandbox?: boolean; onResult?: (key: string, total: number, resumed: boolean) => void } = {}) {
   const sdk = fakeSdk(o)
   const dropped: string[] = []
   const keysDropped: string[] = []
@@ -62,6 +62,7 @@ function setup(o: { transcript?: boolean; silent?: boolean; dmFails?: boolean; g
     toHub: () => {},
     options: { cwd: '/home', settingSources: ['user'] },
     grantOf: key => o.grants?.[key],
+    allowOf: key => o.allows?.[key] ?? [],
     ownerMemory: '/owner',
     envFile: '/cfg/env',
     codeDir: '/code/kage', sandbox: () => o.sandbox ?? true,
@@ -740,6 +741,18 @@ describe('Kage sessions on the Agent SDK', () => {
     assert.equal((await run('mcp__kage__away')).hookSpecificOutput.permissionDecision, 'deny')
     const asked = await lane.canUseTool('Bash', { command: 'git push --force' }, { signal: signal() })
     assert.equal(asked.behavior, 'deny')
+  })
+  test('an owner\'s allow line lets the held step it names run in the lane, and holds the rest', async () => {
+    const key = 'C1:5.5#side-kagelet-ops'
+    const t = setup({ grants: { [key]: ['all'] }, allows: { [key]: ['kubectl apply -f staging/*'] } })
+    t.d.task(key, t.task({ fromOwner: false }), 0)
+    await tick()
+    const lane = t.sdk.runs[0]!.options
+    const run = (command: string) => lane.hooks.PreToolUse[0].hooks[0]({ hook_event_name: 'PreToolUse', tool_name: 'Bash', tool_input: { command } }, undefined, { signal: signal() })
+    assert.deepEqual(await run('kubectl apply -f staging/web.yaml'), {})
+    assert.equal((await lane.canUseTool('Bash', { command: 'kubectl apply -f staging/web.yaml' }, { signal: signal() })).behavior, 'allow')
+    assert.match((await run('kubectl apply -f prod/web.yaml')).hookSpecificOutput.permissionDecisionReason, /^Held: a deploy/)
+    assert.equal((await lane.canUseTool('Bash', { command: 'kubectl apply -f staging/web.yaml; rm -rf ~' }, { signal: signal() })).behavior, 'deny')
   })
   test("each tool call in a kagelet lane is logged with its refusal, if any; other sessions' calls are not", async () => {
     const t = setup({ grants: { 'C1:5.5#side-kagelet-deploys': ['WebSearch'] } })

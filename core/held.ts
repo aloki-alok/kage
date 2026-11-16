@@ -270,3 +270,18 @@ function check(line: string, depth: number): string | undefined {
 
 // The kind of one-way step a shell command takes, or undefined when it holds none.
 export const heldCommand = (command: string): string | undefined => check(command, 0)
+
+// Kinds only the owner releases, one step at a time: no rule line, reviewer or learned rule covers them.
+const OWNER_ONLY = new Set(['a command as root', 'erasing a disk or file', 'a recursive permission change', 'a cron change', 'a write to a system folder', 'a shutdown', 'a command nested too deep to read'])
+// A rule's * stands for one word with no space, quote or shell syntax, so a rule never matches a second command chained after the one it names.
+const WORD = String.raw`[^\s;&|<>()\`$'"\\]+`
+const ruleRegex = (rule: string) => new RegExp(`^${rule.trim().split(/\s+/).map(w => w.split('*').map(p => p.replace(/[.+?^${}()|[\]\\]/g, '\\$&')).join(WORD)).join(' ')}$`)
+// A rule is the owner's (ADR 0018): it starts with a literal command word, so it names the tool it releases.
+export const badRule = (rule: string) => /^\S*\*/.test(rule.trim()) || /[\r\n]/.test(rule)
+// The owner's rule line that releases this held step, matched by code with no model. A command on more than one line never matches.
+export function allowedBy(rules: string[], command: string): string | undefined {
+  const kind = heldCommand(command)
+  if (!kind || OWNER_ONLY.has(kind) || /[\r\n]/.test(command)) return undefined
+  const line = command.trim().split(/[ \t]+/).join(' ')
+  return rules.find(r => !badRule(r) && ruleRegex(r).test(line))
+}

@@ -14,6 +14,16 @@ describe('a kagelet file', () => {
       name: 'deploys', key: 'CTEST1:1700000000.123456#side-kagelet-deploys', link: LINK, cron: '0 9 * * 1-5', tools: ['WebSearch', 'WebFetch'], job: 'Post a summary of the deploy log.', paused: false, by: 'owner', why: '', model: 'sonnet', modelWhy: '',
     })
   })
+  test('allow lines are the owner\'s rules: one per line, kept on save, and a rule must start with a command word', () => {
+    const head = `thread: ${LINK}\nschedule: 0 9 * * *\ntools: all\nallow: git push --force origin feat/*\nallow:   curl -X POST https://hooks.example.com/staging/*  `
+    const k = parseKagelet('x', file(head)) as Kagelet
+    assert.deepEqual(k.allow, ['git push --force origin feat/*', 'curl -X POST https://hooks.example.com/staging/*'])
+    const text = kageletFile({ thread: LINK, schedule: '0 9 * * *', tools: ['all'], job: 'Deploy.', by: 'owner', why: '', approved: true, allow: k.allow }) as string
+    assert.deepEqual((parseKagelet('x', text) as Kagelet).allow, k.allow)
+    assert.equal((parseKagelet('x', file(`thread: ${LINK}\nschedule: 0 9 * * *`)) as Kagelet).allow, undefined)
+    assert.match((parseKagelet('x', file(`${head}\nallow: * --force`)) as { error: string }).error, /allow/)
+    assert.match((kageletFile({ thread: LINK, schedule: '0 9 * * *', tools: ['all'], job: 'Deploy.', by: 'owner', why: '', approved: true, allow: ['git push\ntools: all'] }) as { error: string }).error, /one line/)
+  })
   test('a model line sets the model, sonnet when absent; a reason rides in model_why; a model that is not a name is broken', () => {
     const head = `thread: ${LINK}\nschedule: 0 9 * * *`
     assert.equal((parseKagelet('x', file(head)) as Kagelet).model, 'sonnet')
@@ -86,6 +96,10 @@ describe('the grant', () => {
     assert.match(grantRefusal('mcp__gmail__send_message', all) ?? '', /grant/)
     assert.equal(grantRefusal('mcp__gmail__send_message', [...all, 'mcp__gmail__send_message']), undefined)
     assert.match(grantRefusal('mcp__stripe__create_refund', [...all, 'mcp__stripe__create_refund']) ?? '', /never holds/)
+    // An owner's rule line releases the held step it names, and only that one.
+    const rule = ['git push --force origin feat/*']
+    assert.equal(grantRefusal('Bash', all, { command: 'git push --force origin feat/a' }, rule), undefined)
+    assert.match(grantRefusal('Bash', all, { command: 'git push --force origin main' }, rule) ?? '', /^Held/)
     assert.equal(builtinTools(all), undefined)                      // no tool list: the session loads them all
     assert.deepEqual(builtinTools(['WebFetch', 'mcp__x__y']), ['WebFetch', 'ToolSearch'])
   })

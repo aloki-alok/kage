@@ -120,7 +120,7 @@ export function kageletManager(o: { dir: string; max: number; ledgers: { text(na
       const goal = a.objective || a.measure || a.target ? objectiveOf(new Map(Object.entries({ objective: a.objective ?? '', measure: a.measure ?? '', target: a.target ?? '' }))) : had?.objective
       if (goal && 'error' in goal) return refuse(goal.error)
       const measure = goal && o.measures?.approved(a.name) !== goal.measure ? goal.measure : undefined
-      const fileText = (approved: boolean, standing: string[] = []) => kageletFile({ thread: a.thread ?? '', schedule: a.schedule ?? '', ...(a.after && { after: a.after }), tools, job: a.job ?? '', by, why: a.why ?? '', model, modelWhy, paused: !!had?.paused, approved, standing, ...(goal && { objective: goal }) })
+      const fileText = (approved: boolean, standing: string[] = []) => kageletFile({ thread: a.thread ?? '', schedule: a.schedule ?? '', ...(a.after && { after: a.after }), tools, job: a.job ?? '', by, why: a.why ?? '', model, modelWhy, paused: !!had?.paused, approved, standing, ...(goal && { objective: goal }), ...(had?.allow && { allow: had.allow }) })
       // Checked as if approved first, so an act tool or a file that would not run is refused before any card.
       const valid = fileText(true)
       if (typeof valid !== 'string') return refuse(valid.error)

@@ -289,7 +289,7 @@ const sdk = sdkLib ? sdkSessions({
   onBlocked: blocked,
   onTurn: (key, tasks, limit, done) => limits.turn(key, tasks, limit, Date.now(), done),
   // A lane whose file is gone keeps no tools, rather than falling back to approval cards.
-  grantOf: kag.grantOf,
+  grantOf: kag.grantOf, allowOf: kag.allowOf,
   onTool: (key, tool, refused) => runs.emit(key, refused ? 'refusal' : 'tool', refused ? `${tool}: ${refused}` : tool),
 }) : undefined
 if (sdk) mkdirSync(MEM.own, { recursive: true })

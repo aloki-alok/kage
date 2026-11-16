@@ -259,6 +259,18 @@ test('tools: all takes the owner\'s card for each kagelet: its yes never stands 
   assert.match(await u.m.manage({ action: 'save', name: 'x', ...all, job: 'Delete the old branches.' }, 5, yes.ask), /saved x/)
   assert.equal(yes.cards.length, 3)
 })
+test('a save by Kage keeps the owner\'s allow lines, and its tool input can add none', async () => {
+  const u = manager()
+  const yes = owner(true)
+  const all = { ...job, tools: ['all'] }
+  await u.m.manage({ action: 'save', name: 'x', ...all }, 1, yes.ask)
+  const path = `${u.dir}/x/job.md`
+  writeFileSync(path, readFileSync(path, 'utf8').replace('---\n' + all.job, 'allow: git push --force origin feat/*\n---\n' + all.job))
+  await u.m.manage({ action: 'save', name: 'x', ...all, schedule: '0 10 * * *', allow: ['rm -rf *'] } as Manage, 2, yes.ask)
+  const text = readFileSync(path, 'utf8')
+  assert.match(text, /^schedule: 0 10 \* \* \*$/m)
+  assert.deepEqual(text.match(/^allow: .*$/gm), ['allow: git push --force origin feat/*'])
+})
 test('a write tool asks the owner once; that yes stands for every later kagelet, logged as standing, with no card and no DM', async () => {
   const u = manager()
   const gmail = { ...job, tools: ['WebSearch', 'mcp__gmail__send'] }
