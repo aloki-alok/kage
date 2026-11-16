@@ -753,6 +753,7 @@ describe('Kage sessions on the Agent SDK', () => {
     assert.equal(first.hookSpecificOutput.permissionDecision, 'deny')
     assert.match(first.hookSpecificOutput.permissionDecisionReason, /owner's card is posted[\s\S]*not in your needs/)
     assert.equal(t.posts.length, 1)
+    assert.match(JSON.stringify(t.posts[0]), /Reply `always`/)
     assert.equal(t.approvals.answer(t.idOf(t.posts[0]!), 'allow', Date.now())?.key, key)
     assert.equal((await run({ command: 'kubectl apply -f prod.yaml', description: 'retry the deploy' })).hookSpecificOutput.permissionDecision, 'allow')
     assert.equal((await run({ command: 'kubectl apply -f prod.yaml' })).hookSpecificOutput.permissionDecision, 'deny')   // spent

@@ -4,12 +4,13 @@
 // chains and messages between kagelets (#93), which the hub hands on with no Kage turn.
 import type { Delivery } from '../core/sessions.ts'
 import type { Task } from '../core/task.ts'
-import { budgetLeft, COST_FLAG, costFlags, kageletRows, parseKagelet, type Kagelet } from '../core/kagelets.ts'
+import { addAllow, budgetLeft, COST_FLAG, costFlags, kageletRows, parseKagelet, type Kagelet } from '../core/kagelets.ts'
+import { heldCommand } from '../core/held.ts'
 import { chainCap, dailyCap, totalCap } from '../core/kagelet-view.ts'
 import type { Config } from '../core/config.ts'
 import { log } from '../runtime/log.ts'
 import { costCap } from '../runtime/kagelet-cost-cap.ts'
-import { kageletsDir, migrateKagelets, readKagelets } from '../runtime/kagelet-files.ts'
+import { kageletsDir, migrateKagelets, readKagelets, writeJob } from '../runtime/kagelet-files.ts'
 import { kageletManager } from '../runtime/kagelet-manager.ts'
 import { kageletMemory } from '../runtime/kagelet-memory.ts'
 import { kageletDeliver, ownerNotes } from '../runtime/kagelet-notes.ts'
@@ -73,6 +74,14 @@ export function hubKagelets(o: {
     event: (key, detail) => o.runs.emit(key, 'held', detail),
     today: () => new Date().toISOString().slice(0, 10),
   })
+  // The owner's "always" on a held step's card: an exact allow line in that kagelet's job.md, so the step never asks again.
+  const alwaysAllow = (key: string, tool: string, input: Record<string, unknown>) => {
+    const k = tool === 'Bash' ? parsed().find(x => x.key === key) : undefined, f = k && readKagelets(KAGELETS).find(x => x.name === k.name)
+    const command = String(input.command ?? ''), next = f && addAllow(f.text, command)
+    if (!k || !next || next === f!.text) return
+    writeJob(KAGELETS, k.name, next)
+    o.runs.emit(key, 'held', `always allowed by the owner: ${heldCommand(command)}`)
+  }
   const board = (key: string) => { const k = parsed().find(x => x.key === key); return k && measures.board(k.name, k.objective) }
   const manager = kageletManager({ dir: KAGELETS, max: MAX, ledgers, sync, runNow: o.runNow, store, envCommand: kl.dbRead?.command ?? undefined, log, measures })
   const notes = ownerNotes(store)
@@ -95,7 +104,7 @@ export function hubKagelets(o: {
     grantOf: (key: string) => grants.get(key) ?? (key.includes('#side-kagelet-') || key.includes('#side-kdream-') ? [] : undefined),
     modelOf: (key: string) => models.get(key),
     allowOf: (key: string) => allows.get(key) ?? [],
-    reviewHeld,
+    reviewHeld, alwaysAllow,
     budgetOf: (key: string) => key.includes('#side-kagelet-') ? budgetLeft(kageletRows(readKagelets(KAGELETS), { runs: '', costs: ledgers.text('costs'), now: Date.now() }), key, CAPS) : undefined,
   }
 }

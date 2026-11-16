@@ -164,7 +164,7 @@ export function sdkSessions(o: {
               const step = !!held && !path && i.tool_name === 'Bash' && shellGrant(grant!), command = { command: String(i.tool_input?.command ?? '') }
               // A held step the reviewer passes runs; else the owner's card (the command only, so a reworded retry still matches) and its yes lets it through once.
               const released = step && (!!await o.reviewHeld?.(key, command.command) || !!o.deferred?.take(key, 'Bash', command, Date.now()))
-              const wait = step && !released ? o.deferred?.waiting(key, 'Bash', command, Date.now()) : undefined, card = step && !released && !wait && o.deferred && s.turn.length ? await defer(key, s, 'Bash', `A kagelet's one-way step: ${heldCommand(command.command)}`, command) : undefined
+              const wait = step && !released ? o.deferred?.waiting(key, 'Bash', command, Date.now()) : undefined, card = step && !released && !wait && o.deferred && s.turn.length ? await defer(key, s, 'Bash', `A kagelet's one-way step: ${heldCommand(command.command)}. Reply \`always\` to run it and let this exact command run with no ask from now on.`, command) : undefined
               const reason = released ? undefined : card?.interrupt || wait === 'same' ? `Held: ${heldCommand(command.command)} is a one-way step. The owner's card is posted, so it is not in your needs. Go on with the rest of the job; when they answer, a new task says so.` : held || path
               if (grant) o.onTool?.(key, i.tool_name, reason || undefined)
               return reason ? { hookSpecificOutput: { hookEventName: 'PreToolUse', permissionDecision: 'deny', permissionDecisionReason: reason } } : released ? { hookSpecificOutput: { hookEventName: 'PreToolUse', permissionDecision: 'allow' } } : {}
