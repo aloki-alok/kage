@@ -107,6 +107,7 @@ Write logs to stderr only. In a tmux pane, stdout carries the channel protocol, 
 | `email.ts` | Email as a way to tag Kage: who may (the provider's DKIM signature, not only DMARC), the ask in the new text, the reply-all, and the guard on a reply that leaves the owner's domains. The SES, S3 and SQS calls are `connectors/email.ts`. |
 | `whatsapp.ts` | The owner's WhatsApp: the owner's tag is the only way in, the armed-chat stand-in, and the guard that reads every message before it leaves as the owner. The WAHA webhook and calls are `connectors/whatsapp.ts`. |
 | `tripwire.ts` | Tripwires: the pure rules of a probe that wakes a session only when its output changes. How output is normalized and fingerprinted, the words of a command, which ignore patterns are safe, whether a pin changed, what one run does to a job's state (a wake, a failure ping), the hash kept of a job webhook's token, and when a hook needs the owner's card. |
+| `shadow.ts` | Self-swap (ADR 0017): a twin's link to the job it shadows, and the pairing of that job's acts (own-thread posts and prod writes) with the twin's verdicts into matches and misses, and when a swap is due. |
 | `afk.ts` | AFK mode: which threads the stand-in watches, when it posts or phones the owner, and what it may say. |
 | `blocks.ts` | When the safety check stops a turn: the line in the thread, the owner's DM, and whether the thread closes. |
 | `commands.ts` | Local slash commands (`connectors.commands`). |
@@ -180,6 +181,7 @@ Write logs to stderr only. In a tmux pane, stdout carries the channel protocol, 
 | `job-events.ts` | The rules between an event and its job (tripwire rung 2): a refused unsafe match, the watch set and removed with its job, a post or a catch-up turned into a wake of the job's lane, the capped catch-up repeated until the channel is read, one ping per failing channel, and one `tripwire` event row per step (ids and counts only). |
 | `probes.ts` | The runtime of a tripwire probe: best-effort pins of every swappable file a command names (except its `reads`, `writes` and redirect targets), and one run with a timeout, an output cap (the fingerprint still covers all output) and a refusal when a pin changed or an ignore pattern is unsafe. |
 | `probe-jobs.ts` | Probe jobs (tripwire rung 1): when a probe job is due, the hub runs its command with no model, wakes the job only when the output changed (the wake goes out before the new state is saved), pings the job's thread on repeated failures or a refusal, and writes one `tripwire` event row per step. `scheduler.ts` calls it, and `runtime/tools/schedule-tools.ts` sets and tunes the jobs. |
+| `shadow-swap.ts` | Self-swap on the hub's clock (ADR 0017): grades each twin from the ledgers, tells the owner once per miss, swaps a proven twin in (saves the old job, makes the twin live, then removes the old job), finishes a swap a crash cut short, and the owner's restore. `hub/job-events.ts` wires it. |
 | `release.ts` | The git and gh calls of a release, and the owner hub's daily check (`kage release`, ADR 0013). |
 
 ## Add a connector

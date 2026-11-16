@@ -25,7 +25,7 @@ export type FromSession =
   | { type: 'hello'; key: string }
   | { type: 'permission'; id: string }
   | { type: 'mail'; text: string }
-  | { type: 'schedule'; id: string; cron: string; prompt: string; recurring: boolean; probe?: ProbeArg }   // its own thread; the hub decides trust
+  | { type: 'schedule'; id: string; cron: string; prompt: string; recurring: boolean; probe?: ProbeArg; shadow?: { of: string; live: string } }   // its own thread; the hub decides trust
   | { type: 'unschedule'; id: string }
   | { type: 'wa'; text: string }
   | { type: 'voice'; text: string }

@@ -1,6 +1,7 @@
 // Tripwires: a shell probe runs on a clock and wakes a session only when its normalized output changes. Pure: the
 // process and the file hashes are runtime/probes.ts, and the stored JobState is the caller's.
 import { createHash } from 'node:crypto'
+import type { Shadow } from './shadow.ts'
 
 // pins: absolute script path to its sha256 hex, taken when the owner approved the probe.
 // reads: paths the probe reads as data, whose change is the point. writes: paths the probe writes besides a redirect or tee.
@@ -9,7 +10,8 @@ export type Probe = { command: string; pins: Record<string, string>; ignore: str
 // undelivered: the owner was told that a wake cannot reach a session (a failed start, or a blocked lane), so one DM covers
 // both. It clears when a wake is delivered. blocked: consecutive ticks a wake found its lane blocked.
 // pending: a thread note that did not post yet (its tracked row fields f, the tries, and dm once the owner was told), retried each tick.
-export type JobState = { fp?: string; last?: string; fails: number; refused?: string; undelivered?: true; blocked?: number; pending?: { text: string; f: Record<string, string | number>; tries: number; dm?: true } }
+// shadow: this job is a twin of another, graded by the hub (core/shadow.ts, ADR 0017).
+export type JobState = { shadow?: Shadow; fp?: string; last?: string; fails: number; refused?: string; undelivered?: true; blocked?: number; pending?: { text: string; f: Record<string, string | number>; tries: number; dm?: true } }
 // What wakes a job besides its clock (ADR 0015): a probe run on the clock that wakes only on a change, a post in a
 // Slack channel, or a POST to the job's own webhook (only the token's hash is kept).
 export type Trigger =

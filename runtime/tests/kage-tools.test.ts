@@ -8,6 +8,8 @@ import { liveCronJobs } from '../../core/cron.ts'
 import { cardAt } from '../../core/ledgers.ts'
 import { openLedgers } from '../ledger.ts'
 import { postAsKage, sessionTools } from '../kage-tools.ts'
+import { shadowSwaps } from '../shadow-swap.ts'
+import { openStore } from '../store.ts'
 import type { Task } from '../../core/task.ts'
 
 // A fake Slack: records posts, edits, deletes and reactions; the bot is not in channel "CPRIV" and cannot see group DM "GDM".
@@ -581,11 +583,57 @@ describe("a session's Kage tools", () => {
     assert.match(i, /check with the owner/)
     assert.match(i, /no tool except reply/)
   })
+  test('a job run\'s post into another thread of the same channel is not its act (ADR 0017)', async () => {
+    const s = setup()
+    s.t.onTask({ ...s.task(), scheduled: true, job: 'j1' })
+    await s.call('reply', { channel: 'C1', thread_ts: '9.9', text: 'elsewhere' })
+    assert.equal(s.ledgers.text('posted').trim().split('\t')[5], undefined)
+  })
+  test('end to end: a job run\'s real post is an act the hub grades, so a twin that said nothing is a miss (ADR 0017)', async () => {
+    const s = setup()
+    const store = openStore(':memory:')
+    for (const id of ['j1', 'tw']) store.addSchedule({ id, key: 'C1:5.5', cron: '*/15 * * * *', prompt: id, recurring: true, fromOwner: true, created: 0, lastFired: 0 })
+    store.setJobState('tw', { fails: 0, shadow: { of: 'j1', live: 'live', since: Date.now() - 60_000 } })
+    s.t.onTask({ ...s.task(), scheduled: true, job: 'j1' })
+    await s.call('reply', { channel: 'C1', thread_ts: '5.5', text: 'org moved' })
+    const dms: string[] = []
+    shadowSwaps({ store, ledgers: s.ledgers, settings: () => ({}), ping: () => {}, owner: t => { dms.push(t) }, event: () => {}, remove: () => {}, restore: () => {} }).tick(Date.now() + 31 * 60_000)
+    assert.equal(dms.length, 1)
+    assert.match(dms[0]!, /tw missed an event of job j1/)
+  })
+  test('only the owner\'s own task may make a twin, because a twin replaces a job by itself (ADR 0017)', async () => {
+    const s = setup()
+    s.t.onTask(s.task({ fromOwner: false }))
+    const r = await s.call('schedule', { cron: '*/15 * * * *', prompt: 'SHADOW', shadow_of: 'j1', live_prompt: 'live' })
+    assert.equal(r.isError, true)
+    assert.match(r.text, /only the owner's own task may make a twin/)
+  })
+  test('shadow_verdict records the run\'s own job from the task, never from its arguments, and only in a job run (ADR 0017)', async () => {
+    const s = setup()
+    s.t.onTask(s.task())
+    assert.match((await s.call('shadow_verdict', { act: true, what: 'x' })).text, /only a twin job's run/)
+    s.t.onTask({ ...s.task(), scheduled: true, job: 'tw' })
+    await s.call('shadow_verdict', { act: true, what: 'would rerate org 1', job: 'other' })
+    await s.call('shadow_verdict', { act: false, what: 'nothing new' })
+    assert.deepEqual(s.ledgers.text('verdicts').trim().split('\n').map(l => l.split('\t').slice(1)), [['tw', 'act', 'would rerate org 1'], ['tw', 'quiet', 'nothing new']])
+  })
   test('a private reply is logged as posted by the thread it answers', async () => {
     const s = setup()
     s.t.onTask(s.task())
     await s.call('reply', { channel: 'C1', thread_ts: '5.5', text: 'just for you', private: true })
     assert.match(s.ledgers.text('posted'), /\tDBOT\t[^\t]+\tbot\tC1:5\.5\n/)
+  })
+  test('a job run\'s post in its own thread and its prod write carry the job id; its private DM and a person\'s task do not (ADR 0017)', async () => {
+    const s = setup()
+    s.t.onTask({ ...s.task(), scheduled: true, job: 'j1' })
+    await s.call('reply', { channel: 'C1', thread_ts: '5.5', text: 'org moved' })
+    await s.call('reply', { channel: 'C1', thread_ts: '5.5', text: 'for you', private: true })
+    await s.call('log_prod_write', { channel: 'C1', thread_ts: '5.5', what: 'rate set', command: 'x', result: 'ok' })
+    s.t.onTask(s.task())
+    await s.call('reply', { channel: 'C1', thread_ts: '5.5', text: 'a person asked' })
+    const rows = s.ledgers.text('posted').trim().split('\n').map(l => l.split('\t').slice(1))
+    assert.deepEqual(rows.map(r => [r[0], r[4]]), [['C1', 'j1'], ['DBOT', undefined], ['C1', undefined]])
+    assert.match(s.ledgers.text('prod-actions'), /\trate set\tx\tok\tj1\n$/)
   })
   test('a private reply goes into the DM thread the owner answered in, until a task comes from elsewhere', async () => {
     const s = setup()

@@ -9,8 +9,8 @@ import { lastTotals, trailEvent, trailLine, tsvRow, turnCost } from '../core/led
 import { eventRow, whoOf, type EventKind, type KageEvent } from '../core/events.ts'
 import { COST_FLAG } from '../core/kagelets.ts'
 
-export type LedgerName = 'waiting' | 'posted' | 'prod-actions' | 'costs' | 'runs' | 'commands' | 'reports' | 'db-reads' | 'grants' | 'boots'
-const NAMES: LedgerName[] = ['waiting', 'posted', 'prod-actions', 'costs', 'runs', 'commands', 'reports', 'db-reads', 'grants']
+export type LedgerName = 'waiting' | 'posted' | 'prod-actions' | 'costs' | 'runs' | 'commands' | 'reports' | 'db-reads' | 'grants' | 'verdicts' | 'boots'
+const NAMES: LedgerName[] = ['waiting', 'posted', 'prod-actions', 'costs', 'runs', 'commands', 'reports', 'db-reads', 'grants', 'verdicts']
 export type Ledgers = ReturnType<typeof openLedgers>
 
 // trail: the hub passes its log, so every row and event is a line in hub.log too. Panes pass none.
@@ -78,8 +78,9 @@ export function openLedgers(dir: string, now = () => new Date().toISOString(), t
       }
       if (name === 'reports' && cells[0]?.startsWith(COST_FLAG)) event({ kind: 'cost-flag', who: cells[0].slice(COST_FLAG.length), trace: '', detail: cells[1] ?? '' })
     },
-    text(name: LedgerName): string {
-      try { return ledgerText(db, name) } catch (e) { log('ledger read failed', name, e); return '' }
+    // since: an ISO time, so a reader on a clock reads only the rows it can still use.
+    text(name: LedgerName, since?: string): string {
+      try { return ledgerText(db, name, since) } catch (e) { log('ledger read failed', name, e); return '' }
     },
     event,
     // One UTC day (YYYY-MM-DD), in the order written.
@@ -103,8 +104,8 @@ export function openLedgers(dir: string, now = () => new Date().toISOString(), t
 }
 
 // One ledger as TSV, from any handle on kage.db: kage top and kage logs read it with a read-only one.
-export const ledgerText = (db: DatabaseSync, name: LedgerName) =>
-  (db.prepare('select at, cells from ledger where name = ? order by id').all(name) as { at: string; cells: string }[])
+export const ledgerText = (db: DatabaseSync, name: LedgerName, since = '') =>
+  (db.prepare('select at, cells from ledger where name = ? and at >= ? order by id').all(name, since) as { at: string; cells: string }[])
     .map(r => tsvRow([r.at, ...JSON.parse(r.cells) as string[]])).join('')
 
 // One UTC day's events, from any handle on kage.db: kage top and kage logs read them with a read-only one.
