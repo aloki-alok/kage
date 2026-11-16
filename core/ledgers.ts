@@ -150,7 +150,7 @@ export function selfReview(waitingTsv: string, events: KageEvent[], since: strin
   const keep = new Set(threads.map(([t]) => placeOf(t)))
   const sample = asks.filter(a => keep.has(a.place)).slice(0, 10)
   return [
-    ...threads.length ? ['Asks to the owner, by thread (2 or more):', ...threads.map(([t, n]) => `- ${placeOf(t)}: ${n.open} open, ${n.answered} answered`), 'Some of the asks:', ...sample.map(a => `- ${quotedLine(a.place)}: ${a.what}`)] : [],
+    ...threads.length ? ['Asks to the owner, by thread (2 or more):', ...threads.map(([t, n]) => `- ${quotedLine(placeOf(t))}: ${n.open} open, ${n.answered} answered`), 'Some of the asks:', ...sample.map(a => `- ${quotedLine(a.place)}: ${a.what}`)] : [],
     ...repeats.length ? ['Event kinds that repeated:', ...repeats.map(([k, n]) => `- ${k} ${n}`)] : [],
   ].join('\n')
 }
