@@ -82,7 +82,29 @@ export function scheduleTools(c: ToolContext): KageTool[] {
       jobs.remove(String(args.id))
       return { text: `cancelled ${String(args.id)}` }
     },
-  }, {
+  }, ...(jobs.move ? [{
+    name: 'move_job',
+    description: 'Move one of this thread\'s jobs to another Slack thread, with the same id, clock and state. Use it when someone wants a job to post somewhere else (a fresh thread: post its first message with post_as_kage, then move the job there). Never write a script for this, and never ask anyone to run one. A job\'s own run may not call it. Another channel needs the owner\'s own task.',
+    shape: {
+      id: s.describe('the job id'), to_thread_ts: s.describe('ts of the first message of the target thread'),
+      to_channel: s.optional().describe('the target channel id. Default: this thread\'s channel'),
+      channel: s.describe('channel attribute from the task tag'), thread_ts: s.describe('thread_ts attribute from the task tag'),
+    },
+    async run(args: Record<string, unknown>) {
+      if (c.jobRun()) return { isError: true, text: 'refused: a job\'s own run may not move a job. Put the move you suggest in your report.' }
+      // The job's real channel comes from the hub's row, never from the arguments, which the model writes.
+      const job = jobs.list().find(j => j.id === String(args.id))
+      if (!job) return { isError: true, text: `no job ${String(args.id)} in this thread` }
+      const here = job.key.split(':')[0]!, to = String(args.to_channel ?? here), ts = String(args.to_thread_ts)
+      // A teammate moves a job within the channel where it already posts; taking it to another channel is the owner's call.
+      if (to !== here && !ownerOnly(args)) return { isError: true, text: 'only the owner\'s own task may move a job to another channel. Ask the owner in this thread.' }
+      const r = await c.user.conversations.replies({ channel: to, ts, limit: 1 }).catch(() => undefined)
+      const first = r?.messages?.[0]
+      if (!first || first.ts !== ts || (first.thread_ts && first.thread_ts !== ts)) return { isError: true, text: `no thread starts at ${ts} in ${to}: give the ts of its first message` }
+      const no = jobs.move!(String(args.id), `${to}:${ts}`)
+      return no ? { isError: true, text: no } : { text: `moved ${String(args.id)} to that thread. Its next run posts there.` }
+    },
+  } as KageTool] : []), {
     name: 'shadow_verdict',
     description: 'A twin job\'s run ends with this (a job made with shadow_of): say whether the job it shadows should act on what this run saw. The hub, not you, compares it with what that job really did. Call it once per run, also when the answer is quiet.',
     shape: { act: z.boolean().describe('true: the shadowed job should act now (post, alert, change something). false: it should stay quiet'), what: s.describe('one line: what it should do, or why quiet') },

@@ -253,7 +253,7 @@ const sdk = sdkLib ? sdkSessions({
   hub: () => d,
   tools: (key, send, approve) => sessionTools({
     title: Title, bot, user, botDm: () => slack.ids.botDm, dir: DIR, ledgers, send, memory: MEM,
-    schedules: { add: j => jobs.add(key, j, Date.now()), remove: id => jobs.remove(key, id), list: () => schedules.list(key), hookUrl: id => jobs.hookUrl(id), tune: (id, t) => schedules.tune(key, id, t, Date.now()), restore: id => jobs.swaps.restore(key, id, Date.now()) },
+    schedules: { add: j => jobs.add(key, j, Date.now()), remove: id => jobs.remove(key, id), list: () => schedules.list(key), hookUrl: id => jobs.hookUrl(id), tune: (id, t) => schedules.tune(key, id, t, Date.now()), restore: id => jobs.swaps.restore(key, id, Date.now()), move: (id, to) => schedules.move(key, id, to, Date.now()) },
     afk: slack.afk?.command,
     settings: { set: (key, value) => setKey(ENV_FILE, key, value) },
     kagelet: key.split('#side-kagelet-')[1], dreaming: key.split('#side-kdream-')[1], kageletMemory: kag.kmem,

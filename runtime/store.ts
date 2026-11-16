@@ -182,6 +182,10 @@ export function openStore(path: string) {
       return r?.job_state ? JSON.parse(r.job_state) : { fails: 0 }
     },
     setJobState(id: string, state: JobState) { db.prepare('update schedules set job_state = ? where id = ?').run(JSON.stringify(state), id) },
+    // A job taken to another thread (runtime/scheduler.ts move): only from the thread that owns it.
+    moveSchedule(id: string, from: string, to: string, fromOwner: boolean): boolean {
+      return Number(db.prepare('update schedules set key = ?, from_owner = ? where id = ? and key = ?').run(to, fromOwner ? 1 : 0, id, from).changes) > 0
+    },
     // Only the thread that owns a schedule may remove it; the hub drops expired ones with key undefined.
     removeSchedule(id: string, key?: string): boolean {
       const r = key === undefined ? db.prepare('delete from schedules where id = ?').run(id) : db.prepare('delete from schedules where id = ? and key = ?').run(id, key)

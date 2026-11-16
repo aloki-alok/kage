@@ -80,7 +80,7 @@ export function sessionTools(o: {
   // This thread's schedules in the hub; each runtime reaches the hub its own way (a direct call in the
   // SDK runtime, the socket from a tmux pane). add gives why the hub refused it, or nothing once the
   // hub holds it. Trust is the hub's call.
-  schedules?: { add(j: Pick<Schedule, 'id' | 'cron' | 'prompt' | 'recurring' | 'lane' | 'trigger'> & { probe?: ProbeArg; shadow?: { of: string; live: string } }): string | void | Promise<string | void>; remove(id: string): void; list(): Schedule[]; tune?(id: string, t: TuneArg): string | void; hookUrl?(id: string): string | undefined; restore?(id: string): string | undefined }
+  schedules?: { add(j: Pick<Schedule, 'id' | 'cron' | 'prompt' | 'recurring' | 'lane' | 'trigger'> & { probe?: ProbeArg; shadow?: { of: string; live: string } }): string | void | Promise<string | void>; remove(id: string): void; list(): Schedule[]; tune?(id: string, t: TuneArg): string | void; hookUrl?(id: string): string | undefined; restore?(id: string): string | undefined; move?(id: string, to: string): string | undefined }
   // AFK on or off in the hub; resolves the line for the owner. Absent: AFK mode is off.
   afk?: (c: AfkCommand) => Promise<string>
   // This session is the lane of this kagelet (core/kagelets.ts): it gets the report tool and none of the manager's.

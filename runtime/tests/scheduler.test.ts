@@ -454,3 +454,38 @@ test('a twin made with shadow_of keeps its link, live prompt and start in its jo
   assert.match(t.s.add('C1:5.5', { ...job, id: 'x2', shadow: { of: 'tw', live: 'l' } }, now) ?? '', /tw is itself a twin/)
   assert.match(t.s.add('C2:1.1', { ...job, id: 'x3', shadow: { of: 'j1', live: 'l' } }, now) ?? '', /no job j1 in this thread/)
 })
+
+test('a job moves to another Slack thread with its id and state; trust never rises; twins and odd targets are refused', () => {
+  const t = setup()
+  t.owner.add('C1:5.5')
+  t.s.add('C1:5.5', job, 0)
+  t.store.setJobState('j1', { fails: 2 })
+  assert.equal(t.s.move('C1:5.5#side-job-j1', 'j1', 'C1:9.9', 1), undefined)   // from its own lane, into a thread Kage never saw
+  assert.deepEqual(t.s.list('C1:5.5'), [])
+  const [moved] = t.s.list('C1:9.9')
+  assert.equal(moved!.id, 'j1')
+  assert.equal(moved!.fromOwner, false)                   // the new thread is not the owner's, so its runs lose owner trust
+  assert.equal(t.store.jobState('j1').fails, 2)
+  assert.equal(t.store.conversation('C1:9.9')!.conversation.thread, '9.9')
+  assert.equal(t.store.conversation('C1:9.9')!.place, '#ops')
+  t.s.tick(at('2026-11-03T10:15:05'))
+  assert.equal(t.sent[0]![0], 'C1:9.9#side-job-j1')
+  t.owner.add('C2:1.1')
+  t.s.add('C1:9.9', { ...job, id: 'k1' }, 1)
+  t.s.add('C2:1.1', { ...job, id: 'k2' }, 1)
+  t.owner.add('C2:3.3')
+  assert.equal(t.s.move('C2:1.1', 'k2', 'C2:3.3', 1), undefined)
+  assert.equal(t.s.list('C2:3.3')[0]!.fromOwner, true)    // owner trust kept between owner threads
+  t.owner.delete('C2:1.1')
+  assert.equal(t.s.move('C2:3.3', 'k2', 'C2:1.1', 1), undefined)
+  t.owner.add('C2:1.1')
+  assert.equal(t.s.move('C2:1.1', 'k2', 'C2:3.3', 1), undefined)
+  assert.equal(t.s.list('C2:3.3')[0]!.fromOwner, false)   // lost once, never regained by moving back
+  assert.match(t.s.move('C1:5.5', 'j1', 'C2:1.1', 2)!, /no job j1 in this thread/)
+  assert.match(t.s.move('C1:9.9', 'j1', 'C1:9.9', 2)!, /already/)
+  assert.match(t.s.move('C1:9.9', 'j1', 'mail:<r@x>', 2)!, /Slack/)
+  assert.match(t.s.move('C1:9.9', 'j1', 'dm', 2)!, /Slack thread/)
+  t.s.add('C1:9.9', { ...job, id: 'tw', shadow: { of: 'j1', live: 'l' } }, 2)
+  assert.match(t.s.move('C1:9.9', 'j1', 'C2:1.1', 3)!, /twin/)
+  assert.match(t.s.move('C1:9.9', 'tw', 'C2:1.1', 3)!, /twin/)
+})
