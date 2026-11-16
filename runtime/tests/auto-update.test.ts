@@ -1,7 +1,7 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { execFileSync } from 'node:child_process'
-import { mkdtempSync, writeFileSync } from 'node:fs'
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { clearUpdatedFrom, markUpdatedFrom, pullMain, updatedNote, version } from '../auto-update.ts'
@@ -109,8 +109,11 @@ test('a folder with no .git of its own is not a checkout, even inside one', asyn
   assert.deepEqual(await pullMain(inner), { skip: 'not a git checkout' })
 })
 
-test('the version is the short sha and the commit date', () => {
+test('the version is the short sha, the commit date and the release', () => {
   const { local } = repos()
+  writeFileSync(join(local, 'package.json'), '{"version":"9.8.7"}')
+  assert.match(version(local), /^[0-9a-f]{7,} \(\d{4}-\d{2}-\d{2}, v9\.8\.7\)$/)
+  rmSync(join(local, 'package.json'))
   assert.match(version(local), /^[0-9a-f]{7,} \(\d{4}-\d{2}-\d{2}\)$/)
   assert.equal(version(join(local, 'nope')), 'unknown (not a git checkout)')
 })
