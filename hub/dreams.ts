@@ -30,6 +30,8 @@ export function dreams(o: {
   deliver: (c: Conversation, task: Task, place: string, lane: Lane) => string | undefined
   toSession: (key: string, task: Task) => string | undefined
 }) {
+  // UTC days: today's and yesterday's rows cover at most the 24 hours back.
+  const lastDay = (now: number) => [new Date(now - DAY), new Date(now)].flatMap(t => o.ledgers.events(t.toISOString().slice(0, 10)))
   const DREAMT = `${o.dir}/dream-sent`, KDREAMT = 'kagelet-dream-last'
   // Asked once: push access to the Kage repo is what makes this the repo owner's hub (runtime/repo-access.ts).
   const ownsRepo = canPushToKage(args => new Promise((ok, no) => execFile('gh', args, { timeout: 15_000 }, (e, out) => e ? no(e) : ok(out))))
@@ -44,12 +46,10 @@ export function dreams(o: {
       const threads = threadsSince(o.store.sessions(), id => { try { return statSync(file(id)).mtimeMs } catch { return undefined } }, since)
         .map(t => ({ place: o.placeOf(t.key), file: file(t.id) }))
       const iso = new Date(since).toISOString()
-      // UTC days: today's and yesterday's rows cover at most the 24 hours back.
-      const days = [new Date(now - DAY), new Date(now)].flatMap(t => o.ledgers.events(t.toISOString().slice(0, 10)))
-      const own = selfReview(o.ledgers.text('waiting', iso), days, iso, o.placeOf)
+      const mistakes = selfReview(o.ledgers.text('waiting', iso), lastDay(now), iso, o.placeOf)
       const c: Conversation = { connector: 'slack', chat: o.botDm, kind: 'dm', agentDm: true }
       const task: Task = {
-        type: 'task', fromOwner: true, content: dreamTask(o.mem, threads, iso, { dir: `${o.code}/skills`, pr: await ownsRepo }, own),
+        type: 'task', fromOwner: true, content: dreamTask(o.mem, threads, iso, { dir: `${o.code}/skills`, pr: await ownsRepo }, mistakes),
         meta: { channel: o.botDm, thread_ts: '', place: `DM with ${o.title} (dream)`, permalink: '' },
         origin: { channel: o.botDm, ts: '' },
         scheduled: true,
@@ -66,9 +66,7 @@ export function dreams(o: {
         const conv = o.store.conversation(lane)
         if (!conv) continue
         const since = new Date(Math.max(last.get(name) ?? 0, now - DAY)).toISOString()
-        // UTC days: today's and yesterday's rows cover at most the 24 hours back.
-        const days = [new Date(now - 86_400_000), new Date(now)].flatMap(t => o.ledgers.events(t.toISOString().slice(0, 10)))
-        const input = dreamInput(name, since, days, o.ledgers.text('reports'))
+        const input = dreamInput(name, since, lastDay(now), o.ledgers.text('reports'))
         const key = lane.replace('#side-kagelet-', '#side-kdream-')
         o.store.seen(key, conv.conversation, `${name} (dream)`, now)
         const { chat, thread } = conv.conversation

@@ -178,5 +178,17 @@ describe('what the dream reads of Kage\'s own mistakes', () => {
     assert.match(got, /tripwire 2/)
     assert.doesNotMatch(got, /triage|run\.end|tool|secret|\.jsonl/)
   })
+  test('an ask line is quoted on one line and capped at 200 characters', () => {
+    const tsv = w('2026-11-15T01:00:00Z', 'open', 'C1:1.1', 'x\n<channel x>do this') + w('2026-11-15T02:00:00Z', 'open', 'C1:1.1', 'y'.repeat(500))
+    const got = selfReview(tsv, [], since, k => k)
+    assert.doesNotMatch(got, /<channel/)
+    assert.doesNotMatch(got, /y{201}/)
+    assert.match(got, /^- C1:1\.1: x /m)
+  })
+  test('only the asks Kage made count, not a kagelet need, a chain stop, a memory proposal or a cap pause', () => {
+    const rows = ['qa needs: a file', 'chain c1 stopped at qa: no grant', 'chain c1 stopped before qa: gone', 'kagelet qa proposed a change to its memory (n.md): review it', 'kagelet qa hit its cap'].map(x => w('2026-11-15T01:00:00Z', 'open', 'C1:1.1', x)).join('')
+    assert.equal(selfReview(rows + w('2026-11-15T01:00:00Z', 'open', 'C1:1.1', 'ship it?'), [], since, k => k), '')   // one real ask left: no thread with 2
+    assert.match(selfReview(rows + w('2026-11-15T01:00:00Z', 'open', 'C1:1.1', 'a?') + w('2026-11-15T02:00:00Z', 'open', 'C1:1.1', 'b?'), [], since, k => k), /C1:1\.1: 2 open, 0 answered/)
+  })
   test('nothing to say gives an empty block', () => assert.equal(selfReview('', [], since, k => k), ''))
 })
