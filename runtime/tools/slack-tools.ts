@@ -85,10 +85,6 @@ export function slackTools(c: ToolContext): KageTool[] {
       const asker = ownerTask.get(key) === true ? undefined : askers.get(key) ?? { id: '', name: 'A teammate' }
       const ids = [...a.users, ...a.from ? [a.from] : []]
       if (!a.users.length || ids.some(u => !/^[UW][A-Z0-9]+$/.test(u))) return { isError: true, text: 'refused: name 1 to 8 people by their Slack user id (U...)' }
-      if (fromPhone) {
-        if (!o.approve) return { isError: true, text: 'refused: from WhatsApp this needs the owner\'s yes on a Slack card, and this session cannot show one. Tell them to ask in Slack.' }
-        if (!await o.approve('message_people', `From WhatsApp: message ${a.users.map(u => `<@${u}>`).join(', ')}: ${a.text}`, { users: a.users, text: a.text })) return { isError: true, text: 'The owner said no on the Slack card. Nothing was sent.' }
-      }
       // Signed by the asker on a teammate's task, whatever from says; on the owner's, by from if given.
       if (!asker && a.from) await nameMentions(`<@${a.from}>`)
       const signer = asker ?? (a.from ? { id: a.from, name: names[a.from] ?? a.from } : undefined)
@@ -99,6 +95,13 @@ export function slackTools(c: ToolContext): KageTool[] {
       if (refusal) return { isError: true, text: refusal }
       const layout = layoutRefusal(a.text)
       if (layout) return { isError: true, text: layout }
+      // Asked last, after every refusal, so the owner never says yes to a message that would not go. The card names
+      // everyone it reaches, by name and id, the person it is sent for too.
+      if (fromPhone) {
+        if (!o.approve) return { isError: true, text: 'refused: from WhatsApp this needs the owner\'s yes on a Slack card, and this session cannot show one. Tell them to ask in Slack.' }
+        await nameMentions(people.map(u => `<@${u}>`).join(' '))
+        if (!await o.approve('message_people', `From WhatsApp: message ${people.map(u => `${names[u] ?? 'someone'} (${u})`).join(', ')}: ${a.text}`, { users: people, text: a.text })) return { isError: true, text: 'The owner said no on the Slack card. Nothing was sent.' }
+      }
       const foot = asker ? { asked: asker.name } : signer ? { from: signer.name } : {}
       let dm: string
       try {

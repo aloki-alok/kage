@@ -439,7 +439,7 @@ describe("a session's Kage tools", () => {
     yes.t.onTask(yes.task({ channel: 'whatsapp', thread_ts: '1234@c.us', fromOwner: true }))
     const r = await yes.call('message_people', a)
     assert.equal(r.isError, undefined, r.text)
-    assert.match(cards[0]!, /WhatsApp[\s\S]*<@UBO000001>[\s\S]*Hello from Alok\./)
+    assert.match(cards[0]!, /WhatsApp[\s\S]*Sam \(UBO000001\)[\s\S]*Hello from Alok\./)   // names, so the owner knows who
     assert.ok(yes.calls.includes('owner post G-UBO000001 Hello from Alok.\n_🥷 Kage_'), yes.calls.join('\n'))
     const no = setup({ approve: async () => false })
     no.t.onTask(no.task({ channel: 'whatsapp', thread_ts: '1234@c.us', fromOwner: true }))
@@ -448,6 +448,20 @@ describe("a session's Kage tools", () => {
     const pane = setup()
     pane.t.onTask(pane.task({ channel: 'whatsapp', thread_ts: '1234@c.us', fromOwner: true }))
     assert.equal((await pane.call('message_people', a)).isError, true)
+    // Everyone the message reaches is on the card, the person it is sent for too, and a refusal comes before any card.
+    const seen: string[] = []
+    const all = setup({ approve: async (_t, d) => { seen.push(d); return true } })
+    all.t.onTask(all.task({ channel: 'whatsapp', thread_ts: '1234@c.us', fromOwner: true }))
+    await all.call('message_people', { ...a, from: 'USAM00001' })
+    assert.match(seen[0]!, /UBO000001[\s\S]*USAM00001/)
+    const nine = Array.from({ length: 9 }, (_, i) => `UBO00000${i}`)
+    assert.equal((await all.call('message_people', { ...a, users: nine })).isError, true)
+    assert.equal((await all.call('message_people', { ...a, text: 'key AKIAABCDEFGHIJKLMNOP' })).isError, true)
+    assert.equal(seen.length, 1)
+    // A WhatsApp task that is not the owner's never reaches a card.
+    const other = setup({ approve: async () => { assert.fail('no card for a task that is not the owner\'s') } })
+    other.t.onTask(other.task({ channel: 'whatsapp', thread_ts: '1234@c.us', fromOwner: false }))
+    assert.equal((await other.call('message_people', a)).isError, true)
     // Email stays refused, card or not.
     const mail = setup({ approve: async () => true })
     mail.t.onTask(mail.task({ channel: 'email', thread_ts: 'mail:1', fromOwner: true }))
