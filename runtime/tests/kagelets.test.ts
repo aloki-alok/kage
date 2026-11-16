@@ -470,7 +470,7 @@ test('the owner\'s words in a kagelet\'s thread reach its next run once, and onl
   assert.deepEqual(notes.wrote(lanes, 'CTEST9', '5.5', 'not for any kagelet'), [])
   // A run that could not be delivered keeps them for the next one.
   assert.match(notes.take(KEY, () => false) ?? '', /skip the staging log today/)
-  assert.match(notes.take(KEY, () => true) ?? '', /owner wrote[\s\S]*skip the staging log today/)
+  assert.match(notes.take(KEY, () => true) ?? '', /the owner or Kage \(your manager\) wrote[\s\S]*skip the staging log today/)
   assert.equal(notes.take(KEY, () => true), undefined)
   assert.equal(notes.take('CTEST2:1.1#side-kagelet-other', () => true), undefined)
 })
