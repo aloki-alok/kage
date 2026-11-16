@@ -12,6 +12,7 @@ import { ownerOnlyTool } from '../core/guards.ts'
 import { senderOf, withoutInvisible, type Sender } from '../core/gate.ts'
 import { certFileEnv, protectConfig, toolRefusal } from './path-guards.ts'
 import { grantRefusal, laneOptions, shellGrant } from '../core/kagelets.ts'
+import { heldCommand } from '../core/held.ts'
 import { approvalPreview } from '../core/preview.ts'
 import type { Dispatcher, Runner } from '../core/sessions.ts'
 import type { sessionTools } from './kage-tools.ts'
@@ -160,7 +161,11 @@ export function sdkSessions(o: {
               const grant = o.grantOf?.(key)
               const path = toolRefusal(i.tool_name, i.tool_input ?? {}, s.sender, o), held = grant && grantRefusal(i.tool_name, grant, i.tool_input ?? {}, o.allowOf?.(key))
               // Only a grant hold may be let through by the reviewer, never a path guard; allow here, so canUseTool's grant check never sees it.
-              const released = !!held && !path && i.tool_name === 'Bash' && !!await o.reviewHeld?.(key, String(i.tool_input?.command ?? '')), reason = released ? undefined : held || path
+              const step = !!held && !path && i.tool_name === 'Bash' && shellGrant(grant!), command = { command: String(i.tool_input?.command ?? '') }
+              // A held step the reviewer passes runs; else the owner's card (the command only, so a reworded retry still matches) and its yes lets it through once.
+              const released = step && (!!await o.reviewHeld?.(key, command.command) || !!o.deferred?.take(key, 'Bash', command, Date.now()))
+              const wait = step && !released ? o.deferred?.waiting(key, 'Bash', command, Date.now()) : undefined, card = step && !released && !wait && o.deferred && s.turn.length ? await defer(key, s, 'Bash', `A kagelet's one-way step: ${heldCommand(command.command)}`, command) : undefined
+              const reason = released ? undefined : card?.interrupt || wait === 'same' ? `Held: ${heldCommand(command.command)} is a one-way step. The owner's card is posted, so it is not in your needs. Go on with the rest of the job; when they answer, a new task says so.` : held || path
               if (grant) o.onTool?.(key, i.tool_name, reason || undefined)
               return reason ? { hookSpecificOutput: { hookEventName: 'PreToolUse', permissionDecision: 'deny', permissionDecisionReason: reason } } : released ? { hookSpecificOutput: { hookEventName: 'PreToolUse', permissionDecision: 'allow' } } : {}
             }],
