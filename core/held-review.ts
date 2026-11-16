@@ -24,7 +24,7 @@ export function reviewable(command: string) {
   const [tool, ...args] = line.split(' ')
   if (args.some(a => WIDE_WORD.test(a))) return false
   const words = args.filter(a => !a.startsWith('-'))
-  if (tool === 'rm' && words.some(a => /(^|\/)\.git(\/|$)/.test(a))) return false   // its history: unpushed work is gone
+  if (tool === 'rm' && words.some(a => /(^|\/)\.git(\/|$)/i.test(a))) return false   // its history: unpushed work is gone
   if (tool === 'git' && words[0] === 'push' && words[1] !== 'origin') return false   // its own repo only, never a URL or another remote
   if (tool === 'git' && words[0] === 'clean' && args.some(a => /^-[a-zA-Z]*x/i.test(a))) return false   // ignored files: .env, local config
   return LOW_STAKES.has(heldCommand(line) ?? '')
