@@ -24,7 +24,8 @@ test('each kagelet file becomes one recurring schedule in its lane, at teammate 
   assert.equal(s!.cron, '0 9 * * 1-5')
   assert.equal(s!.recurring, true)
   assert.equal(s!.fromOwner, false)
-  assert.match(s!.prompt, /approve nothing[\s\S]*Summarise the deploy log\./)
+  assert.match(s!.prompt, /^Run of the kagelet "deploys"[\s\S]*Summarise the deploy log\./)
+  assert.doesNotMatch(s!.prompt, /approve nothing|report tool/)   // the rules live in the session's instructions (ADR 0018)
   assert.equal(store.conversation(KEY)?.conversation.chat, 'CTEST1')   // the scheduler can find its thread
 })
 
