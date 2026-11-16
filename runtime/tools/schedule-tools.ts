@@ -69,7 +69,10 @@ export function scheduleTools(c: ToolContext): KageTool[] {
       if (token) return { text: `Kage schedule ${id} set, wakes on a call to its webhook. Shown once, give both to whoever sends the calls:\nURL: ${jobs.hookUrl!(id)}\nToken: ${token}\nSend: POST with the header "Authorization: Bearer <token>". The body reaches the job as data. Kept by Kage: it survives restarts and runs until unschedule.` }
       if (a.cron === REPLY) return { text: `Watching: job ${id} runs each time someone writes in this thread, for 7 days. Kept by Kage: it survives restarts.` }
       const next = nextRun(cron, new Date(), 366 * 24 * 3600_000)
-      return { text: `Kage schedule ${id} set, ${recurring ? 'recurring' : 'one-shot'} (${cron}). Next run: ${next?.toLocaleString() ?? 'none within a year'}. Kept by Kage: it survives restarts and runs until unschedule.` }
+      // The one moment a repeating job of the owner's is chosen: a poll with no probe runs a model each time, which is a kagelet's work.
+      const poll = recurring && !a.probe && ownerOnly(args) && !c.jobRun()
+        ? ' It runs a model on every run. If it only watches for a change, give it a probe. If each run does work (a draft, a review, research), make it a kagelet instead (kagelets skill) and unschedule this one.' : ''
+      return { text: `Kage schedule ${id} set, ${recurring ? 'recurring' : 'one-shot'} (${cron}). Next run: ${next?.toLocaleString() ?? 'none within a year'}. Kept by Kage: it survives restarts and runs until unschedule.${poll}` }
     },
   }, {
     name: 'unschedule',
