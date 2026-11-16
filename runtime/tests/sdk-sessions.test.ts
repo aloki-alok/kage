@@ -784,6 +784,21 @@ describe('Kage sessions on the Agent SDK', () => {
       assert.equal(out.hookSpecificOutput?.permissionDecision, want, `${review} ${command}`)
     }
   })
+  test("the owner's yes is spent before the reviewer is asked, and an open card keeps the step with the owner", async () => {
+    const key = 'C1:5.5#side-kagelet-ops', input = { command: 'rm -rf build' }
+    for (const answered of [true, false]) {
+      const t = setup({ grants: { [key]: ['all'] }, review: true, deferred: true })
+      t.d.task(key, t.task({ fromOwner: false }), 0)
+      await tick()
+      t.approvals.add({ id: 'R1', key, tool: 'Bash', input, task: t.task() }, Date.now())
+      if (answered) t.approvals.answer('R1', 'allow', Date.now())
+      const out = await t.sdk.runs[0]!.options.hooks.PreToolUse[0].hooks[0]({ hook_event_name: 'PreToolUse', tool_name: 'Bash', tool_input: input }, undefined, { signal: signal() })
+      if (answered) {
+        assert.equal(out.hookSpecificOutput?.permissionDecision, 'allow')
+        assert.equal(t.approvals.take(key, 'Bash', input, Date.now()), false, 'the yes is spent, so it never runs the step a second time')
+      } else assert.match(out.hookSpecificOutput?.permissionDecisionReason, /owner's card is posted/)
+    }
+  })
   test('an owner\'s allow line lets the held step it names run in the lane, and holds the rest', async () => {
     const key = 'C1:5.5#side-kagelet-ops'
     const t = setup({ grants: { [key]: ['all'] }, allows: { [key]: ['kubectl apply -f staging/*'] } })
