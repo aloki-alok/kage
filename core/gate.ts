@@ -2,7 +2,7 @@
 import { noChannelTag, oneLine, quotedLine } from './text.ts'
 import { needsNoReply } from './agents.ts'
 import { FOOTER_ID } from './outbound.ts'
-import { agentTag, filesTag, postedByTrustedApp, typedByPerson, type SlackMessage } from './slack-message.ts'
+import { agentTag, filesTag, postedAsItself, postedByTrustedApp, typedByPerson, type SlackMessage } from './slack-message.ts'
 
 // owner: the person whose user token hears messages. bot: the app's bot user.
 // botDm: the owner's DM with the bot. name: the word typed after "@" (e.g. kage).
@@ -29,7 +29,7 @@ type Trigger =
 // Every reason the gate drops a message, with what the hub log says for it.
 export const DROPS = {
   'not-tagged': 'it does not tag Kage',
-  'not-listed': 'the sender is not the owner or a listed teammate',
+  'not-listed': 'the sender is not the owner, a listed teammate, or a listed agent tied to its owner and its own tag',
   'not-proven': 'an app posted it or it is an edit, so no listed person typed it',
   'no-reply-needed': 'an agent posted it and marked it as needing no answer',
   loop: 'the agent is over its turn limit with Kage',
@@ -67,8 +67,10 @@ export function classify(m: SlackMessage, ids: Ids, card?: string): Trigger {
   // Most of what the hub hears is not for Kage. Checked first, so the other two reasons mean a refusal.
   if (!tag.test(raw) && !inDm) return drop('not-tagged')
   // The gate: a message the owner (or a listed teammate) typed in a Slack client.
-  if (!isOwner && !ids.teammates.includes(m.user ?? '')) return drop('not-listed')
-  if (!typedByPerson(m) && (isOwner || !postedByTrustedApp(m, ids.apps ?? []))) return drop('not-proven')
+  // A listed agent may also post as its own bot user, which is never a teammate.
+  const itself = postedAsItself(m, ids.apps ?? [], ids.teammates)
+  if (!isOwner && !itself && !ids.teammates.includes(m.user ?? '')) return drop('not-listed')
+  if (!typedByPerson(m) && (isOwner || !(itself || postedByTrustedApp(m, ids.apps ?? [])))) return drop('not-proven')
   // Past the two lines above, a post no person typed came from a listed agent. It is never the owner's, so it
   // never reaches the approval rules below.
   const agent = typedByPerson(m) ? undefined : m.app_id

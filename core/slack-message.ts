@@ -40,6 +40,14 @@ export const postedByTrustedApp = (m: SlackMessage, apps: string[]) =>
     return !!e && e.id === m.app_id && (e.owner === undefined || e.owner === m.user)
   })
 
+// A listed agent posting with its own bot token: Slack sets both the app id and the bot's user id, so the entry
+// must name both (the tag `kage add <mention> <owner>` saves), and its owner must still be a listed person.
+export const postedAsItself = (m: SlackMessage, apps: string[], teammates: string[]) =>
+  !!m.app_id && TYPED_SUBTYPES.has(m.subtype) && apps.some(a => {
+    const e = appEntry(a)
+    return !!e && e.id === m.app_id && !!e.tag && e.tag === m.user && teammates.includes(e.owner ?? '')
+  })
+
 // A Slack mention of the bot, or "@name" typed as plain text (works whatever the bot's display name is).
 // One optional space after it is part of the match, so removing the tag leaves no gap.
 export const agentTag = (bot: string, name: string) =>
