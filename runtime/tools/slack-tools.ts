@@ -78,11 +78,17 @@ export function slackTools(c: ToolContext): KageTool[] {
       const a = args as { channel: string; thread_ts: string; users: string[]; text: string; from?: string }
       const key = `${a.channel}:${a.thread_ts}`
       // A call counts only when the owner proved it with the one-time code (connectors/voice.ts): a stranger may be talking.
-      if (!taskChannels.has(a.channel) || ['email', 'whatsapp'].includes(a.channel) || (a.channel === 'voice' && !ownerOnly(a))) return { isError: true, text: 'refused: only a task from a Slack thread or the owner\'s own call may message people' }
+      // WhatsApp is the owner's phone, easier to steal than Slack: its task may message people only after the owner's yes on a Slack card.
+      const fromPhone = a.channel === 'whatsapp' && ownerOnly(a)
+      if (!taskChannels.has(a.channel) || a.channel === 'email' || (a.channel === 'whatsapp' && !fromPhone) || (a.channel === 'voice' && !ownerOnly(a))) return { isError: true, text: 'refused: only a task from a Slack thread or the owner\'s own call may message people' }
       // Anyone but the owner gets the tag, even when their task line names no teammate.
       const asker = ownerTask.get(key) === true ? undefined : askers.get(key) ?? { id: '', name: 'A teammate' }
       const ids = [...a.users, ...a.from ? [a.from] : []]
       if (!a.users.length || ids.some(u => !/^[UW][A-Z0-9]+$/.test(u))) return { isError: true, text: 'refused: name 1 to 8 people by their Slack user id (U...)' }
+      if (fromPhone) {
+        if (!o.approve) return { isError: true, text: 'refused: from WhatsApp this needs the owner\'s yes on a Slack card, and this session cannot show one. Tell them to ask in Slack.' }
+        if (!await o.approve('message_people', `From WhatsApp: message ${a.users.map(u => `<@${u}>`).join(', ')}: ${a.text}`, { users: a.users, text: a.text })) return { isError: true, text: 'The owner said no on the Slack card. Nothing was sent.' }
+      }
       // Signed by the asker on a teammate's task, whatever from says; on the owner's, by from if given.
       if (!asker && a.from) await nameMentions(`<@${a.from}>`)
       const signer = asker ?? (a.from ? { id: a.from, name: names[a.from] ?? a.from } : undefined)
