@@ -104,6 +104,8 @@ case "$1" in
 esac
 `)
   exe(join(w.root, 'bin', 'npm'), `#!/bin/sh\necho "npm $1 hub=$([ -f "${w.root}/hub-up" ] && echo up || echo down)" >> "${ops}"\n`)
+  // Logs each node run on the new commit: node beside the hub's own npm ci crashes on a half-deleted package (#302).
+  exe(join(w.root, 'bin', 'node'), `#!/bin/sh\n[ "$(git -C "${w.dir}" log -1 --format=%s)" = two ] && echo "node after merge" >> "${ops}"\nexec "${process.execPath}" "$@"\n`)
   writeFileSync(join(w.dir, 'package-lock.json'), '{"version":"1"}\n')
   writeFileSync(join(w.dir, '.gitignore'), 'node_modules\n')
   const git = (cwd: string, ...a: string[]) => new Promise<void>((res, rej) => execFile('git', ['-c', 'user.name=t', '-c', 'user.email=t@example.test', ...a], { cwd }, e => e ? rej(e) : res()))
