@@ -11,8 +11,13 @@ const oneOf = (w: string | undefined, set: readonly string[]) => w && set.includ
 const num = (s: string | undefined) => { const n = Number(s); return s != null && s !== '' && Number.isFinite(n) ? n : undefined }
 const field = (detail: string, k: string) => detail.match(new RegExp(`(?:^| )${k}=([^ ]+)`))?.[1]
 
+const WINDOWS = ['five_hour', 'seven_day', 'seven_day_opus', 'seven_day_sonnet', 'seven_day_overage_included', 'overage']
+
 const ATTRS: Partial<Record<KageEvent['kind'], (d: string) => Attrs>> = {
-  'run.start': d => ({ trigger: oneOf(d.split(' ')[0], ['scheduled', 'task', 'next']) }),
+  'run.start': d => {
+    const from = d.match(/^task from the (\w+)/)?.[1]
+    return { trigger: oneOf(d.split(' ')[0], ['scheduled', 'task', 'next']), ...from && { from: oneOf(from, ['owner', 'teammate', 'voice']) } }
+  },
   'run.end': d => {
     const cost = num(d.match(/^\$(\d+(?:\.\d+)?),/)?.[1])
     return { ...cost != null && { cost_usd: cost }, report: /no report/.test(d) ? 'no' : 'yes' }
@@ -24,7 +29,24 @@ const ATTRS: Partial<Record<KageEvent['kind'], (d: string) => Attrs>> = {
     const outcome = field(d, 'outcome')
     return { action: oneOf(d.split(' ')[0], ['tick', 'wake', 'ping', 'match', 'catchup', 'hook', 'decision']), ...outcome && { outcome: oneOf(outcome, ['same', 'changed', 'failed', 'refused']) }, ...ms != null && { ms } }
   },
+  limit: d => {
+    const wait = num(field(d, 'wait_s')), held = num(field(d, 'held'))
+    return { kind: oneOf(d.split(' ')[0], ['rate_limit', 'overloaded']), window: oneOf(field(d, 'window'), WINDOWS), ...wait != null && { wait_s: wait }, ...held != null && { held } }
+  },
+  // The seat's plan and how full each usage window is, so cost per seat and seats per team can be measured.
+  plan: d => {
+    const pct = Object.fromEntries(WINDOWS.flatMap(w => { const n = num(field(d, w)); return n != null ? [[w, n]] : [] }))
+    return { type: oneOf(field(d, 'type'), ['pro', 'max', 'team', 'enterprise']), ...pct, extra: field(d, 'extra') === 'on' ? 'on' : 'off' }
+  },
   crash: (d): Attrs => /^[0-9a-f]{12}$/.test(d) ? { fp: d } : {},
+}
+
+// A plan row from Claude Code's usage answer (the SDK's get_usage): undefined for an API key, which has no plan windows.
+type Window = { utilization: number | null } | null | undefined
+export function planDetail(u: { subscription_type: string | null; rate_limits: { extra_usage?: { is_enabled: boolean } | null } | null }) {
+  if (!u.rate_limits) return undefined
+  const pct = WINDOWS.flatMap(w => { const n = (u.rate_limits as Record<string, Window>)[w]?.utilization; return n != null ? [`${w}=${n}`] : [] })
+  return [`type=${u.subscription_type ?? 'none'}`, ...pct, `extra=${u.rate_limits.extra_usage?.is_enabled ? 'on' : 'off'}`].join(' ')
 }
 
 export const toTelemetry = (e: KageEvent): TelemetryRecord => ({ at: e.at, name: `kage.${e.kind}`, attrs: ATTRS[e.kind]?.(e.detail) ?? {} })
@@ -55,7 +77,7 @@ export const otlpLogs = (records: TelemetryRecord[], resource: Record<string, st
 // never land (ADR 0019). An owner may point telemetry.endpoint elsewhere, such as their own collector.
 export const TELEMETRY_URL = 'https://monitor.omnidim.io/kage'
 // The one DM an owner gets before anything is sent.
-export const TELEMETRY_NOTICE = 'Kage now sends anonymous counts to its makers, so we see what breaks: runs, cost, failure codes and crash fingerprints. Never message text, prompts, names or ids. See exactly what goes with `kage telemetry show`. Stop it with `kage set telemetry.on false`.'
+export const TELEMETRY_NOTICE = 'Kage now sends anonymous counts to its makers, so we see what breaks: runs, cost, usage-limit pauses, failure codes and crash fingerprints. Never message text, prompts, names or ids. See exactly what goes with `kage telemetry show`. Stop it with `kage set telemetry.on false`.'
 
 // Where telemetry goes, or undefined for nowhere. On by default to the Kage team's receiver. The owner's off wins over
 // everything: on false, KAGE_TELEMETRY=off, or DO_NOT_TRACK set to anything but 0 (consoledonottrack.com).

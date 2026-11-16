@@ -1,9 +1,9 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import type { EventKind, KageEvent } from '../events.ts'
-import { crashFingerprint, sessionTelemetryEnv, TELEMETRY_URL, telemetryEndpoint, toTelemetry } from '../telemetry.ts'
+import { crashFingerprint, planDetail, sessionTelemetryEnv, TELEMETRY_URL, telemetryEndpoint, toTelemetry } from '../telemetry.ts'
 
-const KINDS: EventKind[] = ['run.start', 'run.end', 'tool', 'handoff', 'grant', 'refusal', 'revoke', 'owner-note', 'report', 'cap-pause', 'cost-flag', 'config.live', 'config.restart', 'config.refused', 'memory-proposal', 'memory-decision', 'day-summary', 'triage', 'tripwire', 'crash']
+const KINDS: EventKind[] = ['run.start', 'run.end', 'tool', 'handoff', 'grant', 'refusal', 'revoke', 'owner-note', 'report', 'cap-pause', 'cost-flag', 'config.live', 'config.restart', 'config.refused', 'memory-proposal', 'memory-decision', 'day-summary', 'triage', 'tripwire', 'crash', 'limit', 'plan']
 const PLANTED = ['Priya', 'U0TESTUSER1', 'C0TESTCHAN1', 'priya@acme.com', '/Users/priya', 'refund the customer', 'sk-live-123', 'acme']
 const ev = (kind: EventKind, detail: string): KageEvent =>
   ({ at: '2026-11-16T10:00:00.000Z', kind, who: 'C0TESTCHAN1:1700000000.000100', trace: 'U0TESTUSER1-t1', chain: 'acme-chain', detail, transcript: '/Users/priya/t.jsonl' })
@@ -22,7 +22,7 @@ test('every string value that leaves is a fixed word, every other value a finite
     if (!r) continue
     for (const [k, v] of Object.entries(r.attrs)) {
       if (typeof v === 'number') assert.ok(Number.isFinite(v), `${kind}.${k}`)
-      else assert.match(v, /^[a-z0-9.]{1,16}$/, `${kind}.${k}=${v}`)
+      else assert.match(v, /^[a-z0-9._]{1,16}$/, `${kind}.${k}=${v}`)
     }
   }
 })
@@ -32,6 +32,11 @@ test('the known shapes give their counts and codes', () => {
   assert.deepEqual(toTelemetry(ev('run.end', '$1.05, reported'))?.attrs, { cost_usd: 1.05, report: 'yes' })
   assert.deepEqual(toTelemetry(ev('run.start', 'scheduled 93af72f6'))?.attrs, { trigger: 'scheduled' })
   assert.deepEqual(toTelemetry(ev('run.start', 'Priya asked for x'))?.attrs, { trigger: 'other' })
+  assert.deepEqual(toTelemetry(ev('run.start', 'task from the teammate'))?.attrs, { trigger: 'task', from: 'teammate' })
+  assert.deepEqual(toTelemetry(ev('run.start', 'task from the owner'))?.attrs, { trigger: 'task', from: 'owner' })
+  assert.deepEqual(toTelemetry(ev('limit', 'rate_limit window=seven_day wait_s=360000 held=2'))?.attrs, { kind: 'rate_limit', window: 'seven_day', wait_s: 360000, held: 2 })
+  assert.deepEqual(toTelemetry(ev('limit', 'overloaded wait_s=300 held=0'))?.attrs, { kind: 'overloaded', window: 'other', wait_s: 300, held: 0 })
+  assert.deepEqual(toTelemetry(ev('plan', 'type=team five_hour=60 seven_day=9 seven_day_opus=3 extra=off'))?.attrs, { type: 'team', five_hour: 60, seven_day: 9, seven_day_opus: 3, extra: 'off' })
   assert.deepEqual(toTelemetry(ev('tripwire', 'tick job=93af72f6 outcome=changed ms=812 kb=3'))?.attrs, { action: 'tick', outcome: 'changed', ms: 812 })
   assert.deepEqual(toTelemetry(ev('tool', 'browser_act open refused: the owner said no'))?.attrs, { outcome: 'refused' })
   assert.deepEqual(toTelemetry(ev('report', 'needs approval'))?.attrs, { outcome: 'needs' })
@@ -40,6 +45,13 @@ test('the known shapes give their counts and codes', () => {
   assert.deepEqual(toTelemetry(ev('grant', 'mcp__slack__x: yes'))?.attrs, {})
   assert.equal(toTelemetry(ev('grant', 'x'))?.name, 'kage.grant')
   assert.equal(toTelemetry(ev('grant', 'x'))?.at, '2026-11-16T10:00:00.000Z')
+})
+
+test("a plan row is the seat's plan and how full each window is, and nothing for an API key", () => {
+  const rl = { five_hour: { utilization: 60, resets_at: '2026-11-16T17:00:00Z' }, seven_day: { utilization: 9.4, resets_at: null }, seven_day_opus: null, extra_usage: { is_enabled: true, monthly_limit: null, used_credits: null, utilization: null } }
+  assert.equal(planDetail({ subscription_type: 'team', rate_limits: rl }), 'type=team five_hour=60 seven_day=9.4 extra=on')
+  assert.deepEqual(toTelemetry(ev('plan', planDetail({ subscription_type: 'team', rate_limits: rl })!))?.attrs, { type: 'team', five_hour: 60, seven_day: 9.4, extra: 'on' })
+  assert.equal(planDetail({ subscription_type: null, rate_limits: null }), undefined)
 })
 
 test('a crash fingerprint names the error class and the first frame inside the repo, not the message or the home path', () => {

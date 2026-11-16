@@ -7,8 +7,8 @@ import type { Task } from '../core/task.ts'
 import type { Store } from './store.ts'
 import { logKey } from './log.ts'
 
-// until: when the limit resets (ms), when Claude said.
-export type Limit = { kind: 'rate_limit' | 'overloaded'; until?: number }
+// until: when the limit resets (ms), when Claude said. window: which usage window ran out (five_hour, seven_day, ...).
+export type Limit = { kind: 'rate_limit' | 'overloaded'; until?: number; window?: string }
 const RETRY = { rate_limit: 15 * 60_000, overloaded: 5 * 60_000 }
 
 // A Slack task's inbox id, as connectors/slack.ts takes it. Other tasks have no inbox message to replay.
@@ -23,6 +23,7 @@ export function limitPause(o: {
   redeliver: (key: string, task: Task) => void         // a scheduled run, again
   log: (...a: unknown[]) => void
   tellOwner: (text: string) => void                    // a DM to the owner
+  event?: (detail: string) => void                     // one limit row for the event log (core/events.ts)
   // false for a session whose runner reports no turn end (a tmux pane): its messages are handled at delivery.
   defers?: (key: string) => boolean
   // Every task list a turn or a stop ends, so a kagelet message is read (done) or waits again (runtime/kagelets.ts settle).
@@ -114,11 +115,13 @@ export function limitPause(o: {
       if (probing === threadOf(key)) probing = undefined
       counts.limitHits++
       kind = limit.kind
-      until = Math.max(until ?? 0, limit.until && limit.until > now ? limit.until : now + RETRY[limit.kind])
+      const resets = limit.until && limit.until > now ? limit.until : now + RETRY[limit.kind]
+      until = Math.max(until ?? 0, resets)
       o.log(`${limit.kind === 'overloaded' ? 'overload' : 'usage limit'} hit in ${key}: paused until ${new Date(until).toISOString()}, ${tasks.length} task${tasks.length === 1 ? '' : 's'} held`)
       // The session closes first: what the dispatcher still had for it was never read, and is held with the rest.
       // A kagelet message's task has no job, so it is never owed: its message waits in the store (runtime/kagelets.ts).
       const all = [...tasks, ...o.end(key) ?? []]
+      o.event?.(`${limit.kind}${limit.window ? ` window=${limit.window}` : ''} wait_s=${Math.round((resets - now) / 1000)} held=${all.length}`)
       o.settle?.(all, false)
       for (const t of all) if (!keep(key, t, limit, now) && !t.handoff) o.log('cannot hold a task with no inbox message', logKey(key), t.meta.place)
     },

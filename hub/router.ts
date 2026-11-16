@@ -311,7 +311,7 @@ const d: Dispatcher<ToSession> = new Dispatcher<ToSession>(runner, {
 })
 // The usage-limit pause: a turn that ends on the limit keeps its message and replays it at the reset (runtime/limit-pause.ts).
 const limits = limitPause({
-  store, log, settle: (tasks, done) => { kag.routes.settle(tasks, done); kag.needs.settle(tasks, done) },
+  store, log, event: detail => ledgers.event({ kind: 'limit', who: 'hub', trace: '', detail }), settle: (tasks, done) => { kag.routes.settle(tasks, done); kag.needs.settle(tasks, done) },
   tellOwner: text => void slack.notifyOwner(text),
   end: key => d.end(key).filter(m => m.type === 'task'),
   // A tmux pane reports no turn end, so its messages are handled at delivery, as before.
@@ -393,7 +393,7 @@ runJobs([
   { name: 'retro', every: 10 * 60_000, run: digests.weeklyRetro },
   // A kagelet message waits until its target is idle, then starts a run of its own (runtime/kagelets.ts).
   { name: 'kagelet messages', every: 20_000, run: now => { kag.routes.pump(now); kag.needs.pump(now) } },
-  { name: 'events', every: 3_600_000, run: now => ledgers.pruneEvents(new Date(now - EVENT_DAYS * 86_400_000).toISOString()) }, ...startTelemetry({ config: config.telemetry, dir: DIR, code: CODE, ledgers, state: store, notify: t => slack.notifyOwner(t) }),
+  { name: 'events', every: 3_600_000, run: now => ledgers.pruneEvents(new Date(now - EVENT_DAYS * 86_400_000).toISOString()) }, ...startTelemetry({ config: config.telemetry, dir: DIR, code: CODE, ledgers, state: store, notify: t => slack.notifyOwner(t), usage: sdk?.usage }),
 ])
 
 const commands = ownerCommands({ d, store, ledgers, limits, MAX, placeOf, closedTo, noteTrust, failed, dropRelay: key => { ssm.drop(key); keys.drop(key) } })

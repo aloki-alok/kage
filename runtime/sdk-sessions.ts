@@ -182,7 +182,7 @@ export function sdkSessions(o: {
       let sawState = false
       let blocked = false   // once per turn: a new CLI sends the system event and the refused assistant frame
       let limit: Limit['kind'] | undefined   // this turn's top-level answer was the usage limit or an overload
-      let resetsAt: number | undefined       // the reset time Claude last gave with a rejection
+      let resetsAt: number | undefined, window: string | undefined   // the reset time and usage window Claude last gave with a rejection
       try {
         for await (const m of q as AsyncIterable<SDKMessage>) {
           s.last = Date.now()
@@ -197,7 +197,7 @@ export function sdkSessions(o: {
             o.onBlocked?.(key, s.turn.map(x => x.task), (m.type === 'system' && m.subtype === 'model_refusal_no_fallback' && m.api_refusal_category) || null)
           }
           // Seconds from Claude Code; ms is accepted too.
-          if (m.type === 'rate_limit_event' && m.rate_limit_info.status === 'rejected' && m.rate_limit_info.resetsAt) resetsAt = m.rate_limit_info.resetsAt < 1e12 ? m.rate_limit_info.resetsAt * 1000 : m.rate_limit_info.resetsAt
+          if (m.type === 'rate_limit_event' && m.rate_limit_info.status === 'rejected') ({ rateLimitType: window } = m.rate_limit_info, resetsAt = m.rate_limit_info.resetsAt && (m.rate_limit_info.resetsAt < 1e12 ? m.rate_limit_info.resetsAt * 1000 : m.rate_limit_info.resetsAt))
           // The last top-level answer decides: after a limit, Claude Code may try again and get a real one.
           if (m.type === 'assistant' && !m.parent_tool_use_id) limit = m.error === 'rate_limit' || m.error === 'overloaded' ? m.error : undefined
           if (m.type === 'result' && m.is_error && !limit) {
@@ -212,8 +212,8 @@ export function sdkSessions(o: {
             const tasks = s.turn.map(x => x.task)
             s.turn = []
             blocked = false
-            o.onTurn?.(key, tasks, { kind: limit, ...(limit === 'rate_limit' && resetsAt && { until: resetsAt }) })
-            limit = undefined
+            o.onTurn?.(key, tasks, { kind: limit, ...(limit === 'rate_limit' && resetsAt && { until: resetsAt }), ...(limit === 'rate_limit' && window && { window }) })
+            limit = window = resetsAt = undefined
           } else if (m.type === 'result') {
             // A task sent mid-turn may be read by the next turn instead, so it stays one turn longer.
             blocked = false
@@ -225,7 +225,7 @@ export function sdkSessions(o: {
         }
       } catch (e) { log('session ended', logKey(key), e) }
       // The process went away on the limit before it sent a result: its tasks go back the same way.
-      if (limit && s.turn.length) o.onTurn?.(key, s.turn.splice(0).map(x => x.task), { kind: limit, ...(limit === 'rate_limit' && resetsAt && { until: resetsAt }) })
+      if (limit && s.turn.length) o.onTurn?.(key, s.turn.splice(0).map(x => x.task), { kind: limit, ...(limit === 'rate_limit' && resetsAt && { until: resetsAt }), ...(limit === 'rate_limit' && window && { window }) })
       // The Claude process is gone: its open approvals go with it. Unless the dispatcher closed it,
       // it comes back on the same conversation, like the shell loop in a tmux pane, and takes the
       // tasks this process never read.
@@ -310,7 +310,7 @@ export function sdkSessions(o: {
       return s.state !== 'idle'
     },
   }
-  return { runner, running: () => new Set([...sessions.values()].map(s => s.id)) }
+  return { runner, running: () => new Set([...sessions.values()].map(s => s.id)), usage: () => [...sessions.values()].find(s => s.run && !s.stopped)?.run!.q.usage_EXPERIMENTAL_MAY_CHANGE_DO_NOT_RELY_ON_THIS_API_YET({ skipBehaviors: true }) }
 }
 
 const SET_MODEL = 'Switch the model or reasoning effort of this thread, when the owner or a teammate asks for it in plain words ("use opus max", "go back to the default"). It applies from the next step and stays for the thread. Leave out what they did not ask to change.'
