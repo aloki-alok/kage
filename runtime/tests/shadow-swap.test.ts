@@ -108,3 +108,25 @@ test('a saved old job is dropped after swapUndoDays', () => {
   t.sw.tick(T0 + 8 * 24 * 60 * M)
   assert.match(t.sw.restore('C1:5.5', 'old', T0 + 8 * 24 * 60 * M) ?? '', /no swapped-out job old/)
 })
+
+test('the old job was removed by a person: the owner is told once, and the twin never swaps', () => {
+  const t = setup()
+  t.store.removeSchedule('old')
+  t.sw.tick(T0 + M)
+  t.sw.tick(T0 + 2 * M)
+  assert.equal(t.dms.length, 1)
+  assert.match(t.dms[0]!, /which is gone/)
+  assert.equal(t.store.schedules().find(s => s.id === 'tw')!.prompt, 'SHADOW prompt')
+})
+
+test('each miss is told once, also when a later miss sorts before one already told', () => {
+  const t = setup()
+  t.said(T0 + 60 * M)                 // a false alarm
+  t.sw.tick(T0 + 120 * M)
+  t.acted(T0 + 30 * M - 1)            // an older act, out of the window of that verdict, seen later
+  t.sw.tick(T0 + 121 * M)
+  t.sw.tick(T0 + 122 * M)
+  assert.equal(t.dms.length, 2)
+  assert.match(t.dms[0]!, /false alarm/)
+  assert.match(t.dms[1]!, /tw missed an event/)
+})

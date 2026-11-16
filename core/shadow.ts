@@ -2,8 +2,8 @@
 // The model only says what it would do. A twin that never woke wrote no verdict, which counts as "would stay quiet".
 
 // Where a twin's link lives: its job_state.shadow. live: the prompt it runs once it swaps in. since: when it was made.
-// told: misses already told to the owner, so each is told once.
-export type Shadow = { of: string; live: string; since: number; told?: number }
+// told: the misses already told to the owner (at:kind), so each is told once. gone: the owner was told the old job is gone.
+export type Shadow = { of: string; live: string; since: number; told?: string[]; gone?: true }
 // act: a run of a job posted into its own thread or logged a prod write. verdict: a twin's run said it would act, or not.
 export type Act = { job: string; at: number }
 export type Verdict = { job: string; at: number; act: boolean }

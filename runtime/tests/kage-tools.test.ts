@@ -8,6 +8,8 @@ import { liveCronJobs } from '../../core/cron.ts'
 import { cardAt } from '../../core/ledgers.ts'
 import { openLedgers } from '../ledger.ts'
 import { postAsKage, sessionTools } from '../kage-tools.ts'
+import { shadowSwaps } from '../shadow-swap.ts'
+import { openStore } from '../store.ts'
 import type { Task } from '../../core/task.ts'
 
 // A fake Slack: records posts, edits, deletes and reactions; the bot is not in channel "CPRIV" and cannot see group DM "GDM".
@@ -580,6 +582,31 @@ describe("a session's Kage tools", () => {
     assert.match(i, /share nothing private/)
     assert.match(i, /check with the owner/)
     assert.match(i, /no tool except reply/)
+  })
+  test('a job run\'s post into another thread of the same channel is not its act (ADR 0017)', async () => {
+    const s = setup()
+    s.t.onTask({ ...s.task(), scheduled: true, job: 'j1' })
+    await s.call('reply', { channel: 'C1', thread_ts: '9.9', text: 'elsewhere' })
+    assert.equal(s.ledgers.text('posted').trim().split('\t')[5], undefined)
+  })
+  test('end to end: a job run\'s real post is an act the hub grades, so a twin that said nothing is a miss (ADR 0017)', async () => {
+    const s = setup()
+    const store = openStore(':memory:')
+    for (const id of ['j1', 'tw']) store.addSchedule({ id, key: 'C1:5.5', cron: '*/15 * * * *', prompt: id, recurring: true, fromOwner: true, created: 0, lastFired: 0 })
+    store.setJobState('tw', { fails: 0, shadow: { of: 'j1', live: 'live', since: Date.now() - 60_000 } })
+    s.t.onTask({ ...s.task(), scheduled: true, job: 'j1' })
+    await s.call('reply', { channel: 'C1', thread_ts: '5.5', text: 'org moved' })
+    const dms: string[] = []
+    shadowSwaps({ store, ledgers: s.ledgers, settings: () => ({}), ping: () => {}, owner: t => { dms.push(t) }, event: () => {}, remove: () => {}, restore: () => {} }).tick(Date.now() + 31 * 60_000)
+    assert.equal(dms.length, 1)
+    assert.match(dms[0]!, /tw missed an event of job j1/)
+  })
+  test('only the owner\'s own task may make a twin, because a twin replaces a job by itself (ADR 0017)', async () => {
+    const s = setup()
+    s.t.onTask(s.task({ fromOwner: false }))
+    const r = await s.call('schedule', { cron: '*/15 * * * *', prompt: 'SHADOW', shadow_of: 'j1', live_prompt: 'live' })
+    assert.equal(r.isError, true)
+    assert.match(r.text, /only the owner's own task may make a twin/)
   })
   test('shadow_verdict records the run\'s own job from the task, never from its arguments, and only in a job run (ADR 0017)', async () => {
     const s = setup()

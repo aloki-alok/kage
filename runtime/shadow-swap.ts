@@ -15,7 +15,7 @@ const rowsOf = (tsv: string, col: number) => tsv.split('\n').filter(Boolean).map
 
 export function shadowSwaps(o: {
   store: Pick<Store, 'schedules' | 'jobState' | 'setJobState' | 'setPrompt' | 'load' | 'save'>
-  ledgers: { text(name: 'posted' | 'prod-actions' | 'verdicts'): string }
+  ledgers: { text(name: 'posted' | 'prod-actions' | 'verdicts', since?: string): string }
   settings: () => ShadowSettings
   ping: (key: string, text: string) => void     // into the job's thread as Kage
   owner: (text: string) => void                 // a DM to the owner
@@ -39,22 +39,27 @@ export function shadowSwaps(o: {
     const twins = all.filter(s => o.store.jobState(s.id).shadow)
     if (!twins.length) return
     // A job's own-thread post (job id in cell 5) or prod write (cell 6) is one of its acts.
-    const acts: Act[] = [...rowsOf(o.ledgers.text('posted'), 5), ...rowsOf(o.ledgers.text('prod-actions'), 6)].filter(r => r.job).map(r => ({ job: r.job, at: r.at }))
-    const verdicts: Verdict[] = rowsOf(o.ledgers.text('verdicts'), 1).map(r => ({ job: r.job, at: r.at, act: r.c[2] === 'act' }))
+    // Only rows since the oldest twin was made, less one window (a twin may answer before the old job posts).
+    const since = new Date(Math.min(...twins.map(t => o.store.jobState(t.id).shadow!.since)) - c.windowMs).toISOString()
+    const acts: Act[] = [...rowsOf(o.ledgers.text('posted', since), 5), ...rowsOf(o.ledgers.text('prod-actions', since), 6)].filter(r => r.job).map(r => ({ job: r.job, at: r.at }))
+    const verdicts: Verdict[] = rowsOf(o.ledgers.text('verdicts', since), 1).map(r => ({ job: r.job, at: r.at, act: r.c[2] === 'act' }))
     for (const tw of twins) {
       const state = o.store.jobState(tw.id)
       const sh = state.shadow!
       const old = all.find(s => s.id === sh.of)
-      if (!old) continue   // ponytail: a person removed the old job; the twin stays a twin until a person decides
-      const g = grade({ twin: tw.id, of: sh.of, since: sh.since, acts, verdicts, now, windowMs: c.windowMs })
-      const told = sh.told ?? 0
-      if (g.misses.length > told) {
-        for (const m of g.misses.slice(told)) o.event(`shadow job=${tw.id} of=${sh.of} result=miss kind=${m.kind}`)
-        const m = g.misses[g.misses.length - 1]!
-        o.owner(`Twin ${tw.id} ${m.kind === 'missed' ? 'missed' : 'raised a false alarm on'} an event of job ${sh.of} at ${new Date(m.at).toISOString()}, so it will not swap in. Both jobs keep running. Fix the twin and make it again, or remove it.`)
-        o.store.setJobState(tw.id, { ...state, shadow: { ...sh, told: g.misses.length } })
+      if (!old) {   // a person removed the old job: nothing left to prove against, so the owner decides, told once
+        if (!sh.gone) { o.owner(`Twin ${tw.id} shadows job ${sh.of}, which is gone, so it can never swap in. Remove the twin, or make it a live job.`); o.store.setJobState(tw.id, { ...state, shadow: { ...sh, gone: true } }) }
         continue
       }
+      const g = grade({ twin: tw.id, of: sh.of, since: sh.since, acts, verdicts, now, windowMs: c.windowMs })
+      const told = sh.told ?? []
+      const untold = g.misses.filter(m => !told.includes(`${m.at}:${m.kind}`))
+      for (const m of untold) {
+        o.event(`shadow job=${tw.id} of=${sh.of} result=miss kind=${m.kind}`)
+        o.owner(`Twin ${tw.id} ${m.kind === 'missed' ? 'missed' : 'raised a false alarm on'} an event of job ${sh.of} at ${new Date(m.at).toISOString()}, so it will not swap in. Both jobs keep running. Fix the twin and make it again, or remove it.`)
+      }
+      if (untold.length) o.store.setJobState(tw.id, { ...state, shadow: { ...sh, told: [...told, ...untold.map(m => `${m.at}:${m.kind}`)] } })
+      if (g.misses.length) continue
       if (!swapDue(g, c.after)) continue
       // Order (ADR 0017): save the old job, make the twin live, then remove the old job. A crash leaves two live jobs, never none.
       o.store.save('swapped-out', { ...saved(), [old.id]: { job: old, state: o.store.jobState(old.id), twin: tw.id, twinPrompt: tw.prompt, shadow: sh, at: now } })

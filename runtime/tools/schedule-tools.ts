@@ -43,8 +43,9 @@ export function scheduleTools(c: ToolContext): KageTool[] {
       const a = args as { cron?: string; prompt: string; recurring?: boolean; lane?: boolean; probe?: ProbeArg; on_channel?: { channel: string; match?: string; bots?: boolean }; hook?: boolean; shadow_of?: string; live_prompt?: string }
       if (!a.cron && !a.on_channel && !a.hook) return { isError: true, text: 'give one of cron, on_channel or hook' }
       if (!a.shadow_of !== !a.live_prompt?.trim()) return { isError: true, text: 'a twin needs both shadow_of and live_prompt' }
-      // A twin replaces a job by itself once proven, so a job's own run may not make one: a person's task does.
+      // A twin replaces a job by itself once proven, so only the owner's own task may make one (not a job run, not a teammate).
       if (a.shadow_of && c.jobRun()) return { isError: true, text: 'refused: a job\'s own run may not make a twin. Suggest it in your report.' }
+      if (a.shadow_of && !ownerOnly(args)) return { isError: true, text: 'only the owner\'s own task may make a twin: it removes the job it shadows by itself once proven' }
       if (+!!a.cron + +!!a.on_channel + +!!a.hook > 1) return { isError: true, text: 'a job has one trigger: cron, on_channel or hook' }
       if (a.probe && !a.cron) return { isError: true, text: 'a probe needs a clock cron' }
       // An event job has no clock. A hook is a door into the hub: its URL needs the port set, and a card for a teammate (sdk-sessions.ts).

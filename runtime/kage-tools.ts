@@ -116,7 +116,7 @@ export function sessionTools(o: {
   const taskChannels = new Set<string>()
   // channel:thread_ts -> whether the thread's latest task came from the owner.
   const ownerTask = new Map<string, boolean>()
-  let job: string | undefined
+  let job: string | undefined, jobThread = ''   // the job of the latest task, and the thread that task came from
   // The message that started each thread's latest task, so the first reply can mark it answered.
   // A list, because a question keeps the task open and the answer arrives as a new task message.
   const unanswered = new Map<string, { channel: string; ts: string }[]>()
@@ -162,7 +162,7 @@ export function sessionTools(o: {
       const r = ack ? await postAsKage(o, channel, thread_ts, part, signer, false) : await postAsKage(o, channel, thread_ts, part, signer)
       if (!r) return { via: 'nobody: not posted, because the pickup reaction already says it from the owner\'s account', where: `channel ${channel}` }
       // A job run's post into its own thread is one of that job's acts (ADR 0017); a private DM to the owner is not.
-      append('posted', [channel, r.ts, r.by, key, ...job && key.startsWith(`${channel}:`) ? [job] : []])
+      append('posted', [channel, r.ts, r.by, key, ...job && key === jobThread && key.startsWith(`${channel}:`) ? [job] : []])
       if (r.by === 'owner') footers.set(`${channel}:${r.ts}`, signer)
       sent.push(r.ts)
       if (r.by === 'owner') via = `your account (${Title} is not in this conversation)`
@@ -223,6 +223,7 @@ export function sessionTools(o: {
       taskChannels.add(m.meta.channel)
       ownerTask.set(key, m.fromOwner === true)
       job = m.job
+      jobThread = key
       askers.set(key, teammateOf(m.content))
       agents.set(key, m.agent)
       if (m.origin.channel === o.botDm() && m.origin.thread) dmThread.set(key, m.origin.thread)
