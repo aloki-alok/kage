@@ -165,27 +165,35 @@ export function sdkSessions(o: {
         },
       },
     })
-    const send = (m: ToSession) => {
-      if (m.type === 'verdict') { s.asks.get(m.request_id)?.(m.behavior); return }
+    const deliver = (m: Task, mid = s.state !== 'idle') => {
       s.sender = senderOf(m)
-      s.turn.push({ task: m, mid: s.state !== 'idle' })
+      s.turn.push({ task: m, mid })
       s.kage.onTask(m)
-      // The owner's message, and every one after it, waits for a process with their tools. Resume keeps the transcript.
-      if (s.sender === 'owner') s.owners = true
-      if (s.owners && !full) s.held.push(m); else inbox.push(userMessage(m))
-      if (reopenDue()) q.close()
       s.state = 'running'
       s.last = Date.now()
+      inbox.push(userMessage(m))
+    }
+    const send = (m: ToSession) => {
+      if (m.type === 'verdict') { s.asks.get(m.request_id)?.(m.behavior); return }
+      // The owner's message, and every one after it, waits for a process with their tools. Resume keeps the transcript.
+      if (senderOf(m) === 'owner') s.owners = true
+      if (s.owners && !full) { s.held.push(m); reopenIfDue() } else deliver(m)
     }
     s.run = { q, inbox, send, started: Date.now() }
-    // It closes once idle with no task it read still open, so a message it already took is never lost.
-    const reopenDue = () => s.owners && !full && s.state === 'idle' && s.turn.every(x => s.held.includes(x.task))
+    let sawState = false
+    // Claude Code says idle only once it has read every message sent (measured), so what it read is done. With no state
+    // events, idle is a guess from the result, so it waits until no task it was sent is open.
+    const reopenIfDue = () => {
+      if (!s.held.length || full || s.state !== 'idle' || (!sawState && s.turn.length)) return
+      if (s.turn.length) o.onTurn?.(key, s.turn.splice(0).map(x => x.task), undefined, true)
+      q.close()
+    }
     let connected = false
     // Connected at the handshake, or else its first message. One that never starts leaves its tasks to the dispatcher.
     const connect = () => { if (!connected && !s.stopped) connected = o.hub().connect(key, send) }
     q.initializationResult().then(connect, () => {})
+    for (const m of s.held.splice(0)) deliver(m, false)   // a reopen with the owner's tools takes what waited, all in its first turn
     void (async () => {
-      let sawState = false
       let blocked = false   // once per turn: a new CLI sends the system event and the refused assistant frame
       let limit: Limit['kind'] | undefined   // this turn's top-level answer was the usage limit or an overload
       let resetsAt: number | undefined, window: string | undefined   // the reset time and usage window Claude last gave with a rejection
@@ -217,24 +225,22 @@ export function sdkSessions(o: {
             // The turn did nothing, and a task sent mid-turn would only hit the limit too: all of them go back.
             const tasks = s.turn.map(x => x.task)
             s.turn = []
-            s.held = []   // the limit pause replays them
             blocked = false
             o.onTurn?.(key, tasks, { kind: limit, ...(limit === 'rate_limit' && resetsAt && { until: resetsAt }), ...(limit === 'rate_limit' && window && { window }) })
             limit = window = resetsAt = undefined
           } else if (m.type === 'result') {
             // A task sent mid-turn may be read by the next turn instead, so it stays one turn longer.
             blocked = false
-            const read = (x: Session['turn'][number]) => !x.mid && !s.held.includes(x.task)   // a held task waits for the reopen
-            const done = s.turn.filter(read).map(x => x.task)
-            s.turn = s.turn.filter(x => !read(x)).map(x => ({ ...x, mid: false }))
+            const done = s.turn.filter(x => !x.mid).map(x => x.task)
+            s.turn = s.turn.filter(x => x.mid).map(x => ({ ...x, mid: false }))
             if (done.length) o.onTurn?.(key, done, undefined, true)
           }
           if (m.type === 'result' && !sawState) s.state = 'idle'
-          if (reopenDue()) q.close()
+          reopenIfDue()
         }
       } catch (e) { log('session ended', logKey(key), e) }
       // The process went away on the limit before it sent a result: its tasks go back the same way.
-      if (limit && s.turn.length) { s.held = []; o.onTurn?.(key, s.turn.splice(0).map(x => x.task), { kind: limit, ...(limit === 'rate_limit' && resetsAt && { until: resetsAt }), ...(limit === 'rate_limit' && window && { window }) }) }
+      if (limit && s.turn.length) o.onTurn?.(key, s.turn.splice(0).map(x => x.task), { kind: limit, ...(limit === 'rate_limit' && resetsAt && { until: resetsAt }), ...(limit === 'rate_limit' && window && { window }) })
       // The Claude process is gone, and its open approvals with it. Unless the dispatcher closed it, it comes back on
       // the same conversation, like the shell loop in a tmux pane, and takes the tasks this process never read.
       denyAll(s)
@@ -246,8 +252,8 @@ export function sdkSessions(o: {
       o.hub().disconnect(key, send)
       // Nor does the new process take one it never read: the store hands it out again.
       const gone = new Set(lost.map(x => channelTag(x.task)))
-      const unread = [...inbox.drain().filter(u => !gone.has(u.message.content as string)), ...s.held.splice(0).map(userMessage)]
-      setTimeout(() => { if (!s.stopped) open(key, s, unread) }, s.owners && !full ? 0 : o.restartMs ?? 3000)
+      const unread = inbox.drain().filter(u => !gone.has(u.message.content as string))
+      setTimeout(() => { if (!s.stopped) open(key, s, unread) }, s.held.length && !full ? 0 : o.restartMs ?? 3000)
     })()
   }
 
@@ -301,7 +307,7 @@ export function sdkSessions(o: {
       if (!s) return
       s.stopped = true
       // Closed with tasks in hand: nothing waits for their turn any more.
-      if (s.turn.length) o.onTurn?.(key, s.turn.splice(0).map(x => x.task))
+      if (s.turn.length || s.held.length) o.onTurn?.(key, [...s.turn.splice(0).map(x => x.task), ...s.held.splice(0)])
       denyAll(s)
       o.ssm?.drop(key)
       o.keys?.drop(key)
