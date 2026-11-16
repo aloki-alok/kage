@@ -1,6 +1,6 @@
 import { describe, test } from 'node:test'
 import assert from 'node:assert/strict'
-import { trailEvent, trailLine, askedFrom, cardAt, dailyDue, expiredWaiting, grantsLine, lastTotals, openWaiting, postedBy, spendSince, staleWaiting, tsvRow, turnCost } from '../ledgers.ts'
+import { trailEvent, trailLine, askedFrom, cardAt, dailyDue, expiredWaiting, grantsLine, lastTotals, openWaiting, postedBy, spendSince, staleWaiting, selfReview, tsvRow, turnCost } from '../ledgers.ts'
 
 
 describe('the daily note of what waits on the owner', () => {
@@ -153,4 +153,30 @@ test('each ledger row and event reads as one plain line in the hub log', () => {
   assert.equal(trailLine('runs', ['j1', 'C1:5.5']), 'runs: j1 · C1:5.5')
   assert.equal(trailEvent({ kind: 'run.end', who: 'C1:5.5', detail: '$0.52, no report' }), 'run.end C1:5.5: $0.52, no report')
   assert.ok(trailLine('reports', ['x', 'y'.repeat(1000)]).length <= 300)
+})
+
+describe('what the dream reads of Kage\'s own mistakes', () => {
+  const since = '2026-11-15T00:00:00Z'
+  const ev = (kind: string, detail = 'secret words') => ({ at: '2026-11-15T10:00:00Z', kind, who: 'k', trace: '', chain: '', detail, transcript: '/t.jsonl' }) as never
+  const w = (at: string, st: string, thread: string, what = '') => tsvRow([at, st, thread, 'l', what])
+  test('threads with 2 or more asks are counted open and answered, a lone ask is left out', () => {
+    const tsv = w('2026-11-15T01:00:00Z', 'open', 'C1:1.1', 'ship it?') + w('2026-11-15T02:00:00Z', 'answered', 'C1:1.1') + w('2026-11-15T03:00:00Z', 'open', 'C1:1.1', 'which one?') + w('2026-11-15T04:00:00Z', 'open', 'C2:2.2', 'alone')
+    const got = selfReview(tsv, [], since, k => `#${k}`)
+    assert.match(got, /#C1:1\.1: 2 open, 1 answered/)
+    assert.doesNotMatch(got, /C2:2\.2/)
+  })
+  test('rows before since are ignored, and at most 10 ask lines are sampled', () => {
+    const rows = Array.from({ length: 14 }, (_, i) => w('2026-11-15T01:00:00Z', 'open', 'C1:1.1', `ask ${i}`)).join('')
+    const got = selfReview(rows + w('2026-11-10T01:00:00Z', 'open', 'C9:9.9', 'old') + w('2026-11-10T01:00:00Z', 'open', 'C9:9.9', 'old'), [], since, k => k)
+    assert.equal(got.split('\n').filter(l => /^- .*: ask \d+/.test(l)).length, 10)
+    assert.doesNotMatch(got, /C9:9\.9/)
+  })
+  test('events give kinds and counts only for repeats, top 10, never detail text, never run noise', () => {
+    const events = [ev('refusal'), ev('refusal'), ev('refusal'), ev('tripwire'), ev('tripwire'), ev('triage'), ev('run.end'), ev('run.end'), ev('tool'), ev('tool')]
+    const got = selfReview('', events, since, k => k)
+    assert.match(got, /refusal 3/)
+    assert.match(got, /tripwire 2/)
+    assert.doesNotMatch(got, /triage|run\.end|tool|secret|\.jsonl/)
+  })
+  test('nothing to say gives an empty block', () => assert.equal(selfReview('', [], since, k => k), ''))
 })

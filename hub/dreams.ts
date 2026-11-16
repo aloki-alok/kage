@@ -5,6 +5,7 @@
 import { execFile } from 'node:child_process'
 import { readFileSync, statSync, writeFileSync } from 'node:fs'
 import { log } from '../runtime/log.ts'
+import { selfReview } from '../core/ledgers.ts'
 import { dreamDue, dreamTask, threadsSince } from '../core/dream.ts'
 import { dreamInput, dreamsDue, kageletDreamTask } from '../core/kagelet-memory.ts'
 import { kageletRows } from '../core/kagelets.ts'
@@ -42,9 +43,13 @@ export function dreams(o: {
       const file = (id: string) => `${o.project}/${id}.jsonl`
       const threads = threadsSince(o.store.sessions(), id => { try { return statSync(file(id)).mtimeMs } catch { return undefined } }, since)
         .map(t => ({ place: o.placeOf(t.key), file: file(t.id) }))
+      const iso = new Date(since).toISOString()
+      // UTC days: today's and yesterday's rows cover at most the 24 hours back.
+      const days = [new Date(now - DAY), new Date(now)].flatMap(t => o.ledgers.events(t.toISOString().slice(0, 10)))
+      const own = selfReview(o.ledgers.text('waiting', iso), days, iso, o.placeOf)
       const c: Conversation = { connector: 'slack', chat: o.botDm, kind: 'dm', agentDm: true }
       const task: Task = {
-        type: 'task', fromOwner: true, content: dreamTask(o.mem, threads, new Date(since).toISOString(), { dir: `${o.code}/skills`, pr: await ownsRepo }),
+        type: 'task', fromOwner: true, content: dreamTask(o.mem, threads, iso, { dir: `${o.code}/skills`, pr: await ownsRepo }, own),
         meta: { channel: o.botDm, thread_ts: '', place: `DM with ${o.title} (dream)`, permalink: '' },
         origin: { channel: o.botDm, ts: '' },
         scheduled: true,

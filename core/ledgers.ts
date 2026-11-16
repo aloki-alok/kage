@@ -1,4 +1,5 @@
 import { quotedLine } from './text.ts'
+import type { KageEvent } from './events.ts'
 
 // Reading the ledgers (rows in kage.db, runtime/ledger.ts, read back as TSV): open questions, Kage's own posts, costs.
 
@@ -125,4 +126,29 @@ export function jobCarry(tsv: string, lane: string, n: number, texts: string[], 
   if (texts.length) return [head, ...texts.slice(-n).map(t => `> ${quotedLine(t).slice(0, chars)}`)].join('\n')
   const rows = tsv.split('\n').map(l => l.split('\t')).filter(c => c[4] === lane).slice(-n)
   return rows.length ? [head, ...rows.map(([at, channel, ts]) => `> ${at} ${channel} ${ts}`)].join('\n') : ''
+}
+
+// What the nightly dream reads of Kage's own mistakes since `since`: asks per thread (waiting ledger, threads with 2 or
+// more), a sample of ask lines (Kage's own words), and repeated event kinds with counts. Kinds and counts only from
+// events (ADR 0010). Run rows are left out: a non-kagelet run never files a report, so "no report" is no failure.
+const QUIET = new Set(['run.start', 'run.end', 'tool', 'day-summary'])
+export function selfReview(waitingTsv: string, events: KageEvent[], since: string, placeOf: (key: string) => string): string {
+  const per = new Map<string, { open: number; answered: number }>(), asks: string[] = []
+  for (const line of waitingTsv.split('\n')) {
+    const [when = '', status, thread = '', , what = ''] = line.split('\t')
+    if (when < since || (status !== 'open' && status !== 'answered')) continue
+    const n = per.get(thread) ?? per.set(thread, { open: 0, answered: 0 }).get(thread)!
+    n[status]++
+    if (status === 'open') asks.push(`${placeOf(thread)}: ${what}`)
+  }
+  const threads = [...per].filter(([, n]) => n.open + n.answered >= 2).sort((a, b) => b[1].open + b[1].answered - a[1].open - a[1].answered)
+  const kinds = new Map<string, number>()
+  for (const e of events) if (e.at >= since && !QUIET.has(e.kind)) kinds.set(e.kind, (kinds.get(e.kind) ?? 0) + 1)
+  const repeats = [...kinds].filter(([, n]) => n >= 2).sort((a, b) => b[1] - a[1]).slice(0, 10)
+  const keep = new Set(threads.map(([t]) => placeOf(t)))
+  const sample = asks.filter(a => keep.has(a.split(': ')[0]!)).slice(0, 10)
+  return [
+    ...threads.length ? ['Asks to the owner, by thread (2 or more):', ...threads.map(([t, n]) => `- ${placeOf(t)}: ${n.open} open, ${n.answered} answered`), 'Some of the asks:', ...sample.map(a => `- ${a}`)] : [],
+    ...repeats.length ? ['Event kinds that repeated:', ...repeats.map(([k, n]) => `- ${k} ${n}`)] : [],
+  ].join('\n')
 }
