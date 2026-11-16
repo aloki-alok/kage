@@ -2,7 +2,7 @@ import { describe, test } from 'node:test'
 import assert from 'node:assert/strict'
 import { execSync } from 'node:child_process'
 import { readFileSync } from 'node:fs'
-import { ALIASES, checkSettings, settingTier, Config, diff, fromEnv, KEYS, NOT_SETTINGS, toEnv, unknownNames } from '../config.ts'
+import { ALIASES, checkSettings, settingTier, Config, diff, fromEnv, KEYS, NOT_SETTINGS, toEnv, unknownEnv, unknownNames } from '../config.ts'
 import { parseEnv } from '../settings.ts'
 
 // One line for every setting in the table, with fake values. Canonical forms: the shape toEnv writes.
@@ -248,5 +248,12 @@ describe('which keys a session may change on its own', () => {
   })
   test('secrets, the schema version and unplaced env lines are never settable, and a prototype path is refused', () => {
     for (const k of ['secrets', 'secrets.slack.bot', 'version', 'unknown', 'unknown.KAGE_X', '__proto__.x', 'harness.__proto__.x', 'constructor.prototype.x', '']) assert.equal(settingTier(k), 'never', k)
+  })
+})
+
+describe('the old env file\'s own keys', () => {
+  test('a key Kage has no setting for comes back as an env line, a secret one too, so sessions keep it after the import', () => {
+    const { config, secrets } = fromEnv({ MY_TOOL_URL: 'https://x.test', MY_TOOL_API_KEY: 'sk-test-1234567890abcdef', SLACK_BOT_TOKEN: 'xoxb-TEST' })
+    assert.deepEqual(unknownEnv(config, secrets), { MY_TOOL_URL: 'https://x.test', MY_TOOL_API_KEY: 'sk-test-1234567890abcdef' })
   })
 })
