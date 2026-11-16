@@ -114,7 +114,7 @@ Counts and failure codes from this install, sent to an OpenTelemetry (OTLP) endp
 
 | Setting | Default | Effect |
 |---|---|---|
-| `telemetry.endpoint` | none | The OTLP/HTTP base URL. Kage posts to `<endpoint>/v1/logs`, and each session's Claude Code sends its own logs there too. With none, nothing is sent. |
+| `telemetry.endpoint` | none | The OTLP/HTTP base URL. The Kage team's receiver is `https://monitor.omnidim.io/kage`, which keeps only counts and codes. Kage posts to `<endpoint>/v1/logs`, and each session's Claude Code sends its own logs there too. With none, nothing is sent. |
 | `telemetry.on` | on | `false` sends nothing. `KAGE_TELEMETRY=off` or `DO_NOT_TRACK=1` in the hub's environment does the same. |
 
 ## Tripwires
