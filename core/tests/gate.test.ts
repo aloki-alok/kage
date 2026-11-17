@@ -85,11 +85,11 @@ describe('who can drive the agent', () => {
     assert.deepEqual(classify(own({ user: OWNER }), { ...ids, apps: [`ATEST0001:${MATE}:${OWNER}`] }), { kind: 'drop', reason: 'not-proven' })
     assert.deepEqual(classify(own({ text: `<@${BOT}> stop` }), tied), { kind: 'task', text: 'stop', agent: 'ATEST0001' })
   })
-  test('an agent\'s post that says no reply is needed starts no task; the same words from a person do', () => {
+  test('an agent\'s tagged answer reaches the session even when it says no reply is needed', () => {
+    // A tag means "read this". Older Kages end their answers with the marker, and the asker must still read them.
     const two = { ...ids, apps: [`ATEST0001:${MATE}`] }
     const appPost = (text: string) => msg({ user: MATE, client_msg_id: undefined, bot_id: 'BTEST0001', app_id: 'ATEST0001', text })
-    assert.deepEqual(classify(appPost(`<@${BOT}> thanks, got it _(no reply needed)_`), two), { kind: 'drop', reason: 'no-reply-needed' })
-    assert.deepEqual(classify(msg({ user: MATE, text: `<@${BOT}> run it (no reply needed)` }), two), { kind: 'task', text: 'run it (no reply needed)' })
+    assert.deepEqual(classify(appPost(`<@${BOT}> yes, build it _(no reply needed)_`), two), { kind: 'task', text: 'yes, build it _(no reply needed)_', agent: 'ATEST0001' })
   })
   test('an agent can never approve: not with its owner\'s token, not as the owner, not in the DM, not under a card', () => {
     const two = { ...ids, apps: [`ATEST0001:${MATE}`, 'ATEST0009'] }

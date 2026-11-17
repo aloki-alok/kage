@@ -10,7 +10,7 @@ import { log } from './log.ts'
 import type { AfkCommand } from '../core/afk.ts'
 import type { Schedule } from '../core/cron.ts'
 import type { ProbeArg, TuneArg } from './probe-jobs.ts'
-import { addressed, NO_REPLY } from '../core/agents.ts'
+import { addressed } from '../core/agents.ts'
 import { filesFolderName } from '../core/conversations.ts'
 import { plainName, teammateOf } from '../core/gate.ts'
 import { openWaiting, postedBy } from '../core/ledgers.ts'
@@ -37,7 +37,7 @@ export type ToolContext = {
   askers: Map<string, { id: string; name: string } | undefined>; agents: Map<string, Task['agent']>; sentForPeople: Map<string, Signer>
   dmThread: Map<string, string>; links: Map<string, string>; names: Record<string, string>
   react: (channel: string, ts: string, name: string) => void
-  post: (key: string, channel: string, thread_ts: string | undefined, text: string, to?: { tag?: string; noReply?: boolean }, ack?: boolean) => Promise<{ via: string; where: string }>
+  post: (key: string, channel: string, thread_ts: string | undefined, text: string, to?: { tag?: string }, ack?: boolean) => Promise<{ via: string; where: string }>
   change: (a: { channel: string; ts: string; text?: string; wide?: boolean }, ping: boolean) => Promise<Result>
   nameMentions: (text: string) => Promise<void>
   append: Ledgers['add']; ledger: Ledgers['text']; filesOf: (channel: string, thread_ts: string) => string
@@ -181,11 +181,10 @@ export function sessionTools(o: {
   }
 
   // key: the session that answered, so the retro credits a private reply to the thread it answers.
-  // to: an agent this post is for. Every part tags it, and a post that needs no answer says so at its end (core/agents.ts).
+  // to: an agent this post is for. Every part tags it (core/agents.ts).
   // ack: an "On it" line, which the 🥷 pickup reaction already says, so it never goes out from the owner's account.
-  async function post(key: string, channel: string, thread_ts: string | undefined, text: string, to: { tag?: string; noReply?: boolean } = {}, ack = false) {
+  async function post(key: string, channel: string, thread_ts: string | undefined, text: string, to: { tag?: string } = {}, ack = false) {
     let parts = splitForSlack(safeReply(text).trim() || '(empty reply)')
-    if (to.noReply) parts[parts.length - 1] += `\n${NO_REPLY}`
     if (to.tag) parts = addressed(parts, to.tag)
     const signer = { asked: askers.get(key)?.name, via: o.kagelet }
     let via = Title, sent: string[] = []
