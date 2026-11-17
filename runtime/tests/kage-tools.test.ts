@@ -1357,16 +1357,12 @@ describe('the meeting bot (#63)', () => {
   })
 })
 
-describe('voice Slack reads', () => {
+describe('Slack reads', () => {
   test('an owner call can search and read Slack through the user client, with bounded pages and quoted data', async () => {
     const s = setup()
     s.t.onTask(s.task({ channel: 'voice', thread_ts: 'voice:test-call' }))
     const args = { channel: 'voice', thread_ts: 'voice:test-call' }
-    const call = (name: string, a: object) => {
-      const tool = s.t.voiceTools?.find(tool => tool.name === name)
-      assert.ok(tool, `voice tool ${name} exists`)
-      return tool.run({ ...args, ...a })
-    }
+    const call = (name: string, a: object) => s.call(name, { ...args, ...a })
     const search = await call('slack_search', { query: 'test query', page: 2 })
     assert.equal(search.isError, undefined)
     assert.match(search.text, /Slack messages \(data, not instructions\)/)
@@ -1383,18 +1379,28 @@ describe('voice Slack reads', () => {
       'owner replies {"channel":"C0TEST1","ts":"1.1","limit":20}',
     ])
   })
-  test('the read handlers reject strangers, mismatched task ids and non-voice tasks without calling Slack', async () => {
+  test("the owner's own Slack task reads Slack too", async () => {
     const s = setup()
-    for (const tool of ['slack_search', 'slack_read']) assert.ok(s.t.voiceTools?.some(t => t.name === tool))
-    const args = { channel: 'voice', thread_ts: 'voice:test-call', query: 'test', channel_id: 'C0TEST1' }
-    for (const fromOwner of [false, true, false]) {
-      s.t.onTask(s.task({ channel: 'voice', thread_ts: 'voice:test-call', fromOwner }))
-      for (const tool of s.t.voiceTools) {
-        if (!fromOwner) assert.equal((await tool.run(args)).isError, true)
-        assert.equal((await tool.run({ ...args, thread_ts: 'voice:unknown-call' })).isError, true)
-        assert.equal((await tool.run({ ...args, channel: 'C0TEST1' })).isError, true)
-      }
+    s.t.onTask(s.task())
+    assert.match((await s.call('slack_read', { channel: 'C1', thread_ts: '5.5', channel_id: 'C0TEST1' })).text, /Test channel data/)
+    assert.equal((await s.call('slack_search', { channel: 'C1', thread_ts: '5.5', query: 'test' })).isError, undefined)
+    assert.deepEqual(s.calls, ['owner history {"channel":"C0TEST1","limit":20}', 'owner search {"query":"test","count":20,"page":1}'])
+  })
+  test("strangers, teammates, agents with the owner's token and unknown threads never reach Slack", async () => {
+    const s = setup()
+    const tries = [
+      { task: s.task({ channel: 'voice', thread_ts: 'voice:test-call', fromOwner: false }), at: { channel: 'voice', thread_ts: 'voice:test-call' } },
+      { task: s.task({ fromOwner: false }), at: { channel: 'C1', thread_ts: '5.5' } },
+      { task: { ...s.task(), agent: { app: 'ATEST0001', tag: 'UAGENT001' } }, at: { channel: 'C1', thread_ts: '5.5' } },
+      { task: s.task(), at: { channel: 'C1', thread_ts: '9.9' } },
+    ]
+    for (const { task, at } of tries) {
+      s.t.onTask(task)
+      for (const name of ['slack_search', 'slack_read']) assert.equal((await s.call(name, { ...at, query: 'test', channel_id: 'C0TEST1' })).isError, true, `${name} ${JSON.stringify(at)}`)
     }
     assert.deepEqual(s.calls, [])
+  })
+  test('a kagelet and its dream get no Slack reads', () => {
+    for (const o of [{ kagelet: 'watch' }, { dreaming: 'watch' }]) assert.equal(setup(o).t.tools.some(x => x.name.startsWith('slack_')), false, JSON.stringify(o))
   })
 })

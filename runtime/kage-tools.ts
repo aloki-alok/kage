@@ -2,7 +2,7 @@
 // approval prompt. No transport here: plugin/server.ts serves them over MCP stdio for a tmux pane, and an
 // SDK session can serve them in-process. One instance per session.
 import { instructions } from '../core/instructions.ts'
-import { voiceSlackTools } from './voice-slack-tools.ts'
+import { slackReadTools } from './slack-read-tools.ts'
 import type { WebClient } from '@slack/web-api'
 import { mkdirSync } from 'node:fs'
 import { z } from 'zod'
@@ -240,13 +240,15 @@ export function sessionTools(o: {
   const ownerOnly = (a: Record<string, unknown>) => ownerTask.get(`${String(a.channel)}:${String(a.thread_ts)}`) === true
   const pingIn = (channel: string) => [...ownerTask].some(([k, owner]) => owner && k.startsWith(`${channel}:`))
   const c: ToolContext = { o, Title, bot, user, s: z.string(), taskChannels, ownerTask, unanswered, askers, agents, sentForPeople, dmThread, links, react, post, change, nameMentions, names, append, ledger, filesOf, jobRun: () => job !== undefined || need !== undefined, job: () => job, need: () => need, ownerOnly, pingIn, name: o.kagelet }
+  // Slack reads as the owner: never for an agent's task made with the owner's token, a kagelet or its dream (their threads may hold other people).
+  const ownerRead = (a: Record<string, unknown>) => ownerOnly(a) && !agents.get(`${a.channel}:${a.thread_ts}`)
+  const reads = o.kagelet || o.dreaming ? [] : slackReadTools(user, ownerRead)
   // Kept in this order: the reply tools first, as a session reads them.
-  const tools = [...slackTools(c), ...scheduleTools(c), ...kageletTools(c), ...ownerTools(c), ...browserTools(c)]
+  const tools = [...slackTools(c), ...scheduleTools(c), ...kageletTools(c), ...ownerTools(c), ...browserTools(c), ...reads]
   const browser = o.browser
 
   return {
     tools,
-    voiceTools: voiceSlackTools(user, ownerOnly),
     instructions: instructions(Title, o.memory, !!browser, o.kagelet ? { kagelet: o.kagelet } : o.dreaming ? { dreaming: o.dreaming } : undefined),
     // A task arrived for this session: remember where it came from and who sent it.
     onTask(m: Task) {

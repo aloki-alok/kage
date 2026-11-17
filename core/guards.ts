@@ -3,7 +3,7 @@ import { dirname } from 'node:path'
 
 // Sources that hold the owner's private data. Only the owner's own task may read them.
 // browser_: Kage's own tools on the owner's Chrome, where every tab carries their logins (#114).
-export const ownerOnlyTool = (tool: string) => /^mcp__.*(gmail|google_drive|google_calendar|granola|fireflies|kage_?_browser_)/i.test(tool)
+export const ownerOnlyTool = (tool: string) => /^mcp__.*(gmail|google_drive|google_calendar|granola|fireflies|kage_?_browser_|kage_?_slack_(search|read)$)/i.test(tool)
 export function privateToolRefusal(tool: string, sender: string | undefined): string | undefined {
   if (!ownerOnlyTool(tool) || sender === 'owner') return undefined
   return `${tool} reads the owner's private data, and this task did not come from the owner. Reply that this needs the owner, and stop.`

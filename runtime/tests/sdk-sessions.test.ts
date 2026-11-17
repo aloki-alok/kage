@@ -287,10 +287,20 @@ describe('Kage sessions on the Agent SDK', () => {
       assert.deepEqual(voice.filter(tool => tool._meta?.['anthropic/alwaysLoad'] === true).map(tool => tool.name), ['reply', 'slack_search', 'slack_read'])
       for (const name of ['slack_search', 'slack_read']) assert.equal(voice.find(tool => tool.name === name)?.annotations?.readOnlyHint, true)
       assert.ok(!thread.some(tool => tool._meta?.['anthropic/alwaysLoad'] === true))
-      assert.ok(!thread.some(tool => ['slack_search', 'slack_read'].includes(tool.name)))
+      assert.ok(['slack_search', 'slack_read'].every(name => thread.some(tool => tool.name === name)))   // the owner's Slack thread has them, deferred
       assert.equal(t.sdk.runs[1]!.options.tools, undefined)
       assert.ok(!(t.sdk.runs[0]!.options.allowedTools ?? []).some((tool: string) => tool.startsWith('mcp__kage__')))
     } finally { t.s.runner.stop('voice:test-call'); t.s.runner.stop('C0TEST1:5.5') }
+  })
+  test("a teammate's thread never lists the Slack reads, and its hook refuses them", async () => {
+    const t = setup()
+    t.d.task('C1:5.5', t.task({ fromOwner: false }), 0)
+    await tick()
+    const run = (tool_name: string) => t.sdk.runs[0]!.options.hooks.PreToolUse[0].hooks[0]({ hook_event_name: 'PreToolUse', tool_name, tool_input: {} }, undefined, { signal: signal() })
+    try {
+      assert.ok(!(await kageTools(t.sdk.runs[0]!)).some(tool => ['slack_search', 'slack_read'].includes(tool.name)))
+      for (const name of ['mcp__kage__slack_search', 'mcp__kage__slack_read', 'mcp__plugin_kage_kage__slack_read']) assert.equal((await run(name)).hookSpecificOutput.permissionDecision, 'deny', name)
+    } finally { t.s.runner.stop('C1:5.5') }
   })
   test('preloaded voice tools keep the stranger refusal and the owner guard chain', async () => {
     const t = setup()

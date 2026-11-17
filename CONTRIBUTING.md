@@ -168,7 +168,7 @@ Write logs to stderr only. In a tmux pane, stdout carries the channel protocol, 
 | `session-link.ts` | The local socket that panes and the `kage` commands connect to. |
 | `hub-client.ts` | The client end of that socket: one question to the running hub, one answer. Node modules only, because the shell scripts read settings through `cli/home.ts`, which imports it. |
 | `protocol.ts` | The messages on that socket. |
-| `voice-slack-tools.ts` | The two Slack read tools only an owner-verified voice call gets (`slack_search`, `slack_read`), loaded up front so a live call skips tool discovery. |
+| `slack-read-tools.ts` | The two Slack read tools the owner's own task gets (`slack_search`, `slack_read`): a Slack task, or an owner-verified voice call, where they load up front so a live call skips tool discovery. |
 | `claude-once.ts` | One isolated `claude -p` answer for the guards and stand-ins (WhatsApp, Slack AFK): no MCP, no settings, nothing saved, run in an empty folder. |
 | `transcript-tail.ts` | Reading the lines a session transcript gained since the last read (for `kage watch` and `kage top`). |
 | `store.ts` | One SQLite file: conversations, their sessions, schedules, trust, the inbox of every message heard, and what connectors keep across a restart (AFK, GitHub and mail threads, each kagelet's `db_read` command and the standing approval of each write tool), and every kagelet message with its delivery state, stored before delivery so a restart replays it. The hub is the only writer of these tables. Old `.json` files move in once. |
