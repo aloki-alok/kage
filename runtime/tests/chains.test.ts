@@ -15,7 +15,8 @@ import { scheduler } from '../scheduler.ts'
 import { sdkSessions } from '../sdk-sessions.ts'
 import { limitPause } from '../limit-pause.ts'
 import { fakeSdk } from './fake-sdk.ts'
-import { readKagelets } from '../kagelet-files.ts'
+import { readKagelets, writeJob } from '../kagelet-files.ts'
+import { kageletFile } from '../../core/kagelets.ts'
 import { kageletManager } from '../kagelet-manager.ts'
 import { kageletRoutes } from '../kagelet-routes.ts'
 import { syncKagelets } from '../kagelet-sync.ts'
@@ -71,10 +72,11 @@ async function hub(o: { chainUsd?: number; capUsd?: number; max?: number; memory
     store, notice: () => {}, end: key => d.end(key).filter((m): m is Task => m.type === 'task'), replay: async () => {},
     redeliver: (key, t) => { toSession(key, t) }, log: () => {}, tellOwner: () => {}, settle: (ts, done) => routes.settle(ts, done),
   })
-  const sync = (now: number) => syncKagelets(readKagelets(kagelets), store, now, () => {})
+  let grants = new Map<string, string[]>()
+  const sync = (now: number) => (grants = syncKagelets(readKagelets(kagelets), store, now, () => {}))
   const schedules = scheduler({ store, deliver: toSession, failed: m => limits.turn('', [m], undefined, clock.now), ready: key => d.ready(key), trusted: () => false, job: { end: () => {}, freshEvery: () => 0, carryCount: () => 0, carryChars: () => 0, laneDefault: () => false, posted: () => '', project: '' }, ran: j => ledgers.add('runs', [j.id, j.key]) })
   const manager = kageletManager({ dir: kagelets, max: 10, ledgers, sync, runNow: (id, now) => schedules.runNow(id, now), store, log: () => {} })
-  const routesOn = () => kageletRoutes({ dir: kagelets, store, ledgers, runs, deliver: toSession,
+  const routesOn = () => kageletRoutes({ dir: kagelets, store, ledgers, runs, deliver: toSession, granted: key => grants.has(key),
     idle: key => d.ready(key) === 'ready' && d.startsNow(key, Date.now()), paused: now => limits.paused(now)?.until, capUsd: o.capUsd ?? 2, chainUsd: o.chainUsd, log: () => {}, memory: o.memory })
   routes = routesOn()
   // The fake Claude process a kagelet's session runs in: the newest one that read its prompt.
@@ -100,7 +102,7 @@ async function hub(o: { chainUsd?: number; capUsd?: number; max?: number; memory
   const states = () => store.unread().map(u => `${u.message.from}>${u.message.to} ${u.message.contextId} ${u.state}`)
   const pump = async (at = clock.now) => { clock.now = at; routes.pump(at); await tick() }
   const tasksOf = (name: string) => tasks.filter(([k]) => k === keyOf(name)).map(([, t]) => t)
-  return { proc, fail, dir, store, ledgers, runs, tasks, tasksOf, schedules, get routes() { return routes }, routesOn, step, limitHit, save, chains, states, pump, work, own, manager, limits, clock, d,
+  return { sync, proc, fail, dir, store, ledgers, runs, tasks, tasksOf, schedules, get routes() { return routes }, routesOn, step, limitHit, save, chains, states, pump, work, own, manager, limits, clock, d,
     restart() { routes = routesOn() } }
 }
 
@@ -583,4 +585,16 @@ test('the loop guard holds 20 messages a minute per pair, across chains', async 
   assert.match(h.routes.message(keyOf('a'), 'b', 'one more', NINE), /not sent: 20 turns in 60 s already/)
   h.runs.start(keyOf('a'), 'scheduled', { fresh: true })
   assert.match(h.routes.message(keyOf('a'), 'b', 'a minute on', NINE + 61_000), QUEUED('b'))
+})
+
+test('a kagelet past kagelets.max runs nothing: a message to it is refused, not run', async () => {
+  const h = await hub()
+  for (const n of 'bcdefghij') assert.match(await h.save(n, { schedule: '0 9 * * *' }), new RegExp(`saved ${n}`))
+  assert.match(await h.save('zz', { schedule: '0 10 * * *' }), /saved zz/)   // its lane's thread is stored
+  writeJob(`${h.dir}/kagelets`, 'a', kageletFile({ thread: LINK, schedule: '0 10 * * *', tools: ['WebFetch'], job: 'Job of a.', by: 'owner', why: 'w', approved: true }) as string)
+  h.sync(NINE)   // by name order, zz is now the 11th of 10
+  h.schedules.tick(NINE); await tick()
+  assert.match(h.routes.message(keyOf('b'), 'zz', 'hello'), /zz does not run here/)
+  await tick()
+  assert.equal(h.tasksOf('zz').length, 0)
 })

@@ -26,6 +26,7 @@ export function kageletRoutes(o: {
   deliver: (key: string, task: Task) => Delivery
   // Ready for a turn of its own now: no turn running or starting, no closed thread, and a session slot it can take.
   idle: (key: string) => boolean
+  granted: (key: string) => boolean   // the last sync let this lane run (a kagelet past kagelets.max has no grant)
   // The usage-limit pause (runtime/limit-pause.ts) and its reset time: no message goes, and none ages.
   paused: (now: number) => number | undefined
   capUsd?: number; chainUsd?: number; log: (line: string) => void; newId?: () => string
@@ -58,6 +59,7 @@ export function kageletRoutes(o: {
     const wider = row?.tools.find(t => !covers(from?.tools ?? [], t))
     const why = !row || !sp ? `there is no kagelet named "${m.to}"`
       : row.state === 'broken' ? `${m.to} is broken (${row.error})`
+      : !o.granted(row.key!) ? `${m.to} does not run here: this install runs at most so many kagelets (kagelets.max)`
       : wider ? `${m.to} holds ${wider}, which ${m.from} does not. A kagelet messages only one with the same tools or fewer.`
       : o.chainUsd !== undefined && c.usd >= o.chainUsd ? `the chain spent $${c.usd.toFixed(2)}, at or over its cap of $${o.chainUsd.toFixed(2)} (kagelets.chainUsd)`
       : m.hops > MAX_CHAIN - 1 ? `${m.hops} hops with no person or schedule in between (the limit is ${MAX_CHAIN - 1})`
