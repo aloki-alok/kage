@@ -13,6 +13,15 @@ const msg = (o: Record<string, unknown>) =>
   ({ channel: 'C1', ts: '1.1', user: OWNER, text: '', client_msg_id: 'c1', ...o })
 
 describe('who can drive the agent', () => {
+  test('the owner\'s words from the socket (kage say) are the owner\'s task; Slack\'s copy of that post is dropped', () => {
+    // What Slack sends back for a post the hub made with the owner's token: no client_msg_id.
+    const echo = { client_msg_id: undefined }
+    const socket = { ...echo, fromSocket: true }
+    assert.deepEqual(classify(msg({ channel: DM, text: 'find the stuck calls', ...socket }), ids), { kind: 'task', text: 'find the stuck calls' })
+    assert.deepEqual(classify(msg({ thread_ts: '1.0', text: `<@${BOT}> and the retries`, ...socket }), ids), { kind: 'task', text: 'and the retries' })
+    assert.deepEqual(classify(msg({ channel: DM, text: 'find the stuck calls', ...echo }), ids), { kind: 'drop', reason: 'not-proven' })
+    assert.deepEqual(classify(msg({ thread_ts: '1.0', text: `<@${BOT}> and the retries`, ...echo }), ids), { kind: 'drop', reason: 'not-proven' })
+  })
   test('a tag from someone else is dropped', () => {
     assert.deepEqual(classify(msg({ user: 'UOTHER', text: `<@${BOT}> deploy prod` }), ids), { kind: 'drop', reason: 'not-listed' })
   })
@@ -256,6 +265,9 @@ describe('replies in an approval card thread', () => {
     for (const o of [{ subtype: 'message_changed' }, { bot_id: 'B1' }, { app_id: 'A0TEST1' }, { client_msg_id: undefined }, { user: MATE }]) {
       assert.equal(reply('yes', o).kind, 'drop', JSON.stringify(o))
     }
+  })
+  test('words from the socket (kage say) never answer a card: a session\'s shell can reach the socket', () => {
+    assert.deepEqual(reply('yes', { client_msg_id: undefined, fromSocket: true }), { kind: 'task', text: 'yes' })
   })
   test('a teammate still cannot approve in a card thread', () => {
     assert.deepEqual(reply('yes', { user: MATE }), { kind: 'drop', reason: 'not-tagged' })

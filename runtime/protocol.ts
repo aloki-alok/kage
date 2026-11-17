@@ -20,6 +20,9 @@ export type FromSession =
   | { type: 'stop'; key: string }
   | { type: 'kagelet'; action: PanelAction; name: string }   // kage top's panel: the hub answers { type: 'kagelet', text } or { type: 'kagelet', refused }
   | { type: 'tell'; key: string; text: string }   // kage tell: the hub answers { type: 'tell', ok: true } or { type: 'tell', refused }
+  // kage say, from an app on this Mac: no channel starts a new message in the DM with Kage; channel and thread_ts reply in
+  // that DM or a thread Kage works in. Posted as the owner, run as their task. The hub answers { type: 'say', ok: true, channel, ts } or { type: 'say', refused }.
+  | { type: 'say'; text: string; channel?: string; thread_ts?: string }
   | { type: 'relay'; action: 'allow' | 'deny' | 'list'; key?: string }   // kage relay: the hub answers { type: 'relay', ok: true, keys } or { type: 'relay', refused }
   | { type: 'hold'; key: string; pid: number }   // pid: the attach process, which owns the hold
   | { type: 'hello'; key: string }

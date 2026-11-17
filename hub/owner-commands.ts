@@ -3,6 +3,7 @@
 import { log } from '../runtime/log.ts'
 import { limitLine, pauseLine } from '../core/board.ts'
 import { openWaiting } from '../core/ledgers.ts'
+import type { Conversation } from '../core/conversations.ts'
 import type { Dispatcher } from '../core/sessions.ts'
 import { ssmEligible } from '../core/ssm.ts'
 import type { Task } from '../core/task.ts'
@@ -15,6 +16,7 @@ export function ownerCommands(o: {
   d: Dispatcher<ToSession>; store: Store; ledgers: Ledgers; limits: ReturnType<typeof limitPause>; MAX: number
   placeOf: (key: string) => string; closedTo: (key: string, task: Task) => void; noteTrust: (key: string, task: Task) => void
   failed: (m: ToSession) => void; dropRelay: (key: string) => void   // cut a thread's live relay and key-proxy tokens
+  botDm: string; post: (text: string, at?: { channel: string; thread_ts: string; kind: Conversation['kind'] }) => Promise<{ channel: string; ts: string }>
 }) {
   const { d, store, ledgers, limits, MAX, placeOf, closedTo, noteTrust, failed } = o
   function status(): string {
@@ -65,5 +67,16 @@ export function ownerCommands(o: {
     }
     return { ok: true, keys: store.relayAllowed() }
   }
-  return { status, tell, relay }
+  // kage say, from an app on this Mac: the owner's words posted as them, then run as their task (connectors/slack.ts say).
+  // A new message goes to the DM with Kage. A reply goes only into that DM or a thread Kage already works in.
+  async function say(text: string, at?: { channel: string; thread_ts: string }): Promise<{ ok: true; channel: string; ts: string } | { refused: string }> {
+    const kind = !at ? undefined : at.channel === o.botDm ? 'dm' : store.conversation(`${at.channel}:${at.thread_ts}`)?.conversation.kind
+    if (at && !kind) return { refused: 'Kage has no thread there' }
+    try {
+      const r = await o.post(text, at && kind && { ...at, kind })
+      log('say', r.channel)
+      return { ok: true, ...r }
+    } catch (e) { return { refused: `Slack refused the post: ${(e as { data?: { error?: string } }).data?.error ?? (e as Error).message}` } }
+  }
+  return { status, tell, relay, say }
 }

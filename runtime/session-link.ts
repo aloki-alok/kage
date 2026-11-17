@@ -48,6 +48,8 @@ export function listenForSessions(path: string, d: Dispatcher<ToSession>, o: Rep
   callCode?: () => string
   // kage tell: the owner's words into one thread, as a task (hub/router.ts decides how).
   tell?: (key: string, text: string) => { ok: true; held?: true } | { refused: string }
+  // kage say: the owner's words posted to Slack as them, a new DM with Kage or a reply in a thread (hub/owner-commands.ts).
+  say?: (text: string, at?: { channel: string; thread_ts: string }) => Promise<{ ok: true; channel: string; ts: string } | { refused: string }>
   // kage relay: change or read the SSM relay's allow list (hub/router.ts decides what may be listed).
   relay?: (action: string, key?: string) => { ok: true; keys: string[] } | { refused: string }
   // kage reload: read the settings file again (core/settings.ts).
@@ -119,6 +121,15 @@ export function listenForSessions(path: string, d: Dispatcher<ToSession>, o: Rep
           // core/guards.ts (stops mistakes, not a determined session). kage tell refuses inside a session.
           const r = !m.text.trim() ? { refused: 'empty message' } : o.tell?.(m.key, m.text.trim()) ?? { refused: 'this hub cannot take messages' }
           sock.write(JSON.stringify({ type: 'tell', ...r }) + '\n')
+        } else if (m.type === 'say' && !key && !held && typeof m.text === 'string') {
+          // An app on this Mac: the owner's words posted to Slack as them, then run as their task. Same limit as tell.
+          const at = m as { channel?: unknown; thread_ts?: unknown }
+          const answer = (r: object) => sock.write(JSON.stringify({ type: 'say', ...r }) + '\n')
+          const text = m.text.trim()
+          if (!text) answer({ refused: 'empty message' })
+          else if (typeof at.channel === 'string' !== (typeof at.thread_ts === 'string')) answer({ refused: 'a reply needs both channel and thread_ts' })
+          else if (!o.say) answer({ refused: 'this hub cannot post' })
+          else void o.say(text, typeof at.channel === 'string' ? { channel: at.channel, thread_ts: at.thread_ts as string } : undefined).then(answer)
         } else if (m.type === 'relay' && !key && !held) {
           // Owner only, like tell: a session's own hello'd socket cannot. Same limit as tell (core/guards.ts).
           const r = typeof m.action === 'string' && ['allow', 'deny', 'list'].includes(m.action) ? o.relay?.(m.action, typeof m.key === 'string' ? m.key : undefined) ?? { refused: 'this hub has no relay' } : { refused: 'use allow, deny or list' }
