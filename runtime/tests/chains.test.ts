@@ -3,7 +3,7 @@
 // as hub/router.ts wires them. The test plays each kagelet: it reports, then its turn ends with a result or a limit.
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { mkdirSync, mkdtempSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, readFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { DatabaseSync } from 'node:sqlite'
 import { createSdkMcpServer, tool } from '@anthropic-ai/claude-agent-sdk'
@@ -597,4 +597,16 @@ test('a kagelet past kagelets.max runs nothing: a message to it is refused, not 
   assert.match(h.routes.message(keyOf('b'), 'zz', 'hello'), /zz does not run here/)
   await tick()
   assert.equal(h.tasksOf('zz').length, 0)
+})
+
+test('an edit saved after a resume keeps the resume, so a cap-paused kagelet is not paused again for spend before it', async () => {
+  const h = await hub()
+  await h.save('a', { schedule: '0 9 * * *' })
+  await h.manager.manage({ action: 'pause', name: 'a' }, NINE)
+  await h.manager.manage({ action: 'resume', name: 'a' }, NINE + 60_000)
+  const file = `${h.dir}/kagelets/a/job.md`
+  const resumed = /^resumed: .*$/m.exec(readFileSync(file, 'utf8'))?.[0]
+  assert.ok(resumed)
+  await h.manager.manage({ action: 'save', name: 'a', thread: LINK, schedule: '0 9 * * *', tools: ['WebFetch'], job: 'Job of a, edited.', why: 'w' }, NINE + 120_000, async () => true)
+  assert.equal(/^resumed: .*$/m.exec(readFileSync(file, 'utf8'))?.[0], resumed)
 })

@@ -118,7 +118,7 @@ Say what to check, where, and what to post in the thread. For example: every wee
 // model steers every save, the owner's sessions too.
 // approved: the owner said yes to its write tools (a card, a standing approval, or a grant it already held).
 // standing: those of its write tools that a standing approval covers.
-export function kageletFile(f: { thread: string; schedule: string; after?: string; tools: string[]; job: string; by: Maker; why: string; model?: string; modelWhy?: string; paused?: boolean; approved?: boolean; standing?: string[]; objective?: Objective; allow?: string[]; people?: string[] }): string | { error: string } {
+export function kageletFile(f: { thread: string; schedule: string; after?: string; tools: string[]; job: string; by: Maker; why: string; model?: string; modelWhy?: string; paused?: boolean; resumed?: number; approved?: boolean; standing?: string[]; objective?: Objective; allow?: string[]; people?: string[] }): string | { error: string } {
   // One line each, so no value can add a front matter line of its own (a second tools or paused line).
   for (const [k, v] of Object.entries({ thread: f.thread, schedule: f.schedule, after: f.after ?? '', why: f.why, model: f.model ?? '', model_why: f.modelWhy ?? '', tool: f.tools.join(','), objective: f.objective?.objective ?? '', measure: f.objective?.measure ?? '', allow: (f.allow ?? []).join(''), people: (f.people ?? []).join(',') })) if (/[\r\n]/.test(v)) return { error: `the ${k} must be one line` }
   // A comma or space in one name reads back as two tools, so the card would not name what the file grants.
@@ -127,7 +127,7 @@ export function kageletFile(f: { thread: string; schedule: string; after?: strin
   const wide = !f.approved && f.tools.find(t => kageletTier(t) === 'write')
   if (wide) return { error: `${wide} needs the owner's yes on Kage's card: it sends or changes something` }
   const standing = (f.standing ?? []).filter(t => f.tools.includes(t))
-  const text = `---\nthread: ${f.thread}\n${f.schedule || !f.after ? `schedule: ${f.schedule}\n` : ''}${f.after ? `after: ${f.after}\n` : ''}tools: ${f.tools.join(', ')}\nby: ${f.by}\nwhy: ${f.why}\n${f.model && f.model !== DEFAULT_MODEL ? `model: ${f.model}\n${f.modelWhy ? `model_why: ${f.modelWhy}\n` : ''}` : ''}${standing.length ? `standing: ${standing.join(', ')}\n` : ''}${f.objective ? `objective: ${f.objective.objective}\nmeasure: ${f.objective.measure}\ntarget: ${f.objective.target.op} ${f.objective.target.n}\n` : ''}${(f.allow ?? []).map(r => `allow: ${r}\n`).join('')}${f.people?.length ? `people: ${f.people.join(', ')}\n` : ''}${f.paused ? 'paused: yes\n' : ''}---\n${f.job.trim()}\n`
+  const text = `---\nthread: ${f.thread}\n${f.schedule || !f.after ? `schedule: ${f.schedule}\n` : ''}${f.after ? `after: ${f.after}\n` : ''}tools: ${f.tools.join(', ')}\nby: ${f.by}\nwhy: ${f.why}\n${f.model && f.model !== DEFAULT_MODEL ? `model: ${f.model}\n${f.modelWhy ? `model_why: ${f.modelWhy}\n` : ''}` : ''}${standing.length ? `standing: ${standing.join(', ')}\n` : ''}${f.objective ? `objective: ${f.objective.objective}\nmeasure: ${f.objective.measure}\ntarget: ${f.objective.target.op} ${f.objective.target.n}\n` : ''}${(f.allow ?? []).map(r => `allow: ${r}\n`).join('')}${f.people?.length ? `people: ${f.people.join(', ')}\n` : ''}${f.paused ? 'paused: yes\n' : f.resumed !== undefined ? `resumed: ${new Date(f.resumed).toISOString()}\n` : ''}---\n${f.job.trim()}\n`
   const sp = parseKagelet('check', text)
   return 'error' in sp ? sp : text
 }
