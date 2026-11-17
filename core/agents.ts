@@ -24,7 +24,7 @@ export const agentNote = (app: string, tag?: string) =>
 // Every Slack task carries this line, so a session can address any listed agent, not only the one that posted the task.
 // Only agents with a saved tag are offered: an agent hears only a post that tags it, so one with no tag cannot be addressed.
 export function agentRoster(apps: string[]): string | undefined {
-  const known = apps.map(appEntry).filter(e => e?.tag && e.owner).map(e => `<@${e!.tag}> (<@${e!.owner}>'s agent)`)
+  const known = apps.map(appEntry).filter(e => e?.tag).map(e => /^[UW]/.test(e!.owner ?? '') ? `<@${e!.tag}> (<@${e!.owner}>'s agent)` : `<@${e!.tag}>`)
   return known.length ? `(Agents you can address: ${known.join(', ')}. An agent hears only a post that tags it: put its mention on the line where it must act, answer or unblock, and leave thanks untagged.)` : undefined
 }
 

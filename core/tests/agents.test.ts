@@ -95,6 +95,7 @@ describe('the agents a session can address', () => {
     assert.doesNotMatch(line, /A0AGENT2/)   // no tag saved: it cannot be addressed, so it is not offered
     assert.match(line, /hears only a post that tags it/)
     assert.equal(agentRoster(['A0AGENT2:U0OWNER2']), undefined)
+    assert.match(agentRoster(['A0AGENT3:A0OTHER1:U0BOT003'])!, /<@U0BOT003>[,.]/)   // an app owner is no person to name
     assert.equal(agentRoster([]), undefined)
   })
 })
