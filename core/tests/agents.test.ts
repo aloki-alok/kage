@@ -22,7 +22,6 @@ describe('a post addressed to an agent', () => {
   })
 })
 
-
 describe('the loop guard between Kage and one agent', () => {
   const guard = () => loopGuard({ perWindow: 20, windowMs: 60_000, hops: 4 })
   test('at most 4 turns from the agent in a row in one thread; the 5th is a loop until a person writes there', () => {
