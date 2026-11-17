@@ -78,15 +78,16 @@ const toSchedule = (r: Record<string, any>): Schedule => ({
 // while the hub stays the only writer. Nothing yet (no store, no table) reads as none.
 export function schedulesIn(path: string, key?: string): Schedule[] {
   try {
-    const db = new DatabaseSync(path, { readOnly: true })
+    const db = new DatabaseSync(path, { readOnly: true, timeout: 5000 })
     try { return (db.prepare(`select * from schedules ${key === undefined ? '' : 'where key = ?'} order by created`).all(...(key === undefined ? [] : [threadOfJobLane(key)])) as Record<string, any>[]).map(toSchedule) } finally { db.close() }
   } catch { return [] }
 }
 
 export function openStore(path: string) {
-  const db = new DatabaseSync(path)
-  // The ledger table in this file has other writers (tmux panes, runtime/ledger.ts): wait for their lock, don't fail.
-  db.exec('pragma journal_mode = wal; pragma busy_timeout = 5000')
+  // Wait for another writer's lock, don't fail: the ledger's writers (tmux panes, runtime/ledger.ts), and the old hub
+  // flushing its write log as it exits during a restart. The wait is set at open, before the first statement takes a lock.
+  const db = new DatabaseSync(path, { timeout: 5000 })
+  db.exec('pragma journal_mode = wal')
   db.exec(SCHEMA)
   // A store from before the usage-limit pause gains its two inbox columns. Older code ignores them.
   const inboxCols = new Set((db.prepare('pragma table_info(inbox)').all() as { name: string }[]).map(c => c.name))
