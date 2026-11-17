@@ -148,8 +148,14 @@ export function sessionTools(o: {
   // channel:thread_ts -> the thread's Slack link, for the ledgers.
   const links = new Map<string, string>()
   let where = 'a thread'
-  const react = (channel: string, ts: string, name: string) =>
-    (channel === o.botDm() ? bot : user).reactions.add({ channel, timestamp: ts, name }).catch(() => {})
+  // A question's 📜 (scroll) comes off when the answer or done mark lands, so a message never reads waiting and done at once.
+  const asked = new Set<string>()
+  const react = (channel: string, ts: string, name: string) => {
+    const c = channel === o.botDm() ? bot : user, at = `${channel}:${ts}`
+    if (name === 'scroll') asked.add(at)
+    else if (asked.delete(at)) void c.reactions.remove({ channel, timestamp: ts, name: 'scroll' }).catch(() => {})
+    return c.reactions.add({ channel, timestamp: ts, name }).catch(() => {})
+  }
 
   // The display name behind a <@U…> id, for the "asked by <name>" sign-off on message_people.
   const names: Record<string, string> = {}
@@ -178,6 +184,7 @@ export function sessionTools(o: {
       append('posted', [channel, r.ts, r.by, key, ...job && key === jobThread && key.startsWith(`${channel}:`) ? [job] : []])
       if (r.by === 'owner') footers.set(`${channel}:${r.ts}`, signer)
       sent.push(r.ts)
+      thread_ts ??= r.ts   // a long top-level post (a private reply) keeps its later parts under its first
       if (r.by === 'owner') via = `your account (${Title} is not in this conversation)`
     }
     return { via, where: `channel ${channel}, ts ${sent.join(', ')}` }

@@ -11,7 +11,7 @@ import { fileURLToPath } from 'node:url'
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { addBrowserAgainLines, addBrowserLines, addBrowserPlan, extensionId, HOST, hostBrowsers, hostManifest } from '../core/browser-pair.ts'
 import { findPeople, type Person } from '../core/gate.ts'
-import { add, kindOf, ownerPerson, remove, type Entry } from '../core/registry.ts'
+import { add, kindOf, ownerPerson, remove, type Entry, pastedId } from '../core/registry.ts'
 import { registryOf, withRegistry } from '../core/config.ts'
 import { readSettings, updateConfig, updateSecrets } from '../runtime/config-files.ts'
 import { pauseLine, type Live } from '../core/board.ts'
@@ -23,7 +23,7 @@ import { reload, said } from './reload.ts'
 
 const KAGELETS = kageletsDir(DIR)
 const die = (msg: string): never => { console.error(msg); process.exit(1) }
-const [cmd = '', ...args] = process.argv.slice(2)
+const [cmd = '', ...args] = process.argv.slice(2).map(pastedId)
 const USAGE = 'Usage: kage add <person> | kage add <app id> <owner> | kage remove <person or app id> | kage list'
 if (!['add', 'remove', 'list'].includes(cmd)) die(USAGE)
 // Before anything is read: a session, whoever's task it runs, never changes who reaches Kage.

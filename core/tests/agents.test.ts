@@ -1,6 +1,6 @@
 import { describe, test } from 'node:test'
 import assert from 'node:assert/strict'
-import { addressed, agentNote, loopGuard, needsNoReply, NO_REPLY } from '../agents.ts'
+import { addressed, agentNote, agentRoster, loopGuard, needsNoReply, NO_REPLY } from '../agents.ts'
 
 describe('a post addressed to an agent', () => {
   test('every part of a split post carries the tag, not only the first', () => {
@@ -85,5 +85,17 @@ describe('what a session is told about an agent\'s task', () => {
   test('with no saved tag it says the agent may not hear the reply', () => {
     assert.match(agentNote('ATEST0001'), /no tag saved/)
     assert.ok(!agentNote('ATEST0001').includes('tag_agent=true'))
+  })
+})
+
+describe('the agents a session can address', () => {
+  test('lists each listed agent that has a saved tag, with its owner, and says an agent hears only a post that tags it', () => {
+    const line = agentRoster(['A0AGENT1:U0OWNER1:U0BOT001', 'A0AGENT2:U0OWNER2'])!
+    assert.match(line, /<@U0BOT001> \(<@U0OWNER1>'s agent\)/)
+    assert.doesNotMatch(line, /A0AGENT2/)   // no tag saved: it cannot be addressed, so it is not offered
+    assert.match(line, /hears only a post that tags it/)
+    assert.equal(agentRoster(['A0AGENT2:U0OWNER2']), undefined)
+    assert.match(agentRoster(['A0AGENT3:A0OTHER1:U0BOT003'])!, /<@U0BOT003>[,.]/)   // an app owner is no person to name
+    assert.equal(agentRoster([]), undefined)
   })
 })
