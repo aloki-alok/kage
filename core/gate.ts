@@ -25,6 +25,8 @@ type Trigger =
   | { kind: 'card'; request_id: string }
   | { kind: 'verdict'; request_id: string; behavior: 'allow' | 'deny'; always?: true }
   | { kind: 'drop'; reason: Drop }
+  // A person on a kagelet's people line asked that kagelet for work (ADR 0018 rule 0): never a task for Kage itself.
+  | { kind: 'kagelet-ask'; name: string; text: string }
 
 // Every reason the gate drops a message, with what the hub log says for it.
 export const DROPS = {
@@ -58,7 +60,8 @@ const CARD_NO = /^(n|no|deny|stop|cancel)\b/i
 // Strict, one line and nothing else, since it writes a lasting rule: a hedged always ("unless prod", "for now") stays on the card.
 const CARD_ALWAYS = /^always(,? (allow|allow it|fine|ok))?[.!]?$/i
 // card: the request id of the approval card this message replies under, if it does.
-export function classify(m: SlackMessage, ids: Ids, card?: string): Trigger {
+// kagelets: the kagelets that post in this message's thread, with their people lines.
+export function classify(m: SlackMessage, ids: Ids, card?: string, kagelets: { name: string; people: string[] }[] = []): Trigger {
   const isOwner = m.user === ids.owner
   const tag = agentTag(ids.bot, ids.name)
   const raw = m.text ?? ''
@@ -69,6 +72,17 @@ export function classify(m: SlackMessage, ids: Ids, card?: string): Trigger {
   // The gate: a message the owner (or a listed teammate) typed in a Slack client.
   // A listed agent may also post as its own bot user, which is never a teammate.
   const itself = postedAsItself(m, ids.apps ?? [], ids.teammates)
+  // Someone who is neither the owner nor a listed teammate, typing a reply in a kagelet's thread, with that kagelet's
+  // people line naming them. Their words become one plain line: no hidden characters, no lines posing as a manager's.
+  if (!isOwner && !ids.teammates.includes(m.user ?? '') && m.thread_ts && m.thread_ts !== m.ts && typedByPerson(m)) {
+    const text = oneLine(withoutInvisible(raw.replace(tag, ''))).replace(/\s+/g, ' ').trim()
+    // On two of this thread's kagelets, the ask names the one it is for, or it reaches neither.
+    const theirs = kagelets.filter(k => k.people.includes(m.user ?? ''))
+    // A name with letters, digits or a dash on either side is part of another word or another name (fude in fude-2).
+    const named = theirs.filter(k => new RegExp(`(?<![\\w-])${k.name}(?![\\w-])`, 'i').test(text))
+    const k = theirs.length === 1 ? theirs[0] : named.length === 1 ? named[0] : undefined
+    if (k) return { kind: 'kagelet-ask', name: k.name, text }
+  }
   if (!isOwner && !itself && !ids.teammates.includes(m.user ?? '')) return drop('not-listed')
   if (!typedByPerson(m) && (isOwner || !(itself || postedByTrustedApp(m, ids.apps ?? [])))) return drop('not-proven')
   // Past the two lines above, a post no person typed came from a listed agent. It is never the owner's, so it

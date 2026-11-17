@@ -27,6 +27,7 @@ export function dreamTask(m: { own: string; owner: string }, threads: { place: s
         `1. Today's threads. Read what happened in each one after ${since}: the tasks (\`jq -r 'select(.type=="user" and .timestamp>"${since}") | .message.content | if type=="string" then . else (map(select(.type=="text").text) | join("\\n")) end | select(length>0)' <file>\`).`,
         ...threads.map(t => `   • ${t.place}: ${t.file}`),
         `   Look for times the owner corrected you, said what they prefer, or repeated an ask, and for a method a thread had to work out. For each lasting lesson, update the note in ${m.own} that covers it, or write a new feedback note with the why. Skip one-off facts, anything already saved, and anything private to a teammate.`,
+        '   If the owner asked for the same kind of work in two or more threads and no kagelet does it yet, name it in your reply as a kagelet to make, with those threads, so the next owner task there makes it (kagelets skill).',
       ]
     : ['1. No threads moved since the last dream, so there is nothing new to learn from.']
   return [

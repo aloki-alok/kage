@@ -50,6 +50,9 @@ Only a listed agent's post goes to Jev, at most its first 4,000 characters, with
 | `harness.maxSessions` | `4` | Sessions that run at once. A tag over the limit gets ⏳. |
 | `kagelets.max` | `10` | Kagelets that may run on this install. Past it, by name order, one runs nothing. Kage makes no new one while this many files exist, paused ones included. |
 | `kagelets.needsPerDay` | `5` | Needs one kagelet may send Kage in a day. A need goes to Kage in the kagelet's thread, which answers it or asks you once. Past this many, or after a day with no free session there, a need goes on your waiting list instead. The same need again within a day counts once. |
+| `kagelets.askRunsPerHour` | `4` | Runs that asks from people on a kagelet's `people:` line may start in an hour, per kagelet. An ask while the kagelet is busy, or past this many, waits as a note for its next run. `0` lets asks start no run. |
+| `kagelets.notesKept` | `10` | Notes one kagelet keeps for its next run, per list: the owner's words and Kage's answers in one list, asks from its `people:` line in another. Past this many, the oldest goes. |
+| `kagelets.noteChars` | `2000` | Characters kept of each such note. |
 | `kagelets.measureMinutes` | `60` | How often Kage runs each kagelet's measure, with no model. Each run reads the latest number. |
 | `kagelets.release` | `rules` | Who answers a held shell step of a `tools: all` kagelet that no `allow:` line covers. `rules`: you, each time. `review`: a cheap model may let a low-stakes one run (a local delete, a forced push to a branch that is not protected, a git step that drops work). Every prod, customer, money or access step still comes to you. |
 | `kagelets.reviewsPerDay` | `10` | At `review`, the most held steps the reviewer lets run per kagelet a day. Past it, they come to you. |

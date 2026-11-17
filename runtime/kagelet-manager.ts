@@ -24,13 +24,13 @@ const standings = (store: Pick<Store, 'load'>) => (store.load(STANDING) ?? {}) a
 
 // The owner's answer to Kage's approval card (runtime/sdk-sessions.ts): true only on their yes.
 // tools: the write tools the card grants. measure: a command Kage wrote for the hub to run with no model.
-export type AskOwner = (card: { kagelet: string; tools: string; job: string; measure?: string }) => Promise<boolean>
+export type AskOwner = (card: { kagelet: string; tools: string; job: string; measure?: string; people?: string }) => Promise<boolean>
 
 // The manager's side (Kage's owner sessions, runtime/kage-tools.ts): write, pause, run and remove kagelet files.
 // The hub syncs right after a change, so run works at once; the minute sync applies it anyway.
 // read_command: names one of the install's read commands for db_read. revoke: name is the tool.
 // No field here says who asked: the model fills every one, so none may widen a grant.
-export type Manage = { action: 'save' | 'pause' | 'resume' | 'run' | 'remove' | 'revoke'; name: string; thread?: string; schedule?: string; after?: string; tools?: string[]; job?: string; why?: string; model?: string; model_why?: string; read_command?: string; objective?: string; measure?: string; target?: string }
+export type Manage = { action: 'save' | 'pause' | 'resume' | 'run' | 'remove' | 'revoke'; name: string; thread?: string; schedule?: string; after?: string; tools?: string[]; job?: string; why?: string; model?: string; model_why?: string; read_command?: string; objective?: string; measure?: string; target?: string; people?: string[] }
 export function kageletManager(o: { dir: string; max: number; ledgers: { text(name: 'runs' | 'costs' | 'reports'): string } & Pick<Ledgers, 'add' | 'events'>; sync: (now: number) => void; runNow: (id: string, now: number) => string | undefined; store: Pick<Store, 'load' | 'save'>; envCommand?: string; log: (line: string) => void
   measures?: { approved: (name: string) => string | undefined; approve: (name: string, command: string) => string | undefined; forget: (name: string) => void } }) {
   // Once: the standing approval from before tiers ({ tool, command, at }) covered db_read alone, which is read now.
@@ -120,7 +120,7 @@ export function kageletManager(o: { dir: string; max: number; ledgers: { text(na
       const goal = a.objective || a.measure || a.target ? objectiveOf(new Map(Object.entries({ objective: a.objective ?? '', measure: a.measure ?? '', target: a.target ?? '' }))) : had?.objective
       if (goal && 'error' in goal) return refuse(goal.error)
       const measure = goal && o.measures?.approved(a.name) !== goal.measure ? goal.measure : undefined
-      const fileText = (approved: boolean, standing: string[] = []) => kageletFile({ thread: a.thread ?? '', schedule: a.schedule ?? '', ...(a.after && { after: a.after }), tools, job: a.job ?? '', by, why: a.why ?? '', model, modelWhy, paused: !!had?.paused, approved, standing, ...(goal && { objective: goal }), ...(had?.allow && { allow: had.allow }) })
+      const fileText = (approved: boolean, standing: string[] = []) => kageletFile({ thread: a.thread ?? '', schedule: a.schedule ?? '', ...(a.after && { after: a.after }), tools, job: a.job ?? '', by, why: a.why ?? '', model, modelWhy, paused: !!had?.paused, approved, standing, ...(goal && { objective: goal }), ...(had?.allow && { allow: had.allow }), ...((a.people ?? had?.people) && { people: a.people ?? had!.people }) })
       // Checked as if approved first, so an act tool or a file that would not run is refused before any card.
       const valid = fileText(true)
       if (typeof valid !== 'string') return refuse(valid.error)
@@ -142,9 +142,14 @@ export function kageletManager(o: { dir: string; max: number; ledgers: { text(na
       const kept = writes.filter(t => had?.tools.includes(t) && !had.standing?.includes(t) && (t !== ALL || had.job.trim() === (a.job ?? '').trim()))
       const standing = writes.filter(t => t !== ALL && !kept.includes(t) && yes[t] !== undefined)
       const card = writes.filter(t => !kept.includes(t) && yes[t] === undefined), stands = card.filter(t => t !== ALL)
-      const asked = [...card, ...standing.filter(t => fresh.includes(t)), ...measure ? [`the measure ${measure}`] : []].join(', ')
+      // A person new to its people line can steer every tool it holds, so only the owner adds one.
+      // A kagelet moved to another thread meets new people there, so everyone on its line counts as new.
+      const people = a.people ?? had?.people ?? [], moved = !!had && (a.thread ?? '') !== had.link
+      const newPeople = people.filter(p => moved || !had?.people?.includes(p)).join(', ')
+      const extra = [...measure ? [`the measure ${measure}`] : [], ...newPeople ? [`asks from ${newPeople}`] : []]
+      const asked = [...card, ...standing.filter(t => fresh.includes(t)), ...extra].join(', ')
       if (asked && !ask) return refuse(`only the owner grants ${asked}, and this session cannot ask them`)
-      if ((card.length || measure) && !await ask!({ kagelet: a.name, tools: card.join(', '), job: (a.job ?? '').trim().split('\n')[0]!.slice(0, 300), ...measure && { measure } })) return refuse(`the owner did not approve ${[...card, ...measure ? [`the measure ${measure}`] : []].join(', ')}`)
+      if ((card.length || extra.length) && !await ask!({ kagelet: a.name, tools: card.join(', '), job: (a.job ?? '').trim().split('\n')[0]!.slice(0, 300), ...measure && { measure }, ...newPeople && { people: newPeople } })) return refuse(`the owner did not approve ${[...card, ...extra].join(', ')}`)
       const unpinned = measure && (o.measures ? o.measures.approve(a.name, measure) : 'this hub runs no measures')
       if (unpinned) return refuse(unpinned)
       const text = fileText(true, standing)

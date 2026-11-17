@@ -78,7 +78,9 @@ export function slackTools(c: ToolContext): KageTool[] {
       const a = args as { channel: string; thread_ts: string; users: string[]; text: string; from?: string }
       const key = `${a.channel}:${a.thread_ts}`
       // A call counts only when the owner proved it with the one-time code (connectors/voice.ts): a stranger may be talking.
-      if (!taskChannels.has(a.channel) || ['email', 'whatsapp'].includes(a.channel) || (a.channel === 'voice' && !ownerOnly(a))) return { isError: true, text: 'refused: only a task from a Slack thread or the owner\'s own call may message people' }
+      // WhatsApp is the owner's phone, easier to steal than Slack: its task may message people only after the owner's yes on a Slack card.
+      const fromPhone = a.channel === 'whatsapp' && ownerOnly(a)
+      if (!taskChannels.has(a.channel) || a.channel === 'email' || (a.channel === 'whatsapp' && !fromPhone) || (a.channel === 'voice' && !ownerOnly(a))) return { isError: true, text: 'refused: only a task from a Slack thread or the owner\'s own call may message people' }
       // Anyone but the owner gets the tag, even when their task line names no teammate.
       const asker = ownerTask.get(key) === true ? undefined : askers.get(key) ?? { id: '', name: 'A teammate' }
       const ids = [...a.users, ...a.from ? [a.from] : []]
@@ -93,6 +95,13 @@ export function slackTools(c: ToolContext): KageTool[] {
       if (refusal) return { isError: true, text: refusal }
       const layout = layoutRefusal(a.text)
       if (layout) return { isError: true, text: layout }
+      // Asked last, after every refusal, so the owner never says yes to a message that would not go. The card names
+      // everyone it reaches, by name and id, the person it is sent for too.
+      if (fromPhone) {
+        if (!o.approve) return { isError: true, text: 'refused: from WhatsApp this needs the owner\'s yes on a Slack card, and this session cannot show one. Tell them to ask in Slack.' }
+        await nameMentions(people.map(u => `<@${u}>`).join(' '))
+        if (!await o.approve('message_people', `From WhatsApp: message ${people.map(u => `${names[u] ?? 'someone'} (${u})`).join(', ')}: ${a.text}`, { users: people, text: a.text })) return { isError: true, text: 'The owner said no on the Slack card. Nothing was sent.' }
+      }
       const foot = asker ? { asked: asker.name } : signer ? { from: signer.name } : {}
       let dm: string
       try {

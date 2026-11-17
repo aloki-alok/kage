@@ -38,6 +38,8 @@ export type Hub = {
   heard(m: { chat: string; thread?: string; quoted: string }): void
   // The owner wrote in a thread without a tag: notes for the kagelets working there.
   ownerWrote?(chat: string, thread: string, text: string): void
+  // A thread's kagelets with their people lines (for the gate), and an ask from one of those people: the line to post back.
+  kageletsIn?(chat: string, thread: string): { name: string; people: string[] }[]; kageletAsk?(chat: string, thread: string, name: string, from: string, text: string): string
   // Every post in a channel, bots included, tagged or not (runtime/channel-watch.ts). The hub decides which jobs it wakes.
   channelPost?(post: ChannelPost): void
   // The socket (re)connected: reads each watched channel's posts since its catch-up cursor, so a gap loses none.
@@ -153,7 +155,9 @@ export async function connectSlack(o: { dir: string; appToken: string; userToken
     // AFK sees every message: it watches threads that mention the owner, and mutes threads the owner types in.
     afk?.heard(m)
     const thread = `${m.channel}:${m.thread_ts ?? m.ts}`
-    const t = classify(m, ids, cardOf(m))
+    const t = classify(m, ids, cardOf(m), m.thread_ts ? o.hub.kageletsIn?.(m.channel, m.thread_ts) ?? [] : [])
+    // Handled here and nowhere below: the asker reaches only that kagelet, never a Kage session or the agent loop count.
+    if (t.kind === 'kagelet-ask') { const said = o.hub.kageletAsk?.(m.channel, m.thread_ts!, t.name, m.user!, t.text); if (said) await bot.chat.postMessage({ channel: m.channel, thread_ts: m.thread_ts!, text: said }).catch(() => {}); return }
     if (t.kind === 'drop') {
       // The one place a refusal is logged. Untagged talk is nearly all the hub hears, and would push everything else out of the log.
       if (t.reason !== 'not-tagged') log(`dropped ${m.channel}:${m.thread_ts ?? m.ts} from ${m.user ?? 'no user'}${m.app_id ? ` (app ${m.app_id})` : ''}: ${t.reason}, ${DROPS[t.reason]}`)
