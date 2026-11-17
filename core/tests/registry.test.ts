@@ -5,7 +5,7 @@ import { existsSync, mkdtempSync, readFileSync, statSync, writeFileSync } from '
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { add, appEntry, kindOf, ownerPerson, remove, validAppId, type Entry } from '../registry.ts'
+import { add, appEntry, kindOf, ownerPerson, remove, validAppId, type Entry, pastedId } from '../registry.ts'
 
 const person = (id: string): Entry => ({ kind: 'person', id })
 const agent = (id: string, owner?: string): Entry => ({ kind: 'agent', id, ...(owner && { owner }) })
@@ -149,4 +149,12 @@ describe('kage add and kage remove inside a Kage session', () => {
     assert.equal(JSON.parse(r.conf).people.teammates.length, 0)
     assert.equal(JSON.parse(r.conf).name, 'kage')
   })
+})
+
+test("a mention pasted from Slack, with or without the name Slack adds, reads as the member id; any other word is left as typed", () => {
+  assert.equal(pastedId('<@U0AGENT1|momo>'), 'U0AGENT1')
+  assert.equal(pastedId('<@U0AGENT1>'), 'U0AGENT1')
+  assert.equal(pastedId('U0AGENT1'), 'U0AGENT1')
+  assert.equal(pastedId('@sam'), '@sam')
+  assert.equal(pastedId('A0CH43UQQ3D'), 'A0CH43UQQ3D')
 })

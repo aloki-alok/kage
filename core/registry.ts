@@ -10,6 +10,8 @@ export type Entry =
 
 export const validUserId = (id: string) => /^[UW][A-Z0-9]{2,}$/.test(id)
 // A Slack app id: one plain word.
+// A mention pasted from Slack (<@U…> or <@U…|name>) as its member id. Other words stay as typed.
+export const pastedId = (word: string) => /^<@([UW][A-Z0-9]{2,})(\|[^>]*)?>$/.exec(word.trim())?.[1] ?? word
 export const validAppId = (id: string) => /^A[A-Z0-9]{2,}$/.test(id)
 export const kindOf = (id: string): Entry['kind'] | undefined => (validUserId(id) ? 'person' : validAppId(id) ? 'agent' : undefined)
 
