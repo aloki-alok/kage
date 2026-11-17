@@ -4,7 +4,8 @@
 // chains and messages between kagelets (#93), which the hub hands on with no Kage turn.
 import type { Delivery } from '../core/sessions.ts'
 import type { Task } from '../core/task.ts'
-import { addAllow, askable, budgetLeft, COST_FLAG, costFlags, kageletRows, parseKagelet, type Kagelet } from '../core/kagelets.ts'
+import { askable } from '../core/kagelet-people.ts'
+import { addAllow, budgetLeft, COST_FLAG, costFlags, kageletRows, parseKagelet, type Kagelet } from '../core/kagelets.ts'
 import { heldCommand } from '../core/held.ts'
 import { chainCap, dailyCap, totalCap } from '../core/kagelet-view.ts'
 import type { Config } from '../core/config.ts'
@@ -110,7 +111,7 @@ export function hubKagelets(o: {
   }
   return {
     dir: KAGELETS, kmem, manager, routes, sync, notes, needs, tell, board, measures, ask,
-    peopleIn: (chat: string, thread: string) => askable(parsed(), chat, thread).map(k => ({ name: k.name, people: k.people! })),
+    peopleIn: (chat: string, thread: string) => askable(parsed(), chat, thread).map(k => ({ name: k.name, people: [...k.people ?? [], ...k.owners ?? []] })),
     measure: (now: number) => measures.tick(parsed(), now).catch(e => log('kagelet measure failed', e)),
     lanes: () => grants.keys(),
     // A lane whose file is gone keeps no tools, rather than falling back to approval cards.

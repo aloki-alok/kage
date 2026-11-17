@@ -226,6 +226,17 @@ test('the manager writes a people line on save, keeps it when a later save leave
   assert.match(readFileSync(`${t.dir}/status/job.md`, 'utf8'), /^people: U0AAA1$/m)
   assert.doesNotMatch(await t.m.manage({ action: 'save', name: 'status', ...job, people: ['bob'] }, 7000), /saved status/i)
 })
+test('a new owner takes the owner\'s card like a new asker; one already there takes none, and the line is kept on a later save', async () => {
+  const cards: { owners?: string }[] = []
+  const t = manager()
+  assert.match(await t.m.manage({ action: 'save', name: 'status', ...job, owners: ['U0AAA1'] }, 5000, async c => { cards.push(c); return true }), /saved status/i)
+  assert.deepEqual(cards.map(c => c.owners), ['U0AAA1'])
+  assert.match(await t.m.manage({ action: 'save', name: 'status', ...job }, 6000, async c => { cards.push(c); return true }), /saved status/i)
+  assert.equal(cards.length, 1)
+  assert.match(readFileSync(`${t.dir}/status/job.md`, 'utf8'), /^owners: U0AAA1$/m)
+  assert.match(grantCard({ kagelet: 'status', tools: '', owners: 'U0AAA1' }), /<@U0AAA1>[\s\S]*own/)
+  assert.match(await manager().m.manage({ action: 'save', name: 'status', ...job, owners: ['U0AAA1'] }, 5000), /not saved: only the owner/)
+})
 test('the manager saves a kagelet file the hub syncs at once, and lists who made it and why', async () => {
   const t = manager()
   assert.match(await t.m.manage({ action: 'save', name: 'status', ...job }, 5000), /saved status/i)

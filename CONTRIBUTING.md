@@ -105,6 +105,7 @@ Write logs to stderr only. In a tmux pane, stdout carries the channel protocol, 
 | `guards.ts` | Hook rules that need only the tool name and the sender: private sources, voice calls, Slack posts only through Kage's tools. Where the two memory folders are. |
 | `ledgers.ts` | Reading the ledgers: questions waiting on the owner, what Kage posted, what turns cost, the daily note. |
 | `events.ts` | The event log's row (what happened, never what was said), its 30 days, and a chain read back as `a > b > c` and where it stopped. |
+| `kagelet-people.ts` | Who may ask a kagelet for work: its people and owners lines (one line of Slack ids each, at most 3 owners) and the check of an ask in its thread. |
 | `kagelets.ts` | A kagelet file (thread, schedule or `after:`, grant, job), the grant check, the chain check (no cycle, no missing kagelet, at most 5 deep), standing approvals per write tool and their revoke, the cost caps (off unless set) and the cost flags. |
 | `kagelet-message.ts` | The message one kagelet sends another (an `after:` handoff or `message_kagelet`): its fields, named after A2A's Message, its delivery states, and the check where it enters the hub. |
 | `kagelet-view.ts` | What a terminal shows of kagelets: the `kage top` panel, its keys, and `kage logs <kagelet>`. |

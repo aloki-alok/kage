@@ -10,11 +10,12 @@ import type { KageTool, ToolContext } from '../kage-tools.ts'
 import { ALL } from '../../core/access.ts'
 
 // The owner's card for a kagelet's new tools. tools: all is for this kagelet only; any other write tool's yes stands.
-export const grantCard = (card: { kagelet: string; tools: string; measure?: string; people?: string }) => {
+export const grantCard = (card: { kagelet: string; tools: string; measure?: string; people?: string; owners?: string }) => {
   const asked = card.tools.split(', ').filter(Boolean), named = asked.filter(t => t !== ALL)
   return [`Grant kagelet ${card.kagelet}:`,
     ...asked.includes(ALL) ? ['all tools (shell, files, web, agents), run in a sandbox that keeps the tokens, the settings and Kage\'s code closed. A one-way step (a deploy, a forced push, a DB write, a delete, a send) is held and comes to Kage. This yes is for this kagelet only.'] : [],
     ...card.people ? [`Let ${card.people.split(', ').map(p => `<@${p}>`).join(', ')} ask it for work in its thread. Their asks run inside its grant and never reach Kage.`] : [],
+    ...card.owners ? [`Make ${card.owners.split(', ').map(p => `<@${p}>`).join(', ')} its owners: they may ask it for work in its thread, inside its grant, and never reach Kage.`] : [],
     ...card.measure ? [`Its measure, a command the hub runs on its own clock with no model: ${card.measure}. Your yes is for this exact command and file: a change asks again.`] : [],
     ...named.length ? [`${named.join(', ')}. Your yes stands: a later kagelet that asks for ${named.join(', ')} gets it with no card, until you revoke it (v in kage top, or ask). Your daily note lists each grant made with no card.`] : []].join(' ')
 }
@@ -186,6 +187,7 @@ export function kageletTools(c: ToolContext): KageTool[] {
       objective: s.optional().describe('save: the outcome it works toward, in plain words. With measure and target, or leave all three out to keep its own'),
       measure: s.optional().describe('save: a command the hub runs with no model that prints exactly one line, value: <n>. A new or changed one needs the owner\'s yes on a card'),
       target: s.optional().describe('save: the number to reach, as a comparison: "<= 2" or ">= 500". Every run sees the number and keeps working, met or not'),
+      owners: z.array(s).optional().describe('save: Slack member ids (U...) of up to 3 people who own this kagelet besides you. An owner may ask it for work; a new owner needs your yes on a card. Leave out to keep its own'),
       people: z.array(s).optional().describe('save: Slack member ids (U...) of people who are not the owner or a listed teammate and may ask this kagelet for work by tagging Kage in its thread. Their ask runs inside its grant, never reaches you. Leave out to keep its own'),
     },
     async run(args) {
