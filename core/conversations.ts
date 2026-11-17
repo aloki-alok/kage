@@ -14,9 +14,11 @@ export type Conversation = {
 // A side lane is a second session on the same conversation, beside a busy main one.
 export type Lane = 'main' | `side-${string}`
 
-export function slackConversation(m: { channel: string; ts: string; thread_ts?: string; channel_type?: string }, botDm: string): Conversation {
+// kagePosted: whether Kage posted the message at this ts. In the owner's DM, a thread under the owner's own top-level
+// message belongs to the rolling "dm" session that took that message, or a second session redoes the same ask.
+export function slackConversation(m: { channel: string; ts: string; thread_ts?: string; channel_type?: string }, botDm: string, kagePosted: (ts: string) => boolean): Conversation {
   const kind = m.channel_type === 'im' ? 'dm' : m.channel_type === 'mpim' ? 'group' : 'channel'
-  if (m.channel === botDm && !m.thread_ts) return { connector: 'slack', chat: m.channel, kind: 'dm', agentDm: true }
+  if (m.channel === botDm && (!m.thread_ts || !kagePosted(m.thread_ts))) return { connector: 'slack', chat: m.channel, kind: 'dm', agentDm: true }
   return { connector: 'slack', chat: m.channel, thread: m.thread_ts ?? m.ts, kind }
 }
 

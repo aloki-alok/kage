@@ -6,19 +6,24 @@ const DM = 'DBOT00001'
 
 describe('where a Slack message lives', () => {
   test('a top-level message starts its own thread, and its replies share it', () => {
-    const top = slackConversation({ channel: 'C1', ts: '5.5', channel_type: 'channel' }, DM)
-    const reply = slackConversation({ channel: 'C1', ts: '6.6', thread_ts: '5.5', channel_type: 'channel' }, DM)
+    const top = slackConversation({ channel: 'C1', ts: '5.5', channel_type: 'channel' }, DM, () => false)
+    const reply = slackConversation({ channel: 'C1', ts: '6.6', thread_ts: '5.5', channel_type: 'channel' }, DM, () => false)
     assert.deepEqual(top, { connector: 'slack', chat: 'C1', thread: '5.5', kind: 'channel' })
     assert.deepEqual(reply, top)
   })
-  test("the top level of the owner's DM with the agent is one rolling conversation; a thread in it is its own", () => {
-    assert.deepEqual(slackConversation({ channel: DM, ts: '1.1', channel_type: 'im' }, DM), { connector: 'slack', chat: DM, kind: 'dm', agentDm: true })
-    assert.deepEqual(slackConversation({ channel: DM, ts: '3.3', thread_ts: '1.1', channel_type: 'im' }, DM), { connector: 'slack', chat: DM, thread: '1.1', kind: 'dm' })
+  test("the top level of the owner's DM with the agent is one rolling conversation; a thread under a Kage post is its own", () => {
+    const kagePosted = (ts: string) => ts === '2.2'
+    assert.deepEqual(slackConversation({ channel: DM, ts: '1.1', channel_type: 'im' }, DM, kagePosted), { connector: 'slack', chat: DM, kind: 'dm', agentDm: true })
+    assert.deepEqual(slackConversation({ channel: DM, ts: '3.3', thread_ts: '2.2', channel_type: 'im' }, DM, kagePosted), { connector: 'slack', chat: DM, thread: '2.2', kind: 'dm' })
+  })
+  test("a reply under the owner's own top-level DM joins the rolling conversation, so no second session redoes that ask", () => {
+    const reply = slackConversation({ channel: DM, ts: '3.3', thread_ts: '1.1', channel_type: 'im' }, DM, () => false)
+    assert.equal(sessionKey(reply), 'dm')
   })
   test('DMs, group DMs and channels are told apart', () => {
-    assert.equal(slackConversation({ channel: 'D9', ts: '1.1', channel_type: 'im' }, DM).kind, 'dm')
-    assert.equal(slackConversation({ channel: 'C9', ts: '1.1', channel_type: 'mpim' }, DM).kind, 'group')
-    assert.equal(slackConversation({ channel: 'C9', ts: '1.1', channel_type: 'group' }, DM).kind, 'channel')
+    assert.equal(slackConversation({ channel: 'D9', ts: '1.1', channel_type: 'im' }, DM, () => false).kind, 'dm')
+    assert.equal(slackConversation({ channel: 'C9', ts: '1.1', channel_type: 'mpim' }, DM, () => false).kind, 'group')
+    assert.equal(slackConversation({ channel: 'C9', ts: '1.1', channel_type: 'group' }, DM, () => false).kind, 'channel')
   })
 })
 
