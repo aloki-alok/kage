@@ -1394,6 +1394,7 @@ describe('Slack reads', () => {
       { task: { ...s.task(), agent: { app: 'ATEST0001', tag: 'UAGENT001' } }, at: { channel: 'C1', thread_ts: '5.5' } },
       { task: s.task(), at: { channel: 'C1', thread_ts: '9.9' } },
     ]
+    s.t.onTask(s.task())   // the owner wrote first in C1:5.5, so the teammate's task after it must still be refused
     for (const { task, at } of tries) {
       s.t.onTask(task)
       for (const name of ['slack_search', 'slack_read']) assert.equal((await s.call(name, { ...at, query: 'test', channel_id: 'C0TEST1' })).isError, true, `${name} ${JSON.stringify(at)}`)
