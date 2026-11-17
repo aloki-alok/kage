@@ -33,7 +33,7 @@ type Pick = { model?: string; effort?: EffortLevel }
 type Session = {
   id: string
   kage: Kage
-  sender?: Sender               // who sent the latest task: the guard hook reads it
+  sender?: Sender               // the lowest sender in the turn: the guard hook reads it
   turn: { task: Task; mid: boolean }[]   // tasks the current turn may have read: a safety block reports them. mid: sent mid-turn
   state: 'idle' | 'running' | 'requires_action'
   last: number
@@ -178,10 +178,12 @@ export function sdkSessions(o: {
     // in first. Claude Code says idle only after it read every message (measured); with no state events, only an empty turn counts.
     const send = (m: ToSession) => {
       if (m.type === 'verdict') { s.asks.get(m.request_id)?.(m.behavior); return }
-      s.sender = senderOf(m)
-      if (s.sender === 'owner') s.ownerTools = true
+      const from = senderOf(m)
+      if (from === 'owner') s.ownerTools = true
       const reopen = s.ownerTools && !full && s.state === 'idle' && (sawState ? !unseen : !s.turn.length)
       if (reopen && s.turn.length) o.onTurn?.(key, s.turn.splice(0).map(x => x.task), undefined, true)   // idle: it read and answered them
+      // The turn's lowest sender holds: the owner's mid-turn "thanks" never lifts a teammate's turn to the owner's tools.
+      s.sender = from === 'owner' ? lowest(s.turn) : from
       s.turn.push({ task: m, mid: s.state !== 'idle' })
       s.kage.onTask(m)
       s.state = 'running'
@@ -235,6 +237,7 @@ export function sdkSessions(o: {
             blocked = false
             const done = s.turn.filter(x => !x.mid).map(x => x.task)
             s.turn = s.turn.filter(x => x.mid).map(x => ({ ...x, mid: false }))
+            if (s.turn.length) s.sender = lowest(s.turn)
             if (done.length) o.onTurn?.(key, done, undefined, true)
           }
           if (m.type === 'result' && !sawState) s.state = 'idle'
@@ -332,6 +335,8 @@ const SET_MODEL = 'Switch the model or reasoning effort of this thread, when the
 
 // A task as Claude Code shows a channel message. Attributes are escaped, and the content cannot
 // open or close a channel tag of its own.
+// Who a turn's tools follow: anyone in it who is not the owner, else the owner.
+const lowest = (turn: { task: Task }[]): Sender => turn.map(x => senderOf(x.task)).find(x => x !== 'owner') ?? 'owner'
 const userMessage = (m: Task) => ({ type: 'user', message: { role: 'user', content: channelTag(m) }, parent_tool_use_id: null }) as SDKUserMessage
 
 export function channelTag(m: Task) {
