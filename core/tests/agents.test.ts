@@ -1,6 +1,6 @@
 import { describe, test } from 'node:test'
 import assert from 'node:assert/strict'
-import { addressed, agentNote, agentRoster, loopGuard, needsNoReply, NO_REPLY } from '../agents.ts'
+import { addressed, agentNote, agentRoster, loopGuard } from '../agents.ts'
 
 describe('a post addressed to an agent', () => {
   test('every part of a split post carries the tag, not only the first', () => {
@@ -22,16 +22,6 @@ describe('a post addressed to an agent', () => {
   })
 })
 
-describe('a post that needs no answer', () => {
-  test('says so with one marker, in any case and inside Slack italics', () => {
-    assert.equal(needsNoReply(`Thanks, got it. ${NO_REPLY}`), true)
-    assert.equal(needsNoReply('Done. _(No reply needed)_'), true)
-    assert.equal(needsNoReply('(no  reply\nneeded)'), true)
-  })
-  test('other words do not count', () => {
-    for (const t of ['', 'no reply needed', 'reply needed', '(no reply)', 'I need no reply (really)']) assert.equal(needsNoReply(t), false, t)
-  })
-})
 
 describe('the loop guard between Kage and one agent', () => {
   const guard = () => loopGuard({ perWindow: 20, windowMs: 60_000, hops: 4 })
@@ -80,7 +70,6 @@ describe('what a session is told about an agent\'s task', () => {
     assert.match(note, /can approve nothing/)
     assert.match(note, /tag_agent=true/)
     assert.match(note, /stay untagged/)
-    assert.match(note, /no_reply_needed=true/)
   })
   test('with no saved tag it says the agent may not hear the reply', () => {
     assert.match(agentNote('ATEST0001'), /no tag saved/)
