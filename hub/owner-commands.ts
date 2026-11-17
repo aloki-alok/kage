@@ -3,6 +3,7 @@
 import { log } from '../runtime/log.ts'
 import { limitLine, pauseLine } from '../core/board.ts'
 import { openWaiting } from '../core/ledgers.ts'
+import { findSecret, safeReply } from '../core/outbound.ts'
 import type { Conversation } from '../core/conversations.ts'
 import type { Dispatcher } from '../core/sessions.ts'
 import { ssmEligible } from '../core/ssm.ts'
@@ -72,8 +73,11 @@ export function ownerCommands(o: {
   async function say(text: string, at?: { channel: string; thread_ts: string }): Promise<{ ok: true; channel: string; ts: string } | { refused: string }> {
     const kind = !at ? undefined : at.channel === o.botDm ? 'dm' : store.conversation(`${at.channel}:${at.thread_ts}`)?.conversation.kind
     if (at && !kind) return { refused: 'Kage has no thread there' }
+    // A session's Bash can reach the socket too (the same limit as tell), so the words keep the reply tool's outbound rules.
+    const secret = at && at.channel !== o.botDm ? findSecret(text) : undefined
+    if (secret) return { refused: `this looks like a ${secret}, and a thread is seen by others. Send it in the DM with Kage instead` }
     try {
-      const r = await o.post(text, at && kind && { ...at, kind })
+      const r = await o.post(safeReply(text), at && kind && { ...at, kind })
       log('say', r.channel)
       return { ok: true, ...r }
     } catch (e) { return { refused: `Slack refused the post: ${(e as { data?: { error?: string } }).data?.error ?? (e as Error).message}` } }

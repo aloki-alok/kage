@@ -20,3 +20,16 @@ test('a failed Slack post comes back as a refusal with its reason', async () => 
   const c = ownerCommands({ store: {}, botDm: 'DTEST', post: async () => { throw Object.assign(new Error('x'), { data: { error: 'channel_not_found' } }) } } as never)
   assert.deepEqual(await c.say('hi'), { refused: 'Slack refused the post: channel_not_found' })
 })
+
+test('kage say keeps the outbound rules: no secret into a shared thread, no crowd ping', async () => {
+  const posts: string[] = []
+  const c = ownerCommands({
+    store: { conversation: () => ({ conversation: { kind: 'channel' } }) }, botDm: 'DTEST',
+    post: async (text: string) => { posts.push(text); return { channel: 'X', ts: '9.9' } },
+  } as never)
+  const key = 'xoxb-1234567890-abcdefghij'
+  assert.deepEqual(await c.say(`here ${key}`, { channel: 'CTEST2', thread_ts: '7.7' }), { refused: 'this looks like a Slack token, and a thread is seen by others. Send it in the DM with Kage instead' })
+  assert.deepEqual(await c.say(`here ${key}`), { ok: true, channel: 'X', ts: '9.9' })   // the DM with Kage is the owner's own
+  await c.say('<!channel> look', { channel: 'CTEST2', thread_ts: '7.7' })
+  assert.deepEqual(posts, [`here ${key}`, 'channel look'])
+})

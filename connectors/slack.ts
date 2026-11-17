@@ -59,6 +59,7 @@ export const ownerNote = (m: SlackMessage, ids: { owner: string; botDm: string }
   reason === 'not-tagged' && typedByPerson(m) && m.user === ids.owner && m.channel !== ids.botDm && !!m.thread_ts && m.thread_ts !== m.ts
 
 export async function intake(m: SlackMessage, ack: () => Promise<void>, hub: Pick<Hub, 'take'>, hear: (m: SlackMessage, source: string) => Promise<void>) {
+  delete m.fromSocket   // only kage say sets it (connectors/slack-say.ts), so a Slack event never brings one
   // No channel or ts gives no id to catch a repeat by: such an event runs as heard, unrecorded.
   const source = m.channel && m.ts ? `slack:${m.channel}:${m.ts}` : undefined
   const fresh = !source || hub.take(source, 'slack', JSON.stringify(m))

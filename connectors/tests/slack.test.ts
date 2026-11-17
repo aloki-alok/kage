@@ -219,6 +219,12 @@ describe('a Slack event reaches the inbox before Slack is told it arrived', () =
     await intake(msg, async () => { acked = true }, { take: () => false }, async () => { heard = true })
     assert.deepEqual({ acked, heard }, { acked: true, heard: false })
   })
+  test('a Slack event never carries fromSocket, which only kage say sets', async () => {
+    let payload = '', heard: SlackMessage | undefined
+    await intake({ ...msg, fromSocket: true }, async () => {}, { take: (_, __, p) => ((payload = p ?? ''), true) }, async m => { heard = m })
+    assert.equal(heard?.fromSocket, undefined)
+    assert.equal(JSON.parse(payload).fromSocket, undefined)
+  })
   test('an event with no channel or ts is handled without a record, so two of them never collide', async () => {
     let heard = 0
     const bare = { type: 'message', subtype: 'message_changed' } as unknown as SlackMessage
@@ -377,22 +383,25 @@ test('a throw in channelPost never stops the next hook or the handling of the me
 describe("an app on the owner's Mac posts the owner's words and they run as the owner's task", () => {
   const setup = async (dir: string) => {
     const posts: Record<string, unknown>[] = []
-    const tasks: { key: string; fromOwner: boolean; content: string }[] = []
+    const tasks: { key: string; kind: string; fromOwner: boolean; content: string }[] = []
+    // The inbox: a source id is taken once. Slack's echo of each post goes in first, as it may in real life.
+    const inbox = new Set<string>()
+    const take = (s: string) => !inbox.has(s) && !!inbox.add(s)
     let told = () => {}
     // Fails in a second instead of hanging when no task arrives.
     const delivered = () => Promise.race([new Promise<void>(r => { told = r }), new Promise<void>((_, no) => setTimeout(() => no(new Error('no task delivered')), 1000).unref())])
     const client = (user_id: string) => ({
       auth: { test: async () => ({ team_id: 'TTEST', user_id }) },
       conversations: { open: async () => ({ channel: { id: 'DTEST' } }), history: async () => ({ messages: [] }), info: async () => ({ channel: { name: 'test' } }), replies: async () => ({ messages: [] }) },
-      chat: { getPermalink: async () => ({ permalink: 'https://test.invalid/p' }), postMessage: async (a: Record<string, unknown>) => { posts.push({ as: user_id, ...a }); return { ok: true, ts: `9.${posts.length}` } } },
+      chat: { getPermalink: async () => ({ permalink: 'https://test.invalid/p' }), postMessage: async (a: Record<string, unknown>) => { posts.push({ as: user_id, ...a }); take(`slack:${String(a.channel)}:9.${posts.length}`); return { ok: true, ts: `9.${posts.length}` } } },
       users: { info: async () => ({ user: { real_name: 'Sam Test' } }) },
       reactions: { add: async () => ({ ok: true }), remove: async () => ({ ok: true }) },
     })
     const slack = await connectSlack({
       dir, appToken: 'test', userToken: 'test', bot: client('UBOT1') as never, user: client('UOWNER1') as never,
       name: 'kage', title: 'Kage', teammates: [], apps: [],
-      hub: { posted: () => '', take: () => true, handled: () => {}, heard: () => {},
-        deliver: (c: Conversation, t: { fromOwner: boolean; content: string }) => { tasks.push({ key: sessionKey(c), fromOwner: t.fromOwner, content: t.content }); told(); return 'sent' } } as never,
+      hub: { posted: () => '', take, handled: () => {}, heard: () => {},
+        deliver: (c: Conversation, t: { fromOwner: boolean; content: string }) => { tasks.push({ key: sessionKey(c), kind: c.kind, fromOwner: t.fromOwner, content: t.content }); told(); return 'sent' } } as never,
     })
     return { slack, posts, tasks, delivered }
   }
@@ -425,7 +434,7 @@ describe("an app on the owner's Mac posts the owner's words and they run as the 
       await slack.say('and yesterday?', { channel: 'CTEST2', thread_ts: '7.7', kind: 'channel' })
       await done
       assert.deepEqual(posts, [{ as: 'UOWNER1', channel: 'CTEST2', thread_ts: '7.7', text: 'and yesterday?' }])
-      assert.deepEqual(tasks.map(t => [t.key, t.fromOwner]), [['CTEST2:7.7', true]])
+      assert.deepEqual(tasks.map(t => [t.key, t.kind, t.fromOwner]), [['CTEST2:7.7', 'channel', true]])
       assert.match(tasks[0]!.content, /^Task from Sam: and yesterday\?/)
     } finally {
       rmSync(dir, { recursive: true, force: true })
