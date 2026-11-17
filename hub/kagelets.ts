@@ -103,6 +103,7 @@ export function hubKagelets(o: {
     if (!k) return ''
     notes.asked(k.key, from, text)
     o.runs.emit(k.key, 'people-ask', `${text.length} characters`)
+    if (!k.cron && k.after) return `Noted for ${name}. It runs after ${k.after}, and reads this then.`
     if (!notes.mayRun(k.key, o.idle(k.key), now, kl.askRunsPerHour ?? 4)) return `Noted for ${name}. It reads this on its next run.`
     manager.manage({ action: 'run', name }, now).catch(e => log('kagelet ask run failed', e))
     return `Asked ${name}. It answers here.`

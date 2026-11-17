@@ -87,6 +87,8 @@ export function kageletManager(o: { dir: string; max: number; ledgers: { text(na
       if (a.action === 'run') {
         const r = rows(now).find(x => x.name === a.name)!
         if (r.state !== 'runs') return `${a.name} does not run now: it is ${r.state === 'paused' ? 'paused. Resume it first' : `broken (${r.error})`}.`
+        // ponytail: an after: kagelet starts only from its upstream's end; a direct run needs a lane delivery like kagelet-routes'.
+        if (!r.cron && r.after) return `${a.name} runs only after ${r.after}: run ${r.after} now, and ${a.name} runs when it ends.`
         o.sync(now)
         return o.runNow(`kagelet-${a.name}`, now) ?? `${a.name} is running now. Its report shows in the list when it ends.`
       }

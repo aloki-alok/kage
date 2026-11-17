@@ -610,3 +610,10 @@ test('an edit saved after a resume keeps the resume, so a cap-paused kagelet is 
   await h.manager.manage({ action: 'save', name: 'a', thread: LINK, schedule: '0 9 * * *', tools: ['WebFetch'], job: 'Job of a, edited.', why: 'w' }, NINE + 120_000, async () => true)
   assert.equal(/^resumed: .*$/m.exec(readFileSync(file, 'utf8'))?.[0], resumed)
 })
+
+test('run now of a kagelet that runs only after another says to run that one, instead of naming a missing schedule', async () => {
+  const h = await hub()
+  await h.save('a', { schedule: '0 9 * * *' })
+  await h.save('b', { after: 'a' })
+  assert.equal(await h.manager.manage({ action: 'run', name: 'b' }, NINE), 'b runs only after a: run a now, and b runs when it ends.')
+})
