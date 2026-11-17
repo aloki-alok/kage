@@ -114,7 +114,7 @@ export function startWhatsApp(o: { dir: string; name: string; owner: string; wah
     } catch (e) { log('whatsapp stand-in failed in', logRef(chat), e) } finally { busy.delete(chat) }
   }
 
-  async function onEvent(p: WahaPayload, source?: string) {
+  async function onEvent(p: WahaPayload, source?: string, replayed = false) {
     const m = fromWaha(p)
     if (!m.chat) return
     const action = decideWhatsApp(m, armed, o.name, Date.now())
@@ -122,13 +122,15 @@ export function startWhatsApp(o: { dir: string; name: string; owner: string; wah
     log('whatsapp', action.kind, logRef(m.chat))
     if (action.kind === 'disarm') { armed.delete(action.chat); return }
     if (action.kind === 'stand-in') { void standIn(action.chat); return }
-    armed.set(action.chat, { until: Date.now() + ARM_MS, replies: 0, brief: action.text })
+    // A replay (after a restart or a usage-limit pause) runs the task but never arms the stand-in: the owner may have
+    // disarmed the chat since, and the stand-in answers contacts as the owner.
+    if (!replayed) armed.set(action.chat, { until: Date.now() + ARM_MS, replies: 0, brief: action.text })
     const place = `WhatsApp chat ${logRef(action.chat)}`   // a place is logged and shown: never the number
     o.onTask({ chat: action.chat, place, content: waTaskContent(action.text, place, action.chat, await history(action.chat), o.name, o.owner), ...(source && { source }) })
   }
 
   // A failed event stays unhandled, so the next start tries it again.
-  const run = (p: WahaPayload, source?: string) => onEvent(p, source).then(() => { if (source) o.inbox.handled(source) }, err => log('whatsapp event failed', err))
+  const run = (p: WahaPayload, source?: string, replayed = false) => onEvent(p, source, replayed).then(() => { if (source) o.inbox.handled(source) }, err => log('whatsapp event failed', err))
   // Localhost by default. A WAHA container that reaches the host through a VM gateway needs
   // connectors.whatsapp.hookHost 0.0.0.0: then only the HMAC guards it, so keep the port off the internet.
   const HOST = o.whatsapp.hookHost || '127.0.0.1'
@@ -141,7 +143,7 @@ export function startWhatsApp(o: { dir: string; name: string; owner: string; wah
     // A session can send only to its own chat: the key names it.
     send: async (key: string, text: string) => { await send(key.slice('wa:'.length), text) },
     // A message the last run took but never handled, from the inbox.
-    replay: async (source: string, payload: string) => run(JSON.parse(payload) as WahaPayload, source),
+    replay: async (source: string, payload: string) => run(JSON.parse(payload) as WahaPayload, source, true),
   }
 }
 
