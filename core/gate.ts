@@ -161,6 +161,9 @@ export type Sender = 'owner' | 'teammate' | 'voice'
 export const senderOf = (t: { fromOwner: boolean; meta: { channel: string } }): Sender =>
   t.meta.channel === 'voice' ? (t.fromOwner ? 'owner' : 'voice') : t.fromOwner && t.meta.channel !== 'email' ? 'owner' : 'teammate'
 
+// Who a turn's tools follow: anyone in it who is not the owner, else the owner.
+export const lowestSender = (tasks: { fromOwner: boolean; meta: { channel: string } }[]): Sender => tasks.map(senderOf).find(x => x !== 'owner') ?? 'owner'
+
 // Characters people never see but Claude reads: Unicode tag letters (whole hidden sentences), zero-width
 // spaces, word joiners, byte-order marks, soft hyphens, direction overrides, filler letters, variation
 // selectors and control codes. Kept, because real text needs them: the zero-width joiner and non-joiner

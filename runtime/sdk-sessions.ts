@@ -9,7 +9,7 @@ import { z } from 'zod'
 import { log, logKey } from './log.ts'
 import { makeInbox, type Inbox } from './sdk-inbox.ts'
 import { ownerOnlyTool } from '../core/guards.ts'
-import { senderOf, withoutInvisible, type Sender } from '../core/gate.ts'
+import { lowestSender, senderOf, withoutInvisible, type Sender } from '../core/gate.ts'
 import { certFileEnv, protectConfig, toolRefusal } from './path-guards.ts'
 import { grantRefusal, laneOptions, shellGrant } from '../core/kagelets.ts'
 import { heldCommand } from '../core/held.ts'
@@ -178,13 +178,10 @@ export function sdkSessions(o: {
     // in first. Claude Code says idle only after it read every message (measured); with no state events, only an empty turn counts.
     const send = (m: ToSession) => {
       if (m.type === 'verdict') { s.asks.get(m.request_id)?.(m.behavior); return }
-      const from = senderOf(m)
-      if (from === 'owner') s.ownerTools = true
-      const answered = sawState && s.state === 'idle' && !unseen   // Claude said idle after it read every message: none is still in a turn
+      const from = senderOf(m), answered = sawState && s.state === 'idle' && !unseen   // idle comes only once Claude read every message
+      s.ownerTools ||= from === 'owner'; s.sender = from === 'owner' && !answered ? lowestSender(s.turn.map(x => x.task)) : from   // the owner's mid-turn "thanks" never lifts a teammate's turn
       const reopen = s.ownerTools && !full && s.state === 'idle' && (sawState ? !unseen : !s.turn.length)
       if (reopen && s.turn.length) o.onTurn?.(key, s.turn.splice(0).map(x => x.task), undefined, true)   // idle: it read and answered them
-      // The turn's lowest sender holds: the owner's mid-turn "thanks" never lifts a teammate's turn to the owner's tools.
-      s.sender = from === 'owner' && !answered ? lowest(s.turn) : from
       s.turn.push({ task: m, mid: s.state !== 'idle' })
       s.kage.onTask(m)
       s.state = 'running'
@@ -237,8 +234,7 @@ export function sdkSessions(o: {
             // A task sent mid-turn may be read by the next turn instead, so it stays one turn longer.
             blocked = false
             const done = s.turn.filter(x => !x.mid).map(x => x.task)
-            s.turn = s.turn.filter(x => x.mid).map(x => ({ ...x, mid: false }))
-            if (s.turn.length) s.sender = lowest(s.turn)
+            s.turn = s.turn.filter(x => x.mid).map(x => ({ ...x, mid: false })); if (s.turn.length) s.sender = lowestSender(s.turn.map(x => x.task))
             if (done.length) o.onTurn?.(key, done, undefined, true)
           }
           if (m.type === 'result' && !sawState) s.state = 'idle'
@@ -332,8 +328,6 @@ export function sdkSessions(o: {
   return { runner, running: () => new Set([...sessions.values()].map(s => s.id)), usage: () => [...sessions.values()].find(s => s.run && !s.stopped)?.run!.q.usage_EXPERIMENTAL_MAY_CHANGE_DO_NOT_RELY_ON_THIS_API_YET({ skipBehaviors: true }) }
 }
 
-// Who a turn's tools follow: anyone in it who is not the owner, else the owner.
-const lowest = (turn: { task: Task }[]): Sender => turn.map(x => senderOf(x.task)).find(x => x !== 'owner') ?? 'owner'
 const SET_MODEL = 'Switch the model or reasoning effort of this thread, when the owner or a teammate asks for it in plain words ("use opus max", "go back to the default"). It applies from the next step and stays for the thread. Leave out what they did not ask to change.'
 
 // A task as Claude Code shows a channel message. Attributes are escaped, and the content cannot
