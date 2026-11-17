@@ -7,13 +7,14 @@ A kagelet is a teammate for one job. It runs on its own schedule in a thread, at
 
 ## When to make one
 
-1. Make a kagelet when an owner job recurs. It runs without holding this session open.
-2. Give it `all` when the job needs a shell or files. It runs in the OS sandbox, and the hub holds every one-way step (a deploy, a forced push, a DB write, a delete, a send) for you. The owner says yes on a card for each kagelet that gets it. A one-way step it repeats on purpose (a staging deploy, a forced push to its own branch) can run with no ask when the owner adds an `allow:` line for it to its `job.md`: suggest the exact line to the owner. You never write one.
-3. In the sandbox, Kage's local sockets are closed (gpg and the ssh agent stay open on macOS). Git works in an existing checkout, but `git init`, `git clone` and `git push -u` fail, because the sandbox keeps `.git/config` and `.git/hooks` closed. Set up the checkout before the kagelet runs.
-4. Give it an objective when the job has a number to move (signup errors, views, open tickets): objective, measure and target in manage_kagelet save. The measure prints exactly one line, `value: <n>`. Every run then sees the number and its trend, so it works toward a result, not only a schedule. The owner approves your measure on a card, because the hub runs it as a command.
-5. Keep a one-off task in this session. A kagelet only pays off on a repeat.
-6. Save it with manage_kagelet save and a one-line why, then unschedule the old schedule if there was one. Two jobs that do the same check report twice.
-7. Hand it off in one line, in the thread where it was decided: its name, its job, when it first runs, and that it posts its work in that thread. For example: handed to fude (blog drafts), first draft Wednesday, it posts here, and I step in if it stalls. The people in the thread learn who does the work now, and where to look.
+1. Make a kagelet when an owner job recurs and does work on every run (a draft, a review, research). It runs without holding this session open. A job that only watches for a change stays a probe or channel schedule (watching-jobs skill), because those run no model until something changes.
+2. Make one the second time the owner asks for the same job, in this thread or another you can see. Do not wait to be told: a kagelet is a two-way step.
+3. Give it `all` when the job needs a shell or files. It runs in the OS sandbox, and the hub holds every one-way step (a deploy, a forced push, a DB write, a delete, a send) for you. The owner says yes on a card for each kagelet that gets it. A one-way step it repeats on purpose (a staging deploy, a forced push to its own branch) can run with no ask when the owner adds an `allow:` line for it to its `job.md`: suggest the exact line to the owner. You never write one.
+4. In the sandbox, Kage's local sockets are closed (gpg and the ssh agent stay open on macOS). Git works in an existing checkout, but `git init`, `git clone` and `git push -u` fail, because the sandbox keeps `.git/config` and `.git/hooks` closed. Set up the checkout before the kagelet runs.
+5. Give it an objective when the job has a number to move (signup errors, views, open tickets): objective, measure and target in manage_kagelet save. The measure prints exactly one line, `value: <n>`. Every run then sees the number and its trend, so it works toward a result, not only a schedule. The owner approves your measure on a card, because the hub runs it as a command.
+6. Keep a one-off task in this session. A kagelet only pays off on a repeat.
+7. Save it with manage_kagelet save and a one-line why, then unschedule the old schedule if there was one. Two jobs that do the same check report twice.
+8. Hand it off in one line, in the thread where it was decided: its name, its job, when it first runs, and that it posts its work in that thread. For example: handed to fude (blog drafts), first draft Wednesday, it posts here, and I step in if it stalls. The people in the thread learn who does the work now, and where to look.
 
 ## What a kagelet may use
 

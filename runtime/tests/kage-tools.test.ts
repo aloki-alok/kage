@@ -190,6 +190,23 @@ describe("a session's Kage tools", () => {
     assert.equal((await s.call('unschedule', { channel: 'C1', thread_ts: '5.5', id: s.jobs[0].id })).isError, undefined)
     assert.deepEqual(s.jobs, [])
   })
+  test('the owner\'s recurring model poll is pointed at a kagelet when it is set; a probe, a one-shot or a teammate\'s ask is not', async () => {
+    const owner = setup()
+    owner.t.onTask(owner.task())
+    const poll = await owner.call('schedule', { channel: 'C1', thread_ts: '5.5', cron: '0 9 * * 1-5', prompt: 'draft the weekly signup report' })
+    assert.match(poll.text, /^Kage schedule [0-9a-f]{8} set/)
+    assert.match(poll.text, /kagelet/)
+    for (const [who, a] of [
+      [true, { cron: '*/5 * * * *', prompt: 'say what changed', probe: { command: 'gh pr list' } }],
+      [true, { cron: '0 9 * * *', prompt: 'remind me once', recurring: false }],
+      [false, { cron: '0 9 * * 1-5', prompt: 'draft the weekly signup report' }],
+    ] as const) {
+      const s = setup()
+      s.t.onTask(s.task({ fromOwner: who }))
+      const r = await s.call('schedule', { channel: 'C1', thread_ts: '5.5', ...a })
+      assert.doesNotMatch(r.text, /kagelet/)
+    }
+  })
   test('a probe schedule from the owner is stored at once; a teammate\'s waits for one card that shows the command, and none without a card', async () => {
     const a = { channel: 'C1', thread_ts: '5.5', cron: '*/5 * * * *', prompt: 'say what changed', probe: { command: 'gh pr list', ignore: ['^ts='] } }
     const owner = setup()
