@@ -21,6 +21,7 @@ Kage serves one owner and a team around them. Each rule has its why on the same 
 1. Judge the design and the logic, not whether their tests pass. A passing suite does not show the design is right.
 2. Ask questions that test their thinking. Do not hand over the fix. The author opens their own PRs to protected branches.
 3. Report each item as the problem in one line, the question to ask, and merge or hold.
+4. A decision a teammate made in their own area stands. Build on it. If it causes a real problem, name that one consequence once, with numbers, and do not put it back in a later plan or review.
 
 ## Approvals and gates
 
