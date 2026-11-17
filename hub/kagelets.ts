@@ -85,7 +85,7 @@ export function hubKagelets(o: {
     o.runs.emit(key, 'held', `always allowed by the owner: ${heldCommand(command)}`)
   }
   const board = (key: string) => { const k = parsed().find(x => x.key === key); return k && measures.board(k.name, k.objective) }
-  const manager = kageletManager({ dir: KAGELETS, max: MAX, ledgers, sync, runNow: o.runNow, store, envCommand: kl.dbRead?.command ?? undefined, log, measures, ...(o.openHome && { openHome: o.openHome }) })
+  const manager = kageletManager({ dir: KAGELETS, max: MAX, ledgers, sync, runNow: o.runNow, store, envCommand: kl.dbRead?.command ?? undefined, log, measures, ownersMax: kl.ownersMax ?? 3, ...(o.openHome && { openHome: o.openHome }) })
   const notes = ownerNotes(store, () => ({ kept: kl.notesKept ?? NOTE_CAP.kept, chars: kl.noteChars ?? NOTE_CAP.chars }))
   const routes = kageletRoutes({ dir: KAGELETS, store, ledgers, runs: o.runs, deliver: kageletDeliver(notes, o.toSession, board),
     idle: o.idle, granted: key => grants.has(key), paused: o.paused, capUsd: CAPS.each, chainUsd: CAPS.chain, log, memory: name => kmem.notes(name) })

@@ -49,6 +49,7 @@ Only a listed agent's post goes to Jev, at most its first 4,000 characters, with
 | `claudeToken` | your own Claude login | secrets.json. Kage's own Claude login, so its sessions use its own seat and you see its usage apart from yours. `kage claude-login` saves it. It wins over an `ANTHROPIC_API_KEY` in the hub's environment. A session can print it, so use a login that holds nothing but Kage's work. |
 | `harness.maxSessions` | `4` | Sessions that run at once. A tag over the limit gets ⏳. |
 | `kagelets.max` | `10` | Kagelets that may run on this install. Past it, by name order, one runs nothing. Kage makes no new one while this many files exist, paused ones included. |
+| `kagelets.ownersMax` | `3` | Owners one kagelet may have besides you. A save with more is refused. |
 | `kagelets.needsPerDay` | `5` | Needs one kagelet may send Kage in a day. A need goes to Kage in the kagelet's thread, which answers it or asks you once. Past this many, or after a day with no free session there, a need goes on your waiting list instead. The same need again within a day counts once. |
 | `kagelets.askRunsPerHour` | `4` | Runs that asks from people on a kagelet's `people:` line may start in an hour, per kagelet. An ask while the kagelet is busy, or past this many, waits as a note for its next run. `0` lets asks start no run. |
 | `kagelets.notesKept` | `10` | Notes one kagelet keeps for its next run, per list: the owner's words and Kage's answers in one list, asks from its `people:` line in another. Past this many, the oldest goes. |

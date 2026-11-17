@@ -30,7 +30,7 @@ export const Config = z.strictObject({
   // How long a question waits on the owner before the daily note drops it (hub/owner-digests.ts).
   waiting: z.strictObject({ expireHours: count }).optional(),
   kagelets: z.strictObject({
-    max: count, dailyUsd: money, totalDailyUsd: money, chainUsd: money, needsPerDay: count, askRunsPerHour: count, notesKept: count, noteChars: count, measureMinutes: count, trendRuns: count,
+    max: count, ownersMax: count, dailyUsd: money, totalDailyUsd: money, chainUsd: money, needsPerDay: count, askRunsPerHour: count, notesKept: count, noteChars: count, measureMinutes: count, trendRuns: count,
     // Who answers a held shell step no allow line covers (ADR 0018): rules (the owner only) or review (a cheap model may let a low-stakes one run).
     release: z.enum(['rules', 'review']).optional(), reviewsPerDay: count, reviewModel: text,
     dbRead: z.strictObject({ command: text, maxRows: count }).optional(),

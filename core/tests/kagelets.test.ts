@@ -33,7 +33,7 @@ describe('a kagelet file', () => {
     assert.deepEqual(askable(all, 'CTEST1', '1700000000.123456', 'fude', 'U0OTHER'), [])
     assert.deepEqual(askable(all, 'CTEST1', '1700000000.123456', 'quiet', 'U0AAA1'), [])
   })
-  test('an owners line names up to 3 owners: Slack ids, kept on save; a bad id, a second line or a fourth owner is refused', () => {
+  test('an owners line names owners: Slack ids, kept on save; a bad id or a second line is refused (the count cap is a hub setting)', () => {
     const k = parseKagelet('x', file(`thread: ${LINK}\nschedule: 0 9 * * *\nowners: U0AAA1, U0BBB2`)) as Kagelet
     assert.deepEqual(k.owners, ['U0AAA1', 'U0BBB2'])
     const text = kageletFile({ thread: LINK, schedule: '0 9 * * *', tools: [], job: 'Report.', by: 'kage', why: '', owners: k.owners }) as string
@@ -41,7 +41,6 @@ describe('a kagelet file', () => {
     assert.equal((parseKagelet('x', file(`thread: ${LINK}\nschedule: 0 9 * * *`)) as Kagelet).owners, undefined)
     assert.match((parseKagelet('x', file(`thread: ${LINK}\nschedule: 0 9 * * *\nowners: alice`)) as { error: string }).error, /owners/)
     assert.match((parseKagelet('x', file(`thread: ${LINK}\nschedule: 0 9 * * *\nowners: U0AAA1\nowners: U0CCC3`)) as { error: string }).error, /owners/)
-    assert.match((parseKagelet('x', file(`thread: ${LINK}\nschedule: 0 9 * * *\nowners: U0AAA1, U0BBB2, U0CCC3, U0DDD4`)) as { error: string }).error, /at most 3 owners/)
   })
   test('an owner may ask it for work in its thread with no people line, and nobody else may', () => {
     const k = parseKagelet('fude', file(`thread: ${LINK}\nschedule: 0 9 * * *\nowners: U0AAA1`)) as Kagelet
