@@ -2,6 +2,7 @@
 import { LogLevel } from '@slack/web-api'
 import { createHash } from 'node:crypto'
 import { inspect } from 'node:util'
+import { monitorEventLoopDelay } from 'node:perf_hooks'
 import { repeats } from '../core/log-repeats.ts'
 
 // In a session, stdout is the MCP pipe: every log line goes to stderr. The time lets one line be matched to another.
@@ -16,7 +17,14 @@ export const logKey = (key: string) => key.replace(/wa:(.+)$/, (_, chat: string)
 // Only the Slack library's warnings collapse (a dropped network repeats one every few seconds); Kage's own lines,
 // crashes included, always print.
 const once = repeats(10 * 60_000)
-const slackWarn = (...a: unknown[]) => { for (const l of once(a.map(x => (typeof x === 'string' ? x : inspect(x))).join(' '), Date.now())) log('warn', l) }
+// The hub's longest stall since the last Slack warning. A missed pong next to a long stall means the hub froze, not the network.
+const stall = monitorEventLoopDelay({ resolution: 50 })
+stall.enable()
+const slackWarn = (...a: unknown[]) => {
+  const ms = Math.round(stall.max / 1e6)
+  stall.reset()
+  for (const l of once(a.map(x => (typeof x === 'string' ? x : inspect(x))).join(' '), Date.now())) log('warn', l, `(hub stalled up to ${ms} ms since the last Slack warning)`)
+}
 let level = LogLevel.WARN
 export const logger = {
   debug: () => {},
