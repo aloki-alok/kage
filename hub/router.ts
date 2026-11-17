@@ -328,8 +328,9 @@ limits.restore()
 d.adopt(Object.keys(saved).filter(k => runningAtStart.has(saved[k]!)), Date.now())
 // Threads still open in a terminal (kage attach) stay held: before any connector can deliver a task.
 restoreHolds(DIR, d)
-// A job's notice in its thread as Kage, with no model: as the owner where the bot is not a member. false: not posted.
-const pingThread = async (key: string, text: string, job: string) => { const c = store.conversation(key)?.conversation; if (!c) return false; return postAsKage({ title: Title, bot, user }, c.chat, c.thread, text).then(r => { ledgers.add('posted', [c.chat, r.ts, r.by, key]); return true }, e => { log('could not post a tripwire ping', job, e?.data?.error ?? e); return false }) }
+// A job's notice in its thread as Kage, with no model: as the owner where the bot is not a member. false: not posted,
+// or no stored thread, and then the event-job caller DMs the owner.
+const pingThread = async (key: string, text: string, job: string) => { const c = store.conversation(key)?.conversation; if (!c) return false; return postAsKage({ title: Title, bot, user }, c.chat, c.thread, text).then(r => { ledgers.add('posted', [c.chat, r.ts, r.by, key]); return true }).catch(e => { log('could not post a tripwire ping', job, e?.data?.error ?? e); return false }) }   // never rejects: callers drop the promise
 // Schedules live in the store and run as tasks in their thread (runtime/scheduler.ts).
 const schedules = scheduler({
   store, failed,
