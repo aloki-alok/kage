@@ -24,7 +24,7 @@ const at = (s: string) => new Date(s).getTime()
 
 const open: { close(): void }[] = []
 after(() => open.forEach(h => h.close()))
-async function hub(o: { store?: ReturnType<typeof openStore>; hookPerHour?: number; hookPort?: number; on?: boolean } = {}) {
+async function hub(o: { store?: ReturnType<typeof openStore>; hookPerHour?: number; hookPort?: number; on?: boolean; posts?: boolean } = {}) {
   const brk = { on: false }
   const store = o.store ?? openStore(':memory:')
   store.seen('CTEST1:5.5', { connector: 'slack', chat: 'CTEST1', thread: '5.5', kind: 'channel' }, '#ops', 0)
@@ -40,7 +40,7 @@ async function hub(o: { store?: ReturnType<typeof openStore>; hookPerHour?: numb
   const pings: string[] = []
   const port = o.hookPort ?? await freePort()
   const j = startJobEvents({
-    store, inbox, bot: { chat: { postMessage: async (a: { text: string }) => { pings.push(a.text) } } } as never, notify: t => pings.push(`owner: ${t}`),
+    store, inbox, ping: async (_k, text) => { if (o.posts === false) return false; pings.push(text); return true }, notify: t => pings.push(`owner: ${t}`),
     schedules: sch, event: e => { events.push(`${e.who} ${e.detail}`); ledgers.event(e) }, ledgers,
     tripwires: { hookPort: port, hookPerHour: o.hookPerHour ?? 60, maxKb: 1, ...(o.on === false && { on: false }) },
   })
@@ -52,6 +52,17 @@ const channelJob = { id: 'c1', cron: EVENT, prompt: 'look at the alert', recurri
 const hookJob = { id: 'h1', cron: EVENT, prompt: 'look at the call', recurring: true, trigger: { kind: 'hook' as const, tokenHash: hookTokenHash(TOKEN) } }
 
 describe('event job drills', () => {
+  test('a job notice that cannot be posted in its thread goes to the owner instead', async () => {
+    for (const posts of [true, false]) {
+      const h = await hub({ posts })
+      h.j.add('CTEST1:5.5', channelJob, 0)
+      const unreadable: ChannelHistory = { newest: async () => '9.9', fetch: async () => { throw new Error('channel_not_found') } }
+      for (let i = 0; i < 2; i++) { h.j.channelGap(); await h.j.channelCatchUp(unreadable) }   // the first only sets the start point
+      await new Promise(r => setTimeout(r, 10))
+      assert.deepEqual(h.pings.map(p => p.replace(/ .*/, '')), [posts ? 'I' : 'owner:'])
+    }
+  })
+
   test('a Slack reconnect gap: posts during it wake the job once each, none twice, in one run', async () => {
     const h = await hub()
     assert.equal(h.j.add('CTEST1:5.5', channelJob, 0), undefined)

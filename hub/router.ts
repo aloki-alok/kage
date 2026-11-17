@@ -328,6 +328,8 @@ limits.restore()
 d.adopt(Object.keys(saved).filter(k => runningAtStart.has(saved[k]!)), Date.now())
 // Threads still open in a terminal (kage attach) stay held: before any connector can deliver a task.
 restoreHolds(DIR, d)
+// A job's notice in its thread as Kage, with no model: as the owner where the bot is not a member. false: not posted.
+const pingThread = async (key: string, text: string, job: string) => { const c = store.conversation(key)?.conversation; if (!c) return false; return postAsKage({ title: Title, bot, user }, c.chat, c.thread, text).then(r => { ledgers.add('posted', [c.chat, r.ts, r.by, key]); return true }, e => { log('could not post a tripwire ping', job, e?.data?.error ?? e); return false }) }
 // Schedules live in the store and run as tasks in their thread (runtime/scheduler.ts).
 const schedules = scheduler({
   store, failed,
@@ -335,7 +337,7 @@ const schedules = scheduler({
   ready: key => d.ready(key),
   trusted: key => store.trust(key) === true, job: { end: k => d.reset(k), project: PROJECT, carryChars: () => config.harness?.jobCarryChars ?? 500, laneDefault: () => config.harness?.jobLaneDefault ?? true, freshEvery: () => config.harness?.jobFreshEvery ?? 20, carryCount: () => config.harness?.jobCarry ?? 5, posted: () => ledgers.text('posted') },
   ran: j => ledgers.add('runs', [j.id, j.key]),
-  tripwires: () => config.tripwires ?? {}, event: e => ledgers.event(e), owner: t => void slack.notifyOwner(t), ping: async (s, text) => { const c = store.conversation(s.key)?.conversation; if (!c) return false; return postAsKage({ title: Title, bot, user }, c.chat, c.thread, text).then(r => { ledgers.add('posted', [c.chat, r.ts, r.by, s.key]); return true }, e => { log('could not post a tripwire ping', s.id, e?.data?.error ?? e); return false }) },
+  tripwires: () => config.tripwires ?? {}, event: e => ledgers.event(e), owner: t => void slack.notifyOwner(t), ping: (s, text) => pingThread(s.key, text, s.id),
 })
 // CronCreate jobs moved out of stopped tmux panes (cli/export-crons.ts): adopted once, then retired.
 // Only when no pane survived this start: a pane still running would run each job a second time.
@@ -355,7 +357,7 @@ else if (existsSync(CRONS)) {
   }
 }
 
-const { meeting, voice, replies, replayOf, jobs, clock } = startConnectors({ secrets, conn, store, slack, bot, NAME, CODE, DIR, d, inbox, deliver, placeOf, failed, schedules, event: ledgers.event, ledgers, tripwires: config.tripwires })
+const { meeting, voice, replies, replayOf, jobs, clock } = startConnectors({ secrets, conn, store, slack, bot, ping: pingThread, NAME, CODE, DIR, d, inbox, deliver, placeOf, failed, schedules, event: ledgers.event, ledgers, tripwires: config.tripwires })
 listenForCommands(slack.socket, { user, team: slack.ids.team!, commands: COMMANDS, ledgers })
 
 // Each connector marks its own failures: ⚠️ on a Slack message, a DM line for an email or WhatsApp
