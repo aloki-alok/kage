@@ -16,6 +16,9 @@ export type SlackMessage = {
   files?: { name?: string }[]
   attachments?: { title?: string; text?: string; fallback?: string; pretext?: string; fields?: { title?: string; value?: string }[] }[]
   blocks?: { block_id?: string }[]
+  // Set by the hub only, never by Slack: the owner's words that came in over the local socket (kage say), which the
+  // hub posted as them. Slack's own copy of that post has no client_msg_id, so the gate drops it.
+  fromSocket?: true
 }
 
 // Claude sees no attachment unless the text names it; it then reads the file with the Slack tools.
@@ -26,9 +29,10 @@ export const filesTag = (m: { files?: { name?: string }[] }) =>
 const TYPED_SUBTYPES = new Set([undefined, 'thread_broadcast', 'file_share'])
 
 // A person typed it in a Slack client. An app posting with a person's user token (Kage's own reply
-// fallback, a connector) has their user id but no client_msg_id, and usually an app_id.
+// fallback, a connector) has their user id but no client_msg_id, and usually an app_id. A person at this
+// machine reaches the hub's socket only as the owner's OS user (ADR 0004).
 export const typedByPerson = (m: SlackMessage) =>
-  !m.bot_id && !m.app_id && !!m.client_msg_id && TYPED_SUBTYPES.has(m.subtype)
+  (m.fromSocket || (!m.bot_id && !m.app_id && !!m.client_msg_id)) && TYPED_SUBTYPES.has(m.subtype)
 
 // A listed agent (people.agents, core/registry.ts) posting with a teammate's token: it has an app_id
 // and no client_msg_id. The gate still checks the user id, and never lets it act as the owner. An agent tied

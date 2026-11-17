@@ -2,7 +2,6 @@
 // can be only one). It hears through the owner's user token, passes each message through the gate,
 // and turns a tag into a Task for the hub. Reactions on the tagged message show its state.
 import { SocketModeClient, LogLevel } from '@slack/socket-mode'
-import { writeFileSync } from 'node:fs'
 import type { WebClient } from '@slack/web-api'
 import { log, logger } from '../runtime/log.ts'
 import { agentNote, agentRoster, loopGuard } from '../core/agents.ts'
@@ -16,10 +15,11 @@ import { askedFrom, cardAt, postedBy } from '../core/ledgers.ts'
 import type { Delivery } from '../core/sessions.ts'
 import type { Task } from '../core/task.ts'
 import { startAfk } from './slack-afk.ts'
+import { sayAsOwner } from './slack-say.ts'
+import { keepSocketUp } from './slack-socket.ts'
 import type { JevAfk, JevCheck, Triage } from './jev.ts'
 import { heardLine, writeHeard } from './slack-heard.ts'
 import { emptyRoom } from '../runtime/claude-once.ts'
-import { socketWatch } from '../core/socket-watch.ts'
 import type { Inbox, Saved } from '../runtime/store.ts'
 import { channelHistory, type ChannelHistory, type ChannelPost } from '../runtime/channel-watch.ts'
 
@@ -59,6 +59,7 @@ export const ownerNote = (m: SlackMessage, ids: { owner: string; botDm: string }
   reason === 'not-tagged' && typedByPerson(m) && m.user === ids.owner && m.channel !== ids.botDm && !!m.thread_ts && m.thread_ts !== m.ts
 
 export async function intake(m: SlackMessage, ack: () => Promise<void>, hub: Pick<Hub, 'take'>, hear: (m: SlackMessage, source: string) => Promise<void>) {
+  delete m.fromSocket   // only kage say sets it (connectors/slack-say.ts), so a Slack event never brings one
   // No channel or ts gives no id to catch a repeat by: such an event runs as heard, unrecorded.
   const source = m.channel && m.ts ? `slack:${m.channel}:${m.ts}` : undefined
   const fresh = !source || hub.take(source, 'slack', JSON.stringify(m))
@@ -282,32 +283,10 @@ export async function connectSlack(o: { dir: string; appToken: string; userToken
   }
   socket.on('message', ({ event, ack }) => intake(event as SlackMessage, ack, o.hub, hear))
 
-  // The client reconnects on its own; this catches the times it gives up (core/socket-watch.ts).
-  const watch = socketWatch({ downMs: 3 * 60_000 })
-  // `setup.sh doctor` reads the status file: its first word is the socket's state, its fourth the hub's pid.
-  const status = (state: 'connected' | 'disconnected') => {
-    try { writeFileSync(`${o.dir}/status`, `${state} ${new Date().toISOString()} pid ${process.pid} as @${o.name}\n`, { mode: 0o600 }) } catch {}
-  }
-  socket.on('connected', () => {
-    watch.connected(); status('connected'); log('slack socket connected')
-    o.hub.channelCatchUp?.(channelHistory(a => o.user.conversations.history(a), o.catchUpMax?.() ?? 1000,
-      (m, channel) => { const x = { ...(m as object), channel } as SlackMessage; return isChannelPost(x) ? [postOf(x)] : [] }))
-  })
-  socket.on('disconnected', () => { o.hub.channelGap?.(); watch.down(Date.now()); status('disconnected'); log('slack socket disconnected') })
-  socket.on('reconnecting', () => { o.hub.channelGap?.(); watch.down(Date.now()); status('disconnected'); log('slack socket reconnecting') })
-  // Armed by the first connection, and one restart at a time: a second start() while another is
-  // still opening leaves two sockets, which split Slack events at random.
-  let armed = false, restarting = false
-  socket.once('connected', () => { armed = true })
-  setInterval(() => {
-    if (!armed || restarting) return
-    const v = watch.check(Date.now())
-    if (v === 'ok' || v === 'wait') return
-    log('slack socket down for 3 minutes: restarting it')
-    restarting = true
-    socket.disconnect().catch(() => {}).then(() => socket.start()).catch(e => log('slack socket restart failed', e)).finally(() => { restarting = false })
-    if (v === 'restart and tell') notifyOwner('Slack has not reconnected for 6 minutes, so I may miss tags. I keep retrying. If it lasts, run `kage logs` on the Mac.')
-  }, 30_000).unref()
+  keepSocketUp(socket, { dir: o.dir, name: o.name, gap: () => o.hub.channelGap?.(), notifyOwner })
+  // The socket (re)connected: read each watched channel's posts since its catch-up cursor.
+  socket.on('connected', () => o.hub.channelCatchUp?.(channelHistory(a => o.user.conversations.history(a), o.catchUpMax?.() ?? 1000,
+    (m, channel) => { const x = { ...(m as object), channel } as SlackMessage; return isChannelPost(x) ? [postOf(x)] : [] })))
 
   // A message the last run took but never handled, from the inbox. It runs as if just heard.
   const replay = async (source: string, payload: string) => {
@@ -317,5 +296,5 @@ export async function connectSlack(o: { dir: string; appToken: string; userToken
   }
   // kage reload: the gate reads both lists from ids on every message, so the next message sees the new ones.
   const allow = (l: { teammates: string[]; apps: string[] }) => { ids.teammates = l.teammates; ids.apps = l.apps }
-  return { ids, ownerName, botUser: botAuth.user, socket, failed, notifyOwner, placeOf, nameOf, afk, replay, allow, start: () => socket.start() }
+  return { ids, ownerName, botUser: botAuth.user, socket, failed, notifyOwner, placeOf, nameOf, afk, replay, allow, say: sayAsOwner({ user, ids, hub: o.hub, hear }), start: () => socket.start() }
 }

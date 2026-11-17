@@ -91,7 +91,9 @@ export function classify(m: SlackMessage, ids: Ids, card?: string, kagelets: { n
     // Approvals count only in the private DM, where the prompts are sent. Slack keeps the
     // backticks when the owner pastes code.
     const plain = text.replaceAll('`', '').trim()
-    if (card) {
+    // A card is answered in Slack only: the socket is open to a session's own shell (runtime/session-link.ts), so a
+    // yes from there could approve its own card. Under a card, words from the socket stay a plain task.
+    if (card && !m.fromSocket) {
       // Never a task: a new session for this thread would ask for the same tool call again.
       const behavior = CARD_YES.test(plain) ? 'allow' : CARD_NO.test(plain) ? 'deny' : null
       if (CARD_ALWAYS.test(plain)) return { kind: 'verdict', request_id: card, behavior: 'allow', always: true }

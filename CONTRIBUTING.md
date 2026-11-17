@@ -69,7 +69,7 @@ Write logs to stderr only. In a tmux pane, stdout carries the channel protocol, 
 | `hub/job-events.ts` | Jobs that an event wakes: it builds the channel watches and the job webhook server (`connectors/job-hooks.ts`) from the `tripwires.*` settings, rebuilds every watch from the stored triggers at start, and gives the router one place for `schedule`, `unschedule`, the Slack hooks and the webhook replay. |
 | `hub/kagelets.ts` | Kagelets in the hub: the minute sync of their files into schedules and grants, the cost flags and caps, their memory, the manager's side, the owner's notes to one, and the chains between them. |
 | `hub/telemetry.ts` | Telemetry in the hub (ADR 0019): the install id, the minute export job, Claude Code's telemetry env for every session, and the crash code written before exit. |
-| `hub/owner-commands.ts` | What the owner asks from their terminal or DM: the status line, `kage tell` and `kage relay`. |
+| `hub/owner-commands.ts` | What the owner asks from their terminal or DM: the status line, `kage tell`, `kage relay`, and `say` (an app on this Mac posts as the owner). |
 | `plugin/server.ts` | For tmux panes only: serves Kage's tools over MCP inside each pane and relays approvals. |
 | `plugin/private-data-guard.ts` | The plugin hook (`hooks/hooks.json`) that runs the rules in `core/guards.ts` and `runtime/path-guards.ts` inside tmux panes. The SDK runner applies the same rules in process. |
 | `core/` | Pure rules. See the table below. |
