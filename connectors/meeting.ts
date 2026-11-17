@@ -43,7 +43,7 @@ export function connectMeeting(o: {
   let chain: Promise<unknown> = Promise.resolve()
 
   // done: notes started. bad: nothing to take notes on. retry: not run now, and the same body may come again.
-  async function handle(body: string): Promise<'done' | 'bad' | 'retry'> {
+  async function handle(body: string, source: string): Promise<'done' | 'bad' | 'retry'> {
     let raw: unknown
     try { raw = JSON.parse(body) } catch { return 'bad' }
     const m = parseMeeting(raw)
@@ -59,7 +59,7 @@ export function connectMeeting(o: {
     const task: Task = {
       type: 'task', fromOwner: false, content: meetingTask(m),
       meta: { channel: o.botDm, thread_ts: thread, place, permalink: m.link },
-      origin: { channel: o.botDm, ts: thread },
+      origin: { channel: o.botDm, ts: thread }, source,
     }
     if (o.deliver({ connector: 'slack', chat: o.botDm, thread, kind: 'dm' }, task, place) === 'failed') o.notify(`Could not start a session for ${place}.`)
     cap.add(t)   // only work that ran counts toward the cap
@@ -69,7 +69,7 @@ export function connectMeeting(o: {
   // One transcript at a time, so the cap is exact. Only done work keeps its id: anything else is
   // untaken, so a resend of the same body runs instead of being taken for a duplicate.
   const run = (body: string, source: string) => {
-    const next = chain.then(() => handle(body)).then(
+    const next = chain.then(() => handle(body, source)).then(
       r => { if (r === 'done') o.inbox.handled(source); else o.untake(source); return r },
       e => { o.untake(source); throw e })
     chain = next.catch(() => {})

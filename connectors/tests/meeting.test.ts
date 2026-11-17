@@ -11,7 +11,7 @@ async function setup(perHour = 100, pollMs = 2000) {
   let clock = Date.now()
   let throwing = false
   const posts: string[] = []
-  const tasks: { key: string; content: string; fromOwner: boolean; channel?: string }[] = []
+  const tasks: { key: string; content: string; fromOwner: boolean; channel?: string; source?: string }[] = []
   const told: string[] = []
   let ts = 100
   const ended: string[] = []
@@ -20,7 +20,7 @@ async function setup(perHour = 100, pollMs = 2000) {
     untake: s => store.untake(s),
     inbox: { take: (s, c, p) => store.take(s, c, p, Date.now()), handled: s => store.handled(s), has: s => store.has(s) },
     post: async text => { posts.push(text); return String(ts++) },
-    deliver: (c, task) => { if (throwing) throw new Error('runner down'); tasks.push({ key: c.connector === 'voice' ? `voice:${c.chat}` : `${c.chat}:${c.thread}`, content: task.content, fromOwner: task.fromOwner, channel: task.meta.channel }); return 'sent' },
+    deliver: (c, task) => { if (throwing) throw new Error('runner down'); tasks.push({ key: c.connector === 'voice' ? `voice:${c.chat}` : `${c.chat}:${c.thread}`, content: task.content, fromOwner: task.fromOwner, channel: task.meta.channel, source: task.source }); return 'sent' },
   })
   const port = await m.listening
   const send = (b: string, auth = `Bearer ${TOKEN}`) => fetch(`http://127.0.0.1:${port}/meeting`, { method: 'POST', body: b, headers: { authorization: auth, 'content-type': 'application/json' } })
@@ -36,6 +36,7 @@ test('a transcript opens one DM thread per meeting and runs at teammate trust', 
     assert.equal((await t.send(body('B'))).status, 202)
     assert.deepEqual(t.tasks.map(x => x.key), ['DB:100', 'DB:101'])
     assert.equal(t.tasks[0]!.fromOwner, false)
+    assert.match(t.tasks[0]!.source ?? '', /^meeting:[0-9a-f]{32}$/)   // so a usage-limit pause can hold it for a replay
     assert.match(t.posts[0]!, /Meeting:\* A <https:\/\/meet\.google\.com\/abc-defg-hij\|open>/)
     assert.match(t.tasks[0]!.content, /> \[00:03\] Jane: Kim owns the quote\./)
   } finally { t.m.close() }

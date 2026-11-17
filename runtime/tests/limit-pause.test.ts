@@ -57,6 +57,22 @@ describe('a turn that ends on the usage limit', () => {
     assert.deepEqual(h.p.paused(), { until: 55 * MIN, held: 1 })
     assert.deepEqual(h.replayed, [])
   })
+  test('a WhatsApp, GitHub or meeting message is held and replayed too, not only a Slack one', async () => {
+    for (const [source, connector] of [['wa:true_1@c.us_AAA', 'whatsapp'], ['github:d-1', 'github'], ['meeting:ab12', 'meeting']] as const) {
+      const h = hub()
+      const t: Task = { type: 'task', content: 'a message', fromOwner: true, source,
+        meta: { channel: 'whatsapp', thread_ts: '1@c.us', place: 'WhatsApp chat', permalink: '' }, origin: { channel: 'whatsapp', ts: '1@c.us' } }
+      h.store.take(source, connector, 'payload', 0)
+      assert.equal(h.p.hold('wa:1@c.us', t, 0), false)
+      h.p.delivered('wa:1@c.us', t)
+      h.p.handled(source)   // the connector is done with it once delivered
+      h.p.turn('wa:1@c.us', [t], { kind: 'rate_limit', until: 55 * MIN }, 1000)
+      assert.deepEqual(h.store.held().map(r => r.source), [source], connector)
+      assert.deepEqual(h.logged.filter(l => l.startsWith('cannot hold')), [], connector)
+      await h.p.tick(55 * MIN)
+      assert.deepEqual(h.replayed, [`${source} payload`], connector)
+    }
+  })
   test('a turn that ends well marks its message handled, and only then', () => {
     const h = hub()
     const t = slackTask('7.7')

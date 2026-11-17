@@ -81,7 +81,7 @@ export function startConnectors(o: {
       const task: Task = {
         type: 'task', content: t.content, fromOwner: true,
         meta: { channel: 'whatsapp', thread_ts: t.chat, place: t.place, permalink: '' },
-        origin: { channel: 'whatsapp', ts: t.chat },
+        origin: { channel: 'whatsapp', ts: t.chat }, ...(t.source && { source: t.source }),
       }
       log('whatsapp task in', logRef(t.chat))
       if (deliver({ connector: 'whatsapp', chat: t.chat, kind: 'chat' }, task, t.place) === 'failed') failed(task)
