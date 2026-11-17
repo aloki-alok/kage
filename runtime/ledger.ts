@@ -16,8 +16,8 @@ export type Ledgers = ReturnType<typeof openLedgers>
 // trail: the hub passes its log, so every row and event is a line in hub.log too. Panes pass none.
 // added: every row, as written, for a listener in the same process (the hub's run timing hears posted rows).
 export function openLedgers(dir: string, now = () => new Date().toISOString(), trail?: (line: string) => void, added?: (name: LedgerName, cells: string[]) => void) {
-  const db = new DatabaseSync(`${dir}/kage.db`)
-  db.exec('pragma journal_mode = wal; pragma busy_timeout = 5000')
+  const db = new DatabaseSync(`${dir}/kage.db`, { timeout: 5000 })   // the wait is set before the first lock (runtime/store.ts)
+  db.exec('pragma journal_mode = wal')
   db.exec(`create table if not exists ledger (
     id integer primary key autoincrement,   -- the order rows were written in
     name text not null, at text not null,

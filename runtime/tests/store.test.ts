@@ -313,3 +313,15 @@ test('a store from before triggers opens twice, adds both columns once, and read
   assert.equal(s.schedules()[0]!.trigger, undefined)
   assert.deepEqual(s.jobState('old'), { fails: 0 })
 })
+
+test('opening the store waits while the old hub flushes its log on exit, instead of failing the new hub start', async () => {
+  const path = join(mkdtempSync(join(tmpdir(), 'kage-lock-')), 'kage.db')
+  openStore(path).close()
+  const { spawn } = await import('node:child_process')
+  // The old hub's close copies its write log into the file and holds the lock while it does.
+  const old = spawn(process.execPath, ['-e', `const { DatabaseSync } = require('node:sqlite'); const d = new DatabaseSync(${JSON.stringify(path)}); d.exec('pragma wal_autocheckpoint = 0; create table if not exists big (x)'); d.exec('begin'); const s = d.prepare('insert into big values (?)'); for (let i = 0; i < 60000; i++) s.run('x'.repeat(200)); d.exec('commit'); console.log('closing'); d.close()`])
+  await new Promise(r => old.stdout.once('data', r))
+  const until = Date.now() + 1500
+  while (Date.now() < until) assert.doesNotThrow(() => openStore(path).close())
+  await new Promise(r => old.once('exit', r))
+})
