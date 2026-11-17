@@ -9,7 +9,7 @@ const review = (n: number) => JSON.stringify({ action: 'submitted', repository: 
 async function setup(postMs = 0, perHour = 100, store: Store = openStore(':memory:')) {
   const posts: { text: string; thread?: string }[] = []
   const tasks: { key: string; content: string; fromOwner: boolean }[] = []
-  const told: string[] = []
+  const told: string[] = [], sources: (string | undefined)[] = []
   let ts = 100
   let failing = () => false
   let throwing = false
@@ -17,7 +17,7 @@ async function setup(postMs = 0, perHour = 100, store: Store = openStore(':memor
     saved: store, secret: SECRET, login: 'me', port: 0, botDm: 'DB', perHour, notify: (t: string) => void told.push(t),
     inbox: { take: (s, c, p) => store.take(s, c, p, Date.now()), handled: s => store.handled(s), has: s => store.has(s) },
     post: async (text, thread) => { await new Promise(r => setTimeout(r, postMs)); if (failing()) return undefined; posts.push({ text, ...(thread && { thread }) }); return String(ts++) },
-    deliver: (c, task) => { if (throwing) throw new Error('runner down'); tasks.push({ key: `${c.chat}:${c.thread}`, content: task.content, fromOwner: task.fromOwner === true }); return 'sent' },
+    deliver: (c, task) => { if (throwing) throw new Error('runner down'); tasks.push({ key: `${c.chat}:${c.thread}`, content: task.content, fromOwner: task.fromOwner === true }); sources.push(task.source); return 'sent' },
   })
   const port = await gh.listening
   const send = (body: string, type = 'pull_request_review', sig: string | undefined = undefined, id = '') => {
@@ -25,7 +25,7 @@ async function setup(postMs = 0, perHour = 100, store: Store = openStore(':memor
     if (id) headers['x-github-delivery'] = id
     return fetch(`http://127.0.0.1:${port}/github`, { method: 'POST', body, headers })
   }
-  return { gh, store, posts, tasks, told, send, failPosts: (f: () => boolean) => { failing = f }, throwOnDeliver: () => { throwing = true } }
+  return { gh, store, posts, tasks, told, sources, send, failPosts: (f: () => boolean) => { failing = f }, throwOnDeliver: () => { throwing = true } }
 }
 test('a signed event the owner cares about opens one DM thread per pull request, and runs at teammate trust', async () => {
   const t = await setup()
@@ -64,6 +64,7 @@ test('a redelivery runs once, and Slack markup in a title is shown, never acted 
     const once = (id: string) => t.send(body, 'pull_request_review', sig, id)
     await once('d-1'); await once('d-1')
     assert.equal(t.tasks.length, 1)
+    assert.deepEqual(t.sources, ['github:d-1'])   // so a usage-limit pause can hold it for a replay
     assert.doesNotMatch(t.posts[0]!.text, /<!channel>|<https:\/\/evil/)
   } finally { t.gh.close() }
 })

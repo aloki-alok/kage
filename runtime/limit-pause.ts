@@ -12,7 +12,7 @@ export type Limit = { kind: 'rate_limit' | 'overloaded'; until?: number; window?
 const RETRY = { rate_limit: 15 * 60_000, overloaded: 5 * 60_000 }
 
 // A Slack task's inbox id, as connectors/slack.ts takes it. Other tasks have no inbox message to replay.
-const sourceOf = (t: Task) => (t.origin.ts && !t.scheduled ? `slack:${t.origin.channel}:${t.origin.ts}` : undefined)
+const sourceOf = (t: Task) => (t.scheduled ? undefined : t.source ?? (t.origin.ts ? `slack:${t.origin.channel}:${t.origin.ts}` : undefined))
 
 export function limitPause(o: {
   store: Pick<Store, 'delivered' | 'hold' | 'held' | 'release' | 'handled' | 'load' | 'save'>

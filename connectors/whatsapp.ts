@@ -14,7 +14,7 @@ import { bridgeAlert, decideWhatsApp, fromWaha, guardPrompt, standInPrompt, waOu
 
 export const wahaUrl = (set?: string | null) => set || 'http://127.0.0.1:3198'
 
-export type WaTask = { chat: string; place: string; content: string }
+export type WaTask = { chat: string; place: string; content: string; source?: string }
 const ARM_MS = 60 * 60_000
 
 // A webhook body above this is refused unread: WAHA events are a few KB.
@@ -114,7 +114,7 @@ export function startWhatsApp(o: { dir: string; name: string; owner: string; wah
     } catch (e) { log('whatsapp stand-in failed in', logRef(chat), e) } finally { busy.delete(chat) }
   }
 
-  async function onEvent(p: WahaPayload) {
+  async function onEvent(p: WahaPayload, source?: string) {
     const m = fromWaha(p)
     if (!m.chat) return
     const action = decideWhatsApp(m, armed, o.name, Date.now())
@@ -124,11 +124,11 @@ export function startWhatsApp(o: { dir: string; name: string; owner: string; wah
     if (action.kind === 'stand-in') { void standIn(action.chat); return }
     armed.set(action.chat, { until: Date.now() + ARM_MS, replies: 0, brief: action.text })
     const place = `WhatsApp chat ${logRef(action.chat)}`   // a place is logged and shown: never the number
-    o.onTask({ chat: action.chat, place, content: waTaskContent(action.text, place, action.chat, await history(action.chat), o.name, o.owner) })
+    o.onTask({ chat: action.chat, place, content: waTaskContent(action.text, place, action.chat, await history(action.chat), o.name, o.owner), ...(source && { source }) })
   }
 
   // A failed event stays unhandled, so the next start tries it again.
-  const run = (p: WahaPayload, source?: string) => onEvent(p).then(() => { if (source) o.inbox.handled(source) }, err => log('whatsapp event failed', err))
+  const run = (p: WahaPayload, source?: string) => onEvent(p, source).then(() => { if (source) o.inbox.handled(source) }, err => log('whatsapp event failed', err))
   // Localhost by default. A WAHA container that reaches the host through a VM gateway needs
   // connectors.whatsapp.hookHost 0.0.0.0: then only the HMAC guards it, so keep the port off the internet.
   const HOST = o.whatsapp.hookHost || '127.0.0.1'
