@@ -12,7 +12,7 @@ import { agentTag, filesTag, postText, typedByPerson, type SlackMessage } from '
 import type { SlackFile } from '../core/slack-files.ts'
 import { saveFiles } from '../runtime/slack-files.ts'
 import { filesFolderName, parseSessionKey, sessionKey, slackConversation, type Conversation, type Lane } from '../core/conversations.ts'
-import { askedFrom, cardAt } from '../core/ledgers.ts'
+import { askedFrom, cardAt, postedBy } from '../core/ledgers.ts'
 import type { Delivery } from '../core/sessions.ts'
 import type { Task } from '../core/task.ts'
 import { startAfk } from './slack-afk.ts'
@@ -139,6 +139,7 @@ export async function connectSlack(o: { dir: string; appToken: string; userToken
     if (m.channel !== ids.botDm || m.user !== ids.owner || !m.thread_ts || m.thread_ts === m.ts) return undefined
     return cardAt(o.hub.posted(), m.channel, m.thread_ts)
   }
+  const kagePosted = (ts: string) => { const tsv = o.hub.posted(); return postedBy(tsv, ids.botDm, ts) !== undefined || cardAt(tsv, ids.botDm, ts) !== undefined }
 
 
   // A channel post as a watching job reads it: the text quoted as data, like every other person's words.
@@ -190,7 +191,7 @@ export async function connectSlack(o: { dir: string; appToken: string; userToken
     }
     if (t.kind === 'stop') {
       react(m.channel, m.ts, PICKED_UP)
-      const text = o.hub.stop(slackConversation(m, ids.botDm), t.now, m.user!)
+      const text = o.hub.stop(slackConversation(m, ids.botDm, kagePosted), t.now, m.user!)
       return void bot.chat.postMessage({ channel: m.channel, thread_ts: m.thread_ts ?? m.ts, text }).catch(e => log('could not answer a stop', e?.data?.error ?? e))
     }
     // An agent over its turn limit with Kage: dropped like any refusal, and the owner hears of it once an hour at most.
@@ -251,7 +252,7 @@ export async function connectSlack(o: { dir: string; appToken: string; userToken
     // A side task gets a lane of its own on the same conversation.
     const r = asked
       ? o.hub.deliver(asked, task, place)
-      : o.hub.deliver(slackConversation(m, ids.botDm), task, t.side ? `${place} (side)` : place, t.side ? `side-${m.ts}` : 'main', m.user)
+      : o.hub.deliver(slackConversation(m, ids.botDm, kagePosted), task, t.side ? `${place} (side)` : place, t.side ? `side-${m.ts}` : 'main', m.user)
     if (r === 'queued' || r === 'held') react(m.channel, m.ts, WAITING)
     else if (r === 'sent' && replaying.has(m.ts)) unreact(m.channel, m.ts, WAITING)
     if (r === 'failed') failed(task)
@@ -272,7 +273,7 @@ export async function connectSlack(o: { dir: string; appToken: string; userToken
   // Kage hears a tag through message events; an app_mention is only acknowledged, so Slack does not resend it.
   socket.on('app_mention', async ({ ack }) => { await ack() })
   async function hear(m: SlackMessage, source: string) {
-    const k = m.channel ? sessionKey(slackConversation(m, ids.botDm)) : ''
+    const k = m.channel ? sessionKey(slackConversation(m, ids.botDm, kagePosted)) : ''
     const next = (queue.get(k) ?? Promise.resolve()).then(() => onMessage(m)).catch(e => log('message handling failed', e))
     queue.set(k, next)
     await next

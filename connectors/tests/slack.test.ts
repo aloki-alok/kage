@@ -8,6 +8,7 @@ import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import type { SlackMessage } from '../../core/slack-message.ts'
+import { sessionKey, type Conversation } from '../../core/conversations.ts'
 
 const msg = { type: 'message', channel: 'CTEST1', ts: '5.5', user: 'UTEST1', text: 'hi' } as SlackMessage
 
@@ -263,6 +264,32 @@ test('a bot post in a channel reaches channelPost, quoted, and is still dropped 
     assert.equal(heard[0]!.channel, 'CTEST2')
     assert.equal(heard[0]!.bot, true)
     assert.match(heard[0]!.quoted, /^> \[other:bot 7\.7\] disk full on web-1$/)
+  } finally {
+    rmSync(dir, { recursive: true, force: true })
+  }
+})
+
+test("in the owner's DM, a reply under their own message goes to the same session as that message, and a reply under a Kage post keeps its own", async () => {
+  const dir = mkdtempSync(join(tmpdir(), 'kage-dm-thread-'))
+  const keys: string[] = []
+  try {
+    const client = (user_id: string) => ({
+      auth: { test: async () => ({ team_id: 'TTEST', user_id }) },
+      conversations: { open: async () => ({ channel: { id: 'DTEST' } }), history: async () => ({ messages: [] }), info: async () => ({ channel: { name: 'test' } }), replies: async () => ({ messages: [] }) },
+      chat: { getPermalink: async () => ({ permalink: 'https://test.invalid/p' }) },
+      users: { info: async () => ({ user: { real_name: 'Sam Test' } }) },
+      reactions: { add: async () => ({ ok: true }), remove: async () => ({ ok: true }) },
+    })
+    const slack = await connectSlack({
+      dir, appToken: 'test', userToken: 'test', bot: client('UBOT1') as never, user: client('UOWNER1') as never,
+      name: 'kage', title: 'Kage', teammates: [], apps: [],
+      hub: { posted: () => '1\tDTEST\t2.2\tbot\tdm', handled: () => {}, heard: () => {}, deliver: (c: Conversation) => { keys.push(sessionKey(c)); return 'sent' } } as never,
+    })
+    const dm = (ts: string, thread_ts?: string) => JSON.stringify({ type: 'message', channel: 'DTEST', channel_type: 'im', ts, ...(thread_ts && { thread_ts }), user: 'UOWNER1', client_msg_id: `m${ts}`, text: 'how is it going?' })
+    await slack.replay('s1', dm('1.1'))
+    await slack.replay('s2', dm('1.5', '1.1'))   // under the owner's own message
+    await slack.replay('s3', dm('2.5', '2.2'))   // under a Kage post
+    assert.deepEqual(keys, ['dm', 'dm', 'DTEST:2.2'])
   } finally {
     rmSync(dir, { recursive: true, force: true })
   }
