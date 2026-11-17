@@ -54,7 +54,8 @@ function fakeSlack() {
       calls.push(`${who} file ${a.channel_id} ${a.thread_ts} ${a.filename}`)
       return {}
     },
-    reactions: { add: async (a: { channel: string; name: string }) => { calls.push(`${who} react ${a.channel} ${a.name}`) } },
+    reactions: { add: async (a: { channel: string; name: string }) => { calls.push(`${who} react ${a.channel} ${a.name}`) },
+      remove: async (a: { channel: string; name: string }) => { calls.push(`${who} unreact ${a.channel} ${a.name}`) } },
     users: { info: async () => ({ user: { real_name: 'Sam' } }) },
   })
   return { calls, posts, bot: client('bot'), user: client('owner') }
@@ -163,10 +164,19 @@ describe("a session's Kage tools", () => {
     assert.ok(!s.calls.some(c => c.includes('react')))
     await s.call('reply', { channel: 'C1', thread_ts: '5.5', text: 'Which org?', mark: 'question' })
     await s.call('reply', { channel: 'C1', thread_ts: '5.5', text: 'done', mark: 'done' })
-    assert.deepEqual(s.calls.filter(c => c.includes('react')), ['owner react C1 scroll', 'owner react C1 crossed_swords'])
+    assert.deepEqual(s.calls.filter(c => c.includes('react')), ['owner react C1 scroll', 'owner unreact C1 scroll', 'owner react C1 crossed_swords'])   // waiting ends, so its mark goes
     s.t.onTask(s.task({ channel: 'C2' }))
     await s.call('reply', { channel: 'C2', thread_ts: '5.5', text: '42', mark: 'answer' })
     assert.ok(s.calls.includes('owner react C2 dagger_knife'))
+  })
+  test('a long private reply stays in one thread: the parts after the first go under it, not loose in the DM', async () => {
+    const s = setup()
+    s.t.onTask(s.task())
+    const long = Array.from({ length: 120 }, (_, i) => `line ${i} ${'x'.repeat(50)}`).join('\n')
+    await s.call('reply', { channel: 'C1', thread_ts: '5.5', text: long, private: true, wide: true })
+    const parts = s.posts.filter(p => p.channel === 'DBOT')
+    assert.ok(parts.length > 1)
+    assert.ok(parts.slice(1).every(p => p.thread_ts !== undefined && p.thread_ts === (parts[0]!.thread_ts ?? '9.1')), JSON.stringify(parts.map(p => p.thread_ts)))
   })
   test('when the owner answers a question with a new tag, the finished task marks both messages', async () => {
     const s = setup()
