@@ -52,6 +52,16 @@ test('a due schedule runs as a task in its own thread, with the trust it was set
   assert.match(task.content, /^Scheduled run of job j1 \(\*\/15 \* \* \* \*\)/)
   assert.match(task.content, /check the queue$/)
 })
+test("a schedule made at the owner's trust runs at a teammate's once a teammate tags its thread: trust only falls", () => {
+  const t = setup()
+  t.owner.add('C1:5.5')
+  t.s.add('C1:5.5', job, at('2026-11-03T10:01:00'))
+  t.s.tick(at('2026-11-03T10:15:05'))
+  t.owner.delete('C1:5.5')   // a teammate's task reached the thread
+  t.s.tick(at('2026-11-03T10:30:05'))
+  t.owner.add('C1:5.5')
+  assert.deepEqual(t.sent.map(x => x[1].fromOwner), [true, false])
+})
 test('a run that cannot reach a session is reported, and a one-shot is gone after it runs', () => {
   const t = setup('failed')
   t.s.add('C1:5.5', { ...job, recurring: false, cron: '15 10 3 11 *' }, new Date('2026-11-03T10:01:00').getTime())

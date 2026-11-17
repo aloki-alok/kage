@@ -74,7 +74,7 @@ export function scheduler(o: {
     const c = store.conversation(s.key)
     if (!c) { log('schedule for an unknown thread', s.id, s.key); return false }
     const task: Task = {
-      type: 'task', fromOwner, content,
+      type: 'task', fromOwner: fromOwner && o.trusted(s.key), content,   // trust only falls: a thread a teammate tagged since runs at theirs
       meta: { channel: c.conversation.chat, thread_ts: c.conversation.thread ?? '', place: c.place, permalink: '' },
       origin: { channel: c.conversation.chat, ts: '' },
       scheduled: true, job: s.id,

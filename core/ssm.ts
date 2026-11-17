@@ -33,4 +33,5 @@ export function startSessionCall(args: unknown): PluginCall | { error: string } 
 }
 
 // A Slack thread of the owner, or its lane. Email, WhatsApp, voice and another agent's keys never qualify, whoever sent the task.
-export const ssmEligible = (key: string) => /^(dm|[CDG][A-Z0-9]+:\d+\.\d+)(#side-.+)?$/.test(key)
+// Nor does a dream: it reads every session's words, a teammate's or an email sender's included.
+export const ssmEligible = (key: string) => /^(dm|[CDG][A-Z0-9]+:\d+\.\d+)(#side-.+)?$/.test(key) && !/#side-k?dream(-|$)/.test(key)

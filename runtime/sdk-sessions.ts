@@ -9,7 +9,7 @@ import { z } from 'zod'
 import { log, logKey } from './log.ts'
 import { makeInbox, type Inbox } from './sdk-inbox.ts'
 import { ownerOnlyTool } from '../core/guards.ts'
-import { senderOf, withoutInvisible, type Sender } from '../core/gate.ts'
+import { lowestSender, senderOf, withoutInvisible, type Sender } from '../core/gate.ts'
 import { certFileEnv, protectConfig, toolRefusal } from './path-guards.ts'
 import { grantRefusal, laneOptions, shellGrant } from '../core/kagelets.ts'
 import { heldCommand } from '../core/held.ts'
@@ -33,7 +33,7 @@ type Pick = { model?: string; effort?: EffortLevel }
 type Session = {
   id: string
   kage: Kage
-  sender?: Sender               // who sent the latest task: the guard hook reads it
+  sender?: Sender               // the lowest sender in the turn: the guard hook reads it
   turn: { task: Task; mid: boolean }[]   // tasks the current turn may have read: a safety block reports them. mid: sent mid-turn
   state: 'idle' | 'running' | 'requires_action'
   last: number
@@ -178,8 +178,8 @@ export function sdkSessions(o: {
     // in first. Claude Code says idle only after it read every message (measured); with no state events, only an empty turn counts.
     const send = (m: ToSession) => {
       if (m.type === 'verdict') { s.asks.get(m.request_id)?.(m.behavior); return }
-      s.sender = senderOf(m)
-      if (s.sender === 'owner') s.ownerTools = true
+      const from = senderOf(m), answered = sawState && s.state === 'idle' && !unseen   // idle comes only once Claude read every message
+      s.ownerTools ||= from === 'owner'; s.sender = from === 'owner' && !answered ? lowestSender(s.turn.map(x => x.task)) : from   // the owner's mid-turn "thanks" never lifts a teammate's turn
       const reopen = s.ownerTools && !full && s.state === 'idle' && (sawState ? !unseen : !s.turn.length)
       if (reopen && s.turn.length) o.onTurn?.(key, s.turn.splice(0).map(x => x.task), undefined, true)   // idle: it read and answered them
       s.turn.push({ task: m, mid: s.state !== 'idle' })
@@ -234,7 +234,7 @@ export function sdkSessions(o: {
             // A task sent mid-turn may be read by the next turn instead, so it stays one turn longer.
             blocked = false
             const done = s.turn.filter(x => !x.mid).map(x => x.task)
-            s.turn = s.turn.filter(x => x.mid).map(x => ({ ...x, mid: false }))
+            s.turn = s.turn.filter(x => x.mid).map(x => ({ ...x, mid: false })); if (s.turn.length) s.sender = lowestSender(s.turn.map(x => x.task))
             if (done.length) o.onTurn?.(key, done, undefined, true)
           }
           if (m.type === 'result' && !sawState) s.state = 'idle'

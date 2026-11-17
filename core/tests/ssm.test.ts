@@ -63,6 +63,6 @@ describe('which threads may hold a relay token', () => {
     for (const k of ['dm', 'C0123ABC:1730.55', 'D0123ABC:1730.55', 'G0123ABC:1730.55', 'dm#side-x']) assert.equal(ssmEligible(k), true, k)
   })
   test('email, WhatsApp, voice, another agent and an odd key may not', () => {
-    for (const k of ['mail:abc', 'wa:123', 'voice:xyz', 'other/dm', 'other/C0123ABC:1730.55', 'x', '']) assert.equal(ssmEligible(k), false, k)
+    for (const k of ['mail:abc', 'wa:123', 'voice:xyz', 'other/dm', 'other/C0123ABC:1730.55', 'x', '', 'dm#side-dream', 'C0123ABC:1730.55#side-kdream-news']) assert.equal(ssmEligible(k), false, k)
   })
 })
