@@ -156,5 +156,5 @@ test("a mention pasted from Slack, with or without the name Slack adds, reads as
   assert.equal(pastedId('<@U0AGENT1>'), 'U0AGENT1')
   assert.equal(pastedId('U0AGENT1'), 'U0AGENT1')
   assert.equal(pastedId('@sam'), '@sam')
-  assert.equal(pastedId('A0CH43UQQ3D'), 'A0CH43UQQ3D')
+  assert.equal(pastedId('A0TESTAPP1'), 'A0TESTAPP1')
 })
