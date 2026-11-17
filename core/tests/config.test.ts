@@ -92,6 +92,7 @@ KAGE_WA_MODEL=opus
 KAGE_WAHA_URL=http://127.0.0.1:4000
 KAGE_WA_HOOK_HOST=0.0.0.0
 KAGE_WA_HOOK_PORT=4001
+KAGE_WA_CHECK_MINUTES=2
 KAGE_COMMANDS=/lookup=/work/lookup.mjs,/other=/work/other.mjs
 SLACK_APP_TOKEN=xapp-test-fake
 SLACK_USER_TOKEN=xoxp-test-fake
@@ -255,7 +256,7 @@ describe('docs/settings.md', () => {
 
 describe('which keys a session may change on its own', () => {
   test('limits, models, AFK, Jev thresholds, job lanes, tripwire numbers, ports and the browser block list are safe', () => {
-    for (const k of ['waiting.expireHours', 'kagelets.max', 'kagelets.dailyUsd', 'kagelets.totalDailyUsd', 'kagelets.chainUsd', 'kagelets.needsPerDay', 'kagelets.measureMinutes', 'kagelets.trendRuns', 'afk.on', 'afk.model', 'harness.jobModel', 'harness.jobFreshEvery', 'harness.jobCarry', 'harness.jobCarryChars', 'harness.jobLaneDefault', 'jev.threshold', 'jev.model', 'tripwires.timeoutSec', 'tripwires.maxKb', 'tripwires.failPing', 'tripwires.patternMax', 'tripwires.lineMax', 'tripwires.maxPosts', 'tripwires.catchUpMax', 'tripwires.seenMax', 'tripwires.hookPerHour', 'connectors.voice.port', 'connectors.voice.max', 'connectors.github.perHour', 'connectors.browser.port', 'connectors.whatsapp.model', 'connectors.whatsapp.hookPort']) assert.equal(settingTier(k), 'safe', k)
+    for (const k of ['waiting.expireHours', 'kagelets.max', 'kagelets.dailyUsd', 'kagelets.totalDailyUsd', 'kagelets.chainUsd', 'kagelets.needsPerDay', 'kagelets.measureMinutes', 'kagelets.trendRuns', 'afk.on', 'afk.model', 'harness.jobModel', 'harness.jobFreshEvery', 'harness.jobCarry', 'harness.jobCarryChars', 'harness.jobLaneDefault', 'jev.threshold', 'jev.model', 'tripwires.timeoutSec', 'tripwires.maxKb', 'tripwires.failPing', 'tripwires.patternMax', 'tripwires.lineMax', 'tripwires.maxPosts', 'tripwires.catchUpMax', 'tripwires.seenMax', 'tripwires.hookPerHour', 'connectors.voice.port', 'connectors.voice.max', 'connectors.github.perHour', 'connectors.browser.port', 'connectors.whatsapp.model', 'connectors.whatsapp.hookPort', 'connectors.whatsapp.checkMinutes']) assert.equal(settingTier(k), 'safe', k)
   })
   test('anything that grants power needs the owner: people, a command, a connector on, harness, and any key not listed', () => {
     for (const k of ['people.teammates', 'people.agents', 'connectors.call.command', 'kagelets.dbRead.command', 'kagelets.dbRead.maxRows', 'kagelets.release', 'kagelets.reviewsPerDay', 'kagelets.reviewModel', 'connectors.commands', 'connectors.email.on', 'connectors.voice.on', 'connectors.whatsapp.on', 'connectors.whatsapp.hookHost', 'harness.maxSessions', 'harness.sandbox', 'harness.route', 'harness.cwd', 'autoUpdate', 'name', 'connectors.email.address', 'jev.agents', 'connectors.browser.block', 'sharedTools', 'tripwires.on', 'tripwires.env', 'tripwires.hookPort', 'tripwires.hookHost']) assert.equal(settingTier(k), 'power', k)

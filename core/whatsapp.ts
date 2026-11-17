@@ -97,3 +97,30 @@ export function guardPrompt(brief: string, history: WaLine[], reply: string, own
 export const waOutgoing = (text: string, title: string) => `${text}\n\n_${kageFooter(title)}_`
 // Kage's earlier messages come back in the history: without the footer, so a model reading them never copies it.
 export const withoutFooter = (text: string) => text.replace(/\n\n_🥷 [^\n]*_$/u, '')
+
+// The WAHA bridge (#351). The container name and the QR script come from waha/compose.yaml and waha/qr.sh.
+// What one look found: no answer, or the HTTP code of /api/sessions/default and its status.
+export type BridgeSeen = { reached: false } | { reached: true; code: number; status?: string }
+const CONTAINER = 'kage-waha'
+
+// Undefined when the bridge works. Else one line: what is wrong, then the fix. kage doctor and the hub's DM print it.
+export function bridgeProblem(s: BridgeSeen, at: { url: string; qr: string }): string | undefined {
+  if (!s.reached) return `WhatsApp bridge does not answer at ${at.url}: run docker start ${CONTAINER} (first time: the steps in docs/settings.md, "WhatsApp")`
+  if (s.code === 401 || s.code === 403) return `WhatsApp bridge refused the API key: the container reads WAHA_API_KEY from secrets.json only at its start, so run docker restart ${CONTAINER}`
+  if (s.code === 404) return `WhatsApp has no session yet: link your phone with ${at.qr}`
+  if (s.code < 200 || s.code > 299) return `WhatsApp bridge answered ${s.code}: run docker logs ${CONTAINER} to see why`
+  if (s.status === 'WORKING') return undefined
+  if (s.status === 'STARTING') return 'WhatsApp session is STARTING: wait a minute, then check again'
+  return `WhatsApp session is ${s.status ?? 'unknown'}, not WORKING: link your phone again with ${at.qr}`
+}
+
+// The hub's check on its clock: one DM when the bridge goes down, one when it is back, none while nothing changed.
+// Every container restart passes through STARTING, so one look at it changes nothing. STARTING twice in a row is down.
+type BridgeState = { down: boolean; starting: boolean }
+export function bridgeAlert(was: BridgeState, seen: BridgeSeen, at: { url: string; qr: string }): BridgeState & { dm?: string } {
+  const starting = seen.reached && seen.status === 'STARTING'
+  if (starting && !was.starting) return { down: was.down, starting }
+  const problem = bridgeProblem(seen, at)
+  if (!problem) return was.down ? { down: false, starting, dm: 'WhatsApp is back: @kage tags in WhatsApp are heard again.' } : { down: false, starting }
+  return was.down ? { down: true, starting } : { down: true, starting, dm: `WhatsApp is down, so @kage tags in WhatsApp are not heard. ${problem}` }
+}

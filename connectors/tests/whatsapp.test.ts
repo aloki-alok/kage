@@ -5,7 +5,8 @@ import { createServer } from 'node:http'
 import type { AddressInfo } from 'node:net'
 import { tmpdir } from 'node:os'
 import { openStore } from '../../runtime/store.ts'
-import { wahaHandler, wahaIntake } from '../whatsapp.ts'
+import { bridgeClock, wahaHandler, wahaIntake, wahaSeen } from '../whatsapp.ts'
+import type { BridgeSeen } from '../../core/whatsapp.ts'
 
 describe('a WhatsApp webhook reaches the inbox before WAHA hears 200', () => {
   const inboxOf = (s: ReturnType<typeof openStore>) => ({ take: (a: string, c: string, p: string | null) => s.take(a, c, p, 1), handled: (a: string) => s.handled(a), has: (a: string) => s.has(a) })
@@ -86,5 +87,126 @@ describe('the WAHA webhook refuses a caller before it does any work', () => {
   })
   test('a handler built with an empty key is refused at build time, so nobody can sign with ""', () => {
     assert.throws(() => wahaHandler('', { take: () => true, handled: () => {}, has: () => false }, () => {}))
+  })
+})
+
+describe('a look at the WAHA bridge', () => {
+  async function waha(answer: (path: string, key?: string) => [number, unknown]) {
+    const server = createServer((req, res) => {
+      const [code, body] = answer(req.url!, req.headers['x-api-key'] as string | undefined)
+      res.writeHead(code, { 'content-type': 'application/json' }).end(JSON.stringify(body))
+    })
+    await new Promise<void>(ok => server.listen(0, '127.0.0.1', ok))
+    return { url: `http://127.0.0.1:${(server.address() as AddressInfo).port}`, close: () => server.close() }
+  }
+  test('pings, then reads the default session with the API key', async () => {
+    const seen: string[] = []
+    const w = await waha((path, key) => { seen.push(`${path} ${key}`); return path === '/ping' ? [200, { message: 'pong' }] : [200, { name: 'default', status: 'WORKING' }] })
+    assert.deepEqual(await wahaSeen(w.url, 'k1'), { reached: true, code: 200, status: 'WORKING' })
+    assert.deepEqual(seen, ['/ping k1', '/api/sessions/default k1'])
+    w.close()
+  })
+  test('a refused key comes back as its code', async () => {
+    const w = await waha(path => path === '/ping' ? [200, {}] : [401, {}])
+    assert.deepEqual(await wahaSeen(w.url, 'bad'), { reached: true, code: 401 })
+    w.close()
+  })
+  test('a bridge that hangs past the timeout is not reached', async () => {
+    const server = createServer(() => {})
+    await new Promise<void>(ok => server.listen(0, '127.0.0.1', ok))
+    assert.deepEqual(await wahaSeen(`http://127.0.0.1:${(server.address() as AddressInfo).port}`, 'k1', 200), { reached: false })
+    server.closeAllConnections(); server.close()
+  })
+  test('a failed ping comes back as its code, and the session is not asked', async () => {
+    const seen: string[] = []
+    const w = await waha(path => { seen.push(path); return [502, {}] })
+    assert.deepEqual(await wahaSeen(w.url, 'k1'), { reached: true, code: 502 })
+    assert.deepEqual(seen, ['/ping'])
+    w.close()
+  })
+  test('nothing listening is not reached', async () => {
+    const w = await waha(() => [200, {}])
+    w.close()
+    assert.deepEqual(await wahaSeen(w.url, 'k1'), { reached: false })
+  })
+})
+
+describe('the hub checks the bridge on its clock and DMs only on a change', () => {
+  const at = { url: 'http://127.0.0.1:3198', qr: '/kage/waha/qr.sh' }
+  const DOWN: BridgeSeen = { reached: false }, UP: BridgeSeen = { reached: true, code: 200, status: 'WORKING' }
+  const STARTING: BridgeSeen = { reached: true, code: 200, status: 'STARTING' }
+  function hub(store = openStore(':memory:'), o: { on?: boolean; minutes?: number } = {}) {
+    const dms: string[] = []
+    let now = UP, slackUp = true
+    const jobs = bridgeClock({ on: o.on ?? true, minutes: o.minutes, look: async () => now, at, state: store, notify: async t => { if (slackUp) dms.push(t); return slackUp } })
+    return { store, dms, jobs, check: () => jobs[0]!.run(0), set: (s: BridgeSeen) => { now = s }, slack: (up: boolean) => { slackUp = up } }
+  }
+  test('the job runs every connectors.whatsapp.checkMinutes, 5 when unset', () => {
+    assert.equal(hub(undefined, { minutes: 2 }).jobs[0]!.every, 2 * 60_000)
+    assert.equal(hub().jobs[0]!.every, 5 * 60_000)
+  })
+  test('a container restart (STARTING, then WORKING) sends nothing', async () => {
+    const h = hub()
+    h.set(STARTING); await h.check()
+    h.set(UP); await h.check()
+    assert.deepEqual(h.dms, [])
+  })
+  test('STARTING on two looks in a row is down: one DM', async () => {
+    const h = hub()
+    h.set(STARTING); await h.check(); await h.check(); await h.check()
+    assert.equal(h.dms.length, 1)
+    assert.match(h.dms[0]!, /STARTING.*wait a minute/)
+  })
+  test('STARTING while down keeps it down, so WORKING after it says it is back', async () => {
+    const h = hub()
+    h.set(DOWN); await h.check()
+    h.set(STARTING); await h.check()
+    assert.equal(h.store.load('whatsapp-bridge-down'), true)
+    h.set(UP); await h.check()
+    assert.equal(h.dms.length, 2)
+    assert.match(h.dms[1]!, /back/)
+  })
+  test('a DM Slack refused is sent again on the next look, not lost', async () => {
+    const h = hub()
+    h.slack(false); h.set(DOWN); await h.check()
+    assert.equal(h.store.load('whatsapp-bridge-down'), undefined)
+    h.slack(true); await h.check()
+    assert.equal(h.dms.length, 1)
+    assert.match(h.dms[0]!, /down/)
+    assert.equal(h.store.load('whatsapp-bridge-down'), true)
+  })
+  test('WhatsApp turned off while down, then on: no stray back DM', async () => {
+    const first = hub()
+    first.set(DOWN); await first.check()
+    assert.deepEqual(hub(first.store, { on: false }).jobs, [])
+    const again = hub(first.store)
+    await again.check()
+    assert.deepEqual(again.dms, [])
+  })
+  test('down, down, up, up: one DM down and one back', async () => {
+    const h = hub()
+    h.set(DOWN); await h.check(); await h.check()
+    h.set(UP); await h.check(); await h.check()
+    assert.equal(h.dms.length, 2)
+    assert.match(h.dms[0]!, /down.*docker start kage-waha/)
+    assert.match(h.dms[1]!, /back/)
+  })
+  test('a hub that restarts while the bridge is still down does not DM again', async () => {
+    const first = hub()
+    first.set(DOWN); await first.check()
+    const second = hub(first.store)
+    second.set(DOWN); await second.check()
+    assert.deepEqual(second.dms, [])
+    second.set(UP); await second.check()
+    assert.equal(second.dms.length, 1)
+  })
+  test('a bridge that was always up never DMs', async () => {
+    const h = hub()
+    for (let i = 0; i < 5; i++) await h.check()
+    assert.deepEqual(h.dms, [])
+    assert.equal(h.store.load('whatsapp-bridge-down'), undefined)
+    // The same hub does DM when the bridge goes down, so the silence above is the rule, not a notify that never fires.
+    h.set(DOWN); await h.check()
+    assert.equal(h.dms.length, 1)
   })
 })

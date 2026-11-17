@@ -1,6 +1,6 @@
 import { describe, test } from 'node:test'
 import assert from 'node:assert/strict'
-import { decideWhatsApp, fromWaha, standInPrompt, guardPrompt, waTaskContent, waOutgoing, withoutFooter, MAX_STAND_IN_REPLIES, type Arming, type WaMessage } from '../whatsapp.ts'
+import { bridgeAlert, bridgeProblem, decideWhatsApp, fromWaha, standInPrompt, guardPrompt, waTaskContent, waOutgoing, withoutFooter, MAX_STAND_IN_REPLIES, type Arming, type BridgeSeen, type WaMessage } from '../whatsapp.ts'
 
 const NOW = 1_000_000
 const CHAT = '919000000001@c.us'
@@ -130,5 +130,59 @@ describe('a WhatsApp message Kage sends says it is Kage', () => {
   test('the footer comes off when the message is read back as history, and nothing else does', () => {
     assert.equal(withoutFooter(waOutgoing('See you at 5.', 'Kage')), 'See you at 5.')
     assert.equal(withoutFooter('_🥷 is my favourite emoji_'), '_🥷 is my favourite emoji_')
+  })
+})
+
+describe('the WAHA bridge check names what is wrong and its fix', () => {
+  const at = { url: 'http://127.0.0.1:3198', qr: '/kage/waha/qr.sh' }
+  test('a WORKING session is no problem', () => {
+    assert.equal(bridgeProblem({ reached: true, code: 200, status: 'WORKING' }, at), undefined)
+  })
+  test('no answer: start the container', () => {
+    assert.match(bridgeProblem({ reached: false }, at)!, /does not answer at http:\/\/127\.0\.0\.1:3198.*docker start kage-waha/)
+  })
+  test('a refused key: the container must read the key in secrets.json', () => {
+    assert.match(bridgeProblem({ reached: true, code: 401 }, at)!, /refused the API key.*docker restart kage-waha/)
+  })
+  test('no session, or one that is not WORKING: link the phone again with the QR script', () => {
+    assert.match(bridgeProblem({ reached: true, code: 404 }, at)!, /\/kage\/waha\/qr\.sh/)
+    for (const status of ['SCAN_QR_CODE', 'FAILED', 'STOPPED']) assert.match(bridgeProblem({ reached: true, code: 200, status }, at)!, new RegExp(`${status}, not WORKING.*/kage/waha/qr\\.sh`))
+  })
+  test('a session still starting says to wait, and any other answer points at the logs', () => {
+    assert.match(bridgeProblem({ reached: true, code: 200, status: 'STARTING' }, at)!, /STARTING.*wait a minute/)
+    assert.match(bridgeProblem({ reached: true, code: 500 }, at)!, /answered 500.*docker logs kage-waha/)
+  })
+})
+
+describe('the hub DMs once when the bridge goes down and once when it is back', () => {
+  const at = { url: 'http://127.0.0.1:3198', qr: '/kage/waha/qr.sh' }
+  const DOWN: BridgeSeen = { reached: false }, UP: BridgeSeen = { reached: true, code: 200, status: 'WORKING' }
+  const STARTING: BridgeSeen = { reached: true, code: 200, status: 'STARTING' }, QR: BridgeSeen = { reached: true, code: 200, status: 'SCAN_QR_CODE' }
+  const was = (down: boolean, starting = false) => ({ down, starting })
+  test('the first failed check marks it down and DMs the problem', () => {
+    const r = bridgeAlert(was(false), DOWN, at)
+    assert.equal(r.down, true)
+    assert.match(r.dm!, /@kage tags in WhatsApp are not heard.*does not answer.*docker start kage-waha/)
+  })
+  test('more failed checks, even with another problem, send nothing', () => {
+    assert.deepEqual(bridgeAlert(was(true), QR, at), { down: true, starting: false })
+  })
+  test('the first good check after a failure says it is back, then nothing', () => {
+    const r = bridgeAlert(was(true), UP, at)
+    assert.equal(r.down, false)
+    assert.match(r.dm!, /back/)
+    assert.deepEqual(bridgeAlert(was(false), UP, at), { down: false, starting: false })
+  })
+  test('one look at STARTING is no change: no DM, and the down flag stays as it was', () => {
+    assert.deepEqual(bridgeAlert(was(false), STARTING, at), { down: false, starting: true })
+    assert.deepEqual(bridgeAlert(was(true), STARTING, at), { down: true, starting: true })
+  })
+  test('STARTING on the next look too is down, with the wait line', () => {
+    const r = bridgeAlert(was(false, true), STARTING, at)
+    assert.equal(r.down, true)
+    assert.match(r.dm!, /STARTING.*wait a minute/)
+  })
+  test('STARTING then WORKING, as a container restart looks, sends nothing', () => {
+    assert.deepEqual(bridgeAlert(was(false, true), UP, at), { down: false, starting: false })
   })
 })

@@ -1,5 +1,7 @@
 // What `kage doctor` decides from the facts cli/doctor/ gathers. Pure: no file, process or network here (ADR 0001).
 // The output format is read by people and by the release soak gate (runtime/release.ts looks for "All good"): keep it.
+import { bridgeProblem, type BridgeSeen } from './whatsapp.ts'
+
 export type Line = { kind: 'ok' | 'fail' | 'note'; text: string }
 const ok = (text: string): Line => ({ kind: 'ok', text })
 const fail = (text: string): Line => ({ kind: 'fail', text })
@@ -106,3 +108,9 @@ export const chromeLine = (seenMs: number, nowSec: number, runs?: string, disk?:
     : ok(`Chrome extension connected${runs ? ` (v${runs})` : ''}`)
 
 export const pathNote = (onPath: boolean): Line | undefined => onPath ? undefined : note('kage is not on your PATH: run ./setup.sh link to type kage <command> anywhere')
+
+// Checked only when WhatsApp is on (connectors/whatsapp.ts wahaSeen looks).
+export function whatsappLine(s: BridgeSeen, at: { url: string; qr: string }): Line {
+  const p = bridgeProblem(s, at)
+  return p ? fail(p) : ok('WhatsApp bridge up, session WORKING')
+}

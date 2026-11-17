@@ -9,7 +9,10 @@ import { claudeOnce, emptyRoom } from '../runtime/claude-once.ts'
 import { readBody } from './webhook.ts'
 import type { Inbox } from '../runtime/store.ts'
 import { findSecret, guardVerdict } from '../core/outbound.ts'
-import { decideWhatsApp, fromWaha, guardPrompt, standInPrompt, waOutgoing, waTaskContent, withoutFooter, type Arming, type WahaPayload, type WaLine } from '../core/whatsapp.ts'
+import type { Job } from '../runtime/jobs.ts'
+import { bridgeAlert, decideWhatsApp, fromWaha, guardPrompt, standInPrompt, waOutgoing, waTaskContent, withoutFooter, type Arming, type BridgeSeen, type WahaPayload, type WaLine } from '../core/whatsapp.ts'
+
+export const wahaUrl = (set?: string | null) => set || 'http://127.0.0.1:3198'
 
 export type WaTask = { chat: string; place: string; content: string }
 const ARM_MS = 60 * 60_000
@@ -58,7 +61,7 @@ export function wahaHandler(hmac: string, inbox: Inbox, run: (p: WahaPayload, so
 
 export function startWhatsApp(o: { dir: string; name: string; owner: string; waha: Record<string, string>; whatsapp: { wahaUrl?: string | null; model?: string | null; hookHost?: string | null; hookPort?: number }; memory: string; inbox: Inbox; onTask: (t: WaTask) => void; notify: (text: string) => void }) {
   const waha = o.waha
-  const URL = o.whatsapp.wahaUrl || 'http://127.0.0.1:3198'
+  const URL = wahaUrl(o.whatsapp.wahaUrl)
   const HMAC = waha.WHATSAPP_HOOK_HMAC_KEY
   if (!HMAC) throw new Error('secrets.json waha has no WHATSAPP_HOOK_HMAC_KEY: the webhook would have no secret')
   const MODEL = o.whatsapp.model || DEFAULT_MODEL
@@ -140,4 +143,34 @@ export function startWhatsApp(o: { dir: string; name: string; owner: string; wah
     // A message the last run took but never handled, from the inbox.
     replay: async (source: string, payload: string) => run(JSON.parse(payload) as WahaPayload, source),
   }
+}
+
+// One look at the bridge (#351): /ping, then the default session with the API key. 5 s each, so a hung container is down too.
+export async function wahaSeen(url: string, key: string, ms = 5_000): Promise<BridgeSeen> {
+  const get = (path: string) => fetch(url + path, { headers: { 'X-Api-Key': key }, signal: AbortSignal.timeout(ms) })
+  try {
+    const ping = await get('/ping')
+    if (!ping.ok) return { reached: true, code: ping.status }
+    const r = await get('/api/sessions/default')
+    if (!r.ok) return { reached: true, code: r.status }
+    return { reached: true, code: r.status, status: ((await r.json()) as { status?: string }).status }
+  } catch { return { reached: false } }
+}
+
+// The hub's job: one look every connectors.whatsapp.checkMinutes, and a DM only when the bridge goes down or comes back
+// (core/whatsapp.ts bridgeAlert). The down flag is in the store, so a restart while the bridge is down sends no second DM.
+// It is saved only after Slack took the DM, so a failed DM is sent again on the next look. Off clears it: no stray "back" later.
+const DOWN = 'whatsapp-bridge-down'
+export function bridgeClock(o: { on: boolean; minutes?: number; look: () => Promise<BridgeSeen>; at: { url: string; qr: string }; state: { load(name: string): unknown; save(name: string, value: unknown): void }; notify: (text: string) => Promise<boolean> }): Job[] {
+  if (!o.on) { o.state.save(DOWN, undefined); return [] }
+  let starting = false   // in memory: after a hub restart, one STARTING look is again no change
+  return [{ name: 'whatsapp bridge', every: (o.minutes || 5) * 60_000, run: async () => {
+    const r = bridgeAlert({ down: o.state.load(DOWN) === true, starting }, await o.look(), o.at)
+    if (r.dm) {
+      log(`whatsapp bridge ${r.down ? 'down' : 'back'}`)
+      if (!(await o.notify(r.dm))) return
+    }
+    starting = r.starting
+    o.state.save(DOWN, r.down || undefined)
+  } }]
 }

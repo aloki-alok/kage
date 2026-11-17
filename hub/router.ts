@@ -355,7 +355,7 @@ else if (existsSync(CRONS)) {
   }
 }
 
-const { meeting, voice, replies, replayOf, jobs } = startConnectors({ secrets, conn, store, slack, bot, NAME, CODE, DIR, d, inbox, deliver, placeOf, failed, schedules, event: ledgers.event, ledgers, tripwires: config.tripwires })
+const { meeting, voice, replies, replayOf, jobs, clock } = startConnectors({ secrets, conn, store, slack, bot, NAME, CODE, DIR, d, inbox, deliver, placeOf, failed, schedules, event: ledgers.event, ledgers, tripwires: config.tripwires })
 listenForCommands(slack.socket, { user, team: slack.ids.team!, commands: COMMANDS, ledgers })
 
 // Each connector marks its own failures: ⚠️ on a Slack message, a DM line for an email or WhatsApp
@@ -390,7 +390,7 @@ runJobs([
   { name: 'kagelets', every: 60_000, run: kag.sync },
   { name: 'dream', every: 10 * 60_000, run: dreaming.dream },
   { name: 'kagelet dreams', every: 10 * 60_000, run: dreaming.kageletDreams },
-  { name: 'retro', every: 10 * 60_000, run: digests.weeklyRetro },
+  { name: 'retro', every: 10 * 60_000, run: digests.weeklyRetro }, ...clock,
   // A kagelet message waits until its target is idle, then starts a run of its own (runtime/kagelets.ts).
   { name: 'kagelet messages', every: 20_000, run: now => { kag.routes.pump(now); kag.needs.pump(now); kag.measure(now) } },
   { name: 'events', every: 3_600_000, run: now => ledgers.pruneEvents(new Date(now - EVENT_DAYS * 86_400_000).toISOString()) }, ...startTelemetry({ config: config.telemetry, dir: DIR, code: CODE, ledgers, state: store, notify: t => slack.notifyOwner(t), usage: sdk?.usage, shape: () => { const s = store.schedules(); return { email: +!!conn.email?.on, voice: +!!conn.voice?.on, whatsapp: +!!conn.whatsapp?.on, github: +!!conn.github, meeting: +!!conn.meeting, browser: +!!conn.browser, schedules: s.length, tripwires: s.filter(j => j.trigger).length, kagelets: [...kag.lanes()].length, teammates: TEAMMATES.length } } }),
