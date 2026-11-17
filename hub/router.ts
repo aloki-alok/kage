@@ -30,7 +30,7 @@ import { configWatcher } from '../runtime/config-watch.ts'
 import { DEFAULT_MODEL, unknownNames } from '../core/config.ts'
 import type { Task } from '../core/task.ts'
 import type { ToSession } from '../runtime/protocol.ts'
-import { postAsKage, sessionTools } from '../runtime/kage-tools.ts'
+import { postAsKage, sessionTools, threadPing } from '../runtime/kage-tools.ts'
 import { scheduler } from '../runtime/scheduler.ts'
 import { runJobs } from '../runtime/jobs.ts'
 import { sdkSessions } from '../runtime/sdk-sessions.ts'
@@ -328,12 +328,9 @@ limits.restore()
 d.adopt(Object.keys(saved).filter(k => runningAtStart.has(saved[k]!)), Date.now())
 // Threads still open in a terminal (kage attach) stay held: before any connector can deliver a task.
 restoreHolds(DIR, d)
-// A job's notice in its thread as Kage, with no model: as the owner where the bot is not a member. false: not posted,
-// or no stored thread, and then the event-job caller DMs the owner.
-const pingThread = async (key: string, text: string, job: string) => { const c = store.conversation(key)?.conversation; if (!c) return false; return postAsKage({ title: Title, bot, user }, c.chat, c.thread, text).then(r => { ledgers.add('posted', [c.chat, r.ts, r.by, key]); return true }).catch(e => { log('could not post a tripwire ping', job, e?.data?.error ?? e); return false }) }   // never rejects: callers drop the promise
+const pingThread = threadPing({ title: Title, bot, user, thread: key => store.conversation(key)?.conversation, posted: cells => ledgers.add('posted', cells) })
 // Schedules live in the store and run as tasks in their thread (runtime/scheduler.ts).
-const schedules = scheduler({
-  store, failed,
+const schedules = scheduler({ store, failed,
   deliver: kageletDeliver(kag.notes, toSession, kag.board),
   ready: key => d.ready(key),
   trusted: key => store.trust(key) === true, job: { end: k => d.reset(k), project: PROJECT, carryChars: () => config.harness?.jobCarryChars ?? 500, laneDefault: () => config.harness?.jobLaneDefault ?? true, freshEvery: () => config.harness?.jobFreshEvery ?? 20, carryCount: () => config.harness?.jobCarry ?? 5, posted: () => ledgers.text('posted') },

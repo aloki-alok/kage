@@ -48,6 +48,15 @@ export type ToolContext = {
   name: string | undefined   // this session's kagelet, if it is one
 }
 
+// A job's notice in its thread as Kage, with no model: as the owner where the bot is not a member. false: not posted,
+// or no stored thread, and then the event-job caller DMs the owner. It never rejects: callers drop the promise.
+export const threadPing = (o: { title: string; bot: WebClient; user: WebClient; thread: (key: string) => { chat: string; thread?: string } | undefined; posted: (cells: string[]) => void }) =>
+  async (key: string, text: string, job: string): Promise<boolean> => {
+    const c = o.thread(key)
+    if (!c) return false
+    return postAsKage(o, c.chat, c.thread, text).then(r => { o.posted([c.chat, r.ts, r.by, key]); return true })
+      .catch(e => { log('could not post a tripwire ping', job, e?.data?.error ?? e); return false })
+  }
 // One message as Kage, the way a reply goes. The hub's own lines (the usage-limit notice) use it too.
 // asOwner false: where the bot is not a member, post nothing (undefined) rather than speak from the owner's account.
 type Posted = { ts: string; by: 'bot' | 'owner' }
