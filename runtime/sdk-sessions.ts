@@ -180,10 +180,11 @@ export function sdkSessions(o: {
       if (m.type === 'verdict') { s.asks.get(m.request_id)?.(m.behavior); return }
       const from = senderOf(m)
       if (from === 'owner') s.ownerTools = true
+      const answered = sawState && s.state === 'idle' && !unseen   // Claude said idle after it read every message: none is still in a turn
       const reopen = s.ownerTools && !full && s.state === 'idle' && (sawState ? !unseen : !s.turn.length)
       if (reopen && s.turn.length) o.onTurn?.(key, s.turn.splice(0).map(x => x.task), undefined, true)   // idle: it read and answered them
       // The turn's lowest sender holds: the owner's mid-turn "thanks" never lifts a teammate's turn to the owner's tools.
-      s.sender = from === 'owner' ? lowest(s.turn) : from
+      s.sender = from === 'owner' && !answered ? lowest(s.turn) : from
       s.turn.push({ task: m, mid: s.state !== 'idle' })
       s.kage.onTask(m)
       s.state = 'running'
@@ -331,12 +332,12 @@ export function sdkSessions(o: {
   return { runner, running: () => new Set([...sessions.values()].map(s => s.id)), usage: () => [...sessions.values()].find(s => s.run && !s.stopped)?.run!.q.usage_EXPERIMENTAL_MAY_CHANGE_DO_NOT_RELY_ON_THIS_API_YET({ skipBehaviors: true }) }
 }
 
+// Who a turn's tools follow: anyone in it who is not the owner, else the owner.
+const lowest = (turn: { task: Task }[]): Sender => turn.map(x => senderOf(x.task)).find(x => x !== 'owner') ?? 'owner'
 const SET_MODEL = 'Switch the model or reasoning effort of this thread, when the owner or a teammate asks for it in plain words ("use opus max", "go back to the default"). It applies from the next step and stays for the thread. Leave out what they did not ask to change.'
 
 // A task as Claude Code shows a channel message. Attributes are escaped, and the content cannot
 // open or close a channel tag of its own.
-// Who a turn's tools follow: anyone in it who is not the owner, else the owner.
-const lowest = (turn: { task: Task }[]): Sender => turn.map(x => senderOf(x.task)).find(x => x !== 'owner') ?? 'owner'
 const userMessage = (m: Task) => ({ type: 'user', message: { role: 'user', content: channelTag(m) }, parent_tool_use_id: null }) as SDKUserMessage
 
 export function channelTag(m: Task) {

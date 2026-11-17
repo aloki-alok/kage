@@ -183,6 +183,31 @@ describe('Kage sessions on the Agent SDK', () => {
     assert.equal(await guard('mcp__gmail__search'), undefined)
     t.s.runner.stop('C1:5.5')
   })
+  test("once Claude says idle, a teammate's leftover task no longer holds down the owner's next turn", async () => {
+    const t = setup({ transcript: true, restartMs: 60_000 })
+    t.d.task('C1:5.5', t.task({ content: 'Task from the owner: start' }), 0)   // the process has the owner's tools
+    await tick()
+    const run = t.sdk.runs[0]!
+    run.emit({ type: 'system', subtype: 'session_state_changed', state: 'running' })
+    run.emit({ type: 'result', total_cost_usd: 1 })
+    run.emit({ type: 'system', subtype: 'session_state_changed', state: 'idle' })
+    await tick()
+    t.d.task('C1:5.5', t.task({ fromOwner: false, content: 'Task from Sam: one' }), 1)
+    await tick()
+    const live = t.sdk.runs.at(-1)!
+    live.emit({ type: 'system', subtype: 'session_state_changed', state: 'running' })
+    t.d.task('C1:5.5', t.task({ fromOwner: false, content: 'Task from Sam: two' }), 2)   // mid-turn
+    await tick()
+    live.emit({ type: 'result', total_cost_usd: 1 })
+    live.emit({ type: 'system', subtype: 'session_state_changed', state: 'idle' })   // it read and answered both
+    await tick()
+    t.d.task('C1:5.5', t.task({ content: 'Task from the owner: three' }), 3)
+    await tick()
+    const now = t.sdk.runs.at(-1)!
+    const guard = async (tool_name: string) => (await now.options.hooks.PreToolUse[0].hooks[0]({ hook_event_name: 'PreToolUse', tool_name, tool_input: {} }, undefined, { signal: signal() })).hookSpecificOutput?.permissionDecision
+    assert.equal(await guard('mcp__gmail__search'), undefined)
+    t.s.runner.stop('C1:5.5')
+  })
   test("a kagelet handoff that arrives during the reopen goes back to wait, and is not also run (#317)", async () => {
     const t = setup({ browser: true, transcript: true })
     t.d.task('C1:5.5', t.task({ fromOwner: false, content: 'Task from Sam: one' }), 0)
