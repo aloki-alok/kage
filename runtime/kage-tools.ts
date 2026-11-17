@@ -57,6 +57,18 @@ export const threadPing = (o: { title: string; bot: WebClient; user: WebClient; 
     return postAsKage(o, c.chat, c.thread, text).then(r => { o.posted([c.chat, r.ts, r.by, key]); return true })
       .catch(e => { log('could not post a tripwire ping', job, e?.data?.error ?? e); return false })
   }
+// A kagelet's home when its owner says "owners": a new thread in a group DM with Kage and its owners, or in Kage's
+// DM when it has no owner but Kage's own. Returns the thread's link, which the kagelet file keeps.
+export const homeThread = (o: { title: string; bot: WebClient; user: WebClient; ids: { owner: string; bot: string; botDm: string } }) =>
+  async (owners: string[], name: string): Promise<string> => {
+    const others = [...new Set(owners)].filter(u => u !== o.ids.owner)
+    const channel = others.length ? (await o.user.conversations.open({ users: [o.ids.bot, ...others].join(',') })).channel?.id : o.ids.botDm
+    if (!channel) throw new Error('Slack opened no group DM')
+    const r = await postAsKage(o, channel, undefined, `Kagelet *${name}* posts its work in this thread.`)
+    const link = (await o.user.chat.getPermalink({ channel, message_ts: r.ts })).permalink
+    if (!link) throw new Error('Slack gave no link for the home thread')
+    return link
+  }
 // One message as Kage, the way a reply goes. The hub's own lines (the usage-limit notice) use it too.
 // asOwner false: where the bot is not a member, post nothing (undefined) rather than speak from the owner's account.
 type Posted = { ts: string; by: 'bot' | 'owner' }

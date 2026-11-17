@@ -175,7 +175,7 @@ export function kageletTools(c: ToolContext): KageTool[] {
       thread_ts: s.describe('thread_ts attribute from the task tag'),
       action: z.enum(['save', 'pause', 'resume', 'run', 'remove', 'revoke']),
       name: s.describe('short lowercase name: letters, digits, dashes. For revoke: the tool, e.g. mcp__gmail__send'),
-      thread: s.optional().describe('save: the Slack link of the thread it posts in'),
+      thread: s.optional().describe('save: where it posts: a Slack thread link the owner picked, or "owners" to open a new thread in a group DM with you and its owners. Ask the owner which; the file then keeps the link'),
       schedule: s.optional().describe('save: a 5-field cron in local time, e.g. "0 9 * * 1-5"'),
       after: s.optional().describe('save: the kagelet whose report output starts this one, as a chain step (at most 5 deep, no cycles); schedule may then be left out'),
       tools: z.array(s).optional().describe('save: its grant, by full tool name: WebSearch, WebFetch, db_read, outside MCP tools, or all for every built-in tool (shell, files, web) in a sandbox with one-way steps held; an MCP tool is still named'),
