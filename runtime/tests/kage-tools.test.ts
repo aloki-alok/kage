@@ -7,7 +7,7 @@ import { join } from 'node:path'
 import { liveCronJobs } from '../../core/cron.ts'
 import { cardAt } from '../../core/ledgers.ts'
 import { openLedgers } from '../ledger.ts'
-import { postAsKage, sessionTools } from '../kage-tools.ts'
+import { homeThread, postAsKage, sessionTools } from '../kage-tools.ts'
 import { shadowSwaps } from '../shadow-swap.ts'
 import { openStore } from '../store.ts'
 import type { Task } from '../../core/task.ts'
@@ -955,6 +955,23 @@ describe('a line the hub posts as Kage', () => {
     assert.deepEqual(await postAsKage(o, 'GDM', '5.5', 'Paused'), { ts: '9.2', by: 'owner' })
     assert.deepEqual(await postAsKage(o, 'CPRIV', '5.5', 'Paused'), { ts: '9.3', by: 'owner' })
     assert.deepEqual(s.calls, ['bot post C1 Paused', 'owner post GDM Paused\n_🥷 Kage_', 'owner post CPRIV Paused\n_🥷 Kage_'])
+  })
+})
+
+describe("a kagelet's home with its owners", () => {
+  test('a group DM with Kage and the other owners (never the owner twice), or Kage\'s DM with no other owner; the first line\'s link comes back', async () => {
+    const opened: string[] = [], posted: string[] = []
+    const client = {
+      conversations: { open: async (a: { users: string }) => { opened.push(a.users); return { channel: { id: 'GTEST1' } } } },
+      chat: { postMessage: async (a: { channel: string; text: string }) => { posted.push(`${a.channel} ${a.text}`); return { ts: '1700000000.555555' } },
+        getPermalink: async (a: { channel: string; message_ts: string }) => ({ permalink: `https://test.slack.com/archives/${a.channel}/p${a.message_ts.replace('.', '')}` }) },
+    } as never
+    const open = homeThread({ title: 'Kage', bot: client, user: client, ids: { owner: 'UOWNER1', bot: 'UBOT1', botDm: 'DBOT1' } })
+    assert.equal(await open(['UOWNER1', 'U0AAA1', 'U0AAA1'], 'leads'), 'https://test.slack.com/archives/GTEST1/p1700000000555555')
+    assert.deepEqual(opened, ['UBOT1,U0AAA1'])
+    assert.equal(await open(['UOWNER1'], 'leads'), 'https://test.slack.com/archives/DBOT1/p1700000000555555')
+    assert.equal(opened.length, 1)
+    assert.match(posted[0]!, /^GTEST1 Kagelet \*leads\* posts its work in this thread/)
   })
 })
 

@@ -1,6 +1,7 @@
 import { describe, test } from 'node:test'
 import assert from 'node:assert/strict'
-import { askable, builtinTools, budgetLeft, capCheck, chainErrors, costFlags, grantRefusal, parseKagelet, resultLine, revokeStanding, rowLine, setPaused, addAllow, kageletFile, kageletRows, starterFile, type Kagelet, type KageletRow } from '../kagelets.ts'
+import { askable } from '../kagelet-people.ts'
+import { builtinTools, budgetLeft, capCheck, chainErrors, costFlags, grantRefusal, parseKagelet, resultLine, revokeStanding, rowLine, setPaused, addAllow, kageletFile, kageletRows, starterFile, type Kagelet, type KageletRow } from '../kagelets.ts'
 
 const file = (head: string, body = 'Post a summary of the deploy log.') => `---\n${head}\n---\n${body}\n`
 const LINK = 'https://test.slack.com/archives/CTEST1/p1700000000123456'
@@ -31,6 +32,21 @@ describe('a kagelet file', () => {
     assert.equal(askable(all, 'CTEST1', '1700000000.123456', 'fude', 'U0AAA1')[0]?.name, 'fude')
     assert.deepEqual(askable(all, 'CTEST1', '1700000000.123456', 'fude', 'U0OTHER'), [])
     assert.deepEqual(askable(all, 'CTEST1', '1700000000.123456', 'quiet', 'U0AAA1'), [])
+  })
+  test('an owners line names owners: Slack ids, kept on save; a bad id or a second line is refused (the count cap is a hub setting)', () => {
+    const k = parseKagelet('x', file(`thread: ${LINK}\nschedule: 0 9 * * *\nowners: U0AAA1, U0BBB2`)) as Kagelet
+    assert.deepEqual(k.owners, ['U0AAA1', 'U0BBB2'])
+    const text = kageletFile({ thread: LINK, schedule: '0 9 * * *', tools: [], job: 'Report.', by: 'kage', why: '', owners: k.owners }) as string
+    assert.deepEqual((parseKagelet('x', text) as Kagelet).owners, ['U0AAA1', 'U0BBB2'])
+    assert.equal((parseKagelet('x', file(`thread: ${LINK}\nschedule: 0 9 * * *`)) as Kagelet).owners, undefined)
+    assert.match((parseKagelet('x', file(`thread: ${LINK}\nschedule: 0 9 * * *\nowners: alice`)) as { error: string }).error, /owners/)
+    assert.match((parseKagelet('x', file(`thread: ${LINK}\nschedule: 0 9 * * *\nowners: U0AAA1\nowners: U0CCC3`)) as { error: string }).error, /owners/)
+  })
+  test('an owner may ask it for work in its thread with no people line, and nobody else may', () => {
+    const k = parseKagelet('fude', file(`thread: ${LINK}\nschedule: 0 9 * * *\nowners: U0AAA1`)) as Kagelet
+    assert.deepEqual(askable([k], 'CTEST1', '1700000000.123456').map(x => x.name), ['fude'])
+    assert.equal(askable([k], 'CTEST1', '1700000000.123456', 'fude', 'U0AAA1')[0]?.name, 'fude')
+    assert.deepEqual(askable([k], 'CTEST1', '1700000000.123456', 'fude', 'U0OTHER'), [])
   })
   test('allow lines are the owner\'s rules: one per line, kept on save, and a rule must start with a command word', () => {
     const head = `thread: ${LINK}\nschedule: 0 9 * * *\ntools: all\nallow: git push --force origin feat/*\nallow:   curl -X POST https://hooks.example.com/staging/*  `

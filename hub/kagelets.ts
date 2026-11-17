@@ -4,7 +4,8 @@
 // chains and messages between kagelets (#93), which the hub hands on with no Kage turn.
 import type { Delivery } from '../core/sessions.ts'
 import type { Task } from '../core/task.ts'
-import { addAllow, askable, budgetLeft, COST_FLAG, costFlags, kageletRows, parseKagelet, type Kagelet } from '../core/kagelets.ts'
+import { askable } from '../core/kagelet-people.ts'
+import { addAllow, budgetLeft, COST_FLAG, costFlags, kageletRows, parseKagelet, type Kagelet } from '../core/kagelets.ts'
 import { heldCommand } from '../core/held.ts'
 import { chainCap, dailyCap, totalCap } from '../core/kagelet-view.ts'
 import type { Config } from '../core/config.ts'
@@ -30,6 +31,7 @@ export function hubKagelets(o: {
   runNow: (id: string, now: number) => string | undefined
   toSession: (key: string, task: Task) => Delivery
   idle: (key: string) => boolean; paused: (now: number) => number | undefined
+  openHome?: (owners: string[], name: string) => Promise<string>   // runtime/kage-tools.ts homeThread
   tripwires: () => Config['tripwires']
 }) {
   const { kl, store, ledgers } = o
@@ -83,7 +85,7 @@ export function hubKagelets(o: {
     o.runs.emit(key, 'held', `always allowed by the owner: ${heldCommand(command)}`)
   }
   const board = (key: string) => { const k = parsed().find(x => x.key === key); return k && measures.board(k.name, k.objective) }
-  const manager = kageletManager({ dir: KAGELETS, max: MAX, ledgers, sync, runNow: o.runNow, store, envCommand: kl.dbRead?.command ?? undefined, log, measures })
+  const manager = kageletManager({ dir: KAGELETS, max: MAX, ledgers, sync, runNow: o.runNow, store, envCommand: kl.dbRead?.command ?? undefined, log, measures, ...(kl.ownersMax !== undefined && { ownersMax: kl.ownersMax }), ...(o.openHome && { openHome: o.openHome }) })
   const notes = ownerNotes(store, () => ({ kept: kl.notesKept ?? NOTE_CAP.kept, chars: kl.noteChars ?? NOTE_CAP.chars }))
   const routes = kageletRoutes({ dir: KAGELETS, store, ledgers, runs: o.runs, deliver: kageletDeliver(notes, o.toSession, board),
     idle: o.idle, granted: key => grants.has(key), paused: o.paused, capUsd: CAPS.each, chainUsd: CAPS.chain, log, memory: name => kmem.notes(name) })
@@ -110,7 +112,7 @@ export function hubKagelets(o: {
   }
   return {
     dir: KAGELETS, kmem, manager, routes, sync, notes, needs, tell, board, measures, ask,
-    peopleIn: (chat: string, thread: string) => askable(parsed(), chat, thread).map(k => ({ name: k.name, people: k.people! })),
+    peopleIn: (chat: string, thread: string) => askable(parsed(), chat, thread).map(k => ({ name: k.name, people: [...k.people ?? [], ...k.owners ?? []] })),
     measure: (now: number) => measures.tick(parsed(), now).catch(e => log('kagelet measure failed', e)),
     lanes: () => grants.keys(),
     // A lane whose file is gone keeps no tools, rather than falling back to approval cards.

@@ -74,3 +74,14 @@ test('a people ask to a kagelet that runs only after another says when it reads 
   kag.sync(Date.now())
   assert.equal(kag.ask('CTEST1', '1700000000.123456', 'b', 'UTEST1', 'add the totals'), 'Noted for b. It runs after a, and reads this then.')
 })
+
+test('a kagelet owner may ask it for work in its thread, like a person on its people line', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'kage-hub-own-'))
+  writeJob(kageletsDir(dir), 'b', `---\nthread: ${LINK}\nschedule: 0 9 * * *\ntools: WebSearch\nby: owner\nowners: UTEST2\n---\nSummarize.\n`)
+  const ledgers = openLedgers(dir)
+  const kag = hubKagelets({ dir, kl: {}, mem: { own: join(dir, 'm1'), owner: join(dir, 'm2') }, store: openStore(':memory:'), ledgers,
+    runs: runEvents(ledgers, () => 't1'), title: 'Kage', notify: () => {}, hasSdk: () => true, runNow: () => undefined, toSession: () => 'sent',
+    idle: () => true, paused: () => undefined, tripwires: () => ({}) })
+  kag.sync(Date.now())
+  assert.deepEqual(kag.peopleIn('CTEST1', '1700000000.123456'), [{ name: 'b', people: ['UTEST2'] }])
+})

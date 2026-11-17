@@ -24,15 +24,20 @@ const standings = (store: Pick<Store, 'load'>) => (store.load(STANDING) ?? {}) a
 
 // The owner's answer to Kage's approval card (runtime/sdk-sessions.ts): true only on their yes.
 // tools: the write tools the card grants. measure: a command Kage wrote for the hub to run with no model.
-export type AskOwner = (card: { kagelet: string; tools: string; job: string; measure?: string; people?: string }) => Promise<boolean>
+export const OWNERS_HOME = 'owners'
+const HOME_STANDIN = 'https://kage.slack.com/archives/C0HOME00/p1000000000000000'   // a valid link, replaced before the file is written
+export type AskOwner = (card: { kagelet: string; tools: string; job: string; measure?: string; people?: string; owners?: string }) => Promise<boolean>
 
 // The manager's side (Kage's owner sessions, runtime/kage-tools.ts): write, pause, run and remove kagelet files.
 // The hub syncs right after a change, so run works at once; the minute sync applies it anyway.
 // read_command: names one of the install's read commands for db_read. revoke: name is the tool.
 // No field here says who asked: the model fills every one, so none may widen a grant.
-export type Manage = { action: 'save' | 'pause' | 'resume' | 'run' | 'remove' | 'revoke'; name: string; thread?: string; schedule?: string; after?: string; tools?: string[]; job?: string; why?: string; model?: string; model_why?: string; read_command?: string; objective?: string; measure?: string; target?: string; people?: string[] }
+export type Manage = { action: 'save' | 'pause' | 'resume' | 'run' | 'remove' | 'revoke'; name: string; thread?: string; schedule?: string; after?: string; tools?: string[]; job?: string; why?: string; model?: string; model_why?: string; read_command?: string; objective?: string; measure?: string; target?: string; people?: string[]; owners?: string[] }
 export function kageletManager(o: { dir: string; max: number; ledgers: { text(name: 'runs' | 'costs' | 'reports'): string } & Pick<Ledgers, 'add' | 'events'>; sync: (now: number) => void; runNow: (id: string, now: number) => string | undefined; store: Pick<Store, 'load' | 'save'>; envCommand?: string; log: (line: string) => void
-  measures?: { approved: (name: string) => string | undefined; approve: (name: string, command: string) => string | undefined; forget: (name: string) => void } }) {
+  measures?: { approved: (name: string) => string | undefined; approve: (name: string, command: string) => string | undefined; forget: (name: string) => void }
+  openHome?: (owners: string[], name: string) => Promise<string>   // a group DM with Kage and the owners: a new thread's link
+  ownersMax?: number   // kagelets.ownersMax
+}) {
   // Once: the standing approval from before tiers ({ tool, command, at }) covered db_read alone, which is read now.
   if (typeof (o.store.load(STANDING) as { tool?: unknown } | undefined)?.tool === 'string') o.store.save(STANDING, undefined)
   const rows = (now: number) => kageletRows(readKagelets(o.dir), { runs: o.ledgers.text('runs'), costs: o.ledgers.text('costs'), reports: o.ledgers.text('reports'), now })
@@ -105,6 +110,13 @@ export function kageletManager(o: { dir: string; max: number; ledgers: { text(na
       }
       if (!folderFree(o.dir, a.name)) return refuse(`${o.dir}/${a.name} is not a plain folder, so no kagelet is written there`)
       if (!old && readKagelets(o.dir).length >= o.max) return refuse(`this install has at most ${o.max} kagelets (kagelets.max). Remove one first, or ask the owner to raise it.`)
+      const ownersMax = o.ownersMax ?? 3
+      if ((a.owners ?? had?.owners ?? []).length > ownersMax) return refuse(`this install lets a kagelet have at most ${ownersMax} owners (kagelets.ownersMax)`)
+      // thread owners: its home is a new thread in a group DM with Kage and its owners. It opens only after every check and
+      // the owner's card, so a refused save writes to nobody; until then a stand-in link counts as a move to a new thread.
+      const homePending = a.thread === OWNERS_HOME
+      if (homePending && !o.openHome) return refuse('this hub cannot open a home: give a Slack thread link')
+      if (homePending) a = { ...a, thread: HOME_STANDIN }
       // after: refused when it names a missing kagelet, closes a cycle or goes too deep, with this file in place.
       const others = readKagelets(o.dir).filter(f => f.name !== a.name).map(f => parseKagelet(f.name, f.text)).filter((p): p is Kagelet => !('error' in p))
       // Also refused when it breaks a step after it (a tool taken away that the next step holds).
@@ -122,7 +134,7 @@ export function kageletManager(o: { dir: string; max: number; ledgers: { text(na
       const goal = a.objective || a.measure || a.target ? objectiveOf(new Map(Object.entries({ objective: a.objective ?? '', measure: a.measure ?? '', target: a.target ?? '' }))) : had?.objective
       if (goal && 'error' in goal) return refuse(goal.error)
       const measure = goal && o.measures?.approved(a.name) !== goal.measure ? goal.measure : undefined
-      const fileText = (approved: boolean, standing: string[] = []) => kageletFile({ thread: a.thread ?? '', schedule: a.schedule ?? '', ...(a.after && { after: a.after }), tools, job: a.job ?? '', by, why: a.why ?? '', model, modelWhy, paused: !!had?.paused, ...(had?.resumed !== undefined && { resumed: had.resumed }), approved, standing, ...(goal && { objective: goal }), ...(had?.allow && { allow: had.allow }), ...((a.people ?? had?.people) && { people: a.people ?? had!.people }) })
+      const fileText = (approved: boolean, standing: string[] = []) => kageletFile({ thread: a.thread ?? '', schedule: a.schedule ?? '', ...(a.after && { after: a.after }), tools, job: a.job ?? '', by, why: a.why ?? '', model, modelWhy, paused: !!had?.paused, ...(had?.resumed !== undefined && { resumed: had.resumed }), approved, standing, ...(goal && { objective: goal }), ...(had?.allow && { allow: had.allow }), ...((a.people ?? had?.people) && { people: a.people ?? had!.people }), ...((a.owners ?? had?.owners) && { owners: a.owners ?? had!.owners }) })
       // Checked as if approved first, so an act tool or a file that would not run is refused before any card.
       const valid = fileText(true)
       if (typeof valid !== 'string') return refuse(valid.error)
@@ -148,12 +160,16 @@ export function kageletManager(o: { dir: string; max: number; ledgers: { text(na
       // A kagelet moved to another thread meets new people there, so everyone on its line counts as new.
       const people = a.people ?? had?.people ?? [], moved = !!had && (a.thread ?? '') !== had.link
       const newPeople = people.filter(p => moved || !had?.people?.includes(p)).join(', ')
-      const extra = [...measure ? [`the measure ${measure}`] : [], ...newPeople ? [`asks from ${newPeople}`] : []]
+      const owners = a.owners ?? had?.owners ?? [], newOwners = owners.filter(p => moved || !had?.owners?.includes(p)).join(', ')
+      const extra = [...measure ? [`the measure ${measure}`] : [], ...newPeople ? [`asks from ${newPeople}`] : [], ...newOwners ? [`owners ${newOwners}`] : []]
       const asked = [...card, ...standing.filter(t => fresh.includes(t)), ...extra].join(', ')
       if (asked && !ask) return refuse(`only the owner grants ${asked}, and this session cannot ask them`)
-      if ((card.length || extra.length) && !await ask!({ kagelet: a.name, tools: card.join(', '), job: (a.job ?? '').trim().split('\n')[0]!.slice(0, 300), ...measure && { measure }, ...newPeople && { people: newPeople } })) return refuse(`the owner did not approve ${[...card, ...extra].join(', ')}`)
+      if ((card.length || extra.length) && !await ask!({ kagelet: a.name, tools: card.join(', '), job: (a.job ?? '').trim().split('\n')[0]!.slice(0, 300), ...measure && { measure }, ...newPeople && { people: newPeople }, ...newOwners && { owners: newOwners } })) return refuse(`the owner did not approve ${[...card, ...extra].join(', ')}`)
       const unpinned = measure && (o.measures ? o.measures.approve(a.name, measure) : 'this hub runs no measures')
       if (unpinned) return refuse(unpinned)
+      if (homePending && typeof fileText(true, standing) === 'string') {
+        try { a = { ...a, thread: await o.openHome!(a.owners ?? had?.owners ?? [], a.name) } } catch (e) { return refuse(`could not open its home: ${(e as Error).message}`) }
+      }
       const text = fileText(true, standing)
       if (typeof text !== 'string') return refuse(text.error)
       if (stands.length) o.store.save(STANDING, { ...yes, ...Object.fromEntries(stands.map(t => [t, now])) })

@@ -30,7 +30,7 @@ import { configWatcher } from '../runtime/config-watch.ts'
 import { DEFAULT_MODEL, unknownNames } from '../core/config.ts'
 import type { Task } from '../core/task.ts'
 import type { ToSession } from '../runtime/protocol.ts'
-import { postAsKage, sessionTools, threadPing } from '../runtime/kage-tools.ts'
+import { homeThread, postAsKage, sessionTools, threadPing } from '../runtime/kage-tools.ts'
 import { scheduler } from '../runtime/scheduler.ts'
 import { runJobs } from '../runtime/jobs.ts'
 import { sdkSessions } from '../runtime/sdk-sessions.ts'
@@ -246,7 +246,7 @@ const sdkLib = harness.runtime === 'tmux' ? undefined : await (async () => ({
 // Kagelets (#57), their memory, the manager's side and the chains between them (hub/kagelets.ts).
 const kag = hubKagelets({ dir: DIR, kl, mem: MEM, store, ledgers, runs, title: Title, notify: text => void slack.notifyOwner(text), hasSdk: () => !!sdk,
   runNow: (id, now) => schedules.runNow(id, now), toSession: (key, task) => toSession(key, task),
-  idle: key => !isClosed(key) && d.ready(key) === 'ready' && d.startsNow(key, Date.now()), paused: now => limits.paused(now)?.until, tripwires: () => config.tripwires })
+  idle: key => !isClosed(key) && d.ready(key) === 'ready' && d.startsNow(key, Date.now()), paused: now => limits.paused(now)?.until, tripwires: () => config.tripwires, openHome: homeThread({ title: Title, bot, user, ids: slack.ids }) })
 const sdk = sdkLib ? sdkSessions({
   sdk: sdkLib.lib,
   deferred,

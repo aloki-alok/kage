@@ -184,7 +184,7 @@ test('no more than the cap run: past it, a kagelet is logged and gets no schedul
   assert.match(logs.join('\n'), /c does not run: .*2 kagelets/)
 })
 
-function manager(max = 10, envCommand?: string) {
+function manager(max = 10, envCommand?: string, openHome?: (owners: string[], name: string) => Promise<string>, ownersMax?: number) {
   const dir = mkdtempSync(`${tmpdir()}/spec-`)
   const ran: string[] = [], synced: number[] = [], logs: string[] = [], grants: string[][] = []
   const reports: string[] = []
@@ -194,7 +194,7 @@ function manager(max = 10, envCommand?: string) {
     dir, max, ledgers: { events: () => [], text: (n: string) => n === 'reports' ? reports.join('') : '', add: (n, cells) => { if (n === 'grants') grants.push(cells) } },
     sync: now => { synced.push(now) },
     runNow: id => { ran.push(id); return undefined },
-    store, envCommand, log: l => logs.push(l),
+    store, envCommand, log: l => logs.push(l), ...(openHome && { openHome }), ...(ownersMax !== undefined && { ownersMax }),
     measures: { approved: n => measured[n], approve: (n, c) => c.includes('changed-under-pin') ? 'the file changed' : void (measured[n] = c), forget: n => { delete measured[n] } },
   })
   return { dir, m, ran, synced, reports, store, logs, grants, measured }
@@ -225,6 +225,44 @@ test('the manager writes a people line on save, keeps it when a later save leave
   assert.match(await t.m.manage({ action: 'save', name: 'status', ...job }, 6000), /saved status/i)
   assert.match(readFileSync(`${t.dir}/status/job.md`, 'utf8'), /^people: U0AAA1$/m)
   assert.doesNotMatch(await t.m.manage({ action: 'save', name: 'status', ...job, people: ['bob'] }, 7000), /saved status/i)
+})
+test('a new owner takes the owner\'s card like a new asker; one already there takes none, and the line is kept on a later save', async () => {
+  const cards: { owners?: string }[] = []
+  const t = manager()
+  assert.match(await t.m.manage({ action: 'save', name: 'status', ...job, owners: ['U0AAA1'] }, 5000, async c => { cards.push(c); return true }), /saved status/i)
+  assert.deepEqual(cards.map(c => c.owners), ['U0AAA1'])
+  assert.match(await t.m.manage({ action: 'save', name: 'status', ...job }, 6000, async c => { cards.push(c); return true }), /saved status/i)
+  assert.equal(cards.length, 1)
+  assert.match(readFileSync(`${t.dir}/status/job.md`, 'utf8'), /^owners: U0AAA1$/m)
+  assert.match(grantCard({ kagelet: 'status', tools: '', owners: 'U0AAA1' }), /<@U0AAA1>[\s\S]*own/)
+  assert.match(await manager().m.manage({ action: 'save', name: 'status', ...job, owners: ['U0AAA1'] }, 5000), /not saved: only the owner/)
+})
+test('thread owners: the save opens the bot\'s home (a group DM with Kage and its owners) and stores that thread\'s link', async () => {
+  const opened: string[][] = []
+  const t = manager(10, undefined, async owners => { opened.push(owners); return 'https://test.slack.com/archives/GTEST1/p1700000000555555' })
+  assert.match(await t.m.manage({ action: 'save', name: 'status', ...job, thread: 'owners', owners: ['U0AAA1'] }, 5000, async () => true), /saved status/i)
+  assert.deepEqual(opened, [['U0AAA1']])
+  assert.match(readFileSync(`${t.dir}/status/job.md`, 'utf8'), /^thread: https:\/\/test\.slack\.com\/archives\/GTEST1\/p1700000000555555$/m)
+  assert.match(await t.m.manage({ action: 'save', name: 'status', ...job, thread: 'https://test.slack.com/archives/GTEST1/p1700000000555555' }, 6000), /saved status/i)
+  assert.equal(opened.length, 1)   // a link already there opens nothing
+  assert.match(await manager().m.manage({ action: 'save', name: 'status', ...job, thread: 'owners' }, 5000), /not saved: .*this hub cannot open a home/)
+  const failing = manager(10, undefined, async () => { throw new Error('missing_scope') })
+  assert.match(await failing.m.manage({ action: 'save', name: 'status', ...job, thread: 'owners' }, 5000), /not saved: .*missing_scope/)
+})
+test('thread owners: a save the owner turns down, or one with a bad owner id, opens no group DM', async () => {
+  const opened: string[][] = []
+  const t = manager(10, undefined, async owners => { opened.push(owners); return 'https://test.slack.com/archives/GTEST1/p1700000000555555' })
+  assert.match(await t.m.manage({ action: 'save', name: 'status', ...job, thread: 'owners', owners: ['U0AAA1'] }, 5000, async () => false), /not saved: the owner did not approve/)
+  assert.match(await t.m.manage({ action: 'save', name: 'status', ...job, thread: 'owners', owners: ['alice'] }, 5000, async () => true), /not saved: .*owners/)
+  assert.deepEqual(opened, [])
+})
+test('kagelets.ownersMax caps the owners on save: 3 by default, and an install may raise it', async () => {
+  const four = ['U0AAA1', 'U0BBB2', 'U0CCC3', 'U0DDD4']
+  assert.match(await manager().m.manage({ action: 'save', name: 'status', ...job, owners: four }, 5000, async () => true), /not saved: .*at most 3 owners \(kagelets\.ownersMax\)/)
+  assert.match(await manager().m.manage({ action: 'save', name: 'status', ...job, owners: four.slice(0, 3) }, 5000, async () => true), /saved status/i)
+  const t = manager(10, undefined, undefined, 5)
+  assert.match(await t.m.manage({ action: 'save', name: 'status', ...job, owners: four }, 5000, async () => true), /saved status/i)
+  assert.match(readFileSync(`${t.dir}/status/job.md`, 'utf8'), /^owners: U0AAA1, U0BBB2, U0CCC3, U0DDD4$/m)
 })
 test('the manager saves a kagelet file the hub syncs at once, and lists who made it and why', async () => {
   const t = manager()
