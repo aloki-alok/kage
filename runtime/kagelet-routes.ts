@@ -59,7 +59,6 @@ export function kageletRoutes(o: {
     const wider = row?.tools.find(t => !covers(from?.tools ?? [], t))
     const why = !row || !sp ? `there is no kagelet named "${m.to}"`
       : row.state === 'broken' ? `${m.to} is broken (${row.error})`
-      : !o.granted(row.key!) ? `${m.to} does not run here: this install runs at most so many kagelets (kagelets.max)`
       : wider ? `${m.to} holds ${wider}, which ${m.from} does not. A kagelet messages only one with the same tools or fewer.`
       : o.chainUsd !== undefined && c.usd >= o.chainUsd ? `the chain spent $${c.usd.toFixed(2)}, at or over its cap of $${o.chainUsd.toFixed(2)} (kagelets.chainUsd)`
       : m.hops > MAX_CHAIN - 1 ? `${m.hops} hops with no person or schedule in between (the limit is ${MAX_CHAIN - 1})`
@@ -68,6 +67,8 @@ export function kageletRoutes(o: {
     // A paused kagelet, or one at its daily cap, keeps its messages until it runs again or they expire.
     const conversation = o.store.conversation(row!.key!)
     if (row!.state === 'paused' || o.capUsd !== undefined && row!.costToday >= o.capUsd || !conversation || o.paused(now) !== undefined || !o.idle(row!.key!)) return 'waits'
+    // After the waits: a file just written by hand has no thread yet and waits for the minute sync, not this refusal.
+    if (!o.granted(row!.key!)) return { why: `${m.to} does not run here: it is past this install's kagelet limit (kagelets.max)` }
     return { key: row!.key!, task: {
       type: 'task', fromOwner: false, scheduled: true, handoff: { chain: m.contextId, message: m.messageId, hops: m.hops },
       content: `${kageletPrompt(parseKagelet(m.to, sp!.text) as Kagelet, o.memory?.(m.to))}\n\n${messageInput(m)}`,

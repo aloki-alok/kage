@@ -594,7 +594,7 @@ test('a kagelet past kagelets.max runs nothing: a message to it is refused, not 
   writeJob(`${h.dir}/kagelets`, 'a', kageletFile({ thread: LINK, schedule: '0 10 * * *', tools: ['WebFetch'], job: 'Job of a.', by: 'owner', why: 'w', approved: true }) as string)
   h.sync(NINE)   // by name order, zz is now the 11th of 10
   h.schedules.tick(NINE); await tick()
-  assert.match(h.routes.message(keyOf('b'), 'zz', 'hello'), /zz does not run here/)
+  assert.match(h.routes.message(keyOf('b'), 'zz', 'hello'), /zz does not run here: it is past this install.s kagelet limit/)
   await tick()
   assert.equal(h.tasksOf('zz').length, 0)
 })
