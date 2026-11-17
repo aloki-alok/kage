@@ -1,6 +1,5 @@
 // Jobs that an event wakes, in the hub: Slack channel posts and job webhooks (ADR 0015). Builds the pieces from
 // settings, rebuilds every channel watch from the stored triggers at start, and hands the router one place to call.
-import type { WebClient } from '@slack/web-api'
 import { jobHooks } from '../connectors/job-hooks.ts'
 import type { Config } from '../core/config.ts'
 import type { Schedule } from '../core/cron.ts'
@@ -12,7 +11,8 @@ import type { scheduler } from '../runtime/scheduler.ts'
 import type { Inbox, Store } from '../runtime/store.ts'
 
 export function startJobEvents(o: {
-  store: Store; inbox: Inbox; bot: WebClient; notify: (text: string) => void
+  store: Store; inbox: Inbox; notify: (text: string) => void
+  ping: (key: string, text: string, job: string) => Promise<boolean>   // the router's thread poster
   schedules: Pick<ReturnType<typeof scheduler>, 'add' | 'remove' | 'wake'>
   event: (e: Omit<KageEvent, 'at' | 'chain' | 'transcript'>) => void
   ledgers: Parameters<typeof shadowSwaps>[0]['ledgers']
@@ -21,12 +21,8 @@ export function startJobEvents(o: {
   const t = o.tripwires ?? {}
   const off = t.on === false
   const track = (who: string, detail: string) => o.event({ kind: 'tripwire', who, trace: '', detail })
-  // As Kage in the job's thread, with no model. Where the bot cannot post, the owner hears it instead.
-  const ping = (key: string, text: string) => {
-    const c = o.store.conversation(key)?.conversation
-    if (!c) return
-    o.bot.chat.postMessage({ channel: c.chat, text, ...(c.thread && { thread_ts: c.thread }) }).catch(e => { log('could not post a tripwire ping', e?.data?.error ?? e); o.notify(text) })
-  }
+  // As Kage in the job's thread, with no model. Where it cannot post at all, the owner hears it instead.
+  const ping = (key: string, text: string) => void o.ping(key, text, 'event').then(ok => ok || o.notify(text))
   const ev = jobEvents({ saved: o.store, schedules: () => o.store.schedules(), wake: o.schedules.wake, track, ping,
     cfg: () => ({ patternMax: t.patternMax || 200, maxPosts: t.maxPosts || 20, seenMax: t.seenMax || 500 }) })
   // Twins graded against the job they shadow, and swapped in once proven (ADR 0017). Removal and restore go through

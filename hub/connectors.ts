@@ -22,6 +22,7 @@ import type { Inbox, Store } from '../runtime/store.ts'
 
 export function startConnectors(o: {
   secrets: Secrets; conn: NonNullable<Config['connectors']>; store: Store; slack: Awaited<ReturnType<typeof connectSlack>>; bot: WebClient
+  ping: Parameters<typeof startJobEvents>[0]['ping']
   NAME: string; CODE: string; DIR: string; d: Dispatcher<ToSession>; inbox: Inbox
   deliver: (c: Conversation, task: Task, place: string, lane?: Lane, by?: string) => Delivery
   placeOf: (key: string) => string; failed: (m: ToSession) => void
@@ -95,7 +96,7 @@ export function startConnectors(o: {
   })
 
   // Jobs an event wakes: Slack channel posts and each job's own webhook.
-  const jobs = startJobEvents({ store, inbox, bot, notify: text => void slack.notifyOwner(text), schedules: o.schedules, event: o.event, ledgers: o.ledgers, tripwires: o.tripwires })
+  const jobs = startJobEvents({ store, inbox, ping: o.ping, notify: text => void slack.notifyOwner(text), schedules: o.schedules, event: o.event, ledgers: o.ledgers, tripwires: o.tripwires })
 
   const replies = {
     voice: (key: string, text: string) => { if (!meeting?.say(key, text)) voice?.reply(key, text) },   // voice:meet-<call> is a Meet call (#63)
