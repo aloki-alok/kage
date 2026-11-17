@@ -25,6 +25,7 @@ The code decides each tool's tier, so the model cannot raise one.
 3. Every MCP tool that is not act counts as a write tool, a reading one too. The owner approves it on a card the first time, and that yes stands for every later kagelet that asks for the same tool. The owner sees the no-card grants in their daily note.
 4. Never give a kagelet an act tool (prod, money, customers, access, deletes). Its run reports what it needs, and you ask the owner each time, because an act needs a person's yes per use.
 5. When the owner says to revoke a tool, call manage_kagelet revoke with name set to that tool. Revoking by tool takes it from every kagelet at once.
+6. To open a kagelet to someone the owner has not listed, name their Slack member id in people on manage_kagelet save. The owner says yes on a card for each new person, because they can steer every tool the kagelet holds. Never add people to make a kagelet answer someone who asked Kage itself: they stay outside Kage.
 
 ## When a kagelet needs something
 

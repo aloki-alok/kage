@@ -152,6 +152,31 @@ test('a held message that starts on its replay loses the hourglass, so only the 
   }
 })
 
+test('an ask from a person on a kagelet\'s people line goes to that kagelet and starts no Kage session', async () => {
+  const dir = mkdtempSync(join(tmpdir(), 'kage-ask-'))
+  const asks: unknown[][] = [], posts: string[] = []
+  try {
+    const client = {
+      auth: { test: async () => ({ team_id: 'TTEST', user_id: 'UTEST1' }) },
+      conversations: { open: async () => ({ channel: { id: 'DTEST' } }), history: async () => ({ messages: [] }), info: async () => ({ channel: { name: 'general' } }), replies: async () => ({ messages: [] }) },
+      users: { info: async () => ({ user: { real_name: 'Sam Test' } }) },
+      chat: { getPermalink: async () => ({ permalink: '' }), postMessage: async (a: { text: string }) => { posts.push(a.text); return { ok: true } } },
+      reactions: { add: async () => ({ ok: true }), remove: async () => ({ ok: true }) },
+    }
+    const slack = await connectSlack({
+      dir, appToken: 'test', userToken: 'test', bot: client as never, user: client as never,
+      name: 'kage', title: 'Kage', teammates: [], apps: [],
+      hub: { posted: () => '', handled: () => {}, deliver: () => assert.fail('a people-line ask never starts a Kage session'),
+        kageletsIn: (chat: string, thread: string) => chat === 'CTEST1' && thread === '6.0' ? [{ name: 'fude', people: ['UPEOPLE1'] }] : [],
+        kageletAsk: (...a: unknown[]) => { asks.push(a); return 'Asked fude. It answers here.' } } as never,
+    })
+    await slack.replay('test-ask', JSON.stringify({ ...msg, user: 'UPEOPLE1', client_msg_id: 'a', ts: '6.6', thread_ts: '6.0', text: '<@UTEST1> draft one on pricing' }))
+    assert.deepEqual(asks, [['CTEST1', '6.0', 'fude', 'UPEOPLE1', 'draft one on pricing']])
+    assert.deepEqual(posts, ['Asked fude. It answers here.'])
+  } finally {
+    rmSync(dir, { recursive: true, force: true })
+  }
+})
 test('the thread a session reads names the owner\'s Slack id, so a tag for the owner never needs a guessed id (#319)', async () => {
   const dir = mkdtempSync(join(tmpdir(), 'kage-legend-'))
   const tasks: string[] = []

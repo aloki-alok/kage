@@ -1,6 +1,6 @@
 import { describe, test } from 'node:test'
 import assert from 'node:assert/strict'
-import { builtinTools, budgetLeft, capCheck, chainErrors, costFlags, grantRefusal, parseKagelet, resultLine, revokeStanding, rowLine, setPaused, addAllow, kageletFile, kageletRows, starterFile, type Kagelet, type KageletRow } from '../kagelets.ts'
+import { askable, builtinTools, budgetLeft, capCheck, chainErrors, costFlags, grantRefusal, parseKagelet, resultLine, revokeStanding, rowLine, setPaused, addAllow, kageletFile, kageletRows, starterFile, type Kagelet, type KageletRow } from '../kagelets.ts'
 
 const file = (head: string, body = 'Post a summary of the deploy log.') => `---\n${head}\n---\n${body}\n`
 const LINK = 'https://test.slack.com/archives/CTEST1/p1700000000123456'
@@ -13,6 +13,24 @@ describe('a kagelet file', () => {
     assert.deepEqual(parseKagelet('deploys', file(`thread: ${LINK}\nschedule: 0 9 * * 1-5\ntools: WebSearch,  WebFetch`)), {
       name: 'deploys', key: 'CTEST1:1700000000.123456#side-kagelet-deploys', link: LINK, cron: '0 9 * * 1-5', tools: ['WebSearch', 'WebFetch'], job: 'Post a summary of the deploy log.', paused: false, by: 'owner', why: '', model: 'sonnet', modelWhy: '',
     })
+  })
+  test('a people line names who may ask it for work: Slack ids, kept on save; a bad id or a second line is refused', () => {
+    const k = parseKagelet('x', file(`thread: ${LINK}\nschedule: 0 9 * * *\npeople: U0AAA1, W0BBB2`)) as Kagelet
+    assert.deepEqual(k.people, ['U0AAA1', 'W0BBB2'])
+    const text = kageletFile({ thread: LINK, schedule: '0 9 * * *', tools: [], job: 'Report.', by: 'kage', why: '', people: k.people }) as string
+    assert.deepEqual((parseKagelet('x', text) as Kagelet).people, ['U0AAA1', 'W0BBB2'])
+    assert.equal((parseKagelet('x', file(`thread: ${LINK}\nschedule: 0 9 * * *`)) as Kagelet).people, undefined)
+    assert.match((parseKagelet('x', file(`thread: ${LINK}\nschedule: 0 9 * * *\npeople: alice`)) as { error: string }).error, /people/)
+    assert.match((parseKagelet('x', file(`thread: ${LINK}\nschedule: 0 9 * * *\npeople: U0AAA1\npeople: U0CCC3`)) as { error: string }).error, /people/)
+  })
+  test('only a running kagelet in that exact thread, with that person on its people line, takes their ask', () => {
+    const k = (name: string, o: Partial<Kagelet> = {}) => ({ ...(parseKagelet(name, file(`thread: ${LINK}\nschedule: 0 9 * * *\npeople: U0AAA1`)) as Kagelet), ...o })
+    const all = [k('fude'), k('quiet', { paused: true }), k('closed', { people: undefined }), k('elsewhere', { key: 'CTEST1:1700000000.999999#side-kagelet-elsewhere' })]
+    assert.deepEqual(askable(all, 'CTEST1', '1700000000.123456').map(x => x.name), ['fude'])
+    assert.deepEqual(askable(all, 'CTEST1', '1700000000.12345').map(x => x.name), [])     // a thread id that is only a prefix
+    assert.equal(askable(all, 'CTEST1', '1700000000.123456', 'fude', 'U0AAA1')[0]?.name, 'fude')
+    assert.deepEqual(askable(all, 'CTEST1', '1700000000.123456', 'fude', 'U0OTHER'), [])
+    assert.deepEqual(askable(all, 'CTEST1', '1700000000.123456', 'quiet', 'U0AAA1'), [])
   })
   test('allow lines are the owner\'s rules: one per line, kept on save, and a rule must start with a command word', () => {
     const head = `thread: ${LINK}\nschedule: 0 9 * * *\ntools: all\nallow: git push --force origin feat/*\nallow:   curl -X POST https://hooks.example.com/staging/*  `

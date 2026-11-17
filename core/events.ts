@@ -2,7 +2,7 @@
 // A row names what happened, never what was said: no message text, query rows or secrets. A run's text
 // stays in its transcript, and the row keeps only the path.
 import { oneLine } from './text.ts'
-export type EventKind = 'run.start' | 'run.end' | 'tool' | 'handoff' | 'grant' | 'refusal' | 'revoke' | 'owner-note' | 'report' | 'cap-pause' | 'cost-flag' | 'config.live' | 'config.restart' | 'config.refused' | 'memory-proposal' | 'memory-decision' | 'day-summary' | 'triage' | 'tripwire' | 'objective' | 'crash' | 'limit' | 'plan' | 'boot' | 'error' | 'shape' | 'held'
+export type EventKind = 'run.start' | 'run.end' | 'tool' | 'handoff' | 'grant' | 'refusal' | 'revoke' | 'owner-note' | 'report' | 'cap-pause' | 'cost-flag' | 'config.live' | 'config.restart' | 'config.refused' | 'memory-proposal' | 'memory-decision' | 'day-summary' | 'triage' | 'tripwire' | 'objective' | 'crash' | 'limit' | 'plan' | 'boot' | 'error' | 'shape' | 'held' | 'people-ask'
 // A tripwire row (ADR 0015) has detail "<action> k=v ...", ids and counts only: tick (job, outcome same|changed|failed|refused,
 // ms, kb), wake (job, reason), ping (job, fails or path), match (job, channel, ts), catchup (channel, read, capped, failed=1 when the read failed), hook (job,
 // status), decision (job, what, why). A limit row: "<rate_limit|overloaded> window=<w> wait_s=<n> held=<n>". A plan row: "type=<plan> <window>=<0-100> ... extra=<on|off>". A boot row: how the run before ended (core/telemetry.ts bootWhy).
