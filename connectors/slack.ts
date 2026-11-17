@@ -8,7 +8,7 @@ import { log, logger } from '../runtime/log.ts'
 import { agentNote, loopGuard } from '../core/agents.ts'
 import { appEntry } from '../core/registry.ts'
 import { classify, DROPS, plainName, quoteMessage, taskLine, type Ids } from '../core/gate.ts'
-import { filesTag, postText, typedByPerson, type SlackMessage } from '../core/slack-message.ts'
+import { agentTag, filesTag, postText, typedByPerson, type SlackMessage } from '../core/slack-message.ts'
 import type { SlackFile } from '../core/slack-files.ts'
 import { saveFiles } from '../runtime/slack-files.ts'
 import { filesFolderName, parseSessionKey, sessionKey, slackConversation, type Conversation, type Lane } from '../core/conversations.ts'
@@ -147,7 +147,9 @@ export async function connectSlack(o: { dir: string; appToken: string; userToken
     quoted: quoteMessage({ user: m.user, ts: m.ts, text: postText(m) + filesTag(m), client_msg_id: m.client_msg_id, blocks: (m as { blocks?: { block_id?: string }[] }).blocks }, ids.owner, { bot: ids.bot, title: o.title }),
   })
   const POST_SUBTYPES = new Set([undefined, 'bot_message', 'thread_broadcast', 'file_share'])
+  // A post that tags Kage is already a task, so a watch on its channel would answer it a second time.
   const isChannelPost = (m: SlackMessage) => !!m.channel && !m.channel.startsWith('D') && m.channel_type !== 'im' && m.channel_type !== 'mpim' && m.user !== ids.bot && POST_SUBTYPES.has(m.subtype)
+    && !agentTag(ids.bot, ids.name).test(m.text ?? '')
 
   async function onMessage(m: SlackMessage) {
     // A throw in a channel job's hook never stops the tag handling below.

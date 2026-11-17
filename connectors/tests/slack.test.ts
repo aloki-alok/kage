@@ -268,6 +268,32 @@ test('a bot post in a channel reaches channelPost, quoted, and is still dropped 
   }
 })
 
+test('a post that tags Kage starts its task and never reaches channelPost too, so a watch on the channel does not answer it twice', async () => {
+  const dir = mkdtempSync(join(tmpdir(), 'kage-channel-tag-'))
+  const heard: { ts: string }[] = []
+  let tasks = 0
+  try {
+    const client = {
+      auth: { test: async () => ({ team_id: 'TTEST', user_id: 'UTEST1' }) },
+      conversations: { open: async () => ({ channel: { id: 'DTEST' } }), history: async () => ({ messages: [] }), info: async () => ({ channel: { name: 'test' } }), replies: async () => ({ messages: [] }) },
+      chat: { getPermalink: async () => ({ permalink: 'https://test.invalid/p' }) },
+      users: { info: async () => ({ user: { real_name: 'Sam Test' } }) },
+      reactions: { add: async () => ({ ok: true }) },
+    }
+    const slack = await connectSlack({
+      dir, appToken: 'test', userToken: 'test', bot: client as never, user: client as never,
+      name: 'kage', title: 'Kage', teammates: ['UTEST2'], apps: [],
+      hub: { posted: () => '', handled: () => {}, heard: () => {}, deliver: () => { tasks++; return 'sent' }, channelPost: (p: (typeof heard)[number]) => void heard.push(p) } as never,
+    })
+    await slack.replay('s1', JSON.stringify({ type: 'message', channel: 'CTEST2', ts: '7.8', thread_ts: '7.7', user: 'UTEST2', client_msg_id: 'm1', text: `are you using a kagelet? <@${slack.ids.bot}>` }))
+    await slack.replay('s2', JSON.stringify({ type: 'message', channel: 'CTEST2', ts: '7.9', thread_ts: '7.7', user: 'UTEST2', client_msg_id: 'm2', text: 'thanks, looks fine' }))
+    assert.equal(tasks, 1)
+    assert.deepEqual(heard.map(p => p.ts), ['7.9'])   // the untagged reply still reaches the watch
+  } finally {
+    rmSync(dir, { recursive: true, force: true })
+  }
+})
+
 test('an alarm post with empty text still reaches channelPost with its attachment and block text, quoted', async () => {
   const dir = mkdtempSync(join(tmpdir(), 'kage-channel-post-'))
   const heard: { text: string; quoted: string }[] = []
@@ -311,10 +337,11 @@ test('a throw in channelPost never stops the next hook or the handling of the me
     const slack = await connectSlack({
       dir, appToken: 'test', userToken: 'test', bot: client as never, user: client as never,
       name: 'kage', title: 'Kage', teammates: ['UTEST2'], apps: [],
-      hub: { posted: () => '', handled: () => {}, heard: () => {}, deliver: () => { heardBy++; return 'sent' }, channelPost: () => { throw new Error('boom') } } as never,
+      hub: { posted: () => '', handled: () => {}, heard: () => { heardBy++ }, deliver: () => 'sent', channelPost: () => { throw new Error('boom') } } as never,
     })
-    await slack.replay('s1', JSON.stringify({ type: 'message', channel: 'CTEST2', ts: '7.7', user: 'UTEST2', client_msg_id: 'm1', text: `<@${slack.ids.bot}> hello` }))
-    assert.equal(heardBy, 1)   // a teammate's tag still started its task after the hook threw
+    // Untagged, because a tag never reaches channelPost: the hook throws, and the thread still hears the reply.
+    await slack.replay('s1', JSON.stringify({ type: 'message', channel: 'CTEST2', ts: '7.8', thread_ts: '7.7', user: 'UTEST2', client_msg_id: 'm1', text: 'hello' }))
+    assert.equal(heardBy, 1)
   } finally {
     rmSync(dir, { recursive: true, force: true })
   }
