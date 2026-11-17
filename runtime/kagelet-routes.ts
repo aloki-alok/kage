@@ -26,6 +26,7 @@ export function kageletRoutes(o: {
   deliver: (key: string, task: Task) => Delivery
   // Ready for a turn of its own now: no turn running or starting, no closed thread, and a session slot it can take.
   idle: (key: string) => boolean
+  granted: (key: string) => boolean   // the last sync let this lane run (a kagelet past kagelets.max has no grant)
   // The usage-limit pause (runtime/limit-pause.ts) and its reset time: no message goes, and none ages.
   paused: (now: number) => number | undefined
   capUsd?: number; chainUsd?: number; log: (line: string) => void; newId?: () => string
@@ -66,6 +67,8 @@ export function kageletRoutes(o: {
     // A paused kagelet, or one at its daily cap, keeps its messages until it runs again or they expire.
     const conversation = o.store.conversation(row!.key!)
     if (row!.state === 'paused' || o.capUsd !== undefined && row!.costToday >= o.capUsd || !conversation || o.paused(now) !== undefined || !o.idle(row!.key!)) return 'waits'
+    // After the waits: a file just written by hand has no thread yet and waits for the minute sync, not this refusal.
+    if (!o.granted(row!.key!)) return { why: `${m.to} does not run here: it is past this install's kagelet limit (kagelets.max)` }
     return { key: row!.key!, task: {
       type: 'task', fromOwner: false, scheduled: true, handoff: { chain: m.contextId, message: m.messageId, hops: m.hops },
       content: `${kageletPrompt(parseKagelet(m.to, sp!.text) as Kagelet, o.memory?.(m.to))}\n\n${messageInput(m)}`,

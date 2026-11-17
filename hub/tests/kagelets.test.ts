@@ -62,3 +62,15 @@ test('the owner\'s always on a held step\'s card writes one allow line into that
   kag.alwaysAllow(LANE, 'Bash', { command: 'kubectl apply -f staging/web.yaml' })   // the same yes again adds nothing
   assert.equal(job().match(/^allow:/gm)!.length, 1)
 })
+
+test('a people ask to a kagelet that runs only after another says when it reads the ask, and claims no run', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'kage-hub-ask-'))
+  writeJob(kageletsDir(dir), 'a', `---\nthread: ${LINK}\nschedule: 0 9 * * *\ntools: WebSearch\nby: owner\n---\nGather.\n`)
+  writeJob(kageletsDir(dir), 'b', `---\nthread: ${LINK}\nafter: a\ntools: WebSearch\nby: owner\npeople: UTEST1\n---\nSummarize.\n`)
+  const ledgers = openLedgers(dir)
+  const kag = hubKagelets({ dir, kl: {}, mem: { own: join(dir, 'm1'), owner: join(dir, 'm2') }, store: openStore(':memory:'), ledgers,
+    runs: runEvents(ledgers, () => 't1'), title: 'Kage', notify: () => {}, hasSdk: () => true, runNow: () => undefined, toSession: () => 'sent',
+    idle: () => true, paused: () => undefined, tripwires: () => ({}) })
+  kag.sync(Date.now())
+  assert.equal(kag.ask('CTEST1', '1700000000.123456', 'b', 'UTEST1', 'add the totals'), 'Noted for b. It runs after a, and reads this then.')
+})

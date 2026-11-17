@@ -86,7 +86,7 @@ export function hubKagelets(o: {
   const manager = kageletManager({ dir: KAGELETS, max: MAX, ledgers, sync, runNow: o.runNow, store, envCommand: kl.dbRead?.command ?? undefined, log, measures })
   const notes = ownerNotes(store, () => ({ kept: kl.notesKept ?? NOTE_CAP.kept, chars: kl.noteChars ?? NOTE_CAP.chars }))
   const routes = kageletRoutes({ dir: KAGELETS, store, ledgers, runs: o.runs, deliver: kageletDeliver(notes, o.toSession, board),
-    idle: o.idle, paused: o.paused, capUsd: CAPS.each, chainUsd: CAPS.chain, log, memory: name => kmem.notes(name) })
+    idle: o.idle, granted: key => grants.has(key), paused: o.paused, capUsd: CAPS.each, chainUsd: CAPS.chain, log, memory: name => kmem.notes(name) })
   // A kagelet's needs go to Kage in its thread (ADR 0018); Kage's answer waits in its notes for its next run.
   const needs = kageletNeeds({ store, deliver: o.toSession, idle: o.idle, paused: o.paused, waiting: cells => ledgers.add('waiting', cells), perDay: () => kl.needsPerDay || 5, log })
   const tell = async (name: string, text: string, runNow: boolean, now = Date.now()): Promise<string> => {
@@ -103,6 +103,7 @@ export function hubKagelets(o: {
     if (!k) return ''
     notes.asked(k.key, from, text)
     o.runs.emit(k.key, 'people-ask', `${text.length} characters`)
+    if (!k.cron && k.after) return `Noted for ${name}. It runs after ${k.after}, and reads this then.`
     if (!notes.mayRun(k.key, o.idle(k.key), now, kl.askRunsPerHour ?? 4)) return `Noted for ${name}. It reads this on its next run.`
     manager.manage({ action: 'run', name }, now).catch(e => log('kagelet ask run failed', e))
     return `Asked ${name}. It answers here.`
