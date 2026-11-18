@@ -28,3 +28,8 @@ A cheaper twin runs beside a monitor (ADR 0015). The hub grades the twin. The mo
 ## How it is checked
 
 `core/tests/shadow.test.ts` (match, both kinds of miss, quiet ignored, one count per run, window edges) and `runtime/tests/shadow-swap.test.ts` (the swap's order and restore).
+
+## Swap and restore
+
+- A twin shadows one live job, never another twin. Only the owner's own task may make one. (`runtime/scheduler.ts`, `runtime/tools/schedule-tools.ts`)
+- A crash cut swap is finished on the next tick: the twin is live and the old job still runs. Restore puts the twin back first. (`runtime/shadow-swap.ts`)

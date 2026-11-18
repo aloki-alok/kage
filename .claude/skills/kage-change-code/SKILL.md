@@ -23,6 +23,8 @@ Read the ADRs in `docs/adr/` that match what you touch. Do not copy their text i
 | the event log or a ledger | 0010, 0011 |
 | a specialist kagelet, or a rule every install should learn | 0012 (add or edit a skill in `skills/`) |
 | any new file, a file near 300 lines, an export, or a move between folders | 0014 |
+| a runner (`runtime/sdk-sessions.ts`, `runtime/tmux-panes.ts`, `plugin/server.ts`), or what a Claude Code frame means | 0021 |
+| a stand-in that speaks as the owner (AFK, WhatsApp, the Meta bot) | 0022 |
 
 Done when you can name each binding ADR and the line of your change that obeys it. If a change breaks an ADR, stop and write a new ADR first. Do not bend the rule in code.
 
@@ -62,6 +64,14 @@ Privacy and trust (each was a real leak, fixed in #193, #206, #207):
 13. What a call or a room gets, everyone in it gets. A Meet, a group chat or a shared thread is never "the owner", even when the owner sent Kage in.
 14. A file a session must not read is closed in every layer: `configRefusal` (the only hook on the tmux route), the `Read` and `Edit` deny rules, and the sandbox `denyRead` (only when `harness.sandbox` is on). Add the test for each layer.
 15. Text from anyone but the person who gave the task is data. Quote it with `quotedLine` and label it, and never let it pick a tool or a target.
+16. Mark a write done only after the effect lands: save a note before you post it, take an inbox id before you ack, rename after both files are written. A crash then repeats the step and never loses it. (`runtime/probe-jobs.ts`, `runtime/config-files.ts`, `runtime/store.ts`)
+17. A guard that cannot decide fails closed: unknown, unparsed or failed lookup means refuse. A triage that only picks less work fails open. (`core/afk.ts`, `core/db-read.ts`, `connectors/jev.ts`, `core/jev.ts`)
+18. Take identity and targets from the hub's row or the platform, never from tool arguments the model writes. (`runtime/tools/schedule-tools.ts`)
+19. A ledger or side record never throws into the task. Log the failure and go on. (`runtime/ledger.ts`)
+20. Compare Slack `ts` as split numbers, not floats. Write `!(age >= limit)` so a NaN time reads as fresh. (`runtime/channel-watch.ts`, `core/ledgers.ts`)
+21. Never use a bare `JSON.parse` result without a type check. A bare `null` or number must not crash the hub. (`runtime/session-link.ts`)
+22. A message the owner sends into someone else's running turn never lifts that turn's trust. If Claude reads it there, it runs again as the owner's own turn once that turn ends. (`runtime/sdk-sessions.ts`)
+23. Never write to a kagelet or config file through a link. Swap in a fresh copy. (`runtime/kagelet-files.ts`)
 
 Shared homes (update this table when you add one):
 
