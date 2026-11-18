@@ -22,7 +22,8 @@ const runOne = (file: string) => new Promise<Result>(done => {
   child.stdout.on('data', d => { out += d })
   child.stderr.on('data', d => { out += d })
   let killed = false
-  const timer = setTimeout(() => { killed = true; process.kill(-child.pid!, 'SIGKILL') }, limit)
+  // ESRCH: the group ended in the same instant, so there is nothing left to kill.
+  const timer = setTimeout(() => { killed = true; try { process.kill(-child.pid!, 'SIGKILL') } catch {} }, limit)
   child.on('close', code => { clearTimeout(timer); done({ file, code, ms: Date.now() - start, out, killed }) })
 })
 
@@ -35,7 +36,7 @@ const worker = async () => {
     if (r.code === 0 && !r.killed) { pass++; console.log(`ok    ${r.file} (${(r.ms / 1000).toFixed(1)} s)`); continue }
     failed.push(r)
     console.log(r.killed ? `KILL  ${r.file}: still running after ${limit / 1000} s` : `FAIL  ${r.file}`)
-    if (!r.killed) console.log(r.out)
+    console.log(r.out)   // a killed file's output shows the last test it started
   }
 }
 await Promise.all(Array.from({ length: Math.max(1, availableParallelism() - 1) }, worker))
