@@ -32,6 +32,8 @@ Every rule here exists because a claim made without a read cost a correction. Ea
 5. For a batch of similar items, make two or three that differ from each other and get feedback before you make the rest. Rewriting a whole batch costs the batch each time.
 6. Ask someone to merge or release only what you would ship yourself. List every change the merge carries. Old or bot-made pull requests bring changes nobody has run, so ship the small change alone and close or hold the rest, with what each needs before it can ship.
 7. Before you assign someone a code change, check whether a setting or an existing option already does it. A read of the module costs less than a correction.
+8. Before you bypass a library method with a private call, read the library's docs and latest release for a supported route, and keep its normal method for the normal case. A private call breaks on the next upgrade and hides the fix from the next reader.
+9. To give a whole team a skill, commit the skill's files into the repo's own skills folder. A plugin setting reaches only the people who accept an install prompt.
 
 ## Shell habits
 
