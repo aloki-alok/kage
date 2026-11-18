@@ -10,6 +10,7 @@ import type { Task } from '../core/task.ts'
 import type { Delivery } from '../core/sessions.ts'
 import { readKagelets } from './kagelet-files.ts'
 import { kageletPrompt } from './kagelet-sync.ts'
+import { otherTask } from '../core/gate.ts'
 
 // The one path a kagelet's output or message takes to another kagelet (#93), routed by the hub with no Kage turn:
 // after: <kagelet> when a run ends with an output, and message_kagelet in the middle of a run. Each is one envelope
@@ -69,12 +70,12 @@ export function kageletRoutes(o: {
     if (row!.state === 'paused' || o.capUsd !== undefined && row!.costToday >= o.capUsd || !conversation || o.paused(now) !== undefined || !o.idle(row!.key!)) return 'waits'
     // After the waits: a file just written by hand has no thread yet and waits for the minute sync, not this refusal.
     if (!o.granted(row!.key!)) return { why: `${m.to} does not run here: it is past this install's kagelet limit (kagelets.max)` }
-    return { key: row!.key!, task: {
-      type: 'task', fromOwner: false, scheduled: true, handoff: { chain: m.contextId, message: m.messageId, hops: m.hops },
+    return { key: row!.key!, task: otherTask({
+      scheduled: true, handoff: { chain: m.contextId, message: m.messageId, hops: m.hops },
       content: `${kageletPrompt(parseKagelet(m.to, sp!.text) as Kagelet, o.memory?.(m.to))}\n\n${messageInput(m)}`,
       meta: { channel: conversation.conversation.chat, thread_ts: conversation.conversation.thread ?? '', place: conversation.place, permalink: '' },
       origin: { channel: conversation.conversation.chat, ts: '' },
-    } }
+    }) }
   }
   const kindOf = (m: KageletMessage) => /^https?:\/\//.test(m.parts[0]!.text) ? 'link' : 'note'
   const fail = (m: KageletMessage, why: string) => {

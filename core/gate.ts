@@ -2,6 +2,7 @@
 import { noChannelTag, oneLine, quotedLine } from './text.ts'
 import { FOOTER_ID } from './outbound.ts'
 import { agentTag, filesTag, postedAsItself, postedByTrustedApp, typedByPerson, type SlackMessage } from './slack-message.ts'
+import type { Task } from './task.ts'
 
 // owner: the person whose user token hears messages. bot: the app's bot user.
 // botDm: the owner's DM with the bot. name: the word typed after "@" (e.g. kage).
@@ -152,6 +153,14 @@ export function findPeople(people: Person[], query: string): { id: string; name:
       || (!q.includes(' ') && first(p.real_name) === q))
     .map(p => ({ id: p.id, name: p.real_name || p.name || p.id }))
 }
+
+// The only way to make a Task (#273): an owner task runs with the owner's tools, so each call to ownerTask is a
+// reviewable claim, and tests/structure.test.ts refuses a Task built anywhere else.
+type TaskBody = Omit<Task, 'type' | 'fromOwner'>
+export const ownerTask = (t: TaskBody): Task => ({ type: 'task', fromOwner: true, ...t })
+export const otherTask = (t: TaskBody): Task => ({ type: 'task', fromOwner: false, ...t })
+// A Slack message is the owner's only when the owner's own user posted it.
+export const heardTask = (by: string | undefined, owner: string, t: TaskBody): Task => (by === owner ? ownerTask(t) : otherTask(t))
 
 // Who a task counts as. Email never counts as the owner, whatever the task says: anyone may be behind
 // a mailbox forward. A voice call is the strictest label (see voiceToolRefusal) unless the voice

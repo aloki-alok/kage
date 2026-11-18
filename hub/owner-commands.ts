@@ -12,6 +12,7 @@ import type { Ledgers } from '../runtime/ledger.ts'
 import type { limitPause } from '../runtime/limit-pause.ts'
 import type { ToSession } from '../runtime/protocol.ts'
 import type { Store } from '../runtime/store.ts'
+import { ownerTask } from '../core/gate.ts'
 
 export function ownerCommands(o: {
   d: Dispatcher<ToSession>; store: Store; ledgers: Ledgers; limits: ReturnType<typeof limitPause>; MAX: number
@@ -45,11 +46,11 @@ export function ownerCommands(o: {
     // Typed words have no inbox message to replay, so they are refused instead of lost.
     const paused = limits.paused()
     if (paused) return { refused: `${paused.draining ? 'Kage is stopping for a restart or a stop' : 'Kage is paused by the usage limit'}, so it would be lost. ${pauseLine(paused)} Tell it again after that` }
-    const task: Task = {
-      type: 'task', fromOwner: true, content: `From the owner, typed in the terminal: ${text}`,
+    const task = ownerTask({
+      content: `From the owner, typed in the terminal: ${text}`,
       meta: { channel: c.conversation.chat, thread_ts: c.conversation.thread ?? '', place: c.place, permalink: '' },
       origin: { channel: c.conversation.chat, ts: '' },
-    }
+    })
     log('tell', c.place)
     closedTo(key, task)   // the owner's words reopen a closed thread
     noteTrust(key, task)
