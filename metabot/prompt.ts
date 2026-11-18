@@ -1,5 +1,3 @@
-// The one model call per lead message, and the strict check on its answer. The engine rules are fixed here: a job
-// file can add rules on top, never remove these. The lead's words go in as the user's turns, never as instructions.
 import { findSecret, guardVerdict } from '../core/outbound.ts'
 
 export const LABELS = ['qualified', 'self_serve', 'needs_info', 'not_a_fit', 'hand_off'] as const
@@ -26,17 +24,13 @@ export function chatMessages(brand: string, job: string, pack: Pack, history: Li
     l.who === 'lead' ? { role: 'user', content: l.text } : { role: 'assistant', content: l.who === 'person' ? `[a person from the team wrote] ${l.text}` : l.text })]
 }
 
-// Replies are read in one canonical form: NFKC folds full-width marks and digits, and Indian digits become 0-9.
 const INDIC_ZEROS = [0x966, 0x9e6, 0xa66, 0xae6, 0xb66, 0xbe6, 0xc66, 0xce6, 0xd66]
 const canonical = (t: string) => t.normalize('NFKC').replace(/\p{Nd}/gu, d => {
   const cp = d.codePointAt(0)!, zero = INDIC_ZEROS.find(z => cp >= z && cp <= z + 9)
   return zero === undefined ? d : String(cp - zero)
 })
 
-// Links: every URL must be a pack link, and every bare domain must be a pack link's host. Strict on purpose: a
-// held reply costs a fallback line, a stray link can cost a lead's money.
 const URL_RE = /https?:\/\/[^\s<>"')\]]+/gi
-// Only TLDs people put in links, so Node.js, guide.pdf or "Thanks.See" never read as a domain.
 const TLDS = 'com|net|org|io|in|co|ai|app|dev|me|info|biz|xyz|online|site|store|shop|link|click|top|live|pay|money|tech|cc|tv|to|ly|gg|sh|us|uk|eu|de|fr|es|it|nl|ca|au|ru|cn|pk|bd|lk|np|ae|sg'
 const DOMAIN_RE = new RegExp(String.raw`\b(?:[a-z0-9-]+\.)+(?:${TLDS})\b(?![.\w-]*\.(?:${TLDS})\b)`, 'gi')
 const bare = (u: string) => u.toLowerCase().replace(/[.,;:!?]+$/, '').replace(/\/$/, '')
@@ -47,15 +41,11 @@ function strayLink(reply: string, links: string[]): string | undefined {
   const urls = reply.match(URL_RE) ?? []
   const url = urls.find(u => !allowed.has(bare(u)))
   if (url) return url
-  // An email's domain counts as a domain: a stray address is a way to reach a scammer too.
   const rest = urls.reduce((t, u) => t.replace(u, ' '), reply)
   return (rest.match(DOMAIN_RE) ?? []).find(d => !hosts.has(d.toLowerCase()) && !hosts.has(`www.${d.toLowerCase()}`))
 }
 
-// A price is a number next to a currency mark or word. Each one in a reply must be a price the pack states (same
-// currency, same number, commas aside), so a model can never make up or mix up a price: the check is text, not judgment.
 const CUR = String.raw`[$₹€£]|\b(?:inr|usd|rupees?|dollars?)\b|\brs\b\.?`
-// A multiplier stays part of the price, so "$10k" is never read as "$10".
 const NUM = String.raw`\d[\d,]*(?:\.\d+)?(?:\s?(?:k|m|mn|bn|lakhs?|lacs?|crores?|cr)\b)?`
 const MONEY_RE = new RegExp(String.raw`(?:${CUR})\s?${NUM}|${NUM}\s?(?:${CUR}|\/-)`, 'gi')
 const CODE: [RegExp, string][] = [[/\$|usd|dollar/i, 'USD'], [/₹|inr|rs|rupee|\/-/i, 'INR'], [/€/, 'EUR'], [/£/, 'GBP']]
@@ -64,7 +54,6 @@ const money = (t: string) => new Set((canonical(t).match(MONEY_RE) ?? []).map(m 
   return `${code} ${m.match(new RegExp(NUM, 'i'))![0].replace(/[,\s]/g, '').toLowerCase()}`
 }))
 
-// Fails closed: anything that is not exactly a good answer is a hold, with the reason.
 export function checkAnswer(raw: string, pack: Pack, maxChars: number): { ok: true; answer: Answer } | { ok: false; why: string } {
   let v: unknown
   try { v = JSON.parse(raw.trim().replace(/^```(?:json)?\s*|\s*```$/g, '')) } catch { return { ok: false, why: 'not JSON' } }
@@ -86,7 +75,6 @@ export function checkAnswer(raw: string, pack: Pack, maxChars: number): { ok: tr
   return { ok: true, answer: { reply, label: a.label as Label, lead, ...(missed ? { missed } : {}) } }
 }
 
-// A second model reads the reply before it leaves. Only a first line of exactly SEND lets it out (core/outbound.ts).
 export function guardMessages(brand: string, job: string, pack: Pack, history: Line[], reply: string): ChatMessage[] {
   const system = [
     `You check one message before ${brand}'s assistant sends it to a member of the public on Meta.`,

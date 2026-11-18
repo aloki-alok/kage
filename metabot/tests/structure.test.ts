@@ -1,6 +1,3 @@
-// The absolute rule, as a test: a Meta bot never runs a command. Nothing the bot loads, its own files and every core/
-// file they reach, may import a way to start a process or run code, or any part of Kage that can (hub, runtime,
-// connectors, cli, plugin).
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { readdirSync, readFileSync } from 'node:fs'
@@ -10,7 +7,6 @@ const root = normalize(join(import.meta.dirname, '..', '..'))
 const ALLOWED_NODE = new Set(['node:fs', 'node:http', 'node:os', 'node:path', 'node:url', 'node:sqlite', 'node:crypto'])
 const FORBIDDEN_CALLS = /child_process|worker_threads|node:vm|node:cluster|\beval\s*\(|new\s+Function\s*\(|process\.binding|\.spawn\s*\(|\bexecSync\s*\(|execFile/
 const code = (f: string) => readFileSync(f, 'utf8').replace(/\/\*[\s\S]*?\*\//g, '').replace(/(^|\s)\/\/.*$/gm, '$1')
-// import ... from 'x', export ... from 'x', a bare import 'x', and import('x').
 const importsOf = (f: string) => [...code(f).matchAll(/(?:^|\n)\s*(?:import|export)\s[^'";]*?from\s+['"]([^'"]+)['"]|(?:^|\n)\s*import\s+['"]([^'"]+)['"]|import\(\s*['"]([^'"]+)['"]\s*\)/g)].map(m => m[1] ?? m[2] ?? m[3] ?? '')
 
 function reach(): string[] {
@@ -27,7 +23,6 @@ function reach(): string[] {
 
 test('everything the bot loads stays inside metabot/ and core/, with only safe node modules', () => {
   const bad: string[] = [], reached = reach()
-  // The walk must cross into core/, or a core/ file that starts a process would go unseen.
   assert.ok(reached.some(f => f.endsWith('/core/signature.ts')) && reached.some(f => f.endsWith('/core/outbound.ts')), 'the import walk reaches core/')
   for (const f of reached) {
     const rel = relative(root, f)

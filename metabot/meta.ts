@@ -1,4 +1,3 @@
-// What Meta's webhook says, as typed events. Everything a lead typed stays plain data here.
 export type Channel = 'messenger' | 'instagram' | 'facebook_comment'
 export type MetaEvent =
   | { kind: 'message'; channel: 'messenger' | 'instagram'; pageId: string; user: string; id: string; text: string; at: number; adId?: string }
@@ -36,7 +35,6 @@ function messaging(m: Obj, channel: 'messenger' | 'instagram', pageId: string): 
     const id = str(msg.mid)
     return id ? { kind: 'echo', channel, pageId, user: str(obj(m.recipient).id), id, ...(msg.app_id ? { appId: str(msg.app_id) } : {}), at } : undefined
   }
-  // A starter question the lead tapped arrives as a postback: its title is what they "said".
   const id = str(msg.mid) || str(postback.mid)
   const text = (str(msg.text) || str(postback.title)).trim()
   if (!id || !text) return undefined
@@ -48,7 +46,6 @@ function comment(c: Obj, pageId: string): MetaEvent | undefined {
   const v = obj(c.value), from = obj(v.from)
   if (c.field !== 'feed' || v.item !== 'comment' || v.verb !== 'add') return undefined
   const user = str(from.id), id = str(v.comment_id), text = str(v.message).trim()
-  // The Page's own comments (our replies) are not leads.
   if (!user || user === pageId || !id || !text) return undefined
   const parentId = str(v.parent_id)
   return {

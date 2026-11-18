@@ -1,6 +1,3 @@
-// The bot's HTTP side: Meta's subscribe handshake, then signed webhook posts. Each post gets its 200 at once (Meta
-// wants it within seconds); its events then run one at a time per thread, so a burst never gets two racing replies.
-// Start: node metabot/server.ts   (folder: METABOT_DIR, default ~/.config/kage/metabot)
 import { appendFileSync } from 'node:fs'
 import { createServer, type IncomingMessage, type RequestListener } from 'node:http'
 import { homedir } from 'node:os'

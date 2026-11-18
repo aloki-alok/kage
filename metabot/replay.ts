@@ -1,7 +1,3 @@
-// Stage 1: run saved threads through the whole pipeline with the real model and guard, in dry mode, with an
-// in-memory store and no sink. Nothing is sent. Prints each lead line with the outcome, the label and the draft.
-//   node metabot/replay.ts <threads.json> [bot folder]
-// threads.json: [{ "id": "T1", "lines": ["first lead message", "second"] }, ...]
 import { readFileSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { join } from 'node:path'
@@ -33,7 +29,6 @@ for (const t of threads) {
     counts[outcome] = (counts[outcome] ?? 0) + 1
     const draft = store.drafts(1)[0]
     process.stdout.write(`LEAD  ${text.replace(/\s+/g, ' ').slice(0, 160)}\n${outcome.padEnd(5)} ${draft && draft.key.endsWith(`:${t.id}`) ? draft.text.replace(/\s+/g, ' ') : ''}\n`)
-    // The draft is not a sent line, so the next turn would not see it: add it as the bot's line for a realistic replay.
     if (outcome === 'drafted' && draft) store.addLine(`messenger:replay:${t.id}`, clock, 'bot', draft.text.replace(/^\[[a-z_]+\] /, ''))
   }
 }

@@ -1,5 +1,3 @@
-// One SQLite file: which Meta ids were handled (a redelivery runs once), each lead thread's counters, the chat lines
-// the reply reads back, and one event row per message (ids and outcomes, never the words).
 import { DatabaseSync } from 'node:sqlite'
 import type { Line } from './prompt.ts'
 import type { Thread } from './decide.ts'
@@ -26,7 +24,6 @@ export function openStore(file: string) {
     prune: [db.prepare('delete from lines where at < ?'), db.prepare('delete from seen where at < ?'), db.prepare('delete from events where at < ?')],
   }
   return {
-    // True only the first time Meta's id is seen, so a redelivered webhook never answers twice.
     firstTime: (id: string, at: number) => Number(q.seen.run(id, at).changes) === 1,
     forget: (id: string) => void q.forget.run(id),
     thread(key: string): Thread | undefined {
@@ -38,7 +35,6 @@ export function openStore(file: string) {
     history: (key: string, n: number) => q.history.all(key, n) as Line[],
     event: (e: EventRow) => void q.event.run(e.at, e.key, e.kind, e.outcome, e.label ?? null, e.ms),
     drafts: (n: number) => q.drafts.all(n) as { key: string; at: number; text: string }[],
-    // Meta redelivers within hours, so a month of seen ids is plenty. A sink mark goes too, and the lead could be sent again after that.
     prune: (before: number) => { for (const p of q.prune) p.run(before) },
     close: () => db.close(),
   }

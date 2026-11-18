@@ -1,5 +1,3 @@
-// The bot's folder: config.json (settings), secrets.json (tokens, mode 600), job.md (the business's rules) and the
-// knowledge pack (every .md file; links.md holds the links the bot may send). Settings fall back to safe defaults: the mode starts at dry.
 import { readdirSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import type { Mode } from './decide.ts'
@@ -14,7 +12,6 @@ const MODES: Mode[] = ['off', 'dry', 'team', 'live']
 const num = (v: unknown, d: number, min: number) => (typeof v === 'number' && Number.isFinite(v) && v >= min ? v : d)
 const text = (v: unknown, d: string) => (typeof v === 'string' ? v : d)
 
-// team and live need ourAppId: without it the bot reads its own echoes as a person and goes quiet after one reply.
 export function parseConfig(raw: unknown, dir: string): Config {
   const c = (raw && typeof raw === 'object' ? raw : {}) as Record<string, unknown>
   const l = (c.limits && typeof c.limits === 'object' ? c.limits : {}) as Record<string, unknown>
@@ -49,13 +46,11 @@ export function loadSecrets(dir: string): Secrets {
   return { appSecret: get('appSecret'), verifyToken: get('verifyToken'), pageToken: get('pageToken'), modelKey: get('modelKey'), sinkToken: get('sinkToken') }
 }
 
-// Read fresh for every message, so the teacher's newest pack and job apply with no restart.
 export function readJobAndPack(dir: string, packDir: string): { job: string; pack: Pack } {
   const read = (f: string) => { try { return readFileSync(f, 'utf8') } catch { return '' } }
   let files: string[] = []
-  try { files = readdirSync(packDir).filter(f => f.endsWith('.md') && f !== 'links.md').sort() } catch { /* no pack yet */ }
+  try { files = readdirSync(packDir).filter(f => f.endsWith('.md') && f !== 'links.md').sort() } catch {  }
   const facts = files.map(f => read(join(packDir, f)).trim()).filter(Boolean).join('\n\n')
-  // A kagelet's memory notes are .md files, so the links live in links.md: one per line or bullet, a # comment after.
   const links = read(join(packDir, 'links.md')).split('\n').map(l => l.replace(/\s#.*$/, '').replace(/^[-*]\s+/, '').trim()).filter(l => /^https?:\/\/\S+$/.test(l))
   return { job: read(join(dir, 'job.md')), pack: { facts, links } }
 }

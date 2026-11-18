@@ -1,5 +1,3 @@
-// Sending through Meta's Graph API with the Page's token: a reply in the lead's DM thread, the one private reply a
-// comment allows, and a short public reply under the comment.
 import type { MetaEvent } from './meta.ts'
 
 const GRAPH = 'https://graph.facebook.com/v25.0'
