@@ -36,7 +36,7 @@ const worker = async () => {
     if (r.code === 0 && !r.killed) { pass++; console.log(`ok    ${r.file} (${(r.ms / 1000).toFixed(1)} s)`); continue }
     failed.push(r)
     console.log(r.killed ? `KILL  ${r.file}: still running after ${limit / 1000} s` : `FAIL  ${r.file}`)
-    console.log(r.out)   // a killed file's output shows the last test it started
+    if (!r.killed) console.log(r.out)   // a killed file has printed only the TAP header: tests report when they end
   }
 }
 await Promise.all(Array.from({ length: Math.max(1, availableParallelism() - 1) }, worker))

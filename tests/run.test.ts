@@ -17,7 +17,6 @@ test('npm test kills a file that spins past the limit, names it, fails, and stil
   assert.ok(Date.now() - start < 25_000, 'the runner itself returned well before the outer timeout')
   assert.equal(r.status, 1)
   assert.match(r.stdout, /KILL .*spin\.test\.ts: still running after 8 s/)
-  assert.match(r.stdout, /spin/, 'the killed file prints what it ran so far')
   assert.match(r.stdout, /ok .*ok\.test\.ts/)
   assert.match(r.stdout, /1 files passed, 1 failed/)
   // `node --test <file>` runs the file in a child of its own: killing only the runner's child left that one spinning.
