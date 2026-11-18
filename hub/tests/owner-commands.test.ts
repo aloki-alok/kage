@@ -29,7 +29,7 @@ test('kage say keeps the outbound rules: no secret into a shared thread, no crow
   } as never)
   const key = 'xoxb-1234567890-abcdefghij'
   assert.deepEqual(await c.say(`here ${key}`, { channel: 'CTEST2', thread_ts: '7.7' }), { refused: 'this looks like a Slack token, and a thread is seen by others. Send it in the DM with Kage instead' })
-  assert.deepEqual(await c.say(`here ${key}`), { ok: true, channel: 'X', ts: '9.9' })   // the DM with Kage is the owner's own
+  assert.deepEqual(await c.say(`here ${key}`), { ok: true, channel: 'X', ts: '9.9' })
   await c.say('<!channel> look', { channel: 'CTEST2', thread_ts: '7.7' })
   assert.deepEqual(posts, [`here ${key}`, 'channel look'])
 })

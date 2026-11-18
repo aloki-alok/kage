@@ -13,7 +13,6 @@ import type { Task } from '../../core/task.ts'
 const LINK = 'https://test.slack.com/archives/CTEST1/p1700000000123456'
 const LANE = 'CTEST1:1700000000.123456#side-kagelet-posts'
 
-// ADR 0016's stress run through the hub's own wiring: a fake measure moves the number, and every run reads it.
 test('the hub measures an objective on its clock, and each run of the kagelet reads the number, the target and the trend', async () => {
   const dir = mkdtempSync(join(tmpdir(), 'kage-hub-obj-'))
   const value = join(dir, 'value')
@@ -35,13 +34,13 @@ test('the hub measures an objective on its clock, and each run of the kagelet re
   assert.match(runs[0]!, /Run your job\.$/)
 
   writeFileSync(value, '640')
-  await kag.measure(30 * 60_000)                             // inside the hour: the hub does not measure again
+  await kag.measure(30 * 60_000)
   await kag.measure(61 * 60_000)
   deliver(LANE, task)
   assert.match(runs[1]!, /Number: 640 \(target >= 500, met\)\. Trend, oldest first: 320, 640/)
-  assert.match(runs[1]!, /Keep working toward it, met or not/)   // a worker never goes quiet on a met target
+  assert.match(runs[1]!, /Keep working toward it, met or not/)
   deliver('CTEST1:1700000000.123456', task)
-  assert.equal(runs[2], 'Run your job.')                     // the thread's own session reads no scoreboard
+  assert.equal(runs[2], 'Run your job.')
   assert.ok(!ledgers.events(new Date(0).toISOString().slice(0, 10)).some(e => /320|640/.test(JSON.stringify(e))), 'the value reached the event log')
 })
 
@@ -59,7 +58,7 @@ test('the owner\'s always on a held step\'s card writes one allow line into that
   kag.alwaysAllow(LANE, 'Bash', { command: 'kubectl apply -f staging/web.yaml' })
   assert.match(job(), /^allow: kubectl apply -f staging\/web\.yaml$/m)
   assert.deepEqual(ledgers.events(new Date().toISOString().slice(0, 10)).filter(e => e.kind === 'held').map(e => e.detail), ['always allowed by the owner: a deploy'])
-  kag.alwaysAllow(LANE, 'Bash', { command: 'kubectl apply -f staging/web.yaml' })   // the same yes again adds nothing
+  kag.alwaysAllow(LANE, 'Bash', { command: 'kubectl apply -f staging/web.yaml' })
   assert.equal(job().match(/^allow:/gm)!.length, 1)
 })
 

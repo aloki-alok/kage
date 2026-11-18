@@ -13,7 +13,7 @@ function setup(sent: boolean) {
   let at = '2026-11-06T00:00:00Z'
   const ledgers = openLedgers(dir, () => at)
   ledgers.add('waiting', ['open', 'C1:1.1', 'l1', 'Merge the old PR?'])
-  at = '2026-11-08T12:00:00Z'   // a day and a half: still waiting, not dropped
+  at = '2026-11-08T12:00:00Z'
   ledgers.add('waiting', ['open', 'C2:2.2', 'l2', 'Run the new check?'])
   const notes: string[] = []
   const d = ownerDigests({ dir, ledgers, store: {} as Store, placeOf: k => k, costTracked: false, expireHours: () => 72,
