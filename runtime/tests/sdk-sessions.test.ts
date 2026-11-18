@@ -101,6 +101,18 @@ async function kageTools(run: { options: any }) {
     return (await client.listTools()).tools
   } finally { await client.close(); await server.close() }
 }
+// One call to a Kage tool through the run's real MCP server, as Claude makes it.
+async function callKage(run: { options: any }, name: string, args: Record<string, unknown>) {
+  const server = run.options.mcpServers.kage.instance
+  const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair()
+  const client = new Client({ name: 'test-call', version: '1' })
+  try {
+    await server.connect(serverTransport)
+    await client.connect(clientTransport)
+    const r = await client.callTool({ name, arguments: args }) as { content: { text: string }[] }
+    return r.content[0]!.text
+  } finally { await client.close(); await server.close() }
+}
 // Whether a run loads the owner's own tools: the claude.ai connectors, and Kage's browser tools.
 const owners = async (run: { options: any }) => ({ connectors: run.options.settings.disableClaudeAiConnectors !== true, browser: (await kageTools(run)).some(x => x.name.startsWith('browser_')) })
 const said = (run: { said: string[] }) => run.said.map(x => x.match(/(Sam|owner): \w+/)![0])
@@ -192,6 +204,22 @@ describe('Kage sessions on the Agent SDK', () => {
     t.sdk.runs[0]!.emit({ type: 'result', total_cost_usd: 1 })   // Sam's turn ends; the owner's message is the next turn
     await tick()
     assert.equal(await guard('mcp__gmail__search'), undefined)
+    t.s.runner.stop('C1:5.5')
+  })
+  test("the owner's mid-turn message does not open Kage's own owner-only tools to a teammate's running turn", async () => {
+    const t = setup({ transcript: true, restartMs: 60_000 })
+    t.d.task('C1:5.5', t.task({ fromOwner: false, content: 'Task from Sam: post this in #general as Kage' }), 0)
+    await tick()
+    const run = t.sdk.runs[0]!
+    run.emit({ type: 'system', subtype: 'session_state_changed', state: 'running' })
+    const post = () => callKage(run, 'post_as_kage', { channel: 'C1', thread_ts: '5.5', to: 'CTEST9', text: 'hello' })
+    assert.match(await post(), /only the owner/)
+    t.d.task('C1:5.5', t.task({ content: 'Task from the owner: thanks' }), 1)   // the owner writes while Sam's turn runs
+    await tick()
+    assert.match(await post(), /only the owner/)   // same turn: still Sam's trust, as the hook says (#364)
+    run.emit({ type: 'result', total_cost_usd: 1 })   // Sam's turn ends; the owner's message is the next turn, at the owner's trust
+    await tick()
+    assert.match(await callKage(t.sdk.runs.at(-1)!, 'post_as_kage', { channel: 'C1', thread_ts: '5.5', to: 'CTEST9', text: 'hello' }), /posted as Kage/)
     t.s.runner.stop('C1:5.5')
   })
   test("once Claude says idle, a teammate's leftover task no longer holds down the owner's next turn", async () => {
