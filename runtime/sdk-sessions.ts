@@ -259,7 +259,7 @@ export function sdkSessions(o: {
       // Nor does the new process take one it never read: the store hands it out again.
       const gone = new Set(lost.map(x => channelTag(x.task)))
       const unread = [...inbox.drain(), ...s.carry.splice(0)].filter(u => !gone.has(u.message.content as string))
-      setTimeout(() => { if (s.stopped) return; open(key, s, unread); for (const t of s.again.splice(0)) s.run!.send(ownerAgain(t)) }, s.ownerTools && !full ? 0 : o.restartMs ?? 3000)
+      setTimeout(() => { if (s.stopped) return; open(key, s, unread); if (s.turn.every(x => senderOf(x.task) === 'owner')) for (const t of s.again.splice(0)) s.run!.send(ownerAgain(t)) }, s.ownerTools && !full ? 0 : o.restartMs ?? 3000)
     })()
   }
 
