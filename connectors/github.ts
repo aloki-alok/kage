@@ -8,7 +8,8 @@ import type { AddressInfo } from 'node:net'
 import { log } from '../runtime/log.ts'
 import type { Conversation } from '../core/conversations.ts'
 import { noChannelTag } from '../core/text.ts'
-import { githubEvent, signedByGithub } from '../core/github.ts'
+import { githubEvent } from '../core/github.ts'
+import { signedSha256 } from '../core/signature.ts'
 import { slackPlain } from '../core/outbound.ts'
 import { hourCap, readBody } from './webhook.ts'
 import type { Delivery } from '../core/sessions.ts'
@@ -84,7 +85,7 @@ export function connectGithub(o: {
       const raw = await readBody(req, MAX_BODY)
       if (!raw) { res.writeHead(413).end(); req.destroy(); return }
       const body = raw.toString('utf8')
-      if (!signedByGithub(o.secret, body, req.headers['x-hub-signature-256'] as string | undefined)) { res.writeHead(401).end(); return }
+      if (!signedSha256(o.secret, body, req.headers['x-hub-signature-256'] as string | undefined)) { res.writeHead(401).end(); return }
       // Into the inbox first: GitHub does not resend a delivery by itself, so a hub that dies while
       // handling it replays it from the store on the next start (hub/router.ts). A redelivered id runs once.
       const type = String(req.headers['x-github-event'] ?? '')

@@ -141,6 +141,7 @@ Write logs to stderr only. In a tmux pane, stdout carries the channel protocol, 
 | `text.ts` | Text helpers every rule shares: `oneLine`, and `quotedLine` for someone else's text (no `<channel>` tag survives). |
 | `cli-help.ts` | The closest real `kage` command to a mistyped one. |
 | `dream.ts` | The nightly dream job: what it reads for lessons, how it tidies Kage's memory, and which lessons may leave this machine. |
+| `signature.ts` | A webhook body signed with a shared secret (`X-Hub-Signature-256`), as GitHub and Meta sign. |
 | `github.ts` | Which GitHub events are the owner's business (a review or failed checks on their PR, an issue or review request given to them, a mention). |
 | `kagelet-memory.ts` | A kagelet's own memory folder (#98): what its prompt reads, and the one path into the folder. |
 | `log-repeats.ts` | One log line for a burst of the same line, with its count. |

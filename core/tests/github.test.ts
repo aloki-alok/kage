@@ -1,17 +1,18 @@
 import { describe, test } from 'node:test'
 import assert from 'node:assert/strict'
 import { createHmac } from 'node:crypto'
-import { githubEvent, signedByGithub } from '../github.ts'
+import { githubEvent } from '../github.ts'
+import { signedSha256 } from '../signature.ts'
 
 const sign = (secret: string, body: string) => `sha256=${createHmac('sha256', secret).update(body).digest('hex')}`
-describe('the GitHub webhook signature', () => {
+describe('a webhook signature (GitHub, Meta)', () => {
   test('only a body signed with the shared secret passes', () => {
     const body = '{"a":1}'
-    assert.equal(signedByGithub('s3cret', body, sign('s3cret', body)), true)
-    assert.equal(signedByGithub('s3cret', body, sign('other', body)), false)
-    assert.equal(signedByGithub('s3cret', body + ' ', sign('s3cret', body)), false)
-    assert.equal(signedByGithub('s3cret', body, undefined), false)
-    assert.equal(signedByGithub('', body, sign('', body)), false)          // no secret set: nothing passes
+    assert.equal(signedSha256('s3cret', body, sign('s3cret', body)), true)
+    assert.equal(signedSha256('s3cret', body, sign('other', body)), false)
+    assert.equal(signedSha256('s3cret', body + ' ', sign('s3cret', body)), false)
+    assert.equal(signedSha256('s3cret', body, undefined), false)
+    assert.equal(signedSha256('', body, sign('', body)), false)          // no secret set: nothing passes
   })
 })
 
