@@ -1,15 +1,10 @@
 #!/usr/bin/env node
-// Regenerates hero.ts: Kage's avatar (docs/kage-avatar.jpg) as braille, one colour class per cell.
-//   node cli/make-hero.ts        (macOS: uses `sips` to scale the picture and write a BMP)
-// Each cell is 2x4 dots. Highlights light every dot; the red field lights every other dot, a
-// halftone like the poster. Classes: r red, w white, m muted, d dark, g gold.
 import { execFileSync } from 'node:child_process'
 import { mkdtempSync, readFileSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 
 const SOURCE = new URL('../docs/kage-avatar.jpg', import.meta.url).pathname
 const SIZES = { big: [46, 23], small: [32, 16] } as const
-// bit of each dot in a braille cell: [dx, dy, bit]
 const BITS = [[0, 0, 1], [0, 1, 2], [0, 2, 4], [1, 0, 8], [1, 1, 16], [1, 2, 32], [0, 3, 64], [1, 3, 128]] as const
 
 function pixels(cols: number, rows: number) {
@@ -46,7 +41,6 @@ function braille(cols: number, rows: number) {
       else if (sr > 95 && sr > sg * 1.6) cl = 'r'
       else if (lum > 165) cl = 'w'
       else if (lum > 95) cl = 'm'
-      // The avatar's gold script runs down its left edge: leave it out. Only the star stays gold.
       if (cl === 'g' && c < cols * 0.2) { cl = 'd'; bits = 0 }
       line += bits ? String.fromCharCode(0x2800 + bits) : ' '
       k += cl

@@ -1,4 +1,3 @@
-// kage skill-lesson check: the dream runs this on a lesson before it proposes it to the shared skills (core/skill-lessons.ts).
 import { readFileSync } from 'node:fs'
 import { wordingProblems } from '../core/skill-lessons.ts'
 

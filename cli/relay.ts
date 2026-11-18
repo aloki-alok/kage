@@ -1,6 +1,4 @@
 #!/usr/bin/env node
-// kage relay allow|deny <place or key>, kage relay list: which threads may use the SSM relay beyond the owner-trusted ones.
-//   kage relay allow prod-monitor     the one thread whose place contains "prod-monitor"
 import { existsSync } from 'node:fs'
 import { connect } from 'node:net'
 import { DIR } from './home.ts'

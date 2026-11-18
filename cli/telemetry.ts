@@ -1,8 +1,4 @@
 #!/usr/bin/env node
-// What this Kage sends, and where (ADR 0019).
-//   kage telemetry         on or off, why, the endpoint and the install id
-//   kage telemetry show    the exact body the next minute's batch would send, from the rows waiting now
-// Turn it off with kage set telemetry.on false, KAGE_TELEMETRY=off or DO_NOT_TRACK=1.
 import { existsSync, readFileSync } from 'node:fs'
 import { arch, platform } from 'node:os'
 import { DIR, ENV_FILE } from './home.ts'

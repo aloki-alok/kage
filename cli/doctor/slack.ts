@@ -1,4 +1,3 @@
-// Whether the hub is connected to Slack, and the version it runs. The hub writes both files (connectors/slack.ts, hub/router.ts).
 import { slackLines } from '../../core/doctor.ts'
 import { dir, read, sh, type Group } from './context.ts'
 

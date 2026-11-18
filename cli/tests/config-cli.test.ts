@@ -24,7 +24,7 @@ test('get never prints a token, and has says only whether one is set', () => {
 
 test('a session cannot change a setting, and the owner at a terminal can', () => {
   const before = readFileSync(`${dir}/config.json`, 'utf8')
-  for (const marker of [{ KAGE_THREAD: 'C1:5.5' }, { KAGE_SESSION: '1' }] as Record<string, string>[]) {   // an SDK session keeps only KAGE_SESSION
+  for (const marker of [{ KAGE_THREAD: 'C1:5.5' }, { KAGE_SESSION: '1' }] as Record<string, string>[]) {
     const blocked = run(['set', 'harness.maxSessions', '3'], marker)
     assert.equal(blocked.code, 1)
     assert.match(blocked.err, /terminal/)

@@ -1,4 +1,3 @@
-// kage slack upgrade: opens the app's manifest page, names the scopes to add, and waits for the new scopes.
 import { spawnSync } from 'node:child_process'
 import { manifestUrl, upgradeSteps } from '../core/slack-scopes.ts'
 import { authTest, checkScopes } from '../runtime/slack-scopes.ts'
@@ -13,7 +12,6 @@ if (cmd === 'upgrade') {
   if (!tokens.user || !tokens.bot) die('no Slack tokens saved: run kage save')
   const missing = await checkScopes(tokens)
   if (!missing.bot.length && !missing.user.length) { console.log('ok: the Slack app has every scope'); process.exit(0) }
-  // auth.test gives the bot id, and bots.info (users:read, which the bot holds) gives the app id.
   const auth = await authTest(tokens.bot!)
   const info = auth?.botId ? await fetch(`https://slack.com/api/bots.info?bot=${auth.botId}`, { headers: { Authorization: `Bearer ${tokens.bot}` } }).then(r => r.json() as Promise<{ bot?: { app_id?: string } }>).catch(() => undefined) : undefined
   const appId = info?.bot?.app_id

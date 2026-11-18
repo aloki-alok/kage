@@ -1,4 +1,3 @@
-// kage top's screen: a grid of cells, each a character and a colour class, and how it prints as one string per row.
 export let W = 100, H = 38
 export function resize(s: { cols: number; rows: number }) { W = s.cols; H = s.rows }
 const COL: Record<string, [number, number, number]> = {
@@ -17,7 +16,6 @@ export const put = (x: number, y: number, s: string, k: string) => {
 export const clean = (s: string) => s.replace(/[\x00-\x1f\x7f]/g, ' ')
 export const clip = (s: string, n: number) => { const a = [...clean(s)]; return a.length <= n ? a.join('') : `${a.slice(0, Math.max(0, n - 1)).join('')}…` }
 export const clamp = (v: number, a = 0, b = 1) => Math.max(a, Math.min(b, v))
-// Deterministic noise, so the start looks the same each run.
 export const rnd = (i: number) => { const x = Math.sin(i * 12.9898) * 43758.5453; return x - Math.floor(x) }
 
 export function toText(): string[] {
@@ -30,7 +28,6 @@ export function toText(): string[] {
   })
 }
 
-// One rare row shifts sideways for a moment.
 export function glitch(t: number) {
   const slot = Math.floor(t / 2600)
   if (rnd(slot) > 0.55 && t % 2600 < 90) {

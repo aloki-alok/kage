@@ -1,11 +1,4 @@
 #!/usr/bin/env node
-// kage top: a full-screen console for Kage's sessions, drawn as a loom. Kage (braille, from its avatar)
-// holds a string to every live thread; ended threads are one dim row each. It reads the store and the
-// transcripts, asks the hub for live state over its socket, and acts only through the hub. It never
-// starts a hub. Mouse works on every row.
-// l opens the kagelets panel: their state, last report, next run and cost, with keys that act through the hub.
-//   kage top           the console (q quits)
-//   kage top --once    print one settled frame and exit (COLUMNS and LINES set its size)
 import { spawnSync } from 'node:child_process'
 import { existsSync, readFileSync, statSync } from 'node:fs'
 import { connect, type Socket } from 'node:net'
@@ -34,17 +27,15 @@ const db = new DatabaseSync(DB, { readOnly: true })
 const threadsQuery = db.prepare(`select s.key, s.claude_id as id, coalesce(c.place, s.key) as place, coalesce(c.last_seen, 0) as lastSeen,
   coalesce(c.connector, 'slack') as connector from sessions s left join conversations c using (key)`)
 
-// ---- data
-
 type Step = { at: number; text: string }
 type Thread = { key: string; id: string; place: string; lastSeen: number; connector: string }
-let live: Live | undefined           // the hub's answer; undefined when it does not answer
+let live: Live | undefined
 let liveAt = 0
 let known: Thread[] = []
 let schedules: ReturnType<typeof schedulesIn> = []
 let next = new Map<string, number>(), nextAt = 0
-let board: Row[] = []                // every thread, in look-first order
-let view = { live: [] as Row[], ended: [] as Row[] }   // after the search filter
+let board: Row[] = []
+let view = { live: [] as Row[], ended: [] as Row[] }
 
 let boot = Date.now()
 let selKey = ''
@@ -55,7 +46,7 @@ let searching = false, query = ''
 let message = '', messageAt = 0
 let confirmCut = ''
 let suspended = false
-let L: Layout | undefined            // the layout of the last frame, for mouse hits
+let L: Layout | undefined
 let panel = false, pick = 0, confirmRemove = ''
 let kagelets: KageletRow[] = [], kageletsAt = 0, kageletsFailed = '', chains: string[] = []
 const CAP = dailyCap(settings().config.kagelets)
@@ -64,7 +55,6 @@ const KAGELETS = kageletsDir(DIR)
 const mtime = (id: string) => { try { return statSync(`${PROJECT}/${id}.jsonl`).mtimeMs } catch { return 0 } }
 const idOf = (key: string) => known.find(k => k.key === key)?.id
 
-// What a watching thread waits for comes from the checks its transcript still holds.
 const watchCache = new Map<string, { at: number; next: number | undefined }>()
 function watchNext(key: string, now: number): number | undefined {
   const c = watchCache.get(key)
@@ -75,7 +65,6 @@ function watchNext(key: string, now: number): number | undefined {
   return value
 }
 
-// Each followed thread's latest steps: the transcript tail, then what is added.
 type Feed = { file: string; offset: number; steps: Step[]; changed: number }
 const feeds = new Map<string, Feed>()
 function follow(key: string) {
@@ -102,7 +91,6 @@ function follow(key: string) {
   if (f.steps.length > 300) f.steps = f.steps.slice(-300)
 }
 
-// A thread that was live and now is not: its string is cut, and falls as dust.
 const prevState = new Map<string, State>()
 const sinceState = new Map<string, number>()
 const lastY = new Map<string, number>()
@@ -113,9 +101,9 @@ function rebuild() {
   view = { live: rows.filter(r => r.state !== 'closed'), ended: rows.filter(r => r.state === 'closed') }
 }
 function refresh(now: number) {
-  try { known = threadsQuery.all() as Thread[] } catch {}   // store busy: keep the last read
+  try { known = threadsQuery.all() as Thread[] } catch {}
   if (now - nextAt > 10_000) { schedules = schedulesIn(DB); next = nextRuns(schedules, now); nextAt = now }
-  if (now - liveAt > 4_000) live = undefined   // the hub stopped answering
+  if (now - liveAt > 4_000) live = undefined
   const nx = new Map(next)
   for (const l of live?.live ?? []) {
     if (l.state !== 'watching') continue
@@ -141,14 +129,11 @@ function refresh(now: number) {
 function readKageletRows(now: number) {
   kageletsAt = now
   try { kagelets = kageletRows(readKagelets(KAGELETS), { runs: ledgerText(db, 'runs'), costs: ledgerText(db, 'costs'), reports: ledgerText(db, 'reports'), now }); kageletsFailed = '' } catch (e) { kageletsFailed = `cannot read them: ${(e as Error).message}` }
-  // Today's chains (#93), newest last. A hub older than the event log has no table: none then.
   try { chains = chainViews(eventsOn(db, new Date(now).toISOString().slice(0, 10))).map(chainLine) } catch { chains = [] }
 }
 
-// ---- the hub
-
 let sock: Socket | undefined
-let waiters: ((m: any) => void)[] = []   // one per request sent, in order
+let waiters: ((m: any) => void)[] = []
 function hub(): Socket | undefined {
   if (sock && !sock.destroyed) return sock
   if (!existsSync(SOCK)) return undefined
@@ -171,8 +156,6 @@ function hub(): Socket | undefined {
 const ask = (m: object) => new Promise<any>(resolve => {
   const s = hub()
   if (!s) return resolve(undefined)
-  // An older hub never answers a question it does not know: drop its slot, or every later answer lands one late.
-  // A late answer can still land on the next slot, so each caller checks the answer's type.
   const w = (r: any) => { clearTimeout(t); resolve(r) }
   const t = setTimeout(() => { waiters = waiters.filter(x => x !== w); resolve(undefined) }, 3000)
   waiters.push(w)
@@ -182,8 +165,6 @@ async function pollHub() {
   const r = await ask({ type: 'board' })
   if (r?.type === 'board') { live = r; liveAt = Date.now() }
 }
-
-// ---- one frame
 
 const TONE: Record<string, string> = { red: 'R', gold: 'G', white: 'w', muted: 'm', dim: 'd' }
 const tz = () => ` ${new Intl.DateTimeFormat([], { timeZoneName: 'short' }).formatToParts(new Date()).find(p => p.type === 'timeZoneName')?.value ?? ''}`
@@ -199,7 +180,6 @@ function frame(t: number, since: number): string[] {
 
   const l = layout(W, H, view.live.map(r => r.key), view.ended.map(r => r.key))
   L = l
-  // The header ends where the rows end, so it reads as the list's title.
   const clock = live ? `${live.live.length} of ${live.max} strings · ${new Date(now).toTimeString().slice(0, 5)}${tz()}` : existsSync(SOCK) ? 'no live state' : 'hub offline'
   put(l.right - clock.length + 1, 1, clock, 'm')
   const asks = board.filter(r => r.state === 'asking').length
@@ -215,14 +195,12 @@ function frame(t: number, since: number): string[] {
   const star = l.star
   const p = l.hero ? clamp((since - 900) / 500) : 1, ease = p * p * (3 - 2 * p)
   const cx = l.hero ? l.hero.x + l.hero.cols / 2 : 0, cy = l.hero ? l.hero.y + l.hero.rows / 2 : 0
-  // Every string hangs from the star; it blinks while a thread waits on you.
   if (star && since > 500) put(star.x, star.y, '✦', asks && Math.floor(t / 450) % 2 ? 'G' : 'g')
   l.live.forEach((pos, i) => {
     const r = byKey.get(pos.key)!
     const style = STRING[r.state]
     const hot = pos.key === active
     if (star && since > 500) {
-      // The start: the live threads circle Kage, then fly out to their rows as the strings pull tight.
       const a = since / 300 + i * Math.PI * 2 / Math.max(1, l.live.length)
       const ox = cx + Math.cos(a) * l.hero!.cols * 0.54, oy = cy + Math.sin(a) * l.hero!.rows * 0.43
       const nx = ox + (l.lx - 2 - ox) * ease, ny = oy + (pos.y - oy) * ease
@@ -254,7 +232,7 @@ function frame(t: number, since: number): string[] {
     }
     if (l.more > 0 && l.moreY !== undefined) {
       const line = moreLine(view.ended.slice(l.ended.length))
-      const x = line.length <= W - l.lx ? l.lx - 2 : 2   // under the rows if it fits, else under Kage
+      const x = line.length <= W - l.lx ? l.lx - 2 : 2
       put(x, l.moreY, clip(line, W - x - 2), 'g')
     }
     if (!l.live.length && !l.ended.length) put(l.lx, l.sepY, query ? 'no thread matches' : 'no threads yet', 'm')
@@ -267,7 +245,6 @@ function frame(t: number, since: number): string[] {
 }
 
 const STATE_TONE: Record<State, string> = { asking: 'G', working: 'R', watching: 'w', quiet: 'm', starting: 'g', held: 'm', queued: 'g', closed: 'd' }
-// The open thread: its live feed from the transcript, the newest line typing in.
 function detail(l: Layout, now: number, byKey: Map<string, Row>) {
   const r = byKey.get(open!)
   if (!r) { open = undefined; return }
@@ -311,7 +288,6 @@ function detail(l: Layout, now: number, byKey: Map<string, Row>) {
 }
 
 const SHOWN_TONE: Record<string, string> = { on: 'w', paused: 'm', broken: 'R', 'over cap': 'G' }
-// The kagelets: two lines each, the state line and its last report, across the whole width.
 function kageletPanel(now: number) {
   const x0 = 2, right = W - 3, y0 = 4, y1 = H - 3, w = right - x0
   for (let y = y0; y <= y1; y++) put(0, y, ' '.repeat(W), 'w')
@@ -322,7 +298,6 @@ function kageletPanel(now: number) {
   put(x0 + 2, y0 + 2, '─'.repeat(w - 3), 'k')
   if (!kagelets.length) put(x0 + 3, y0 + 4, 'no kagelets yet', 'm')
   pick = clamp(pick, 0, Math.max(0, kagelets.length - 1))
-  // The last few chains today sit above the keys: a > b > c and where each stopped.
   const shown = chains.slice(-Math.min(3, Math.max(0, Math.floor((y1 - y0 - 9) / 2))))
   shown.forEach((c, i) => put(x0 + 3, y1 - 2 - shown.length + i, clip(`chain ${c}`, w - 4), c.includes('stopped') ? 'R' : 'm'))
   const fit = Math.max(1, Math.floor((y1 - y0 - 5 - shown.length) / 2)), from = Math.max(0, pick - fit + 1)
@@ -357,8 +332,6 @@ function footer(t: number) {
   }
 }
 
-// ---- running
-
 const size = () => ({ cols: Number(process.env.COLUMNS) || process.stdout.columns || 80, rows: Number(process.env.LINES) || process.stdout.rows || 24 })
 const intro = () => (view.live.length && L?.hero ? Date.now() - boot : 1e9)
 function draw() {
@@ -375,8 +348,7 @@ if (ONCE) {
   await pollHub()
   resize(size())
   refresh(Date.now())
-  frame(boot, 1e9)           // lays out, so the selection exists
-  // Piped (a script, a Kage session): one plain line per open thread instead of the picture.
+  frame(boot, 1e9)
   if (process.stdout.isTTY) console.log(toText().join('\n'))
   else for (const r of board.filter(r => r.state !== 'closed')) console.log([r.label, r.place, r.next ? `next ${whenLabel(r.next, Date.now())}` : `${ago(r.ageMs)} ago`].join('\t'))
   if (live?.paused) console.log(pauseLine(live.paused))
@@ -387,7 +359,6 @@ if (ONCE) {
 
 if (!process.stdin.isTTY || !process.stdout.isTTY) { console.error('kage top needs a terminal. Use --once to print one frame.'); process.exit(1) }
 
-// 1049: the alternate screen. 1003 and 1006: mouse motion and clicks, as SGR sequences.
 const ENTER = '\x1b[?1049h\x1b[?25l\x1b[?1003h\x1b[?1006h', LEAVE = '\x1b[?1006l\x1b[?1003l\x1b[?25h\x1b[?1049l\x1b[0m'
 function enter() { process.stdin.setRawMode(true); process.stdin.resume(); process.stdout.write(`${ENTER}${BG}\x1b[2J`) }
 function leave() { try { process.stdin.setRawMode(false) } catch {} process.stdout.write(LEAVE) }
@@ -400,7 +371,6 @@ process.stdout.on('resize', () => { process.stdout.write(`${BG}\x1b[2J`); draw()
 
 const say = (m: string) => { message = m; messageAt = Date.now() }
 const CUT_WHY = { closed: 'it is not running', starting: 'it is still starting', busy: 'it is working', asking: 'it waits on your approval' } as const
-// Attach takes any running session at once (it stops a turn, like Esc); only one terminal may hold it.
 const ATTACH_WHY: Partial<Record<State, string>> = { held: 'it is already open in a terminal' }
 const placeOf = (key: string) => known.find(k => k.key === key)?.place ?? key
 
@@ -408,7 +378,6 @@ async function cut(key: string) {
   const r = await ask({ type: 'stop', key })
   if (r?.type !== 'stop') say(`Cannot cut ${placeOf(key)}: the hub does not answer.`)
   else if (r.ok) say(`Cut ${placeOf(key)}. It spins up again on its next task.`)
-  // The hub says 'busy' for a watching session too; the row knows which it is.
   else say(`Cannot cut ${placeOf(key)}: ${r.refused === 'busy' && live?.live.find(l => l.key === key)?.state === 'watching' ? 'a timed check is running in it' : CUT_WHY[r.refused as keyof typeof CUT_WHY] ?? r.refused}.`)
   await pollHub()
   refresh(Date.now())
@@ -430,7 +399,6 @@ function attach(r: Row) {
   } else back()
 }
 
-// Its own connection, so a slow answer never trades places with the board poll on the shared one.
 async function act(action: PanelAction, name: string) {
   let up = true
   const r = await askHub<{ type?: string; text?: string; refused?: string }>({ type: 'kagelet', action, name }).catch((e: Error) => { up = e.message !== 'down'; return undefined })
@@ -442,7 +410,6 @@ const target = () => open ?? hover ?? selKey
 const rowOf = (key: string) => board.find(r => r.key === key)
 function openThread(key: string) { open = key; selKey = key; openAt = Date.now(); mode = 'steps'; follow(key) }
 
-// Input: SGR mouse reports (button;column;row, 1-based), arrow keys, Esc, or one character.
 const TOKEN = /\x1b\[<(\d+);(\d+);(\d+)([Mm])|\x1b\[[A-D]|\x1b|[\s\S]/gu
 async function onKey(k: string) {
   const list = [...(L?.live ?? []), ...(L?.ended ?? [])].map(r => r.key)
@@ -453,14 +420,11 @@ async function onKey(k: string) {
     const name = kagelets[pick]?.name, action = PANEL_KEYS[k]
     if (k === 'q' || k === '\x03') quit()
     else if (k === '\x1b' || k === 'l') panel = false
-    // Its thread's feed, as ⏎ opens any thread: the lane's own session, once it has run.
     else if (k === '\r') { const key = kagelets[pick]?.key; if (key) { panel = false; openThread(key) } }
     else if (k === '\x1b[A' || k === 'k') pick = Math.max(0, pick - 1)
     else if (k === '\x1b[B' || k === 'j') pick = Math.min(kagelets.length - 1, pick + 1)
     else if (action && name) {
       if (action === 'remove') confirmRemove = name
-      // One revoke per write tool it holds, the one whose card made the approval too: each ends that tool's standing
-      // approval and takes it from every kagelet that got it so. The hub says when a tool has none.
       else if (action === 'revoke') { const tools = (kagelets[pick]?.tools ?? []).filter(t => kageletTier(t) === 'write'); if (!tools.length) say(`${name} holds no write tool, so no standing approval.`); for (const t of tools) await act('revoke', t) }
       else await act(action, name)
     }
@@ -487,13 +451,13 @@ async function onKey(k: string) {
 function onMouse(b: number, x: number, y: number, press: boolean) {
   if (!L || intro() < 4100 || panel) return
   const over = (open && x >= L.lx - 3 && y >= 4) ? undefined : hit(L, x - 1, y - 1)
-  if (b === 35 || b === 32) { hover = over; return }       // motion
+  if (b === 35 || b === 32) { hover = over; return }
   if (b === 0 && press) { if (over) openThread(over); else if (!(open && x >= L.lx - 3)) open = undefined }
 }
 
 process.stdin.on('data', async b => {
   if (suspended) return
-  if (Date.now() - boot < 4100) boot = Date.now() - 4100   // any key or click ends the start animation
+  if (Date.now() - boot < 4100) boot = Date.now() - 4100
   for (const m of b.toString().matchAll(TOKEN)) {
     if (m[1] !== undefined) onMouse(Number(m[1]), Number(m[2]), Number(m[3]), m[4] === 'M')
     else await onKey(m[0])

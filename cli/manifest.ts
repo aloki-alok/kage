@@ -1,4 +1,3 @@
-// Prints the Slack app manifest for the name in name (setup.sh calls this).
 import { validName } from '../core/gate.ts'
 import { BOT_SCOPES, USER_SCOPES } from '../core/slack-scopes.ts'
 

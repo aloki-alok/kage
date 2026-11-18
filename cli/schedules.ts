@@ -1,6 +1,4 @@
 #!/usr/bin/env node
-// Every schedule and watch the hub keeps, across threads: what runs, where, and when a watch ends.
-//   kage schedules
 import { DIR, placeNamer } from './home.ts'
 import { whenLabel } from '../core/board.ts'
 import { REPLY, cadence, nextRun, promptPreview } from '../core/cron.ts'

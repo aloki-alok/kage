@@ -1,11 +1,8 @@
 #!/usr/bin/env node
-// What Kage spent per thread, from the ledger the hub writes after every turn (core/ledgers.ts).
-//   kage cost [days]
 import { DIR, placeNamer, settings } from './home.ts'
 import { spendSince } from '../core/ledgers.ts'
 import { openLedgers } from '../runtime/ledger.ts'
 
-// Only the Agent SDK runner reports what a turn cost. Say so, so empty or old numbers do not read as $0.
 if (settings().config.harness?.runtime === 'tmux') {
   console.log('Threads run as tmux panes (harness.runtime is tmux), whose turns are not costed. Only Agent SDK turns are below.\n')
 }

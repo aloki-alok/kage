@@ -1,4 +1,3 @@
-// What a session needs to start: the shell sandbox, the ssh relay, and the Agent SDK (or the tmux plugin route).
 import { accessSync, constants } from 'node:fs'
 import { homedir } from 'node:os'
 import { keyLines, pluginLine, sandboxLine, sessionLines } from '../../core/doctor.ts'

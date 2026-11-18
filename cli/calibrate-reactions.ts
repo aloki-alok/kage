@@ -1,4 +1,3 @@
-// Synthetic messages only. Run three times before changing the registry's recorded fingerprint.
 import { createHash } from 'node:crypto'
 import { readFileSync, writeFileSync } from 'node:fs'
 import { jevConfig, REACTIONS, reactionVerdict, triageRequest, triageSkips, triageVerdict } from '../core/jev.ts'

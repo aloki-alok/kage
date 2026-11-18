@@ -1,10 +1,4 @@
 #!/usr/bin/env node
-// Settings from a shell: setup.sh and service.sh read them here, and kage set changes one.
-//   config.ts get <key>          a value from config.json. A list prints comma separated, nothing prints for an unset key. Never a secrets.* key.
-//   config.ts has <key>          exit 0 when the key is set in config.json or secrets.json, else 1. Prints nothing, so a token never leaves the file.
-//   config.ts check-slack <app|user|bot>  asks Slack whether that token works: prints "ok" or Slack's error. The token stays inside this process.
-//   config.ts set <key> <value>  one config.json key. The value is JSON when it parses ("6", "true", "[\"a\"]"), else text. The file is checked before it is written.
-//   config.ts save <name>        the three Slack tokens, as words on stdin, into secrets.json (kage save)
 import { tilde } from '../core/config.ts'
 import { ENV_FILE } from './home.ts'
 import { readSettings, setKey, updateConfig, updateSecrets } from '../runtime/config-files.ts'
@@ -26,9 +20,9 @@ if (cmd === 'has') {
   if (!r.ok) die(`Slack says: ${r.error}`)
   console.log('ok')
 } else if (cmd === 'get') {
-  if (key === 'secrets' || key.startsWith('secrets.')) process.exit(0)   // a token never prints: use has
+  if (key === 'secrets' || key.startsWith('secrets.')) process.exit(0)
   let s
-  try { s = readSettings(ENV_FILE) } catch { process.exit(0) }   // no settings yet: the caller's default applies
+  try { s = readSettings(ENV_FILE) } catch { process.exit(0) }
   const v = walk(s.config, key)
   if (v === undefined || v === null) process.exit(0)
   console.log(key === 'harness.cwd' ? tilde(String(v), process.env.HOME!) : Array.isArray(v) && v.every(x => typeof x === 'string') ? v.join(',') : typeof v === 'object' ? JSON.stringify(v) : String(v))

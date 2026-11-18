@@ -1,5 +1,3 @@
-// kage doctor's Jev line: checks the Jev settings, then asks Jev about one fixed ack (never a real post).
-// Prints one line. Exit 0 with no output when Jev is off, 0 with the line when it works, 1 on a problem.
 import { envFilePath, readSettings } from '../runtime/config-files.ts'
 import { jevConfig } from '../core/jev.ts'
 import { jevCheck } from '../connectors/jev.ts'

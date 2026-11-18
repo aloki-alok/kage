@@ -1,6 +1,3 @@
-// kage stop <link, place or key> [--now]: end one thread's session once its turn ends, or now. Its schedules keep
-// running, and its next tag starts it again. Bare kage stop stops the whole hub (setup.sh).
-// kage stop <kagelet>: pause it, keeping its file (runtime/kagelets.ts). kage start <kagelet> (--resume) runs it again.
 import { existsSync } from 'node:fs'
 import { askHub, DIR } from './home.ts'
 import { pickThread } from './pick-thread.ts'
@@ -8,8 +5,6 @@ import { hasKagelet, kageletsDir, pauseKagelet } from '../runtime/kagelet-files.
 
 if (process.env.KAGE_CLAUDE) { console.error('This shell runs inside Kage: a session cannot stop a thread. The owner runs kage stop in their own terminal, or writes "@kage stop" in the thread.'); process.exit(1) }
 const args = process.argv.slice(2)
-// A kagelet's name wins over a place that contains the same word: kage stop <link> still reaches any thread.
-// It needs no running hub: the hub reads the file when it next runs.
 const resume = args.includes('--resume')
 const name = args.filter(a => a !== '--now' && a !== '--resume').join(' ')
 const KAGELETS = kageletsDir(DIR)
