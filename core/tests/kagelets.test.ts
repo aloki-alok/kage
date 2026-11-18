@@ -28,7 +28,7 @@ describe('a kagelet file', () => {
     const k = (name: string, o: Partial<Kagelet> = {}) => ({ ...(parseKagelet(name, file(`thread: ${LINK}\nschedule: 0 9 * * *\npeople: U0AAA1`)) as Kagelet), ...o })
     const all = [k('fude'), k('quiet', { paused: true }), k('closed', { people: undefined }), k('elsewhere', { key: 'CTEST1:1700000000.999999#side-kagelet-elsewhere' })]
     assert.deepEqual(askable(all, 'CTEST1', '1700000000.123456').map(x => x.name), ['fude'])
-    assert.deepEqual(askable(all, 'CTEST1', '1700000000.12345').map(x => x.name), [])     // a thread id that is only a prefix
+    assert.deepEqual(askable(all, 'CTEST1', '1700000000.12345').map(x => x.name), [])
     assert.equal(askable(all, 'CTEST1', '1700000000.123456', 'fude', 'U0AAA1')[0]?.name, 'fude')
     assert.deepEqual(askable(all, 'CTEST1', '1700000000.123456', 'fude', 'U0OTHER'), [])
     assert.deepEqual(askable(all, 'CTEST1', '1700000000.123456', 'quiet', 'U0AAA1'), [])
@@ -64,7 +64,6 @@ describe('a kagelet file', () => {
     const k = parseKagelet('x', file(`${head}\nmodel: opus\nmodel_why: a big monthly roll-up`)) as Kagelet
     assert.deepEqual([k.model, k.modelWhy], ['opus', 'a big monthly roll-up'])
     assert.equal((parseKagelet('x', file(`${head}\nmodel: claude-opus-4-1`)) as Kagelet).model, 'claude-opus-4-1')
-    // A typo would pass here and then fail every run, so the file is held instead.
     assert.match((parseKagelet('x', file(`${head}\nmodel: opuss`)) as { error: string }).error, /model/)
   })
   test('a saved file keeps its model and reason, and a default model writes no line', () => {
@@ -130,11 +129,10 @@ describe('the grant', () => {
     assert.match(grantRefusal('mcp__gmail__send_message', all) ?? '', /grant/)
     assert.equal(grantRefusal('mcp__gmail__send_message', [...all, 'mcp__gmail__send_message']), undefined)
     assert.match(grantRefusal('mcp__stripe__create_refund', [...all, 'mcp__stripe__create_refund']) ?? '', /never holds/)
-    // An owner's rule line releases the held step it names, and only that one.
     const rule = ['git push --force origin feat/*']
     assert.equal(grantRefusal('Bash', all, { command: 'git push --force origin feat/a' }, rule), undefined)
     assert.match(grantRefusal('Bash', all, { command: 'git push --force origin fix/a' }, rule) ?? '', /^Held/)
-    assert.equal(builtinTools(all), undefined)                      // no tool list: the session loads them all
+    assert.equal(builtinTools(all), undefined)
     assert.deepEqual(builtinTools(['WebFetch', 'mcp__x__y']), ['WebFetch', 'ToolSearch'])
   })
   test('a file may say tools: all; a step after an all kagelet may hold any built-in tool, never an MCP tool or db_read it lacks', () => {
@@ -150,7 +148,6 @@ describe('the grant', () => {
     assert.match(grantRefusal('WebSearch', ['WebFetch']) ?? '', /grant/)
     assert.equal(grantRefusal('mcp__kage__reply', []), undefined)
     assert.match(grantRefusal('mcp__other__thing', []) ?? '', /grant/)
-    // Only the tools for its own thread: never the ones that act as the owner or outlive the run.
     for (const t of ['mcp__kage__message_people', 'mcp__kage__schedule', 'mcp__kage__away', 'mcp__kage__send_file', 'mcp__kage__set_model', 'mcp__kage__log_prod_write'])
       assert.match(grantRefusal(t, []) ?? '', /grant/, t)
     for (const t of ['mcp__kage__reply', 'mcp__kage__edit_message', 'mcp__kage__delete_message', 'mcp__kage__report', 'mcp__kage__message_kagelet']) assert.equal(grantRefusal(t, []), undefined, t)
@@ -166,13 +163,11 @@ describe('the grant', () => {
     for (const t of ['Bash', 'Read', 'Grep', 'Glob', 'LS', 'NotebookRead', 'Write', 'Edit', 'MultiEdit', 'NotebookEdit', 'Monitor', 'PowerShell', 'Skill', 'Agent', 'Task', 'mcp__plugin_kage_kage__reply'])
       assert.match(grantRefusal(t, [t], { file_path: '/tmp/x' }) ?? '', /never holds/, t)
     assert.equal(grantRefusal('mcp__claude_ai_Docs__read', ['mcp__claude_ai_Docs__read']), undefined)
-    // An act tool is refused even when a hand-written file names it.
     assert.match(grantRefusal('mcp__stripe__create_refund', ['mcp__stripe__create_refund']) ?? '', /never holds/)
     assert.equal(grantRefusal('WebFetch', ['WebFetch'], { url: 'https://example.com' }), undefined)
     assert.match(grantRefusal('WebFetch', ['WebFetch'], { url: 'file:///etc/hosts' }) ?? '', /http/)
     assert.match(grantRefusal('WebFetch', ['WebFetch'], { url: 'FILE:///etc/hosts' }) ?? '', /http/)
   })
-
 
 })
 
@@ -196,7 +191,6 @@ describe('pausing a kagelet', () => {
     assert.equal((parseKagelet('x', file(`thread: ${LINK}\nschedule: 0 9 * * *\npaused: yes`)) as { paused: boolean }).paused, true)
     assert.equal((parseKagelet('x', file(`thread: ${LINK}\nschedule: 0 9 * * *\npaused: no`)) as { paused: boolean }).paused, false)
     assert.equal((parseKagelet('x', file(`thread: ${LINK}\nschedule: 0 9 * * *\npaused: False`)) as { paused: boolean }).paused, false)
-    // Fails closed: a value it does not know pauses, so a typo never starts one.
     for (const v of ['true', 'Yes', 'y', 'yes # till monday'])
       assert.equal((parseKagelet('x', file(`thread: ${LINK}\nschedule: 0 9 * * *\npaused: ${v}`)) as { paused: boolean }).paused, true, v)
   })
@@ -260,7 +254,7 @@ describe('the rows kage list, kage top and the manager show', () => {
     const back = setPaused(paused, false, now)
     assert.match(back, new RegExp(`^resumed: ${new Date(now).toISOString().replace(/\./g, '\\.')}$`, 'm'))
     assert.equal((parseKagelet('x', back) as { paused: boolean }).paused, false)
-    assert.equal(setPaused(back, false, now + 1), back)   // resuming one that runs changes nothing
+    assert.equal(setPaused(back, false, now + 1), back)
   })
   test('a paused one has no next run', () => {
     assert.equal(rows[2]!.next, undefined)
@@ -283,7 +277,6 @@ describe('a file the manager writes', () => {
   test('is refused with the reason when it would not run or asks for a tool v1 cannot grant', () => {
     assert.match((kageletFile({ thread: 'nope', schedule: '0 9 * * *', tools: [], job: 'x', by: 'owner', why: '' }) as { error: string }).error, /thread/)
     assert.match((kageletFile({ thread: LINK, schedule: '0 9 * * *', tools: ['WebSearch', 'Bash'], job: 'x', by: 'owner', why: '' }) as { error: string }).error, /Bash/)
-    // A newline cannot smuggle a second front matter line in.
     assert.match((kageletFile({ thread: LINK, schedule: '0 9 * * *\ntools: Bash', tools: [], job: 'x', by: 'owner', why: '' }) as { error: string }).error, /schedule/)
     assert.match((kageletFile({ thread: LINK, schedule: '0 9 * * *', tools: ['WebSearch\npaused: no'], job: 'x', by: 'owner', why: '' }) as { error: string }).error, /tool/)
     assert.match((kageletFile({ thread: `${LINK}\ntools: Bash`, schedule: '0 9 * * *', tools: [], job: 'x', by: 'owner', why: '' }) as { error: string }).error, /thread/)
@@ -298,7 +291,6 @@ describe('a write tool, and an act tool', () => {
     assert.match((make('kage', ['mcp__docs__search']) as { error: string }).error, /owner/)
     for (const by of ['owner', 'kage'] as const) assert.match((make(by, ['mcp__gmail__send']) as { error: string }).error, /owner/)
     assert.equal(typeof make('kage', ['mcp__gmail__send'], true), 'string')
-    // A comma or space in one name would read back as two tools, one the card never named.
     for (const t of ['mcp__a__b,db_read', 'mcp__a__b db_read']) assert.match((make('owner', [t], true) as { error: string }).error, /tool name/)
   })
   test('an act tool is refused even with a yes: the kagelet says what it needs, and Kage asks the owner each time', () => {
@@ -370,9 +362,7 @@ describe('the cost caps (#96)', () => {
     assert.match(r.pause[0]!.why, /^paused: it spent \$1\.50 today.*together spent \$10\.40.*total daily cap of \$10\.00 \(kagelets\.totalDailyUsd\)/)
     assert.deepEqual(r.tell.map(t => t.id), ['total'])
     assert.deepEqual(capCheck(rows, caps, ['total'], 'Kage').tell, [])
-    // Exactly at it pauses too.
     assert.deepEqual(capCheck([row('a', 4), row('b', 6)], caps, [], 'Kage').pause.map(p => p.name), ['a', 'b'])
-    // Below it, nothing pauses.
     assert.deepEqual(capCheck([row('a', 1), row('b', 1)], caps, [], 'Kage').pause, [])
   })
   test('at 80% of either cap, one warning a day, not more', () => {
@@ -383,12 +373,10 @@ describe('the cost caps (#96)', () => {
     assert.deepEqual(capCheck([row('a', 1.7), row('b', 1.59)], { each: 2, total: 3.9 }, ['a', 'total-80'], 'Kage').tell, [])
   })
   test('a run\'s budget is what is left under the lower of the two caps, never zero', () => {
-    // Its own cap binds for a, the total for c.
     const rows = [row('a', 0.5), row('b', 7.7), row('c', 0, 'paused')]
     assert.equal(budgetLeft(rows, 'C1:1.1#side-kagelet-a', caps), 1.5)
     assert.equal(budgetLeft(rows, 'C1:1.1#side-kagelet-c', caps), 1.8)
     assert.equal(budgetLeft([row('a', 3)], 'C1:1.1#side-kagelet-a', caps), 0.01)
-    // No cap set: no budget, so no run is stopped.
     assert.equal(budgetLeft(rows, 'C1:1.1#side-kagelet-a', {}), undefined)
     assert.equal(budgetLeft(rows, 'C1:1.1#side-kagelet-a', { total: 10 }), 1.8)
   })
@@ -399,10 +387,8 @@ describe('cost monitoring (#96)', () => {
   const at = (d: number, h: number, m = 0) => new Date(2026, 10, d, h, m).toISOString()
   const lane = (n: string) => `CTEST1:1700000000.123456#side-kagelet-${n}`
   const files = ['spiky', 'steady', 'fresh', 'gaps', 'busy'].map(name => ({ name, text: file(`thread: ${LINK}\nschedule: 0 9 * * *`) }))
-  // spiky and steady spent $0.10 a day for the 7 days before today, busy $0.30; one row 8 days ago does not count.
   const history = [7, 8, 9, 10, 11, 12, 13].flatMap(d => ['spiky', 'steady', 'busy'].map(n => `${at(d, 9)}\t${lane(n)}\t${n === 'busy' ? 0.3 : 0.1}\t0\n`)).join('') + `${at(6, 9)}\t${lane('spiky')}\t5\t0\n`
   const today = `${at(14, 9, 1)}\t${lane('spiky')}\t0.61\t0\n${at(14, 9, 1)}\t${lane('steady')}\t0.25\t0\n${at(14, 9, 1)}\t${lane('fresh')}\t0.45\t0\n${at(14, 10, 1)}\t${lane('gaps')}\t0.05\t0\n${at(14, 9, 1)}\t${lane('busy')}\t0.8\t0\n`
-  // gaps ran at 9 (no costs row), 10 (one) and 14:30 (still running, under an hour).
   const runs = [9, 10].map(h => `${at(14, h)}\tkagelet-gaps\t${lane('gaps')}\n`).join('') + `${at(14, 14, 30)}\tkagelet-gaps\t${lane('gaps')}\n`
   const costs = history + today
   const rows = kageletRows(files, { runs, costs, now })

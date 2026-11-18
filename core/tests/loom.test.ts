@@ -24,8 +24,8 @@ describe('where everything goes on screen', () => {
     assert.ok(l.ended[0]!.y > l.live[2]!.y + 1)
     assert.equal(l.ended.length + l.more, 40)
     assert.ok(l.more > 0)
-    assert.ok(l.ended.at(-1)!.y < l.moreY!)       // the count line never overlaps a row
-    assert.ok(l.moreY! < 38 - 1)                  // and leaves the last line to the keys
+    assert.ok(l.ended.at(-1)!.y < l.moreY!)
+    assert.ok(l.moreY! < 38 - 1)
   })
   test('rows get shorter before they run out of room, and nothing is drawn below the screen', () => {
     for (const rows of [38, 30, 24, 20]) {

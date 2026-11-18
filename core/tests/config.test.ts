@@ -5,7 +5,6 @@ import { readFileSync } from 'node:fs'
 import { ALIASES, checkSettings, settingTier, Config, diff, fromEnv, KEYS, NOT_SETTINGS, toEnv, unknownEnv, unknownNames } from '../config.ts'
 import { parseEnv } from '../settings.ts'
 
-// One line for every setting in the table, with fake values. Canonical forms: the shape toEnv writes.
 const FULL = `KAGE_NAME=kage
 KAGE_RUNTIME=tmux
 KAGE_ROUTE=plugin
@@ -114,7 +113,6 @@ describe('importing an env file', () => {
     const env = parseEnv(FULL)
     const { config, secrets } = fromEnv(env)
     assert.deepEqual(toEnv(config, secrets), env)
-    // and as text, byte for byte once sorted
     const text = (e: Record<string, string>) => Object.entries(e).sort().map(([k, v]) => `${k}=${v}`).join('\n')
     assert.equal(text(toEnv(config, secrets)), text(env))
     assert.equal(config.unknown, undefined)
@@ -244,7 +242,6 @@ describe('what the hub needs to run', () => {
 })
 
 describe('docs/settings.md', () => {
-  // Regenerate the key list with the command at the top of the page.
   test('names exactly the keys in the table, one row each', () => {
     const docs = readFileSync(new URL('../../docs/settings.md', import.meta.url), 'utf8')
     const listed = docs.split('\n').filter(l => l.startsWith('| `')).flatMap(l => [...l.split('|')[1]!.matchAll(/`([^`]+)`/g)].map(m => m[1]!))

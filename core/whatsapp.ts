@@ -1,28 +1,16 @@
-// Hard rules for the owner's personal WhatsApp. Kage listens to every chat but acts in only two ways:
-// 1. owner-task: the owner typed "@kage ..." (any chat). Goes to their normal Kage session.
-// 2. stand-in: someone writes in a chat the owner armed. A separate Claude that can only read the
-//    notes folder the owner wrote for it (connectors.whatsapp.memory), plus that chat's history, answers as them.
-//    Nobody else's words ever reach a session that has other tools, except as quoted data inside a
-//    task the owner started.
-// Everything else is stored and ignored.
 
 import { noChannelTag, oneLine } from './text.ts'
 import { kageFooter } from './outbound.ts'
 
-// fromMe: sent from the owner's account. viaApi: sent through WAHA, which only Kage uses, so it is
-// Kage's own message even though it is fromMe too.
 export type WaMessage = { chat: string; id: string; fromMe: boolean; viaApi?: boolean; text: string; forwarded?: boolean; edited?: boolean }
-// A WAHA (GOWS) message.any payload. "from" is the chat even for the owner's own messages; "to" is empty.
 type Ctx = { contextInfo?: { isForwarded?: boolean } }
 export type WahaPayload = { id?: string; from?: string; fromMe?: boolean; source?: string; body?: string; _data?: { IsEdit?: boolean; Message?: Record<string, unknown> } }
 export const fromWaha = (p: WahaPayload): WaMessage => ({
   chat: p.from ?? '', id: p.id ?? '', fromMe: !!p.fromMe, viaApi: p.source === 'api', text: p.body ?? '',
-  // Any message kind (text, image, video) can carry the forward flag in its contextInfo.
   forwarded: Object.values(p._data?.Message ?? {}).some(v => (v as Ctx | null)?.contextInfo?.isForwarded === true),
   edited: !!p._data?.IsEdit,
 })
 
-// One chat the owner armed: until (ms) and how many stand-in replies it has sent since.
 export type Arming = { until: number; replies: number }
 type WaAction =
   | { kind: 'ignore' }
@@ -30,10 +18,8 @@ type WaAction =
   | { kind: 'disarm'; chat: string; why: 'owner typed' | 'limit' }
   | { kind: 'stand-in'; chat: string }
 
-// Stops a loop with another bot or an auto-reply; the owner re-arms if a real chat needs more.
 export const MAX_STAND_IN_REPLIES = 30
 
-// "@kage" as its own word: not inside an email address, a domain or a longer handle.
 const tagFor = (name: string) => new RegExp(`(^|\\s)@${name}(?=$|\\s|[,:!?])[,:!?]?`, 'gi')
 
 export function decideWhatsApp(m: WaMessage, armed: ReadonlyMap<string, Arming>, name: string, now: number): WaAction {
@@ -43,7 +29,6 @@ export function decideWhatsApp(m: WaMessage, armed: ReadonlyMap<string, Arming>,
   const live = arming && arming.until > now ? arming : undefined
   if (m.fromMe) {
     const tag = tagFor(name)
-    // A forward is someone else's words, so its tag never starts a task.
     if (!m.forwarded && tag.test(m.text)) return { kind: 'owner-task', chat: m.chat, text: oneLine(m.text.replace(tag, '$1')) }
     return live ? { kind: 'disarm', chat: m.chat, why: 'owner typed' } : ignore
   }
@@ -52,11 +37,9 @@ export function decideWhatsApp(m: WaMessage, armed: ReadonlyMap<string, Arming>,
   return { kind: 'stand-in', chat: m.chat }
 }
 
-// A message as both sides read it. One line each, so nobody can forge a line from the owner.
 export type WaLine = { fromMe: boolean; text: string }
 const hasTag = (text: string, name: string) => tagFor(name).test(text)
 
-// The task for the owner's own session. Their ask is the only instruction; the chat is quoted data.
 export function waTaskContent(ask: string, place: string, chat: string, history: WaLine[], name: string, owner: string): string {
   const quoted = history.filter(l => !(l.fromMe && hasTag(l.text, name)))
     .map(l => `> [${l.fromMe ? owner : 'them'}] ${noChannelTag(oneLine(l.text))}`)
@@ -68,8 +51,6 @@ export function waTaskContent(ask: string, place: string, chat: string, history:
   ].filter(Boolean).join('\n')
 }
 
-// The stand-in that answers in an armed chat. It runs in the owner's notes folder for it
-// (connectors.whatsapp.memory) with read-only tools, no MCP, no settings and no CLAUDE.md (connectors/whatsapp.ts).
 export function standInPrompt(brief: string, history: WaLine[], name: string, owner: string): { system: string; prompt: string } {
   const system = [
     `You are writing WhatsApp messages as ${owner}, from their own phone, while they are busy. Reply as them: first person, their tone, usually one or two short lines, plain text. Output only the message itself: no reasoning, no notes, no quotes around it.`,
@@ -81,7 +62,6 @@ export function standInPrompt(brief: string, history: WaLine[], name: string, ow
   return { system, prompt: `${lines.join('\n')}\n\nWrite ${owner}'s next message.` }
 }
 
-// The guard reads every message before it leaves as the owner, from the stand-in or from a session.
 export function guardPrompt(brief: string, history: WaLine[], reply: string, owner: string): { system: string; prompt: string } {
   const system = [
     `You check one WhatsApp message before it is sent from ${owner}'s phone by their assistant. The other person may be anyone.`,
@@ -93,17 +73,12 @@ export function guardPrompt(brief: string, history: WaLine[], reply: string, own
   return { system, prompt: `${owner}'s instruction for this chat: ${oneLine(brief) || 'none'}\n\nChat:\n${lines.join('\n')}\n\nMessage to check:\n${oneLine(reply)}` }
 }
 
-// Every message Kage sends from the owner's number ends with its footer, so the chat can tell it from the owner.
 export const waOutgoing = (text: string, title: string) => `${text}\n\n_${kageFooter(title)}_`
-// Kage's earlier messages come back in the history: without the footer, so a model reading them never copies it.
 export const withoutFooter = (text: string) => text.replace(/\n\n_🥷 [^\n]*_$/u, '')
 
-// The WAHA bridge (#351). The container name and the QR script come from waha/compose.yaml and waha/qr.sh.
-// What one look found: no answer, or the HTTP code of /api/sessions/default and its status.
 export type BridgeSeen = { reached: false } | { reached: true; code: number; status?: string }
 const CONTAINER = 'kage-waha'
 
-// Undefined when the bridge works. Else one line: what is wrong, then the fix. kage doctor and the hub's DM print it.
 export function bridgeProblem(s: BridgeSeen, at: { url: string; qr: string }): string | undefined {
   if (!s.reached) return `WhatsApp bridge does not answer at ${at.url}: run docker start ${CONTAINER} (first time: the steps in docs/settings.md, "WhatsApp")`
   if (s.code === 401 || s.code === 403) return `WhatsApp bridge refused the API key: the container reads WAHA_API_KEY from secrets.json only at its start, so run docker restart ${CONTAINER}`
@@ -114,8 +89,6 @@ export function bridgeProblem(s: BridgeSeen, at: { url: string; qr: string }): s
   return `WhatsApp session is ${s.status ?? 'unknown'}, not WORKING: link your phone again with ${at.qr}`
 }
 
-// The hub's check on its clock: one DM when the bridge goes down, one when it is back, none while nothing changed.
-// Every container restart passes through STARTING, so one look at it changes nothing. STARTING twice in a row is down.
 type BridgeState = { down: boolean; starting: boolean }
 export function bridgeAlert(was: BridgeState, seen: BridgeSeen, at: { url: string; qr: string }): BridgeState & { dm?: string } {
   const starting = seen.reached && seen.status === 'STARTING'

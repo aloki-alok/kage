@@ -6,7 +6,7 @@ const OWNER = 'UOWNER001'
 const BOT = 'UBOT00001'
 const DM = 'DBOT00001'
 const ids = { owner: OWNER, bot: BOT, botDm: DM, name: 'kage' }
-const NOW = Date.parse('2026-11-04T06:00:00Z')   // 11:30 IST
+const NOW = Date.parse('2026-11-04T06:00:00Z')
 const IST = 'Asia/Kolkata'
 const afk = (o: Partial<Afk> = {}): Afk => ({ since: NOW - 60_000, until: NOW + 3600_000, note: '', replies: {}, muted: [], watch: {}, pings: [], ...o })
 const watch = (o: Partial<Watch> = {}): Watch => ({ channel: 'C1', thread_ts: '5.5', mentions: 1, ...o })

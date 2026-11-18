@@ -1,9 +1,4 @@
-// Where a message lives (a conversation), and the key of the session working on it. Connectors
-// build conversations; the dispatcher and the store only ever see the key.
 
-// chat: a Slack channel id, an email thread root, a WhatsApp chat id, a voice call's MCP session id. thread: a Slack thread ts
-// (a top-level channel message starts its own). agentDm: the top level of the owner's DM with the
-// agent, which is one rolling conversation rather than a thread per message.
 export type Conversation = {
   connector: 'slack' | 'email' | 'whatsapp' | 'voice'
   chat: string
@@ -11,27 +6,19 @@ export type Conversation = {
   kind: 'dm' | 'group' | 'channel' | 'mail' | 'chat'
   agentDm?: true
 }
-// A side lane is a second session on the same conversation, beside a busy main one.
 export type Lane = 'main' | `side-${string}`
 
-// kagePosted: whether Kage posted the message at this ts. In the owner's DM, a thread under the owner's own top-level
-// message belongs to the rolling "dm" session that took that message, or a second session redoes the same ask.
 export function slackConversation(m: { channel: string; ts: string; thread_ts?: string; channel_type?: string }, botDm: string, kagePosted: (ts: string) => boolean): Conversation {
   const kind = m.channel_type === 'im' ? 'dm' : m.channel_type === 'mpim' ? 'group' : 'channel'
   if (m.channel === botDm && (!m.thread_ts || !kagePosted(m.thread_ts))) return { connector: 'slack', chat: m.channel, kind: 'dm', agentDm: true }
   return { connector: 'slack', chat: m.channel, thread: m.thread_ts ?? m.ts, kind }
 }
 
-// A clock schedule runs in its own lane, so a run never replays the thread's history. A key that is
-// already a lane (a kagelet's) keeps its own.
 export const jobLane = (key: string, id: string) => key.includes('#') ? key : `${key}#side-job-${id}`
 export const isJobLane = (key: string) => key.includes('#side-job-')
 export const threadOfJobLane = (key: string) => key.replace(/#side-job-[^#]*$/, '')
-// A job lane runs on harness.jobModel; unset keeps the sessions' own model. Any other key asks its own rule.
 export const modelFor = (key: string, jobModel: string | null | undefined, other: (key: string) => string | undefined) => isJobLane(key) ? jobModel || undefined : other(key)
 
-// The default agent's keys are exactly the ones Kage has always used ("dm", "C1:5.5", "mail:<id>",
-// "wa:<chat>", "voice:<id>"), so every saved thread keeps its session. Another agent's keys carry "<agent>/".
 export function sessionKey(c: Conversation, o: { agent?: string; lane?: Lane } = {}): string {
   const base = c.connector === 'email' ? `mail:${c.chat}`
     : c.connector === 'whatsapp' ? `wa:${c.chat}`
@@ -41,8 +28,6 @@ export function sessionKey(c: Conversation, o: { agent?: string; lane?: Lane } =
   return `${o.agent ? `${o.agent}/` : ''}${base}${lane}`
 }
 
-// The other way, for keys saved before conversations were stored. A key does not hold everything:
-// "dm" needs the bot DM's id, and a Slack id tells a DM (D...) from the rest, not a group DM from a channel.
 const KEY = /^(?:([a-z][a-z0-9-]{1,20})\/)?(.+?)(?:#(side-[^#]+))?$/
 export function parseSessionKey(key: string, botDm = ''): { agent?: string; lane?: Lane; conversation: Conversation } | undefined {
   const m = KEY.exec(key)
@@ -62,14 +47,11 @@ export function parseSessionKey(key: string, botDm = ''): { agent?: string; lane
   return { ...(agent && { agent }), ...(lane && { lane: lane as Lane }), conversation }
 }
 
-// The place people read for any session key: a side lane or another agent's prefix shows its conversation's place.
 export function placeFor(placeOf: (key: string) => string | undefined, key: string): string {
   const m = KEY.exec(key)!
   return placeOf(key) ?? (m[1] || m[3] ? `${placeOf(m[2]!) ?? key}${m[3] ? ' (side)' : ''}` : key)
 }
 
-// The session key of the thread a pasted Slack message link points at ("Copy link" in Slack). A link to a
-// reply names its thread in thread_ts; any other message starts its own. Not a Slack message link: nothing.
 export function slackLinkKey(link: string): string | undefined {
   const url = URL.parse(link.trim())
   const m = url?.hostname.endsWith('.slack.com') ? /^\/archives\/([A-Z0-9]+)\/p(\d+)(\d{6})$/.exec(url.pathname) : null
@@ -78,8 +60,6 @@ export function slackLinkKey(link: string): string | undefined {
   return /^\d+\.\d+$/.test(thread) ? `${m[1]}:${thread}` : undefined
 }
 
-// What kage attach, tell and stop type to name a thread: a Slack link (the thread and its side lanes; a top-level
-// message in a DM with Kage belongs to the one rolling DM session), the exact key, or part of the place.
 export type ThreadRow = { key: string; place: string; chat: string | null; agent_dm: number | null }
 export function matchThreads<R extends ThreadRow>(rows: R[], arg: string): R[] {
   const linked = slackLinkKey(arg)
@@ -88,10 +68,8 @@ export function matchThreads<R extends ThreadRow>(rows: R[], arg: string): R[] {
     return own.length ? own : rows.filter(r => r.agent_dm && linked.startsWith(`${r.chat}:`))
   }
   const want = arg.trim().toLowerCase()
-  const exact = rows.filter(r => r.key === arg.trim())   // an exact key wins: "dm" must not also match every "DM with Kage"
+  const exact = rows.filter(r => r.key === arg.trim())
   return exact.length ? exact : want ? rows.filter(r => r.place.toLowerCase().includes(want)) : []
 }
 
-// The folder a thread's files live in, under the files folder: send_file sends and a kagelet message carries only
-// what is in its own thread's folder.
 export const filesFolderName = (channel: string, thread_ts: string) => `${channel}_${thread_ts}`.replace(/[^\w.-]/g, '_')

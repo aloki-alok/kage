@@ -2,7 +2,6 @@ import { describe, test } from 'node:test'
 import assert from 'node:assert/strict'
 import { trailEvent, trailLine, askedFrom, cardAt, dailyDue, expiredWaiting, grantsLine, heldLine, lastTotals, openWaiting, postedBy, spendSince, staleWaiting, selfReview, tsvRow, turnCost } from '../ledgers.ts'
 
-
 describe('the daily note of what waits on the owner', () => {
   const day = 24 * 3600_000
   const now = Date.parse('2026-11-04T05:10:00Z')
@@ -75,14 +74,13 @@ describe('the ledgers', () => {
   test('Kage may change only a message it posted, with the token it posted with', () => {
     const rows = [tsvRow(['t1', 'C1', '1.1', 'bot']), tsvRow(['t2', 'C2', '2.2', 'owner']), tsvRow(['t3', 'C1', '1.1', 'deleted'])].join('')
     assert.equal(postedBy(rows, 'C2', '2.2'), 'owner')
-    assert.equal(postedBy(rows, 'C1', '1.1'), undefined)     // already deleted
-    assert.equal(postedBy(rows, 'C1', '9.9'), undefined)     // someone else's message
+    assert.equal(postedBy(rows, 'C1', '1.1'), undefined)
+    assert.equal(postedBy(rows, 'C1', '9.9'), undefined)
     assert.equal(postedBy(tsvRow(['t1', 'C1', '1.1', 'bot']), 'C1', '1.1'), 'bot')
   })
   test("an approval card is known by the message the hub posted, never by its text", () => {
     const rows = [tsvRow(['t1', 'DBOT', '1.1', 'card', 'aekbe']), tsvRow(['t2', 'DBOT', '2.2', 'bot', 'C1:5.5'])].join('')
     assert.equal(cardAt(rows, 'DBOT', '1.1'), 'aekbe')
-    // A reply that copies a card's words, id included, is still just a reply.
     assert.equal(cardAt(rows, 'DBOT', '2.2'), undefined)
     assert.equal(cardAt(rows, 'C1', '1.1'), undefined)
     assert.equal(cardAt(rows, 'DBOT', '9.9'), undefined)
@@ -94,21 +92,21 @@ describe('the ledgers', () => {
   })
   test('an answer under a private ask belongs to the thread that asked', () => {
     const rows = [
-      tsvRow(['t1', 'DTEST', '5.5', 'bot', 'CTEST:1.1']),        // private ask from a channel thread
-      tsvRow(['t2', 'DTEST', '6.6', 'bot', 'DTEST:6.6']),        // the DM thread's own reply
-      tsvRow(['t3', 'DTEST', '7.7', 'bot', 'dm']),               // the rolling DM
-      tsvRow(['t4', 'DTEST', '8.8', 'bot']),                     // row from before keys were logged
-      tsvRow(['t5', 'COTHER', '4.4', 'bot', 'CTEST:9.9']),       // same ts, another channel
-      tsvRow(['t6', 'DTEST', '3.3', 'bot', 'mail:abc']),         // private ask from an email thread
-      tsvRow(['t7', 'DTEST', '2.2', 'bot', 'voice:xyz']),        // private ask from a call
+      tsvRow(['t1', 'DTEST', '5.5', 'bot', 'CTEST:1.1']),
+      tsvRow(['t2', 'DTEST', '6.6', 'bot', 'DTEST:6.6']),
+      tsvRow(['t3', 'DTEST', '7.7', 'bot', 'dm']),
+      tsvRow(['t4', 'DTEST', '8.8', 'bot']),
+      tsvRow(['t5', 'COTHER', '4.4', 'bot', 'CTEST:9.9']),
+      tsvRow(['t6', 'DTEST', '3.3', 'bot', 'mail:abc']),
+      tsvRow(['t7', 'DTEST', '2.2', 'bot', 'voice:xyz']),
     ].join('')
-    assert.equal(askedFrom(rows, 'DTEST', '3.3'), undefined)  // not a Slack thread: stays a DM task
+    assert.equal(askedFrom(rows, 'DTEST', '3.3'), undefined)
     assert.equal(askedFrom(rows, 'DTEST', '2.2'), undefined)
     assert.equal(askedFrom(rows, 'DTEST', '5.5'), 'CTEST:1.1')
     assert.equal(askedFrom(rows, 'DTEST', '6.6'), undefined)
     assert.equal(askedFrom(rows, 'DTEST', '7.7'), undefined)
     assert.equal(askedFrom(rows, 'DTEST', '8.8'), undefined)
-    assert.equal(askedFrom(rows, 'DTEST', '4.4'), undefined)  // not Kage's message in the DM
+    assert.equal(askedFrom(rows, 'DTEST', '4.4'), undefined)
   })
   test('two questions in one thread both stay open', () => {
     const rows = [tsvRow(['t1', 'open', 'C1:1.1', 'l', 'a']), tsvRow(['t2', 'open', 'C1:1.1', 'l', 'b'])].join('')
@@ -120,15 +118,15 @@ describe('the cost ledger', () => {
   test('a turn costs what the running total grew by; a total that went down started over', () => {
     assert.equal(turnCost(undefined, 0.4), 0.4)
     assert.equal(turnCost(0.4, 0.75), 0.35)
-    assert.equal(turnCost(0.75, 0.1), 0.1)                       // /clear or a fresh session
-    assert.equal(turnCost(0.1, 0.3), 0.2)                        // no float dust
-    assert.equal(turnCost(5, 0), undefined)                      // a crash result reports zeros: not a turn
+    assert.equal(turnCost(0.75, 0.1), 0.1)
+    assert.equal(turnCost(0.1, 0.3), 0.2)
+    assert.equal(turnCost(5, 0), undefined)
     assert.equal(turnCost(5, Number.NaN), undefined)
   })
   test('a resumed conversation with no row yet starts a baseline, not a turn that cost its whole life', () => {
     assert.equal(turnCost(undefined, 51.8, true), 0)
-    assert.equal(turnCost(51.8, 52.1, true), 0.3)               // after the baseline, turns count as usual
-    assert.equal(turnCost(undefined, 0.4, false), 0.4)           // a new conversation's first turn is all its own
+    assert.equal(turnCost(51.8, 52.1, true), 0.3)
+    assert.equal(turnCost(undefined, 0.4, false), 0.4)
   })
   test('the last total per thread comes back from the file, so a restart does not count a turn twice', () => {
     const tsv = [tsvRow(['2026-11-06T01:00:00Z', 'C1:1.1', '0.4', '0.4']), tsvRow(['2026-11-06T02:00:00Z', 'C1:1.1', '0.35', '0.75']), tsvRow(['2026-11-06T02:00:00Z', 'dm', '0.2', '0.2'])].join('')
@@ -187,7 +185,7 @@ describe('what the dream reads of Kage\'s own mistakes', () => {
   })
   test('only the asks Kage made count, not a kagelet need, a chain stop, a memory proposal or a cap pause', () => {
     const rows = ['qa needs: a file', 'chain c1 stopped at qa: no grant', 'chain c1 stopped before qa: gone', 'kagelet qa proposed a change to its memory (n.md): review it', 'kagelet qa hit its cap'].map(x => w('2026-11-15T01:00:00Z', 'open', 'C1:1.1', x)).join('')
-    assert.equal(selfReview(rows + w('2026-11-15T01:00:00Z', 'open', 'C1:1.1', 'ship it?'), [], since, k => k), '')   // one real ask left: no thread with 2
+    assert.equal(selfReview(rows + w('2026-11-15T01:00:00Z', 'open', 'C1:1.1', 'ship it?'), [], since, k => k), '')
     assert.match(selfReview(rows + w('2026-11-15T01:00:00Z', 'open', 'C1:1.1', 'a?') + w('2026-11-15T02:00:00Z', 'open', 'C1:1.1', 'b?'), [], since, k => k), /C1:1\.1: 2 open, 0 answered/)
   })
   test('nothing to say gives an empty block', () => assert.equal(selfReview('', [], since, k => k), ''))

@@ -1,6 +1,3 @@
-// GitHub events that are the owner's business: a review on their pull request, failed checks on it,
-// an issue or a review request given to them, a comment that mentions them. Everything else is
-// dropped here, so Kage spends no turn on it. The text people wrote stays data (`quoted`).
 type GithubEvent = { thread: string; headline: string; quoted: string; url: string }
 
 type User = { login?: string }
@@ -12,7 +9,6 @@ type Payload = {
   check_suite?: { conclusion?: string | null; head_branch?: string; pull_requests?: { number?: number }[]; app?: { name?: string } }
 }
 
-// On a public repo anyone may comment or review. Only people the repo knows reach the owner's DM.
 const TRUSTED = new Set(['OWNER', 'MEMBER', 'COLLABORATOR'])
 const REVIEW: Record<string, string> = { approved: 'approved', changes_requested: 'requested changes on', commented: 'reviewed' }
 
@@ -29,8 +25,6 @@ export function githubEvent(type: string, raw: unknown, me: string): GithubEvent
     const pr = p.pull_request!
     return { thread: ref(pr.number), headline: `${by(p.review?.user)} ${REVIEW[p.review?.state ?? ''] ?? 'reviewed'} ${ref(pr.number)} ${pr.title ?? ''}`.trim(), quoted: said(p.review?.body), url: p.review?.html_url ?? pr.html_url ?? '' }
   }
-  // A check suite names no pull request author, so "mine" means the owner pushed the commit it ran on.
-  // ponytail: misses a teammate's push to the owner's branch and fork PRs (no pull_requests); read the PR author via the API if that bites.
   if (type === 'check_suite' && p.action === 'completed' && (p.check_suite?.conclusion === 'failure' || p.check_suite?.conclusion === 'timed_out') && mine(p.sender)) {
     const n = p.check_suite.pull_requests?.[0]?.number
     if (n === undefined) return undefined
@@ -46,7 +40,6 @@ export function githubEvent(type: string, raw: unknown, me: string): GithubEvent
   }
   if (type === 'issue_comment' && p.action === 'created' && !mine(p.comment?.user) && TRUSTED.has(p.comment?.author_association ?? '')) {
     const body = said(p.comment?.body)
-    // @me followed by a non-name character, so @me-bot or @mere do not count.
     if (!new RegExp(`(^|[^\\w-])@${me.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}(?![\\w-])`, 'i').test(body)) return undefined
     const i = p.issue!
     return { thread: ref(i.number), headline: `${by(p.comment?.user)} mentioned you on ${ref(i.number)} ${i.title ?? ''}`.trim(), quoted: body, url: p.comment?.html_url ?? i.html_url ?? '' }

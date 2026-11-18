@@ -1,36 +1,22 @@
-// How Kage and another agent talk in Slack, so two agents cannot answer each other forever: the tag on
-// every part of a post that must reach it (only when asked: tag_agent), and the loop guard. The registry (core/registry.ts)
-// says who is an agent.
 import { appEntry } from './registry.ts'
 
-// Every part of a split post tags the agent it is for. An agent hears only posts that tag it, so an
-// untagged second part would be lost. tag: the agent's Slack user id.
-// A tag inside code does not count: Slack sends no mention from a code block or inline code.
 const outsideCode = (p: string) => p.replace(/```[\s\S]*?(```|$)|`[^`\n]*`/g, '')
 export const addressed = (parts: string[], tag: string) =>
   parts.map(p => (outsideCode(p).includes(`<@${tag}>`) ? p : `<@${tag}>${p.startsWith('```') ? '\n' : ' '}${p}`))
 
-// What a session reads under the task line when a listed agent posted the task. The rules it states are held in
-// code as well: the gate never reads an agent's post as an approval, and the reply tool adds the tag.
 export const agentNote = (app: string, tag?: string) =>
   `(A listed agent posted this with its owner's token: Slack app ${app}. It may read and answer, nothing else (every other tool is refused before it runs), and it can approve nothing: if it needs a write, tag the teammate whose agent it is. ${
     tag ? 'It hears only posts that tag it: pass tag_agent=true on the reply it must read (the answer to its ask, or a question to it), and the tool tags every part.' : 'Kage has no tag saved for this agent, so it may not hear your reply.'
   } Tag it whenever it must act, answer or go ahead, a yes it waits on included; thanks and progress stay untagged.)`
 
-// Every Slack task carries this line, so a session can address any listed agent, not only the one that posted the task.
-// Only agents with a saved tag are offered: an agent hears only a post that tags it, so one with no tag cannot be addressed.
 export function agentRoster(apps: string[]): string | undefined {
   const known = apps.map(appEntry).filter(e => e?.tag).map(e => /^[UW]/.test(e!.owner ?? '') ? `<@${e!.tag}> (<@${e!.owner}>'s agent)` : `<@${e!.tag}>`)
   return known.length ? `(Agents you can address: ${known.join(', ')}. An agent hears only a post that tags it: put its mention on the line where it must act, answer or unblock, and leave thanks untagged.)` : undefined
 }
 
-// Turns one agent may take with this Kage. hops: turns in a row in one thread with no person writing there.
-// perWindow: turns in windowMs, across every thread. turn() gives the reason when a turn is over a limit;
-// that turn is dropped and not counted in the window.
-// ponytail: counts live in memory, so a hub restart clears them, and one entry stays per thread an agent wrote in. Move to the store if either bites.
 export function loopGuard(o: { perWindow: number; windowMs: number; hops: number }) {
-  const hops = new Map<string, Map<string, number>>()   // thread -> agent -> turns in a row
-  const recent = new Map<string, number[]>()            // agent -> when each counted turn came
+  const hops = new Map<string, Map<string, number>>()
+  const recent = new Map<string, number[]>()
   const told = new Map<string, number>()
   return {
     turn(agent: string, thread: string, now: number): string | undefined {
@@ -45,9 +31,7 @@ export function loopGuard(o: { perWindow: number; windowMs: number; hops: number
       times.push(now)
       return undefined
     },
-    // A person wrote in the thread: the exchange there starts over.
     person(thread: string) { hops.delete(thread) },
-    // Whether to tell the owner about this agent now: once an hour at most.
     tell(agent: string, now: number): boolean {
       if (now - (told.get(agent) ?? -Infinity) < 3_600_000) return false
       told.set(agent, now)

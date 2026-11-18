@@ -24,7 +24,6 @@ describe('private sources on a teammate task', () => {
 
 describe('tools on a voice call', () => {
   test('only the reply tool is allowed: a web request could carry the owner context out in a URL', () => {
-    // ToolSearch only loads a deferred tool's schema (the reply tool is often deferred); what it loads still passes this guard.
     for (const t of ['mcp__kage__reply', 'mcp__plugin_kage_kage__reply', 'ToolSearch']) assert.equal(voiceToolRefusal(t, 'voice'), undefined, t)
   })
   test('shell, files, posting, scheduling and other MCP tools are refused', () => {

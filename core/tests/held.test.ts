@@ -2,7 +2,6 @@ import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { heldCommand } from '../held.ts'
 
-// ADR 0018's stress corpus: every one-way step held, no everyday step held.
 const ONE_WAY = [
   'rm -rf build', 'rm -r ~/notes', 'cd /srv && rm -f app.log', 'sudo rm -rf /var/www',
   'git push --force origin feat', 'git push -f', 'git push origin main', 'git push origin HEAD:production', 'git push origin --delete feat', 'git reset --hard HEAD~3', 'git branch -D old',
@@ -62,7 +61,7 @@ test('a long line is checked at once, never backtracked for seconds', () => {
   for (const line of ['aws' + ' --a b'.repeat(20_000) + ' q', 'aws --a --b ec2' + ' --a b'.repeat(20_000), ' curl'.repeat(20_000), ' psql'.repeat(20_000), ' find'.repeat(20_000), 'git' + ' --a b'.repeat(20_000), '"'.repeat(20_000), 'ssh h '.repeat(5_000) + 'ls']) {
     const t = performance.now()
     heldCommand(line)
-    assert.ok(performance.now() - t < 1500, line.slice(0, 30))   // linear: about 30 ms alone; the old regex never finished
+    assert.ok(performance.now() - t < 1500, line.slice(0, 30))
   }
 })
 

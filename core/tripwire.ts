@@ -1,55 +1,33 @@
-// Tripwires: a shell probe runs on a clock and wakes a session only when its normalized output changes. Pure: the
-// process and the file hashes are runtime/probes.ts, and the stored JobState is the caller's.
 import { createHash } from 'node:crypto'
 import type { Shadow } from './shadow.ts'
 
-// pins: absolute script path to its sha256 hex, taken when the owner approved the probe.
-// reads: paths the probe reads as data, whose change is the point. writes: paths the probe writes besides a redirect or tee.
-// Neither is pinned: a probe that edits its own output must not refuse itself.
 export type Probe = { command: string; pins: Record<string, string>; ignore: string[]; reads: string[]; writes: string[] }
-// undelivered: the owner was told that a wake cannot reach a session (a failed start, or a blocked lane), so one DM covers
-// both. It clears when a wake is delivered. blocked: consecutive ticks a wake found its lane blocked.
-// pending: a thread note that did not post yet (its tracked row fields f, the tries, and dm once the owner was told), retried each tick.
-// shadow: this job is a twin of another, graded by the hub (core/shadow.ts, ADR 0017).
 export type JobState = { shadow?: Shadow; fp?: string; last?: string; fails: number; refused?: string; undelivered?: true; blocked?: number; pending?: { text: string; f: Record<string, string | number>; tries: number; dm?: true } }
-// What wakes a job besides its clock (ADR 0015): a probe run on the clock that wakes only on a change, a post in a
-// Slack channel, or a POST to the job's own webhook (only the token's hash is kept).
 export type Trigger =
   | { kind: 'probe'; probe: Probe }
   | { kind: 'channel'; channel: string; match?: string; bots: boolean }
   | { kind: 'hook'; tokenHash: string }
-// What wakes a job, as `kage schedules` prints it.
 export const triggerLine = (t: Trigger) =>
   t.kind === 'probe' ? `probe: ${t.probe.command}`
     : t.kind === 'channel' ? `watches ${t.channel}${t.match ? ` for /${t.match}/` : ''}${t.bots ? ', bots too' : ', every post by a person'}`
       : 'webhook'
 
-// The token of a job's webhook is shown once, so only its hash is kept (the trigger's tokenHash).
 export const hookTokenHash = (token: string) => createHash('sha256').update(token).digest('hex')
-// A hook is a door into the hub, and a channel watch reads a channel as the owner's hub, so anyone but the owner asking
-// for either needs the owner's card first.
 export const eventNeedsCard = (tool: string, input: Record<string, unknown>, sender?: string) =>
   tool === 'mcp__kage__schedule' && (input.hook === true || input.on_channel != null) && sender !== 'owner'
 
-// A line an ignore regex drops. A line longer than lineMax is never dropped: a regex that sees only part of it proves nothing.
 const dropped = (l: string, res: RegExp[], lineMax: number) => l.length <= lineMax && res.some(r => r.test(l))
 
-// Drops lines that match any ignore regex (a timestamp, a counter) so only real change shows, and trims trailing space.
-// The patterns passed safePattern when the probe was made.
 export const normalize = (out: string, ignore: string[], lineMax: number): string => {
   const res = ignore.map(r => new RegExp(r))
   return out.split('\n').filter(l => !dropped(l, res, lineMax)).map(l => l.trimEnd()).join('\n').trimEnd()
 }
 
-// The sha256 of normalize(all output), taken as the output arrives, so a probe can keep only part of its text and still
-// see a change anywhere. Push chunks, then end() for the hex.
 export function lineHasher(ignore: string[], lineMax: number) {
   const res = ignore.map(r => new RegExp(r))
   const hash = createHash('sha256')
-  let partial = '', started = false, blanks = 0 // blanks: empty lines held back, so trailing ones never count
-  // A line past lineMax is never dropped, so it streams into the hash as it arrives (linear time on a huge line with no
-  // newline). Only its trailing whitespace waits, so the hash is the same however the output is cut.
-  let long = false, ws = '', opened = false // opened: the long line has put non-space text in the hash
+  let partial = '', started = false, blanks = 0
+  let long = false, ws = '', opened = false
   const open = () => { hash.update((started ? '\n' : '') + '\n'.repeat(blanks)); started = true; blanks = 0 }
   const stream = (s: string) => {
     let k = s.length
@@ -82,13 +60,10 @@ export function lineHasher(ignore: string[], lineMax: number) {
   }
 }
 
-// Why an ignore pattern is refused, or undefined when it is fine. Patterns are model-authored and run in the hub, so a
-// pattern that is invalid, too long, or repeats a group that already repeats ((a+)+) never runs.
-// ponytail: catches nested repeats only, not overlapping alternation like (a|a)+. Upgrade: a safe-regex engine such as RE2.
 export function safePattern(p: string, patternMax: number): string | undefined {
   if (p.length > patternMax) return `pattern is longer than ${patternMax} characters`
   try { new RegExp(p) } catch { return 'pattern is invalid' }
-  const groups: boolean[] = [false] // per open group: does it hold a repeat
+  const groups: boolean[] = [false]
   for (let i = 0; i < p.length; i++) {
     const c = p[i]
     if (c === '\\') i++
@@ -104,10 +79,6 @@ export function safePattern(p: string, patternMax: number): string | undefined {
   }
 }
 
-// The words of a command, after splitting on whitespace and shell punctuation (; & | ( ) $ ` " ' < > =) with ~ and $HOME
-// expanded, the words that follow a cd, and the outputs (the word after >, >>, 2>, &> and the file words after tee).
-// Shell parsing is never complete, so this only has to over-collect: the caller (runtime/probes.ts pin) pins the words
-// that turn out to be files, except outputs.
 export function commandWords(command: string, home: string): { words: string[]; cds: string[]; outs: string[] } {
   const expand = (w: string) => (w === '~' ? home : w.startsWith('~/') ? home + w.slice(1) : w)
   const text = command.replace(/\$\{?HOME\}?/g, home)
@@ -117,19 +88,14 @@ export function commandWords(command: string, home: string): { words: string[]; 
   return { words, cds: words.filter((_, i) => words[i - 1] === 'cd'), outs: [...redirects, ...tees].map(expand) }
 }
 
-// The pinned paths whose hash differs now. A missing file (undefined) counts as changed.
 export const pinsChanged = (pins: Record<string, string>, now: Record<string, string | undefined>): string[] =>
   Object.keys(pins).filter(p => now[p] !== pins[p])
 
 const ERROR_LINE_MAX = 200
 const firstLine = (s: string) => (s.split('\n').map(l => l.trim()).find(Boolean) ?? '').slice(0, ERROR_LINE_MAX)
 
-// One run's outcome. A failure never stops the job: it counts, and pings once when the count reaches failPing, naming
-// the first line of stderr (or of stdout when stderr is empty). A change wakes with the previous text, so the session
-// sees what moved. Only stdout is fingerprinted (run.fp covers all of it, even past the text the run kept), so a stderr warning cannot wake. The first good run only records a baseline.
 export function decide(state: JobState, run: { ok: boolean; out: string; fp: string; err?: string; refused?: string }, probe: Probe, o: { failPing: number; lineMax: number }): { state: JobState; wake?: { before?: string; after: string }; ping?: string } {
   if (run.refused) {
-    // A refusal never fixes itself, so it pings at once, once per distinct refusal.
     const ping = run.refused === state.refused ? undefined : `A tripwire probe is stopped: ${probe.command}\n${run.refused}\nFix: add a file the probe reads to reads, a file it writes to writes, or approve the probe again.`
     return { state: { ...state, refused: run.refused }, ...(ping && { ping }) }
   }

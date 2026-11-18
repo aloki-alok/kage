@@ -1,13 +1,11 @@
-// kage restart and kage stop: drain the hub, then wait until no thread is mid-turn, naming each one it waits on.
-// Each ask renews the hub's drain (runtime/limit-pause.ts), so the hub takes new messages again soon after this stops asking.
 export type Wait = { key: string; why: string }
 
 export async function waitForQuiet(o: {
-  ask: () => Promise<Wait[]>      // rejects with 'down' (no hub) or 'silent' (a hub from before the drain existed)
+  ask: () => Promise<Wait[]>
   say: (line: string) => void
   sleep: (ms: number) => Promise<unknown>
   placeOf: (key: string) => string
-  cut: boolean                    // --cut-running: drain once, then cut what runs
+  cut: boolean
 }): Promise<'quiet' | 'cut' | 'down'> {
   const seen = new Set<string>()
   let missed = 0
@@ -15,8 +13,6 @@ export async function waitForQuiet(o: {
     let waits: Wait[]
     try { waits = await o.ask(); missed = 0 } catch (e) {
       if ((e as Error).message === 'down') return 'down'
-      // Only a first ask with no answer means a hub from before the drain. Later, the hub is just slow: ask again,
-      // up to 5 times in a row (about 35 s), so a hung hub cannot keep kage stop waiting for good.
       if (!first && ++missed < 5) { await o.sleep(2000); continue }
       if (!first) { o.say('The hub does not answer, so its turns are cut.'); return 'cut' }
       o.say('This hub is older and cannot wait for running turns, so they are cut.')

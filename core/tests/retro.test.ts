@@ -23,7 +23,7 @@ test('runs are counted from the run ledger, not guessed from the cron', () => {
 })
 
 test('posts count for the schedule\'s own session, private replies included, by the bot or as the owner, within the week', () => {
-  const others = Array.from({ length: 30 }, (_, i) => post('C1:9.9', now - i * HOUR)).join('')   // another thread, same channel
+  const others = Array.from({ length: 30 }, (_, i) => post('C1:9.9', now - i * HOUR)).join('')
   const flagged = retro({ ...base, schedules: [sched('aa')], runs: runs('aa', 'C1:1.1', 40), posted: others + post('C1:1.1', now - 8 * DAY) })
   assert.match(flagged.join('\n'), /posted 0 times/)
   const asOwner = Array.from({ length: 10 }, (_, i) => post('C1:1.1', now - i * HOUR, 'owner')).join('')
@@ -48,16 +48,16 @@ test('with threads as tmux panes, the retro says spend is not tracked instead of
   const text = retro({ ...base, schedules: [sched('aa')], runs: runs('aa', 'C1:1.1', 70), costTracked: false }).join('\n')
   assert.match(text, /unschedule aa/)
   assert.match(text, /not tracked.*tmux/)
-  assert.equal(retro({ ...base, schedules: [], costTracked: false }).length, 0)   // the note alone sends no DM
+  assert.equal(retro({ ...base, schedules: [], costTracked: false }).length, 0)
 })
 
 test('due once a week, from Monday 09:00 on the Mac clock, or later in the week if Monday was missed', () => {
-  const monday9 = new Date(2026, 10, 9, 9, 5).getTime()   // local time, whatever the zone
+  const monday9 = new Date(2026, 10, 9, 9, 5).getTime()
   assert.equal(retroDue(monday9, undefined), true)
-  assert.equal(retroDue(monday9 - 10 * 60_000, undefined), false)         // 08:55
-  assert.equal(retroDue(monday9 + 15 * HOUR, monday9), false)             // sent this morning
+  assert.equal(retroDue(monday9 - 10 * 60_000, undefined), false)
+  assert.equal(retroDue(monday9 + 15 * HOUR, monday9), false)
   assert.equal(retroDue(monday9 + 7 * DAY, monday9), true)
-  assert.equal(retroDue(monday9 + HOUR, monday9), false)                  // sent an hour ago
-  assert.equal(retroDue(monday9 + DAY, undefined), true)                  // the Mac slept through Monday
-  assert.equal(retroDue(monday9 - DAY, undefined), false)                 // Sunday
+  assert.equal(retroDue(monday9 + HOUR, monday9), false)
+  assert.equal(retroDue(monday9 + DAY, undefined), true)
+  assert.equal(retroDue(monday9 - DAY, undefined), false)
 })

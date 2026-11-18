@@ -50,7 +50,7 @@ describe('what the kagelet reads, and what its dream reads', () => {
     assert.match(t, /09:05 all green/)
     assert.match(t, /propose_memory/)
     assert.match(t, /never applies on its own/)
-    assert.doesNotMatch(t, /\/t\/x\.jsonl/)       // a row's transcript path is not handed over (ADR 0010)
+    assert.doesNotMatch(t, /\/t\/x\.jsonl/)
   })
 })
 

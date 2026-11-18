@@ -1,14 +1,9 @@
-// What may go out: crowd mentions and Slack-sized parts (secrets are checked separately).
 
-// A person mention keeps its <@U…> form, so Slack highlights it and the person sees it. A crowd
-// ping never goes out, whatever the model writes: @channel/@here/@everyone and user groups
-// (<!subteam^S1|@devs>) drop to plain text.
 export function safeReply(text: string): string {
   return text.replace(/<!(channel|here|everyone)[^>]*>/g, '$1')
     .replace(/<!subteam\^[A-Z0-9]+(?:\|@?([^>]*))?>/g, (_, label?: string) => `@${label || 'group'}`)
 }
 
-// Text rules alone do not stop a secret reaching a thread, so the reply tool checks. A hit sends the reply back with a hint to use private=true; a false alarm costs one retry.
 const SECRET_SHAPES: [string, RegExp][] = [
   ['AWS access key', /\b(AKIA|ASIA)[0-9A-Z]{16}\b/],
   ['Slack token', /\bxox[abprs]-[0-9A-Za-z-]{10,}/],
@@ -20,7 +15,6 @@ const SECRET_SHAPES: [string, RegExp][] = [
 
 export function findSecret(text: string): string | undefined {
   for (const [name, shape] of SECRET_SHAPES) if (shape.test(text)) return name
-  // A strong-password-shaped code span (upper, lower and digit) near the word password or secret.
   let prev = ''
   for (const line of text.split('\n')) {
     const near = `${prev} ${line}`
@@ -31,8 +25,6 @@ export function findSecret(text: string): string | undefined {
   }
 }
 
-// Whether a reply may go out as written. The owner may let a secret into a thread by asking;
-// a teammate's task never can, whatever the reply claims.
 export function secretRefusal(
   text: string, o: { private?: boolean; ownerAsked?: boolean; fromOwner: boolean },
 ): string | undefined {
@@ -47,21 +39,16 @@ export function secretRefusal(
 const FENCE = '```'
 const isOpen = (s: string) => s.split(FENCE).length % 2 === 0
 
-// Slack caps a message near 40k chars but long blocks render badly; split on lines. A cut inside a
-// ``` block closes it and reopens it in the next part, or that part shows in a proportional font.
 export function splitForSlack(text: string, max = 3500): string[] {
   const parts = splitLines(text, Math.max(1, max - 2 * (FENCE.length + 1)))
   let open = false
   return parts.map(p => {
     const part = open ? `${FENCE}\n${p}` : p
     open = isOpen(part)
-    // A cut next to a fence line would leave an empty block (```\n```): drop the pair.
     return (open ? `${part}\n${FENCE}` : part).replace(/^```\n```(\n|$)/, '').replace(/(^|\n)```\n```$/, '')
   }).filter(Boolean)
 }
 
-// A thread panel fits about 64 characters of Slack's code font. A longer row wraps, and its last
-// column lands under the row as if it were the next row (measured 2026-11-05: Monaco 12px, 500 px).
 const CODE_WIDTH = 60
 export function layoutRefusal(text: string, o: { wide?: boolean } = {}): string | undefined {
   if (o.wide) return
@@ -93,30 +80,21 @@ function splitLines(text: string, max: number): string[] {
   return parts
 }
 
-// Other people's text going into a Slack message: no <!channel>, fake link or mention gets through.
 export const slackPlain = (t: string) => t.replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;')
 
-// A guard's answer about one message leaving as the owner (WhatsApp, Slack AFK). It fails closed: only a
-// first line of exactly SEND lets the message out.
 export function guardVerdict(out: string): { send: boolean; reason: string } {
   const line = out.trim().split('\n')[0] ?? ''
   if (/^SEND\.?$/i.test(line.trim())) return { send: true, reason: '' }
   return { send: false, reason: line.replace(/^HOLD:?\s*/i, '') || 'no verdict' }
 }
 
-// How a post from the owner's account shows it is Kage's: a footer under the text, never a name typed into it.
-// The context block's id is how the gate knows the post later (core/gate.ts quoteMessage); the plain text, which
-// notifications and other agents read, carries the same footer as an italic line.
 export const FOOTER_ID = 'kage-footer'
-// via: the kagelet that posted, so a reader can tell which job spoke.
 export type Signer = { asked?: string; from?: string; via?: string }
 export const kageFooter = (title: string, s: Signer = {}) =>
   `🥷 ${title}${s.via ? ` · ${s.via}` : ''}${s.asked ? ` · asked by ${s.asked}` : s.from ? ` · from ${s.from}` : ''}`
 
-// Slack caps a section at 3000 characters, so a longer part becomes several sections.
 export function ownerPost(title: string, typed: string, s: Signer = {}) {
   const foot = kageFooter(title, s)
-  // A session that reads its earlier posts back copies their footer into the text: drop it, the block adds the real one.
   const name = title.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
   const text = typed.replace(new RegExp(`\\s*_?(?:🥷|:ninja:) ${name}(?: · [^\\n]*?)?_?\\s*$`, 'u'), '')
   const blocks: Record<string, unknown>[] = splitForSlack(text, 3000).map(t => ({ type: 'section', text: { type: 'mrkdwn', text: t } }))

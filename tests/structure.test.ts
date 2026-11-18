@@ -21,7 +21,7 @@ const inDir = (d: string) => files.filter(f => f.startsWith(`${d}/`) && f.endsWi
 const MAX_LINES = 300
 
 const DEBT = {
-  commented: ['core/', 'extension/', 'hub.ts', 'hub/', 'meetbot/', 'metabot/', 'plugin/', 'runtime/', 'tests/'] as string[],
+  commented: ['extension/', 'hub.ts', 'hub/', 'meetbot/', 'metabot/', 'plugin/', 'runtime/', 'tests/'] as string[],
   // ADR 0001: core/ does no I/O, reads no environment, sets no timers, and imports only core/.
   impureCore: [] as string[],
   // runtime/ and connectors/ never import hub/, plugin/ or a file in the repo root: those wire the layers below them.
@@ -29,7 +29,7 @@ const DEBT = {
   // A source file over MAX_LINES lines (import lines not counted), with the most it may have. Split it; lower the number as it shrinks.
   longFiles: {
     'hub/router.ts': 393, 'cli/top.ts': 490,
-    'runtime/sdk-sessions.ts': 329, 'core/sessions.ts': 323,
+    'runtime/sdk-sessions.ts': 329,
   } as Record<string, number>,
   // A core/ or runtime/ file missing from the CONTRIBUTING.md code map.
   unmapped: [] as string[],

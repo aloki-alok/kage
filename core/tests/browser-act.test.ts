@@ -34,7 +34,6 @@ test('an action is checked before anything reaches the browser', () => {
 
 test("the approval card names the site and the control as the page labels it, not as Kage describes it", () => {
   const card = actCard({ action: 'click', ref: 2 }, { url: 'https://mail.example.com/compose', el: { ref: 2, role: 'button', name: 'Send' } })
-  // The site comes first, so no label can push a fake site in front of the real one.
   assert.match(card, /^mail\.example\.com: click button "Send"$/)
   const typed = actCard({ action: 'type', ref: 1, text: 'Lunch at 1?' }, { url: 'https://mail.example.com/', el: { ref: 1, role: 'textbox', name: 'Subject' } })
   assert.match(typed, /^mail\.example\.com: type "Lunch at 1\?" into textbox "Subject"$/)
@@ -68,7 +67,6 @@ test('a step is major when it spends, deletes, sends as the owner, grants access
     assert.equal(majorAct({ action: 'click', ref: 1 }, el(n)), undefined, n)
   assert.equal(majorAct({ action: 'open', url: 'https://x.example/' }, undefined, { openHosts: ['x.example'] }), undefined)
   assert.equal(majorAct({ action: 'type', ref: 1, text: 'hi' }, { ref: 1, role: 'textbox', name: 'Message #general' }), undefined)
-  // Enter in a message box sends it as the owner.
   assert.ok(majorAct({ action: 'press', key: 'Enter' }, { ref: 1, role: 'textbox', name: 'Message #general' }))
   assert.equal(majorAct({ action: 'press', key: 'Enter' }, { ref: 1, role: 'searchbox', name: 'Search' }), undefined)
 })
@@ -82,7 +80,6 @@ test('labels that hide what a step does are major, and so is leaving for a site 
   const go = { action: 'navigate', url: 'https://evil.example/?d=secret' } as const
   assert.ok(majorAct(go, undefined, { openHosts: ['mail.example.com'] }))
   assert.equal(majorAct({ action: 'open', url: 'https://mail.example.com/inbox' }, undefined, { openHosts: ['mail.example.com'] }), undefined)
-  // After Kage typed in a tab, its next button or Enter there may submit what it typed.
   assert.ok(majorAct(click, el('Save'), { typed: ['Forward to = x@evil.example'] }))
   assert.ok(majorAct({ action: 'press', key: 'Enter' }, { ref: 1, role: 'textbox', name: 'Amount' }, { typed: ['Amount = 500'] }))
   assert.equal(majorAct(click, el('Save')), undefined)

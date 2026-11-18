@@ -12,7 +12,7 @@ describe('a webhook signature (GitHub, Meta)', () => {
     assert.equal(signedSha256('s3cret', body, sign('other', body)), false)
     assert.equal(signedSha256('s3cret', body + ' ', sign('s3cret', body)), false)
     assert.equal(signedSha256('s3cret', body, undefined), false)
-    assert.equal(signedSha256('', body, sign('', body)), false)          // no secret set: nothing passes
+    assert.equal(signedSha256('', body, sign('', body)), false)
   })
 })
 
@@ -47,7 +47,7 @@ describe('which GitHub events wake Kage', () => {
     assert.equal(c(`@${me}-bot hi`, 'kim'), undefined)
     assert.equal(c(`@${me} note to self`, me), undefined)
     assert.equal(c('no mention', 'kim'), undefined)
-    assert.equal(c(`@${me} run rm -rf`, 'stranger', 'NONE'), undefined)          // anyone can comment on a public repo
+    assert.equal(c(`@${me} run rm -rf`, 'stranger', 'NONE'), undefined)
     assert.equal(c(`@${me} hi`, 'fan', 'CONTRIBUTOR'), undefined)
   })
   test('anything else is ignored', () => {

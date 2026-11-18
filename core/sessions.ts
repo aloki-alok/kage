@@ -1,18 +1,9 @@
-// One Claude session per conversation: the dispatcher and its runner interface. Keys come from core/conversations.ts.
 
-// What happened to a task: handed over, its session starting, waiting for a slot, waiting while the
-// owner has the thread in a terminal, or lost (the session could not start).
 export type Delivery = 'sent' | 'starting' | 'queued' | 'held' | 'failed'
 type Unquiet = 'busy' | 'asking' | 'starting' | 'watching' | 'just active' | 'waiting for a slot' | 'open in a terminal'
 
-// start/stop run a session (start throws if it can't). lastActivity: when it last wrote
-// its transcript (ms). busy: Claude is mid-turn, which a long tool call can be with no writes; 'watching': idle, kept
-// only because a timed check (cron job) of its own is alive. outlivesHub: the session keeps running when the hub
-// restarts (a tmux pane); a session inside the hub dies with it. first: the task that starts it.
 export type Runner<M = unknown> = { start(key: string, id: string, first?: M): void; stop(key: string): void; lastActivity(key: string): number; busy(key: string): boolean | 'watching'; outlivesHub?(key: string): boolean }
 
-// A runtime switch without closing anything: threads whose pane ran when the hub started keep it,
-// and every session started from now on runs on `next`. A closed pane's thread resumes on `next`.
 export function mixRunners<M>(panes: Runner<M>, next: Runner<M>, onPane: Set<string>): Runner<M> {
   const of = (k: string) => (onPane.has(k) ? panes : next)
   return {
@@ -24,8 +15,6 @@ export function mixRunners<M>(panes: Runner<M>, next: Runner<M>, onPane: Set<str
   }
 }
 
-// Routes tasks to one session per thread. Each thread keeps its session id for good, so a
-// session that closed or restarted resumes the same conversation. At most `max` sessions run.
 export class Dispatcher<M> {
   #runner: Runner<M>
   #opts: { max: number; idleMs: number; connectMs: number; evictMs: number; newId: () => string }
@@ -35,13 +24,12 @@ export class Dispatcher<M> {
   #pending = new Map<string, M[]>()
   #touched = new Map<string, number>()
   #waiting: string[] = []
-  #held = new Set<string>()          // threads the owner took into a terminal: their tasks wait
-  #midTurn = new Map<string, M[]>()  // tasks sent while the session was busy: queued, maybe never read
-  #ending = new Set<string>()        // threads told to stop: closed at the first sweep after their turn
+  #held = new Set<string>()
+  #midTurn = new Map<string, M[]>()
+  #ending = new Set<string>()
   #perms = new Map<string, string>()
   #startedAt = new Map<string, number>()
 
-  // evictMs: how long a session must sit quiet before a new thread may take its slot.
   constructor(w: Runner<M>, o: { max: number; idleMs: number; connectMs: number; evictMs: number; newId: () => string; saved?: Record<string, string> }) {
     this.#runner = w
     this.#opts = o
@@ -51,24 +39,19 @@ export class Dispatcher<M> {
   saved = () => Object.fromEntries(this.#ids)
   connection = (key: string) => this.#conns.get(key)
 
-  // Sessions already running when the router starts (it restarted, they did not).
   adopt(keys: string[], now: number) {
     for (const k of keys) if (this.#ids.has(k)) { this.#live.add(k); this.#startedAt.set(k, now) }
   }
 
-  // 'failed': the session could not start; the task was not kept.
   task(key: string, msg: M, now: number): Delivery {
     this.#touched.set(key, now)
-    this.#ending.delete(key)   // a new message after a stop wants the thread again
+    this.#ending.delete(key)
     const send = this.#conns.get(key)
     if (send) {
-      // A task to a quiet session starts a turn, so it reaches the transcript; one sent mid-turn waits in a queue.
       this.#midTurn.set(key, this.#busy(key) ? [...(this.#midTurn.get(key) ?? []), msg] : [])
       send(msg)
       return 'sent'
     }
-    // The connect clock runs from the first task left waiting, so a session that is only
-    // restarting gets the full connectMs again.
     if (!this.#pending.has(key)) this.#startedAt.set(key, now)
     this.#pending.set(key, [...(this.#pending.get(key) ?? []), msg])
     if (this.#held.has(key)) return 'held'
@@ -76,17 +59,12 @@ export class Dispatcher<M> {
     return this.#admit(key, now)
   }
 
-  // Whether the hub can restart itself without cutting anything off: every session connected, not
-  // mid-turn, not asking, and quiet for evictMs; no task waiting for a slot; no thread held by a
-  // terminal. An SDK session dies with the hub, so this must be true for it too.
   quietEverywhere = (now: number): boolean => this.unquiet(now).length === 0
 
-  // Each thread that keeps quietEverywhere false, and why: what `kage restart` and `kage stop` wait on.
   unquiet(now: number): { key: string; why: Unquiet }[] {
     const s = this.status(now)
     const out: { key: string; why: Unquiet }[] = []
     for (const l of s.live) {
-      // A pane kept only by its timed check outlives the restart, check and all, so it does not block one.
       const settled = l.state === 'quiet' || (l.state === 'watching' && this.#runner.outlivesHub?.(l.key))
       if (!settled) out.push({ key: l.key, why: l.state as Unquiet })
       else if (l.quietMs < this.#opts.evictMs) out.push({ key: l.key, why: 'just active' })
@@ -96,18 +74,11 @@ export class Dispatcher<M> {
     return out
   }
 
-  // Whether a task for this thread would start without evicting another session or jumping the
-  // queue. A connector that must never push the owner's threads out asks first (voice does).
   hasFreeSlot = (key: string) => this.#live.has(key) || (this.#live.size < this.#opts.max && !this.#waiting.length)
 
-  // Whether a task for this thread starts now rather than queues: an open slot, or a quiet session that gives up its
-  // slot (#admit). What a schedule gets, for work that must not count as started while it only waits.
   startsNow = (key: string, now: number) => this.#live.has(key)
     || (!this.#waiting.length && (this.#live.size < this.#opts.max || !!this.#quietest(now)))
 
-  // A connector ends a conversation of its own (a voice call hung up): close its session now so the
-  // slot is free at once, and forget a task waiting for one. Its id stays, so it could resume.
-  // Returns the tasks it forgot, which no session read, for a caller that keeps them (runtime/limit-pause.ts).
   end(key: string): M[] {
     if (this.#live.has(key)) this.#close(key)
     const unread = this.#pending.get(key) ?? []
@@ -116,15 +87,12 @@ export class Dispatcher<M> {
     return unread
   }
 
-  // end, and the next task starts a new conversation: the old one can't be resumed (the safety check flagged it).
   reset(key: string) {
     this.end(key)
     this.#ids.delete(key)
   }
 
-  // Start the thread's session if there is a slot (a full house frees its quietest), else queue it.
   #admit(key: string, now: number): 'starting' | 'queued' | 'failed' {
-    // Full: the quietest session gives up its slot. It loses nothing, its next task resumes it.
     const quiet = this.#live.size < this.#opts.max ? undefined : this.#quietest(now)
     if (quiet) this.#close(quiet)
     if (this.#live.size < this.#opts.max) {
@@ -136,9 +104,6 @@ export class Dispatcher<M> {
     return 'queued'
   }
 
-  // The owner takes the thread's session into a terminal now, like Esc in Claude Code: a turn in
-  // progress stops, an open approval is denied, a timed check in it ends. `cut` says which, so attach
-  // can tell them. Tasks that come while it is held wait for the terminal to give it back.
   hold(key: string): { id: string; cut?: 'busy' | 'asking' | 'watching' } | { refused: 'unknown' | 'held' } {
     const id = this.#ids.get(key)
     if (!id) return { refused: 'unknown' }
@@ -147,7 +112,6 @@ export class Dispatcher<M> {
     if (this.#live.has(key)) {
       const kind = this.#busyKind(key)
       cut = [...this.#perms.values()].includes(key) ? 'asking' : kind === true ? 'busy' : kind || undefined
-      // Cutting the turn may drop what was queued behind it: those tasks wait for the terminal like new ones.
       const queued = cut ? this.#midTurn.get(key) ?? [] : []
       if (queued.length) this.#pending.set(key, [...queued, ...this.#pending.get(key) ?? []])
       this.#close(key)
@@ -157,8 +121,6 @@ export class Dispatcher<M> {
     return cut ? { id, cut } : { id }
   }
 
-  // The console closes one session. Its next task resumes it, so only work in progress is at risk:
-  // refused while it starts, asks or works.
   stop(key: string, now: number): { ok: true } | { refused: 'closed' | 'starting' | 'busy' | 'asking' } {
     if (!this.#live.has(key)) return { refused: 'closed' }
     if (!this.#conns.has(key)) return { refused: 'starting' }
@@ -168,9 +130,6 @@ export class Dispatcher<M> {
     return { ok: true }
   }
 
-  // kage stop <thread> and "@kage stop": end one thread's session once its turn ends, or now (cut). A session that
-  // is starting, asking or mid-turn waits for the next sweep after that; a timed check is not a turn, so it ends now.
-  // Tasks no session read are dropped and returned, so the caller can let their messages go.
   endThread(key: string, cut: boolean):
     { ok: true; ending?: true; asking?: true; cut?: 'busy' | 'asking'; dropped: M[] } | { refused: 'closed' } {
     const live = this.#live.has(key)
@@ -179,23 +138,18 @@ export class Dispatcher<M> {
       : [...this.#perms.values()].includes(key) ? 'asking' : undefined
     if (running && !cut) { this.#ending.add(key); return { ok: true, ending: true, ...(running === 'asking' && { asking: true as const }), dropped: [] } }
     this.#ending.delete(key)
-    // A cut turn may never read what was sent to it mid-turn: those go with the pending ones.
     const queued = running ? this.#midTurn.get(key) ?? [] : []
     return { ok: true, ...(running && { cut: running }), dropped: [...queued, ...this.end(key)] }
   }
 
-  // The terminal gave the thread back. Tasks that came meanwhile start its session again; the ones
-  // that cannot (the session could not start) are returned, so the router can say so.
   release(key: string, now: number): M[] {
     const waiting = this.#pending.get(key)
     if (!this.#held.delete(key) || !waiting) return []
     return this.#admit(key, now) === 'failed' ? waiting : []
   }
 
-  // What runs now, for "@kage status".
   status(now: number) {
     const asking = new Set(this.#perms.values())
-    // Work shows first, then a question for you, then a watch: a watching session that asks must say so.
     const state = (k: string) => {
       if (!this.#conns.has(k)) return 'starting'
       const b = this.#busyKind(k)
@@ -209,17 +163,13 @@ export class Dispatcher<M> {
     }
   }
 
-  // Last activity: a task handed to it, or a write to its transcript.
   #last = (k: string) => Math.max(this.#touched.get(k) ?? 0, this.#runner.lastActivity(k))
 
-  // A busy check that fails (tmux gone, a capture error) counts as busy: never close on a guess.
-  // 'watching' is truthy, so a session kept by its timed check counts as busy for eviction; hold() asks for it by name.
   #busy(k: string): boolean { return !!this.#busyKind(k) }
   #busyKind(k: string): boolean | 'watching' {
     try { return this.#runner.busy(k) } catch { return true }
   }
 
-  // A connected session with nothing pending, no open approval, not mid-turn, quiet for evictMs.
   #quietest(now: number): string | undefined {
     const asking = new Set(this.#perms.values())
     let best: string | undefined
@@ -247,8 +197,6 @@ export class Dispatcher<M> {
     return true
   }
 
-  // Only the current connection's close counts; a stale one closing late changes nothing.
-  // Its open approvals go with it: the Claude Code process that asked is gone.
   disconnect(key: string, send: (m: M) => void) {
     if (this.#conns.get(key) !== send) return
     this.#conns.delete(key)
@@ -265,8 +213,6 @@ export class Dispatcher<M> {
     return true
   }
 
-  // Closes sessions idle for idleMs and sessions that never connected within connectMs, then starts
-  // waiting threads. Returns the tasks it could not deliver, so the router can say so in Slack.
   sweep(now: number): M[] {
     const dropped: M[] = []
     const asking = new Set(this.#perms.values())
@@ -283,7 +229,6 @@ export class Dispatcher<M> {
       } else if (pending || now - this.#last(k) < this.#opts.idleMs || asking.has(k) || this.#busy(k)) continue
       this.#close(k)
     }
-    // Threads waiting for a slot also take the slot of a session that has since gone quiet.
     while (this.#waiting.length) {
       if (this.#live.size >= this.#opts.max) {
         const quiet = this.#quietest(now)
@@ -299,9 +244,6 @@ export class Dispatcher<M> {
     return dropped
   }
 
-  // Whether a scheduled run may go to this thread now. blocked: held by a terminal, a task pending
-  // or queued for a slot, or its session not connected yet. busy: connected and mid-turn. A closed
-  // thread is ready: the run starts it.
   ready(key: string): 'ready' | 'busy' | 'blocked' {
     if (this.#held.has(key) || this.#pending.has(key) || this.#waiting.includes(key)) return 'blocked'
     if (!this.#live.has(key)) return 'ready'

@@ -1,10 +1,3 @@
-// The hub's check on a kagelet's shell (ADR 0018, `tools: all`): a one-way step is held, every other command runs.
-// It reads the line as a shell does: words with quotes removed, commands split at ; & | && || ( ) $( and newlines,
-// comments dropped, and a heredoc's body kept with its command. Each command's tool is its first word after wrappers
-// (sudo, env, xargs, timeout, then, do); ssh, bash -c, eval, docker exec, kubectl exec and $(...) are read again inside.
-// A quoted argument such as a commit message is never read as a command. A list of known steps, not a full shell: a
-// reworded command can pass it, so it stands behind the OS sandbox that closes the tokens, the settings and Kage's
-// code, never in place of it. One pass over the line, so no input is slow.
 type Cmd = { argv: string[]; piped: boolean; heredoc?: string }
 
 const PROTECTED = new Set(['main', 'master', 'production', 'prod', 'release', 'stable'])
@@ -19,7 +12,6 @@ function commands(line: string, subs: string[]): Cmd[] {
   const delims: { word: string; strip: boolean }[] = []
   const word = () => { if (w !== undefined) argv.push(w); w = undefined }
   const end = (pipe: boolean) => { word(); if (argv.length) out.push({ argv, piped, ...heredoc !== undefined && { heredoc } }); argv = []; piped = pipe; heredoc = undefined }
-  // A $( ... ) inside double quotes is a command of its own: its text, and the index of its closing paren.
   const sub = (open: number) => { let depth = 0; for (let j = open; j < line.length; j++) { if (line[j] === '(') depth++; else if (line[j] === ')' && --depth === 0) { subs.push(line.slice(open + 1, j)); return j } } subs.push(line.slice(open + 1)); return line.length }
   for (let i = 0; i < line.length; i++) {
     const c = line[i]!
@@ -37,7 +29,6 @@ function commands(line: string, subs: string[]): Cmd[] {
     else if (c === '\\') { if (line[i + 1] === '\n') i++; else w = (w ?? '') + (line[++i] ?? '') }
     else if (c === '#' && w === undefined) { const j = line.indexOf('\n', i); i = j < 0 ? line.length : j - 1 }
     else if (c === '\n') {
-      // Each heredoc's body: the lines up to its delimiter, read once.
       let at = i + 1
       const bodies = delims.map(d => {
         const lines: string[] = []
@@ -68,7 +59,7 @@ function commands(line: string, subs: string[]): Cmd[] {
     else if (c === '>' || c === '<') {
       if (/^\d$/.test(w ?? '')) w = undefined
       word()
-      if (line[i + 1] === c || (c === '>' && line[i + 1] === '|')) i += c === '<' ? 2 : 1   // >> and >| write; <<< feeds a word
+      if (line[i + 1] === c || (c === '>' && line[i + 1] === '|')) i += c === '<' ? 2 : 1
       argv.push(c)
     }
     else w = (w ?? '') + c
@@ -79,7 +70,6 @@ function commands(line: string, subs: string[]): Cmd[] {
 
 const base = (word: string) => word.slice(word.lastIndexOf('/') + 1)
 const flag = (a: string) => a.startsWith('-')
-// The index after a tool's own options, where each option in `valued` takes the next word as its value.
 function skip(args: string[], from = 0, valued: string[] = []): number {
   let i = from
   while (i < args.length && flag(args[i]!)) i += valued.includes(args[i]!) ? 2 : 1
@@ -90,7 +80,6 @@ const positional = (args: string[], valued: string[] = []) => args.filter((a, i)
 const short = (args: string[], letter: string) => args.some(a => /^-[a-zA-Z]+$/.test(a) && a.includes(letter))
 const valuesOf = (args: string[], names: string[]) => args.flatMap((a, i) => names.includes(args[i - 1] ?? '') ? [a] : names.flatMap(n => a.startsWith(`${n}=`) ? [a.slice(n.length + 1)] : []))
 
-// Words that run the next words as a command, and the options of each that take a value.
 const WRAPPERS: Record<string, string[]> = { env: ['-u', '-C', '-S'], nohup: [], time: [], command: [], exec: [], nice: ['-n'], busybox: [], stdbuf: [], npx: ['-p', '--package'],
   xargs: ['-n', '-I', '-P', '-L', '-s', '-d', '-E', '-a'], timeout: ['-s', '-k'], then: [], do: [], else: [], elif: [], if: [], while: [], until: [], '!': [], '{': [] }
 const SSH_VALUED = ['-i', '-p', '-l', '-o', '-F', '-J', '-L', '-R', '-D', '-b', '-c', '-E', '-e', '-m', '-O', '-Q', '-S', '-W', '-w', '-B']
@@ -104,7 +93,6 @@ const DB = new Set(['psql', 'mysql', 'mariadb', 'sqlite3', 'clickhouse-client', 
 const MONGO_WRITE = /\.(delete\w*|drop\w*|insert\w*|update\w*|replace\w*|remove|rename\w*|bulkWrite|create\w*)\s*\(/
 const REDIS_READ = /^(get|mget|keys|scan|sscan|hscan|zscan|ttl|pttl|type|exists|hget|hmget|hgetall|hkeys|hvals|hlen|lrange|llen|lindex|smembers|scard|sismember|zrange|zrangebyscore|zscore|zcard|zcount|info|ping|dbsize|strlen|xrange|xrevrange|xlen|xinfo|memory|slowlog|latency|time|echo|randomkey|getrange|bitcount|pfcount|geopos|monitor|subscribe|psubscribe)$/i
 
-// One SQL text: a statement that changes data or schema. Literals and comments are dropped first.
 function sqlWrites(sql: string): boolean {
   return sql.replace(/'[^']*'|"[^"]*"/g, '').replace(/--[^\n]*/g, '').split(';').some(st => {
     const s = st.trim().toLowerCase()
@@ -113,8 +101,6 @@ function sqlWrites(sql: string): boolean {
   })
 }
 
-// Tools whose first words name the step: [tools, options that take a value, the held words, the kind].
-// `anywhere` matches any word after the options, for tools whose verb comes after nouns (gcloud run deploy).
 const v = (words: string) => new RegExp(`^(?:${words})(?: |$)`)
 const anywhere = (words: string) => new RegExp(`(?:^| )(?:${words})(?: |$)`)
 const TOOLS: [string[], string[], RegExp, string][] = [
@@ -149,7 +135,6 @@ function gitStep(args: string[]): string | undefined {
     const forced = short(rest, 'f') || short(rest, 'd') || rest.some(a => /^--(force|delete|mirror|prune)/.test(a))
     const refs = positional(rest, ['-o', '--push-option', '--repo', '--receive-pack', '--exec']).slice(1)
     const dest = (r: string) => r.slice(r.indexOf(':') + 1).replace(/^\+/, '').replace(/^(refs\/)?heads\//, '')
-    // A forced push that names no branch (none, HEAD or @) goes to the current one, which may be protected.
     if (refs.some(r => PROTECTED.has(dest(r))) || (forced && !refs.slice(1).length && ['', 'HEAD', '@'].includes(dest(refs[0] ?? '')))) return 'a push to a protected branch'
     return forced || refs.some(r => r.startsWith('+') || r.startsWith(':')) ? 'a forced push or a branch delete' : undefined
   }
@@ -181,7 +166,7 @@ function webStep(tool: string, args: string[]): string | undefined {
     return method.some(m => WRITE_METHODS.test(m)) || args.some(a => /^-[a-zA-Z]*[dFT]/.test(a) || /^--(data|form|upload-file|json)/.test(a)) ? SENDS : undefined
   }
   if (tool === 'wget') return valuesOf(args, ['--method']).some(m => WRITE_METHODS.test(m)) || args.some(a => /^--(post-data|post-file|body-data|body-file)/.test(a)) ? SENDS : undefined
-  const p = positional(args)   // httpie and xh: a method word, or a data item (name=value), sends
+  const p = positional(args)
   return WRITE_METHODS.test(p[0] ?? '') || p.some(a => /^[\w.-]+:?=[^=]/.test(a)) ? SENDS : undefined
 }
 
@@ -196,7 +181,6 @@ function dbStep(tool: string, rest: string[], argv: string[], piped: boolean, he
   return sqlWrites(sql.join(';')) || piped || argv.includes('<') || rest.some(a => /^(-f|--file)$/.test(a) || a.startsWith('--file=')) ? WRITE : undefined
 }
 
-// The kind of one-way step this one command takes, or undefined.
 function step({ argv, piped, heredoc }: Cmd, depth: number): string | undefined {
   const sys = (f: string) => SYSTEM_DIR.test(f)
   if (argv.some((_, i) => argv[i - 1] === '>' && sys(argv[i]!))) return 'a write to a system folder'
@@ -269,5 +253,4 @@ function check(line: string, depth: number): string | undefined {
   return undefined
 }
 
-// The kind of one-way step a shell command takes, or undefined when it holds none.
 export const heldCommand = (command: string): string | undefined => check(command, 0)

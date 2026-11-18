@@ -34,7 +34,6 @@ describe('the registry: people and agents', () => {
     const tagged: Entry = { kind: 'agent', id: 'ATEST0001', owner: 'UTEST0001', tag: 'UAGENT001' }
     assert.deepEqual(add(base, tagged), { entries: [person('UTEST0001'), tagged], added: [tagged] })
     assert.deepEqual(add([person('UTEST0001'), tagged], tagged), { entries: [person('UTEST0001'), tagged], added: [] })
-    // Added again by app id alone, it keeps the tag it had.
     assert.deepEqual(add([person('UTEST0001'), tagged], agent('ATEST0001', 'UTEST0001')), { entries: [person('UTEST0001'), tagged], added: [] })
   })
   test('an id says what it is', () => {
@@ -45,12 +44,10 @@ describe('the registry: people and agents', () => {
   })
   test('the person an agent answers to is the top of its owner chain', () => {
     assert.equal(ownerPerson(all, 'ATEST0001'), 'UTEST0001')
-    assert.equal(ownerPerson(all, 'ATEST0002'), 'UTEST0001')   // owned by a manager agent
-    assert.equal(ownerPerson(all, 'ATEST0009'), undefined)     // listed before owners existed
+    assert.equal(ownerPerson(all, 'ATEST0002'), 'UTEST0001')
+    assert.equal(ownerPerson(all, 'ATEST0009'), undefined)
     assert.equal(ownerPerson(all, 'ATEST0404'), undefined)
-    // A loop made by hand in the file ends, with no person.
     assert.equal(ownerPerson([agent('ATEST0001', 'ATEST0002'), agent('ATEST0002', 'ATEST0001')], 'ATEST0001'), undefined)
-    // An owner who is no longer listed is no owner.
     assert.equal(ownerPerson([agent('ATEST0001', 'UTEST0404')], 'ATEST0001'), undefined)
   })
 })
@@ -74,7 +71,6 @@ describe('kage add', () => {
     assert.deepEqual(add(base, agent('ATEST0002', 'ATEST0001')), { entries: [...base, agent('ATEST0002', 'ATEST0001')], added: [agent('ATEST0002', 'ATEST0001')] })
     assert.match((add(base, agent('ATEST0002', 'ATEST0404')) as { error: string }).error, /ATEST0404 is not listed/)
     assert.match((add(base, agent('ATEST0002', 'ATEST0002')) as { error: string }).error, /cannot be its own owner/)
-    // An agent with no owner (listed by hand before owners existed) cannot be a manager until it is tied to someone.
     const loose = [...base, agent('ATEST0009')]
     assert.match((add(loose, agent('ATEST0002', 'ATEST0009')) as { error: string }).error, /ATEST0009 has no owner itself/)
   })
@@ -85,7 +81,6 @@ describe('kage add', () => {
       added: [person('UTEST0002'), agent('ATEST0001', 'UTEST0002')],
     })
     assert.deepEqual(add(base, agent('ATEST0001', 'UTEST0001')), { entries: base, added: [] })
-    // A manager cannot be moved under its own kagelet.
     const chain = [...base, agent('ATEST0002', 'ATEST0001')]
     assert.match((add(chain, agent('ATEST0001', 'ATEST0002')) as { error: string }).error, /loop/)
   })
@@ -108,7 +103,6 @@ describe('kage remove', () => {
   })
 })
 
-// Issue 49: a Kage session, whoever's task it runs, must not change who reaches Kage.
 describe('kage add and kage remove inside a Kage session', () => {
   const cli = fileURLToPath(new URL('../../cli/registry.ts', import.meta.url))
   const FILE = 'KAGE_NAME=kage\nKAGE_TEAMMATES=UTEST0001\n'
