@@ -22,8 +22,8 @@ export function parseConfig(raw: unknown, dir: string): Config {
   return {
     settings: {
       brand: text(c.brand, 'our business'),
-      mode: !MODES.includes(c.mode as Mode) ? 'dry' : (c.mode === 'team' || c.mode === 'live') && !text(c.ourAppId, '') ? 'dry' : c.mode as Mode,
-      ourAppId: text(c.ourAppId, ''),
+      mode: !MODES.includes(c.mode as Mode) ? 'dry' : (c.mode === 'team' || c.mode === 'live') && !text(c.ourAppId, '').trim() ? 'dry' : c.mode as Mode,
+      ourAppId: text(c.ourAppId, '').trim(),
       team: Array.isArray(c.team) ? c.team.filter((x): x is string => typeof x === 'string') : [],
       limits: { repliesPerLeadPerDay: num(l.repliesPerLeadPerDay, 8, 0), humanQuietHours: num(l.humanQuietHours, 72, 0) },
       maxChars: num(c.maxChars, 600, 50),

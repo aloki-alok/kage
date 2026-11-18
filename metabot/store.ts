@@ -16,6 +16,7 @@ export function openStore(file: string) {
     create table if not exists events (at integer not null, key text not null, kind text not null, outcome text not null, label text, ms integer not null);`)
   const q = {
     seen: db.prepare('insert or ignore into seen (id, at) values (?, ?)'),
+    forget: db.prepare('delete from seen where id = ?'),
     thread: db.prepare('select day, replies, human_at from threads where key = ?'),
     save: db.prepare('insert into threads (key, day, replies, human_at) values (?, ?, ?, ?) on conflict (key) do update set day = excluded.day, replies = excluded.replies, human_at = excluded.human_at'),
     line: db.prepare('insert into lines (key, at, who, text) values (?, ?, ?, ?)'),
@@ -27,6 +28,7 @@ export function openStore(file: string) {
   return {
     // True only the first time Meta's id is seen, so a redelivered webhook never answers twice.
     firstTime: (id: string, at: number) => Number(q.seen.run(id, at).changes) === 1,
+    forget: (id: string) => void q.forget.run(id),
     thread(key: string): Thread | undefined {
       const r = q.thread.get(key) as { day: string; replies: number; human_at: number | null } | undefined
       return r && { day: r.day, repliesToday: r.replies, ...(r.human_at === null ? {} : { humanAt: r.human_at }) }

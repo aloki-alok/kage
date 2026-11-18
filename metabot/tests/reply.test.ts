@@ -75,6 +75,14 @@ describe('one lead message, start to finish', () => {
     assert.equal(sent.length, 1)
   })
 
+  test('a person who answers while the bot is off still takes the thread', async () => {
+    const { d, sent } = rig({ mode: 'off' })
+    assert.equal(await handle({ kind: 'echo', channel: 'messenger', pageId: 'P1', user: 'U1', id: 'e9', appId: 'INBOX', at: NOW }, d), 'human')
+    d.settings.mode = 'live'
+    assert.equal(await handle(msg(), d), 'human_took_over')
+    assert.equal(sent.length, 0)
+  })
+
   test('a failed model call sends the fallback line when one is set', async () => {
     const { d, sent } = rig()
     d.model = async () => { throw new Error('timeout') }
@@ -108,8 +116,12 @@ describe('one lead message, start to finish', () => {
     await handle(msg(), dry.d)
     assert.equal(dry.sunk.length, 0, 'a dry run never reaches the sink')
     const down = rig({ model: answer({ label: 'qualified', lead: { phone: '+91 90000 00000' } }) })
-    down.d.sink = async () => { throw new Error('503') }
+    let up = false
+    down.d.sink = async l => { if (!up) throw new Error('503'); down.sunk.push(l) }
     assert.equal(await handle(msg(), down.d), 'sent_sink_failed')
+    up = true
+    assert.equal(await handle(msg(), down.d), 'sent')
+    assert.equal(down.sunk.length, 1, 'a failed sink is tried again on the next message')
     const vague = rig({ model: answer({ label: 'needs_info', lead: { phone: '+91 90000 00000' } }) })
     await handle(msg(), vague.d)
     assert.equal(vague.sunk.length, 0)

@@ -18,6 +18,7 @@ describe("the bot's settings", () => {
     assert.equal(parseConfig({ mode: 'team', ourAppId: '' }, '/d').settings.mode, 'dry')
     assert.equal(parseConfig({ mode: 'live', ourAppId: 'APP' }, '/d').settings.mode, 'live')
     assert.equal(parseConfig({ mode: 'off' }, '/d').settings.mode, 'off')
+    assert.equal(parseConfig({ mode: 'live', ourAppId: ' ' }, '/d').settings.mode, 'dry')
   })
 
   test('a wrong value falls back to its default, never to something looser', () => {

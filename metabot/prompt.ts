@@ -36,28 +36,32 @@ const canonical = (t: string) => t.normalize('NFKC').replace(/\p{Nd}/gu, d => {
 // Links: every URL must be a pack link, and every bare domain must be a pack link's host. Strict on purpose: a
 // held reply costs a fallback line, a stray link can cost a lead's money.
 const URL_RE = /https?:\/\/[^\s<>"')\]]+/gi
-const DOMAIN_RE = /\b(?:[a-z0-9-]+\.)+[a-z]{2,}\b/gi
+// Only TLDs people put in links, so Node.js, guide.pdf or "Thanks.See" never read as a domain.
+const TLDS = 'com|net|org|io|in|co|ai|app|dev|me|info|biz|xyz|online|site|store|shop|link|click|top|live|pay|money|tech|cc|tv|to|ly|gg|sh|us|uk|eu|de|fr|es|it|nl|ca|au|ru|cn|pk|bd|lk|np|ae|sg'
+const DOMAIN_RE = new RegExp(String.raw`\b(?:[a-z0-9-]+\.)+(?:${TLDS})\b(?![.\w-]*\.(?:${TLDS})\b)`, 'gi')
 const bare = (u: string) => u.toLowerCase().replace(/[.,;:!?]+$/, '').replace(/\/$/, '')
 const hostOf = (u: string) => { try { return new URL(u).hostname.toLowerCase() } catch { return '' } }
-const EMAIL_RE = /[^\s@]+@[^\s@]+/g
 
 function strayLink(reply: string, links: string[]): string | undefined {
   const allowed = new Set(links.map(bare)), hosts = new Set(links.map(hostOf).filter(Boolean))
   const urls = reply.match(URL_RE) ?? []
   const url = urls.find(u => !allowed.has(bare(u)))
   if (url) return url
-  const rest = urls.reduce((t, u) => t.replace(u, ' '), reply).replace(EMAIL_RE, ' ')
+  // An email's domain counts as a domain: a stray address is a way to reach a scammer too.
+  const rest = urls.reduce((t, u) => t.replace(u, ' '), reply)
   return (rest.match(DOMAIN_RE) ?? []).find(d => !hosts.has(d.toLowerCase()) && !hosts.has(`www.${d.toLowerCase()}`))
 }
 
 // A price is a number next to a currency mark or word. Each one in a reply must be a price the pack states (same
 // currency, same number, commas aside), so a model can never make up or mix up a price: the check is text, not judgment.
-const CUR = String.raw`[$₹€£]|\b(?:inr|usd|rs\.?|rupees?|dollars?)`
-const MONEY_RE = new RegExp(String.raw`(?:${CUR})\s?\d[\d,]*(?:\.\d+)?|\d[\d,]*(?:\.\d+)?\s?(?:${CUR}|\/-)`, 'gi')
+const CUR = String.raw`[$₹€£]|\b(?:inr|usd|rupees?|dollars?)\b|\brs\b\.?`
+// A multiplier stays part of the price, so "$10k" is never read as "$10".
+const NUM = String.raw`\d[\d,]*(?:\.\d+)?(?:\s?(?:k|m|mn|bn|lakhs?|lacs?|crores?|cr)\b)?`
+const MONEY_RE = new RegExp(String.raw`(?:${CUR})\s?${NUM}|${NUM}\s?(?:${CUR}|\/-)`, 'gi')
 const CODE: [RegExp, string][] = [[/\$|usd|dollar/i, 'USD'], [/₹|inr|rs|rupee|\/-/i, 'INR'], [/€/, 'EUR'], [/£/, 'GBP']]
 const money = (t: string) => new Set((canonical(t).match(MONEY_RE) ?? []).map(m => {
   const code = CODE.find(([re]) => re.test(m))?.[1] ?? '?'
-  return `${code} ${m.match(/\d[\d,]*(?:\.\d+)?/)![0].replace(/,/g, '')}`
+  return `${code} ${m.match(new RegExp(NUM, 'i'))![0].replace(/[,\s]/g, '').toLowerCase()}`
 }))
 
 // Fails closed: anything that is not exactly a good answer is a hold, with the reason.

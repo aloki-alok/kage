@@ -39,8 +39,9 @@ export async function handle(ev: MetaEvent, d: Deps): Promise<string> {
     d.store.saveThread(key, counted(t, start))
     return `${why}_fallback`
   }
-  // off reads nothing: no seen mark, no lead text kept, so turning the bot on later answers fresh.
-  if (s.mode === 'off') return 'off'
+  // off keeps no lead text and no seen mark, so turning the bot on later answers fresh. It still notes a person's
+  // answer in the inbox, so the bot never talks over them after it is turned on.
+  if (s.mode === 'off' && ev.kind !== 'echo') return 'off'
   if (!d.store.firstTime(ev.id, start)) return 'repeat'
   const t = d.store.thread(key)
   const decision = decide(ev, t, start, s.ourAppId, s.limits)
@@ -78,7 +79,7 @@ export async function handle(ev: MetaEvent, d: Deps): Promise<string> {
   if (d.sink && outcome === 'sent' && sinkable(a.label, a.lead) && d.store.firstTime(`sink:${key}`, start)) {
     const name = ev.kind === 'comment' ? ev.name : undefined, adId = ev.kind === 'message' ? ev.adId : undefined
     const postId = ev.kind === 'comment' ? ev.postId : undefined
-    try { await d.sink({ source: 'meta', channel: ev.channel, user: ev.user, ...(name ? { name } : {}), ...(adId ? { adId } : {}), ...(postId ? { postId } : {}), label: a.label, lead: a.lead, at: start }) } catch { outcome = 'sent_sink_failed' }
+    try { await d.sink({ source: 'meta', channel: ev.channel, user: ev.user, ...(name ? { name } : {}), ...(adId ? { adId } : {}), ...(postId ? { postId } : {}), label: a.label, lead: a.lead, at: start }) } catch { d.store.forget(`sink:${key}`); outcome = 'sent_sink_failed' }
   }
   return done(outcome, a.label)
 }
