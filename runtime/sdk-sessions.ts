@@ -10,7 +10,7 @@ import { z } from 'zod'
 import { log, logKey } from './log.ts'
 import { channelTag, makeInbox, userMessage, type Inbox } from './sdk-inbox.ts'
 import { ownerOnlyTool } from '../core/guards.ts'
-import { lowestSender, senderOf, type Sender } from '../core/gate.ts'
+import { lowestSender, OWNER_AGAIN, OWNER_MID_TURN, senderOf, type Sender } from '../core/gate.ts'
 import { certFileEnv, protectConfig, toolRefusal } from './path-guards.ts'
 import { grantRefusal, laneOptions, shellGrant } from '../core/kagelets.ts'
 import { heldCommand } from '../core/held.ts'
@@ -41,7 +41,7 @@ type Session = {
   stopped: boolean
   run?: { q: Query; inbox: Inbox; send: (m: ToSession) => void; started: number }
   asks: Map<string, (b: 'allow' | 'deny') => void>
-  ownerTools: boolean; carry: SDKUserMessage[]   // the next process opens with the owner's own tools; what it starts on (#317)
+  ownerTools: boolean; carry: SDKUserMessage[]; again: Task[]   // the next process opens with the owner's own tools; what it starts on (#317)
 }
 
 export function sdkSessions(o: {
@@ -181,14 +181,16 @@ export function sdkSessions(o: {
       if (m.type === 'verdict') { s.asks.get(m.request_id)?.(m.behavior); return }
       const from = senderOf(m), answered = sawState && s.state === 'idle' && !unseen   // idle comes only once Claude read every message
       s.ownerTools ||= from === 'owner'; s.sender = from === 'owner' && !answered ? lowestSender(s.turn.map(x => x.task)) : from   // the owner's mid-turn "thanks" never lifts a teammate's turn
+      const shown = from === 'owner' && s.sender !== 'owner' ? { ...m, content: `${OWNER_MID_TURN}\n${m.content}` } : m
       const reopen = s.ownerTools && !full && s.state === 'idle' && (sawState ? !unseen : !s.turn.length)
       if (reopen && s.turn.length) o.onTurn?.(key, s.turn.splice(0).map(x => x.task), undefined, true)   // idle: it read and answered them
       const uuid = randomUUID(); s.turn.push({ task: m, mid: s.state !== 'idle', uuid })   // the uuid ties Claude Code's command_lifecycle frames to this task
       s.kage.onTask(m)
       s.state = 'running'; s.last = Date.now()
       // Nothing more goes to a closing process: it may take a message and die before it answers.
-      if (reopen || s.carry.length) { s.carry.push(userMessage(m, uuid)); q.close() } else { inbox.push(userMessage(m, uuid)); unseen = true }
+      if (reopen || s.carry.length) { s.carry.push(userMessage(shown, uuid)); q.close() } else { inbox.push(userMessage(shown, uuid)); unseen = true }
     }
+    const sendAgain = () => { for (const t of s.again.splice(0)) send({ ...t, content: `${OWNER_AGAIN}\n${t.content}` }) }
     s.run = { q, inbox, send, started: Date.now() }
     let connected = false
     // Connected at the handshake, or else its first message. One that never starts leaves its tasks to the dispatcher.
@@ -203,7 +205,7 @@ export function sdkSessions(o: {
         for await (const m of q as AsyncIterable<SDKMessage>) {
           s.last = Date.now()
           connect()
-          if (m.type === 'system' && m.subtype === 'session_state_changed') { sawState = true; s.state = m.state; if (m.state === 'running') unseen = false }
+          if (m.type === 'system' && m.subtype === 'session_state_changed') { sawState = true; s.state = m.state; if (m.state === 'running') unseen = false; if (m.state === 'idle') sendAgain() }
           const life = m as { type: string; command_uuid?: string; state?: string }; if (life.type === 'command_lifecycle' && life.state === 'completed') for (const x of s.turn) if (x.uuid === life.command_uuid) x.read = true   // Claude Code finished a message we sent (not in the SDK's types yet); measured: one folded in mid-turn completes before that turn's result
           // A Claude Code that never sends the state event: the turn's result is the best idle signal.
           // The system event carries the category. An older CLI only marks stop_reason on the assistant frame.
@@ -234,11 +236,13 @@ export function sdkSessions(o: {
           } else if (m.type === 'result') {
             // A task sent mid-turn may be read by the next turn instead, so it stays one turn longer, unless Claude said this turn completed it.
             blocked = false
-            const done = s.turn.filter(x => !x.mid || x.read).map(x => x.task)
+            const again = s.sender === 'owner' ? [] : s.turn.filter(x => x.mid && x.read && senderOf(x.task) === 'owner').map(x => x.task)
+            s.again.push(...again)
+            const done = s.turn.filter(x => (!x.mid || x.read) && !again.includes(x.task)).map(x => x.task)
             s.turn = s.turn.filter(x => x.mid && !x.read).map(x => ({ ...x, mid: false })); if (s.turn.length) s.sender = lowestSender(s.turn.map(x => x.task))
             if (done.length) o.onTurn?.(key, done, undefined, true)
           }
-          if (m.type === 'result' && !sawState) s.state = 'idle'
+          if (m.type === 'result' && !sawState) { s.state = 'idle'; sendAgain() }
         }
       } catch (e) { log('session ended', logKey(key), e) }
       // The process went away on the limit before it sent a result: its tasks go back the same way.
@@ -296,7 +300,7 @@ export function sdkSessions(o: {
   const runner: Runner<ToSession> = {
     start(key, id, first) {
       const s: Session = sessions.get(key) ?? {
-        id, state: 'idle', last: 0, stopped: false, asks: new Map(), turn: [], carry: [], ownerTools: key.startsWith('voice:') || (first?.type === 'task' && senderOf(first) === 'owner'),   // a live call never reopens
+        id, state: 'idle', last: 0, stopped: false, asks: new Map(), turn: [], carry: [], again: [], ownerTools: key.startsWith('voice:') || (first?.type === 'task' && senderOf(first) === 'owner'),   // a live call never reopens
         kage: o.tools(key, m => o.toHub(key, m), (tool, description, input) => ask(key, s, tool, description, input, new AbortController().signal).then(r => r.behavior === 'allow'), () => s.sender),
       }
       Object.assign(s, { id, stopped: false })
