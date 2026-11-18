@@ -1,5 +1,3 @@
-// Every endpoint a connector serves answers 401 to a request without its credential (#275). Each connector checks
-// in its own way (bearer, HMAC over the body, hashed per-job token), so one table of real routes pins them all.
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { connectGithub } from '../github.ts'

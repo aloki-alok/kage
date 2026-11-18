@@ -8,7 +8,6 @@ const run = async (answers: ({ key: string; why: string }[] | Error)[], cut = fa
   let sleeps = 0
   const r = await waitForQuiet({
     ask: async () => { const a = answers[Math.min(asks++, answers.length - 1)]!; if (a instanceof Error) throw a; return a },
-    // Bounded outside the code's own catch, so a loop that never ends fails the test instead of spinning forever (#277).
     say: l => said.push(l), sleep: async () => { if (++sleeps > 50) throw new Error('waitForQuiet slept 50 times: it loops') }, placeOf: k => (k === 'C1:5.5' ? '#general' : k), cut,
   })
   return { r, said, asks }

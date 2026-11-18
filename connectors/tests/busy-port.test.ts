@@ -1,5 +1,3 @@
-// A connector whose port is taken must turn itself off, not crash the hub: an unhandled 'error' on the server
-// exits the process, the service restarts it, and it crashes again on the same port.
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { createServer } from 'node:http'

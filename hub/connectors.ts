@@ -80,7 +80,6 @@ export function startConnectors(o: {
     // The stand-in reads only this folder: notes the owner wrote for it, never their whole memory.
     memory: conn.whatsapp?.memory || `${DIR}/wa-notes`,
     onTask(t) {
-      // Only the owner's own tag reaches onTask (core/whatsapp.ts).
       const task = taskAsOwner({
         content: t.content,
         meta: { channel: 'whatsapp', thread_ts: t.chat, place: t.place, permalink: '' },
