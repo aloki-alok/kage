@@ -169,7 +169,7 @@ export function slackTools(c: ToolContext): KageTool[] {
     },
     async run(args) {
       const a = args as { channel: string; thread_ts: string; title: string; markdown: string }
-      if (!taskChannels.has(a.channel)) return { isError: true, text: 'refused: no task came from that channel' }
+      if (!ownerTask.has(`${a.channel}:${a.thread_ts}`)) return { isError: true, text: 'refused: no task came from that thread' }   // per thread: the row it writes names this thread
       const no = secretRefusal(a.markdown, { fromOwner: false })
       if (no) return { isError: true, text: no }
       try {
@@ -193,7 +193,7 @@ export function slackTools(c: ToolContext): KageTool[] {
       const a = args as { channel: string; thread_ts: string; canvas_id: string; markdown: string }
       const key = `${a.channel}:${a.thread_ts}`
       const mine = ledger('posted').split('\n').some(l => { const [, c, id, by, k] = l.split('\t'); return c === a.channel && id === a.canvas_id && by === 'canvas' && k === key })
-      if (!taskChannels.has(a.channel) || !mine) return { isError: true, text: `refused: ${Title} did not make that canvas from this thread` }
+      if (!ownerTask.has(key) || !mine) return { isError: true, text: `refused: ${Title} did not make that canvas from this thread` }
       const no = secretRefusal(a.markdown, { fromOwner: false })
       if (no) return { isError: true, text: no }
       try {
