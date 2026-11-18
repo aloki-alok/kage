@@ -26,6 +26,7 @@ import { scheduleTools } from './tools/schedule-tools.ts'
 import { kageletTools } from './tools/kagelet-tools.ts'
 import { ownerTools } from './tools/owner-tools.ts'
 import { browserTools } from './tools/browser-tools.ts'
+import { answersInThread } from '../core/blocks.ts'
 
 export type Result = { text: string; isError?: true }
 export type KageTool = { name: string; description: string; shape: z.ZodRawShape; run: (args: Record<string, unknown>) => Promise<Result> }
@@ -265,7 +266,7 @@ export function sessionTools(o: {
       agents.set(key, m.agent)
       if (m.origin.channel === o.botDm() && m.origin.thread) dmThread.set(key, m.origin.thread)
       else if (m.origin.ts) dmThread.delete(key)
-      if (m.origin.ts && m.meta.channel !== 'email' && m.meta.channel !== 'whatsapp' && m.meta.channel !== 'voice') unanswered.set(key, [...unanswered.get(key) ?? [], m.origin])
+      if (answersInThread(m)) unanswered.set(key, [...unanswered.get(key) ?? [], m.origin])
       where = m.meta.permalink ? `<${m.meta.permalink}|${m.meta.place}>` : m.meta.place
       links.set(key, m.meta.permalink || m.meta.place)
       // A scheduled run is not the owner answering. A row only when something was open keeps the file to real answers.
