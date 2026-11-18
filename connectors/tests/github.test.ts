@@ -33,8 +33,8 @@ test('a signed event the owner cares about opens one DM thread per pull request,
     assert.equal((await t.send(review(12))).status, 202)
     assert.equal((await t.send(review(12))).status, 202)
     assert.equal(t.posts.length, 2)
-    assert.equal(t.posts[0]!.thread, undefined)                        // the first opens the thread
-    assert.equal(t.posts[1]!.thread, '100')                            // the next lands in it
+    assert.equal(t.posts[0]!.thread, undefined)
+    assert.equal(t.posts[1]!.thread, '100')
     assert.deepEqual(t.tasks.map(x => x.key), ['DB:100', 'DB:100'])
     assert.equal(t.tasks[0]!.fromOwner, false)
     assert.match(t.tasks[0]!.content, /kim requested changes on acme\/app#12/)
@@ -64,7 +64,7 @@ test('a redelivery runs once, and Slack markup in a title is shown, never acted 
     const once = (id: string) => t.send(body, 'pull_request_review', sig, id)
     await once('d-1'); await once('d-1')
     assert.equal(t.tasks.length, 1)
-    assert.deepEqual(t.sources, ['github:d-1'])   // so a usage-limit pause can hold it for a replay
+    assert.deepEqual(t.sources, ['github:d-1'])
     assert.doesNotMatch(t.posts[0]!.text, /<!channel>|<https:\/\/evil/)
   } finally { t.gh.close() }
 })

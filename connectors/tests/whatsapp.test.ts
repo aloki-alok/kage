@@ -205,7 +205,6 @@ describe('the hub checks the bridge on its clock and DMs only on a change', () =
     for (let i = 0; i < 5; i++) await h.check()
     assert.deepEqual(h.dms, [])
     assert.equal(h.store.load('whatsapp-bridge-down'), undefined)
-    // The same hub does DM when the bridge goes down, so the silence above is the rule, not a notify that never fires.
     h.set(DOWN); await h.check()
     assert.equal(h.dms.length, 1)
   })

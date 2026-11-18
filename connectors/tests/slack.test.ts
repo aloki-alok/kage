@@ -318,8 +318,8 @@ test("in the owner's DM, a reply under their own message goes to the same sessio
     })
     const dm = (ts: string, thread_ts?: string) => JSON.stringify({ type: 'message', channel: 'DTEST', channel_type: 'im', ts, ...(thread_ts && { thread_ts }), user: 'UOWNER1', client_msg_id: `m${ts}`, text: 'how is it going?' })
     await slack.replay('s1', dm('1.1'))
-    await slack.replay('s2', dm('1.5', '1.1'))   // under the owner's own message
-    await slack.replay('s3', dm('2.5', '2.2'))   // under a Kage post
+    await slack.replay('s2', dm('1.5', '1.1'))
+    await slack.replay('s3', dm('2.5', '2.2'))
     assert.deepEqual(keys, ['dm', 'dm', 'DTEST:2.2'])
   } finally {
     rmSync(dir, { recursive: true, force: true })
@@ -346,7 +346,7 @@ test('a post that tags Kage starts its task and never reaches channelPost too, s
     await slack.replay('s1', JSON.stringify({ type: 'message', channel: 'CTEST2', ts: '7.8', thread_ts: '7.7', user: 'UTEST2', client_msg_id: 'm1', text: `are you using a kagelet? <@${slack.ids.bot}>` }))
     await slack.replay('s2', JSON.stringify({ type: 'message', channel: 'CTEST2', ts: '7.9', thread_ts: '7.7', user: 'UTEST2', client_msg_id: 'm2', text: 'thanks, looks fine' }))
     assert.equal(tasks, 1)
-    assert.deepEqual(heard.map(p => p.ts), ['7.9'])   // the untagged reply still reaches the watch
+    assert.deepEqual(heard.map(p => p.ts), ['7.9'])
   } finally {
     rmSync(dir, { recursive: true, force: true })
   }
@@ -397,7 +397,6 @@ test('a throw in channelPost never stops the next hook or the handling of the me
       name: 'kage', title: 'Kage', teammates: ['UTEST2'], apps: [],
       hub: { posted: () => '', handled: () => {}, heard: () => { heardBy++ }, deliver: () => 'sent', channelPost: () => { throw new Error('boom') } } as never,
     })
-    // Untagged, because a tag never reaches channelPost: the hook throws, and the thread still hears the reply.
     await slack.replay('s1', JSON.stringify({ type: 'message', channel: 'CTEST2', ts: '7.8', thread_ts: '7.7', user: 'UTEST2', client_msg_id: 'm1', text: 'hello' }))
     assert.equal(heardBy, 1)
   } finally {
@@ -409,11 +408,9 @@ describe("an app on the owner's Mac posts the owner's words and they run as the 
   const setup = async (dir: string) => {
     const posts: Record<string, unknown>[] = []
     const tasks: { key: string; kind: string; fromOwner: boolean; content: string }[] = []
-    // The inbox: a source id is taken once. Slack's echo of each post goes in first, as it may in real life.
     const inbox = new Set<string>()
     const take = (s: string) => !inbox.has(s) && !!inbox.add(s)
     let told = () => {}
-    // Fails in a second instead of hanging when no task arrives.
     const delivered = () => Promise.race([new Promise<void>(r => { told = r }), new Promise<void>((_, no) => setTimeout(() => no(new Error('no task delivered')), 1000).unref())])
     const client = (user_id: string) => ({
       auth: { test: async () => ({ team_id: 'TTEST', user_id }) },
@@ -443,7 +440,6 @@ describe("an app on the owner's Mac posts the owner's words and they run as the 
       assert.equal(tasks[0]!.key, 'dm')
       assert.equal(tasks[0]!.fromOwner, true)
       assert.match(tasks[0]!.content, /^Task from Sam: how many signups today\?/)
-      // Slack's own copy of that post (the owner's token, an app's id, no client id) starts nothing more.
       await slack.replay('echo', JSON.stringify({ type: 'message', channel: 'DTEST', channel_type: 'im', ts: '9.1', user: 'UOWNER1', app_id: 'ATEST1', text: 'how many signups today?' }))
       assert.equal(tasks.length, 1)
     } finally {

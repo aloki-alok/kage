@@ -30,7 +30,7 @@ test('a call reaches the extension on its next poll, and its result comes back t
 test('a call made before the poll waits for it', async t => {
   const { b, next, result } = await hub({ pollMs: 30 })
   t.after(() => b.close())
-  await (await next()).body?.cancel().catch(() => {})   // the extension has polled once, so it counts as connected
+  await (await next()).body?.cancel().catch(() => {})
   const refused = assert.rejects(b.call('tabs', {}), /no such tab/)
   const cmd = await (await next()).json() as { id: string }
   await result({ id: cmd.id, ok: false, error: 'no such tab' })
@@ -60,7 +60,7 @@ test('refuses without the token, and on any other path', async t => {
   const { b, url, next } = await hub()
   t.after(() => b.close())
   assert.equal((await next({ authorization: 'Bearer wrong' })).status, 401)
-  assert.equal((await fetch(`${url}/browser/next`, { method: 'OPTIONS' })).status, 401)   // no CORS door for a web page
+  assert.equal((await fetch(`${url}/browser/next`, { method: 'OPTIONS' })).status, 401)
   assert.equal((await fetch(`${url}/other`, { headers: auth })).status, 404)
 })
 
@@ -71,7 +71,7 @@ test('a command whose poll died before the extension read it goes out again on t
   void fetch(`${url}/browser/next`, { headers: auth, signal: ac.signal }).catch(() => {})
   while (!b.connected()) await new Promise(r => setTimeout(r, 5))
   ac.abort()
-  const answer = b.call('tabs', {})   // may be written to the dying socket
+  const answer = b.call('tabs', {})
   await new Promise(r => setTimeout(r, 50))
   const cmd = await (await next()).json() as { id: string; op: string }
   assert.equal(cmd.op, 'tabs')

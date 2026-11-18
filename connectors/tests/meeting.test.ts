@@ -36,7 +36,7 @@ test('a transcript opens one DM thread per meeting and runs at teammate trust', 
     assert.equal((await t.send(body('B'))).status, 202)
     assert.deepEqual(t.tasks.map(x => x.key), ['DB:100', 'DB:101'])
     assert.equal(t.tasks[0]!.fromOwner, false)
-    assert.match(t.tasks[0]!.source ?? '', /^meeting:[0-9a-f]{32}$/)   // so a usage-limit pause can hold it for a replay
+    assert.match(t.tasks[0]!.source ?? '', /^meeting:[0-9a-f]{32}$/)
     assert.match(t.posts[0]!, /Meeting:\* A <https:\/\/meet\.google\.com\/abc-defg-hij\|open>/)
     assert.match(t.tasks[0]!.content, /> \[00:03\] Jane: Kim owns the quote\./)
   } finally { t.m.close() }
@@ -80,7 +80,7 @@ test('a transcript the hub took but never handled replays from the inbox', async
     t.store.take('meeting:x', 'meeting', b, Date.now())
     await t.m.replay('meeting:x', b)
     assert.equal(t.tasks.length, 1)
-    assert.equal(t.store.unhandled(0).length, 0)   // marked handled, so the next start does not run it again
+    assert.equal(t.store.unhandled(0).length, 0)
   } finally { t.m.close() }
 })
 
@@ -92,7 +92,7 @@ test('a transcript that failed, or was skipped for the cap, runs when it is sent
     t.throwOnDeliver(false)
     assert.equal((await t.send(body('A'))).status, 202)
     assert.equal(t.tasks.length, 1)
-    assert.equal((await t.send(body('B'))).status, 202)   // over the cap: skipped, the owner is told
+    assert.equal((await t.send(body('B'))).status, 202)
     assert.equal(t.tasks.length, 1)
     t.later(3600_001)
     await t.send(body('B'))
@@ -116,12 +116,11 @@ test('the title in the Slack post cannot ping the channel or forge a link', asyn
   } finally { t.m.close() }
 })
 
-// The meeting bot (#63): it long-polls for commands and posts caption lines on the same port and token.
 test('a join waits until the bot polls, then reaches it once; a poll after it gets only newer commands', async () => {
   const t = await setup(100, 300)
   try {
     assert.match(t.m.join('https://meet.google.com/abc-defg-hij'), /not connected/)
-    assert.equal((await t.bot('/meetbot/next?after=0')).status, 204)   // nothing to do: the poll ends empty
+    assert.equal((await t.bot('/meetbot/next?after=0')).status, 204)
     const held = t.bot('/meetbot/next?after=0')
     await new Promise(r => setTimeout(r, 50))
     assert.equal(t.m.join('meet.google.com/abc-defg-hij?authuser=0'), '')
@@ -130,9 +129,7 @@ test('a join waits until the bot polls, then reaches it once; a poll after it ge
     const cmds = await r.json() as { seq: number; op: string; link: string }[]
     assert.deepEqual(cmds.map(c => [c.op, c.link]), [['join', 'https://meet.google.com/abc-defg-hij']])
     assert.equal((await t.bot(`/meetbot/next?after=${cmds[0]!.seq}`)).status, 204)
-    // A bot that lost the answer polls again from its old place and gets the command again.
     assert.equal((await t.bot('/meetbot/next?after=0')).status, 200)
-    // A join this old is for a call long gone: a restarted bot polling from 0 must not walk into the next meeting on that code.
     t.later(5 * 60_000 + 1)
     assert.equal((await t.bot('/meetbot/next?after=0')).status, 204)
   } finally { t.m.close() }
@@ -174,7 +171,6 @@ test('a line that names Kage starts one voice-limited session for the call; othe
     assert.deepEqual([task.key, task.fromOwner, task.channel], ['voice:meet-abc-defg-hij', false, 'voice'])
     assert.match(task.content, /^Voice task \(a caller, not the owner/)
     assert.match(task.content, /^> Kim: I own the deploy\.$/m)
-    // While that question waits, another one is not started on top of it.
     await post(lines(['Jane', 'Kage, are you there?']))
     await sleep(120)
     assert.equal(t.tasks.length, 1)
@@ -192,7 +188,7 @@ test("the session's reply reaches the bot as a say command for its call, and the
     assert.equal(t.m.say('voice:meet-abc-defg-hij', 'Pong.'), true)
     const r = await t.bot('/meetbot/next?after=0')
     assert.deepEqual((await r.json() as { op: string; call: string; text: string }[]).map(c => [c.op, c.call, c.text]), [['say', 'abc-defg-hij', 'Pong.']])
-    assert.equal(t.m.say('voice:some-phone-call', 'x'), false)   // not a meeting: the phone connector's
+    assert.equal(t.m.say('voice:some-phone-call', 'x'), false)
     await t.bot('/meetbot/segments', { method: 'POST', body: lines(['Jane', 'Kage, again']) })
     await sleep(120)
     assert.equal(t.tasks.length, 2)
@@ -209,7 +205,7 @@ test('when the bot says the call ended, its live session ends and a new question
     assert.equal((await t.bot('/meetbot/ended', { method: 'POST', body: '{"call":"../x"}' })).status, 400)
     await t.bot('/meetbot/segments', { method: 'POST', body: lines(['Jane', 'Kage, again']) })
     await sleep(120)
-    assert.equal(t.tasks.length, 2)   // the old question no longer blocks
+    assert.equal(t.tasks.length, 2)
   } finally { t.m.close() }
 })
 
@@ -220,12 +216,11 @@ test('a question split across caption lines is asked once, whole, and its later 
     await post(['Jane', 'Kage, what is'])
     await sleep(20)
     await post(['Kim', 'hm'], ['Jane', 'the status of the launch'])
-    assert.equal(t.tasks.length, 0)   // still listening for the rest of the question
+    assert.equal(t.tasks.length, 0)
     await sleep(120)
     assert.equal(t.tasks.length, 1)
     assert.match(t.tasks[0]!.content, /"Kage, what is the status of the launch"/)
     t.m.say('voice:meet-abc-defg-hij', 'On track.')
-    // Meet rewrites the caption block, so the bot sends the whole line again: the same question, already answered.
     await post(['Jane', 'Kage, what is the status of the launch?'])
     await sleep(120)
     assert.equal(t.tasks.length, 1)

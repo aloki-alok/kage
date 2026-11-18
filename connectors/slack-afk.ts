@@ -1,7 +1,3 @@
-// AFK mode I/O, Slack only (rules in core/afk.ts). The owner's session calls away or back (the
-// session tools), and Kage sets their status. While they are away, a stand-in watches the threads
-// where colleagues mention them or DM them, posts only when actOn says so, and phones the owner for
-// a P0. It never starts a session: tags of Kage still go through the gate as before.
 import type { WebClient } from '@slack/web-api'
 import { log } from '../runtime/log.ts'
 import { claudeOnce, emptyRoom } from '../runtime/claude-once.ts'
@@ -13,8 +9,6 @@ import type { JevAfk } from './jev.ts'
 
 type Ids = { owner: string; bot: string; botDm: string; name: string; team?: string }
 const EMOJI = ':ninja:'
-// Read-only GitHub: in -p mode with no settings, a Bash call outside these rules is denied (tested
-// 2026-11-04: gh pr view ran, curl was refused).
 const GH = ['gh pr view', 'gh pr list', 'gh issue view', 'gh issue list'].map(c => `Bash(${c}:*)`).join(' ')
 
 export function startAfk(o: {
@@ -24,18 +18,14 @@ export function startAfk(o: {
   contextOf: (m: SlackMessage) => Promise<string>
   placeOf: (channel: string) => Promise<string>
   nameOf: (id?: string) => Promise<string>
-  // Phones the owner (connectors.call.command); resolves '' once the call is placed, else why not.
   call?: (reason: string) => Promise<string>
-  // Jev's triage (connectors/jev.ts); absent means the Claude stand-in triages every message.
   jev?: JevAfk
 }) {
-  const ROOM = emptyRoom(o.dir)   // the guard's Claude finds no CLAUDE.md or memory here
-  // Saved so a hub restart stays away; prior is the owner's status before Kage set its own.
+  const ROOM = emptyRoom(o.dir)
   let state = o.saved.load('afk') as (Afk & { tz: string; ours: string; prior?: Status }) | undefined
-  if (state) state.watch ??= {}   // saved before threads were watched
+  if (state) state.watch ??= {}
   const save = () => o.saved.save('afk', state)
 
-  // "6:00 pm", or "Thu 9:00 am" when it is not today in the owner's zone.
   const when = (t: number, tz: string) => {
     const day = (x: number) => new Intl.DateTimeFormat('en-GB', { timeZone: tz, dateStyle: 'short' }).format(x)
     const f = (x: Intl.DateTimeFormatOptions) => new Intl.DateTimeFormat('en-US', { timeZone: tz, ...x }).format(t)
@@ -46,14 +36,12 @@ export function startAfk(o: {
     await o.user.users.profile.set({ profile: JSON.stringify(s) } as never)
   }
 
-  // Resolves the line to tell the owner; the owner's session posts it.
   async function on(c: Extract<AfkCommand, { kind: 'afk' }>): Promise<string> {
     const u = await o.user.users.info({ user: o.ids.owner }).catch(() => null)
     const tz = (u?.user as { tz?: string } | undefined)?.tz || 'UTC'
     const now = Date.now()
     const until = untilOf(c, now, tz)
     const ours = `Away until ${when(until, tz)}. ${o.title} is covering`
-    // A second away moves the end time and keeps what the first one saw.
     const prior = state?.prior ?? (await o.user.users.profile.get({}).catch(() => null))?.profile as Status | undefined
     state = { since: state?.since ?? now, until, note: c.note, tz, ours, prior, replies: state?.replies ?? {}, muted: state?.muted ?? [], watch: state?.watch ?? {}, pings: state?.pings ?? [], lastCall: state?.lastCall }
     save()
@@ -63,13 +51,11 @@ export function startAfk(o: {
     return `AFK on until ${when(until, tz)}. I watch threads that mention you and stay quiet unless you're mentioned again or it's urgent. A P0 gets a phone call${o.call ? '' : ' (no connectors.call.command set, so a DM instead)'}.${set}`
   }
 
-  // Resolves the summary for the owner.
   async function off(why: string): Promise<string> {
     const s = state
     if (!s) return 'You were not away.'
     state = undefined
     save()
-    // A failed read leaves the status alone: it may be one the owner set since.
     const now = (await o.user.users.profile.get({}).catch(() => null))?.profile as Status | undefined
     const to = now && restoreTo(now, s.ours, s.prior, Date.now())
     if (to) await setStatus(to).catch(e => log('afk status restore failed', e?.data?.error ?? e))
@@ -82,18 +68,14 @@ export function startAfk(o: {
   }
   setInterval(() => { if (state && state.until <= Date.now()) void off('time ran out').then(o.notify, e => log('afk end failed', e)) }, 30_000)
 
-  // Kage posts as the bot where it is a member, else with the owner's token, labelled.
   async function post(channel: string, thread_ts: string | undefined, text: string) {
     const body = safeReply(text)
     try { await o.bot.chat.postMessage({ channel, thread_ts, text: body, unfurl_links: false }) } catch (e: any) {
       if (!['not_in_channel', 'channel_not_found'].includes(e?.data?.error)) throw e
-      // The same label as session replies, so gate.ts quoteMessage reads it back as Kage.
       await o.user.chat.postMessage({ channel, thread_ts, text: `*${o.title}:* ${body}`, unfurl_links: false })
     }
   }
 
-  // One triage at a time per thread. A message that lands meanwhile asks for one more run, which
-  // reads the thread again, so the last word in a burst is always judged.
   const busy = new Set<string>()
   const again = new Map<string, { mentioned: boolean; msg: SlackMessage }>()
   async function triage(key: string, channel: string, thread_ts: string | undefined, mentioned: boolean, msg: SlackMessage) {
@@ -121,17 +103,13 @@ export function startAfk(o: {
     ])
     const all = `${convo}\n> [${who}, the newest message] ${(msg.text ?? '').replace(/\n/g, ' ')}`
     const until = when(before.until, before.tz)
-    // Jev triages; Claude drafts only for a question the owner's notes can answer, or when Jev is off or failed.
     const j = await o.jev?.({ owner: o.ownerName, place, from: who, convo: all })
     const sp = standInPrompt({ owner: o.ownerName, title: o.title, until, note: before.note, place, from: who, convo: all })
-    // With Jev's answer in hand, a failed draft only loses the draft: the urgency and a P0 call still go out.
     const claudeOut = !j || j.lookup ? await claudeOnce({ model: o.model, system: sp.system, prompt: sp.prompt, cwd: o.memory, tools: 'Read,Grep,Glob,Bash', allowed: GH }).then(parseTriage, e => { if (!j) throw e; return null }) : null
     const out = j
       ? { urgency: j.urgency, waits: j.waits, note: noteOf(who, msg.text ?? ''), reply: claudeOut?.reply || standInReply(j.urgency, { owner: o.ownerName, until, title: o.title }) }
       : claudeOut
     if (!out) return void log('afk: stand-in gave no usable answer in', place)
-    // Checked again after the thinking: the owner may be back, or typing here. since, not the
-    // object: a second away during the thinking keeps the same away period.
     const s = state
     if (!s || s.since !== before.since || s.until <= Date.now() || s.muted.includes(key)) return
     const act = actOn(out.urgency, repeat, key, w, s, Date.now(), outside)
@@ -140,7 +118,6 @@ export function startAfk(o: {
     if (act.call) { w.called = true; s.lastCall = Date.now() }
     save()
     log('afk triage', key, out.urgency, act)
-    // Not awaited: the dialer must not hold up the reply or the thread's next triage.
     if (act.call) void (o.call ? o.call(`${who} in ${place}: ${out.note}`).catch(e => String(e)) : Promise.resolve('no connectors.call.command'))
       .then(no => o.notify(`:rotating_light: P0 from ${who} in ${where}: ${out.note}\n${no ? `Could not phone you (${no}).` : 'Calling you now.'}`))
     if (!act.post || !out.reply) return

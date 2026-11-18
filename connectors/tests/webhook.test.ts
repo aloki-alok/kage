@@ -17,8 +17,8 @@ describe('hourCap', () => {
     const cap = hourCap(2)
     cap.add(0); cap.add(10)
     assert.equal(cap.full(20), true)
-    assert.equal(cap.full(3_600_000), true)    // exactly an hour old still counts
-    assert.equal(cap.full(3_600_001), false)   // the first is out, one slot is free
+    assert.equal(cap.full(3_600_000), true)
+    assert.equal(cap.full(3_600_001), false)
   })
   test('tells once per full spell, and again after a slot is used', () => {
     const cap = hourCap(1)

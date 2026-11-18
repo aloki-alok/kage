@@ -33,7 +33,7 @@ describe('the job webhook', () => {
     assert.equal(r.status, 200)
     assert.deepEqual(t.delivered, [{ job: 'j1', quote: 'disk &lt;channel x> full now' }])
     assert.deepEqual(t.rows, ['CTEST1:1.1 hook job=j1 status=200'])
-    assert.deepEqual(t.store.unhandled(0), [])               // handled after the delivery, so the text is gone
+    assert.deepEqual(t.store.unhandled(0), [])
     t.hooks.close()
   })
 
@@ -43,7 +43,7 @@ describe('the job webhook', () => {
     assert.equal((await t.call('/hook/zzz')).status, 401)
     assert.deepEqual(t.delivered, [])
     assert.deepEqual(t.rows, ['CTEST1:1.1 hook job=j1 status=401', 'hub hook job=zzz status=401'])
-    assert.deepEqual(t.store.unhandled(0), [])               // nothing was taken
+    assert.deepEqual(t.store.unhandled(0), [])
     t.hooks.close()
   })
 
@@ -78,7 +78,7 @@ describe('the job webhook', () => {
     assert.equal((await t.call('/hook/j1')).status, 200)
     await new Promise(r => setTimeout(r, 20))
     assert.deepEqual(t.rows, ['CTEST1:1.1 hook job=j1 status=200', 'hub hook job=j1 status=500'])
-    assert.equal((await t.call('/hook/j1')).status, 200)   // still serving
+    assert.equal((await t.call('/hook/j1')).status, 200)
     t.hooks.close()
   })
   test('a body over maxKb is 413 and is not taken', async () => {
@@ -99,12 +99,12 @@ describe('the job webhook', () => {
 
   test('a crash after take but before delivery: the inbox keeps the call and replays it, then it is done', async () => {
     const t = setup({ crash: true })
-    assert.equal((await t.call('/hook/j1', { body: 'alert 7' })).status, 200)   // answered, never marked done
+    assert.equal((await t.call('/hook/j1', { body: 'alert 7' })).status, 200)
     t.hooks.close()
     const missed = t.store.unhandled(0)
     assert.equal(missed.length, 1)
     assert.equal(missed[0]!.connector, 'hook')
-    const second = t.make(false)                              // the next hub: same inbox, a delivery that finishes
+    const second = t.make(false)
     await second.replay(missed[0]!.source, missed[0]!.payload)
     assert.deepEqual(t.delivered.map(d => d.quote), ['alert 7', 'alert 7'])
     assert.deepEqual(t.store.unhandled(0), [])
