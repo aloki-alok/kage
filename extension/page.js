@@ -5,7 +5,10 @@ globalThis.__kage ??= (() => {
   const byRef = new Map()        // ref -> WeakRef(element)
   const refOf = new WeakMap()    // element -> ref
   let next = 1
-  const SEL = 'a[href], button, input, select, textarea, summary, [role=button], [role=link], [role=checkbox], [role=radio], [role=tab], [role=menuitem], [role=option], [role=switch], [role=combobox], [role=textbox], [role=searchbox], [contenteditable=""], [contenteditable=true]'
+  const CORE = 'a[href], button, input, select, textarea, summary, [role=button], [role=link], [role=checkbox], [role=radio], [role=tab], [role=menuitem], [role=option], [role=switch], [role=combobox], [role=textbox], [role=searchbox], [contenteditable=""], [contenteditable=true]'
+  // Rows and items that act like buttons (an inbox list), and anything a keyboard can focus.
+  const SEL = `${CORE}, [role=row], [role=gridcell], [role=listitem], [role=treeitem], [role=menuitemradio], [role=menuitemcheckbox], [tabindex="0"]`
+  const pointer = el => getComputedStyle(el).cursor === 'pointer'
   const TAG_ROLE = { A: 'link', BUTTON: 'button', SELECT: 'combobox', TEXTAREA: 'textbox', SUMMARY: 'button' }
   const INPUT_ROLE = { checkbox: 'checkbox', radio: 'radio', submit: 'button', button: 'button', reset: 'button', image: 'button', range: 'slider', search: 'searchbox' }
   // Values Kage never sees: passwords, card details, one-time codes, and fields named like tokens.
@@ -86,8 +89,14 @@ globalThis.__kage ??= (() => {
   return {
     snapshot() {
       const elements = []
-      for (const el of document.querySelectorAll(SEL)) {
-        if (el.type === 'hidden' || el.disabled || !shown(el)) continue
+      for (const el of document.querySelectorAll('*')) {
+        if (el.matches(CORE)) { if (el.type === 'hidden' || el.disabled || !shown(el)) continue }
+        else {
+          // A role-less clickable div (cursor: pointer) counts when it holds text and is the outermost pointer of
+          // its group. Nothing inside a real control is listed again.
+          if (!el.matches(SEL) && !(pointer(el) && !(el.parentElement && pointer(el.parentElement)) && clean(el.innerText))) continue
+          if (el.parentElement?.closest(CORE) || !(clean(el.innerText) || el.getAttribute('aria-label')) || !shown(el)) continue
+        }
         elements.push(describe(el))
       }
       return { title: document.title, url: location.href, elements }

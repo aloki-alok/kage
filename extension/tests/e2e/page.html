@@ -26,6 +26,12 @@
 <input id="offscreen" value="tok-offscreen" aria-label="Offscreen">
 <input id="clipped" value="tok-clipped" aria-label="Clipped">
 <button id="mover" onmousemove="if (!window.trap) { window.trap = 1; const d = document.createElement('div'); d.style = 'position:fixed;inset:0;z-index:9'; d.onclick = () => out.textContent = 'OVERLAY after move'; document.body.append(d) }" onclick="out.textContent = 'mover clicked'">Mover</button>
+<div id="rows">
+  <div style="cursor:pointer" onclick="out.textContent = 'row Asha opened'"><span>Asha Rao</span> <span>Is the order ready?</span></div>
+  <div style="cursor:pointer" onclick="out.textContent = 'row Ben opened'"><span><b>Ben Lee</b></span> <span>Thanks!</span></div>
+  <div style="cursor:pointer" onclick="out.textContent = 'row Delete opened'"><span>Delete</span></div>
+</div>
+<a href="https://evil.example/in-link"><div style="cursor:pointer">Inside link</div></a>
 <div style="height: 3000px"></div>
 <button onclick="out.textContent = 'far clicked'">Far</button>
 <div style="height: 400px"></div>

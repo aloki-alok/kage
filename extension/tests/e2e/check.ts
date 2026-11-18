@@ -32,6 +32,13 @@ check('a link names the site it opens', /link "Unsubscribe" -> evil\.example/.te
 check('text drawn by CSS inside a child is flagged', snap.elements.filter(e => e.name.includes('styled text')).length >= 2, list)
 check('values hidden in a zero box, drawn transparent or under a cover are not shown', !/tok-/.test(list), list)
 
+const rows = (n: string) => snap.elements.filter(e => e.name.includes(n))
+check('a role-less clickable row is listed once, with its text, as an element', ['Asha Rao', 'Ben Lee'].every(n => rows(n).length === 1 && rows(n)[0]!.role === 'element'), list)
+check('the inner spans of a row get no ref of their own', !snap.elements.some(e => ['Asha Rao', 'Is the order ready?', 'Thanks!'].includes(e.name)), list)
+check('a button is still listed once', rows('Say hello').length === 1, list)
+check('a pointer div inside a link is not listed twice', rows('Inside link').length === 1 && rows('Inside link')[0]!.role === 'link', list)
+check('a click on a listed row reaches the page', (await click('Asha Rao Is the order ready?')) === 'done' && (await out()) === 'row Asha opened', await out())
+
 const name = el('Name'), search = el('Search')
 await act('type', { ref: name.ref, text: 'Ryu', expect: { host: '127.0.0.1', role: name.role, name: name.name } })
 await click('Say hello')
