@@ -1,5 +1,7 @@
 // An Agent SDK session's input (runtime/sdk-sessions.ts): tasks go in as they arrive, and the query reads them as one long stream.
 import type { SDKUserMessage } from '@anthropic-ai/claude-agent-sdk'
+import { withoutInvisible } from '../core/gate.ts'
+import type { Task } from '../core/task.ts'
 
 export type Inbox = AsyncIterable<SDKUserMessage> & { push(m: SDKUserMessage): void; close(): void; drain(): SDKUserMessage[] }
 export function makeInbox(items: SDKUserMessage[] = []): Inbox {
@@ -17,4 +19,13 @@ export function makeInbox(items: SDKUserMessage[] = []): Inbox {
       }
     },
   }
+}
+
+export const userMessage = (m: Task, uuid: string) => ({ type: 'user', message: { role: 'user', content: channelTag(m) }, parent_tool_use_id: null, uuid }) as SDKUserMessage
+
+export function channelTag(m: Task) {
+  const attr = (v: string) => withoutInvisible(v).replaceAll('&', '&amp;').replaceAll('"', '&quot;').replaceAll('<', '&lt;')
+  const attrs = Object.entries({ channel: m.meta.channel, thread_ts: m.meta.thread_ts, place: m.meta.place, permalink: m.meta.permalink })
+    .map(([k, v]) => `${k}="${attr(v)}"`).join(' ')
+  return `<channel source="kage" ${attrs}>\n${withoutInvisible(m.content).replace(/<(\/?)channel/gi, '&lt;$1channel')}\n</channel>`
 }

@@ -8,9 +8,9 @@ import type { createSdkMcpServer, EffortLevel, Options, Query, SDKMessage, SDKUs
 import { randomUUID } from 'node:crypto'
 import { z } from 'zod'
 import { log, logKey } from './log.ts'
-import { makeInbox, type Inbox } from './sdk-inbox.ts'
+import { channelTag, makeInbox, userMessage, type Inbox } from './sdk-inbox.ts'
 import { ownerOnlyTool } from '../core/guards.ts'
-import { lowestSender, senderOf, withoutInvisible, type Sender } from '../core/gate.ts'
+import { lowestSender, senderOf, type Sender } from '../core/gate.ts'
 import { certFileEnv, protectConfig, toolRefusal } from './path-guards.ts'
 import { grantRefusal, laneOptions, shellGrant } from '../core/kagelets.ts'
 import { heldCommand } from '../core/held.ts'
@@ -330,17 +330,6 @@ export function sdkSessions(o: {
 }
 
 const SET_MODEL = 'Switch the model or reasoning effort of this thread, when the owner or a teammate asks for it in plain words ("use opus max", "go back to the default"). It applies from the next step and stays for the thread. Leave out what they did not ask to change.'
-
-// A task as Claude Code shows a channel message. Attributes are escaped, and the content cannot
-// open or close a channel tag of its own.
-const userMessage = (m: Task, uuid: string) => ({ type: 'user', message: { role: 'user', content: channelTag(m) }, parent_tool_use_id: null, uuid }) as SDKUserMessage
-
-export function channelTag(m: Task) {
-  const attr = (v: string) => withoutInvisible(v).replaceAll('&', '&amp;').replaceAll('"', '&quot;').replaceAll('<', '&lt;')
-  const attrs = Object.entries({ channel: m.meta.channel, thread_ts: m.meta.thread_ts, place: m.meta.place, permalink: m.meta.permalink })
-    .map(([k, v]) => `${k}="${attr(v)}"`).join(' ')
-  return `<channel source="kage" ${attrs}>\n${withoutInvisible(m.content).replace(/<(\/?)channel/gi, '&lt;$1channel')}\n</channel>`
-}
 
 // Approval ids look like Claude Code's: five letters, no "l", which the gate's "yes <id>" expects.
 function requestId() {
