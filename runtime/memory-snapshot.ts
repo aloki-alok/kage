@@ -1,5 +1,3 @@
-// The hub's own copy of Kage's memory before a dream, so a bad merge is one command from undone
-// (`kage dream undo`). The archive is left out of the copy and never touched by an undo.
 import { execFileSync } from 'node:child_process'
 import { mkdirSync, readdirSync, renameSync } from 'node:fs'
 
@@ -12,7 +10,6 @@ export function snapshotMemory(dir: string, now: number): string {
   return file
 }
 
-// Back to the newest snapshot. What the memory held until now moves to .archive/undone-<time>/, never deleted.
 export function undoToSnapshot(dir: string, now: number): string | undefined {
   let snaps: string[] = []
   try { snaps = readdirSync(`${dir}/.archive/snapshots`).filter(n => n.endsWith('.tgz')).sort() } catch {}

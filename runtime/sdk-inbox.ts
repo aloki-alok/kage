@@ -1,4 +1,3 @@
-// An Agent SDK session's input (runtime/sdk-sessions.ts): tasks go in as they arrive, and the query reads them as one long stream.
 import type { SDKUserMessage } from '@anthropic-ai/claude-agent-sdk'
 import { withoutInvisible } from '../core/gate.ts'
 import type { Task } from '../core/task.ts'

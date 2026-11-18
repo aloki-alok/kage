@@ -1,6 +1,3 @@
-// Jobs that an event wakes (ADR 0015 rung 2): a post in a Slack channel, or a call to the job's webhook. This holds the
-// rules between the Slack connector's hooks, the channel watches and the scheduler's wake. Every step writes one
-// tripwire event row (ids and counts only, never a post's text) through `track`.
 import { safePattern, type Trigger } from '../core/tripwire.ts'
 import type { Schedule } from '../core/cron.ts'
 import { channelWatches, type ChannelHistory, type ChannelPost } from './channel-watch.ts'
@@ -13,16 +10,14 @@ export function jobEvents(o: {
   schedules: () => Schedule[]
   wake: (id: string, quotes: string[], x?: WakeOptions) => void
   track: (who: string, detail: string) => void
-  ping: (key: string, text: string) => void   // into the job's thread as Kage, with no model
+  ping: (key: string, text: string) => void
   cfg: () => { patternMax: number; maxPosts: number; seenMax: number }
 }) {
   const watches = channelWatches(o.saved, { maxPosts: () => o.cfg().maxPosts, seenMax: () => o.cfg().seenMax })
   const jobOf = (id: string) => o.schedules().find(s => s.id === id)
-  // Told to the scheduler with each wake: a shared function, so a burst writes one wake row per run.
   const onRun = (s: Schedule, n: number) => o.track(s.key, `wake job=${s.id} reason=${s.trigger?.kind ?? 'event'} n=${n}`)
   const onFail = (s: Schedule) => o.track(s.key, `wake job=${s.id} failed=1`)
   const wake = (id: string, quotes: string[], done?: () => void) => o.wake(id, quotes, { ran: onRun, failed: onFail, ...(done && { done }) })
-  // Posts taken for a job wait here, with the job, until its run has them: a restart or a failed tick loses none.
   const held = () => (o.saved.load('job-held') as Record<string, string[]> | undefined) ?? {}
   const setHeld = (id: string, quotes: string[]) => { const { [id]: _, ...rest } = held(); o.saved.save('job-held', quotes.length ? { ...rest, [id]: quotes } : rest) }
   const release = (id: string, quotes: string[]) => () => { const left = [...held()[id] ?? []]; for (const q of quotes) { const i = left.indexOf(q); if (i >= 0) left.splice(i, 1) } setHeld(id, left) }
@@ -40,32 +35,31 @@ export function jobEvents(o: {
   const started = (id: string, t?: Trigger) => { if (t?.kind === 'channel') watches.set(id, { channel: t.channel, bots: t.bots, ...(t.match !== undefined && { match: t.match }) }) }
   const stopped = (id: string) => { watches.remove(id); setHeld(id, []) }
 
-  // At hub start: every watch from the stored triggers, then a gap, so the first catch-up runs. A saved watch whose schedule is gone goes.
   const rebuild = () => {
     const all = o.schedules()
     for (const id of Object.keys(watches.list())) if (!all.some(s => s.id === id)) watches.remove(id)
     for (const s of all) started(s.id, s.trigger)
-    for (const [id, quotes] of Object.entries(held())) { if (all.some(s => s.id === id)) wake(id, quotes, release(id, quotes)); else setHeld(id, []) }   // posts taken before the restart
+    for (const [id, quotes] of Object.entries(held())) { if (all.some(s => s.id === id)) wake(id, quotes, release(id, quotes)); else setHeld(id, []) }
     watches.gapOpened()
   }
 
   const channelPost = (post: ChannelPost) => {
     for (const id of watches.heard(post)) {
       const s = jobOf(id)
-      if (!s) { watches.remove(id); continue }   // unscheduled behind the watch's back
+      if (!s) { watches.remove(id); continue }
       o.track(s.key, `match job=${id} channel=${post.channel} ts=${post.ts}`)
       holdAndWake(id, watches.take(id))
     }
   }
 
-  let queue: Promise<unknown> = Promise.resolve()   // one catch-up at a time: two reconnects never read the same window twice
+  let queue: Promise<unknown> = Promise.resolve()
   const failing = new Set<string>()
   const pass = async (history: ChannelHistory) => {
     const read = new Map<string, number>()
     const counted: ChannelHistory = { newest: c => history.newest(c), fetch: async (c, oldest) => {
       const r = await history.fetch(c, oldest)
       read.set(c, (read.get(c) ?? 0) + r.posts.length)
-      for (const p of r.posts) channelPost(p)   // the posts wake their jobs here, oldest first; the watch's own pass then finds them seen
+      for (const p of r.posts) channelPost(p)
       return r
     } }
     const results = await watches.catchUp(counted)

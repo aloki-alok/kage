@@ -41,7 +41,7 @@ describe('the first start imports the env file', () => {
     const to = importLegacy(w.env, new Date('2026-11-14T10:15:00Z'))
     assert.equal(to, `${w.env}.imported-20261114T101500Z`)
     assert.ok(!existsSync(w.env))
-    assert.equal(readSettings(w.env).config.name, 'kagetest')   // config.json still wins
+    assert.equal(readSettings(w.env).config.name, 'kagetest')
     assert.deepEqual(sweepImported(w.env, new Date('2026-11-22T10:15:01Z')), ['env.imported-20261114T090000Z', 'env.imported-20261114T101500Z'])
   })
   test('before the import, the env file reads the same as after, and nothing is written', () => {
@@ -182,7 +182,6 @@ describe('an install from before 0.4.0 keeps its own keys (a teammate lost a too
   test('a key of the person\'s own in the old env file reaches the hub environment after the first-start import', async () => {
     const w = world(`${ENV}MY_TOOL_API_KEY=sk-test-1234567890abcdef\nMY_TOOL_URL=https://tool.test\n`)
     importLegacy(w.env, new Date('2026-11-14T10:15:00Z'))
-    // hub.ts reads both files as plain JSON, then exports what the import could not place.
     const raw = (f: string) => JSON.parse(readFileSync(join(w.dir, f), 'utf8'))
     const { unknownEnv } = await import('../../core/config.ts')
     const env = unknownEnv(raw('config.json'), raw('secrets.json'))

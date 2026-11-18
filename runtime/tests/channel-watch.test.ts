@@ -65,7 +65,6 @@ test('watches survive a new instance on the same store', () => {
 })
 
 const history = (o: Partial<ChannelHistory> = {}): ChannelHistory => ({ fetch: async () => ({ posts: [], truncated: false }), newest: async () => '10.1', ...o })
-// A watch whose channel already has its Slack baseline.
 const baselined = async (store = memory(), o: Parameters<typeof channelWatches>[1] = {}) => {
   const w = channelWatches(store, o)
   w.set('a', { channel: 'CTEST1', bots: true })
@@ -214,7 +213,6 @@ test('channelHistory asks for one message to find the newest ts, and says none f
   assert.deepEqual(asked[0], { channel: 'CTEST1', limit: 1 })
 })
 
-// A fake conversations.history: the posts ts 1..n, newer than `oldest`.
 const upTo = (n: number): ChannelHistory => history({ fetch: async (channel, oldest) => ({
   posts: Array.from({ length: n }, (_, i) => post({ channel, ts: `${i + 1}.1`, quoted: `p${i + 1}` })).filter(p => Number(p.ts) > Number(oldest)), truncated: false }) })
 
@@ -279,7 +277,6 @@ test('a gap that opens during a catch-up is not closed by it', async () => {
   assert.deepEqual(asked, ['CTEST1@1.1', 'CTEST2@1.1'])
 })
 
-// A fake conversations.history: newest first, only posts newer than `oldest`, 200 a page.
 const slackWith = (n: number) => async (a: { channel: string; oldest?: string; cursor?: string; limit: number }) => {
   const all = Array.from({ length: n }, (_, i) => ({ ts: `${n - i}.1` })).filter(m => Number(m.ts) > Number(a.oldest ?? 0))
   const from = Number(a.cursor ?? 0)

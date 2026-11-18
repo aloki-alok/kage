@@ -1,15 +1,10 @@
-// The two Slack read tools the owner's own task gets: a Slack task, or an owner-verified voice call (the SDK runner
-// loads them up front there, so a live call skips tool discovery). They read through the owner's user client, never
-// the external Slack connector. A teammate's task, a stranger's call and an agent's task get refused.
 import { z } from 'zod'
 import type { WebClient } from '@slack/web-api'
 import type { KageTool, Result } from './kage-tools.ts'
 
 const s = z.string()
-// The tool names as the SDK sees them, and the line the voice session's instructions gain.
 export const SLACK_READS = ['mcp__kage__slack_search', 'mcp__kage__slack_read']
 export const VOICE_READS_LINE = '\nOn a verified owner voice call, slack_search and slack_read read Slack directly and are already loaded. Use them without ToolSearch. On a stranger call you still have only reply.'
-// On a voice session, reply and the two reads load up front (no ToolSearch on a live call); the reads are marked read-only.
 export const voiceToolOptions = (voice: boolean, name: string) => voice && (name === 'reply' || SLACK_READS.includes(`mcp__kage__${name}`))
   ? { alwaysLoad: true, ...name !== 'reply' && { annotations: { readOnlyHint: true } } } : undefined
 const task = { channel: s.describe('channel attribute from the task tag'), thread_ts: s.describe('thread_ts attribute from the task tag') }

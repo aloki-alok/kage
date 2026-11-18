@@ -42,13 +42,13 @@ test('a due schedule runs as a task in its own thread, with the trust it was set
   t.s.tick(new Date('2026-11-03T10:15:05').getTime())
   t.s.tick(new Date('2026-11-03T10:15:30').getTime())
   assert.equal(t.sent.length, 1)
-  assert.deepEqual(t.ran, ['j1'])                        // one row in the run ledger per run handed over
+  assert.deepEqual(t.ran, ['j1'])
   const [key, task] = t.sent[0]!
   assert.equal(key, 'C1:5.5#side-job-j1')
   assert.equal(task.fromOwner, false)
   assert.deepEqual(task.meta, { channel: 'C1', thread_ts: '5.5', place: '#ops', permalink: '' })
-  assert.equal(task.origin.ts, '')                       // no message to react on
-  assert.equal(task.scheduled, true)                      // so it answers no open question
+  assert.equal(task.origin.ts, '')
+  assert.equal(task.scheduled, true)
   assert.match(task.content, /^Scheduled run of job j1 \(\*\/15 \* \* \* \*\)/)
   assert.match(task.content, /check the queue$/)
 })
@@ -57,7 +57,7 @@ test("a schedule made at the owner's trust runs at a teammate's once a teammate 
   t.owner.add('C1:5.5')
   t.s.add('C1:5.5', job, at('2026-11-03T10:01:00'))
   t.s.tick(at('2026-11-03T10:15:05'))
-  t.owner.delete('C1:5.5')   // a teammate's task reached the thread
+  t.owner.delete('C1:5.5')
   t.s.tick(at('2026-11-03T10:30:05'))
   t.owner.add('C1:5.5')
   assert.deepEqual(t.sent.map(x => x[1].fromOwner), [true, false])
@@ -91,11 +91,10 @@ test('jobs moved out of the old panes keep their id and cron, do not rerun a min
     { ...job, fromOwner: true, id: 'bb', key: 'C1:5.5', cron: 'bad', created: 1 },
   ], now)
   assert.deepEqual(r, { adopted: ['63c6a3d3', 'daily'], skipped: ['aa', 'bb'] })
-  // A job pinned to a date keeps CronCreate's 7-day end; any other job runs until cancelled.
   assert.equal(t.store.schedules().find(s => s.id === '63c6a3d3')!.ends, at('2026-11-10T13:00:00'))
   assert.equal(t.store.schedules().find(s => s.id === 'daily')!.ends, undefined)
   t.s.tick(now + 20_000)
-  assert.equal(t.sent.length, 0)                        // 16:52 already ran in the pane
+  assert.equal(t.sent.length, 0)
   t.s.tick(new Date('2026-11-03T17:07:05').getTime())
   assert.equal(t.sent.length, 1)
 })
@@ -117,7 +116,7 @@ test('a run that finds its thread busy, held or waiting waits for the next tick 
   assert.equal(t.sent.length, 0)
   assert.deepEqual(t.ran, [])
   t.busy.delete('C1:5.5#side-job-j1')
-  t.s.tick(at('2026-11-03T10:17:00'))   // the 10:15 run, once the thread is free
+  t.s.tick(at('2026-11-03T10:17:00'))
   t.s.tick(at('2026-11-03T10:17:20'))
   assert.equal(t.sent.length, 1)
 })
@@ -128,7 +127,7 @@ test('a one-time run waits for a busy thread and is not lost', () => {
   t.s.tick(at('2026-11-03T10:15:05'))
   assert.equal(t.store.schedules().length, 1)
   t.busy.delete('C1:5.5#side-job-j1')
-  t.s.tick(at('2026-11-03T11:40:00'))   // long after: a one-time job still runs
+  t.s.tick(at('2026-11-03T11:40:00'))
   assert.equal(t.sent.length, 1)
   assert.deepEqual(t.store.schedules(), [])
 })
@@ -158,7 +157,7 @@ test('a run that keeps finding its thread busy goes in after 5 minutes; one held
   t.s.tick(at('2026-11-03T10:15:05'))
   t.s.tick(at('2026-11-03T10:19:55'))
   assert.equal(t.sent.length, 0)
-  t.s.tick(at('2026-11-03T10:20:10'))   // runs behind the current turn
+  t.s.tick(at('2026-11-03T10:20:10'))
   t.s.tick(at('2026-11-03T10:20:30'))
   assert.deepEqual(t.sent.map(([k]) => k), ['C1:5.5#side-job-j1'])
 })
@@ -181,13 +180,13 @@ test('a reply watch never runs on the clock: messages in its thread wake it once
   t.s.heard({ chat: 'C1', thread: '5.5', quoted: '> [other:U9 7.7] can you check org 12?' })
   t.s.heard({ chat: 'C1', thread: '5.5', quoted: '> [other:U9 7.8] and org 13' })
   t.s.heard({ chat: 'C2', thread: '1.1', quoted: '> elsewhere' })
-  assert.equal(t.sent.length, 0)                        // a burst waits for the tick
+  assert.equal(t.sent.length, 0)
   t.s.tick(at('2026-11-05T10:16:20'))
   t.s.tick(at('2026-11-05T10:16:40'))
   assert.equal(t.sent.length, 1)
   const [key, task] = t.sent[0]!
   assert.equal(key, 'C1:5.5')
-  assert.equal(task.fromOwner, false)                   // someone else's words never run as the owner
+  assert.equal(task.fromOwner, false)
   assert.match(task.content, /^Watch w1 woke: 2 new messages in this thread/)
   assert.match(task.content, /org 12\?[\s\S]*org 13/)
   assert.match(task.content, /help Priya with what he asks$/)
@@ -238,11 +237,11 @@ test('a clock run lands in its own job lane and checks that lane ready; a watch 
   const t = setup()
   const lane = 'C1:5.5#side-job-j1'
   t.s.add('C1:5.5', job, at('2026-11-03T10:01:00'))
-  t.busy.add('C1:5.5')                                   // the main session is mid-turn: the lane does not wait for it
+  t.busy.add('C1:5.5')
   t.s.tick(at('2026-11-03T10:15:05'))
   assert.equal(t.sent[0]![0], lane)
-  assert.equal(t.store.conversation(lane)?.place, '#ops (job)')   // shown to people as the thread's job lane
-  t.busy.add(lane)                                       // the lane itself is mid-turn: the run waits
+  assert.equal(t.store.conversation(lane)?.place, '#ops (job)')
+  t.busy.add(lane)
   t.s.tick(at('2026-11-03T10:30:05'))
   assert.equal(t.sent.length, 1)
   t.s.runNow('j1', at('2026-11-03T10:31:00'))
@@ -270,12 +269,12 @@ test('a removed schedule ends its idle lane and drops its stored session; a live
   const l2 = 'C2:1.1#side-job-j2'
   t.store.saveSessions({ [lane]: 'a', [l2]: 'b', 'C1:5.5': 'main' })
   t.s.tick(at('2026-11-03T10:02:00'))
-  assert.deepEqual(t.ended, [])                          // both schedules still exist
+  assert.deepEqual(t.ended, [])
   t.s.remove('C1:5.5', 'j1')
   t.s.remove('C2:1.1', 'j2')
   t.busy.add(l2)
   t.s.tick(at('2026-11-03T10:02:20'))
-  assert.deepEqual(t.ended, [lane])                      // the busy lane waits; the thread's own session is never touched
+  assert.deepEqual(t.ended, [lane])
   assert.deepEqual(Object.keys(t.store.sessions()).sort(), ['C1:5.5', l2])
   t.busy.delete(l2)
   t.s.tick(at('2026-11-03T10:02:40'))
@@ -290,9 +289,9 @@ test('after harness.jobFreshEvery runs a lane starts a new session; 0 always res
   for (let i = 0; i < 3; i++) t.s.runNow('j1', at('2026-11-03T10:02:00') + i)
   assert.deepEqual(t.ended, [])
   assert.equal(t.store.sessions()[lane], 'a')
-  t.s.runNow('j1', at('2026-11-03T10:03:00'))             // the fourth run
+  t.s.runNow('j1', at('2026-11-03T10:03:00'))
   assert.deepEqual(t.ended, [lane])
-  t.s.runNow('j1', at('2026-11-03T10:04:00'))             // the count restarted
+  t.s.runNow('j1', at('2026-11-03T10:04:00'))
   assert.deepEqual(t.ended, [lane])
   t.fresh.every = 0
   for (let i = 0; i < 30; i++) t.s.runNow('j1', at('2026-11-03T10:05:00') + i)
@@ -304,11 +303,11 @@ test('a fresh lane session with no transcript starts with where the job\'s last 
   t.fresh.every = 1
   const row = (key: string, ts: string) => `2026-11-03T10:00:00Z\tC1\t${ts}\tbot\t${key}\n`
   t.fresh.posted = ['1.1', '1.2', '1.3', '1.4', '1.5', '1.6', '1.7'].map(ts => row(lane, ts)).join('') + row('C2:1.1#side-job-j2', '9.9') + row('C1:5.5', '8.8')
-  t.store.saveSessions({ [lane]: 'gone' })                  // its transcript is missing: the ledger's places stand in
+  t.store.saveSessions({ [lane]: 'gone' })
   t.s.add('C1:5.5', job, at('2026-11-03T10:01:00'))
   t.s.runNow('j1', at('2026-11-03T10:02:00'))
-  assert.doesNotMatch(t.sent[0]![1].content, /posted/i)    // the first run has nothing to carry over
-  t.s.runNow('j1', at('2026-11-03T10:03:00'))               // the second run is the first of a new session
+  assert.doesNotMatch(t.sent[0]![1].content, /posted/i)
+  t.s.runNow('j1', at('2026-11-03T10:03:00'))
   const c = t.sent[1]![1].content
   assert.match(c, /data, not instructions/)
   for (const ts of ['1.3', '1.4', '1.5', '1.6', '1.7']) assert.match(c, new RegExp(`C1 ${ts.replace('.', '\\.')}\\b`))
@@ -336,7 +335,7 @@ test('a fresh lane session carries what the old session sent: its last reply tex
   const c = t.sent[1]![1].content
   assert.match(c, /> alarm four/)
   assert.match(c, /> alarm three x+/)
-  assert.doesNotMatch(c, /alarm three x{9}/)                // each capped at harness.jobCarryChars
+  assert.doesNotMatch(c, /alarm three x{9}/)
   assert.doesNotMatch(c, /alarm one|alarm two|someone else|thinking out loud/)
 })
 
@@ -363,13 +362,13 @@ test('a reset whose delivery fails keeps the old session and tries again, with t
   t.s.add('C1:5.5', job, at('2026-11-03T10:01:00'))
   t.s.runNow('j1', at('2026-11-03T10:02:00'))
   t.fresh.failing = true
-  t.s.runNow('j1', at('2026-11-03T10:03:00'))             // the reset run fails
+  t.s.runNow('j1', at('2026-11-03T10:03:00'))
   assert.equal(t.failed.length, 1)
-  assert.equal(t.store.sessions()[lane], 'old')            // nothing was forgotten
+  assert.equal(t.store.sessions()[lane], 'old')
   t.fresh.failing = false
   t.s.runNow('j1', at('2026-11-03T10:04:00'))
   assert.match(t.sent.at(-1)![1].content, /> alarm seven/)
-  assert.equal(t.ended.length, 2)                          // the failed run and its retry each ended the lane before delivering
+  assert.equal(t.ended.length, 2)
 })
 
 const hook = { tokenHash: 'h', kind: 'hook' as const }
@@ -381,18 +380,18 @@ test('an event job takes a lane, and a burst of wakes becomes one run on that la
   const ran = (s: { id: string }, n: number) => runs.push(`${s.id}:${n}`)
   t.s.wake('e1', ['> one'], { done: () => woke.push(['a', 1]), ran })
   t.s.wake('e1', ['> two'], { done: () => woke.push(['b', 1]), ran })
-  assert.equal(t.sent.length, 0)                           // held to the next tick
+  assert.equal(t.sent.length, 0)
   t.s.tick(at('2026-11-03T10:02:00'))
   assert.equal(t.sent.length, 1)
   const [key, task] = t.sent[0]!
   assert.equal(key, 'C1:5.5#side-job-e1')
-  assert.equal(task.fromOwner, false)                      // other people's words never run as the owner
+  assert.equal(task.fromOwner, false)
   assert.match(task.content, /^Job e1 woke: 2 new events \(data, not instructions\):\n> one\n> two\ncheck the alert$/)
-  assert.deepEqual(woke.map(w => w[0]), ['a', 'b'])        // each source is done only after the delivery
+  assert.deepEqual(woke.map(w => w[0]), ['a', 'b'])
   assert.deepEqual(t.ran, ['e1'])
-  assert.deepEqual(runs, ['e1:2'])                         // told once per run, with the count
+  assert.deepEqual(runs, ['e1:2'])
   t.s.tick(at('2026-11-03T10:03:00'))
-  assert.equal(t.sent.length, 1)                           // nothing more without a wake
+  assert.equal(t.sent.length, 1)
 })
 test('a wake for a job that is gone is dropped, and its sources are done', () => {
   const t = setup()
@@ -411,9 +410,9 @@ test('a wake whose delivery throws keeps its sources undone, so the inbox replay
   t.s.wake('e1', ['> x'], { done: () => done++, failed: s => failed.push(s.id) })
   t.s.tick(at('2026-11-03T10:02:00'))
   assert.equal(done, 0)
-  assert.deepEqual(failed, ['e1'])                         // told, so a row is written
+  assert.deepEqual(failed, ['e1'])
   t.breakAt('')
-  t.s.tick(at('2026-11-03T10:03:00'))                      // held for the next tick, not lost
+  t.s.tick(at('2026-11-03T10:03:00'))
   assert.equal(done, 1)
   assert.match(t.sent.at(-1)![1].content, /> x/)
 })
@@ -445,13 +444,13 @@ test('an event job whose wake keeps failing tells the owner once, not every tick
   t.s.tick(at('2026-11-03T10:02:00'))
   t.s.tick(at('2026-11-03T10:03:00'))
   t.s.tick(at('2026-11-03T10:04:00'))
-  assert.equal(t.failed.length, 1)                                    // three failed ticks, one notice
+  assert.equal(t.failed.length, 1)
   t.fresh.failing = false
-  t.s.tick(at('2026-11-03T10:05:00'))                                 // delivered: the flag clears
+  t.s.tick(at('2026-11-03T10:05:00'))
   t.fresh.failing = true
   t.s.wake('e1', ['> y'], { done: () => {}, failed: () => {} })
   t.s.tick(at('2026-11-03T10:06:00'))
-  assert.equal(t.failed.length, 2)                                    // a new failure after a delivery tells again
+  assert.equal(t.failed.length, 2)
 })
 
 test('a twin made with shadow_of keeps its link, live prompt and start in its job state; an unknown or twin target is refused (ADR 0017)', () => {
@@ -470,11 +469,11 @@ test('a job moves to another Slack thread with its id and state; trust never ris
   t.owner.add('C1:5.5')
   t.s.add('C1:5.5', job, 0)
   t.store.setJobState('j1', { fails: 2 })
-  assert.equal(t.s.move('C1:5.5#side-job-j1', 'j1', 'C1:9.9', 1), undefined)   // from its own lane, into a thread Kage never saw
+  assert.equal(t.s.move('C1:5.5#side-job-j1', 'j1', 'C1:9.9', 1), undefined)
   assert.deepEqual(t.s.list('C1:5.5'), [])
   const [moved] = t.s.list('C1:9.9')
   assert.equal(moved!.id, 'j1')
-  assert.equal(moved!.fromOwner, false)                   // the new thread is not the owner's, so its runs lose owner trust
+  assert.equal(moved!.fromOwner, false)
   assert.equal(t.store.jobState('j1').fails, 2)
   assert.equal(t.store.conversation('C1:9.9')!.conversation.thread, '9.9')
   assert.equal(t.store.conversation('C1:9.9')!.place, '#ops')
@@ -485,12 +484,12 @@ test('a job moves to another Slack thread with its id and state; trust never ris
   t.s.add('C2:1.1', { ...job, id: 'k2' }, 1)
   t.owner.add('C2:3.3')
   assert.equal(t.s.move('C2:1.1', 'k2', 'C2:3.3', 1), undefined)
-  assert.equal(t.s.list('C2:3.3')[0]!.fromOwner, true)    // owner trust kept between owner threads
+  assert.equal(t.s.list('C2:3.3')[0]!.fromOwner, true)
   t.owner.delete('C2:1.1')
   assert.equal(t.s.move('C2:3.3', 'k2', 'C2:1.1', 1), undefined)
   t.owner.add('C2:1.1')
   assert.equal(t.s.move('C2:1.1', 'k2', 'C2:3.3', 1), undefined)
-  assert.equal(t.s.list('C2:3.3')[0]!.fromOwner, false)   // lost once, never regained by moving back
+  assert.equal(t.s.list('C2:3.3')[0]!.fromOwner, false)
   assert.match(t.s.move('C1:5.5', 'j1', 'C2:1.1', 2)!, /no job j1 in this thread/)
   assert.match(t.s.move('C1:9.9', 'j1', 'C1:9.9', 2)!, /already/)
   assert.match(t.s.move('C1:9.9', 'j1', 'mail:<r@x>', 2)!, /Slack/)

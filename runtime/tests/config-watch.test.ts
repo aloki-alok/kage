@@ -13,7 +13,6 @@ function setup() {
   writeFileSync(env, ENV, { mode: 0o600 })
   importLegacy(env)
   const seen = { applied: [] as unknown[], events: [] as [ConfigEvent, string[]][], told: [] as string[], restart: [] as boolean[], log: [] as string[] }
-  // Resolves on the first live apply, so a test waits on the watcher's own event and not on a clock.
   let appliedOnce!: () => void
   const applied = new Promise<void>(r => { appliedOnce = r })
   const w = configWatcher({
@@ -70,7 +69,6 @@ describe('a wrong file is refused', () => {
     assert.ok(!t.seen.told[0]!.includes('xoxb-fake-value'))
     assert.deepEqual(t.seen.events[0], ['config.refused', ['harness.maxSesion']])
     assert.deepEqual(t.seen.applied, [])
-    // Fixed: the next good file is taken, and a later bad one tells the owner again.
     writeFileSync(join(t.dir, 'config.json'), JSON.stringify({ version: 1, name: 'kagetest', people: { teammates: ['UTEST0001'] } }))
     assert.ok('changed' in t.w.check())
     writeFileSync(join(t.dir, 'config.json'), '{ not json')

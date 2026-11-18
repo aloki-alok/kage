@@ -9,7 +9,6 @@ import { closedThreads } from '../closed-threads.ts'
 import type { Task } from '../../core/task.ts'
 import { openStore } from '../store.ts'
 
-// The hub's path end to end: a real store and dispatcher, a fake runner, Slack lines and owner DMs recorded.
 function setup() {
   const store = openStore(join(mkdtempSync(join(tmpdir(), 'kage-closed-')), 'kage.db'))
   const started: [string, string][] = []
@@ -22,7 +21,6 @@ function setup() {
   const said: string[] = []
   const dms: string[] = []
   const c = closedThreads({ store, reset: k => d.reset(k), say: (_k, _t, text) => said.push(text), tellOwner: t => dms.push(t) })
-  // What hub/router.ts deliver() does with it.
   const deliver = (key: string, t: Task) => (c.closedTo(key, t) ? 'sent' : d.task(key, t, 0))
   const mate = (text = 'list the holes'): Task => ({
     type: 'task', fromOwner: false, content: `Teammate task (UMATETEST1, sam, not the owner): ${text}`,
@@ -59,7 +57,7 @@ describe('a thread the safety check stopped', () => {
     t.c.blocked('D1:5.5', [t.mate()], 'cyber')
     assert.equal(t.deliver('D1:5.5', t.owner), 'starting')
     assert.deepEqual(t.started.at(-1), ['D1:5.5', 'new1'])
-    assert.equal(t.deliver('D1:5.6', t.mate('other thread')), 'starting')   // a different thread was never closed
+    assert.equal(t.deliver('D1:5.6', t.mate('other thread')), 'starting')
     t.d.end('D1:5.5')
     assert.equal(t.deliver('D1:5.5', t.mate('after reopen')), 'starting')
   })

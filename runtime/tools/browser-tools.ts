@@ -1,5 +1,3 @@
-// The owner's Chrome through Kage's extension: list, read, capture, snapshot and act. Owner tasks only, and a major
-// step waits for the owner's yes on a card (core/browser-act.ts majorAct).
 import { writeFileSync } from 'node:fs'
 import { z } from 'zod'
 import { blockedSite, pageResult, tabsResult, type Page, type Tab } from '../../core/browser.ts'
@@ -9,14 +7,11 @@ import type { KageTool, ToolContext } from '../kage-tools.ts'
 export function browserTools(c: ToolContext): KageTool[] {
   const { o, bot, s, filesOf, ownerActs, name } = c
   const tools: KageTool[] = []
-  // The owner's browser carries their logins, so only the owner's own task reads it: never a teammate's, an
-  // agent's, a voice caller's or a kagelet's. Page text comes back quoted as data (core/browser.ts).
   const browser = o.browser
   if (browser && !name && !o.dreaming) {
     const where = { channel: s.describe('channel attribute from the task tag'), thread_ts: s.describe('thread_ts attribute from the task tag') }
-    const typedIn = new Map<string, string[]>()   // thread:tab -> fields Kage typed there since the last major step
+    const typedIn = new Map<string, string[]>()
     const refused = (args: Record<string, unknown>) => ownerActs(args) ? undefined : { isError: true as const, text: "refused: only the owner's own task reads their browser" }
-    // The event log (#94) keeps the tool, the site and the outcome, never the page's words.
     const seen = (tool: string, outcome: string) => o.event?.('tool', `${tool} ${outcome}`)
     const hostOf = (url: string) => { try { return new URL(url).hostname } catch { return 'unknown' } }
     const failed = (e: unknown) => ({ isError: true as const, text: `browser: ${e instanceof Error ? e.message : String(e)}` })
@@ -92,8 +87,6 @@ export function browserTools(c: ToolContext): KageTool[] {
         const ask = o.approve
         const step = `browser_act ${act.action}`
         try {
-          // The control as the page labels it now: the card shows this, never Kage's own words for it. For press,
-          // the control is the one that has focus, which is where the key lands.
           type Seen = { url: string; el?: Element; focused?: Element }
           const look = async () => act.action === 'open' ? { url: act.url } as Seen : await browser.call('describe', { tabId, ref: 'ref' in act ? act.ref : 0 }) as Seen
           const target = (v: Seen) => act.action === 'press' ? v.focused : v.el
@@ -103,30 +96,25 @@ export function browserTools(c: ToolContext): KageTool[] {
             return { isError: true, text: 'refused: that is a site the owner blocked, or not a web page' }
           }
           if ('ref' in act && !now.el) return { isError: true, text: 'that control is no longer on the page: take a new snapshot' }
-          // Only a major step waits for a card (core/browser-act.ts majorAct); the rest runs on the owner's task.
           const tabKey = `${args.channel}:${args.thread_ts}:${tabId ?? 'new'}`
           const openHosts = act.action === 'open' || act.action === 'navigate'
             ? ((await browser.call('tabs', {})) as Tab[]).map(t => hostOf(t.url)) : []
           const typed = typedIn.get(tabKey) ?? []
           const major = majorAct(act, target(now), { openHosts, typed })
           if (major && !ask) return { isError: true, text: `refused: ${major}, which needs the owner's yes, and this session cannot ask them` }
-          // A look at the page goes to the owner's DM just before the card, when the tab is in front. Best effort:
-          // a background tab cannot be captured, and the card alone still names the site and the control.
           let pictured = act.action === 'open'
           if (major && act.action !== 'open') {
             try {
-              // For a control, the picture is that control as the screen draws it: CSS can draw text the DOM lacks.
               const shot = await browser.call('ref' in act ? 'crop' : 'screenshot', { tabId, ...'ref' in act && { ref: act.ref } }) as { url: string; png: string }
               const png = /^data:image\/png;base64,(.+)$/.exec(shot.png)?.[1]
               if (png && !blockedSite(shot.url, browser.block)) { await bot.filesUploadV2({ channel_id: o.botDm(), file: Buffer.from(png, 'base64'), filename: `kage-before-${act.action}.png` }); pictured = true }
-            } catch { /* no picture: the card says so */ }
+            } catch {  }
           }
           const line = actCard(act, { url: now.url, el: target(now) }) + (typed.length ? `, after it typed ${typed.join('; ')}` : '') + (pictured ? '' : ' (no picture: the tab is not in front, so check it yourself before you say yes)')
           if (major && !await ask!('browser_act', line, { site: hostOf(now.url), ...act })) {
             seen(step, 'refused: the owner said no')
             return { isError: true, text: 'the owner said no, so nothing was done. Ask them what to do instead.' }
           }
-          // The page may have changed while the card waited: act only on the same site and the same control.
           const same = (a?: Element, b?: Element) => a?.role === b?.role && a?.name === b?.name
           if (major && act.action !== 'open') {
             const after = await look()
@@ -135,11 +123,9 @@ export function browserTools(c: ToolContext): KageTool[] {
               return { isError: true, text: 'refused: the control or the site changed while the owner decided, so nothing was done. Take a new snapshot.' }
             }
           }
-          // The extension checks this once more inside the page, right before it acts (extension/background.js).
           const t = target(now)
           const expect = act.action === 'open' || act.action === 'navigate' ? undefined : { host: hostOf(now.url), role: t?.role, name: t?.name }
           const r = await browser.call(act.action, { ...act, tabId, expect }) as { tabId?: number }
-          // What Kage typed shows on the next major card in this tab, and goes once a major step ran.
           if (act.action === 'type') typedIn.set(tabKey, [...typed, `${t?.name || 'a field'} = "${act.text.slice(0, 80)}"`].slice(-5))
           else if (major) typedIn.delete(tabKey)
           seen(step, `${hostOf(act.action === 'open' || act.action === 'navigate' ? act.url : now.url)} ok`)

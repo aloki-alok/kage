@@ -1,4 +1,3 @@
-// A thread's schedules in the hub, and AFK mode on and off (owner tasks only).
 import { randomBytes } from 'node:crypto'
 import { z } from 'zod'
 import { awayCommand } from '../../core/afk.ts'
@@ -10,10 +9,7 @@ import type { ProbeArg } from '../probe-jobs.ts'
 export function scheduleTools(c: ToolContext): KageTool[] {
   const { o, s, ownerOnly } = c
   const tools: KageTool[] = []
-  // Schedules the hub keeps for this thread: they survive restarts and closed sessions, and end
-  // only when cancelled. Each run arrives as a task with the trust of the task that set it up.
   const jobs = o.schedules
-  // A command the hub runs on its own needs the owner's yes, unless the owner's own task set it. Returns why not, or nothing.
   const probeCard = async (description: string, input: Record<string, unknown>) => {
     if (!o.approve) return 'refused: a probe from a teammate\'s task needs the owner\'s yes on a card, and this session cannot show one'
     return await o.approve('schedule', description, input) ? undefined : 'The owner said no. Nothing was scheduled.'
@@ -43,12 +39,10 @@ export function scheduleTools(c: ToolContext): KageTool[] {
       const a = args as { cron?: string; prompt: string; recurring?: boolean; lane?: boolean; probe?: ProbeArg; on_channel?: { channel: string; match?: string; bots?: boolean }; hook?: boolean; shadow_of?: string; live_prompt?: string }
       if (!a.cron && !a.on_channel && !a.hook) return { isError: true, text: 'give one of cron, on_channel or hook' }
       if (!a.shadow_of !== !a.live_prompt?.trim()) return { isError: true, text: 'a twin needs both shadow_of and live_prompt' }
-      // A twin replaces a job by itself once proven, so only the owner's own task may make one (not a job run, not a teammate).
       if (a.shadow_of && c.jobRun()) return { isError: true, text: 'refused: a job\'s own run may not make a twin. Suggest it in your report.' }
       if (a.shadow_of && !ownerOnly(args)) return { isError: true, text: 'only the owner\'s own task may make a twin: it removes the job it shadows by itself once proven' }
       if (+!!a.cron + +!!a.on_channel + +!!a.hook > 1) return { isError: true, text: 'a job has one trigger: cron, on_channel or hook' }
       if (a.probe && !a.cron) return { isError: true, text: 'a probe needs a clock cron' }
-      // An event job has no clock. A hook is a door into the hub: its URL needs the port set, and a card for a teammate (sdk-sessions.ts).
       const token = a.hook ? randomBytes(24).toString('hex') : undefined
       const url = a.hook ? jobs.hookUrl?.('<id>') : undefined
       if (a.hook && !url) return { isError: true, text: 'webhook jobs are off: the owner sets tripwires.hookPort first' }
@@ -69,7 +63,6 @@ export function scheduleTools(c: ToolContext): KageTool[] {
       if (token) return { text: `Kage schedule ${id} set, wakes on a call to its webhook. Shown once, give both to whoever sends the calls:\nURL: ${jobs.hookUrl!(id)}\nToken: ${token}\nSend: POST with the header "Authorization: Bearer <token>". The body reaches the job as data. Kept by Kage: it survives restarts and runs until unschedule.` }
       if (a.cron === REPLY) return { text: `Watching: job ${id} runs each time someone writes in this thread, for 7 days. Kept by Kage: it survives restarts.` }
       const next = nextRun(cron, new Date(), 366 * 24 * 3600_000)
-      // The one moment a repeating job of the owner's is chosen: a poll with no probe runs a model each time, which is a kagelet's work.
       const poll = recurring && !a.probe && ownerOnly(args) && !c.jobRun()
         ? ' It runs a model on every run. If it only watches for a change, give it a probe. If each run does work (a draft, a review, research), make it a kagelet instead (kagelets skill) and unschedule this one.' : ''
       return { text: `Kage schedule ${id} set, ${recurring ? 'recurring' : 'one-shot'} (${cron}). Next run: ${next?.toLocaleString() ?? 'none within a year'}. Kept by Kage: it survives restarts and runs until unschedule.${poll}` }
@@ -79,7 +72,6 @@ export function scheduleTools(c: ToolContext): KageTool[] {
     description: 'Cancel one of this thread\'s schedules by its id.',
     shape: { id: s, channel: s.describe('channel attribute from the task tag'), thread_ts: s.describe('thread_ts attribute from the task tag') },
     async run(args) {
-      // A run woken by a job read outside text: it may not remove its own trigger, which would silence the job. It reports instead.
       if (c.jobRun()) return { isError: true, text: 'refused: a job\'s own run may not cancel a job. Put the change you suggest in your report: the owner or a teammate applies it.' }
       if (!jobs.list().some(j => j.id === args.id)) return { isError: true, text: `no schedule ${String(args.id)} in this thread` }
       jobs.remove(String(args.id))
@@ -95,11 +87,9 @@ export function scheduleTools(c: ToolContext): KageTool[] {
     },
     async run(args: Record<string, unknown>) {
       if (c.jobRun()) return { isError: true, text: 'refused: a job\'s own run may not move a job. Put the move you suggest in your report.' }
-      // The job's real channel comes from the hub's row, never from the arguments, which the model writes.
       const job = jobs.list().find(j => j.id === String(args.id))
       if (!job) return { isError: true, text: `no job ${String(args.id)} in this thread` }
       const here = job.key.split(':')[0]!, to = String(args.to_channel ?? here), ts = String(args.to_thread_ts)
-      // A teammate moves a job within the channel where it already posts; taking it to another channel is the owner's call.
       if (to !== here && !ownerOnly(args)) return { isError: true, text: 'only the owner\'s own task may move a job to another channel. Ask the owner in this thread.' }
       const r = await c.user.conversations.replies({ channel: to, ts, limit: 1 }).catch(() => undefined)
       const first = r?.messages?.[0]
@@ -112,7 +102,6 @@ export function scheduleTools(c: ToolContext): KageTool[] {
     description: 'A twin job\'s run ends with this (a job made with shadow_of): say whether the job it shadows should act on what this run saw. The hub, not you, compares it with what that job really did. Call it once per run, also when the answer is quiet.',
     shape: { act: z.boolean().describe('true: the shadowed job should act now (post, alert, change something). false: it should stay quiet'), what: s.describe('one line: what it should do, or why quiet') },
     async run(args) {
-      // The job is the run's own, from its task, never from the arguments, so a twin can only speak for itself.
       const job = c.job()
       if (!job) return { isError: true, text: 'only a twin job\'s run may give a verdict' }
       c.append('verdicts', [job, args.act === true ? 'act' : 'quiet', String(args.what ?? '').replace(/\s+/g, ' ').slice(0, 200)])
@@ -123,7 +112,6 @@ export function scheduleTools(c: ToolContext): KageTool[] {
     description: 'Undo a swap: when the owner says "undo the swap" (in any words) about a job a twin replaced, put the old job back by its id. The twin becomes a shadow again and its count restarts. Owner tasks only.',
     shape: { id: s.describe('the old job id named in the swap line'), channel: s.describe('channel attribute from the task tag'), thread_ts: s.describe('thread_ts attribute from the task tag') },
     async run(args: Record<string, unknown>) {
-      // Only typed owner words may undo (ADR 0004), so a teammate or a job's own run cannot flip jobs back and forth.
       if (!ownerOnly(args) || c.jobRun()) return { isError: true, text: 'only the owner\'s own task may undo a swap' }
       const no = jobs.restore!(String(args.id))
       return no ? { isError: true, text: no } : { text: `restored ${String(args.id)}; its twin is a shadow again` }
@@ -138,8 +126,6 @@ export function scheduleTools(c: ToolContext): KageTool[] {
     },
     async run(args: Record<string, unknown>) {
       const { id, channel: _c, thread_ts: _t, ...change } = args as { id: string } & Record<string, unknown>
-      // A run woken by a job (clock, probe or watch) read outside text, so it may not change its trigger at all: not the command,
-      // reads or writes (what runs unpinned), nor ignore or cron (which can mute the job). It reports the change it wants instead.
       if (c.jobRun()) return { isError: true, text: 'refused: a job\'s own run may not change its trigger. Put the change you suggest in your report: the owner or a teammate applies it.' }
       if (!Object.keys(change).length) return { isError: true, text: 'nothing to change: give cron, command, ignore, reads or writes' }
       if (!ownerOnly(args)) {
@@ -158,7 +144,6 @@ export function scheduleTools(c: ToolContext): KageTool[] {
       return { text: all.length ? all.map(j => `${j.id} ${j.cron}${j.recurring ? '' : ' (once)'} ${j.prompt.split('\n')[0]!.slice(0, 120)}`).join('\n') : 'no schedules in this thread' }
     },
   })
-  // AFK mode lives in the hub (connectors/slack-afk.ts). Only the owner's own task may switch it.
   const afk = o.afk
   if (afk) tools.push({
     name: 'away',

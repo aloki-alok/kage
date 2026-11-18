@@ -38,7 +38,6 @@ describe('the store', () => {
     assert.deepEqual(s.sessions(), { 'C1:5.5': 'id-1', dm: 'id-2', 'mail:<r@x>': 'id-3', 'wa:91@c.us': 'id-4', 'C1:5.5#side-6.6': 'id-5' })
     assert.equal(s.conversation('dm')?.conversation.chat, DM)
     assert.equal(s.conversation('wa:91@c.us')?.conversation.connector, 'whatsapp')
-    // A second import changes nothing that is already there.
     s.saveSessions({ ...s.sessions(), 'C1:5.5': 'id-new' })
     s.importThreads(old, DM, 60)
     assert.equal(s.sessions()['C1:5.5'], 'id-new')
@@ -50,7 +49,7 @@ describe('the store', () => {
     s.addSchedule({ ...job, id: 'j2', key: 'C2:1.1' })
     s.fired('j1', 99)
     assert.deepEqual(s.schedules().find(x => x.id === 'j1'), { ...job, lastFired: 99 })
-    assert.equal(s.removeSchedule('j2', 'C1:5.5'), false)   // another thread's job stays
+    assert.equal(s.removeSchedule('j2', 'C1:5.5'), false)
     assert.equal(s.removeSchedule('j2', 'C2:1.1'), true)
     assert.deepEqual(s.schedules().map(x => x.id), ['j1'])
   })
@@ -64,11 +63,11 @@ test('a thread keeps its owner trust across a restart', () => {
   s.setTrust('C1:5.5', false)
   assert.equal(s.trust('C1:5.5'), false)
   s.noteTask('C1:5.5', true, false)
-  assert.equal(s.trust('C1:5.5'), false)                // one teammate task is enough to lose it
+  assert.equal(s.trust('C1:5.5'), false)
   s.noteTask('new', true, false)
   assert.equal(s.trust('new'), true)
   s.noteTask('old', true, true)
-  assert.equal(s.trust('old'), false)                   // a session from before trust was recorded
+  assert.equal(s.trust('old'), false)
 })
 
 test('imported threads keep their key as the name until a lookup names them', () => {
@@ -114,7 +113,6 @@ describe('the inbox: every message the hub hears, written before it is acknowled
     assert.equal(s.hold('slack:C1:1.1', 5000), true)
     assert.equal(s.hold('slack:C1:2.2', 5000), true)
     assert.equal(s.hold('slack:C1:404', 5000), false)
-    // A handled message has no text left to replay, so it cannot be held or taken as delivered.
     s.take('slack:C1:3.3', 'slack', 'three', 80)
     s.handled('slack:C1:3.3')
     assert.equal(s.hold('slack:C1:3.3', 5000), false)
@@ -137,7 +135,7 @@ describe('the inbox: every message the hub hears, written before it is acknowled
     assert.equal(s.hold('slack:C1:1.1', 5000), true)
     assert.deepEqual(s.held().map(r => r.payload), ['one'])
     s.close()
-    assert.deepEqual(openStore(path).held().map(r => r.until), [5000])   // opening again changes nothing
+    assert.deepEqual(openStore(path).held().map(r => r.until), [5000])
   })
   test('a message too old to replay is marked handled instead, so it never comes back', () => {
     const s = openStore(':memory:')
@@ -221,7 +219,7 @@ describe('kagelet messages (#93): stored before delivery, one row per messageId'
     const dir = mkdtempSync(`${tmpdir()}/kage-store-`)
     const s = openStore(`${dir}/kage.db`)
     assert.equal(s.putMessage(m('m1'), 1000), true)
-    assert.equal(s.putMessage(m('m1'), 2000), false)   // a redelivery of the same id is a duplicate
+    assert.equal(s.putMessage(m('m1'), 2000), false)
     s.putMessage(m('m2', 'upload'), 1500)
     assert.deepEqual(s.unread().map(u => [u.message.messageId, u.state, u.at]), [['m1', 'queued', 1000], ['m2', 'queued', 1500]])
     s.messageState('m1', 'delivered')
@@ -240,13 +238,13 @@ test('the relay allow list is kept by key, and a thread passes when trusted or l
   assert.deepEqual(s.relayAllowed(), [])
   assert.equal(s.relayOk('C1:5.5'), false)
   s.setRelayAllow('C1:5.5', true)
-  s.setRelayAllow('C1:5.5', true)                       // twice changes nothing
-  s.setTrust('C1:5.5', false)                           // a teammate task never removes the listing
+  s.setRelayAllow('C1:5.5', true)
+  s.setTrust('C1:5.5', false)
   assert.deepEqual(s.relayAllowed(), ['C1:5.5'])
   assert.equal(s.relayOk('C1:5.5'), true)
-  assert.equal(s.relayOk('C1:5.5#side-x'), false)       // exact key only: a lane is not the thread
+  assert.equal(s.relayOk('C1:5.5#side-x'), false)
   s.setTrust('C2:5.5', true)
-  assert.equal(s.relayOk('C2:5.5'), true)               // trust alone still passes
+  assert.equal(s.relayOk('C2:5.5'), true)
   s.setRelayAllow('C1:5.5', false)
   assert.equal(s.relayOk('C1:5.5'), false)
   assert.deepEqual(s.relayAllowed(), [])
@@ -258,7 +256,7 @@ test('a lane has its thread\'s trust: a thread that loses it takes its lanes\' w
   s.noteTask('C1:5.5', true, false)
   assert.equal(s.trust(lane), true)
   assert.equal(s.relayOk(lane), true)
-  s.noteTask(lane, false, false)                        // a run is not a person's task: it moves nothing
+  s.noteTask(lane, false, false)
   assert.equal(s.trust('C1:5.5'), true)
   s.noteTask('C1:5.5', false, false)
   assert.equal(s.trust(lane), false)
@@ -279,7 +277,7 @@ test('a store made before schedules had a lane opens, adds the column once, and 
   raw.exec("insert into schedules values ('old', 'C1:5.5', '* * * * *', 'p', 1, 0, 1, 0, null)")
   raw.close()
   openStore(file).close()
-  const s = openStore(file)                                  // a second open must not fail on the column it already added
+  const s = openStore(file)
   assert.equal(s.schedules()[0]!.lane, undefined)
   s.addSchedule({ id: 'new', key: 'C1:5.5', cron: '* * * * *', prompt: 'p', recurring: true, fromOwner: false, created: 2, lastFired: 0, lane: true })
   assert.equal(s.schedules().find(x => x.id === 'new')!.lane, true)
@@ -295,11 +293,11 @@ test('a schedule keeps its trigger, and a job\'s state is saved per schedule and
   assert.deepEqual(byId.p1!.trigger, { kind: 'probe', probe })
   assert.deepEqual(byId.c1!.trigger, { kind: 'channel', channel: 'CALARM', match: 'ALARM', bots: true })
   assert.equal(byId.plain!.trigger, undefined)
-  assert.deepEqual(s.jobState('p1'), { fails: 0 })                // never ran: a clean state
+  assert.deepEqual(s.jobState('p1'), { fails: 0 })
   s.setJobState('p1', { fp: 'abc', last: 'out', fails: 2, refused: '/x' })
   assert.deepEqual(s.jobState('p1'), { fp: 'abc', last: 'out', fails: 2, refused: '/x' })
   s.removeSchedule('p1')
-  assert.deepEqual(s.jobState('p1'), { fails: 0 })                // its state went with it
+  assert.deepEqual(s.jobState('p1'), { fails: 0 })
 })
 
 test('a store from before triggers opens twice, adds both columns once, and reads old rows with no trigger', () => {
@@ -318,7 +316,6 @@ test('opening the store waits while the old hub flushes its log on exit, instead
   const path = join(mkdtempSync(join(tmpdir(), 'kage-lock-')), 'kage.db')
   openStore(path).close()
   const { spawn } = await import('node:child_process')
-  // The old hub's close copies its write log into the file and holds the lock while it does.
   const old = spawn(process.execPath, ['-e', `const { DatabaseSync } = require('node:sqlite'); const d = new DatabaseSync(${JSON.stringify(path)}); d.exec('pragma wal_autocheckpoint = 0; create table if not exists big (x)'); d.exec('begin'); const s = d.prepare('insert into big values (?)'); for (let i = 0; i < 60000; i++) s.run('x'.repeat(200)); d.exec('commit'); console.log('closing'); d.close()`])
   await new Promise(r => old.stdout.once('data', r))
   const until = Date.now() + 1500

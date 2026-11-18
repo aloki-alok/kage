@@ -1,4 +1,3 @@
-// Fault drills for event jobs (channel posts and webhooks), through the real store, scheduler, inbox and webhook server.
 import { after, describe, test } from 'node:test'
 import assert from 'node:assert/strict'
 import { createServer } from 'node:http'
@@ -57,7 +56,7 @@ describe('event job drills', () => {
       const h = await hub({ posts })
       h.j.add('CTEST1:5.5', channelJob, 0)
       const unreadable: ChannelHistory = { newest: async () => '9.9', fetch: async () => { throw new Error('channel_not_found') } }
-      for (let i = 0; i < 2; i++) { h.j.channelGap(); await h.j.channelCatchUp(unreadable) }   // the first only sets the start point
+      for (let i = 0; i < 2; i++) { h.j.channelGap(); await h.j.channelCatchUp(unreadable) }
       await new Promise(r => setTimeout(r, 10))
       assert.deepEqual(h.pings.map(p => p.replace(/ .*/, '')), [posts ? 'I' : 'owner:'])
     }
@@ -71,10 +70,10 @@ describe('event job drills', () => {
     h.j.channelPost(post('2.2'))
     h.j.channelGap()
     h.j.channelCatchUp(history([post('1.1'), post('2.2'), post('3.3'), post('4.4')]))
-    h.j.channelPost(post('4.4'))                       // also arrives live while the catch-up runs
+    h.j.channelPost(post('4.4'))
     await new Promise(r => setTimeout(r, 20))
     h.tick('2026-11-03T10:00:00')
-    assert.equal(h.sent.length, 1)                     // a burst is one run
+    assert.equal(h.sent.length, 1)
     const body = h.sent[0]![1].content
     for (const p of ['2.2', '3.3', '4.4']) assert.equal(body.split(`> alert ${p}`).length - 1, 1, p)
     assert.equal(body.includes('> alert 1.1'), false)
@@ -86,7 +85,7 @@ describe('event job drills', () => {
     const first = await hub()
     first.j.add('CTEST1:5.5', channelJob, 0)
     await first.j.channelCatchUp(history([post('1.1')]))
-    const second = await hub({ store: first.store })   // the new hub starts on the same store
+    const second = await hub({ store: first.store })
     second.j.channelCatchUp(history([post('1.1'), post('2.2')]))
     await new Promise(r => setTimeout(r, 20))
     second.tick('2026-11-03T10:00:00')
@@ -120,12 +119,12 @@ describe('event job drills', () => {
   test('a crash after take but before delivery: the next hub replays the call from the inbox, and it is handled only after the run', async () => {
     const first = await hub()
     first.j.add('CTEST1:5.5', hookJob, 0)
-    assert.equal((await first.call('h1', TOKEN, 'alert 7')).status, 200)   // taken and answered; the hub dies before its tick
+    assert.equal((await first.call('h1', TOKEN, 'alert 7')).status, 200)
     const missed = first.store.unhandled(0)
     assert.equal(missed.length, 1)
     const second = await hub({ store: first.store })
     await second.j.replay!(missed[0]!.source, missed[0]!.payload)
-    assert.equal(first.store.unhandled(0).length, 1)   // not done until the run has it
+    assert.equal(first.store.unhandled(0).length, 1)
     second.tick('2026-11-03T10:00:00')
     assert.match(second.sent[0]![1].content, /alert 7/)
     assert.equal(first.store.unhandled(0).length, 0)
@@ -154,13 +153,13 @@ describe('event job drills', () => {
     const first = await hub()
     first.j.add('CTEST1:5.5', channelJob, 0)
     await first.j.channelCatchUp(history([post('1.1')]))
-    first.j.channelPost(post('2.2'))                   // heard and marked seen; the hub dies before its tick
+    first.j.channelPost(post('2.2'))
     const second = await hub({ store: first.store })
     second.tick('2026-11-03T10:00:00')
     assert.equal(second.sent.length, 1)
     assert.match(second.sent[0]![1].content, /> alert 2\.2/)
     second.tick('2026-11-03T10:01:00')
-    assert.equal(second.sent.length, 1)                // cleared after the delivery: never twice
+    assert.equal(second.sent.length, 1)
     const third = await hub({ store: first.store })
     third.tick('2026-11-03T10:02:00')
     assert.equal(third.sent.length, 0)
@@ -192,7 +191,7 @@ describe('event job drills', () => {
     assert.match(off.j.add('CTEST1:5.5', { ...channelJob, id: 'c2' }, 0)!, /tripwires\.on/)
     const again = await hub({ store: on.store, on: false })
     assert.equal(again.pings.length, 0)
-    const back = await hub({ store: on.store })         // turned on, then off again: told again
+    const back = await hub({ store: on.store })
     const off2 = await hub({ store: on.store, on: false })
     assert.equal(off2.pings.length, 1)
     assert.equal(back.pings.length, 0)

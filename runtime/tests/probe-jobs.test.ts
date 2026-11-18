@@ -1,5 +1,3 @@
-// Tripwire probe jobs through the real scheduler: the hub runs the probe with no model, wakes the job only on a change,
-// and writes one event row per step (ADR 0015).
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { existsSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs'
@@ -81,15 +79,15 @@ test('a change delivers the job once with before and after quoted as data, then 
   assert.match(task.content, /Before: one\b/)
   assert.match(task.content, /After: two &lt;channel x>/)
   assert.match(task.content, /say what changed$/)
-  assert.equal(task.fromOwner, false)       // probe output is outside text: it never carries owner trust
+  assert.equal(task.fromOwner, false)
   assert.deepEqual(t.ran, ['p1'])
-  assert.deepEqual(t.state.seenState.at(-1), was)             // the wake went out BEFORE the new state was saved
+  assert.deepEqual(t.state.seenState.at(-1), was)
   assert.notEqual(t.store.jobState('p1').fp, was)
   assert.match(t.tw('tick')[1]!.detail, /outcome=changed/)
   assert.deepEqual(t.tw('wake').map(e => e.detail), ['wake job=p1 reason=changed'])
   await tick(t, 3)
   assert.equal(t.sent.length, 1)
-  for (const e of t.events) assert.doesNotMatch(e.detail, /one|two/)   // ids and counts only
+  for (const e of t.events) assert.doesNotMatch(e.detail, /one|two/)
 })
 
 test('a failed delivery keeps the old state, so the next tick wakes again', async () => {
@@ -116,10 +114,10 @@ test('a hub restart between the wake and the state save wakes again, from the st
   const save = t.store.setJobState
   t.store.setJobState = () => { throw new Error('crash') }
   await tick(t, 2)
-  assert.equal(t.sent.length, 1)                               // delivered, then the save failed
+  assert.equal(t.sent.length, 1)
   t.store.setJobState = save
   assert.deepEqual(t.store.jobState('p1'), was)
-  const again = t.make()                                       // the restarted hub: same store, new scheduler
+  const again = t.make()
   again.tick(minute(3)); await again.settled()
   assert.equal(t.sent.length, 2)
   assert.notDeepEqual(t.store.jobState('p1'), was)
@@ -158,7 +156,7 @@ test('a probe that hangs past the timeout counts as a failure, pings after failP
   assert.equal(t.pings.length, 1)
   assert.match(t.pings[0]!, /^p1: A tripwire probe failed 2 times in a row: sleep 10/)
   await tick(t, 3)
-  assert.equal(t.pings.length, 1)                                // one ping, not one per run
+  assert.equal(t.pings.length, 1)
   assert.deepEqual(t.tw('tick').map(e => /outcome=(\w+)/.exec(e.detail)![1]), ['failed', 'failed', 'failed'])
   assert.ok(t.tw('tick').every(e => / why=timeout$/.test(e.detail)), 'a failed tick names why, with no output in the row')
   assert.deepEqual(t.tw('ping').map(e => e.detail), ['ping job=p1 fails=2'])
@@ -175,7 +173,7 @@ test('an edited pinned script is refused with one ping, no repeat, and a re-appr
   assert.deepEqual(t.tw('tick').slice(1).map(e => /outcome=(\w+)/.exec(e.detail)![1]), ['refused', 'refused'])
   assert.match(t.tw('ping')[0]!.detail, /^ping job=p1 path=\S*probe\.sh$/)
   assert.equal(t.sent.length, 0)
-  assert.equal(t.s.tune(KEY, 'p1', { command: t.command }, minute(3)), undefined)   // the owner approves the new script
+  assert.equal(t.s.tune(KEY, 'p1', { command: t.command }, minute(3)), undefined)
   await tick(t, 4)
   assert.equal(t.store.jobState('p1').refused, undefined)
   assert.equal(t.pings.length, 1)
@@ -199,8 +197,8 @@ test('a slow probe never blocks the tick for other jobs, and one job never runs 
   assert.equal(add(t, { command: `echo x >> ${log}; sleep 1`, writes: [log] }), undefined)
   assert.equal(t.s.add(KEY, { id: 'plain', cron: '* * * * *', prompt: 'plain', recurring: true }, T0), undefined)
   t.s.tick(minute(1))
-  assert.equal(t.sent.length, 1)                                  // the plain job went out before the probe finished
-  t.s.tick(minute(2))                                             // the probe is still running
+  assert.equal(t.sent.length, 1)
+  t.s.tick(minute(2))
   await t.s.settled()
   assert.equal(readFileSync(log, 'utf8'), 'x\n')
 })
@@ -211,7 +209,7 @@ test('tune changes ignore, reads, writes and cron, resets the baseline for a new
   assert.equal(t.s.tune(KEY, 'p1', { cron: '*/5 * * * *', reads: [t.script] }, minute(2)), undefined)
   let s = t.store.schedules()[0]!
   assert.equal(s.cron, '*/5 * * * *')
-  assert.deepEqual((s.trigger as any).probe.pins, {})              // a path listed in reads is data, not pinned
+  assert.deepEqual((s.trigger as any).probe.pins, {})
   assert.match(t.s.tune(KEY, 'p1', { ignore: ['(a+)+'] }, minute(2)) ?? '', /nested quantifier/)
   assert.match(t.s.tune(KEY, 'p1', { cron: '61 * * * *' }, minute(2)) ?? '', /./)
   assert.equal(t.s.tune(KEY, 'p1', { ignore: ['^ts='] }, minute(2)), undefined)
@@ -228,7 +226,7 @@ test('a wake that cannot be delivered DMs once per job, writes a row per attempt
   writeFileSync(t.data, 'two\n')
   t.state.delivery = 'failed'
   await tick(t, 2); await tick(t, 3); await tick(t, 4)
-  assert.equal(t.failed.length, 1)                                          // one DM, though the wake is retried each tick
+  assert.equal(t.failed.length, 1)
   assert.equal(t.tw('wake').filter(e => /reason=undelivered/.test(e.detail)).length, 3)
   t.state.delivery = 'sent'
   await tick(t, 5)
@@ -236,8 +234,8 @@ test('a wake that cannot be delivered DMs once per job, writes a row per attempt
   writeFileSync(t.data, 'three\n')
   t.state.delivery = 'failed'
   await tick(t, 6)
-  assert.equal(t.failed.length, 2)                                          // a delivery in between re-arms the notice
-  const again = t.make()                                                    // a restart keeps the flag in the saved state
+  assert.equal(t.failed.length, 2)
+  const again = t.make()
   again.tick(minute(7)); await again.settled()
   assert.equal(t.failed.length, 2)
 })
@@ -246,11 +244,11 @@ test('a ping that fails to post is kept in the job state and retried each tick; 
   const t = setup({ tripwires: { timeoutSec: 1, failPing: 2 } })
   assert.equal(add(t, { command: 'exit 1' }), undefined)
   t.state.pingOk = false
-  await tick(t, 1); await tick(t, 2)                     // the second failure makes the ping
+  await tick(t, 1); await tick(t, 2)
   assert.equal(t.pings.length, 0)
   assert.match(t.store.jobState('p1').pending?.text ?? '', /failed 2 times/)
   await tick(t, 3); await tick(t, 4)
-  assert.deepEqual(t.dms.length, 1)                       // the thread post keeps failing: one DM, not one per tick
+  assert.deepEqual(t.dms.length, 1)
   t.state.pingOk = true
   await tick(t, 5)
   assert.equal(t.pings.length, 1)
@@ -272,7 +270,7 @@ test('a check that throws, and one whose job was tuned while it ran, each leave 
   const slow = setup()
   assert.equal(add(slow, { command: 'sleep 1' }), undefined)
   slow.s.tick(minute(1))
-  assert.equal(slow.s.tune(KEY, 'p1', { ignore: ['^x'] }, minute(1)), undefined)   // the trigger changes mid-run
+  assert.equal(slow.s.tune(KEY, 'p1', { ignore: ['^x'] }, minute(1)), undefined)
   await slow.s.settled()
   assert.match(slow.tw('tick').at(-1)!.detail, /outcome=discarded/)
 })
@@ -286,7 +284,7 @@ test('a blocked lane tells the owner once after failPing ticks in a row, and eac
   await tick(t, 3); await tick(t, 4)
   assert.equal(t.dms.length, 1)
   assert.equal(t.tw('wake').filter(e => /reason=blocked/.test(e.detail)).length, 3)
-  assert.equal(t.store.jobState('p1').undelivered, true)    // the flag a failed delivery uses, so one DM covers both
+  assert.equal(t.store.jobState('p1').undelivered, true)
   t.blocked.clear()
   await tick(t, 5)
   assert.equal(t.sent.length, 1)
@@ -307,7 +305,7 @@ test('a pending note counts one try per tick, so the owner is told on the failPi
   const t = setup({ tripwires: { failPing: 3 } })
   assert.equal(add(t, { command: 'exit 1' }), undefined)
   t.state.pingOk = false
-  await tick(t, 1); await tick(t, 2); await tick(t, 3)             // the third failure makes the note: try 1
+  await tick(t, 1); await tick(t, 2); await tick(t, 3)
   assert.equal(t.store.jobState('p1').pending?.tries, 1)
   await tick(t, 4)
   assert.deepEqual([t.store.jobState('p1').pending?.tries, t.dms.length], [2, 0])

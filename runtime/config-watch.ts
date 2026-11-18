@@ -1,6 +1,3 @@
-// The hub watches config.json and secrets.json. A changed people list applies now, any other changed key makes the hub
-// restart itself once every session is quiet (the path new code takes), and a file that is wrong is refused: the owner
-// hears of it once, and the last good settings stay. Each decision is one event with key names only, never values.
 import { existsSync, statSync, watch } from 'node:fs'
 import { basename } from 'node:path'
 import { checkSettings, diff, registryOf, type Config, type Secrets } from '../core/config.ts'
@@ -21,18 +18,15 @@ export function configWatcher(o: {
   debounceMs?: number
 }) {
   let last = o.boot, count = 0, announced = '', told = ''
-  // The two people lists as entries. An absent list is an empty one, so a file that spells it out changes nothing.
   const lists = (s: Settings) => ({ 'people.teammates': registryOf(s.config).filter(e => e.kind === 'person'), 'people.agents': registryOf(s.config).filter(e => e.kind === 'agent') })
   type Key = keyof ReturnType<typeof lists>
 
-  // Reads both files and decides. Also what kage reload runs.
   function check(): Reloaded {
     count++
     let next: Settings
     try { next = readSettings(o.envFile) } catch (e) { return refuse((e as Error).message, (e as { keys?: string[] }).keys ?? []) }
     const ok = checkSettings(next.config, next.secrets)
     if ('error' in ok) return refuse(ok.error, [])
-    // hub.ts chdirs into it at start, and a folder that is not there is a crash loop.
     const cwd = next.config.harness?.cwd?.replace(/^~(?=\/|$)/, process.env.HOME!)
     if (cwd && !(existsSync(cwd) && statSync(cwd).isDirectory())) return refuse('harness.cwd is not a folder that exists', ['harness.cwd'])
     told = ''
@@ -64,7 +58,6 @@ export function configWatcher(o: {
     return { refused: reason }
   }
 
-  // fs.watch on the folder, because a write swaps a new file in (config-files.ts). One check per burst of events.
   let timer: NodeJS.Timeout | undefined
   const names = new Set([basename(files(o.envFile).config), basename(files(o.envFile).secrets)])
   const w = watch(files(o.envFile).dir, { persistent: false }, (_, name) => {

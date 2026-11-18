@@ -49,14 +49,12 @@ function setup(o: { transcript?: boolean; silent?: boolean; dmFails?: boolean; g
   const dir = mkdtempSync(join(tmpdir(), 'kage-sdk-'))
   const approvals = deferredApprovals(openStore(':memory:'))
   const servers: Parameters<typeof createSdkMcpServer>[0][] = []
-  // Calls a Kage tool of the newest session the way Claude would.
   const call = (name: string, args: object) => (servers.at(-1)!.tools!.find(x => x.name === name)!.handler as any)(args, {})
   let d!: Dispatcher<ToSession>
   const s = sdkSessions({
     sdk: { query: sdk.query as any, createSdkMcpServer: (c => { servers.push(c); return createSdkMcpServer(c) }) as typeof createSdkMcpServer, tool },
     hub: () => d,
     tools: (_key, send, approve, turnSender) => sessionTools({ title: 'Kage', bot: slack as any, user: slack as any, botDm: () => 'DBOT', dir, ledgers: openLedgers(dir), send, memory: { own: '/own', owner: '/owner' }, approve, turnSender, ...o.browser && { browser: { call: async () => [], block: [] } },
-      // A manager that only asks the card and says the answer.
       ...o.manager && { kagelets: { list: () => '', manage: async (a, ask) => `yes: ${await ask!({ kagelet: a.name, tools: 'mcp__gmail__send', job: 'Mail the count.' })}` } } }),
     hasTranscript: () => o.transcript ?? false,
     toHub: () => {},
@@ -85,12 +83,10 @@ function setup(o: { transcript?: boolean; silent?: boolean; dmFails?: boolean; g
     meta: { channel: o.channel ?? 'C1', thread_ts: '5.5', place: o.place ?? '#general', permalink: 'https://x/p' },
     origin: { channel: o.channel ?? 'C1', ts: '5.5' },
   })
-  // The card's request id, read from the ledger row the hub keeps for the card's message (the text carries no code).
   const idOf = (text: string) => cardAt(openLedgers(dir).text('posted'), 'DBOT', `9.${posts.lastIndexOf(text) + 1}`)!
   return { sdk, posts, d, s, task, idOf, approvals, results, blocks, turns, call, servers, tools, keysDropped }
 }
 
-// The actual MCP manifest of the Kage server a fake SDK run was opened with.
 async function kageTools(run: { options: any }) {
   const server = run.options.mcpServers.kage.instance
   const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair()
@@ -112,7 +108,6 @@ async function callKage(run: { options: any }, name: string, args: Record<string
     return r.content[0]!.text
   } finally { await client.close(); await server.close() }
 }
-// Whether a run loads the owner's own tools: the claude.ai connectors, and Kage's browser tools.
 const owners = async (run: { options: any }) => ({ connectors: run.options.settings.disableClaudeAiConnectors !== true, browser: (await kageTools(run)).some(x => x.name.startsWith('browser_')) })
 const said = (run: { said: string[] }) => run.said.map(x => x.match(/(Sam|owner): \w+/)![0])
 
@@ -140,7 +135,7 @@ describe('Kage sessions on the Agent SDK', () => {
       await tick(30)
       assert.equal(t.sdk.runs.length, 2)
       assert.ok(t.sdk.runs[0]!.closed)
-      assert.deepEqual(said(t.sdk.runs[0]!), ['Sam: hi'])   // the owner's message never reaches the session without the tools
+      assert.deepEqual(said(t.sdk.runs[0]!), ['Sam: hi'])
       assert.equal(t.sdk.runs[1]!.options.resume, `${ID.slice(0, -1)}0`)
       assert.deepEqual(await owners(t.sdk.runs[1]!), { connectors: true, browser: true })
       assert.deepEqual(said(t.sdk.runs[1]!), ['owner: go'])
@@ -159,7 +154,7 @@ describe('Kage sessions on the Agent SDK', () => {
     await tick()
     t.sdk.runs[1]!.emit({ type: 'result' })
     await tick()
-    t.d.task('voice:c1', t.task({ channel: 'voice', content: 'Task from the owner: now' }), 2)   // the caller proved they are the owner
+    t.d.task('voice:c1', t.task({ channel: 'voice', content: 'Task from the owner: now' }), 2)
     await tick(30)
     assert.equal(t.sdk.runs.length, 2)
     assert.deepEqual(said(t.sdk.runs[1]!).at(-1), 'owner: now')
@@ -172,14 +167,14 @@ describe('Kage sessions on the Agent SDK', () => {
     t.sdk.runs[0]!.emit({ type: 'system', subtype: 'session_state_changed', state: 'running' })
     t.d.task('C1:5.5', t.task({ content: 'Task from the owner: two' }), 1)
     await tick()
-    t.sdk.runs[0]!.emit({ type: 'result', total_cost_usd: 1 })   // the real CLI answers both in one turn, then says idle
+    t.sdk.runs[0]!.emit({ type: 'result', total_cost_usd: 1 })
     t.sdk.runs[0]!.emit({ type: 'system', subtype: 'session_state_changed', state: 'idle' })
     await tick(30)
     assert.equal(t.sdk.runs.length, 1)
     assert.deepEqual(said(t.sdk.runs[0]!), ['Sam: one', 'owner: two'])
     t.d.task('C1:5.5', t.task({ fromOwner: false, content: 'Task from Sam: three' }), 2)
     t.d.task('C1:5.5', t.task({ fromOwner: false, content: 'Task from Sam: four' }), 3)
-    await tick(30)   // at once: not after the 60 s wait a crashed session gets
+    await tick(30)
     assert.equal(t.sdk.runs.length, 2)
     assert.deepEqual(said(t.sdk.runs[0]!), ['Sam: one', 'owner: two'])
     assert.deepEqual(await owners(t.sdk.runs[1]!), { connectors: true, browser: true })
@@ -197,10 +192,10 @@ describe('Kage sessions on the Agent SDK', () => {
     t.sdk.runs[0]!.emit({ type: 'system', subtype: 'session_state_changed', state: 'running' })
     const guard = async (tool_name: string) => (await t.sdk.runs[0]!.options.hooks.PreToolUse[0].hooks[0]({ hook_event_name: 'PreToolUse', tool_name, tool_input: {} }, undefined, { signal: signal() })).hookSpecificOutput?.permissionDecision
     assert.equal(await guard('mcp__gmail__search'), 'deny')
-    t.d.task('C1:5.5', t.task({ content: 'Task from the owner: thanks' }), 1)   // the owner writes while Sam's turn runs
+    t.d.task('C1:5.5', t.task({ content: 'Task from the owner: thanks' }), 1)
     await tick()
-    assert.equal(await guard('mcp__gmail__search'), 'deny')   // same turn: still Sam's trust
-    t.sdk.runs[0]!.emit({ type: 'result', total_cost_usd: 1 })   // Sam's turn ends; the owner's message is the next turn
+    assert.equal(await guard('mcp__gmail__search'), 'deny')
+    t.sdk.runs[0]!.emit({ type: 'result', total_cost_usd: 1 })
     await tick()
     assert.equal(await guard('mcp__gmail__search'), undefined)
     t.s.runner.stop('C1:5.5')
@@ -318,7 +313,7 @@ describe('Kage sessions on the Agent SDK', () => {
   })
   test("once Claude says idle, a teammate's leftover task no longer holds down the owner's next turn", async () => {
     const t = setup({ transcript: true, restartMs: 60_000 })
-    t.d.task('C1:5.5', t.task({ content: 'Task from the owner: start' }), 0)   // the process has the owner's tools
+    t.d.task('C1:5.5', t.task({ content: 'Task from the owner: start' }), 0)
     await tick()
     const run = t.sdk.runs[0]!
     run.emit({ type: 'system', subtype: 'session_state_changed', state: 'running' })
@@ -329,10 +324,10 @@ describe('Kage sessions on the Agent SDK', () => {
     await tick()
     const live = t.sdk.runs.at(-1)!
     live.emit({ type: 'system', subtype: 'session_state_changed', state: 'running' })
-    t.d.task('C1:5.5', t.task({ fromOwner: false, content: 'Task from Sam: two' }), 2)   // mid-turn
+    t.d.task('C1:5.5', t.task({ fromOwner: false, content: 'Task from Sam: two' }), 2)
     await tick()
     live.emit({ type: 'result', total_cost_usd: 1 })
-    live.emit({ type: 'system', subtype: 'session_state_changed', state: 'idle' })   // it read and answered both
+    live.emit({ type: 'system', subtype: 'session_state_changed', state: 'idle' })
     await tick()
     t.d.task('C1:5.5', t.task({ content: 'Task from the owner: three' }), 3)
     await tick()
@@ -348,9 +343,8 @@ describe('Kage sessions on the Agent SDK', () => {
     t.sdk.runs[0]!.emit({ type: 'system', subtype: 'session_state_changed', state: 'running' })
     const agent = t.task({ fromOwner: false, content: 'Task from Bot: tag me when your watch is live' })
     agent.agent = { app: 'A0AGENT01' }
-    t.d.task('C1:5.5', agent, 1)   // mid-turn, and the turn reads and answers it
+    t.d.task('C1:5.5', agent, 1)
     await tick()
-    // What Claude Code sends when it folds a message into the running turn (measured): completed, then the result.
     t.sdk.runs[0]!.emit({ type: 'command_lifecycle', command_uuid: t.sdk.runs[0]!.uuids[1], state: 'completed' })
     t.sdk.runs[0]!.emit({ type: 'result', total_cost_usd: 1 })
     t.sdk.runs[0]!.emit({ type: 'system', subtype: 'session_state_changed', state: 'idle' })
@@ -392,7 +386,7 @@ describe('Kage sessions on the Agent SDK', () => {
     run.emit({ type: 'result', total_cost_usd: 1 })
     const agent = t.task({ fromOwner: false, content: 'Task from Bot: run this' })
     agent.agent = { app: 'A0AGENT01' }
-    t.d.task('C1:5.5', agent, 1)   // the turn has ended, but Claude has not said idle yet
+    t.d.task('C1:5.5', agent, 1)
     await tick()
     run.emit({ type: 'system', subtype: 'session_state_changed', state: 'idle' })
     await tick()
@@ -422,14 +416,14 @@ describe('Kage sessions on the Agent SDK', () => {
     t.d.task('C1:5.5', t.task({ content: 'Task from the owner: two' }), 1)
     t.sdk.runs[0]!.emit({ type: 'result' })
     await tick()
-    t.d.task('C1:5.5', t.task({ fromOwner: false, content: 'Task from Sam: three' }), 2)   // pushed after the result
-    state('idle')   // decided before it read three
+    t.d.task('C1:5.5', t.task({ fromOwner: false, content: 'Task from Sam: three' }), 2)
+    state('idle')
     await tick()
     t.d.task('C1:5.5', t.task({ fromOwner: false, content: 'Task from Sam: four' }), 3)
     await tick(30)
     assert.equal(t.sdk.runs.length, 1)
     assert.deepEqual(said(t.sdk.runs[0]!), ['Sam: one', 'owner: two', 'Sam: three', 'Sam: four'])
-    state('running'); state('idle')   // it read three and four, and answered them
+    state('running'); state('idle')
     await tick()
     t.d.task('C1:5.5', t.task({ fromOwner: false, content: 'Task from Sam: five' }), 4)
     await tick(30)
@@ -445,7 +439,7 @@ describe('Kage sessions on the Agent SDK', () => {
     await tick()
     t.sdk.runs[0]!.emit({ type: 'result' })
     await tick()
-    opts.silent = true   // the next Claude process never starts
+    opts.silent = true
     t.d.task('C1:5.5', t.task({ content: 'Task from the owner: two' }), 1)
     await tick(30)
     assert.equal(t.sdk.runs.length, 2)
@@ -456,7 +450,7 @@ describe('Kage sessions on the Agent SDK', () => {
     t.d.task('C1:5.5', t.task({ fromOwner: false, content: 'Task from Sam: one' }), 0)
     await tick()
     t.d.task('C1:5.5', t.task({ fromOwner: false, content: 'Task from Sam: two' }), 1)
-    t.sdk.runs[0]!.emit({ type: 'result' })   // two was sent mid-turn: it stays open one more turn
+    t.sdk.runs[0]!.emit({ type: 'result' })
     await tick()
     t.d.task('C1:5.5', t.task({ content: 'Task from the owner: three' }), 2)
     await tick(30)
@@ -479,7 +473,7 @@ describe('Kage sessions on the Agent SDK', () => {
       assert.deepEqual(voice.filter(tool => tool._meta?.['anthropic/alwaysLoad'] === true).map(tool => tool.name), ['reply', 'slack_search', 'slack_read'])
       for (const name of ['slack_search', 'slack_read']) assert.equal(voice.find(tool => tool.name === name)?.annotations?.readOnlyHint, true)
       assert.ok(!thread.some(tool => tool._meta?.['anthropic/alwaysLoad'] === true))
-      assert.ok(['slack_search', 'slack_read'].every(name => thread.some(tool => tool.name === name)))   // the owner's Slack thread has them, deferred
+      assert.ok(['slack_search', 'slack_read'].every(name => thread.some(tool => tool.name === name)))
       assert.equal(t.sdk.runs[1]!.options.tools, undefined)
       assert.ok(!(t.sdk.runs[0]!.options.allowedTools ?? []).some((tool: string) => tool.startsWith('mcp__kage__')))
     } finally { t.s.runner.stop('voice:test-call'); t.s.runner.stop('C0TEST1:5.5') }
@@ -503,7 +497,7 @@ describe('Kage sessions on the Agent SDK', () => {
     try {
       for (const name of ['mcp__kage__slack_search', 'mcp__kage__slack_read', 'Bash', 'mcp__claude_ai_Slack__slack_send_message']) assert.equal((await run(name)).hookSpecificOutput.permissionDecision, 'deny')
       assert.deepEqual(await run('mcp__kage__reply'), {})
-      t.sdk.runs[0]!.emit({ type: 'result', total_cost_usd: 0 })   // the stranger's turn ends first: a turn keeps its lowest sender
+      t.sdk.runs[0]!.emit({ type: 'result', total_cost_usd: 0 })
       await tick()
       t.d.task('voice:test-call', t.task({ channel: 'voice' }), 1)
       await tick()
@@ -524,12 +518,11 @@ describe('Kage sessions on the Agent SDK', () => {
       assert.equal(o.sessionId, `${ID.slice(0, -1)}0`)
       assert.equal(o.resume, undefined)
       assert.ok(o.mcpServers.kage)
-      // Kage's own tools need no approval, and stay out of allowedTools so the SDK's approval callback still sees every call.
       assert.ok(!(o.allowedTools ?? []).some((n: string) => n.startsWith('mcp__kage__')))
       assert.deepEqual(await o.canUseTool('mcp__kage__reply', { text: 'hi' }, { signal: new AbortController().signal }), { behavior: 'allow', updatedInput: { text: 'hi' } })
       assert.deepEqual(o.systemPrompt, { type: 'preset', preset: 'claude_code' })
-      assert.equal(o.env.KAGE_THREAD, undefined)   // the plugin's own channel must stay idle in this process
-      assert.equal(o.env.CLAUDE_CODE_EMIT_SESSION_STATE_EVENTS, '1')   // without it "idle" never comes and the slot never frees
+      assert.equal(o.env.KAGE_THREAD, undefined)
+      assert.equal(o.env.CLAUDE_CODE_EMIT_SESSION_STATE_EVENTS, '1')
       assert.equal(o.cwd, '/home')
     } finally { delete process.env.KAGE_THREAD }
   })
@@ -543,17 +536,14 @@ describe('Kage sessions on the Agent SDK', () => {
     run.emit({ type: 'assistant', parent_tool_use_id: null, error: 'rate_limit', message: { stop_reason: 'stop_sequence', content: [] } })
     run.emit({ type: 'result', total_cost_usd: 0, is_error: true })
     await tick()
-    // Both tasks: the one sent mid-turn was not read either.
     assert.deepEqual(t.turns, [['C1:5.5', ['Task from Sam: one', 'Task from Sam: two, sent mid-turn'], { kind: 'rate_limit', until: 1_800_000_000_000, window: 'seven_day' }, undefined]])
     assert.deepEqual(t.posts, [])
-    // A later limit in the same process with no rejection of its own carries no old window or reset.
     t.d.task('C1:5.5', t.task({ content: 'Task from Sam: three' }), 2)
     await tick()
     run.emit({ type: 'assistant', parent_tool_use_id: null, error: 'rate_limit', message: { stop_reason: 'stop_sequence', content: [] } })
     run.emit({ type: 'result', total_cost_usd: 0, is_error: true })
     await tick()
     assert.deepEqual(t.turns[1]?.[2], { kind: 'rate_limit' })
-    // Closing the session afterwards reports nothing more for those tasks.
     t.d.end('C1:5.5')
     assert.equal(t.turns.length, 2)
   })
@@ -564,9 +554,7 @@ describe('Kage sessions on the Agent SDK', () => {
       [[{ type: 'result', total_cost_usd: 0, is_error: true, api_error_status: 529 }], { kind: 'overloaded' }],
       [[{ type: 'assistant', parent_tool_use_id: 'toolu_1', error: 'rate_limit', message: { content: [] } }, { type: 'result', total_cost_usd: 1 }], undefined],
       [[{ type: 'rate_limit_event', rate_limit_info: { status: 'allowed_warning', resetsAt: 1_800_000_000 } }, { type: 'result', total_cost_usd: 1 }], undefined],
-      // A warning's reset time is not the reset of a rejection.
       [[{ type: 'rate_limit_event', rate_limit_info: { status: 'allowed_warning', resetsAt: 1_800_000_000 } }, { type: 'assistant', parent_tool_use_id: null, error: 'rate_limit', message: { content: [] } }, { type: 'result', total_cost_usd: 0 }], { kind: 'rate_limit' }],
-      // Claude Code tried again and the answer came: the turn did its work.
       [[{ type: 'assistant', parent_tool_use_id: null, error: 'overloaded', message: { content: [] } }, { type: 'assistant', parent_tool_use_id: null, message: { content: [] } }, { type: 'result', total_cost_usd: 1 }], undefined],
     ] as const) {
       const t = setup()
@@ -574,7 +562,6 @@ describe('Kage sessions on the Agent SDK', () => {
       await tick()
       for (const m of msgs) t.sdk.runs[0]!.emit(m)
       await tick()
-      // done only for a turn that ended with its work: a limited one is not.
       assert.deepEqual(t.turns, [['C1:5.5', ['Task from Sam: hi'], limit, limit ? undefined : true]], JSON.stringify(msgs))
     }
   })
@@ -651,7 +638,6 @@ describe('Kage sessions on the Agent SDK', () => {
     t.sdk.runs[0]!.emit({ type: 'result', is_error: true })
     await tick()
     assert.deepEqual(t.blocks, [['C1:5.5', ['Task from Sam: first', 'Task from Sam: the flagged one'], 'cyber']])
-    // The next turn can be reported again. The task sent mid-turn stays one turn longer, the first one is gone.
     t.d.task('C1:5.5', t.task({ content: 'Task from Sam: later' }), 2)
     await tick()
     t.sdk.runs[0]!.emit({ type: 'assistant', message: { stop_reason: 'refusal', content: [] } })
@@ -722,7 +708,7 @@ describe('Kage sessions on the Agent SDK', () => {
     t.sdk.runs[0]!.emit({ type: 'result' })
     t.sdk.runs[0]!.emit({ type: 'system', subtype: 'session_state_changed', state: 'running' })
     await tick()
-    assert.equal(t.s.runner.busy('C1:5.5'), true)   // a background agent still runs after the result
+    assert.equal(t.s.runner.busy('C1:5.5'), true)
     t.sdk.runs[0]!.emit({ type: 'system', subtype: 'session_state_changed', state: 'idle' })
     await tick()
     assert.equal(t.s.runner.busy('C1:5.5'), false)
@@ -736,8 +722,6 @@ describe('Kage sessions on the Agent SDK', () => {
     await tick()
     assert.equal(t.s.runner.busy('C1:5.5'), false)
   })
-  // CronCreate is off in SDK sessions; the schedule tool's jobs live in the hub's store and survive a restart,
-  // so a session that set one up is quiet, free to restart or give up its slot.
   test('a session that set up a hub schedule is not kept as watching', async () => {
     const t = setup()
     t.d.task('C1:5.5', t.task(), 0)
@@ -747,7 +731,7 @@ describe('Kage sessions on the Agent SDK', () => {
     t.sdk.runs[0]!.emit({ type: 'system', subtype: 'session_state_changed', state: 'idle' })
     await tick()
     assert.equal(t.s.runner.busy('C1:5.5'), false)
-    assert.ok(t.sdk.runs[0]!.options.disallowedTools.includes('CronCreate'))   // why the runner tracks no jobs
+    assert.ok(t.sdk.runs[0]!.options.disallowedTools.includes('CronCreate'))
   })
   test('every session starts with the token files and config.json denied to the file tools and the shell sandbox (#116)', async () => {
     const t = setup()
@@ -816,7 +800,7 @@ describe('Kage sessions on the Agent SDK', () => {
     assert.equal(first.interrupt, true)
     assert.equal(t.posts.length, 1)
     const id = t.idOf(t.posts[0]!)
-    assert.equal(t.d.verdict(id, { type: 'verdict', request_id: id, behavior: 'allow' }), false)   // no open ask holds the slot
+    assert.equal(t.d.verdict(id, { type: 'verdict', request_id: id, behavior: 'allow' }), false)
     assert.equal(t.approvals.answer(id, 'allow', Date.now())?.task.content, 'Task from Sam: hi')
     assert.equal(t.approvals.answer(id, 'allow', Date.now()), undefined)
     assert.deepEqual(await use({ command: 'ls' }), { behavior: 'allow', updatedInput: { command: 'ls' } })
@@ -836,8 +820,8 @@ describe('Kage sessions on the Agent SDK', () => {
     assert.equal(t.posts.length, 1)
     t.approvals.answer(t.idOf(t.posts[0]!), 'allow', Date.now())
     assert.equal((await use({ hook: true, prompt: 'p' })).behavior, 'allow')
-    assert.equal((await use({ hook: true, prompt: 'p' })).behavior, 'deny')   // the yes was spent
-    assert.equal((await use({ on_channel: { channel: 'C0TEST9' }, prompt: 'p' })).interrupt, true)   // a channel watch needs the card too
+    assert.equal((await use({ hook: true, prompt: 'p' })).behavior, 'deny')
+    assert.equal((await use({ on_channel: { channel: 'C0TEST9' }, prompt: 'p' })).interrupt, true)
   })
   test('a stored yes is spent even when no turn is open', async () => {
     const t = setup({ deferred: true })
@@ -862,7 +846,6 @@ describe('Kage sessions on the Agent SDK', () => {
     assert.equal(t.d.verdict('zzzzz', { type: 'verdict', request_id: 'zzzzz', behavior: 'allow' }), false)
     assert.equal(t.d.verdict(id, { type: 'verdict', request_id: id, behavior: 'allow' }), true)
     assert.deepEqual(await ask, { behavior: 'allow', updatedInput: { command: 'ls' } })
-    // #74: a card that got its answer ignores a later one, and the other card is untouched.
     assert.equal(t.d.verdict(id, { type: 'verdict', request_id: id, behavior: 'deny' }), false)
     assert.equal(await Promise.race([other, tick(20).then(() => 'pending')]), 'pending')
     const id2 = t.idOf(t.posts.at(-1)!)
@@ -873,19 +856,15 @@ describe('Kage sessions on the Agent SDK', () => {
     const t = setup({ manager: true })
     t.d.task('C1:5.5', t.task(), 0)
     await tick()
-    // The generic card is skipped for every save: read tools are Kage's to grant, and a write tool gets the tool's own card.
     let posts = t.posts.length
     for (const tools of [['db_read'], ['WebSearch'], []])
       assert.equal(await Promise.race([t.sdk.runs[0]!.options.canUseTool('mcp__kage__manage_kagelet', { action: 'save', tools }, { signal: signal() }).then((r: { behavior: string }) => r.behavior), tick(50).then(() => 'card')]), 'allow', tools.join())
     assert.equal(await Promise.race([t.sdk.runs[0]!.options.canUseTool('mcp__kage__manage_kagelet', { action: 'save', tools: ['WebSearch', 'mcp__gmail__send'] }, { signal: signal() }).then((r: { behavior: string }) => r.behavior), tick(50).then(() => 'card')]), 'allow')
     assert.equal(t.posts.length, posts)
-    // Only a save raises the tool's own card: remove or run with a tools field still gets the generic one.
     void t.sdk.runs[0]!.options.canUseTool('mcp__kage__manage_kagelet', { action: 'remove', name: 'x', tools: ['db_read'] }, { signal: signal() })
     await tick()
     assert.equal(t.posts.length, posts + 1)
     posts++
-    // Revoking only takes access away: the owner's word in chat is enough, with no card.
-    // Raced against a tick: a card here would wait for an answer forever, and the test would hang instead of failing.
     assert.equal(await Promise.race([t.sdk.runs[0]!.options.canUseTool('mcp__kage__manage_kagelet', { action: 'revoke', name: 'db_read' }, { signal: signal() }).then((r: { behavior: string }) => r.behavior), tick(50).then(() => 'card')]), 'allow')
     assert.equal(t.posts.length, posts)
     const save = { channel: 'C1', thread_ts: '5.5', action: 'save', name: 'calls', tools: ['mcp__gmail__send'] }
@@ -907,7 +886,6 @@ describe('Kage sessions on the Agent SDK', () => {
     await tick()
     const r = await t.sdk.runs[0]!.options.canUseTool('Bash', { command: 'ls' }, { signal: signal() })
     assert.equal(r.behavior, 'deny')
-    // and it does not hold the slot: once idle, the session can be closed
     t.sdk.runs[0]!.emit({ type: 'system', subtype: 'session_state_changed', state: 'idle' })
     await tick()
     t.d.sweep(Date.now() + 61_000)
@@ -923,19 +901,18 @@ describe('Kage sessions on the Agent SDK', () => {
     assert.equal((await run('mcp__claude_ai_Gmail__search')).hookSpecificOutput.permissionDecision, 'deny')
     assert.equal((await run('Write', { file_path: '/owner/MEMORY_x.md' })).hookSpecificOutput.permissionDecision, 'deny')
     assert.equal((await run('Bash', { command: 'cat /cfg/env' })).hookSpecificOutput.permissionDecision, 'deny')
-    t.sdk.runs[0]!.emit({ type: 'result', total_cost_usd: 0 })   // the teammate's turn ends: a turn keeps its lowest sender
+    t.sdk.runs[0]!.emit({ type: 'result', total_cost_usd: 0 })
     await tick()
     t.d.task('C1:5.5', t.task(), 1)
     await tick()
     assert.deepEqual(await run('mcp__claude_ai_Gmail__search'), {})
-    // The token files stay closed to the owner's task too; config.json does not.
     assert.equal((await run('Bash', { command: 'cat /cfg/env' })).hookSpecificOutput.permissionDecision, 'deny')
     assert.equal((await run('Read', { file_path: '/cfg/secrets.json' })).hookSpecificOutput.permissionDecision, 'deny')
     assert.deepEqual(await run('Read', { file_path: '/cfg/config.json' }), {})
   })
   test('a kagelet lane gets only its grant, and approves nothing: a call that would ask is denied', async () => {
     const t = setup({ grants: { 'C1:5.5#side-kagelet-deploys': ['WebSearch'] } })
-    t.d.task('C1:5.5#side-kagelet-deploys', t.task(), 0)   // even an owner-trust task: the grant still holds
+    t.d.task('C1:5.5#side-kagelet-deploys', t.task(), 0)
     await tick()
     const o = t.sdk.runs[0]!.options
     const run = (tool_name: string) => o.hooks.PreToolUse[0].hooks[0]({ hook_event_name: 'PreToolUse', tool_name, tool_input: {} }, undefined, { signal: signal() })
@@ -943,17 +920,14 @@ describe('Kage sessions on the Agent SDK', () => {
     assert.deepEqual(await run('mcp__kage__reply'), {})
     assert.match((await run('mcp__other__thing')).hookSpecificOutput.permissionDecisionReason, /outside this kagelet's grant/)
     assert.match((await run('Bash')).hookSpecificOutput.permissionDecisionReason, /never holds/)
-    // A granted tool runs: the grant is the approval.
     assert.equal((await o.canUseTool('WebSearch', { query: 'x' }, { signal: signal() })).behavior, 'allow')
-    // Two layers: Kage's tools that act as the owner are denied here too, not only by the hook.
     assert.equal((await o.canUseTool('mcp__kage__message_people', {}, { signal: signal() })).behavior, 'deny')
     assert.equal((await o.canUseTool('mcp__kage__reply', { text: 'hi' }, { signal: signal() })).behavior, 'allow')
     const asked = await o.canUseTool('WebFetch', { url: 'https://example.com' }, { signal: signal() })
     assert.equal(asked.behavior, 'deny')
     assert.match(asked.message, /approves nothing/)
-    assert.deepEqual(t.posts, [])                  // no approval card reaches the owner
+    assert.deepEqual(t.posts, [])
   })
-  // Claude Code leaves WebFetch out of its default tool set (a subagent stands in for it), so the lane names its tools.
   test('a kagelet lane loads only its granted built-in tools and ToolSearch; other sessions keep the default set', async () => {
     const t = setup({ grants: { 'C1:5.5#side-kagelet-web': ['WebFetch', 'mcp__store__upload'] } })
     t.d.task('C1:5.5#side-kagelet-web', t.task(), 0)
@@ -974,12 +948,12 @@ describe('Kage sessions on the Agent SDK', () => {
     await tick()
     const lane = t.sdk.runs[0]!.options
     assert.equal(lane.tools, undefined)
-    assert.equal(lane.settings.sandbox.enabled, true)                       // even with harness.sandbox off
+    assert.equal(lane.settings.sandbox.enabled, true)
     assert.ok(lane.settings.sandbox.filesystem.denyWrite.includes('/code/kage'))
-    assert.equal(lane.settings.sandbox.network.allowAllUnixSockets, false)  // the hub's sockets stay closed to its shell
-    assert.deepEqual(lane.settingSources, [])                                // the owner's own settings never widen it
+    assert.equal(lane.settings.sandbox.network.allowAllUnixSockets, false)
+    assert.deepEqual(lane.settingSources, [])
     assert.ok(lane.settings.permissions.deny.some((p: string) => p.startsWith('Edit(/') && p.includes('/code/kage')))
-    assert.equal(t.sdk.runs[1]!.options.settings.sandbox, undefined)       // every other session keeps the setting
+    assert.equal(t.sdk.runs[1]!.options.settings.sandbox, undefined)
     const run = (tool_name: string, tool_input = {}) => lane.hooks.PreToolUse[0].hooks[0]({ hook_event_name: 'PreToolUse', tool_name, tool_input }, undefined, { signal: signal() })
     assert.deepEqual(await run('Bash', { command: 'git log -3' }), {})
     assert.deepEqual(await run('Edit', { file_path: '/tmp/x', old_string: 'a', new_string: 'b' }), {})
@@ -1002,9 +976,8 @@ describe('Kage sessions on the Agent SDK', () => {
     assert.match(JSON.stringify(t.posts[0]), /Reply `always`/)
     assert.equal(t.approvals.answer(t.idOf(t.posts[0]!), 'allow', Date.now())?.key, key)
     assert.equal((await run({ command: 'kubectl apply -f prod.yaml', description: 'retry the deploy' })).hookSpecificOutput.permissionDecision, 'allow')
-    assert.equal((await run({ command: 'kubectl apply -f prod.yaml' })).hookSpecificOutput.permissionDecision, 'deny')   // spent
+    assert.equal((await run({ command: 'kubectl apply -f prod.yaml' })).hookSpecificOutput.permissionDecision, 'deny')
     assert.equal(t.posts.length, 2)
-    // The open card is asked once: the same step again posts nothing, and a yes for one command never runs another.
     assert.match((await run({ command: 'kubectl apply -f prod.yaml' })).hookSpecificOutput.permissionDecisionReason, /card is posted/)
     assert.equal(t.posts.length, 2)
     t.approvals.answer(t.idOf(t.posts[1]!), 'allow', Date.now())
@@ -1071,7 +1044,6 @@ describe('Kage sessions on the Agent SDK', () => {
       ['C1:5.5#side-kagelet-deploys', 'Bash', true],
     ])
   })
-  // A call that brought back the owner's one-time code is the owner (core/gate.ts senderOf), so only a stranger's call is limited.
   test("on a stranger's voice call the hook allows only the reply tool", async () => {
     const t = setup()
     const task = t.task({ fromOwner: false })
@@ -1084,15 +1056,15 @@ describe('Kage sessions on the Agent SDK', () => {
     assert.equal((await run('mcp__claude_ai_Gmail__search')).hookSpecificOutput.permissionDecision, 'deny')
     assert.equal((await run('WebFetch')).hookSpecificOutput.permissionDecision, 'deny')
     assert.deepEqual(await run('mcp__kage__reply'), {})
-    t.sdk.runs[0]!.emit({ type: 'result', total_cost_usd: 0 })   // the stranger's turn ends: a turn keeps its lowest sender
+    t.sdk.runs[0]!.emit({ type: 'result', total_cost_usd: 0 })
     await tick()
-    t.d.task('C1:5.5', t.task(), 1)   // the next turn is the owner's, with the owner's tools
+    t.d.task('C1:5.5', t.task(), 1)
     await tick()
     assert.deepEqual(await run('Bash'), {})
   })
   test("on an agent's task the hook allows reading and answering only, and the whole turn stays limited", async () => {
     const t = setup()
-    const task = t.task({ fromOwner: true })   // made with its owner's token: still an agent's task
+    const task = t.task({ fromOwner: true })
     task.agent = { app: 'A0AGENT01' }
     t.d.task('C1:5.5', task, 0)
     await tick()
@@ -1102,15 +1074,13 @@ describe('Kage sessions on the Agent SDK', () => {
       assert.equal((await run(tool)).hookSpecificOutput?.permissionDecision, 'deny', tool)
     assert.deepEqual(await run('mcp__kage__reply'), {})
     assert.deepEqual(await run('Read', { file_path: '/tmp/readme.md' }), {})
-    // The owner writes mid-turn: the agent's task is still in this turn, so the turn keeps its limits.
     t.d.task('C1:5.5', t.task(), 1)
     await tick()
     assert.equal((await run('Bash')).hookSpecificOutput?.permissionDecision, 'deny')
-    // A call the hook lets through still needs permission (a read outside the folder): it is refused, never carded.
     const use = (name: string, input: object) => Promise.race([t.sdk.runs[0]!.options.canUseTool(name, input, { signal: signal() }), tick(30).then(() => ({ behavior: 'held on a card' }))])
     assert.equal((await use('Read', { file_path: '/Users/x/Documents/notes.md' })).behavior, 'deny')
     assert.equal((await use('Bash', { command: 'ls' })).behavior, 'deny')
-    assert.deepEqual(t.posts, [])   // no approval card reached the owner
+    assert.deepEqual(t.posts, [])
   })
   test("a teammate's task, then an agent's, then the owner's in one turn: the agent's limits hold for the whole turn", async () => {
     const t = setup()
@@ -1144,7 +1114,7 @@ describe('Kage sessions on the Agent SDK', () => {
     assert.equal(t.sdk.runs[0]!.closed, true)
     assert.equal((await ask).behavior, 'deny')
     await tick(30)
-    assert.equal(t.sdk.runs.length, 1)   // a stop is final: no restart
+    assert.equal(t.sdk.runs.length, 1)
     assert.deepEqual([...t.s.running()], [])
   })
   test('a session whose Claude process exits comes back on the same conversation, and the next task reaches it', async () => {
@@ -1171,7 +1141,6 @@ describe('Kage sessions on the Agent SDK', () => {
     await tick(30)
     assert.equal(t.sdk.runs[1]!.options.model, 'opus')
     assert.equal(t.sdk.runs[1]!.options.effort, 'max')
-    // after an idle close too, and only on this thread
     t.s.runner.stop('C1:5.5')
     t.s.runner.start('C1:5.5', ID)
     assert.equal(t.sdk.runs[2]!.options.model, 'opus')
@@ -1187,7 +1156,7 @@ describe('Kage sessions on the Agent SDK', () => {
     assert.deepEqual(t.sdk.runs[0]!.set.slice(2), [{ model: undefined }, { effortLevel: null }])
     t.sdk.runs[0]!.end()
     await tick(30)
-    assert.ok(!('model' in t.sdk.runs[1]!.options) && !('effort' in t.sdk.runs[1]!.options))   // so the hub's own options still hold
+    assert.ok(!('model' in t.sdk.runs[1]!.options) && !('effort' in t.sdk.runs[1]!.options))
   })
   test('set_model changes only what it is given', async () => {
     const t = setup()
@@ -1211,7 +1180,6 @@ describe('Kage sessions on the Agent SDK', () => {
   })
 })
 
-// Issue 62, end to end below the connectors: a runtime that answers with the limit error, the dispatcher, the pause and a real store.
 test('the usage limit, whole: no post but the notice, the inbox message kept, and a replay once the clock passes the reset', async () => {
   const sdk = fakeSdk()
   const store = openStore(':memory:')
@@ -1233,7 +1201,6 @@ test('the usage limit, whole: no post but the notice, the inbox message kept, an
     onTurn: (key, tasks, limit) => limits.turn(key, tasks, limit, 1000),
   })
   d = new Dispatcher<ToSession>(s.runner, { max: 2, idleMs: 60_000, connectMs: 60_000, evictMs: 1, newId: () => ID })
-  // What the hub does with one Slack message (hub/router.ts toSession, then the connector's handled).
   const hear = (ts: string, now: number) => {
     const task: Task = { type: 'task', content: `Task from Sam: ${ts}`, fromOwner: false, meta: { channel: 'C1', thread_ts: '5.5', place: '#general', permalink: '' }, origin: { channel: 'C1', ts } }
     store.take(`slack:C1:${ts}`, 'slack', `original event ${ts}`, now)
@@ -1252,9 +1219,7 @@ test('the usage limit, whole: no post but the notice, the inbox message kept, an
   await tick()
   assert.deepEqual(posts, ["Paused by the usage limit until 18:05. I'll pick this up then."])
   assert.deepEqual(store.held().map(r => [r.source, r.payload, r.until]), [['slack:C1:7.7', 'original event 7.7', 3_600_000]])
-  assert.equal(run.closed, true)                 // the session is closed, so nothing more is read into the limit
-  // A new message in the pause tries once, to see whether the limit lifted. It is still on: the try meets it,
-  // and the message is held with the first, with no second notice.
+  assert.equal(run.closed, true)
   assert.equal(hear('8.8', 2000), 'starting')
   await tick()
   const retry = sdk.runs[1]!
@@ -1268,7 +1233,6 @@ test('the usage limit, whole: no post but the notice, the inbox message kept, an
   assert.deepEqual(replayed, [])
   await limits.tick(3_600_000)
   assert.deepEqual(replayed, ['original event 7.7', 'original event 8.8'])
-  // The replayed message runs, its turn ends well, and only then its text leaves the store.
   assert.equal(hear('7.7', 3_600_001), 'starting')
   await tick()
   sdk.runs[2]!.emit({ type: 'result', total_cost_usd: 1 })
@@ -1278,8 +1242,6 @@ test('the usage limit, whole: no post but the notice, the inbox message kept, an
 })
 
 test('every path that runs a kagelet turn writes a costs row (#96)', async () => {
-  // Every path that starts a kagelet turn: its schedule, run now, an owner note, and the chain route (#93): an
-  // after: handoff from src, and a message from src's run.
   const LINK = 'https://test.slack.com/archives/C1/p1700000000123456'
   const LANE = 'C1:1700000000.123456#side-kagelet-calls', SRC = 'C1:1700000000.123456#side-kagelet-src'
   const now = new Date(2026, 10, 14, 9, 0, 30).getTime()
@@ -1308,7 +1270,7 @@ test('every path that runs a kagelet turn writes a costs row (#96)', async () =>
     const notes = ownerNotes(store)
     const deliver = kageletDeliver(notes, (k, task) => t.d.task(k, task, now))
     const runs = runEvents(ledgers, () => 'trace-1')
-    runs.start(SRC, 'scheduled', { fresh: true })   // src's run, open
+    runs.start(SRC, 'scheduled', { fresh: true })
     const routes = kageletRoutes({ dir: `${dir}/kagelets`, store, ledgers, runs, deliver,
       idle: k => t.d.ready(k) === 'ready' && t.d.hasFreeSlot(k), granted: () => true, paused: () => undefined, log: () => {} })
     start({ notes, runs, routes, schedules: scheduler({ store, failed: () => {}, deliver, ready: k => t.d.ready(k), trusted: () => false, job: { end: () => {}, freshEvery: () => 0, carryCount: () => 0, carryChars: () => 0, laneDefault: () => false, posted: () => '', project: '' } }) })

@@ -5,5 +5,5 @@ import { canPushToKage } from '../repo-access.ts'
 test('only push access to the Kage repo marks the repo owner\'s hub', async () => {
   assert.equal(await canPushToKage(async () => 'true\n'), true)
   assert.equal(await canPushToKage(async () => 'false\n'), false)
-  assert.equal(await canPushToKage(async () => { throw new Error('gh missing') }), false)   // no gh or not signed in: local memory only
+  assert.equal(await canPushToKage(async () => { throw new Error('gh missing') }), false)
 })

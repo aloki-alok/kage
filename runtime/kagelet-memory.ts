@@ -1,7 +1,3 @@
-// A kagelet's memory folder (core/kagelet-memory.ts) and the proposals waiting on Kage's review. The dream only
-// proposes: a proposal is a file under .proposals/ that no prompt reads. A note lands in the folder only by decide(),
-// which is Kage's tool, so the owner's session. No path here reaches Kage's or the owner's memory: the folder must be a
-// real directory at exactly <kagelets>/<name>/memory (no link along the way), and a note must be a regular file.
 import { randomUUID } from 'node:crypto'
 import { existsSync, lstatSync, mkdirSync, readdirSync, readFileSync, realpathSync, renameSync, rmSync, unlinkSync, writeFileSync } from 'node:fs'
 import { memoryPath, proposalFrom, type Proposal } from '../core/kagelet-memory.ts'
@@ -18,19 +14,15 @@ export function kageletMemory(o: {
   newId?: () => string
 }) {
   const isDir = (p: string) => { try { const s = lstatSync(p); return s.isDirectory() && !s.isSymbolicLink() } catch { return false } }
-  // lstat, so a dangling link counts as there and is never made over.
   const linked = (p: string) => { try { lstatSync(p); return true } catch { return false } }
   const real = (p: string) => { try { return realpathSync(p) } catch { return undefined } }
   const within = (p: string, d: string) => p === d || p.startsWith(`${d}/`)
-  // The kagelet's folder when it is safe to use, else why not. create: make it (and only it) first.
   function folder(name: string, create = false): { path: string } | { error: string } {
     const ok = memoryPath(o.dir, name, 'x.md', o.forbid())
     if ('error' in ok) return ok
     const kagelet = `${o.dir}/${name}`, mine = `${kagelet}/memory`
-    // Before anything is made: a kagelets folder that is a link into forbidden memory is refused untouched.
     const root = real(o.dir)
     if (create && root && o.forbid().some(f => { const r = real(f); return !!r && (within(root, r) || within(r, root)) })) return { error: `${o.dir} reaches Kage's or the owner's memory` }
-    // One folder at a time: a kagelet folder that is a link stops before anything is made through it.
     for (const p of [kagelet, mine]) {
       if (create && !linked(p)) mkdirSync(p, { mode: 0o700 })
       if (!isDir(p)) return { error: create ? `${p} is not a plain folder` : 'no folder' }
@@ -39,7 +31,6 @@ export function kageletMemory(o: {
     if (!at || !base || at !== `${base}/${name}/memory` || o.forbid().some(f => { const r = real(f); return !!r && (within(at, r) || within(r, at)) })) return { error: `${mine} reaches outside the kagelets folder` }
     return { path: mine }
   }
-  // A plain file with one name: a hard link to another file (the owner's note) is not a note.
   const file = (path: string) => { try { const s = lstatSync(path); return s.isFile() && s.nlink === 1 } catch { return false } }
   const proposals = (name: string): Saved[] => {
     const f = folder(name)
@@ -49,14 +40,12 @@ export function kageletMemory(o: {
   const names = () => { try { return readdirSync(o.dir).filter(n => NAME.test(n) && isDir(`${o.dir}/${n}/memory`)).sort() } catch { return [] } }
 
   return {
-    // The approved notes the kagelet reads: plain files only, never a link.
     notes(name: string): { file: string; text: string }[] {
       const f = folder(name)
       if ('error' in f) return []
       return readdirSync(f.path).filter(n => n.endsWith('.md') && !n.startsWith('.') && file(`${f.path}/${n}`)).sort().slice(0, 20)
         .map(n => ({ file: n, text: readFileSync(`${f.path}/${n}`, 'utf8').slice(0, 4000) }))
     },
-    // From the dream lane of kagelet `name` (thread: its thread key). Kept for review, never applied.
     propose(name: string, a: { file?: unknown; text?: unknown; why?: unknown }, thread: string): string {
       const p = proposalFrom(a)
       if ('error' in p) return `not proposed: ${p.error}`
@@ -73,12 +62,10 @@ export function kageletMemory(o: {
       o.waiting(['open', thread, '', `kagelet ${name} proposed a change to its memory (${p.file}): review it with review_kagelet_memory`])
       return `proposed ${p.file}. Kage reviews it; it applies only if approved.`
     },
-    // Every proposal waiting, with its text, for Kage's review.
     open(): string {
       const all = names().flatMap(n => proposals(n).map(p => `${n} ${p.id}: ${p.file}, because ${p.why}\n${p.text}`))
       return all.length ? all.join('\n\n') : 'No memory proposals are waiting.'
     },
-    // Kage's call on one proposal. Approve writes the proposal's text, edit writes Kage's, reject needs a reason.
     decide(d: Decision): string {
       if (!/^[a-z0-9]+$/.test(d.id)) return `no proposal "${d.id}"`
       const p = proposals(d.kagelet).find(x => x.id === d.id)
@@ -94,8 +81,7 @@ export function kageletMemory(o: {
       if (d.action !== 'reject') {
         const target = `${f.path}/${p.file}`
         if (existsSync(target) && !file(target)) return `refused: ${p.file} is not a plain file, so nothing was written`
-        // A copy swapped in, so the kagelet never reads a half-written note.
-        rmSync(`${target}.new`, { force: true })   // a link left there is removed, never written through
+        rmSync(`${target}.new`, { force: true })
         writeFileSync(`${target}.new`, text.text, { mode: 0o600, flag: 'wx' })
         renameSync(`${target}.new`, target)
       }

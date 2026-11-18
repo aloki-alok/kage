@@ -1,5 +1,3 @@
-// A session's Slack tools: reply, edit and delete its own posts, tell people, attach a file, the waiting list, the prod log,
-// and a post as Kage where no task came from. The shared state they read is built in runtime/kage-tools.ts.
 import { readFileSync, realpathSync, statSync } from 'node:fs'
 import { basename, extname } from 'node:path'
 import { z } from 'zod'
@@ -7,8 +5,6 @@ import { openWaiting } from '../../core/ledgers.ts'
 import { findSecret, layoutRefusal, ownerPost, safeReply, secretRefusal, splitForSlack } from '../../core/outbound.ts'
 import type { KageTool, ToolContext } from '../kage-tools.ts'
 
-// The reaction each kind of reply leaves on the task message. An ack leaves none: 🥷 already says "picked up".
-// Ninja set, picked by the owner: 📜 a scroll back to you (waits on your answer), 🗡️ a quick strike, ⚔️ the task done.
 const MARKS = { ack: '', question: 'scroll', answer: 'dagger_knife', done: 'crossed_swords' } as const
 const HUB_DOWN = 'not sent: Kage is restarting. Wait a few seconds and send it again.'
 function canvasError(e: any): { isError: true; text: string } {
@@ -38,12 +34,10 @@ export function slackTools(c: ToolContext): KageTool[] {
     async run(args) {
       const a = args as { channel: string; thread_ts: string; text: string; private?: boolean; owner_asked?: boolean; waiting?: string; waiting_on?: string; mark?: keyof typeof MARKS; wide?: boolean; tag_agent?: boolean }
       const key = `${a.channel}:${a.thread_ts}`
-      // A reply goes back where a task came from, never to a channel picked from the conversation.
       if (!a.private && !taskChannels.has(a.channel)) return { isError: true, text: 'refused: no task came from that channel; use private=true' }
       const refusal = secretRefusal(a.text, { private: a.private, ownerAsked: a.owner_asked, fromOwner: ownerNow(key) })
       if (refusal) return { isError: true, text: refusal }
       if (a.channel === 'voice') {
-        // A voice reply is spoken to the caller, nowhere else: not Slack, not the owner's DM.
         if (a.private) return { isError: true, text: 'refused: a voice call has no private reply' }
         if (o.send({ type: 'voice', text: a.text }) === false) return { isError: true, text: HUB_DOWN }
         return { text: 'spoken to the caller' }
@@ -55,12 +49,10 @@ export function slackTools(c: ToolContext): KageTool[] {
       const ask = a.waiting?.trim(), on = a.waiting_on?.trim()
       if (ask && on !== 'owner' && !/^[UW][A-Z0-9]{2,}$/.test(on ?? '')) return { isError: true, text: 'not sent: with waiting, set waiting_on to "owner" or the Slack id (U...) of the person who must answer' }
       if (ask && on !== 'owner' && a.private) return { isError: true, text: 'not sent: a teammate cannot see the owner\'s DM. Ask them in the thread, or set waiting_on to "owner"' }
-      // A wait on a teammate is theirs: the reply tags them (on its own line before a table or code), and the owner's list never holds it.
       if (ask && on !== 'owner' && !a.text.includes(`<@${on}>`)) a.text = `<@${on}>${/^(```|\|)/.test(a.text) ? '\n' : ' '}${a.text}`
       const layout = layoutRefusal(a.text, a)
       if (layout) return { isError: true, text: layout }
       const { via, where: at } = a.private ? await post(key, o.botDm(), dmThread.get(key), a.text) : await post(key, a.channel, a.thread_ts, a.text, a.tag_agent ? { tag: agents.get(key)?.tag } : {}, a.mark === 'ack')
-      // A question keeps the task open, so its final reply still marks the task.
       const emoji = MARKS[a.mark ?? 'done']
       if (emoji) {
         for (const origin of unanswered.get(key) ?? []) react(origin.channel, origin.ts, emoji)
@@ -87,26 +79,19 @@ export function slackTools(c: ToolContext): KageTool[] {
     async run(args) {
       const a = args as { channel: string; thread_ts: string; users: string[]; text: string; from?: string }
       const key = `${a.channel}:${a.thread_ts}`
-      // A call counts only when the owner proved it with the one-time code (connectors/voice.ts): a stranger may be talking.
-      // WhatsApp is the owner's phone, easier to steal than Slack: its task may message people only after the owner's yes on a Slack card.
       const fromPhone = a.channel === 'whatsapp' && ownerOnly(a)
       if (!taskChannels.has(a.channel) || a.channel === 'email' || (a.channel === 'whatsapp' && !fromPhone) || (a.channel === 'voice' && !ownerOnly(a))) return { isError: true, text: 'refused: only a task from a Slack thread or the owner\'s own call may message people' }
-      // Anyone but the owner gets the tag, even when their task line names no teammate.
       const asker = ownerNow(key) ? undefined : askers.get(key) ?? { id: '', name: 'A teammate' }
       const ids = [...a.users, ...a.from ? [a.from] : []]
       if (!a.users.length || ids.some(u => !/^[UW][A-Z0-9]+$/.test(u))) return { isError: true, text: 'refused: name 1 to 8 people by their Slack user id (U...)' }
-      // Signed by the asker on a teammate's task, whatever from says; on the owner's, by from if given.
       if (!asker && a.from) await nameMentions(`<@${a.from}>`)
       const signer = asker ?? (a.from ? { id: a.from, name: names[a.from] ?? a.from } : undefined)
-      // The person a message is signed for always sees it.
       const people = [...new Set([...a.users, ...signer?.id ? [signer.id] : []])]
       if (people.length > 8) return { isError: true, text: 'refused: name 1 to 8 people by their Slack user id (U...)' }
       const refusal = secretRefusal(a.text, { fromOwner: !asker })
       if (refusal) return { isError: true, text: refusal }
       const layout = layoutRefusal(a.text)
       if (layout) return { isError: true, text: layout }
-      // Asked last, after every refusal, so the owner never says yes to a message that would not go. The card names
-      // everyone it reaches, by name and id, the person it is sent for too.
       if (fromPhone) {
         if (!o.approve) return { isError: true, text: 'refused: from WhatsApp this needs the owner\'s yes on a Slack card, and this session cannot show one. Tell them to ask in Slack.' }
         await nameMentions(people.map(u => `<@${u}>`).join(' '))
@@ -120,7 +105,6 @@ export function slackTools(c: ToolContext): KageTool[] {
         if (e?.data?.error === 'missing_scope') return { isError: true, text: `not sent: the Slack app needs the user scopes mpim:write and im:write. Put a draft in the group DM for the owner to send instead.` }
         throw e
       }
-      // Sent from the owner's account, so it carries Kage's footer like every other post from there.
       const r = await user.chat.postMessage({ channel: dm, ...ownerPost(Title, safeReply(a.text).trim(), foot), unfurl_links: false })
       append('posted', [dm, r.ts!, 'people'])
       sentForPeople.set(`${dm}:${r.ts}`, foot)
@@ -144,7 +128,6 @@ export function slackTools(c: ToolContext): KageTool[] {
       if (!real) return { isError: true, text: `refused: send only a file you wrote in this thread's files folder, ${folder}/` }
       const type = extname(real).toLowerCase()
       if (type !== '.csv' && type !== '.png') return { isError: true, text: 'refused: send a .csv (it opens in Excel and Google Sheets) or a .png' }
-      // A file goes to the whole thread, so a secret in it is refused for everyone, owner included.
       const csv = type === '.csv' ? readFileSync(real, 'utf8') : ''
       const secret = findSecret(csv) || (/(^|,)\s*"?[^,\n]*(password|passwd|secret|token|api.?key)/i.test(csv.split('\n')[0]!) && 'password or key column')
       if (secret) return { isError: true, text: `refused: the file looks like it holds a ${secret}. Leave it out of the file.` }
@@ -169,12 +152,11 @@ export function slackTools(c: ToolContext): KageTool[] {
     },
     async run(args) {
       const a = args as { channel: string; thread_ts: string; title: string; markdown: string }
-      if (!ownerTask.has(`${a.channel}:${a.thread_ts}`)) return { isError: true, text: 'refused: no task came from that thread' }   // per thread: the row it writes names this thread
+      if (!ownerTask.has(`${a.channel}:${a.thread_ts}`)) return { isError: true, text: 'refused: no task came from that thread' }
       const no = secretRefusal(a.markdown, { fromOwner: false })
       if (no) return { isError: true, text: no }
       try {
         const r = await bot.canvases.create({ channel_id: a.channel, title: a.title, document_content: { type: 'markdown', markdown: a.markdown } })
-        // The thread that made it is the only one that may edit it (edit_canvas). edit_message and delete_message skip this row.
         append('posted', [a.channel, r.canvas_id!, 'canvas', `${a.channel}:${a.thread_ts}`])
         const team = await bot.auth.test()
         return { text: `made canvas ${r.canvas_id} in ${a.channel}: ${team.url}docs/${team.team_id}/${r.canvas_id} (pass the id to edit_canvas)` }
@@ -227,13 +209,11 @@ export function slackTools(c: ToolContext): KageTool[] {
     async run(args) {
       const p = args as { channel: string; thread_ts: string; what: string; command: string; result: string }
       const key = `${p.channel}:${p.thread_ts}`
-      const job = c.job()   // a job run's prod write is one of that job's acts (ADR 0017)
+      const job = c.job()
       append('prod-actions', [ownerNow(key) ? 'owner' : 'teammate', links.get(key) ?? key, p.what, p.command, p.result, ...job ? [job] : []])
       return { text: 'logged to the prod-actions ledger' }
     },
   }]
-  // The owner's own task may have Kage post where no task came from (a channel it just made, an announcement),
-  // so no session needs the bot token itself. Bot only: never the owner's account, never a kagelet.
   if (!name && !o.dreaming) tools.push({
     name: 'post_as_kage',
     description: `Post as ${Title} in a channel the owner names, when their own task asks for it: a channel ${Title} made or works in, top level or in a thread there. For the task's own thread use reply.`,
@@ -246,7 +226,6 @@ export function slackTools(c: ToolContext): KageTool[] {
     },
     async run(args) {
       const a = args as { channel: string; thread_ts: string; to: string; to_thread_ts?: string; text: string }
-      // An agent may post with the owner's token, and an owner-verified call still has anyone listening in: neither counts.
       if (!ownerActs(a)) return { isError: true, text: "refused: only the owner's own task may post where no task came from" }
       if (!/^[CG][A-Z0-9]+$/.test(a.to)) return { isError: true, text: 'refused: name the channel by its id (C...)' }
       if (!a.text.trim()) return { isError: true, text: 'refused: the text is empty' }

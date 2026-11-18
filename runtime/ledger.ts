@@ -1,7 +1,3 @@
-// The hub's ledgers (what Kage posted, what it waits on, what each turn cost, ...) as rows in kage.db.
-// The hub and every tmux pane write them, so unlike the rest of the store they have many writers:
-// SQLite's lock (WAL plus a busy timeout) keeps their rows whole and in order.
-// text() gives back the TSV the parsers in core/ledgers.ts and core/retro.ts already read.
 import { existsSync, readdirSync, readFileSync, renameSync } from 'node:fs'
 import { DatabaseSync } from 'node:sqlite'
 import { log } from './log.ts'
@@ -13,10 +9,8 @@ export type LedgerName = 'waiting' | 'posted' | 'prod-actions' | 'costs' | 'runs
 const NAMES: LedgerName[] = ['waiting', 'posted', 'prod-actions', 'costs', 'runs', 'commands', 'reports', 'db-reads', 'grants', 'verdicts']
 export type Ledgers = ReturnType<typeof openLedgers>
 
-// trail: the hub passes its log, so every row and event is a line in hub.log too. Panes pass none.
-// added: every row, as written, for a listener in the same process (the hub's run timing hears posted rows).
 export function openLedgers(dir: string, now = () => new Date().toISOString(), trail?: (line: string) => void, added?: (name: LedgerName, cells: string[]) => void) {
-  const db = new DatabaseSync(`${dir}/kage.db`, { timeout: 5000 })   // the wait is set before the first lock (runtime/store.ts)
+  const db = new DatabaseSync(`${dir}/kage.db`, { timeout: 5000 })
   db.exec('pragma journal_mode = wal')
   db.exec(`create table if not exists ledger (
     id integer primary key autoincrement,   -- the order rows were written in
@@ -24,7 +18,6 @@ export function openLedgers(dir: string, now = () => new Date().toISOString(), t
     cells text not null                     -- JSON array: the columns after the time
   ); create index if not exists ledger_name on ledger (name, id)`)
   const insert = db.prepare('insert into ledger (name, at, cells) values (?, ?, ?)')
-  // The event log (core/events.ts): its own columns, so the dream job can group without parsing.
   db.exec(`create table if not exists events (
     id integer primary key autoincrement,
     at text not null, kind text not null, who text not null, trace text not null, chain text not null,
@@ -32,11 +25,6 @@ export function openLedgers(dir: string, now = () => new Date().toISOString(), t
   ); create index if not exists events_at on events (at)`)
   const insertEvent = db.prepare('insert into events (at, kind, who, trace, chain, detail, transcript) values (?, ?, ?, ?, ?, ?, ?)')
 
-  // <name>.tsv from before this table moves in once, safe against a crash and two processes at once:
-  //   1. rename it to a unique .importing-<pid>-<time> name: only one process wins the rename;
-  //   2. copy its rows and a marker for that name in one transaction: a replay after a crash skips it;
-  //   3. rename it to .imported-<...>. A crash between any two steps is picked up on the next open.
-  // A pane still on old code may write a fresh <name>.tsv later; it gets its own unique name.
   db.exec('create table if not exists ledger_imported (file text primary key)')
   for (const name of NAMES) {
     const file = `${dir}/${name}.tsv`
@@ -59,40 +47,30 @@ export function openLedgers(dir: string, now = () => new Date().toISOString(), t
     }
   }
 
-  // A side record too: a failed write is logged, never thrown.
   const event = (e: Parameters<typeof eventRow>[0]) => {
     const r = eventRow(e)
     try { insertEvent.run(now(), r.kind, r.who, r.trace, r.chain, r.detail, r.transcript) } catch (err) { log('event write failed', e.kind, err) }
     trail?.(trailEvent(r))
   }
   return {
-    // A ledger is a side record: a failed write is logged, never allowed to block a task or a reply.
     add(name: LedgerName, cells: string[]) {
       try { insert.run(name, now(), JSON.stringify(cells.map(c => c.replace(/[\t\r\n]+/g, ' ')))) } catch (e) { log('ledger write failed', name, e) }
       trail?.(trailLine(name, cells.map(c => c.replace(/[\t\r\n]+/g, ' '))))
       added?.(name, cells)
-      // Every grants row is an event too, from whichever process wrote it: read (Kage's grant), granted (a card),
-      // standing (a standing approval), revoked or refused. A row from before tiers has no tools cell: it was db_read.
-      // So is the hub's cost flag (cost:<name>).
       if (name === 'grants') {
         const [who = '', status = '', why = '', tools = 'db_read'] = cells
         event({ kind: ['read', 'granted', 'standing'].includes(status) ? 'grant' : status === 'revoked' ? 'revoke' : 'refusal', who, trace: '', detail: `${tools}${['read', 'standing', 'revoked'].includes(status) ? ` ${status}` : ''}: ${why}` })
       }
       if (name === 'reports' && cells[0]?.startsWith(COST_FLAG)) event({ kind: 'cost-flag', who: cells[0].slice(COST_FLAG.length), trace: '', detail: cells[1] ?? '' })
     },
-    // since: an ISO time, so a reader on a clock reads only the rows it can still use.
     text(name: LedgerName, since?: string): string {
       try { return ledgerText(db, name, since) } catch (e) { log('ledger read failed', name, e); return '' }
     },
     event,
-    // One UTC day (YYYY-MM-DD), in the order written.
     events: (day: string) => eventsOn(db, day),
-    // Rows after an id, oldest first, for the telemetry exporter (runtime/telemetry-export.ts). Day summaries are rollups, not events.
     eventsAfter: (id: number, limit: number) => db.prepare("select id, at, kind, who, trace, chain, detail, transcript from events where id > ? and kind != 'day-summary' order by id limit ?")
       .all(id, limit).map(r => ({ ...r }) as KageEvent & { id: number }),
     maxEventId: () => Number((db.prepare('select coalesce(max(id), 0) n from events').get() as { n: number }).n),
-    // Every event of a day before the cutoff's folds into one day-summary row per day ("tool 12, run.end 3"), in one transaction.
-    // The cutoff drops to its day's midnight, so an hourly prune never folds part of a day.
     pruneEvents(cutoff: string) {
       const before = cutoff.slice(0, 10)
       db.exec('begin immediate')
@@ -109,23 +87,18 @@ export function openLedgers(dir: string, now = () => new Date().toISOString(), t
   }
 }
 
-// One ledger as TSV, from any handle on kage.db: kage top and kage logs read it with a read-only one.
 export const ledgerText = (db: DatabaseSync, name: LedgerName, since = '') =>
   (db.prepare('select at, cells from ledger where name = ? and at >= ? order by id').all(name, since) as { at: string; cells: string }[])
     .map(r => tsvRow([r.at, ...JSON.parse(r.cells) as string[]])).join('')
 
-// One UTC day's events, from any handle on kage.db: kage top and kage logs read them with a read-only one.
 export const eventsOn = (db: DatabaseSync, day: string) =>
   db.prepare('select at, kind, who, trace, chain, detail, transcript from events where at >= ? and at < ? order by id')
     .all(day, `${day}\uffff`).map(r => ({ ...r }) as KageEvent)
 
-// Which run each session key is in, so its tool calls and report land on that run's trace. In memory: a hub
-// restart cuts every run anyway. fresh: a scheduled run is a run of its own, even when the last one never ended.
 export function runEvents(l: Pick<Ledgers, 'event'>, newId: () => string, clock = Date.now) {
   const open = new Map<string, { trace: string; chain: string; hops: number; reported: boolean; refused: boolean }>()
-  const times = new Map<string, { at: number; posted?: number }>()   // when each open run started, and ms to its first post
+  const times = new Map<string, { at: number; posted?: number }>()
   const emit = (key: string, kind: EventKind, detail: string, transcript = ''): void => {
-    // A task sent mid-turn is read by the next turn, after the first one's end: its first call opens its run.
     if (!open.has(key) && (kind === 'tool' || kind === 'refusal' || kind === 'report')) start(key, 'next turn')
     const r = open.get(key)
     if (r && kind === 'report') r.reported = true
@@ -139,7 +112,6 @@ export function runEvents(l: Pick<Ledgers, 'event'>, newId: () => string, clock 
     open.delete(key)
     times.delete(key)
   }
-  // chain, hops: a kagelet message's run (runtime/kagelets.ts), which the hub starts only in an idle session.
   function start(key: string, detail: string, o: { fresh?: boolean; chain?: string; hops?: number } = {}) {
     if (open.has(key) && !o.fresh) return
     end(key, 'cut: no result')
@@ -147,14 +119,10 @@ export function runEvents(l: Pick<Ledgers, 'event'>, newId: () => string, clock 
     times.set(key, { at: clock() })
     emit(key, 'run.start', detail)
   }
-  // of: the open run, which the chain router (runtime/kagelets.ts) reads and gives a chain id.
-  // A post from the session (the posted ledger): the first one in a run is its time to first reply.
   const posted = (key: string) => { const t = times.get(key); if (t && t.posted == null) t.posted = clock() - t.at }
   return { start, emit, end, posted, of: (key: string) => open.get(key) }
 }
 
-// What each turn cost (core/ledgers.ts turnCost): one costs row per result whose total grew. `kage cost`, the
-// kagelet caps and `kage logs` read them. Returns the turn's cost, undefined when there is none to record.
 export function costRecorder(l: Pick<Ledgers, 'add' | 'text'>) {
   const totals = lastTotals(l.text('costs'))
   return (key: string, total: number, resumed: boolean) => {
