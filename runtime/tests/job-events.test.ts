@@ -27,7 +27,6 @@ function setup(jobs: Schedule[] = [], saved = memory()) {
   })
   return { e, jobs, woke, rows, pings, saved }
 }
-// A fake conversations.history: posts newer than `oldest`, oldest first, at most `cap` of them.
 const history = (posts: ChannelPost[], o: { cap?: number; fail?: string[] } = {}) => {
   const asked: string[] = []
   const h: ChannelHistory = {
@@ -57,7 +56,7 @@ describe('a channel job', () => {
     t.e.channelPost(post('5.5'))
     assert.deepEqual(t.woke, [{ id: 'j1', quotes: ['> [bot 5.5] post 5.5'] }])
     assert.deepEqual(t.rows, ['CTEST1:1.1 match job=j1 channel=CTEST9 ts=5.5', 'CTEST1:1.1 wake job=j1 reason=channel n=1'])
-    assert.equal(t.rows.some(r => r.includes('post 5.5')), false)    // never the post's text
+    assert.equal(t.rows.some(r => r.includes('post 5.5')), false)
   })
 
   test('a post no job wants wakes nothing and writes nothing', () => {
@@ -91,15 +90,15 @@ describe('catch-up', () => {
     const t = setup([channelJob('j1')])
     t.e.started('j1', t.jobs[0]!.trigger!)
     t.e.channelGap()
-    await t.e.channelCatchUp(history([post('1.1')]).h)       // first start: only a baseline, no wake for old posts
+    await t.e.channelCatchUp(history([post('1.1')]).h)
     assert.equal(t.woke.length, 0)
-    t.e.channelPost(post('2.2'))                              // live
-    t.e.channelGap()                                          // the socket drops
-    const later = [post('1.1'), post('2.2'), post('3.3'), post('4.4')]    // 3.3 and 4.4 came while it was down
+    t.e.channelPost(post('2.2'))
+    t.e.channelGap()
+    const later = [post('1.1'), post('2.2'), post('3.3'), post('4.4')]
     const up = t.e.channelCatchUp(history(later).h)
-    t.e.channelPost(post('4.4'))                              // 4.4 also arrives live during the catch-up
+    t.e.channelPost(post('4.4'))
     await up
-    assert.deepEqual(t.woke.flatMap(w => w.quotes).sort(), ['> [bot 2.2] post 2.2', '> [bot 3.3] post 3.3', '> [bot 4.4] post 4.4'])   // each once, whatever the order
+    assert.deepEqual(t.woke.flatMap(w => w.quotes).sort(), ['> [bot 2.2] post 2.2', '> [bot 3.3] post 3.3', '> [bot 4.4] post 4.4'])
     assert.ok(t.rows.includes('hub catchup channel=CTEST9 read=2 capped=false'), t.rows.join('\n'))
   })
 
@@ -125,11 +124,11 @@ describe('catch-up', () => {
     await t.e.channelCatchUp(history([post('1.1'), post('1.1', { channel: 'CTEST8' })]).h)
     await t.e.channelCatchUp(history([post('1.1'), post('9.9')], { fail: ['CTEST9', 'CTEST8'] }).h)
     await t.e.channelCatchUp(history([post('1.1')], { fail: ['CTEST9', 'CTEST8'] }).h)
-    assert.equal(t.pings.length, 2)                           // one per failing job, not per attempt
+    assert.equal(t.pings.length, 2)
     assert.match(t.pings[0]!, /^CTEST1:1\.1 /)
     assert.ok(t.rows.includes('CTEST1:1.1 ping job=j1 fails=1'))
     assert.equal(t.rows.filter(r => r.startsWith('hub catchup') && r.endsWith('failed=1')).length, 4)
-    await t.e.channelCatchUp(history([post('1.1')], { fail: ['CTEST8'] }).h)    // CTEST9 recovered
+    await t.e.channelCatchUp(history([post('1.1')], { fail: ['CTEST8'] }).h)
     await t.e.channelCatchUp(history([post('1.1')], { fail: ['CTEST9', 'CTEST8'] }).h)
     assert.equal(t.pings.length, 3)
   })
@@ -141,11 +140,10 @@ describe('a hub restart', () => {
     const first = setup(jobs)
     first.e.rebuild()
     await first.e.channelCatchUp(history([post('1.1')]).h)
-    // The hub goes down. A new one starts on the same store, and the saved watches are lost with an old file.
     const second = setup(jobs, memory())
     second.e.rebuild()
     assert.deepEqual(second.e.watching(), ['j1'])
-    await second.e.channelCatchUp(history([post('1.1')]).h)   // no cursor yet: baseline
+    await second.e.channelCatchUp(history([post('1.1')]).h)
     second.e.channelGap()
     await second.e.channelCatchUp(history([post('1.1'), post('2.2')]).h)
     assert.deepEqual(second.woke.map(w => w.id), ['j1'])

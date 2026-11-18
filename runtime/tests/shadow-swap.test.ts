@@ -1,5 +1,3 @@
-// Self-swap through a real store (ADR 0017): the hub grades a twin from the ledgers, swaps it in after enough matches,
-// stops on a miss, finishes a swap a crash cut short, and the owner's restore puts the old job back.
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { tsvRow } from '../../core/ledgers.ts'
@@ -58,7 +56,7 @@ test('two matches wait; quiet runs on both sides add nothing', () => {
 test('the 2026-11-16 case: the old job acted, the twin never woke. No swap, one DM to the owner, told once', () => {
   const t = setup()
   for (const h of [1, 2, 3]) { t.acted(T0 + h * 60 * M); t.said(T0 + h * 60 * M) }
-  t.acted(T0 + 4 * 60 * M)   // a prod write the twin missed
+  t.acted(T0 + 4 * 60 * M)
   t.sw.tick(T0 + 6 * 60 * M)
   t.sw.tick(T0 + 7 * 60 * M)
   assert.deepEqual(t.store.schedules().map(s => s.id).sort(), ['old', 'tw'])
@@ -71,13 +69,13 @@ test('a prod write by the old job counts as an act', () => {
   const t = setup({ swapAfter: 1 })
   t.rows['prod-actions'] += tsvRow([iso(T0 + 60 * M), 'owner', 'link', 'rate set', 'cmd', 'ok', 'old'])
   t.sw.tick(T0 + 3 * 60 * M)
-  assert.equal(t.dms.length, 1)   // the twin said nothing: a miss
+  assert.equal(t.dms.length, 1)
 })
 
 test('a crash after the twin went live and before the old job went: the next tick finishes the swap', () => {
   const t = setup()
   t.store.save('swapped-out', { old: { job: job('old', 'the old prompt'), state: { fails: 0 }, twin: 'tw', twinPrompt: 'SHADOW prompt', shadow: { of: 'old', live: 'the live prompt', since: T0 }, at: T0 } })
-  t.store.setJobState('tw', { fails: 0 })   // live already
+  t.store.setJobState('tw', { fails: 0 })
   t.sw.tick(T0 + M)
   assert.deepEqual(t.store.schedules().map(s => s.id), ['tw'])
 })
@@ -121,9 +119,9 @@ test('the old job was removed by a person: the owner is told once, and the twin 
 
 test('each miss is told once, also when a later miss sorts before one already told', () => {
   const t = setup()
-  t.said(T0 + 60 * M)                 // a false alarm
+  t.said(T0 + 60 * M)
   t.sw.tick(T0 + 120 * M)
-  t.acted(T0 + 30 * M - 1)            // an older act, out of the window of that verdict, seen later
+  t.acted(T0 + 30 * M - 1)
   t.sw.tick(T0 + 121 * M)
   t.sw.tick(T0 + 122 * M)
   assert.equal(t.dms.length, 2)

@@ -24,7 +24,7 @@ test('a proposal is kept for review: it is not a note, so the kagelet does not r
   assert.equal(existsSync(`${t.dir}/deploys/memory/status.md`), false)
   assert.match(t.m.open(), /deploys[\s\S]*p1[\s\S]*status\.md[\s\S]*it moved twice[\s\S]*The status page moved to v2\./)
   assert.deepEqual(t.events, ['memory-proposal deploys status.md: it moved twice'])
-  assert.equal(t.waiting.length, 1)   // Kage sees it on its waiting list
+  assert.equal(t.waiting.length, 1)
 })
 
 test('approve writes the note, and the kagelet reads it; every decision is an event', () => {
@@ -34,7 +34,6 @@ test('approve writes the note, and the kagelet reads it; every decision is an ev
   assert.deepEqual(t.m.notes('deploys'), [{ file: 'status.md', text: 'The status page moved to v2.' }])
   assert.equal(t.m.open(), 'No memory proposals are waiting.')
   assert.equal(t.events.at(-1), 'memory-decision deploys approved status.md')
-  // Decided once: the same id is gone.
   assert.match(t.m.decide({ kagelet: 'deploys', id: 'p1', action: 'approve' }), /no proposal/i)
 })
 
@@ -71,7 +70,6 @@ test('isolation: a kagelet folder that is a link into the owner\'s or Kage\'s me
   mkdirSync(`${t.dir}/other`)
   symlinkSync(t.own, `${t.dir}/other/memory`)
   assert.deepEqual(t.m.notes('other'), [])
-  // The kagelet's own folder as a link out is refused too, so nothing is made inside it.
   symlinkSync(t.owner, `${t.dir}/third`)
   assert.match(t.m.propose('third', P, 'C1:5.5'), /not proposed/)
   assert.deepEqual(readdirSync(t.owner), ['secret.md'])

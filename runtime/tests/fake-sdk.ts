@@ -1,8 +1,3 @@
-// Test helper, not a test: the fake Agent SDK the runner tests (sdk-sessions, chains) drive.
-// A fake Agent SDK: each query() records its options and the user messages it reads, and the test
-// pushes SDK messages out of it. Its handshake completes unless silent, and then it says nothing
-// until it has a prompt, as the real one may. end() makes the Claude
-// process exit on its own.
 export function fakeSdk(o: { silent?: boolean } = {}) {
   const runs: { options: any; said: string[]; uuids: (string | undefined)[]; emit: (m: object) => void; end: () => void; closed: boolean; set: object[] }[] = []
   const query = ({ prompt, options }: { prompt: AsyncIterable<any>; options: any }) => {

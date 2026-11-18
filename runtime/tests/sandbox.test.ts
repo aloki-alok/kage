@@ -1,6 +1,3 @@
-// A real Claude Code session with the settings every Kage session starts with (runtime/path-guards.ts protectConfig): the writes and
-// reads a session must not make fail on the disk, and the ones it may make succeed. It runs a real model on the smallest
-// tier, a few cents. Skipped unless KAGE_LIVE_TESTS=1 (see CONTRIBUTING.md), and then only when this machine has no OS sandbox or no claude command.
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { execFileSync } from 'node:child_process'
@@ -18,8 +15,6 @@ const claude = which('claude')
 const sandboxed = process.platform === 'darwin' ? existsSync('/usr/bin/sandbox-exec') : !!which('bwrap')
 const skip = process.env.KAGE_LIVE_TESTS !== '1' ? 'set KAGE_LIVE_TESTS=1 to run: it calls a real model' : !claude ? 'no claude command' : !sandboxed ? 'no OS sandbox here' : false
 
-// A small model sometimes skips a step. The refusals are checked on every attempt, and an attempt whose control writes did not
-// happen proves nothing, so it is run again (up to 3 times) before the test fails.
 test('a sandboxed session cannot read tokens or write settings, session.env, kagelets or the hub code, and can write files/ and memory/', { skip, timeout: 600_000 }, async () => {
   for (let attempt = 1; attempt <= 3; attempt++) if (await session()) return
   assert.fail('the model never ran the control writes in 3 attempts')
@@ -33,9 +28,8 @@ async function session(): Promise<boolean> {
   writeFileSync(`${cfg}/env`, 'SLACK_BOT_TOKEN=xoxb-FAKE-ENV')
   writeFileSync(`${cfg}/config.json`, '{"version":1}')
   writeFileSync(`${cfg}/session.env`, 'export FAKE_SESSION_ENV=xoxb-FAKE-SESSIONENV')
-  writeFileSync(`${cfg}/afk.json`, '{}')   // any entry the folder holds at session start
+  writeFileSync(`${cfg}/afk.json`, '{}')
   writeFileSync(`${code}/hub.ts`, '// hub')
-  // The SSM relay (#161) lives in the config folder: a sandboxed shell must reach it, with a fake plugin that echoes.
   writeFileSync(`${root}/session-manager-plugin`, '#!/bin/sh\nexec cat\n', { mode: 0o755 })
   const relay = ssmRelay({ path: `${cfg}/ssm.sock`, plugin: `${root}/session-manager-plugin`, trusted: () => true, log: () => {} })
   const token = relay.issue('C1:5.5')!
@@ -64,18 +58,14 @@ async function session(): Promise<boolean> {
   assert.ok(!out.includes('FAKE-SECRET') && !out.includes('FAKE-ENV') && !out.includes('FAKE-SESSIONENV'), 'a token was read')
   assert.equal(readFileSync(`${cfg}/session.env`, 'utf8'), 'export FAKE_SESSION_ENV=xoxb-FAKE-SESSIONENV')
   assert.equal(readFileSync(`${cfg}/afk.json`, 'utf8'), '{}')
-  // Names the hub adopts at its next start when it finds them: absent now, so only a name on the list keeps them from being made.
   for (const f of ['kagelets', 'crons-import.json', 'threads.json', 'waha']) assert.ok(!existsSync(`${cfg}/${f}`), `${f} was created`)
   assert.equal(readFileSync(`${cfg}/config.json`, 'utf8'), '{"version":1}')
   assert.equal(readFileSync(`${code}/hub.ts`, 'utf8'), '// hub')
   assert.ok(!existsSync(`${code}/new.ts`))
-  // The controls ran, so the refusals above mean something.
   assert.equal(existsSync(`${work}/ssm.out`) ? readFileSync(`${work}/ssm.out`, 'utf8') : '', 'relay-ok\n', 'the sandboxed shell could not use the relay socket')
   return [`${cfg}/files/ok.txt`, `${cfg}/memory/ok.txt`, `${work}/ok.txt`].every(f => existsSync(f))
 }
 
-// The key proxy (#182): a held key is absent from a session's env, and the sandboxed shell still uses it through the hub's socket.
-// The session's env is the hub's env after hold(), as in sdk-sessions.ts, plus the proxy token and socket.
 test('a held key is not in a sandboxed session env, and curl through the key socket gets it used', { skip, timeout: 300_000 }, async () => {
   for (let attempt = 1; attempt <= 3; attempt++) if (await keysSession()) return
   assert.fail('the model never ran both commands in 3 attempts')
@@ -102,15 +92,13 @@ async function keysSession(): Promise<boolean> {
     },
   })
   try { for await (const _ of q); } finally { keys.close() }
-  if (!existsSync(`${work}/env.out`) || !existsSync(`${work}/keys.out`)) return false   // the commands did not run: try again
+  if (!existsSync(`${work}/env.out`) || !existsSync(`${work}/keys.out`)) return false
   assert.ok(!readFileSync(`${work}/env.out`, 'utf8').includes('fake-proxied-value-123'), 'a held key was in the session env')
   assert.equal(readFileSync(`${work}/keys.out`, 'utf8'), 'proxied:Bearer fake-proxied-value-123')
   assert.ok(!existsSync(`${work}/other.out`) || !readFileSync(`${work}/other.out`, 'utf8').includes('fake-proxied-value-123'), 'another host got the key')
   return true
 }
 
-// A tmux pane (#157) gets the same settings through paneArgs. The pane's shell unsets KAGE_SESSION first, as an attacker would,
-// and runs claude once (-p) instead of the interactive loop, so the check needs no screen to drive.
 const tmuxOk = !!which('tmux')
 test('a sandboxed tmux pane cannot write config.json or read secrets.json, even with KAGE_SESSION unset', { skip: skip || (!tmuxOk && 'no tmux'), timeout: 300_000 }, async () => {
   for (let attempt = 1; attempt <= 3; attempt++) if (await pane()) return
@@ -134,5 +122,5 @@ async function pane(): Promise<boolean> {
   assert.ok(existsSync(`${root}/done`), 'the pane never finished')
   assert.equal(readFileSync(`${cfg}/config.json`, 'utf8'), '{"version":1}')
   assert.ok(!existsSync(`${work}/secret.out`) || !readFileSync(`${work}/secret.out`, 'utf8').includes('FAKE-SECRET'), 'secrets.json was read')
-  return existsSync(`${cfg}/files/ok.txt`)   // the control write ran, so the refusals above mean something
+  return existsSync(`${cfg}/files/ok.txt`)
 }

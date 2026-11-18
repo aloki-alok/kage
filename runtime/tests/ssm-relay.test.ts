@@ -13,13 +13,11 @@ const logs: string[] = []
 const open: { close(): void }[] = []
 afterEach(() => { open.splice(0).forEach(r => r.close()) })
 
-// What aws hands the plugin for a host in some region, and the header line the stand-in sends for it.
 const call = (region = 'us-west-1', op = 'StartSession') => [
   JSON.stringify({ SessionId: 's-1', TokenValue: 'tv-secret', StreamUrl: `wss://ssmmessages.${region}.amazonaws.com/v1/data-channel/s-1` }),
   region, op, '', JSON.stringify({ Target: ID, DocumentName: 'AWS-StartSSHSession', Parameters: { portNumber: ['22'] } }), `https://ssm.${region}.amazonaws.com`]
 const header = (token: string, args = call()) => JSON.stringify({ token, args })
 
-// A fake real plugin that records its arguments, then echoes stdin to stdout like a tunnel to an echo server.
 function setup(o: { max?: number; trusted?: (k: string) => boolean; plugin?: string | undefined } = {}) {
   const dir = mkdtempSync(join(tmpdir(), 'kage-ssm-'))
   const plugin = join(dir, 'session-manager-plugin')
@@ -30,7 +28,6 @@ function setup(o: { max?: number; trusted?: (k: string) => boolean; plugin?: str
   open.push(relay)
   return { dir, sock, relay, args: () => existsSync(join(dir, 'args')) ? readFileSync(join(dir, 'args'), 'utf8').trim().split('\n').filter(Boolean).map(l => JSON.parse(l) as string[]) : [] }
 }
-// Connect, send a header line, and return the socket with a reader for what comes back.
 async function client(sock: string, header: string) {
   const s = await new Promise<ReturnType<typeof connect>>((ok, no) => { const c = connect(sock, () => ok(c)); c.on('error', no) })
   let buf = ''
@@ -113,17 +110,17 @@ describe('the SSM relay', () => {
     const store = openStore(':memory:')
     store.setTrust('C9:1.1', false)
     const t = setup({ trusted: k => store.relayOk(k) })
-    assert.equal(t.relay.issue('C9:1.1'), undefined)               // teammate thread, not listed
+    assert.equal(t.relay.issue('C9:1.1'), undefined)
     store.setRelayAllow('C9:1.1', true)
-    assert.equal(t.relay.issue('C9:1.1#side-kagelet-mon'), undefined)   // a lane of a listed thread
+    assert.equal(t.relay.issue('C9:1.1#side-kagelet-mon'), undefined)
     const token = t.relay.issue('C9:1.1')!
     assert.ok(token)
     const ok = await client(t.sock, header(token))
     assert.match(await ok.until(/^ok\n/), /^ok\n/)
     ok.s.end()
     store.setRelayAllow('C9:1.1', false)
-    assert.equal(t.relay.issue('C9:1.1'), undefined)               // no new token
-    const c = await client(t.sock, header(token))                  // the old token fails at connect
+    assert.equal(t.relay.issue('C9:1.1'), undefined)
+    const c = await client(t.sock, header(token))
     assert.match(await c.until(/\n/), /^error: /)
   })
   test('a dropped session token stops working', async () => {
@@ -150,7 +147,6 @@ describe('the SSM relay', () => {
   })
 })
 
-// The stand-in aws finds first on a session's PATH: session-manager-plugin <response> <region> StartSession <profile> <parameters> <endpoint>.
 const SHIM = join(import.meta.dirname, '../../cli/ssm-plugin-shim/session-manager-plugin')
 describe('the stand-in session-manager-plugin', () => {
   const run = (args: string[], env: Record<string, string>, input = '') => new Promise<{ out: string; err: string; code: number | null }>(ok => {

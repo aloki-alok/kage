@@ -13,15 +13,15 @@ const fresh = () => {
 test('undo puts the memory back exactly as the snapshot had it, and keeps what the dream wrote', () => {
   const dir = fresh()
   const snap = snapshotMemory(dir, Date.parse('2026-11-09T21:00:00Z'))
-  writeFileSync(`${dir}/a.md`, 'merged a')                         // the dream edits
-  writeFileSync(`${dir}/b.md`, 'new b')                            // and adds
+  writeFileSync(`${dir}/a.md`, 'merged a')
+  writeFileSync(`${dir}/b.md`, 'new b')
   mkdirSync(`${dir}/.archive`, { recursive: true })
   const back = undoToSnapshot(dir, Date.parse('2026-11-10T08:00:00Z'))
   assert.equal(back, snap)
   assert.equal(readFileSync(`${dir}/a.md`, 'utf8'), 'old a')
   assert.equal(existsSync(`${dir}/b.md`), false)
   const undone = readdirSync(`${dir}/.archive`).find(n => n.startsWith('undone-'))!
-  assert.equal(readFileSync(`${dir}/.archive/${undone}/b.md`, 'utf8'), 'new b')   // nothing is lost
+  assert.equal(readFileSync(`${dir}/.archive/${undone}/b.md`, 'utf8'), 'new b')
 })
 test('snapshots skip the archive, and undo with no snapshot changes nothing', () => {
   const dir = fresh()

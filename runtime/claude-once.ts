@@ -1,6 +1,3 @@
-// One isolated `claude -p` answer, for the guards and stand-ins that must not see Kage's setup: no MCP, no
-// settings (so no CLAUDE.md, hooks or allow rules), nothing saved. In -p mode a read outside cwd is denied
-// (tested 2026-11-03), so read-only tools reach only the folder given. Killed after 2 minutes, or timeoutMs.
 import { spawn } from 'node:child_process'
 import { mkdirSync } from 'node:fs'
 
@@ -16,7 +13,6 @@ export function claudeOnce(o: { model: string; system: string; prompt: string; c
   })
 }
 
-// An empty folder in Kage's config folder, so a guard's Claude finds no CLAUDE.md or project memory.
 export function emptyRoom(configDir: string): string {
   const room = `${configDir}/standin`
   mkdirSync(room, { recursive: true, mode: 0o700 })

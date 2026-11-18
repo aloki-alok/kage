@@ -1,6 +1,3 @@
-// When the safety check stops a turn (core/blocks.ts): the thread starts over on a new session, since the old one
-// stays flagged. A teammate's thread closes to teammates, side lanes included, until the owner writes in it.
-// The closed threads live in the store, so a hub restart keeps them closed.
 import { log } from './log.ts'
 import { answersInThread, blockedTask, OFF_LIMITS, planBlock } from '../core/blocks.ts'
 import { senderOf } from '../core/gate.ts'
@@ -11,8 +8,8 @@ const CLOSED = 'closed-threads'
 
 export function closedThreads(o: {
   store: Pick<Store, 'load' | 'save' | 'forget'>
-  reset: (key: string) => void                       // Dispatcher.reset: close the session, forget its id
-  say: (key: string, t: Task, text: string) => void   // a line in the task's Slack thread, as Kage
+  reset: (key: string) => void
+  say: (key: string, t: Task, text: string) => void
   tellOwner: (text: string) => void
 }) {
   const closed = () => new Set((o.store.load(CLOSED) as string[] | undefined) ?? [])
@@ -33,9 +30,7 @@ export function closedThreads(o: {
       if (p.reply && t) o.say(key, t, p.reply)
       if (p.dm) o.tellOwner(p.dm)
     },
-    // A thread the safety check closed, for a caller that must not hand it a task at all.
     isClosed: (key: string) => closed().has(threadOf(key)),
-    // true: the task is dropped. The owner's task reopens the thread instead, but not a schedule set up before it closed.
     closedTo(key: string, t: Task): boolean {
       const thread = threadOf(key)
       if (!closed().has(thread)) return false

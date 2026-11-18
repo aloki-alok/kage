@@ -1,5 +1,3 @@
-// The hub's timed work in one place: each job runs on its own period from one clock. A job that
-// fails is logged and tried again next period; an async job still running is not started again.
 import { log } from './log.ts'
 
 export type Job = { name: string; every: number; run: (now: number) => void | Promise<void> }
@@ -24,7 +22,6 @@ export function jobRunner(jobs: Job[], start: number, onError = (name: string, e
   }
 }
 
-// One clock for every job. Ten seconds is fine enough for the shortest period (schedules, 20 s).
 export function runJobs(jobs: Job[]) {
   const runner = jobRunner(jobs, Date.now())
   return setInterval(() => runner.tick(Date.now()), 10_000)

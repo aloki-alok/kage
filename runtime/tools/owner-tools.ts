@@ -1,4 +1,3 @@
-// Tools only the owner's own Slack task may use: send the meeting bot into a call, and change a setting.
 import { z } from 'zod'
 import { settingTier } from '../../core/config.ts'
 import type { KageTool, ToolContext } from '../kage-tools.ts'
@@ -6,7 +5,6 @@ import type { KageTool, ToolContext } from '../kage-tools.ts'
 export function ownerTools(c: ToolContext): KageTool[] {
   const { o, Title, s, ownerActs, name } = c
   const tools: KageTool[] = []
-  // Only the owner's own Slack task sends the bot into a call: never a teammate, an agent, a voice call or a kagelet.
   const meetbot = o.meetbot
   if (meetbot && !name && !o.dreaming) tools.push({
     name: 'meeting_join',
@@ -19,8 +17,6 @@ export function ownerTools(c: ToolContext): KageTool[] {
       return why ? { isError: true, text: `meeting bot: ${why}` } : { text: 'The meeting bot is joining. Tell the owner the host may need to admit it.' }
     },
   })
-  // The owner's own task may change a setting here, and no other tool changes config.json: the file tools are closed to every session
-  // (runtime/path-guards.ts protectConfig). A safe key applies; one that grants power waits for the owner's yes on a card.
   if (!name && o.settings) tools.push({
     name: 'set_setting',
     description: `Change one ${Title} setting when the owner's own task asks for it: key is the dotted path in config.json (kagelets.dailyUsd, afk.model, connectors.voice.port) and value is JSON. Limits, models, AFK, Jev thresholds, ports and the browser block list apply at once. Anything that grants power (people, a command, a connector on, harness) puts a card in front of the owner first, and nothing changes without their yes. Tokens are never settable.`,
@@ -33,7 +29,6 @@ export function ownerTools(c: ToolContext): KageTool[] {
     async run(args) {
       const a = args as { channel: string; thread_ts: string; key: string; value: unknown }
       if (!ownerActs(a)) return { isError: true, text: "refused: only the owner's own task may change a setting" }
-      // Lower catches more of an agent's posts as risky, so a session may not loosen it past 0.3.
       if (a.key === 'jev.threshold' && !(typeof a.value === 'number' && a.value >= 0.3)) return { isError: true, text: 'refused: jev.threshold must be a number of 0.3 or more' }
       const tier = settingTier(a.key)
       if (tier === 'never') return { isError: true, text: `refused: ${a.key} is not a setting a session may change` }

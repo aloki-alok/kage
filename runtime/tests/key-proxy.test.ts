@@ -10,7 +10,6 @@ const open: { close(): void }[] = []
 afterEach(() => { open.splice(0).forEach(r => r.close()) })
 
 type Call = { url: string; init: RequestInit }
-// A fake upstream: records what the hub would send over the network, and answers 201.
 function setup(trusted = (_k: string) => true) {
   const calls: Call[] = []
   const sock = join(mkdtempSync(join(tmpdir(), 'kage-keys-')), 'keys.sock')
@@ -45,7 +44,7 @@ describe('the key proxy', () => {
     assert.equal(sent(t.calls[0]!).get('x-api-key'), 'fake-key-1')
     assert.equal(sent(t.calls[0]!).get('x-keep'), 'yes')
     assert.ok(!JSON.stringify([...sent(t.calls[0]!)]).includes('fake-key-2'), 'the other host key leaked')
-    assert.equal(t.calls[0]!.init.redirect, 'manual')   // a redirect never carries the key to another host
+    assert.equal(t.calls[0]!.init.redirect, 'manual')
   })
   test('another host is refused and nothing is fetched', async () => {
     const t = setup()

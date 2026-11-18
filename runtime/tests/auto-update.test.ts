@@ -12,9 +12,7 @@ const commit = (cwd: string, file: string) => {
   git(cwd, 'add', file)
   git(cwd, '-c', 'user.name=t', '-c', 'user.email=t@example.com', 'commit', '-qm', file)
 }
-// The owner moves the stable tag by hand: forced, annotated like a release would be.
 const stable = (origin: string, at = 'HEAD') => git(origin, '-c', 'user.name=t', '-c', 'user.email=t@example.com', 'tag', '-f', '-a', '-m', 'stable', 'stable', at)
-// An origin with one commit on main, tagged stable, and a checkout of it.
 function repos() {
   const root = mkdtempSync(join(tmpdir(), 'kage-update-'))
   const origin = join(root, 'origin'), local = join(root, 'local')
@@ -34,7 +32,6 @@ test('a clean main fast-forwards to the stable tag, never past it to origin/main
   assert.equal(await pullMain(local), 'pulled')
   assert.equal(git(local, 'rev-parse', 'HEAD'), tagged)
   assert.equal(await pullMain(local), 'current')
-  // The owner moves the tag on, as the documented push does (a lightweight tag): the next run follows it.
   git(origin, 'tag', '-d', 'stable')
   git(origin, 'update-ref', 'refs/tags/stable', 'HEAD')
   assert.equal(await pullMain(local), 'pulled')
@@ -123,10 +120,9 @@ test('the hub after an update tells the owner once, with the compare link', () =
   const dir = mkdtempSync(join(tmpdir(), 'kage-dir-'))
   git(local, 'remote', 'set-url', 'origin', 'https://github.com/acme/kage.git')
   markUpdatedFrom(dir, 'aaa1111 (2026-01-01)')
-  markUpdatedFrom(dir, 'bbb2222 (2026-01-02)')   // a second pull before the restart keeps the first version
+  markUpdatedFrom(dir, 'bbb2222 (2026-01-02)')
   assert.equal(updatedNote(dir, local, 'ccc3333 (2026-01-03)'),
     'Updated Kage from aaa1111 (2026-01-01) to ccc3333 (2026-01-03). <https://github.com/acme/kage/compare/aaa1111...ccc3333|What changed>')
-  // Not sent yet: the next start tries again. Sent: never again.
   assert.match(updatedNote(dir, local, 'ccc3333 (2026-01-03)') ?? '', /^Updated Kage from aaa1111/)
   clearUpdatedFrom(dir)
   assert.equal(updatedNote(dir, local, 'ccc3333 (2026-01-03)'), undefined)

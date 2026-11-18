@@ -53,7 +53,7 @@ describe('approvals that wait outside a session', () => {
     assert.equal(a.answer('abcde', 'allow', 7 * 24 * HOUR), undefined)
     assert.equal(a.take('CTEST1:5.5', 'Bash', { command: 'ls' }, 7 * 24 * HOUR + 1), false)
     a.add(call, 0)
-    a.add({ ...call, id: 'fghij' }, 7 * 24 * HOUR)   // an add sweeps the old row
+    a.add({ ...call, id: 'fghij' }, 7 * 24 * HOUR)
     assert.equal(a.answer('abcde', 'deny', 7 * 24 * HOUR + 1), undefined)
     assert.equal(a.answer('fghij', 'deny', 7 * 24 * HOUR + 1)?.tool, 'Bash')
   })

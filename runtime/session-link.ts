@@ -1,5 +1,3 @@
-// The local socket the thread sessions connect to. Newline-delimited JSON; the socket file is
-// private to this user.
 import { chmodSync, mkdirSync, readdirSync, readFileSync, rmSync, unlinkSync, writeFileSync } from 'node:fs'
 import { createServer } from 'node:net'
 import type { ProbeArg } from './probe-jobs.ts'
@@ -15,16 +13,12 @@ import type { scheduler } from './scheduler.ts'
 
 type Replies = { mail: (key: string, text: string) => void; wa: (key: string, text: string) => void; voice: (key: string, text: string) => void }
 
-// An email, WhatsApp or voice reply from a session goes only to that session's own thread or chat.
-// WhatsApp sends also pass the guard downstream.
 export function routeReply(key: string, m: { type: 'mail' | 'wa' | 'voice'; text: string }, o: Replies) {
   if (m.type === 'mail' && key.startsWith('mail:')) o.mail(key, m.text)
   else if (m.type === 'wa' && key.startsWith('wa:')) o.wa(key, m.text)
   else if (m.type === 'voice' && key.startsWith('voice:')) o.voice(key, m.text)
 }
 
-// A thread a terminal holds (kage attach) is a file in held/ naming the attach process, so a hold
-// outlives a hub restart: the new hub holds the thread again before any task can start it.
 const holdFile = (dir: string, key: string) => join(dir, 'held', encodeURIComponent(key))
 const holderOf = (dir: string, key: string) => { try { return Number(readFileSync(holdFile(dir, key), 'utf8')) } catch { return 0 } }
 const alive = (pid: number) => {
@@ -33,7 +27,6 @@ const alive = (pid: number) => {
 }
 const heldKeys = (dir: string) => { try { return readdirSync(join(dir, 'held')).map(decodeURIComponent) } catch { return [] } }
 
-// At hub start, before any connector runs: hold again every thread whose terminal still runs.
 export function restoreHolds(dir: string, d: Dispatcher<ToSession>) {
   for (const key of heldKeys(dir)) {
     if (alive(holderOf(dir, key)) && 'id' in d.hold(key)) continue
@@ -41,43 +34,33 @@ export function restoreHolds(dir: string, d: Dispatcher<ToSession>) {
   }
 }
 
-// failed: tasks that waited on a held thread and could not start when it came back.
 export function listenForSessions(path: string, d: Dispatcher<ToSession>, o: Replies & {
   failed: (m: ToSession) => void
   schedules: Pick<ReturnType<typeof scheduler>, 'add' | 'remove'>
   callCode?: () => string
-  // kage tell: the owner's words into one thread, as a task (hub/router.ts decides how).
   tell?: (key: string, text: string) => { ok: true; held?: true } | { refused: string }
-  // kage say: the owner's words posted to Slack as them, a new DM with Kage or a reply in a thread (hub/owner-commands.ts).
   say?: (text: string, at?: { channel: string; thread_ts: string }) => Promise<{ ok: true; channel: string; ts: string } | { refused: string }>
-  // kage relay: change or read the SSM relay's allow list (hub/router.ts decides what may be listed).
   relay?: (action: string, key?: string) => { ok: true; keys: string[] } | { refused: string }
-  // kage reload: read the settings file again (core/settings.ts).
   reload?: () => Reloaded
-  // The usage-limit pause, when one is on (runtime/limit-pause.ts): kage status and kage list show it.
   paused?: () => { until: number; held: number } | undefined
   limitCounts?: () => LimitCounts
-  // kage restart and kage stop: take no new turns for a while, and name each thread still running.
   quiesce?: () => { key: string; why: string }[]
-  // kage stop <thread>: end one session after its turn, or now; the answer to print.
   end?: (key: string, cut: boolean) => string
-  // kage top's kagelets panel: run, pause, resume or remove one through the manager; the answer to print.
   kagelet?: (action: PanelAction, name: string) => Promise<string>
 }) {
   try { unlinkSync(path) } catch {}
   const dir = dirname(path)
-  const owned = new Set<string>()   // holds with a terminal connected right now
+  const owned = new Set<string>()
   const free = (key: string) => {
     rmSync(holdFile(dir, key), { force: true })
     d.release(key, Date.now()).forEach(o.failed)
   }
-  // A hold restored at start whose terminal never came back ends when that process is gone.
   setInterval(() => {
     for (const key of heldKeys(dir)) if (!owned.has(key) && !alive(holderOf(dir, key))) free(key)
   }, 5000).unref()
   const server = createServer(sock => {
     let key = ''
-    let held = ''   // a terminal (kage attach) holding this thread; the hold ends when it disconnects
+    let held = ''
     let buf = ''
     const send = (m: ToSession) => sock.write(JSON.stringify(m) + '\n')
     sock.on('data', chunk => {
@@ -87,11 +70,10 @@ export function listenForSessions(path: string, d: Dispatcher<ToSession>, o: Rep
         buf = buf.slice(i + 1)
         let m: Partial<FromSession> & { key?: unknown; id?: unknown; text?: unknown; pid?: unknown; name?: unknown }
         try { m = JSON.parse(line) } catch { continue }
-        if (!m || typeof m !== 'object') continue   // a bare null or number must not take the hub down
+        if (!m || typeof m !== 'object') continue
         if (m.type === 'hold' && !key && !held && typeof m.key === 'string') {
           const pid = typeof m.pid === 'number' ? m.pid : 0
           let r = d.hold(m.key)
-          // The terminal that held it before a hub restart takes its hold back.
           if ('refused' in r && r.refused === 'held' && !owned.has(m.key) && alive(pid) && holderOf(dir, m.key) === pid) r = { id: d.saved()[m.key]! }
           if ('id' in r) {
             held = m.key
@@ -101,7 +83,6 @@ export function listenForSessions(path: string, d: Dispatcher<ToSession>, o: Rep
           }
           sock.write(JSON.stringify({ type: 'hold', ...r }) + '\n')
         } else if (m.type === 'board' && !key && !held) {
-          // The console's view of live state, which exists only in this process.
           const paused = o.paused?.()
           const limitCounts = o.limitCounts?.()
           sock.write(JSON.stringify({ type: 'board', ...d.status(Date.now()), ...(paused && { paused }), ...(limitCounts && { limitCounts }) }) + '\n')
@@ -110,19 +91,14 @@ export function listenForSessions(path: string, d: Dispatcher<ToSession>, o: Rep
         } else if (m.type === 'quiesce' && !key && !held && o.quiesce) {
           sock.write(JSON.stringify({ type: 'quiesce', waiting: o.quiesce() }) + '\n')
         } else if (m.type === 'reload' && !key && !held) {
-          // It only reads the file that already decides the next start, so it gives a session no new power.
           sock.write(JSON.stringify({ type: 'reload', ...(o.reload?.() ?? { refused: 'this hub cannot reload' }) }) + '\n')
         } else if (m.type === 'callcode' && !key && !held) {
-          // A one-time code for a call Kage places to the owner (kage call); only someone on this machine reaches the socket.
           const code = o.callCode?.()
           sock.write(JSON.stringify({ type: 'callcode', ...(code ? { code } : { refused: 'voice is off' }) }) + '\n')
         } else if (m.type === 'tell' && !key && !held && typeof m.key === 'string' && typeof m.text === 'string') {
-          // Speaks as the owner. A session's hello'd socket cannot; its Bash can open a new one, the same limit as
-          // core/guards.ts (stops mistakes, not a determined session). kage tell refuses inside a session.
           const r = !m.text.trim() ? { refused: 'empty message' } : o.tell?.(m.key, m.text.trim()) ?? { refused: 'this hub cannot take messages' }
           sock.write(JSON.stringify({ type: 'tell', ...r }) + '\n')
         } else if (m.type === 'say' && !key && !held && typeof m.text === 'string') {
-          // An app on this Mac: the owner's words posted to Slack as them, then run as their task. Same limit as tell.
           const at = m as { channel?: unknown; thread_ts?: unknown }
           const answer = (r: object) => sock.write(JSON.stringify({ type: 'say', ...r }) + '\n')
           const text = m.text.trim()
@@ -131,11 +107,9 @@ export function listenForSessions(path: string, d: Dispatcher<ToSession>, o: Rep
           else if (!o.say) answer({ refused: 'this hub cannot post' })
           else void o.say(text, typeof at.channel === 'string' ? { channel: at.channel, thread_ts: at.thread_ts as string } : undefined).then(answer)
         } else if (m.type === 'relay' && !key && !held) {
-          // Owner only, like tell: a session's own hello'd socket cannot. Same limit as tell (core/guards.ts).
           const r = typeof m.action === 'string' && ['allow', 'deny', 'list'].includes(m.action) ? o.relay?.(m.action, typeof m.key === 'string' ? m.key : undefined) ?? { refused: 'this hub has no relay' } : { refused: 'use allow, deny or list' }
           sock.write(JSON.stringify({ type: 'relay', ...r }) + '\n')
         } else if (m.type === 'kagelet' && !key && !held && typeof m.name === 'string') {
-          // Only the panel's actions: saving a kagelet file stays with Kage's tool and the owner's editor.
           const action = (m as { action?: unknown }).action as PanelAction
           const answer = (r: { text: string } | { refused: string }) => sock.write(JSON.stringify({ type: 'kagelet', ...r }) + '\n')
           if (!Object.values(PANEL_KEYS).includes(action)) answer({ refused: `kage top runs, pauses, resumes or removes a kagelet, or revokes the standing approval, not ${String(action)}` })
@@ -151,14 +125,12 @@ export function listenForSessions(path: string, d: Dispatcher<ToSession>, o: Rep
         } else if ((m.type === 'mail' || m.type === 'wa' || m.type === 'voice') && key && typeof m.text === 'string') {
           routeReply(key, { type: m.type, text: m.text }, o)
         } else if (m.type === 'schedule' && key) {
-          // Always for the session's own thread, whatever the message says.
           const j = m as Partial<{ id: string; cron: string; prompt: string; recurring: boolean; lane: boolean; probe: ProbeArg; shadow: { of: string; live: string } }>
           if (typeof j.id === 'string' && typeof j.cron === 'string' && typeof j.prompt === 'string') {
             const no = o.schedules.add(key, { id: j.id, cron: j.cron, prompt: j.prompt, recurring: j.recurring !== false, ...(typeof j.lane === 'boolean' && { lane: j.lane ? true as const : undefined }), ...(j.probe && { probe: j.probe }), ...(typeof j.shadow?.of === 'string' && typeof j.shadow.live === 'string' && { shadow: { of: j.shadow.of, live: j.shadow.live } }) }, Date.now())
             if (no) log('schedule refused', key, no)
           }
         } else if (m.type === 'unschedule' && key && typeof m.id === 'string') {
-          // A job lane only gets job runs, which read outside text: they never cancel a job (the tool's own rule, by key here).
           if (isJobLane(key)) log('unschedule refused in a job lane', key); else o.schedules.remove(key, m.id)
         }
       }

@@ -33,9 +33,8 @@ test('a terminal holds a thread for as long as it stays connected, then hands it
   assert.deepEqual(started, [])
   c.end()
   await until(() => started.length > 0)
-  assert.deepEqual(started, ['A'])   // released on close: the waiting task starts the session again
+  assert.deepEqual(started, ['A'])
 
-  // An unknown thread is refused, and nothing is held for it.
   const c2 = connect(sock)
   let r2 = ''
   c2.on('data', b => { r2 += b })
@@ -66,24 +65,21 @@ test('a hold outlives a hub restart: the new hub holds the thread before any tas
     return { c, reply: JSON.parse(r) }
   }
 
-  // What a crashed hub leaves: a hold by this test process (playing the terminal, so alive) and one
-  // whose terminal is gone.
   mkdirSync(join(dir, 'held'))
   writeFileSync(join(dir, 'held', encodeURIComponent('A')), String(process.pid))
   writeFileSync(join(dir, 'held', encodeURIComponent('B')), '999999999')
 
-  // The restarted hub restores holds before anything else runs.
   const two = hub()
   restoreHolds(dir, two.d)
   assert.equal(two.d.task('A', task('during restart'), 0), 'held')
-  assert.equal(two.d.task('B', task('b'), 0), 'starting')   // the dead terminal's hold was dropped
+  assert.equal(two.d.task('B', task('b'), 0), 'starting')
   const s2 = listenForSessions(sock, two.d, { mail: () => {}, wa: () => {}, voice: () => {}, failed: () => {}, schedules: { add: () => undefined, remove: () => {} } })
   await until(() => s2.listening)
   const other = await ask('A', 12345)
-  assert.equal(other.reply.refused, 'held')   // another terminal may not take it
+  assert.equal(other.reply.refused, 'held')
   other.c.end()
   const again = await ask('A', process.pid)
-  assert.equal(again.reply.id, 'id1')                             // the same terminal reclaims it
+  assert.equal(again.reply.id, 'id1')
   again.c.end()
   await until(() => two.started.includes('A'))
   assert.ok(!existsSync(join(dir, 'held', 'A')))
@@ -168,7 +164,6 @@ test('the console reads the live board and stops a quiet session over the socket
   assert.deepEqual(await ask({ type: 'stop', key: 'A' }), { type: 'stop', ok: true })
   assert.deepEqual(stopped, ['A'])
   assert.deepEqual(await ask({ type: 'stop', key: 'A' }), { type: 'stop', refused: 'closed' })
-  // A thread's own session may not close another one.
   await ask({ type: 'stop', key: 'B' }, 'B')
   assert.deepEqual(stopped, ['A'])
   server.close()
@@ -200,7 +195,6 @@ test('the console tells a thread something as the owner, and a session cannot', 
   assert.deepEqual(told, [['A', 'use the staging db']])
   assert.deepEqual(await ask({ type: 'tell', key: 'Z', text: 'hi' }), { type: 'tell', refused: 'no thread with that key' })
   assert.deepEqual(await ask({ type: 'tell', key: 'A', text: '   ' }), { type: 'tell', refused: 'empty message' })
-  // A thread's own session may not speak as the owner in another thread.
   await ask({ type: 'tell', key: 'A', text: 'from a session' }, 'B')
   assert.deepEqual(told, [['A', 'use the staging db']])
   server.close()
@@ -257,7 +251,6 @@ test('kage top runs, pauses, resumes and removes a kagelet through the manager; 
     c.end()
     return r ? JSON.parse(r) : undefined
   }
-  // finally: an open server keeps the test process alive, so a failed assertion would hang instead of failing.
   try {
     for (const action of ['run', 'pause', 'resume', 'remove', 'revoke']) assert.deepEqual(await ask({ type: 'kagelet', action, name: 'deploys' }), { type: 'kagelet', text: `deploys: ${action} done` })
     assert.deepEqual(await ask({ type: 'kagelet', action: 'save', name: 'deploys' }), { type: 'kagelet', refused: 'kage top runs, pauses, resumes or removes a kagelet, or revokes the standing approval, not save' })
@@ -398,7 +391,7 @@ test('the console lists, allows and denies relay threads, and a session cannot',
   assert.deepEqual(await ask({ type: 'relay', action: 'allow', key: 'A' }), { type: 'relay', ok: true, keys: ['A'] })
   assert.deepEqual(await ask({ type: 'relay', action: 'list' }), { type: 'relay', ok: true, keys: ['A'] })
   assert.equal((await ask({ type: 'relay', action: 'wipe', key: 'A' })).refused !== undefined, true)
-  await ask({ type: 'relay', action: 'allow', key: 'B' }, 'B')   // a thread's own session may not allow itself
+  await ask({ type: 'relay', action: 'allow', key: 'B' }, 'B')
   assert.deepEqual(calls, ['allow A', 'list '])
   server.close()
 })

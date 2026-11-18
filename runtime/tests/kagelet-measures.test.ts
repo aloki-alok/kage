@@ -21,7 +21,7 @@ test('the hub measures with no model on its clock; the run reads the number and 
   const t = setup()
   const cmd = t.script('echo "value: 320"')
   await t.m.tick([kagelet(cmd)], 0)
-  await t.m.tick([kagelet(cmd)], 30 * 60_000)                    // inside the hour: no new measure
+  await t.m.tick([kagelet(cmd)], 30 * 60_000)
   assert.equal(t.m.readings('fude').length, 1)
   await t.m.tick([kagelet(cmd)], 61 * 60_000)
   assert.deepEqual(t.m.readings('fude').map(r => r.value), [320, 320])
@@ -53,13 +53,13 @@ test('a measure Kage wrote runs only after the owner said yes to that exact comm
   assert.equal(t.m.approve('fude', cmd), undefined)
   await t.m.tick([kagelet(cmd, 'kage')], 61 * 60_000)
   assert.equal(t.m.readings('fude').at(-1)!.value, 7)
-  await t.m.tick([kagelet(`${cmd} --other`, 'kage')], 122 * 60_000)   // a new command needs a new yes
+  await t.m.tick([kagelet(`${cmd} --other`, 'kage')], 122 * 60_000)
   assert.match(t.m.readings('fude').at(-1)!.failed!, /owner has not approved/)
   assert.equal(t.m.approved('fude'), cmd)
-  writeFileSync(cmd, '#!/bin/sh\necho "value: 9000"\n')               // the approved script changed under the pin
+  writeFileSync(cmd, '#!/bin/sh\necho "value: 9000"\n')
   await t.m.tick([kagelet(cmd, 'kage')], 183 * 60_000)
   assert.match(t.m.readings('fude').at(-1)!.failed!, /changed/)
-  assert.equal(t.m.approved('fude'), undefined)                         // so Kage's next save asks the owner again
+  assert.equal(t.m.approved('fude'), undefined)
 })
 
 test('a measure in the owner\'s own file runs with no card, pinned too: a kagelet\'s shell cannot swap the script the hub runs', async () => {
@@ -69,14 +69,14 @@ test('a measure in the owner\'s own file runs with no card, pinned too: a kagele
   writeFileSync(cmd, '#!/bin/sh\necho "value: 9000"\n')
   await t.m.tick([kagelet(cmd)], 61 * 60_000)
   assert.match(t.m.readings('fude').at(-1)!.failed!, /changed/)
-  assert.equal(t.m.approved('fude'), undefined)                         // the owner's yes on a card brings it back
+  assert.equal(t.m.approved('fude'), undefined)
 })
 
 test('a new measure starts a new trend, and a removed kagelet leaves no approval or readings behind', async () => {
   const t = setup()
   const a = t.script('echo "value: 7"'), b = t.script('echo "value: 300"')
   await t.m.tick([kagelet(a)], 0)
-  await t.m.tick([kagelet(b)], 1)                                         // a new command measures at once
+  await t.m.tick([kagelet(b)], 1)
   assert.deepEqual(t.m.readings('fude').map(r => r.value), [300])
   t.m.forget('fude')
   assert.deepEqual(t.m.readings('fude'), [])
