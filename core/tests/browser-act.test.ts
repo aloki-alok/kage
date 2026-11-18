@@ -54,6 +54,12 @@ test('a link says on the card and in the snapshot which site it opens', () => {
   assert.match(elementsResult(page([el]), []), /^\[5\] link "Unsubscribe" -> evil\.example$/m)
 })
 
+test('a role-less row is judged by its name, like a button', () => {
+  const row = (name: string) => ({ ref: 1, role: 'element', name })
+  for (const n of ['Send', 'Delete', 'Asha Rao Please send the invoice']) assert.ok(majorAct({ action: 'click', ref: 1 }, row(n)), n)
+  assert.equal(majorAct({ action: 'click', ref: 1 }, row('Asha Rao Are you free today?')), undefined)
+})
+
 test('a step is major when it spends, deletes, sends as the owner, grants access or ships', () => {
   const el = (name: string) => ({ ref: 1, role: 'button', name })
   for (const n of ['Pay now', 'Buy', 'Delete project', 'Send', 'Post', 'Allow', 'Reinstall to Workspace', 'Authorize', 'Merge pull request', 'Deploy', 'Invite people', 'Confirm transfer'])
