@@ -15,7 +15,7 @@ test('spend and turns per day, spend per connector, runs, refusals, turn time an
       { at: now - 1000, key: 'C0TEST1:1.1', usd: 1.5 },
       { at: now - 2000, key: 'mail:<a@x>', usd: 0.5 },
       { at: now - DAY, key: 'C0TEST1:1.1#side-kagelet-deploys', usd: 2 },
-      { at: now - 5 * DAY, key: 'C0TEST1:1.1', usd: 99 },   // outside the window
+      { at: now - 5 * DAY, key: 'C0TEST1:1.1', usd: 99 },
     ],
     events: [
       ev(now - 60_000, 'run.start', 't1'), ev(now - 30_000, 'run.end', 't1'),

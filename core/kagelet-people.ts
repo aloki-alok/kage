@@ -1,5 +1,3 @@
-// Who may ask a kagelet for work (ADR 0018 rule 0): its people line, and its owners line (kagelets.ownersMax caps it on save).
-// Each is one line of Slack member ids: the front matter map keeps only the last of two, so a second line is refused.
 import type { Kagelet } from './kagelets.ts'
 import { validUserId } from './registry.ts'
 
@@ -11,8 +9,6 @@ export function idLine(frontMatter: string, head: Map<string, string>, key: 'peo
   return list
 }
 
-// The kagelets that take asks in a thread: running, posting in exactly that thread, with a people or owners line.
-// With name and from, only that kagelet, and only when from is on one of those lines.
 export function askable(ks: Kagelet[], chat: string, thread: string, name?: string, from?: string): Kagelet[] {
   return ks.filter(k => !k.paused && (k.people || k.owners) && k.key.startsWith(`${chat}:${thread}#side-kagelet-`)
     && (name === undefined || (k.name === name && [...k.people ?? [], ...k.owners ?? []].includes(from ?? ''))))

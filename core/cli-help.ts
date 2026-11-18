@@ -1,6 +1,4 @@
-// Pure help for the kage command: the closest real command to a mistyped one.
 
-// Edits between two words, where two swapped letters count as one slip ("stauts" is one from "status").
 const distance = (a: string, b: string) => {
   const d = Array.from({ length: a.length + 1 }, (_, i) => Array.from({ length: b.length + 1 }, (_, j) => (i === 0 ? j : j === 0 ? i : 0)))
   for (let i = 1; i <= a.length; i++) {
@@ -12,7 +10,6 @@ const distance = (a: string, b: string) => {
   return d[a.length]![b.length]!
 }
 
-// The one name the word starts, else the nearest name within 2 edits. A tie or a wide miss gives nothing.
 export function suggest(word: string, names: string[]): string | undefined {
   const w = word.toLowerCase()
   const starts = names.filter(n => n.startsWith(w))

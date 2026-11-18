@@ -39,10 +39,10 @@ test('a line asks Kage only when it says the name as a word; Kage\'s own lines n
   assert.equal(ask('Kage, what is on the board today?'), 'Kage, what is on the board today?')
   assert.equal(ask('hey KAGE can you check the deploy'), 'hey KAGE can you check the deploy')
   assert.equal(ask('what do you think, kage?'), 'what do you think, kage?')
-  assert.equal(ask('Cage, are you there?'), 'Cage, are you there?')   // captions often hear the name as "cage"
+  assert.equal(ask('Cage, are you there?'), 'Cage, are you there?')
   for (const no of ['the kagelets ran fine', 'that bird cage is big', 'nothing here', 'Kaged'])
     assert.equal(ask(no), undefined, no)
-  assert.equal(ask('Kage, ping', 'You'), undefined)   // Meet labels the bot's own speech "You"
+  assert.equal(ask('Kage, ping', 'You'), undefined)
   assert.equal(askOf({ speaker: 'Jane', text: 'Kage, ping', self: true }, 'kage'), undefined)
 })
 
@@ -51,14 +51,14 @@ test('the task for a spoken question carries the recent lines as quoted data', (
   assert.match(t, /^Voice task \(a caller, not the owner, strict limits/)
   assert.match(t, /\n> Kim: I own the &lt;channel> deploy\n/)
   assert.match(t, /thread_ts "voice:meet-abc-defg-hij"/)
-  assert.doesNotMatch(t.split('\n').slice(1).join('\n'), /^[^>].*Kim:/m)   // no line of the call ever starts a line of the task
+  assert.doesNotMatch(t.split('\n').slice(1).join('\n'), /^[^>].*Kim:/m)
 })
 
 test("a caption rewrite of an asked question counts as the same question; a new one, or a short one, does not", () => {
   assert.equal(sameQuestion('Kage, what is the status of the launch?', 'Kage, what is the status of the launch'), true)
   assert.equal(sameQuestion('kage what is the status of the launch today', 'Kage, what is the status of the launch'), true)
   assert.equal(sameQuestion('Kage, and the budget?', 'Kage, what is the status of the launch'), false)
-  assert.equal(sameQuestion('Kage, what is the status of the launch', 'Kage?'), false)   // "Kage?" then a real question
+  assert.equal(sameQuestion('Kage, what is the status of the launch', 'Kage?'), false)
 })
 
 test('a meeting session key and its call id go both ways, and a phone call key is not a meeting', () => {

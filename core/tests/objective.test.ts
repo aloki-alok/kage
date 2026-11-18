@@ -33,7 +33,7 @@ test('every run reads the scoreboard: the objective, the number against its targ
   assert.match(met, /Two posts a week over 500 views/)
   assert.match(met, /640 \(target >= 500, met\)/)
   assert.match(met, /320, 510, 640/)
-  assert.match(met, /Keep working/)                      // a worker never goes quiet on a met target
+  assert.match(met, /Keep working/)
   assert.match(scoreboard(o, [{ at: 0, value: 120 }]), /120 \(target >= 500, not met\)/)
   assert.match(scoreboard(o, []), /not measured yet/)
   assert.match(scoreboard(o, [{ at: 0, value: 320 }, { at: 1, failed: 'exit 1' }]), /last measure failed \(exit 1\)/)

@@ -40,7 +40,6 @@ test('the compare link comes from the origin url, https or ssh', () => {
   assert.equal(compareUrl('https://gitlab.example.com/acme/kage.git', 'aaa1111', 'bbb2222'), undefined)
 })
 
-
 describe('inertChange: a diff that touches nothing the hub runs', () => {
   const f = (path: string, versionOnly?: boolean) => ({ path, versionOnly })
   test('docs, tests, skill text and licenses are inert, and so is no diff at all', () => {

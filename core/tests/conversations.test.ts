@@ -121,7 +121,7 @@ describe('finding a thread by what you typed, for kage attach, tell and stop', (
 
 test('a job lane is the thread key plus the job id, and its thread is found by stripping it', () => {
   assert.equal(jobLane('C1:5.5', 'j1'), 'C1:5.5#side-job-j1')
-  assert.equal(jobLane('C1:5.5#side-kagelet-ops', 'j1'), 'C1:5.5#side-kagelet-ops')   // a kagelet's run is already in its own lane
+  assert.equal(jobLane('C1:5.5#side-kagelet-ops', 'j1'), 'C1:5.5#side-kagelet-ops')
   assert.equal(threadOfJobLane('C1:5.5#side-job-j1'), 'C1:5.5')
   assert.equal(threadOfJobLane('C1:5.5#side-6.6'), 'C1:5.5#side-6.6')
   assert.equal(isJobLane('ops/C1:5.5#side-job-j1'), true)

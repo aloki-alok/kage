@@ -1,11 +1,7 @@
-// Kage's settings as typed data: config.json (settings) and secrets.json (tokens), and the fixed table that
-// moves a flat env file into them and back. Pure: the files are read and written in runtime/config-files.ts.
 import { z } from 'zod'
 import { validName } from './gate.ts'
 import { appEntry, validUserId, type Entry } from './registry.ts'
 
-// The Claude models a setting or a tool may name, and the one a helper job (AFK, a guard, the dream job, a kagelet) uses when
-// its own model setting is empty. A full id (claude-...) is also accepted where a model is typed into a file.
 export const MODELS = ['fable', 'opus', 'sonnet', 'haiku'] as const
 export const DEFAULT_MODEL = 'sonnet'
 
@@ -17,8 +13,6 @@ const money = z.number().nonnegative().nullable().optional()
 const yes = z.boolean().optional()
 const strings = z.array(z.string()).optional()
 
-// One schema for config.json. Strict, so a typo such as "maxSesion" is refused with its name instead of ignored.
-// A key that is absent means the default, as an absent env line did.
 export const Config = z.strictObject({
   version: z.literal(1),
   name: z.string().optional(),
@@ -27,15 +21,12 @@ export const Config = z.strictObject({
     teammates: z.array(z.string().refine(validUserId)).optional(),
     agents: z.array(z.strictObject({ app: z.string(), owner: z.string().optional(), tag: z.string().optional() }).refine(a => appEntry(agentLine(a)) !== undefined)).optional(),
   }).optional(),
-  // How long a question waits on the owner before the daily note drops it (hub/owner-digests.ts).
   waiting: z.strictObject({ expireHours: count }).optional(),
   kagelets: z.strictObject({
     max: count, ownersMax: count, dailyUsd: money, totalDailyUsd: money, chainUsd: money, needsPerDay: count, askRunsPerHour: count, notesKept: count, noteChars: count, measureMinutes: count, trendRuns: count,
-    // Who answers a held shell step no allow line covers (ADR 0018): rules (the owner only) or review (a cheap model may let a low-stakes one run).
     release: z.enum(['rules', 'review']).optional(), reviewsPerDay: count, reviewModel: text,
     dbRead: z.strictObject({ command: text, maxRows: count }).optional(),
   }).optional(),
-  // Keys that stay out of every session's environment: the hub adds each to requests for its one host (runtime/key-proxy.ts, #182).
   sessionKeys: z.record(z.string().regex(/^[A-Z][A-Z0-9_]*$/), z.strictObject({
     host: z.string().regex(/^[a-z0-9]([a-z0-9.-]*[a-z0-9])?$/), header: z.string().regex(/^[A-Za-z][A-Za-z0-9-]*$/).optional(), prefix: z.string().optional(),
   })).optional(),
@@ -43,7 +34,6 @@ export const Config = z.strictObject({
   sharedTools: strings,
   afk: z.strictObject({ on: yes, model: text }).optional(),
   jev: z.strictObject({ agents: strings, threshold: money, model: text, url: text, ackWords: yes }).optional(),
-  // Telemetry (ADR 0019): gated counts to an OTLP endpoint. No endpoint, on false, or DO_NOT_TRACK in the env sends nothing.
   telemetry: z.strictObject({ on: yes, endpoint: text }).optional(),
   tripwires: z.strictObject({ on: yes, timeoutSec: count, maxKb: count, failPing: count, patternMax: count, lineMax: count, maxPosts: count, catchUpMax: count, seenMax: count, hookPort: count, hookHost: text, hookPerHour: count, env: strings, swapAfter: count, shadowWindowMin: count, swapUndoDays: count }).optional(),
   connectors: z.strictObject({
@@ -56,7 +46,6 @@ export const Config = z.strictObject({
     whatsapp: z.strictObject({ on: yes, memory: text, model: text, wahaUrl: text, hookHost: text, hookPort: count, checkMinutes: count }).optional(),
     commands: z.record(z.string().regex(/^\/[a-z][a-z0-9-]{1,30}$/), z.string().regex(/^\/\S+$/)).optional(),
   }).optional(),
-  // Env lines the table does not know. A secret-looking one keeps only its name here (null) and its value in secrets.json.
   unknown: z.record(z.string(), z.string().nullable()).optional(),
 })
 export type Config = z.infer<typeof Config>
@@ -67,10 +56,8 @@ export const Secrets = z.strictObject({
   slack: z.strictObject({ app: sec, user: sec, bot: sec }).optional(),
   aws: z.strictObject({ accessKeyId: sec, secretAccessKey: sec }).optional(),
   voiceToken: sec, githubSecret: sec, meetingToken: sec, browserToken: sec, jevKey: sec, voiceAgentKey: sec, claudeToken: sec,
-  // The WhatsApp (WAHA) container's env, name to value. Kage writes ~/.config/kage/waha/.env from it (runtime/config-files.ts syncWaha).
   waha: z.record(z.string().regex(/^[A-Z][A-Z0-9_]*$/), z.string()).optional(),
   cartesiaKey: sec,   // compat: remove after 2026-12-15 (Cartesia speech is gone; an old secrets.json still holds it, and the schema is strict)
-  // Values of env lines the table does not know and whose names look like secrets: kept, never dropped.
   unknown: z.record(z.string(), z.string()).optional(),
 })
 export type Secrets = z.infer<typeof Secrets>
@@ -78,7 +65,6 @@ export type Secrets = z.infer<typeof Secrets>
 type Agent = { app: string; owner?: string; tag?: string }
 const agentLine = (a: Agent) => [a.app, a.owner, a.tag].filter(x => x !== undefined).join(':')
 
-// How one env value becomes JSON and back. read gives undefined for a value that does not fit, and the line then goes to "unknown".
 type Codec = { read: (v: string) => unknown; write: (x: any) => string }
 const str: Codec = { read: v => v, write: String }
 const int: Codec = { read: v => (/^\d+$/.test(v) ? Number(v) : undefined), write: String }
@@ -102,8 +88,6 @@ const commands: Codec = {
   write: (o: Record<string, string>) => Object.entries(o).map(([k, p]) => `${k}=${p}`).join(','),
 }
 
-// The fixed table: env name, where it lives (config.json, or secrets.json when secret), its codec. Everything about a
-// setting is on its row. Same input, same output: no model reads an env file (it holds tokens).
 type Row = { env: string; path: string; codec: Codec; secret?: true }
 const R = (env: string, path: string, codec: Codec = str, secret?: true): Row => ({ env, path, codec, ...(secret && { secret }) })
 export const KEYS: Row[] = [
@@ -139,12 +123,9 @@ export const KEYS: Row[] = [
   R('KAGE_VOICE_TOKEN', 'voiceToken', str, true), R('KAGE_GITHUB_SECRET', 'githubSecret', str, true), R('KAGE_MEETING_TOKEN', 'meetingToken', str, true),
   R('KAGE_BROWSER_TOKEN', 'browserToken', str, true), R('JEV_API_KEY', 'jevKey', str, true), R('KAGE_VOICE_AGENT_KEY', 'voiceAgentKey', str, true), R('KAGE_CLAUDE_TOKEN', 'claudeToken', str, true),
 ]
-// Old names that older env files may still hold. The new name wins when both are there.
 export const ALIASES: Record<string, string> = { KAGE_MAX_SPECIALISTS: 'KAGE_MAX_KAGELETS', KAGE_SPECIALIST_DAILY_USD: 'KAGE_KAGELET_DAILY_USD' }
-// Names the grep in docs/settings.md finds that are not settings: Kage sets them, or a script or test does.
 export const NOT_SETTINGS = ['KAGE_BIN', 'KAGE_CALL_CODE', 'KAGE_CALL_REASON', 'KAGE_CLAUDE', 'KAGE_DIR', 'KAGE_ENV', 'KAGE_GIT_URL', 'KAGE_KEYS_SOCK', 'KAGE_KEYS_TOKEN', 'KAGE_MEETBOT_HUB', 'KAGE_MEETBOT_PIPELINE', 'KAGE_MEETBOT_PIPELINE_KEY', 'KAGE_MEETBOT_TOKEN', 'KAGE_PANE_SETTINGS', 'KAGE_REF', 'KAGE_SESSION', 'KAGE_SETUP_WAIT', 'KAGE_SLACK_API', 'KAGE_SSM_SOCK', 'KAGE_SSM_TOKEN', 'KAGE_TARBALL', 'KAGE_THREAD']
 
-// By its name, or by what it holds: a URL with user:password@ in it, or a long unbroken random-looking string (not a path).
 const looksSecret = (name: string, value = '') => /TOKEN|SECRET|KEY|PASS|AUTH|CRED/i.test(name) || /:\/\/[^\s/:@]+:[^\s/@]+@/.test(value)
   || (/^[A-Za-z0-9_+/=.-]{32,}$/.test(value) && /\d/.test(value) && /[A-Za-z]/.test(value) && !/^[/~.]/.test(value))
 
@@ -156,8 +137,6 @@ const put = (o: Record<string, any>, path: string, v: unknown) => {
 }
 const get = (o: any, path: string) => path.split('.').reduce((x, k) => x?.[k], o)
 
-// A flat env, as parseEnv reads it, to the two files' contents. A line that does not fit its type, or that the table
-// does not know, goes under "unknown" and is never lost: toEnv gives it back. A secret-looking one has its value in secrets.json.
 export function fromEnv(env: Env): { config: Config; secrets: Secrets } {
   const config: Record<string, any> = { version: 1 }
   const secrets: Record<string, any> = {}
@@ -178,7 +157,6 @@ export function fromEnv(env: Env): { config: Config; secrets: Secrets } {
   return { config: Config.parse(config), secrets: Secrets.parse(secrets) }
 }
 
-// The two files' contents back to a flat env: every value the files hold, in the form the env file held it.
 export function toEnv(config: Config, secrets: Secrets): Env {
   const env: Env = {}
   for (const k of KEYS) {
@@ -188,8 +166,6 @@ export function toEnv(config: Config, secrets: Secrets): Env {
   return { ...env, ...unknownEnv(config, secrets) }
 }
 
-// The old env file's lines Kage has no setting for (a person's own keys, such as a tool's API key). Before 0.4.0 the hub
-// loaded that file into its environment, so sessions had them; the hub exports these at start to keep that.
 export function unknownEnv(config: Config, secrets: Secrets): Env {
   const env: Env = {}
   for (const [name, value] of Object.entries(config.unknown ?? {})) if (value !== null) env[name] = value
@@ -197,10 +173,8 @@ export function unknownEnv(config: Config, secrets: Secrets): Env {
   return env
 }
 
-// The names of the env lines an import could not place, for the owner's DM. Names only, never values.
 export const unknownNames = (config: Config) => Object.keys(config.unknown ?? {}).sort()
 
-// What differs between two loads of the files: JSON paths only, never values. people.* applies to a running hub; the rest waits for a restart.
 const leaves = (o: unknown, prefix: string, out: Map<string, string>) => {
   if (o !== null && typeof o === 'object' && !Array.isArray(o) && prefix !== 'people.agents') for (const [k, v] of Object.entries(o)) leaves(v, prefix ? `${prefix}.${k}` : k, out)
   else out.set(prefix, JSON.stringify(o))
@@ -212,7 +186,6 @@ export function diff(before: { config: Config; secrets: Secrets }, after: { conf
   return { live: changed.filter(k => k.startsWith('people.')), restart: changed.filter(k => !k.startsWith('people.')) }
 }
 
-// config.people as the registry's entries and back (core/registry.ts), so kage add and remove edit the JSON.
 export const registryOf = (c: Config): Entry[] => [
   ...(c.people?.teammates ?? []).map(id => ({ kind: 'person' as const, id })),
   ...(c.people?.agents ?? []).map(a => ({ kind: 'agent' as const, id: a.app, ...(a.owner && { owner: a.owner }), ...(a.tag && { tag: a.tag }) })),
@@ -225,21 +198,17 @@ export const withRegistry = (c: Config, entries: Entry[]): Config => ({
   },
 })
 
-// "~" and "~/x" in a path setting, as the home folder.
 export const tilde = (p: string, home: string) => (p === '~' ? home : p.startsWith('~/') ? home + p.slice(1) : p)
 
-// What hub.ts and the listeners would exit or crash on, so a bad value is refused before it is the file the hub restarts on.
 export function badValue(c: Config): string | undefined {
   for (const [path, v] of [['harness.memory', c.harness?.memory], ['harness.ownerMemory', c.harness?.ownerMemory], ['harness.cwd', c.harness?.cwd], ['connectors.whatsapp.memory', c.connectors?.whatsapp?.memory]] as const)
     if (v && /['"\\]/.test(v)) return `${path} must not hold a quote or a backslash`
   const k = c.connectors
   for (const [path, v] of [['voice.port', k?.voice?.port], ['github.port', k?.github?.port], ['meeting.port', k?.meeting?.port], ['browser.port', k?.browser?.port], ['whatsapp.hookPort', k?.whatsapp?.hookPort]] as const)
     if (v != null && !(Number.isInteger(v) && v >= 1024 && v <= 65535)) return `connectors.${path} must be a port from 1024 to 65535`
-  const hook = c.tripwires?.hookPort   // 0 is off
+  const hook = c.tripwires?.hookPort
   if (hook && !(Number.isInteger(hook) && hook >= 1024 && hook <= 65535)) return 'tripwires.hookPort must be 0 (off) or a port from 1024 to 65535'
 }
-// What the hub needs to run: the three Slack tokens, a valid name, and the people lists as the strings the Slack
-// connector takes ("<app>:<owner>:<tag>"). The schema already refused a wrong list entry, so nothing else is checked here.
 export function checkSettings(c: Config, s: Secrets): { name: string; teammates: string[]; apps: string[] } | { error: string } {
   for (const [path, v] of [['slack.app', s.slack?.app], ['slack.user', s.slack?.user], ['slack.bot', s.slack?.bot]] as const) if (!v) return { error: `${path} is missing in secrets.json` }
   const bad = badValue(c)
@@ -249,8 +218,6 @@ export function checkSettings(c: Config, s: Secrets): { name: string; teammates:
   return { name, teammates: c.people?.teammates ?? [], apps: (c.people?.agents ?? []).map(agentLine) }
 }
 
-// What a session may change through set_setting. safe: applies at once. power: grants reach or runs code, so the owner says yes
-// on a card first. never: not settable that way. A key not listed is power, so a new key starts closed.
 const SAFE = [/^kagelets\.(max|dailyUsd|totalDailyUsd|chainUsd|needsPerDay|askRunsPerHour|notesKept|noteChars|measureMinutes|trendRuns)$/, /^waiting\.expireHours$/, /^afk\.(on|model)$/, /^harness\.(jobModel|jobFreshEvery|jobCarry|jobCarryChars|jobLaneDefault)$/, /^jev\.(threshold|model|ackWords)$/, /^tripwires\.(timeoutSec|maxKb|failPing|patternMax|lineMax|maxPosts|catchUpMax|seenMax|hookPerHour|swapAfter|shadowWindowMin|swapUndoDays)$/,
   /^connectors\.(voice|github|meeting|browser|whatsapp)\.(port|max|perHour|hookPort)$/, /^connectors\.whatsapp\.(model|checkMinutes)$/]
 export function settingTier(key: string): 'safe' | 'power' | 'never' {

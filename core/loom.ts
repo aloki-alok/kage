@@ -1,5 +1,3 @@
-// The loom, as `kage top` lays it out: Kage on the left, a string from the gold star in his picture to each live
-// thread, ended threads as one dim row each. Pure: positions, mouse hits, search, the count line.
 import type { Row, State } from './board.ts'
 import type { Conversation } from './conversations.ts'
 import { HERO_BIG, HERO_SMALL } from './hero.ts'
@@ -7,21 +5,20 @@ import { HERO_BIG, HERO_SMALL } from './hero.ts'
 export type Layout = {
   mode: 'big' | 'small' | 'none'
   hero?: { x: number; y: number; cols: number; rows: number }
-  star?: { x: number; y: number }       // the gold star in Kage's picture: every string leaves it
-  lx: number                            // where a row's name starts
-  right: number                         // last column of a row
-  rowH: number                          // lines per live row: name, step, a blank
+  star?: { x: number; y: number }
+  lx: number
+  right: number
+  rowH: number
   live: { key: string; y: number }[]
   ended: { key: string; y: number }[]
   sepY: number
-  more: number                          // ended threads that did not fit
+  more: number
   moreY?: number
 }
 
 const ROW_MAX = 72
-const TOP = 5   // first live row: below the wordmark and Kage's crown
+const TOP = 5
 const HEROES = { big: { cols: 46, rows: 23 }, small: { cols: 32, rows: 16 } }
-// Kage looks up toward the star, so the threads hang from it. First gold cell of each picture.
 const starOf = (cls: string[]) => { const y = cls.findIndex(r => r.includes('g')); return { x: cls[y]!.indexOf('g'), y } }
 const STARS = { big: starOf(HERO_BIG.cls), small: starOf(HERO_SMALL.cls) }
 
@@ -33,11 +30,9 @@ export function layout(cols: number, rows: number, live: string[], ended: string
     const h = HEROES[mode]
     hero = { x: 1, y: 4, ...h }
     star = { x: hero.x + STARS[mode].x, y: hero.y + STARS[mode].y }
-    lx = hero.x + h.cols + (mode === 'big' ? 14 : 10)   // room for the strings to fan out
+    lx = hero.x + h.cols + (mode === 'big' ? 14 : 10)
   }
-  // A row wider than this loses the eye between a name and its age.
   const right = Math.min(cols - 2, lx + ROW_MAX)
-  // Rows shrink (3 lines, 2, 1) before the ended list gives up room; never more live rows than lines.
   const floor = rows - 4
   let rowH = 3
   while (rowH > 1 && TOP + live.length * rowH + 3 > floor) rowH--
@@ -54,8 +49,6 @@ export function layout(cols: number, rows: number, live: string[], ended: string
   }
 }
 
-// The thread under a screen cell: a live row's name and step lines, or an ended row's line, from
-// just left of its string end to the right edge.
 export function hit(l: Layout, x: number, y: number): string | undefined {
   if (x < l.lx - 4 || x > l.right) return undefined
   for (const r of l.live) if (y >= r.y && y < r.y + Math.min(2, l.rowH)) return r.key
@@ -73,7 +66,6 @@ export function moreLine(rest: { connector: string }[]): string {
   return ['+ ' + rest.length + ' more', ...counts, '/ to search'].join(' · ')
 }
 
-// How a state's string looks. The console animates each kind.
 type Tone = 'red' | 'gold' | 'white' | 'muted' | 'dim'
 export const STRING: Record<State, { kind: 'pulse' | 'blink' | 'drift' | 'dotted' | 'grow' | 'cut' | 'none'; tone: Tone; glyph: string }> = {
   working: { kind: 'pulse', tone: 'red', glyph: '●' },

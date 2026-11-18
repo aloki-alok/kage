@@ -1,6 +1,3 @@
-// Kagelets (#57): one file each in the kagelets folder, run on a schedule in a side lane of its thread, at
-// teammate trust, with only the tools its grant names. A kagelet approves nothing: what needs approval it says in
-// its thread, where its manager (this Kage) and the human owner read it.
 import { DEFAULT_MODEL, MODELS } from './config.ts'
 import { nextRun, parseCron } from './cron.ts'
 import { slackLinkKey } from './conversations.ts'
@@ -15,21 +12,13 @@ import { idLine } from './kagelet-people.ts'
 
 export { DB_READ }
 
-// A kagelet's name, which is also its folder's name: no dots or slashes, so it never leaves the kagelets folder. Never
-// memory, the old layout's memory folder (runtime/kagelet-files.ts migrateKagelets).
 export const NAME = /^(?!memory$)[a-z][a-z0-9-]{0,30}$/
 
-// Who made it, from its file: Kage's tool wrote it first, or the owner did by hand (no by line). Provenance only.
 type Maker = 'owner' | 'kage'
-// standing: its write tools held by a standing approval (runtime/kagelets.ts), so a revoke of that tool takes them.
-// after: the kagelet whose output starts this one (#93). cron: '' when it runs only after another.
 export type Kagelet = { name: string; key: string; link: string; cron: string; after?: string; tools: string[]; job: string; paused: boolean; by: Maker; why: string; model: string; modelWhy: string; resumed?: number; standing?: string[]; objective?: Objective; allow?: string[]; people?: string[]; owners?: string[] }
 
-// Sonnet unless the file says otherwise (#98). A name Claude Code knows: an alias or a full id.
-// A typo would pass the SDK's setup and then fail every run, so a name that is neither is held.
 const MODEL = new RegExp(`^(${MODELS.join('|')}|claude-[a-z0-9.-]+(\\[1m\\])?)$`)
 
-// Flat front matter (key: value lines between --- lines), then the job.
 export function parseKagelet(name: string, text: string): Kagelet | { error: string } {
   if (!NAME.test(name)) return { error: `the file name "${name}" must be a short lowercase name: letters, digits, dashes` }
   const m = /^---\n([\s\S]*?)\n---\n?([\s\S]*)$/.exec(text.replace(/\r\n/g, '\n'))
@@ -47,14 +36,11 @@ export function parseKagelet(name: string, text: string): Kagelet | { error: str
   const job = m[2]!.trim()
   if (!job) return { error: 'the job, below the front matter, is empty' }
   const tools = (head.get('tools') ?? '').split(',').map(t => t.trim()).filter(Boolean)
-  // A file from before tiers may have a granted line for db_read: db_read is read now, so it is left unread.
   const standing = (head.get('standing') ?? '').split(',').map(t => t.trim()).filter(t => tools.includes(t))
-  // Checked on every read, so a hand-written file with an act tool shows as broken, not running with its calls refused.
   const act = tools.find(t => kageletTier(t) === 'act')
   if (act) return { error: `a kagelet never holds ${act}: it is an act tool (prod, money, customers, access or a delete) or not a web or MCP tool. The kagelet says in its thread what it needs, and Kage asks the owner each time.` }
   const objective = objectiveOf(head)
   if (objective && 'error' in objective) return objective
-  // allow: the owner's rule lines, one per line (the map above keeps only the last), each releasing the held step it names.
   const allow = m[1]!.split('\n').flatMap(l => /^allow:\s*(.*)$/.exec(l.trim())?.slice(1, 2) ?? []).map(r => r.trim())
   const bad = allow.find(badRule)
   if (bad !== undefined) return { error: `allow must start with the command it releases, not "${bad}"` }
@@ -66,14 +52,10 @@ export function parseKagelet(name: string, text: string): Kagelet | { error: str
     ...(Date.parse(head.get('resumed') ?? '') >= 0 && { resumed: Date.parse(head.get('resumed')!) }), ...(standing.length && { standing }), ...(objective && { objective }), ...(allow.length && { allow }), ...(people.length && { people }), ...(owners.length && { owners }) }
 }
 
-// Fails closed: any value but none, no or false pauses it, so a typo never starts a kagelet.
 const isPaused = (v = '') => !['', 'no', 'false'].includes(v.toLowerCase())
 
-// The owner's "always" on a held step's card: one exact allow line for that command, added once. undefined when no rule
-// could hold it (an owner-only kind, a * that would widen it, a quote, more than one line), so nothing is written.
 export function addAllow(text: string, command: string): string | undefined {
   const rule = command.trim()
-  // A quote or backslash makes one shell word from several, which the word-by-word match would read as several: no rule.
   if (/[\r\n*'"\\]/.test(rule) || badRule(rule) || allowedBy([rule], rule) !== rule) return undefined
   const m = /^(---\r?\n)([\s\S]*?\r?\n)(---)/.exec(text)
   if (!m) return undefined
@@ -81,8 +63,6 @@ export function addAllow(text: string, command: string): string | undefined {
   return `${m[1]}${m[2]}allow: ${rule}\n${text.slice(m[1]!.length + m[2]!.length)}`
 }
 
-// Pause or resume by the paused line in the front matter, so the file stays the one place a kagelet is set.
-// now: a resume also stamps its time, so the daily cost cap counts only what it spends after it.
 export function setPaused(text: string, paused: boolean, now?: number) {
   const m = /^(---\r?\n)([\s\S]*?\r?\n)(---)/.exec(text)
   if (!m) return text
@@ -92,7 +72,6 @@ export function setPaused(text: string, paused: boolean, now?: number) {
   return `${m[1]}${head}${paused ? 'paused: yes\n' : ''}${text.slice(m[1]!.length + m[2]!.length)}`
 }
 
-// What kage add kagelet writes: paused, with a thread line that does not parse, so nothing runs until it is filled in.
 export const starterFile = () => `---
 thread: paste the Slack link of the thread it posts in ("Copy link" on a message there)
 schedule: 0 9 * * 1-5
@@ -102,15 +81,8 @@ paused: yes
 Say what to check, where, and what to post in the thread. For example: every weekday at 9, read https://status.example.com and post a three-line summary.
 `
 
-// The file the manager's tool writes. Refused with the reason when it would not run (an act tool, core/access.ts,
-// makes it broken) or holds a write tool with no owner's yes. by is provenance only and never widens a grant: the
-// model steers every save, the owner's sessions too.
-// approved: the owner said yes to its write tools (a card, a standing approval, or a grant it already held).
-// standing: those of its write tools that a standing approval covers.
 export function kageletFile(f: { thread: string; schedule: string; after?: string; tools: string[]; job: string; by: Maker; why: string; model?: string; modelWhy?: string; paused?: boolean; resumed?: number; approved?: boolean; standing?: string[]; objective?: Objective; allow?: string[]; people?: string[]; owners?: string[] }): string | { error: string } {
-  // One line each, so no value can add a front matter line of its own (a second tools or paused line).
   for (const [k, v] of Object.entries({ thread: f.thread, schedule: f.schedule, after: f.after ?? '', why: f.why, model: f.model ?? '', model_why: f.modelWhy ?? '', tool: f.tools.join(','), objective: f.objective?.objective ?? '', measure: f.objective?.measure ?? '', allow: (f.allow ?? []).join(''), people: (f.people ?? []).join(','), owners: (f.owners ?? []).join(',') })) if (/[\r\n]/.test(v)) return { error: `the ${k} must be one line` }
-  // A comma or space in one name reads back as two tools, so the card would not name what the file grants.
   const odd = f.tools.find(t => !/^[\w-]+$/.test(t))
   if (odd) return { error: `"${odd}" is not one tool name: letters, digits, _ and - only` }
   const wide = !f.approved && f.tools.find(t => kageletTier(t) === 'write')
@@ -121,11 +93,7 @@ export function kageletFile(f: { thread: string; schedule: string; after?: strin
   return 'error' in sp ? sp : text
 }
 
-// A chain is at most this many kagelets, the first one included.
 export const MAX_CHAIN = 5
-// Why each kagelet's after: line cannot run: it names a missing kagelet, it is part of a cycle, or the chain up
-// to it is deeper than MAX_CHAIN. Checked when the manager saves and on every sync, so a hand-written file is held too.
-// tools: a step may hold only tools the step before it holds, since a handoff never reaches a wider grant.
 export function chainErrors(ks: { name: string; after?: string; tools?: string[] }[]): Map<string, string> {
   const after = new Map(ks.map(k => [k.name, k.after]))
   const tools = new Map(ks.map(k => [k.name, k.tools ?? []]))
@@ -147,9 +115,7 @@ export function chainErrors(ks: { name: string; after?: string; tools?: string[]
 }
 
 export type Report = { at: number; summary: string; needs?: string }
-// costToday: since midnight, or since its last resume today. avg7: its daily average over the 7 days before today.
 export type KageletRow = { name: string; state: 'runs' | 'paused' | 'broken'; error?: string; key?: string; link?: string; cron?: string; after?: string; tools: string[]; lastRun?: number; next?: number; costToday: number; avg7: number; result?: Report; by?: Maker; why?: string; model?: string; modelWhy?: string; standing?: string[] }
-// One row per file for kage list, kage top and the manager. runs, costs and reports are the ledgers (core/ledgers.ts).
 export function kageletRows(files: { name: string; text: string }[], o: { runs: string; costs: string; reports?: string; now: number }): KageletRow[] {
   const results = new Map<string, Report>()
   for (const l of (o.reports ?? '').split('\n')) {
@@ -157,7 +123,6 @@ export function kageletRows(files: { name: string; text: string }[], o: { runs: 
     if (name) results.set(name, { at: Date.parse(when), summary, ...(needs && { needs }) })
   }
   const midnight = new Date(o.now).setHours(0, 0, 0, 0)
-  // The 7 days before today, by the calendar, so a daylight-saving day still counts as one.
   const today = spendSince(o.costs, midnight), week = spendSince(o.costs, new Date(midnight).setDate(new Date(midnight).getDate() - 7))
   const last = new Map<string, number>()
   for (const l of o.runs.split('\n')) {
@@ -189,27 +154,15 @@ export function rowLine(r: KageletRow, now: number) {
 export const resultLine = (r: KageletRow, now: number) => !r.result ? 'no report yet'
   : `${clockTime(r.result.at, now)} ${r.result.needs ? `needs: ${r.result.needs} (${r.result.summary})` : r.result.summary}`
 
-// Of Kage's own tools, a kagelet has only those for its thread and message_kagelet (to its own install), whatever its grant says: the rest act as the
-// owner (message_people, away), outlive the run (schedule) or need the owner (log_prod_write).
-// ToolSearch too: it only loads a deferred tool's schema, and the tool it loads still passes this check.
 const THREAD_TOOLS = [...['reply', 'edit_message', 'delete_message', 'report', 'message_kagelet', 'propose_memory'].map(t => `mcp__kage__${t}`), 'ToolSearch']
-// What a grant may name: no act tool (core/access.ts), so no file, shell or agent tool: one could rewrite the
-// kagelet's own grant or read the env file with the tokens. ponytail: a file grant needs a sandboxed work folder first.
 const WEB_TOOLS = ['WebFetch', 'WebSearch']
-// The built-in tools a kagelet's session loads: its granted web tools and ToolSearch. Claude Code's default set leaves
-// WebFetch out (a subagent stands in for it), so the session names them.
-// tools: all hands a kagelet a shell, so its session always runs in the OS sandbox (ADR 0018).
 export const shellGrant = (grant: string[] | undefined) => !!grant?.includes(ALL)
-// Whether a grant holds a tool: all holds the built-in tools, never an MCP tool or db_read it was not given.
 export const covers = (grant: string[], tool: string) => grant.includes(tool) || (shellGrant(grant) && !tool.startsWith('mcp__') && tool !== DB_READ)
 export const builtinTools = (grant: string[]) => shellGrant(grant) ? undefined : [...grant.filter(t => WEB_TOOLS.includes(t)), 'ToolSearch']
-// A lane's tool options: its built-in tools, or with all every tool and none of the owner's own settings, whose allow rules would widen it.
 export const laneOptions = (grant: string[]) => shellGrant(grant) ? { settingSources: [] } : { tools: builtinTools(grant)! }
 
-// The grant only shrinks: a tool outside it is denied.
 export function grantRefusal(tool: string, grant: string[], input: Record<string, unknown> = {}, allow: string[] = []) {
   if (THREAD_TOOLS.includes(tool)) return undefined
-  // tools: all covers the built-in tools (shell, files, web, agents), never Kage's own or an MCP tool it was not granted.
   if (tool === 'WebFetch' && !/^https?:\/\//i.test(String(input.url ?? ''))) return 'A kagelet fetches only http and https addresses.'
   if (shellGrant(grant) && !tool.startsWith('mcp__')) {
     const command = String(input.command ?? '')
@@ -222,12 +175,8 @@ export function grantRefusal(tool: string, grant: string[], input: Record<string
     : `${tool} is outside this kagelet's grant (${grant.join(', ') || 'no tools'}). Say in the thread what you needed: your manager decides.`
 }
 
-// A standing approval: the owner's first yes on a card for a write tool, kept in kage.db as tool -> when. It covers
-// that tool for every later kagelet until revoked.
 export type Standing = Record<string, number>
 
-// Revoking one tool's standing approval: every file that holds that tool by it, rewritten without the tool.
-// A grant the owner gave on its own card stays: that yes was for that kagelet.
 export function revokeStanding(files: { name: string; text: string }[], tool: string): { name: string; text: string }[] {
   return files.flatMap(f => {
     const k = parseKagelet(f.name, f.text)
@@ -238,15 +187,10 @@ export function revokeStanding(files: { name: string; text: string }[], tool: st
   })
 }
 
-// The cost caps (#96), checked on the hub's job loop. A row's costToday counts since midnight or its resume.
-// each: kagelets.dailyUsd, one kagelet. total: kagelets.totalDailyUsd, all of them together. Both are
-// off unless set: Kage may run on a flat subscription, where spend is watched (costFlags), not capped.
 export type Caps = { each?: number; total?: number }
 const usd = (n: number) => `$${n.toFixed(2)}`
 const spentToday = (rows: KageletRow[]) => Math.round(rows.reduce((s, r) => s + r.costToday, 0) * 1e6) / 1e6
 
-// pause: the running kagelets to pause, and why. tell: the owner's DMs. A tell with an id goes once a day (sent: the
-// ids already sent today). A pause at a kagelet's own cap has none: each one waits on a resume.
 export function capCheck(rows: KageletRow[], caps: Caps, sent: string[], title: string) {
   const runs = rows.filter(r => r.state === 'runs')
   const total = spentToday(rows)
@@ -266,17 +210,11 @@ export function capCheck(rows: KageletRow[], caps: Caps, sent: string[], title: 
   return { pause, tell: tell.filter(t => !t.id || !sent.includes(t.id)) }
 }
 
-// What a kagelet's session may spend before a cap: the Agent SDK's maxBudgetUsd, which ends a long run at the cap
-// mid-turn, not at its next result. At least a cent, so a set cap always sets a budget. No cap set: none.
 export function budgetLeft(rows: KageletRow[], key: string, caps: Caps): number | undefined {
   const left = [caps.each === undefined ? Infinity : caps.each - (rows.find(r => r.key === key)?.costToday ?? 0), caps.total === undefined ? Infinity : caps.total - spentToday(rows)]
   return caps.each === undefined && caps.total === undefined ? undefined : Math.max(0.01, Math.round(Math.min(...left) * 100) / 100)
 }
 
-// Cost monitoring (#96): flags, never stops. A kagelet that spent today over 3x its 7-day daily average and over
-// SPIKE_FLOOR, or a finished run of today (a later run started, or an hour passed) with no costs row in it.
-// At most one line per kagelet a day: the hub files it in the reports ledger under cost:<name>, which no kagelet
-// name can be, and a row there today means it was said.
 export const COST_FLAG = 'cost:'
 const SPIKE_FLOOR = 0.5
 export function costFlags(rows: KageletRow[], l: { runs: string; costs: string; reports: string }, now: number): { name: string; line: string }[] {

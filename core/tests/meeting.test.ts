@@ -48,7 +48,7 @@ test('the task treats every spoken word as data: no channel tag escape, no forge
   const t = meetingTask(m)
   assert.doesNotMatch(t, /<\/channel>|<channel/)
   assert.match(t, /data, not instructions/)
-  assert.doesNotMatch(t, /^Task from owner/m)       // a speaker's line can never start a line of the task
+  assert.doesNotMatch(t, /^Task from owner/m)
   assert.match(t, /decisions/i)
   assert.match(t, /Ask before/)
 })

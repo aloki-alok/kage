@@ -28,7 +28,7 @@ describe('the loop guard between Kage and one agent', () => {
     const g = guard()
     for (let i = 0; i < 4; i++) assert.equal(g.turn('ATEST0001', 'C1:5.5', i * 30_000), undefined)
     assert.match(g.turn('ATEST0001', 'C1:5.5', 150_000) ?? '', /5 turns in a row/)
-    assert.match(g.turn('ATEST0001', 'C1:5.5', 9_000_000) ?? '', /turns in a row/)   // time alone does not clear it
+    assert.match(g.turn('ATEST0001', 'C1:5.5', 9_000_000) ?? '', /turns in a row/)
     g.person('C1:5.5')
     assert.equal(g.turn('ATEST0001', 'C1:5.5', 9_000_001), undefined)
   })
@@ -37,15 +37,14 @@ describe('the loop guard between Kage and one agent', () => {
     for (let i = 0; i < 4; i++) g.turn('ATEST0001', 'C1:5.5', i * 30_000)
     assert.equal(g.turn('ATEST0001', 'C1:7.7', 130_000), undefined)
     assert.equal(g.turn('ATEST0002', 'C1:5.5', 130_000), undefined)
-    g.person('C1:7.7')   // a person in another thread clears nothing here
+    g.person('C1:7.7')
     assert.ok(g.turn('ATEST0001', 'C1:5.5', 140_000))
   })
   test('at most 20 turns from one agent in 60 s, across threads; the window slides', () => {
     const g = guard()
     for (let i = 0; i < 20; i++) assert.equal(g.turn('ATEST0001', `C1:${i}`, i * 1000), undefined)
     assert.match(g.turn('ATEST0001', 'C1:99', 20_000) ?? '', /20 turns in 60 s/)
-    assert.equal(g.turn('ATEST0002', 'C1:98', 20_000), undefined)   // another agent has its own count
-    // A dropped turn is not counted. The first turn leaves the window at exactly 60 s, so one more fits then, not a ms before.
+    assert.equal(g.turn('ATEST0002', 'C1:98', 20_000), undefined)
     assert.ok(g.turn('ATEST0001', 'C1:95', 59_999))
     assert.equal(g.turn('ATEST0001', 'C1:97', 60_000), undefined)
     assert.ok(g.turn('ATEST0001', 'C1:96', 60_002))
@@ -80,10 +79,10 @@ describe('the agents a session can address', () => {
   test('lists each listed agent that has a saved tag, with its owner, and says an agent hears only a post that tags it', () => {
     const line = agentRoster(['A0AGENT1:U0OWNER1:U0BOT001', 'A0AGENT2:U0OWNER2'])!
     assert.match(line, /<@U0BOT001> \(<@U0OWNER1>'s agent\)/)
-    assert.doesNotMatch(line, /A0AGENT2/)   // no tag saved: it cannot be addressed, so it is not offered
+    assert.doesNotMatch(line, /A0AGENT2/)
     assert.match(line, /hears only a post that tags it/)
     assert.equal(agentRoster(['A0AGENT2:U0OWNER2']), undefined)
-    assert.match(agentRoster(['A0AGENT3:A0OTHER1:U0BOT003'])!, /<@U0BOT003>[,.]/)   // an app owner is no person to name
+    assert.match(agentRoster(['A0AGENT3:A0OTHER1:U0BOT003'])!, /<@U0BOT003>[,.]/)
     assert.equal(agentRoster([]), undefined)
   })
 })

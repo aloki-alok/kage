@@ -1,15 +1,11 @@
-// Turning a Claude Code session transcript line (JSONL) into a short line a person can follow.
-// runtime/transcript-tail.ts reads the new lines from disk.
 const MAX = 120
 const short = (s: string) => {
   const first = s.trim().split('\n')[0]!.trim()
   return first.length > MAX ? `${first.slice(0, MAX - 1)}…` : first
 }
 const tag = (label: string, text: string) => `${label.padEnd(5)} ${short(text)}`.trimEnd()
-// mcp__claude_ai_Slack__slack_read_thread reads as "slack read thread": the tool's own name, in words.
 const toolName = (name: string) => name.startsWith('mcp__') ? name.slice(name.lastIndexOf('__') + 2).replaceAll('_', ' ') : name
 
-// When the line was written, so a backlog shows when each step ran rather than when it was read.
 export function stepTime(raw: string): number | undefined {
   try {
     const t = Date.parse((JSON.parse(raw) as { timestamp?: string }).timestamp ?? '')
@@ -17,15 +13,13 @@ export function stepTime(raw: string): number | undefined {
   } catch { return undefined }
 }
 
-// What the task asked, what Kage said and did. Everything else gives undefined.
 export function transcriptLine(raw: string): string | undefined {
   let r: { type?: string; message?: { content?: unknown } }
   try { r = JSON.parse(raw) } catch { return undefined }
   const content = r.message?.content
   if (r.type === 'user' && typeof content === 'string') {
-    // A Kage task: the line after the channel tag is the instruction; the quoted conversation follows it.
     const m = /^<channel [^>]*>\n([^\n]*)/.exec(content)
-    return tag(m ? 'task' : 'input', m ? m[1]! : content)   // input: a cron's prompt, or typed in a pane
+    return tag(m ? 'task' : 'input', m ? m[1]! : content)
   }
   if (!Array.isArray(content)) return undefined
   const out: string[] = []
@@ -43,7 +37,6 @@ export function transcriptLine(raw: string): string | undefined {
   return out.length ? out.join('\n') : undefined
 }
 
-// The text of every post a session sent (its reply and post_as_kage calls), oldest first, read from its transcript lines.
 export function sentTexts(lines: string[]): string[] {
   const out: string[] = []
   for (const raw of lines) {

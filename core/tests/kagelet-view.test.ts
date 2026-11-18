@@ -53,7 +53,7 @@ describe('the kagelets panel in kage top', () => {
   test('the caps are off unless config.json sets them', () => {
     assert.equal(dailyCap(), undefined)
     assert.equal(dailyCap({}), undefined)
-    assert.equal(totalCap({ totalDailyUsd: null }), undefined)   // null is off, not a $0 cap
+    assert.equal(totalCap({ totalDailyUsd: null }), undefined)
     assert.equal(dailyCap({ dailyUsd: 5 }), 5)
     assert.equal(dailyCap({ dailyUsd: 0 }), 0)
     assert.equal(totalCap({ totalDailyUsd: 25 }), 25)
@@ -78,7 +78,6 @@ describe('the panel keys', () => {
     assert.equal(actionLine({ type: 'kagelet', refused: 'no such action' }, true), 'The hub refused: no such action.')
     assert.match(actionLine(undefined, false), /^Kage is not running, so it cannot act on kagelets\. Start it with kage start\.$/)
     assert.match(actionLine(undefined, true), /does not answer.*kage restart/)
-    // A reply to another question (an older hub answered late) is not this action's answer.
     assert.match(actionLine({ type: 'board', text: 'x' }, true), /does not answer/)
   })
 })

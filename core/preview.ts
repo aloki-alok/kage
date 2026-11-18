@@ -1,5 +1,3 @@
-// What the owner reads before approving a tool call: the call the way a person would write it,
-// not its JSON. A Bash command keeps its line breaks, an edit reads as a diff.
 type Input = Record<string, unknown>
 
 const diff = (old: unknown, now: unknown) => [

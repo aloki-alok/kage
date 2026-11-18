@@ -1,5 +1,3 @@
-// The SSM relay's rules (runtime/ssm-relay.ts): which threads may hold a token, and the one call the hub runs for a session.
-// aws runs `session-manager-plugin <response> <region> StartSession <profile> <parameters> <endpoint>` (awscli customizations/sessionmanager.py).
 type PluginCall = { args: string[]; region: string; target: string }
 
 const REGION = /^[a-z]{2}(-[a-z]+)+-\d{1,2}$/
@@ -9,14 +7,12 @@ const TARGET = /^(i|mi)-[0-9a-f]{8,17}$/
 const parse = (s: string): Record<string, unknown> | undefined => {
   try { const v: unknown = JSON.parse(s); return v && typeof v === 'object' && !Array.isArray(v) ? v as Record<string, unknown> : undefined } catch { return undefined }
 }
-// True when the URL has exactly this scheme and host, with no login, port or look-alike host.
 const isAt = (url: unknown, scheme: string, host: (region: string) => string[], region: string) => {
   if (typeof url !== 'string') return false
   try { const u = new URL(url); return u.protocol === scheme && !u.username && !u.password && !u.port && host(region).includes(u.hostname) } catch { return false }
 }
 const hosts = (service: string) => (region: string) => [`${service}.${region}.amazonaws.com`, `${service}.${region}.amazonaws.com.cn`]
 
-// Errors never repeat an argument: the response holds a session token and the stream URL.
 export function startSessionCall(args: unknown): PluginCall | { error: string } {
   if (!Array.isArray(args) || args.length !== 6 || args.some(a => typeof a !== 'string')) return { error: 'expected six arguments' }
   const [response, region, operation, profile, parameters, endpoint] = args as string[]
@@ -28,10 +24,8 @@ export function startSessionCall(args: unknown): PluginCall | { error: string } 
   if (!isAt(endpoint, 'https:', hosts('ssm'), region!)) return { error: 'the endpoint is not ssm for this region' }
   const wanted = parse(parameters!)
   if (typeof wanted?.Target !== 'string') return { error: 'parameters name no Target' }
-  const target = TARGET.test(wanted.Target) ? wanted.Target : 'other'   // only an instance id is logged
+  const target = TARGET.test(wanted.Target) ? wanted.Target : 'other'
   return { args: args as string[], region: region!, target }
 }
 
-// A Slack thread of the owner, or its lane. Email, WhatsApp, voice and another agent's keys never qualify, whoever sent the task.
-// Nor does a dream: it reads every session's words, a teammate's or an email sender's included.
 export const ssmEligible = (key: string) => /^(dm|[CDG][A-Z0-9]+:\d+\.\d+)(#side-.+)?$/.test(key) && !/#side-k?dream(-|$)/.test(key)

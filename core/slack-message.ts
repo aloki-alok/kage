@@ -1,4 +1,3 @@
-// A Slack message event, and the two questions both the task gate (gate.ts) and AFK mode (afk.ts) ask of it.
 
 import { appEntry } from './registry.ts'
 
@@ -16,56 +15,38 @@ export type SlackMessage = {
   files?: { name?: string }[]
   attachments?: { title?: string; text?: string; fallback?: string; pretext?: string; fields?: { title?: string; value?: string }[] }[]
   blocks?: { block_id?: string }[]
-  // Set by the hub only, never by Slack: the owner's words that came in over the local socket (kage say), which the
-  // hub posted as them. Slack's own copy of that post has no client_msg_id, so the gate drops it.
   fromSocket?: true
 }
 
-// Claude sees no attachment unless the text names it; it then reads the file with the Slack tools.
 export const filesTag = (m: { files?: { name?: string }[] }) =>
   m.files?.length ? ` [files: ${m.files.map(f => f.name).join(', ')}]` : ''
 
-// Plain messages, threaded broadcasts and uploads. Edits, joins and deletes never count.
 const TYPED_SUBTYPES = new Set([undefined, 'thread_broadcast', 'file_share'])
 
-// A person typed it in a Slack client. An app posting with a person's user token (Kage's own reply
-// fallback, a connector) has their user id but no client_msg_id, and usually an app_id. A person at this
-// machine reaches the hub's socket only as the owner's OS user (ADR 0004).
 export const typedByPerson = (m: SlackMessage) =>
   (m.fromSocket || (!m.bot_id && !m.app_id && !!m.client_msg_id)) && TYPED_SUBTYPES.has(m.subtype)
 
-// A listed agent (people.agents, core/registry.ts) posting with a teammate's token: it has an app_id
-// and no client_msg_id. The gate still checks the user id, and never lets it act as the owner. An agent tied
-// to a person counts only with that person's token. One with no owner was listed before owners existed, and
-// counts with any listed teammate's. One owned by another agent does not count here.
 export const postedByTrustedApp = (m: SlackMessage, apps: string[]) =>
   !!m.app_id && TYPED_SUBTYPES.has(m.subtype) && apps.some(a => {
     const e = appEntry(a)
     return !!e && e.id === m.app_id && (e.owner === undefined || e.owner === m.user)
   })
 
-// A listed agent posting with its own bot token: Slack sets both the app id and the bot's user id, so the entry
-// must name both (the tag `kage add <mention> <owner>` saves), and its owner must still be a listed person.
 export const postedAsItself = (m: SlackMessage, apps: string[], teammates: string[]) =>
   !!m.app_id && TYPED_SUBTYPES.has(m.subtype) && apps.some(a => {
     const e = appEntry(a)
     return !!e && e.id === m.app_id && !!e.tag && e.tag === m.user && teammates.includes(e.owner ?? '')
   })
 
-// A Slack mention of the bot, or "@name" typed as plain text (works whatever the bot's display name is).
-// One optional space after it is part of the match, so removing the tag leaves no gap.
 export const agentTag = (bot: string, name: string) =>
   new RegExp(`(?:<@${bot}>|(?<![\\w@.])@${name}(?![\\w.-]))[ \\t]?`, 'gi')
 
-// Every `text` string inside a block (section, header, context, rich_text at any depth).
 const blockStrings = (b: unknown): string[] => {
   if (Array.isArray(b)) return b.flatMap(blockStrings)
   if (!b || typeof b !== 'object') return []
   return Object.entries(b).flatMap(([k, v]) => k === 'text' && typeof v === 'string' ? [v] : blockStrings(v))
 }
 
-// What a post says, for matching and for the job to read. Alerting apps (CloudWatch) leave `text` empty and put the
-// alarm in attachments or blocks. An attachment's fallback is its plain copy, so it counts only when it has nothing else.
 export function postText(m: Pick<SlackMessage, 'text' | 'attachments' | 'blocks'>): string {
   const parts = [m.text ?? '', ...(m.attachments ?? []).flatMap(a => {
     const own = [a.pretext, a.title, a.text, ...(a.fields ?? []).map(f => [f.title, f.value].filter(Boolean).join(': '))].filter(Boolean) as string[]

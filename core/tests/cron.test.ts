@@ -2,7 +2,6 @@ import { describe, test } from 'node:test'
 import assert from 'node:assert/strict'
 import { cadence, promptPreview, cronJobsFromTranscript, cronMatches, liveCronJobs, dueSchedules, nextRun, parseCron, EVENT, REPLY, type Schedule } from '../cron.ts'
 
-// Local time, as Claude Code's CronCreate reads its expressions.
 const at = (s: string) => new Date(s)
 
 describe('cron expressions, read like CronCreate reads them (local time)', () => {
@@ -12,12 +11,12 @@ describe('cron expressions, read like CronCreate reads them (local time)', () =>
     assert.equal(cronMatches('7,22,37,52 13-20 3 11 *', at('2026-11-04T13:22:00')), false)
     assert.equal(cronMatches('*/15 * * * *', at('2026-11-03T10:45:00')), true)
     assert.equal(cronMatches('*/15 * * * *', at('2026-11-03T10:46:00')), false)
-    assert.equal(cronMatches('0 9 * * 1-5', at('2026-11-02T09:00:00')), true)    // a Monday
-    assert.equal(cronMatches('0 9 * * 1-5', at('2026-11-01T09:00:00')), false)   // a Sunday
+    assert.equal(cronMatches('0 9 * * 1-5', at('2026-11-02T09:00:00')), true)
+    assert.equal(cronMatches('0 9 * * 1-5', at('2026-11-01T09:00:00')), false)
   })
   test('day of month and day of week match either one when both are set, as cron does', () => {
-    assert.equal(cronMatches('0 9 1 * 1', at('2026-11-02T09:00:00')), true)      // Monday, not the 1st
-    assert.equal(cronMatches('0 9 1 * 1', at('2026-11-01T09:00:00')), true)      // the 1st, a Sunday
+    assert.equal(cronMatches('0 9 1 * 1', at('2026-11-02T09:00:00')), true)
+    assert.equal(cronMatches('0 9 1 * 1', at('2026-11-01T09:00:00')), true)
     assert.equal(cronMatches('0 9 1 * 1', at('2026-11-03T09:00:00')), false)
   })
   test('a bad expression is refused with a reason', () => {
@@ -27,7 +26,7 @@ describe('cron expressions, read like CronCreate reads them (local time)', () =>
   })
   test('the next run is found within a window, or not at all', () => {
     assert.deepEqual(nextRun('7,37 8-23 * * *', at('2026-11-03T16:40:00'), 86_400_000), at('2026-11-03T17:07:00'))
-    assert.equal(nextRun('0 0 3 11 *', at('2026-11-03T16:40:00'), 7 * 86_400_000), undefined)   // next year
+    assert.equal(nextRun('0 0 3 11 *', at('2026-11-03T16:40:00'), 7 * 86_400_000), undefined)
   })
 })
 
@@ -46,9 +45,9 @@ describe('which schedules fire now', () => {
     const r = dueSchedules([s({ lastFired: at('2026-11-03T12:00:00').getTime() })], at('2026-11-03T10:15:20').getTime())
     assert.deepEqual(r.fire.map(x => x.id), ['j1'])
     const sameMinute = dueSchedules([s({ lastFired: at('2026-11-03T10:15:40').getTime() })], at('2026-11-03T10:15:20').getTime())
-    assert.deepEqual(sameMinute.fire, [])                 // stepped back within the minute it already ran
+    assert.deepEqual(sameMinute.fire, [])
     const fewMinutes = dueSchedules([s({ lastFired: at('2026-11-03T10:17:00').getTime() })], at('2026-11-03T10:15:20').getTime())
-    assert.deepEqual(fewMinutes.fire, [])                 // 10:15 ran before the step back
+    assert.deepEqual(fewMinutes.fire, [])
   })
   test('a job adopted with an end is dropped once that end passes', () => {
     const r = dueSchedules([s({ ends: at('2026-11-03T10:00:00').getTime() })], at('2026-11-03T10:15:20').getTime())
@@ -56,9 +55,9 @@ describe('which schedules fire now', () => {
   })
   test('a hub that was down for long fires a missed run once, not a backlog, and not one older than 10 min', () => {
     const late = dueSchedules([s({ lastFired: at('2026-11-03T10:00:00').getTime() })], at('2026-11-03T11:05:00').getTime())
-    assert.deepEqual(late.fire.map(x => x.id), ['j1'])   // 11:00 was 5 min ago
+    assert.deepEqual(late.fire.map(x => x.id), ['j1'])
     const stale = dueSchedules([s({ cron: '0 * * * *', lastFired: at('2026-11-03T10:00:00').getTime() })], at('2026-11-03T11:30:00').getTime())
-    assert.deepEqual(stale.fire, [])                      // 11:00 was 30 min ago: skipped
+    assert.deepEqual(stale.fire, [])
   })
   test('a one-shot is dropped after it fires; a recurring one never ends unless someone cancels it', () => {
     const once = dueSchedules([s({ recurring: false, cron: '15 10 3 11 *' })], at('2026-11-03T10:15:20').getTime())
@@ -135,9 +134,7 @@ describe('a schedule in words', () => {
     assert.equal(cadence('0 9 * * 1'), 'daily at 09:00, Mondays')
     assert.equal(cadence('@reply'), 'when someone writes')
     assert.equal(cadence('5,35 * * * *'), '5,35 * * * *')
-    // A date and a weekday together fire on either one, which words would misread: left as written.
     assert.equal(cadence('0 9 6 11 1'), '0 9 6 11 1')
-    // A step that does not divide the hour restarts at :00, so it is not "every 7 min".
     assert.equal(cadence('*/7 * * * *'), '*/7 * * * *')
   })
 })

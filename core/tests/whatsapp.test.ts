@@ -75,7 +75,6 @@ describe('the owner typing takes the chat back', () => {
 })
 
 describe('reading a WAHA event', () => {
-  // Shape of a real GOWS message.any event (2026-11-03), ids changed.
   const real = (o: Record<string, unknown> = {}, ctx: Record<string, unknown> = {}) => ({
     id: 'true_1000@lid_3AC7', from: '1000@lid', to: null, fromMe: true, source: 'app', body: '@kage say hi', ...o,
     _data: { IsEdit: false, Message: { extendedTextMessage: { text: '@kage say hi', contextInfo: { entryPointConversionSource: 'x', ...ctx } } } },

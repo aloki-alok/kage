@@ -28,7 +28,6 @@ describe('a long table split across messages stays a table', () => {
     assert.ok(parts.length >= 3)
     for (const p of parts) assert.equal(p.split('```').length % 2, 1, `unbalanced part:\n${p}`)
     assert.ok(parts.every(p => p.length <= 400))
-    // Every row shows in the code font: inside a block that its own message opens.
     for (const r of rows) {
       const p = parts.find(x => x.includes(r))
       assert.ok(p, r)
@@ -55,7 +54,6 @@ describe('a cut never leaves an empty code block', () => {
 })
 
 describe('code blocks fit the Slack thread panel', () => {
-  // A row shaped like one that wrapped in the thread panel: 74 characters.
   const wide = '+15550100248  Riverside Learning Academy Orga  never        2026-11-30'
   test('refuses a row wider than 60 characters inside a block, and says how to fix it', () => {
     assert.match(layoutRefusal(`Idle numbers:\n\`\`\`\n${wide}\n\`\`\``) ?? '', /60/)
@@ -72,7 +70,6 @@ describe('code blocks fit the Slack thread panel', () => {
     assert.equal(layoutRefusal(`\`\`\`\n${wide}\n\`\`\``, { wide: true }), undefined)
   })
 })
-
 
 describe('long replies', () => {
   test('splits on line breaks under the limit and keeps every line', () => {

@@ -1,6 +1,3 @@
-// What kage stats shows (#52, first step): spend and turns per day, spend per connector, runs and refusals, turn
-// time and hub starts. It reads rows Kage already keeps (the costs ledger, the event log, the boots file): counts
-// and money only, never what was said (ADR 0010). cli/stats.ts reads them.
 import { ago } from './board.ts'
 import { parseSessionKey } from './conversations.ts'
 import type { KageEvent } from './events.ts'
@@ -10,7 +7,6 @@ const DAY = 86_400_000
 const money = (n: number) => `$${n.toFixed(2)}`
 const plural = (n: number, one: string) => `${n} ${one}${n === 1 ? '' : 's'}`
 const dayLabel = (t: number) => { const d = new Date(t); return `${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}` }
-// Nearest rank: the smallest value with at least p of the values at or below it.
 const percentile = (sorted: number[], p: number) => sorted[Math.max(0, Math.ceil(p * sorted.length) - 1)]!
 const connectorOf = (key: string) => key.includes('#side-kagelet-') ? 'kagelets' : parseSessionKey(key)?.conversation.connector ?? 'other'
 
@@ -18,7 +14,6 @@ export function statsLines(f: { costs: Cost[]; events: KageEvent[]; boots: numbe
   const from = new Date(f.now).setHours(0, 0, 0, 0) - (f.days - 1) * DAY
   const costs = f.costs.filter(c => c.at >= from && c.at <= f.now)
   const events = f.events.filter(e => { const t = Date.parse(e.at); return t >= from && t <= f.now })
-  // The boots file keeps only the last 24 h (hub.ts countBoot), so starts are counted for that span alone.
   const boots = f.boots.filter(t => t > f.now - DAY && t <= f.now)
   const span = `Last ${plural(f.days, 'day')}`
   if (!costs.length && !events.length && !boots.length) return [`${span}: nothing spent, no runs, no hub starts.`]

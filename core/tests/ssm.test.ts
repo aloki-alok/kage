@@ -2,7 +2,6 @@ import { describe, test } from 'node:test'
 import assert from 'node:assert/strict'
 import { startSessionCall, ssmEligible } from '../ssm.ts'
 
-// What aws sends: session-manager-plugin <response> <region> StartSession <profile> <parameters> <endpoint>
 const response = (streamUrl = 'wss://ssmmessages.us-west-1.amazonaws.com/v1/data-channel/sess-1?role=publish_subscribe') =>
   JSON.stringify({ SessionId: 'sess-1', TokenValue: 'tv', StreamUrl: streamUrl })
 const params = JSON.stringify({ Target: 'i-0123456789abcdef0', DocumentName: 'AWS-StartSSHSession', Parameters: { portNumber: ['22'] } })

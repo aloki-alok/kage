@@ -58,7 +58,7 @@ describe('lineHasher', () => {
   test('a huge line with no newline streams in linear time', () => {
     const chunk = 'a'.repeat(65536), t = Date.now()
     const h = lineHasher([], 2000)
-    for (let i = 0; i < 1280; i++) h.push(chunk) // 80 MB: the old split-per-chunk took about 6 s here
+    for (let i = 0; i < 1280; i++) h.push(chunk)
     assert.match(h.end(), /^[0-9a-f]{64}$/)
     assert.ok(Date.now() - t < 3000, `took ${Date.now() - t} ms`)
   })
@@ -166,7 +166,7 @@ describe('webhook jobs', () => {
     assert.equal(eventNeedsCard('mcp__kage__schedule', { hook: true }, 'teammate'), true)
     assert.equal(eventNeedsCard('mcp__kage__schedule', { hook: true }, 'owner'), false)
     assert.equal(eventNeedsCard('mcp__kage__schedule', { cron: '* * * * *' }, 'teammate'), false)
-    assert.equal(eventNeedsCard('mcp__kage__schedule', { on_channel: { channel: 'CTEST9' } }, 'teammate'), true)   // a channel job reads a channel as the owner's hub: same card
+    assert.equal(eventNeedsCard('mcp__kage__schedule', { on_channel: { channel: 'CTEST9' } }, 'teammate'), true)
     assert.equal(eventNeedsCard('mcp__kage__schedule', { on_channel: { channel: 'CTEST9' } }, 'owner'), false)
     assert.equal(eventNeedsCard('mcp__kage__reply', { hook: true }, 'teammate'), false)
   })
