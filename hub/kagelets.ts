@@ -1,7 +1,3 @@
-// Kagelets (#57) in the hub: one file each in the kagelets folder, synced at start and each minute. Each runs on its
-// schedule in a side lane of its thread, at teammate trust, with only its grant, and approves nothing. Also each
-// kagelet's memory (#98), the manager's side for Kage's owner sessions, the owner's notes to a kagelet, and the
-// chains and messages between kagelets (#93), which the hub hands on with no Kage turn.
 import type { Delivery } from '../core/sessions.ts'
 import type { Task } from '../core/task.ts'
 import { askable } from '../core/kagelet-people.ts'
@@ -27,32 +23,28 @@ import type { Store } from '../runtime/store.ts'
 export function hubKagelets(o: {
   dir: string; kl: NonNullable<Config['kagelets']>; mem: { own: string; owner: string }
   store: Store; ledgers: Ledgers; runs: ReturnType<typeof runEvents>; title: string; notify: (text: string) => void
-  hasSdk: () => boolean   // only the SDK runner enforces a grant, so with tmux panes no kagelet runs
+  hasSdk: () => boolean
   runNow: (id: string, now: number) => string | undefined
   toSession: (key: string, task: Task) => Delivery
   idle: (key: string) => boolean; paused: (now: number) => number | undefined
-  openHome?: (owners: string[], name: string) => Promise<string>   // runtime/kage-tools.ts homeThread
+  openHome?: (owners: string[], name: string) => Promise<string>
   tripwires: () => Config['tripwires']
 }) {
   const { kl, store, ledgers } = o
   const KAGELETS = kageletsDir(o.dir)
   let grants = new Map<string, string[]>()
-  let models = new Map<string, string>()   // lane key -> the model its file names
-  let allows = new Map<string, string[]>()   // lane key -> the owner's allow lines (core/held.ts allowedBy)
+  let models = new Map<string, string>()
+  let allows = new Map<string, string[]>()
   let refused = false
-  // Each kagelet's own memory and the dream's proposals waiting on Kage. It never reads or writes the owner's or Kage's memory.
   const kmem = kageletMemory({ dir: KAGELETS, forbid: () => [o.mem.own, o.mem.owner], event: e => ledgers.event(e), waiting: cells => ledgers.add('waiting', cells) })
   const MAX = kl.max || 10
-  // Off unless set (#96); a value that does not read as dollars is said once, here.
   const CAPS = { each: dailyCap(kl), total: totalCap(kl), chain: chainCap(kl) }
-  // With tmux panes their schedules are removed. A kagelet over its daily cost cap is paused and flagged first, so this sync already drops its schedule.
   const sync = (now: number) => {
     migrateKagelets(KAGELETS)
     let files = readKagelets(KAGELETS)
     if (!o.hasSdk() && files.length) { if (!refused) log('kagelets need the Agent SDK runner (harness.runtime is not tmux), so none runs'); refused = true; files = [] }
     const ran = ledgers.text('runs'), costs = ledgers.text('costs')
     const rows = kageletRows(files, { runs: ran, costs, now })
-    // Cost monitoring (#96): one line per kagelet a day in the reports ledger, where Kage reads it, and the event log. No DM.
     for (const f of costFlags(rows, { runs: ran, costs, reports: ledgers.text('reports') }, now)) { ledgers.add('reports', [`${COST_FLAG}${f.name}`, f.line, '']); log(`kagelet cost flag: ${f.line}`) }
     if (costCap({ dir: KAGELETS, store, title: o.title, tell: o.notify, flag: (name, why) => {
       const r = rows.find(x => x.name === name)!
@@ -65,18 +57,16 @@ export function hubKagelets(o: {
     models = new Map(rows.filter(r => r.key && r.model && grants.has(r.key)).map(r => [r.key!, r.model!]))
     allows = new Map(files.map(f => parseKagelet(f.name, f.text)).flatMap(k => 'allow' in k && k.allow && grants.has(k.key) ? [[k.key, k.allow] as const] : []))
   }
-  // Each objective's measure, run by the hub with no model (ADR 0016), and the scoreboard every run of it reads.
   const parsed = () => readKagelets(KAGELETS).map(f => parseKagelet(f.name, f.text)).filter((k): k is Kagelet => !('error' in k))
   const measures = kageletMeasures({ store, tripwires: () => o.tripwires() ?? {}, settings: () => ({ measureMinutes: kl.measureMinutes || 60, trendRuns: kl.trendRuns || 5 }),
     event: (who, detail) => ledgers.event({ kind: 'objective', who, trace: '', chain: '', detail }) })
   const reviewHeld = kageletReview({
     settings: () => ({ release: kl.release ?? 'rules', perDay: kl.reviewsPerDay || 10, model: kl.reviewModel || 'haiku' }),
     kagelet: key => parsed().find(k => k.key === key),
-    ask: a => claudeOnce({ ...a, cwd: emptyRoom(o.dir), tools: '', timeoutMs: 30_000 }),   // the step waits in the hook meanwhile; a timeout keeps it held
+    ask: a => claudeOnce({ ...a, cwd: emptyRoom(o.dir), tools: '', timeoutMs: 30_000 }),
     event: (key, detail) => o.runs.emit(key, 'held', detail),
     today: () => new Date().toISOString().slice(0, 10),
   })
-  // The owner's "always" on a held step's card: an exact allow line in that kagelet's job.md, so the step never asks again.
   const alwaysAllow = (key: string, tool: string, input: Record<string, unknown>) => {
     const k = tool === 'Bash' ? parsed().find(x => x.key === key) : undefined, f = k && readKagelets(KAGELETS).find(x => x.name === k.name)
     const command = String(input.command ?? ''), next = f && addAllow(f.text, command)
@@ -89,7 +79,6 @@ export function hubKagelets(o: {
   const notes = ownerNotes(store, () => ({ kept: kl.notesKept ?? NOTE_CAP.kept, chars: kl.noteChars ?? NOTE_CAP.chars }))
   const routes = kageletRoutes({ dir: KAGELETS, store, ledgers, runs: o.runs, deliver: kageletDeliver(notes, o.toSession, board),
     idle: o.idle, granted: key => grants.has(key), paused: o.paused, capUsd: CAPS.each, chainUsd: CAPS.chain, log, memory: name => kmem.notes(name) })
-  // A kagelet's needs go to Kage in its thread (ADR 0018); Kage's answer waits in its notes for its next run.
   const needs = kageletNeeds({ store, deliver: o.toSession, idle: o.idle, paused: o.paused, waiting: cells => ledgers.add('waiting', cells), perDay: () => kl.needsPerDay || 5, log })
   const tell = async (name: string, text: string, runNow: boolean, now = Date.now()): Promise<string> => {
     const lane = kageletRows(readKagelets(KAGELETS), { runs: '', costs: '', now }).find(r => r.name === name)?.key
@@ -98,8 +87,6 @@ export function hubKagelets(o: {
     o.runs.emit(lane, 'owner-note', `${text.length} characters, from Kage`)
     return runNow ? `told ${name}. ${await manager.manage({ action: 'run', name }, now)}` : `told ${name}: its next run reads it`
   }
-  // A person on a kagelet's people line asked it for work: a note it reads, and a run when it is idle and under
-  // kagelets.askRunsPerHour. Returns the line posted under their message.
   const ask = (chat: string, thread: string, name: string, from: string, text: string, now = Date.now()): string => {
     const [k] = askable(parsed(), chat, thread, name, from)
     if (!k) return ''
@@ -115,7 +102,6 @@ export function hubKagelets(o: {
     peopleIn: (chat: string, thread: string) => askable(parsed(), chat, thread).map(k => ({ name: k.name, people: [...k.people ?? [], ...k.owners ?? []] })),
     measure: (now: number) => measures.tick(parsed(), now).catch(e => log('kagelet measure failed', e)),
     lanes: () => grants.keys(),
-    // A lane whose file is gone keeps no tools, rather than falling back to approval cards.
     grantOf: (key: string) => grants.get(key) ?? (key.includes('#side-kagelet-') || key.includes('#side-kdream-') ? [] : undefined),
     modelOf: (key: string) => models.get(key),
     allowOf: (key: string) => allows.get(key) ?? [],

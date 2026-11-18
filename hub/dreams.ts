@@ -1,7 +1,3 @@
-// The nightly dreams. Kage's own: in the small hours, while every session is quiet, it learns from the day's threads and
-// tidies its memory (core/dream.ts), in a side lane of the bot DM so the DM's own conversation is untouched; the memory is
-// snapshotted first, so `kage dream undo` restores it. Each kagelet that ran gets one too (#98): a lane with no tool but
-// propose_memory, and nothing applies until Kage reviews it (review_kagelet_memory).
 import { execFile } from 'node:child_process'
 import { readFileSync, statSync, writeFileSync } from 'node:fs'
 import { log } from '../runtime/log.ts'
@@ -24,24 +20,21 @@ const DAY = 24 * 3600_000
 
 export function dreams(o: {
   dir: string; code: string; title: string; botDm: string
-  mem: { own: string; owner: string }; project: string   // the Claude Code project folder that holds the transcripts
+  mem: { own: string; owner: string }; project: string
   kagelets: string; kmem: ReturnType<typeof kageletMemory>; hasSdk: boolean
   store: Store; ledgers: Ledgers; placeOf: (key: string) => string
   paused: () => boolean; quiet: (now: number) => boolean
   deliver: (c: Conversation, task: Task, place: string, lane: Lane) => string | undefined
   toSession: (key: string, task: Task) => string | undefined
 }) {
-  // UTC days: today's and yesterday's rows cover at most the 24 hours back.
   const lastDay = (now: number) => [new Date(now - DAY), new Date(now)].flatMap(t => o.ledgers.events(t.toISOString().slice(0, 10)))
   const DREAMT = `${o.dir}/dream-sent`, KDREAMT = 'kagelet-dream-last'
-  // Asked once: push access to the Kage repo is what makes this the repo owner's hub (runtime/repo-access.ts).
   const ownsRepo = canPushToKage(args => new Promise((ok, no) => execFile('gh', args, { timeout: 15_000 }, (e, out) => e ? no(e) : ok(out))))
   return {
     async dream(now: number) {
       const last = Number(readFile(DREAMT).trim()) || undefined
-      if (o.paused() || !dreamDue(now, last, o.quiet(now))) return   // a dream in the pause would only hit the limit
+      if (o.paused() || !dreamDue(now, last, o.quiet(now))) return
       const snap = snapshotMemory(o.mem.own, now)
-      // At most a day back, so a Mac that slept through a few nights is not handed a week of threads.
       const since = Math.max(last ?? 0, now - DAY)
       const file = (id: string) => `${o.project}/${id}.jsonl`
       const threads = threadsSince(o.store.sessions(), id => { try { return statSync(file(id)).mtimeMs } catch { return undefined } }, since)
@@ -75,7 +68,7 @@ export function dreams(o: {
           meta: { channel: chat, thread_ts: thread ?? '', place: `${name} (dream)`, permalink: '' }, origin: { channel: chat, ts: '' } })
         log(`kagelet ${name} dreams`)
         if (o.toSession(key, task) !== 'failed') o.store.save(KDREAMT, { ...Object.fromEntries(last), [name]: now })
-        return   // one a tick: its session is not quiet now, and the next tick picks the next kagelet
+        return
       }
     },
   }

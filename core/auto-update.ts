@@ -34,7 +34,7 @@ const same = (a: string, b: string) => a.startsWith(b) || b.startsWith(a)
 
 const loops = (boots: Boot[]) => boots.filter((b, i) => i >= 2 && b.at - boots[i - 2]!.at < TEN_MIN).map(b => b.at)
 
-export function soakRuns(boots: Boot[], crashes: number[]): Run[] {
+function soakRuns(boots: Boot[], crashes: number[]): Run[] {
   const events = [...boots.map(b => ({ t: b.at, b })), ...[...new Set([...crashes, ...loops(boots)])].map(t => ({ t, b: undefined }))]
     .sort((x, y) => x.t - y.t || (x.b ? -1 : 1))
   const runs: Run[] = []
