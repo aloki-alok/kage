@@ -1,7 +1,3 @@
-// A voice agent's web call as Kage's ears and mouth in a Meet: the call's audio goes to the agent, the agent's
-// voice comes back into Kage's mic. The agent hears, takes turns and speaks; Kage answers through its ask_kage tool.
-// Protocol: POST /api/v1/sessions/create gives a ws_url; 16 kHz PCM16 base64 both ways ({type:"audio"} in,
-// {event:"media"} out, {event:"clear"} when someone cuts in, {event:"end_call"} when the agent hangs up).
 import type { Page } from 'playwright-core'
 
 export type Pipeline = { api: string; key: string; agent: number }
@@ -32,10 +28,10 @@ export async function bridge(page: Page, p: Pipeline, log: (...a: unknown[]) => 
     else if (m.event === 'user' && typeof m.media?.payload === 'string') { log('heard a turn,', m.media.payload.length, 'chars'); void page.evaluate(l => (window as any).__kage.status('thinking', l), m.media.payload.slice(-160)).catch(() => {}) }
     else if (m.event === 'clear') void page.evaluate(() => (window as any).__kage.clear()).catch(() => {})
     else if (m.event === 'end_call') { log('voice agent ended the call'); ended() }
-    else if (!/system_message|^system$|avatar_speaking/.test(m.event ?? '')) log('voice agent event:', String(m.event).slice(0, 40)) // the type only: events carry what people said (ADR 0010)
+    else if (!/system_message|^system$|avatar_speaking/.test(m.event ?? '')) log('voice agent event:', String(m.event).slice(0, 40))
   }
   ws.onclose = c => log('voice agent socket closed', c.code)
-  page.once('close', () => ws.close())   // however the call ends, the agent's call ends with it
+  page.once('close', () => ws.close())
   await page.evaluate(() => (window as any).__kage.listen())
   return () => ws.close()
 }

@@ -1,5 +1,3 @@
-// kage setup, run for real from a temp copy with a fake Slack (curl), a fake service and a fake claude.
-// Nothing here talks to Slack, launchd or systemd, or opens a browser.
 import { describe, test } from 'node:test'
 import assert from 'node:assert/strict'
 import { execFile } from 'node:child_process'
@@ -10,9 +8,6 @@ import { dirname, join } from 'node:path'
 const REPO = join(import.meta.dirname, '..')
 const exe = (path: string, text: string) => { writeFileSync(path, text); chmodSync(path, 0o755) }
 
-// A Kage folder with the real setup.sh and a fake service.sh. The fake service's `on` starts a
-// stand-in hub (a sleep) and writes the status file as the real hub does once Slack connects,
-// unless FAKE_NO_CONNECT is set.
 function world() {
   const root = mkdtempSync(join(tmpdir(), 'kage-setup-'))
   const dir = join(root, 'code'), conf = join(root, 'conf'), bin = join(root, 'bin'), home = join(root, 'home')
@@ -33,7 +28,6 @@ case "$1" in
   kind) echo none ;;
 esac
 `)
-  // Slack answers every token check with ok and the owner's id.
   exe(join(bin, 'curl'), '#!/bin/sh\ncat >/dev/null\necho \'{"ok":true,"user_id":"UTEST1"}\'\n')
   exe(join(bin, 'claude'), '#!/bin/sh\necho 1.0.0\n')
   for (const b of ['open', 'xdg-open']) exe(join(bin, b), '#!/bin/sh\nexit 0\n')
@@ -87,12 +81,9 @@ describe('kage save writes the tokens to secrets.json, private, and keeps the ot
   })
 })
 
-// A checkout with an origin one commit ahead, a fake service that logs stop and start, and a fake npm that logs whether the hub
-// was up while it ran. npm ci deletes node_modules first, so a hub or a kage command running then crashes (seen on 0.4.0 to 0.4.1).
 async function updateWorld(lockChanges: boolean, hubUp = true) {
   const w = world()
   const ops = join(w.root, 'ops')
-  // A drain holds every new message until each running turn ends (#309), so update must never start one.
   writeFileSync(join(w.dir, 'cli', 'quiet.ts'), `import { appendFileSync } from 'node:fs'\nappendFileSync(${JSON.stringify(ops)}, 'drain\\n')\n`)
   exe(join(w.dir, 'service.sh'), `#!/usr/bin/env bash
 case "$1" in
@@ -104,7 +95,6 @@ case "$1" in
 esac
 `)
   exe(join(w.root, 'bin', 'npm'), `#!/bin/sh\necho "npm $1 hub=$([ -f "${w.root}/hub-up" ] && echo up || echo down)" >> "${ops}"\n`)
-  // Logs each node run on the new commit: node beside the hub's own npm ci crashes on a half-deleted package (#302).
   exe(join(w.root, 'bin', 'node'), `#!/bin/sh\n[ "$(git -C "${w.dir}" log -1 --format=%s)" = two ] && echo "node after merge" >> "${ops}"\nexec "${process.execPath}" "$@"\n`)
   writeFileSync(join(w.dir, 'package-lock.json'), '{"version":"1"}\n')
   writeFileSync(join(w.dir, '.gitignore'), 'node_modules\n')
@@ -121,8 +111,6 @@ esac
 }
 const touch = (f: string) => writeFileSync(f, '')
 
-// The running hub restarts into new code at its next quiet moment and runs npm ci itself first (hub/updates.ts selfUpdate),
-// so update only moves the checkout. Holding messages for a drain, or a kage command beside the hub's npm ci, are both gone.
 describe('kage update moves the code and leaves the restart to the hub', () => {
   test('with the hub up and a changed lockfile, it holds no message and runs no npm', async () => {
     const { r, ops } = await updateWorld(true)

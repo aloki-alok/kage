@@ -1,4 +1,3 @@
-// Real Chromium and the real bot/bridge, with a local Meet page and a local voice agent.
 import { test, type TestContext } from 'node:test'
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
@@ -17,7 +16,6 @@ const until = async (ok: () => boolean, message: string) => {
   assert.ok(ok(), message)
 }
 
-// Raw 16 kHz PCM16, as the voice agent sends it (no WAV header).
 function tone(seconds: number) {
   const pcm = Buffer.alloc(16000 * seconds * 2)
   for (let i = 0; i < pcm.length / 2; i++) pcm.writeInt16LE(Math.round(12000 * Math.sin(2 * Math.PI * 440 * i / 16000)), i * 2)
@@ -63,11 +61,9 @@ async function setup(t: TestContext) {
     name: 'Kage (test)', consent: 'Test call.', heard: () => {}, stop: () => stop,
     voice: (pg, ended) => bridge(pg, { api: `http://127.0.0.1:${port}`, key: 'test-key', agent: 42 }, (...a) => logs.push(a.join(' ')), ended),
   }).finally(() => { finished = true })
-  // Observe failures at once, including when an assertion exits before attend finishes.
   void done.catch(() => {})
   t.after(async () => { stop = true; await done.catch(() => {}) })
   await page.waitForFunction(() => document.querySelector('#waiting:not(.hide)'))
-  // A remote participant's audio track, separate from the mic Meet gets from getUserMedia.
   await page.evaluate(() => {
     const ac = new AudioContext(), oscillator = ac.createOscillator(), out = ac.createMediaStreamDestination()
     oscillator.frequency.value = 440
@@ -116,12 +112,10 @@ test('clear stops both current and queued microphone playback', { timeout: 15_00
   s.send('media', tone(1))
   await s.page.waitForFunction(() => (window as any).fake.peak > 0.2)
   s.send('clear')
-  // Let the analyser's existing sample window drain, then measure a fresh interval.
   await sleep(200)
   await s.page.evaluate(() => { (window as any).fake.peak = 0 })
   await sleep(1200)
   assert.ok(await s.page.evaluate(() => (window as any).fake.peak < 0.01), 'Meet hears silence after clear')
-  // A later frame must start at once, rather than waiting behind the cleared queue.
   s.send('media', tone(1))
   await s.page.waitForFunction(() => (window as any).fake.peak > 0.2)
 })

@@ -6,7 +6,6 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
 const ROOT = new URL('..', import.meta.url).pathname
-// Claude Code runs a hook command through the shell, so the test does too.
 const command: string = JSON.parse(readFileSync(join(ROOT, 'hooks/hooks.json'), 'utf8')).hooks.PreToolUse[0].hooks[0].command
 const run = (pluginRoot: string, input: string, env: Record<string, string> = {}) =>
   spawnSync('sh', ['-c', command], { input, encoding: 'utf8', env: { PATH: process.env.PATH!, CLAUDE_PLUGIN_ROOT: pluginRoot, KAGE_ENV: join(tmpdir(), 'kage-no-such-env'), ...env } })

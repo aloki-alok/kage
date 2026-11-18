@@ -1,5 +1,3 @@
-// The repo's structure rules (ADR 0014). Each rule lists today's debt by name. A new break fails, and so does a
-// debt entry that is fixed but still listed, so the lists only shrink. Never add to a debt list: fix the code.
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { execFileSync } from 'node:child_process'
@@ -10,31 +8,23 @@ const root = new URL('..', import.meta.url).pathname
 const files = execFileSync('git', ['ls-files', '--cached', '--others', '--exclude-standard', '*.ts', '*.js'], { cwd: root, encoding: 'utf8' }).split('\n')
   .filter(f => f && !/(^|\/)tests\//.test(f) && !f.startsWith('docs/'))
 const text = new Map(files.map(f => [f, readFileSync(`${root}/${f}`, 'utf8')]))
-// The source without line and block comments, so a rule reads code, not prose about it.
 const code = (f: string) => text.get(f)!.replace(/\/\*[\s\S]*?\*\//g, '').replace(/(^|\s)\/\/.*$/gm, '$1')
-// Shell scripts call core/ too (setup.sh runs node with an import), so they count as users of an export.
 const scripts = execFileSync('git', ['ls-files', '*.sh'], { cwd: root, encoding: 'utf8' }).split('\n').filter(Boolean).map(f => readFileSync(`${root}/${f}`, 'utf8'))
-// Import lines do not count: splitting a module adds them to its importers, and the rule must not punish a split.
 const lines = (f: string) => text.get(f)!.split('\n').slice(0, -1).filter(l => !l.startsWith('import ')).length
 const inDir = (d: string) => files.filter(f => f.startsWith(`${d}/`) && f.endsWith('.ts') && !f.slice(d.length + 1).includes('/'))
 
 const MAX_LINES = 300
 
 const DEBT = {
-  commented: ['extension/', 'meetbot/', 'plugin/', 'tests/'] as string[],
-  // ADR 0001: core/ does no I/O, reads no environment, sets no timers, and imports only core/.
+  commented: [] as string[],
   impureCore: [] as string[],
-  // runtime/ and connectors/ never import hub/, plugin/ or a file in the repo root: those wire the layers below them.
   rootImports: [] as string[],
-  // A source file over MAX_LINES lines (import lines not counted), with the most it may have. Split it; lower the number as it shrinks.
   longFiles: {
     'hub/router.ts': 393, 'cli/top.ts': 490,
   } as Record<string, number>,
-  // A core/ or runtime/ file missing from the CONTRIBUTING.md code map.
   unmapped: [] as string[],
-  // A core/ export no other file needs: over-exported (drop the export) or dead (only a test uses it: delete both).
   unusedCoreExports: [
-    'core/config.ts NOT_SETTINGS', 'core/config.ts toEnv',   // leave with the old env import (compat PR)
+    'core/config.ts NOT_SETTINGS', 'core/config.ts toEnv',
   ] as string[],
 }
 
@@ -98,8 +88,6 @@ test('a core/ export is used outside its file: by another source file, or by its
     const elsewhere = files.some(g => g !== f && word.test(text.get(g)!)) || scripts.some(t => word.test(t))
     const ownUse = (code(f).match(word) ?? []).length > 1
     const tested = testText.some(t => new RegExp(`\\b${name}\\b`).test(t))
-    // Fine: another file uses it, or its own file does and a test drives it directly.
-    // Over-exported: only its own file uses it (drop the export). Dead: only a test uses it (delete both).
     if (!elsewhere && !(ownUse && tested)) unused.push(`${f} ${name}`)
   }
   check('unusedCoreExports', unused, DEBT.unusedCoreExports)
@@ -121,8 +109,6 @@ test('code marked "compat: remove after <date>" is gone by that date', () => {
   assert.deepEqual(due, [], 'past their removal date: delete the compat code')
 })
 
-// A child process gets the hub's whole environment only when it is trusted with it: git, the doctor, the owner's own
-// call command. Anything that opens outside content (a browser, a fetched page) gets a short allowlist (#207).
 const FULL_ENV_CHILDREN = ['hub/router.ts', 'cli/call.ts', 'cli/doctor/context.ts', 'runtime/release.ts']
 test('only a trusted child process gets ...process.env', () => {
   const spread = files.filter(f => /\.\.\.process\.env\b/.test(code(f)))
