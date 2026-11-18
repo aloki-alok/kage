@@ -101,7 +101,6 @@ async function kageTools(run: { options: any }) {
     return (await client.listTools()).tools
   } finally { await client.close(); await server.close() }
 }
-// One call to a Kage tool through the run's real MCP server, as Claude makes it.
 async function callKage(run: { options: any }, name: string, args: Record<string, unknown>) {
   const server = run.options.mcpServers.kage.instance
   const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair()
@@ -214,10 +213,10 @@ describe('Kage sessions on the Agent SDK', () => {
     run.emit({ type: 'system', subtype: 'session_state_changed', state: 'running' })
     const post = () => callKage(run, 'post_as_kage', { channel: 'C1', thread_ts: '5.5', to: 'CTEST9', text: 'hello' })
     assert.match(await post(), /only the owner/)
-    t.d.task('C1:5.5', t.task({ content: 'Task from the owner: thanks' }), 1)   // the owner writes while Sam's turn runs
+    t.d.task('C1:5.5', t.task({ content: 'Task from the owner: thanks' }), 1)
     await tick()
-    assert.match(await post(), /only the owner/)   // same turn: still Sam's trust, as the hook says (#364)
-    run.emit({ type: 'result', total_cost_usd: 1 })   // Sam's turn ends; the owner's message is the next turn, at the owner's trust
+    assert.match(await post(), /only the owner/)
+    run.emit({ type: 'result', total_cost_usd: 1 })
     await tick()
     assert.match(await callKage(t.sdk.runs.at(-1)!, 'post_as_kage', { channel: 'C1', thread_ts: '5.5', to: 'CTEST9', text: 'hello' }), /posted as Kage/)
     t.s.runner.stop('C1:5.5')

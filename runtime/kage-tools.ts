@@ -105,7 +105,6 @@ export function sessionTools(o: {
   schedules?: { add(j: Pick<Schedule, 'id' | 'cron' | 'prompt' | 'recurring' | 'lane' | 'trigger'> & { probe?: ProbeArg; shadow?: { of: string; live: string } }): string | void | Promise<string | void>; remove(id: string): void; list(): Schedule[]; tune?(id: string, t: TuneArg): string | void; hookUrl?(id: string): string | undefined; restore?(id: string): string | undefined; move?(id: string, to: string): string | undefined }
   // AFK on or off in the hub; resolves the line for the owner. Absent: AFK mode is off.
   afk?: (c: AfkCommand) => Promise<string>
-  // The runner's lowest sender in the running turn (#364). Absent (tmux panes): the thread's last task decides.
   turnSender?: () => Sender | undefined
   // This session is the lane of this kagelet (core/kagelets.ts): it gets the report tool and none of the manager's.
   kagelet?: string
@@ -238,8 +237,6 @@ export function sessionTools(o: {
     return { text: 'edited' }
   }
 
-  // The owner's turn right now: the thread's last task is theirs, and so is every task in the running turn, so the
-  // owner's mid-turn "thanks" never opens owner-only tools to a teammate's turn.
   const ownerNow = (key: string) => ownerTask.get(key) === true && (o.turnSender?.() ?? 'owner') === 'owner'
   const ownerOnly = (a: Record<string, unknown>) => ownerNow(`${String(a.channel)}:${String(a.thread_ts)}`)
   const pingIn = (channel: string) => [...ownerTask.keys()].some(k => k.startsWith(`${channel}:`) && ownerNow(k))
