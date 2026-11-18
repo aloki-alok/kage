@@ -24,12 +24,13 @@ export function slackTools(c: ToolContext): KageTool[] {
       private: z.boolean().optional().describe(`true sends it to the owner's DM with ${Title} instead of the thread`),
       owner_asked: z.boolean().optional().describe('true only when the owner\'s own task line asks to post this secret in the thread. Ignored on a teammate\'s task.'),
       waiting: s.optional().describe('If this reply asks a question or offers something and the work waits on the answer: one line naming what waits ("Open a PR for lock_id?"). It stays on the waiting list until this thread gets a new task, even when the reply is private.'),
+      waiting_on: s.optional().describe('With waiting: whose answer the work waits on. "owner" only for a one-way step (a deploy, a prod or database write, a merge, money, a send, a delete), a product or business choice, or something only the owner knows. Inside a job the owner already approved, decide the step yourself. A teammate\'s own test, data or decision: their Slack id (U...), and the reply tags them; it stays off the owner\'s waiting list.'),
       wide: z.boolean().optional().describe('true only for a log or code where wrapped lines are fine. Never for a table.'),
       tag_agent: z.boolean().optional().describe('On a task another agent posted: true only when that agent must read this post (the answer to its ask, or a question to it). An agent hears only posts that tag it, so acks, progress and thanks stay untagged.'),
       mark: z.enum(['ack', 'question', 'answer', 'done']).optional().describe('What this reply is, shown as a reaction on the task message: ack ("On it", no reaction), question (you need their answer to go on), answer (a quick question answered), done (the task is finished). Leave it out only on the reply that finishes the task.'),
     },
     async run(args) {
-      const a = args as { channel: string; thread_ts: string; text: string; private?: boolean; owner_asked?: boolean; waiting?: string; mark?: keyof typeof MARKS; wide?: boolean; tag_agent?: boolean }
+      const a = args as { channel: string; thread_ts: string; text: string; private?: boolean; owner_asked?: boolean; waiting?: string; waiting_on?: string; mark?: keyof typeof MARKS; wide?: boolean; tag_agent?: boolean }
       const key = `${a.channel}:${a.thread_ts}`
       // A reply goes back where a task came from, never to a channel picked from the conversation.
       if (!a.private && !taskChannels.has(a.channel)) return { isError: true, text: 'refused: no task came from that channel; use private=true' }
@@ -45,6 +46,11 @@ export function slackTools(c: ToolContext): KageTool[] {
         if (o.send({ type: a.channel === 'email' ? 'mail' : 'wa', text: a.text }) === false) return { isError: true, text: HUB_DOWN }
         return { text: a.channel === 'email' ? 'sent by email' : 'handed to the guard: it goes out as the owner, or to their Slack DM if the guard holds it' }
       }
+      const ask = a.waiting?.trim(), on = a.waiting_on?.trim()
+      if (ask && on !== 'owner' && !/^[UW][A-Z0-9]{2,}$/.test(on ?? '')) return { isError: true, text: 'not sent: with waiting, set waiting_on to "owner" or the Slack id (U...) of the person who must answer' }
+      if (ask && on !== 'owner' && a.private) return { isError: true, text: 'not sent: a teammate cannot see the owner\'s DM. Ask them in the thread, or set waiting_on to "owner"' }
+      // A wait on a teammate is theirs: the reply tags them (on its own line before a table or code), and the owner's list never holds it.
+      if (ask && on !== 'owner' && !a.text.includes(`<@${on}>`)) a.text = `<@${on}>${/^(```|\|)/.test(a.text) ? '\n' : ' '}${a.text}`
       const layout = layoutRefusal(a.text, a)
       if (layout) return { isError: true, text: layout }
       const { via, where: at } = a.private ? await post(key, o.botDm(), dmThread.get(key), a.text) : await post(key, a.channel, a.thread_ts, a.text, a.tag_agent ? { tag: agents.get(key)?.tag } : {}, a.mark === 'ack')
@@ -54,8 +60,7 @@ export function slackTools(c: ToolContext): KageTool[] {
         for (const origin of unanswered.get(key) ?? []) react(origin.channel, origin.ts, emoji)
         if (a.mark !== 'question') unanswered.delete(key)
       }
-      const ask = a.waiting?.trim()
-      if (ask && !openWaiting(ledger('waiting')).some(i => i.thread === key && i.what.trim().toLowerCase() === ask.toLowerCase())) append('waiting', ['open', key, links.get(key) ?? key, ask])
+      if (ask && on === 'owner' && !openWaiting(ledger('waiting')).some(i => i.thread === key && i.what.trim().toLowerCase() === ask.toLowerCase())) append('waiting', ['open', key, links.get(key) ?? key, ask])
       return { text: `sent via ${via} (${at}; pass these to edit_message or delete_message)` }
     },
   }, {
