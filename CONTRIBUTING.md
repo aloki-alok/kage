@@ -8,6 +8,8 @@ npm test            # every *.test.ts under core/, connectors/, runtime/, cli/ a
 npm run typecheck   # tsc --noEmit
 ```
 
+`npm test` runs each test file in its own process and kills one still running after 5 minutes (`tests/run.ts`). A fake that a loop calls (`ask`, `sleep`) throws after a fixed number of calls, so a loop that never ends fails its test instead of hanging the run (#277).
+
 Tests live in a `tests/` folder inside the folder of the code they test: `core/gate.ts` is tested by `core/tests/gate.test.ts`.
 
 `tests/structure.test.ts` checks the layout itself (ADR 0014): `core/` stays pure, nothing below the root imports a root file, no source file passes 300 lines, every `core/` and `runtime/` file is in the tables below, and no `core/` export goes unneeded. Each rule lists today's breaks as debt that may only shrink. The skill `.claude/skills/kage-change-code` has the rest of the clean-code rules.
