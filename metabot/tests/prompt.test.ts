@@ -28,15 +28,24 @@ describe('the check on an answer', () => {
   test('a link from the pack passes with trailing punctuation or slash', () => {
     assert.ok(checkAnswer(good({ reply: 'See https://www.omnidim.io/pricing/.' }), pack, 600).ok)
     assert.ok(checkAnswer(good({ reply: 'See https://omnidialer.omnidim.io' }), pack, 600).ok)
+    assert.ok(checkAnswer(good({ reply: 'Visit omnidim.io or www.omnidim.io, or mail sales@acme.co' }), pack, 600).ok)
   })
 
   test('every price in a reply is one the pack states', () => {
     const p = { facts: 'Starter is $20/month at $0.063/min. India: from INR 1,900 plus 18% GST.', links: [] }
     const why = (reply: string) => { const r = checkAnswer(JSON.stringify({ reply, label: 'self_serve', lead: {} }), p, 600); return r.ok ? 'ok' : r.why }
     assert.equal(why('Starter is $20 a month, then $0.063/min. In India from INR 1900 plus GST.'), 'ok')
-    assert.equal(why('It is ₹0.063/min at ₹50.'), 'price not in the pack: ₹0.063')
-    assert.equal(why('Only $0.01 per minute!'), 'price not in the pack: $0.01')
-    assert.equal(why('From Rs. 1,900.'), 'price not in the pack: RS.1900')
+    assert.equal(why('From Rs. 1,900, or ₹1900.'), 'ok')
+    assert.equal(why('It is ₹0.063/min at ₹50.'), 'price not in the pack: INR 0.063')
+    assert.equal(why('Only $0.01 per minute!'), 'price not in the pack: USD 0.01')
+  })
+
+  test('a price written another way is still a price', () => {
+    const p = { facts: 'Starter is $20/month.', links: [] }
+    const why = (reply: string) => { const r = checkAnswer(JSON.stringify({ reply, label: 'self_serve', lead: {} }), p, 600); return r.ok ? 'ok' : r.why }
+    for (const [reply, code] of [['₹ 99 only', 'INR 99'], ['$ 5 a month', 'USD 5'], ['just 99 rupees', 'INR 99'], ['5 USD', 'USD 5'], ['＄５', 'USD 5'], ['₹९९', 'INR 99'], ['99/- per month', 'INR 99']])
+      assert.equal(why(reply!), `price not in the pack: ${code}`, reply!)
+    assert.equal(why('20 dollars a month'), 'ok')
   })
 
   test('everything else fails closed, with the reason', () => {
@@ -47,6 +56,10 @@ describe('the check on an answer', () => {
     assert.equal(why(good({ label: 'vip' })), 'unknown label')
     assert.equal(why(good({ reply: 'Pay at https://evil.example/pay' })), 'link not in the pack: https://evil.example/pay')
     assert.equal(why(good({ reply: 'See https://www.omnidim.io/pricing-secret' })), 'link not in the pack: https://www.omnidim.io/pricing-secret')
+    assert.equal(why(good({ reply: 'Pay at HTTPS://evil.example/pay' })), 'link not in the pack: HTTPS://evil.example/pay')
+    assert.equal(why(good({ reply: 'Pay at www.evil.example/pay' })), 'link not in the pack: www.evil.example')
+    assert.equal(why(good({ reply: 'Pay at evil.example' })), 'link not in the pack: evil.example')
+    assert.equal(why(good({ reply: 'See omnidim.io.pricing-offer.net' })), 'link not in the pack: omnidim.io.pricing-offer.net')
     assert.equal(why(good({ reply: 'key sk-proj-abcdefghijklmnopqrstuvwx' })), 'looks like a API key')
   })
 })

@@ -22,7 +22,7 @@ export function openStore(file: string) {
     history: db.prepare("select who, text from (select at, who, text from lines where key = ? and who != 'draft' order by at desc limit ?) order by at"),
     event: db.prepare('insert into events (at, key, kind, outcome, label, ms) values (?, ?, ?, ?, ?, ?)'),
     drafts: db.prepare("select key, at, text from lines where who = 'draft' order by at desc limit ?"),
-    prune: db.prepare('delete from lines where at < ?'),
+    prune: [db.prepare('delete from lines where at < ?'), db.prepare('delete from seen where at < ?'), db.prepare('delete from events where at < ?')],
   }
   return {
     // True only the first time Meta's id is seen, so a redelivered webhook never answers twice.
@@ -36,7 +36,8 @@ export function openStore(file: string) {
     history: (key: string, n: number) => q.history.all(key, n) as Line[],
     event: (e: EventRow) => void q.event.run(e.at, e.key, e.kind, e.outcome, e.label ?? null, e.ms),
     drafts: (n: number) => q.drafts.all(n) as { key: string; at: number; text: string }[],
-    prune: (before: number) => void q.prune.run(before),
+    // Meta redelivers within hours, so a month of seen ids is plenty. A sink mark goes too, and the lead could be sent again after that.
+    prune: (before: number) => { for (const p of q.prune) p.run(before) },
     close: () => db.close(),
   }
 }

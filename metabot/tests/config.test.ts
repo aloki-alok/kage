@@ -13,6 +13,13 @@ describe("the bot's settings", () => {
     assert.equal(c.packDir, '/d/pack')
   })
 
+  test('team and live need our app id, or the bot runs dry', () => {
+    assert.equal(parseConfig({ mode: 'live' }, '/d').settings.mode, 'dry')
+    assert.equal(parseConfig({ mode: 'team', ourAppId: '' }, '/d').settings.mode, 'dry')
+    assert.equal(parseConfig({ mode: 'live', ourAppId: 'APP' }, '/d').settings.mode, 'live')
+    assert.equal(parseConfig({ mode: 'off' }, '/d').settings.mode, 'off')
+  })
+
   test('a wrong value falls back to its default, never to something looser', () => {
     const c = parseConfig({ mode: 'yolo', limits: { repliesPerLeadPerDay: -1, humanQuietHours: 'x' }, maxChars: 5, team: ['T1', 3] }, '/d')
     assert.equal(c.settings.mode, 'dry')

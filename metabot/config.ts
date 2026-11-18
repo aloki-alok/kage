@@ -14,6 +14,7 @@ const MODES: Mode[] = ['off', 'dry', 'team', 'live']
 const num = (v: unknown, d: number, min: number) => (typeof v === 'number' && Number.isFinite(v) && v >= min ? v : d)
 const text = (v: unknown, d: string) => (typeof v === 'string' ? v : d)
 
+// team and live need ourAppId: without it the bot reads its own echoes as a person and goes quiet after one reply.
 export function parseConfig(raw: unknown, dir: string): Config {
   const c = (raw && typeof raw === 'object' ? raw : {}) as Record<string, unknown>
   const l = (c.limits && typeof c.limits === 'object' ? c.limits : {}) as Record<string, unknown>
@@ -21,7 +22,7 @@ export function parseConfig(raw: unknown, dir: string): Config {
   return {
     settings: {
       brand: text(c.brand, 'our business'),
-      mode: MODES.includes(c.mode as Mode) ? c.mode as Mode : 'dry',
+      mode: !MODES.includes(c.mode as Mode) ? 'dry' : (c.mode === 'team' || c.mode === 'live') && !text(c.ourAppId, '') ? 'dry' : c.mode as Mode,
       ourAppId: text(c.ourAppId, ''),
       team: Array.isArray(c.team) ? c.team.filter((x): x is string => typeof x === 'string') : [],
       limits: { repliesPerLeadPerDay: num(l.repliesPerLeadPerDay, 8, 0), humanQuietHours: num(l.humanQuietHours, 72, 0) },

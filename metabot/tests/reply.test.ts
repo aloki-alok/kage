@@ -65,6 +65,25 @@ describe('one lead message, start to finish', () => {
     assert.equal(dry.sent.length, 0)
   })
 
+  test('off reads nothing, so the same message is answered once the bot is on', async () => {
+    const { d, store, sent } = rig({ mode: 'off' })
+    const ev = msg()
+    assert.equal(await handle(ev, d), 'off')
+    assert.equal(store.history('messenger:P1:U1', 10).length, 0)
+    d.settings.mode = 'live'
+    assert.equal(await handle(ev, d), 'sent')
+    assert.equal(sent.length, 1)
+  })
+
+  test('a failed model call sends the fallback line when one is set', async () => {
+    const { d, sent } = rig()
+    d.model = async () => { throw new Error('timeout') }
+    assert.equal(await handle(msg(), d), 'failed_model')
+    d.settings.fallbackReply = 'Thanks! https://www.omnidim.io/pricing'
+    assert.equal(await handle(msg(), d), 'failed_model_fallback')
+    assert.equal(sent.length, 1)
+  })
+
   test('after a person answers in the inbox, the bot stays out of that thread', async () => {
     const { d, sent } = rig()
     assert.equal(await handle({ kind: 'echo', channel: 'messenger', pageId: 'P1', user: 'U1', id: 'e1', appId: 'INBOX', at: NOW }, d), 'human')
@@ -79,11 +98,18 @@ describe('one lead message, start to finish', () => {
     assert.equal(await handle(msg(), d), 'over_limit')
   })
 
-  test('a lead with a contact and a real need goes to the sink; a vague one does not', async () => {
+  test('a lead with a contact and a real need goes to the sink once; a vague one does not', async () => {
     const { d, sunk } = rig({ model: answer({ label: 'qualified', lead: { phone: '+91 90000 00000', need: 'collections' } }) })
+    await handle(msg(), d)
     await handle(msg(), d)
     assert.equal(sunk.length, 1)
     assert.equal(sunk[0]!.label, 'qualified')
+    const dry = rig({ mode: 'dry', model: answer({ label: 'qualified', lead: { phone: '+91 90000 00000' } }) })
+    await handle(msg(), dry.d)
+    assert.equal(dry.sunk.length, 0, 'a dry run never reaches the sink')
+    const down = rig({ model: answer({ label: 'qualified', lead: { phone: '+91 90000 00000' } }) })
+    down.d.sink = async () => { throw new Error('503') }
+    assert.equal(await handle(msg(), down.d), 'sent_sink_failed')
     const vague = rig({ model: answer({ label: 'needs_info', lead: { phone: '+91 90000 00000' } }) })
     await handle(msg(), vague.d)
     assert.equal(vague.sunk.length, 0)

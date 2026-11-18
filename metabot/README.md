@@ -7,9 +7,9 @@ What it does with each message:
 1. It checks Meta's signature, then skips any message it has already handled.
 2. It skips the thread if a person on the team answered it in the Meta inbox in the last `humanQuietHours`, or if the lead hit `repliesPerLeadPerDay`.
 3. It makes one model call with the engine rules, `job.md` and the knowledge pack. The answer must be JSON with a reply and a label.
-4. A fixed check holds a reply that carries a link not in `links.md`, a price not in the pack, or a secret.
+4. A fixed check holds a reply that carries a link or domain not in `links.md`, a price the pack does not state (in any currency form or script), or a secret.
 5. A second model call reads the reply. Only `SEND` lets it out.
-6. The mode decides where the reply goes. `dry` keeps it as a draft, `team` sends only to the `team` list, `live` sends to everyone, and `off` reads nothing.
+6. The mode decides where the reply goes. `dry` keeps it as a draft, `team` sends only to the `team` list, `live` sends to everyone, and `off` reads nothing. If the reply was held or the model failed, `fallbackReply` goes out in its place.
 
 The bot has no tools. Its model request never offers one, and `metabot/tests/structure.test.ts` fails if any file it loads can start a process.
 
@@ -49,7 +49,7 @@ App Review needs `pages_messaging` to reply in DMs and to comments, `pages_manag
 | Key | Default | Means |
 |---|---|---|
 | `brand` | `our business` | The name the bot speaks for. |
-| `mode` | `dry` | `off`, `dry`, `team` or `live`. A wrong value reads as `dry`. |
+| `mode` | `dry` | `off`, `dry`, `team` or `live`. A wrong value reads as `dry`, and so do `team` and `live` with no `ourAppId`. |
 | `team` | `[]` | The ids (PSIDs) that `team` mode sends to. |
 | `ourAppId` | `""` | This app's id. An echo from any other app means a person answered in the inbox. |
 | `limits.repliesPerLeadPerDay` | `8` | The most replies one lead gets in a UTC day. |
@@ -61,11 +61,12 @@ App Review needs `pages_messaging` to reply in DMs and to comments, `pages_manag
 | `model.baseUrl`, `model.model` | OpenAI, `gpt-5.4-mini` | Any OpenAI-compatible chat API. |
 | `port` | `8795` | The local port. |
 | `packDir` | `<folder>/pack` | Where the facts and `links.md` are. The bot reads them for each message, so changes apply at once. |
-| `sinkUrl` | `""` | Where a lead goes once they leave an email or phone and have a real need. A POST with `sinkToken` as the Bearer token. Empty means no sink. |
-| `linesKeptDays` | `30` | Chat lines older than this are deleted. |
+| `sinkUrl` | `""` | Where a lead goes once they leave an email or phone and have a real need: a POST with `sinkToken` as the Bearer token, once per thread, and only when the reply was sent. Empty means no sink. |
+| `linesKeptDays` | `30` | Chat lines, seen ids and event rows older than this are deleted. |
 
 ## See what it did
 
 - `metabot.db` holds one `events` row per message (outcome, label, time), the chat lines, and the drafts (`who = 'draft'`).
 - `missed.jsonl` lists product questions the pack could not answer. Add the answers to the pack.
 - The server prints one line per message to stderr: channel, kind and outcome.
+- Events waiting in memory are lost if the server stops. Meta does not resend a message it got a 200 for.

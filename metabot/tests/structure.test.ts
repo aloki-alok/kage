@@ -26,8 +26,10 @@ function reach(): string[] {
 }
 
 test('everything the bot loads stays inside metabot/ and core/, with only safe node modules', () => {
-  const bad: string[] = []
-  for (const f of reach()) {
+  const bad: string[] = [], reached = reach()
+  // The walk must cross into core/, or a core/ file that starts a process would go unseen.
+  assert.ok(reached.some(f => f.endsWith('/core/signature.ts')) && reached.some(f => f.endsWith('/core/outbound.ts')), 'the import walk reaches core/')
+  for (const f of reached) {
     const rel = relative(root, f)
     if (!/^(metabot|core)\/[^/]+\.ts$/.test(rel)) bad.push(`${rel} is loaded`)
     for (const spec of importsOf(f)) {
