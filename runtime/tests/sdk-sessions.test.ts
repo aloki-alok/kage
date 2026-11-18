@@ -277,6 +277,7 @@ describe('Kage sessions on the Agent SDK', () => {
     await tick()
     run.emit({ type: 'system', subtype: 'session_state_changed', state: 'idle' })
     await tick()
+    assert.ok(!t.turns.some(x => JSON.stringify(x).includes('and the metrics')))
     const mid = t.sdk.runs.at(-1)!
     mid.emit({ type: 'system', subtype: 'session_state_changed', state: 'running' })
     mid.emit({ type: 'result', total_cost_usd: 1 })
