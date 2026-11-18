@@ -1,5 +1,3 @@
-// The word or two Kage posts under a listed agent's post that needs nothing from it, so a thread never looks ignored.
-// A small model picks words that fit that post; "Noted" stands in when it fails or answers with anything longer.
 import { findSecret } from '../core/outbound.ts'
 import { claudeOnce } from '../runtime/claude-once.ts'
 

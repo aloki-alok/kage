@@ -13,7 +13,6 @@ const TOKEN = 'tok-test-1234567890'
 const open: { close: () => Promise<void> }[] = []
 afterEach(async () => { while (open.length) await open.pop()!.close() })
 
-// In-memory stand-ins for the hub: deliver records tasks, and reply() plays the router's replies.voice.
 async function setup(o: { waitMs?: number; delivery?: Delivery; voice?: Voice; slot?: () => boolean; end?: (key: string) => void } = {}) {
   const clock = { now: 1_000_000 }
   const delivered: { key: string; place: string; task: Task }[] = []
@@ -95,7 +94,6 @@ describe('the hang-up webhook', () => {
     assert.equal(s.v.sessions(), 1)
     assert.equal(s.v.calls(), 1)
     assert.deepEqual(calls, [`voice:${id}`])
-    // A duplicate hang-up, including one racing the first, is harmless.
     const retries = await Promise.all([ended(s, body, undefined, header), ended(s, body, undefined, header)])
     assert.deepEqual(retries.map(r => r.status), [204, 204])
     assert.deepEqual(calls, [`voice:${id}`])
@@ -146,7 +144,7 @@ describe('the hang-up webhook', () => {
     await until(() => s.delivered.length === 2)
     s.v.reply(s.delivered[1]!.key, 'New call.')
     assert.equal((await next).text, 'New call.')
-    await a.close()   // the remote caller has disconnected; cancel its unanswered client request
+    await a.close()
     await pending
   })
   test('missing or malformed ids are rejected without closing a session', async () => {
@@ -199,8 +197,7 @@ describe('ask_kage', () => {
     s.v.reply(s.delivered[0]!.key, 'Here is the slow answer.')
     const second = await s.ask(c, 'next one')
     assert.match(second.text, /^Here is the slow answer\./)
-    assert.equal(s.delivered.length, 1)               // the new question waits for the caller to ask again
-    // The late reply is kept once: asking again handles the new question normally.
+    assert.equal(s.delivered.length, 1)
     const p = s.ask(c, 'next one')
     await until(() => s.delivered.length === 2)
     s.v.reply(s.delivered[1]!.key, 'Fresh answer.')
@@ -249,14 +246,14 @@ describe('ask_kage', () => {
     const texts = (await both).map(r => r.text)
     assert.equal(s.delivered.length, 1)
     assert.equal(texts.filter(t => t.includes('The one answer.')).length, 1)
-    assert.equal(texts.filter(t => /^Kage is still working/.test(t)).length, 1)   // the other ask finds the answer already taken
+    assert.equal(texts.filter(t => /^Kage is still working/.test(t)).length, 1)
   })
   test('a reply that arrives with no ask waiting is kept for the call it belongs to, not the next question', async () => {
     const s = await setup({ waitMs: 50 })
     const c = await s.client()
     await s.ask(c, 'one')
     s.v.reply(s.delivered[0]!.key, 'Late one.')
-    s.v.reply('voice:no-such-call', 'stray')           // no such call: dropped
+    s.v.reply('voice:no-such-call', 'stray')
     assert.match((await s.ask(c, 'two')).text, /^Late one\. .*earlier question/)
     assert.equal(s.delivered.length, 1)
     const p = s.ask(c, 'two')
@@ -306,7 +303,7 @@ describe('a voice call never costs the owner a slot', () => {
     const r = await s.ask(b, 'two')
     assert.match(r.text, /busy, try again shortly/i)
     assert.equal(s.delivered.length, 1)
-    await s.end(a)                                    // the first call ends: its slot is free
+    await s.end(a)
     await s.ask(b, 'two')
     assert.equal(s.delivered.length, 2)
   })
@@ -344,7 +341,7 @@ describe('a voice call never costs the owner a slot', () => {
     await s.ask(a, 'one')
     s.clock.now += 2 * 60_000
     await s.v.sweep()
-    assert.match((await s.ask(b, 'two')).text, /busy/i)    // still held at 2 minutes
+    assert.match((await s.ask(b, 'two')).text, /busy/i)
     s.clock.now += 2 * 60_000
     await s.v.sweep()
     await s.ask(b, 'two')
@@ -356,7 +353,7 @@ describe('a voice call never costs the owner a slot', () => {
     const a = await s.client()
     await s.ask(a, 'one')
     s.clock.now += 4 * 60_000
-    await a.listTools()                               // the session is alive, the call is idle
+    await a.listTools()
     await s.v.sweep()
     assert.equal(s.v.calls(), 0)
   })
@@ -364,7 +361,7 @@ describe('a voice call never costs the owner a slot', () => {
     const ended: string[] = []
     const s = await setup({ waitMs: 20, end: k => ended.push(k) })
     const a = await s.client()
-    const idle = await s.client()                      // only initialized, never asked
+    const idle = await s.client()
     await s.ask(a, 'one')
     const key = s.delivered[0]!.key
     s.clock.now += 3 * 60_000
@@ -391,7 +388,7 @@ describe('a session that never replies does not lock the call', () => {
     assert.match((await s.ask(c, 'first')).text, /still working/i)
     s.clock.now += 100 + 30_000 - 1
     assert.match((await s.ask(c, 'second')).text, /still working/i)
-    assert.equal(s.delivered.length, 1)                // before the deadline: still the same question
+    assert.equal(s.delivered.length, 1)
     s.clock.now += 2
     await s.ask(c, 'third')
     assert.equal(s.delivered.length, 2)
@@ -427,14 +424,14 @@ describe('with the real dispatcher', () => {
     const ask = async (c: Client) => ((await c.callTool({ name: 'ask_kage', arguments: { question: 'hi' } })).content as { text: string }[])[0]!.text
     const one = await client()
     const two = await client()
-    await ask(one)                                          // voice call 1 takes slot 1 of 2
-    assert.equal(d.task('C1:1.1', ownerTask, clock.now), 'starting')   // the owner thread takes slot 2
-    assert.match(await ask(two), /busy/i)                   // full: call 2 is refused, nothing evicted
+    await ask(one)
+    assert.equal(d.task('C1:1.1', ownerTask, clock.now), 'starting')
+    assert.match(await ask(two), /busy/i)
     assert.equal(delivered.length, 1)
     assert.deepEqual(stopped, [])
     await (one.transport as StreamableHTTPClientTransport).terminateSession()
-    assert.deepEqual(stopped, [`voice:${delivered[0]!.slice(6)}`])   // only the voice session closed
-    await ask(two)                                          // the slot is free at once
+    assert.deepEqual(stopped, [`voice:${delivered[0]!.slice(6)}`])
+    await ask(two)
     assert.equal(delivered.length, 2)
   })
 })
@@ -493,7 +490,7 @@ describe('a call Kage placed to the owner is the owner', () => {
     const c = await s.client()
     await s.ask(c, 'a', s.v.issueCode())
     s.clock.now += 4 * 60_000
-    await c.listTools()                               // the session is alive, the call is idle
+    await c.listTools()
     await s.v.sweep()
     await s.ask(c, 'b')
     assert.deepEqual(s.delivered.map(d => d.task.fromOwner), [true, false])

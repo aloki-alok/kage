@@ -1,7 +1,3 @@
-// Email connector: turns a mail from the owner or a listed teammate into a Task for the hub, and
-// sends a session's reply back to that mail thread. Rules live in core/email.ts. The transport is
-// below: SES receives mail for Kage's address into S3 and notifies an SQS queue; this polls the
-// queue, checks each mail, and sends replies through SES.
 import { DeleteMessageCommand, ReceiveMessageCommand, SQSClient } from '@aws-sdk/client-sqs'
 import { GetObjectCommand, S3Client } from '@aws-sdk/client-s3'
 import { SendEmailCommand, SESv2Client } from '@aws-sdk/client-sesv2'
@@ -19,9 +15,7 @@ import { DEFAULT_MODEL } from '../core/config.ts'
 import { composeReply, emailBody, emailTaskLine, emailVerdict, mailTask, replyTargets, type InboundMail, type MailConfig } from '../core/email.ts'
 import { taskAsOther } from '../core/gate.ts'
 
-// The AWS keys (secrets.json) and connectors.email (config.json).
 export type Mail = { on?: boolean; address?: string | null; queue?: string | null; ownerEmail?: string | null; region?: string | null; teammateEmails?: string[]; accessKeyId?: string | null; secretAccessKey?: string | null }
-// On when the mail settings exist, unless connectors.email.on is false (the kill switch).
 export function connectEmail(o: {
   mail: Mail
   saved: Saved
@@ -43,7 +37,7 @@ export function connectEmail(o: {
   const send = startMailbox({
     mail: { ...mail, queue: mail.queue }, saved: o.saved, cfg, inbox: o.inbox, dir: o.dir, notify: o.notify, nameOf: o.nameOf,
     onTask(t) {
-      const place = `email thread ${logRef(t.key)}`   // a place is logged and shown: never the subject
+      const place = `email thread ${logRef(t.key)}`
       const content = [
         emailTaskLine(t.from, t.sender, t.ask),
         `Reply with the reply tool, channel "email" and thread_ts "${t.key}": it goes to everyone on the thread, and a reply to anyone outside ${cfg.domains[0]} waits for a check. Subject: ${noChannelTag(t.subject).replace(/\s+/g, ' ')}`,
@@ -55,7 +49,6 @@ export function connectEmail(o: {
         origin: { channel: 'email', ts: t.key },
       })
       log('mail task,', t.sender, logRef(t.key))
-      // The mail key is the session key; it reads back into its conversation.
       if (o.deliver(parseSessionKey(t.key)!.conversation, task, place) === 'failed') o.failed(task)
     },
   })
@@ -68,8 +61,6 @@ type MailTaskOut = { key: string; sender: 'owner' | 'teammate'; from: string; su
 
 const addrs = (a?: AddressObject | AddressObject[]) =>
   (Array.isArray(a) ? a : a ? [a] : []).flatMap(x => x.value.map(v => v.address ?? '')).filter(Boolean)
-// DKIM keys are TXT answers too big for plain UDP. Home routers often drop those (no EDNS, no TCP),
-// so Node's lookup times out and every mail fails its signature check. Public resolvers serve them.
 const resolver = new dns.Resolver({ timeout: 5000, tries: 2 })
 resolver.setServers(['1.1.1.1', '8.8.8.8', ...dns.getServers()])
 const dkimResolver = (name: string, rr: string) => resolver.resolve(name, rr) as Promise<string[] | string[][]>
@@ -84,7 +75,7 @@ function startMailbox(o: {
   const s3 = new S3Client({ region, credentials })
   const ses = new SESv2Client({ region, credentials })
   const queue = o.mail.queue
-  const room = emptyRoom(o.dir)   // the guard's Claude finds no CLAUDE.md or memory here
+  const room = emptyRoom(o.dir)
   const threads = (o.saved.load('mail-threads') ?? {}) as Record<string, Thread>
 
   async function handle(body: string) {
@@ -106,8 +97,6 @@ function startMailbox(o: {
       subject: p.subject ?? '',
       text: p.text ?? '',
     }
-    // SQS delivers at least once: a Message-ID already in the inbox is a repeat. The id is recorded
-    // only after handling (SQS holds the mail until then), so a crash midway gets the mail again.
     const source = `mail:${mail.messageId}`
     if (o.inbox.has(source)) return
     const t = mailTask(mail, o.cfg, k => threads[k]?.mail)
@@ -125,7 +114,6 @@ function startMailbox(o: {
       try {
         const res = await sqs.send(new ReceiveMessageCommand({ QueueUrl: queue, WaitTimeSeconds: 20, MaxNumberOfMessages: 5 }))
         for (const m of res.Messages ?? []) {
-          // A mail that fails to process is logged and dropped, not retried forever.
           await handle(m.Body ?? '{}').catch(e => log('mail handling failed', e))
           await sqs.send(new DeleteMessageCommand({ QueueUrl: queue, ReceiptHandle: m.ReceiptHandle }))
         }
@@ -137,7 +125,6 @@ function startMailbox(o: {
   }
   void poll()
 
-  // Reply-all, threaded under the latest mail that tagged Kage. Outside recipients: the guard decides first.
   return async function send(key: string, text: string): Promise<void> {
     const t = threads[key]
     if (!t) throw new Error(`no mail thread ${key}`)

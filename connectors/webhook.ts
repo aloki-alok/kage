@@ -1,5 +1,3 @@
-// What the connectors that listen on a local port share: the body reader, the bearer check and the hourly cap.
-// Each connector keeps its own status codes and its own order of checks.
 import { createHash, timingSafeEqual } from 'node:crypto'
 import { createServer, type IncomingMessage, type RequestListener } from 'node:http'
 import type { AddressInfo } from 'node:net'
@@ -13,8 +11,6 @@ export function listen(handler: RequestListener, port: number, host = '127.0.0.1
   return { server, listening, close: () => { server.closeAllConnections(); server.close() } }
 }
 
-// The whole body as bytes (decode once, so a character split across chunks cannot break a signature).
-// Nothing above max: the caller answers 413 and destroys the request.
 export function readBody(req: IncomingMessage, max: number): Promise<Buffer | undefined> {
   return new Promise(done => {
     const chunks: Buffer[] = []
@@ -32,7 +28,6 @@ export function readBody(req: IncomingMessage, max: number): Promise<Buffer | un
 const digest = (s: string) => createHash('sha256').update(s).digest()
 export const bearerOk = (header: string | undefined, token: string) => timingSafeEqual(digest(header ?? ''), digest(`Bearer ${token}`))
 
-// When each of the last hour's starts happened. tell() is true once per full spell, so the owner hears it once.
 export function hourCap(perHour: number) {
   const started: number[] = []
   let told = false

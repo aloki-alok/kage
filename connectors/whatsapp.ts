@@ -1,5 +1,3 @@
-// The WhatsApp side of the router: WAHA (a linked device on the owner's own number) posts every
-// message here, signed. core/whatsapp.ts decides; this module does the I/O.
 import { createHmac, timingSafeEqual } from 'node:crypto'
 import { mkdirSync } from 'node:fs'
 import type { RequestListener } from 'node:http'
@@ -17,12 +15,8 @@ export const wahaUrl = (set?: string | null) => set || 'http://127.0.0.1:3198'
 export type WaTask = { chat: string; place: string; content: string; source?: string }
 const ARM_MS = 60 * 60_000
 
-// A webhook body above this is refused unread: WAHA events are a few KB.
 const MAX_BODY = 1_000_000
 
-// A signed WAHA webhook body, into the inbox before WAHA hears 200: a hub that dies while handling it
-// replays it from the store on the next start (hub/router.ts), and a redelivered message id runs once.
-// Returns the message to run, or nothing (another event, or a repeat).
 export function wahaIntake(body: string, inbox: Inbox): { source?: string; payload: WahaPayload } | undefined {
   const e = JSON.parse(body) as { event?: string; payload?: WahaPayload }
   if (e.event !== 'message.any' || !e.payload) return undefined
@@ -37,10 +31,6 @@ const signed = (hmac: string, body: Buffer, given: string) => {
   return want.length === got.length && timingSafeEqual(want, got)
 }
 
-// The webhook handler. The port may face a container VM (KAGE_WA_HOOK_HOST=0.0.0.0), so the HMAC is the only
-// gate: method, path and the signature header are checked before one byte is read (a scanner costs nothing),
-// then the HMAC on the full body (a caller with a header can still make the hub buffer up to MAX_BODY, so the
-// server drops slow bodies after 10 s), then the inbox take before the 200.
 export function wahaHandler(hmac: string, inbox: Inbox, run: (p: WahaPayload, source?: string) => unknown, max = MAX_BODY): RequestListener {
   if (!hmac) throw new Error('the WAHA webhook needs an HMAC key')
   return (req, res) => {
@@ -65,7 +55,7 @@ export function startWhatsApp(o: { dir: string; name: string; owner: string; wah
   const HMAC = waha.WHATSAPP_HOOK_HMAC_KEY
   if (!HMAC) throw new Error('secrets.json waha has no WHATSAPP_HOOK_HMAC_KEY: the webhook would have no secret')
   const MODEL = o.whatsapp.model || DEFAULT_MODEL
-  const ROOM = emptyRoom(o.dir)   // the guard's Claude finds no CLAUDE.md or memory here
+  const ROOM = emptyRoom(o.dir)
   mkdirSync(o.memory, { recursive: true, mode: 0o700 })
 
   const armed = new Map<string, Arming & { brief: string }>()
@@ -80,7 +70,6 @@ export function startWhatsApp(o: { dir: string; name: string; owner: string; wah
     const rows = await api(`/api/default/chats/${encodeURIComponent(chat)}/messages?limit=50&downloadMedia=false`).catch(() => []) as { fromMe?: boolean; body?: string; timestamp?: number }[]
     return rows.filter(r => r.body).sort((a, b) => (a.timestamp ?? 0) - (b.timestamp ?? 0)).map(r => ({ fromMe: !!r.fromMe, text: withoutFooter(r.body!) }))
   }
-  // Every message leaving as the owner passes the key check and the guard first; a held one goes to their DM.
   async function send(chat: string, text: string, hist?: WaLine[]) {
     const brief = armed.get(chat)?.brief ?? ''
     const { system, prompt } = guardPrompt(brief, hist ?? await history(chat), text, o.owner)
@@ -95,7 +84,6 @@ export function startWhatsApp(o: { dir: string; name: string; owner: string; wah
   }
   const sendText = (chatId: string, text: string) => api('/api/sendText', { method: 'POST', body: JSON.stringify({ session: 'default', chatId, text }) })
 
-  // One stand-in reply at a time per chat; messages that land meanwhile get one more pass.
   async function standIn(chat: string) {
     if (busy.get(chat) !== undefined) { busy.set(chat, true); return }
     busy.set(chat, false)
@@ -122,31 +110,23 @@ export function startWhatsApp(o: { dir: string; name: string; owner: string; wah
     log('whatsapp', action.kind, logRef(m.chat))
     if (action.kind === 'disarm') { armed.delete(action.chat); return }
     if (action.kind === 'stand-in') { void standIn(action.chat); return }
-    // A replay (after a restart or a usage-limit pause) runs the task but never arms the stand-in: the owner may have
-    // disarmed the chat since, and the stand-in answers contacts as the owner.
     if (!replayed) armed.set(action.chat, { until: Date.now() + ARM_MS, replies: 0, brief: action.text })
-    const place = `WhatsApp chat ${logRef(action.chat)}`   // a place is logged and shown: never the number
+    const place = `WhatsApp chat ${logRef(action.chat)}`
     o.onTask({ chat: action.chat, place, content: waTaskContent(action.text, place, action.chat, await history(action.chat), o.name, o.owner), ...(source && { source }) })
   }
 
-  // A failed event stays unhandled, so the next start tries it again.
   const run = (p: WahaPayload, source?: string, replayed = false) => onEvent(p, source, replayed).then(() => { if (source) o.inbox.handled(source) }, err => log('whatsapp event failed', err))
-  // Localhost by default. A WAHA container that reaches the host through a VM gateway needs
-  // connectors.whatsapp.hookHost 0.0.0.0: then only the HMAC guards it, so keep the port off the internet.
   const HOST = o.whatsapp.hookHost || '127.0.0.1'
   const PORT = o.whatsapp.hookPort || 3199
   void listen(wahaHandler(HMAC, o.inbox, run), PORT, HOST).listening
     .then(() => log(`whatsapp on: listening on ${HOST}:${PORT}`), e => log('whatsapp could not listen', e))
 
   return {
-    // A session can send only to its own chat: the key names it.
     send: async (key: string, text: string) => { await send(key.slice('wa:'.length), text) },
-    // A message the last run took but never handled, from the inbox.
     replay: async (source: string, payload: string) => run(JSON.parse(payload) as WahaPayload, source, true),
   }
 }
 
-// One look at the bridge (#351): /ping, then the default session with the API key. 5 s each, so a hung container is down too.
 export async function wahaSeen(url: string, key: string, ms = 5_000): Promise<BridgeSeen> {
   const get = (path: string) => fetch(url + path, { headers: { 'X-Api-Key': key }, signal: AbortSignal.timeout(ms) })
   try {
@@ -158,13 +138,10 @@ export async function wahaSeen(url: string, key: string, ms = 5_000): Promise<Br
   } catch { return { reached: false } }
 }
 
-// The hub's job: one look every connectors.whatsapp.checkMinutes, and a DM only when the bridge goes down or comes back
-// (core/whatsapp.ts bridgeAlert). The down flag is in the store, so a restart while the bridge is down sends no second DM.
-// It is saved only after Slack took the DM, so a failed DM is sent again on the next look. Off clears it: no stray "back" later.
 const DOWN = 'whatsapp-bridge-down'
 export function bridgeClock(o: { on: boolean; minutes?: number; look: () => Promise<BridgeSeen>; at: { url: string; qr: string }; state: { load(name: string): unknown; save(name: string, value: unknown): void }; notify: (text: string) => Promise<boolean> }): Job[] {
   if (!o.on) { o.state.save(DOWN, undefined); return [] }
-  let starting = false   // in memory: after a hub restart, one STARTING look is again no change
+  let starting = false
   return [{ name: 'whatsapp bridge', every: (o.minutes || 5) * 60_000, run: async () => {
     const r = bridgeAlert({ down: o.state.load(DOWN) === true, starting }, await o.look(), o.at)
     if (r.dm) {

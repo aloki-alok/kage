@@ -41,7 +41,6 @@ describe('asking Jev about an agent post', () => {
     assert.equal((await jevCheck(config, { fetch: broken })('A0AGENT01', 'x')).reply, true)
     const slow = ((_: string, init: RequestInit) => new Promise((_r, reject) =>
       init.signal!.addEventListener('abort', () => reject(init.signal!.reason)))) as unknown as typeof fetch
-    // AbortSignal.timeout's timer does not hold the event loop, and this fake fetch holds no socket: keep Node up.
     const alive = setTimeout(() => {}, 1000)
     const v = await jevCheck(config, { fetch: slow, timeoutMs: 20 })('A0AGENT01', 'x')
     clearTimeout(alive)
@@ -65,7 +64,6 @@ describe('intake triage of a tagged message', () => {
     assert.equal(calls[0]!.url, config.url)
     assert.equal(JSON.parse(String(calls[0]!.init.body)).questions.intake.type, 'choice')
     assert.equal(events.length, 1)
-    // The ack emoji waits on this call, so the event says how long it took.
     assert.match(events[0]!, /^C1:5\.5 react: other react 0\.97, reaction eyes 0\.00, \d+ ms$/)
     assert.ok(!events.join().includes('thanks') && !events.join().includes('apikey_secret'))
   })

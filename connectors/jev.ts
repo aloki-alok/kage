@@ -1,13 +1,9 @@
-// The Jev call (rules in core/jev.ts). It fails open: on a timeout, an HTTP error or an answer it cannot read, the
-// post is answered as before, and the loop guard (core/agents.ts) still caps an agent's turns. The log carries the
-// score and the reason only, never the key or the post.
 import { log } from '../runtime/log.ts'
 import { afkRequest, afkVerdict, jevChecks, jevRequest, jevVerdict, reactionVerdict, triageRequest, triageSkips, triageVerdict, type JevConfig, type Urgency } from '../core/jev.ts'
 
-// One POST to Jev. The answer, the HTTP status of a refusal, or the name of the error (a timeout, a body that is not JSON).
 type JevAnswer = { json: unknown } | { status: number } | { failed: string }
 async function jevPost(c: JevConfig, body: () => unknown, go: typeof fetch, timeoutMs: number): Promise<JevAnswer> {
-  try {   // body is built inside, so a builder that throws still fails open
+  try {
     const r = await go(c.url, {
       method: 'POST',
       headers: { Authorization: `Bearer ${c.key}`, 'Content-Type': 'application/json' },
@@ -37,12 +33,9 @@ export function jevCheck(c: JevConfig, o: { fetch?: typeof fetch; timeoutMs?: nu
 
 export type Triage = (who: string, sender: 'owner' | 'other', text: string, o: { hasFiles: boolean; inThread: boolean; context?: () => Promise<string> }) => Promise<{ pick: 'session' | 'react'; why: string; reaction?: ReturnType<typeof reactionVerdict> }>
 
-// Intake triage (rules in core/jev.ts). who: the thread. Every call ends in an event with the pick and the score, never the text (ADR 0010).
-// It fails open: a timeout, an HTTP error or an answer it cannot read is `session`.
 export function jevTriage(c: JevConfig, emit: (who: string, detail: string) => void, o: { fetch?: typeof fetch; timeoutMs?: number } = {}): Triage {
   const go = o.fetch ?? fetch
   return async (who, sender, text, skips) => {
-    // The pickup emoji waits on this call (connectors/slack.ts), so the event carries its time.
     const t0 = Date.now()
     const done = (pick: 'session' | 'react', why: string, reaction = { key: 'none', emoji: null as string | null, confidence: 0 }) => {
       emit(who, `${pick}: ${why}, reaction ${reaction.key} ${reaction.confidence.toFixed(2)}, ${Date.now() - t0} ms`)
@@ -63,7 +56,6 @@ export function jevTriage(c: JevConfig, emit: (who: string, detail: string) => v
 
 export type JevAfk = (o: { owner: string; place: string; from: string; convo: string }) => Promise<{ urgency: Urgency; waits: boolean; lookup: boolean } | undefined>
 
-// The AFK stand-in's triage (rules in core/jev.ts). Undefined on any failure: the caller falls back to the Claude triage, so a P0 is never lost to a Jev outage.
 export function jevAfk(c: JevConfig, o: { fetch?: typeof fetch; timeoutMs?: number } = {}): JevAfk {
   const go = o.fetch ?? fetch
   return async input => {

@@ -1,30 +1,22 @@
-// Browser connector (#114): the hub's side of Kage's Chrome extension. The extension long-polls
-// 127.0.0.1:<port>/browser/next for a command, runs it in the owner's Chrome, and posts what it got to
-// /browser/result. Long polling, not a socket: plain node:http on this side, plain fetch in the extension.
-// Both paths need `Authorization: Bearer <browserToken>`. A web page cannot send that header across
-// origins without a preflight, and the preflight gets 401, so no page the owner visits can drive this.
-// What a session may see of a page is core/browser.ts. Off unless browserToken is set.
 import { randomUUID } from 'node:crypto'
 import type { ServerResponse } from 'node:http'
 import { bearerOk, listen, readBody } from './webhook.ts'
 
-const MAX_BODY = 20_000_000   // a full-page PNG screenshot as base64 fits well under this
+const MAX_BODY = 20_000_000
 
 type Cmd = { id: string; op: string; args: unknown }
 
 export function connectBrowser(o: {
   token: string; port: number
-  pollMs?: number    // how long one poll is held open with nothing to send
-  callMs?: number    // how long a call waits for the extension's answer
-  staleMs?: number   // with no poll for this long, the extension counts as gone
+  pollMs?: number
+  callMs?: number
+  staleMs?: number
   now?: () => number
-  onPoll?: (at: number, version?: string) => void   // each poll, so kage doctor can say when the extension was last seen, and its version
+  onPoll?: (at: number, version?: string) => void
 }) {
   const now = o.now ?? Date.now
   const pollMs = o.pollMs ?? 25_000, callMs = o.callMs ?? 20_000, staleMs = o.staleMs ?? 60_000
   const queue: Cmd[] = []
-  // Sent to a poll, with no result yet. The extension polls again only after it posts a result, so a new poll
-  // while these wait means the old poll's socket died before the extension read them: they go out again.
   const sent = new Map<string, Cmd>()
   const pending = new Map<string, { resolve: (v: unknown) => void; reject: (e: Error) => void; timer: NodeJS.Timeout }>()
   let waiter: { res: ServerResponse; timer: NodeJS.Timeout } | undefined
@@ -68,7 +60,7 @@ export function connectBrowser(o: {
     if (req.method === 'GET' && req.url === '/browser/next') {
       lastPoll = now()
       o.onPoll?.(lastPoll, String(req.headers['x-kage-extension'] ?? '').slice(0, 20) || undefined)
-      release(204)   // one poll at a time: a newer one (a restarted extension) replaces the old
+      release(204)
       queue.unshift(...sent.values())
       sent.clear()
       waiter = { res, timer: setTimeout(() => release(204), pollMs) }
@@ -83,7 +75,6 @@ export function connectBrowser(o: {
       let r: { id?: unknown; ok?: unknown; data?: unknown; error?: unknown }
       try { r = JSON.parse(raw.toString('utf8')) } catch { res.writeHead(400).end(); return }
       const p = typeof r.id === 'string' ? pending.get(r.id) : undefined
-      // A result after its call timed out has no one waiting.
       if (!p) { res.writeHead(404).end(); return }
       pending.delete(r.id as string)
       sent.delete(r.id as string)
