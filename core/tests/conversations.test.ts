@@ -45,6 +45,9 @@ describe('the key of the session working on a conversation', () => {
     assert.equal(sessionKey(slack, { agent: 'ops', lane: 'side-6.6' }), 'ops/C1:5.5#side-6.6')
     assert.notEqual(sessionKey(slack, { agent: 'ops' }), sessionKey(slack))
   })
+  test('a bare connector prefix with no id is not a key', () => {
+    for (const k of ['mail:', 'wa:', 'voice:']) assert.equal(parseSessionKey(k, DM), undefined)
+  })
   test('a key reads back into the same agent, conversation and lane', () => {
     for (const [c, o] of [
       [slack, {}], [slack, { lane: 'side-6.6' }], [slack, { agent: 'ops', lane: 'side-6.6' }],
