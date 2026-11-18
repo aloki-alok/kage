@@ -1,6 +1,3 @@
-// End-to-end check of Kage's Chrome extension against page.html, through the real hub bridge (connectors/browser.ts).
-// run.py starts Chromium with the extension, paired by kage add browser; this side drives it and checks each rule.
-// Exits 1 on the first rule that does not hold.
 import { readFileSync } from 'node:fs'
 import { connectBrowser } from '../../../connectors/browser.ts'
 import { elementsResult, type Snapshot } from '../../../core/browser-act.ts'

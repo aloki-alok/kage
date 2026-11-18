@@ -1,5 +1,3 @@
-// What keeps the hub alive (hub.ts, service.sh, the hub lock), run for real from a temp copy with a fake
-// hub (hub/router.ts) and a fake Slack API. Nothing here talks to Slack, launchd or systemd.
 import { describe, test, before, after } from 'node:test'
 import assert from 'node:assert/strict'
 import { execFile, spawn } from 'node:child_process'
@@ -16,7 +14,6 @@ const sh = (args: string[], env: Record<string, string>): Promise<Run> => new Pr
   execFile('/bin/bash', args, { env: { PATH: `${dirname(process.execPath)}:${process.env.PATH}`, HOME: env.HOME ?? tmpdir(), ...env } }, (e, stdout, stderr) =>
     res({ code: e ? (typeof e.code === 'number' ? e.code : null) : 0, out: stdout + stderr })))
 
-// A Kage folder with the real scripts and a fake hub, and a config folder with an env file.
 function kageCopy() {
   const root = mkdtempSync(join(tmpdir(), 'kage-svc-'))
   const dir = join(root, 'code'), conf = join(root, 'conf'), work = join(root, 'work')
@@ -29,7 +26,6 @@ function kageCopy() {
   cpSync(join(REPO, 'core'), join(dir, 'core'), { recursive: true })
   symlinkSync(join(REPO, 'node_modules/zod'), join(dir, 'node_modules/zod'))
   mkdirSync(join(dir, 'hub'), { recursive: true }); writeFileSync(join(dir, 'hub', 'router.ts'), FAKE_HUB)
-  // The packages are current: the lock is older than npm's stamp.
   writeFileSync(join(dir, 'package-lock.json'), '{}')
   utimesSync(join(dir, 'package-lock.json'), new Date(0), new Date(0))
   writeFileSync(join(dir, 'node_modules', '.package-lock.json'), '{}')
@@ -53,7 +49,6 @@ describe('hub.ts: one hub run, with its log, its boot count and a crash-loop DM'
     url = `http://127.0.0.1:${(api.address() as { port: number }).port}`
   })
   after(() => api.close())
-  // As launchd and systemd run it: node on hub.ts, its output appended to hub.log.
   const hub = (k: ReturnType<typeof kageCopy>, env: Record<string, string> = {}) => new Promise<number | null>(res => {
     const fd = openSync(join(k.conf, 'hub.log'), 'a')
     spawn(process.execPath, [join(k.dir, 'hub.ts')], { stdio: ['ignore', fd, fd], env: { PATH: process.env.PATH!, HOME: k.root, KAGE_ENV: k.envFile, KAGE_CWD: k.work, KAGE_SLACK_API: url, ...env } })
@@ -106,12 +101,11 @@ describe('hub.ts: one hub run, with its log, its boot count and a crash-loop DM'
     const k = kageCopy()
     writeFileSync(join(k.dir, 'hub', 'router.ts'), `import 'fakepkg'; console.log('loaded after npm ci')`)
     const later = new Date(Date.now() + 5000)
-    utimesSync(join(k.dir, 'package-lock.json'), later, later)   // the lock moved: packages are behind
-    // A stand-in npm that installs the one package and stamps the install, as npm ci does.
+    utimesSync(join(k.dir, 'package-lock.json'), later, later)
     const bin = join(k.root, 'bin')
     mkdirSync(bin)
     writeFileSync(join(bin, 'npm'), `#!/bin/sh\nmkdir -p node_modules/fakepkg && echo '{"name":"fakepkg","main":"i.js"}' > node_modules/fakepkg/package.json && : > node_modules/fakepkg/i.js && touch node_modules/.package-lock.json && echo "npm $*"\n`, { mode: 0o755 })
-    assert.equal(await hub(k, { PATH: `${bin}:${process.env.PATH}` }), 75)   // the supervisor starts it again
+    assert.equal(await hub(k, { PATH: `${bin}:${process.env.PATH}` }), 75)
     assert.equal(await hub(k, { PATH: `${bin}:${process.env.PATH}` }), 0)
     assert.match(logOf(k), /behind package-lock\.json[\s\S]*npm ci --no-audit[\s\S]*loaded after npm ci/)
     assert.equal(logOf(k).match(/npm ci --no-audit/g)?.length, 1)
@@ -243,7 +237,6 @@ describe('service.sh: the unit the OS supervises', () => {
     const bin = join(k.root, 'bin'), ld = join(k.root, 'ld')
     mkdirSync(bin); mkdirSync(ld)
     writeFileSync(join(bin, 'uname'), '#!/bin/bash\necho Darwin\n', { mode: 0o755 })
-    // Like launchd: bootout returns at once, the label stays loaded a few prints longer, and a bootstrap meanwhile fails with 5.
     writeFileSync(join(bin, 'launchctl'), `#!/bin/bash
 s='${ld}'
 case "$1" in
@@ -289,7 +282,6 @@ describe('the hub: one per machine', () => {
     const hung = net(() => {}).listen(join(k.conf, 'router.sock'))
     await new Promise(r => hung.once('listening', r))
     const t0 = Date.now()
-    // With no KAGE_CLAUDE the hub stops at its next step, which proves it got past the check.
     const r = await new Promise<Run>(res => execFile(process.execPath, [join(REPO, 'hub', 'router.ts')], { env: { PATH: process.env.PATH!, HOME: k.root, KAGE_ENV: k.envFile } },
       (e, so, se) => res({ code: e ? (e.code as number) : 0, out: so + se })))
     hung.close()
@@ -313,7 +305,6 @@ describe('the hub lock: one hub even when two start at the same moment', () => {
   test('a lock left by a hub that died is taken over, and still by one only', async () => {
     const k = kageCopy()
     const lock = join(k.conf, 'hub.lock')
-    // A dead hub leaves its socket file with nobody listening.
     await new Promise<void>(r => execFile(process.execPath, ['-e', `require('node:net').createServer().listen(process.argv[1], () => process.kill(process.pid, 'SIGKILL'))`, lock], () => r()))
     assert.ok(statSync(lock).isSocket())
     const got = await race(lock, 3)

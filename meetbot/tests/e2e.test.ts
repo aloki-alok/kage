@@ -1,5 +1,3 @@
-// The bot in real Chromium against a fake Meet page (fake-meet.html), posting to the real hub connector.
-// Run from meetbot/: node --test tests/e2e.test.ts (needs `npx playwright-core install chromium` once).
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
@@ -13,7 +11,6 @@ const FAKE = readFileSync(new URL('./fake-meet.html', import.meta.url), 'utf8')
 const sleep = (ms: number) => new Promise(r => setTimeout(r, ms))
 
 async function setup() {
-  // What the hub started: a live question (voice:meet-<call>) or the notes for a finished call (the owner's DM).
   const tasks: { key: string; content: string }[] = []
   const ended: string[] = []
   const m = connectMeeting({
@@ -33,7 +30,6 @@ async function setup() {
 test('the bot takes a join from the hub, joins, posts the consent line, and streams settled captions', async () => {
   const t = await setup()
   try {
-    // The hub queues a join only once the bot has polled; the bot then reads it on its next poll.
     await t.h.next(0)
     assert.equal(t.m.join(LINK), '')
     const [cmd] = await t.h.next(0)
@@ -50,7 +46,6 @@ test('the bot takes a join from the hub, joins, posts the consent line, and stre
     assert.deepEqual(await t.page.evaluate(() => [(window as any).fake.name, (window as any).fake.sent, (window as any).fake.mic]),
       ['Kage (notes)', ['Kage is taking notes.'], 1])
 
-    // A block that grows, then holds still, goes out once; its later growth goes out as the new part only.
     await t.page.evaluate(() => (window as any).fake.say('Jane', 'Kage, what', 'b1'))
     await sleep(400)
     await t.page.evaluate(() => (window as any).fake.say('Jane', 'Kage, what is next?', 'b1'))
@@ -61,7 +56,6 @@ test('the bot takes a join from the hub, joins, posts the consent line, and stre
     await t.page.evaluate(() => (window as any).fake.end())
     const all: Seg[] = await done
     assert.deepEqual(all.map(s => `${s.speaker}: ${s.text}`), ['Jane: Kage, what is next?', 'Jane: The deploy.', 'Kim: I own it.'])
-    // The first line named Kage, so the hub started one live question with the call's lines as context.
     assert.deepEqual(t.tasks.map(x => x.key), ['voice:meet-abc-defg-hij'])
     assert.match(t.tasks[0]!.content, /^> Jane: Kage, what is next\?$/m)
   } finally { await t.close() }
@@ -74,7 +68,7 @@ test('the bot leaves a call once it is alone, and gives up when Meet refuses it'
     await t.page.waitForFunction(() => document.querySelector('#waiting:not(.hide)'))
     await t.page.evaluate(() => { (window as any).fake.admit(); (window as any).fake.alone() })
     await done
-    assert.equal(await t.page.evaluate(() => !document.querySelector('#ended')!.classList.contains('hide')), true)   // it clicked Leave call
+    assert.equal(await t.page.evaluate(() => !document.querySelector('#ended')!.classList.contains('hide')), true)
 
     const page = await t.page.context().newPage()
     const refused = attend(page, LINK, { name: 'Kage (notes)', consent: 'hi', heard: () => {} })
@@ -84,7 +78,6 @@ test('the bot leaves a call once it is alone, and gives up when Meet refuses it'
   } finally { await t.close() }
 })
 
-// A WAV of a 440 Hz tone, the stand-in for any TTS.
 function tone(seconds = 0.6, rate = 24000) {
   const n = Math.floor(seconds * rate), b = Buffer.alloc(44 + n * 2)
   b.write('RIFF', 0); b.writeUInt32LE(36 + n * 2, 4); b.write('WAVEfmt ', 8); b.writeUInt32LE(16, 16); b.writeUInt16LE(1, 20); b.writeUInt16LE(1, 22)
@@ -106,9 +99,8 @@ test('an answer is spoken into the mic Meet uses, falls back to chat with no voi
     await t.page.waitForFunction(() => document.querySelector('#waiting:not(.hide)'))
     await t.page.evaluate(() => (window as any).fake.admit())
     await t.page.waitForFunction(() => (window as any).fake.sent.length === 1)
-    assert.equal(await t.page.evaluate(() => (window as any).fake.peak), 0)   // silent until Kage speaks
+    assert.equal(await t.page.evaluate(() => (window as any).fake.peak), 0)
 
-    // The hub's reply arrives as a say command; the poll loop hands it to the call.
     await t.page.evaluate(() => (window as any).fake.say('Jane', 'Kage, ping'))
     await sleep(2500)
     assert.equal(t.m.say('voice:meet-abc-defg-hij', 'Pong.'), true)

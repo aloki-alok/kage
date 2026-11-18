@@ -1,7 +1,3 @@
-// For tests/upgrade-drill.sh, run inside the upgraded install after the hub's first start imported the env file. Each line
-// of the old file comes back: a setting Kage knows from its place in the settings files (an old name under its new one),
-// and any other line from unknownEnv, the env the hub gives sessions (#300). Prints names only, never values.
-//   node tests/upgrade-env-kept.ts <settings folder> <copy of the env file from before the import>
 import { readFileSync } from 'node:fs'
 import { ALIASES, KEYS, toEnv, unknownEnv } from '../core/config.ts'
 import { parseEnv } from '../core/settings.ts'

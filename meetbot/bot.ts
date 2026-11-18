@@ -1,7 +1,3 @@
-// Kage's meeting bot (#63). It runs on a machine with a screen (or Xvfb), long-polls the owner's Kage hub for a
-// join, drives its own Chromium into the Google Meet, and posts Meet's captions to the hub as speaker lines.
-// It only calls out: the hub is reached over the owner's tailnet at the meeting webhook, with the meeting token.
-// Everything it knows about Meet's page is page.js. Settings: ~/.config/kage-meetbot/config.json and secrets.json.
 import { spawn } from 'node:child_process'
 import { readFileSync } from 'node:fs'
 import { homedir } from 'node:os'
@@ -10,7 +6,6 @@ import { fileURLToPath } from 'node:url'
 import { chromium, type Page } from 'playwright-core'
 import { bridge, type Pipeline } from './voice-agent.ts'
 
-// What the hub sends (connectors/meeting.ts): go to a call, or speak an answer in it.
 export type Cmd = { seq: number; op: 'join'; link: string } | { seq: number; op: 'say'; call: string; text: string }
 export type Seg = { speaker: string; text: string; start: number; self?: boolean }
 type Settings = { hub: string; name: string; consent: string; chrome?: string; profile: string; token: string; speak?: string; window?: boolean }
@@ -23,7 +18,6 @@ export function settings(dir = join(homedir(), '.config', 'kage-meetbot')): Sett
   const read = (f: string) => { try { return JSON.parse(readFileSync(join(dir, f), 'utf8')) as Record<string, unknown> } catch { return {} } }
   const c = read('config.json'), s = read('secrets.json')
   const str = (v: unknown, d = '') => typeof v === 'string' && v.trim() ? v.trim() : d
-  // The hub passes its own address and token when it runs the bot as its child (hub/router.ts meetbot).
   const hub = str(process.env.KAGE_MEETBOT_HUB || c.hub).replace(/\/+$/, '')
   if (!/^https?:\/\/[^\s/]+$/.test(hub)) throw new Error(`config.json: hub must be the hub's address, like http://my-mac:8790 (got "${hub}")`)
   const token = str(process.env.KAGE_MEETBOT_TOKEN || s.meetingToken)
@@ -35,27 +29,23 @@ export function settings(dir = join(homedir(), '.config', 'kage-meetbot')): Sett
   }
 }
 
-// One call, start to end, on a page Kage already opened. Resolves with everything heard once the call is over.
 export async function attend(page: Page, link: string, o: {
   name: string; consent: string
-  heard: (lines: Seg[]) => Promise<void> | void   // settled caption lines, about once a second
-  said?: string[]    // Kage's answers waiting to be spoken, filled by the poll loop
-  speak?: (text: string) => Promise<Buffer>   // text to WAV audio; with none, the answer goes in the Meet chat
-  admitMs?: number   // how long to wait for the host to let Kage in
-  aloneMs?: number   // with nobody else in the call this long, Kage leaves
+  heard: (lines: Seg[]) => Promise<void> | void
+  said?: string[]
+  speak?: (text: string) => Promise<Buffer>
+  admitMs?: number
+  aloneMs?: number
   stop?: () => boolean
-  voice?: (page: Page, ended: () => void) => Promise<() => void>   // a voice agent hears and speaks (voice-agent.ts); captions still make the notes
+  voice?: (page: Page, ended: () => void) => Promise<() => void>
 }): Promise<Seg[]> {
   const admitMs = o.admitMs ?? 10 * 60_000, aloneMs = o.aloneMs ?? 2 * 60_000
   const k = <T>(fn: string, arg?: unknown) => page.evaluate(([f, a]) => (window as any).__kage[f as string](a), [fn, arg] as const) as Promise<T>
   const mark = (kind: string) => k<boolean>('mark', kind)
-  // Meet redraws controls often; a click on a replaced control gives up in 3 s and the caller's loop marks it again.
   const click = async (kind: string) => (await mark(kind)) && page.click(`[data-kage="${kind}"]`, { timeout: 3000 }).then(() => true, () => false)
   const until = async (what: () => Promise<boolean>, ms: number) => { for (const end = Date.now() + ms; Date.now() < end; await sleep(500)) if (await what()) return true; return false }
 
   await page.goto(link, { waitUntil: 'domcontentloaded' })
-  // A signed-in profile has no name field; a guest types the name everyone in the call will see.
-  // A signed-in profile shows Join at once; only a guest gets a name field. Wait for whichever comes first.
   await until(async () => (await mark('name')) || (await mark('join')), 15_000)
   if (await mark('name')) await page.fill('[data-kage="name"]', o.name)
   if (!await until(async () => (await click('blocker'), click('join')), 30_000)) {
@@ -64,7 +54,7 @@ export async function attend(page: Page, link: string, o: {
   }
   log('asked to join', link)
   const admitted = await until(async () => {
-    await click('noticeJoin')   // "someone else in this call takes notes": every joiner clicks Join now
+    await click('noticeJoin')
     const s = await k<string>('state')
     if (s === 'refused' || s === 'ended') throw new Error(`Meet did not let Kage in (${s})`)
     return s === 'in'
@@ -81,11 +71,10 @@ export async function attend(page: Page, link: string, o: {
     await page.press('[data-kage="chatBox"]', 'Enter')
     return true
   }
-  // The consent line, before anything is heard.
   if (!await chat(o.consent)) log('no chat box: the consent line was not posted')
-  await click('micOn')   // Meet may let a guest in muted
-  await click('camOn')   // the camera is Kage's drawn tile (page.js), never a real one
-  if (!await click('captionsOn')) await page.keyboard.press('c')   // Meet's shortcut for captions
+  await click('micOn')
+  await click('camOn')
+  if (!await click('captionsOn')) await page.keyboard.press('c')
 
   const all: Seg[] = []
   const t0 = Date.now()
@@ -101,10 +90,9 @@ export async function attend(page: Page, link: string, o: {
       if (!spoken) await chat(text).catch(() => false)
     }
     if (hangUp && await click('micOn').catch(() => false)) log('was muted, unmuted')
-    if (await click('camOn').catch(() => false)) log('tile on')   // Kage's drawn tile, never a real camera   // Meet mutes joiners; the agent needs the mic
+    if (await click('camOn').catch(() => false)) log('tile on')
     const lines = await k<{ speaker: string; text: string }[]>('settled').catch(() => [])
     if (lines.length) {
-      // Meet labels the bot's own speech "You"; it is kept for the notes and marked, so it never wakes Kage.
       const segs = lines.map(l => ({ ...l, ...(l.speaker === 'You' || l.speaker === o.name ? { speaker: o.name, self: true } : {}), start: Math.round((Date.now() - t0) / 1000) }))
       all.push(...segs)
       log('heard', segs.length, 'caption lines')
@@ -120,13 +108,12 @@ export async function attend(page: Page, link: string, o: {
     if (await k<number>('others').catch(() => -1) !== 0) lastCompany = Date.now()
     else if (Date.now() - lastCompany >= aloneMs) { log('alone in the call, leaving'); await click('leave').catch(() => {}); break }
   }
-  if (o.stop?.()) await click('leave')   // leave the seat, or Meet holds it and the next join sees "Switch here"
+  if (o.stop?.()) await click('leave')
   hangUp?.()
   log('call over', all.length, 'lines')
   return all
 }
 
-// The hub's meeting webhook, with the token.
 export function hub(s: Pick<Settings, 'hub' | 'token'>) {
   const auth = { authorization: `Bearer ${s.token}`, 'content-type': 'application/json' }
   return {
@@ -140,7 +127,6 @@ export function hub(s: Pick<Settings, 'hub' | 'token'>) {
       const r = await fetch(`${s.hub}/meetbot/segments`, { method: 'POST', headers: auth, body: JSON.stringify({ call, segments }) })
       if (!r.ok) throw new Error(`hub said ${r.status}`)
     },
-    // The call is over: its live session ends, and the whole transcript goes to the notes webhook (/meeting).
     ended: async (call: string, link: string, segments: Seg[]) => {
       await fetch(`${s.hub}/meetbot/ended`, { method: 'POST', headers: auth, body: JSON.stringify({ call }) }).catch(() => {})
       if (!segments.length) return
@@ -152,7 +138,6 @@ export function hub(s: Pick<Settings, 'hub' | 'token'>) {
 
 export const callId = (link: string) => new URL(link).pathname.slice(1)
 
-// speak: a command that reads text on stdin and writes WAV audio to stdout (any TTS, or a voice pipeline's).
 export const speaker = (cmd: string) => (text: string) => new Promise<Buffer>((ok, fail) => {
   const p = spawn(cmd, { shell: true, stdio: ['pipe', 'pipe', 'inherit'] })
   const out: Buffer[] = []
@@ -162,7 +147,6 @@ export const speaker = (cmd: string) => (text: string) => new Promise<Buffer>((o
   p.stdin.end(text)
 })
 
-// The hub passes a voice agent (KAGE_MEETBOT_PIPELINE: {"api","agent"}) and its API key, or nothing.
 function pipeline(): Pipeline | undefined {
   const key = process.env.KAGE_MEETBOT_PIPELINE_KEY
   let c: { api?: unknown; agent?: unknown } = {}
@@ -170,8 +154,6 @@ function pipeline(): Pipeline | undefined {
   return key && typeof c.api === 'string' && Number.isInteger(c.agent) ? { api: c.api, key, agent: c.agent as number } : undefined
 }
 
-// The poll loop never waits on a call, so answers reach the call while it runs. One call at a time:
-// a join that comes during a call is dropped, with a log line.
 async function main() {
   const s = settings()
   const h = hub(s)
@@ -194,17 +176,15 @@ async function main() {
 }
 
 async function runCall(s: Settings, h: ReturnType<typeof hub>, link: string, call: { call: string; said: string[] }) {
-  // Chrome's new headless mode, with no window on the owner's screen. Meet turned away the old headless mode,
-  // and the user agent names HeadlessChrome, so it reads as the plain Chrome it is. "window": true shows it.
   const ua = s.window ? undefined : `Mozilla/5.0 (${process.platform === 'darwin' ? 'Macintosh; Intel Mac OS X 10_15_7' : 'X11; Linux x86_64'}) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/${chromium.version?.() ?? '140.0.0.0'} Safari/537.36`
   const ctx = await chromium.launchPersistentContext(s.profile, {
     headless: !s.window, executablePath: s.chrome, viewport: { width: 1280, height: 800 }, ...(ua && { userAgent: ua }),
     args: ['--use-fake-ui-for-media-stream', '--use-fake-device-for-media-stream', '--autoplay-policy=no-user-gesture-required', '--disable-blink-features=AutomationControlled', ...(s.window ? [] : ['--headless=new'])],
-    ignoreDefaultArgs: ['--enable-automation'], handleSIGTERM: false, handleSIGINT: false,   // the bot leaves the call itself
+    ignoreDefaultArgs: ['--enable-automation'], handleSIGTERM: false, handleSIGINT: false,
   })
   let all: Seg[] = []
   try {
-    await ctx.grantPermissions(['microphone', 'camera'], { origin: 'https://meet.google.com' })   // else Meet asks, and joins muted
+    await ctx.grantPermissions(['microphone', 'camera'], { origin: 'https://meet.google.com' })
     await ctx.addInitScript({ path: PAGE_JS })
     const page = ctx.pages()[0] ?? await ctx.newPage()
     const p = pipeline()
