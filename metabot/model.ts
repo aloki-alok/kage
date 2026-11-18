@@ -1,5 +1,3 @@
-// One chat completion on any OpenAI-compatible API (OpenAI, OpenRouter, a local server). The request never carries
-// tools, functions or tool_choice: this bot can only produce text (tests/structure.test.ts checks this file).
 import type { ChatMessage } from './prompt.ts'
 
 export type ModelSettings = { baseUrl: string; model: string; timeoutMs: number }
