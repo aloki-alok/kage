@@ -121,7 +121,6 @@ describe('pins', () => {
     const log = make('other.log', 'one\n')
     await refusedAfterEdit(`wc -l ${log}`, log)
   })
-  // Root can write /bin, so for root the premise does not hold and the binary is pinned, as it should be.
   test('a system binary in a folder the user cannot write is not pinned', { skip: process.getuid?.() === 0 && 'root can write /bin' }, () => {
     assert.deepEqual(pinIn('/bin/sh -c true'), {})
     assert.deepEqual(pinIn('/usr/bin/env true'), {})

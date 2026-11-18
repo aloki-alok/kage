@@ -49,7 +49,6 @@ export function dreams(o: {
       const iso = new Date(since).toISOString()
       const mistakes = selfReview(o.ledgers.text('waiting', iso), lastDay(now), iso, o.placeOf)
       const c: Conversation = { connector: 'slack', chat: o.botDm, kind: 'dm', agentDm: true }
-      // Kage's own nightly job over the owner's threads, started by the hub, so it runs at the owner's trust.
       const task = taskAsOwner({
         content: dreamTask(o.mem, threads, iso, { dir: `${o.code}/skills`, pr: await ownsRepo }, mistakes),
         meta: { channel: o.botDm, thread_ts: '', place: `DM with ${o.title} (dream)`, permalink: '' },

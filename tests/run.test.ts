@@ -9,7 +9,6 @@ const runner = new URL('run.ts', import.meta.url).pathname
 
 test('npm test kills a file that spins past the limit, names it, fails, and still runs the others', () => {
   const dir = mkdtempSync(join(tmpdir(), 'kage-run-'))
-  // A microtask spin never yields to timers, so only a parent can stop it (#277).
   writeFileSync(join(dir, 'spin.test.ts'), "import { test } from 'node:test'\ntest('spin', async () => { for (;;) await (async () => {})() })\n")
   writeFileSync(join(dir, 'ok.test.ts'), "import { test } from 'node:test'\ntest('ok', () => {})\n")
   const start = Date.now()
@@ -19,7 +18,6 @@ test('npm test kills a file that spins past the limit, names it, fails, and stil
   assert.match(r.stdout, /KILL .*spin\.test\.ts: still running after 8 s/)
   assert.match(r.stdout, /ok .*ok\.test\.ts/)
   assert.match(r.stdout, /1 files passed, 1 failed/)
-  // `node --test <file>` runs the file in a child of its own: killing only the runner's child left that one spinning.
   const left = spawnSync('pgrep', ['-f', dir], { encoding: 'utf8' }).stdout.trim()
   assert.equal(left, '', `processes still running from ${dir}`)
 })

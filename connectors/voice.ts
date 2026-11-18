@@ -122,7 +122,6 @@ export function connectVoice(o: {
         cap.add(now())
       }
       const place = `voice call ${id.slice(0, 8)}`
-      // owner: a call Kage placed, proven by its one-time code (ADR 0002's known break, #105).
       const task = (owner ? taskAsOwner : taskAsOther)({
         content: [owner ? ownerVoiceTaskLine(question) : voiceTaskLine(question), `Reply with the reply tool, channel "voice" and thread_ts "${key}". It is spoken to the caller.`].join('\n'),
         meta: { channel: 'voice', thread_ts: key, place, permalink: '' },
