@@ -27,3 +27,4 @@ Each file records one rule Kage follows, why, and how it is checked. Read the on
 
 Status, Decision, How it is checked. The Decision states the architecture as it is now: no history, no story, no numbers from one install. Add the next number. To change a decision, add a new ADR and mark the old one `Superseded by NNNN`.
 | [0019](0019-telemetry-is-counts-only.md) | Telemetry sends counts and codes, never what Kage read | Accepted |
+| [0020](0020-a-meta-bot-only-writes-text.md) | A Meta bot only writes text, and strangers never reach Kage | Accepted |
