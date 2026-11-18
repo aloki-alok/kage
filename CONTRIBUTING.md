@@ -84,6 +84,7 @@ Write logs to stderr only. In a tmux pane, stdout carries the channel protocol, 
 | `CLAUDE.md` | The one file coding agents read first: setup steps, the commands that run Kage, and this file (loaded with `@CONTRIBUTING.md`). |
 | `extension/` | Kage's Chrome extension (#114): plain JS, no build. It polls the hub (`connectors/browser.ts`), reads tabs, and acts in them through Chrome's debugger, one action at a time; a major step waits for the owner's yes (core/browser-act.ts majorAct). |
 | `meetbot/` | Kage's meeting bot (#63): its own package, run on any machine with a screen or Xvfb. It drives its own Chromium into a Google Meet and talks to the hub at the meeting webhook (`connectors/meeting.ts`). All of Meet's page knowledge is `meetbot/page.js`. |
+| `metabot/` | The Meta bot: answers strangers on a Facebook Page, in Instagram DMs and under Page comments, as its own process with no tools (ADR 0020). One model call, a fixed check, a guard, then a draft or a send by mode. Setup and settings are in `metabot/README.md`. |
 | `waha/` | Kage's WhatsApp bridge (#351): `compose.yaml` runs WAHA in Docker, `up.sh` starts it on the ports in the settings, and `qr.sh` links the owner's phone. No keys: the container reads `waha/.env` in the config folder, which the hub writes from secrets.json. Steps are in docs/settings.md, "WhatsApp". |
 | `skills/` | Skills every Kage session loads (the router passes the repo as a plugin, `hub/router.ts`). Generic lessons only: no names, ids, customers, dates or quotes. |
 | `.claude-plugin/`, `.mcp.json`, `hooks/` | Used only when Kage is installed as a Claude Code plugin (tmux panes on the plugin route). |
@@ -141,6 +142,7 @@ Write logs to stderr only. In a tmux pane, stdout carries the channel protocol, 
 | `text.ts` | Text helpers every rule shares: `oneLine`, and `quotedLine` for someone else's text (no `<channel>` tag survives). |
 | `cli-help.ts` | The closest real `kage` command to a mistyped one. |
 | `dream.ts` | The nightly dream job: what it reads for lessons, how it tidies Kage's memory, and which lessons may leave this machine. |
+| `signature.ts` | A webhook body signed with a shared secret (`X-Hub-Signature-256`), as GitHub and Meta sign. |
 | `github.ts` | Which GitHub events are the owner's business (a review or failed checks on their PR, an issue or review request given to them, a mention). |
 | `kagelet-memory.ts` | A kagelet's own memory folder (#98): what its prompt reads, and the one path into the folder. |
 | `log-repeats.ts` | One log line for a burst of the same line, with its count. |

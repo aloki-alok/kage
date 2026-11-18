@@ -1,16 +1,6 @@
 // GitHub events that are the owner's business: a review on their pull request, failed checks on it,
 // an issue or a review request given to them, a comment that mentions them. Everything else is
 // dropped here, so Kage spends no turn on it. The text people wrote stays data (`quoted`).
-import { createHmac, timingSafeEqual } from 'node:crypto'
-
-// GitHub signs each delivery with the webhook's secret (X-Hub-Signature-256). No secret, no pass.
-export function signedByGithub(secret: string, body: string, header: string | undefined): boolean {
-  if (!secret || !header) return false
-  const want = Buffer.from(`sha256=${createHmac('sha256', secret).update(body).digest('hex')}`)
-  const got = Buffer.from(header)
-  return got.length === want.length && timingSafeEqual(got, want)
-}
-
 type GithubEvent = { thread: string; headline: string; quoted: string; url: string }
 
 type User = { login?: string }
