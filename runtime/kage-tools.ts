@@ -44,7 +44,7 @@ export type ToolContext = {
   jobRun: () => boolean   // the latest task this session took is a job's run, so it read outside text (never from the model's own arguments)
   need: () => string | undefined   // the kagelet whose need the latest task carries
   job: () => string | undefined   // that job's id, so its acts in its own thread are recorded under it (ADR 0017)
-  ownerNow: (key: string) => boolean; ownerOnly: (a: Record<string, unknown>) => boolean; pingIn: (channel: string) => boolean
+  ownerNow: (key: string) => boolean; ownerOnly: (a: Record<string, unknown>) => boolean; ownerActs: (a: Record<string, unknown>) => boolean; pingIn: (channel: string) => boolean
   name: string | undefined   // this session's kagelet, if it is one
 }
 
@@ -239,8 +239,9 @@ export function sessionTools(o: {
 
   const ownerNow = (key: string) => ownerTask.get(key) === true && (o.turnSender?.() ?? 'owner') === 'owner'
   const ownerOnly = (a: Record<string, unknown>) => ownerNow(`${String(a.channel)}:${String(a.thread_ts)}`)
+  const ownerActs = (a: Record<string, unknown>) => ownerOnly(a) && a.channel !== 'voice' && !agents.get(`${a.channel}:${a.thread_ts}`)
   const pingIn = (channel: string) => [...ownerTask.keys()].some(k => k.startsWith(`${channel}:`) && ownerNow(k))
-  const c: ToolContext = { o, Title, bot, user, s: z.string(), taskChannels, ownerTask, unanswered, askers, agents, sentForPeople, dmThread, links, react, post, change, nameMentions, names, append, ledger, filesOf, jobRun: () => job !== undefined || need !== undefined, job: () => job, need: () => need, ownerNow, ownerOnly, pingIn, name: o.kagelet }
+  const c: ToolContext = { o, Title, bot, user, s: z.string(), taskChannels, ownerTask, unanswered, askers, agents, sentForPeople, dmThread, links, react, post, change, nameMentions, names, append, ledger, filesOf, jobRun: () => job !== undefined || need !== undefined, job: () => job, need: () => need, ownerNow, ownerOnly, ownerActs, pingIn, name: o.kagelet }
   // Slack reads as the owner: never for an agent's task made with the owner's token, a kagelet or its dream (their threads may hold other people).
   const ownerRead = (a: Record<string, unknown>) => ownerOnly(a) && !agents.get(`${a.channel}:${a.thread_ts}`)
   const reads = o.kagelet || o.dreaming ? [] : slackReadTools(user, ownerRead)

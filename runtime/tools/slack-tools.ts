@@ -19,7 +19,7 @@ function canvasError(e: any): { isError: true; text: string } {
 }
 
 export function slackTools(c: ToolContext): KageTool[] {
-  const { o, Title, bot, user, s, taskChannels, ownerTask, unanswered, askers, agents, sentForPeople, dmThread, links, react, post, change, nameMentions, names, append, ledger, filesOf, ownerNow, ownerOnly, pingIn, name } = c
+  const { o, Title, bot, user, s, taskChannels, ownerTask, unanswered, askers, agents, sentForPeople, dmThread, links, react, post, change, nameMentions, names, append, ledger, filesOf, ownerNow, ownerOnly, ownerActs, pingIn, name } = c
   const tools: KageTool[] = [{
     name: 'reply',
     description: `Reply to the owner in Slack: in the thread the task came from, or privately in their DM with ${Title}.`,
@@ -247,7 +247,7 @@ export function slackTools(c: ToolContext): KageTool[] {
     async run(args) {
       const a = args as { channel: string; thread_ts: string; to: string; to_thread_ts?: string; text: string }
       // An agent may post with the owner's token, and an owner-verified call still has anyone listening in: neither counts.
-      if (!ownerOnly(a) || a.channel === 'voice' || agents.get(`${a.channel}:${a.thread_ts}`)) return { isError: true, text: "refused: only the owner's own task may post where no task came from" }
+      if (!ownerActs(a)) return { isError: true, text: "refused: only the owner's own task may post where no task came from" }
       if (!/^[CG][A-Z0-9]+$/.test(a.to)) return { isError: true, text: 'refused: name the channel by its id (C...)' }
       if (!a.text.trim()) return { isError: true, text: 'refused: the text is empty' }
       const no = secretRefusal(a.text, { fromOwner: ownerOnly(a) }) ?? layoutRefusal(a.text)
