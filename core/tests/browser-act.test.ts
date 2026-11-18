@@ -87,3 +87,22 @@ test('labels that hide what a step does are major, and so is leaving for a site 
   assert.ok(majorAct({ action: 'press', key: 'Enter' }, { ref: 1, role: 'textbox', name: 'Amount' }, { typed: ['Amount = 500'] }))
   assert.equal(majorAct(click, el('Save')), undefined)
 })
+
+test('invisible characters in a control name do not raise a card, and do not hide a major word', () => {
+  const click = { action: 'click', ref: 1 } as const
+  const enter = { action: 'press', key: 'Enter' } as const
+  const row = (name: string) => ({ ref: 1, role: 'element', name })
+  const plain = 'Same Same You can call Same Same within the next 7 days.​ 4 November '
+  assert.equal(majorAct(click, row(plain)), undefined)
+  assert.equal(majorAct(enter, { ref: 1, role: 'searchbox', name: 'Search​ ' }), undefined)
+  for (const n of ['Se​nd', 'Del­ete', 'Pay now']) {
+    assert.ok(majorAct(click, row(n)), JSON.stringify(n))
+    assert.ok(majorAct(enter, { ref: 1, role: 'textbox', name: n }), JSON.stringify(n))
+  }
+  for (const n of ['नमस्ते', 'Asha \u{1F600}', 'Sаme Same']) {
+    assert.ok(majorAct(click, row(n)), JSON.stringify(n))
+    assert.ok(majorAct(enter, { ref: 1, role: 'searchbox', name: n }), JSON.stringify(n))
+  }
+  assert.equal(majorAct(click, row('Se​nd'))?.includes('​'), false)
+  assert.equal(actCard(click, { url: 'https://x.example/', el: row('Se​nd') }), 'x.example: click element "Send"')
+})

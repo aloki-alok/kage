@@ -60,7 +60,7 @@ const cq = (s: string) => slackSafe(q(s))
 // The approval card's line. The site comes first, so no label can put a fake site in front of the real one, and
 // the control is named from the page (el), never from what Kage said it was.
 export function actCard(a: Act, at: { url: string; el?: Element }) {
-  const el = at.el ? `${at.el.role} ${cq(at.el.name)}${at.el.to ? ` (opens ${slackSafe(at.el.to)})` : ''}` : 'an element that is no longer on the page'
+  const el = at.el ? `${at.el.role} ${cq(plainName(at.el.name))}${at.el.to ? ` (opens ${slackSafe(at.el.to)})` : ''}` : 'an element that is no longer on the page'
   const line = (() => {
     switch (a.action) {
       case 'click': return `click ${el}`
@@ -80,6 +80,9 @@ const MAJOR = /\b(pay|buy|purchas|order|checkout|subscrib|unsubscrib|upgrad|dele
 // A label that names no action (a bare OK on a confirm dialog, an icon with no name) could be anything.
 const GENERIC = /^(ok|okay|yes|continue|proceed|done|accept|agree|got it|i understand.*|\W*)$/i
 const SENDS = /\b(message|reply|comment|compose|chat|email)\b/i
+// Pages put no-break spaces and zero-width characters in control names. Space separators become a plain space and
+// format characters go, so they neither raise a card on their own nor split a major word ("Se​nd") past MAJOR.
+const plainName = (s: string) => s.replace(/\p{Zs}/gu, ' ').replace(/\p{Cf}/gu, '').trim()
 type ActContext = { openHosts?: string[]; typed?: string[] }
 export function majorAct(a: Act, el?: Element, ctx: ActContext = {}): string | undefined {
   if (a.action === 'navigate' || a.action === 'open') {
@@ -88,8 +91,8 @@ export function majorAct(a: Act, el?: Element, ctx: ActContext = {}): string | u
     return ctx.openHosts?.includes(host) ? undefined : `it goes to ${host || 'an address'}, which no open tab is on`
   }
   if (a.action === 'type') return undefined
-  const label = el?.name ?? ''
-  const hidden = GENERIC.test(label.trim()) || /[^\x00-\x7F…]/.test(label) || label.includes('(styled text')
+  const label = plainName(el?.name ?? '')
+  const hidden = GENERIC.test(label) || /[^\x00-\x7F…]/.test(label) || label.includes('(styled text')
   const typed = ctx.typed?.length ? `, after typing ${ctx.typed.join('; ')}` : ''
   if (a.action === 'click' && (MAJOR.test(label) || hidden || (typed && el?.role === 'button'))) return `it clicks "${label}"${typed}`
   if (a.action === 'press' && a.key === 'Enter' && (MAJOR.test(label) || SENDS.test(label) || hidden || typed)) return `Enter in "${label}" may send or submit it${typed}`
