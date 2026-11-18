@@ -17,7 +17,7 @@ import type { Ledgers } from '../runtime/ledger.ts'
 import { snapshotMemory } from '../runtime/memory-snapshot.ts'
 import { canPushToKage } from '../runtime/repo-access.ts'
 import type { Store } from '../runtime/store.ts'
-import { otherTask, ownerTask } from '../core/gate.ts'
+import { taskAsOther, taskAsOwner } from '../core/gate.ts'
 
 const readFile = (f: string) => { try { return readFileSync(f, 'utf8') } catch { return '' } }
 const DAY = 24 * 3600_000
@@ -50,7 +50,7 @@ export function dreams(o: {
       const mistakes = selfReview(o.ledgers.text('waiting', iso), lastDay(now), iso, o.placeOf)
       const c: Conversation = { connector: 'slack', chat: o.botDm, kind: 'dm', agentDm: true }
       // Kage's own nightly job over the owner's threads, started by the hub, so it runs at the owner's trust.
-      const task = ownerTask({
+      const task = taskAsOwner({
         content: dreamTask(o.mem, threads, iso, { dir: `${o.code}/skills`, pr: await ownsRepo }, mistakes),
         meta: { channel: o.botDm, thread_ts: '', place: `DM with ${o.title} (dream)`, permalink: '' },
         origin: { channel: o.botDm, ts: '' },
@@ -72,7 +72,7 @@ export function dreams(o: {
         const key = lane.replace('#side-kagelet-', '#side-kdream-')
         o.store.seen(key, conv.conversation, `${name} (dream)`, now)
         const { chat, thread } = conv.conversation
-        const task = otherTask({ scheduled: true, content: kageletDreamTask(name, o.kmem.notes(name), input.events, input.reports, since),
+        const task = taskAsOther({ scheduled: true, content: kageletDreamTask(name, o.kmem.notes(name), input.events, input.reports, since),
           meta: { channel: chat, thread_ts: thread ?? '', place: `${name} (dream)`, permalink: '' }, origin: { channel: chat, ts: '' } })
         log(`kagelet ${name} dreams`)
         if (o.toSession(key, task) !== 'failed') o.store.save(KDREAMT, { ...Object.fromEntries(last), [name]: now })

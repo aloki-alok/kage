@@ -13,7 +13,7 @@ import { buildProbe, probeJobs, tripwireCfg, type ProbeArg, type TripwireSetting
 import { safePattern, type Trigger } from '../core/tripwire.ts'
 import { pin } from './probes.ts'
 import type { Store } from './store.ts'
-import { otherTask, ownerTask } from '../core/gate.ts'
+import { taskAsOther, taskAsOwner } from '../core/gate.ts'
 
 const PER_THREAD = 50
 const DAY = 24 * 3600_000
@@ -75,7 +75,7 @@ export function scheduler(o: {
     const c = store.conversation(s.key)
     if (!c) { log('schedule for an unknown thread', s.id, s.key); return false }
     // Trust only falls: a thread a teammate tagged since runs at theirs.
-    const task = (fromOwner && o.trusted(s.key) ? ownerTask : otherTask)({
+    const task = (fromOwner && o.trusted(s.key) ? taskAsOwner : taskAsOther)({
       content,
       meta: { channel: c.conversation.chat, thread_ts: c.conversation.thread ?? '', place: c.place, permalink: '' },
       origin: { channel: c.conversation.chat, ts: '' },

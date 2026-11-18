@@ -154,13 +154,13 @@ export function findPeople(people: Person[], query: string): { id: string; name:
     .map(p => ({ id: p.id, name: p.real_name || p.name || p.id }))
 }
 
-// The only way to make a Task (#273): an owner task runs with the owner's tools, so each call to ownerTask is a
+// The only way to make a Task (#273): an owner task runs with the owner's tools, so each call to taskAsOwner is a
 // reviewable claim, and tests/structure.test.ts refuses a Task built anywhere else.
 type TaskBody = Omit<Task, 'type' | 'fromOwner'>
-export const ownerTask = (t: TaskBody): Task => ({ type: 'task', fromOwner: true, ...t })
-export const otherTask = (t: TaskBody): Task => ({ type: 'task', fromOwner: false, ...t })
+export const taskAsOwner = (t: TaskBody): Task => ({ type: 'task', ...t, fromOwner: true })   // the body cannot override who sent it
+export const taskAsOther = (t: TaskBody): Task => ({ type: 'task', ...t, fromOwner: false })
 // A Slack message is the owner's only when the owner's own user posted it.
-export const heardTask = (by: string | undefined, owner: string, t: TaskBody): Task => (by === owner ? ownerTask(t) : otherTask(t))
+export const taskFrom = (by: string | undefined, owner: string, t: TaskBody): Task => (by === owner ? taskAsOwner(t) : taskAsOther(t))
 
 // Who a task counts as. Email never counts as the owner, whatever the task says: anyone may be behind
 // a mailbox forward. A voice call is the strictest label (see voiceToolRefusal) unless the voice

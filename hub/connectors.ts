@@ -19,7 +19,7 @@ import type { Delivery, Dispatcher } from '../core/sessions.ts'
 import type { Task } from '../core/task.ts'
 import type { ToSession } from '../runtime/protocol.ts'
 import type { Inbox, Store } from '../runtime/store.ts'
-import { ownerTask } from '../core/gate.ts'
+import { taskAsOwner } from '../core/gate.ts'
 
 export function startConnectors(o: {
   secrets: Secrets; conn: NonNullable<Config['connectors']>; store: Store; slack: Awaited<ReturnType<typeof connectSlack>>; bot: WebClient
@@ -81,7 +81,7 @@ export function startConnectors(o: {
     memory: conn.whatsapp?.memory || `${DIR}/wa-notes`,
     onTask(t) {
       // Only the owner's own tag reaches onTask (core/whatsapp.ts).
-      const task = ownerTask({
+      const task = taskAsOwner({
         content: t.content,
         meta: { channel: 'whatsapp', thread_ts: t.chat, place: t.place, permalink: '' },
         origin: { channel: 'whatsapp', ts: t.chat }, ...(t.source && { source: t.source }),

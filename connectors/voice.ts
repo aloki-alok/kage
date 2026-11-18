@@ -14,7 +14,7 @@ import { isInitializeRequest } from '@modelcontextprotocol/sdk/types.js'
 import { z } from 'zod'
 import { log } from '../runtime/log.ts'
 import type { Conversation } from '../core/conversations.ts'
-import { otherTask, ownerTask, voiceTaskLine } from '../core/gate.ts'
+import { taskAsOther, taskAsOwner, voiceTaskLine } from '../core/gate.ts'
 import type { Delivery } from '../core/sessions.ts'
 import type { Task } from '../core/task.ts'
 import { bearerOk, hourCap, listen, readBody } from './webhook.ts'
@@ -123,7 +123,7 @@ export function connectVoice(o: {
       }
       const place = `voice call ${id.slice(0, 8)}`
       // owner: a call Kage placed, proven by its one-time code (ADR 0002's known break, #105).
-      const task = (owner ? ownerTask : otherTask)({
+      const task = (owner ? taskAsOwner : taskAsOther)({
         content: [owner ? ownerVoiceTaskLine(question) : voiceTaskLine(question), `Reply with the reply tool, channel "voice" and thread_ts "${key}". It is spoken to the caller.`].join('\n'),
         meta: { channel: 'voice', thread_ts: key, place, permalink: '' },
         origin: { channel: 'voice', ts: key },

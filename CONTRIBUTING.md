@@ -217,7 +217,7 @@ Write logs to stderr only. In a tmux pane, stdout carries the channel protocol, 
 
 A connector touches more places than it should today. Copy `connectors/email.ts`, then update:
 
-Build its `Task` with `otherTask()` from `core/gate.ts`. Use `ownerTask()` only when a core rule proves the owner sent it, and say which rule in a comment.
+Build its `Task` with `taskAsOther()` from `core/gate.ts`. Use `taskAsOwner()` only when a core rule proves the owner sent it, and say which rule in a comment.
 
 1. `Conversation['connector']` and the key prefix in `core/conversations.ts`.
 2. `senderOf` in `core/gate.ts`, if its sender is not plainly the owner or a teammate.
