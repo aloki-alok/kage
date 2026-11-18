@@ -52,7 +52,7 @@ async function crashLoopDm(tokens: { user: string; bot: string }, boots: number,
 // The command that starts Claude Code in a tmux pane. A session inherits it, which is how kage commands know they run inside Kage.
 function claudeCommand(route: string | undefined) {
   let tools = ''
-  for (const t of ['reply', 'edit_message', 'delete_message', 'send_file', 'message_people', 'schedule', 'unschedule', 'schedules']) tools += ` mcp__kage__${t} mcp__plugin_kage_kage__${t}`
+  for (const t of ['reply', 'edit_message', 'delete_message', 'send_file', 'make_canvas', 'edit_canvas', 'message_people', 'schedule', 'unschedule', 'schedules']) tools += ` mcp__kage__${t} mcp__plugin_kage_kage__${t}`
   tools += ` --disallowedTools CronCreate CronDelete CronList`
   // The plugin route only works once your org approves the channel, so it is opt-in: KAGE_ROUTE=plugin.
   if (route === 'plugin') return `claude --channels plugin:kage@kage --allowedTools${tools}`

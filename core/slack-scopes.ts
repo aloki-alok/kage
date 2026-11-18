@@ -1,8 +1,8 @@
 // The scopes the Slack app needs. cli/manifest.ts writes them into a new app's manifest, and the doctor and the hub
 // compare them with what the installed app was granted: an app keeps the scopes of the manifest it was made from.
 
-// The bot posts replies and approval prompts, and adds the pickup and done reactions.
-export const BOT_SCOPES = ['chat:write', 'files:write', 'im:write', 'im:history', 'reactions:write', 'users:read']
+// The bot posts replies and approval prompts, and adds the pickup and done reactions. canvases:write: make_canvas and edit_canvas.
+export const BOT_SCOPES = ['chat:write', 'files:write', 'im:write', 'im:history', 'reactions:write', 'users:read', 'canvases:write']
 
 // Your user token hears your conversations, reads the thread for context, and replies
 // where the bot isn't a member.
