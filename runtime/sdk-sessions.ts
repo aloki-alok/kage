@@ -5,6 +5,7 @@
 // The SDK comes in as an argument: the hub imports it only when this runtime is on, so a tmux-only install needs none.
 import { SLACK_READS, VOICE_READS_LINE, voiceToolOptions } from './slack-read-tools.ts'
 import type { createSdkMcpServer, EffortLevel, Options, Query, SDKMessage, SDKUserMessage, tool } from '@anthropic-ai/claude-agent-sdk'
+import { randomUUID } from 'node:crypto'
 import { z } from 'zod'
 import { log, logKey } from './log.ts'
 import { makeInbox, type Inbox } from './sdk-inbox.ts'
@@ -34,7 +35,7 @@ type Session = {
   id: string
   kage: Kage
   sender?: Sender               // the lowest sender in the turn: the guard hook reads it
-  turn: { task: Task; mid: boolean }[]   // tasks the current turn may have read: a safety block reports them. mid: sent mid-turn
+  turn: { task: Task; mid: boolean; uuid: string; read?: boolean }[]   // tasks the current turn may have read: a safety block reports them. mid: sent mid-turn. read: Claude said it completed
   state: 'idle' | 'running' | 'requires_action'
   last: number
   stopped: boolean
@@ -182,12 +183,11 @@ export function sdkSessions(o: {
       s.ownerTools ||= from === 'owner'; s.sender = from === 'owner' && !answered ? lowestSender(s.turn.map(x => x.task)) : from   // the owner's mid-turn "thanks" never lifts a teammate's turn
       const reopen = s.ownerTools && !full && s.state === 'idle' && (sawState ? !unseen : !s.turn.length)
       if (reopen && s.turn.length) o.onTurn?.(key, s.turn.splice(0).map(x => x.task), undefined, true)   // idle: it read and answered them
-      s.turn.push({ task: m, mid: s.state !== 'idle' })
+      const uuid = randomUUID(); s.turn.push({ task: m, mid: s.state !== 'idle', uuid })   // the uuid ties Claude Code's command_lifecycle frames to this task
       s.kage.onTask(m)
-      s.state = 'running'
-      s.last = Date.now()
+      s.state = 'running'; s.last = Date.now()
       // Nothing more goes to a closing process: it may take a message and die before it answers.
-      if (reopen || s.carry.length) { s.carry.push(userMessage(m)); q.close() } else { inbox.push(userMessage(m)); unseen = true }
+      if (reopen || s.carry.length) { s.carry.push(userMessage(m, uuid)); q.close() } else { inbox.push(userMessage(m, uuid)); unseen = true }
     }
     s.run = { q, inbox, send, started: Date.now() }
     let connected = false
@@ -204,6 +204,7 @@ export function sdkSessions(o: {
           s.last = Date.now()
           connect()
           if (m.type === 'system' && m.subtype === 'session_state_changed') { sawState = true; s.state = m.state; if (m.state === 'running') unseen = false }
+          const life = m as { type: string; command_uuid?: string; state?: string }; if (life.type === 'command_lifecycle' && life.state === 'completed') for (const x of s.turn) if (x.uuid === life.command_uuid) x.read = true   // Claude Code finished a message we sent (not in the SDK's types yet); measured: one folded in mid-turn completes before that turn's result
           // A Claude Code that never sends the state event: the turn's result is the best idle signal.
           // The system event carries the category. An older CLI only marks stop_reason on the assistant frame.
           // A subagent's refusal ends only its own answer, not the thread.
@@ -231,10 +232,10 @@ export function sdkSessions(o: {
             o.onTurn?.(key, tasks, { kind: limit, ...(limit === 'rate_limit' && resetsAt && { until: resetsAt }), ...(limit === 'rate_limit' && window && { window }) })
             limit = window = resetsAt = undefined
           } else if (m.type === 'result') {
-            // A task sent mid-turn may be read by the next turn instead, so it stays one turn longer.
+            // A task sent mid-turn may be read by the next turn instead, so it stays one turn longer, unless Claude said this turn completed it.
             blocked = false
-            const done = s.turn.filter(x => !x.mid).map(x => x.task)
-            s.turn = s.turn.filter(x => x.mid).map(x => ({ ...x, mid: false })); if (s.turn.length) s.sender = lowestSender(s.turn.map(x => x.task))
+            const done = s.turn.filter(x => !x.mid || x.read).map(x => x.task)
+            s.turn = s.turn.filter(x => x.mid && !x.read).map(x => ({ ...x, mid: false })); if (s.turn.length) s.sender = lowestSender(s.turn.map(x => x.task))
             if (done.length) o.onTurn?.(key, done, undefined, true)
           }
           if (m.type === 'result' && !sawState) s.state = 'idle'
@@ -332,7 +333,7 @@ const SET_MODEL = 'Switch the model or reasoning effort of this thread, when the
 
 // A task as Claude Code shows a channel message. Attributes are escaped, and the content cannot
 // open or close a channel tag of its own.
-const userMessage = (m: Task) => ({ type: 'user', message: { role: 'user', content: channelTag(m) }, parent_tool_use_id: null }) as SDKUserMessage
+const userMessage = (m: Task, uuid: string) => ({ type: 'user', message: { role: 'user', content: channelTag(m) }, parent_tool_use_id: null, uuid }) as SDKUserMessage
 
 export function channelTag(m: Task) {
   const attr = (v: string) => withoutInvisible(v).replaceAll('&', '&amp;').replaceAll('"', '&quot;').replaceAll('<', '&lt;')
