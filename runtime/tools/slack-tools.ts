@@ -19,7 +19,7 @@ function canvasError(e: any): { isError: true; text: string } {
 }
 
 export function slackTools(c: ToolContext): KageTool[] {
-  const { o, Title, bot, user, s, taskChannels, ownerTask, unanswered, askers, agents, sentForPeople, dmThread, links, react, post, change, nameMentions, names, append, ledger, filesOf, ownerOnly, pingIn, name } = c
+  const { o, Title, bot, user, s, taskChannels, ownerTask, unanswered, askers, agents, sentForPeople, dmThread, links, react, post, change, nameMentions, names, append, ledger, filesOf, ownerNow, ownerOnly, pingIn, name } = c
   const tools: KageTool[] = [{
     name: 'reply',
     description: `Reply to the owner in Slack: in the thread the task came from, or privately in their DM with ${Title}.`,
@@ -40,7 +40,7 @@ export function slackTools(c: ToolContext): KageTool[] {
       const key = `${a.channel}:${a.thread_ts}`
       // A reply goes back where a task came from, never to a channel picked from the conversation.
       if (!a.private && !taskChannels.has(a.channel)) return { isError: true, text: 'refused: no task came from that channel; use private=true' }
-      const refusal = secretRefusal(a.text, { private: a.private, ownerAsked: a.owner_asked, fromOwner: ownerTask.get(key) === true })
+      const refusal = secretRefusal(a.text, { private: a.private, ownerAsked: a.owner_asked, fromOwner: ownerNow(key) })
       if (refusal) return { isError: true, text: refusal }
       if (a.channel === 'voice') {
         // A voice reply is spoken to the caller, nowhere else: not Slack, not the owner's DM.
@@ -92,7 +92,7 @@ export function slackTools(c: ToolContext): KageTool[] {
       const fromPhone = a.channel === 'whatsapp' && ownerOnly(a)
       if (!taskChannels.has(a.channel) || a.channel === 'email' || (a.channel === 'whatsapp' && !fromPhone) || (a.channel === 'voice' && !ownerOnly(a))) return { isError: true, text: 'refused: only a task from a Slack thread or the owner\'s own call may message people' }
       // Anyone but the owner gets the tag, even when their task line names no teammate.
-      const asker = ownerTask.get(key) === true ? undefined : askers.get(key) ?? { id: '', name: 'A teammate' }
+      const asker = ownerNow(key) ? undefined : askers.get(key) ?? { id: '', name: 'A teammate' }
       const ids = [...a.users, ...a.from ? [a.from] : []]
       if (!a.users.length || ids.some(u => !/^[UW][A-Z0-9]+$/.test(u))) return { isError: true, text: 'refused: name 1 to 8 people by their Slack user id (U...)' }
       // Signed by the asker on a teammate's task, whatever from says; on the owner's, by from if given.
@@ -228,7 +228,7 @@ export function slackTools(c: ToolContext): KageTool[] {
       const p = args as { channel: string; thread_ts: string; what: string; command: string; result: string }
       const key = `${p.channel}:${p.thread_ts}`
       const job = c.job()   // a job run's prod write is one of that job's acts (ADR 0017)
-      append('prod-actions', [ownerTask.get(key) ? 'owner' : 'teammate', links.get(key) ?? key, p.what, p.command, p.result, ...job ? [job] : []])
+      append('prod-actions', [ownerNow(key) ? 'owner' : 'teammate', links.get(key) ?? key, p.what, p.command, p.result, ...job ? [job] : []])
       return { text: 'logged to the prod-actions ledger' }
     },
   }]

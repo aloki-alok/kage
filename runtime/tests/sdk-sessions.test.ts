@@ -55,7 +55,7 @@ function setup(o: { transcript?: boolean; silent?: boolean; dmFails?: boolean; g
   const s = sdkSessions({
     sdk: { query: sdk.query as any, createSdkMcpServer: (c => { servers.push(c); return createSdkMcpServer(c) }) as typeof createSdkMcpServer, tool },
     hub: () => d,
-    tools: (_key, send, approve) => sessionTools({ title: 'Kage', bot: slack as any, user: slack as any, botDm: () => 'DBOT', dir, ledgers: openLedgers(dir), send, memory: { own: '/own', owner: '/owner' }, approve, ...o.browser && { browser: { call: async () => [], block: [] } },
+    tools: (_key, send, approve, turnSender) => sessionTools({ title: 'Kage', bot: slack as any, user: slack as any, botDm: () => 'DBOT', dir, ledgers: openLedgers(dir), send, memory: { own: '/own', owner: '/owner' }, approve, turnSender, ...o.browser && { browser: { call: async () => [], block: [] } },
       // A manager that only asks the card and says the answer.
       ...o.manager && { kagelets: { list: () => '', manage: async (a, ask) => `yes: ${await ask!({ kagelet: a.name, tools: 'mcp__gmail__send', job: 'Mail the count.' })}` } } }),
     hasTranscript: () => o.transcript ?? false,

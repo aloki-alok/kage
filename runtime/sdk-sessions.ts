@@ -48,7 +48,7 @@ export function sdkSessions(o: {
   sdk: Sdk
   hub: () => Dispatcher<ToSession>
   // One set per thread. approve: the owner's card from inside a tool, true only on their yes.
-  tools: (key: string, send: (m: { type: 'mail' | 'wa' | 'voice'; text: string }) => void, approve: (tool: string, description: string, input: Record<string, unknown>) => Promise<boolean>) => Kage
+  tools: (key: string, send: (m: { type: 'mail' | 'wa' | 'voice'; text: string }) => void, approve: (tool: string, description: string, input: Record<string, unknown>) => Promise<boolean>, turnSender: () => Sender | undefined) => Kage
   hasTranscript: (id: string) => boolean
   toHub: (key: string, m: { type: 'mail' | 'wa' | 'voice'; text: string }) => void
   options: Options                                 // cwd, settings, settingSources, the claude binary
@@ -297,7 +297,7 @@ export function sdkSessions(o: {
     start(key, id, first) {
       const s: Session = sessions.get(key) ?? {
         id, state: 'idle', last: 0, stopped: false, asks: new Map(), turn: [], carry: [], ownerTools: key.startsWith('voice:') || (first?.type === 'task' && senderOf(first) === 'owner'),   // a live call never reopens
-        kage: o.tools(key, m => o.toHub(key, m), (tool, description, input) => ask(key, s, tool, description, input, new AbortController().signal).then(r => r.behavior === 'allow')),
+        kage: o.tools(key, m => o.toHub(key, m), (tool, description, input) => ask(key, s, tool, description, input, new AbortController().signal).then(r => r.behavior === 'allow'), () => s.sender),
       }
       Object.assign(s, { id, stopped: false })
       try { open(key, s) } catch (e) { sessions.delete(key); throw e }
