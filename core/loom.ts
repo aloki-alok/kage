@@ -1,5 +1,5 @@
 import type { Row, State } from './board.ts'
-import type { Conversation } from './conversations.ts'
+import { OFF_SLACK, type Conversation } from './conversations.ts'
 import { HERO_BIG, HERO_SMALL } from './hero.ts'
 
 export type Layout = {
@@ -60,7 +60,7 @@ export const filterRows = (rows: Row[], query: string): Row[] => {
   return q ? rows.filter(r => r.place.toLowerCase().includes(q)) : rows
 }
 
-const CONNECTORS: Conversation['connector'][] = ['slack', 'email', 'whatsapp', 'voice']
+const CONNECTORS: Conversation['connector'][] = ['slack', ...Object.keys(OFF_SLACK) as (keyof typeof OFF_SLACK)[]]
 export function moreLine(rest: { connector: string }[]): string {
   const counts = CONNECTORS.map(c => `${c} ${rest.filter(r => r.connector === c).length}`)
   return ['+ ' + rest.length + ' more', ...counts, '/ to search'].join(' · ')

@@ -1,12 +1,13 @@
 import { senderOf, teammateOf } from './gate.ts'
 import type { Task } from './task.ts'
+import { isOffSlack } from './conversations.ts'
 
 export const OFF_LIMITS = "This is off-limits for me, so I won't continue this conversation."
 export const OWNER_BLOCKED = 'The safety check stopped my answer here, so I dropped it. Message me in this thread to start fresh.'
 
 type BlockPlan = { reply?: string; dm?: string; close: boolean }
 
-export const answersInThread = (t: Task) => !!t.origin.ts && !['email', 'whatsapp', 'voice'].includes(t.meta.channel)
+export const answersInThread = (t: Task) => !!t.origin.ts && !isOffSlack(t.meta.channel)
 
 export const blockedTask = (turn: Task[]) => turn.find(x => senderOf(x) !== 'owner') ?? turn.at(-1)
 

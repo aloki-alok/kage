@@ -219,9 +219,9 @@ A connector touches more places than it should today. Copy `connectors/email.ts`
 
 Build its `Task` with `taskAsOther()` from `core/gate.ts`. Use `taskAsOwner()` only when a core rule proves the owner sent it, and name that rule in the PR.
 
-1. `Conversation['connector']` and the key prefix in `core/conversations.ts`.
+1. Its key prefix and kind in `OFF_SLACK` in `core/conversations.ts`. The connector type, session keys both ways, `answersInThread` and the `kage top` counts follow from it.
 2. `senderOf` in `core/gate.ts`, if its sender is not plainly the owner or a teammate.
 3. The reply type in `runtime/protocol.ts`, `routeReply` in `runtime/session-link.ts`, and the `reply` tool in `runtime/kage-tools.ts`.
-4. `replies` in `hub/connectors.ts` and `failed` in `hub/router.ts`, and the connector names written out in `core/blocks.ts`, `core/loom.ts` and the reply tool in `runtime/kage-tools.ts` (one connector table is planned).
+4. `replies` in `hub/connectors.ts`, and how the reply tool in `runtime/tools/slack-tools.ts` sends to it.
 5. If it listens on a port, use `listen()` in `connectors/webhook.ts`: a taken port then turns off this connector, not the hub.
 6. The inbox (`Inbox` in `runtime/store.ts`): `take` each message with a unique source id before you acknowledge it, and `handled` after. If the source does not resend by itself, add its `replay` to `replayOf` in `hub/connectors.ts`.

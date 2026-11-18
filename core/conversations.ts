@@ -1,6 +1,14 @@
 
+export const OFF_SLACK = {
+  email: { prefix: 'mail:', kind: 'mail' },
+  whatsapp: { prefix: 'wa:', kind: 'chat' },
+  voice: { prefix: 'voice:', kind: 'chat' },
+} as const
+type OffSlack = keyof typeof OFF_SLACK
+export const isOffSlack = (connector: string): connector is OffSlack => Object.hasOwn(OFF_SLACK, connector)
+
 export type Conversation = {
-  connector: 'slack' | 'email' | 'whatsapp' | 'voice'
+  connector: 'slack' | OffSlack
   chat: string
   thread?: string
   kind: 'dm' | 'group' | 'channel' | 'mail' | 'chat'
@@ -20,10 +28,7 @@ export const threadOfJobLane = (key: string) => key.replace(/#side-job-[^#]*$/, 
 export const modelFor = (key: string, jobModel: string | null | undefined, other: (key: string) => string | undefined) => isJobLane(key) ? jobModel || undefined : other(key)
 
 export function sessionKey(c: Conversation, o: { agent?: string; lane?: Lane } = {}): string {
-  const base = c.connector === 'email' ? `mail:${c.chat}`
-    : c.connector === 'whatsapp' ? `wa:${c.chat}`
-    : c.connector === 'voice' ? `voice:${c.chat}`
-    : c.agentDm ? 'dm' : `${c.chat}:${c.thread}`
+  const base = c.connector !== 'slack' ? `${OFF_SLACK[c.connector].prefix}${c.chat}` : c.agentDm ? 'dm' : `${c.chat}:${c.thread}`
   const lane = o.lane && o.lane !== 'main' ? `#${o.lane}` : ''
   return `${o.agent ? `${o.agent}/` : ''}${base}${lane}`
 }
@@ -35,10 +40,9 @@ export function parseSessionKey(key: string, botDm = ''): { agent?: string; lane
   const [, agent, base = '', lane] = m
   if (key.includes('#') && !lane) return
   let conversation: Conversation
+  const off = (Object.keys(OFF_SLACK) as OffSlack[]).find(c => base.startsWith(OFF_SLACK[c].prefix) && base.length > OFF_SLACK[c].prefix.length)
   if (base === 'dm') conversation = { connector: 'slack', chat: botDm, kind: 'dm', agentDm: true }
-  else if (base.startsWith('mail:') && base.length > 5) conversation = { connector: 'email', chat: base.slice(5), kind: 'mail' }
-  else if (base.startsWith('wa:') && base.length > 3) conversation = { connector: 'whatsapp', chat: base.slice(3), kind: 'chat' }
-  else if (base.startsWith('voice:') && base.length > 6) conversation = { connector: 'voice', chat: base.slice(6), kind: 'chat' }
+  else if (off) conversation = { connector: off, chat: base.slice(OFF_SLACK[off].prefix.length), kind: OFF_SLACK[off].kind }
   else {
     const s = /^([A-Z0-9]+):(\d+\.\d+)$/.exec(base)
     if (!s) return
