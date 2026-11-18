@@ -12,6 +12,8 @@ export const USER_SCOPES = [
   // The verified owner's voice call searches Slack without discovering an external tool first.
   'search:read',
   'chat:write', 'reactions:write', 'users:read',
+  // kage add <email> finds the person with users.lookupByEmail (cli/registry.ts).
+  'users:read.email',
   // AFK mode sets your status while you are away, then puts the old one back.
   'users.profile:read', 'users.profile:write',
   // message_people opens the group DM of you and the people a task names.

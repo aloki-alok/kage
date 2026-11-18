@@ -11,9 +11,10 @@ describe('missingScopes', () => {
   })
 })
 
-test('the manifest lists include the 2026-11-13 additions', () => {
+test('the manifest lists include the scopes Kage calls need', () => {
   assert.ok(USER_SCOPES.includes('files:read'))
   assert.ok(USER_SCOPES.includes('search:read'), 'the voice search tool calls the user Slack search API')
+  assert.ok(USER_SCOPES.includes('users:read.email'), 'kage add <email> calls users.lookupByEmail with the user token')
   assert.ok(!BOT_SCOPES.includes('search:read'))
   assert.ok(BOT_SCOPES.includes('chat:write'))
 })
