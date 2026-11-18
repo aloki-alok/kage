@@ -190,7 +190,7 @@ export function sdkSessions(o: {
       // Nothing more goes to a closing process: it may take a message and die before it answers.
       if (reopen || s.carry.length) { s.carry.push(userMessage(shown, uuid)); q.close() } else { inbox.push(userMessage(shown, uuid)); unseen = true }
     }
-    const sendAgain = () => { for (const t of s.again.splice(0)) send({ ...t, content: `${OWNER_AGAIN}\n${t.content}` }) }
+    const sendAgain = () => { if (unseen && s.turn.length) return; unseen = false; for (const t of s.again.splice(0)) send(ownerAgain(t)) }
     s.run = { q, inbox, send, started: Date.now() }
     let connected = false
     // Connected at the handshake, or else its first message. One that never starts leaves its tasks to the dispatcher.
@@ -259,7 +259,7 @@ export function sdkSessions(o: {
       // Nor does the new process take one it never read: the store hands it out again.
       const gone = new Set(lost.map(x => channelTag(x.task)))
       const unread = [...inbox.drain(), ...s.carry.splice(0)].filter(u => !gone.has(u.message.content as string))
-      setTimeout(() => { if (!s.stopped) open(key, s, unread) }, s.ownerTools && !full ? 0 : o.restartMs ?? 3000)
+      setTimeout(() => { if (s.stopped) return; open(key, s, unread); for (const t of s.again.splice(0)) s.run!.send(ownerAgain(t)) }, s.ownerTools && !full ? 0 : o.restartMs ?? 3000)
     })()
   }
 
@@ -332,6 +332,8 @@ export function sdkSessions(o: {
   }
   return { runner, running: () => new Set([...sessions.values()].map(s => s.id)), usage: () => [...sessions.values()].find(s => s.run && !s.stopped)?.run!.q.usage_EXPERIMENTAL_MAY_CHANGE_DO_NOT_RELY_ON_THIS_API_YET({ skipBehaviors: true }) }
 }
+
+const ownerAgain = (t: Task): Task => ({ ...t, content: `${OWNER_AGAIN}\n${t.content}` })
 
 const SET_MODEL = 'Switch the model or reasoning effort of this thread, when the owner or a teammate asks for it in plain words ("use opus max", "go back to the default"). It applies from the next step and stays for the thread. Leave out what they did not ask to change.'
 
