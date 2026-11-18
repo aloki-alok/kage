@@ -7,7 +7,7 @@ import { actCard, elementsResult, majorAct, parseAct, type Element, type Snapsho
 import type { KageTool, ToolContext } from '../kage-tools.ts'
 
 export function browserTools(c: ToolContext): KageTool[] {
-  const { o, bot, s, agents, filesOf, ownerOnly, name } = c
+  const { o, bot, s, filesOf, ownerActs, name } = c
   const tools: KageTool[] = []
   // The owner's browser carries their logins, so only the owner's own task reads it: never a teammate's, an
   // agent's, a voice caller's or a kagelet's. Page text comes back quoted as data (core/browser.ts).
@@ -15,7 +15,7 @@ export function browserTools(c: ToolContext): KageTool[] {
   if (browser && !name && !o.dreaming) {
     const where = { channel: s.describe('channel attribute from the task tag'), thread_ts: s.describe('thread_ts attribute from the task tag') }
     const typedIn = new Map<string, string[]>()   // thread:tab -> fields Kage typed there since the last major step
-    const refused = (args: Record<string, unknown>) => ownerOnly(args) && args.channel !== 'voice' && !agents.get(`${args.channel}:${args.thread_ts}`) ? undefined : { isError: true as const, text: "refused: only the owner's own task reads their browser" }
+    const refused = (args: Record<string, unknown>) => ownerActs(args) ? undefined : { isError: true as const, text: "refused: only the owner's own task reads their browser" }
     // The event log (#94) keeps the tool, the site and the outcome, never the page's words.
     const seen = (tool: string, outcome: string) => o.event?.('tool', `${tool} ${outcome}`)
     const hostOf = (url: string) => { try { return new URL(url).hostname } catch { return 'unknown' } }
