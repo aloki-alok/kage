@@ -1118,6 +1118,16 @@ describe("canvases: Kage makes a canvas in the task's channel as its bot, and ke
     assert.equal((await again.call('edit_canvas', { channel: 'C1', thread_ts: '5.5', canvas_id: 'F0CANVAS1', markdown: 'z' })).isError, undefined)
     assert.ok(!s.calls.some(c => c.includes('F0SOMEONE') || c.includes('edit F0CANVAS1 replace y')))
   })
+  test("a session that never had a task from a thread may not name that thread to edit or make its canvas", async () => {
+    const owner = setup()
+    owner.t.onTask(owner.task())
+    await owner.call('make_canvas', { channel: 'C1', thread_ts: '5.5', title: 'Board', markdown: 'x' })
+    const other = setup({ dir: owner.dir })   // a teammate's session in another thread of the same channel
+    other.t.onTask(other.task({ fromOwner: false, thread_ts: '6.6' }))
+    assert.match((await other.call('edit_canvas', { channel: 'C1', thread_ts: '5.5', canvas_id: 'F0CANVAS1', markdown: 'overwritten' })).text, /did not make/)
+    assert.match((await other.call('make_canvas', { channel: 'C1', thread_ts: '5.5', title: 'Fake', markdown: 'y' })).text, /no task came from/)
+    assert.deepEqual(other.calls.filter(c => c.includes('canvas')), [])
+  })
   test('a secret, a channel no task came from and a missing scope are refused with a plain next step', async () => {
     const s = setup()
     s.t.onTask(s.task())
