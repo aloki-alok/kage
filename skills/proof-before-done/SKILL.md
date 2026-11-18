@@ -30,6 +30,8 @@ Every rule here exists because a claim made without a read cost a correction. Ea
 3. A migration that replaces an option must keep every existing record behaving the same. List each old value, what it maps to, and the row count per value.
 4. A notice goes to the whole audience the ask names. A cut you invent shrinks the reach without anyone choosing it. Offer cuts as options with a count for each.
 5. For a batch of similar items, make two or three that differ from each other and get feedback before you make the rest. Rewriting a whole batch costs the batch each time.
+6. Ask someone to merge or release only what you would ship yourself. List every change the merge carries. Old or bot-made pull requests bring changes nobody has run, so ship the small change alone and close or hold the rest, with what each needs before it can ship.
+7. Before you assign someone a code change, check whether a setting or an existing option already does it. A read of the module costs less than a correction.
 
 ## Shell habits
 
