@@ -8,8 +8,8 @@ import type { AddressInfo } from 'node:net'
 // unhandled 'error' would exit the hub, and the service would restart it into the same crash. A body that has
 // not arrived in 10 s is dropped, so a slow sender cannot hold a buffer (a long poll's response may still wait).
 export function listen(handler: RequestListener, port: number, host = '127.0.0.1') {
-  const server = createServer(handler)
-  server.requestTimeout = 10_000
+  // Node checks requestTimeout only on connectionsCheckingInterval (30 s by default), so check each second.
+  const server = createServer({ requestTimeout: 10_000, connectionsCheckingInterval: 1_000 }, handler)
   const listening = new Promise<number>((resolve, reject) => {
     server.once('error', reject)
     server.listen(port, host, () => resolve((server.address() as AddressInfo).port))

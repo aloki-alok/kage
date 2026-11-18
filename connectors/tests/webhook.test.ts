@@ -2,7 +2,8 @@ import { describe, test } from 'node:test'
 import assert from 'node:assert/strict'
 import { createServer } from 'node:http'
 import type { AddressInfo } from 'node:net'
-import { bearerOk, hourCap, readBody } from '../webhook.ts'
+import { bearerOk, hourCap, listen, readBody } from '../webhook.ts'
+import { connect } from 'node:net'
 
 describe('bearerOk', () => {
   test('accepts only the exact "Bearer <token>" header', () => {
@@ -46,5 +47,23 @@ describe('readBody', () => {
   })
   test('returns nothing above the cap', async () => {
     assert.equal((await run(10, 'x'.repeat(5000)))?.status, 413)
+  })
+})
+
+describe('listen', () => {
+  test('drops a request whose body has not arrived in about 10 s, so a slow sender cannot hold a buffer', { timeout: 30_000 }, async () => {
+    const l = listen((req, res) => { void readBody(req, 1000).then(() => res.writeHead(200).end()) }, 0)
+    const port = await l.listening
+    const start = Date.now()
+    const answer = await new Promise<string>(done => {
+      const c = connect(port, '127.0.0.1', () => c.write('POST / HTTP/1.1\r\nHost: x\r\nContent-Length: 10\r\n\r\nabc'))
+      let got = ''
+      c.on('data', d => { got += d })
+      c.on('close', () => done(got))
+    })
+    const s = (Date.now() - start) / 1000
+    l.close()
+    assert.match(answer, /^HTTP\/1\.1 408/)
+    assert.ok(s >= 9 && s < 13, `answered after ${s} s`)
   })
 })
