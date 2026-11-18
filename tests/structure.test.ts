@@ -54,6 +54,10 @@ test('runtime/ and connectors/ never import the hub, the plugin or a root file',
   check('rootImports', [...inDir('runtime'), ...inDir('connectors')].filter(f => bad.test(code(f))), DEBT.rootImports)
 })
 
+test('a connector listens only through listen() in connectors/webhook.ts, so a taken port cannot crash the hub', () => {
+  assert.deepEqual(inDir('connectors').filter(f => f !== 'connectors/webhook.ts' && /\bcreateServer\(/.test(code(f))), [])
+})
+
 test('the hub and the plugin never import a kage command (cli/)', () => {
   const bad = /(from|import\(|require\()\s*['"]\.\.\/cli\//
   assert.deepEqual([...inDir('hub'), ...inDir('plugin')].filter(f => bad.test(code(f))), [], 'move what both need into runtime/ or core/')
