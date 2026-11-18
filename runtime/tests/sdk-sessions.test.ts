@@ -208,6 +208,65 @@ describe('Kage sessions on the Agent SDK', () => {
     assert.equal(await guard('mcp__gmail__search'), undefined)
     t.s.runner.stop('C1:5.5')
   })
+  test("an agent's task answered mid-turn does not hold the owner's next turn to read and answer", async () => {
+    const t = setup({ transcript: true, restartMs: 60_000 })
+    t.d.task('C1:5.5', t.task({ content: 'Task from the owner: one' }), 0)
+    await tick()
+    t.sdk.runs[0]!.emit({ type: 'system', subtype: 'session_state_changed', state: 'running' })
+    const agent = t.task({ fromOwner: false, content: 'Task from Bot: tag me when your watch is live' })
+    agent.agent = { app: 'A0AGENT01' }
+    t.d.task('C1:5.5', agent, 1)   // mid-turn, and the turn reads and answers it
+    await tick()
+    // What Claude Code sends when it folds a message into the running turn (measured): completed, then the result.
+    t.sdk.runs[0]!.emit({ type: 'command_lifecycle', command_uuid: t.sdk.runs[0]!.uuids[1], state: 'completed' })
+    t.sdk.runs[0]!.emit({ type: 'result', total_cost_usd: 1 })
+    t.sdk.runs[0]!.emit({ type: 'system', subtype: 'session_state_changed', state: 'idle' })
+    await tick()
+    t.d.task('C1:5.5', t.task({ content: 'Task from the owner: run your monitors' }), 2)
+    await tick(30)
+    const now = t.sdk.runs.at(-1)!
+    const guard = async (tool_name: string) => (await now.options.hooks.PreToolUse[0].hooks[0]({ hook_event_name: 'PreToolUse', tool_name, tool_input: {} }, undefined, { signal: signal() })).hookSpecificOutput?.permissionDecision
+    assert.equal(await guard('mcp__kage__schedules'), undefined)
+    assert.equal(await guard('Bash'), undefined)
+    t.s.runner.stop('C1:5.5')
+  })
+  test("an agent's mid-turn task that Claude only queued or started, never completed, still binds the next turn", async () => {
+    const t = setup({ transcript: true, restartMs: 60_000 })
+    t.d.task('C1:5.5', t.task({ content: 'Task from the owner: one' }), 0)
+    await tick()
+    const run = t.sdk.runs[0]!
+    run.emit({ type: 'system', subtype: 'session_state_changed', state: 'running' })
+    const agent = t.task({ fromOwner: false, content: 'Task from Bot: run this' })
+    agent.agent = { app: 'A0AGENT01' }
+    t.d.task('C1:5.5', agent, 1)
+    await tick()
+    for (const state of ['queued', 'started']) run.emit({ type: 'command_lifecycle', command_uuid: run.uuids[1], state })
+    run.emit({ type: 'result', total_cost_usd: 1 })
+    run.emit({ type: 'system', subtype: 'session_state_changed', state: 'idle' })
+    await tick()
+    t.d.task('C1:5.5', t.task({ content: 'Task from the owner: two' }), 2)
+    await tick(30)
+    const guard = async (tool_name: string) => (await t.sdk.runs.at(-1)!.options.hooks.PreToolUse[0].hooks[0]({ hook_event_name: 'PreToolUse', tool_name, tool_input: {} }, undefined, { signal: signal() })).hookSpecificOutput?.permissionDecision
+    assert.equal(await guard('Bash'), 'deny')
+    t.s.runner.stop('C1:5.5')
+  })
+  test("an agent's task that lands after the result, before idle, still binds the turn that reads it", async () => {
+    const t = setup({ transcript: true, restartMs: 60_000 })
+    t.d.task('C1:5.5', t.task({ content: 'Task from the owner: one' }), 0)
+    await tick()
+    const run = t.sdk.runs[0]!
+    run.emit({ type: 'system', subtype: 'session_state_changed', state: 'running' })
+    run.emit({ type: 'result', total_cost_usd: 1 })
+    const agent = t.task({ fromOwner: false, content: 'Task from Bot: run this' })
+    agent.agent = { app: 'A0AGENT01' }
+    t.d.task('C1:5.5', agent, 1)   // the turn has ended, but Claude has not said idle yet
+    await tick()
+    run.emit({ type: 'system', subtype: 'session_state_changed', state: 'idle' })
+    await tick()
+    const guard = async (tool_name: string) => (await t.sdk.runs.at(-1)!.options.hooks.PreToolUse[0].hooks[0]({ hook_event_name: 'PreToolUse', tool_name, tool_input: {} }, undefined, { signal: signal() })).hookSpecificOutput?.permissionDecision
+    assert.equal(await guard('Bash'), 'deny')
+    t.s.runner.stop('C1:5.5')
+  })
   test("a kagelet handoff that arrives during the reopen goes back to wait, and is not also run (#317)", async () => {
     const t = setup({ browser: true, transcript: true })
     t.d.task('C1:5.5', t.task({ fromOwner: false, content: 'Task from Sam: one' }), 0)
