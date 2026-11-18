@@ -1,6 +1,4 @@
 #!/usr/bin/env node
-// The two lines kage status opens with (core/board.ts statusSummary): hub uptime, starts, schedules, spend today.
-//   kage status   (setup.sh prints the version line first; the sessions come from kage top --once)
 import { execFileSync, spawnSync } from 'node:child_process'
 import { readFileSync } from 'node:fs'
 import { DIR } from './home.ts'
@@ -11,7 +9,6 @@ import { schedulesIn } from '../runtime/store.ts'
 
 const read = (f: string) => { try { return readFileSync(`${DIR}/${f}`, 'utf8') } catch { return '' } }
 const now = Date.now()
-// The status file's fourth word is the hub's pid (connectors/slack.ts); ps gives when it started.
 const pid = read('status').split(/\s+/)[3]
 let upSec: number | undefined
 try {

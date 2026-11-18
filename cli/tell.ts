@@ -1,8 +1,4 @@
 #!/usr/bin/env node
-// kage tell <place> <message>: tell one thread's session something, as the owner, from this terminal.
-// The session gets it as its next task (after the current turn) and answers in the thread as usual.
-//   kage tell support use the staging db       the one thread whose place contains "support"
-//   kage tell "pr review" hold the merge        quote a place with spaces
 import { existsSync } from 'node:fs'
 import { connect } from 'node:net'
 import { DIR } from './home.ts'

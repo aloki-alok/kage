@@ -1,5 +1,3 @@
-// kage doctor: runs each check group in order and prints the lines (core/doctor.ts). Exit 1 when any check fails.
-// A group that throws is one FAIL line, so the rest still run.
 import { report, type Line } from '../../core/doctor.ts'
 import { name } from './context.ts'
 import { setup } from './setup.ts'

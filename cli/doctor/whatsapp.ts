@@ -1,4 +1,3 @@
-// The WAHA bridge (#351): checked only when the hub would start WhatsApp (hub/connectors.ts), so the same keys and kill switch.
 import { whatsappLine } from '../../core/doctor.ts'
 import { wahaSeen, wahaUrl } from '../../connectors/whatsapp.ts'
 import { settings } from '../home.ts'

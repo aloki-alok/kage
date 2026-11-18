@@ -1,4 +1,3 @@
-// Whether the OS keeps the hub running, and the notes about restarts and sleep.
 import { userInfo } from 'node:os'
 import { bootNotes, lingerLine, serviceLines } from '../../core/doctor.ts'
 import { dir, name, nowSec, oldTmux, read, service as svc, sh, type Group } from './context.ts'

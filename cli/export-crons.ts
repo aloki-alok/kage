@@ -1,8 +1,4 @@
 #!/usr/bin/env node
-// For a full restart or the switch to SDK sessions: move the CronCreate jobs still alive in the tmux
-// panes into the hub's schedules, so no watcher is lost when the panes stop. Run it right before
-// `tmux kill-session`; the hub adopts the file on its next start (runtime/scheduler.ts adopt).
-//   kage export-crons
 import { execFileSync } from 'node:child_process'
 import { readFileSync, renameSync, writeFileSync } from 'node:fs'
 import { CWD, DIR } from './home.ts'
@@ -26,7 +22,6 @@ for (const [id, pane] of panes) {
   if (!key) continue
   let lines: string[] = []
   try { lines = readFileSync(`${PROJECT}/${id}.jsonl`, 'utf8').split('\n') } catch { continue }
-  // The pane's latest task decides the trust its jobs keep: a teammate's job stays a teammate's.
   let sender = ''
   try { sender = readFileSync(senderFile(DIR, key), 'utf8').trim() } catch {}
   for (const j of cronJobsFromTranscript(lines, paneProcessStart(pane))) {
@@ -34,10 +29,7 @@ for (const [id, pane] of panes) {
     console.log(`${key}  ${j.id}  ${j.cron}${j.recurring ? '' : ' (once)'}  ${j.prompt.split('\n')[0]!.slice(0, 80)}`)
   }
 }
-// Written only when the panes are about to stop: a hub that adopted them while the panes still ran
-// would run every job twice.
 if (process.argv.includes('--dry')) { console.log(`${jobs.length} live jobs (dry run, nothing written)`); process.exit(0) }
-// Written whole or not at all, so the hub never reads half a file.
 writeFileSync(`${DIR}/crons-import.json.tmp`, JSON.stringify({ ranUntil, jobs }, null, 2), { mode: 0o600 })
 renameSync(`${DIR}/crons-import.json.tmp`, `${DIR}/crons-import.json`)
 console.log(`${jobs.length} live jobs written to ${DIR}/crons-import.json. Stop the panes now; the hub adopts them on start.`)

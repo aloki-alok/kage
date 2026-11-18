@@ -1,7 +1,4 @@
 #!/usr/bin/env node
-// kage call: Kage phones the owner. The hub issues a one-time code, and connectors.call.command (your dialer,
-// outside this repo) places the call with that code in $KAGE_CALL_CODE. The call that brings the code
-// back is the owner (connectors/voice.ts). The code is never printed.
 import { spawnSync } from 'node:child_process'
 import { askHub, settings } from './home.ts'
 

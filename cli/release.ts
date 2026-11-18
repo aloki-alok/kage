@@ -1,6 +1,4 @@
 #!/usr/bin/env node
-// kage release [--dry-run]: tag the next version on main, publish its notes, and move `stable` to it (ADR 0013).
-// --dry-run prints the version, the notes and every problem, and changes nothing.
 import { release } from '../runtime/release.ts'
 
 const dry = process.argv.includes('--dry-run')

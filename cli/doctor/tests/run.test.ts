@@ -6,7 +6,6 @@ import { join } from 'node:path'
 import { spawnSync } from 'node:child_process'
 
 const runner = new URL('../run.ts', import.meta.url).pathname
-// A throwaway HOME, so the doctor sees a machine with no Kage on it. TMUX_TMPDIR keeps it off the real tmux server.
 function doctor(files: Record<string, string> = {}) {
   const home = mkdtempSync(join(tmpdir(), 'kage-doctor-'))
   const dir = join(home, '.config', 'kage')

@@ -1,5 +1,3 @@
-// kage restart and kage stop run this first: the hub drains, and this waits until no thread is mid-turn
-// (core/quiet.ts). --cut-running drains and names what it cuts instead of waiting.
 import { waitForQuiet, type Wait } from '../core/quiet.ts'
 import { askHub, placeNamer } from './home.ts'
 

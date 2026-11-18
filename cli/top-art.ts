@@ -1,10 +1,7 @@
-// What kage top draws on its screen: Kage from its avatar, and the strings to each thread, with their motion.
 import { HERO_BIG, HERO_SMALL } from '../core/hero.ts'
 import type { Layout } from '../core/loom.ts'
 import { clamp, put, rnd } from './top-screen.ts'
 
-// Kage, whole. During the start it assembles from noise, a bright line sweeps down now and then, and
-// the star glints.
 const HEROES = { big: HERO_BIG, small: HERO_SMALL }
 export function drawHero(l: Layout, t: number, since: number, boot: number) {
   const h = HEROES[l.mode as 'big' | 'small']
@@ -23,7 +20,6 @@ export function drawHero(l: Layout, t: number, since: number, boot: number) {
   }
 }
 
-// A string is the path of cells between two points, each with the box character for its slope.
 export function path(x0: number, y0: number, x1: number, y1: number): [number, number, string][] {
   x0 = Math.round(x0); y0 = Math.round(y0); x1 = Math.round(x1); y1 = Math.round(y1)
   const pts: [number, number, string][] = []
@@ -68,7 +64,6 @@ export function string(pts: [number, number, string][], kind: string, t: number,
   }
 }
 
-// A cut string splits at its middle: the star's half draws back, the other half falls as dust.
 export function cutString(pts: [number, number, string][], t: number, t0: number) {
   const n = pts.length, e = clamp((t - t0) / 1600), mid = Math.floor(n / 2)
   for (let j = 0; j < Math.floor(mid * (1 - e)); j++) put(pts[j]![0], pts[j]![1], pts[j]![2], 'm')

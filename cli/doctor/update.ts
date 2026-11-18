@@ -1,4 +1,3 @@
-// Why this install would not update itself (the rules are core/auto-update.ts).
 import { existsSync } from 'node:fs'
 import { autoUpdateNote } from '../../core/doctor.ts'
 import { config, ROOT, sh, type Group } from './context.ts'
@@ -12,7 +11,6 @@ export const update: Group = () => {
   if (n === 'ask-origin') {
     const r = sh('git', ['ls-remote', '--tags', 'origin', 'refs/tags/stable'], 30_000)
     const sha = r.stdout.trim().split(/\s/)[0] ?? ''
-    // Diverged: the tag's commit is here, yet neither it nor HEAD holds the other. A tag not fetched yet is not diverged.
     const ancestor = (a: string, b: string) => sh('git', ['merge-base', '--is-ancestor', a, b]).status === 0
     const known = sha !== '' && sh('git', ['cat-file', '-e', `${sha}^{commit}`]).status === 0
     const diverged = known && !ancestor(sha, 'HEAD') && !ancestor('HEAD', sha)

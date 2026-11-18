@@ -1,10 +1,7 @@
-// The thread kage attach, tell and stop act on: what was typed (core/conversations.ts matchThreads), or a numbered
-// list to pick from, newest first.
 import { DatabaseSync } from 'node:sqlite'
 import { matchThreads, slackLinkKey, type ThreadRow } from '../core/conversations.ts'
 import { DIR } from './home.ts'
 
-// lanes: false leaves out side lanes, for a command that acts on a thread with its lanes (kage stop).
 export async function pickThread(arg: string, lanes = true): Promise<{ key: string; place: string }> {
   const db = new DatabaseSync(`${DIR}/kage.db`, { readOnly: true })
   const rows = db.prepare(`select s.key, coalesce(c.place, s.key) as place, c.chat, c.agent_dm from sessions s
