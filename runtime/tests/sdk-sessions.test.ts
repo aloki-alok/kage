@@ -898,6 +898,43 @@ describe('Kage sessions on the Agent SDK', () => {
     await tick()
     assert.deepEqual(await run('Bash'), {})
   })
+  test("on an agent's task the hook allows reading and answering only, and the whole turn stays limited", async () => {
+    const t = setup()
+    const task = t.task({ fromOwner: true })   // made with its owner's token: still an agent's task
+    task.agent = { app: 'A0AGENT01' }
+    t.d.task('C1:5.5', task, 0)
+    await tick()
+    const hook = t.sdk.runs[0]!.options.hooks.PreToolUse[0]
+    const run = (tool_name: string, tool_input = {}) => hook.hooks[0]({ hook_event_name: 'PreToolUse', tool_name, tool_input }, undefined, { signal: signal() })
+    for (const tool of ['Bash', 'Edit', 'WebFetch', 'mcp__claude_ai_OmniDimension__dispatchCall', 'mcp__kage__message_people'])
+      assert.equal((await run(tool)).hookSpecificOutput?.permissionDecision, 'deny', tool)
+    assert.deepEqual(await run('mcp__kage__reply'), {})
+    assert.deepEqual(await run('Read', { file_path: '/tmp/readme.md' }), {})
+    // The owner writes mid-turn: the agent's task is still in this turn, so the turn keeps its limits.
+    t.d.task('C1:5.5', t.task(), 1)
+    await tick()
+    assert.equal((await run('Bash')).hookSpecificOutput?.permissionDecision, 'deny')
+    // A call the hook lets through still needs permission (a read outside the folder): it is refused, never carded.
+    const use = (name: string, input: object) => Promise.race([t.sdk.runs[0]!.options.canUseTool(name, input, { signal: signal() }), tick(30).then(() => ({ behavior: 'held on a card' }))])
+    assert.equal((await use('Read', { file_path: '/Users/x/Documents/notes.md' })).behavior, 'deny')
+    assert.equal((await use('Bash', { command: 'ls' })).behavior, 'deny')
+    assert.deepEqual(t.posts, [])   // no approval card reached the owner
+  })
+  test("a teammate's task, then an agent's, then the owner's in one turn: the agent's limits hold for the whole turn", async () => {
+    const t = setup()
+    t.d.task('C1:5.5', t.task({ fromOwner: false }), 0)
+    await tick()
+    const agent = t.task({ fromOwner: true })
+    agent.agent = { app: 'A0AGENT01' }
+    t.d.task('C1:5.5', agent, 1)
+    t.d.task('C1:5.5', t.task(), 2)
+    await tick()
+    const hook = t.sdk.runs[0]!.options.hooks.PreToolUse[0]
+    assert.equal((await hook.hooks[0]({ hook_event_name: 'PreToolUse', tool_name: 'Edit', tool_input: {} }, undefined, { signal: signal() })).hookSpecificOutput?.permissionDecision, 'deny')
+    const r = await Promise.race([t.sdk.runs[0]!.options.canUseTool('Read', { file_path: '/Users/x/notes.md' }, { signal: signal() }), tick(30).then(() => ({ behavior: 'held on a card' }))])
+    assert.equal(r.behavior, 'deny')
+    assert.deepEqual(t.posts, [])
+  })
   test("even on the owner's task the hook refuses the Slack connector's send, so posts go through Kage's tools", async () => {
     const t = setup()
     t.d.task('C1:5.5', t.task(), 0)

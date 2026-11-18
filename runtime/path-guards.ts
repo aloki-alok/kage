@@ -2,7 +2,7 @@
 // They follow links, so they read the filesystem and live here, not in core/ (ADR 0001).
 import { existsSync, readdirSync, realpathSync } from 'node:fs'
 import { basename, dirname, join, posix, resolve } from 'node:path'
-import { mcpToolRefusal, privateToolRefusal, slackSendRefusal, voiceToolRefusal } from '../core/guards.ts'
+import { agentToolRefusal, mcpToolRefusal, SECRET_DIRS, SECRET_FILE, SECRET_GLOB, privateToolRefusal, slackSendRefusal, voiceToolRefusal } from '../core/guards.ts'
 
 // The config folder holds the tokens (secrets.json, and an env file until its import is deleted). No session may read
 // those, the owner's included: Kage's own tools post as the bot, so no session needs a token. The owner's sessions may
@@ -127,7 +127,17 @@ function realish(p: string): string {
   }
 }
 // Every hook rule in one chain. The SDK runner and the tmux hook both call it, so a rule added here reaches both (#272).
+// An agent's task reads files, but not where secrets live (core/guards.ts names the places). Both sides go through
+// realish, so a symlink can't point a read at a secret, and a home behind a link (macOS /var) compares like for like.
+export function agentReadRefusal(tool: string, input: { file_path?: string; path?: string; pattern?: string }, sender: string | undefined, home = process.env.HOME ?? ''): string | undefined {
+  const target = sender !== 'agent' ? undefined : tool === 'Read' ? input.file_path : tool === 'Grep' || tool === 'Glob' ? (input.path ?? home) : undefined
+  if (!target) return undefined
+  const base = realish(home), full = realish(resolve(home, target)), glob = tool === 'Glob' ? String(input.pattern ?? '') : ''
+  const secret = SECRET_DIRS.some(d => { const dir = join(base, d); return full === dir || full.startsWith(dir + '/') || (full === base && glob.includes(d)) })
+    || SECRET_FILE.test(full) || SECRET_GLOB.test(glob)
+  return secret ? `${target} may hold secrets, and an agent's task does not read them.` : undefined
+}
 export function toolRefusal(tool: string, input: Record<string, unknown>, sender: string | undefined, o: { ownerMemory: string; envFile: string; sharedTools?: readonly string[] }): string | undefined {
-  return privateToolRefusal(tool, sender) ?? voiceToolRefusal(tool, sender) ?? mcpToolRefusal(tool, sender, o.sharedTools) ?? slackSendRefusal(tool)
+  return agentToolRefusal(tool, sender) ?? agentReadRefusal(tool, input as { file_path?: string }, sender) ?? privateToolRefusal(tool, sender) ?? voiceToolRefusal(tool, sender) ?? mcpToolRefusal(tool, sender, o.sharedTools) ?? slackSendRefusal(tool)
     ?? ownerMemoryRefusal(tool, input as { file_path?: string }, o.ownerMemory, sender) ?? configRefusal(tool, input, sender, o.envFile)
 }

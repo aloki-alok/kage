@@ -13,7 +13,7 @@ export const addressed = (parts: string[], tag: string) =>
 // What a session reads under the task line when a listed agent posted the task. The rules it states are held in
 // code as well: the gate never reads an agent's post as an approval, and the reply tool adds the tag.
 export const agentNote = (app: string, tag?: string) =>
-  `(A listed agent posted this with its owner's token: Slack app ${app}. It may read and answer, nothing else, and it can approve nothing: if it needs a write, tag the teammate whose agent it is. ${
+  `(A listed agent posted this with its owner's token: Slack app ${app}. It may read and answer, nothing else (every other tool is refused before it runs), and it can approve nothing: if it needs a write, tag the teammate whose agent it is. ${
     tag ? 'It hears only posts that tag it: pass tag_agent=true on the reply it must read (the answer to its ask, or a question to it), and the tool tags every part.' : 'Kage has no tag saved for this agent, so it may not hear your reply.'
   } Tag it whenever it must act, answer or go ahead, a yes it waits on included; thanks and progress stay untagged.)`
 

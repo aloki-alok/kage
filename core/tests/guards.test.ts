@@ -1,6 +1,6 @@
 import { describe, test } from 'node:test'
 import assert from 'node:assert/strict'
-import { privateToolRefusal, slackSendRefusal, voiceToolRefusal, mcpToolRefusal } from '../guards.ts'
+import { agentToolRefusal, privateToolRefusal, slackSendRefusal, voiceToolRefusal, mcpToolRefusal } from '../guards.ts'
 
 describe('private sources on a teammate task', () => {
   const MAIL = 'mcp__claude_ai_Gmail__search_threads'
@@ -33,6 +33,22 @@ describe('tools on a voice call', () => {
   })
   test('other senders are not limited here', () => {
     for (const s of ['owner', 'teammate', undefined]) assert.equal(voiceToolRefusal('Bash', s), undefined)
+  })
+})
+
+describe("an agent's task may read and answer, nothing more", () => {
+  test('reading files and answering in the thread are allowed', () => {
+    for (const t of ['Read', 'Grep', 'Glob', 'ToolSearch', 'TodoWrite', 'mcp__kage__reply', 'mcp__kage__edit_message', 'mcp__plugin_kage_kage__reply'])
+      assert.equal(agentToolRefusal(t, 'agent'), undefined, t)
+  })
+  test('shell, edits, web, other MCP tools, subagents, posting as the owner and schedules are refused before any card', () => {
+    for (const t of ['Bash', 'Edit', 'Write', 'MultiEdit', 'NotebookEdit', 'WebFetch', 'WebSearch', 'Agent', 'Task',
+      'mcp__claude_ai_OmniDimension__dispatchCall', 'mcp__grafana__query_loki_logs', 'mcp__kage__message_people', 'mcp__kage__schedule',
+      'mcp__kage__send_file', 'mcp__kage__delete_message', 'mcp__kage__set_model'])
+      assert.match(agentToolRefusal(t, 'agent') ?? '', /only read and answer/, t)
+  })
+  test('the owner, a teammate and a voice call are not limited by this rule', () => {
+    for (const s of ['owner', 'teammate', 'voice', undefined]) assert.equal(agentToolRefusal('Bash', s), undefined)
   })
 })
 
