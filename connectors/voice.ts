@@ -6,7 +6,7 @@
 // it is the owner for its whole length. Caller ID is never trusted: anyone can fake a number. The reply comes back through replies.voice in hub/router.ts.
 import { oneLine } from '../core/text.ts'
 import { randomBytes, randomUUID } from 'node:crypto'
-import { createServer, type IncomingMessage } from 'node:http'
+import type { IncomingMessage } from 'node:http'
 import type { AddressInfo } from 'node:net'
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
 import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js'
@@ -17,7 +17,7 @@ import type { Conversation } from '../core/conversations.ts'
 import { voiceTaskLine } from '../core/gate.ts'
 import type { Delivery } from '../core/sessions.ts'
 import type { Task } from '../core/task.ts'
-import { bearerOk, hourCap, readBody } from './webhook.ts'
+import { bearerOk, hourCap, listen, readBody } from './webhook.ts'
 
 export const MAX_QUESTION = 600
 const STILL = 'Kage is still working on it. Ask again in a moment and you will get the answer.'
@@ -185,7 +185,8 @@ export function connectVoice(o: {
     return transport
   }
 
-  const server = createServer(async (req, res) => {
+  const port = portSetting ?? 8787
+  const { server, listening } = listen(async (req, res) => {
     // Bare 401, no detail, for anything without the exact token.
     if (!bearerOk(req.headers.authorization, token)) { res.writeHead(401).end(); return }
     try {
@@ -215,12 +216,10 @@ export function connectVoice(o: {
       log('voice request failed', e)
       if (!res.headersSent) res.writeHead(400).end()
     }
-  })
+  }, port)
   const timer = setInterval(() => void sweep(), 60_000)
   timer.unref()
-  const port = portSetting ?? 8787
-  const listening = new Promise<number>(ok => server.listen(port, '127.0.0.1', () => ok((server.address() as AddressInfo).port)))
-  void listening.then(p => log(`voice on: 127.0.0.1:${p}`))
+  void listening.then(p => log(`voice on: 127.0.0.1:${p}`), e => log('voice could not listen', e))
   return {
     reply, listening, sweep, issueCode, calls: () => calls.size, sessions: () => sessions.size,
     address: () => (server.address() as AddressInfo).address,

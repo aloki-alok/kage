@@ -37,7 +37,7 @@ export function startConnectors(o: {
     notify: text => void slack.notifyOwner(text),
     perHour: conn.github.perHour || 20, inbox,
   }) : undefined
-  void github?.listening.then(port => log(`github on: 127.0.0.1:${port}/github for @${conn.github?.login}`))
+  void github?.listening.then(port => log(`github on: 127.0.0.1:${port}/github for @${conn.github?.login}`), e => log('github could not listen', e))
   // Meetings are on when meetingToken is set: a finished transcript gets notes in its own DM thread.
   const meeting = secrets.meetingToken ? connectMeeting({
     token: secrets.meetingToken, port: conn.meeting?.port || 8790, botDm: slack.ids.botDm,
@@ -47,7 +47,7 @@ export function startConnectors(o: {
     perHour: conn.meeting?.perHour || 10, inbox, untake: source => store.untake(source), name: NAME,
     end: key => { if (meetCall(key)) d.end(key) },   // only the call's own session
   }) : undefined
-  void meeting?.listening.then(port => { log(`meetings on: 127.0.0.1:${port}/meeting`); if (existsSync(`${CODE}/meetbot/node_modules`)) meetbot(port) })
+  void meeting?.listening.then(port => { log(`meetings on: 127.0.0.1:${port}/meeting`); if (existsSync(`${CODE}/meetbot/node_modules`)) meetbot(port) }, e => log('meetings could not listen', e))
   // The meeting bot runs as the hub's child when it is installed in this checkout (meetbot/node_modules): it waits
   // for a join and opens a headless browser only for a call, with only what a browser needs (never the hub's tokens). It restarts after a crash and ends with the hub.
   // A bot on another machine still works the same way, from its own config (meetbot/README.md).

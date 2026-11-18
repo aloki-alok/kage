@@ -1,7 +1,21 @@
-// What the connectors that listen on a local port share: the body reader, the bearer check and the hourly cap.
-// Each connector keeps its own status codes and its own order of checks.
+// What the connectors that listen on a local port share: the server, the body reader, the bearer check and the
+// hourly cap. Each connector keeps its own status codes and its own order of checks.
 import { createHash, timingSafeEqual } from 'node:crypto'
-import type { IncomingMessage } from 'node:http'
+import { createServer, type IncomingMessage, type RequestListener } from 'node:http'
+import type { AddressInfo } from 'node:net'
+
+// The one way a connector listens. A taken port rejects `listening` and turns only this connector off: an
+// unhandled 'error' would exit the hub, and the service would restart it into the same crash. A body that has
+// not arrived in 10 s is dropped, so a slow sender cannot hold a buffer (a long poll's response may still wait).
+export function listen(handler: RequestListener, port: number, host = '127.0.0.1') {
+  // Node checks requestTimeout only on connectionsCheckingInterval (30 s by default), so check each second.
+  const server = createServer({ requestTimeout: 10_000, connectionsCheckingInterval: 1_000 }, handler)
+  const listening = new Promise<number>((resolve, reject) => {
+    server.once('error', reject)
+    server.listen(port, host, () => resolve((server.address() as AddressInfo).port))
+  })
+  return { server, listening, close: () => { server.closeAllConnections(); server.close() } }
+}
 
 // The whole body as bytes (decode once, so a character split across chunks cannot break a signature).
 // Nothing above max: the caller answers 413 and destroys the request.

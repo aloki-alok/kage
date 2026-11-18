@@ -3,15 +3,13 @@
 // happen in Slack like every other task, and the owner answers there in person. The event's text was
 // written by other people, so the task runs at teammate trust. Off unless githubSecret and
 // connectors.github.login are set. Reach it through a tunnel to 127.0.0.1:<port>/github.
-import { createServer } from 'node:http'
-import type { AddressInfo } from 'node:net'
 import { log } from '../runtime/log.ts'
 import type { Conversation } from '../core/conversations.ts'
 import { noChannelTag } from '../core/text.ts'
 import { githubEvent } from '../core/github.ts'
 import { signedSha256 } from '../core/signature.ts'
 import { slackPlain } from '../core/outbound.ts'
-import { hourCap, readBody } from './webhook.ts'
+import { hourCap, listen, readBody } from './webhook.ts'
 import type { Delivery } from '../core/sessions.ts'
 import type { Task } from '../core/task.ts'
 import type { Inbox, Saved } from '../runtime/store.ts'
@@ -79,7 +77,7 @@ export function connectGithub(o: {
     if (source) o.inbox.handled(source)
     return took
   }
-  const server = createServer((req, res) => {
+  const { listening, close: closeServer } = listen((req, res) => {
     if (req.method !== 'POST' || req.url !== '/github') { res.writeHead(404).end(); return }
     void (async () => {
       const raw = await readBody(req, MAX_BODY)
@@ -101,9 +99,8 @@ export function connectGithub(o: {
           res.writeHead(500).end()
         })
     })()
-  })
-  const listening = new Promise<number>(ok => server.listen(o.port, '127.0.0.1', () => ok((server.address() as AddressInfo).port)))
+  }, o.port)
   // A delivery the last run took but never handled, from the inbox.
   const replay = async (source: string, payload: string) => { const { type, body } = JSON.parse(payload); return run(type, body, source) }
-  return { listening, replay, close: () => server.close() }
+  return { listening, replay, close: closeServer }
 }

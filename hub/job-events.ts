@@ -44,7 +44,7 @@ export function startJobEvents(o: {
   const host = t.hookHost || '127.0.0.1'
   const hooks = t.hookPort && !off ? jobHooks({ host, port: t.hookPort, inbox: o.inbox, maxKb: () => t.maxKb || 64, perHour: () => t.hookPerHour || 60, hookOf,
     deliver: (job, quote, done) => ev.wake(job, [quote], done), track }) : undefined
-  void hooks?.listening.then(port => log(`job webhooks on: ${host}:${port}/hook/<job id>`))
+  void hooks?.listening.then(port => log(`job webhooks on: ${host}:${port}/hook/<job id>`), e => log('job webhooks could not listen', e))
   const facade = {
     add(key: string, j: Parameters<typeof o.schedules.add>[1], now: number): string | undefined {
       const no = off && j.trigger ? 'tripwires are off: run `kage set tripwires.on true` first' : ev.refuse(j.trigger)
