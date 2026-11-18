@@ -35,7 +35,7 @@ describe("Meta's webhook as events", () => {
   test('a new comment on a Page post, from someone other than the Page', () => {
     const body = { object: 'page', entry: [{ id: 'P1', time: 1, changes: [
       { field: 'feed', value: { item: 'comment', verb: 'add', comment_id: 'C1', post_id: 'P1_9', parent_id: 'P1_9', message: 'Hire', from: { id: 'U5', name: 'A Lead' }, created_time: 7 } },
-      { field: 'feed', value: { item: 'comment', verb: 'add', comment_id: 'C2', post_id: 'P1_9', message: 'our own reply', from: { id: 'P1', name: 'OmniDimension' }, created_time: 8 } },
+      { field: 'feed', value: { item: 'comment', verb: 'add', comment_id: 'C2', post_id: 'P1_9', message: 'our own reply', from: { id: 'P1', name: 'Acme' }, created_time: 8 } },
       { field: 'feed', value: { item: 'comment', verb: 'edited', comment_id: 'C3', post_id: 'P1_9', message: 'x', from: { id: 'U6' }, created_time: 9 } },
       { field: 'feed', value: { item: 'reaction', verb: 'add', post_id: 'P1_9', from: { id: 'U7' } } },
     ] }] }

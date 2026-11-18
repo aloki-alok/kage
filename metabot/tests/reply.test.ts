@@ -6,8 +6,8 @@ import type { GraphRequest } from '../graph.ts'
 import type { MetaEvent } from '../meta.ts'
 
 const NOW = Date.parse('2026-11-18T12:00:00Z')
-const pack = { facts: 'Plans start at $10 a month.', links: ['https://www.omnidim.io/pricing'] }
-const answer = (o: Record<string, unknown> = {}) => JSON.stringify({ reply: 'Plans start at $10: https://www.omnidim.io/pricing', label: 'self_serve', lead: {}, ...o })
+const pack = { facts: 'Plans start at $10 a month.', links: ['https://www.acme-shop.com/pricing'] }
+const answer = (o: Record<string, unknown> = {}) => JSON.stringify({ reply: 'Plans start at $10: https://www.acme-shop.com/pricing', label: 'self_serve', lead: {}, ...o })
 let n = 0
 const msg = (text = 'price?', user = 'U1'): MetaEvent => ({ kind: 'message', channel: 'messenger', pageId: 'P1', user, id: `m${++n}`, text, at: NOW })
 
@@ -16,7 +16,7 @@ function rig(o: { mode?: 'dry' | 'team' | 'live' | 'off'; model?: string; guard?
   const store = openStore(':memory:')
   const d: Deps = {
     store, now: () => NOW,
-    settings: { brand: 'OmniDimension', mode: o.mode ?? 'live', ourAppId: 'APP', team: o.team ?? [], limits: { repliesPerLeadPerDay: 2, humanQuietHours: 72 }, maxChars: 600, historyLines: 20, publicCommentLine: '', fallbackReply: '' },
+    settings: { brand: 'Acme', mode: o.mode ?? 'live', ourAppId: 'APP', team: o.team ?? [], limits: { repliesPerLeadPerDay: 2, humanQuietHours: 72 }, maxChars: 600, historyLines: 20, publicCommentLine: '', fallbackReply: '' },
     read: () => ({ job: 'Be kind.', pack }),
     model: async (_m, json) => (json ? o.model ?? answer() : o.guard ?? 'SEND'),
     send: async r => { sent.push(r) },
@@ -56,9 +56,9 @@ describe('one lead message, start to finish', () => {
 
   test('with a fallback line set, a held reply sends that line instead, under the same mode gate', async () => {
     const live = rig({ guard: 'HOLD: wrong price' })
-    live.d.settings.fallbackReply = 'Thanks! Plans: https://www.omnidim.io/pricing'
+    live.d.settings.fallbackReply = 'Thanks! Plans: https://www.acme-shop.com/pricing'
     assert.equal(await handle(msg(), live.d), 'held_guard_fallback')
-    assert.deepEqual(live.sent.map(r => (r.body.message as { text: string }).text), ['Thanks! Plans: https://www.omnidim.io/pricing'])
+    assert.deepEqual(live.sent.map(r => (r.body.message as { text: string }).text), ['Thanks! Plans: https://www.acme-shop.com/pricing'])
     const dry = rig({ mode: 'dry', model: 'not json' })
     dry.d.settings.fallbackReply = 'Thanks!'
     assert.equal(await handle(msg(), dry.d), 'held_check')
@@ -87,7 +87,7 @@ describe('one lead message, start to finish', () => {
     const { d, sent } = rig()
     d.model = async () => { throw new Error('timeout') }
     assert.equal(await handle(msg(), d), 'failed_model')
-    d.settings.fallbackReply = 'Thanks! https://www.omnidim.io/pricing'
+    d.settings.fallbackReply = 'Thanks! https://www.acme-shop.com/pricing'
     assert.equal(await handle(msg(), d), 'failed_model_fallback')
     assert.equal(sent.length, 1)
   })

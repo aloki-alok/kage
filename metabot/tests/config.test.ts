@@ -35,11 +35,11 @@ describe("the bot's settings", () => {
     writeFileSync(join(dir, 'job.md'), 'Be kind.')
     writeFileSync(join(dir, 'pack', 'b-pricing.md'), 'Plans start at $10.')
     writeFileSync(join(dir, 'pack', 'a-product.md'), 'We build voice agents.')
-    writeFileSync(join(dir, 'pack', 'links.md'), '# Links\n- https://www.omnidim.io/pricing  # pricing\nnot a link\n\n# https://commented.out\n')
+    writeFileSync(join(dir, 'pack', 'links.md'), '# Links\n- https://www.acme-shop.com/pricing  # pricing\nnot a link\n\n# https://commented.out\n')
     const r = readJobAndPack(dir, join(dir, 'pack'))
     assert.equal(r.job, 'Be kind.')
     assert.equal(r.pack.facts, 'We build voice agents.\n\nPlans start at $10.')
-    assert.deepEqual(r.pack.links, ['https://www.omnidim.io/pricing'])
+    assert.deepEqual(r.pack.links, ['https://www.acme-shop.com/pricing'])
   })
 
   test('a missing folder gives an empty pack, not a crash', () => {
