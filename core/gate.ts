@@ -169,6 +169,8 @@ export const senderOf = (t: { fromOwner: boolean; meta: { channel: string }; age
 
 // Who a turn's tools follow: anyone in it who is not the owner, else the owner.
 export const lowestSender = (tasks: { fromOwner: boolean; meta: { channel: string } }[]): Sender => tasks.map(senderOf).find(x => x !== 'owner') ?? 'owner'
+export const OWNER_MID_TURN = "(The owner wrote this while someone else's task is running, so this turn keeps that person's trust. Do only what that trust allows now. The owner's request runs on its own, with the owner's tools, as soon as this turn ends.)"
+export const OWNER_AGAIN = "(The owner wrote this during someone else's turn. It runs now with the owner's tools: do what it asks that you could not do then, and do not repeat what is already done.)"
 
 // Characters people never see but Claude reads: Unicode tag letters (whole hidden sentences), zero-width
 // spaces, word joiners, byte-order marks, soft hyphens, direction overrides, filler letters, variation
