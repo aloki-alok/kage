@@ -59,6 +59,7 @@ import { closedThreads } from '../runtime/closed-threads.ts'
 import { checkScopes } from '../runtime/slack-scopes.ts'
 import { scopeDm } from '../core/slack-scopes.ts'
 import { startTelemetry } from './telemetry.ts'
+import { answersInThread } from '../core/blocks.ts'
 
 const { ENV_FILE, NAME, Title, TEAMMATES, TRUSTED_APPS, config, secrets, bot, user } = load()
 const { harness = {}, kagelets: kl = {}, afk = {}, connectors: conn = {} } = config
@@ -365,7 +366,7 @@ function failed(m: ToSession) {
   limits.turn('', [m], undefined, Date.now())   // no turn will end for it: its inbox message is done
   log('could not deliver to a session:', m.meta.place, m.origin.ts, `(attach: tmux attach -t ${NAME})`)
   if (!m.origin.ts) void slack.notifyOwner(`Could not start a session for a scheduled run in ${m.meta.place}.`)
-  else if (m.origin.channel === 'email' || m.origin.channel === 'whatsapp' || m.origin.channel === 'voice') void slack.notifyOwner(`Could not start a session for ${m.meta.place}.`)
+  else if (!answersInThread(m)) void slack.notifyOwner(`Could not start a session for ${m.meta.place}.`)
   else slack.failed(m)
 }
 
