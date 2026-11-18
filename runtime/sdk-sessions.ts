@@ -41,7 +41,7 @@ type Session = {
   stopped: boolean
   run?: { q: Query; inbox: Inbox; send: (m: ToSession) => void; started: number }
   asks: Map<string, (b: 'allow' | 'deny') => void>
-  ownerTools: boolean; carry: SDKUserMessage[]; again: Task[]   // the next process opens with the owner's own tools; what it starts on (#317)
+  ownerTools: boolean; carry: SDKUserMessage[]; again: Task[]
 }
 
 export function sdkSessions(o: {
@@ -300,7 +300,7 @@ export function sdkSessions(o: {
   const runner: Runner<ToSession> = {
     start(key, id, first) {
       const s: Session = sessions.get(key) ?? {
-        id, state: 'idle', last: 0, stopped: false, asks: new Map(), turn: [], carry: [], again: [], ownerTools: key.startsWith('voice:') || (first?.type === 'task' && senderOf(first) === 'owner'),   // a live call never reopens
+        id, state: 'idle', last: 0, stopped: false, asks: new Map(), turn: [], carry: [], again: [], ownerTools: key.startsWith('voice:') || (first?.type === 'task' && senderOf(first) === 'owner'),
         kage: o.tools(key, m => o.toHub(key, m), (tool, description, input) => ask(key, s, tool, description, input, new AbortController().signal).then(r => r.behavior === 'allow'), () => s.sender),
       }
       Object.assign(s, { id, stopped: false })
