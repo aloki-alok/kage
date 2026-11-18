@@ -105,7 +105,7 @@ async function who(query: string): Promise<{ kind: Entry['kind']; id: string; na
   if (kindOf(q) === 'agent') return { kind: 'agent', id: q }
   if (/^[^\s@<]+@[^\s@>]+\.[^\s@>]+$/.test(q)) {
     const j = await slack('users.lookupByEmail', { email: q })
-    if (j.error === 'missing_scope') die('Slack does not let this app look people up by email (it lacks the users:read.email scope). Use their @handle, name or member id.')
+    if (j.error === 'missing_scope') die('Slack does not let this app look people up by email (it lacks the users:read.email scope). Run kage slack upgrade, or use their @handle, name or member id.')
     if (!j.ok) die(j.error === 'users_not_found' ? `No one in this workspace has the email ${q}.` : `Slack says: ${j.error}`)
     return { kind: 'person', id: j.user.id, name: j.user.real_name }
   }
