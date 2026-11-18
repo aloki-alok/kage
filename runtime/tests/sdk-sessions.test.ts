@@ -106,6 +106,17 @@ const owners = async (run: { options: any }) => ({ connectors: run.options.setti
 const said = (run: { said: string[] }) => run.said.map(x => x.match(/(Sam|owner): \w+/)![0])
 
 describe('Kage sessions on the Agent SDK', () => {
+  test("a teammate's turn makes and edits its thread's canvas with no card to the owner", async () => {
+    const t = setup()
+    t.d.task('C1:5.5', t.task({ fromOwner: false }), 0)
+    await tick()
+    for (const tool of ['mcp__kage__make_canvas', 'mcp__kage__edit_canvas']) {
+      const r = await Promise.race([t.sdk.runs[0]!.options.canUseTool(tool, { markdown: 'x' }, { signal: signal() }), tick(30).then(() => ({ behavior: 'held on a card' }))])
+      assert.equal(r.behavior, 'allow', tool)
+    }
+    assert.deepEqual(t.posts, [])
+    t.s.runner.stop('C1:5.5')
+  })
   test("a teammate's, an agent's or an email's session loads none of the owner's tools; the owner's message reopens it with them on the same conversation (#317)", async () => {
     for (const other of [{ fromOwner: false }, { channel: 'email' }]) {
       const t = setup({ browser: true, transcript: true })

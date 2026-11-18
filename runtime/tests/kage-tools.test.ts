@@ -54,6 +54,17 @@ function fakeSlack() {
       calls.push(`${who} file ${a.channel_id} ${a.thread_ts} ${a.filename}`)
       return {}
     },
+    canvases: {
+      create: async (a: { channel_id: string; title: string; document_content: { markdown: string } }) => {
+        if (a.channel_id === 'CNOSCOPE') throw Object.assign(new Error('x'), { data: { error: 'missing_scope' } })
+        calls.push(`${who} canvas ${a.channel_id} ${a.title}: ${a.document_content.markdown}`)
+        return { canvas_id: `F0CANVAS${++n}` }
+      },
+      edit: async (a: { canvas_id: string; changes: { operation: string; document_content: { markdown: string } }[] }) => {
+        calls.push(`${who} canvas edit ${a.canvas_id} ${a.changes.map(c => `${c.operation} ${c.document_content.markdown}`).join(' ')}`)
+      },
+    },
+    auth: { test: async () => ({ url: 'https://test.slack.com/', team_id: 'T0TEST' }) },
     reactions: { add: async (a: { channel: string; name: string }) => { calls.push(`${who} react ${a.channel} ${a.name}`) },
       remove: async (a: { channel: string; name: string }) => { calls.push(`${who} unreact ${a.channel} ${a.name}`) } },
     users: { info: async () => ({ user: { real_name: 'Sam' } }) },
@@ -1078,6 +1089,43 @@ describe("the owner's browser", () => {
     const r = await s.call('browser_tabs', { channel: 'C1', thread_ts: '5.5' })
     assert.equal(r.isError, true)
     assert.match(r.text, /not connected/)
+  })
+})
+
+describe("canvases: Kage makes a canvas in the task's channel as its bot, and keeps it current", () => {
+  test("a teammate's task makes one in its channel and edits it, all as the bot", async () => {
+    const s = setup()
+    s.t.onTask(s.task({ fromOwner: false }))
+    const made = await s.call('make_canvas', { channel: 'C1', thread_ts: '5.5', title: 'Demo call board', markdown: '# Issue\n- D1' })
+    assert.equal(made.isError, undefined, made.text)
+    assert.match(made.text, /F0CANVAS1/)
+    assert.match(made.text, /https:\/\/test\.slack\.com\/docs\/T0TEST\/F0CANVAS1/)
+    const edited = await s.call('edit_canvas', { channel: 'C1', thread_ts: '5.5', canvas_id: 'F0CANVAS1', markdown: '# Issue\n- D1\n- D2' })
+    assert.equal(edited.isError, undefined, edited.text)
+    assert.deepEqual(s.calls.filter(c => c.includes('canvas')), ['bot canvas C1 Demo call board: # Issue\n- D1', 'bot canvas edit F0CANVAS1 replace # Issue\n- D1\n- D2'])
+  })
+  test('it edits only a canvas this thread made, survives a restart, and never one from another thread', async () => {
+    const s = setup()
+    s.t.onTask(s.task())
+    await s.call('make_canvas', { channel: 'C1', thread_ts: '5.5', title: 'Board', markdown: 'x' })
+    assert.match((await s.call('edit_canvas', { channel: 'C1', thread_ts: '5.5', canvas_id: 'F0SOMEONE', markdown: 'y' })).text, /did not make/)
+    // Another thread in the same channel: the canvas is not its own.
+    s.t.onTask(s.task({ thread_ts: '6.6' }))
+    assert.match((await s.call('edit_canvas', { channel: 'C1', thread_ts: '6.6', canvas_id: 'F0CANVAS1', markdown: 'y' })).text, /did not make/)
+    // A new session on the same thread (after a restart) still owns it: the ledger keeps it.
+    const again = setup({ dir: s.dir })
+    again.t.onTask(again.task())
+    assert.equal((await again.call('edit_canvas', { channel: 'C1', thread_ts: '5.5', canvas_id: 'F0CANVAS1', markdown: 'z' })).isError, undefined)
+    assert.ok(!s.calls.some(c => c.includes('F0SOMEONE') || c.includes('edit F0CANVAS1 replace y')))
+  })
+  test('a secret, a channel no task came from and a missing scope are refused with a plain next step', async () => {
+    const s = setup()
+    s.t.onTask(s.task())
+    assert.equal((await s.call('make_canvas', { channel: 'C1', thread_ts: '5.5', title: 'B', markdown: 'key AKIAABCDEFGHIJKLMNOP' })).isError, true)
+    assert.match((await s.call('make_canvas', { channel: 'COTHER', thread_ts: '1.1', title: 'B', markdown: 'x' })).text, /no task came from/)
+    s.t.onTask(s.task({ channel: 'CNOSCOPE' }))
+    assert.match((await s.call('make_canvas', { channel: 'CNOSCOPE', thread_ts: '5.5', title: 'B', markdown: 'x' })).text, /canvases:write.*kage slack upgrade/)
+    assert.deepEqual(s.calls.filter(c => c.includes('canvas')), [])
   })
 })
 
