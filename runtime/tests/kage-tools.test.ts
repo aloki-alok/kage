@@ -1468,3 +1468,25 @@ describe('Slack reads', () => {
     for (const o of [{ kagelet: 'watch' }, { dreaming: 'watch' }]) assert.equal(setup(o).t.tools.some(x => x.name.startsWith('slack_')), false, JSON.stringify(o))
   })
 })
+
+describe("owner-only tools that act: a voice call or an agent's task never gets them, the owner's own task does", () => {
+  const calls: [string, Record<string, unknown>][] = [
+    ['post_as_kage', { to: 'CTEST9', text: 'hello' }],
+    ['set_setting', { key: 'harness.jobCarry', value: 3 }],
+    ['meeting_join', { link: 'https://meet.google.com/abc-defg-hij' }],
+    ['browser_tabs', {}],
+  ]
+  const refused = /refused: only the owner's own task/
+  for (const [tool, args] of calls) {
+    test(tool, async () => {
+      const s = setup({ settings: { set() {} }, browser: { call: async () => [], block: [] }, meetbot: { join: () => '' } })
+      const at = (channel: string, thread_ts: string) => s.call(tool, { channel, thread_ts, ...args }) as Promise<{ text: string }>
+      s.t.onTask(s.task({ channel: 'voice', thread_ts: 'voice:c1' }))
+      assert.match((await at('voice', 'voice:c1')).text, refused)
+      s.t.onTask({ ...s.task({ thread_ts: '7.7' }), agent: { app: 'ATEST1' } })
+      assert.match((await at('C1', '7.7')).text, refused)
+      s.t.onTask(s.task())
+      assert.doesNotMatch((await at('C1', '5.5')).text, refused)
+    })
+  }
+})
