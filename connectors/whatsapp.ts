@@ -2,11 +2,11 @@
 // message here, signed. core/whatsapp.ts decides; this module does the I/O.
 import { createHmac, timingSafeEqual } from 'node:crypto'
 import { mkdirSync } from 'node:fs'
-import { createServer, type RequestListener } from 'node:http'
+import type { RequestListener } from 'node:http'
 import { log, logRef } from '../runtime/log.ts'
 import { DEFAULT_MODEL } from '../core/config.ts'
 import { claudeOnce, emptyRoom } from '../runtime/claude-once.ts'
-import { readBody } from './webhook.ts'
+import { listen, readBody } from './webhook.ts'
 import type { Inbox } from '../runtime/store.ts'
 import { findSecret, guardVerdict } from '../core/outbound.ts'
 import type { Job } from '../runtime/jobs.ts'
@@ -135,9 +135,8 @@ export function startWhatsApp(o: { dir: string; name: string; owner: string; wah
   // connectors.whatsapp.hookHost 0.0.0.0: then only the HMAC guards it, so keep the port off the internet.
   const HOST = o.whatsapp.hookHost || '127.0.0.1'
   const PORT = o.whatsapp.hookPort || 3199
-  const server = createServer(wahaHandler(HMAC, o.inbox, run))
-  server.requestTimeout = 10_000
-  server.listen(PORT, HOST, () => log(`whatsapp on: listening on ${HOST}:${PORT}`))
+  void listen(wahaHandler(HMAC, o.inbox, run), PORT, HOST).listening
+    .then(() => log(`whatsapp on: listening on ${HOST}:${PORT}`), e => log('whatsapp could not listen', e))
 
   return {
     // A session can send only to its own chat: the key names it.

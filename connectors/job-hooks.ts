@@ -1,12 +1,10 @@
 // A job's own webhook (ADR 0015): POST /hook/<job id> with the job's bearer token wakes that job, and the body reaches it
 // quoted as data. Only the token's sha256 is stored. Off unless tripwires.hookPort is set. Reach it through a tunnel.
 import { randomUUID } from 'node:crypto'
-import { createServer } from 'node:http'
-import type { AddressInfo } from 'node:net'
 import { quotedLine } from '../core/text.ts'
 import { hookTokenHash } from '../core/tripwire.ts'
 import type { Inbox } from '../runtime/store.ts'
-import { bearerOk, hourCap, readBody } from './webhook.ts'
+import { bearerOk, hourCap, listen, readBody } from './webhook.ts'
 
 const PATH = /^\/hook\/([\w-]+)$/
 
@@ -27,7 +25,7 @@ export function jobHooks(o: {
     if (!o.hookOf(job)) return o.inbox.handled(source)   // the job is gone
     o.deliver(job, quotedLine(body), () => o.inbox.handled(source))
   }
-  const server = createServer((req, res) => {
+  const { listening, close } = listen((req, res) => {
     const job = PATH.exec(req.url ?? '')?.[1]
     if (req.method !== 'POST' || !job) return reply(res, job ?? '-', undefined, 404)
     void (async () => {
@@ -47,9 +45,8 @@ export function jobHooks(o: {
       reply(res, job, hook.key, 200)
       run(source, job, body)
     })().catch(() => { try { reply(res, job, undefined, 500) } catch {} })
-  })
-  const listening = new Promise<number>(ok => server.listen(o.port, o.host, () => ok((server.address() as AddressInfo).port)))
+  }, o.port, o.host)
   // A call the last run took but never handed to its job, from the inbox.
   const replay = async (source: string, payload: string) => { const { job, body } = JSON.parse(payload) as { job: string; body: string }; run(source, job, body) }
-  return { listening, replay, close: () => { server.close(); server.closeAllConnections() } }
+  return { listening, replay, close }
 }

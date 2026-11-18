@@ -8,8 +8,7 @@
 // and posts caption lines to /meetbot/segments while the call runs. The bot only calls out, so the machine it
 // runs on opens no port, and the hub reaches it over nothing but this webhook. Its rules are core/meetbot.ts.
 import { createHash } from 'node:crypto'
-import { createServer, type IncomingMessage, type ServerResponse } from 'node:http'
-import type { AddressInfo } from 'node:net'
+import type { IncomingMessage, ServerResponse } from 'node:http'
 import { log } from '../runtime/log.ts'
 import type { Conversation } from '../core/conversations.ts'
 import { meetingTask, parseMeeting } from '../core/meeting.ts'
@@ -18,7 +17,7 @@ import type { Delivery } from '../core/sessions.ts'
 import type { Task } from '../core/task.ts'
 import type { Inbox } from '../runtime/store.ts'
 import { slackPlain } from '../core/outbound.ts'
-import { bearerOk, hourCap, readBody } from './webhook.ts'
+import { bearerOk, hourCap, listen, readBody } from './webhook.ts'
 
 const MAX_BODY = 5_000_000   // a Vexa transcript with word timings for a long call fits well under this
 
@@ -202,7 +201,7 @@ export function connectMeeting(o: {
     res.writeHead(404).end()
   }
 
-  const server = createServer((req, res) => {
+  const { listening, close: closeServer } = listen((req, res) => {
     if (!bearerOk(req.headers.authorization, o.token)) { res.writeHead(401).end(); return }
     if (req.url?.startsWith('/meetbot/')) { botRoute(req, res); return }
     if (req.method !== 'POST' || req.url !== '/meeting') { res.writeHead(404).end(); return }
@@ -222,10 +221,9 @@ export function connectMeeting(o: {
           res.writeHead(500).end()
         })
     })()
-  })
-  const listening = new Promise<number>(ok => server.listen(o.port, '127.0.0.1', () => ok((server.address() as AddressInfo).port)))
+  }, o.port)
   return {
     listening, join, say, replay: (source: string, body: string) => run(body, source),
-    close: () => { for (const c of live.values()) clearTimeout(c.pending?.timer); if (waiter) { clearTimeout(waiter.timer); waiter.res.writeHead(204).end(); waiter = undefined } server.closeAllConnections(); server.close() },
+    close: () => { for (const c of live.values()) clearTimeout(c.pending?.timer); if (waiter) { clearTimeout(waiter.timer); waiter.res.writeHead(204).end(); waiter = undefined } closeServer() },
   }
 }

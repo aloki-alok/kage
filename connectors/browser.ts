@@ -5,9 +5,8 @@
 // origins without a preflight, and the preflight gets 401, so no page the owner visits can drive this.
 // What a session may see of a page is core/browser.ts. Off unless browserToken is set.
 import { randomUUID } from 'node:crypto'
-import { createServer, type ServerResponse } from 'node:http'
-import type { AddressInfo } from 'node:net'
-import { bearerOk, readBody } from './webhook.ts'
+import type { ServerResponse } from 'node:http'
+import { bearerOk, listen, readBody } from './webhook.ts'
 
 const MAX_BODY = 20_000_000   // a full-page PNG screenshot as base64 fits well under this
 
@@ -64,7 +63,7 @@ export function connectBrowser(o: {
     })
   }
 
-  const server = createServer((req, res) => {
+  const { listening, close: closeServer } = listen((req, res) => {
     if (!bearerOk(req.headers.authorization, o.token)) { res.writeHead(401).end(); return }
     if (req.method === 'GET' && req.url === '/browser/next') {
       lastPoll = now()
@@ -93,19 +92,14 @@ export function connectBrowser(o: {
       else p.reject(new Error(String(r.error ?? 'the extension failed').slice(0, 500)))
       res.writeHead(200).end()
     })
-  })
-  const listening = new Promise<number>((resolve, reject) => {
-    server.once('error', reject)
-    server.listen(o.port, '127.0.0.1', () => resolve((server.address() as AddressInfo).port))
-  })
+  }, o.port)
   return {
     listening, call, connected,
     close() {
       release(204)
       for (const [, p] of pending) { clearTimeout(p.timer); p.reject(new Error('the hub is stopping')) }
       pending.clear()
-      server.closeAllConnections()
-      server.close()
+      closeServer()
     },
   }
 }
