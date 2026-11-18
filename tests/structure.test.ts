@@ -64,6 +64,10 @@ test('only core/ builds a Task, so who counts as the owner is decided in one pla
   assert.deepEqual(built, [], 'build it with taskAsOwner(), taskAsOther() or taskFrom() from core/gate.ts')
 })
 
+test("a tool asks ownerNow() whether this is the owner's turn, never the per-task map, so a mid-turn message cannot lift a turn's trust (#364)", () => {
+  assert.deepEqual(files.filter(f => f !== 'runtime/kage-tools.ts' && /\bownerTask\.get\(/.test(code(f))), [])
+})
+
 test('the hub and the plugin never import a kage command (cli/)', () => {
   const bad = /(from|import\(|require\()\s*['"]\.\.\/cli\//
   assert.deepEqual([...inDir('hub'), ...inDir('plugin')].filter(f => bad.test(code(f))), [], 'move what both need into runtime/ or core/')

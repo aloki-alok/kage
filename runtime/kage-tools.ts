@@ -12,7 +12,7 @@ import type { Schedule } from '../core/cron.ts'
 import type { ProbeArg, TuneArg } from './probe-jobs.ts'
 import { addressed } from '../core/agents.ts'
 import { filesFolderName } from '../core/conversations.ts'
-import { plainName, teammateOf } from '../core/gate.ts'
+import { plainName, teammateOf, type Sender } from '../core/gate.ts'
 import { openWaiting, postedBy } from '../core/ledgers.ts'
 import type { Ledgers } from './ledger.ts'
 import { layoutRefusal, ownerPost, safeReply, secretRefusal, splitForSlack, type Signer } from '../core/outbound.ts'
@@ -44,7 +44,7 @@ export type ToolContext = {
   jobRun: () => boolean   // the latest task this session took is a job's run, so it read outside text (never from the model's own arguments)
   need: () => string | undefined   // the kagelet whose need the latest task carries
   job: () => string | undefined   // that job's id, so its acts in its own thread are recorded under it (ADR 0017)
-  ownerOnly: (a: Record<string, unknown>) => boolean; pingIn: (channel: string) => boolean
+  ownerNow: (key: string) => boolean; ownerOnly: (a: Record<string, unknown>) => boolean; pingIn: (channel: string) => boolean
   name: string | undefined   // this session's kagelet, if it is one
 }
 
@@ -105,6 +105,7 @@ export function sessionTools(o: {
   schedules?: { add(j: Pick<Schedule, 'id' | 'cron' | 'prompt' | 'recurring' | 'lane' | 'trigger'> & { probe?: ProbeArg; shadow?: { of: string; live: string } }): string | void | Promise<string | void>; remove(id: string): void; list(): Schedule[]; tune?(id: string, t: TuneArg): string | void; hookUrl?(id: string): string | undefined; restore?(id: string): string | undefined; move?(id: string, to: string): string | undefined }
   // AFK on or off in the hub; resolves the line for the owner. Absent: AFK mode is off.
   afk?: (c: AfkCommand) => Promise<string>
+  turnSender?: () => Sender | undefined
   // This session is the lane of this kagelet (core/kagelets.ts): it gets the report tool and none of the manager's.
   kagelet?: string
   // This session is the nightly dream of this kagelet: it gets propose_memory and nothing else of Kage's. The manager gets review_kagelet_memory.
@@ -236,9 +237,10 @@ export function sessionTools(o: {
     return { text: 'edited' }
   }
 
-  const ownerOnly = (a: Record<string, unknown>) => ownerTask.get(`${String(a.channel)}:${String(a.thread_ts)}`) === true
-  const pingIn = (channel: string) => [...ownerTask].some(([k, owner]) => owner && k.startsWith(`${channel}:`))
-  const c: ToolContext = { o, Title, bot, user, s: z.string(), taskChannels, ownerTask, unanswered, askers, agents, sentForPeople, dmThread, links, react, post, change, nameMentions, names, append, ledger, filesOf, jobRun: () => job !== undefined || need !== undefined, job: () => job, need: () => need, ownerOnly, pingIn, name: o.kagelet }
+  const ownerNow = (key: string) => ownerTask.get(key) === true && (o.turnSender?.() ?? 'owner') === 'owner'
+  const ownerOnly = (a: Record<string, unknown>) => ownerNow(`${String(a.channel)}:${String(a.thread_ts)}`)
+  const pingIn = (channel: string) => [...ownerTask.keys()].some(k => k.startsWith(`${channel}:`) && ownerNow(k))
+  const c: ToolContext = { o, Title, bot, user, s: z.string(), taskChannels, ownerTask, unanswered, askers, agents, sentForPeople, dmThread, links, react, post, change, nameMentions, names, append, ledger, filesOf, jobRun: () => job !== undefined || need !== undefined, job: () => job, need: () => need, ownerNow, ownerOnly, pingIn, name: o.kagelet }
   // Slack reads as the owner: never for an agent's task made with the owner's token, a kagelet or its dream (their threads may hold other people).
   const ownerRead = (a: Record<string, unknown>) => ownerOnly(a) && !agents.get(`${a.channel}:${a.thread_ts}`)
   const reads = o.kagelet || o.dreaming ? [] : slackReadTools(user, ownerRead)
