@@ -19,6 +19,7 @@ import type { Delivery, Dispatcher } from '../core/sessions.ts'
 import type { Task } from '../core/task.ts'
 import type { ToSession } from '../runtime/protocol.ts'
 import type { Inbox, Store } from '../runtime/store.ts'
+import { taskAsOwner } from '../core/gate.ts'
 
 export function startConnectors(o: {
   secrets: Secrets; conn: NonNullable<Config['connectors']>; store: Store; slack: Awaited<ReturnType<typeof connectSlack>>; bot: WebClient
@@ -79,11 +80,12 @@ export function startConnectors(o: {
     // The stand-in reads only this folder: notes the owner wrote for it, never their whole memory.
     memory: conn.whatsapp?.memory || `${DIR}/wa-notes`,
     onTask(t) {
-      const task: Task = {
-        type: 'task', content: t.content, fromOwner: true,
+      // Only the owner's own tag reaches onTask (core/whatsapp.ts).
+      const task = taskAsOwner({
+        content: t.content,
         meta: { channel: 'whatsapp', thread_ts: t.chat, place: t.place, permalink: '' },
         origin: { channel: 'whatsapp', ts: t.chat }, ...(t.source && { source: t.source }),
-      }
+      })
       log('whatsapp task in', logRef(t.chat))
       if (deliver({ connector: 'whatsapp', chat: t.chat, kind: 'chat' }, task, t.place) === 'failed') failed(task)
     },

@@ -18,6 +18,7 @@ import type { Task } from '../core/task.ts'
 import type { Inbox } from '../runtime/store.ts'
 import { slackPlain } from '../core/outbound.ts'
 import { bearerOk, hourCap, listen, readBody } from './webhook.ts'
+import { taskAsOther } from '../core/gate.ts'
 
 const MAX_BODY = 5_000_000   // a Vexa transcript with word timings for a long call fits well under this
 
@@ -55,11 +56,11 @@ export function connectMeeting(o: {
     const thread = await o.post(`*Meeting:* ${slackPlain(m.title)}${m.link ? ` <${m.link}|open>` : ''}`)
     if (!thread) { o.notify(`Notes for the meeting "${m.title}" could not open a thread here. Send it again.`); return 'retry' }
     const place = `Meeting ${m.title}`
-    const task: Task = {
-      type: 'task', fromOwner: false, content: meetingTask(m),
+    const task = taskAsOther({
+      content: meetingTask(m),
       meta: { channel: o.botDm, thread_ts: thread, place, permalink: m.link },
       origin: { channel: o.botDm, ts: thread }, source,
-    }
+    })
     if (o.deliver({ connector: 'slack', chat: o.botDm, thread, kind: 'dm' }, task, place) === 'failed') o.notify(`Could not start a session for ${place}.`)
     cap.add(t)   // only work that ran counts toward the cap
     return 'done'
@@ -143,11 +144,11 @@ export function connectMeeting(o: {
     c.pending = undefined
     if (now() - c.asked < LOST_MS || asks.full(now()) || c.said.some(s => sameQuestion(s, q))) return
     const key = meetKey(call), place = `Meet ${call}`
-    const task: Task = {
-      type: 'task', fromOwner: false, content: askTask(q, c.recent, key),
+    const task = taskAsOther({
+      content: askTask(q, c.recent, key),
       meta: { channel: 'voice', thread_ts: key, place, permalink: `https://meet.google.com/${call}` },
       origin: { channel: 'voice', ts: key },
-    }
+    })
     log('meeting question in', call, `(${q.length} chars)`)
     c.asked = now()
     c.said = [...c.said, q].slice(-20)

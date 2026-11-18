@@ -203,6 +203,31 @@ test('the thread a session reads names the owner\'s Slack id, so a tag for the o
   }
 })
 
+test('a task is the owner\'s only when the owner\'s own user posted it (#273)', async () => {
+  const dir = mkdtempSync(join(tmpdir(), 'kage-owner-'))
+  const tasks: { fromOwner: boolean }[] = []
+  try {
+    const client = {
+      auth: { test: async () => ({ team_id: 'TTEST', user_id: 'UTEST1' }) },
+      conversations: { open: async () => ({ channel: { id: 'DTEST' } }), history: async () => ({ messages: [] }), info: async () => ({ channel: { name: 'general' } }),
+        replies: async () => ({ messages: [{ user: 'UTEST1', ts: '6.0', text: 'the owner started this thread' }] }) },
+      users: { info: async () => ({ user: { real_name: 'Sam Test' } }) },
+      chat: { getPermalink: async () => ({ permalink: '' }) },
+      reactions: { add: async () => ({ ok: true }), remove: async () => ({ ok: true }) },
+    }
+    const slack = await connectSlack({
+      dir, appToken: 'test', userToken: 'test', bot: client as never, user: client as never,
+      name: 'kage', title: 'Kage', teammates: ['UTEST2'], apps: [],
+      hub: { posted: () => '', handled: () => {}, deliver: (_c: unknown, task: { fromOwner: boolean }) => { tasks.push(task); return 'sent' } } as never,
+    })
+    await slack.replay('test-owner', JSON.stringify({ ...msg, client_msg_id: 'a', ts: '6.6', thread_ts: '6.0', text: '<@UTEST1> check the logs' }))
+    await slack.replay('test-teammate', JSON.stringify({ ...msg, user: 'UTEST2', client_msg_id: 'b', ts: '6.7', thread_ts: '6.0', text: '<@UTEST1> check the logs' }))
+    assert.deepEqual(tasks.map(t => t.fromOwner), [true, false])
+  } finally {
+    rmSync(dir, { recursive: true, force: true })
+  }
+})
+
 describe('a Slack event reaches the inbox before Slack is told it arrived', () => {
   test('the write comes before the ack, then the message is handled with its source id', async () => {
     const steps: string[] = []

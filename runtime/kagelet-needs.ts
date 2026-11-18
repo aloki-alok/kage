@@ -7,6 +7,7 @@ import type { Delivery } from '../core/sessions.ts'
 import type { Task } from '../core/task.ts'
 import { quotedLine } from '../core/text.ts'
 import type { Store } from './store.ts'
+import { taskAsOther } from '../core/gate.ts'
 
 const KEY = 'kagelet-needs'
 const DAY = 86_400_000
@@ -38,8 +39,8 @@ export function kageletNeeds(o: {
   const hand = (n: Need, now: number): boolean => {
     const c = o.store.conversation(thread(n)) ?? o.store.conversation(n.lane)   // the same Slack thread; Kage may never have worked in it
     if (!c || o.paused(now) !== undefined || !o.idle(thread(n))) return false
-    const r = o.deliver(thread(n), { type: 'task', fromOwner: false, scheduled: true, need: { name: n.name, id: n.id }, content: needText(n.name, n.text),
-      meta: { channel: c.conversation.chat, thread_ts: c.conversation.thread ?? '', place: c.place, permalink: '' }, origin: { channel: c.conversation.chat, ts: '' } })
+    const r = o.deliver(thread(n), taskAsOther({ scheduled: true, need: { name: n.name, id: n.id }, content: needText(n.name, n.text),
+      meta: { channel: c.conversation.chat, thread_ts: c.conversation.thread ?? '', place: c.place, permalink: '' }, origin: { channel: c.conversation.chat, ts: '' } }))
     return r === 'sent' || r === 'starting'
   }
   function pump(now: number) {

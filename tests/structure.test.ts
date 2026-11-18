@@ -58,6 +58,12 @@ test('a connector listens only through listen() in connectors/webhook.ts, so a t
   assert.deepEqual(inDir('connectors').filter(f => f !== 'connectors/webhook.ts' && /\bcreateServer\(/.test(code(f))), [])
 })
 
+test('only core/ builds a Task, so who counts as the owner is decided in one place (ADR 0002, #273)', () => {
+  // A Task literal, a cast to Task, or an owner claim set by hand on an existing one.
+  const built = files.filter(f => !f.startsWith('core/') && f.endsWith('.ts') && /type:\s*['"`]task['"`]|\bas Task\b|fromOwner:\s*true/.test(code(f)))
+  assert.deepEqual(built, [], 'build it with taskAsOwner(), taskAsOther() or taskFrom() from core/gate.ts')
+})
+
 test('the hub and the plugin never import a kage command (cli/)', () => {
   const bad = /(from|import\(|require\()\s*['"]\.\.\/cli\//
   assert.deepEqual([...inDir('hub'), ...inDir('plugin')].filter(f => bad.test(code(f))), [], 'move what both need into runtime/ or core/')
