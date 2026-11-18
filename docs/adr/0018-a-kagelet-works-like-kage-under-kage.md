@@ -51,3 +51,25 @@ Each slice ships with its tests, red first, and a local stress run before it rea
 | Goal and number (0016) | A fake measure moves `working` to `met` to `working` with one wake each way |
 | `tools: all` with the action check | A corpus of destructive and safe commands: every destructive one held, no safe one held |
 | The asker answers | A teammate's thread: only the teammate's answer releases the action, the owner gets no message |
+
+## Grants and files
+
+- A kagelet's grant is its approval and only shrinks. A tool outside it is denied, and no card goes to the owner. (`runtime/sdk-sessions.ts`, `core/kagelets.ts`)
+- A kagelet gets only Kage's thread tools and `message_kagelet`. The rest act as the owner or outlive the run. (`core/kagelets.ts`)
+- `tools: all` always runs in the OS sandbox and drops the owner's own settings, whose allow rules would widen it. (`core/kagelets.ts`)
+- A lane whose file is gone keeps no tools. It never falls back to approval cards. (`hub/router.ts`, `hub/kagelets.ts`)
+- A kagelet name has no dots or slashes, so it never leaves the kagelets folder. A model name that is not an alias is held. (`core/kagelets.ts`, `runtime/sdk-sessions.ts`)
+- A kagelet's `people` and `owners` are one line each. A second line is refused, because the front matter keeps only the last. (`core/kagelet-people.ts`)
+- Only the owner adds a person to a people line, because that person can steer every tool the kagelet holds. (`runtime/kagelet-manager.ts`)
+- Every save by Kage's tool is checked as if approved first. A model steers every save, so no save widens a grant. (`runtime/kagelet-manager.ts`)
+- The kagelet's memory folder must be a real directory at exactly `<kagelets>/<name>/memory`. No link or hard link may reach Kage's or the owner's memory. (`runtime/kagelet-memory.ts`)
+- The dream only proposes. A proposal file under `.proposals/` is never read by a prompt. A note lands only through Kage's `decide`. (`runtime/kagelet-memory.ts`)
+- A need reaches Kage as one task and goes to the owner's list only if Kage cannot finish it. A repeat folds before the cap. (`runtime/kagelet-needs.ts`)
+- A kagelet message waits in the store until its target is idle. Only a normal turn end acknowledges it. Any other end queues it again. (`runtime/kagelet-routes.ts`)
+- A held-step rule `*` never matches whitespace, quotes, shell syntax, a refspec colon or `..`. A rule starts with a literal command word. (`core/held-rules.ts`)
+- The reviewer reads a whole plain command only. A chained, nested or widened step is never reviewed, and a process stop is never low-stakes. (`core/held-review.ts`)
+- A yes is spent by the one retry of the same call, and an open card keeps the step the owner's. The reviewer slot is taken before the call. (`runtime/deferred-approvals.ts`, `runtime/sdk-sessions.ts`, `runtime/kagelet-review.ts`)
+- A card for a lane is capped (`OPEN_PER_KEY`), so a looping kagelet cannot flood the owner's DM. (`runtime/deferred-approvals.ts`)
+- A measure Kage wrote runs only after the owner's yes on that exact command. A changed script stops it. A new command starts a new trend. (`runtime/kagelet-measures.ts`)
+- `db_read` passes the query as `$1`, never in the command line. Its statement check is the second wall, and fails closed on anything read two ways. (`runtime/tools/kagelet-tools.ts`, `core/db-read.ts`)
+- A cost-capped kagelet stays paused past midnight. Only a person resumes it. (`runtime/kagelet-cost-cap.ts`)

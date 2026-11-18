@@ -25,3 +25,11 @@ Only the repo admin's hub releases. The hub asks `gh repo view --json viewerPerm
 ## How it is checked
 
 `core/tests/release.test.ts` (version bump, notes, grouping, the checks a candidate must pass) and `core/tests/auto-update.test.ts` (`soakGate`, `inertChange`). `kage release --dry-run` prints the version and notes and changes nothing.
+
+## Release and update mechanics
+
+- A release merges in a scratch worktree, so the hub's own code is never touched. A push that landed but timed out is finished by `gh release create`. (`runtime/release.ts`)
+- The doctor is the slow check, so it runs only after the cheap ones pass. A skip logs one line and DMs nothing. (`runtime/release.ts`, `hub/updates.ts`)
+- A crash voids only the soak run it hits. The new run starts clean on the same commit. (`core/auto-update.ts`)
+- The auto-update mark clears only after the DM is sent, so a failed DM is retried at the next start. (`runtime/auto-update.ts`)
+- The auto-update job runs a fast-forward only. A folder with its own `.git` inside someone's bigger repo is never pulled. (`runtime/auto-update.ts`)

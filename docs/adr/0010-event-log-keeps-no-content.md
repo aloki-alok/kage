@@ -9,3 +9,14 @@ An event row names the kind, who, the trace and chain ids, and a short detail. I
 ## How it is checked
 
 `core/tests/events.test.ts` tests the row. The "no content" rule is review only.
+
+## Other places that hold no content
+
+- An error message never goes to the log or telemetry. It may quote what Kage read, so use a code or the class and first frame. (`core/telemetry.ts`, `core/ssm.ts`)
+- Do not log `String(e)` of a failed command. It quotes the command line, which may hold a host or password. (`runtime/tools/kagelet-tools.ts`)
+- The `db_read` ledger keeps who, line count, time and outcome, never the rows. The key proxy log keeps host, method and status, never the path. (`runtime/tools/kagelet-tools.ts`, `runtime/key-proxy.ts`)
+- The Jev log carries the score and reason, never the key or the post. (`connectors/jev.ts`)
+- A config diff event names JSON paths, never values. An env import names unplaced keys, never values. (`core/config.ts`, `runtime/config-watch.ts`)
+- A kagelet's measured value goes to the woken run only, never to the event log. A sandbox tool call logs name and refusal, never input. (`runtime/kagelet-measures.ts`, `runtime/sdk-sessions.ts`)
+- A probe failure reason is a code (`exit-<n>`, `timeout`), never output. (`runtime/probes.ts`)
+- A ledger write is a side record: a failed write is logged and never blocks a task or reply. (`runtime/ledger.ts`)
