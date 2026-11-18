@@ -738,7 +738,14 @@ describe("a session's Kage tools", () => {
     s.t.onTask(s.task())
     for (const waiting_on of [undefined, '', 'a-teammate'])
       assert.match((await s.call('reply', { channel: 'C1', thread_ts: '5.5', text: 'PR?', waiting: 'Open a PR?', ...waiting_on !== undefined && { waiting_on } })).text, /waiting_on/)
+    assert.match((await s.call('reply', { channel: 'C1', thread_ts: '5.5', text: 'Run it?', private: true, waiting: 'Run it', waiting_on: 'UTEAM0001' })).text, /cannot see the owner's DM/)
     assert.deepEqual(s.posts, [])
+  })
+  test('the teammate tag goes on its own line before a code block', async () => {
+    const s = setup()
+    s.t.onTask(s.task())
+    await s.call('reply', { channel: 'C1', thread_ts: '5.5', text: '```\na  1\n```\nCan you check these?', waiting: 'Check rows', waiting_on: 'UTEAM0001' })
+    assert.match(s.posts.at(-1)!.text, /^<@UTEAM0001>\n```/)
   })
   test('the same question asked again in one thread stays one open question', async () => {
     const s = setup()
