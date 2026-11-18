@@ -17,6 +17,9 @@ test('the manifest lists include the scopes Kage calls need', () => {
   assert.ok(USER_SCOPES.includes('users:read.email'), 'kage add <email> calls users.lookupByEmail with the user token')
   assert.ok(!BOT_SCOPES.includes('search:read'))
   assert.ok(BOT_SCOPES.includes('chat:write'))
+  for (const s of ['reactions:read', 'pins:read', 'bookmarks:read', 'usergroups:read', 'team:read', 'dnd:read', 'canvases:read', 'lists:read'])
+    assert.ok(USER_SCOPES.includes(s), `a new install reads ${s} by default`)
+  assert.ok(BOT_SCOPES.includes('reactions:read'), 'the bot reads reactions on its own posts')
 })
 
 describe('doctor lines', () => {

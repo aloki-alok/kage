@@ -2,7 +2,9 @@
 // compare them with what the installed app was granted: an app keeps the scopes of the manifest it was made from.
 
 // The bot posts replies and approval prompts, and adds the pickup and done reactions. canvases:write: make_canvas and edit_canvas.
-export const BOT_SCOPES = ['chat:write', 'files:write', 'im:write', 'im:history', 'reactions:write', 'users:read', 'canvases:write']
+export const BOT_SCOPES = ['chat:write', 'files:write', 'im:write', 'im:history', 'reactions:write', 'users:read', 'canvases:write',
+  // reactions:read: the reactions people leave on Kage's and kagelets' posts are feedback on that work.
+  'reactions:read']
 
 // Your user token hears your conversations, reads the thread for context, and replies
 // where the bot isn't a member.
@@ -20,6 +22,10 @@ export const USER_SCOPES = [
   'im:write', 'mpim:write',
   // The hub downloads files people attach to a task (runtime/slack-files.ts).
   'files:read',
+  // Reading the workspace the way the owner does, so a task can use what a person would see there: reactions on posts
+  // (feedback on Kage's and kagelets' work), a channel's pins and bookmarks, @group members, the workspace itself,
+  // whether someone is on do-not-disturb, and the canvases and lists a thread links to.
+  'reactions:read', 'pins:read', 'bookmarks:read', 'usergroups:read', 'team:read', 'dnd:read', 'canvases:read', 'lists:read',
 ]
 
 import type { Line } from './doctor.ts'
