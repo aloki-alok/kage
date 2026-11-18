@@ -9,7 +9,7 @@ What it does with each message:
 3. It makes one model call with the engine rules, `job.md` and the knowledge pack. The answer must be JSON with a reply and a label.
 4. A fixed check holds a reply that carries a link or domain not in `links.md`, a price the pack does not state (in any currency form or script), or a secret.
 5. A second model call reads the reply. Only `SEND` lets it out.
-6. The mode decides where the reply goes. `dry` keeps it as a draft, `team` sends only to the `team` list, `live` sends to everyone, and `off` reads nothing. If the reply was held or the model failed, `fallbackReply` goes out in its place.
+6. The mode decides where the reply goes. `dry` keeps it as a draft, `team` sends only to the `team` list, `live` sends to everyone, and `off` answers nothing and keeps no lead text. It still notes when a person answers in the inbox. If the reply was held or the model failed, `fallbackReply` goes out in its place.
 
 The bot has no tools. Its model request never offers one, and `metabot/tests/structure.test.ts` fails if any file it loads can start a process.
 
