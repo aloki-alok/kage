@@ -149,7 +149,7 @@ export function sdkSessions(o: {
           // its own card, so the owner gets one, not two. A revoke only takes access away, so it needs none (the tool
           // still takes it from the owner's task only).
           : (ALLOWED.includes(name) && !eventNeedsCard(name, input, s.sender)) || SLACK_READS.includes(name) || (name === 'mcp__kage__manage_kagelet' && (input.action === 'save' || input.action === 'revoke')) ? Promise.resolve({ behavior: 'allow' as const, updatedInput: input })
-          : o.deferred?.take(key, name, input, Date.now()) ? Promise.resolve({ behavior: 'allow' as const, updatedInput: input })
+          : s.turn.some(x => senderOf(x.task) === 'agent') ? Promise.resolve({ behavior: 'deny' as const, message: "An agent's task may only read and answer: no card goes to the owner." }) : o.deferred?.take(key, name, input, Date.now()) ? Promise.resolve({ behavior: 'allow' as const, updatedInput: input })
           : o.deferred && s.turn.length ? defer(key, s, name, x.title ?? x.description ?? '', input)
           : ask(key, s, name, x.title ?? x.description ?? '', input, x.signal),
         // The same rules as plugin/private-data-guard.ts, in-process. A failed check blocks the call.
