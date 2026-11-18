@@ -16,7 +16,7 @@ def free_port():
 async def main():
     home = Path(tempfile.mkdtemp(prefix='kage-e2e-'))
     # Chromium looks for the pairing helper in its profile folder, and kage add browser registers it only where that folder exists.
-    profile = home / 'Library' / 'Application Support' / 'Chromium'
+    profile = home / ('Library/Application Support/Chromium' if sys.platform == 'darwin' else '.config/chromium')
     profile.mkdir(parents=True)
     (home / '.config' / 'kage').mkdir(parents=True)
     hub_port, page_port = free_port(), free_port()
