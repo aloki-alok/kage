@@ -1,4 +1,4 @@
-import { test } from 'node:test'
+import { describe, test } from 'node:test'
 import assert from 'node:assert/strict'
 import type { Delivery } from '../../core/sessions.ts'
 import type { Task } from '../../core/task.ts'
@@ -24,14 +24,22 @@ function setup(result: Delivery = 'sent') {
   const ended: string[] = []
   const project = mkdtempSync(join(tmpdir(), 'kage-job-'))
   const fresh = { every: 20, carry: 5, chars: 500, posted: '', lanes: true, failing: false }
+  const clock = { t: 0 }
+  const timers: { at: number; fn: (now: number) => void }[] = []
   const s = scheduler({
     job: { end: k => ended.push(k), freshEvery: () => fresh.every, carryCount: () => fresh.carry, carryChars: () => fresh.chars, laneDefault: () => fresh.lanes, posted: () => fresh.posted, project },
     store, failed: t => failed.push(t), ran: j => ran.push(j.id),
     deliver: (key, task) => { if (key === breakOn) throw new Error('boom'); sent.push([key, task]); return fresh.failing ? 'failed' : result },
     ready: key => blocked.has(key) ? 'blocked' : busy.has(key) ? 'busy' : 'ready',
     trusted: key => owner.has(key),
+    now: () => clock.t,
+    soon: (fn, ms) => { timers.push({ at: clock.t + ms, fn }) },
   })
-  return { project, store, s, ended, fresh, sent, failed, ran, busy, blocked, owner, breakAt: (k: string) => { breakOn = k } }
+  const advance = (to: number) => {
+    clock.t = to
+    for (const x of timers.filter(x => x.at <= to)) { timers.splice(timers.indexOf(x), 1); x.fn(to) }
+  }
+  return { project, store, s, ended, fresh, sent, failed, ran, busy, blocked, owner, breakAt: (k: string) => { breakOn = k }, advance }
 }
 const job = { id: 'j1', cron: '*/15 * * * *', prompt: 'check the queue', recurring: true }
 const at = (s: string) => new Date(s).getTime()
@@ -514,4 +522,62 @@ test('a job keeps the tools it needs in the store, and tune_job changes them on 
   t.store.setJobState('j1', { ...t.store.jobState('j1'), missing: [dial] })
   t.s.tune('C1:5.5', 'j1', { needs: ['mcp__x__z'] }, 5)
   assert.equal(t.store.jobState('j1').missing, undefined, 'new needs start a fresh check, so no stale blocked line or false back DM')
+})
+
+describe('a watch wakes when the thread goes quiet, not on the tick (#428)', () => {
+  const quiet = { id: 'w1', cron: '@reply', prompt: 'answer them', recurring: true }
+  const heard = (t: ReturnType<typeof setup>, at: number, text: string) => { t.advance(at); t.s.heard({ chat: 'C1', thread: '5.5', quoted: `> ${text}` }) }
+  test('one message wakes it about 4 s later, with no tick', () => {
+    const t = setup()
+    t.s.add('C1:5.5', quiet, 0)
+    heard(t, 1_000, 'one')
+    t.advance(4_000)
+    assert.equal(t.sent.length, 0)
+    t.advance(5_100)
+    assert.equal(t.sent.length, 1)
+    assert.match(t.sent[0]![1].content, /^Watch w1 woke: a new message/)
+  })
+  test('three messages 2 s apart wake it once, with all three', () => {
+    const t = setup()
+    t.s.add('C1:5.5', quiet, 0)
+    heard(t, 1_000, 'one'); heard(t, 3_000, 'two'); heard(t, 5_000, 'three')
+    t.advance(30_000)
+    assert.equal(t.sent.length, 1)
+    assert.match(t.sent[0]![1].content, /3 new messages[\s\S]*one\n> two\n> three/)
+  })
+  test('a steady stream wakes it at the 15 s cap, not never', () => {
+    const t = setup()
+    t.s.add('C1:5.5', quiet, 0)
+    for (let at = 1_000; at <= 15_000; at += 2_000) heard(t, at, `m${at}`)
+    t.advance(16_100)
+    assert.equal(t.sent.length, 1)
+  })
+  test('a tick in the middle of a burst does not split it', () => {
+    const t = setup()
+    t.s.add('C1:5.5', quiet, 0)
+    heard(t, 1_000, 'one')
+    t.s.tick(2_000)
+    assert.equal(t.sent.length, 0)
+    heard(t, 3_000, 'two')
+    t.advance(30_000)
+    assert.equal(t.sent.length, 1)
+    assert.match(t.sent[0]![1].content, /2 new messages/)
+  })
+  test('an event job wakes on the quiet window too', () => {
+    const t = setup()
+    t.s.add('C1:5.5', { id: 'e1', cron: EVENT, prompt: 'check the alert', recurring: true, trigger: hook }, 0)
+    t.advance(1_000)
+    t.s.wake('e1', ['> one'])
+    t.advance(5_100)
+    assert.equal(t.sent.length, 1)
+    assert.match(t.sent[0]![1].content, /^Job e1 woke: a new event/)
+  })
+  test('a cron job still runs only on the tick', () => {
+    const t = setup()
+    t.s.add('C1:5.5', job, 0)
+    t.advance(16 * 60_000)
+    assert.equal(t.sent.length, 0)
+    t.s.tick(16 * 60_000)
+    assert.equal(t.sent.length, 1)
+  })
 })
