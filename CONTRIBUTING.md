@@ -74,6 +74,7 @@ Write logs to stderr only. In a tmux pane, stdout carries the channel protocol, 
 | `hub/owner-commands.ts` | What the owner asks from their terminal or DM: the status line, `kage tell`, `kage relay`, and `say` (an app on this Mac posts as the owner). |
 | `plugin/server.ts` | For tmux panes only: serves Kage's tools over MCP inside each pane and relays approvals. |
 | `plugin/private-data-guard.ts` | The plugin hook (`hooks/hooks.json`) that runs the rules in `core/guards.ts` and `runtime/path-guards.ts` inside tmux panes. The SDK runner applies the same rules in process. |
+| `plugin/turn-end.ts` | The plugin's Stop hook: marks the end of a pane's turn, so `runtime/pane-turn.ts` can give the owner's folded-in message its own turn with the owner's tools. |
 | `core/` | Pure rules. See the table below. |
 | `connectors/` | Where Kage hears from. Each turns a message into a `Task` (`core/task.ts`). Who may drive Kage is decided in `core/gate.ts`, not here. |
 | `runtime/` | Where sessions run, and the hub's state. See the table below. |
@@ -131,6 +132,7 @@ Write logs to stderr only. In a tmux pane, stdout carries the channel protocol, 
 | `tripwire.ts` | Tripwires: the pure rules of a probe that wakes a session only when its output changes. How output is normalized and fingerprinted, the words of a command, which ignore patterns are safe, whether a pin changed, what one run does to a job's state (a wake, a failure ping), the hash kept of a job webhook's token, and when a hook needs the owner's card. |
 | `shadow.ts` | Self-swap (ADR 0017): a twin's link to the job it shadows, and the pairing of that job's acts (own-thread posts and prod writes) with the twin's verdicts into matches and misses, and when a swap is due. |
 | `afk.ts` | AFK mode: which threads the stand-in watches, when it posts or phones the owner, and what it may say. |
+| `pane-turn.ts` | Who a tmux pane's turn runs for: the lowest sender in it, the owner's message marked when it joins someone else's turn and run again on its own once that turn ends, and a message that came after the turn's last step kept for the next turn. |
 | `blocks.ts` | When the safety check stops a turn: the line in the thread, the owner's DM, and whether the thread closes. |
 | `commands.ts` | Local slash commands (`connectors.commands`). |
 | `auto-update.ts` | Whether the hub may move its own checkout to origin's `stable` tag, the link to what changed, and `soakGate`: whether a commit ran long enough on the owner's hub to be released. |

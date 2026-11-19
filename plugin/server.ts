@@ -28,9 +28,17 @@ process.on('unhandledRejection', e => log('unhandled', e))
 let botDm = ''
 let router: Socket | undefined
 const unsentAsks: string[] = []
+const turn = paneTurn({
+  dir: dirname(ENV_FILE), thread: THREAD!,
+  show: m => {
+    kage.onTask(m)
+    mcp.notification({ method: 'notifications/claude/channel', params: { content: withoutInvisible(m.content), meta: m.meta } }).catch(e => log('task failed', e))
+  },
+})
 const kage = sessionTools({
   title: Title, bot, user, botDm: () => botDm, dir: dirname(ENV_FILE), ledgers: openLedgers(dirname(ENV_FILE)),
   memory: memoryDirs(process.env.HOME!, ENV_FILE, config.harness),
+  turnSender: turn.sender,
   send: m => { if (!router?.writable) return false; router.write(JSON.stringify(m) + '\n') },
   schedules: {
     async add(j) {
@@ -43,14 +51,6 @@ const kage = sessionTools({
     },
     remove: id => { router?.write(JSON.stringify({ type: 'unschedule', id }) + '\n') },
     list: () => schedulesIn(`${dirname(ENV_FILE)}/kage.db`, THREAD!),
-  },
-})
-
-const turn = paneTurn({
-  dir: dirname(ENV_FILE), thread: THREAD!,
-  show: m => {
-    kage.onTask(m)
-    mcp.notification({ method: 'notifications/claude/channel', params: { content: withoutInvisible(m.content), meta: m.meta } }).catch(e => log('task failed', e))
   },
 })
 
