@@ -57,6 +57,7 @@ export type Schedule = {
   lane?: true
   trigger?: Trigger
   ends?: number
+  needs?: string[]
 }
 
 const LATE = 10 * MINUTE

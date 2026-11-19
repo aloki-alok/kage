@@ -28,7 +28,7 @@ const tick = (ms = 5) => new Promise(r => setTimeout(r, ms))
 const ID = '11111111-1111-4111-8111-111111111111'
 const signal = () => new AbortController().signal
 
-function setup(o: { transcript?: boolean; silent?: boolean; dmFails?: boolean; grants?: Record<string, string[]>; allows?: Record<string, string[]>; review?: boolean; manager?: boolean; budgets?: Record<string, number>; models?: Record<string, string>; trusted?: string[]; deferred?: boolean; browser?: boolean; restartMs?: number; sandbox?: boolean; onResult?: (key: string, total: number, resumed: boolean) => void } = {}) {
+function setup(o: { transcript?: boolean; silent?: boolean; dmFails?: boolean; grants?: Record<string, string[]>; allows?: Record<string, string[]>; review?: boolean; manager?: boolean; budgets?: Record<string, number>; models?: Record<string, string>; trusted?: string[]; deferred?: boolean; browser?: boolean; restartMs?: number; sandbox?: boolean; onResult?: (key: string, total: number, resumed: boolean) => void; onMcp?: (q: unknown) => void } = {}) {
   const sdk = fakeSdk(o)
   const dropped: string[] = []
   const keysDropped: string[] = []
@@ -71,6 +71,7 @@ function setup(o: { transcript?: boolean; silent?: boolean; dmFails?: boolean; g
     restartMs: o.restartMs ?? 10,
     ...o.deferred && { deferred: approvals },
     onResult: (key, total, resumed) => { results.push([key, total, resumed]); o.onResult?.(key, total, resumed) },
+    ...o.onMcp && { onMcp: o.onMcp },
     budgetOf: key => o.budgets?.[key],
     modelOf: key => o.models?.[key],
     onBlocked: (key, turn, category) => { blocks.push([key, turn.map(t => t.content), category]) },
@@ -186,6 +187,25 @@ describe('Kage sessions on the Agent SDK', () => {
     assert.deepEqual(t.turns.map(x => [x[1], x[3]]), [[['Task from Sam: one'], true], [['Task from the owner: two'], true], [['Task from Sam: three'], true]])
     t.s.runner.stop('C1:5.5')
     assert.deepEqual(t.turns.at(-1)![1], ['Task from Sam: four'])
+  })
+  test("an owner session hands its MCP status to the job tools check; a teammate's, with the claude.ai connectors off, does not (#377)", async () => {
+    const seen: unknown[] = []
+    const t = setup({ onMcp: q => seen.push(q) })
+    t.d.task('C1:5.5', t.task({ fromOwner: false, content: 'Task from Sam: hi' }), 0)
+    await tick()
+    assert.deepEqual(seen, [])
+    t.d.task('C2:6.6', t.task({ channel: 'C2', content: 'Task from the owner: hi' }), 0)
+    await tick()
+    assert.equal(seen.length, 1)
+    t.s.runner.stop('C1:5.5'); t.s.runner.stop('C2:6.6')
+  })
+  test('a lane that runs on a grant does not hand its MCP status over, since its tools are cut to the grant (#377)', async () => {
+    const seen: unknown[] = []
+    const t = setup({ onMcp: q => seen.push(q), grants: { 'C2:6.6': ['Read'] } })
+    t.d.task('C2:6.6', t.task({ channel: 'C2', content: 'Task from the owner: hi' }), 0)
+    await tick()
+    assert.deepEqual(seen, [])
+    t.s.runner.stop('C2:6.6')
   })
   test("the owner's mid-turn message does not give a teammate's running turn the owner's tools", async () => {
     const t = setup({ transcript: true, restartMs: 60_000 })

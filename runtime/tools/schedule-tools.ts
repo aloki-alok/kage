@@ -32,11 +32,12 @@ export function scheduleTools(c: ToolContext): KageTool[] {
       }).optional().describe('a clock schedule only. The command is pinned when set, with every script it names: an edited script stops the probe until a new yes. A teammate\'s probe needs the owner\'s yes on a card'),
       shadow_of: s.optional().describe('make this job a twin of that job id in this thread: it runs beside it and acts on nothing. Each run ends with shadow_verdict. The hub swaps it in by itself after enough real events where both agree, and stops for the owner on any miss (ADR 0017)'),
       live_prompt: s.optional().describe('with shadow_of: the prompt this twin runs once it swaps in and acts for real'),
+      needs: z.array(z.string()).optional().describe('the MCP tools the job\'s action needs, by their full name (mcp__server__tool). Kage checks them on its clock with no model and tells the owner once when one is gone, before a run needs it'),
       channel: s.optional().describe('with probe: channel attribute from the task tag'),
       thread_ts: s.optional().describe('with probe: thread_ts attribute from the task tag'),
     },
     async run(args) {
-      const a = args as { cron?: string; prompt: string; recurring?: boolean; lane?: boolean; probe?: ProbeArg; on_channel?: { channel: string; match?: string; bots?: boolean }; hook?: boolean; shadow_of?: string; live_prompt?: string }
+      const a = args as { cron?: string; prompt: string; needs?: string[]; recurring?: boolean; lane?: boolean; probe?: ProbeArg; on_channel?: { channel: string; match?: string; bots?: boolean }; hook?: boolean; shadow_of?: string; live_prompt?: string }
       if (!a.cron && !a.on_channel && !a.hook) return { isError: true, text: 'give one of cron, on_channel or hook' }
       if (!a.shadow_of !== !a.live_prompt?.trim()) return { isError: true, text: 'a twin needs both shadow_of and live_prompt' }
       if (a.shadow_of && c.jobRun()) return { isError: true, text: 'refused: a job\'s own run may not make a twin. Suggest it in your report.' }
@@ -57,7 +58,7 @@ export function scheduleTools(c: ToolContext): KageTool[] {
         const why = await probeCard(`Run the command ${a.probe.command} on a clock (${cron}), as you, with no model, and wake a session when its output changes. Scripts it names are pinned.`, { cron, probe: a.probe })
         if (why) return { isError: true, text: why }
       }
-      const no = await jobs.add({ id, cron, prompt: a.prompt, recurring, ...(trigger && { trigger }), ...(a.lane !== undefined && { lane: a.lane ? true as const : undefined }), ...(a.probe && { probe: a.probe }), ...(a.shadow_of && { shadow: { of: a.shadow_of, live: a.live_prompt! } }) })
+      const no = await jobs.add({ id, cron, prompt: a.prompt, recurring, ...(trigger && { trigger }), ...(a.lane !== undefined && { lane: a.lane ? true as const : undefined }), ...(a.needs?.length && { needs: a.needs }), ...(a.probe && { probe: a.probe }), ...(a.shadow_of && { shadow: { of: a.shadow_of, live: a.live_prompt! } }) })
       if (no) return { isError: true, text: no }
       if (trigger?.kind === 'channel') return { text: `Kage schedule ${id} set, wakes on a post in channel ${trigger.channel}${trigger.match !== undefined ? ` matching ${trigger.match}` : ''}${trigger.bots ? ', bots included' : ''}. No model runs between posts. Kept by Kage: it survives restarts and runs until unschedule.` }
       if (token) return { text: `Kage schedule ${id} set, wakes on a call to its webhook. Shown once, give both to whoever sends the calls:\nURL: ${jobs.hookUrl!(id)}\nToken: ${token}\nSend: POST with the header "Authorization: Bearer <token>". The body reaches the job as data. Kept by Kage: it survives restarts and runs until unschedule.` }
@@ -118,16 +119,17 @@ export function scheduleTools(c: ToolContext): KageTool[] {
     },
   } as KageTool] : []), ...(jobs.tune ? [{
     name: 'tune_job',
-    description: 'Change a probe job of this thread: its ignore regexes, reads, writes, command or cron. Only the owner\'s task may call it, or a teammate\'s task with the owner\'s yes on a card. A run woken by a job may never call it: it puts the change it suggests in its report. A new ignore or command restarts the job\'s baseline, so it wakes nothing by itself.',
+    description: 'Change a job of this thread: the MCP tools it needs (any job), or a probe job\'s ignore regexes, reads, writes, command or cron. Only the owner\'s task may call it, or a teammate\'s task with the owner\'s yes on a card. A run woken by a job may never call it: it puts the change it suggests in its report. A new ignore or command restarts the job\'s baseline, so it wakes nothing by itself.',
     shape: {
       id: s.describe('the job id'), channel: s.describe('channel attribute from the task tag'), thread_ts: s.describe('thread_ts attribute from the task tag'),
       cron: s.optional(), command: s.optional(),
       ignore: z.array(z.string()).optional(), reads: z.array(z.string()).optional(), writes: z.array(z.string()).optional(),
+      needs: z.array(z.string()).optional().describe('the full list of MCP tools the job needs; [] clears it'),
     },
     async run(args: Record<string, unknown>) {
       const { id, channel: _c, thread_ts: _t, ...change } = args as { id: string } & Record<string, unknown>
       if (c.jobRun()) return { isError: true, text: 'refused: a job\'s own run may not change its trigger. Put the change you suggest in your report: the owner or a teammate applies it.' }
-      if (!Object.keys(change).length) return { isError: true, text: 'nothing to change: give cron, command, ignore, reads or writes' }
+      if (!Object.keys(change).length) return { isError: true, text: 'nothing to change: give needs, cron, command, ignore, reads or writes' }
       if (!ownerOnly(args)) {
         const why = await probeCard(`Change job ${id}: ${Object.entries(change).map(([k, v]) => `${k} to ${JSON.stringify(v)}`).join(', ')}. Kage runs the command on its clock, as you, with no model. A path in reads or writes is not pinned, so a script listed there can change with no new yes.`, { id, ...change })
         if (why) return { isError: true, text: why }

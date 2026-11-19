@@ -77,7 +77,7 @@ export function scheduler(o: {
     },
   })
   return {
-    add(from: string, j: Pick<Schedule, 'id' | 'cron' | 'prompt' | 'recurring' | 'lane' | 'trigger'> & { probe?: ProbeArg; shadow?: { of: string; live: string } }, now: number): string | undefined {
+    add(from: string, j: Pick<Schedule, 'id' | 'cron' | 'prompt' | 'recurring' | 'lane' | 'trigger' | 'needs'> & { probe?: ProbeArg; shadow?: { of: string; live: string } }, now: number): string | undefined {
       const key = threadOfJobLane(from)
       const watch = j.cron === REPLY, event = j.cron === EVENT
       if (!watch && !event) {
@@ -128,7 +128,10 @@ export function scheduler(o: {
     },
     tune(from: string, id: string, t: TuneArg, now: number): string | undefined {
       const s = store.schedules().find(x => x.id === id && x.key === threadOfJobLane(from))
-      if (!s) return `no probe job ${id} in this thread`
+      const { needs, ...probeChange } = t
+      const setNeeds = () => { if (!needs) return; store.setNeeds(id, needs); const { missing: _, ...rest } = store.jobState(id); store.setJobState(id, rest) }
+      if (!s) return `no ${needs && !Object.keys(probeChange).length ? '' : 'probe '}job ${id} in this thread`
+      if (needs && !Object.keys(probeChange).length) { setNeeds(); return }
       if (s.trigger?.kind !== 'probe') return `${id} is not a probe job`
       const old = s.trigger.probe
       const cron = t.cron ?? s.cron
@@ -141,6 +144,7 @@ export function scheduler(o: {
       const next = { command, ignore: t.ignore ?? old.ignore, reads: t.reads ?? old.reads, writes: t.writes ?? old.writes }
       const fresh = pin(command, next)
       const pins = t.command === undefined ? Object.fromEntries(Object.entries(fresh).map(([p, h]) => [p, old.pins[p] ?? h])) : fresh
+      setNeeds()
       store.tuneSchedule(id, cron, { kind: 'probe', probe: { ...next, pins } }, t.command !== undefined || t.ignore !== undefined)
       log('tuned', id, 'for', s.key)
     },

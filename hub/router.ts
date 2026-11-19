@@ -26,6 +26,7 @@ import type { ToSession } from '../runtime/protocol.ts'
 import { homeThread, postAsKage, sessionTools, threadPing } from '../runtime/kage-tools.ts'
 import { scheduler } from '../runtime/scheduler.ts'
 import { runJobs } from '../runtime/jobs.ts'
+import { mcpStatus, needsWatch, sdkLook } from '../runtime/job-needs.ts'
 import { sdkSessions } from '../runtime/sdk-sessions.ts'
 import { answerDeferred, deferredApprovals } from '../runtime/deferred-approvals.ts'
 import { limitPause } from '../runtime/limit-pause.ts'
@@ -210,6 +211,14 @@ const sdkLib = harness.runtime === 'tmux' ? undefined : await (async () => ({
 const kag = hubKagelets({ dir: DIR, kl, mem: MEM, store, ledgers, runs, title: Title, notify: text => void slack.notifyOwner(text), hasSdk: () => !!sdk,
   runNow: (id, now) => schedules.runNow(id, now), toSession: (key, task) => toSession(key, task),
   idle: key => !isClosed(key) && d.ready(key) === 'ready' && d.startsNow(key, Date.now()), paused: now => limits.paused(now)?.until, tripwires: () => config.tripwires, openHome: homeThread({ title: Title, bot, user, ids: slack.ids }) })
+const sessionOptions = (claude: string) => ({
+  cwd: process.cwd(),
+  settingSources: ['user', 'project', 'local'] as ('user' | 'project' | 'local')[],
+  plugins: [{ type: 'local' as const, path: CODE }],
+  settings: { autoMemoryDirectory: MEM.own, ...harness.pluginsOff?.length && { enabledPlugins: Object.fromEntries(harness.pluginsOff.map(p => [p, false])) } },
+  pathToClaudeCodeExecutable: claude,
+})
+const needs = needsWatch({ store, placeOf, notify: t => slack.notifyOwner(t), ...sdkLib && { look: sdkLook(sdkLib.lib.query as Parameters<typeof sdkLook>[0], sessionOptions(sdkLib.claude)) } })
 const sdk = sdkLib ? sdkSessions({
   sdk: sdkLib.lib,
   deferred,
@@ -229,13 +238,8 @@ const sdk = sdkLib ? sdkSessions({
   }),
   hasTranscript: tmux.hasTranscript,
   toHub: (key, m) => routeReply(key, m, replies),
-  options: {
-    cwd: process.cwd(),
-    settingSources: ['user', 'project', 'local'],
-    plugins: [{ type: 'local' as const, path: CODE }],
-    settings: { autoMemoryDirectory: MEM.own, ...harness.pluginsOff?.length && { enabledPlugins: Object.fromEntries(harness.pluginsOff.map(p => [p, false])) } },
-    pathToClaudeCodeExecutable: sdkLib.claude,
-  },
+  options: sessionOptions(sdkLib.claude),
+  onMcp: q => { if (needs.watching()) void mcpStatus(q).then(needs.seen).catch(e => log('mcp status failed', e)) },
   ownerMemory: MEM.owner, sharedTools: config.sharedTools,
   envFile: ENV_FILE,
   codeDir: CODE, sandbox: () => config.harness?.sandbox === true,
@@ -333,7 +337,7 @@ runJobs([
   { name: 'kagelets', every: 60_000, run: kag.sync },
   { name: 'dream', every: 10 * 60_000, run: dreaming.dream },
   { name: 'kagelet dreams', every: 10 * 60_000, run: dreaming.kageletDreams },
-  { name: 'retro', every: 10 * 60_000, run: digests.weeklyRetro }, ...clock,
+  { name: 'retro', every: 10 * 60_000, run: digests.weeklyRetro }, ...clock, ...needs.jobs,
   { name: 'kagelet messages', every: 20_000, run: now => { kag.routes.pump(now); kag.needs.pump(now); kag.measure(now) } },
   { name: 'events', every: 3_600_000, run: now => ledgers.pruneEvents(new Date(now - EVENT_DAYS * 86_400_000).toISOString()) }, ...startTelemetry({ config: config.telemetry, dir: DIR, code: CODE, ledgers, state: store, notify: t => slack.notifyOwner(t), usage: sdk?.usage, shape: () => { const s = store.schedules(); return { email: +!!conn.email?.on, voice: +!!conn.voice?.on, whatsapp: +!!conn.whatsapp?.on, github: +!!conn.github, meeting: +!!conn.meeting, browser: +!!conn.browser, schedules: s.length, tripwires: s.filter(j => j.trigger).length, kagelets: [...kag.lanes()].length, teammates: TEAMMATES.length } } }),
 ])

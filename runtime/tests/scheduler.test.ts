@@ -498,3 +498,20 @@ test('a job moves to another Slack thread with its id and state; trust never ris
   assert.match(t.s.move('C1:9.9', 'j1', 'C2:1.1', 3)!, /twin/)
   assert.match(t.s.move('C1:9.9', 'tw', 'C2:1.1', 3)!, /twin/)
 })
+
+test('a job keeps the tools it needs in the store, and tune_job changes them on any kind of job (#377)', () => {
+  const t = setup()
+  const dial = 'mcp__claude_ai_Dialer__place_call'
+  t.s.add('C1:5.5', { ...job, needs: [dial] }, 0)
+  assert.deepEqual(t.store.schedules()[0]!.needs, [dial])
+  assert.equal(t.s.tune('C1:5.5', 'j1', { needs: [] }, 1), undefined)
+  assert.equal(t.store.schedules()[0]!.needs, undefined)
+  assert.equal(t.s.tune('C1:5.5', 'j1', { needs: [dial, 'mcp__x__y'] }, 2), undefined)
+  assert.deepEqual(t.store.schedules()[0]!.needs, [dial, 'mcp__x__y'])
+  assert.match(t.s.tune('C1:5.5', 'j1', { cron: '0 * * * *' }, 3)!, /not a probe job/)
+  assert.match(t.s.tune('C1:5.5', 'j1', { needs: [], cron: '0 * * * *' }, 4)!, /not a probe job/)
+  assert.deepEqual(t.store.schedules()[0]!.needs, [dial, 'mcp__x__y'], 'a refused tune changes nothing')
+  t.store.setJobState('j1', { ...t.store.jobState('j1'), missing: [dial] })
+  t.s.tune('C1:5.5', 'j1', { needs: ['mcp__x__z'] }, 5)
+  assert.equal(t.store.jobState('j1').missing, undefined, 'new needs start a fresh check, so no stale blocked line or false back DM')
+})

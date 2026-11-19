@@ -42,6 +42,7 @@ The first start installs the Agent SDK and turns on the service: macOS or Linux 
 | Work in a thread yourself | `kage attach '<link>'` with the thread's Slack link ("Copy link" on any message in it, kept in quotes), or `kage attach <place>`. You get it at once (a running turn stops, as with Esc), and Kage gets it back when you quit. |
 | Read the hub log | `kage logs`, `kage logs 500`, or `kage logs -f` to follow it |
 | See every schedule and watch | `kage schedules`: what runs, where, and when it runs next |
+| Know before a job's tool is gone | Tell Kage which MCP tools a job's action needs ("this watch needs the dialer's place_call"). Every 10 minutes, with no model, Kage checks they are live and DMs you once when one is gone and once when it is back. `kage schedules` shows such a job as `blocked: <tool>`. |
 | See what each thread spent | `kage cost`, or `kage cost 7` for a week |
 | Undo the weekly memory tidy | `kage dream undo` |
 | Pick up a changed setting | `kage reload` for who may tag Kage: no session is cut. `kage restart` for any other setting. |

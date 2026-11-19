@@ -64,7 +64,7 @@ export type Inbox = { take(source: string, connector: string, payload: string | 
 const toSchedule = (r: Record<string, any>): Schedule => ({
   id: r.id, key: r.key, cron: r.cron, prompt: r.prompt, recurring: r.recurring === 1, fromOwner: r.from_owner === 1,
   created: Number(r.created), lastFired: Number(r.last_fired), ...(r.ends != null && { ends: Number(r.ends) }), ...(r.lane === 1 && { lane: true as const }),
-  ...(r.trigger != null && { trigger: JSON.parse(r.trigger) }),
+  ...(r.trigger != null && { trigger: JSON.parse(r.trigger) }), ...(r.needs != null && { needs: JSON.parse(r.needs) }),
 })
 
 export function schedulesIn(path: string, key?: string): Schedule[] {
@@ -72,6 +72,16 @@ export function schedulesIn(path: string, key?: string): Schedule[] {
     const db = new DatabaseSync(path, { readOnly: true, timeout: 5000 })
     try { return (db.prepare(`select * from schedules ${key === undefined ? '' : 'where key = ?'} order by created`).all(...(key === undefined ? [] : [threadOfJobLane(key)])) as Record<string, any>[]).map(toSchedule) } finally { db.close() }
   } catch { return [] }
+}
+
+export function missingToolsIn(path: string): Map<string, string[]> {
+  try {
+    const db = new DatabaseSync(path, { readOnly: true, timeout: 5000 })
+    try {
+      const rows = db.prepare('select id, job_state from schedules where job_state is not null').all() as { id: string; job_state: string }[]
+      return new Map(rows.map(r => [r.id, (JSON.parse(r.job_state) as JobState).missing ?? []] as const).filter(([, m]) => m.length))
+    } finally { db.close() }
+  } catch { return new Map() }
 }
 
 export function openStore(path: string) {
@@ -83,6 +93,7 @@ export function openStore(path: string) {
   if (!scheduleCols.has('lane')) db.exec('alter table schedules add column lane integer')
   if (!scheduleCols.has('trigger')) db.exec('alter table schedules add column trigger text')
   if (!scheduleCols.has('job_state')) db.exec('alter table schedules add column job_state text')
+  if (!scheduleCols.has('needs')) db.exec('alter table schedules add column needs text')
   if (!inboxCols.has('delivered')) db.exec('alter table inbox add column delivered integer not null default 0')
   if (!inboxCols.has('held_until')) db.exec('alter table inbox add column held_until integer')
   const upsertConversation = db.prepare(`insert into conversations (key, connector, chat, thread, kind, agent_dm, place, first_seen, last_seen)
@@ -146,8 +157,8 @@ export function openStore(path: string) {
       return { imported, skipped }
     },
     addSchedule(s: Schedule) {
-      db.prepare('insert into schedules (id, key, cron, prompt, recurring, from_owner, created, last_fired, ends, lane, trigger) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) on conflict (id) do nothing')
-        .run(s.id, s.key, s.cron, s.prompt, s.recurring ? 1 : 0, s.fromOwner ? 1 : 0, s.created, s.lastFired, s.ends ?? null, s.lane ? 1 : null, s.trigger ? JSON.stringify(s.trigger) : null)
+      db.prepare('insert into schedules (id, key, cron, prompt, recurring, from_owner, created, last_fired, ends, lane, trigger, needs) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) on conflict (id) do nothing')
+        .run(s.id, s.key, s.cron, s.prompt, s.recurring ? 1 : 0, s.fromOwner ? 1 : 0, s.created, s.lastFired, s.ends ?? null, s.lane ? 1 : null, s.trigger ? JSON.stringify(s.trigger) : null, s.needs?.length ? JSON.stringify(s.needs) : null)
     },
     schedules: (): Schedule[] => (db.prepare('select * from schedules order by created').all() as Record<string, any>[]).map(toSchedule),
     tuneSchedule(id: string, cron: string, trigger: Trigger, resetBaseline: boolean) {
@@ -160,6 +171,7 @@ export function openStore(path: string) {
       const r = db.prepare('select job_state from schedules where id = ?').get(id) as { job_state: string | null } | undefined
       return r?.job_state ? JSON.parse(r.job_state) : { fails: 0 }
     },
+    setNeeds(id: string, needs: string[]) { db.prepare('update schedules set needs = ? where id = ?').run(needs.length ? JSON.stringify(needs) : null, id) },
     setJobState(id: string, state: JobState) { db.prepare('update schedules set job_state = ? where id = ?').run(JSON.stringify(state), id) },
     moveSchedule(id: string, from: string, to: string, fromOwner: boolean): boolean {
       return Number(db.prepare('update schedules set key = ?, from_owner = ? where id = ? and key = ?').run(to, fromOwner ? 1 : 0, id, from).changes) > 0
