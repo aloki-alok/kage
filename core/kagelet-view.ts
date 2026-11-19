@@ -53,3 +53,11 @@ export function kageletRuns(name: string, key: string, l: { runs: string; costs:
 export const modelLine = (k: { model: string; modelWhy: string }) => `model: ${k.model}${k.modelWhy ? ` (${k.modelWhy})` : ''}`
 
 export const runLine = (r: Run, now: number) => [clockTime(r.at, now).padEnd(16), `$${r.usd.toFixed(2)}`.padEnd(7), r.status.padEnd(15), r.report].join(' ')
+
+export function tailLine(r: KageletRow, now: number): { text: string; tone: 'fire' | 'quiet' | 'you' } {
+  const name = r.name.padEnd(16)
+  if (r.state === 'broken') return { text: `${name}broken: ${r.error}`, tone: 'you' }
+  if (r.state === 'paused') return { text: `${name}folded away (paused)`, tone: 'quiet' }
+  const last = r.lastRun ? `last ran ${clockTime(r.lastRun, now)}` : 'never ran'
+  return { text: `${name}${[last, `next ${whenLabel(r.next, now)}`, `$${r.costToday.toFixed(2)} today`].join(' · ')}`, tone: 'fire' }
+}
