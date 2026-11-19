@@ -2,11 +2,12 @@
 <!-- Source of Kage's logo and README hero (the Cast design language). Regenerate the PNGs with: ./docs/brand/render.sh -->
 <meta charset="utf-8">
 <title>Kage brand</title>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=JetBrains+Mono:wght@400;600&display=swap">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600&display=swap">
+<style>@font-face { font-family: "Geist Pixel Square"; src: url("fonts/GeistPixel-Square.woff2") format("woff2"); }</style>
 <style>
 /* Cast: day is light (you are here), night is dark (Kage works alone). Serif is you, mono is Kage. Orange only means "needs you". */
 :root { --light: #f2efe9; --shade: #16140f; --mid: #6d675e; --signal: #ff4f00;
-  --you: "Instrument Serif", serif; --kage: "JetBrains Mono", ui-monospace, monospace; }
+  --you: "Geist Pixel Square", "JetBrains Mono", monospace; --kage: "JetBrains Mono", ui-monospace, monospace; }
 .night { --light: #121110; --shade: #efe9df; --mid: #a19b91; }
 * { box-sizing: border-box; margin: 0; }
 html, body { background: transparent; }
@@ -21,7 +22,7 @@ section:target { display: block; }
 
 .hero { width: 1280px; height: 560px; padding: 40px 56px; background: var(--light); color: var(--shade); position: relative; overflow: hidden; }
 .hero .word { font: 400 2.4rem var(--you); }
-.hero .say { position: absolute; left: 56px; top: 150px; font: 400 9.5rem/1 var(--you); letter-spacing: -0.02em; white-space: nowrap; }
+.hero .say { position: absolute; left: 56px; top: 170px; font: 400 7rem/1 var(--you); letter-spacing: -0.02em; white-space: nowrap; }
 .hero .say::after { content: ""; position: absolute; left: 0; right: -200px; bottom: .19em; height: 1px; background: currentColor; opacity: .25; }
 .hero .say i { font-style: italic; }
 .hero .work { position: absolute; right: 56px; bottom: 40px; text-align: right; font: 1rem/1.7 var(--kage); }
@@ -30,8 +31,8 @@ section:target { display: block; }
 </style>
 
 <!-- App icon, as on the Cast page. 96 units, rendered at 512 px. -->
-<section id="icon-light"><svg viewBox="0 0 96 96" width="512" height="512"><rect width="96" height="96" rx="20" fill="#f2efe9"/><text x="26" y="66" font-family="Instrument Serif" font-size="64" fill="#16140f">k</text><text x="26" y="66" font-family="Instrument Serif" font-size="64" fill="#16140f" opacity=".85" transform="translate(0 66) scale(1 -0.42) skewX(-52) translate(0 -66)">k</text></svg></section>
-<section id="icon-dark"><svg viewBox="0 0 96 96" width="512" height="512"><rect width="96" height="96" rx="20" fill="#121110"/><text x="26" y="66" font-family="Instrument Serif" font-size="64" fill="#efe9df">k</text><text x="26" y="66" font-family="Instrument Serif" font-size="64" fill="#efe9df" opacity=".5" transform="translate(0 66) scale(1 -0.42) skewX(-52) translate(0 -66)">k</text></svg></section>
+<section id="icon-light"><svg viewBox="0 0 96 96" width="512" height="512"><rect width="96" height="96" rx="20" fill="#f2efe9"/><text x="26" y="66" font-family="Geist Pixel Square" font-size="64" fill="#16140f">k</text><text x="26" y="66" font-family="Geist Pixel Square" font-size="64" fill="#16140f" opacity=".85" transform="translate(0 66) scale(1 -0.42) skewX(-52) translate(0 -66)">k</text></svg></section>
+<section id="icon-dark"><svg viewBox="0 0 96 96" width="512" height="512"><rect width="96" height="96" rx="20" fill="#121110"/><text x="26" y="66" font-family="Geist Pixel Square" font-size="64" fill="#efe9df">k</text><text x="26" y="66" font-family="Geist Pixel Square" font-size="64" fill="#efe9df" opacity=".5" transform="translate(0 66) scale(1 -0.42) skewX(-52) translate(0 -66)">k</text></svg></section>
 
 <!-- README hero: what you typed, its evening shadow, and the work Kage did in it. -->
 <template id="hero">
@@ -52,7 +53,7 @@ section:target { display: block; }
 <section id="hero-dark" class="night"></section>
 <!-- Social preview for the Pages site (og:image), the hero at 1200 x 630. -->
 <section id="og"></section>
-<style>#og .hero { width: 1200px; height: 630px; } #og .say { top: 170px; font-size: 8.6rem; }</style>
+<style>#og .hero { width: 1200px; height: 630px; } #og .say { top: 190px; font-size: 6.2rem; }</style>
 <script>
 for (const id of ['hero-light', 'hero-dark', 'og']) document.getElementById(id).append(document.getElementById('hero').content.cloneNode(true));
 </script>
