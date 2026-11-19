@@ -583,6 +583,22 @@ describe('a watch wakes when the thread goes quiet, not on the tick (#428)', () 
     assert.equal(t.sent.length, 1)
     assert.match(t.sent[0]![1].content, /^Watch w1 ended after 7 days/)
   })
+  test("a failed wake retries on the tick, not on another job's quiet timer (#428)", () => {
+    const t = setup()
+    t.s.add('C1:5.5', { id: 'e1', cron: EVENT, prompt: 'p', recurring: true, trigger: hook }, 0)
+    t.s.add('C1:5.5', quiet, 0)
+    const fails: string[] = []
+    t.fresh.failing = true
+    t.advance(1_000)
+    t.s.wake('e1', ['> x'], { failed: s => fails.push(s.id) })
+    t.advance(5_100)
+    assert.deepEqual(fails, ['e1'])
+    heard(t, 6_000, 'other job')
+    t.advance(10_100)
+    assert.deepEqual(fails, ['e1'])
+    t.s.tick(20_000)
+    assert.deepEqual(fails, ['e1', 'e1'])
+  })
   test('a cron job still runs only on the tick', () => {
     const t = setup()
     t.s.add('C1:5.5', job, 0)
