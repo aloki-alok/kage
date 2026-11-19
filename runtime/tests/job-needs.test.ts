@@ -8,16 +8,17 @@ const DIAL = 'mcp__claude_ai_Dialer__place_call'
 const dialer = (status: string) => [{ name: 'claude.ai Dialer', status, tools: status === 'connected' ? [{ name: 'place_call' }] : [] }]
 
 function setup(o: { notifyFails?: boolean } = {}) {
+  let fails = !!o.notifyFails, broken = false
   const store = openStore(':memory:')
   store.addSchedule({ id: 'a1b2', key: 'C1:5.5', cron: '@event', prompt: 'phone on-call', recurring: true, fromOwner: true, created: 0, lastFired: 0, needs: [DIAL] })
   store.addSchedule({ id: 'c3d4', key: 'C1:5.5', cron: '0 9 * * *', prompt: 'summary', recurring: true, fromOwner: true, created: 0, lastFired: 0 })
   const dms: string[] = []
   let seen = dialer('connected')
   const looks: number[] = []
-  const w = needsWatch({ store, placeOf: () => '#alerts', notify: async t => { if (o.notifyFails) return false; dms.push(t); return true }, look: async () => { looks.push(1); return seen }, minutes: 1 })
+  const w = needsWatch({ store, placeOf: () => { if (broken) throw new Error('db busy'); return '#alerts' }, notify: async t => { if (fails) return false; dms.push(t); return true }, look: async () => { looks.push(1); return seen }, minutes: 1 })
   const runner = jobRunner(w.jobs, 0)
   const tick = async (now: number) => { runner.tick(now); await new Promise(r => setTimeout(r, 5)) }
-  return { store, dms, looks, w, tick, set: (s: string) => { seen = dialer(s) } }
+  return { store, dms, looks, w, tick, set: (s: string) => { seen = dialer(s) }, fails: (f: boolean) => { fails = f }, breakPlace: (b: boolean) => { broken = b } }
 }
 
 test('present, missing, then back: one DM on the miss, one when it is back, and kage schedules sees the miss', async () => {
@@ -51,6 +52,25 @@ test('a DM that fails to send is tried again on the next look', async () => {
   t.set('failed')
   await t.tick(60_000)
   assert.equal(t.store.jobState('a1b2').missing, undefined)
+  t.fails(false)
+  await t.tick(120_000)
+  assert.equal(t.dms.length, 1)
+  assert.deepEqual(t.store.jobState('a1b2').missing, [DIAL])
+})
+
+test('one failed check does not stop the later ones', async () => {
+  const t = setup()
+  t.set('failed')
+  t.breakPlace(true)
+  await t.tick(60_000)
+  t.breakPlace(false)
+  await t.tick(120_000)
+  assert.equal(t.dms.length, 1)
+})
+
+test('a status that never comes in gives up, so the clock is not stuck', async () => {
+  const q = { initializationResult: () => new Promise(() => {}), mcpServerStatus: async () => [] }
+  await assert.rejects(mcpStatus(q, 1, 1).catch(e => { throw e }), /did not come in time/)
 })
 
 test('with no job that needs a tool, the clock never opens a probe session', async () => {

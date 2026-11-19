@@ -6,34 +6,39 @@ const server = (name: string, status: string, tools: string[] = []) => ({ name, 
 const DIAL = 'mcp__claude_ai_Dialer__place_call'
 
 test('the live tools are each connected server tool, named as a session sees it', () => {
-  const tools = liveTools([server('claude.ai Dialer', 'connected', ['place_call']), server('claude.ai Gmail', 'needs-auth')])
-  assert.deepEqual([...tools!], [DIAL])
+  const { tools } = liveTools([server('claude.ai Dialer', 'connected', ['place_call']), server('claude.ai Gmail', 'needs-auth'), server('claude.ai  Slack (beta)', 'connected', ['post.message']), server('my crm', 'connected', ['read deals'])])
+  assert.deepEqual([...tools], [DIAL, 'mcp__claude_ai_Slack_beta__post_message', 'mcp__my_crm__read_deals'])
 })
 
-test('while a server is still connecting, nothing is known yet', () => {
-  assert.equal(liveTools([server('claude.ai Dialer', 'pending')]), undefined)
+test("a tool on a server still connecting keeps its last state; other servers' tools still count", () => {
+  const live = liveTools([server('claude.ai Dialer', 'pending'), server('claude.ai Gmail', 'connected', ['search'])])
+  assert.deepEqual(needsChanges([job()], live), [])
+  assert.deepEqual(needsChanges([job([DIAL])], live), [])
+  const [c] = needsChanges([{ ...job(), needs: [DIAL, 'mcp__claude_ai_Gmail__send'] }], live)
+  assert.deepEqual(c!.missing, ['mcp__claude_ai_Gmail__send'])
 })
 
+const live = (tools: string[]) => ({ tools: new Set(tools), pending: [] })
 const job = (missing?: string[]) => ({ id: 'a1b2', place: '#alerts', needs: [DIAL], ...missing && { missing } })
 
 test('a job whose tools are all present changes nothing', () => {
-  assert.deepEqual(needsChanges([job()], new Set([DIAL])), [])
+  assert.deepEqual(needsChanges([job()], live([DIAL])), [])
 })
 
 test('the first miss tells the owner once, with the job and the missing tool', () => {
-  const [c] = needsChanges([job()], new Set())
+  const [c] = needsChanges([job()], live([]))
   assert.deepEqual(c!.missing, [DIAL])
   assert.match(c!.dm!, /a1b2 in #alerts/)
   assert.match(c!.dm!, /mcp__claude_ai_Dialer__place_call/)
-  assert.deepEqual(needsChanges([job([DIAL])], new Set()), [], 'a second look while still missing says nothing')
+  assert.deepEqual(needsChanges([job([DIAL])], live([])), [], 'a second look while still missing says nothing')
 })
 
 test('the tool coming back tells the owner once more', () => {
-  const [c] = needsChanges([job([DIAL])], new Set([DIAL]))
+  const [c] = needsChanges([job([DIAL])], live([DIAL]))
   assert.deepEqual(c!.missing, [])
   assert.match(c!.dm!, /a1b2 .*again/)
 })
 
 test('a job with no needs is never checked', () => {
-  assert.deepEqual(needsChanges([{ id: 'x', place: '#a', needs: [] }], new Set()), [])
+  assert.deepEqual(needsChanges([{ id: 'x', place: '#a', needs: [] }], live([])), [])
 })
