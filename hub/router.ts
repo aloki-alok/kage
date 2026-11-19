@@ -52,7 +52,7 @@ import { closedThreads } from '../runtime/closed-threads.ts'
 import { checkScopes } from '../runtime/slack-scopes.ts'
 import { scopeDm } from '../core/slack-scopes.ts'
 import { startTelemetry } from './telemetry.ts'
-import { answersInThread } from '../core/blocks.ts'
+import { answersInThread, blockedTask, planDrop } from '../core/blocks.ts'
 
 const { ENV_FILE, NAME, Title, TEAMMATES, TRUSTED_APPS, config, secrets, bot, user } = load()
 const { harness = {}, kagelets: kl = {}, afk = {}, connectors: conn = {} } = config
@@ -124,14 +124,23 @@ const toSession = (key: string, task: Task) => {
   }
   return r
 }
+const sayInThread = (key: string, t: Task, text: string) => void postAsKage({ title: Title, bot, user }, t.meta.channel, t.meta.thread_ts || undefined, text).then(
+  r => ledgers.add('posted', [t.meta.channel, r.ts, r.by, key]),
+  e => log('could not post in the thread', logKey(key), e?.data?.error ?? e))
 const { blocked, closedTo, isClosed } = closedThreads({
   store,
   reset: key => d.reset(key),
-  say: (key, t, text) => void postAsKage({ title: Title, bot, user }, t.meta.channel, t.meta.thread_ts || undefined, text).then(
-    r => ledgers.add('posted', [t.meta.channel, r.ts, r.by, key]),
-    e => log('could not post the block line', logKey(key), e?.data?.error ?? e)),
+  say: sayInThread,
   tellOwner: text => void slack.notifyOwner(text),
 })
+const dropToldOwner = new Set<string>()
+function dropped(key: string, turn: Task[], reason: string, kind: string) {
+  log('a hook dropped the prompt in', logKey(key), kind)
+  runs.emit(key, 'refusal', `hook: ${kind}`)
+  const p = planDrop(turn, reason), t = blockedTask(turn)
+  if (p.reply && t) sayInThread(key, t, p.reply)
+  if (p.dm && !dropToldOwner.has(key)) { dropToldOwner.add(key); void slack.notifyOwner(p.dm) }
+}
 const noteTrust = (key: string, t: Task) =>
   t.need || store.noteTask(key, senderOf(t) === 'owner', key in d.saved())
 function phoneOwner(reason: string): Promise<string> {
@@ -223,7 +232,7 @@ const sdk = sdkLib ? sdkSessions({
     cwd: process.cwd(),
     settingSources: ['user', 'project', 'local'],
     plugins: [{ type: 'local' as const, path: CODE }],
-    settings: { autoMemoryDirectory: MEM.own },
+    settings: { autoMemoryDirectory: MEM.own, ...harness.pluginsOff?.length && { enabledPlugins: Object.fromEntries(harness.pluginsOff.map(p => [p, false])) } },
     pathToClaudeCodeExecutable: sdkLib.claude,
   },
   ownerMemory: MEM.owner, sharedTools: config.sharedTools,
@@ -238,7 +247,7 @@ const sdk = sdkLib ? sdkSessions({
   },
   budgetOf: kag.budgetOf,
   modelOf: key => modelFor(key, config.harness?.jobModel, k => k.includes('#side-kdream-') ? DEFAULT_MODEL : k.startsWith('voice:') && config.connectors?.voice?.model ? config.connectors.voice.model : kag.modelOf(k)),
-  onBlocked: blocked,
+  onBlocked: blocked, onDropped: dropped,
   onTurn: (key, tasks, limit, done) => limits.turn(key, tasks, limit, Date.now(), done),
   grantOf: kag.grantOf, allowOf: kag.allowOf, reviewHeld: kag.reviewHeld,
   onTool: (key, tool, refused) => runs.emit(key, refused ? 'refusal' : 'tool', refused ? `${tool}: ${refused}` : tool),

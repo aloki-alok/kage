@@ -1,6 +1,6 @@
 import { describe, test } from 'node:test'
 import assert from 'node:assert/strict'
-import { OFF_LIMITS, OWNER_BLOCKED, planBlock } from '../blocks.ts'
+import { OFF_LIMITS, OWNER_BLOCKED, planBlock, planDrop, TEAMMATE_DROPPED } from '../blocks.ts'
 import type { Task } from '../task.ts'
 
 const task = (o: Partial<Task> & { content?: string } = {}): Task => ({
@@ -53,5 +53,44 @@ describe('what Kage does when the safety check stops a turn', () => {
     const p = planBlock([], null)
     assert.equal(p.reply, undefined)
     assert.match(p.dm!, /safety check/)
+  })
+})
+
+describe('what Kage does when a hook drops the prompt before the model reads it', () => {
+  const REASON = 'cache-tax: the prompt cache went cold 3h ago. Send it again to pay it.'
+  test('the owner gets the hook reason in the thread, and no DM', () => {
+    const p = planDrop([task({ fromOwner: true, content: 'Task from Ryu: check this' })], REASON)
+    assert.match(p.reply!, /hook/)
+    assert.ok(p.reply!.includes(REASON))
+    assert.equal(p.dm, undefined)
+  })
+  test('a teammate hears that nothing ran, never the hook reason, and the owner gets the reason and the ask by DM', () => {
+    const p = planDrop([task()], REASON)
+    assert.equal(p.reply, TEAMMATE_DROPPED)
+    assert.doesNotMatch(TEAMMATE_DROPPED, /hook|owner|Ryu|Alok/i)
+    assert.ok(p.dm!.includes(REASON))
+    assert.match(p.dm!, /list what the owner overlooked/)
+    assert.match(p.dm!, /<https:\/\/x\/p\|DM with sam>/)
+  })
+  test('a scheduled run with no message to answer only DMs the owner, and names the setting that keeps a plugin out', () => {
+    const p = planDrop([task({ fromOwner: true, origin: { channel: 'C1', ts: '' } })], REASON)
+    assert.equal(p.reply, undefined)
+    assert.ok(p.dm!.includes(REASON))
+    assert.match(p.dm!, /harness\.pluginsOff/)
+  })
+  test('an unknown task still reaches the owner', () => {
+    const p = planDrop([], REASON)
+    assert.equal(p.reply, undefined)
+    assert.ok(p.dm!.includes(REASON))
+  })
+  test('hook text is shown as plain text, so a mention in it pings nobody', () => {
+    const p = planDrop([task({ fromOwner: true, content: 'Task from Ryu: check this' })], 'go <!channel> & <@UTEST0001>\n now')
+    assert.ok(!p.reply!.includes('<!channel>'))
+    assert.ok(!p.reply!.includes('<@UTEST0001>'))
+    assert.ok(p.reply!.includes('go &lt;!channel&gt; &amp; &lt;@UTEST0001&gt; now'))
+  })
+  test('a hook that gives no reason still gets a readable line', () => {
+    const p = planDrop([task({ fromOwner: true, content: 'Task from Ryu: check this' })], '')
+    assert.match(p.reply!, /gave no reason/)
   })
 })
