@@ -1,7 +1,7 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { spawnSync } from 'node:child_process'
-import { mkdtempSync, writeFileSync } from 'node:fs'
+import { mkdtempSync, readdirSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
@@ -29,4 +29,13 @@ test('a failing file prints its output and fails the run', () => {
   assert.equal(r.status, 1)
   assert.match(r.stdout, /FAIL .*bad\.test\.ts/)
   assert.match(r.stdout, /boom-marker/)
+})
+
+test('a temp folder a test leaves behind is gone after the run (#443)', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'kage-run-'))
+  const base = mkdtempSync(join(tmpdir(), 'kage-base-'))
+  writeFileSync(join(dir, 'leak.test.ts'), "import { test } from 'node:test'\nimport { mkdtempSync, writeFileSync } from 'node:fs'\nimport { tmpdir } from 'node:os'\nimport { join } from 'node:path'\ntest('leak', () => { writeFileSync(join(mkdtempSync(join(tmpdir(), 'kage-leak-')), 'x'), 'y') })\n")
+  const r = spawnSync(process.execPath, [runner, `${dir}/*.test.ts`], { encoding: 'utf8', timeout: 30_000, env: { ...process.env, TMPDIR: base } })
+  assert.equal(r.status, 0, r.stdout)
+  assert.deepEqual(readdirSync(base), [])
 })
