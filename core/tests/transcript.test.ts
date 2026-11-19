@@ -1,6 +1,6 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { stepTime, transcriptLine } from '../transcript.ts'
+import { stepTime, transcriptLine, transcriptSteps } from '../transcript.ts'
 
 const line = (o: object) => JSON.stringify(o)
 const assistant = (...content: object[]) => line({ type: 'assistant', message: { content } })
@@ -33,4 +33,10 @@ test('a failed tool shows; thinking, successful results and bookkeeping lines do
   assert.equal(transcriptLine(assistant({ type: 'thinking', thinking: 'hmm' })), undefined)
   assert.equal(transcriptLine(line({ type: 'system', subtype: 'turn_duration' })), undefined)
   assert.equal(transcriptLine('not json'), undefined)
+})
+
+test('transcriptSteps gives each step its kind and text, so the label can hold spaces', () => {
+  assert.deepEqual(transcriptSteps(assistant({ type: 'tool_use', name: 'mcp__claude_ai_Slack__slack_read_thread', input: { channel_id: 'C1' } })), [{ kind: 'slack read thread', text: '' }])
+  assert.deepEqual(transcriptSteps(assistant({ type: 'tool_use', name: 'Read', input: { file_path: '/a/b.ts' } })), [{ kind: 'Read', text: '/a/b.ts' }])
+  assert.deepEqual(transcriptSteps('not json'), [])
 })

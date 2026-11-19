@@ -18,7 +18,7 @@ body:
     attributes: { label: Steps to see it again, placeholder: "1. Tag @kage in a thread with ...\n2. ..." }
   - type: input
     id: version
-    attributes: { label: Version, description: The first line of kage status. }
+    attributes: { label: Version, description: What kage --version prints. }
     validations: { required: true }
   - type: dropdown
     id: os

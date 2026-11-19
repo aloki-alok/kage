@@ -5,9 +5,19 @@
 set -euo pipefail
 cd "$(dirname "$(readlink -f "$0")")"  # readlink: works when run through the kage link
 ENV_FILE="${KAGE_ENV:-$HOME/.config/kage/env}"
+HUB_NODE_OPTIONS="${NODE_OPTIONS:-}"
+export NODE_OPTIONS="${NODE_OPTIONS:+$NODE_OPTIONS }--disable-warning=ExperimentalWarning"
 
+if [[ -t 1 && -z ${NO_COLOR:-} ]]; then
+  RED=$'\033[38;2;255;77;61m' GOLD=$'\033[38;2;255;215;94m' GREEN=$'\033[38;2;127;208;138m' DIM=$'\033[2m' OFF=$'\033[0m'
+else RED='' GOLD='' GREEN='' DIM='' OFF=''; fi
 say() { printf '\n\033[1m%s\033[0m\n' "$*"; }
-die() { printf '\033[31m%s\033[0m\n' "$*" >&2; exit 1; }
+says() { printf '%s◆%s %s\n' "$RED" "$OFF" "$*"; }
+point() { printf '  %s›%s %s\n' "$RED" "$OFF" "$*"; }
+quietly() { printf '  %s%s%s\n' "$DIM" "$*" "$OFF"; }
+next() { printf '%s%s%s %s%s%s\n' "$DIM" "$1" "$OFF" "$GOLD" "$2" "$OFF"; }
+tells() { if [[ -t 2 && -z ${NO_COLOR:-} ]]; then printf '\033[38;2;255;77;61m◆\033[0m %s\n' "$*"; else printf '◆ %s\n' "$*"; fi >&2; }
+die() { tells "$*"; exit 1; }
 
 # group|name|arguments|what it does|example. `kage help` prints it grouped; `kage help <name>` prints one.
 COMMANDS='Set up|setup||Walk through the first setup, one step at a time|kage setup
@@ -107,7 +117,8 @@ cmd_start() {
   kage_name
   if ./service.sh installed; then ./service.sh start
   else ./service.sh on || return 1; fi
-  echo "$NAME is starting. Check it in 20 s: kage doctor"
+  says "Starting up. Give me about 20 seconds."
+  next "Check on me:" "kage doctor"
   if [[ "$(cfg_get harness.runtime)" == tmux && "$(cfg_get harness.route)" != plugin ]]; then
     echo "Threads open as tmux panes (dev route): each new pane shows a warning screen. Confirm it in tmux attach -t $NAME."
   fi
@@ -118,8 +129,9 @@ cmd_stop() {
   quiet_first stop "$@"
   if ./service.sh installed; then ./service.sh stop
   elif old_tmux; then tmux kill-session -t "=$NAME"
-  else echo "$NAME is not running."; return 0; fi
-  echo "Stopped $NAME. It stays down until kage start or the next login (Linux: the next boot). Each thread resumes its conversation on its next tag."
+  else says "I'm not running."; return 0; fi
+  says "Stopped. I stay down until kage start or your next login."
+  quietly "Each thread picks up where it left off when someone tags me."
 }
 
 # kage update: move this checkout to origin's main (or the stable release with --stable) and restart into it now,
@@ -135,7 +147,7 @@ cmd_update() {
   git fetch -q --force origin main --tags
   [[ "$(git rev-list --count "$ref..HEAD")" == 0 ]] || die "This checkout has commits that are not on $ref, so it was left as it is."
   old="$(git rev-parse --short HEAD)"
-  [[ "$(git rev-parse HEAD)" != "$(git rev-parse "$ref^{commit}")" ]] || { echo "Already up to date ($old)."; return; }
+  [[ "$(git rev-parse HEAD)" != "$(git rev-parse "$ref^{commit}")" ]] || { says "I'm already on the newest version."; return; }
   # A running hub restarts into the new code at its next quiet moment and runs npm ci itself first (hub/updates.ts), so update
   # never drains: a drain held every new message until each running turn ended (#309). No node runs after the merge, because
   # node beside the hub's npm ci crashes on a half-deleted package (#302); running is asked first for that reason.
@@ -144,37 +156,46 @@ cmd_update() {
   running && up=1
   git merge -q --ff-only "$ref"
   new="$(git rev-parse --short HEAD)"
-  echo "Updated $old to $new:"
-  git log --format='  %s' "$old..$new"
-  if [[ -n $up ]]; then
-    echo "The hub restarts into it at its next quiet moment${packages:+, after it installs the new packages}. No message waits meanwhile. kage status shows the version it runs."
-    return
-  fi
+  says "Got the new version. ${DIM}($new)${OFF}"
+  if [[ -n $up ]]; then quietly "I'll switch over when I'm not in the middle of anything${packages:+, after I install what it needs}."; fi
+  whats_new "$old..$new"
+  [[ -n $up ]] && return
   if [[ -n $packages ]]; then
-    echo "Installing the packages the new code needs."
-    npm ci --no-audit --no-fund --loglevel=error || die "npm ci failed. Run npm ci in $PWD, then kage start."
+    quietly "Installing what the new version needs."
+    npm ci --no-audit --no-fund --loglevel=error || die "Installing failed. Run npm ci in $PWD, then kage start."
   fi
-  echo "Kage is not running. Start it: kage start"
+  echo; next "I'm not running. Start me:" "kage start"
+}
+
+sentence() { [[ $1 == kage\ * ]] && printf %s "$1" || printf %s "$(printf %s "${1:0:1}" | tr '[:lower:]' '[:upper:]')${1:1}"; }
+
+# What a person gets from an update: the feat and fix commits, without their type, scope or PR number.
+whats_new() {
+  local new fixed
+  new="$(git log --format=%s "$1" | sed -nE 's/^feat(\([^)]*\))?!?: //p' | sed -E 's/ \(#[0-9]+\)$//')"
+  fixed="$(git log --format=%s "$1" | sed -nE 's/^fix(\([^)]*\))?!?: //p' | sed -E 's/ \(#[0-9]+\)$//')"
+  if [[ -z $new && -z $fixed ]]; then quietly "Only changes under the hood this time."; return; fi
+  if [[ -n $new ]]; then echo; echo "  What's new for you"; while IFS= read -r l; do point "$(sentence "$l")"; done <<<"$new"; fi
+  if [[ -n $fixed ]]; then echo; echo "  Fixed"; while IFS= read -r l; do point "$(sentence "$l")"; done <<<"$fixed"; fi
 }
 
 # A change to KAGE_ROUTE, KAGE_RUNTIME, KAGE_CWD or KAGE_MEMORY needs kage stop, then kage start.
 cmd_restart() {
   quiet_first restart "$@"
-  running || { echo "$NAME is not running. Start it: kage start"; return 1; }
-  if ./service.sh installed; then ./service.sh restart && echo "Restarted the hub; it is back in about 10 s. Open sessions resume on their next tag."; return; fi
+  running || { says "I'm not running."; next "Start me:" "kage start"; return 1; }
+  if ./service.sh installed; then ./service.sh restart && says "Restarting. I'll be back in about 10 seconds."; return; fi
   # The old tmux loop starts the hub again 5 s after it exits.
   local pid; pid="$(awk '{print $4}' "$(dirname "$ENV_FILE")/status" 2>/dev/null || true)"
   # The status file outlives the hub; never kill a pid that is now some other program.
   if [[ -n $pid ]] && ps -p "$pid" -o command= 2>/dev/null | grep -q 'router.ts'; then
-    kill "$pid" && echo "Restarted the hub; it is back in about 10 s. Open sessions resume on their next tag."
+    kill "$pid" && says "Restarting. I'll be back in about 10 seconds."
   else
-    echo "The hub is between restarts. Wait 10 s, then kage status." >&2; return 1
+    tells "I'm between restarts. Give me 10 seconds, then try kage status."; return 1
   fi
 }
 
 cmd_status() {
-  running || { echo "$NAME is not running. Start it: kage start"; return 1; }
-  echo "Kage $(running_version)"
+  running || { says "I'm not running."; next "Start me:" "kage start"; return 1; }
   node cli/status.ts
 }
 
@@ -184,7 +205,7 @@ disk_version() { node -e 'import("./runtime/auto-update.ts").then(m=>console.log
 cmd_version() {
   local disk run; disk="$(disk_version)"; run="$(running_version)"
   echo "kage $disk"
-  if running && [[ $run != unknown && $run != "$disk" ]]; then echo "The hub still runs $run. It restarts into the new code once every session is quiet."; fi
+  if running && [[ $run != unknown && $run != "$disk" ]]; then quietly "I'm still running ${run%% *}. I'll switch over when I'm not in the middle of anything."; fi
 }
 
 cmd_logs() {
@@ -275,21 +296,22 @@ cmd_save() {
   # The tokens go to secrets.json and the name to config.json; every other setting stays (cli/config.ts). printf is a
   # builtin, so the tokens never show in `ps`.
   printf '%s %s %s\n' "$APP" "$USR" "$BOT" | node cli/config.ts save "$NAME" || die "Could not write the settings in $(dirname "$ENV_FILE")."
-  echo "ok: saved to $(dirname "$ENV_FILE")/secrets.json (mode 600) for @$NAME, owner $OWNER"
+  says "Saved. I'm @$NAME, and I answer to you ($OWNER)."
+  quietly "The tokens are in $(dirname "$ENV_FILE")/secrets.json, readable only by you."
 }
 
 # Kage's own Claude login, so its sessions use their own seat. The prompt is hidden, so the token never shows on screen or in ps.
 cmd_claude_login() {
   local t
   if [[ -t 0 ]]; then
-    echo "Run claude setup-token signed in as Kage's own account, then paste the token it prints." >&2
+    tells "Run claude setup-token signed in as my own Claude account, then paste the token it prints."
     t="$(node cli/ask-secret.ts claude "Claude token (sk-ant-oat...): ")" || exit 1
   else
     t="$(cat)"
   fi
   umask 077
   printf '%s\n' "$t" | node cli/config.ts save-claude || exit 1
-  echo "ok: saved to $(dirname "$ENV_FILE")/secrets.json. Kage restarts into it once its sessions are quiet."
+  says "Saved. I'll switch to this Claude login when I'm not in the middle of anything."
 }
 
 cmd_interactive() {
@@ -304,7 +326,7 @@ cmd_interactive() {
   echo "Waiting for Slack to connect (up to $wait s)..."
   for ((i = 0; i < wait; i += 2)); do connected && break; sleep 2; done
   connected || die "Not connected to Slack after $wait s. Run kage doctor: it names the fix for each problem."
-  say "Connected to Slack. Tag @$NAME in any thread to try it."
+  echo; says "Connected to Slack. Tag @$NAME in any thread to try it."
   command -v kage >/dev/null || echo "To type kage from anywhere, run ./setup.sh link once."
 }
 
@@ -313,7 +335,7 @@ cmd_interactive() {
 for a in "$@"; do [[ $a == -h || $a == --help ]] && { [[ $1 == "$a" || $1 == help ]] && cmd_help || cmd_help "$1"; exit 0; }; done
 
 case "${1:-}" in
-  "") if has_settings; then { running && echo "$NAME is running." || echo "$NAME is not running. Start it: kage start"; echo; cmd_short; }; else cmd_interactive; fi ;;
+  "") if has_settings; then { running && says "I'm running." || { says "I'm not running."; next "Start me:" "kage start"; }; echo; cmd_short; }; else cmd_interactive; fi ;;
   help) cmd_help "${2:-}" ;;
   setup) cmd_interactive ;;
   check) cmd_check ;;
@@ -322,9 +344,9 @@ case "${1:-}" in
   claude-login) cmd_claude_login ;;
   doctor) node cli/doctor/run.ts ;;
   slack) node cli/slack.ts "${2:-}" ;;
-  link) mkdir -p ~/.local/bin && ln -sf "$PWD/setup.sh" ~/.local/bin/kage && echo "ok: run kage from anywhere (needs ~/.local/bin on PATH)" ;;
+  link) mkdir -p ~/.local/bin && ln -sf "$PWD/setup.sh" ~/.local/bin/kage && says "Done. You can type kage from anywhere (it needs ~/.local/bin on your PATH)." ;;
   service) ./service.sh "${2:-}" ;;
-  run) exec node hub.ts ;;
+  run) NODE_OPTIONS="$HUB_NODE_OPTIONS" exec node hub.ts ;;
   # A kagelet's name: resume it (cli/stop.ts). Otherwise the hub.
   start) if [[ $# -gt 1 ]]; then node cli/stop.ts --resume "${@:2}"; else cmd_start; fi ;;
   # A thread (any word that is not a flag) or --now: one session (cli/stop.ts). Otherwise the whole hub.

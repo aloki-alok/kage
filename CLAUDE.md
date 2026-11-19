@@ -33,14 +33,14 @@ Run every command from the repo root. Each step ends with a check. Go to the nex
    ```sh
    osascript -e "tell application \"Terminal\" to do script \"cd '$PWD' && ./setup.sh save <name>\"" -e 'tell application "Terminal" to activate'
    ```
-   On Linux, ask them to run `kage save <name>` in a terminal (the install line put `kage` on PATH; in a terminal opened before the install, run `~/.local/bin/kage save <name>`). The window prints `ok: saved to ... owner U...` when the tokens work.
+   On Linux, ask them to run `kage save <name>` in a terminal (the install line put `kage` on PATH; in a terminal opened before the install, run `~/.local/bin/kage save <name>`). The window prints `Saved. I'm @<name>, and I answer to you (U...)` when the tokens work.
    Check: `./setup.sh doctor` shows `ok` for the three `SLACK_` tokens. The other lines may still fail at this point.
 
 6. Start it.
    ```sh
    ./setup.sh start
    ```
-   Check: it prints `is starting`. It turns on the service, so macOS or Linux keeps Kage running and starts it at login. The first start installs the Agent SDK, which takes about a minute. On Linux, if it prints a `sudo loginctl enable-linger` line, ask the person to run it, so Kage also starts at boot with no login.
+   Check: it prints `Starting up`. It turns on the service, so macOS or Linux keeps Kage running and starts it at login. The first start installs the Agent SDK, which takes about a minute. On Linux, if it prints a `sudo loginctl enable-linger` line, ask the person to run it, so Kage also starts at boot with no login.
 
 7. Prove it works.
    ```sh
@@ -57,7 +57,7 @@ The install line puts `kage` on your PATH (in a git checkout, run `./setup.sh li
 | Task | Command |
 |---|---|
 | Health check | `kage doctor` |
-| One look at the hub and every session | `kage status`: how long the hub has run, its starts in 24 h, schedules and today's spend, then each session, then where to look next |
+| One look at the hub and every session | `kage status`: one line with the version the hub runs, how long it has run, today's spend and its schedules (and a warning when it restarted more than 10 times in 24 h), then each session, then where to look next |
 | The live console (mouse or keys: `↑↓` pick, `⏎` open the feed, `a` attach, `x` cut, `s` schedules, `l` kagelets, `/` search, `q` quit) | `kage top` |
 | Watch and fix kagelets | `kage top`, then `l`: each kagelet's state (on, paused, broken, or over cap when a cap is set), last run and report, next run, cost today against its 7-day daily average, and who made it. In the panel, `r` runs one now, `p` pauses it, `u` resumes it, `x` removes it after you confirm, and `v` revokes the standing approval of each write tool that kagelet holds, taking that tool from every kagelet that got it with no card. The keys act through the hub, so they need Kage running. `kage logs <kagelet>` lists its last 20 runs, newest first: time, cost, its status (ok, failed, running, or paused for cost when a cap is set) and its report, then today's chains it was a step of (`a > b > c` and where it stopped) and its messages to and from other kagelets (queued, delivered, read or failed). |
 | What Kage did and spent | `kage stats [days]` (7 by default, up to 30): spend and turns per day, spend per connector, hub starts in the last 24 h, runs and refusals, and turn time (p50 and p90). Counts and money only, never what was said. `kage cost [days]` lists spend per thread. |

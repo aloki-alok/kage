@@ -99,12 +99,16 @@ export function stopLine(r: { ok: true; ending?: true; asking?: true; cut?: 'bus
   return `${what}${let_go}${side}${kept} The next tag starts it again.`
 }
 
-export function statusSummary(f: { upSec?: number; boots24h: number; schedules: number; spentToday: number; turnsToday: number }): string[] {
+const UNIT: Record<string, string> = { s: 'second', m: 'minute', h: 'hour', d: 'day' }
+const spoken = (short: string) => { const n = Number(short.slice(0, -1)); return `${n} ${UNIT[short.slice(-1)]}${n === 1 ? '' : 's'}` }
+
+export function statusSummary(f: { version?: string; upSec?: number; boots24h: number; schedules: number; spentToday: number; turnsToday: number }): { says: string; warn?: string } {
   const plural = (n: number, one: string) => `${n} ${one}${n === 1 ? '' : 's'}`
-  return [[
-    f.upSec === undefined ? 'hub up: unknown' : `hub up ${ago(f.upSec * 1000)}`,
-    `${plural(f.boots24h, 'start')} in 24 h${f.boots24h > 10 ? ' (kage doctor says why)' : ''}`,
-    f.schedules ? plural(f.schedules, 'schedule') : 'no schedules',
-    f.turnsToday ? `$${f.spentToday.toFixed(2)} today over ${plural(f.turnsToday, 'turn')}` : 'nothing spent today',
-  ].join(' · '), 'More: kage top (live, with controls), kage logs, kage cost 7, kage doctor']
+  const spent = f.turnsToday ? `spent $${f.spentToday.toFixed(2)} today over ${plural(f.turnsToday, 'turn')}` : 'spent nothing today'
+  const parts = [
+    f.version ? `I'm running ${f.version.split(' ')[0]}.` : f.upSec === undefined ? "I'm running." : '',
+    f.upSec === undefined ? `I've ${spent}.` : `I've been up ${spoken(ago(f.upSec * 1000))} and ${spent}.`,
+    f.schedules ? `${plural(f.schedules, 'schedule')}.` : '',
+  ]
+  return { says: parts.filter(Boolean).join(' '), warn: f.boots24h > 10 ? `I restarted ${f.boots24h} times in the last 24 hours.` : undefined }
 }
