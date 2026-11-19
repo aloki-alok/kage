@@ -22,7 +22,7 @@ function askHidden(prompt: string): Promise<string> {
       for (const ch of chunk.toString('utf8')) {
         if (ch === '\u0003') { done(''); process.exit(130) }
         if (ch === '\r' || ch === '\n') return done(typed)
-        typed = ch === '\u007f' ? typed.slice(0, -1) : typed + ch
+        typed = ch === '\u007f' || ch === '\b' ? typed.slice(0, -1) : ch >= ' ' ? typed + ch : typed
       }
     }
     process.stdin.on('data', onKey)

@@ -69,6 +69,7 @@ export function pasteSteps(m: Missing, url: string): string[] {
     `1. Open ${url} if it did not open, and pick JSON.`,
     '2. Under "oauth_config" > "scopes", find each list below. Paste the lines under it on a new line right after its "[".',
     ...lists,
+    '   If a list is [] or missing, write it as "user": ["a", "b"] with no comma after the last name.',
     '3. Click Save Changes.',
     ...reinstall(4, ' in the yellow banner'),
   ]

@@ -91,6 +91,7 @@ describe('kage slack upgrade steps', () => {
     assert.match(t, /After "user": \[ paste:\n\s+"files:read",\n\s+"mpim:write",/)
     assert.match(t, /After "bot": \[ paste:\n\s+"files:write",/)
     assert.doesNotMatch(t, /oauth_config\.scopes/)
+    assert.match(t, /If a list is \[\] or missing/)
     assert.match(t, /Save Changes/)
     assert.match(t, /Reinstall to Workspace/)
   })
