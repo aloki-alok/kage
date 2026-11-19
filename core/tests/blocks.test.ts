@@ -83,4 +83,14 @@ describe('what Kage does when a hook drops the prompt before the model reads it'
     assert.equal(p.reply, undefined)
     assert.ok(p.dm!.includes(REASON))
   })
+  test('hook text is shown as plain text, so a mention in it pings nobody', () => {
+    const p = planDrop([task({ fromOwner: true, content: 'Task from Ryu: check this' })], 'go <!channel> & <@UTEST0001>\n now')
+    assert.ok(!p.reply!.includes('<!channel>'))
+    assert.ok(!p.reply!.includes('<@UTEST0001>'))
+    assert.ok(p.reply!.includes('go &lt;!channel&gt; &amp; &lt;@UTEST0001&gt; now'))
+  })
+  test('a hook that gives no reason still gets a readable line', () => {
+    const p = planDrop([task({ fromOwner: true, content: 'Task from Ryu: check this' })], '')
+    assert.match(p.reply!, /gave no reason/)
+  })
 })
