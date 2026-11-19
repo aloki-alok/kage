@@ -295,7 +295,7 @@ async function onKey(k: string) {
   }
   if (k === 'q' || k === '\x03') quit()
   else if (k === '1' || k === '2' || k === '3') { tab = TABS[Number(k) - 1]!; open = undefined; focus = 'list'; readRuns(Date.now()) }
-  else if (k === '\t') focus = focus === 'list' && wide() ? 'feed' : 'list'
+  else if (k === '\t') focus = focus === 'list' && wide() && tab === 'threads' ? 'feed' : 'list'
   else if (k === '\x1b') { if (open) open = undefined; else if (query) { query = ''; refresh(Date.now()) } }
   else if (k === '\x1b[A' || k === 'k') move(-1)
   else if (k === '\x1b[B' || k === 'j') move(1)
