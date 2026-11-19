@@ -98,3 +98,15 @@ test('invisible characters or look-alike letters never hide a word that cannot b
   assert.equal(majorAct(click, row('De\u200blete'))?.includes('\u200b'), false)
   assert.equal(actCard(click, { url: 'https://x.example/', el: row('Se\u200bnd') }), 'x.example: click element "Send"')
 })
+
+test('the review cases: more steps that cannot be undone ask, nav labels do not, and no spelling trick hides a word (#424)', () => {
+  const click = { action: 'click', ref: 1 } as const
+  const el = (name: string) => ({ ref: 1, role: 'button', name })
+  for (const n of ['Empty trash', 'Terminate instance', 'Drop table', 'Purge everything', 'Discard', 'Reset password', 'Overwrite', 'Force push', 'Refund', 'Wire funds', 'Send money', 'Cash out', 'Leave workspace', 'Close my account', 'Place order', 'Cancel plan', 'Install to Workspace'])
+    assert.ok(majorAct(click, el(n)), n)
+  for (const n of ['Sort order', 'Order history', 'Allow notifications', 'Releases', 'Tokens', 'Archive', 'Archived', 'Visibility', 'Deployments', 'Cancel changes', 'Install extension'])
+    assert.equal(majorAct(click, el(n)), undefined, n)
+  for (const n of ['Ｄｅｌｅｔｅ', 'Рау now', 'D e l e t e', 'Dele te', 'Del͏ete', 'Save (styled text: check the picture)'])
+    assert.ok(majorAct(click, el(n)), JSON.stringify(n))
+  assert.ok(majorAct(click, el('Save'), { typed: ['Repository to delete = kage'] }))
+})
