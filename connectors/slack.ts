@@ -21,6 +21,7 @@ import type { Inbox, Saved } from '../runtime/store.ts'
 import { channelHistory, type ChannelHistory, type ChannelPost } from '../runtime/channel-watch.ts'
 
 const PICKED_UP = 'ninja'
+const SEEN = '+1'
 const WAITING = 'hourglass_flowing_sand'
 const FAILED = 'warning'
 
@@ -210,6 +211,7 @@ export async function connectSlack(o: { dir: string; appToken: string; userToken
   }
 
   const failed = (task: Task) => react(task.origin.channel, task.origin.ts, FAILED)
+  const seen = (task: Task) => { unreact(task.origin.channel, task.origin.ts, PICKED_UP); void react(task.origin.channel, task.origin.ts, SEEN) }
   const notifyOwner = (text: string) => bot.chat.postMessage({ channel: ids.botDm, text }).then(() => true, e => (log('owner DM failed', e?.data?.error ?? e), false))
 
   const afk = o.afk && startAfk({ dir: o.dir, title: o.title, ownerName, ids, bot, user, ...o.afk, notify: notifyOwner, contextOf: async m => (await contextOf(m)).text, placeOf, nameOf })
@@ -238,5 +240,5 @@ export async function connectSlack(o: { dir: string; appToken: string; userToken
     try { await hear(m, source) } finally { replaying.delete(m.ts) }
   }
   const allow = (l: { teammates: string[]; apps: string[] }) => { ids.teammates = l.teammates; ids.apps = l.apps }
-  return { ids, ownerName, botUser: botAuth.user, socket, failed, notifyOwner, placeOf, nameOf, afk, replay, allow, say: sayAsOwner({ user, ids, hub: o.hub, hear }), start: () => socket.start() }
+  return { ids, ownerName, botUser: botAuth.user, socket, failed, seen, notifyOwner, placeOf, nameOf, afk, replay, allow, say: sayAsOwner({ user, ids, hub: o.hub, hear }), start: () => socket.start() }
 }

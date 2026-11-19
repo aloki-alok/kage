@@ -48,7 +48,7 @@ Run every command from the repo root. Each step ends with a check. Go to the nex
    ```
    Check: the last line is `All good`. Every `FAIL` line names its fix. Do that fix, then run the doctor again. Kage takes about 20 seconds to connect after a start.
 
-8. Tell the person to tag `@<name>` in any Slack thread. They get 🥷 when Kage picks the task up, then 🗡️ for a quick answer, 📜 when Kage waits on their reply, and ⚔️ when the task is done. Each thread runs in its own Claude Code session.
+8. Tell the person to tag `@<name>` in any Slack thread. They get 🥷 when Kage picks the task up, then 🗡️ for a quick answer, 📜 when Kage waits on their reply, and ⚔️ when the task is done. A message that needed nothing, such as a thanks inside a thread, ends with 👍 in place of the 🥷. Each thread runs in its own Claude Code session.
 
 ## Run it
 
