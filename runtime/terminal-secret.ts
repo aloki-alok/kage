@@ -1,6 +1,8 @@
+import { painter } from '../core/voice.ts'
 import { pickSecret, shownAs, typeKeys, type Keys, type Secret } from '../core/secret-prompt.ts'
 
 const out = process.stderr
+const v = painter(Boolean(out.isTTY) && !process.env.NO_COLOR)
 const fit = (line: string) => line.slice(0, Math.max(20, (out.columns || 80) - 1))
 const DOTS = 12
 
@@ -29,9 +31,13 @@ export async function askSecret(label: string, want: Secret, optional = false): 
   if (!process.stdin.isTTY) return optional ? '' : pickSecret(await readPiped(), want).value
   for (;;) {
     const { value, problem } = pickSecret(await readKeys(label), want)
-    if (value) { out.write(`\r\u001b[2K${fit(`${label}✓ ${shownAs(value)}`)}\n`); return value }
+    if (value) {
+      const plain = `${label}✓ ${shownAs(value)}`
+      out.write(`\r\u001b[2K${fit(plain) === plain ? `${label}${v.ok(v.dim(shownAs(value)))}` : fit(plain)}\n`)
+      return value
+    }
     out.write('\n')
     if (!problem && optional) return ''
-    out.write(`${problem ?? 'Nothing was pasted.'} Try again, or press Ctrl-C to stop.\n`)
+    out.write(`${v.says(problem ?? 'Nothing was pasted.')} ${v.dim('Try again, or Ctrl-C to stop.')}\n`)
   }
 }

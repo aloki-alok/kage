@@ -33,14 +33,14 @@ Run every command from the repo root. Each step ends with a check. Go to the nex
    ```sh
    osascript -e "tell application \"Terminal\" to do script \"cd '$PWD' && ./setup.sh save <name>\"" -e 'tell application "Terminal" to activate'
    ```
-   On Linux, ask them to run `kage save <name>` in a terminal (the install line put `kage` on PATH; in a terminal opened before the install, run `~/.local/bin/kage save <name>`). The window prints `ok: saved to ... owner U...` when the tokens work.
+   On Linux, ask them to run `kage save <name>` in a terminal (the install line put `kage` on PATH; in a terminal opened before the install, run `~/.local/bin/kage save <name>`). The window prints `Saved. I'm @<name>, and I answer to you (U...)` when the tokens work.
    Check: `./setup.sh doctor` shows `ok` for the three `SLACK_` tokens. The other lines may still fail at this point.
 
 6. Start it.
    ```sh
    ./setup.sh start
    ```
-   Check: it prints `is starting`. It turns on the service, so macOS or Linux keeps Kage running and starts it at login. The first start installs the Agent SDK, which takes about a minute. On Linux, if it prints a `sudo loginctl enable-linger` line, ask the person to run it, so Kage also starts at boot with no login.
+   Check: it prints `Starting up`. It turns on the service, so macOS or Linux keeps Kage running and starts it at login. The first start installs the Agent SDK, which takes about a minute. On Linux, if it prints a `sudo loginctl enable-linger` line, ask the person to run it, so Kage also starts at boot with no login.
 
 7. Prove it works.
    ```sh

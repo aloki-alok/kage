@@ -4,9 +4,10 @@ import { existsSync, readFileSync, rmSync } from 'node:fs'
 import { connect, type Socket } from 'node:net'
 import { CWD, DIR } from './home.ts'
 import { pickThread } from './pick-thread.ts'
+import { errVoice } from './voice.ts'
 
 const SOCK = `${DIR}/router.sock`
-if (!existsSync(`${DIR}/kage.db`) || !existsSync(SOCK)) { console.error('Kage is not running: start it with kage start'); process.exit(1) }
+if (!existsSync(`${DIR}/kage.db`) || !existsSync(SOCK)) { console.error(errVoice.says("I'm not running. Start me with kage start.")); process.exit(1) }
 
 const { key, place } = await pickThread(process.argv.slice(2).join(' '))
 

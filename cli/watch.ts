@@ -2,7 +2,9 @@
 import { existsSync, statSync } from 'node:fs'
 import { CWD, DIR } from './home.ts'
 import { DatabaseSync } from 'node:sqlite'
-import { stepTime, transcriptLine } from '../core/transcript.ts'
+import { stepTime, transcriptSteps, type Step } from '../core/transcript.ts'
+import { spokenStep } from '../core/voice.ts'
+import { voice } from './voice.ts'
 import { newLines } from '../runtime/transcript-tail.ts'
 
 const HOME = process.env.HOME!
@@ -17,16 +19,12 @@ const threads = db.prepare('select s.key, s.claude_id as id, coalesce(c.place, s
 const RECENT = 30 * 60_000
 const offsets = new Map<string, number>()
 const time = (t = Date.now()) => new Date(t).toTimeString().slice(0, 8)
-const tty = process.stdout.isTTY
-const paint = (rgb: string, s: string) => (tty ? `\x1b[38;2;${rgb}m${s}\x1b[0m` : s)
-const RED = '229;70;46', MUTED = '163;158;148', INK = '244;241;234'
-const COLOR: Record<string, string> = { reply: RED, error: RED, task: INK, input: INK }
 let lastPlace = ''
-function print(at: number, place: string, step: string) {
-  const label = step.slice(0, 5).trim()
-  if (place !== lastPlace) console.log(`\n${paint(RED, '▍')} ${paint(INK, place)}`)
+function print(at: number, place: string, step: Step) {
+  if (place !== lastPlace) console.log(`\n${place}`)
   lastPlace = place
-  console.log(`  ${paint(MUTED, time(at))}  ${paint(COLOR[label] ?? MUTED, step.slice(0, 5))} ${step.slice(6)}`)
+  const { text, tone } = spokenStep(step)
+  console.log(`  ${voice.dim(time(at))}  ${tone === 'red' ? voice.red(text) : tone === 'quiet' ? voice.dim(text) : text}`)
 }
 
 if (!existsSync(PROJECT)) console.error(`No transcripts in ${PROJECT}. If the hub runs in another folder, set harness.cwd to it (kage set harness.cwd <folder>).`)
@@ -38,7 +36,7 @@ function hubLines(first: boolean) {
   offsets.set(HUB_LOG, r.offset)
   for (const raw of first ? r.lines.slice(-20) : r.lines) {
     const m = /^(\S+Z) (?:\[kage\] )?(.*)$/.exec(raw)
-    print(m ? Date.parse(m[1]!) || Date.now() : Date.now(), 'hub', `hub   ${m ? m[2] : raw}`)
+    print(m ? Date.parse(m[1]!) || Date.now() : Date.now(), 'Kage itself', { kind: 'says', text: m ? m[2]! : raw })
   }
 }
 
@@ -58,13 +56,13 @@ function scan(first: boolean) {
     offsets.set(file, r.offset)
     let steps = r.lines.flatMap(raw => {
       const at = stepTime(raw) ?? Date.now()
-      return (transcriptLine(raw)?.split('\n') ?? []).map(s => ({ at, s }))
+      return transcriptSteps(raw).map(step => ({ at, step }))
     })
     if (first) steps = steps.slice(-5)
-    for (const { at, s } of steps) print(at, t.place, s)
+    for (const { at, step } of steps) print(at, t.place, step)
   }
 }
 
+console.log(`\n${voice.says(`Here's what I'm doing${only ? ` in threads matching "${only}"` : ''}, live.`)} ${voice.dim('Ctrl-C to stop.')}`)
 scan(true)
-console.log(`--- following ${only ? `threads matching "${only}"` : 'every thread'} (Ctrl-c to stop)`)
 setInterval(() => scan(false), 1000)

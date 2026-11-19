@@ -114,6 +114,8 @@ git diff origin/main | grep -nEi "/Users/|xox[abp]-|xapp-|AKIA|@[a-z0-9-]+\.(com
 
 ## 6. Open the PR
 
+PR title: a `feat` or `fix` title is what every owner reads under "What's new for you" in `kage update`, without its type, scope or number. Write it as the change a person notices, in plain words: `fix(cli/slack): a taken port turns off one connector, not Kage`, not `fix: listen() handles EADDRINUSE`. Internal work is `refactor`, `test`, `docs` or `chore`, which `kage update` leaves out.
+
 PR body: Summary (call tree or file tree), Evidence (the red then green commands), Merge danger (one-way or two-way door, widest blast radius). Do not merge it yourself.
 
 ## 7. Leave the next session better off
