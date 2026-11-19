@@ -34,6 +34,7 @@ async function hub(o: { store?: ReturnType<typeof openStore>; hookPerHour?: numb
   const sch = scheduler({
     store, failed: () => {}, deliver: (key, task) => { if (brk.on) throw new Error('boom'); sent.push([key, task]); return 'sent' }, ready: () => 'ready', trusted: () => false,
     job: { end: () => {}, freshEvery: () => 0, carryCount: () => 0, carryChars: () => 0, laneDefault: () => true, posted: () => '', project: '/nowhere' },
+    now: () => 0, soon: () => {},
   })
   const inbox = { take: (s: string, c: string, p: string | null) => store.take(s, c, p, Date.now()), handled: (s: string) => store.handled(s), has: (s: string) => store.has(s) }
   const pings: string[] = []
