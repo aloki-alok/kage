@@ -497,6 +497,17 @@ describe("a listed agent's post runs with its person's trust, never the owner's 
     assert.match(t.content, /^Teammate task \(UMATE0002, Kevin Test's agent, not the owner\): /)
   })
 
+  test('with one app listed under two people, the post runs as the agent of the person whose token posted it', async () => {
+    const t = await agentTask(['A0AGENT02:UMATE0009', 'A0AGENT02:UMATE0002'], 'UMATE0002', 'A0AGENT02')
+    assert.equal(t.agent?.person, 'UMATE0002')
+  })
+
+  test('an agent owned by another agent is not given a person', async () => {
+    const t = await agentTask(['A0AGENT04:A0AGENT05', 'A0AGENT05:UMATE0002', 'A0AGENT04'], 'UMATE0002', 'A0AGENT04')
+    assert.equal(t.agent?.person, undefined)
+    assert.equal(senderOf(t), 'agent')
+  })
+
   test('an agent tied to no person stays read and answer only', async () => {
     const t = await agentTask(['A0AGENT03'], 'UMATE0002', 'A0AGENT03')
     assert.equal(senderOf(t), 'agent')

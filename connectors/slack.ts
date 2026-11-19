@@ -172,7 +172,8 @@ export async function connectSlack(o: { dir: string; appToken: string; userToken
           context: async () => (await contextOf(m, true)).text })
       if (j.pick === 'react' && await react(m.channel, m.ts, j.reaction?.emoji ?? 'eyes')) return
     }
-    const entry = t.agent ? (ids.apps ?? []).map(appEntry).find(e => e?.id === t.agent) : undefined
+    const listed = (ids.apps ?? []).map(appEntry).filter(e => e?.id === t.agent)
+    const entry = t.agent ? listed.find(e => e?.owner === m.user || (!!e?.tag && e.tag === m.user)) ?? listed[0] : undefined
     const agent = t.agent ? { app: t.agent, tag: entry?.tag, person: entry?.owner && validUserId(entry.owner) ? entry.owner : undefined } : undefined
     react(m.channel, m.ts, PICKED_UP)
     const askedKey = m.channel === ids.botDm && m.thread_ts && m.thread_ts !== m.ts
