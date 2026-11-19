@@ -1,6 +1,6 @@
 import { describe, test } from 'node:test'
 import assert from 'node:assert/strict'
-import { agentToolRefusal, privateToolRefusal, slackSendRefusal, voiceToolRefusal, mcpToolRefusal } from '../guards.ts'
+import { agentToolRefusal, privateToolRefusal, slackSendRefusal, voiceToolRefusal, mcpToolRefusal, sandboxed } from '../guards.ts'
 
 describe('private sources on a teammate task', () => {
   const MAIL = 'mcp__claude_ai_Gmail__search_threads'
@@ -90,4 +90,13 @@ describe('a trusted teammate (#425)', () => {
   test('a plain teammate still may not', () => {
     assert.match(mcpToolRefusal('mcp__claude_ai_Gmail__search', 'teammate')!, /owner's own account/)
   })
+})
+
+test('the OS sandbox: unset means teammates, so only a thread the owner did not start is walled; true walls all, false none (#313)', () => {
+  assert.equal(sandboxed(undefined, false), true)
+  assert.equal(sandboxed(undefined, true), false)
+  assert.equal(sandboxed('teammates', false), true)
+  assert.equal(sandboxed('teammates', true), false)
+  assert.equal(sandboxed(true, true), true)
+  assert.equal(sandboxed(false, false), false)
 })

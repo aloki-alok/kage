@@ -8,6 +8,7 @@ import { z } from 'zod'
 import { Client } from '@modelcontextprotocol/sdk/client/index.js'
 import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js'
 import { Dispatcher } from '../../core/sessions.ts'
+import { sandboxed } from '../../core/guards.ts'
 import { cardAt } from '../../core/ledgers.ts'
 import { sessionTools } from '../kage-tools.ts'
 import type { Task } from '../../core/task.ts'
@@ -28,7 +29,7 @@ const tick = (ms = 5) => new Promise(r => setTimeout(r, ms))
 const ID = '11111111-1111-4111-8111-111111111111'
 const signal = () => new AbortController().signal
 
-function setup(o: { transcript?: boolean; silent?: boolean; dmFails?: boolean; grants?: Record<string, string[]>; allows?: Record<string, string[]>; review?: boolean; manager?: boolean; budgets?: Record<string, number>; models?: Record<string, string>; trusted?: string[]; deferred?: boolean; browser?: boolean; restartMs?: number; sandbox?: boolean; onResult?: (key: string, total: number, resumed: boolean) => void; onMcp?: (q: unknown) => void; trustedPeople?: { ids: string[] } } = {}) {
+function setup(o: { transcript?: boolean; silent?: boolean; dmFails?: boolean; grants?: Record<string, string[]>; allows?: Record<string, string[]>; review?: boolean; manager?: boolean; budgets?: Record<string, number>; models?: Record<string, string>; trusted?: string[]; deferred?: boolean; browser?: boolean; restartMs?: number; sandbox?: boolean | 'teammates'; onResult?: (key: string, total: number, resumed: boolean) => void; onMcp?: (q: unknown) => void; trustedPeople?: { ids: string[] } } = {}) {
   const sdk = fakeSdk(o)
   const dropped: string[] = []
   const keysDropped: string[] = []
@@ -66,7 +67,7 @@ function setup(o: { transcript?: boolean; silent?: boolean; dmFails?: boolean; g
     ...o.review !== undefined && { reviewHeld: async () => o.review! },
     ownerMemory: '/owner',
     envFile: '/cfg/env',
-    codeDir: '/code/kage', sandbox: () => o.sandbox ?? true,
+    codeDir: '/code/kage', sandbox: owner => sandboxed(o.sandbox ?? true, owner),
     ssm: { sock: '/cfg/ssm.sock', shim: '/code/kage/cli/ssm-plugin-shim', issue: key => o.trusted?.includes(key) ? `tok-${key}` : undefined, drop: key => { dropped.push(key) } },
     keys: { sock: '/cfg/keys.sock', issue: key => o.trusted?.includes(key) ? `key-${key}` : undefined, drop: key => { keysDropped.push(key) } },
     restartMs: o.restartMs ?? 10,
@@ -962,6 +963,19 @@ describe('Kage sessions on the Agent SDK', () => {
     assert.equal(o.env.KAGE_SESSION, '1', 'the marker kage set refuses on, kept when KAGE_THREAD is stripped')
     assert.ok(o.settings.sandbox.filesystem.denyRead.includes('/cfg/secrets.json*'))
     assert.ok(o.settings.sandbox.filesystem.denyWrite.includes('/cfg/config.json*'))
+  })
+  test('with harness.sandbox teammates, a thread a teammate or agent started gets the OS sandbox and the owner\'s own thread does not (#313)', async () => {
+    const t = setup({ sandbox: 'teammates' })
+    t.d.task('C1:5.5', t.task(), 0)
+    t.d.task('C2:5.5', t.task({ channel: 'C2', fromOwner: false }), 0)
+    await tick()
+    assert.equal(t.sdk.runs[0]!.options.settings.sandbox, undefined, 'the owner\'s thread')
+    assert.equal(t.sdk.runs[1]!.options.settings.sandbox?.enabled, true, 'the teammate\'s thread')
+    assert.ok(t.sdk.runs[1]!.options.settings.sandbox.filesystem.denyRead.includes('/cfg/secrets.json*'))
+    const v = setup({ sandbox: 'teammates' })
+    v.d.task('voice:c1', v.task({ channel: 'voice', fromOwner: false }), 0)
+    await tick()
+    assert.equal(v.sdk.runs[0]!.options.settings.sandbox?.enabled, true, 'a caller who is not the owner')
   })
   test('with harness.sandbox off a session gets no OS sandbox, and the token files and config.json stay denied to the file tools', async () => {
     const t = setup({ sandbox: false })

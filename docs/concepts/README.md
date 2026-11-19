@@ -36,7 +36,7 @@ A session works with Kage's tools. A call that acts as you, such as posting some
 
 ## Nothing secret leaves
 
-Tokens live in `secrets.json`, and only the hub reads them. No session's file tools may open that file, and with `harness.sandbox` on, its shell cannot either. Every outgoing message passes one guard that blocks secrets and crowd pings.
+Tokens live in `secrets.json`, and only the hub reads them. No session's file tools may open that file, and in a sandboxed thread (by default, every thread a teammate, agent or caller started) its shell cannot either. Every outgoing message passes one guard that blocks secrets and crowd pings.
 
 ## Every page
 

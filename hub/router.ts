@@ -16,7 +16,7 @@ import { jevAfk, jevCheck, jevTriage } from '../connectors/jev.ts'
 import { jevConfig } from '../core/jev.ts'
 import { connectBrowser } from '../connectors/browser.ts'
 import { blockList, unreadableBlocks } from '../core/browser.ts'
-import { memoryDirs } from '../core/guards.ts'
+import { memoryDirs, sandboxed } from '../core/guards.ts'
 import { protectConfig } from '../runtime/path-guards.ts'
 import { stopLine } from '../core/board.ts'
 import { modelFor, placeFor, sessionKey, type Conversation, type Lane } from '../core/conversations.ts'
@@ -268,7 +268,7 @@ const sdk = sdkLib ? sdkSessions({
   onMcp: q => { if (needs.watching()) void mcpStatus(q).then(needs.seen).catch(e => log('mcp status failed', e)) },
   ownerMemory: MEM.owner, sharedTools: config.sharedTools,
   envFile: ENV_FILE,
-  codeDir: CODE, sandbox: () => config.harness?.sandbox === true,
+  codeDir: CODE, sandbox: owner => sandboxed(config.harness?.sandbox, owner),
   ssm: { sock: SSM_SOCK, shim: SSM_SHIM, issue: key => ssm.issue(key), drop: key => ssm.drop(key) },
   keys: { sock: KEYS_SOCK, issue: key => keys.issue(key), drop: key => keys.drop(key) },
   onStart: () => store.saveSessions(d.saved()),
