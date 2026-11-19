@@ -38,6 +38,7 @@ export function configWatcher(o: {
     })
     if (live.length) {
       o.apply({ teammates: ok.teammates, trusted: ok.trusted, apps: ok.apps })
+      if (ok.notTrusted.length) o.tell(`people.trusted names ${ok.notTrusted.join(', ')}, who ${ok.notTrusted.length === 1 ? 'is' : 'are'} not in people.teammates, so Kage does not trust them. Run kage add <person> --trusted to trust a teammate, or remove the id from people.trusted.`)
       o.event('config.live', live)
     }
     last = next

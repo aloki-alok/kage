@@ -21,7 +21,7 @@ export const Config = z.strictObject({
     teammates: z.array(z.string().refine(validUserId)).optional(),
     trusted: z.array(z.string().refine(validUserId)).optional(),
     agents: z.array(z.strictObject({ app: z.string(), owner: z.string().optional(), tag: z.string().optional() }).refine(a => appEntry(agentLine(a)) !== undefined)).optional(),
-  }).refine(p => (p.trusted ?? []).every(id => p.teammates?.includes(id)), { message: 'every trusted id must also be in people.teammates' }).optional(),
+  }).optional(),
   waiting: z.strictObject({ expireHours: count }).optional(),
   kagelets: z.strictObject({
     max: count, ownersMax: count, dailyUsd: money, totalDailyUsd: money, chainUsd: money, needsPerDay: count, askRunsPerHour: count, notesKept: count, noteChars: count, measureMinutes: count, trendRuns: count,
@@ -211,13 +211,14 @@ export function badValue(c: Config): string | undefined {
   const hook = c.tripwires?.hookPort
   if (hook && !(Number.isInteger(hook) && hook >= 1024 && hook <= 65535)) return 'tripwires.hookPort must be 0 (off) or a port from 1024 to 65535'
 }
-export function checkSettings(c: Config, s: Secrets): { name: string; teammates: string[]; trusted: string[]; apps: string[] } | { error: string } {
+export function checkSettings(c: Config, s: Secrets): { name: string; teammates: string[]; trusted: string[]; notTrusted: string[]; apps: string[] } | { error: string } {
   for (const [path, v] of [['slack.app', s.slack?.app], ['slack.user', s.slack?.user], ['slack.bot', s.slack?.bot]] as const) if (!v) return { error: `${path} is missing in secrets.json` }
   const bad = badValue(c)
   if (bad) return { error: bad }
   const name = (c.name || 'kage').toLowerCase()
   if (!validName(name)) return { error: `name "${name}" must be a short lowercase word (letters, digits, dashes)` }
-  return { name, teammates: c.people?.teammates ?? [], trusted: c.people?.trusted ?? [], apps: (c.people?.agents ?? []).map(agentLine) }
+  const teammates = c.people?.teammates ?? [], trusted = c.people?.trusted ?? []
+  return { name, teammates, trusted: trusted.filter(id => teammates.includes(id)), notTrusted: trusted.filter(id => !teammates.includes(id)), apps: (c.people?.agents ?? []).map(agentLine) }
 }
 
 const SAFE = [/^kagelets\.(max|dailyUsd|totalDailyUsd|chainUsd|needsPerDay|askRunsPerHour|notesKept|noteChars|measureMinutes|trendRuns)$/, /^waiting\.expireHours$/, /^afk\.(on|model)$/, /^harness\.(jobModel|jobFreshEvery|jobCarry|jobCarryChars|jobLaneDefault)$/, /^jev\.(threshold|model|ackWords)$/, /^tripwires\.(timeoutSec|maxKb|failPing|patternMax|lineMax|maxPosts|catchUpMax|seenMax|hookPerHour|swapAfter|shadowWindowMin|swapUndoDays)$/,
