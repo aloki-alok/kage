@@ -201,10 +201,14 @@ describe("a note to the owner on WhatsApp is safe to send there (#423)", () => {
 
 describe("an approval card answered on WhatsApp (#423)", () => {
   const me = '100OWNER@c.us'
-  const msg = (text: string, o: Partial<{ chat: string; fromMe: boolean; viaApi: boolean; forwarded: boolean }> = {}) => ({ chat: me, id: 'w1', fromMe: true, text, ...o })
+  const msg = (text: string, o: Partial<{ chat: string; to: string; fromMe: boolean; viaApi: boolean; forwarded: boolean }> = {}) => ({ chat: me, to: me, id: 'w1', fromMe: true, text, ...o })
   test("the owner's 'yes 4821' or 'no 4821' in their own chat answers that card", () => {
     assert.deepEqual(ownerAnswer(msg('yes 4821'), me), { code: '4821', behavior: 'allow' })
     assert.deepEqual(ownerAnswer(msg(' No 4821 '), me), { code: '4821', behavior: 'deny' })
+  })
+  test("the owner typing 'yes 4821' in a chat with someone else never answers, even if the bridge names the owner as the sender (#423)", () => {
+    assert.equal(ownerAnswer(fromWaha({ id: 'w9', from: me, to: '200FRIEND@c.us', fromMe: true, body: 'yes 4821' }), me), undefined)
+    assert.deepEqual(ownerAnswer(fromWaha({ id: 'w8', from: me, to: me, fromMe: true, body: 'yes 4821' }), me), { code: '4821', behavior: 'allow' })
   })
   test('nothing else answers a card: another chat, someone else, a message Kage sent, a forward, or other words', () => {
     assert.equal(ownerAnswer(msg('yes 4821', { chat: '200FRIEND@c.us' }), me), undefined)
