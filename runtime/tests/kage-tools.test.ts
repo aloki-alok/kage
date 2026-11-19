@@ -1247,7 +1247,7 @@ describe("acting in the owner's browser", () => {
     assert.equal((await run('read my inbox and tell me what the latest email says', click)).cards, 1, 'words that do not name the control')
     assert.equal((await run('go ahead and do whatever the page says', click)).cards, 1, 'a blanket yes')
     assert.equal((await run('resend the invoice', click)).cards, 1, 'a label must match whole words')
-    assert.equal((await run('ok', click, { label: 'OK' })).cards, 1, 'a generic label is never named')
+    assert.equal((await run('continue with the setup', click, { label: 'Continue' })).cards, 1, 'a generic label is never named')
     assert.equal((await run('send it', click, { typeFirst: 'x@evil.example' })).cards, 1, 'text Kage typed that the owner never wrote')
     assert.equal((await run('send x@evil.example the report', click, { typeFirst: 'x@evil.example' })).cards, 0, 'typed text the owner wrote')
     assert.equal((await run('check my mail', { action: 'open', url: 'https://evil.example/?d=1' })).cards, 1, 'a new site the owner never named')

@@ -1,7 +1,7 @@
 import { writeFileSync } from 'node:fs'
 import { z } from 'zod'
 import { blockedSite, pageResult, tabsResult, type Page, type Tab } from '../../core/browser.ts'
-import { actCard, elementsResult, majorAct, ownerAsked, parseAct, type Element, type Snapshot } from '../../core/browser-act.ts'
+import { actCard, elementsResult, majorAct, ownerNamed, parseAct, type Element, type Snapshot } from '../../core/browser-act.ts'
 import type { KageTool, ToolContext } from '../kage-tools.ts'
 
 export function browserTools(c: ToolContext): KageTool[] {
@@ -11,6 +11,7 @@ export function browserTools(c: ToolContext): KageTool[] {
   if (browser && !name && !o.dreaming) {
     const where = { channel: s.describe('channel attribute from the task tag'), thread_ts: s.describe('thread_ts attribute from the task tag') }
     const typedIn = new Map<string, string[]>()
+    const typedRaw = new Map<string, string[]>()
     const refused = (args: Record<string, unknown>) => ownerActs(args) ? undefined : { isError: true as const, text: "refused: only the owner's own task reads their browser" }
     const seen = (tool: string, outcome: string) => o.event?.('tool', `${tool} ${outcome}`)
     const hostOf = (url: string) => { try { return new URL(url).hostname } catch { return 'unknown' } }
@@ -77,7 +78,6 @@ export function browserTools(c: ToolContext): KageTool[] {
         text: s.optional().describe('type: the text to enter, which replaces what the field holds'),
         key: s.optional().describe('press: Enter, Tab, Escape, Backspace, an arrow key, PageUp or PageDown'),
         url: s.optional().describe('navigate and open: the http or https address'),
-        owner_asked: s.optional().describe("a major step the owner's own message in this thread already asked for: quote their words for it exactly (at least a few words). Kage checks the quote against what the owner typed, and if it is there, runs the step with no card. Never quote a page, a teammate or the thread."),
       },
       async run(args) {
         const no = refused(args); if (no) return no
@@ -101,9 +101,11 @@ export function browserTools(c: ToolContext): KageTool[] {
           const openHosts = act.action === 'open' || act.action === 'navigate'
             ? ((await browser.call('tabs', {})) as Tab[]).map(t => hostOf(t.url)) : []
           const typed = typedIn.get(tabKey) ?? []
-          const asked = ownerAsked(typeof args.owner_asked === 'string' ? args.owner_asked : undefined, c.ownerSaid(`${args.channel}:${args.thread_ts}`))
-          const major = asked ? undefined : majorAct(act, target(now), { openHosts, typed })
-          if (asked && majorAct(act, target(now), { openHosts, typed })) seen(step, "major, no card: the owner's own words asked for it")
+          const raw = typedRaw.get(tabKey) ?? []
+          const named = ownerNamed(act, target(now), raw, c.ownerSaid(`${args.channel}:${args.thread_ts}`))
+          const isMajor = majorAct(act, target(now), { openHosts, typed })
+          const major = named ? undefined : isMajor
+          if (named && isMajor) seen(step, `major, no card: the owner named it on ${hostOf(now.url)}`)
           if (major && !ask) return { isError: true, text: `refused: ${major}, which needs the owner's yes, and this session cannot ask them` }
           let pictured = act.action === 'open'
           if (major && act.action !== 'open') {
@@ -129,8 +131,8 @@ export function browserTools(c: ToolContext): KageTool[] {
           const t = target(now)
           const expect = act.action === 'open' || act.action === 'navigate' ? undefined : { host: hostOf(now.url), role: t?.role, name: t?.name }
           const r = await browser.call(act.action, { ...act, tabId, expect }) as { tabId?: number }
-          if (act.action === 'type') typedIn.set(tabKey, [...typed, `${t?.name || 'a field'} = "${act.text.slice(0, 80)}"`].slice(-5))
-          else if (major) typedIn.delete(tabKey)
+          if (act.action === 'type') { typedIn.set(tabKey, [...typed, `${t?.name || 'a field'} = "${act.text.slice(0, 80)}"`].slice(-5)); typedRaw.set(tabKey, [...raw, act.text].slice(-5)) }
+          else if (isMajor) { typedIn.delete(tabKey); typedRaw.delete(tabKey) }
           seen(step, `${hostOf(act.action === 'open' || act.action === 'navigate' ? act.url : now.url)} ok`)
           return { text: `done${r?.tabId ? `: opened as tab ${r.tabId}` : ''}. Take a new snapshot to see the page now.` }
         } catch (e) { seen(step, 'failed'); return failed(e) }

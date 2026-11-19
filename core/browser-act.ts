@@ -68,9 +68,18 @@ const GENERIC = /^(ok|okay|yes|continue|proceed|done|accept|agree|got it|i under
 const SENDS = /\b(message|reply|comment|compose|chat|email)\b/i
 const plainName = (s: string) => s.replace(/\p{Zs}/gu, ' ').replace(/\p{Cf}/gu, '').trim()
 type ActContext = { openHosts?: string[]; typed?: string[] }
-const words = (s: string) => s.toLowerCase().replace(/\s+/g, ' ').trim()
-export const ownerAsked = (quote: string | undefined, said: readonly string[]) =>
-  !!quote && words(quote).length >= 12 && said.some(t => words(t).includes(words(quote)))
+const phrase = (s: string) => ` ${s.toLowerCase().replace(/[^a-z0-9@.]+/g, ' ').trim()} `
+export function ownerNamed(a: Act, el: Element | undefined, typed: readonly string[], said: readonly string[]): boolean {
+  const heard = said.map(phrase)
+  const named = (s: string) => phrase(s).trim().length >= 3 && heard.some(h => h.includes(phrase(s)))
+  if (a.action === 'navigate' || a.action === 'open') {
+    const host = (() => { try { return new URL(a.url).hostname.replace(/^www\./, '') } catch { return '' } })()
+    return !!host && named(host)
+  }
+  const label = plainName(el?.name ?? '')
+  if (!label || GENERIC.test(label) || /[^\x00-\x7F…]/.test(label) || label.includes('(styled text')) return false
+  return named(label) && typed.every(named)
+}
 export function majorAct(a: Act, el?: Element, ctx: ActContext = {}): string | undefined {
   if (a.action === 'navigate' || a.action === 'open') {
     const host = (() => { try { return new URL(a.url).hostname } catch { return '' } })()
