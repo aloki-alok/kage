@@ -10,7 +10,7 @@ const kagelet: KageletRow = { name: 'deploy-watch', state: 'runs', cron: '*/30 *
 function frame(tab: Tab, cols = 132, rows = 38): string[] {
   resize({ cols, rows })
   const v: View = {
-    now: NOW, t: 0, since: 1e9, slack: true, hubUp: true, spentToday: 1.2,
+    now: NOW, t: 0, since: 1e9, channels: [{ name: 'slack', up: true }, { name: 'email', up: false }], hubUp: true, spentToday: 1.2,
     rows: [{ key: 'C0TEST1:1.0', place: '#infra-alerts', connector: 'slack', state: 'working', label: 'working', ageMs: 8_000 }],
     nowLine: () => 'read deploy.log', tab, focus: 'list', selKey: 'C0TEST1:1.0', mode: 'steps',
     feed: [{ at: NOW, text: 'read   deploy.log' }], typed: Infinity, threadSpend: 0,
@@ -34,4 +34,18 @@ test('the kagelets and schedules tabs take the full width, with no stale steps b
     assert.doesNotMatch(text, /read deploy\.log/, `${tab}: the thread's steps still show`)
   }
   assert.match(frame('kagelets').join('\n'), /LAST REPORT/)
+})
+
+test('the top bar names every connector that is on, not only slack', () => {
+  const top = frame('threads')[0]!
+  assert.match(top, /● slack {2}● email/)
+})
+
+test('each chart says what a bar is, its top value and its time range', () => {
+  const text = frame('threads').join('\n')
+  assert.match(text, /turns every (minute|\d+ min)/)
+  assert.match(text, /in the last hour/)
+  assert.match(text, /-60m .*-30m .*now/)
+  assert.match(text, /spend per hour/)
+  assert.match(text, /\$0\.00 today|\$1\.20 today/)
 })
