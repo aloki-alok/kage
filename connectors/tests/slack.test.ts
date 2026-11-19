@@ -1,7 +1,7 @@
 import { describe, test } from 'node:test'
 import assert from 'node:assert/strict'
 import { intake, ownerNote, connectSlack } from '../slack.ts'
-import { jevTriage } from '../jev.ts'
+import { jevTriage, type Triage } from '../jev.ts'
 import { openLedgers, runEvents } from '../../runtime/ledger.ts'
 import { log } from '../../runtime/log.ts'
 import { mkdtempSync, rmSync } from 'node:fs'
@@ -75,6 +75,38 @@ test('a message triage sends to react, with no emoji picked, still gets the eyes
     assert.deepEqual(reactions, ['eyes'])
   } finally {
     ledger.close()
+    rmSync(dir, { recursive: true, force: true })
+  }
+})
+
+test('the pickup reaction lands before triage answers, and a react pick leaves only the picked emoji (#320)', async () => {
+  const dir = mkdtempSync(join(tmpdir(), 'kage-triage-'))
+  const adds: string[] = [], on = new Set<string>()
+  let answer!: (v: Awaited<ReturnType<Triage>>) => void
+  try {
+    const client = {
+      auth: { test: async () => ({ team_id: 'TTEST', user_id: 'UTEST1' }) },
+      conversations: { open: async () => ({ channel: { id: 'DTEST' } }), history: async () => ({ messages: [] }) },
+      users: { info: async () => ({ user: { real_name: 'Sam Test' } }) },
+      reactions: {
+        add: async (o: { name: string }) => { adds.push(o.name); on.add(o.name); return { ok: true } },
+        remove: async (o: { name: string }) => { on.delete(o.name); return { ok: true } },
+      },
+    }
+    const slack = await connectSlack({
+      dir, appToken: 'test', userToken: 'test', bot: client as never, user: client as never,
+      name: 'kage', title: 'Kage', teammates: [], apps: [],
+      hub: { posted: () => '', handled: () => {}, deliver: () => assert.fail('a react pick needs no session') } as never,
+      triage: () => new Promise(r => { answer = r }),
+    })
+    const done = slack.replay('test-source', JSON.stringify({ ...msg, client_msg_id: 'test', text: '@kage ok' }))
+    await new Promise(r => setTimeout(r, 50))
+    assert.deepEqual(adds, ['ninja'], 'the pickup reaction before triage answers')
+    answer({ pick: 'react', why: 'an ack', reaction: { emoji: 'thumbsup' } as never })
+    await done
+    await new Promise(r => setTimeout(r, 20))
+    assert.deepEqual([...on], ['thumbsup'])
+  } finally {
     rmSync(dir, { recursive: true, force: true })
   }
 })
