@@ -146,13 +146,18 @@ describe('the answer to a stop', () => {
   })
 })
 
-describe('kage status summary', () => {
-  test('one line: uptime, restarts, schedules and spend, then where to look next', () => {
-    const [line, next] = statusSummary({ upSec: 6 * 3600, boots24h: 2, schedules: 4, spentToday: 3.2, turnsToday: 12 })
-    assert.equal(line, 'hub up 6h · 2 starts in 24 h · 4 schedules · $3.20 today over 12 turns')
-    assert.match(next!, /kage top/)
+describe('kage status summary, in Kage words', () => {
+  test('the version, uptime, spend and schedules in one sentence', () => {
+    const r = statusSummary({ version: '6185ff7 (2026-11-19, v0.4.3)', upSec: 6 * 3600, boots24h: 2, schedules: 4, spentToday: 3.2, turnsToday: 12 })
+    assert.equal(r.says, "I'm running 6185ff7. I've been up 6 hours and spent $3.20 today over 12 turns. 4 schedules.")
+    assert.equal(r.warn, undefined)
   })
-  test('many restarts point at the doctor, and a hub with no pid says so', () => {
-    assert.match(statusSummary({ boots24h: 48, schedules: 0, spentToday: 0, turnsToday: 0 })[0]!, /^hub up: unknown · 48 starts in 24 h \(kage doctor says why\) · no schedules · nothing spent today$/)
+  test('one of each reads in the singular, and nothing spent says so', () => {
+    assert.equal(statusSummary({ upSec: 3600, boots24h: 1, schedules: 1, spentToday: 0, turnsToday: 0 }).says, "I've been up 1 hour and spent nothing today. 1 schedule.")
+  })
+  test('many restarts are a warning, and an unknown uptime is left out', () => {
+    const r = statusSummary({ boots24h: 48, schedules: 0, spentToday: 0, turnsToday: 0 })
+    assert.equal(r.says, "I'm running. I've spent nothing today.")
+    assert.equal(r.warn, 'I restarted 48 times in the last 24 hours.')
   })
 })
