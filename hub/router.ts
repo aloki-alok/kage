@@ -286,6 +286,7 @@ d.adopt(Object.keys(saved).filter(k => runningAtStart.has(saved[k]!)), Date.now(
 restoreHolds(DIR, d)
 const pingThread = threadPing({ title: Title, bot, user, thread: key => store.conversation(key)?.conversation, posted: cells => ledgers.add('posted', cells) })
 const schedules = scheduler({ store, failed,
+  soon: (fn, ms) => { setTimeout(() => { const now = Date.now(); if (!limits.draining(now)) fn(now) }, ms).unref() },
   deliver: kageletDeliver(kag.notes, toSession, kag.board),
   ready: key => d.ready(key),
   trusted: key => store.trust(key) === true, job: { end: k => d.reset(k), project: PROJECT, carryChars: () => config.harness?.jobCarryChars ?? 500, laneDefault: () => config.harness?.jobLaneDefault ?? true, freshEvery: () => config.harness?.jobFreshEvery ?? 20, carryCount: () => config.harness?.jobCarry ?? 5, posted: () => ledgers.text('posted') },
