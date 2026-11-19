@@ -232,7 +232,7 @@ const sdk = sdkLib ? sdkSessions({
     cwd: process.cwd(),
     settingSources: ['user', 'project', 'local'],
     plugins: [{ type: 'local' as const, path: CODE }],
-    settings: { autoMemoryDirectory: MEM.own },
+    settings: { autoMemoryDirectory: MEM.own, ...harness.pluginsOff?.length && { enabledPlugins: Object.fromEntries(harness.pluginsOff.map(p => [p, false])) } },
     pathToClaudeCodeExecutable: sdkLib.claude,
   },
   ownerMemory: MEM.owner, sharedTools: config.sharedTools,
