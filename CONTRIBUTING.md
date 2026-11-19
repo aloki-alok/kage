@@ -132,6 +132,7 @@ Write logs to stderr only. In a tmux pane, stdout carries the channel protocol, 
 | `tripwire.ts` | Tripwires: the pure rules of a probe that wakes a session only when its output changes. How output is normalized and fingerprinted, the words of a command, which ignore patterns are safe, whether a pin changed, what one run does to a job's state (a wake, a failure ping), the hash kept of a job webhook's token, and when a hook needs the owner's card. |
 | `shadow.ts` | Self-swap (ADR 0017): a twin's link to the job it shadows, and the pairing of that job's acts (own-thread posts and prod writes) with the twin's verdicts into matches and misses, and when a swap is due. |
 | `afk.ts` | AFK mode: which threads the stand-in watches, when it posts or phones the owner, and what it may say. |
+| `job-needs.ts` | The tools a job names in `needs`: which are live (each connected MCP server's tools, named as a session sees them, and nothing known while one still connects), and the owner's one DM when one goes missing and one when all are back. |
 | `pane-turn.ts` | Who a tmux pane's turn runs for: the lowest sender in it, the owner's message marked when it joins someone else's turn and run again on its own once that turn ends, and a message that came after the turn's last step kept for the next turn. |
 | `blocks.ts` | When the safety check stops a turn: the line in the thread, the owner's DM, and whether the thread closes. |
 | `commands.ts` | Local slash commands (`connectors.commands`). |
