@@ -9,6 +9,7 @@
 <label>Name <input id="name"></label>
 <label>Secret <input type="password" value="hunter2"></label>
 <button onclick="out.textContent = 'Hello ' + document.getElementById('name').value + (event.isTrusted ? ' (trusted)' : ' (synthetic)')">Say hello</button>
+<button onclick="const m = document.querySelector('kage-mark'); out.textContent = m && getComputedStyle(m).display !== 'none' ? 'kage mark: shown, ' + getComputedStyle(m).pointerEvents : 'kage mark: none'">Check mark</button>
 <form onsubmit="event.preventDefault(); sub.textContent = 'submitted'"><input aria-label="Search"></form>
 <div data-kage-ref="1" style="display:none" onclick="out.textContent = 'DELETE via forged ref'">Delete</div>
 <button data-kage-ref="1" onclick="out.textContent = 'send clicked'">Send</button>
