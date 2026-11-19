@@ -17,7 +17,14 @@ export function configWatcher(o: {
   restartWanted: (yes: boolean) => void
   debounceMs?: number
 }) {
-  let last = o.boot, count = 0, announced = '', told = ''
+  let last = o.boot, count = 0, announced = '', told = '', strayTold = ''
+  const tellStray = (ids: string[]) => {
+    if (ids.join() === strayTold) return
+    strayTold = ids.join()
+    if (ids.length) o.tell(`people.trusted names ${ids.join(', ')}, who ${ids.length === 1 ? 'is' : 'are'} not in people.teammates, so Kage does not trust them. Run kage add <person> --trusted to trust a teammate, or remove the id from people.trusted.`)
+  }
+  const atBoot = checkSettings(o.boot.config, o.boot.secrets)
+  if (!('error' in atBoot)) tellStray(atBoot.notTrusted)
   const lists = (s: Settings) => ({ 'people.teammates': registryOf(s.config).filter(e => e.kind === 'person'), 'people.agents': registryOf(s.config).filter(e => e.kind === 'agent') })
   type Key = keyof ReturnType<typeof lists>
 
@@ -30,6 +37,7 @@ export function configWatcher(o: {
     const cwd = next.config.harness?.cwd?.replace(/^~(?=\/|$)/, process.env.HOME!)
     if (cwd && !(existsSync(cwd) && statSync(cwd).isDirectory())) return refuse('harness.cwd is not a folder that exists', ['harness.cwd'])
     told = ''
+    tellStray(ok.notTrusted)
     const live = (Object.keys(lists(last)) as Key[]).filter(k => JSON.stringify(lists(last)[k]) !== JSON.stringify(lists(next)[k]))
     const changed = live.map(k => {
       const a = lists(last)[k].map(e => e.id), b = lists(next)[k].map(e => e.id)

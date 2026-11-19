@@ -367,13 +367,13 @@ describe('who a task counts as', () => {
     assert.equal(senderOf({ ...t('C1', false), agent: { app: 'A0AGENT01' } }), 'agent')
   })
   test('a trusted teammate is trusted; an agent of a trusted teammate is too; email never is (#425)', () => {
-    assert.equal(senderOf({ ...t('C1', false), trusted: true }), 'trusted')
-    assert.equal(senderOf({ ...t('C1', false), trusted: true, agent: { app: 'A0AGENT01', person: 'UMATE0002' } }), 'trusted')
-    assert.equal(senderOf({ ...t('C1', false), trusted: true, agent: { app: 'A0AGENT01' } }), 'agent')
-    assert.equal(senderOf({ ...t('email', false), trusted: true }), 'teammate')
+    assert.equal(senderOf({ ...t('C1', false), trusted: 'UMATE0002' }), 'trusted')
+    assert.equal(senderOf({ ...t('C1', false), trusted: 'UMATE0002', agent: { app: 'A0AGENT01', person: 'UMATE0002' } }), 'trusted')
+    assert.equal(senderOf({ ...t('C1', false), trusted: 'UMATE0002', agent: { app: 'A0AGENT01' } }), 'agent')
+    assert.equal(senderOf({ ...t('email', false), trusted: 'UMATE0002' }), 'teammate')
   })
   test('a turn runs at its lowest sender, whatever the order (#425)', () => {
-    const trusted = { ...t('C1', false), trusted: true }, mate = t('C1', false), agent = { ...t('C1', false), agent: { app: 'A0AGENT01' } }
+    const trusted = { ...t('C1', false), trusted: 'UMATE0002' }, mate = t('C1', false), agent = { ...t('C1', false), agent: { app: 'A0AGENT01' } }
     assert.equal(lowestSender([trusted, mate]), 'teammate')
     assert.equal(lowestSender([mate, agent]), 'agent')
     assert.equal(lowestSender([t('C1', true), trusted]), 'trusted')

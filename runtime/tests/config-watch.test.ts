@@ -36,6 +36,17 @@ describe('a changed people list applies now', () => {
     assert.ok(!t.seen.log.join('\n').includes('xox'), 'no token in the log')
     t.w.close()
   })
+  test('a trusted id that is no teammate is named to the owner once, whatever else changed (#435)', () => {
+    const t = setup()
+    updateConfig(t.env, c => ({ ...c, people: { teammates: ['UTEST0001'], trusted: ['UTEST0009'], agents: [] } }))
+    t.w.check()
+    assert.equal(t.seen.told.length, 1)
+    assert.match(t.seen.told[0]!, /UTEST0009/)
+    updateConfig(t.env, c => ({ ...c, people: { teammates: ['UTEST0001', 'UTEST0002'], trusted: ['UTEST0009'], agents: [] } }))
+    t.w.check()
+    assert.equal(t.seen.told.length, 1, 'told once, not on every later edit')
+    t.w.close()
+  })
 })
 
 describe('any other key restarts the hub once it is quiet', () => {
