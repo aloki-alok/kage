@@ -79,6 +79,7 @@ export async function postAsKage(o: { title: string; bot: WebClient; user: WebCl
 }
 
 export function sessionTools(o: {
+  cardOut?: (c: { id: string; tool: string; description: string; place: string }) => void
   title: string
   bot: WebClient
   user: WebClient
@@ -227,6 +228,7 @@ export function sessionTools(o: {
         text: `*Approve?* ${p.tool.replace(/^mcp__(.+__)?/, '').replaceAll('_', ' ')} · ${where}${description ? `\n${description}` : ''}\n\`\`\`${cut}\`\`\`\nReply \`yes\` or \`no\` in this thread`,
       })
       append('posted', [o.botDm(), r.ts!, 'card', p.id])
+      o.cardOut?.({ id: p.id, tool: p.tool, description, place: where })
     },
   }
 }

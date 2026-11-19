@@ -143,7 +143,7 @@ describe('decisions', () => {
     assert.equal(ownerChannelLine('slack', false), undefined)
     const on = ownerChannelLine('whatsapp', true)!
     assert.equal(on.kind, 'note')
-    assert.match(on.text, /Approval cards .*Slack/)
+    assert.match(on.text, /approval cards go to your WhatsApp/)
     const off = ownerChannelLine('whatsapp', false)!
     assert.equal(off.kind, 'fail')
     assert.match(off.text, /kage set owner.channel slack/)

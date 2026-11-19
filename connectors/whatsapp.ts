@@ -8,7 +8,7 @@ import { listen, readBody } from './webhook.ts'
 import type { Inbox } from '../runtime/store.ts'
 import { findSecret, guardVerdict } from '../core/outbound.ts'
 import type { Job } from '../runtime/jobs.ts'
-import { bridgeAlert, decideWhatsApp, fromWaha, guardPrompt, standInPrompt, waOutgoing, waTaskContent, withoutFooter, type Arming, type BridgeSeen, type WahaPayload, type WaLine, ownerNote } from '../core/whatsapp.ts'
+import { bridgeAlert, decideWhatsApp, fromWaha, guardPrompt, standInPrompt, waOutgoing, waTaskContent, withoutFooter, type Arming, type BridgeSeen, type WahaPayload, type WaLine, ownerNote, ownerAnswer } from '../core/whatsapp.ts'
 
 export const wahaUrl = (set?: string | null) => set || 'http://127.0.0.1:3198'
 
@@ -49,7 +49,7 @@ export function wahaHandler(hmac: string, inbox: Inbox, run: (p: WahaPayload, so
   }
 }
 
-export function startWhatsApp(o: { dir: string; name: string; owner: string; waha: Record<string, string>; whatsapp: { wahaUrl?: string | null; model?: string | null; hookHost?: string | null; hookPort?: number }; memory: string; inbox: Inbox; onTask: (t: WaTask) => void; notify: (text: string) => void }) {
+export function startWhatsApp(o: { ownerAnswer?: (a: { code: string; behavior: 'allow' | 'deny' }) => void; dir: string; name: string; owner: string; waha: Record<string, string>; whatsapp: { wahaUrl?: string | null; model?: string | null; hookHost?: string | null; hookPort?: number }; memory: string; inbox: Inbox; onTask: (t: WaTask) => void; notify: (text: string) => void }) {
   const waha = o.waha
   const URL = wahaUrl(o.whatsapp.wahaUrl)
   const HMAC = waha.WHATSAPP_HOOK_HMAC_KEY
@@ -105,6 +105,11 @@ export function startWhatsApp(o: { dir: string; name: string; owner: string; wah
   async function onEvent(p: WahaPayload, source?: string, replayed = false) {
     const m = fromWaha(p)
     if (!m.chat) return
+    if (o.ownerAnswer && ownerAnswer(m, m.chat)) {
+      const me = await api('/api/sessions/default/me').then(r => (r as { id?: string } | null)?.id, () => undefined)
+      const a = ownerAnswer(m, me)
+      if (a) { if (!replayed) o.ownerAnswer(a); return }
+    }
     const action = decideWhatsApp(m, armed, o.name, Date.now())
     if (action.kind === 'ignore') return
     log('whatsapp', action.kind, logRef(m.chat))
