@@ -1,6 +1,6 @@
 import { describe, test } from 'node:test'
 import assert from 'node:assert/strict'
-import { addressed, agentNote, agentRoster, loopGuard } from '../agents.ts'
+import { addressed, agentNote, agentRoster, foreignAgentTags, loopGuard } from '../agents.ts'
 
 describe('a post addressed to an agent', () => {
   test('every part of a split post carries the tag, not only the first', () => {
@@ -85,4 +85,13 @@ describe('the agents a session can address', () => {
     assert.match(agentRoster(['A0AGENT3:A0OTHER1:U0BOT003'])!, /<@U0BOT003>[,.]/)
     assert.equal(agentRoster([]), undefined)
   })
+})
+
+test("another person's agent is foreign; the owner's own, and an agent of the owner's agent, are not (#310)", () => {
+  const apps = ['ATEST0001:UTESTOWN:UTESTBOT1', 'ATEST0002:UTESTMATE:UTESTBOT2', 'ATEST0003:ATEST0001:UTESTBOT3', 'ATEST0004:UTESTMATE']
+  assert.deepEqual(foreignAgentTags(apps, 'UTESTOWN'), ['UTESTBOT2'])
+  const roster = agentRoster(apps, foreignAgentTags(apps, 'UTESTOWN'))!
+  assert.doesNotMatch(roster, /UTESTBOT2/)
+  assert.match(roster, /UTESTBOT1/)
+  assert.match(agentRoster(apps)!, /UTESTBOT2/)
 })
