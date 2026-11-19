@@ -49,7 +49,7 @@ export function sdkSessions(o: {
   ownerMemory: string; sharedTools?: readonly string[]
   codeDir: string; sandbox?: () => boolean
   envFile: string
-  onStart?: () => void
+  onStart?: () => void; onMcp?: (q: Query) => void
   onResult?: (key: string, totalUsd: number, resumed: boolean, limited: boolean) => void
   onBlocked?: (key: string, turn: Task[], category: string | null) => void
   onDropped?: (key: string, turn: Task[], reason: string, kind: string) => void
@@ -158,7 +158,7 @@ export function sdkSessions(o: {
     s.run = { q, inbox, send, started: Date.now() }
     let connected = false
     const connect = () => { if (connected || s.stopped) return; connected = o.hub().connect(key, send); if (carries) s.state = 'running' }
-    q.initializationResult().then(connect, () => {})
+    q.initializationResult().then(() => { connect(); if (full && !grant) o.onMcp?.(q) }, () => {})
     void (async () => {
       let blocked = false
       let started: string | undefined
