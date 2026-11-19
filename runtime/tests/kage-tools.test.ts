@@ -373,6 +373,21 @@ describe("a session's Kage tools", () => {
     s.t.onTask(s.task({ fromOwner: true }))
     assert.equal((await s.call('unschedule', { channel: 'C1', thread_ts: '5.5', id: 'c1' })).isError, undefined)
   })
+  test('a reply in a channel thread that links a private DM is held once; in the DM itself it goes (#368)', async () => {
+    const s = setup()
+    s.t.onTask(s.task())
+    const text = 'Done, sent: https://acme.slack.com/archives/DTEST0DM1/p1730000000000100'
+    const before = s.posts.length
+    const held = await s.call('reply', { channel: 'C1', thread_ts: '5.5', text })
+    assert.equal(held.isError, true)
+    assert.match(held.text, /DTEST0DM1/)
+    assert.equal(s.posts.length, before)
+    const again = await s.call('reply', { channel: 'C1', thread_ts: '5.5', text })
+    assert.equal(again.isError, undefined, again.text)
+    s.t.onTask(s.task({ channel: 'DTEST0DM1' }))
+    const inDm = await s.call('reply', { channel: 'DTEST0DM1', thread_ts: '5.5', text: 'here: https://acme.slack.com/archives/DTEST0DM1/p1730000000000200' })
+    assert.equal(inDm.isError, undefined, inDm.text)
+  })
   test('a person mention keeps its <@id> on any task, so Slack highlights it', async () => {
     const s = setup()
     s.t.onTask({ ...s.task({ fromOwner: false }), content: 'Task from Sam: who is <@U1>?' })
