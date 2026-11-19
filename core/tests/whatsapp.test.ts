@@ -1,6 +1,6 @@
 import { describe, test } from 'node:test'
 import assert from 'node:assert/strict'
-import { ownerNote, bridgeAlert, bridgeProblem, decideWhatsApp, fromWaha, standInPrompt, guardPrompt, waTaskContent, waOutgoing, withoutFooter, MAX_STAND_IN_REPLIES, type Arming, type BridgeSeen, type WaMessage } from '../whatsapp.ts'
+import { ownerAnswer, waCardNote, ownerNote, bridgeAlert, bridgeProblem, decideWhatsApp, fromWaha, standInPrompt, guardPrompt, waTaskContent, waOutgoing, withoutFooter, MAX_STAND_IN_REPLIES, type Arming, type BridgeSeen, type WaMessage } from '../whatsapp.ts'
 
 const NOW = 1_000_000
 const CHAT = '919000000001@c.us'
@@ -196,5 +196,30 @@ describe("a note to the owner on WhatsApp is safe to send there (#423)", () => {
   })
   test('Slack links and escapes read as plain text', () => {
     assert.equal(ownerNote('In <https://x.slack.com/archives/C1/p1|#ops>: a &lt;b&gt; &amp; c', 'kage'), 'In #ops (https://x.slack.com/archives/C1/p1): a <b> & c')
+  })
+})
+
+describe("an approval card answered on WhatsApp (#423)", () => {
+  const me = '100OWNER@c.us'
+  const msg = (text: string, o: Partial<{ chat: string; fromMe: boolean; viaApi: boolean; forwarded: boolean }> = {}) => ({ chat: me, id: 'w1', fromMe: true, text, ...o })
+  test("the owner's 'yes 4821' or 'no 4821' in their own chat answers that card", () => {
+    assert.deepEqual(ownerAnswer(msg('yes 4821'), me), { code: '4821', behavior: 'allow' })
+    assert.deepEqual(ownerAnswer(msg(' No 4821 '), me), { code: '4821', behavior: 'deny' })
+  })
+  test('nothing else answers a card: another chat, someone else, a message Kage sent, a forward, or other words', () => {
+    assert.equal(ownerAnswer(msg('yes 4821', { chat: '200FRIEND@c.us' }), me), undefined)
+    assert.equal(ownerAnswer(msg('yes 4821', { fromMe: false }), me), undefined)
+    assert.equal(ownerAnswer(msg('yes 4821', { viaApi: true }), me), undefined)
+    assert.equal(ownerAnswer(msg('yes 4821', { forwarded: true }), me), undefined)
+    for (const t of ['yes', 'yes 482', 'sure 4821', 'yes 4821 and more']) assert.equal(ownerAnswer(msg(t), me), undefined, t)
+    assert.equal(ownerAnswer(msg('yes 4821'), undefined), undefined)
+  })
+  test('the card note names the step and the code to answer with, and carries no secret', () => {
+    const note = waCardNote({ tool: 'mcp__kage__browser_act', place: '#ops', description: 'mail.example.com: click button "Send"', code: '4821' }, 'kage')!
+    assert.match(note, /browser act/)
+    assert.match(note, /#ops/)
+    assert.match(note, /yes 4821/)
+    assert.match(note, /no 4821/)
+    assert.equal(waCardNote({ tool: 'Bash', place: '#ops', description: 'export KEY=AKIAIOSFODNN7EXAMPLE', code: '4821' }, 'kage'), undefined)
   })
 })
