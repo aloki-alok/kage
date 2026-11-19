@@ -209,6 +209,7 @@ export async function connectSlack(o: { dir: string; appToken: string; userToken
       origin: { channel: m.channel, ts: m.ts, ...(m.thread_ts && m.thread_ts !== m.ts && { thread: m.thread_ts }) },
       ...(agent && { agent: { app: agent.app, ...(agent.tag && { tag: agent.tag }), ...(agent.person && { person: agent.person }) } }),
       ...(trusted && { trusted: person }),
+      ...(!agent && m.user === ids.owner && typedByPerson(m) && { ownerSaid: t.text }),
     })
     const r = asked
       ? o.hub.deliver(asked, task, place)

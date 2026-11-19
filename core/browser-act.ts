@@ -68,6 +68,9 @@ const GENERIC = /^(ok|okay|yes|continue|proceed|done|accept|agree|got it|i under
 const SENDS = /\b(message|reply|comment|compose|chat|email)\b/i
 const plainName = (s: string) => s.replace(/\p{Zs}/gu, ' ').replace(/\p{Cf}/gu, '').trim()
 type ActContext = { openHosts?: string[]; typed?: string[] }
+const words = (s: string) => s.toLowerCase().replace(/\s+/g, ' ').trim()
+export const ownerAsked = (quote: string | undefined, said: readonly string[]) =>
+  !!quote && words(quote).length >= 12 && said.some(t => words(t).includes(words(quote)))
 export function majorAct(a: Act, el?: Element, ctx: ActContext = {}): string | undefined {
   if (a.action === 'navigate' || a.action === 'open') {
     const host = (() => { try { return new URL(a.url).hostname } catch { return '' } })()

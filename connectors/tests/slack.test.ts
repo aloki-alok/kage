@@ -491,6 +491,12 @@ describe("a listed agent's post runs with its person's trust, never the owner's 
     }
   }
 
+  test("the owner's typed words ride on their own task only, for checking a quote of their ask (#424)", async () => {
+    assert.match((await agentTask([], 'UTEST1')).ownerSaid ?? '', /deploy the api to prod/)
+    assert.equal((await agentTask([], 'UMATE0002')).ownerSaid, undefined)
+    assert.equal((await agentTask(['A0AGENT02:UMATE0002'], 'UMATE0002', 'A0AGENT02')).ownerSaid, undefined)
+  })
+
   test("a teammate's agent gets that teammate's trust", async () => {
     const t = await agentTask(['A0AGENT02:UMATE0002'], 'UMATE0002', 'A0AGENT02')
     assert.equal(senderOf(t), 'teammate')
