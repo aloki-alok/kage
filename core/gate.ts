@@ -112,8 +112,8 @@ export const taskAsOther = (t: TaskBody): Task => ({ type: 'task', ...t, fromOwn
 export const taskFrom = (by: string | undefined, owner: string, t: TaskBody): Task => (by === owner ? taskAsOwner(t) : taskAsOther(t))
 
 export type Sender = 'owner' | 'teammate' | 'voice' | 'agent'
-export const senderOf = (t: { fromOwner: boolean; meta: { channel: string }; agent?: unknown }): Sender =>
-  t.meta.channel === 'voice' ? (t.fromOwner ? 'owner' : 'voice') : t.agent ? 'agent' : t.fromOwner && t.meta.channel !== 'email' ? 'owner' : 'teammate'
+export const senderOf = (t: { fromOwner: boolean; meta: { channel: string }; agent?: { app: string; person?: string } }): Sender =>
+  t.meta.channel === 'voice' ? (t.fromOwner ? 'owner' : 'voice') : t.agent ? (t.agent.person ? 'teammate' : 'agent') : t.fromOwner && t.meta.channel !== 'email' ? 'owner' : 'teammate'
 
 export const lowestSender = (tasks: { fromOwner: boolean; meta: { channel: string } }[]): Sender => tasks.map(senderOf).find(x => x !== 'owner') ?? 'owner'
 export const OWNER_MID_TURN = "(The owner wrote this while someone else's task is running, so this turn keeps that person's trust. Do only what that trust allows now. The owner's request runs on its own, with the owner's tools, as soon as this turn ends.)"

@@ -5,7 +5,7 @@ type PaneTurn = { open: boolean; tasks: { task: Task; at: number }[]; again: Tas
 const SENDERS: readonly Sender[] = ['owner', 'teammate', 'voice', 'agent']
 export const resumedTurn = (lastSender: string): PaneTurn => ({ open: false, tasks: [], again: [], floor: SENDERS.find(s => s === lastSender) ?? 'teammate' })
 
-const paneSender = (t: Task) => senderOf({ fromOwner: t.fromOwner === true, meta: t.meta })
+const paneSender = (t: Task) => senderOf({ ...t, fromOwner: t.fromOwner === true })
 const lowest = (tasks: PaneTurn['tasks'], floor: Sender): Sender => [...tasks.map(x => paneSender(x.task)), floor].find(s => s !== 'owner') ?? 'owner'
 export const turnSender = (turn: PaneTurn) => lowest(turn.tasks, turn.floor)
 

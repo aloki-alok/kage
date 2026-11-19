@@ -117,11 +117,11 @@ if (cmd === 'list') {
   if (!now.length) console.log('No one is listed: only you can tag Kage. Add someone: kage add <person>')
   if (args[0] !== '--ids') for (const e of now) if (e.kind === 'person') { const n = await nameOf(e.id); if (n) names.set(e.id, n) }
   const under = (owner: string, depth: number): void => {
-    for (const a of now) if (a.kind === 'agent' && a.owner === owner) { console.log(`${'  '.repeat(depth)}agent ${a.id}${a.tag ? '' : '  (no tag saved, so Kage cannot address it: add it again by a mention of it)'}`); under(a.id, depth + 1) }
+    for (const a of now) if (a.kind === 'agent' && a.owner === owner) { console.log(`${'  '.repeat(depth)}agent ${a.id}${depth === 1 ? "  gets this person's teammate access" : ''}${a.tag ? '' : '  (no tag saved, so Kage cannot address it: add it again by a mention of it)'}`); under(a.id, depth + 1) }
   }
   for (const e of now) if (e.kind === 'person') { console.log(label({ id: e.id, name: names.get(e.id) })); under(e.id, 1) }
   const loose = now.filter(e => e.kind === 'agent' && !ownerPerson(now, e.id))
-  if (loose.length) console.log(`Agents not tied to a listed person: ${loose.map(e => e.id).join(', ')}\n  One with no owner counts with any listed person's token. Tie one to its owner: kage add <app id> <owner>`)
+  if (loose.length) console.log(`Agents not tied to a listed person: ${loose.map(e => e.id).join(', ')}\n  They may only read and answer. One with no owner counts with any listed person's token. Tie one to its owner: kage add <app id> <owner>`)
   const files = readKagelets(KAGELETS)
   if (files.length) {
     const ledgers = openLedgers(DIR)
