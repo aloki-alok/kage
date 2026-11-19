@@ -226,12 +226,12 @@ describe("a message to the owner on WhatsApp (#423)", () => {
     server.unref()
     return { seen, url: `http://127.0.0.1:${(server.address() as AddressInfo).port}`, close: () => server.close() }
   }
-  test("goes to the owner's own chat, signed as Kage, and the account is looked up once", async () => {
+  test("goes to the owner's own chat, signed as Kage, with the account looked up on each send so a relinked phone gets it", async () => {
     const w = await waha({ id: '100OWNER@c.us', pushName: 'Owner' })
-    const say = wahaToOwner(w.url, 'k1', 'Kage')
+    const say = wahaToOwner(w.url, 'k1', 'Kage', 'kage')
     assert.equal(await say('the deploy failed'), true)
     assert.equal(await say('again'), true)
-    assert.deepEqual(w.seen.map(x => x.path), ['/api/sessions/default/me', '/api/sendText', '/api/sendText'])
+    assert.deepEqual(w.seen.map(x => x.path), ['/api/sessions/default/me', '/api/sendText', '/api/sessions/default/me', '/api/sendText'])
     assert.equal(w.seen[1]!.body!.chatId, '100OWNER@c.us')
     assert.match(w.seen[1]!.body!.text, /^the deploy failed\n\n_.*Kage/)
     assert.ok(w.seen.every(x => x.key === 'k1'))
@@ -239,10 +239,14 @@ describe("a message to the owner on WhatsApp (#423)", () => {
   })
   test('a bridge with no linked phone, or a refused send, is a failed send', async () => {
     const none = await waha({})
-    assert.equal(await wahaToOwner(none.url, 'k1', 'Kage')('hi'), false)
+    assert.equal(await wahaToOwner(none.url, 'k1', 'Kage', 'kage')('hi'), false)
     none.close()
     const refused = await waha({ id: '100OWNER@c.us' }, 500)
-    assert.equal(await wahaToOwner(refused.url, 'k1', 'Kage')('hi'), false)
+    assert.equal(await wahaToOwner(refused.url, 'k1', 'Kage', 'kage')('hi'), false)
+    const secret = await waha({ id: '100OWNER@c.us' })
+    assert.equal(await wahaToOwner(secret.url, 'k1', 'Kage', 'kage')('key AKIAIOSFODNN7EXAMPLE'), false)
+    assert.deepEqual(secret.seen, [], 'a secret never reaches the bridge')
+    secret.close()
     refused.close()
   })
 })

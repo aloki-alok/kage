@@ -73,6 +73,7 @@ export function guardPrompt(brief: string, history: WaLine[], reply: string, own
   return { system, prompt: `${owner}'s instruction for this chat: ${oneLine(brief) || 'none'}\n\nChat:\n${lines.join('\n')}\n\nMessage to check:\n${oneLine(reply)}` }
 }
 
+export const ownerNote = (text: string, _name: string): string | undefined => text
 export const waOutgoing = (text: string, title: string) => `${text}\n\n_${kageFooter(title)}_`
 export const withoutFooter = (text: string) => text.replace(/\n\n_🥷 [^\n]*_$/u, '')
 
