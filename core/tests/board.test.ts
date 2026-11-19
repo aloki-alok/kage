@@ -154,6 +154,9 @@ describe('kage status summary, in Kage words', () => {
   })
   test('one of each reads in the singular, and nothing spent says so', () => {
     assert.equal(statusSummary({ upSec: 3600, boots24h: 1, schedules: 1, spentToday: 0, turnsToday: 0 }).says, "I've been up 1 hour and spent nothing today. 1 schedule.")
+    assert.match(statusSummary({ upSec: 45, boots24h: 1, schedules: 0, spentToday: 0, turnsToday: 0 }).says, /up 45 seconds/)
+    assert.match(statusSummary({ upSec: 120, boots24h: 1, schedules: 0, spentToday: 0, turnsToday: 0 }).says, /up 2 minutes/)
+    assert.match(statusSummary({ upSec: 3 * 86400, boots24h: 1, schedules: 0, spentToday: 0, turnsToday: 0 }).says, /up 3 days/)
   })
   test('many restarts are a warning, and an unknown uptime is left out', () => {
     const r = statusSummary({ boots24h: 48, schedules: 0, spentToday: 0, turnsToday: 0 })

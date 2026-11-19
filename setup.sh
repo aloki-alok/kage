@@ -5,6 +5,7 @@
 set -euo pipefail
 cd "$(dirname "$(readlink -f "$0")")"  # readlink: works when run through the kage link
 ENV_FILE="${KAGE_ENV:-$HOME/.config/kage/env}"
+HUB_NODE_OPTIONS="${NODE_OPTIONS:-}"
 export NODE_OPTIONS="${NODE_OPTIONS:+$NODE_OPTIONS }--disable-warning=ExperimentalWarning"
 
 if [[ -t 1 && -z ${NO_COLOR:-} ]]; then
@@ -15,7 +16,8 @@ says() { printf '%s◆%s %s\n' "$RED" "$OFF" "$*"; }
 point() { printf '  %s›%s %s\n' "$RED" "$OFF" "$*"; }
 quietly() { printf '  %s%s%s\n' "$DIM" "$*" "$OFF"; }
 next() { printf '%s%s%s %s%s%s\n' "$DIM" "$1" "$OFF" "$GOLD" "$2" "$OFF"; }
-die() { printf '%s◆ %s%s\n' "$RED" "$*" "$OFF" >&2; exit 1; }
+tells() { if [[ -t 2 && -z ${NO_COLOR:-} ]]; then printf '\033[38;2;255;77;61m◆\033[0m %s\n' "$*"; else printf '◆ %s\n' "$*"; fi >&2; }
+die() { tells "$*"; exit 1; }
 
 # group|name|arguments|what it does|example. `kage help` prints it grouped; `kage help <name>` prints one.
 COMMANDS='Set up|setup||Walk through the first setup, one step at a time|kage setup
@@ -188,7 +190,7 @@ cmd_restart() {
   if [[ -n $pid ]] && ps -p "$pid" -o command= 2>/dev/null | grep -q 'router.ts'; then
     kill "$pid" && says "Restarting. I'll be back in about 10 seconds."
   else
-    says "I'm between restarts. Give me 10 seconds, then try kage status." >&2; return 1
+    tells "I'm between restarts. Give me 10 seconds, then try kage status."; return 1
   fi
 }
 
@@ -302,7 +304,7 @@ cmd_save() {
 cmd_claude_login() {
   local t
   if [[ -t 0 ]]; then
-    says "Run claude setup-token signed in as my own Claude account, then paste the token it prints." >&2
+    tells "Run claude setup-token signed in as my own Claude account, then paste the token it prints."
     t="$(node cli/ask-secret.ts claude "Claude token (sk-ant-oat...): ")" || exit 1
   else
     t="$(cat)"
@@ -344,7 +346,7 @@ case "${1:-}" in
   slack) node cli/slack.ts "${2:-}" ;;
   link) mkdir -p ~/.local/bin && ln -sf "$PWD/setup.sh" ~/.local/bin/kage && says "Done. You can type kage from anywhere (it needs ~/.local/bin on your PATH)." ;;
   service) ./service.sh "${2:-}" ;;
-  run) exec node hub.ts ;;
+  run) NODE_OPTIONS="$HUB_NODE_OPTIONS" exec node hub.ts ;;
   # A kagelet's name: resume it (cli/stop.ts). Otherwise the hub.
   start) if [[ $# -gt 1 ]]; then node cli/stop.ts --resume "${@:2}"; else cmd_start; fi ;;
   # A thread (any word that is not a flag) or --now: one session (cli/stop.ts). Otherwise the whole hub.

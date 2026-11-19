@@ -10,6 +10,7 @@ import { voice } from './voice.ts'
 
 const read = (f: string) => { try { return readFileSync(`${DIR}/${f}`, 'utf8') } catch { return '' } }
 const now = Date.now()
+const runningVersion = read('version').trim()
 const pid = read('status').split(/\s+/)[3]
 let upSec: number | undefined
 try {
@@ -20,7 +21,7 @@ const boots24h = read('boots').split('\n').filter(l => Number(l.split(/\s/)[0]) 
 const midnight = new Date(now).setHours(0, 0, 0, 0)
 const today = spendSince(openLedgers(DIR).text('costs'), midnight)
 const summary = statusSummary({
-  version: read('version').trim() || undefined, upSec, boots24h, schedules: schedulesIn(`${DIR}/kage.db`).length,
+  version: /^[0-9a-f]{7}/.test(runningVersion) ? runningVersion : undefined, upSec, boots24h, schedules: schedulesIn(`${DIR}/kage.db`).length,
   spentToday: today.reduce((a, r) => a + r.usd, 0), turnsToday: today.reduce((a, r) => a + r.turns, 0),
 })
 console.log(voice.says(summary.says))
