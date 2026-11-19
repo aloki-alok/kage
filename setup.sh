@@ -121,7 +121,7 @@ cmd_stop() {
   if ./service.sh installed; then ./service.sh stop
   elif old_tmux; then tmux kill-session -t "=$NAME"
   else says "I'm not running."; return 0; fi
-  says "Gone to ground. I'll keep your place in every thread."
+  says "Stopped. I'll keep your place in every thread."
   quietly "I stay down until kage start or your next login."
 }
 
@@ -147,7 +147,7 @@ cmd_update() {
   running && up=1
   git merge -q --ff-only "$ref"
   new="$(git rev-parse --short HEAD)"
-  says "I carry new word. ${DIM}($new)${OFF}"
+  says "Got the new version. ${DIM}($new)${OFF}"
   if [[ -n $up ]]; then quietly "I'll switch over when I'm not in the middle of anything${packages:+, after I install what it needs}."; fi
   whats_new "$old..$new"
   [[ -n $up ]] && return
@@ -317,7 +317,7 @@ cmd_interactive() {
   local frames=('⋅' '∙' '•' '∙') n=0
   while (( n < wait * 2 )); do
     connected && break
-    [[ -t 1 ]] && printf '\r  %s%s%s %slighting the path · %s s%s' "$FIRE" "${frames[n % 4]}" "$OFF" "$DIM" "$((n / 2))" "$OFF"
+    [[ -t 1 ]] && printf '\r  %s%s%s %swaiting for Slack · %s s%s' "$FIRE" "${frames[n % 4]}" "$OFF" "$DIM" "$((n / 2))" "$OFF"
     sleep 0.5; n=$((n + 1))
   done
   [[ -t 1 ]] && printf '\r\033[2K'

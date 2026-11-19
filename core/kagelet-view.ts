@@ -54,10 +54,10 @@ export const modelLine = (k: { model: string; modelWhy: string }) => `model: ${k
 
 export const runLine = (r: Run, now: number) => [clockTime(r.at, now).padEnd(16), `$${r.usd.toFixed(2)}`.padEnd(7), r.status.padEnd(15), r.report].join(' ')
 
-export function tailLine(r: KageletRow, now: number): { text: string; tone: 'fire' | 'quiet' | 'you' } {
+export function kageletLine(r: KageletRow, now: number): { text: string; tone: 'work' | 'quiet' | 'you' } {
   const name = r.name.padEnd(16)
   if (r.state === 'broken') return { text: `${name}broken: ${r.error}`, tone: 'you' }
-  if (r.state === 'paused') return { text: `${name}folded away (paused)`, tone: 'quiet' }
+  if (r.state === 'paused') return { text: `${name}paused`, tone: 'quiet' }
   const last = r.lastRun ? `last ran ${clockTime(r.lastRun, now)}` : 'never ran'
-  return { text: `${name}${[last, `next ${whenLabel(r.next, now)}`, `$${r.costToday.toFixed(2)} today`].join(' · ')}`, tone: 'fire' }
+  return { text: `${name}${[last, `next ${whenLabel(r.next, now)}`, `$${r.costToday.toFixed(2)} today`].join(' · ')}`, tone: 'work' }
 }

@@ -4,7 +4,7 @@ import type { KageletRow } from './kagelets.ts'
 
 type AwayFacts = {
   hours: number; replies: number; threads: number; usd: number; kageletRuns: number; lessons: number
-  needsYou: { what: string; thread: string }[]; tails: { out: number; total: number }
+  needsYou: { what: string; thread: string }[]; kagelets: { on: number; total: number }
 }
 
 const DAY = 86_400_000
@@ -32,14 +32,14 @@ export function awayFacts(o: { posted: string; costs: string; runs: string; wait
     kageletRuns: rows(o.runs).filter(([when, id]) => after(when) && id?.startsWith('kagelet-')).length,
     lessons: o.events.filter(e => e.kind === 'memory-decision' && after(e.at) && KEPT.test(e.detail)).length,
     needsYou: openWaiting(o.waiting).map(w => ({ what: w.what, thread: w.thread })),
-    tails: { out: o.kagelets.filter(k => k.state === 'runs').length, total: o.kagelets.length },
+    kagelets: { on: o.kagelets.filter(k => k.state === 'runs').length, total: o.kagelets.length },
   }
 }
 
 const times = (n: number) => n === 1 ? 'once' : `${n} times`
 const plural = (n: number, one: string) => `${n} ${one}${n === 1 ? '' : 's'}`
 
-export function awayLines(f: AwayFacts): { head: string; did: string[]; needsYou: string[]; tails?: string } {
+export function awayLines(f: AwayFacts): { head: string; did: string[]; needsYou: string[]; kagelets?: string } {
   const did = [
     f.replies ? `answered ${times(f.replies)} in ${plural(f.threads, 'thread')}` : '',
     f.kageletRuns ? `ran kagelets ${times(f.kageletRuns)}` : '',
@@ -51,6 +51,6 @@ export function awayLines(f: AwayFacts): { head: string; did: string[]; needsYou
     head: f.hours ? `While you were away (${f.hours} h)` : 'Since you last looked',
     did: did.length ? did : ['all quiet, nothing came in'],
     needsYou: asks.length > SHOWN_ASKS ? [...asks.slice(0, SHOWN_ASKS), `and ${asks.length - SHOWN_ASKS} more (kage top)`] : asks,
-    ...(f.tails.total && { tails: `${f.tails.out} of ${plural(f.tails.total, 'tail')} out` }),
+    ...(f.kagelets.total && { kagelets: `${f.kagelets.on} of ${plural(f.kagelets.total, 'kagelet')} on` }),
   }
 }

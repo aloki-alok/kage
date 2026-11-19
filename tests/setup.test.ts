@@ -146,7 +146,7 @@ describe('kage update says what is new in plain words', () => {
     await git(other, 'push', '-q', 'origin', 'main')
     const r = await w.run(['update'], '')
     assert.equal(r.code, 0, r.out)
-    assert.match(r.out, /✦ I carry new word\./)
+    assert.match(r.out, /✦ Got the new version\./)
     assert.match(r.out, /What's new for you\n(  · .*\n)*  · kage slack upgrade edits the manifest itself\n/)
     assert.match(r.out, /  · Token prompts show a dot per character\n/)
     assert.doesNotMatch(r.out, /Kage slack upgrade/)

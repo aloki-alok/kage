@@ -8,7 +8,7 @@ import { openLedgers } from '../runtime/ledger.ts'
 import { schedulesIn } from '../runtime/store.ts'
 import { voice } from './voice.ts'
 import { kageletRows } from '../core/kagelets.ts'
-import { tailLine } from '../core/kagelet-view.ts'
+import { kageletLine } from '../core/kagelet-view.ts'
 import { MARK } from '../core/voice.ts'
 import { kageletsDir, readKagelets } from '../runtime/kagelet-files.ts'
 
@@ -33,12 +33,12 @@ console.log(voice.says(summary.says))
 if (summary.warn) console.log(`  ${voice.needsYou(summary.warn)} ${voice.dim('Ask')} ${voice.command('kage doctor')} ${voice.dim('why.')}`)
 console.log()
 spawnSync(process.execPath, [new URL('./top.ts', import.meta.url).pathname, '--once'], { stdio: 'inherit' })
-const tails = kageletRows(readKagelets(kageletsDir(DIR)), { runs: ledgers.text('runs'), costs: ledgers.text('costs'), now })
-if (tails.length) {
-  console.log(`\nTails ${voice.dim(`${tails.filter(t => t.state === 'runs').length} of ${tails.length} out`)}`)
-  for (const t of tails) {
-    const { text, tone } = tailLine(t, now)
-    console.log(`  ${tone === 'you' ? voice.needsYou(`${MARK.tail} ${text}`) : tone === 'quiet' ? voice.dim(`${MARK.tail} ${text}`) : `${voice.fire(MARK.tail)} ${text}`}`)
+const kagelets = kageletRows(readKagelets(kageletsDir(DIR)), { runs: ledgers.text('runs'), costs: ledgers.text('costs'), now })
+if (kagelets.length) {
+  console.log(`\nKagelets ${voice.dim(`${kagelets.filter(k => k.state === 'runs').length} of ${kagelets.length} on`)}`)
+  for (const k of kagelets) {
+    const { text, tone } = kageletLine(k, now)
+    console.log(`  ${tone === 'you' ? voice.needsYou(text) : tone === 'quiet' ? voice.dim(`${MARK.quiet} ${text}`) : `${voice.work(MARK.working)} ${text}`}`)
   }
 }
 console.log(`\n${voice.dim('Watch me live:')} ${voice.command('kage top')}  ${voice.dim('Spend:')} ${voice.command('kage cost 7')}  ${voice.dim('Problems:')} ${voice.command('kage doctor')}`)

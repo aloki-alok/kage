@@ -33,7 +33,7 @@ describe('awayFacts: what happened since the owner last looked', () => {
     assert.deepEqual(awayFacts(base), {
       hours: 9, replies: 3, threads: 3, usd: 1.35, kageletRuns: 2, lessons: 1,
       needsYou: [{ what: 'send the invite to Priya?', thread: 'D0TEST2:5.0' }],
-      tails: { out: 2, total: 4 },
+      kagelets: { on: 2, total: 4 },
     })
   })
   test('cards, canvases and deletions are not replies', () => {
@@ -41,30 +41,30 @@ describe('awayFacts: what happened since the owner last looked', () => {
   })
   test('a broken row or a NaN time counts as nothing, never throws', () => {
     const f = awayFacts({ ...base, posted: 'junk\n\t\t', costs: 'x\ty\tz', runs: '\n', waiting: '', events: [], kagelets: [] })
-    assert.deepEqual([f.replies, f.usd, f.kageletRuns, f.needsYou.length, f.tails.total], [0, 0, 0, 0, 0])
+    assert.deepEqual([f.replies, f.usd, f.kageletRuns, f.needsYou.length, f.kagelets.total], [0, 0, 0, 0, 0])
   })
 })
 
 describe('awayLines: the home screen in Kage words', () => {
-  test('a busy stretch: what Kage did, then the lantern, then the tails', () => {
+  test('a busy stretch: what Kage did, then what needs you, then the kagelets', () => {
     const l = awayLines(awayFacts(base))
     assert.equal(l.head, 'While you were away (9 h)')
     assert.deepEqual(l.did, ['answered 3 times in 3 threads', 'ran kagelets 2 times', 'kept 1 new lesson', 'spent $1.35'])
     assert.deepEqual(l.needsYou, ['send the invite to Priya?'])
-    assert.equal(l.tails, '2 of 4 tails out')
+    assert.equal(l.kagelets, '2 of 4 kagelets on')
   })
   test('one of each reads in the singular', () => {
-    const l = awayLines({ hours: 1, replies: 1, threads: 1, usd: 0.05, kageletRuns: 1, lessons: 0, needsYou: [], tails: { out: 1, total: 1 } })
+    const l = awayLines({ hours: 1, replies: 1, threads: 1, usd: 0.05, kageletRuns: 1, lessons: 0, needsYou: [], kagelets: { on: 1, total: 1 } })
     assert.equal(l.head, 'While you were away (1 h)')
     assert.deepEqual(l.did, ['answered once in 1 thread', 'ran kagelets once', 'spent $0.05'])
-    assert.equal(l.tails, '1 of 1 tail out')
+    assert.equal(l.kagelets, '1 of 1 kagelet on')
   })
-  test('nothing happened: says so, no lantern, no tails line without kagelets', () => {
-    const l = awayLines({ hours: 0, replies: 0, threads: 0, usd: 0, kageletRuns: 0, lessons: 0, needsYou: [], tails: { out: 0, total: 0 } })
+  test('nothing happened: says so, nothing for you, no kagelets line without kagelets', () => {
+    const l = awayLines({ hours: 0, replies: 0, threads: 0, usd: 0, kageletRuns: 0, lessons: 0, needsYou: [], kagelets: { on: 0, total: 0 } })
     assert.equal(l.head, 'Since you last looked')
     assert.deepEqual(l.did, ['all quiet, nothing came in'])
     assert.deepEqual(l.needsYou, [])
-    assert.equal(l.tails, undefined)
+    assert.equal(l.kagelets, undefined)
   })
   test('more than three asks: three shown and a count of the rest', () => {
     const asks = Array.from({ length: 5 }, (_, i) => ({ what: `ask ${i}`, thread: `C0TEST1:${i}` }))
