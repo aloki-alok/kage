@@ -127,6 +127,8 @@ export function startWhatsApp(o: { dir: string; name: string; owner: string; wah
   }
 }
 
+export const wahaToOwner = (_url: string, _key: string, _title: string) => async (_text: string) => false
+
 export async function wahaSeen(url: string, key: string, ms = 5_000): Promise<BridgeSeen> {
   const get = (path: string) => fetch(url + path, { headers: { 'X-Api-Key': key }, signal: AbortSignal.timeout(ms) })
   try {
