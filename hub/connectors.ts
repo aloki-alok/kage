@@ -21,6 +21,7 @@ import { taskAsOwner } from '../core/gate.ts'
 export function startConnectors(o: {
   secrets: Secrets; conn: NonNullable<Config['connectors']>; store: Store; slack: Awaited<ReturnType<typeof connectSlack>>; bot: WebClient
   ping: Parameters<typeof startJobEvents>[0]['ping']
+  say: (text: string) => Promise<boolean>
   NAME: string; CODE: string; DIR: string; d: Dispatcher<ToSession>; inbox: Inbox
   deliver: (c: Conversation, task: Task, place: string, lane?: Lane, by?: string) => Delivery
   placeOf: (key: string) => string; failed: (m: ToSession) => void
@@ -31,7 +32,7 @@ export function startConnectors(o: {
     saved: store, secret: secrets.githubSecret, login: conn.github.login, port: conn.github.port || 8789, botDm: slack.ids.botDm,
     post: (text, thread) => bot.chat.postMessage({ channel: slack.ids.botDm, text, ...(thread && { thread_ts: thread }) }).then(r => r.ts, e => { log('github post failed', e); return undefined }),
     deliver: (c, task, place) => deliver(c, task, place),
-    notify: text => void slack.notifyOwner(text),
+    notify: text => void o.say(text),
     perHour: conn.github.perHour || 20, inbox,
   }) : undefined
   void github?.listening.then(port => log(`github on: 127.0.0.1:${port}/github for @${conn.github?.login}`), e => log('github could not listen', e))
@@ -39,7 +40,7 @@ export function startConnectors(o: {
     token: secrets.meetingToken, port: conn.meeting?.port || 8790, botDm: slack.ids.botDm,
     post: text => bot.chat.postMessage({ channel: slack.ids.botDm, text }).then(r => r.ts, e => { log('meeting post failed', e); return undefined }),
     deliver: (c, task, place) => deliver(c, task, place),
-    notify: text => void slack.notifyOwner(text),
+    notify: text => void o.say(text),
     perHour: conn.meeting?.perHour || 10, inbox, untake: source => store.untake(source), name: NAME,
     end: key => { if (meetCall(key)) d.end(key) },
   }) : undefined
@@ -55,14 +56,14 @@ export function startConnectors(o: {
   }
   const email = connectEmail({
     mail: { ...conn.email, accessKeyId: secrets.aws?.accessKeyId, secretAccessKey: secrets.aws?.secretAccessKey }, saved: store, name: NAME, nameOf: slack.nameOf, deliver, inbox, dir: DIR,
-    notify: text => void slack.notifyOwner(text),
-    failed: task => void slack.notifyOwner(`Could not start a session for ${task.meta.place}.`),
+    notify: text => void o.say(text),
+    failed: task => void o.say(`Could not start a session for ${task.meta.place}.`),
   })
   const voice = connectVoice({
     voice: { ...conn.voice, token: secrets.voiceToken }, name: NAME, deliver,
     end: key => { if (key.startsWith('voice:')) d.end(key) },
     slot: key => d.hasFreeSlot(key),
-    failed: task => void slack.notifyOwner(`Could not start a session for ${task.meta.place}.`),
+    failed: task => void o.say(`Could not start a session for ${task.meta.place}.`),
   })
   const whatsapp = conn.whatsapp?.on !== false && secrets.waha?.WAHA_API_KEY ? startWhatsApp({
     dir: DIR, name: NAME, owner: slack.ownerName, waha: secrets.waha, whatsapp: conn.whatsapp ?? {}, inbox,
@@ -84,14 +85,14 @@ export function startConnectors(o: {
     on: !!whatsapp, minutes: conn.whatsapp?.checkMinutes, look: () => wahaSeen(url, secrets.waha!.WAHA_API_KEY!), at: { url, qr: `${CODE}/waha/qr.sh` }, state: store, notify: slack.notifyOwner,
   })
 
-  const jobs = startJobEvents({ store, inbox, ping: o.ping, notify: text => void slack.notifyOwner(text), schedules: o.schedules, event: o.event, ledgers: o.ledgers, tripwires: o.tripwires })
+  const jobs = startJobEvents({ store, inbox, ping: o.ping, notify: text => void o.say(text), schedules: o.schedules, event: o.event, ledgers: o.ledgers, tripwires: o.tripwires })
 
   const replies = {
     voice: (key: string, text: string) => { if (!meeting?.say(key, text)) voice?.reply(key, text) },
     wa: (key: string, text: string) => void whatsapp?.send(key, text).catch(e => log('whatsapp send failed in', logRef(key), e)),
     mail: (key: string, text: string) => void email?.send(key, text).catch(e => {
       log('mail reply failed', logRef(key), e)
-      void slack.notifyOwner(`Email reply failed for ${placeOf(key)}: ${e}`)
+      void o.say(`Email reply failed for ${placeOf(key)}: ${e}`)
     }),
   }
   function replayOf(connector: string): ((source: string, payload: string) => Promise<unknown>) | undefined {

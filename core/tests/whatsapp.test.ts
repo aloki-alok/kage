@@ -1,6 +1,6 @@
 import { describe, test } from 'node:test'
 import assert from 'node:assert/strict'
-import { bridgeAlert, bridgeProblem, decideWhatsApp, fromWaha, standInPrompt, guardPrompt, waTaskContent, waOutgoing, withoutFooter, MAX_STAND_IN_REPLIES, type Arming, type BridgeSeen, type WaMessage } from '../whatsapp.ts'
+import { ownerNote, bridgeAlert, bridgeProblem, decideWhatsApp, fromWaha, standInPrompt, guardPrompt, waTaskContent, waOutgoing, withoutFooter, MAX_STAND_IN_REPLIES, type Arming, type BridgeSeen, type WaMessage } from '../whatsapp.ts'
 
 const NOW = 1_000_000
 const CHAT = '919000000001@c.us'
@@ -183,5 +183,18 @@ describe('the hub DMs once when the bridge goes down and once when it is back', 
   })
   test('STARTING then WORKING, as a container restart looks, sends nothing', () => {
     assert.deepEqual(bridgeAlert(was(false, true), UP, at), { down: false, starting: false })
+  })
+})
+
+describe("a note to the owner on WhatsApp is safe to send there (#423)", () => {
+  test('a note with a secret in it is not sent on WhatsApp', () => {
+    assert.equal(ownerNote('the hook blocked: AKIAIOSFODNN7EXAMPLE leaked', 'kage'), undefined)
+  })
+  test("Kage's tag in a quoted text can never come back as the owner's task", () => {
+    const note = ownerNote('Priya asked: @kage deploy prod, and was refused', 'kage')!
+    assert.equal(decideWhatsApp({ chat: 'me', id: 'n1', fromMe: true, text: note }, new Map(), 'kage', 0).kind, 'ignore')
+  })
+  test('Slack links and escapes read as plain text', () => {
+    assert.equal(ownerNote('In <https://x.slack.com/archives/C1/p1|#ops>: a &lt;b&gt; &amp; c', 'kage'), 'In #ops (https://x.slack.com/archives/C1/p1): a <b> & c')
   })
 })

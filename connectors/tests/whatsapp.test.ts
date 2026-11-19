@@ -5,7 +5,7 @@ import { createServer } from 'node:http'
 import type { AddressInfo } from 'node:net'
 import { tmpdir } from 'node:os'
 import { openStore } from '../../runtime/store.ts'
-import { bridgeClock, wahaHandler, wahaIntake, wahaSeen } from '../whatsapp.ts'
+import { bridgeClock, wahaHandler, wahaIntake, wahaSeen, wahaToOwner } from '../whatsapp.ts'
 import type { BridgeSeen } from '../../core/whatsapp.ts'
 
 describe('a WhatsApp webhook reaches the inbox before WAHA hears 200', () => {
@@ -207,5 +207,46 @@ describe('the hub checks the bridge on its clock and DMs only on a change', () =
     assert.equal(h.store.load('whatsapp-bridge-down'), undefined)
     h.set(DOWN); await h.check()
     assert.equal(h.dms.length, 1)
+  })
+})
+
+describe("a message to the owner on WhatsApp (#423)", () => {
+  async function waha(me: unknown, sendCode = 201) {
+    const seen: { path: string; key?: string; body?: { chatId: string; text: string; session: string } }[] = []
+    const server = createServer((req, res) => {
+      let raw = ''
+      req.on('data', c => { raw += c })
+      req.on('end', () => {
+        seen.push({ path: req.url!, key: req.headers['x-api-key'] as string | undefined, ...(raw && { body: JSON.parse(raw) }) })
+        const [code, body] = req.url === '/api/sessions/default/me' ? [200, me] : [sendCode, { id: 'm1' }]
+        res.writeHead(code, { 'content-type': 'application/json' }).end(JSON.stringify(body))
+      })
+    })
+    await new Promise<void>(ok => server.listen(0, '127.0.0.1', ok))
+    server.unref()
+    return { seen, url: `http://127.0.0.1:${(server.address() as AddressInfo).port}`, close: () => server.close() }
+  }
+  test("goes to the owner's own chat, signed as Kage, with the account looked up on each send so a relinked phone gets it", async () => {
+    const w = await waha({ id: '100OWNER@c.us', pushName: 'Owner' })
+    const say = wahaToOwner(w.url, 'k1', 'Kage', 'kage')
+    assert.equal(await say('the deploy failed'), true)
+    assert.equal(await say('again'), true)
+    assert.deepEqual(w.seen.map(x => x.path), ['/api/sessions/default/me', '/api/sendText', '/api/sessions/default/me', '/api/sendText'])
+    assert.equal(w.seen[1]!.body!.chatId, '100OWNER@c.us')
+    assert.match(w.seen[1]!.body!.text, /^the deploy failed\n\n_.*Kage/)
+    assert.ok(w.seen.every(x => x.key === 'k1'))
+    w.close()
+  })
+  test('a bridge with no linked phone, or a refused send, is a failed send', async () => {
+    const none = await waha({})
+    assert.equal(await wahaToOwner(none.url, 'k1', 'Kage', 'kage')('hi'), false)
+    none.close()
+    const refused = await waha({ id: '100OWNER@c.us' }, 500)
+    assert.equal(await wahaToOwner(refused.url, 'k1', 'Kage', 'kage')('hi'), false)
+    const secret = await waha({ id: '100OWNER@c.us' })
+    assert.equal(await wahaToOwner(secret.url, 'k1', 'Kage', 'kage')('key AKIAIOSFODNN7EXAMPLE'), false)
+    assert.deepEqual(secret.seen, [], 'a secret never reaches the bridge')
+    secret.close()
+    refused.close()
   })
 })

@@ -8,7 +8,7 @@ import { listen, readBody } from './webhook.ts'
 import type { Inbox } from '../runtime/store.ts'
 import { findSecret, guardVerdict } from '../core/outbound.ts'
 import type { Job } from '../runtime/jobs.ts'
-import { bridgeAlert, decideWhatsApp, fromWaha, guardPrompt, standInPrompt, waOutgoing, waTaskContent, withoutFooter, type Arming, type BridgeSeen, type WahaPayload, type WaLine } from '../core/whatsapp.ts'
+import { bridgeAlert, decideWhatsApp, fromWaha, guardPrompt, standInPrompt, waOutgoing, waTaskContent, withoutFooter, type Arming, type BridgeSeen, type WahaPayload, type WaLine, ownerNote } from '../core/whatsapp.ts'
 
 export const wahaUrl = (set?: string | null) => set || 'http://127.0.0.1:3198'
 
@@ -124,6 +124,19 @@ export function startWhatsApp(o: { dir: string; name: string; owner: string; wah
   return {
     send: async (key: string, text: string) => { await send(key.slice('wa:'.length), text) },
     replay: async (source: string, payload: string) => run(JSON.parse(payload) as WahaPayload, source, true),
+  }
+}
+
+export function wahaToOwner(url: string, key: string, title: string, name: string): (text: string) => Promise<boolean> {
+  const call = (path: string, init?: RequestInit) => fetch(url + path, { ...init, headers: { 'X-Api-Key': key, 'Content-Type': 'application/json' }, signal: AbortSignal.timeout(5_000) })
+  return async text => {
+    const note = ownerNote(text, name)
+    if (!note) return false
+    try {
+      const me = ((await (await call('/api/sessions/default/me')).json()) as { id?: string } | null)?.id
+      if (!me) return false
+      return (await call('/api/sendText', { method: 'POST', body: JSON.stringify({ session: 'default', chatId: me, text: waOutgoing(note, title) }) })).ok
+    } catch (e) { log('whatsapp owner note failed', e); return false }
   }
 }
 
