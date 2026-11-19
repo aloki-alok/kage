@@ -34,6 +34,7 @@ function setup(o: { transcript?: boolean; silent?: boolean; dmFails?: boolean; g
   const keysDropped: string[] = []
   const results: [string, number, boolean][] = []
   const blocks: [string, string[], string | null][] = []
+  const drops: [string, string[], string][] = []
   const turns: [string, string[], object | undefined, true | undefined][] = []
   const tools: [string, string, string | undefined][] = []
   const posts: string[] = []
@@ -73,6 +74,7 @@ function setup(o: { transcript?: boolean; silent?: boolean; dmFails?: boolean; g
     budgetOf: key => o.budgets?.[key],
     modelOf: key => o.models?.[key],
     onBlocked: (key, turn, category) => { blocks.push([key, turn.map(t => t.content), category]) },
+    onDropped: (key, turn, reason) => { drops.push([key, turn.map(t => t.content), reason]) },
     onTurn: (key, tasks, limit, done) => { turns.push([key, tasks.map(t => t.content), limit, done]) },
     onTool: (key, tool, refused) => { tools.push([key, tool, refused]) },
   })
@@ -84,7 +86,7 @@ function setup(o: { transcript?: boolean; silent?: boolean; dmFails?: boolean; g
     origin: { channel: o.channel ?? 'C1', ts: '5.5' },
   })
   const idOf = (text: string) => cardAt(openLedgers(dir).text('posted'), 'DBOT', `9.${posts.lastIndexOf(text) + 1}`)!
-  return { sdk, posts, d, s, task, idOf, approvals, results, blocks, turns, call, servers, tools, keysDropped }
+  return { sdk, posts, d, s, task, idOf, approvals, results, blocks, drops, turns, call, servers, tools, keysDropped }
 }
 
 async function kageTools(run: { options: any }) {
@@ -668,15 +670,36 @@ describe('Kage sessions on the Agent SDK', () => {
     await tick()
     assert.deepEqual(t.blocks, [['C1:5.5', ['Task from Sam: hi'], null]])
   })
+  test('a prompt a hook drops before the model sees it is reported with the hook reason', async () => {
+    const t = setup()
+    t.d.task('C1:5.5', t.task({ content: 'Task from Ryu: check this' }), 0)
+    await tick()
+    t.sdk.runs[0]!.emit({ type: 'system', subtype: 'informational', level: 'warning', prevent_continuation: true, content: 'Prompt dropped by a hook: cold cache', prompt_submit_outcome: { kind: 'dropped_by_hook', prompt_kept: false, reason: 'cold cache, send it again' } })
+    t.sdk.runs[0]!.emit({ type: 'result', is_error: false, num_turns: 0, total_cost_usd: 0 })
+    await tick()
+    assert.deepEqual(t.drops, [['C1:5.5', ['Task from Ryu: check this'], 'cold cache, send it again']])
+    assert.deepEqual(t.turns.at(-1), ['C1:5.5', ['Task from Ryu: check this'], undefined, true])
+  })
+  test('a command hook that blocks the prompt is reported the same way', async () => {
+    const t = setup()
+    t.d.task('C1:5.5', t.task(), 0)
+    await tick()
+    t.sdk.runs[0]!.emit({ type: 'system', subtype: 'informational', level: 'warning', prevent_continuation: true, content: 'UserPromptSubmit operation blocked by hook', prompt_submit_outcome: { kind: 'blocked_by_hook', prompt_kept: false, reason: 'policy says no' } })
+    t.sdk.runs[0]!.emit({ type: 'result', is_error: false, num_turns: 0 })
+    await tick()
+    assert.deepEqual(t.drops, [['C1:5.5', ['Task from Sam: hi'], 'policy says no']])
+  })
   test('a normal turn, or a subagent refused inside it, reports no block', async () => {
     const t = setup()
     t.d.task('C1:5.5', t.task(), 0)
     await tick()
     t.sdk.runs[0]!.emit({ type: 'assistant', parent_tool_use_id: 'toolu_1', message: { stop_reason: 'refusal', content: [] } })
+    t.sdk.runs[0]!.emit({ type: 'system', subtype: 'informational', level: 'info', content: 'a note' })
     t.sdk.runs[0]!.emit({ type: 'assistant', message: { stop_reason: 'end_turn', content: [] } })
     t.sdk.runs[0]!.emit({ type: 'result' })
     await tick()
     assert.deepEqual(t.blocks, [])
+    assert.deepEqual(t.drops, [])
   })
   test('a Claude process that never starts keeps its task with the dispatcher, which reports it', async () => {
     const t = setup({ silent: true })
