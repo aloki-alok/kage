@@ -12,7 +12,7 @@ import { startJobEvents } from './job-events.ts'
 import { meetCall } from '../core/meetbot.ts'
 import type { Config, Secrets } from '../core/config.ts'
 import type { Conversation, Lane } from '../core/conversations.ts'
-import type { Delivery, Dispatcher } from '../core/sessions.ts'
+import { startFailedNote, type Delivery, type Dispatcher } from '../core/sessions.ts'
 import type { Task } from '../core/task.ts'
 import type { ToSession } from '../runtime/protocol.ts'
 import type { Inbox, Store } from '../runtime/store.ts'
@@ -28,7 +28,7 @@ export function startConnectors(o: {
   schedules: Parameters<typeof startJobEvents>[0]['schedules']; event: Parameters<typeof startJobEvents>[0]['event']; ledgers: Parameters<typeof startJobEvents>[0]['ledgers']; tripwires: Config['tripwires']
 }) {
   const { secrets, conn, store, slack, bot, NAME, CODE, DIR, d, inbox, deliver, placeOf, failed } = o
-  const github = secrets.githubSecret && conn.github?.login ? connectGithub({
+  const github = secrets.githubSecret && conn.github?.login ? connectGithub({ startError: () => d.lastStartError(),
     saved: store, secret: secrets.githubSecret, login: conn.github.login, port: conn.github.port || 8789, botDm: slack.ids.botDm,
     post: (text, thread) => bot.chat.postMessage({ channel: slack.ids.botDm, text, ...(thread && { thread_ts: thread }) }).then(r => r.ts, e => { log('github post failed', e); return undefined }),
     deliver: (c, task, place) => deliver(c, task, place),
@@ -36,7 +36,7 @@ export function startConnectors(o: {
     perHour: conn.github.perHour || 20, inbox,
   }) : undefined
   void github?.listening.then(port => log(`github on: 127.0.0.1:${port}/github for @${conn.github?.login}`), e => log('github could not listen', e))
-  const meeting = secrets.meetingToken ? connectMeeting({
+  const meeting = secrets.meetingToken ? connectMeeting({ startError: () => d.lastStartError(),
     token: secrets.meetingToken, port: conn.meeting?.port || 8790, botDm: slack.ids.botDm,
     post: text => bot.chat.postMessage({ channel: slack.ids.botDm, text }).then(r => r.ts, e => { log('meeting post failed', e); return undefined }),
     deliver: (c, task, place) => deliver(c, task, place),
@@ -57,13 +57,13 @@ export function startConnectors(o: {
   const email = connectEmail({
     mail: { ...conn.email, accessKeyId: secrets.aws?.accessKeyId, secretAccessKey: secrets.aws?.secretAccessKey }, saved: store, name: NAME, nameOf: slack.nameOf, deliver, inbox, dir: DIR,
     notify: text => void o.say(text),
-    failed: task => void o.say(`Could not start a session for ${task.meta.place}.`),
+    failed: task => void o.say(startFailedNote(task.meta.place, d.lastStartError())),
   })
   const voice = connectVoice({
     voice: { ...conn.voice, token: secrets.voiceToken }, name: NAME, deliver,
     end: key => { if (key.startsWith('voice:')) d.end(key) },
     slot: key => d.hasFreeSlot(key),
-    failed: task => void o.say(`Could not start a session for ${task.meta.place}.`),
+    failed: task => void o.say(startFailedNote(task.meta.place, d.lastStartError())),
   })
   const whatsapp = conn.whatsapp?.on !== false && secrets.waha?.WAHA_API_KEY ? startWhatsApp({
     dir: DIR, name: NAME, owner: slack.ownerName, waha: secrets.waha, whatsapp: conn.whatsapp ?? {}, inbox,
