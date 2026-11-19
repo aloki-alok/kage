@@ -1,16 +1,20 @@
 import { spawn } from 'node:child_process'
-import { globSync } from 'node:fs'
-import { availableParallelism } from 'node:os'
+import { globSync, mkdtempSync, rmSync } from 'node:fs'
+import { availableParallelism, tmpdir } from 'node:os'
+import { join } from 'node:path'
 
 const args = process.argv.slice(2)
 const limit = Number(args.find(a => a.startsWith('--limit='))?.slice(8) ?? 300) * 1000
 const files = [...new Set(args.filter(a => !a.startsWith('--')).flatMap(g => globSync(g)))].sort()
 if (!files.length) { console.error('no test files match'); process.exit(1) }
 
+const scratch = mkdtempSync(join(tmpdir(), 'kr-'))
+
 type Result = { file: string; code: number | null; ms: number; out: string; killed: boolean }
 const runOne = (file: string) => new Promise<Result>(done => {
   const start = Date.now()
-  const { NODE_TEST_CONTEXT: _, ...env } = process.env
+  const { NODE_TEST_CONTEXT: _, ...rest } = process.env
+  const env = { ...rest, TMPDIR: scratch }
   const child = spawn(process.execPath, ['--test', `--test-timeout=${limit}`, file], { stdio: ['ignore', 'pipe', 'pipe'], env, detached: true })
   let out = ''
   child.stdout.on('data', d => { out += d })
@@ -33,5 +37,6 @@ const worker = async () => {
   }
 }
 await Promise.all(Array.from({ length: Math.max(1, availableParallelism() - 1) }, worker))
+rmSync(scratch, { recursive: true, force: true })
 console.log(`\n${pass} files passed, ${failed.length} failed${failed.length ? `: ${failed.map(r => r.file).join(', ')}` : ''}`)
 process.exit(failed.length ? 1 : 0)

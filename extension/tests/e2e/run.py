@@ -52,6 +52,7 @@ async def main():
     finally:
         site.terminate()
         if check.poll() is None: check.terminate()
+        shutil.rmtree(home, ignore_errors=True)
     return check.returncode
 
 sys.exit(asyncio.run(main()))
