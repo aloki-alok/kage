@@ -38,3 +38,5 @@ export const memoryDirs = (home: string, envFile: string, harness: { memory?: st
   owner: harness.ownerMemory || `${home}/.claude/projects/${home.replace(/[^A-Za-z0-9]/g, '-')}/memory`,
 })
 export const senderFile = (dir: string, thread: string) => `${dir}/sender/${thread.replace(/[^A-Za-z0-9.]/g, '_')}`
+
+export const sandboxed = (setting: boolean | 'teammates' | undefined, _ownerThread: boolean) => setting === true

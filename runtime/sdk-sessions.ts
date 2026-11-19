@@ -48,7 +48,7 @@ export function sdkSessions(o: {
   toHub: (key: string, m: { type: 'mail' | 'wa' | 'voice'; text: string }) => void
   options: Options
   ownerMemory: string; sharedTools?: readonly string[]
-  codeDir: string; sandbox?: () => boolean
+  codeDir: string; sandbox?: (ownerThread: boolean) => boolean
   envFile: string
   onStart?: () => void; onMcp?: (q: Query) => void
   onResult?: (key: string, totalUsd: number, resumed: boolean, limited: boolean) => void
@@ -102,7 +102,7 @@ export function sdkSessions(o: {
     const resumed = o.hasTranscript(s.id)
     const budget = o.budgetOf?.(key)
     const grant = o.grantOf?.(key)
-    const walled = protectConfig(o.envFile, o.codeDir, undefined, shellGrant(grant) ? 'kagelet' : o.sandbox?.() === true)
+    const walled = protectConfig(o.envFile, o.codeDir, undefined, shellGrant(grant) ? 'kagelet' : o.sandbox?.(s.ownerTools) === true)
     const ssmToken = grant ? undefined : o.ssm?.issue(key)
     const keysToken = grant ? undefined : o.keys?.issue(key)
     const q = o.sdk.query({
