@@ -2,7 +2,7 @@ import { ago, whenLabel, type Row } from '../core/board.ts'
 import type { Schedule } from '../core/cron.ts'
 import type { KageletRow } from '../core/kagelets.ts'
 import { runLine, shownState, type Run } from '../core/kagelet-view.ts'
-import { bars, listRows, MARK, perHour, perMinute, screen, spinner, type Rect, type Screen } from '../core/top-layout.ts'
+import { activityBins, bars, listRows, MARK, perHour, screen, spinner, type Rect, type Screen } from '../core/top-layout.ts'
 import { clean, clear, clip, fill, H, paint, put, W } from './top-screen.ts'
 
 export type Tab = 'threads' | 'kagelets' | 'schedules'
@@ -10,7 +10,7 @@ export const TABS: Tab[] = ['threads', 'kagelets', 'schedules']
 export type Step = { at: number; text: string }
 export type View = {
   now: number; t: number; since: number
-  version?: string; slack: boolean; hubUp: boolean; upSec?: number; spentToday: number; slots?: { used: number; max: number }
+  version?: string; channels: { name: string; up: boolean | undefined }[]; hubUp: boolean; upSec?: number; spentToday: number; slots?: { used: number; max: number }
   rows: Row[]; nowLine: (key: string) => string | undefined
   ask?: { place: string; what: string }
   tab: Tab; focus: 'list' | 'feed'; selKey: string; open?: string; mode: 'steps' | 'schedules'
@@ -54,8 +54,11 @@ function header(v: View) {
   let x = 1
   const seg = (s: string, k: string) => { put(x, 0, s, k, 'bar'); x += [...s].length + 3 }
   seg(' kage', 'hi'); x -= 2; seg(v.version ?? '', 'dim')
-  put(x, 0, '●', v.slack ? 'ok' : v.hubUp ? 'you' : 'bad', 'bar'); x += 2
-  seg(v.slack ? 'slack connected' : v.hubUp ? 'slack reconnecting' : 'hub offline', 'mid')
+  if (!v.hubUp) { put(x, 0, '●', 'bad', 'bar'); x += 2; seg('hub offline', 'mid') }
+  else {
+    for (const c of v.channels) { put(x, 0, '●', c.up === undefined ? 'you' : c.up ? 'ok' : 'bad', 'bar'); put(x + 2, 0, c.name, 'mid', 'bar'); x += c.name.length + 4 }
+    x += 1
+  }
   if (v.upSec !== undefined) seg(`up ${ago(v.upSec * 1000)}`, 'mid')
   seg(`$${v.spentToday.toFixed(2)} today`, 'mid')
   if (v.slots) {
@@ -170,16 +173,28 @@ function kageletTable(v: View, r: Rect, focus: boolean) {
 
 function charts(v: View, s: Screen) {
   const [a, b, c] = s.charts!
-  pane(a!, false, ['activity · last hour'], 0, 'turns a minute')
-  const turns = bars(perMinute(v.turns, v.now, a!.x1 - a!.x0 - 3), a!.y1 - a!.y0 - 2)
-  turns.forEach((line, i) => put(a!.x0 + 2, a!.y0 + 1 + i, line, 'work'))
-  put(a!.x0 + 2, a!.y1, ' 60m ago ', 'dim'); put(a!.x1 - 7, a!.y1, ' now ', 'dim')
+  const rows = a!.y1 - a!.y0 - 2
+  const hourTurns = v.turns.filter(t => v.now - t >= 0 && v.now - t < 3_600_000).length
+  const yA = (n: number) => String(n)
+  const act = activityBins(v.turns, v.now, a!.x1 - a!.x0 - 4 - yA(0).length)
+  const topA = Math.max(0, ...act.bins), axisA = Math.max(yA(topA).length, 1)
+  pane(a!, false, [`turns every ${act.minutes === 1 ? 'minute' : `${act.minutes} min`}`], 0, `${hourTurns} in the last hour`)
+  const startA = a!.x0 + 3 + axisA, endA = a!.x1 - 1, avail = endA - startA
+  if (!hourTurns) put(startA + Math.max(0, Math.floor((avail - 24) / 2)), a!.y0 + Math.floor(rows / 2), 'no turns in the last hour', 'dim')
+  else {
+    put(a!.x0 + 1 + axisA - yA(topA).length, a!.y0 + 1, yA(topA), 'dim'); put(a!.x0 + axisA, a!.y0 + rows, '0', 'dim')
+    const lines = bars(act.bins, rows)
+    lines.forEach((line, i) => { for (let x = 0; x < avail; x++) put(startA + x, a!.y0 + 1 + i, line[Math.floor((x * act.bins.length) / avail)]!, 'work') })
+  }
+  put(startA - 1, a!.y1, ' -60m ', 'dim'); put(startA + Math.floor(avail / 2) - 3, a!.y1, ' -30m ', 'dim'); put(endA - 5, a!.y1, ' now ', 'dim')
   const hours = perHour(v.costs, v.now)
-  pane(b!, false, ['spend · today by hour'], 0, `$${v.spentToday.toFixed(2)}`)
-  const width = Math.floor((b!.x1 - b!.x0 - 3) / 2)
-  bars(hours.slice(-width), b!.y1 - b!.y0 - 2).forEach((line, i) => {
-    [...line].forEach((ch, j) => put(b!.x0 + 2 + j * 2, b!.y0 + 1 + i, ch, j === line.length - 1 ? 'work' : 'mid'))
-  })
+  const width = Math.floor((b!.x1 - b!.x0 - 8) / 2), shown = hours.slice(-width), first = hours.length - shown.length
+  const topB = Math.max(0, ...shown), labelB = `$${topB.toFixed(2)}`
+  pane(b!, false, ['spend per hour'], 0, `$${v.spentToday.toFixed(2)} today`)
+  put(b!.x0 + 1, b!.y0 + 1, labelB, 'dim'); put(b!.x0 + 1 + labelB.length - 2, b!.y0 + rows, '$0', 'dim')
+  const xB = b!.x0 + 2 + labelB.length
+  bars(shown, rows).forEach((line, i) => [...line].forEach((ch, j) => put(xB + j * 2, b!.y0 + 1 + i, ch, j === line.length - 1 ? 'work' : 'mid')))
+  for (const j of [0, Math.floor((shown.length - 1) / 2), shown.length - 1]) if (shown.length) put(xB + j * 2 - 1, b!.y1, ` ${String(first + j).padStart(2, '0')}h `, 'dim')
   pane(c!, false, ['kagelets'], 0, `${v.kagelets.filter(k => k.state === 'runs').length} of ${v.kagelets.length} on`)
   if (!v.kagelets.length) put(c!.x0 + 2, c!.y0 + 2, 'no kagelets yet', 'dim')
   v.kagelets.slice(0, c!.y1 - c!.y0 - 2).forEach((k, i) => {

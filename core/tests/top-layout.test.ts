@@ -1,6 +1,6 @@
 import { describe, test } from 'node:test'
 import assert from 'node:assert/strict'
-import { bars, filterRows, listRows, MARK, perMinute, perHour, rowAt, screen, spinner } from '../top-layout.ts'
+import { activityBins, bars, channels, filterRows, listRows, MARK, perMinute, perHour, rowAt, screen, spinner } from '../top-layout.ts'
 import type { Row } from '../board.ts'
 
 describe('screen: which panes a terminal gets', () => {
@@ -115,5 +115,42 @@ describe('search by place', () => {
   test('empty text keeps every row; text that matches nothing keeps none', () => {
     assert.equal(filterRows(rows, '').length, 3)
     assert.equal(filterRows(rows, 'zzz').length, 0)
+  })
+})
+
+describe('the activity chart says what a bar is', () => {
+  const NOW = Date.parse('2026-11-19T14:00:00Z')
+  test('a bar covers the fewest whole minutes that fit the width, and the label says how many', () => {
+    assert.deepEqual([activityBins([], NOW, 70).minutes, activityBins([], NOW, 70).bins.length], [1, 60])
+    assert.deepEqual([activityBins([], NOW, 46).minutes, activityBins([], NOW, 46).bins.length], [2, 30])
+    assert.deepEqual([activityBins([], NOW, 25).minutes, activityBins([], NOW, 25).bins.length], [3, 20])
+    assert.deepEqual([activityBins([], NOW, 13).minutes, activityBins([], NOW, 13).bins.length], [5, 12])
+  })
+  test('the counts add up to the turns in the hour', () => {
+    const times = [NOW - 30_000, NOW - 90_000, NOW - 59 * 60_000, NOW - 61 * 60_000]
+    const a = activityBins(times, NOW, 46)
+    assert.equal(a.bins.reduce((x, y) => x + y, 0), 3)
+    assert.equal(a.bins.at(-1), 2)
+  })
+})
+
+describe('which connectors the top bar names', () => {
+  const log = [
+    '2026-11-19T10:00:00Z [kage] email on: kage@x.test, 2 teammates',
+    '2026-11-19T10:00:01Z [kage] whatsapp on: listening on 127.0.0.1:3010',
+    '2026-11-19T10:00:02Z [kage] voice could not listen Error: EADDRINUSE',
+    '2026-11-19T11:00:00Z [kage] whatsapp bridge down',
+  ].join('\n')
+  test('each connector that is on, with its last known state from the hub log', () => {
+    assert.deepEqual(channels({ slack: true, log, on: ['email', 'whatsapp', 'voice'] }), [
+      { name: 'slack', up: true }, { name: 'email', up: true }, { name: 'whatsapp', up: false }, { name: 'voice', up: false },
+    ])
+  })
+  test('a bridge that came back is up again, and a connector that is off is not named', () => {
+    const back = `${log}\n2026-11-19T11:05:00Z [kage] whatsapp bridge back`
+    assert.deepEqual(channels({ slack: false, log: back, on: ['whatsapp'] }), [{ name: 'slack', up: false }, { name: 'whatsapp', up: true }])
+  })
+  test('a connector that is on but never logged reads as starting, not up', () => {
+    assert.deepEqual(channels({ slack: true, log: '', on: ['github'] }), [{ name: 'slack', up: true }, { name: 'github', up: undefined }])
   })
 })

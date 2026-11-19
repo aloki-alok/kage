@@ -86,3 +86,21 @@ export const filterRows = (rows: Row[], query: string): Row[] => {
   const q = query.trim().toLowerCase()
   return q ? rows.filter(r => r.place.toLowerCase().includes(q)) : rows
 }
+
+const STEPS = [1, 2, 3, 5, 10, 15]
+export function activityBins(times: number[], now: number, width: number): { bins: number[]; minutes: number } {
+  const minutes = STEPS.find(s => 60 / s <= width) ?? 15
+  return { bins: perMinute(times, now, 60 / minutes), minutes }
+}
+
+const UP = /^(\w+) on:/, DOWN = /^(\w+) could not listen|^(\w+) bridge down/, BACK = /^(\w+) bridge back/
+export function channels(o: { slack: boolean; log: string; on: string[] }): { name: string; up: boolean | undefined }[] {
+  const state = new Map<string, boolean>()
+  for (const line of o.log.split('\n')) {
+    const text = line.replace(/^\S+\s+(\[kage\]\s+)?/, '')
+    const up = UP.exec(text) ?? BACK.exec(text), down = DOWN.exec(text)
+    if (up) state.set(up[1]!, true)
+    else if (down) state.set((down[1] ?? down[2])!, false)
+  }
+  return [{ name: 'slack', up: o.slack }, ...o.on.map(name => ({ name, up: state.get(name) }))]
+}
