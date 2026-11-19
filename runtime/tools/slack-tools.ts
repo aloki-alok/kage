@@ -42,7 +42,7 @@ export function slackTools(c: ToolContext): KageTool[] {
       const a = args as { channel: string; thread_ts: string; text: string; private?: boolean; owner_asked?: boolean; waiting?: string; waiting_on?: string; mark?: keyof typeof MARKS; wide?: boolean; tag_agent?: boolean }
       const key = `${a.channel}:${a.thread_ts}`
       if (!a.private && !taskChannels.has(a.channel)) return { isError: true, text: 'refused: no task came from that channel; use private=true' }
-      const refusal = secretRefusal(a.text, { private: a.private, ownerAsked: a.owner_asked, fromOwner: ownerNow(key) }) ?? foreignAgentRefusal(a.text, o.foreignAgents?.() ?? [], agents.get(key)?.tag) ?? (a.private ? undefined : c.unseenMention(a.text)) ?? (a.private || a.channel.startsWith('D') ? undefined : dmLinkHeld(a.text))
+      const refusal = secretRefusal(a.text, { private: a.private, ownerAsked: a.owner_asked, fromOwner: ownerNow(key) }) ?? (a.private ? undefined : foreignAgentRefusal(a.text, o.foreignAgents?.() ?? [], [agents.get(key)?.tag])) ?? (a.private ? undefined : c.unseenMention(a.text)) ?? (a.private || a.channel.startsWith('D') ? undefined : dmLinkHeld(a.text))
       if (refusal) return { isError: true, text: refusal }
       if (a.channel === 'voice') {
         if (a.private) return { isError: true, text: 'refused: a voice call has no private reply' }
@@ -90,7 +90,7 @@ export function slackTools(c: ToolContext): KageTool[] {
       if (!taskChannels.has(a.channel) || a.channel === 'email' || (a.channel === 'whatsapp' && !fromPhone) || (a.channel === 'voice' && !ownerOnly(a))) return { isError: true, text: 'refused: only a task from a Slack thread or the owner\'s own call may message people' }
       const unseen = c.unseenMention(a.text, a.users)
       if (unseen) return { isError: true, text: unseen }
-      const toAgent = foreignAgentRefusal([a.text, ...a.users.map(u => `<@${u}>`)].join(' '), o.foreignAgents?.() ?? [])
+      const toAgent = foreignAgentRefusal([a.text, ...[...a.users, ...a.from ? [a.from] : []].map(u => `<@${u}>`)].join(' '), o.foreignAgents?.() ?? [])
       if (toAgent) return { isError: true, text: toAgent }
       const asker = ownerNow(key) ? undefined : askers.get(key) ?? { id: '', name: 'A teammate' }
       const ids = [...a.users, ...a.from ? [a.from] : []]

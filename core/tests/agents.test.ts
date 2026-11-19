@@ -94,4 +94,5 @@ test("another person's agent is foreign; the owner's own, and an agent of the ow
   assert.doesNotMatch(roster, /UTESTBOT2/)
   assert.match(roster, /UTESTBOT1/)
   assert.match(agentRoster(apps)!, /UTESTBOT2/)
+  assert.deepEqual(foreignAgentTags(['ATEST0005:ATEST0006:UTESTBOT5', 'ATEST0006:ATEST0005:UTESTBOT6'], 'UTESTOWN'), ['UTESTBOT5', 'UTESTBOT6'], 'an owner loop ends, and counts as foreign')
 })
