@@ -203,27 +203,36 @@ describe("an approval card answered on WhatsApp (#423)", () => {
   const me = '100OWNER@c.us'
   const msg = (text: string, o: Partial<{ chat: string; to: string; fromMe: boolean; viaApi: boolean; forwarded: boolean }> = {}) => ({ chat: me, to: me, id: 'w1', fromMe: true, text, ...o })
   test("the owner's 'yes 4821' or 'no 4821' in their own chat answers that card", () => {
-    assert.deepEqual(ownerAnswer(msg('yes 4821'), me), { code: '4821', behavior: 'allow' })
-    assert.deepEqual(ownerAnswer(msg(' No 4821 '), me), { code: '4821', behavior: 'deny' })
+    assert.deepEqual(ownerAnswer(msg('yes 4821'), [me]), { code: '4821', behavior: 'allow' })
+    assert.deepEqual(ownerAnswer(msg(' No 4821 '), [me]), { code: '4821', behavior: 'deny' })
   })
   test("the owner typing 'yes 4821' in a chat with someone else never answers, even if the bridge names the owner as the sender (#423)", () => {
-    assert.equal(ownerAnswer(fromWaha({ id: 'w9', from: me, to: '200FRIEND@c.us', fromMe: true, body: 'yes 4821' }), me), undefined)
-    assert.deepEqual(ownerAnswer(fromWaha({ id: 'w8', from: me, to: me, fromMe: true, body: 'yes 4821' }), me), { code: '4821', behavior: 'allow' })
+    assert.equal(ownerAnswer(fromWaha({ id: 'w9', from: me, to: '200FRIEND@c.us', fromMe: true, body: 'yes 4821' }), [me]), undefined)
+    assert.deepEqual(ownerAnswer(fromWaha({ id: 'w8', from: me, to: me, fromMe: true, body: 'yes 4821' }), [me]), { code: '4821', behavior: 'allow' })
   })
   test('nothing else answers a card: another chat, someone else, a message Kage sent, a forward, or other words', () => {
-    assert.equal(ownerAnswer(msg('yes 4821', { chat: '200FRIEND@c.us' }), me), undefined)
-    assert.equal(ownerAnswer(msg('yes 4821', { fromMe: false }), me), undefined)
-    assert.equal(ownerAnswer(msg('yes 4821', { viaApi: true }), me), undefined)
-    assert.equal(ownerAnswer(msg('yes 4821', { forwarded: true }), me), undefined)
-    for (const t of ['yes', 'yes 482', 'sure 4821', 'yes 4821 and more']) assert.equal(ownerAnswer(msg(t), me), undefined, t)
-    assert.equal(ownerAnswer(msg('yes 4821'), undefined), undefined)
+    assert.equal(ownerAnswer(msg('yes 4821', { chat: '200FRIEND@c.us' }), [me]), undefined)
+    assert.equal(ownerAnswer(msg('yes 4821', { fromMe: false }), [me]), undefined)
+    assert.equal(ownerAnswer(msg('yes 4821', { viaApi: true }), [me]), undefined)
+    assert.equal(ownerAnswer(msg('yes 4821', { forwarded: true }), [me]), undefined)
+    for (const t of ['yes', 'yes 482', 'sure 4821', 'yes 4821 and more']) assert.equal(ownerAnswer(msg(t), [me]), undefined, t)
+    assert.equal(ownerAnswer(msg('yes 4821'), []), undefined)
+    assert.deepEqual(ownerAnswer(fromWaha({ id: 'true_1000@lid_3AC7', from: '1000@lid', to: null, fromMe: true, source: 'app', body: 'no 4821' }), [me, '1000@lid']), { code: '4821', behavior: 'deny' }, "the owner's own chat by its lid, with to empty, as the bridge sends it")
+  })
+  test('the card note shows the exact input being approved, and an input too long to show gets no code (#423)', () => {
+    const shown = waCardNote({ tool: 'Bash', place: '#ops', description: 'list files', preview: 'rm -rf ~', code: '4821' }, 'kage')!
+    assert.match(shown, /rm -rf ~/)
+    assert.match(shown, /yes 4821/)
+    const long = waCardNote({ tool: 'Bash', place: '#ops', description: 'list files', preview: 'x'.repeat(2000), code: '4821' }, 'kage')!
+    assert.doesNotMatch(long, /4821/)
+    assert.match(long, /Slack/)
   })
   test('the card note names the step and the code to answer with, and carries no secret', () => {
-    const note = waCardNote({ tool: 'mcp__kage__browser_act', place: '#ops', description: 'mail.example.com: click button "Send"', code: '4821' }, 'kage')!
+    const note = waCardNote({ tool: 'mcp__kage__browser_act', place: '#ops', description: 'mail.example.com: click button "Send"', preview: '', code: '4821' }, 'kage')!
     assert.match(note, /browser act/)
     assert.match(note, /#ops/)
     assert.match(note, /yes 4821/)
     assert.match(note, /no 4821/)
-    assert.equal(waCardNote({ tool: 'Bash', place: '#ops', description: 'export KEY=AKIAIOSFODNN7EXAMPLE', code: '4821' }, 'kage'), undefined)
+    assert.equal(waCardNote({ tool: 'Bash', place: '#ops', description: 'run it', preview: 'export KEY=AKIAIOSFODNN7EXAMPLE', code: '4821' }, 'kage'), undefined)
   })
 })

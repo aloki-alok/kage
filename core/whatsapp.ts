@@ -2,11 +2,11 @@
 import { noChannelTag, oneLine } from './text.ts'
 import { findSecret, kageFooter } from './outbound.ts'
 
-export type WaMessage = { chat: string; id: string; fromMe: boolean; viaApi?: boolean; text: string; forwarded?: boolean; edited?: boolean }
+export type WaMessage = { chat: string; to?: string; id: string; fromMe: boolean; viaApi?: boolean; text: string; forwarded?: boolean; edited?: boolean }
 type Ctx = { contextInfo?: { isForwarded?: boolean } }
-export type WahaPayload = { id?: string; from?: string; fromMe?: boolean; source?: string; body?: string; _data?: { IsEdit?: boolean; Message?: Record<string, unknown> } }
+export type WahaPayload = { id?: string; from?: string; to?: string | null; fromMe?: boolean; source?: string; body?: string; _data?: { IsEdit?: boolean; Message?: Record<string, unknown> } }
 export const fromWaha = (p: WahaPayload): WaMessage => ({
-  chat: p.from ?? '', id: p.id ?? '', fromMe: !!p.fromMe, viaApi: p.source === 'api', text: p.body ?? '',
+  chat: p.from ?? '', ...(p.to && { to: p.to }), id: p.id ?? '', fromMe: !!p.fromMe, viaApi: p.source === 'api', text: p.body ?? '',
   forwarded: Object.values(p._data?.Message ?? {}).some(v => (v as Ctx | null)?.contextInfo?.isForwarded === true),
   edited: !!p._data?.IsEdit,
 })
@@ -77,12 +77,12 @@ export const ownerNote = (text: string, name: string): string | undefined => fin
   .replace(/<(https?:[^|>]+)\|([^>]+)>/g, '$2 ($1)').replace(/<(https?:[^>]+)>/g, '$1')
   .replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&amp;/g, '&')
   .replace(tagFor(name), (m, lead: string) => `${lead}@\u2060${m.slice(lead.length + 1)}`)
-export function ownerAnswer(m: WaMessage, me: string | undefined): { code: string; behavior: 'allow' | 'deny' } | undefined {
-  if (!me || m.chat !== me || !m.fromMe || m.viaApi || m.forwarded) return undefined
+export function ownerAnswer(m: WaMessage, me: readonly string[]): { code: string; behavior: 'allow' | 'deny' } | undefined {
+  if (!me.includes(m.chat) || (m.to !== undefined && !me.includes(m.to)) || !m.fromMe || m.viaApi || m.forwarded) return undefined
   const a = /^\s*(yes|no)\s+(\d{4})\s*$/i.exec(m.text)
   return a ? { code: a[2]!, behavior: a[1]!.toLowerCase() === 'yes' ? 'allow' : 'deny' } : undefined
 }
-export function waCardNote(c: { tool: string; place: string; description: string; code: string }, name: string): string | undefined {
+export function waCardNote(c: { tool: string; place: string; description: string; preview: string; code: string }, name: string): string | undefined {
   const step = c.tool.replace(/^mcp__(.+__)?/, '').replaceAll('_', ' ')
   return ownerNote(`Approve? ${step} in ${c.place}${c.description ? `\n${c.description}` : ''}\nReply "yes ${c.code}" or "no ${c.code}" here, or answer the card in Slack.`, name)
 }
