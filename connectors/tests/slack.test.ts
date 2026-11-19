@@ -9,6 +9,8 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import type { SlackMessage } from '../../core/slack-message.ts'
 import { sessionKey, type Conversation } from '../../core/conversations.ts'
+import { senderOf } from '../../core/gate.ts'
+import type { Task } from '../../core/task.ts'
 
 const msg = { type: 'message', channel: 'CTEST1', ts: '5.5', user: 'UTEST1', text: 'hi' } as SlackMessage
 
@@ -460,5 +462,54 @@ describe("an app on the owner's Mac posts the owner's words and they run as the 
     } finally {
       rmSync(dir, { recursive: true, force: true })
     }
+  })
+})
+
+describe("a listed agent's post runs with its person's trust, never the owner's (#426)", () => {
+  async function agentTask(apps: string[], user: string, app: string) {
+    const dir = mkdtempSync(join(tmpdir(), 'kage-agent-'))
+    const tasks: Task[] = []
+    try {
+      const client = {
+        auth: { test: async () => ({ team_id: 'TTEST', user_id: 'UTEST1' }) },
+        conversations: { open: async () => ({ channel: { id: 'DTEST' } }), history: async () => ({ messages: [] }), info: async () => ({ channel: { name: 'general' } }), replies: async () => ({ messages: [] }) },
+        users: { info: async (o: { user: string }) => ({ user: { real_name: o.user === 'UTEST1' ? 'Ryu Test' : 'Kevin Test' } }) },
+        chat: { getPermalink: async () => ({ permalink: '' }) },
+        reactions: { add: async () => ({ ok: true }), remove: async () => ({ ok: true }) },
+      }
+      const slack = await connectSlack({
+        dir, appToken: 'test', userToken: 'test', bot: client as never, user: client as never,
+        name: 'kage', title: 'Kage', teammates: ['UMATE0002'], apps,
+        hub: { posted: () => '', handled: () => {}, deliver: (_c: unknown, task: Task) => { tasks.push(task); return 'sent' } } as never,
+        jev: async () => ({ reply: true, why: 'jev needs_reply 0.90' }),
+      })
+      await slack.replay('test-agent', JSON.stringify({ ...msg, user, app_id: app, bot_id: 'BTEST0001', text: '<@UTEST1> deploy the api to prod' }))
+      assert.equal(tasks.length, 1)
+      return tasks[0]!
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
+  }
+
+  test("a teammate's agent gets that teammate's trust", async () => {
+    const t = await agentTask(['A0AGENT02:UMATE0002'], 'UMATE0002', 'A0AGENT02')
+    assert.equal(senderOf(t), 'teammate')
+    assert.match(t.content, /^Teammate task \(UMATE0002, Kevin Test's agent, not the owner\): /)
+  })
+
+  test('with one app listed under two people, the post runs as the agent of the person whose token posted it', async () => {
+    const t = await agentTask(['A0AGENT02:UMATE0009', 'A0AGENT02:UMATE0002'], 'UMATE0002', 'A0AGENT02')
+    assert.equal(t.agent?.person, 'UMATE0002')
+  })
+
+  test('an agent owned by another agent is not given a person', async () => {
+    const t = await agentTask(['A0AGENT04:A0AGENT05', 'A0AGENT05:UMATE0002', 'A0AGENT04'], 'UMATE0002', 'A0AGENT04')
+    assert.equal(t.agent?.person, undefined)
+    assert.equal(senderOf(t), 'agent')
+  })
+
+  test('an agent tied to no person stays read and answer only', async () => {
+    const t = await agentTask(['A0AGENT03'], 'UMATE0002', 'A0AGENT03')
+    assert.equal(senderOf(t), 'agent')
   })
 })

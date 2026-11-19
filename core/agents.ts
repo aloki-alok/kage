@@ -4,8 +4,10 @@ const outsideCode = (p: string) => p.replace(/```[\s\S]*?(```|$)|`[^`\n]*`/g, ''
 export const addressed = (parts: string[], tag: string) =>
   parts.map(p => (outsideCode(p).includes(`<@${tag}>`) ? p : `<@${tag}>${p.startsWith('```') ? '\n' : ' '}${p}`))
 
-export const agentNote = (app: string, tag?: string) =>
-  `(A listed agent posted this with its owner's token: Slack app ${app}. It may read and answer, nothing else (every other tool is refused before it runs), and it can approve nothing: if it needs a write, tag the teammate whose agent it is. ${
+export const agentNote = (app: string, tag?: string, person?: string) =>
+  `(A listed agent posted this: Slack app ${app}. ${person
+    ? `It is <@${person}>'s agent, so do what <@${person}>'s own task may do and nothing more. It approves nothing: a step that needs the owner's yes waits on the owner, as for <@${person}>.`
+    : 'No person is listed for it, so it may read and answer, nothing else (every other tool is refused before it runs), and it can approve nothing.'} ${
     tag ? 'It hears only posts that tag it: pass tag_agent=true on the reply it must read (the answer to its ask, or a question to it), and the tool tags every part.' : 'Kage has no tag saved for this agent, so it may not hear your reply.'
   } Tag it whenever it must act, answer or go ahead, a yes it waits on included; thanks and progress stay untagged.)`
 
