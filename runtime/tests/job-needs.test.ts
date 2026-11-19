@@ -70,7 +70,7 @@ test('one failed check does not stop the later ones', async () => {
 
 test('a status that never comes in gives up, so the clock is not stuck', async () => {
   const q = { initializationResult: () => new Promise(() => {}), mcpServerStatus: async () => [] }
-  await assert.rejects(mcpStatus(q, 1, 1).catch(e => { throw e }), /did not come in time/)
+  await assert.rejects(mcpStatus(q, 1, 1, 10), /did not come in time/)
 })
 
 test('with no job that needs a tool, the clock never opens a probe session', async () => {

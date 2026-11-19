@@ -6,9 +6,9 @@ import type { Store } from './store.ts'
 type Servers = Parameters<typeof liveTools>[0]
 type StatusQuery = { initializationResult(): Promise<unknown>; mcpServerStatus(): Promise<Servers> }
 
-export async function mcpStatus(q: StatusQuery, pollMs = 1000, tries = 35): Promise<Servers> {
+export async function mcpStatus(q: StatusQuery, pollMs = 1000, tries = 35, graceMs = 30_000): Promise<Servers> {
   let timer: NodeJS.Timeout | undefined
-  const late = new Promise<never>((_, no) => { timer = setTimeout(() => no(new Error('the MCP status did not come in time')), pollMs * tries + 30_000) })
+  const late = new Promise<never>((_, no) => { timer = setTimeout(() => no(new Error('the MCP status did not come in time')), pollMs * tries + graceMs) })
   try { return await Promise.race([settled(q, pollMs, tries), late]) } finally { clearTimeout(timer) }
 }
 
