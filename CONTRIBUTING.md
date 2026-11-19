@@ -141,6 +141,7 @@ Write logs to stderr only. In a tmux pane, stdout carries the channel protocol, 
 | `stats.ts` | What `kage stats` shows: spend per day and per connector, runs, refusals, turn time and hub starts, from rows Kage already keeps (no content). `cli/stats.ts` reads them. |
 | `task.ts` | `Task`: what a connector turns a message into, and what a runner takes (ADR 0002). |
 | `instructions.ts` | What every session reads first: who it is (Kage, a kagelet, or a kagelet's nightly dream), whom it serves, how it answers, and each kind of task's limits. A kagelet reads Kage's door rules word for word. |
+| `secret-prompt.ts` | A hidden token prompt's rules: what each key does to the line, whether a paste is the token asked for (and which one it is when not), and how a saved token is shown. `runtime/terminal-secret.ts` draws the prompt, and `cli/ask-secret.ts` is its entry for `setup.sh`. |
 | `text.ts` | Text helpers every rule shares: `oneLine`, and `quotedLine` for someone else's text (no `<channel>` tag survives). |
 | `cli-help.ts` | The closest real `kage` command to a mistyped one. |
 | `dream.ts` | The nightly dream job: what it reads for lessons, how it tidies Kage's memory, and which lessons may leave this machine. |
@@ -170,6 +171,7 @@ Write logs to stderr only. In a tmux pane, stdout carries the channel protocol, 
 | `runtime/tools/browser-tools.ts` | The owner's Chrome: list, read, capture, snapshot and act, a major step on the owner's yes. |
 | `runtime/tools/owner-tools.ts` | Only the owner's own Slack task: the meeting bot and changing a setting. |
 | `session-link.ts` | The local socket that panes and the `kage` commands connect to. |
+| `terminal-secret.ts` | The hidden token prompt at a terminal: a dot per character and the length while typing, the kind and length once taken, and a retry on the wrong token. Piped input is read whole. |
 | `hub-client.ts` | The client end of that socket: one question to the running hub, one answer. Node modules only, because the shell scripts read settings through `cli/home.ts`, which imports it. |
 | `protocol.ts` | The messages on that socket. |
 | `slack-read-tools.ts` | The two Slack read tools the owner's own task gets (`slack_search`, `slack_read`): a Slack task, or an owner-verified voice call, where they load up front so a live call skips tool discovery. |

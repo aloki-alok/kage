@@ -255,9 +255,9 @@ cmd_save() {
   local APP="" USR="" BOT="" t input
   if [[ -t 0 ]]; then  # a person at a terminal: hidden prompts, so the tokens never show
     local a u b
-    read -r -s -p "App-level token (xapp-...): " a; echo
-    read -r -s -p "User OAuth token (xoxp-...): " u; echo
-    read -r -s -p "Bot token (xoxb-...): " b; echo
+    a="$(node cli/ask-secret.ts app "App-level token (xapp-...): ")" || exit 1
+    u="$(node cli/ask-secret.ts user "User OAuth token (xoxp-...): ")" || exit 1
+    b="$(node cli/ask-secret.ts bot "Bot token (xoxb-...): ")" || exit 1
     input="$a $u $b"
   else
     input="$(cat)"
@@ -283,7 +283,7 @@ cmd_claude_login() {
   local t
   if [[ -t 0 ]]; then
     echo "Run claude setup-token signed in as Kage's own account, then paste the token it prints." >&2
-    read -r -s -p "Claude token (sk-ant-oat...): " t; echo >&2
+    t="$(node cli/ask-secret.ts claude "Claude token (sk-ant-oat...): ")" || exit 1
   else
     t="$(cat)"
   fi
