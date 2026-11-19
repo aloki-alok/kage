@@ -1,6 +1,6 @@
 import { describe, test } from 'node:test'
 import assert from 'node:assert/strict'
-import { Dispatcher, mixRunners, type Runner } from '../sessions.ts'
+import { Dispatcher, mixRunners, startFailedNote, type Runner } from '../sessions.ts'
 
 describe('one Claude session per thread', () => {
   function setup(o: { max?: number; saved?: Record<string, string>; busyThrows?: boolean } = {}) {
@@ -26,6 +26,21 @@ describe('one Claude session per thread', () => {
     return { d, started, stopped, activity, busy, watching, broken, panes, inbox }
   }
 
+  test('a session that fails to start keeps its cause, and a later good start clears it (#240)', () => {
+    const t = setup()
+    t.broken.add('C1:1.1')
+    assert.equal(t.d.task('C1:1.1', 'hi', 0), 'failed')
+    assert.equal(t.d.lastStartError(), 'tmux failed')
+    assert.equal(t.d.task('C2:2.2', 'hi', 0), 'starting')
+    assert.equal(t.d.lastStartError(), undefined)
+  })
+  test('the notice says what happened, what it means, why, and the fix, for a task and for a scheduled run (#240)', () => {
+    const task = startFailedNote('#ops', 'tmux failed')
+    assert.match(task, /^Kage could not start a session for #ops, so that message has no answer yet\. Cause: tmux failed\./)
+    assert.match(task.split('\n')[1]!, /kage doctor/)
+    assert.match(task.split('\n')[1]!, /tag Kage there again/)
+    assert.match(startFailedNote('#ops', undefined, true), /^Kage could not start a session for a scheduled run in #ops, so that run did not happen\.\n/)
+  })
   test('a new thread starts a session and gets its task once the session connects', () => {
     const { d, started, inbox } = setup()
     assert.equal(d.task('A', 'first', 0), 'starting')

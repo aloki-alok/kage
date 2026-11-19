@@ -1,5 +1,6 @@
 
 export type Delivery = 'sent' | 'starting' | 'queued' | 'held' | 'failed'
+export const startFailedNote = (_place: string, _why: string | undefined, _scheduled = false) => ''
 type Unquiet = 'busy' | 'asking' | 'starting' | 'watching' | 'just active' | 'waiting for a slot' | 'open in a terminal'
 
 export type Runner<M = unknown> = { start(key: string, id: string, first?: M): void; stop(key: string): void; lastActivity(key: string): number; busy(key: string): boolean | 'watching'; outlivesHub?(key: string): boolean }
@@ -43,6 +44,7 @@ export class Dispatcher<M> {
     for (const k of keys) if (this.#ids.has(k)) { this.#live.add(k); this.#startedAt.set(k, now) }
   }
 
+  lastStartError(): string | undefined { return undefined }
   task(key: string, msg: M, now: number): Delivery {
     this.#touched.set(key, now)
     this.#ending.delete(key)
