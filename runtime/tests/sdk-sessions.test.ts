@@ -717,6 +717,21 @@ describe('Kage sessions on the Agent SDK', () => {
     await tick()
     assert.equal(t.sdk.runs.flatMap(r => r.said).filter(x => String(x).includes('and the summary')).length, 1)
   })
+  test('a prompt that already completed is never the one blamed for a later drop', async () => {
+    const t = setup()
+    t.d.task('C1:5.5', t.task({ fromOwner: false, content: 'Task from Sam: check the logs' }), 0)
+    await tick()
+    const run = t.sdk.runs[0]!
+    run.emit({ type: 'system', subtype: 'session_state_changed', state: 'running' })
+    await tick()
+    t.d.task('C1:5.5', t.task({ content: 'Task from Ryu: and the summary' }), 1)
+    await tick()
+    run.emit({ type: 'command_lifecycle', command_uuid: run.uuids[1], state: 'started' })
+    run.emit({ type: 'command_lifecycle', command_uuid: run.uuids[1], state: 'completed' })
+    run.emit({ type: 'system', subtype: 'informational', level: 'warning', prevent_continuation: true, content: 'dropped', prompt_submit_outcome: { kind: 'dropped_by_hook', prompt_kept: false } })
+    await tick()
+    assert.deepEqual(t.drops, [['C1:5.5', ['Task from Sam: check the logs', 'Task from Ryu: and the summary'], '']])
+  })
   test('a normal turn, or a subagent refused inside it, reports no block', async () => {
     const t = setup()
     t.d.task('C1:5.5', t.task(), 0)
