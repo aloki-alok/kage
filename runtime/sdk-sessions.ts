@@ -52,6 +52,7 @@ export function sdkSessions(o: {
   onStart?: () => void
   onResult?: (key: string, totalUsd: number, resumed: boolean, limited: boolean) => void
   onBlocked?: (key: string, turn: Task[], category: string | null) => void
+  onDropped?: (key: string, turn: Task[], reason: string) => void
   onTurn?: (key: string, tasks: Task[], limit?: Limit, done?: true) => void
   grantOf?: (key: string) => string[] | undefined; allowOf?: (key: string) => string[]; reviewHeld?: (key: string, command: string) => Promise<boolean>
   onTool?: (key: string, tool: string, refused?: string) => void
@@ -173,6 +174,8 @@ export function sdkSessions(o: {
             blocked = true
             o.onBlocked?.(key, s.turn.map(x => x.task), (m.type === 'system' && m.subtype === 'model_refusal_no_fallback' && m.api_refusal_category) || null)
           }
+          const ended = m.type === 'system' && (m as { prompt_submit_outcome?: { kind: string; reason?: string } }).prompt_submit_outcome
+          if (ended && HOOK_ENDINGS.includes(ended.kind)) o.onDropped?.(key, s.turn.map(x => x.task), ended.reason ?? ended.kind)
           if (m.type === 'rate_limit_event' && m.rate_limit_info.status === 'rejected') ({ rateLimitType: window } = m.rate_limit_info, resetsAt = m.rate_limit_info.resetsAt && (m.rate_limit_info.resetsAt < 1e12 ? m.rate_limit_info.resetsAt * 1000 : m.rate_limit_info.resetsAt))
           if (m.type === 'assistant' && !m.parent_tool_use_id) limit = m.error === 'rate_limit' || m.error === 'overloaded' ? m.error : undefined
           if (m.type === 'result' && m.is_error && !limit) {
@@ -273,6 +276,7 @@ export function sdkSessions(o: {
   return { runner, running: () => new Set([...sessions.values()].map(s => s.id)), usage: () => [...sessions.values()].find(s => s.run && !s.stopped)?.run!.q.usage_EXPERIMENTAL_MAY_CHANGE_DO_NOT_RELY_ON_THIS_API_YET({ skipBehaviors: true }) }
 }
 
+export const HOOK_ENDINGS = ['blocked_by_hook', 'stopped_by_hook', 'dropped_by_hook', 'not_passed_on', 'no_verdict']
 const ownerAgain = (t: Task): Task => ({ ...t, content: `${OWNER_AGAIN}\n${t.content}` })
 
 const SET_MODEL = 'Switch the model or reasoning effort of this thread, when the owner or a teammate asks for it in plain words ("use opus max", "go back to the default"). It applies from the next step and stays for the thread. Leave out what they did not ask to change.'
