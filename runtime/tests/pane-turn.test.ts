@@ -33,7 +33,9 @@ function pane() {
     configOpen: () => !hook(GUARD, { tool_name: 'Read', tool_input: { file_path: join(conf, 'config.json') } }).includes('"deny"'),
     plainReadOpen: () => !hook(GUARD, { tool_name: 'Read', tool_input: { file_path: join(conf, 'files', 'notes.txt') } }).includes('"deny"'),
     post: async () => (await kage.tools.find(t => t.name === 'post_as_kage')!.run({ channel: 'C1', thread_ts: '5.5', to: 'CTEST9', text: 'hello' })).text,
+    stopNow: () => { hook(TURN_END, { hook_event_name: 'Stop' }) },
     turnEnds: async () => { await tick(15); hook(TURN_END, { hook_event_name: 'Stop' }); await tick() },
+    restart: () => { turn.close(); opened.push(paneTurn({ dir: conf, thread: 'C1:5.5', pollMs: 10, show: () => {} })) },
   }
 }
 
@@ -93,6 +95,59 @@ test("a teammate's message that came after the turn's last step still binds the 
   p.owner('one more thing')
   assert.equal(p.configOpen(), false)
   assert.match(await p.post(), /only the owner/)
+  await p.turnEnds()
+  assert.match(p.shown.at(-1)!, /^\(The owner wrote this during someone else's turn[^\n]*\nTask from the owner: one more thing$/)
+  assert.equal(p.configOpen(), true)
+})
+
+test("the owner's message waits for a teammate's unread message to finish its turn, then runs on its own", async () => {
+  const p = pane()
+  p.teammate('check the logs')
+  p.owner('then post the summary')
+  p.configOpen()
+  await tick(15)
+  p.teammate('and the metrics')
+  await p.turnEnds()
+  assert.equal(p.configOpen(), false)
+  assert.doesNotMatch(p.shown.at(-1)!, /runs now with the owner's tools/)
+  await p.turnEnds()
+  assert.match(p.shown.at(-1)!, /runs now with the owner's tools[^\n]*\nTask from the owner: then post the summary$/)
+  assert.equal(p.configOpen(), true)
+})
+
+test("a teammate who arrives right after the owner's turn ends, before that end is seen, gets a teammate's turn", async () => {
+  const p = pane()
+  p.owner('one')
+  p.configOpen()
+  await tick(15)
+  p.stopNow()
+  p.teammate('two')
+  assert.equal(p.configOpen(), false)
+  await tick()
+  assert.equal(p.configOpen(), false, "the teammate's turn got the owner's trust")
+  assert.deepEqual(p.shown, ['Task from the owner: one', 'Task from Sam: two'], "the owner's finished turn ran again")
+})
+
+test("a turn Claude starts on its own after a teammate's turn keeps the teammate's trust when the owner writes", async () => {
+  const p = pane()
+  p.teammate('run the build in the background')
+  p.configOpen()
+  await p.turnEnds()
+  assert.equal(p.configOpen(), false)
+  p.owner('hi')
+  assert.equal(p.configOpen(), false)
+  await p.turnEnds()
+  assert.match(p.shown.at(-1)!, /Task from the owner: hi$/)
+  assert.equal(p.configOpen(), true)
+})
+
+test("a plugin restart never writes the owner's trust before a task arrives", async () => {
+  const p = pane()
+  p.teammate('check the logs')
+  p.configOpen()
+  p.restart()
+  await p.turnEnds()
+  assert.equal(p.configOpen(), false)
 })
 
 test("the owner's own turns never run twice", async () => {

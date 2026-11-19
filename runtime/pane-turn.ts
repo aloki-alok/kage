@@ -1,4 +1,4 @@
-import { mkdirSync, readFileSync, unwatchFile, watchFile, writeFileSync } from 'node:fs'
+import { mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { dirname } from 'node:path'
 import { arrive, endTurn, NO_TURN, turnSender } from '../core/pane-turn.ts'
 import { senderFile } from '../core/guards.ts'
@@ -13,30 +13,33 @@ export function markTurn(dir: string, thread: string, mark: 'step' | 'stop') {
 
 export function paneTurn(o: { dir: string; thread: string; show: (t: Task) => void; pollMs?: number }) {
   const file = senderFile(o.dir, o.thread), marks = turnMarks(o.dir, o.thread)
-  let turn = NO_TURN
+  const markAt = (f: string) => { try { return Number(readFileSync(f, 'utf8')) || 0 } catch { return 0 } }
+  let turn = NO_TURN, seenStop = markAt(marks.stop)
   const write = () => {
+    if (!turn.tasks.length) return
     mkdirSync(dirname(file), { recursive: true, mode: 0o700 })
     writeFileSync(file, turnSender(turn), { mode: 0o600 })
   }
   const take = (t: Task) => {
-    const r = arrive(turn, t, Date.now())
+    ended()
+    const r = arrive(turn, t, Date.now(), markAt(marks.step) > seenStop)
     turn = r.turn
     write()
     o.show(r.shown)
   }
-  const ended = (now: { mtimeMs: number }, before: { mtimeMs: number }) => {
-    if (now.mtimeMs <= before.mtimeMs) return
-    let lastStep = 0
-    try { lastStep = Number(readFileSync(marks.step, 'utf8')) || 0 } catch {}
-    const r = endTurn(turn, lastStep)
+  const ended = () => {
+    const stoppedAt = markAt(marks.stop)
+    if (stoppedAt <= seenStop) return
+    seenStop = stoppedAt
+    const r = endTurn(turn, markAt(marks.step), stoppedAt)
     turn = r.turn
     write()
     for (const t of r.send) take(t)
   }
-  watchFile(marks.stop, { interval: o.pollMs ?? 250 }, ended)
+  const poll = setInterval(ended, o.pollMs ?? 250)
   return {
     sender: () => turn.tasks.length ? turnSender(turn) : undefined,
     arrive: take,
-    close: () => unwatchFile(marks.stop, ended),
+    close: () => clearInterval(poll),
   }
 }

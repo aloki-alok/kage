@@ -5,18 +5,21 @@ type PaneTurn = { open: boolean; tasks: { task: Task; at: number }[]; again: Tas
 export const NO_TURN: PaneTurn = { open: false, tasks: [], again: [] }
 
 const paneSender = (t: Task) => senderOf({ fromOwner: t.fromOwner === true, meta: t.meta })
-export const turnSender = (turn: PaneTurn): Sender => turn.tasks.map(x => paneSender(x.task)).find(s => s !== 'owner') ?? 'owner'
+const lowest = (tasks: PaneTurn['tasks']): Sender => tasks.map(x => paneSender(x.task)).find(s => s !== 'owner') ?? 'owner'
+export const turnSender = (turn: PaneTurn) => lowest(turn.tasks)
 
-export function arrive(turn: PaneTurn, task: Task, at: number): { turn: PaneTurn; shown: Task } {
-  const next = { ...turn, open: true, tasks: [...turn.open ? turn.tasks : [], { task, at }] }
+export function arrive(turn: PaneTurn, task: Task, at: number, working: boolean): { turn: PaneTurn; shown: Task } {
+  const next = { ...turn, open: true, tasks: [...turn.open || working ? turn.tasks : [], { task, at }] }
   const lowered = paneSender(task) === 'owner' && turnSender(next) !== 'owner'
   return { turn: next, shown: lowered ? { ...task, content: `${OWNER_MID_TURN}\n${task.content}` } : task }
 }
 
-export function endTurn(turn: PaneTurn, lastStep: number): { turn: PaneTurn; send: Task[] } {
+export function endTurn(turn: PaneTurn, lastStep: number, stoppedAt: number): { turn: PaneTurn; send: Task[] } {
   if (!turn.open) return { turn, send: [] }
-  const carried = turn.tasks.filter(x => x.at > lastStep)
-  const lowered = turnSender(turn) === 'owner' ? [] : turn.tasks.map(x => x.task).filter(t => paneSender(t) === 'owner' && !turn.again.includes(t))
+  const ended = turn.tasks.filter(x => x.at <= stoppedAt), byOwner = lowest(ended) === 'owner'
+  const read = lastStep <= stoppedAt ? lastStep : 0
+  const carried = turn.tasks.filter(x => x.at > read && !(byOwner && x.at <= stoppedAt))
+  const lowered = byOwner ? [] : ended.map(x => x.task).filter(t => paneSender(t) === 'owner' && !turn.again.includes(t))
   const again = [...turn.again, ...lowered]
   const ready = carried.every(x => paneSender(x.task) === 'owner')
   return {
