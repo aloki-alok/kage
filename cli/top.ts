@@ -17,6 +17,7 @@ import { kageletTier } from '../core/access.ts'
 import { kageletsDir, readKagelets } from '../runtime/kagelet-files.ts'
 import { eventsOn, ledgerText } from '../runtime/ledger.ts'
 import { chainLine, chainViews } from '../core/events.ts'
+import { WORDMARK } from '../core/voice.ts'
 
 const HOME = process.env.HOME!
 const PROJECT = `${HOME}/.claude/projects/${CWD.replace(/[^A-Za-z0-9]/g, '-')}`
@@ -168,7 +169,6 @@ async function pollHub() {
 
 const TONE: Record<string, string> = { work: 'R', you: 'Y', white: 'w', muted: 'm', dim: 'd' }
 const tz = () => ` ${new Intl.DateTimeFormat([], { timeZoneName: 'short' }).formatToParts(new Date()).find(p => p.type === 'timeZoneName')?.value ?? ''}`
-const WORD = ['█▄▀ ▄▀█ █▀▀ █▀▀', '█ █ █▀█ █▄█ ██▄']
 function rowLabel(r: Row, now: number) {
   return r.state === 'watching' ? `next ${whenLabel(r.next, now)}` : r.state === 'quiet' ? ago(r.ageMs) : r.label
 }
@@ -176,10 +176,9 @@ function rowLabel(r: Row, now: number) {
 function frame(t: number, since: number): string[] {
   const now = Date.now()
   clear()
-  WORD.forEach((l, i) => put(2, 1 + i, l, 'W'))
-
   const l = layout(W, H, view.live.map(r => r.key), view.ended.map(r => r.key))
   L = l
+  if (!l.hero) WORDMARK.word.forEach((w, i) => put(2, 1 + i, w, 'W'))
   const clock = live ? `${live.live.length} of ${live.max} strings · ${new Date(now).toTimeString().slice(0, 5)}${tz()}` : existsSync(SOCK) ? 'no live state' : 'hub offline'
   put(l.right - clock.length + 1, 1, clock, 'm')
   const asks = board.filter(r => r.state === 'asking').length

@@ -18,7 +18,8 @@ export type Layout = {
 
 const ROW_MAX = 72
 const TOP = 5
-const HEROES = { big: { cols: 46, rows: 23 }, small: { cols: 32, rows: 16 } }
+const size = (art: { chars: string[] }) => ({ cols: [...art.chars[0]!].length, rows: art.chars.length })
+const HEROES = { big: size(HERO_BIG), small: size(HERO_SMALL) }
 const starOf = (cls: string[]) => { const y = cls.findIndex(r => r.includes('g')); return { x: cls[y]!.indexOf('g'), y } }
 const STARS = { big: starOf(HERO_BIG.cls), small: starOf(HERO_SMALL.cls) }
 
@@ -28,7 +29,7 @@ export function layout(cols: number, rows: number, live: string[], ended: string
   let hero: Layout['hero'], star: Layout['star']
   if (mode !== 'none') {
     const h = HEROES[mode]
-    hero = { x: 1, y: 4, ...h }
+    hero = { x: 1, y: 2, ...h }
     star = { x: hero.x + STARS[mode].x, y: hero.y + STARS[mode].y }
     lx = hero.x + h.cols + (mode === 'big' ? 14 : 10)
   }
