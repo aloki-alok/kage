@@ -16,7 +16,7 @@ Set up|app|[name]|Write the Slack app for the name you tag, and open the link th
 Set up|save|[name]|Paste the three Slack tokens into hidden prompts; each is checked with Slack|kage save
 Set up|claude-login||Save the Claude login Kage runs on, so its sessions use their own seat. Get the token with claude setup-token, signed in as Kage|kage claude-login
 Set up|doctor||Check every part, and print the command that fixes each problem|kage doctor
-Set up|slack|upgrade|Add the Slack scopes Kage needs and the app lacks: opens the app manifest, names the scopes to add, and waits|kage slack upgrade
+Set up|slack|upgrade|Add the Slack scopes Kage needs and the app lacks: adds them to the app manifest with one Slack configuration token (or prints the lines to paste), then opens Reinstall and waits|kage slack upgrade
 Set up|link||Put the kage command on your PATH (~/.local/bin/kage)|./setup.sh link
 Set up|service|on or off|Let macOS or Linux keep Kage running: back after a crash, a reboot or a login|kage service on
 Run|start|[kagelet]|Start Kage in the background (turns the service on the first time). With a kagelet: run it again after kage stop|kage start
@@ -255,9 +255,9 @@ cmd_save() {
   local APP="" USR="" BOT="" t input
   if [[ -t 0 ]]; then  # a person at a terminal: hidden prompts, so the tokens never show
     local a u b
-    read -r -s -p "App-level token (xapp-...): " a; echo
-    read -r -s -p "User OAuth token (xoxp-...): " u; echo
-    read -r -s -p "Bot token (xoxb-...): " b; echo
+    a="$(node cli/ask-secret.ts app "App-level token (xapp-...): ")" || exit 1
+    u="$(node cli/ask-secret.ts user "User OAuth token (xoxp-...): ")" || exit 1
+    b="$(node cli/ask-secret.ts bot "Bot token (xoxb-...): ")" || exit 1
     input="$a $u $b"
   else
     input="$(cat)"
@@ -283,7 +283,7 @@ cmd_claude_login() {
   local t
   if [[ -t 0 ]]; then
     echo "Run claude setup-token signed in as Kage's own account, then paste the token it prints." >&2
-    read -r -s -p "Claude token (sk-ant-oat...): " t; echo >&2
+    t="$(node cli/ask-secret.ts claude "Claude token (sk-ant-oat...): ")" || exit 1
   else
     t="$(cat)"
   fi
