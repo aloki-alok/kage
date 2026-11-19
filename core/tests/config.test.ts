@@ -222,8 +222,12 @@ describe('people and the registry', () => {
     assert.deepEqual('trusted' in ok && ok.trusted, ['UTEST0001'])
     assert.equal(Config.parse(withRegistry(c, [entries[1]!])).people?.trusted, undefined)
   })
-  test('a trusted id that is not a listed teammate is refused (#425)', () => {
-    assert.equal(Config.safeParse({ version: 1, people: { teammates: ['UTEST0002'], trusted: ['UTEST0001'] } }).success, false)
+  test('a trusted id that is not a listed teammate is not trusted, and the rest of the file still applies (#435)', async () => {
+    const { checkSettings } = await import('../config.ts')
+    const c = Config.parse({ version: 1, people: { teammates: ['UTEST0002'], trusted: ['UTEST0001', 'UTEST0002'] } })
+    const ok = checkSettings(c, { slack: { app: 'a', user: 'u', bot: 'b' } } as never)
+    assert.ok(!('error' in ok))
+    assert.deepEqual([ok.teammates, ok.trusted, ok.notTrusted], [['UTEST0002'], ['UTEST0002'], ['UTEST0001']])
   })
 })
 
@@ -231,7 +235,7 @@ describe('what the hub needs to run', () => {
   const secrets = { slack: { app: 'xapp-fake', user: 'xoxp-fake', bot: 'xoxb-fake' } }
   test('a good config gives the name and both people lists, an agent as app:owner:tag', () => {
     const config = Config.parse({ version: 1, people: { teammates: ['UTEST0001'], agents: [{ app: 'ATEST0001', owner: 'UTEST0001', tag: 'UTEST0003' }, { app: 'ATEST0009' }] } })
-    assert.deepEqual(checkSettings(config, secrets), { name: 'kage', teammates: ['UTEST0001'], trusted: [], apps: ['ATEST0001:UTEST0001:UTEST0003', 'ATEST0009'] })
+    assert.deepEqual(checkSettings(config, secrets), { name: 'kage', teammates: ['UTEST0001'], trusted: [], notTrusted: [], apps: ['ATEST0001:UTEST0001:UTEST0003', 'ATEST0009'] })
   })
   test('a missing token is refused by its path, and a bad name by itself', () => {
     assert.match((checkSettings({ version: 1 }, { slack: { app: 'a', bot: 'b' } }) as { error: string }).error, /slack\.user/)
