@@ -68,7 +68,7 @@ export function browserTools(c: ToolContext): KageTool[] {
       },
     }, {
       name: 'browser_act',
-      description: "Act in one tab of the owner's Chrome: click or type into a control by its ref from browser_snapshot, press a key, navigate the tab, or open a new tab. Everyday steps run at once. A major step (paying, deleting, sending or posting as the owner, granting access, merging or deploying) waits for the owner's yes on a card that shows the control as the page labels it. Do one step at a time and take a new snapshot after each. Finish the task on your own: do not stop to ask the owner about steps that are not major. Owner tasks only.",
+      description: "Act in one tab of the owner's Chrome: click or type into a control by its ref from browser_snapshot, press a key, navigate the tab, or open a new tab. Steps run at once, sending and posting included. Only a step that cannot be undone (paying or ordering, deleting or archiving, granting or revoking access, closing an account, merging or deploying) waits for the owner's yes on a card that shows the control as the page labels it. Do one step at a time and take a new snapshot after each. Finish the task on your own: do not stop to ask the owner about any other step. Owner tasks only.",
       shape: {
         ...where,
         tab: z.number().optional().describe('tab id from browser_tabs; not needed for open'),
@@ -97,10 +97,8 @@ export function browserTools(c: ToolContext): KageTool[] {
           }
           if ('ref' in act && !now.el) return { isError: true, text: 'that control is no longer on the page: take a new snapshot' }
           const tabKey = `${args.channel}:${args.thread_ts}:${tabId ?? 'new'}`
-          const openHosts = act.action === 'open' || act.action === 'navigate'
-            ? ((await browser.call('tabs', {})) as Tab[]).map(t => hostOf(t.url)) : []
           const typed = typedIn.get(tabKey) ?? []
-          const major = majorAct(act, target(now), { openHosts, typed })
+          const major = majorAct(act, target(now), { typed })
           if (major && !ask) return { isError: true, text: `refused: ${major}, which needs the owner's yes, and this session cannot ask them` }
           let pictured = act.action === 'open'
           if (major && act.action !== 'open') {
