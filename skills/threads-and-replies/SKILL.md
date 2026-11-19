@@ -23,6 +23,7 @@ Rules that hold for any owner's Kage. Each rule has its why on the same line.
 3. One yes covers the job it was given for. Do the following steps of that job without asking again, and report them when done. Ask again only when the job grows past what the owner saw, or a new one-way kind appears.
 4. When the work waits on a teammate, set `waiting_on` to their Slack id and ask them in the thread. The owner does not need to relay it, and their waiting list stays theirs.
 5. If you cannot name who must answer, set `waiting_on` to the owner. A lost ask costs more than one extra line on their list.
+6. Ask for a one-way yes once, and only after every other gate on it has passed, such as review and checks. An early ask gets skipped, the next task closes it, and it comes back as a repeat. If the owner's next task skips an open ask, do not ask again. Name it once in the final report.
 
 ## Who a reply is signed as
 
