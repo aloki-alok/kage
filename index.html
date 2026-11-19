@@ -28,13 +28,15 @@
 </script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=JetBrains+Mono:wght@400;600&display=swap">
+<link rel="preload" href="fonts/GeistPixel-Square.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600&display=swap">
 <style>
-/* Cast, at night. Serif is you, mono is Kage, orange only means "needs you". The page is one day: the light moves, your words cast the shadow, the work lives in it. */
+/* Cast, at night. Pixel is you, mono is Kage, orange only means "needs you". The page is one day: the light moves, your words cast the shadow, the work lives in it. */
+@font-face { font-family: "Geist Pixel Square"; src: url("fonts/GeistPixel-Square.woff2") format("woff2"); font-display: swap; }
 :root {
   --bg: #0a0b0d; --ink: #e4e6e8; --muted: #7d838b; --faint: #464b52; --line: #1c1f23; --panel: #101215;
   --signal: #ff4f00;
-  --display: "Instrument Serif", "Times New Roman", serif;
+  --display: "Geist Pixel Square", "JetBrains Mono", ui-monospace, monospace;
   --mono: "JetBrains Mono", ui-monospace, Menlo, monospace;
   --light: 0; /* 0 at night, 1 at noon, set by the script */
   color-scheme: dark;
@@ -264,7 +266,7 @@ function light(min) {
 // Fit the ask to the width, so a long ask never wraps and breaks its shadow.
 function fit(text) {
   const w = Math.min(innerWidth - 40, 1160), n = text.replace(/<[^>]+>/g, '').length
-  root.style.setProperty('--fs', `${Math.min(132, w / (n * .46))}px`)
+  root.style.setProperty('--fs', `${Math.min(132, w / (n * .6))}px`)
 }
 
 let shown = -1, timers = []
