@@ -35,7 +35,12 @@ function pane() {
     post: async () => (await kage.tools.find(t => t.name === 'post_as_kage')!.run({ channel: 'C1', thread_ts: '5.5', to: 'CTEST9', text: 'hello' })).text,
     stopNow: () => { hook(TURN_END, { hook_event_name: 'Stop' }) },
     turnEnds: async () => { await tick(15); hook(TURN_END, { hook_event_name: 'Stop' }); await tick() },
-    restart: () => { turn.close(); opened.push(paneTurn({ dir: conf, thread: 'C1:5.5', pollMs: 10, show: () => {} })) },
+    restart: () => {
+      turn.close()
+      const again = paneTurn({ dir: conf, thread: 'C1:5.5', pollMs: 10, show: m => { kage.onTask(m); shown.push(m.content) } })
+      opened.push(again)
+      return { owner: (text: string) => again.arrive(task(true, `Task from the owner: ${text}`)) }
+    },
   }
 }
 
@@ -141,12 +146,15 @@ test("a turn Claude starts on its own after a teammate's turn keeps the teammate
   assert.equal(p.configOpen(), true)
 })
 
-test("a plugin restart never writes the owner's trust before a task arrives", async () => {
+test("a plugin restart during a teammate's turn keeps that turn at a teammate's trust when the owner writes", async () => {
   const p = pane()
   p.teammate('check the logs')
   p.configOpen()
-  p.restart()
+  const q = p.restart()
   await p.turnEnds()
+  assert.equal(p.configOpen(), false)
+  p.configOpen()
+  q.owner('hi')
   assert.equal(p.configOpen(), false)
 })
 

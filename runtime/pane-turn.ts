@@ -1,6 +1,6 @@
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { dirname } from 'node:path'
-import { arrive, endTurn, NO_TURN, turnSender } from '../core/pane-turn.ts'
+import { arrive, endTurn, resumedTurn, turnSender } from '../core/pane-turn.ts'
 import { senderFile } from '../core/guards.ts'
 import type { Task } from '../core/task.ts'
 
@@ -14,7 +14,9 @@ export function markTurn(dir: string, thread: string, mark: 'step' | 'stop') {
 export function paneTurn(o: { dir: string; thread: string; show: (t: Task) => void; pollMs?: number }) {
   const file = senderFile(o.dir, o.thread), marks = turnMarks(o.dir, o.thread)
   const markAt = (f: string) => { try { return Number(readFileSync(f, 'utf8')) || 0 } catch { return 0 } }
-  let turn = NO_TURN, seenStop = markAt(marks.stop)
+  let lastSender = ''
+  try { lastSender = readFileSync(file, 'utf8').trim() } catch {}
+  let turn = resumedTurn(lastSender || 'owner'), seenStop = markAt(marks.stop)
   const write = () => {
     if (!turn.tasks.length) return
     mkdirSync(dirname(file), { recursive: true, mode: 0o700 })
