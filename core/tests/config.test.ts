@@ -211,13 +211,26 @@ describe('people and the registry', () => {
     assert.equal(c.name, 'kage')
     assert.equal(toEnv(c, {}).KAGE_TRUSTED_APPS, 'ATEST0001:UTEST0001:UTEST0003,ATEST0009')
   })
+  test('a trusted person round-trips, and removing them drops the trust too (#425)', async () => {
+    const { registryOf, withRegistry, checkSettings } = await import('../config.ts')
+    const entries = [{ kind: 'person' as const, id: 'UTEST0001', trusted: true as const }, { kind: 'person' as const, id: 'UTEST0002' }]
+    const c = Config.parse(withRegistry({ version: 1, name: 'kage' }, entries))
+    assert.deepEqual(c.people?.trusted, ['UTEST0001'])
+    assert.deepEqual(registryOf(c), entries)
+    const ok = checkSettings(c, { version: 1, slack: { app: 'a', user: 'u', bot: 'b' } } as never)
+    assert.deepEqual('trusted' in ok && ok.trusted, ['UTEST0001'])
+    assert.equal(Config.parse(withRegistry(c, [entries[1]!])).people?.trusted, undefined)
+  })
+  test('a trusted id that is not a listed teammate is refused (#425)', () => {
+    assert.equal(Config.safeParse({ version: 1, people: { teammates: ['UTEST0002'], trusted: ['UTEST0001'] } }).success, false)
+  })
 })
 
 describe('what the hub needs to run', () => {
   const secrets = { slack: { app: 'xapp-fake', user: 'xoxp-fake', bot: 'xoxb-fake' } }
   test('a good config gives the name and both people lists, an agent as app:owner:tag', () => {
     const config = Config.parse({ version: 1, people: { teammates: ['UTEST0001'], agents: [{ app: 'ATEST0001', owner: 'UTEST0001', tag: 'UTEST0003' }, { app: 'ATEST0009' }] } })
-    assert.deepEqual(checkSettings(config, secrets), { name: 'kage', teammates: ['UTEST0001'], apps: ['ATEST0001:UTEST0001:UTEST0003', 'ATEST0009'] })
+    assert.deepEqual(checkSettings(config, secrets), { name: 'kage', teammates: ['UTEST0001'], trusted: [], apps: ['ATEST0001:UTEST0001:UTEST0003', 'ATEST0009'] })
   })
   test('a missing token is refused by its path, and a bad name by itself', () => {
     assert.match((checkSettings({ version: 1 }, { slack: { app: 'a', bot: 'b' } }) as { error: string }).error, /slack\.user/)

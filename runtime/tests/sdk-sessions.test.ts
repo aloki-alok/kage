@@ -378,6 +378,25 @@ describe('Kage sessions on the Agent SDK', () => {
     assert.equal(await guard('mcp__gmail__search'), undefined)
     t.s.runner.stop('C1:5.5')
   })
+  test("a trusted teammate's session loads the owner's connectors and may use them; the config folder stays closed (#425)", async () => {
+    const run = async (trusted: boolean) => {
+      const t = setup({ transcript: true, restartMs: 60_000 })
+      const task = t.task({ fromOwner: false, content: 'Teammate task (UMATE0002, Kevin Test, not the owner): find the contract mail' })
+      if (trusted) task.trusted = true
+      t.d.task('C1:5.5', task, 0)
+      await tick()
+      const r = t.sdk.runs[0]!
+      r.emit({ type: 'system', subtype: 'session_state_changed', state: 'running' })
+      const guard = async (tool_name: string, tool_input: object) => (await r.options.hooks.PreToolUse[0].hooks[0]({ hook_event_name: 'PreToolUse', tool_name, tool_input }, undefined, { signal: signal() })).hookSpecificOutput?.permissionDecision
+      const seen = { connectorsOff: r.options.settings.disableClaudeAiConnectors === true, gmail: await guard('mcp__claude_ai_Gmail__search', {}), config: await guard('Read', { file_path: '/cfg/config.json' }), post: await callKage(r, 'post_as_kage', { channel: 'C1', thread_ts: '5.5', to: 'CTEST9', text: 'x' }) }
+      t.s.runner.stop('C1:5.5')
+      return seen
+    }
+    const trusted = await run(true), plain = await run(false)
+    assert.deepEqual([trusted.connectorsOff, trusted.gmail, trusted.config], [false, undefined, 'deny'])
+    assert.match(trusted.post, /only the owner/, "Kage's owner-only tools stay the owner's")
+    assert.deepEqual([plain.connectorsOff, plain.gmail], [true, 'deny'])
+  })
   test("a teammate's agent runs with that teammate's tools; an agent with no person stays read and answer only (#426)", async () => {
     const run = async (person?: string) => {
       const t = setup({ transcript: true, restartMs: 60_000 })

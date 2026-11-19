@@ -466,7 +466,7 @@ describe("an app on the owner's Mac posts the owner's words and they run as the 
 })
 
 describe("a listed agent's post runs with its person's trust, never the owner's (#426)", () => {
-  async function agentTask(apps: string[], user: string, app: string) {
+  async function agentTask(apps: string[], user: string, app?: string, trusted: string[] = []) {
     const dir = mkdtempSync(join(tmpdir(), 'kage-agent-'))
     const tasks: Task[] = []
     try {
@@ -479,11 +479,11 @@ describe("a listed agent's post runs with its person's trust, never the owner's 
       }
       const slack = await connectSlack({
         dir, appToken: 'test', userToken: 'test', bot: client as never, user: client as never,
-        name: 'kage', title: 'Kage', teammates: ['UMATE0002'], apps,
+        name: 'kage', title: 'Kage', teammates: ['UMATE0002'], trusted, apps,
         hub: { posted: () => '', handled: () => {}, deliver: (_c: unknown, task: Task) => { tasks.push(task); return 'sent' } } as never,
         jev: async () => ({ reply: true, why: 'jev needs_reply 0.90' }),
       })
-      await slack.replay('test-agent', JSON.stringify({ ...msg, user, app_id: app, bot_id: 'BTEST0001', text: '<@UTEST1> deploy the api to prod' }))
+      await slack.replay('test-agent', JSON.stringify({ ...msg, user, ...app ? { app_id: app, bot_id: 'BTEST0001' } : { client_msg_id: 'typed' }, text: '<@UTEST1> deploy the api to prod' }))
       assert.equal(tasks.length, 1)
       return tasks[0]!
     } finally {
@@ -506,6 +506,17 @@ describe("a listed agent's post runs with its person's trust, never the owner's 
     const t = await agentTask(['A0AGENT04:A0AGENT05', 'A0AGENT05:UMATE0002', 'A0AGENT04'], 'UMATE0002', 'A0AGENT04')
     assert.equal(t.agent?.person, undefined)
     assert.equal(senderOf(t), 'agent')
+  })
+
+  test("a trusted teammate's own task, and their agent's, run at the trusted level and say so (#425)", async () => {
+    const own = await agentTask([], 'UMATE0002', undefined, ['UMATE0002'])
+    assert.equal(senderOf(own), 'trusted')
+    assert.match(own.content, /trusts <@UMATE0002> with their connected accounts/)
+    const agent = await agentTask(['A0AGENT02:UMATE0002'], 'UMATE0002', 'A0AGENT02', ['UMATE0002'])
+    assert.equal(senderOf(agent), 'trusted')
+    const plain = await agentTask([], 'UMATE0002')
+    assert.equal(senderOf(plain), 'teammate')
+    assert.doesNotMatch(plain.content, /trusts/)
   })
 
   test('an agent tied to no person stays read and answer only', async () => {

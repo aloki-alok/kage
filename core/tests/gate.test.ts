@@ -1,6 +1,6 @@
 import { describe, test } from 'node:test'
 import assert from 'node:assert/strict'
-import { mayStop, classify, findPeople, plainName, quoteMessage, senderOf, taskLine, teammateOf, validName, withoutInvisible } from '../gate.ts'
+import { lowestSender, mayStop, classify, findPeople, plainName, quoteMessage, senderOf, taskLine, teammateOf, validName, withoutInvisible } from '../gate.ts'
 import { safeReply } from '../outbound.ts'
 
 const OWNER = 'UOWNER001'
@@ -365,6 +365,18 @@ describe('who a task counts as', () => {
   test("a listed agent's post is an agent's task, even made with the owner's token", () => {
     assert.equal(senderOf({ ...t('C1', true), agent: { app: 'A0AGENT01' } }), 'agent')
     assert.equal(senderOf({ ...t('C1', false), agent: { app: 'A0AGENT01' } }), 'agent')
+  })
+  test('a trusted teammate is trusted; an agent of a trusted teammate is too; email never is (#425)', () => {
+    assert.equal(senderOf({ ...t('C1', false), trusted: true }), 'trusted')
+    assert.equal(senderOf({ ...t('C1', false), trusted: true, agent: { app: 'A0AGENT01', person: 'UMATE0002' } }), 'trusted')
+    assert.equal(senderOf({ ...t('C1', false), trusted: true, agent: { app: 'A0AGENT01' } }), 'agent')
+    assert.equal(senderOf({ ...t('email', false), trusted: true }), 'teammate')
+  })
+  test('a turn runs at its lowest sender, whatever the order (#425)', () => {
+    const trusted = { ...t('C1', false), trusted: true }, mate = t('C1', false), agent = { ...t('C1', false), agent: { app: 'A0AGENT01' } }
+    assert.equal(lowestSender([trusted, mate]), 'teammate')
+    assert.equal(lowestSender([mate, agent]), 'agent')
+    assert.equal(lowestSender([t('C1', true), trusted]), 'trusted')
   })
   test("an agent tied to a person gets that person's teammate trust, never the owner's, even flagged as the owner (#426)", () => {
     assert.equal(senderOf({ ...t('C1', false), agent: { app: 'A0AGENT01', person: 'UMATE0002' } }), 'teammate')
