@@ -14,6 +14,7 @@ import { sessionTools } from '../runtime/kage-tools.ts'
 import { openLedgers } from '../runtime/ledger.ts'
 import { paneTurn } from '../runtime/pane-turn.ts'
 import { schedulesIn } from '../runtime/store.ts'
+import { foreignAgentTags } from '../core/agents.ts'
 
 const THREAD = process.env.KAGE_THREAD
 if (!THREAD) {
@@ -21,7 +22,7 @@ if (!THREAD) {
   await new Promise(() => {})
 }
 
-const { ENV_FILE, Title, config, bot, user } = load()
+const { ENV_FILE, Title, TRUSTED_APPS, config, bot, user } = load()
 const SOCK = `${dirname(ENV_FILE)}/router.sock`
 process.on('unhandledRejection', e => log('unhandled', e))
 
@@ -35,10 +36,12 @@ const turn = paneTurn({
     mcp.notification({ method: 'notifications/claude/channel', params: { content: withoutInvisible(m.content), meta: m.meta } }).catch(e => log('task failed', e))
   },
 })
+let ownerId = ''
 const kage = sessionTools({
   title: Title, bot, user, botDm: () => botDm, dir: dirname(ENV_FILE), ledgers: openLedgers(dirname(ENV_FILE)),
   memory: memoryDirs(process.env.HOME!, ENV_FILE, config.harness),
   turnSender: turn.sender,
+  foreignAgents: () => config.askOtherAgents ? [] : foreignAgentTags(TRUSTED_APPS, ownerId),
   send: m => { if (!router?.writable) return false; router.write(JSON.stringify(m) + '\n') },
   schedules: {
     async add(j) {
@@ -118,6 +121,7 @@ function link() {
 
 mcp.oninitialized = () => {
   user.auth.test().then(async me => {
+    ownerId = me.user_id!
     botDm = (await bot.conversations.open({ users: me.user_id! })).channel!.id!
     link()
   }).catch(e => { log('Slack auth failed', e?.data?.error ?? e); process.exit(1) })

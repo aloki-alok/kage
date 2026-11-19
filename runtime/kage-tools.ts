@@ -102,6 +102,7 @@ export function sessionTools(o: {
   event?: (kind: EventKind, detail: string) => void
   browser?: { call(op: string, args: Record<string, unknown>): Promise<unknown>; block: string[] }
   meetbot?: { join(link: string): string }
+  foreignAgents?: () => readonly string[]
   onReport?: (r: { needs: string; output: string }) => void
   message?: (to: string, text: string) => string
   toManager?: (needs: string) => string

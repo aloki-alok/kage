@@ -1,7 +1,7 @@
 import { SocketModeClient, LogLevel } from '@slack/socket-mode'
 import type { WebClient } from '@slack/web-api'
 import { log, logger } from '../runtime/log.ts'
-import { agentNote, agentRoster, loopGuard } from '../core/agents.ts'
+import { agentNote, agentRoster, foreignAgentTags, loopGuard } from '../core/agents.ts'
 import { appEntry, validUserId } from '../core/registry.ts'
 import { classify, DROPS, taskFrom, type Ids, plainName, quoteMessage, taskLine } from '../core/gate.ts'
 import { agentTag, filesTag, postText, typedByPerson, type SlackMessage } from '../core/slack-message.ts'
@@ -50,7 +50,7 @@ export async function intake(m: SlackMessage, ack: () => Promise<void>, hub: Pic
   if (fresh) await hear(m, source ?? '')
 }
 
-export async function connectSlack(o: { dir: string; appToken: string; userToken: string; bot: WebClient; user: WebClient; name: string; title: string; teammates: string[]; trusted?: string[]; apps: string[]; hub: Hub; catchUpMax?: () => number
+export async function connectSlack(o: { askOtherAgents?: boolean; dir: string; appToken: string; userToken: string; bot: WebClient; user: WebClient; name: string; title: string; teammates: string[]; trusted?: string[]; apps: string[]; hub: Hub; catchUpMax?: () => number
   afk?: { memory: string; model: string; saved: Saved; call?: (reason: string) => Promise<string>; jev?: JevAfk }
   jev?: JevCheck
   ackWords?: boolean
@@ -197,7 +197,7 @@ export async function connectSlack(o: { dir: string; appToken: string; userToken
         : m.user === ids.owner
           ? taskLine(t.text, { name: ownerName })
           : taskLine(t.text, { name: await nameOf(m.user), teammate: m.user! }),
-      agent ? agentNote(agent.app, agent.tag, agent.person) : agentRoster(ids.apps ?? []),
+      agent ? agentNote(agent.app, agent.tag, agent.person) : agentRoster(ids.apps ?? [], o.askOtherAgents ? [] : foreignAgentTags(ids.apps ?? [], ids.owner)),
       trusted && `(The owner trusts <@${person}> with their connected accounts: on this task the owner's claude.ai connectors and other MCP tools are open. Secrets, the owner's memory, the owner's browser and one-way steps stay as for any teammate.)`,
       asked && `(This is the owner's answer in your DM to what you asked them privately. Carry on this thread's work, and answer them with reply private=true: it lands in the DM thread they wrote in.)`,
       saved && `\n${saved}`,

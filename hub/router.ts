@@ -21,6 +21,7 @@ import { protectConfig } from '../runtime/path-guards.ts'
 import { stopLine } from '../core/board.ts'
 import { modelFor, placeFor, sessionKey, type Conversation, type Lane } from '../core/conversations.ts'
 import { mayStop, senderOf } from '../core/gate.ts'
+import { foreignAgentTags } from '../core/agents.ts'
 import { Dispatcher, mixRunners, startFailedNote } from '../core/sessions.ts'
 import { readSettings, setKey, sweepImported } from '../runtime/config-files.ts'
 import { configWatcher } from '../runtime/config-watch.ts'
@@ -162,7 +163,7 @@ if (jev && 'error' in jev) log(`jev is off: ${jev.error}`)
 else if (jev) log(`jev checks ${jev.agents === 'all' ? 'every listed agent' : jev.agents.join(', ')} at threshold ${jev.threshold}`)
 
 const slack = await connectSlack({
-  catchUpMax: () => config.tripwires?.catchUpMax || 1000, dir: DIR, appToken: secrets.slack!.app!, userToken: secrets.slack!.user!, bot, user, name: NAME, title: Title, teammates: TEAMMATES, trusted: TRUSTED_PEOPLE, apps: TRUSTED_APPS,
+  catchUpMax: () => config.tripwires?.catchUpMax || 1000, dir: DIR, appToken: secrets.slack!.app!, userToken: secrets.slack!.user!, bot, user, name: NAME, title: Title, askOtherAgents: config.askOtherAgents, teammates: TEAMMATES, trusted: TRUSTED_PEOPLE, apps: TRUSTED_APPS,
   hub: { deliver, stop: (c, cut, by) => {
       const key = sessionKey(c, { lane: 'main' })
       return mayStop(by, slack.ids.owner, starters, key) ? stopThread(key, cut) : 'Only the owner, or the teammate whose task started this thread, can stop it.'
@@ -254,6 +255,7 @@ const sdk = sdkLib ? sdkSessions({
     settings: { set: (key, value) => setKey(ENV_FILE, key, value) },
     kagelet: key.split('#side-kagelet-')[1], dreaming: key.split('#side-kdream-')[1], kageletMemory: kag.kmem,
     browser: browser && { call: browser.call, block: BROWSER_BLOCK },
+    foreignAgents: () => config.askOtherAgents ? [] : foreignAgentTags(slack.ids.apps ?? [], slack.ids.owner),
     meetbot: meeting && { join: meeting.join },
     dbRead: { command: () => readCommand(kl.dbRead?.command ?? undefined, store, key.split('#side-kagelet-')[1] ?? ''), maxRows: kl.dbRead?.maxRows || 200 },
     kagelets: { list: () => kag.manager.list(Date.now()), manage: (a, ask) => kag.manager.manage(a, Date.now(), ask) }, approve,
