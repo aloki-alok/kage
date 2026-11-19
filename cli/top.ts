@@ -166,7 +166,7 @@ async function pollHub() {
   if (r?.type === 'board') { live = r; liveAt = Date.now() }
 }
 
-const TONE: Record<string, string> = { red: 'R', gold: 'G', white: 'w', muted: 'm', dim: 'd' }
+const TONE: Record<string, string> = { fire: 'R', lantern: 'Y', white: 'w', muted: 'm', dim: 'd' }
 const tz = () => ` ${new Intl.DateTimeFormat([], { timeZoneName: 'short' }).formatToParts(new Date()).find(p => p.type === 'timeZoneName')?.value ?? ''}`
 const WORD = ['█▄▀ ▄▀█ █▀▀ █▀▀', '█ █ █▀█ █▄█ ██▄']
 function rowLabel(r: Row, now: number) {
@@ -183,7 +183,7 @@ function frame(t: number, since: number): string[] {
   const clock = live ? `${live.live.length} of ${live.max} strings · ${new Date(now).toTimeString().slice(0, 5)}${tz()}` : existsSync(SOCK) ? 'no live state' : 'hub offline'
   put(l.right - clock.length + 1, 1, clock, 'm')
   const asks = board.filter(r => r.state === 'asking').length
-  if (asks) { const a = `◆ ${asks} thread${asks === 1 ? ' waits' : 's wait'} on you`; put(l.right - a.length + 1, 2, a, Math.floor(t / 450) % 2 ? 'G' : 'g') }
+  if (asks) { const a = `◆ ${asks} thread${asks === 1 ? ' waits' : 's wait'} on you`; put(l.right - a.length + 1, 2, a, Math.floor(t / 450) % 2 ? 'Y' : 'y') }
   const visible = [...l.live, ...l.ended].map(r => r.key)
   if (!visible.includes(selKey)) selKey = visible[0] ?? ''
   const active = hover ?? selKey
@@ -195,7 +195,7 @@ function frame(t: number, since: number): string[] {
   const star = l.star
   const p = l.hero ? clamp((since - 900) / 500) : 1, ease = p * p * (3 - 2 * p)
   const cx = l.hero ? l.hero.x + l.hero.cols / 2 : 0, cy = l.hero ? l.hero.y + l.hero.rows / 2 : 0
-  if (star && since > 500) put(star.x, star.y, '✦', asks && Math.floor(t / 450) % 2 ? 'G' : 'g')
+  if (star && since > 500) put(star.x, star.y, '✦', asks && Math.floor(t / 450) % 2 ? 'Y' : 'r')
   l.live.forEach((pos, i) => {
     const r = byKey.get(pos.key)!
     const style = STRING[r.state]
@@ -244,7 +244,7 @@ function frame(t: number, since: number): string[] {
   return toText()
 }
 
-const STATE_TONE: Record<State, string> = { asking: 'G', working: 'R', watching: 'w', quiet: 'm', starting: 'g', held: 'm', queued: 'g', closed: 'd' }
+const STATE_TONE: Record<State, string> = { asking: 'Y', working: 'R', watching: 'w', quiet: 'm', starting: 'r', held: 'm', queued: 'g', closed: 'd' }
 function detail(l: Layout, now: number, byKey: Map<string, Row>) {
   const r = byKey.get(open!)
   if (!r) { open = undefined; return }
@@ -287,19 +287,19 @@ function detail(l: Layout, now: number, byKey: Map<string, Row>) {
   put(right - keys.length - 2, y1 - 1, keys, 'm')
 }
 
-const SHOWN_TONE: Record<string, string> = { on: 'w', paused: 'm', broken: 'R', 'over cap': 'G' }
+const SHOWN_TONE: Record<string, string> = { on: 'w', paused: 'm', broken: 'Y', 'over cap': 'Y' }
 function kageletPanel(now: number) {
   const x0 = 2, right = W - 3, y0 = 4, y1 = H - 3, w = right - x0
   for (let y = y0; y <= y1; y++) put(0, y, ' '.repeat(W), 'w')
   put(x0, y0, `┏${'━'.repeat(w - 1)}┓`, 'g'); put(x0, y1, `┗${'━'.repeat(w - 1)}┛`, 'g')
   for (let y = y0 + 1; y < y1; y++) { put(x0, y, '┃', 'g'); put(right, y, '┃', 'g') }
   const head = clip(kageletsFailed || (live ? (CAP === undefined ? 'cost today, avg of the last 7 days' : `cap $${CAP.toFixed(2)} a day each`) : 'hub offline: the keys need it'), w - 20)
-  put(x0 + 2, y0 + 1, `Kagelets (${kagelets.length})`, 'W'); put(right - head.length - 1, y0 + 1, head, live && !kageletsFailed ? 'm' : 'R')
+  put(x0 + 2, y0 + 1, `Kagelets (${kagelets.length})`, 'W'); put(right - head.length - 1, y0 + 1, head, live && !kageletsFailed ? 'm' : 'Y')
   put(x0 + 2, y0 + 2, '─'.repeat(w - 3), 'k')
   if (!kagelets.length) put(x0 + 3, y0 + 4, 'no kagelets yet', 'm')
   pick = clamp(pick, 0, Math.max(0, kagelets.length - 1))
   const shown = chains.slice(-Math.min(3, Math.max(0, Math.floor((y1 - y0 - 9) / 2))))
-  shown.forEach((c, i) => put(x0 + 3, y1 - 2 - shown.length + i, clip(`chain ${c}`, w - 4), c.includes('stopped') ? 'R' : 'm'))
+  shown.forEach((c, i) => put(x0 + 3, y1 - 2 - shown.length + i, clip(`chain ${c}`, w - 4), c.includes('stopped') ? 'Y' : 'm'))
   const fit = Math.max(1, Math.floor((y1 - y0 - 5 - shown.length) / 2)), from = Math.max(0, pick - fit + 1)
   panelLines(kagelets, now, CAP).slice(from, from + fit).forEach((line, i) => {
     const r = kagelets[from + i]!, y = y0 + 3 + i * 2, hot = from + i === pick
@@ -314,12 +314,12 @@ function kageletPanel(now: number) {
 function footer(t: number) {
   const y = H - 1
   if (confirmRemove) {
-    put(2, y, clip(`Remove ${confirmRemove}? Its file and its schedule go.`, W - 22), 'G'); put(W - 19, y, 'y', 'r'); put(W - 17, y, 'remove', 'm'); put(W - 8, y, 'n', 'r'); put(W - 6, y, 'keep', 'm')
+    put(2, y, clip(`Remove ${confirmRemove}? Its file and its schedule go.`, W - 22), 'Y'); put(W - 19, y, 'y', 'r'); put(W - 17, y, 'remove', 'm'); put(W - 8, y, 'n', 'r'); put(W - 6, y, 'keep', 'm')
     return
   }
   if (confirmCut) {
     const place = known.find(k => k.key === confirmCut)?.place ?? ''
-    put(2, y, clip(`Cut ${place}? It spins up again on its next task.`, W - 20), 'G'); put(W - 16, y, 'y', 'r'); put(W - 14, y, 'cut', 'm'); put(W - 8, y, 'n', 'r'); put(W - 6, y, 'keep', 'm')
+    put(2, y, clip(`Cut ${place}? It spins up again on its next task.`, W - 20), 'Y'); put(W - 16, y, 'y', 'r'); put(W - 14, y, 'cut', 'm'); put(W - 8, y, 'n', 'r'); put(W - 6, y, 'keep', 'm')
     return
   }
   if (searching) { put(2, y, `/ ${query}${Math.floor(t / 400) % 2 ? '▌' : ' '}`, 'G'); put(W - 28, y, 'enter keep   esc clear', 'm'); return }

@@ -106,12 +106,13 @@ describe('the line that counts what is not shown', () => {
 
 describe('each state has its own string', () => {
   const style = (s: State) => STRING[s]
-  test('the language the owner approved', () => {
-    assert.deepEqual(style('working'), { kind: 'pulse', tone: 'red', glyph: '●' })
-    assert.deepEqual(style('asking'), { kind: 'blink', tone: 'gold', glyph: '◆' })
+  test('the kitsunebi language: foxfire works, the lantern is only for you', () => {
+    assert.deepEqual(style('working'), { kind: 'pulse', tone: 'fire', glyph: '•' })
+    assert.deepEqual(style('asking'), { kind: 'blink', tone: 'lantern', glyph: '◆' })
     assert.deepEqual(style('watching'), { kind: 'drift', tone: 'white', glyph: '◷' })
-    assert.deepEqual(style('quiet'), { kind: 'dotted', tone: 'muted', glyph: '○' })
-    assert.deepEqual(style('starting'), { kind: 'grow', tone: 'gold', glyph: '✦' })
+    assert.deepEqual(style('quiet'), { kind: 'dotted', tone: 'muted', glyph: '◌' })
+    assert.deepEqual(style('starting'), { kind: 'grow', tone: 'fire', glyph: '✦' })
+    assert.deepEqual(Object.entries(STRING).filter(([, v]) => v.tone === 'lantern').map(([k]) => k), ['asking'])
   })
   test('a thread without a session has no string: queued waits loose, closed is cut', () => {
     assert.equal(style('queued').kind, 'none')

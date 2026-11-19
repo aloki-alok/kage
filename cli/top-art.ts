@@ -44,7 +44,7 @@ export function string(pts: [number, number, string][], kind: string, t: number,
   if (kind === 'grow') {
     const m = Math.floor(clamp((t - t0) / 1800) * n)
     for (let j = 0; j < m; j++) put(pts[j]![0], pts[j]![1], pts[j]![2], 'g')
-    if (m < n && m > 0) put(pts[m]![0], pts[m]![1], '✦', 'G')
+    if (m < n && m > 0) put(pts[m]![0], pts[m]![1], '✦', 'R')
     return
   }
   for (let j = 0; j < Math.min(grown, n); j++) {
@@ -54,7 +54,7 @@ export function string(pts: [number, number, string][], kind: string, t: number,
       const p = ((t / 45) + i * 7) % (n + 8)
       if (j === Math.floor(p)) { ch = '●'; k = 'R' } else if (j === Math.floor(p) - 1) { ch = '•'; k = 'R' } else if (j === Math.floor(p) - 2) k = 'R'
     } else if (kind === 'blink') {
-      k = Math.floor(t / 450) % 2 ? 'G' : 'g'
+      k = Math.floor(t / 450) % 2 ? 'Y' : 'y'
       if (j === Math.floor(n / 2)) ch = '◆'
     } else if (kind === 'drift') {
       k = 'w'
