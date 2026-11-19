@@ -36,7 +36,7 @@ type Session = {
   stopped: boolean
   run?: { q: Query; inbox: Inbox; send: (m: ToSession) => void; started: number }
   asks: Map<string, (b: 'allow' | 'deny') => void>
-  ownerTools: boolean; carry: SDKUserMessage[]; again: Task[]
+  ownerTools: boolean; connectors?: true; carry: SDKUserMessage[]; again: Task[]
 }
 
 export function sdkSessions(o: {
@@ -106,7 +106,7 @@ export function sdkSessions(o: {
       prompt: inbox,
       options: {
         ...o.options,
-        settings: { ...(o.options.settings as object), ...walled, ...!full && { disableClaudeAiConnectors: true } },
+        settings: { ...(o.options.settings as object), ...walled, ...!full && !s.connectors && { disableClaudeAiConnectors: true } },
         ...(resumed ? { resume: s.id } : { sessionId: s.id }),
         ...(o.modelOf?.(key) && { model: o.modelOf(key) }),
         ...picks.get(key),
@@ -257,7 +257,7 @@ export function sdkSessions(o: {
   const runner: Runner<ToSession> = {
     start(key, id, first) {
       const s: Session = sessions.get(key) ?? {
-        id, state: 'idle', last: 0, stopped: false, asks: new Map(), turn: [], carry: [], again: [], ownerTools: key.startsWith('voice:') || (first?.type === 'task' && senderOf(first) === 'owner'),
+        id, state: 'idle', last: 0, stopped: false, asks: new Map(), turn: [], carry: [], again: [], ownerTools: key.startsWith('voice:') || (first?.type === 'task' && senderOf(first) === 'owner'), ...first?.type === 'task' && senderOf(first) === 'trusted' && { connectors: true as const },
         kage: o.tools(key, m => o.toHub(key, m), (tool, description, input) => ask(key, s, tool, description, input, new AbortController().signal).then(r => r.behavior === 'allow'), () => s.sender),
       }
       Object.assign(s, { id, stopped: false })

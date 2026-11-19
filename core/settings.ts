@@ -1,5 +1,5 @@
 import type { Env } from './config.ts'
-export type AllowLists = { teammates: string[]; apps: string[] }
+export type AllowLists = { teammates: string[]; trusted: string[]; apps: string[] }
 
 export function parseEnv(text: string): Env {
   const env: Env = {}

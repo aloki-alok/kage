@@ -1,6 +1,6 @@
 
 export type Entry =
-  | { kind: 'person'; id: string }
+  | { kind: 'person'; id: string; trusted?: true }
   | { kind: 'agent'; id: string; owner?: string; tag?: string }
 
 export const validUserId = (id: string) => /^[UW][A-Z0-9]{2,}$/.test(id)

@@ -25,6 +25,7 @@ Only your own terminal runs `kage set`: it refuses inside a Kage session. No ses
 | `slack.bot` | required | secrets.json. The `xoxb-` token Kage posts with. |
 | `name` | `kage` | The word you tag (`@kage`), the tmux session name, and the label on posts. |
 | `people.teammates` | empty | A list of Slack user ids who may also tag Kage. Use `kage add`. |
+| `people.trusted` | empty | Teammates whose tasks, and their agents' tasks, may use your claude.ai connectors and other MCP tools. Each id must also be in `people.teammates`. Secrets, your memory, your browser and one-way steps stay as for any teammate. Use `kage add <person> --trusted`. |
 | `people.agents` | empty | A list of agents. Each is `{ "app": "<app id>", "owner": "<owner id>", "tag": "<user id>" }`. The `tag` is the agent's own Slack user id, set when Kage knows it: Kage tags the agent with it on every part of a reply. The owner is a listed person, or a listed agent. Use `kage add <app id> <owner>`. A tagged post from the app, made with its owner's token, counts as that person's task. It never counts as the owner's. An app id with no owner counts with any listed teammate's token. |
 
 ## Agent replies (Jev classifier)

@@ -2,13 +2,13 @@ import { dirname } from 'node:path'
 
 export const ownerOnlyTool = (tool: string) => /^mcp__.*(gmail|google_drive|google_calendar|granola|fireflies|kage_?_browser_|kage_?_slack_(search|read)$)/i.test(tool)
 export function privateToolRefusal(tool: string, sender: string | undefined): string | undefined {
-  if (!ownerOnlyTool(tool) || sender === 'owner') return undefined
+  if (!ownerOnlyTool(tool) || sender === 'owner' || sender === 'trusted') return undefined
   return `${tool} reads the owner's private data, and this task did not come from the owner. Reply that this needs the owner, and stop.`
 }
 const OWN_TOOLS = /^mcp__(kage|plugin_kage_kage)__/
 const OWNER_ACCOUNT = /^mcp__claude_ai_/
 export function mcpToolRefusal(tool: string, sender: string | undefined, shared: readonly string[] = []): string | undefined {
-  if (sender === 'owner' || !tool.startsWith('mcp__') || OWN_TOOLS.test(tool)) return undefined
+  if (sender === 'owner' || sender === 'trusted' || !tool.startsWith('mcp__') || OWN_TOOLS.test(tool)) return undefined
   if (OWNER_ACCOUNT.test(tool)) return `${tool} acts as the owner's own account, so only the owner's task may use it. Do the task with your other tools, or reply that this part needs the owner.`
   if (shared.some(p => tool.startsWith(p))) return undefined
   return `${tool} is not among the tools the owner shares with other people's tasks (sharedTools). Reply that this needs the owner, and stop.`
