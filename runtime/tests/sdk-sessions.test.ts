@@ -413,6 +413,23 @@ describe('Kage sessions on the Agent SDK', () => {
     assert.equal(await guard(), 'deny')
     t.s.runner.stop('C1:5.5')
   })
+  test("a tool call after a trusted turn ended does not keep the trust (#435)", async () => {
+    const people = { ids: ['UMATE0002'] }
+    const t = setup({ transcript: true, restartMs: 60_000, trustedPeople: people })
+    const task = t.task({ fromOwner: false, content: 'Teammate task (UMATE0002, Kevin Test, not the owner): find the contract mail' })
+    task.trusted = 'UMATE0002'
+    t.d.task('C1:5.5', task, 0)
+    await tick()
+    const r = t.sdk.runs[0]!
+    r.emit({ type: 'system', subtype: 'session_state_changed', state: 'running' })
+    r.emit({ type: 'result', total_cost_usd: 0 })
+    r.emit({ type: 'system', subtype: 'session_state_changed', state: 'idle' })
+    await tick()
+    people.ids = []
+    const decision = (await r.options.hooks.PreToolUse[0].hooks[0]({ hook_event_name: 'PreToolUse', tool_name: 'mcp__claude_ai_Gmail__search', tool_input: {} }, undefined, { signal: signal() })).hookSpecificOutput?.permissionDecision
+    assert.equal(decision, 'deny')
+    t.s.runner.stop('C1:5.5')
+  })
   test("a trusted teammate's message mid-turn does not raise a plain teammate's running turn (#425)", async () => {
     const t = setup({ transcript: true, restartMs: 60_000 })
     const opener = t.task({ fromOwner: false, content: 'Teammate task (UMATE0002, Kevin Test, not the owner): hi' })
