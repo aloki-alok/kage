@@ -28,7 +28,7 @@ describe('a changed people list applies now', () => {
     updateConfig(t.env, c => ({ ...c, people: { teammates: ['UTEST0001', 'UTEST0002'], agents: [] } }))
     const r = t.w.check()
     assert.deepEqual(r, { changed: ['people.teammates: added UTEST0002'], restart: [], count: 1 })
-    assert.deepEqual(t.seen.applied, [{ teammates: ['UTEST0001', 'UTEST0002'], apps: [] }])
+    assert.deepEqual(t.seen.applied, [{ teammates: ['UTEST0001', 'UTEST0002'], trusted: [], apps: [] }])
     assert.deepEqual(t.seen.events, [['config.live', ['people.teammates']]])
     assert.deepEqual(t.seen.restart, [])
     updateConfig(t.env, c => ({ ...c, people: { teammates: ['UTEST0002'], agents: [] } }))
@@ -96,7 +96,7 @@ describe('the watcher itself', () => {
     const t = setup()
     updateConfig(t.env, c => ({ ...c, people: { teammates: ['UTEST0001', 'UTEST0003'], agents: [] } }))
     await t.applied
-    assert.deepEqual(t.seen.applied, [{ teammates: ['UTEST0001', 'UTEST0003'], apps: [] }])
+    assert.deepEqual(t.seen.applied, [{ teammates: ['UTEST0001', 'UTEST0003'], trusted: [], apps: [] }])
     t.w.close()
   })
 
