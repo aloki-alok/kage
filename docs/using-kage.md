@@ -32,7 +32,7 @@ kage start
 
 The first start installs the Agent SDK and turns on the service: macOS or Linux keeps Kage running, brings it back within about 10 s after a crash, and starts it at login (on Linux, at boot once linger is on; `kage doctor` prints the command). Three starts in 10 minutes send you a DM. Each Slack thread gets its own Claude Code session inside it.
 
-`kage` alone says whether Kage is running and shows the six commands you use most. `kage help` lists all of them, `kage help <command>` shows one with an example, and a mistyped command gets the closest real one.
+`kage` alone shows what Kage did since you last looked (replies, kagelet runs, lessons kept, spend), each question still waiting on you, and how many kagelets are on. `kage help` lists all of them, `kage help <command>` shows one with an example, and a mistyped command gets the closest real one.
 
 | To | Run |
 |---|---|

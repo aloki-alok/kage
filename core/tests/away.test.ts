@@ -16,11 +16,12 @@ const base = {
     [at('08:00'), 'C0TEST1', '1.1', 'bot', 'C0TEST1:1.0'],
     [at('10:00'), 'C0TEST1', '2.1', 'bot', 'C0TEST1:1.0'],
     [at('11:00'), 'C0TEST2', '3.1', 'owner', 'C0TEST2:3.0'],
+    [at('11:30'), 'C0TEST4', '7.2', 'bot', 'C0TEST4:7.0'],
     [at('12:00'), 'D0TEST1', '4.1', 'card', 'p1'],
     [at('12:30'), 'C0TEST1', '2.1', 'deleted'],
   ]),
   costs: tsv([[at('08:30'), 'C0TEST1:1.0', '0.50', '0.50'], [at('10:00'), 'C0TEST1:1.0', '0.25', '0.75'], [at('11:00'), 'C0TEST2:3.0', '1.10', '1.10']]),
-  runs: tsv([[at('08:00'), 'kagelet-news', 'k'], [at('10:00'), 'kagelet-news', 'k'], [at('11:00'), 'kagelet-digest', 'k'], [at('11:30'), 'job-1', 'C0TEST1:1.0']]),
+  runs: tsv([[at('08:00'), 'kagelet-news', 'k'], [at('10:00'), 'kagelet-news', 'k'], [at('11:00'), 'kagelet-digest', 'k'], [at('11:30'), 'job-1', 'C0TEST1:1.0'], [at('11:40'), 'kageletnews', 'k']]),
   waiting: tsv([[at('13:00'), 'open', 'D0TEST2:5.0', 'https://x.test/p', 'send the invite to Priya?'], [at('07:00'), 'open', 'C0TEST3:6.0', 'https://x.test/q', 'old ask'], [at('07:30'), 'answered', 'C0TEST3:6.0', '', '']]),
   events: [event('10:00', 'memory-decision', 'approved notes/deploys.md'), event('10:05', 'memory-decision', 'rejected notes/x.md: too vague'), event('08:00', 'memory-decision', 'edited notes/old.md')],
   kagelets: [kagelet('news', 'runs'), kagelet('digest', 'runs'), kagelet('invoices', 'paused'), kagelet('bad', 'broken')],
@@ -30,7 +31,7 @@ const base = {
 describe('awayFacts: what happened since the owner last looked', () => {
   test('counts only what happened after since', () => {
     assert.deepEqual(awayFacts(base), {
-      hours: 9, replies: 2, threads: 2, usd: 1.35, kageletRuns: 2, lessons: 1,
+      hours: 9, replies: 3, threads: 3, usd: 1.35, kageletRuns: 2, lessons: 1,
       needsYou: [{ what: 'send the invite to Priya?', thread: 'D0TEST2:5.0' }],
       tails: { out: 2, total: 4 },
     })
@@ -48,7 +49,7 @@ describe('awayLines: the home screen in Kage words', () => {
   test('a busy stretch: what Kage did, then the lantern, then the tails', () => {
     const l = awayLines(awayFacts(base))
     assert.equal(l.head, 'While you were away (9 h)')
-    assert.deepEqual(l.did, ['answered 2 times in 2 threads', 'ran kagelets 2 times', 'kept 1 new lesson', 'spent $1.35'])
+    assert.deepEqual(l.did, ['answered 3 times in 3 threads', 'ran kagelets 2 times', 'kept 1 new lesson', 'spent $1.35'])
     assert.deepEqual(l.needsYou, ['send the invite to Priya?'])
     assert.equal(l.tails, '2 of 4 tails out')
   })
