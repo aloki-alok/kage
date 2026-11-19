@@ -1,0 +1,27 @@
+name: ci-retry-cancelled
+on:
+  workflow_run:
+    workflows: [ci, upgrade, meetbot]
+    types: [completed]
+permissions:
+  actions: write
+  contents: read
+jobs:
+  retry:
+    if: github.event.workflow_run.conclusion == 'cancelled' && github.event.workflow_run.run_attempt < 3
+    runs-on: ubuntu-latest
+    steps:
+      - name: Re-run the cancelled jobs if the commit is still the branch head
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          RUN: ${{ github.event.workflow_run.id }}
+          SHA: ${{ github.event.workflow_run.head_sha }}
+          BRANCH: ${{ github.event.workflow_run.head_branch }}
+          FORK: ${{ github.event.workflow_run.head_repository.full_name }}
+        run: |
+          if [ "$FORK" != "$REPO" ]; then echo "fork run, skipped"; exit 0; fi
+          head=$(gh api "repos/$REPO/branches/$BRANCH" --jq .commit.sha 2>/dev/null || true)
+          if [ "$head" != "$SHA" ]; then echo "$BRANCH moved on from $SHA, skipped"; exit 0; fi
+          sleep 60
+          gh run rerun "$RUN" --failed --repo "$REPO"
