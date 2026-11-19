@@ -65,7 +65,7 @@ export function sdkSessions(o: {
   restartMs?: number
 }) {
   const senderNow = (s: { sender?: Sender; turn: { task: Task }[] }): Sender | undefined =>
-    s.sender === 'trusted' && o.trustedNow && s.turn.some(x => x.task.trusted && !o.trustedNow!(x.task.trusted)) ? 'teammate' : s.sender
+    s.sender !== 'trusted' ? s.sender : s.turn.some(x => x.task.trusted) && s.turn.every(x => !x.task.trusted || (o.trustedNow?.(x.task.trusted) ?? true)) ? 'trusted' : 'teammate'
   const sessions = new Map<string, Session>()
   const picks = new Map<string, Pick>()
   const ALLOWED = ['reply', 'edit_message', 'delete_message', 'send_file', 'make_canvas', 'edit_canvas', 'message_people', 'schedule', 'unschedule', 'schedules', 'set_model', 'kagelets', 'review_kagelet_memory', 'browser_tabs', 'browser_read', 'browser_screenshot', 'browser_snapshot', 'browser_act', 'set_setting', 'meeting_join'].map(t => `mcp__kage__${t}`)
