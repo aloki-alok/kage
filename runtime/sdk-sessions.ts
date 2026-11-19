@@ -202,7 +202,7 @@ export function sdkSessions(o: {
             limit = window = resetsAt = undefined
           } else if (m.type === 'result') {
             blocked = false
-            const again = s.sender === 'owner' ? [] : s.turn.filter(x => x.mid && x.read && senderOf(x.task) === 'owner').map(x => x.task)
+            const again = s.sender === 'owner' ? [] : s.turn.filter(x => (!x.mid || x.read) && senderOf(x.task) === 'owner').map(x => x.task)
             s.again.push(...again)
             const done = s.turn.filter(x => (!x.mid || x.read) && !again.includes(x.task)).map(x => x.task)
             s.turn = s.turn.filter(x => x.mid && !x.read).map(x => ({ ...x, mid: false })); if (s.turn.length) s.sender = lowestSender(s.turn.map(x => x.task))

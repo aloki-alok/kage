@@ -2,6 +2,9 @@
   "hooks": {
     "PreToolUse": [
       { "matcher": "*", "hooks": [{ "type": "command", "command": "node \"${CLAUDE_PLUGIN_ROOT}/plugin/private-data-guard.ts\" || { echo \"Kage private-data guard failed to run, so this call is blocked. Restart the Claude Code session so it loads the current hook path.\" >&2; exit 2; }" }] }
+    ],
+    "Stop": [
+      { "hooks": [{ "type": "command", "command": "node \"${CLAUDE_PLUGIN_ROOT}/plugin/turn-end.ts\"" }] }
     ]
   }
 }

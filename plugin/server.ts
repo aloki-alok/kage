@@ -4,15 +4,15 @@ import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js'
 import { CallToolRequestSchema, ListToolsRequestSchema } from '@modelcontextprotocol/sdk/types.js'
 import { z } from 'zod'
 import { connect, type Socket } from 'node:net'
-import { mkdirSync, writeFileSync } from 'node:fs'
 import { dirname } from 'node:path'
 import { load } from '../hub/config.ts'
 import { log } from '../runtime/log.ts'
 import type { ToSession } from '../runtime/protocol.ts'
-import { senderOf, withoutInvisible } from '../core/gate.ts'
-import { memoryDirs, senderFile } from '../core/guards.ts'
+import { withoutInvisible } from '../core/gate.ts'
+import { memoryDirs } from '../core/guards.ts'
 import { sessionTools } from '../runtime/kage-tools.ts'
 import { openLedgers } from '../runtime/ledger.ts'
+import { paneTurn } from '../runtime/pane-turn.ts'
 import { schedulesIn } from '../runtime/store.ts'
 
 const THREAD = process.env.KAGE_THREAD
@@ -28,9 +28,17 @@ process.on('unhandledRejection', e => log('unhandled', e))
 let botDm = ''
 let router: Socket | undefined
 const unsentAsks: string[] = []
+const turn = paneTurn({
+  dir: dirname(ENV_FILE), thread: THREAD!,
+  show: m => {
+    kage.onTask(m)
+    mcp.notification({ method: 'notifications/claude/channel', params: { content: withoutInvisible(m.content), meta: m.meta } }).catch(e => log('task failed', e))
+  },
+})
 const kage = sessionTools({
   title: Title, bot, user, botDm: () => botDm, dir: dirname(ENV_FILE), ledgers: openLedgers(dirname(ENV_FILE)),
   memory: memoryDirs(process.env.HOME!, ENV_FILE, config.harness),
+  turnSender: turn.sender,
   send: m => { if (!router?.writable) return false; router.write(JSON.stringify(m) + '\n') },
   schedules: {
     async add(j) {
@@ -85,11 +93,7 @@ async function fromRouter(m: ToSession) {
     await mcp.notification({ method: 'notifications/claude/channel/permission', params: { request_id: m.request_id, behavior: m.behavior } })
     return
   }
-  const sender = senderFile(dirname(ENV_FILE), THREAD!)
-  mkdirSync(dirname(sender), { recursive: true, mode: 0o700 })
-  writeFileSync(sender, senderOf({ fromOwner: m.fromOwner === true, meta: m.meta }), { mode: 0o600 })
-  kage.onTask(m)
-  await mcp.notification({ method: 'notifications/claude/channel', params: { content: withoutInvisible(m.content), meta: m.meta } })
+  turn.arrive(m)
 }
 
 function link() {

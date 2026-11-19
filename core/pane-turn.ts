@@ -1,0 +1,31 @@
+import { OWNER_AGAIN, OWNER_MID_TURN, senderOf, type Sender } from './gate.ts'
+import type { Task } from './task.ts'
+
+type PaneTurn = { open: boolean; tasks: { task: Task; at: number }[]; again: Task[]; floor: Sender }
+const SENDERS: readonly Sender[] = ['owner', 'teammate', 'voice', 'agent']
+export const resumedTurn = (lastSender: string): PaneTurn => ({ open: false, tasks: [], again: [], floor: SENDERS.find(s => s === lastSender) ?? 'teammate' })
+
+const paneSender = (t: Task) => senderOf({ fromOwner: t.fromOwner === true, meta: t.meta })
+const lowest = (tasks: PaneTurn['tasks'], floor: Sender): Sender => [...tasks.map(x => paneSender(x.task)), floor].find(s => s !== 'owner') ?? 'owner'
+export const turnSender = (turn: PaneTurn) => lowest(turn.tasks, turn.floor)
+
+export function arrive(turn: PaneTurn, task: Task, at: number, working: boolean): { turn: PaneTurn; shown: Task } {
+  const goesOn = turn.open || working
+  const next = { ...turn, open: true, tasks: [...goesOn ? turn.tasks : [], { task, at }], floor: goesOn ? turn.floor : 'owner' as const }
+  const lowered = paneSender(task) === 'owner' && turnSender(next) !== 'owner'
+  return { turn: next, shown: lowered ? { ...task, content: `${OWNER_MID_TURN}\n${task.content}` } : task }
+}
+
+export function endTurn(turn: PaneTurn, lastStep: number, stoppedAt: number): { turn: PaneTurn; send: Task[] } {
+  if (!turn.open) return { turn, send: [] }
+  const ended = turn.tasks.filter(x => x.at <= stoppedAt), byOwner = lowest(ended, turn.floor) === 'owner'
+  const read = lastStep <= stoppedAt ? lastStep : 0
+  const carried = turn.tasks.filter(x => x.at > read && !(byOwner && x.at <= stoppedAt))
+  const lowered = byOwner ? [] : ended.map(x => x.task).filter(t => paneSender(t) === 'owner' && !turn.again.includes(t))
+  const again = [...turn.again, ...lowered]
+  const ready = carried.every(x => paneSender(x.task) === 'owner')
+  return {
+    turn: { open: carried.length > 0, tasks: carried.length ? carried : turn.tasks, again: ready ? [] : again, floor: turn.floor },
+    send: ready ? again.map(t => t.content.startsWith(OWNER_AGAIN) ? t : { ...t, content: `${OWNER_AGAIN}\n${t.content}` }) : [],
+  }
+}
