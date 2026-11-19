@@ -23,6 +23,6 @@ Code imports the old `env` file once (`runtime/config-files.ts`). It never passe
 - Keys in `sessionKeys` leave the environment before any session copies it. If the proxy fails to load, they are still removed. (`hub.ts`, `runtime/hold-keys.ts`)
 - The key proxy does not follow redirects, so a key never goes elsewhere. The SSM relay and proxy sockets are created mode 600. (`runtime/key-proxy.ts`, `runtime/ssm-relay.ts`)
 - The SSM relay re-checks owner-only trust on every connection and never logs the token, stream URL or bytes. (`runtime/ssm-relay.ts`, `core/ssm.ts`)
-- A path match cannot stop a shell. Only `harness.sandbox` is a wall, and with it off a reworded command gets past `configRefusal`. (`runtime/path-guards.ts`)
+- A path match cannot stop a shell. Only the OS sandbox is a wall. It covers the threads `harness.sandbox` walls (by default, every thread the owner did not start), and in any other thread a reworded command gets past `configRefusal`. (`runtime/path-guards.ts`)
 - A shell sandbox passes one `--settings` flag, because a second flag would replace the first. (`runtime/tmux-panes.ts`)
 - A `.new` swapped-in file written through a link is a trap, so kagelet files are written as a fresh copy and swapped in. (`runtime/kagelet-files.ts`, `runtime/kagelet-memory.ts`)

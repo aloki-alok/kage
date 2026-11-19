@@ -972,9 +972,10 @@ describe('Kage sessions on the Agent SDK', () => {
     assert.equal(t.sdk.runs[0]!.options.settings.sandbox, undefined, 'the owner\'s thread')
     assert.equal(t.sdk.runs[1]!.options.settings.sandbox?.enabled, true, 'the teammate\'s thread')
     assert.ok(t.sdk.runs[1]!.options.settings.sandbox.filesystem.denyRead.includes('/cfg/secrets.json*'))
-    t.d.task('voice:c1', t.task({ channel: 'voice', fromOwner: false }), 0)
+    const v = setup({ sandbox: 'teammates' })
+    v.d.task('voice:c1', v.task({ channel: 'voice', fromOwner: false }), 0)
     await tick()
-    assert.equal(t.sdk.runs[2]!.options.settings.sandbox?.enabled, true, 'a caller who is not the owner')
+    assert.equal(v.sdk.runs[0]!.options.settings.sandbox?.enabled, true, 'a caller who is not the owner')
   })
   test('with harness.sandbox off a session gets no OS sandbox, and the token files and config.json stay denied to the file tools', async () => {
     const t = setup({ sandbox: false })

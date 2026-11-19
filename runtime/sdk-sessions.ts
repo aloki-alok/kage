@@ -36,7 +36,7 @@ type Session = {
   stopped: boolean
   run?: { q: Query; inbox: Inbox; send: (m: ToSession) => void; started: number }
   asks: Map<string, (b: 'allow' | 'deny') => void>
-  ownerTools: boolean; connectors?: true; carry: SDKUserMessage[]; again: Task[]
+  ownerTools: boolean; ownerThread: boolean; connectors?: true; carry: SDKUserMessage[]; again: Task[]
 }
 
 export function sdkSessions(o: {
@@ -102,7 +102,7 @@ export function sdkSessions(o: {
     const resumed = o.hasTranscript(s.id)
     const budget = o.budgetOf?.(key)
     const grant = o.grantOf?.(key)
-    const walled = protectConfig(o.envFile, o.codeDir, undefined, shellGrant(grant) ? 'kagelet' : o.sandbox?.(s.ownerTools) === true)
+    const walled = protectConfig(o.envFile, o.codeDir, undefined, shellGrant(grant) ? 'kagelet' : o.sandbox?.(s.ownerThread) === true)
     const ssmToken = grant ? undefined : o.ssm?.issue(key)
     const keysToken = grant ? undefined : o.keys?.issue(key)
     const q = o.sdk.query({
@@ -148,7 +148,7 @@ export function sdkSessions(o: {
     const send = (m: ToSession) => {
       if (m.type === 'verdict') { s.asks.get(m.request_id)?.(m.behavior); return }
       const from = senderOf(m), answered = sawState && s.state === 'idle' && !unseen
-      s.ownerTools ||= from === 'owner'; s.sender = answered || !s.turn.length ? from : lowest([lowestSender(s.turn.map(x => x.task)), from])
+      s.ownerTools ||= from === 'owner'; s.ownerThread ||= from === 'owner'; s.sender = answered || !s.turn.length ? from : lowest([lowestSender(s.turn.map(x => x.task)), from])
       const shown = from === 'owner' && s.sender !== 'owner' ? { ...m, content: `${OWNER_MID_TURN}\n${m.content}` } : m
       const reopen = s.ownerTools && !full && s.state === 'idle' && (sawState ? !unseen : !s.turn.length)
       if (reopen && s.turn.length) o.onTurn?.(key, s.turn.splice(0).map(x => x.task), undefined, true)
@@ -260,7 +260,7 @@ export function sdkSessions(o: {
   const runner: Runner<ToSession> = {
     start(key, id, first) {
       const s: Session = sessions.get(key) ?? {
-        id, state: 'idle', last: 0, stopped: false, asks: new Map(), turn: [], carry: [], again: [], ownerTools: key.startsWith('voice:') || (first?.type === 'task' && senderOf(first) === 'owner'), ...first?.type === 'task' && senderOf(first) === 'trusted' && { connectors: true as const },
+        id, state: 'idle', last: 0, stopped: false, asks: new Map(), turn: [], carry: [], again: [], ownerTools: key.startsWith('voice:') || (first?.type === 'task' && senderOf(first) === 'owner'), ownerThread: first?.type === 'task' && senderOf(first) === 'owner', ...first?.type === 'task' && senderOf(first) === 'trusted' && { connectors: true as const },
         kage: o.tools(key, m => o.toHub(key, m), (tool, description, input) => ask(key, s, tool, description, input, new AbortController().signal).then(r => r.behavior === 'allow'), () => s.sender),
       }
       Object.assign(s, { id, stopped: false })
