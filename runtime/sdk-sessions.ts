@@ -44,6 +44,7 @@ export function sdkSessions(o: {
   hub: () => Dispatcher<ToSession>
   tools: (key: string, send: (m: { type: 'mail' | 'wa' | 'voice'; text: string }) => void, approve: (tool: string, description: string, input: Record<string, unknown>) => Promise<boolean>, turnSender: () => Sender | undefined) => Kage
   hasTranscript: (id: string) => boolean
+  trustedNow?: (person: string) => boolean
   toHub: (key: string, m: { type: 'mail' | 'wa' | 'voice'; text: string }) => void
   options: Options
   ownerMemory: string; sharedTools?: readonly string[]
@@ -63,6 +64,8 @@ export function sdkSessions(o: {
   keys?: { sock: string; issue: (key: string) => string | undefined; drop: (key: string) => void }
   restartMs?: number
 }) {
+  const senderNow = (s: { sender?: Sender; turn: { task: Task }[] }): Sender | undefined =>
+    s.sender === 'trusted' && o.trustedNow && s.turn.some(x => x.task.trusted && !o.trustedNow!(x.task.trusted)) ? 'teammate' : s.sender
   const sessions = new Map<string, Session>()
   const picks = new Map<string, Pick>()
   const ALLOWED = ['reply', 'edit_message', 'delete_message', 'send_file', 'make_canvas', 'edit_canvas', 'message_people', 'schedule', 'unschedule', 'schedules', 'set_model', 'kagelets', 'review_kagelet_memory', 'browser_tabs', 'browser_read', 'browser_screenshot', 'browser_snapshot', 'browser_act', 'set_setting', 'meeting_join'].map(t => `mcp__kage__${t}`)
@@ -119,7 +122,7 @@ export function sdkSessions(o: {
         canUseTool: (name, input, x) => o.grantOf?.(key)
           ? Promise.resolve(grantRefusal(name, o.grantOf(key)!, input, o.allowOf?.(key)) ? { behavior: 'deny' as const, message: 'A kagelet approves nothing. Say in the thread what you needed and why: your manager decides.' }
             : { behavior: 'allow' as const, updatedInput: input })
-          : (ALLOWED.includes(name) && !eventNeedsCard(name, input, s.sender)) || SLACK_READS.includes(name) || (name === 'mcp__kage__manage_kagelet' && (input.action === 'save' || input.action === 'revoke')) ? Promise.resolve({ behavior: 'allow' as const, updatedInput: input })
+          : (ALLOWED.includes(name) && !eventNeedsCard(name, input, senderNow(s))) || SLACK_READS.includes(name) || (name === 'mcp__kage__manage_kagelet' && (input.action === 'save' || input.action === 'revoke')) ? Promise.resolve({ behavior: 'allow' as const, updatedInput: input })
           : s.turn.some(x => senderOf(x.task) === 'agent') ? Promise.resolve({ behavior: 'deny' as const, message: "An agent's task may only read and answer: no card goes to the owner." }) : o.deferred?.take(key, name, input, Date.now()) ? Promise.resolve({ behavior: 'allow' as const, updatedInput: input })
           : o.deferred && s.turn.length ? defer(key, s, name, x.title ?? x.description ?? '', input)
           : ask(key, s, name, x.title ?? x.description ?? '', input, x.signal),
@@ -129,7 +132,7 @@ export function sdkSessions(o: {
             hooks: [async input => {
               const i = input as { tool_name: string; tool_input?: Record<string, string> }
               const grant = o.grantOf?.(key)
-              const path = toolRefusal(i.tool_name, i.tool_input ?? {}, s.turn.some(x => senderOf(x.task) === 'agent') ? 'agent' : s.sender, o), held = grant && grantRefusal(i.tool_name, grant, i.tool_input ?? {}, o.allowOf?.(key))
+              const path = toolRefusal(i.tool_name, i.tool_input ?? {}, s.turn.some(x => senderOf(x.task) === 'agent') ? 'agent' : senderNow(s), o), held = grant && grantRefusal(i.tool_name, grant, i.tool_input ?? {}, o.allowOf?.(key))
               const step = !!held && !path && i.tool_name === 'Bash' && shellGrant(grant!), command = { command: String(i.tool_input?.command ?? '') }
               const taken = step && !!o.deferred?.take(key, 'Bash', command, Date.now()), wait = step && !taken ? o.deferred?.waiting(key, 'Bash', command, Date.now()) : undefined
               const released = taken || step && wait !== 'same' && !!await o.reviewHeld?.(key, command.command), card = step && !released && !wait && o.deferred && s.turn.length ? await defer(key, s, 'Bash', `A kagelet's one-way step: ${heldCommand(command.command)}. Reply \`always\` to run it and let this exact command run with no ask from now on.`, command) : undefined

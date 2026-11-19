@@ -236,7 +236,7 @@ const sdk = sdkLib ? sdkSessions({
     event: (kind, detail) => runs.emit(key, kind, detail),
     onReport: r => kag.routes.reported(key, r), message: (to, text) => kag.routes.message(key, to, text), toManager: needs => kag.needs.add(key, key.split('#side-kagelet-')[1] ?? '', needs, Date.now()), tellKagelet: (name, text, now) => kag.tell(name, text, now),
   }),
-  hasTranscript: tmux.hasTranscript,
+  hasTranscript: tmux.hasTranscript, trustedNow: person => (slack.ids.trusted ?? []).includes(person),
   toHub: (key, m) => routeReply(key, m, replies),
   options: sessionOptions(sdkLib.claude),
   onMcp: q => { if (needs.watching()) void mcpStatus(q).then(needs.seen).catch(e => log('mcp status failed', e)) },
