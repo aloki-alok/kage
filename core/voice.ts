@@ -1,7 +1,7 @@
 import type { Step } from './transcript.ts'
 
 export const SKIN = { fire: '45;190;160', lantern: '230;145;40' }
-export const MARK = { kage: '✦', working: '•', you: '◆', quiet: '◌' }
+export const MARK = { kage: '✦', working: '•', you: '◆', quiet: '◌', tail: 'ϡ' }
 export const FLICKER = ['⋅', '∙', '•', '∙']
 
 export function painter(color: boolean) {
@@ -34,3 +34,19 @@ export function spokenStep(step: Step): { text: string; tone: Tone } {
   if (DID[kind]) return { text: `${DID[kind]} ${text}`, tone: 'quiet' }
   return { text: text ? `I used ${kind}: ${text}` : `I used ${kind}`, tone: 'quiet' }
 }
+
+export const FOX = [
+  '⣷⣄⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⢀⣴⡇',
+  '⢻⣿⡑⢄⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⢀⠔⣹⣿⠃',
+  '⢸⣿⣇⠈⠳⣄⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⢀⡴⠋⢀⣿⣿⠀',
+  '⢸⣿⣿⡀⠀⠈⢷⣄⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⢀⣴⠏⠀⠀⣸⣿⣿⠀',
+  '⠈⣿⣿⣇⠀⣠⣴⣿⣿⣿⣿⣿⣿⠛⣿⣿⣿⣿⣿⣷⣤⡀⢀⣿⣿⡏⠀',
+  '⠀⢿⣿⣿⣾⣿⣿⣿⣿⣿⣿⣿⣿⠀⣿⣿⣿⣿⣿⣿⣿⣿⣾⣿⣿⠇⠀',
+  '⠀⠈⢿⣿⣿⣟⡻⠿⢿⣿⣿⣿⣿⣿⣿⣿⣿⣿⠿⠿⣛⣿⣿⣿⠏⠀⠀',
+  '⠀⠀⠀⢻⣿⣿⣿⣶⣄⡀⣠⣾⣿⣿⣿⣦⡀⣀⣴⣾⣿⣿⣿⠃⠀⠀⠀',
+  '⠀⠀⠀⠀⠙⢿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⠟⠁⠀⠀⠀⠀',
+  '⠀⠀⠀⠀⠀⠈⠻⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⡿⠋⠀⠀⠀⠀⠀⠀',
+  '⠀⠀⠀⠀⠀⠀⠀⠈⢻⣿⣿⣿⣿⣿⣿⣿⣿⣿⠋⠀⠀⠀⠀⠀⠀⠀⠀',
+  '⠀⠀⠀⠀⠀⠀⠀⠀⠀⠙⢿⣷⡄⠀⣴⣿⠟⠁⠀⠀⠀⠀⠀⠀⠀⠀⠀',
+  '⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠙⢿⣾⠟⠁⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀',
+]

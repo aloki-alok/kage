@@ -1,10 +1,11 @@
 export let W = 100, H = 38
 export function resize(s: { cols: number; rows: number }) { W = s.cols; H = s.rows }
 const COL: Record<string, [number, number, number]> = {
-  w: [244, 241, 234], W: [255, 255, 255], m: [163, 158, 148], d: [86, 82, 100], k: [48, 45, 60],
-  r: [208, 20, 30], R: [255, 77, 61], g: [212, 175, 55], G: [255, 215, 94], f: [70, 66, 86],
+  w: [207, 216, 222], W: [240, 245, 248], m: [140, 154, 164], d: [80, 94, 106], k: [36, 46, 56],
+  r: [38, 140, 120], R: [111, 240, 208], g: [93, 107, 119], G: [214, 228, 236], f: [52, 64, 76],
+  y: [176, 112, 40], Y: [255, 180, 84],
 }
-export const BG = '\x1b[48;2;15;14;19m'
+export const BG = '\x1b[48;2;10;14;19m'
 type Cell = [string, string]
 let G: Cell[][] = []
 export const clear = () => { G = Array.from({ length: H }, () => Array.from({ length: W }, (): Cell => [' ', 'w'])) }

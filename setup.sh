@@ -73,15 +73,6 @@ cmd_help() {
 }
 
 # Bare kage: the few commands used every day. kage help has the rest.
-cmd_short() {
-  local n d
-  for n in status top logs schedules cost doctor; do
-    d="$(printf '%s\n' "$COMMANDS" | awk -F'|' -v n="$n" '$2==n {print $4}')"
-    printf '  kage %-12s %s\n' "$n" "$d"
-  done
-  printf '\nkage help lists all %s commands.\n' "$(printf '%s\n' "$COMMANDS" | wc -l | tr -d ' ')"
-}
-
 unknown() {
   local guess; guess="$(node -e 'import("./core/cli-help.ts").then(m=>{const s=m.suggest(process.argv[1],process.argv.slice(2));if(s)console.log(s)})' "$1" $(printf '%s\n' "$COMMANDS" | cut -d'|' -f2) 2>/dev/null || true)"
   printf 'No command "%s".%s Run kage help for the list.\n' "$1" "${guess:+ Did you mean kage $guess?}" >&2
@@ -340,7 +331,7 @@ cmd_interactive() {
 for a in "$@"; do [[ $a == -h || $a == --help ]] && { [[ $1 == "$a" || $1 == help ]] && cmd_help || cmd_help "$1"; exit 0; }; done
 
 case "${1:-}" in
-  "") if has_settings; then { running && says "I'm running." || { says "I'm not running."; next "Start me:" "kage start"; }; echo; cmd_short; }; else cmd_interactive; fi ;;
+  "") if has_settings; then node cli/home-screen.ts "$(running && echo up || echo down)"; else cmd_interactive; fi ;;
   help) cmd_help "${2:-}" ;;
   setup) cmd_interactive ;;
   check) cmd_check ;;

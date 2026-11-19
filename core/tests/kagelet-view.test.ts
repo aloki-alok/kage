@@ -1,7 +1,7 @@
 import { describe, test } from 'node:test'
 import assert from 'node:assert/strict'
-import { kageletRows } from '../kagelets.ts'
-import { modelLine, actionLine, CAP_PAUSE, chainCap, dailyCap, totalCap, kageletRuns, PANEL_KEYS, panelLines, runLine, shownState } from '../kagelet-view.ts'
+import { kageletRows, type KageletRow } from '../kagelets.ts'
+import { modelLine, actionLine, CAP_PAUSE, chainCap, dailyCap, totalCap, kageletRuns, PANEL_KEYS, panelLines, runLine, shownState, tailLine } from '../kagelet-view.ts'
 
 const LINK = 'https://test.slack.com/archives/CTEST1/p1700000000123456'
 const KEY = 'CTEST1:1700000000.123456#side-kagelet-deploys'
@@ -115,5 +115,22 @@ describe('kage logs <kagelet>', () => {
   })
   test('a line reads time, cost, status, report', () => {
     assert.match(runLine(list[0]!, now), /^14:55 +\$0\.05 +ok +needs: the staging password/)
+  })
+})
+
+describe('tails in kage status: one line per kagelet', () => {
+  const NOW = Date.parse('2026-11-19T18:00:00Z')
+  const row = (o: Partial<KageletRow>): KageletRow => ({ name: 'news', state: 'runs', tools: [], costToday: 0.03, avg7: 0.02, ...o })
+  test('a running tail is lit, with its last and next run and its spend today', () => {
+    const t = tailLine(row({ lastRun: NOW - 3_600_000, next: NOW + 3_600_000 }), NOW)
+    assert.equal(t.tone, 'fire')
+    assert.match(t.text, /^news +last ran .+ · next .+ · \$0\.03 today$/)
+  })
+  test('a paused tail is folded away, a broken one needs you', () => {
+    assert.deepEqual(tailLine(row({ state: 'paused' }), NOW), { text: 'news            folded away (paused)', tone: 'quiet' })
+    assert.deepEqual(tailLine(row({ state: 'broken', error: 'no schedule line' }), NOW), { text: 'news            broken: no schedule line', tone: 'you' })
+  })
+  test('a tail that never ran says so', () => {
+    assert.match(tailLine(row({}), NOW).text, /never ran/)
   })
 })

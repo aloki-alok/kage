@@ -21,8 +21,8 @@ describe('painter: the kitsunebi skin', () => {
     assert.equal(v.command('kage top') + v.dim('x') + v.ok('y') + v.fire('z'), 'kage topx✓ yz')
   })
   test('each state has its own shape, so it reads with no color', () => {
-    assert.deepEqual(MARK, { kage: '✦', working: '•', you: '◆', quiet: '◌' })
-    assert.equal(new Set(Object.values(MARK)).size, 4)
+    assert.deepEqual(MARK, { kage: '✦', working: '•', you: '◆', quiet: '◌', tail: 'ϡ' })
+    assert.equal(new Set(Object.values(MARK)).size, 5)
     assert.deepEqual(FLICKER, ['⋅', '∙', '•', '∙'])
   })
   test('no red: the skin is foxfire and lantern only', () => {

@@ -66,15 +66,15 @@ export function moreLine(rest: { connector: string }[]): string {
   return ['+ ' + rest.length + ' more', ...counts, '/ to search'].join(' · ')
 }
 
-type Tone = 'red' | 'gold' | 'white' | 'muted' | 'dim'
+type Tone = 'fire' | 'lantern' | 'white' | 'muted' | 'dim'
 export const STRING: Record<State, { kind: 'pulse' | 'blink' | 'drift' | 'dotted' | 'grow' | 'cut' | 'none'; tone: Tone; glyph: string }> = {
-  working: { kind: 'pulse', tone: 'red', glyph: '●' },
-  asking: { kind: 'blink', tone: 'gold', glyph: '◆' },
+  working: { kind: 'pulse', tone: 'fire', glyph: '•' },
+  asking: { kind: 'blink', tone: 'lantern', glyph: '◆' },
   watching: { kind: 'drift', tone: 'white', glyph: '◷' },
-  quiet: { kind: 'dotted', tone: 'muted', glyph: '○' },
-  starting: { kind: 'grow', tone: 'gold', glyph: '✦' },
+  quiet: { kind: 'dotted', tone: 'muted', glyph: '◌' },
+  starting: { kind: 'grow', tone: 'fire', glyph: '✦' },
   held: { kind: 'dotted', tone: 'muted', glyph: '▣' },
-  queued: { kind: 'none', tone: 'gold', glyph: '…' },
+  queued: { kind: 'none', tone: 'muted', glyph: '…' },
   closed: { kind: 'cut', tone: 'dim', glyph: '╳' },
 }
 
