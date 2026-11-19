@@ -467,7 +467,7 @@ describe('Kage sessions on the Agent SDK', () => {
     assert.equal(t.sdk.runs.length, 2)
     assert.equal(t.s.runner.busy('C1:5.5'), false)
   })
-  test("with no state events, a session with a task still open takes the next message as it is, and reopens once the turn is empty (#317)", async () => {
+  test("with no state events, a session with a task still open takes the next message as it is, reopens once the turn is empty, and the owner's message that shared a turn with Sam's runs again (#317)", async () => {
     const t = setup({ browser: true, transcript: true })
     t.d.task('C1:5.5', t.task({ fromOwner: false, content: 'Task from Sam: one' }), 0)
     await tick()
@@ -483,7 +483,7 @@ describe('Kage sessions on the Agent SDK', () => {
     t.d.task('C1:5.5', t.task({ fromOwner: false, content: 'Task from Sam: four' }), 3)
     await tick(30)
     assert.equal(t.sdk.runs.length, 2)
-    assert.deepEqual(said(t.sdk.runs[1]!), ['Sam: four'])
+    assert.deepEqual(said(t.sdk.runs[1]!), ['owner: three', 'Sam: four'])
     t.s.runner.stop('C1:5.5')
   })
   test('voice sessions load reply and read-only Slack tools without ToolSearch; other sessions keep deferral', async () => {
