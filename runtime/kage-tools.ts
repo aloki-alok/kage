@@ -7,7 +7,7 @@ import { log } from './log.ts'
 import type { AfkCommand } from '../core/afk.ts'
 import type { Schedule } from '../core/cron.ts'
 import type { ProbeArg, TuneArg } from './probe-jobs.ts'
-import { addressed } from '../core/agents.ts'
+import { addressed, foreignAgentRefusal, mentionedIds } from '../core/agents.ts'
 import { filesFolderName } from '../core/conversations.ts'
 import { plainName, teammateOf, type Sender } from '../core/gate.ts'
 import { openWaiting, postedBy } from '../core/ledgers.ts'
@@ -102,6 +102,7 @@ export function sessionTools(o: {
   event?: (kind: EventKind, detail: string) => void
   browser?: { call(op: string, args: Record<string, unknown>): Promise<unknown>; block: string[] }
   meetbot?: { join(link: string): string }
+  foreignAgents?: () => readonly string[]
   onReport?: (r: { needs: string; output: string }) => void
   message?: (to: string, text: string) => string
   toManager?: (needs: string) => string
@@ -133,13 +134,13 @@ export function sessionTools(o: {
   const names: Record<string, string> = {}
   const seenIds = new Set<string>(), heldOnce = new Set<string>()
   const unseenMention = (text: string, also: readonly string[] = []) => {
-    const ids = [...text.matchAll(/<@([UW][A-Z0-9]+)>/g)].map(x => x[1]!).filter(id => !seenIds.has(id) && !also.includes(id))
+    const ids = mentionedIds(text).filter(id => !seenIds.has(id) && !also.includes(id))
     const fresh = ids.filter(id => !heldOnce.has(id))
     for (const id of ids) { if (heldOnce.has(id)) seenIds.add(id); else heldOnce.add(id) }
     return fresh.length ? `not sent: ${fresh.map(id => `<@${id}>`).join(', ')} is not anyone in this thread's tasks, so the mention may be a wrong or remembered id that pings a stranger. Check who it is; if it is right, send the same message again and it goes.` : undefined
   }
   async function nameMentions(text: string) {
-    for (const [, id] of text.matchAll(/<@([UW][A-Z0-9]+)>/g)) {
+    for (const id of mentionedIds(text)) {
       if (names[id!]) continue
       const u = await user.users.info({ user: id! }).catch(() => null)
       const p = u?.user as { real_name?: string; name?: string; profile?: { display_name?: string } } | undefined
@@ -165,6 +166,8 @@ export function sessionTools(o: {
   }
 
   async function change(a: { channel: string; ts: string; text?: string; wide?: boolean }, ping: boolean): Promise<Result> {
+    const toAgent = a.text === undefined ? undefined : foreignAgentRefusal(a.text, o.foreignAgents?.() ?? [], [...agents].filter(([k]) => k.startsWith(`${a.channel}:`)).map(([, v]) => v?.tag))
+    if (toAgent) return { isError: true, text: toAgent }
     const tag = sentForPeople.get(`${a.channel}:${a.ts}`)
     if (tag !== undefined) {
       if (a.text === undefined) {

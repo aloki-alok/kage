@@ -71,7 +71,7 @@ function fakeSlack() {
   return { calls, posts, bot: client('bot'), user: client('owner') }
 }
 
-function setup(o: { noHook?: boolean; settings?: { set(key: string, value: unknown): void }; hubDown?: boolean; dir?: string; kagelet?: string; dreaming?: string; dbRead?: { command: () => string | undefined; maxRows: number; timeoutMs?: number }; approve?: (tool: string, description: string, input: Record<string, unknown>) => Promise<boolean>; browser?: { call(op: string, args: Record<string, unknown>): Promise<unknown>; block: string[] }; meetbot?: { join(link: string): string } } = {}) {
+function setup(o: { noHook?: boolean; settings?: { set(key: string, value: unknown): void }; hubDown?: boolean; dir?: string; kagelet?: string; dreaming?: string; dbRead?: { command: () => string | undefined; maxRows: number; timeoutMs?: number }; approve?: (tool: string, description: string, input: Record<string, unknown>) => Promise<boolean>; browser?: { call(op: string, args: Record<string, unknown>): Promise<unknown>; block: string[] }; meetbot?: { join(link: string): string }; foreignAgents?: () => readonly string[] } = {}) {
   const slack = fakeSlack()
   const dir = o.dir ?? mkdtempSync(join(tmpdir(), 'kage-tools-'))
   const ledgers = openLedgers(dir)
@@ -90,7 +90,7 @@ function setup(o: { noHook?: boolean; settings?: { set(key: string, value: unkno
       hookUrl: id => o.noHook ? undefined : `http://127.0.0.1:3198/hook/${id}`,
       move: (id, to) => { if (!jobs.some(j => j.id === id)) return `no job ${id} in this thread`; jobs.find(j => j.id === id).key = to },
     },
-    afk: async c => { out.push(`afk ${JSON.stringify(c)}`); return 'AFK on' },
+    afk: async c => { out.push(`afk ${JSON.stringify(c)}`); return 'AFK on' }, foreignAgents: o.foreignAgents,
     kagelet: o.kagelet, dreaming: o.dreaming, settings: o.settings, kageletMemory: { propose: (name: string, a: unknown, thread: string) => { out.push(`propose ${name} ${thread} ${JSON.stringify(a)}`); return 'proposed' }, decide: (d: unknown) => { out.push(`decide ${JSON.stringify(d)}`); return 'decided' }, open: () => 'open ones', notes: () => [] } as any, dbRead: o.dbRead, approve: o.approve, browser: o.browser, meetbot: o.meetbot, event: (kind, detail) => { events.push(`${kind} ${detail}`) },
     onReport: r => { routed.push(`report ${JSON.stringify(r)}`) }, toManager: text => { routed.push(`manager ${text}`); return 'sent' },
     tellKagelet: (name, text, run) => { routed.push(`tell ${name}${run ? ' now' : ''}: ${text}`); return `told ${name}` }, message: (to, text) => { routed.push(`message ${to} ${text}`); return `sent to ${to}` },
@@ -387,6 +387,30 @@ describe("a session's Kage tools", () => {
     s.t.onTask(s.task({ channel: 'DTEST0DM1' }))
     const inDm = await s.call('reply', { channel: 'DTEST0DM1', thread_ts: '5.5', text: 'here: https://acme.slack.com/archives/DTEST0DM1/p1730000000000200' })
     assert.equal(inDm.isError, undefined, inDm.text)
+  })
+  test("a post that tags another person's agent is refused while askOtherAgents is off; answering the agent whose task it is still goes (#310)", async () => {
+    const s = setup({ foreignAgents: () => ['UTESTBOT2', 'UTESTBOT3'] })
+    s.t.onTask({ ...s.task(), content: 'Task from Sam: who can check the invoice? <@UTESTBOT2> maybe' })
+    const before = s.posts.length
+    const no = await s.call('reply', { channel: 'C1', thread_ts: '5.5', text: '<@UTESTBOT2> can you check the invoice?' })
+    assert.equal(no.isError, true)
+    assert.match(no.text, /askOtherAgents/)
+    assert.equal(s.posts.length, before)
+    const people = await s.call('message_people', { channel: 'C1', thread_ts: '5.5', users: ['UTESTBOT2'], text: 'please check the invoice' })
+    assert.equal(people.isError, true)
+    assert.match(people.text, /askOtherAgents/)
+    const named = await s.call('reply', { channel: 'C1', thread_ts: '5.5', text: '<@UTESTBOT2|sam-bot> can you check the invoice?' })
+    assert.equal(named.isError, true, 'the <@id|name> form pings too')
+    const via = await s.call('message_people', { channel: 'C1', thread_ts: '5.5', users: ['UMATE0002'], from: 'UTESTBOT2', text: 'please check the invoice' })
+    assert.equal(via.isError, true, 'from joins the DM')
+    await s.call('reply', { channel: 'C1', thread_ts: '5.5', text: 'checking it myself' })
+    const edited = await s.call('edit_message', { channel: 'C1', ts: `9.${s.posts.length}`, text: '<@UTESTBOT2> please check the invoice' })
+    assert.equal(edited.isError, true, edited.text)
+    s.t.onTask({ ...s.task({ fromOwner: false }), content: 'Task from Sam: <@UTESTBOT2> asks for the invoice total', agent: { app: 'ATEST0002', tag: 'UTESTBOT2' } })
+    const answer = await s.call('reply', { channel: 'C1', thread_ts: '5.5', text: '<@UTESTBOT2> the total is 40' })
+    assert.equal(answer.isError, undefined, answer.text)
+    const other = await s.call('reply', { channel: 'C1', thread_ts: '5.5', text: '<@UTESTBOT3> can you double check?' })
+    assert.equal(other.isError, true, 'answering one agent opens no other')
   })
   test('a person mention keeps its <@id> on any task, so Slack highlights it', async () => {
     const s = setup()

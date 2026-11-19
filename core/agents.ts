@@ -11,8 +11,27 @@ export const agentNote = (app: string, tag?: string, person?: string) =>
     tag ? 'It hears only posts that tag it: pass tag_agent=true on the reply it must read (the answer to its ask, or a question to it), and the tool tags every part.' : 'Kage has no tag saved for this agent, so it may not hear your reply.'
   } Tag it whenever it must act, answer or go ahead, a yes it waits on included; thanks and progress stay untagged.)`
 
-export function agentRoster(apps: string[]): string | undefined {
-  const known = apps.map(appEntry).filter(e => e?.tag).map(e => /^[UW]/.test(e!.owner ?? '') ? `<@${e!.tag}> (<@${e!.owner}>'s agent)` : `<@${e!.tag}>`)
+export function foreignAgentTags(apps: string[], owner: string): string[] {
+  const entries = apps.map(appEntry).filter(e => e !== undefined)
+  const mine = (id: string | undefined, seen = new Set<string>()): boolean => {
+    if (!id || seen.has(id)) return false
+    if (id === owner) return true
+    seen.add(id)
+    return mine(entries.find(e => e.id === id)?.owner, seen)
+  }
+  return entries.filter(e => e.tag && !mine(e.owner)).map(e => e.tag!)
+}
+
+export const mentionedIds = (text: string) => [...text.matchAll(/<@([UW][A-Z0-9]+)(?:\|[^>]*)?>/g)].map(x => x[1]!)
+
+export const foreignAgentRefusal = (text: string, foreign: readonly string[], answering: readonly (string | undefined)[] = []) => {
+  const ids = mentionedIds(text)
+  const asked = foreign.filter(tag => !answering.includes(tag) && ids.includes(tag))
+  return asked.length ? `not sent: ${asked.map(t => `<@${t}>`).join(', ')} is another person's agent, and asking it for work is off (kage set askOtherAgents true turns it on). If you cannot do the task, tell your owner instead.` : undefined
+}
+
+export function agentRoster(apps: string[], foreign: readonly string[] = []): string | undefined {
+  const known = apps.map(appEntry).filter(e => e?.tag && !foreign.includes(e.tag)).map(e => /^[UW]/.test(e!.owner ?? '') ? `<@${e!.tag}> (<@${e!.owner}>'s agent)` : `<@${e!.tag}>`)
   return known.length ? `(Agents you can address: ${known.join(', ')}. An agent hears only a post that tags it: put its mention on the line where it must act, answer or unblock, and leave thanks untagged.)` : undefined
 }
 
