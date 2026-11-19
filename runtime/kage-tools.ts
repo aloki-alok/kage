@@ -43,7 +43,6 @@ export type ToolContext = {
   job: () => string | undefined
   ownerNow: (key: string) => boolean; ownerOnly: (a: Record<string, unknown>) => boolean; ownerActs: (a: Record<string, unknown>) => boolean; pingIn: (channel: string) => boolean
   name: string | undefined
-  ownerSaid: (key: string) => string[]
 }
 
 export const threadPing = (o: { title: string; bot: WebClient; user: WebClient; thread: (key: string) => { chat: string; thread?: string } | undefined; posted: (cells: string[]) => void }) =>
@@ -113,7 +112,6 @@ export function sessionTools(o: {
 
   const taskChannels = new Set<string>()
   const ownerTask = new Map<string, boolean>()
-  const said = new Map<string, string[]>()
   let job: string | undefined, need: string | undefined, jobThread = ''
   const unanswered = new Map<string, { channel: string; ts: string }[]>()
   const askers = new Map<string, { id: string; name: string } | undefined>()
@@ -194,7 +192,7 @@ export function sessionTools(o: {
   const ownerOnly = (a: Record<string, unknown>) => ownerNow(`${String(a.channel)}:${String(a.thread_ts)}`)
   const ownerActs = (a: Record<string, unknown>) => ownerOnly(a) && a.channel !== 'voice' && !agents.get(`${a.channel}:${a.thread_ts}`)
   const pingIn = (channel: string) => [...ownerTask.keys()].some(k => k.startsWith(`${channel}:`) && ownerNow(k))
-  const c: ToolContext = { o, Title, bot, user, s: z.string(), taskChannels, ownerTask, unanswered, askers, agents, sentForPeople, dmThread, links, react, post, change, nameMentions, names, append, ledger, filesOf, jobRun: () => job !== undefined || need !== undefined, job: () => job, need: () => need, ownerNow, ownerOnly, ownerActs, pingIn, name: o.kagelet, ownerSaid: key => said.get(key) ?? [] }
+  const c: ToolContext = { o, Title, bot, user, s: z.string(), taskChannels, ownerTask, unanswered, askers, agents, sentForPeople, dmThread, links, react, post, change, nameMentions, names, append, ledger, filesOf, jobRun: () => job !== undefined || need !== undefined, job: () => job, need: () => need, ownerNow, ownerOnly, ownerActs, pingIn, name: o.kagelet }
   const ownerRead = (a: Record<string, unknown>) => ownerOnly(a) && !agents.get(`${a.channel}:${a.thread_ts}`)
   const reads = o.kagelet || o.dreaming ? [] : slackReadTools(user, ownerRead)
   const tools = [...slackTools(c), ...scheduleTools(c), ...kageletTools(c), ...ownerTools(c), ...browserTools(c), ...reads]
@@ -208,7 +206,6 @@ export function sessionTools(o: {
       try { mkdirSync(filesOf(m.meta.channel, m.meta.thread_ts), { recursive: true, mode: 0o700 }) } catch (e) { log('files folder', e) }
       taskChannels.add(m.meta.channel)
       ownerTask.set(key, m.fromOwner === true)
-      if (m.fromOwner && m.ownerSaid) said.set(key, [...said.get(key) ?? [], m.ownerSaid].slice(-10))
       job = m.job
       need = m.need?.name
       jobThread = key
