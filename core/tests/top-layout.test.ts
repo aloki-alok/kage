@@ -23,6 +23,12 @@ describe('screen: which panes a terminal gets', () => {
     assert.equal(s.feed, undefined)
     assert.equal(s.list.x1, 88)
   })
+  test('charts start at 30 rows and the steps pane at 110 columns', () => {
+    assert.ok(screen(132, 30, false).charts)
+    assert.equal(screen(132, 29, false).charts, undefined)
+    assert.ok(screen(110, 38, false).feed)
+    assert.equal(screen(109, 38, false).feed, undefined)
+  })
   test('a short terminal drops the charts before it shrinks the list', () => {
     assert.equal(screen(132, 26, false).charts, undefined)
     assert.equal(screen(132, 26, false).list.y1, 24)
@@ -89,6 +95,7 @@ describe('marks', () => {
   })
   test('a working thread spins: the frame follows the clock', () => {
     assert.notEqual(spinner(0), spinner(100))
+    assert.equal(spinner(0), spinner(50))
     assert.equal(spinner(0), spinner(1000))
   })
 })

@@ -109,7 +109,7 @@ function threadTable(v: View, r: Rect, focus: boolean): { key: string; y: number
 function steps(v: View, r: Rect) {
   if (v.mode === 'schedules') return scheduleRows(v, r, v.schedules.filter(s => s.key === v.open))
   if (!v.feed.length) { put(r.x0 + 2, r.y0 + 2, 'nothing in its transcript yet', 'mid'); return }
-  const room = r.y1 - r.y0 - 3, width = Math.max(10, r.x1 - r.x0 - 22)
+  const room = Math.max(1, r.y1 - r.y0 - 3), width = Math.max(10, r.x1 - r.x0 - 22)
   const lines: { at?: number; tag: string; text: string; tone: string }[] = []
   v.feed.slice(-room).forEach((s, i, all) => {
     const m = /^(\S+)\s+(.*)$/.exec(s.text)
@@ -144,22 +144,25 @@ function scheduleRows(v: View, r: Rect, list: Schedule[]) {
 }
 
 function kageletTable(v: View, r: Rect, focus: boolean) {
-  const cols: [number, string][] = [[4, 'NAME'], [21, 'STATE'], [31, 'SCHEDULE'], [47, 'NEXT'], [59, 'TODAY'], [67, 'AVG'], [75, 'LAST REPORT']]
+  const inner = r.x1 - r.x0
+  const cols = ([[4, 'NAME'], [21, 'STATE'], [31, 'SCHEDULE'], [47, 'NEXT'], [59, 'TODAY'], [67, 'AVG'], [75, 'LAST REPORT']] as [number, string][]).filter(([x]) => x + 6 < inner)
   for (const [x, h] of cols) put(r.x0 + x, r.y0 + 1, h, 'dim')
   if (!v.kagelets.length) put(r.x0 + 4, r.y0 + 2, 'no kagelets yet', 'mid')
-  v.kagelets.slice(0, Math.max(1, Math.floor((r.y1 - r.y0) / 2) - 2)).forEach((k, i) => {
-    const y = r.y0 + 2 + i, on = i === v.pick
+  const room = Math.max(1, Math.floor((r.y1 - r.y0) / 2) - 2)
+  listRows(v.kagelets.map(k => k.name), v.kagelets[v.pick]?.name ?? '', room).forEach(({ key, y: i }) => {
+    const k = v.kagelets.find(x => x.name === key)!
+    const y = r.y0 + 2 + i, on = key === v.kagelets[v.pick]?.name
     const st = shownState(k, v.cap)
     const tone = st === 'broken' || st === 'over cap' ? 'you' : st === 'paused' ? 'dim' : 'work'
     const fg = (c: string) => (on ? (focus ? 'bg' : 'hi') : c)
     if (on) paint({ x0: r.x0 + 1, y0: y, x1: r.x1 - 1, y1: y }, focus ? 'sel' : 'btn')
     put(r.x0 + 2, y, st === 'paused' ? '◌' : st === 'on' ? '●' : '◆', fg(tone))
     const cells = [k.name, st, k.cron || `after ${k.after ?? ''}`, whenLabel(k.next, v.now), `$${k.costToday.toFixed(2)}`, `$${k.avg7.toFixed(2)}`, k.state === 'broken' ? k.error ?? '' : k.result?.summary ?? 'no report yet']
-    cells.forEach((c, j) => put(r.x0 + cols[j]![0], y, clip(c, (cols[j + 1]?.[0] ?? r.x1 - r.x0) - cols[j]![0] - 1), fg(j === 0 ? 'hi' : 'mid')))
+    cols.forEach(([x], j) => put(r.x0 + x, y, clip(cells[j]!, (cols[j + 1]?.[0] ?? inner) - x - 1), fg(j === 0 ? 'hi' : 'mid')))
   })
   const picked = v.kagelets[v.pick]
   if (!picked) return
-  const y0 = r.y0 + 3 + Math.min(v.kagelets.length, Math.floor((r.y1 - r.y0) / 2) - 2)
+  const y0 = r.y0 + 3 + Math.min(v.kagelets.length, room)
   put(r.x0 + 4, y0, picked.name, 'hi')
   put(r.x0 + 4, y0 + 1, clip(`made by ${picked.by === 'kage' ? 'Kage' : 'you'} · tools: ${picked.tools.join(', ') || 'read only'}${picked.model ? ` · model: ${picked.model}` : ''}`, r.x1 - r.x0 - 6), 'mid')
   v.runs.slice(0, r.y1 - y0 - 4).forEach((run, i) => put(r.x0 + 4, y0 + 3 + i, clip(runLine(run, v.now), r.x1 - r.x0 - 6), run.status === 'failed' ? 'bad' : 'mid'))

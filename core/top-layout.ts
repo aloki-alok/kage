@@ -3,7 +3,7 @@ import type { Row, State } from './board.ts'
 export type Rect = { x0: number; y0: number; x1: number; y1: number }
 export type Screen = { banner?: number; list: Rect; feed?: Rect; charts?: Rect[] }
 
-const WIDE = 110
+export const WIDE = 110
 const CHARTS_FROM = 30
 const CHART_ROWS = 9
 

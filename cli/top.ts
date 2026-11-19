@@ -7,7 +7,7 @@ import { DatabaseSync } from 'node:sqlite'
 import { ago, boardRows, nextRuns, limitLine, pauseLine, watchingNext, whenLabel, type Live, type Row, type State } from '../core/board.ts'
 import { transcriptLine } from '../core/transcript.ts'
 import { costRows, openWaiting } from '../core/ledgers.ts'
-import { filterRows, rowAt } from '../core/top-layout.ts'
+import { filterRows, rowAt, WIDE } from '../core/top-layout.ts'
 import { newLines } from '../runtime/transcript-tail.ts'
 import { BG, resize, toText, W } from './top-screen.ts'
 import { drawFrame, TABS, type Hits, type Step, type Tab, type View } from './top-draw.ts'
@@ -110,8 +110,6 @@ function refresh(now: number) {
   for (const r of board) if (r.state !== 'closed') follow(r.key)
   const shown = open ?? selKey
   if (shown) follow(shown)
-  const picked = kagelets[pick]
-  runs = picked && tab === 'kagelets' ? kageletRuns(picked.name, picked.key ?? '', { runs: ledgerTextSafe('runs'), costs: ledgerTextSafe('costs'), reports: ledgerTextSafe('reports') }, now) : []
   if (now - upAt > 10_000) {
     upAt = now
     const pid = read('status').split(/\s+/)[3]
@@ -120,10 +118,16 @@ function refresh(now: number) {
   }
 }
 
+function readRuns(now: number) {
+  const picked = kagelets[pick]
+  runs = picked && tab === 'kagelets' ? kageletRuns(picked.name, picked.key ?? '', { runs: ledgerTextSafe('runs'), costs: ledgerTextSafe('costs'), reports: ledgerTextSafe('reports') }, now) : []
+}
+
 function readKageletRows(now: number) {
   kageletsAt = now
   try { kagelets = kageletRows(readKagelets(KAGELETS), { runs: ledgerText(db, 'runs'), costs: ledgerText(db, 'costs'), reports: ledgerText(db, 'reports'), now }) } catch { kagelets = [] }
   pick = Math.max(0, Math.min(pick, kagelets.length - 1))
+  readRuns(now)
 }
 
 let sock: Socket | undefined
@@ -263,12 +267,15 @@ async function act(action: PanelAction, name: string) {
 }
 
 function openThread(key: string) { open = key; selKey = key; openAt = Date.now(); mode = 'steps'; follow(key) }
-const wide = () => W >= 110
+const wide = () => W >= WIDE
 const move = (d: number) => {
-  if (tab === 'kagelets') { pick = Math.max(0, Math.min(kagelets.length - 1, pick + d)); return }
+  if (tab === 'kagelets') { pick = Math.max(0, Math.min(kagelets.length - 1, pick + d)); readRuns(Date.now()); return }
+  if (tab !== 'threads') return
   const keys = rows.map(r => r.key), at = Math.max(0, keys.indexOf(selKey))
   selKey = keys[Math.max(0, Math.min(keys.length - 1, at + d))] ?? selKey
-  if (wide()) { open = undefined; openAt = Date.now() }
+  if (wide()) open = undefined
+  else if (open) openThread(selKey)
+  openAt = Date.now()
 }
 
 const TOKEN = /\x1b\[<(\d+);(\d+);(\d+)([Mm])|\x1b\[[A-D]|\x1b|[\s\S]/gu
@@ -287,13 +294,12 @@ async function onKey(k: string) {
     return
   }
   if (k === 'q' || k === '\x03') quit()
-  else if (k === '1' || k === '2' || k === '3') { tab = TABS[Number(k) - 1]!; open = undefined; focus = 'list' }
+  else if (k === '1' || k === '2' || k === '3') { tab = TABS[Number(k) - 1]!; open = undefined; focus = 'list'; readRuns(Date.now()) }
   else if (k === '\t') focus = focus === 'list' && wide() ? 'feed' : 'list'
   else if (k === '\x1b') { if (open) open = undefined; else if (query) { query = ''; refresh(Date.now()) } }
   else if (k === '\x1b[A' || k === 'k') move(-1)
   else if (k === '\x1b[B' || k === 'j') move(1)
   else if (k === '/') { tab = 'threads'; searching = true; open = undefined }
-  else if (k === 's') { if (!open && selKey) openThread(selKey); mode = mode === 'steps' ? 'schedules' : 'steps' }
   else if (tab === 'kagelets') {
     const picked = kagelets[pick], action = PANEL_KEYS[k]
     if (k === '\r' && picked?.key) { tab = 'threads'; openThread(picked.key) }
@@ -302,19 +308,21 @@ async function onKey(k: string) {
       else if (action === 'revoke') { const tools = picked.tools.filter(t => kageletTier(t) === 'write'); if (!tools.length) say(`${picked.name} holds no write tool, so no standing approval.`); for (const t of tools) await act('revoke', t) }
       else await act(action, picked.name)
     }
-  } else if (k === '\r') { if (selKey) openThread(selKey) }
+  } else if (tab !== 'threads') return
+  else if (k === 's') { if (!open && selKey) openThread(selKey); mode = mode === 'steps' ? 'schedules' : 'steps' }
+  else if (k === '\r') { if (selKey) openThread(selKey) }
   else if (k === 'x' && (open ?? selKey)) confirm = { kind: 'cut', target: open ?? selKey }
   else if (k === 'a' && (open ?? selKey)) attach(open ?? selKey)
 }
 
 function onMouse(b: number, x: number, y: number, press: boolean) {
-  if (!hits || !press) return
+  if (!hits || !press || confirm) return
   const cx = x - 1, cy = y - 1
   if (b === 64) return move(-1)
   if (b === 65) return move(1)
   if (b !== 0) return
   const t = hits.tabs.find(t => cy === t.y && cx >= t.x0 && cx <= t.x1)
-  if (t) { tab = t.tab; open = undefined; return }
+  if (t) { tab = t.tab; open = undefined; readRuns(Date.now()); return }
   const key = rowAt(hits.rows.map(r => ({ key: r.key, y: r.y })), cy)
   if (key && cx >= hits.list.x0 && cx <= hits.list.x1) { if (key === selKey && !wide()) openThread(key); else { selKey = key; if (wide()) open = undefined } focus = 'list' }
 }
