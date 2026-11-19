@@ -3,7 +3,7 @@ import { FOOTER_ID } from './outbound.ts'
 import { agentTag, filesTag, postedAsItself, postedByTrustedApp, typedByPerson, type SlackMessage } from './slack-message.ts'
 import type { Task } from './task.ts'
 
-export type Ids = { owner: string; bot: string; botDm: string; name: string; teammates: string[]; apps?: string[]; team?: string }
+export type Ids = { owner: string; bot: string; botDm: string; name: string; teammates: string[]; trusted?: string[]; apps?: string[]; team?: string }
 
 export const validName = (name: string) => /^[a-z][a-z0-9-]{1,20}$/.test(name)
 
@@ -111,11 +111,14 @@ export const taskAsOwner = (t: TaskBody): Task => ({ type: 'task', ...t, fromOwn
 export const taskAsOther = (t: TaskBody): Task => ({ type: 'task', ...t, fromOwner: false })
 export const taskFrom = (by: string | undefined, owner: string, t: TaskBody): Task => (by === owner ? taskAsOwner(t) : taskAsOther(t))
 
-export type Sender = 'owner' | 'teammate' | 'voice' | 'agent'
-export const senderOf = (t: { fromOwner: boolean; meta: { channel: string }; agent?: { app: string; person?: string } }): Sender =>
-  t.meta.channel === 'voice' ? (t.fromOwner ? 'owner' : 'voice') : t.agent ? (t.agent.person ? 'teammate' : 'agent') : t.fromOwner && t.meta.channel !== 'email' ? 'owner' : 'teammate'
+export type Sender = 'owner' | 'trusted' | 'teammate' | 'voice' | 'agent'
+const RANK: Sender[] = ['owner', 'trusted', 'teammate', 'voice', 'agent']
+export const senderOf = (t: { fromOwner: boolean; meta: { channel: string }; agent?: { app: string; person?: string }; trusted?: true }): Sender =>
+  t.meta.channel === 'voice' ? (t.fromOwner ? 'owner' : 'voice') : t.meta.channel === 'email' ? 'teammate'
+    : t.agent ? (!t.agent.person ? 'agent' : t.trusted ? 'trusted' : 'teammate') : t.fromOwner ? 'owner' : t.trusted ? 'trusted' : 'teammate'
 
-export const lowestSender = (tasks: { fromOwner: boolean; meta: { channel: string } }[]): Sender => tasks.map(senderOf).find(x => x !== 'owner') ?? 'owner'
+export const lowest = (senders: Sender[]): Sender => RANK[Math.max(0, ...senders.map(s => RANK.indexOf(s)))]!
+export const lowestSender = (tasks: Parameters<typeof senderOf>[0][]): Sender => lowest(tasks.map(senderOf))
 export const OWNER_MID_TURN = "(The owner wrote this while someone else's task is running, so this turn keeps that person's trust. Do only what that trust allows now. The owner's request runs on its own, with the owner's tools, as soon as this turn ends.)"
 export const OWNER_AGAIN = "(The owner wrote this during someone else's turn. It runs now with the owner's tools: do what it asks that you could not do then, and do not repeat what is already done.)"
 

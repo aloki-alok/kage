@@ -37,7 +37,7 @@ export function configWatcher(o: {
       return `${k}: ${parts.join(', ') || 'changed'}`
     })
     if (live.length) {
-      o.apply({ teammates: ok.teammates, apps: ok.apps })
+      o.apply({ teammates: ok.teammates, trusted: ok.trusted, apps: ok.apps })
       o.event('config.live', live)
     }
     last = next

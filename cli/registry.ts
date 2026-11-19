@@ -17,7 +17,7 @@ import { reload, said } from './reload.ts'
 const KAGELETS = kageletsDir(DIR)
 const die = (msg: string): never => { console.error(msg); process.exit(1) }
 const [cmd = '', ...args] = process.argv.slice(2).map(pastedId)
-const USAGE = 'Usage: kage add <person> | kage add <app id> <owner> | kage remove <person or app id> | kage list'
+const USAGE = 'Usage: kage add <person> [--trusted | --not-trusted] | kage add <app id> <owner> | kage remove <person or app id> | kage list'
 if (!['add', 'remove', 'list'].includes(cmd)) die(USAGE)
 if (cmd !== 'list' && process.env.KAGE_CLAUDE) die(`This shell runs inside Kage, and a session cannot change who reaches Kage. The owner runs kage ${cmd} in their own terminal.`)
 if (cmd === 'add' && args[0] === 'kagelet') {
@@ -117,9 +117,9 @@ if (cmd === 'list') {
   if (!now.length) console.log('No one is listed: only you can tag Kage. Add someone: kage add <person>')
   if (args[0] !== '--ids') for (const e of now) if (e.kind === 'person') { const n = await nameOf(e.id); if (n) names.set(e.id, n) }
   const under = (owner: string, depth: number): void => {
-    for (const a of now) if (a.kind === 'agent' && a.owner === owner) { console.log(`${'  '.repeat(depth)}agent ${a.id}${depth === 1 ? "  gets this person's teammate access" : ''}${a.tag ? '' : '  (no tag saved, so Kage cannot address it: add it again by a mention of it)'}`); under(a.id, depth + 1) }
+    for (const a of now) if (a.kind === 'agent' && a.owner === owner) { console.log(`${'  '.repeat(depth)}agent ${a.id}${depth === 1 ? `  gets this person's ${now.some(p => p.kind === 'person' && p.id === owner && p.trusted) ? 'trusted' : 'teammate'} access` : ''}${a.tag ? '' : '  (no tag saved, so Kage cannot address it: add it again by a mention of it)'}`); under(a.id, depth + 1) }
   }
-  for (const e of now) if (e.kind === 'person') { console.log(label({ id: e.id, name: names.get(e.id) })); under(e.id, 1) }
+  for (const e of now) if (e.kind === 'person') { console.log(`${label({ id: e.id, name: names.get(e.id) })}${e.trusted ? '  trusted: may use your connectors' : ''}`); under(e.id, 1) }
   const loose = now.filter(e => e.kind === 'agent' && !ownerPerson(now, e.id))
   if (loose.length) console.log(`Agents not tied to a listed person: ${loose.map(e => e.id).join(', ')}\n  They may only read and answer. One with no owner counts with any listed person's token. Tie one to its owner: kage add <app id> <owner>`)
   const files = readKagelets(KAGELETS)
@@ -130,6 +130,17 @@ if (cmd === 'list') {
     for (const r of kageletRows(files, { runs: ledgers.text('runs'), costs: ledgers.text('costs'), reports: ledgers.text('reports'), now: t })) console.log(`  ${rowLine(r, t)}${r.state === 'broken' ? '' : `\n    made by ${r.by === 'kage' ? 'Kage' : 'you'}${r.why ? `: ${r.why}` : ''}. Last report: ${resultLine(r, t)}`}`)
     ledgers.close()
   }
+} else if (cmd === 'add' && args.some(a => a === '--trusted' || a === '--not-trusted')) {
+  const on = args.includes('--trusted'), rest = args.filter(a => a !== '--trusted' && a !== '--not-trusted')
+  const person = await who(rest.join(' '))
+  if (person.kind !== 'person') die('Only a person can be trusted. Their agents follow them.')
+  const listed = add(now, { kind: 'person', id: person.id })
+  if ('error' in listed) die(`Not changed: ${listed.error}`)
+  const next = ('error' in listed ? now : listed.entries).map(e => (e.kind === 'person' && e.id === person.id ? { kind: 'person' as const, id: e.id, ...on && { trusted: true as const } } : e))
+  console.log(on
+    ? `${label(person)} is trusted: their tasks, and their agents', may use your claude.ai connectors and other MCP tools. Secrets, your memory, your browser and one-way steps stay as for any teammate.`
+    : `${label(person)} is a plain teammate again: your connectors are closed to their tasks.`)
+  await save(next)
 } else if (cmd === 'add' && args.length) {
   const oneWord = kindOf(args[0]!) === 'agent' || /^<?@?[UW][A-Z0-9]{2,}>?$/.test(args[0]!)
   const first = await who(oneWord ? args[0]! : args.join(' '))

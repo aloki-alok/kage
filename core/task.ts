@@ -7,6 +7,7 @@ export type Task = {
   source?: string
   job?: string
   agent?: { app: string; tag?: string; person?: string }
+  trusted?: true
   scheduled?: true
   handoff?: { chain: string; message: string; hops: number }
   need?: { name: string; id: string }

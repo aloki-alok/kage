@@ -1,13 +1,13 @@
-import { OWNER_AGAIN, OWNER_MID_TURN, senderOf, type Sender } from './gate.ts'
+import { lowest, OWNER_AGAIN, OWNER_MID_TURN, senderOf, type Sender } from './gate.ts'
 import type { Task } from './task.ts'
 
 type PaneTurn = { open: boolean; tasks: { task: Task; at: number }[]; again: Task[]; floor: Sender }
-const SENDERS: readonly Sender[] = ['owner', 'teammate', 'voice', 'agent']
+const SENDERS: readonly Sender[] = ['owner', 'trusted', 'teammate', 'voice', 'agent']
 export const resumedTurn = (lastSender: string): PaneTurn => ({ open: false, tasks: [], again: [], floor: SENDERS.find(s => s === lastSender) ?? 'teammate' })
 
 const paneSender = (t: Task) => senderOf({ ...t, fromOwner: t.fromOwner === true })
-const lowest = (tasks: PaneTurn['tasks'], floor: Sender): Sender => [...tasks.map(x => paneSender(x.task)), floor].find(s => s !== 'owner') ?? 'owner'
-export const turnSender = (turn: PaneTurn) => lowest(turn.tasks, turn.floor)
+const lowestIn = (tasks: PaneTurn['tasks'], floor: Sender): Sender => lowest([...tasks.map(x => paneSender(x.task)), floor])
+export const turnSender = (turn: PaneTurn) => lowestIn(turn.tasks, turn.floor)
 
 export function arrive(turn: PaneTurn, task: Task, at: number, working: boolean): { turn: PaneTurn; shown: Task } {
   const goesOn = turn.open || working
@@ -18,7 +18,7 @@ export function arrive(turn: PaneTurn, task: Task, at: number, working: boolean)
 
 export function endTurn(turn: PaneTurn, lastStep: number, stoppedAt: number): { turn: PaneTurn; send: Task[] } {
   if (!turn.open) return { turn, send: [] }
-  const ended = turn.tasks.filter(x => x.at <= stoppedAt), byOwner = lowest(ended, turn.floor) === 'owner'
+  const ended = turn.tasks.filter(x => x.at <= stoppedAt), byOwner = lowestIn(ended, turn.floor) === 'owner'
   const read = lastStep <= stoppedAt ? lastStep : 0
   const carried = turn.tasks.filter(x => x.at > read && !(byOwner && x.at <= stoppedAt))
   const lowered = byOwner ? [] : ended.map(x => x.task).filter(t => paneSender(t) === 'owner' && !turn.again.includes(t))

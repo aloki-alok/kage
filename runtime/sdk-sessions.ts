@@ -5,7 +5,7 @@ import { z } from 'zod'
 import { log, logKey } from './log.ts'
 import { channelTag, makeInbox, userMessage, type Inbox } from './sdk-inbox.ts'
 import { ownerOnlyTool } from '../core/guards.ts'
-import { lowestSender, OWNER_AGAIN, OWNER_MID_TURN, senderOf, type Sender } from '../core/gate.ts'
+import { lowest, lowestSender, OWNER_AGAIN, OWNER_MID_TURN, senderOf, type Sender } from '../core/gate.ts'
 import { certFileEnv, protectConfig, toolRefusal } from './path-guards.ts'
 import { grantRefusal, laneOptions, shellGrant } from '../core/kagelets.ts'
 import { heldCommand } from '../core/held.ts'
@@ -36,7 +36,7 @@ type Session = {
   stopped: boolean
   run?: { q: Query; inbox: Inbox; send: (m: ToSession) => void; started: number }
   asks: Map<string, (b: 'allow' | 'deny') => void>
-  ownerTools: boolean; carry: SDKUserMessage[]; again: Task[]
+  ownerTools: boolean; connectors?: true; carry: SDKUserMessage[]; again: Task[]
 }
 
 export function sdkSessions(o: {
@@ -106,7 +106,7 @@ export function sdkSessions(o: {
       prompt: inbox,
       options: {
         ...o.options,
-        settings: { ...(o.options.settings as object), ...walled, ...!full && { disableClaudeAiConnectors: true } },
+        settings: { ...(o.options.settings as object), ...walled, ...!full && !s.connectors && { disableClaudeAiConnectors: true } },
         ...(resumed ? { resume: s.id } : { sessionId: s.id }),
         ...(o.modelOf?.(key) && { model: o.modelOf(key) }),
         ...picks.get(key),
@@ -145,7 +145,7 @@ export function sdkSessions(o: {
     const send = (m: ToSession) => {
       if (m.type === 'verdict') { s.asks.get(m.request_id)?.(m.behavior); return }
       const from = senderOf(m), answered = sawState && s.state === 'idle' && !unseen
-      s.ownerTools ||= from === 'owner'; s.sender = from === 'owner' && !answered ? lowestSender(s.turn.map(x => x.task)) : from
+      s.ownerTools ||= from === 'owner'; s.sender = answered || !s.turn.length ? from : lowest([lowestSender(s.turn.map(x => x.task)), from])
       const shown = from === 'owner' && s.sender !== 'owner' ? { ...m, content: `${OWNER_MID_TURN}\n${m.content}` } : m
       const reopen = s.ownerTools && !full && s.state === 'idle' && (sawState ? !unseen : !s.turn.length)
       if (reopen && s.turn.length) o.onTurn?.(key, s.turn.splice(0).map(x => x.task), undefined, true)
@@ -257,7 +257,7 @@ export function sdkSessions(o: {
   const runner: Runner<ToSession> = {
     start(key, id, first) {
       const s: Session = sessions.get(key) ?? {
-        id, state: 'idle', last: 0, stopped: false, asks: new Map(), turn: [], carry: [], again: [], ownerTools: key.startsWith('voice:') || (first?.type === 'task' && senderOf(first) === 'owner'),
+        id, state: 'idle', last: 0, stopped: false, asks: new Map(), turn: [], carry: [], again: [], ownerTools: key.startsWith('voice:') || (first?.type === 'task' && senderOf(first) === 'owner'), ...first?.type === 'task' && senderOf(first) === 'trusted' && { connectors: true as const },
         kage: o.tools(key, m => o.toHub(key, m), (tool, description, input) => ask(key, s, tool, description, input, new AbortController().signal).then(r => r.behavior === 'allow'), () => s.sender),
       }
       Object.assign(s, { id, stopped: false })

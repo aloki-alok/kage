@@ -19,8 +19,9 @@ export const Config = z.strictObject({
   harness: z.strictObject({ runtime: text, route: text, cwd: text, memory: text, ownerMemory: text, maxSessions: count, idleMinutes: count, jobModel: text, jobFreshEvery: count, jobCarry: count, jobCarryChars: count, jobLaneDefault: yes, sandbox: yes, pluginsOff: strings }).optional(),
   people: z.strictObject({
     teammates: z.array(z.string().refine(validUserId)).optional(),
+    trusted: z.array(z.string().refine(validUserId)).optional(),
     agents: z.array(z.strictObject({ app: z.string(), owner: z.string().optional(), tag: z.string().optional() }).refine(a => appEntry(agentLine(a)) !== undefined)).optional(),
-  }).optional(),
+  }).refine(p => (p.trusted ?? []).every(id => p.teammates?.includes(id)), { message: 'every trusted id must also be in people.teammates' }).optional(),
   waiting: z.strictObject({ expireHours: count }).optional(),
   kagelets: z.strictObject({
     max: count, ownersMax: count, dailyUsd: money, totalDailyUsd: money, chainUsd: money, needsPerDay: count, askRunsPerHour: count, notesKept: count, noteChars: count, measureMinutes: count, trendRuns: count,
@@ -97,7 +98,7 @@ export const KEYS: Row[] = [
   R('KAGE_TRIPWIRES_HOOK_PORT', 'tripwires.hookPort', int), R('KAGE_TRIPWIRES_HOOK_HOST', 'tripwires.hookHost'), R('KAGE_TRIPWIRES_HOOK_PER_HOUR', 'tripwires.hookPerHour', int),
   R('KAGE_TRIPWIRES_SWAP_AFTER', 'tripwires.swapAfter', int), R('KAGE_TRIPWIRES_SHADOW_WINDOW_MIN', 'tripwires.shadowWindowMin', int), R('KAGE_TRIPWIRES_SWAP_UNDO_DAYS', 'tripwires.swapUndoDays', int), R('KAGE_WAITING_EXPIRE_HOURS', 'waiting.expireHours', int),
   R('KAGE_OWNER_MEMORY', 'harness.ownerMemory'), R('KAGE_MAX_SESSIONS', 'harness.maxSessions', int), R('KAGE_IDLE_MINUTES', 'harness.idleMinutes', int), R('KAGE_JOB_MODEL', 'harness.jobModel'), R('KAGE_JOB_FRESH_EVERY', 'harness.jobFreshEvery', int), R('KAGE_JOB_CARRY', 'harness.jobCarry', int), R('KAGE_JOB_CARRY_CHARS', 'harness.jobCarryChars', int), R('KAGE_JOB_LANE_DEFAULT', 'harness.jobLaneDefault', onoff), R('KAGE_SANDBOX', 'harness.sandbox', onoff), R('KAGE_PLUGINS_OFF', 'harness.pluginsOff', list),
-  R('KAGE_TEAMMATES', 'people.teammates', people), R('KAGE_TRUSTED_APPS', 'people.agents', agents),
+  R('KAGE_TEAMMATES', 'people.teammates', people), R('KAGE_TRUSTED_PEOPLE', 'people.trusted', people), R('KAGE_TRUSTED_APPS', 'people.agents', agents),
   R('KAGE_MAX_KAGELETS', 'kagelets.max', int), R('KAGE_KAGELET_OWNERS_MAX', 'kagelets.ownersMax', int), R('KAGE_KAGELET_NEEDS_PER_DAY', 'kagelets.needsPerDay', int), R('KAGE_KAGELET_ASK_RUNS_PER_HOUR', 'kagelets.askRunsPerHour', int), R('KAGE_KAGELET_NOTES_KEPT', 'kagelets.notesKept', int), R('KAGE_KAGELET_NOTE_CHARS', 'kagelets.noteChars', int), R('KAGE_KAGELET_MEASURE_MINUTES', 'kagelets.measureMinutes', int), R('KAGE_KAGELET_TREND_RUNS', 'kagelets.trendRuns', int), R('KAGE_KAGELET_RELEASE', 'kagelets.release'), R('KAGE_KAGELET_REVIEWS_PER_DAY', 'kagelets.reviewsPerDay', int), R('KAGE_KAGELET_REVIEW_MODEL', 'kagelets.reviewModel'), R('KAGE_KAGELET_DAILY_USD', 'kagelets.dailyUsd', num),
   R('KAGE_KAGELET_TOTAL_DAILY_USD', 'kagelets.totalDailyUsd', num), R('KAGE_KAGELET_CHAIN_USD', 'kagelets.chainUsd', num),
   R('KAGE_DB_READ_COMMAND', 'kagelets.dbRead.command'), R('KAGE_DB_READ_MAX_ROWS', 'kagelets.dbRead.maxRows', int),
@@ -187,13 +188,14 @@ export function diff(before: { config: Config; secrets: Secrets }, after: { conf
 }
 
 export const registryOf = (c: Config): Entry[] => [
-  ...(c.people?.teammates ?? []).map(id => ({ kind: 'person' as const, id })),
+  ...(c.people?.teammates ?? []).map(id => ({ kind: 'person' as const, id, ...c.people?.trusted?.includes(id) && { trusted: true as const } })),
   ...(c.people?.agents ?? []).map(a => ({ kind: 'agent' as const, id: a.app, ...(a.owner && { owner: a.owner }), ...(a.tag && { tag: a.tag }) })),
 ]
 export const withRegistry = (c: Config, entries: Entry[]): Config => ({
   ...c,
   people: {
     teammates: [...new Set(entries.filter(e => e.kind === 'person').map(e => e.id))],
+    ...entries.some(e => e.kind === 'person' && e.trusted) && { trusted: [...new Set(entries.flatMap(e => (e.kind === 'person' && e.trusted ? [e.id] : [])))] },
     agents: entries.flatMap(e => (e.kind === 'agent' ? [{ app: e.id, ...(e.owner && { owner: e.owner }), ...(e.tag && { tag: e.tag }) }] : [])),
   },
 })
@@ -209,13 +211,13 @@ export function badValue(c: Config): string | undefined {
   const hook = c.tripwires?.hookPort
   if (hook && !(Number.isInteger(hook) && hook >= 1024 && hook <= 65535)) return 'tripwires.hookPort must be 0 (off) or a port from 1024 to 65535'
 }
-export function checkSettings(c: Config, s: Secrets): { name: string; teammates: string[]; apps: string[] } | { error: string } {
+export function checkSettings(c: Config, s: Secrets): { name: string; teammates: string[]; trusted: string[]; apps: string[] } | { error: string } {
   for (const [path, v] of [['slack.app', s.slack?.app], ['slack.user', s.slack?.user], ['slack.bot', s.slack?.bot]] as const) if (!v) return { error: `${path} is missing in secrets.json` }
   const bad = badValue(c)
   if (bad) return { error: bad }
   const name = (c.name || 'kage').toLowerCase()
   if (!validName(name)) return { error: `name "${name}" must be a short lowercase word (letters, digits, dashes)` }
-  return { name, teammates: c.people?.teammates ?? [], apps: (c.people?.agents ?? []).map(agentLine) }
+  return { name, teammates: c.people?.teammates ?? [], trusted: c.people?.trusted ?? [], apps: (c.people?.agents ?? []).map(agentLine) }
 }
 
 const SAFE = [/^kagelets\.(max|dailyUsd|totalDailyUsd|chainUsd|needsPerDay|askRunsPerHour|notesKept|noteChars|measureMinutes|trendRuns)$/, /^waiting\.expireHours$/, /^afk\.(on|model)$/, /^harness\.(jobModel|jobFreshEvery|jobCarry|jobCarryChars|jobLaneDefault)$/, /^jev\.(threshold|model|ackWords)$/, /^tripwires\.(timeoutSec|maxKb|failPing|patternMax|lineMax|maxPosts|catchUpMax|seenMax|hookPerHour|swapAfter|shadowWindowMin|swapUndoDays)$/,

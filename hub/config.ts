@@ -12,7 +12,7 @@ export function load() {
     log(`${ok.error} (${ENV_FILE})`)
     process.exit(1)
   }
-  const { name: NAME, teammates: TEAMMATES, apps: TRUSTED_APPS } = ok
+  const { name: NAME, teammates: TEAMMATES, trusted: TRUSTED_PEOPLE, apps: TRUSTED_APPS } = ok
   return {
     ENV_FILE,
     config: settings.config,
@@ -20,6 +20,7 @@ export function load() {
     NAME,
     Title: NAME[0]!.toUpperCase() + NAME.slice(1),
     TEAMMATES,
+    TRUSTED_PEOPLE,
     TRUSTED_APPS,
     bot: new WebClient(settings.secrets.slack!.bot!, { logger }),
     user: new WebClient(settings.secrets.slack!.user!, { logger }),

@@ -80,3 +80,14 @@ describe("MCP tools on a task not from the owner: Kage's own and the owner's sha
     assert.match(mcpToolRefusal('mcp__slack__slack_send_message', 'teammate', shared) ?? '', /shares/)
   })
 })
+
+describe('a trusted teammate (#425)', () => {
+  test("may use the owner's connected accounts and other MCP tools", () => {
+    assert.equal(privateToolRefusal('mcp__claude_ai_Gmail__search', 'trusted'), undefined)
+    assert.equal(mcpToolRefusal('mcp__claude_ai_Gmail__search', 'trusted'), undefined)
+    assert.equal(mcpToolRefusal('mcp__new_crm__read_deals', 'trusted'), undefined)
+  })
+  test('a plain teammate still may not', () => {
+    assert.match(mcpToolRefusal('mcp__claude_ai_Gmail__search', 'teammate')!, /owner's own account/)
+  })
+})
