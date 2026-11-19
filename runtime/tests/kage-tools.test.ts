@@ -389,7 +389,7 @@ describe("a session's Kage tools", () => {
     assert.equal(inDm.isError, undefined, inDm.text)
   })
   test("a post that tags another person's agent is refused while askOtherAgents is off; answering the agent whose task it is still goes (#310)", async () => {
-    const s = setup({ foreignAgents: () => ['UTESTBOT2'] })
+    const s = setup({ foreignAgents: () => ['UTESTBOT2', 'UTESTBOT3'] })
     s.t.onTask({ ...s.task(), content: 'Task from Sam: who can check the invoice? <@UTESTBOT2> maybe' })
     const before = s.posts.length
     const no = await s.call('reply', { channel: 'C1', thread_ts: '5.5', text: '<@UTESTBOT2> can you check the invoice?' })
@@ -399,9 +399,18 @@ describe("a session's Kage tools", () => {
     const people = await s.call('message_people', { channel: 'C1', thread_ts: '5.5', users: ['UTESTBOT2'], text: 'please check the invoice' })
     assert.equal(people.isError, true)
     assert.match(people.text, /askOtherAgents/)
+    const named = await s.call('reply', { channel: 'C1', thread_ts: '5.5', text: '<@UTESTBOT2|sam-bot> can you check the invoice?' })
+    assert.equal(named.isError, true, 'the <@id|name> form pings too')
+    const via = await s.call('message_people', { channel: 'C1', thread_ts: '5.5', users: ['UMATE0002'], from: 'UTESTBOT2', text: 'please check the invoice' })
+    assert.equal(via.isError, true, 'from joins the DM')
+    await s.call('reply', { channel: 'C1', thread_ts: '5.5', text: 'checking it myself' })
+    const edited = await s.call('edit_message', { channel: 'C1', ts: `9.${s.posts.length}`, text: '<@UTESTBOT2> please check the invoice' })
+    assert.equal(edited.isError, true, edited.text)
     s.t.onTask({ ...s.task({ fromOwner: false }), content: 'Task from Sam: <@UTESTBOT2> asks for the invoice total', agent: { app: 'ATEST0002', tag: 'UTESTBOT2' } })
-    const answer = await s.call('reply', { channel: 'C1', thread_ts: '5.5', text: 'the total is 40', tag_agent: true })
+    const answer = await s.call('reply', { channel: 'C1', thread_ts: '5.5', text: '<@UTESTBOT2> the total is 40' })
     assert.equal(answer.isError, undefined, answer.text)
+    const other = await s.call('reply', { channel: 'C1', thread_ts: '5.5', text: '<@UTESTBOT3> can you double check?' })
+    assert.equal(other.isError, true, 'answering one agent opens no other')
   })
   test('a person mention keeps its <@id> on any task, so Slack highlights it', async () => {
     const s = setup()
