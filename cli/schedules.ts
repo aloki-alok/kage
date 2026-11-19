@@ -3,11 +3,12 @@ import { DIR, placeNamer } from './home.ts'
 import { whenLabel } from '../core/board.ts'
 import { REPLY, cadence, nextRun, promptPreview } from '../core/cron.ts'
 import { triggerLine } from '../core/tripwire.ts'
-import { schedulesIn } from '../runtime/store.ts'
+import { missingToolsIn, schedulesIn } from '../runtime/store.ts'
 
 const all = schedulesIn(`${DIR}/kage.db`)
 if (!all.length) { console.log('No schedules or watches.'); process.exit(0) }
 const place = placeNamer()
+const missing = missingToolsIn(`${DIR}/kage.db`)
 const day = (t: number) => new Date(t).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })
 const width = process.stdout.columns || 80
 const fit = (line: string) => (line.length > width ? `${line.slice(0, width - 1)}…` : line)
@@ -18,5 +19,6 @@ for (const s of all) {
     : `${cadence(s.cron)}${s.recurring ? '' : ', once'}${next ? `, next ${whenLabel(next.getTime(), Date.now())}` : ''}`
   console.log(fit(`${s.id}  ${place(s.key)}${s.fromOwner ? '' : ' (teammate)'}  ${when}`))
   if (s.trigger) console.log(fit(`    ${triggerLine(s.trigger)}`))
+  if (missing.has(s.id)) console.log(fit(`    blocked: ${missing.get(s.id)!.join(', ')}`))
   console.log(fit(`    ${promptPreview(s.prompt)}`))
 }

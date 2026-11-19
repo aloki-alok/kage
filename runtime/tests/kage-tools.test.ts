@@ -190,6 +190,12 @@ describe("a session's Kage tools", () => {
     assert.equal((await s.call('unschedule', { channel: 'C1', thread_ts: '5.5', id: s.jobs[0].id })).isError, undefined)
     assert.deepEqual(s.jobs, [])
   })
+  test('a schedule names the tools its action needs, so the hub can watch them (#377)', async () => {
+    const s = setup()
+    s.t.onTask(s.task())
+    await s.call('schedule', { cron: '*/15 * * * *', prompt: 'phone on-call when the alarm fires', needs: ['mcp__claude_ai_Dialer__place_call'] })
+    assert.deepEqual(s.jobs[0].needs, ['mcp__claude_ai_Dialer__place_call'])
+  })
   test('the owner\'s recurring model poll is pointed at a kagelet when it is set; a probe, a one-shot or a teammate\'s ask is not', async () => {
     const owner = setup()
     owner.t.onTask(owner.task())

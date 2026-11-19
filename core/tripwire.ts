@@ -2,7 +2,7 @@ import { createHash } from 'node:crypto'
 import type { Shadow } from './shadow.ts'
 
 export type Probe = { command: string; pins: Record<string, string>; ignore: string[]; reads: string[]; writes: string[] }
-export type JobState = { shadow?: Shadow; fp?: string; last?: string; fails: number; refused?: string; undelivered?: true; blocked?: number; pending?: { text: string; f: Record<string, string | number>; tries: number; dm?: true } }
+export type JobState = { missing?: string[]; shadow?: Shadow; fp?: string; last?: string; fails: number; refused?: string; undelivered?: true; blocked?: number; pending?: { text: string; f: Record<string, string | number>; tries: number; dm?: true } }
 export type Trigger =
   | { kind: 'probe'; probe: Probe }
   | { kind: 'channel'; channel: string; match?: string; bots: boolean }

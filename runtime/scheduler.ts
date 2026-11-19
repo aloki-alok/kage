@@ -77,7 +77,7 @@ export function scheduler(o: {
     },
   })
   return {
-    add(from: string, j: Pick<Schedule, 'id' | 'cron' | 'prompt' | 'recurring' | 'lane' | 'trigger'> & { probe?: ProbeArg; shadow?: { of: string; live: string } }, now: number): string | undefined {
+    add(from: string, j: Pick<Schedule, 'id' | 'cron' | 'prompt' | 'recurring' | 'lane' | 'trigger' | 'needs'> & { probe?: ProbeArg; shadow?: { of: string; live: string } }, now: number): string | undefined {
       const key = threadOfJobLane(from)
       const watch = j.cron === REPLY, event = j.cron === EVENT
       if (!watch && !event) {
@@ -128,7 +128,10 @@ export function scheduler(o: {
     },
     tune(from: string, id: string, t: TuneArg, now: number): string | undefined {
       const s = store.schedules().find(x => x.id === id && x.key === threadOfJobLane(from))
-      if (!s) return `no probe job ${id} in this thread`
+      if (!s) return `no job ${id} in this thread`
+      const { needs, ...probeChange } = t
+      if (needs) store.setNeeds(id, needs)
+      if (needs && !Object.keys(probeChange).length) return
       if (s.trigger?.kind !== 'probe') return `${id} is not a probe job`
       const old = s.trigger.probe
       const cron = t.cron ?? s.cron

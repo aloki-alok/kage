@@ -7,7 +7,7 @@ import { pin, runProbe } from './probes.ts'
 import type { Store } from './store.ts'
 
 export type ProbeArg = { command: string; ignore?: string[]; reads?: string[]; writes?: string[] }
-export type TuneArg = Partial<ProbeArg> & { cron?: string }
+export type TuneArg = Partial<ProbeArg> & { cron?: string; needs?: string[] }
 export type TripwireSettings = { on?: boolean; timeoutSec?: number; maxKb?: number; failPing?: number; patternMax?: number; lineMax?: number; env?: string[] }
 export const tripwireCfg = (t: TripwireSettings) => ({ on: t.on !== false, timeoutSec: t.timeoutSec ?? 60, maxKb: t.maxKb ?? 64, failPing: t.failPing ?? 3, patternMax: t.patternMax ?? 200, lineMax: t.lineMax ?? 2000, env: t.env })
 
