@@ -2,11 +2,11 @@
 import { noChannelTag, oneLine } from './text.ts'
 import { findSecret, kageFooter } from './outbound.ts'
 
-export type WaMessage = { chat: string; id: string; fromMe: boolean; viaApi?: boolean; text: string; forwarded?: boolean; edited?: boolean }
+export type WaMessage = { chat: string; to?: string; id: string; fromMe: boolean; viaApi?: boolean; text: string; forwarded?: boolean; edited?: boolean }
 type Ctx = { contextInfo?: { isForwarded?: boolean } }
-export type WahaPayload = { id?: string; from?: string; fromMe?: boolean; source?: string; body?: string; _data?: { IsEdit?: boolean; Message?: Record<string, unknown> } }
+export type WahaPayload = { id?: string; from?: string; to?: string | null; fromMe?: boolean; source?: string; body?: string; _data?: { IsEdit?: boolean; Message?: Record<string, unknown> } }
 export const fromWaha = (p: WahaPayload): WaMessage => ({
-  chat: p.from ?? '', id: p.id ?? '', fromMe: !!p.fromMe, viaApi: p.source === 'api', text: p.body ?? '',
+  chat: p.from ?? '', ...(p.to && { to: p.to }), id: p.id ?? '', fromMe: !!p.fromMe, viaApi: p.source === 'api', text: p.body ?? '',
   forwarded: Object.values(p._data?.Message ?? {}).some(v => (v as Ctx | null)?.contextInfo?.isForwarded === true),
   edited: !!p._data?.IsEdit,
 })
@@ -77,6 +77,18 @@ export const ownerNote = (text: string, name: string): string | undefined => fin
   .replace(/<(https?:[^|>]+)\|([^>]+)>/g, '$2 ($1)').replace(/<(https?:[^>]+)>/g, '$1')
   .replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&amp;/g, '&')
   .replace(tagFor(name), (m, lead: string) => `${lead}@\u2060${m.slice(lead.length + 1)}`)
+export function ownerAnswer(m: WaMessage, me: readonly string[]): { code: string; behavior: 'allow' | 'deny' } | undefined {
+  if (!me.includes(m.chat) || (m.to !== undefined && !me.includes(m.to)) || !m.fromMe || m.viaApi || m.forwarded) return undefined
+  const a = /^\s*(yes|no)\s+(\d{4})\s*$/i.exec(m.text)
+  return a ? { code: a[2]!, behavior: a[1]!.toLowerCase() === 'yes' ? 'allow' : 'deny' } : undefined
+}
+const WA_PREVIEW_MAX = 1500
+export function waCardNote(c: { tool: string; place: string; description: string; preview: string; code: string }, name: string): string | undefined {
+  const step = c.tool.replace(/^mcp__(.+__)?/, '').replaceAll('_', ' ')
+  const head = `Approve? ${step} in ${c.place}${c.description ? `\n${c.description}` : ''}`
+  if (c.preview.length > WA_PREVIEW_MAX) return ownerNote(`${head}\nThe step is too long to show here, so answer the card in Slack.`, name)
+  return ownerNote(`${head}${c.preview ? `\n\`\`\`${c.preview}\`\`\`` : ''}\nReply "yes ${c.code}" or "no ${c.code}" here, or answer the card in Slack.`, name)
+}
 export const waOutgoing = (text: string, title: string) => `${text}\n\n_${kageFooter(title)}_`
 export const withoutFooter = (text: string) => text.replace(/\n\n_🥷 [^\n]*_$/u, '')
 

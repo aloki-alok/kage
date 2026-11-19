@@ -190,6 +190,7 @@ Write logs to stderr only. In a tmux pane, stdout carries the channel protocol, 
 | `ssm-relay.ts` | The SSM relay (#161): a unix socket where an owner thread's stand-in `session-manager-plugin` (`cli/ssm-plugin-shim/`, first on that session's PATH) asks the hub to run the real plugin. |
 | `scheduler.ts` | Runs due schedules as tasks in their thread. |
 | `limit-pause.ts` | The usage-limit pause: a turn that ends on the limit keeps its inbox message, its thread gets one notice, and the message replays at the reset. A kagelet message is never held here: it waits in the store. |
+| `wa-cards.ts` | The 4-digit codes that let the owner answer an approval card from WhatsApp: one per open card, used once, gone after a day. |
 | `deferred-approvals.ts` | An approval card that waits outside its session (#177): the turn ends when the card posts, the store keeps the card across a restart, the first answer wins, and a yes is spent by one retry of the same call. |
 | `closed-threads.ts` | A thread the safety check stopped: it starts on a new session, and a teammate's stays closed until the owner writes in it. |
 | `hub-lock.ts` | One hub per machine: a listening socket the OS frees when the hub dies. |

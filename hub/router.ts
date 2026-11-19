@@ -1,5 +1,7 @@
 #!/usr/bin/env node
 import { execFileSync, spawn } from 'node:child_process'
+import { waCards } from '../runtime/wa-cards.ts'
+import { waCardNote } from '../core/whatsapp.ts'
 import { ownerChannel } from '../core/owner-channel.ts'
 import { wahaToOwner, wahaUrl } from '../connectors/whatsapp.ts'
 import { randomUUID } from 'node:crypto'
@@ -164,15 +166,32 @@ const slack = await connectSlack({
   hub: { deliver, stop: (c, cut, by) => {
       const key = sessionKey(c, { lane: 'main' })
       return mayStop(by, slack.ids.owner, starters, key) ? stopThread(key, cut) : 'Only the owner, or the teammate whose task started this thread, can stop it.'
-    }, verdict: (id, behavior, always) => d.verdict(id, { type: 'verdict', request_id: id, behavior }) || answerCard(id, behavior, always), status: () => commands.status(), heard: m => schedules.heard(m), channelPost: p => jobs.channelPost(p), channelCatchUp: h => jobs.channelCatchUp(h), channelGap: () => jobs.channelGap(),
+    }, verdict: (id, behavior, always) => ownerVerdict(id, behavior, always), status: () => commands.status(), heard: m => schedules.heard(m), channelPost: p => jobs.channelPost(p), channelCatchUp: h => jobs.channelCatchUp(h), channelGap: () => jobs.channelGap(),
     posted: () => ledgers.text('posted'), kageletsIn: (chat, thread) => kag.peopleIn(chat, thread), kageletAsk: (chat, thread, name, from, text) => kag.ask(chat, thread, name, from, text), ownerWrote: (chat, thread, text) => { for (const k of kag.notes.wrote(kag.lanes(), chat, thread, text)) runs.emit(k, 'owner-note', `${text.length} characters`) }, ...inbox },
   jev: jev && !('error' in jev) ? jevCheck(jev) : undefined, ackWords: config.jev?.ackWords !== false,
   triage: jev && !('error' in jev) ? jevTriage(jev, (who, detail) => runs.emit(who, 'triage', detail)) : undefined,
   afk: afk.on === false ? undefined : { memory: memoryDirs(process.env.HOME!, ENV_FILE, harness).owner, model: afk.model || DEFAULT_MODEL, saved: store, call: phoneOwner, jev: jev && !('error' in jev) ? jevAfk(jev) : undefined },
 })
 const waOn = config.connectors?.whatsapp?.on !== false && !!secrets.waha?.WAHA_API_KEY
-const owner = ownerChannel({ pick: () => config.owner?.channel, slack: slack.notifyOwner,
-  ...waOn && { whatsapp: wahaToOwner(wahaUrl(config.connectors?.whatsapp?.wahaUrl), secrets.waha!.WAHA_API_KEY!, Title, NAME) } })
+const waSay = waOn ? wahaToOwner(wahaUrl(config.connectors?.whatsapp?.wahaUrl), secrets.waha!.WAHA_API_KEY!, Title, NAME) : undefined
+const owner = ownerChannel({ pick: () => config.owner?.channel, slack: slack.notifyOwner, ...waSay && { whatsapp: waSay } })
+const waCardCodes = waCards()
+function ownerVerdict(id: string, behavior: 'allow' | 'deny', always?: true): boolean {
+  return d.verdict(id, { type: 'verdict', request_id: id, behavior }) || answerCard(id, behavior, always)
+}
+function cardToWhatsApp(c: { id: string; tool: string; description: string; place: string; preview: string }) {
+  if (config.owner?.channel !== 'whatsapp' || !waSay) return
+  const code = waCardCodes.open(c.id)
+  const note = waCardNote({ ...c, code }, NAME)
+  if (!note) { waCardCodes.take(code); return }
+  void waSay(note).then(sent => { if (!sent) waCardCodes.take(code) })
+}
+function answerFromWhatsApp(a: { code: string; behavior: 'allow' | 'deny' }) {
+  const id = waCardCodes.take(a.code)
+  const done = !!id && ownerVerdict(id, a.behavior)
+  log('whatsapp card answer', a.code, id ? (done ? a.behavior : 'already answered') : 'no such card')
+  void waSay?.(!id ? `No card waits on ${a.code}.` : done ? (a.behavior === 'allow' ? 'Approved.' : 'Denied.') : 'That card was already answered.')
+}
 
 if (existsSync(THREADS)) {
   const r = store.importThreads(JSON.parse(readFileSync(THREADS, 'utf8')), slack.ids.botDm, Date.now())
@@ -229,7 +248,7 @@ const sdk = sdkLib ? sdkSessions({
   deferred,
   hub: () => d,
   tools: (key, send, approve, turnSender) => sessionTools({
-    title: Title, bot, user, botDm: () => slack.ids.botDm, dir: DIR, ledgers, send, memory: MEM, turnSender,
+    title: Title, bot, user, botDm: () => slack.ids.botDm, dir: DIR, ledgers, send, memory: MEM, turnSender, cardOut: cardToWhatsApp,
     schedules: { add: j => jobs.add(key, j, Date.now()), remove: id => jobs.remove(key, id), list: () => schedules.list(key), hookUrl: id => jobs.hookUrl(id), tune: (id, t) => schedules.tune(key, id, t, Date.now()), restore: id => jobs.swaps.restore(key, id, Date.now()), move: (id, to) => schedules.move(key, id, to, Date.now()) },
     afk: slack.afk?.command,
     settings: { set: (key, value) => setKey(ENV_FILE, key, value) },
@@ -313,7 +332,7 @@ else if (existsSync(CRONS)) {
   }
 }
 
-const { meeting, voice, replies, replayOf, jobs, clock } = startConnectors({ secrets, conn, store, slack, bot, ping: pingThread, say: owner.say, NAME, CODE, DIR, d, inbox, deliver, placeOf, failed, schedules, event: ledgers.event, ledgers, tripwires: config.tripwires })
+const { meeting, voice, replies, replayOf, jobs, clock } = startConnectors({ secrets, conn, store, slack, bot, ping: pingThread, say: owner.say, ownerAnswer: answerFromWhatsApp, NAME, CODE, DIR, d, inbox, deliver, placeOf, failed, schedules, event: ledgers.event, ledgers, tripwires: config.tripwires })
 listenForCommands(slack.socket, { user, team: slack.ids.team!, commands: COMMANDS, ledgers })
 
 function failed(m: ToSession) {

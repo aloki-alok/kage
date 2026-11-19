@@ -22,6 +22,7 @@ export function startConnectors(o: {
   secrets: Secrets; conn: NonNullable<Config['connectors']>; store: Store; slack: Awaited<ReturnType<typeof connectSlack>>; bot: WebClient
   ping: Parameters<typeof startJobEvents>[0]['ping']
   say: (text: string) => Promise<boolean>
+  ownerAnswer: (a: { code: string; behavior: 'allow' | 'deny' }) => void
   NAME: string; CODE: string; DIR: string; d: Dispatcher<ToSession>; inbox: Inbox
   deliver: (c: Conversation, task: Task, place: string, lane?: Lane, by?: string) => Delivery
   placeOf: (key: string) => string; failed: (m: ToSession) => void
@@ -68,7 +69,7 @@ export function startConnectors(o: {
   const whatsapp = conn.whatsapp?.on !== false && secrets.waha?.WAHA_API_KEY ? startWhatsApp({
     dir: DIR, name: NAME, owner: slack.ownerName, waha: secrets.waha, whatsapp: conn.whatsapp ?? {}, inbox,
     notify: text => void slack.notifyOwner(text),
-    memory: conn.whatsapp?.memory || `${DIR}/wa-notes`,
+    memory: conn.whatsapp?.memory || `${DIR}/wa-notes`, ownerAnswer: o.ownerAnswer,
     onTask(t) {
       const task = taskAsOwner({
         content: t.content,
