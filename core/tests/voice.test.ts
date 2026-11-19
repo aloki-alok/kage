@@ -32,6 +32,7 @@ describe('painter: the kitsunebi skin', () => {
     const sh = readFileSync(join(import.meta.dirname, '..', '..', 'setup.sh'), 'utf8')
     for (const rgb of Object.values(SKIN)) assert.ok(sh.includes(rgb), `setup.sh lacks ${rgb}`)
     for (const m of [MARK.kage, MARK.you]) assert.ok(sh.includes(m), `setup.sh lacks ${m}`)
+    assert.ok(sh.includes(`(${FLICKER.map(f => `'${f}'`).join(' ')})`), 'setup.sh flickers other frames')
     assert.ok(!sh.includes('255;77;61'), 'setup.sh still has the old red')
   })
 })
