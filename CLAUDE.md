@@ -40,7 +40,7 @@ Run every command from the repo root. Each step ends with a check. Go to the nex
    ```sh
    ./setup.sh start
    ```
-   Check: it prints `Starting up`. It turns on the service, so macOS or Linux keeps Kage running and starts it at login. The first start installs the Agent SDK, which takes about a minute. On Linux, if it prints a `sudo loginctl enable-linger` line, ask the person to run it, so Kage also starts at boot with no login.
+   Check: it prints `Waking up`. It turns on the service, so macOS or Linux keeps Kage running and starts it at login. The first start installs the Agent SDK, which takes about a minute. On Linux, if it prints a `sudo loginctl enable-linger` line, ask the person to run it, so Kage also starts at boot with no login.
 
 7. Prove it works.
    ```sh
