@@ -37,6 +37,7 @@ const ops = {
   },
   // expect: the site and control the owner approved. page.js checks them, the view and the hit point in one go.
   async click({ tabId, ref, expect }) {
+    void driving()
     const at = ready(await inPage(tabId, 'prepare', [ref, false, expect]))
     // Press and release only, right after the hit test: a mouse move first would give the page's mousemove
     // handlers a turn to lay something over the control between the check and the click.
@@ -45,11 +46,13 @@ const ops = {
     return { url: at.url }
   },
   async type({ tabId, ref, text, expect }) {
+    void driving()
     const at = ready(await inPage(tabId, 'prepare', [ref, true, expect]))
     await cdp(tabId, [['Input.insertText', { text: String(text) }]])
     return { url: at.url }
   },
   async press({ tabId, key, expect }) {
+    void driving()
     const code = KEYCODES[key]
     if (!code) throw new Error(`unknown key ${key}`)
     const at = ready(await inPage(tabId, 'keyTarget', [expect]))
@@ -140,13 +143,21 @@ async function pair() {
 
 // What the popup shows, and a ! on the toolbar icon whenever Kage cannot reach this browser.
 // connected | no-token | refused (wrong token) | unreachable (hub not running, or wrong address)
-let last = ''
+let last = '', drivingUntil = 0
 async function setState(state) {
   if (state === last && state !== 'connected') return
   last = state
   await chrome.storage.local.set({ status: { state, at: Date.now() } })
+  if (Date.now() < drivingUntil) return
   await chrome.action.setBadgeText({ text: state === 'connected' ? '' : '!' })
   await chrome.action.setBadgeBackgroundColor({ color: '#c2410c' })
+}
+// While Kage acts, the toolbar badge turns blue, so the owner sees it from any tab.
+async function driving() {
+  drivingUntil = Date.now() + 5000
+  await chrome.action.setBadgeText({ text: '•' })
+  await chrome.action.setBadgeBackgroundColor({ color: '#2563eb' })
+  setTimeout(() => { if (Date.now() >= drivingUntil) { const s = last; last = ''; void setState(s) } }, 5100)
 }
 
 let polling = false

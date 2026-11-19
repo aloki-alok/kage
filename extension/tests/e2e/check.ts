@@ -43,6 +43,7 @@ check('typing and a click reach the page as trusted input', (await out()) === 'H
 await act('type', { ref: search.ref, text: 'kage', expect: { host: '127.0.0.1', role: search.role, name: search.name } })
 await act('press', { key: 'Enter', expect: { host: '127.0.0.1', role: search.role, name: search.name } })
 check('Enter in a field submits its form', (await b.call('read', { tabId: t.id }) as Page).text.includes('submitted'))
+check('while Kage acts, the tab shows its mark, and clicks pass through it', (await click('Check mark')) === 'done' && (await out()) === 'kage mark: shown, none', await out())
 check('a click on the real Send, not the forged ref', (await click('Send')) === 'done' && (await out()) === 'send clicked', await out())
 check('a yes for "Cancel" does not click "Delete account"', (await act('click', { ref: el('Delete account').ref, expect: { host: '127.0.0.1', role: 'button', name: 'Cancel' } })).startsWith('refused'))
 check('a covered control is refused', (await click('Covered')).startsWith('refused') && (await out()) !== 'OVERLAY got it', await out())
