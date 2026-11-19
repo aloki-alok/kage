@@ -713,6 +713,9 @@ describe('Kage sessions on the Agent SDK', () => {
     await tick()
     assert.deepEqual(t.drops, [['C1:5.5', ['Task from Ryu: and the summary'], '']])
     assert.ok(t.turns.some(([, tasks, , done]) => done && tasks.includes('Task from Ryu: and the summary')))
+    run.emit({ type: 'system', subtype: 'session_state_changed', state: 'idle' })
+    await tick()
+    assert.equal(t.sdk.runs.flatMap(r => r.said).filter(x => String(x).includes('and the summary')).length, 1)
   })
   test('a normal turn, or a subagent refused inside it, reports no block', async () => {
     const t = setup()

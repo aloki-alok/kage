@@ -1,6 +1,7 @@
 import { senderOf, teammateOf } from './gate.ts'
 import type { Task } from './task.ts'
 import { isOffSlack } from './conversations.ts'
+import { oneLine } from './text.ts'
 
 export const OFF_LIMITS = "This is off-limits for me, so I won't continue this conversation."
 export const OWNER_BLOCKED = 'The safety check stopped my answer here, so I dropped it. Message me in this thread to start fresh.'
@@ -18,13 +19,15 @@ const placeOf = (t: Task | undefined) => t ? (t.meta.permalink ? `<${t.meta.perm
 
 export function planDrop(turn: Task[], reason: string): { reply?: string; dm?: string } {
   const t = blockedTask(turn)
+  const plain = oneLine(reason.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')).slice(0, 500)
+  const said = plain ? `It said: “${plain}”` : 'It gave no reason.'
   const owner = !!t && senderOf(t) === 'owner'
   const inThread = !!t && answersInThread(t)
-  if (owner && inThread) return { reply: `A hook on this machine stopped your message before I read it, so nothing ran. It said: “${reason}”` }
+  if (owner && inThread) return { reply: `A hook on this machine stopped your message before I read it, so nothing ran. ${said}` }
   const who = t && !owner ? teammateOf(t.content) : undefined
   const ask = askOf(t)
   const dm = [
-    `*A hook stopped a task before it ran* in ${placeOf(t)}. It said: “${reason}”`,
+    `*A hook stopped a task before it ran* in ${placeOf(t)}. ${said}`,
     ...(ask ? [`${who ? who.name : 'The task'} asked: “${ask}”`] : []),
     'If the hook is from a plugin meant for your own terminal, add it to `harness.pluginsOff` to keep it out of Kage sessions.',
   ].join('\n')

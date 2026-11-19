@@ -134,9 +134,9 @@ const { blocked, closedTo, isClosed } = closedThreads({
   tellOwner: text => void slack.notifyOwner(text),
 })
 const dropToldOwner = new Set<string>()
-function dropped(key: string, turn: Task[], reason: string) {
-  log('a hook dropped the prompt in', logKey(key), reason)
-  runs.emit(key, 'refusal', `hook dropped the prompt: ${reason.slice(0, 300)}`)
+function dropped(key: string, turn: Task[], reason: string, kind: string) {
+  log('a hook dropped the prompt in', logKey(key), kind)
+  runs.emit(key, 'refusal', `hook: ${kind}`)
   const p = planDrop(turn, reason), t = blockedTask(turn)
   if (p.reply && t) sayInThread(key, t, p.reply)
   if (p.dm && !dropToldOwner.has(key)) { dropToldOwner.add(key); void slack.notifyOwner(p.dm) }

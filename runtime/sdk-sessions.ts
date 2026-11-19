@@ -52,7 +52,7 @@ export function sdkSessions(o: {
   onStart?: () => void
   onResult?: (key: string, totalUsd: number, resumed: boolean, limited: boolean) => void
   onBlocked?: (key: string, turn: Task[], category: string | null) => void
-  onDropped?: (key: string, turn: Task[], reason: string) => void
+  onDropped?: (key: string, turn: Task[], reason: string, kind: string) => void
   onTurn?: (key: string, tasks: Task[], limit?: Limit, done?: true) => void
   grantOf?: (key: string) => string[] | undefined; allowOf?: (key: string) => string[]; reviewHeld?: (key: string, command: string) => Promise<boolean>
   onTool?: (key: string, tool: string, refused?: string) => void
@@ -161,6 +161,7 @@ export function sdkSessions(o: {
     q.initializationResult().then(connect, () => {})
     void (async () => {
       let blocked = false
+      let started: string | undefined
       let limit: Limit['kind'] | undefined
       let resetsAt: number | undefined, window: string | undefined
       try {
@@ -169,13 +170,18 @@ export function sdkSessions(o: {
           connect()
           if (m.type === 'system' && m.subtype === 'session_state_changed') { sawState = true; s.state = m.state; if (m.state === 'running') unseen = false; if (m.state === 'idle') sendAgain() }
           const life = m as { type: string; command_uuid?: string; state?: string }; if (life.type === 'command_lifecycle' && life.state === 'completed') for (const x of s.turn) if (x.uuid === life.command_uuid) x.read = true
+          if (life.type === 'command_lifecycle' && life.state === 'started') started = life.command_uuid
           const refused = (m.type === 'system' && m.subtype === 'model_refusal_no_fallback') || (m.type === 'assistant' && !m.parent_tool_use_id && m.message.stop_reason === 'refusal')
           if (refused && !blocked) {
             blocked = true
             o.onBlocked?.(key, s.turn.map(x => x.task), (m.type === 'system' && m.subtype === 'model_refusal_no_fallback' && m.api_refusal_category) || null)
           }
-          const ended = m.type === 'system' && (m as { prompt_submit_outcome?: { kind: string; reason?: string } }).prompt_submit_outcome
-          if (ended && HOOK_ENDINGS.includes(ended.kind)) o.onDropped?.(key, s.turn.map(x => x.task), ended.reason ?? ended.kind)
+          const ended = m.type === 'system' && (m as { prompt_submit_outcome?: { kind: string; reason?: string; prompt_kept?: boolean } }).prompt_submit_outcome
+          if (ended && HOOK_ENDINGS.includes(ended.kind) && !ended.prompt_kept) {
+            const hit = s.turn.filter(x => x.uuid === started)
+            o.onDropped?.(key, (hit.length ? hit : s.turn).map(x => x.task), ended.reason ?? '', ended.kind)
+            if (hit.length) { s.turn = s.turn.filter(x => !hit.includes(x)); o.onTurn?.(key, hit.map(x => x.task), undefined, true) }
+          }
           if (m.type === 'rate_limit_event' && m.rate_limit_info.status === 'rejected') ({ rateLimitType: window } = m.rate_limit_info, resetsAt = m.rate_limit_info.resetsAt && (m.rate_limit_info.resetsAt < 1e12 ? m.rate_limit_info.resetsAt * 1000 : m.rate_limit_info.resetsAt))
           if (m.type === 'assistant' && !m.parent_tool_use_id) limit = m.error === 'rate_limit' || m.error === 'overloaded' ? m.error : undefined
           if (m.type === 'result' && m.is_error && !limit) {
