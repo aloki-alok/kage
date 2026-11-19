@@ -3,7 +3,7 @@ import { installUrl, manifestUrl, pasteSteps, upgradeSteps } from '../core/slack
 import { addScopes, authTest, checkScopes } from '../runtime/slack-scopes.ts'
 import { SECRETS } from '../core/secret-prompt.ts'
 import { askSecret } from '../runtime/terminal-secret.ts'
-import { errVoice, voice } from './voice.ts'
+import { errVoice, flicker, voice } from './voice.ts'
 import { settings } from './home.ts'
 
 const { secrets } = settings()
@@ -46,11 +46,13 @@ if (cmd === 'upgrade') {
     openPage(url)
     for (const line of pasteSteps(missing, url)) console.log(line)
   }
-  console.log(voice.dim('\nI\'ll wait here until Slack shows them (up to 10 minutes).'))
+  console.log()
+  const stopFlicker = flicker('waiting for Slack to show them')
   for (let i = 0; i < 200; i++) {
     await new Promise(r => setTimeout(r, 3000))
     const now = await checkScopes(tokens)
-    if (!now.bot.length && !now.user.length) { console.log(voice.says('All set. I have every permission I need.')); process.exit(0) }
+    if (!now.bot.length && !now.user.length) { stopFlicker(); console.log(voice.says('All set. I have every permission I need.')); process.exit(0) }
   }
+  stopFlicker()
   die("I still don't see them. If you reinstalled, run kage save with the new tokens, then kage doctor.")
 } else die('Try: kage slack upgrade')

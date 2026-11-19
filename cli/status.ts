@@ -25,7 +25,7 @@ const summary = statusSummary({
   spentToday: today.reduce((a, r) => a + r.usd, 0), turnsToday: today.reduce((a, r) => a + r.turns, 0),
 })
 console.log(voice.says(summary.says))
-if (summary.warn) console.log(`  ${voice.red(summary.warn)} ${voice.dim('Ask')} ${voice.command('kage doctor')} ${voice.dim('why.')}`)
+if (summary.warn) console.log(`  ${voice.needsYou(summary.warn)} ${voice.dim('Ask')} ${voice.command('kage doctor')} ${voice.dim('why.')}`)
 console.log()
 spawnSync(process.execPath, [new URL('./top.ts', import.meta.url).pathname, '--once'], { stdio: 'inherit' })
 console.log(`\n${voice.dim('Watch me live:')} ${voice.command('kage top')}  ${voice.dim('Spend:')} ${voice.command('kage cost 7')}  ${voice.dim('Problems:')} ${voice.command('kage doctor')}`)

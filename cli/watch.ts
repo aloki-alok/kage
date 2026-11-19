@@ -24,7 +24,7 @@ function print(at: number, place: string, step: Step) {
   if (place !== lastPlace) console.log(`\n${place}`)
   lastPlace = place
   const { text, tone } = spokenStep(step)
-  console.log(`  ${voice.dim(time(at))}  ${tone === 'red' ? voice.red(text) : tone === 'quiet' ? voice.dim(text) : text}`)
+  console.log(`  ${voice.dim(time(at))}  ${tone === 'fire' ? voice.fire(text) : tone === 'you' ? voice.needsYou(text) : tone === 'quiet' ? voice.dim(text) : text}`)
 }
 
 if (!existsSync(PROJECT)) console.error(`No transcripts in ${PROJECT}. If the hub runs in another folder, set harness.cwd to it (kage set harness.cwd <folder>).`)

@@ -9,14 +9,14 @@ HUB_NODE_OPTIONS="${NODE_OPTIONS:-}"
 export NODE_OPTIONS="${NODE_OPTIONS:+$NODE_OPTIONS }--disable-warning=ExperimentalWarning"
 
 if [[ -t 1 && -z ${NO_COLOR:-} ]]; then
-  RED=$'\033[38;2;255;77;61m' GOLD=$'\033[38;2;255;215;94m' GREEN=$'\033[38;2;127;208;138m' DIM=$'\033[2m' OFF=$'\033[0m'
-else RED='' GOLD='' GREEN='' DIM='' OFF=''; fi
+  FIRE=$'\033[38;2;45;190;160m' LANTERN=$'\033[38;2;230;145;40m' DIM=$'\033[2m' OFF=$'\033[0m'
+else FIRE='' LANTERN='' DIM='' OFF=''; fi
 say() { printf '\n\033[1m%s\033[0m\n' "$*"; }
-says() { printf '%s◆%s %s\n' "$RED" "$OFF" "$*"; }
-point() { printf '  %s›%s %s\n' "$RED" "$OFF" "$*"; }
+says() { printf '%s✦%s %s\n' "$FIRE" "$OFF" "$*"; }
+point() { printf '  %s·%s %s\n' "$FIRE" "$OFF" "$*"; }
 quietly() { printf '  %s%s%s\n' "$DIM" "$*" "$OFF"; }
-next() { printf '%s%s%s %s%s%s\n' "$DIM" "$1" "$OFF" "$GOLD" "$2" "$OFF"; }
-tells() { if [[ -t 2 && -z ${NO_COLOR:-} ]]; then printf '\033[38;2;255;77;61m◆\033[0m %s\n' "$*"; else printf '◆ %s\n' "$*"; fi >&2; }
+next() { printf '%s%s%s %s%s%s\n' "$DIM" "$1" "$OFF" "$FIRE" "$2" "$OFF"; }
+tells() { if [[ -t 2 && -z ${NO_COLOR:-} ]]; then printf '\033[38;2;230;145;40m◆ %s\033[0m\n' "$*"; else printf '◆ %s\n' "$*"; fi >&2; }
 die() { tells "$*"; exit 1; }
 
 # group|name|arguments|what it does|example. `kage help` prints it grouped; `kage help <name>` prints one.
@@ -117,7 +117,7 @@ cmd_start() {
   kage_name
   if ./service.sh installed; then ./service.sh start
   else ./service.sh on || return 1; fi
-  says "Starting up. Give me about 20 seconds."
+  says "Waking up. Give me about 20 seconds."
   next "Check on me:" "kage doctor"
   if [[ "$(cfg_get harness.runtime)" == tmux && "$(cfg_get harness.route)" != plugin ]]; then
     echo "Threads open as tmux panes (dev route): each new pane shows a warning screen. Confirm it in tmux attach -t $NAME."
@@ -130,8 +130,8 @@ cmd_stop() {
   if ./service.sh installed; then ./service.sh stop
   elif old_tmux; then tmux kill-session -t "=$NAME"
   else says "I'm not running."; return 0; fi
-  says "Stopped. I stay down until kage start or your next login."
-  quietly "Each thread picks up where it left off when someone tags me."
+  says "Gone to ground. I'll keep your place in every thread."
+  quietly "I stay down until kage start or your next login."
 }
 
 # kage update: move this checkout to origin's main (or the stable release with --stable) and restart into it now,
@@ -156,7 +156,7 @@ cmd_update() {
   running && up=1
   git merge -q --ff-only "$ref"
   new="$(git rev-parse --short HEAD)"
-  says "Got the new version. ${DIM}($new)${OFF}"
+  says "I carry new word. ${DIM}($new)${OFF}"
   if [[ -n $up ]]; then quietly "I'll switch over when I'm not in the middle of anything${packages:+, after I install what it needs}."; fi
   whats_new "$old..$new"
   [[ -n $up ]] && return
@@ -322,9 +322,14 @@ cmd_interactive() {
   say "4/5  Save your tokens"; cmd_save "$NAME"
   say "5/5  Start it"; cmd_start >/dev/null
   # The first start installs the Agent SDK before the hub runs, so the wait covers only the connect.
-  local wait="${KAGE_SETUP_WAIT:-90}" i
-  echo "Waiting for Slack to connect (up to $wait s)..."
-  for ((i = 0; i < wait; i += 2)); do connected && break; sleep 2; done
+  local wait="${KAGE_SETUP_WAIT:-90}"
+  local frames=('⋅' '∙' '•' '∙') n=0
+  while (( n < wait * 2 )); do
+    connected && break
+    [[ -t 1 ]] && printf '\r  %s%s%s %slighting the path · %s s%s' "$FIRE" "${frames[n % 4]}" "$OFF" "$DIM" "$((n / 2))" "$OFF"
+    sleep 0.5; n=$((n + 1))
+  done
+  [[ -t 1 ]] && printf '\r\033[2K'
   connected || die "Not connected to Slack after $wait s. Run kage doctor: it names the fix for each problem."
   echo; says "Connected to Slack. Tag @$NAME in any thread to try it."
   command -v kage >/dev/null || echo "To type kage from anywhere, run ./setup.sh link once."
