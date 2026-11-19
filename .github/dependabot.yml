@@ -5,9 +5,25 @@ updates:
     schedule:
       interval: weekly
     groups:
-      all:
-        patterns: ["*"]
+      minor-and-patch:
+        update-types: [minor, patch]
+      security-minor-and-patch:
+        applies-to: security-updates
+        update-types: [minor, patch]
+  - package-ecosystem: npm
+    directory: /meetbot
+    schedule:
+      interval: weekly
+    groups:
+      minor-and-patch:
+        update-types: [minor, patch]
+      security-minor-and-patch:
+        applies-to: security-updates
+        update-types: [minor, patch]
   - package-ecosystem: github-actions
     directory: /
     schedule:
       interval: monthly
+    groups:
+      minor-and-patch:
+        update-types: [minor, patch]

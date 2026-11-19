@@ -1,0 +1,33 @@
+name: dependabot-merge
+on:
+  workflow_run:
+    workflows: [ci, upgrade, meetbot]
+    types: [completed]
+permissions:
+  actions: write
+  contents: write
+  pull-requests: write
+jobs:
+  merge:
+    if: github.event.workflow_run.event == 'pull_request' && startsWith(github.event.workflow_run.head_branch, 'dependabot/')
+    runs-on: ubuntu-latest
+    steps:
+      - name: Merge when every check passed
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          SHA: ${{ github.event.workflow_run.head_sha }}
+          BRANCH: ${{ github.event.workflow_run.head_branch }}
+        run: |
+          pr=$(gh pr list --repo "$REPO" --head "$BRANCH" --state open --json number,author,headRefOid --jq ".[] | select(.author.login == \"app/dependabot\" and .headRefOid == \"$SHA\") | .number")
+          if [ -z "$pr" ]; then echo "no open Dependabot PR at $SHA"; exit 0; fi
+          case "$BRANCH" in */minor-and-patch-*|*/security-minor-and-patch-*) ;; *) echo "PR $pr is not a minor-and-patch group, left for review"; exit 0;; esac
+          checks=$(gh api "repos/$REPO/commits/$SHA/check-runs?per_page=100" --jq '[.check_runs[] | select(.name != "merge" and .name != "retry")]')
+          total=$(jq length <<<"$checks")
+          waiting=$(jq '[.[] | select(.status != "completed")] | length' <<<"$checks")
+          bad=$(jq '[.[] | select(.status == "completed" and (.conclusion | IN("success", "skipped", "neutral") | not))] | length' <<<"$checks")
+          echo "PR $pr: $total checks, $waiting still running, $bad not passed"
+          if [ "$total" = 0 ] || [ "$waiting" != 0 ] || [ "$bad" != 0 ]; then exit 0; fi
+          gh pr merge "$pr" --repo "$REPO" --squash --delete-branch --match-head-commit "$SHA"
+          gh workflow run ci.yml --repo "$REPO" --ref main
+          gh workflow run upgrade.yml --repo "$REPO" --ref main
