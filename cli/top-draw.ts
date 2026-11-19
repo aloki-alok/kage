@@ -26,7 +26,7 @@ export type Hits = { rows: { key: string; y: number }[]; list: Rect; tabs: { tab
 
 const TONE = { work: 'work', you: 'you', ink: 'ink', mid: 'mid', dim: 'dim' } as const
 
-function pane(r: Rect, focus: boolean, title: string[], active: number, right?: string, hints?: [string, string][]): { tab: number; x0: number; x1: number }[] {
+function pane(r: Rect, focus: boolean, title: string[], active: number, right?: string, hints?: [string, string][], numbered = false): { tab: number; x0: number; x1: number }[] {
   const k = focus ? 'work' : 'line'
   put(r.x0, r.y0, `╭${'─'.repeat(r.x1 - r.x0 - 1)}╮`, k)
   put(r.x0, r.y1, `╰${'─'.repeat(r.x1 - r.x0 - 1)}╯`, k)
@@ -34,7 +34,7 @@ function pane(r: Rect, focus: boolean, title: string[], active: number, right?: 
   const spots: { tab: number; x0: number; x1: number }[] = []
   let x = r.x0 + 2
   title.forEach((t, i) => {
-    const label = title.length > 1 ? `${'¹²³'[i]}${t}` : t
+    const label = numbered ? `${'¹²³'[i]}${t}` : t
     put(x, r.y0, ` ${label} `, i === active ? 'hi' : 'dim')
     spots.push({ tab: i, x0: x, x1: x + label.length + 1 })
     x += label.length + 2
@@ -231,17 +231,18 @@ export function drawFrame(v: View): Hits {
   }
   let rows: { key: string; y: number }[] = []
   let tabs: Hits['tabs'] = []
+  const full = { ...s.list, x1: s.feed && v.tab !== 'threads' ? s.feed.x1 : s.list.x1 }
   if (showFeed) {
     pane(s.list, true, ['steps', 'schedules'], v.mode === 'steps' ? 0 : 1, v.placeOf(v.open!), [['s', v.mode === 'steps' ? 'schedules' : 'steps'], ['esc', 'back']])
     steps(v, s.list)
   } else {
     const count = v.tab === 'threads' ? `${v.rows.length} · ${v.rows.filter(r => r.state !== 'closed' && r.state !== 'quiet').length} live` : v.tab === 'kagelets' ? `${v.kagelets.length}` : `${v.schedules.length}`
-    tabs = pane(s.list, listFocus, TABS, TABS.indexOf(v.tab), count, hints[v.tab]).map(t => ({ tab: TABS[t.tab]!, x0: t.x0, x1: t.x1, y: s.list.y0 }))
-    if (v.tab === 'threads') rows = threadTable(v, s.list, listFocus)
-    else if (v.tab === 'kagelets') kageletTable(v, s.list, listFocus)
-    else scheduleRows(v, s.list, v.schedules)
+    tabs = pane(full, listFocus, TABS, TABS.indexOf(v.tab), count, hints[v.tab], true).map(t => ({ tab: TABS[t.tab]!, x0: t.x0, x1: t.x1, y: full.y0 }))
+    if (v.tab === 'threads') rows = threadTable(v, full, listFocus)
+    else if (v.tab === 'kagelets') kageletTable(v, full, listFocus)
+    else scheduleRows(v, full, v.schedules)
   }
-  if (s.feed) {
+  if (s.feed && v.tab === 'threads') {
     const key = v.open ?? v.selKey
     pane(s.feed, v.focus === 'feed', ['steps', 'schedules'], v.mode === 'steps' ? 0 : 1, key ? v.placeOf(key) : '', [['s', v.mode === 'steps' ? 'schedules' : 'steps'], ['a', 'attach']])
     if (key) steps(v, s.feed)
@@ -249,5 +250,5 @@ export function drawFrame(v: View): Hits {
   if (s.charts && v.since > 0) charts(v, s)
   footer(v)
   if (v.confirm) dialog(v)
-  return { rows, list: s.list, tabs }
+  return { rows, list: full, tabs }
 }
