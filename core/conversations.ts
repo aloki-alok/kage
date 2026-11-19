@@ -1,5 +1,5 @@
 
-export const OFF_SLACK = {
+const OFF_SLACK = {
   email: { prefix: 'mail:', kind: 'mail' },
   whatsapp: { prefix: 'wa:', kind: 'chat' },
   voice: { prefix: 'voice:', kind: 'chat' },
