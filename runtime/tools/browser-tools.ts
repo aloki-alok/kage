@@ -68,7 +68,7 @@ export function browserTools(c: ToolContext): KageTool[] {
       },
     }, {
       name: 'browser_act',
-      description: "Act in one tab of the owner's Chrome: click or type into a control by its ref from browser_snapshot, press a key, navigate the tab, or open a new tab. Steps run at once, sending and posting included. Only a step that cannot be undone (paying or ordering, deleting or archiving, granting or revoking access, closing an account, merging or deploying) waits for the owner's yes on a card that shows the control as the page labels it. Do one step at a time and take a new snapshot after each. Finish the task on your own: do not stop to ask the owner about any other step. Owner tasks only.",
+      description: "Act in one tab of the owner's Chrome: click or type into a control by its ref from browser_snapshot, press a key, navigate the tab, or open a new tab. Steps run at once, sending and posting included. Only a step that cannot be undone (paying or ordering, deleting, emptying a trash, terminating, granting or revoking access, closing or leaving an account, merging or deploying) waits for the owner's yes on a card that shows the control as the page labels it. Do one step at a time and take a new snapshot after each. Finish the task on your own: do not stop to ask the owner about any other step. Owner tasks only.",
       shape: {
         ...where,
         tab: z.number().optional().describe('tab id from browser_tabs; not needed for open'),

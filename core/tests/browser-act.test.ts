@@ -59,9 +59,9 @@ test('a role-less row is judged by its name, like a button', () => {
   for (const n of ['Send', 'Asha Rao Are you free today?']) assert.equal(majorAct({ action: 'click', ref: 1 }, row(n)), undefined, n)
 })
 
-test('only a step that cannot be undone asks the owner: money, deleting, access, or shipping to prod (#424)', () => {
+test('only a step that cannot be undone asks the owner: money, deleting, access, or shipping to prod; archiving can be undone (#424)', () => {
   const el = (name: string) => ({ ref: 1, role: 'button', name })
-  for (const n of ['Pay now', 'Buy', 'Place order', 'Delete project', 'Remove member', 'Erase all data', 'Allow', 'Reinstall to Workspace', 'Authorize', 'Merge pull request', 'Deploy', 'Confirm transfer', 'Cancel subscription', 'Close account', 'Deactivate', 'Generate new token', 'I understand, change repository visibility', 'Archive', 'Supprimer', '削除', 'Deleting…'])
+  for (const n of ['Pay now', 'Buy', 'Place order', 'Delete project', 'Remove member', 'Erase all data', 'Allow', 'Reinstall to Workspace', 'Authorize', 'Merge pull request', 'Deploy', 'Confirm transfer', 'Cancel subscription', 'Close account', 'Deactivate', 'Generate new token', 'I understand, change repository visibility', 'Supprimer', '削除', 'Deleting…'])
     assert.ok(majorAct({ action: 'click', ref: 1 }, el(n)), n)
   for (const n of ['Send', 'Post', 'Reply', 'Comment', 'Submit', 'Invite people', 'Share', 'Publish', 'Unsubscribe', 'OK', 'Yes', 'Continue', '', 'Save Changes', 'Next', 'Search', 'Cancel'])
     assert.equal(majorAct({ action: 'click', ref: 1 }, el(n)), undefined, JSON.stringify(n))

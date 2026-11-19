@@ -63,14 +63,22 @@ export function actCard(a: Act, at: { url: string; el?: Element }) {
   return `${slackSafe(hostOf(at.url))}: ${line}`
 }
 
-const UNDOABLE_NOT = /\b(pay|buy|purchas|order|checkout|subscrib|upgrad|delet|remov|destroy|eras|wipe|revok|transfer|withdraw|merg|deploy|releas|allow|authori[sz]|install|reinstall|grant|archiv|deactivat|token|visibility|close account|cancel \w+|supprim|effac|pay[ée]|achet|borrar|elimin|pagar|comprar|entfern|bezahl|kauf|cancell|acquist)\w*|削除|删除|삭제/i
+const UNDOABLE_NOT = new RegExp([
+  String.raw`\b(pay|buy|purchas|checkout|subscrib|upgrad|delet|remov|destroy|eras|wipe|revok|transfer|withdraw|merg|deploy(?!ment)|terminat|purg|discard|overwrit|refund|deactivat|authori[sz]|deauthori[sz]|donat|supprim|effac|achet|borrar|elimin|pagar|comprar|entfern|bezahl|kauf|cancell|acquist)\w*`,
+  String.raw`\b(grant|reset|wire|reinstall|pay[ée])\b`, String.raw`^allow$`,
+  String.raw`\b((place|confirm|submit) order|order now|drop (table|database|schema|collection)|empty (trash|bin)|force push|send (money|payment)|cash ?out|leave (workspace|team|organi[sz]ation|channel|group|server)|close (my )?account|cancel (subscription|plan|order|account|membership|payment|transfer)|install to|((re)?generate|create|new|delete|revoke)[\w ]* token|change [\w ]*visibility|(publish|create) release|release now)\b`,
+  '削除|删除|삭제',
+].join('|'), 'i')
+const LOOK_ALIKE: Record<string, string> = Object.fromEntries([...'аеорсухіјѕԁԛԝАВЕКМНОРСТХУІЈЅαονρτυικΑΒΕΖΗΙΚΜΝΟΡΤΥΧ'].map((c, i) => [c, 'aeopcyxijsdqwABEKMHOPCTXYIJSaovptuikABEZHIKMNOPTYX'[i]!]))
+const skeleton = (s: string) => s.normalize('NFKD').replace(/\p{Mn}/gu, '').replace(/./gu, c => LOOK_ALIKE[c] ?? c)
+const cannotUndo = (s: string) => { const t = skeleton(s); return UNDOABLE_NOT.test(t) || UNDOABLE_NOT.test(t.replace(/\s+/g, '')) }
 const lookAlike = (s: string) => s.split(/\s+/).some(w => /\p{Script=Latin}/u.test(w) && /[\p{Script=Cyrillic}\p{Script=Greek}]/u.test(w))
-const plainName = (s: string) => s.replace(/\p{Zs}/gu, ' ').replace(/\p{Cf}/gu, '').trim()
+const plainName = (s: string) => s.normalize('NFKC').replace(/[\p{Cf}\p{Zl}\p{Zp}\uFE0F\u034F]/gu, '').replace(/\p{Zs}/gu, ' ').trim()
 export function majorAct(a: Act, el?: Element, ctx: { typed?: string[] } = {}): string | undefined {
   if (a.action !== 'click' && !(a.action === 'press' && a.key === 'Enter')) return undefined
   const label = plainName(el?.name ?? '')
   const typed = ctx.typed ?? []
-  const why = UNDOABLE_NOT.test(label) || lookAlike(label) || label.includes('(styled text') ? label : typed.find(t => UNDOABLE_NOT.test(t))
+  const why = cannotUndo(label) || lookAlike(label) || label.includes('(styled text') ? label : typed.find(cannotUndo)
   if (why === undefined) return undefined
   const after = typed.length ? `, after typing ${typed.join('; ')}` : ''
   return a.action === 'click' ? `it clicks "${label}"${after}` : `Enter in "${label}" may confirm it${after}`
