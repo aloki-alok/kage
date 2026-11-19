@@ -572,6 +572,17 @@ describe('a watch wakes when the thread goes quiet, not on the tick (#428)', () 
     assert.equal(t.sent.length, 1)
     assert.match(t.sent[0]![1].content, /^Job e1 woke: a new event/)
   })
+  test('a message after a watch has ended does not wake it before the tick ends it (#428)', () => {
+    const t = setup()
+    t.s.add('C1:5.5', quiet, 0)
+    const ends = t.store.schedules()[0]!.ends!
+    heard(t, ends + 1_000, 'too late')
+    t.advance(ends + 6_000)
+    assert.equal(t.sent.length, 0)
+    t.s.tick(ends + 20_000)
+    assert.equal(t.sent.length, 1)
+    assert.match(t.sent[0]![1].content, /^Watch w1 ended after 7 days/)
+  })
   test('a cron job still runs only on the tick', () => {
     const t = setup()
     t.s.add('C1:5.5', job, 0)
