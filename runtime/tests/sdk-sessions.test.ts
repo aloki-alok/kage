@@ -378,6 +378,23 @@ describe('Kage sessions on the Agent SDK', () => {
     assert.equal(await guard('mcp__gmail__search'), undefined)
     t.s.runner.stop('C1:5.5')
   })
+  test("a teammate's agent runs with that teammate's tools; an agent with no person stays read and answer only (#426)", async () => {
+    const run = async (person?: string) => {
+      const t = setup({ transcript: true, restartMs: 60_000 })
+      const task = t.task({ fromOwner: false, content: 'Teammate task (UMATE0002, Kevin Test\'s agent, not the owner): run the tests' })
+      task.agent = { app: 'A0AGENT02', ...person && { person } }
+      t.d.task('C1:5.5', task, 0)
+      await tick()
+      const r = t.sdk.runs[0]!
+      r.emit({ type: 'system', subtype: 'session_state_changed', state: 'running' })
+      const guard = async (tool_name: string, tool_input: object) => (await r.options.hooks.PreToolUse[0].hooks[0]({ hook_event_name: 'PreToolUse', tool_name, tool_input }, undefined, { signal: signal() })).hookSpecificOutput?.permissionDecision
+      const decided = { bash: await guard('Bash', { command: 'npm test' }), gmail: await guard('mcp__claude_ai_Gmail__search', {}) }
+      t.s.runner.stop('C1:5.5')
+      return decided
+    }
+    assert.deepEqual(await run('UMATE0002'), { bash: undefined, gmail: 'deny' }, "a teammate's tools, and none of the owner's")
+    assert.deepEqual(await run(), { bash: 'deny', gmail: 'deny' })
+  })
   test("an agent's task answered mid-turn does not hold the owner's next turn to read and answer", async () => {
     const t = setup({ transcript: true, restartMs: 60_000 })
     t.d.task('C1:5.5', t.task({ content: 'Task from the owner: one' }), 0)

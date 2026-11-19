@@ -366,6 +366,10 @@ describe('who a task counts as', () => {
     assert.equal(senderOf({ ...t('C1', true), agent: { app: 'A0AGENT01' } }), 'agent')
     assert.equal(senderOf({ ...t('C1', false), agent: { app: 'A0AGENT01' } }), 'agent')
   })
+  test("an agent tied to a person gets that person's teammate trust, never the owner's, even flagged as the owner (#426)", () => {
+    assert.equal(senderOf({ ...t('C1', false), agent: { app: 'A0AGENT01', person: 'UMATE0002' } }), 'teammate')
+    assert.equal(senderOf({ ...t('C1', true), agent: { app: 'A0AGENT01', person: 'UTEST1' } }), 'teammate')
+  })
 })
 
 describe('invisible text', () => {
