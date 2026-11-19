@@ -27,12 +27,12 @@ test('a Slack triage decision writes one log line and keeps its database event',
       auth: { test: async () => ({ team_id: 'TTEST', user_id: 'UTEST1' }) },
       conversations: { open: async () => ({ channel: { id: 'DTEST' } }), history: async () => ({ messages: [] }) },
       users: { info: async () => ({ user: { real_name: 'Sam Test' } }) },
-      reactions: { add: async (o: { name: string }) => { reactions.push(o.name); return { ok: true } } },
+      reactions: { add: async (o: { name: string }) => { reactions.push(o.name); return { ok: true } }, remove: async () => ({ ok: true }) },
     }
     const slack = await connectSlack({
       dir, appToken: 'test', userToken: 'test', bot: client as never, user: client as never,
       name: 'kage', title: 'Kage', teammates: [], apps: [],
-      hub: { posted: () => '', handled: () => {}, deliver: () => assert.fail('a thanks needs no session') } as never,
+      hub: { posted: () => '', handled: () => {}, deliver: () => assert.fail('a thanks needs no session') } as never, ackWords: false,
       triage: jevTriage({ key: 'test', model: 'test', threshold: 0.5, agents: 'all', url: 'https://jev.example.com' },
         (who, detail) => runs.emit(who, 'triage', detail),
         { fetch: (async () => Response.json({ answers: { intake: { choice: 'react', probabilities: { react: 0.99 } }, reaction: { choice: 'folded_hands', confidence: 1 } } })) as typeof fetch }),
@@ -42,7 +42,7 @@ test('a Slack triage decision writes one log line and keeps its database event',
     assert.equal(events.length, 1)
     assert.equal(events[0]!.kind, 'triage')
     assert.match(events[0]!.detail, /^react: owner react 0\.99, reaction folded_hands 1\.00, \d+ ms$/)
-    assert.deepEqual(reactions, ['pray'])
+    assert.deepEqual(reactions, ['ninja', 'pray'])
     assert.equal(lines.filter(l => l.includes('triage ')).length, 1, lines.join('\n'))
   } finally {
     ledger.close()
@@ -53,7 +53,7 @@ test('a Slack triage decision writes one log line and keeps its database event',
 
 test('a message triage sends to react, with no emoji picked, still gets the eyes, so it is never dropped without a sign', async () => {
   const dir = mkdtempSync(join(tmpdir(), 'kage-triage-'))
-  const reactions: string[] = []
+  const reactions: string[] = [], removed: string[] = []
   const ledger = openLedgers(dir, () => '2026-01-01T00:00:00Z', log)
   try {
     const runs = runEvents(ledger, () => 'test-trace')
@@ -61,18 +61,20 @@ test('a message triage sends to react, with no emoji picked, still gets the eyes
       auth: { test: async () => ({ team_id: 'TTEST', user_id: 'UTEST1' }) },
       conversations: { open: async () => ({ channel: { id: 'DTEST' } }), history: async () => ({ messages: [] }) },
       users: { info: async () => ({ user: { real_name: 'Sam Test' } }) },
-      reactions: { add: async (o: { name: string }) => { reactions.push(o.name); return { ok: true } } },
+      reactions: { add: async (o: { name: string }) => { reactions.push(o.name); return { ok: true } }, remove: async (o: { name: string }) => { removed.push(o.name); return { ok: true } } },
     }
     const slack = await connectSlack({
       dir, appToken: 'test', userToken: 'test', bot: client as never, user: client as never,
       name: 'kage', title: 'Kage', teammates: [], apps: [],
-      hub: { posted: () => '', handled: () => {}, deliver: () => assert.fail('an ok needs no session') } as never,
+      hub: { posted: () => '', handled: () => {}, deliver: () => assert.fail('an ok needs no session') } as never, ackWords: false,
       triage: jevTriage({ key: 'test', model: 'test', threshold: 0.5, agents: 'all', url: 'https://jev.example.com' },
         (who, detail) => runs.emit(who, 'triage', detail),
         { fetch: (async () => Response.json({ answers: { intake: { choice: 'react', probabilities: { react: 0.99 } }, reaction: { choice: 'none', confidence: 0.9 } } })) as typeof fetch }),
     })
     await slack.replay('test-source', JSON.stringify({ ...msg, client_msg_id: 'test', text: '@kage ok' }))
-    assert.deepEqual(reactions, ['eyes'])
+    await new Promise(r => setTimeout(r, 20))
+    assert.deepEqual(reactions, ['ninja', 'eyes'])
+    assert.deepEqual(removed, ['ninja'])
   } finally {
     ledger.close()
     rmSync(dir, { recursive: true, force: true })
@@ -81,7 +83,7 @@ test('a message triage sends to react, with no emoji picked, still gets the eyes
 
 test('the pickup reaction lands before triage answers, and a react pick leaves only the picked emoji (#320)', async () => {
   const dir = mkdtempSync(join(tmpdir(), 'kage-triage-'))
-  const adds: string[] = [], on = new Set<string>()
+  const adds: string[] = [], on = new Set<string>(), posts: { thread_ts?: string; text: string }[] = []
   let answer!: (v: Awaited<ReturnType<Triage>>) => void
   try {
     const client = {
@@ -92,12 +94,13 @@ test('the pickup reaction lands before triage answers, and a react pick leaves o
         add: async (o: { name: string }) => { adds.push(o.name); on.add(o.name); return { ok: true } },
         remove: async (o: { name: string }) => { on.delete(o.name); return { ok: true } },
       },
+      chat: { postMessage: async (o: { thread_ts?: string; text: string }) => { posts.push({ thread_ts: o.thread_ts, text: o.text }); return { ok: true } } },
     }
     const slack = await connectSlack({
       dir, appToken: 'test', userToken: 'test', bot: client as never, user: client as never,
       name: 'kage', title: 'Kage', teammates: [], apps: [],
       hub: { posted: () => '', handled: () => {}, deliver: () => assert.fail('a react pick needs no session') } as never,
-      triage: () => new Promise(r => { answer = r }),
+      triage: () => new Promise(r => { answer = r }), heard: async () => 'Anytime',
     })
     const done = slack.replay('test-source', JSON.stringify({ ...msg, client_msg_id: 'test', text: '@kage ok' }))
     await new Promise(r => setTimeout(r, 50))
@@ -106,6 +109,7 @@ test('the pickup reaction lands before triage answers, and a react pick leaves o
     await done
     await new Promise(r => setTimeout(r, 20))
     assert.deepEqual([...on], ['thumbsup'])
+    assert.deepEqual(posts, [{ thread_ts: '5.5', text: 'Anytime :ninja:' }], 'one short line, so the tag never looks skipped')
   } finally {
     rmSync(dir, { recursive: true, force: true })
   }

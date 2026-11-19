@@ -166,16 +166,22 @@ export async function connectSlack(o: { askOtherAgents?: boolean; dir: string; a
       if (!j.reply && o.ackWords === false) return void react(m.channel, m.ts, 'white_check_mark')
       if (!j.reply) return void heardLine(t.text, o.heard ?? writeHeard(emptyRoom(o.dir))).then(text => bot.chat.postMessage({ channel: m.channel, thread_ts: m.thread_ts ?? m.ts, text })).catch(e => log('could not post the heard line', e?.data?.error ?? e))
     }
+    let pickedUp: Promise<boolean> | undefined
     if (t.kind === 'task' && !t.agent && o.triage) {
+      pickedUp = react(m.channel, m.ts, PICKED_UP)
       const j = await o.triage(thread, !m.user || m.user === ids.owner ? 'owner' : 'other', t.text,
         { hasFiles: !!(m.files?.length || (m as { attachments?: unknown[] }).attachments?.length), inThread: !!m.thread_ts && m.thread_ts !== m.ts,
           context: async () => (await contextOf(m, true)).text })
-      if (j.pick === 'react' && await react(m.channel, m.ts, j.reaction?.emoji ?? 'eyes')) return
+      if (j.pick === 'react' && await react(m.channel, m.ts, j.reaction?.emoji ?? 'eyes')) {
+        void pickedUp.then(() => unreact(m.channel, m.ts, PICKED_UP))
+        if (o.ackWords === false) return
+        return void heardLine(t.text, o.heard ?? writeHeard(emptyRoom(o.dir))).then(text => bot.chat.postMessage({ channel: m.channel, thread_ts: m.thread_ts ?? m.ts, text })).catch(e => log('could not post the heard line', e?.data?.error ?? e))
+      }
     }
     const listed = (ids.apps ?? []).map(appEntry).filter(e => e?.id === t.agent)
     const entry = t.agent ? listed.find(e => e?.owner === m.user || (!!e?.tag && e.tag === m.user)) ?? listed[0] : undefined
     const agent = t.agent ? { app: t.agent, tag: entry?.tag, person: entry?.owner && validUserId(entry.owner) ? entry.owner : undefined } : undefined
-    react(m.channel, m.ts, PICKED_UP)
+    if (!pickedUp) react(m.channel, m.ts, PICKED_UP)
     const askedKey = m.channel === ids.botDm && m.thread_ts && m.thread_ts !== m.ts
       ? askedFrom(o.hub.posted(), ids.botDm, m.thread_ts) : undefined
     const asked = askedKey ? parseSessionKey(askedKey, ids.botDm)?.conversation : undefined
