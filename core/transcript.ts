@@ -3,7 +3,6 @@ const short = (s: string) => {
   const first = s.trim().split('\n')[0]!.trim()
   return first.length > MAX ? `${first.slice(0, MAX - 1)}…` : first
 }
-const tag = (label: string, text: string) => `${label.padEnd(5)} ${short(text)}`.trimEnd()
 const toolName = (name: string) => name.startsWith('mcp__') ? name.slice(name.lastIndexOf('__') + 2).replaceAll('_', ' ') : name
 
 export function stepTime(raw: string): number | undefined {
@@ -13,28 +12,35 @@ export function stepTime(raw: string): number | undefined {
   } catch { return undefined }
 }
 
-export function transcriptLine(raw: string): string | undefined {
+export type Step = { kind: string; text: string }
+
+export function transcriptSteps(raw: string): Step[] {
   let r: { type?: string; message?: { content?: unknown } }
-  try { r = JSON.parse(raw) } catch { return undefined }
+  try { r = JSON.parse(raw) } catch { return [] }
   const content = r.message?.content
   if (r.type === 'user' && typeof content === 'string') {
     const m = /^<channel [^>]*>\n([^\n]*)/.exec(content)
-    return tag(m ? 'task' : 'input', m ? m[1]! : content)
+    return [{ kind: m ? 'task' : 'input', text: short(m ? m[1]! : content) }]
   }
-  if (!Array.isArray(content)) return undefined
-  const out: string[] = []
+  if (!Array.isArray(content)) return []
+  const out: Step[] = []
   for (const b of content as { type?: string; text?: string; name?: string; input?: Record<string, unknown>; is_error?: boolean; content?: unknown }[]) {
-    if (r.type === 'assistant' && b.type === 'text' && b.text?.trim()) out.push(tag('says', b.text))
+    if (r.type === 'assistant' && b.type === 'text' && b.text?.trim()) out.push({ kind: 'says', text: short(b.text) })
     else if (r.type === 'assistant' && b.type === 'tool_use' && b.name) {
       const i = b.input ?? {}
-      if (/^mcp__(plugin_kage_)?kage__reply$/.test(b.name)) out.push(tag('reply', String(i.text ?? '')))
-      else out.push(tag(toolName(b.name), String(i.description ?? i.command ?? i.file_path ?? i.pattern ?? i.prompt ?? i.url ?? '')))
+      if (/^mcp__(plugin_kage_)?kage__reply$/.test(b.name)) out.push({ kind: 'reply', text: short(String(i.text ?? '')) })
+      else out.push({ kind: toolName(b.name), text: short(String(i.description ?? i.command ?? i.file_path ?? i.pattern ?? i.prompt ?? i.url ?? '')) })
     } else if (r.type === 'user' && b.type === 'tool_result' && b.is_error) {
       const c = b.content
-      out.push(tag('error', typeof c === 'string' ? c : Array.isArray(c) ? c.map(x => x?.text ?? '').join('') : ''))
+      out.push({ kind: 'error', text: short(typeof c === 'string' ? c : Array.isArray(c) ? c.map(x => x?.text ?? '').join('') : '') })
     }
   }
-  return out.length ? out.join('\n') : undefined
+  return out
+}
+
+export function transcriptLine(raw: string): string | undefined {
+  const steps = transcriptSteps(raw)
+  return steps.length ? steps.map(s => `${s.kind.padEnd(5)} ${s.text}`.trimEnd()).join('\n') : undefined
 }
 
 export function sentTexts(lines: string[]): string[] {

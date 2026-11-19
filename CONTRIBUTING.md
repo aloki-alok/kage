@@ -142,6 +142,7 @@ Write logs to stderr only. In a tmux pane, stdout carries the channel protocol, 
 | `task.ts` | `Task`: what a connector turns a message into, and what a runner takes (ADR 0002). |
 | `instructions.ts` | What every session reads first: who it is (Kage, a kagelet, or a kagelet's nightly dream), whom it serves, how it answers, and each kind of task's limits. A kagelet reads Kage's door rules word for word. |
 | `secret-prompt.ts` | A hidden token prompt's rules: what each key does to the line, whether a paste is the token asked for (and which one it is when not), and how a saved token is shown. `runtime/terminal-secret.ts` draws the prompt, and `cli/ask-secret.ts` is its entry for `setup.sh`. |
+| `voice.ts` | How the `kage` command speaks: Kage's palette (also in `setup.sh`, checked by its test), the red mark on Kage's own lines, gold commands, and a session step in Kage's words for `kage logs`. `cli/voice.ts` turns color on only at a terminal without `NO_COLOR`. |
 | `text.ts` | Text helpers every rule shares: `oneLine`, and `quotedLine` for someone else's text (no `<channel>` tag survives). |
 | `cli-help.ts` | The closest real `kage` command to a mistyped one. |
 | `dream.ts` | The nightly dream job: what it reads for lessons, how it tidies Kage's memory, and which lessons may leave this machine. |
