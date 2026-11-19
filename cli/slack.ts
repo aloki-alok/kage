@@ -31,7 +31,7 @@ if (cmd === 'upgrade') {
   if (!appId || !team) die('Could not get the app id from Slack. Open https://api.slack.com/apps, pick the app, click App Manifest, and add the missing scopes to oauth_config.scopes.')
   for (const line of CONFIG_TOKEN_HELP) console.log(line)
   openPage('https://api.slack.com/apps')
-  const configToken = await askSecret('Access Token (Enter to edit the manifest by hand): ', SECRETS.config, true)
+  const configToken = await askSecret('Access Token (Enter: by hand): ', SECRETS.config, true)
   const added = configToken ? await addScopes(configToken, appId!, missing) : undefined
   if (added && !added.ok) console.log(`Slack did not take the change (${added.error}), so edit the manifest by hand.`)
   if (added?.ok) {

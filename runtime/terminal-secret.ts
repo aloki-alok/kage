@@ -1,11 +1,12 @@
 import { pickSecret, shownAs, typeKeys, type Keys, type Secret } from '../core/secret-prompt.ts'
 
 const out = process.stderr
+const fit = (line: string) => line.slice(0, Math.max(20, (out.columns || 80) - 1))
 const DOTS = 12
 
 const readKeys = (label: string): Promise<string> => new Promise(resolve => {
   let state: Keys = { typed: '' }
-  const draw = () => out.write(`\r\u001b[2K${label}${state.typed ? `${'•'.repeat(Math.min(state.typed.length, DOTS))} ${state.typed.length} characters` : ''}`)
+  const draw = () => out.write(`\r\u001b[2K${fit(`${label}${state.typed ? `${'•'.repeat(Math.min(state.typed.length, DOTS))} ${state.typed.length} characters` : ''}`)}`)
   const onKey = (chunk: Buffer) => {
     state = typeKeys(state, chunk.toString('utf8'))
     draw()
@@ -25,10 +26,10 @@ const readKeys = (label: string): Promise<string> => new Promise(resolve => {
 const readPiped = async () => { let s = ''; for await (const c of process.stdin) s += c; return s }
 
 export async function askSecret(label: string, want: Secret, optional = false): Promise<string> {
-  if (!process.stdin.isTTY) return pickSecret(await readPiped(), want).value
+  if (!process.stdin.isTTY) return optional ? '' : pickSecret(await readPiped(), want).value
   for (;;) {
     const { value, problem } = pickSecret(await readKeys(label), want)
-    if (value) { out.write(`\r\u001b[2K${label}✓ ${shownAs(value)}\n`); return value }
+    if (value) { out.write(`\r\u001b[2K${fit(`${label}✓ ${shownAs(value)}`)}\n`); return value }
     out.write('\n')
     if (!problem && optional) return ''
     out.write(`${problem ?? 'Nothing was pasted.'} Try again, or press Ctrl-C to stop.\n`)

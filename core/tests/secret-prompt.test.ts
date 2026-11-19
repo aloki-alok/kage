@@ -13,11 +13,13 @@ describe('typeKeys: what a hidden prompt holds after each key', () => {
   test('arrow keys and other escape sequences add nothing', () => {
     assert.deepEqual(typeKeys({ typed: 'a' }, '\u001b[A\u001b[Db'), { typed: 'ab' })
     assert.deepEqual(typeKeys({ typed: 'a' }, '\u001b[200~xy\u001b[201~'), { typed: 'axy' })
+    assert.deepEqual(typeKeys({ typed: 'a' }, '\u001bOAb'), { typed: 'ab' })
   })
   test('Ctrl-C cancels, Ctrl-U clears, Ctrl-D on an empty line ends it', () => {
     assert.equal(typeKeys({ typed: 'abc' }, '\u0003').end, 'cancel')
     assert.deepEqual(typeKeys({ typed: 'abc' }, '\u0015'), { typed: '' })
     assert.deepEqual(typeKeys({ typed: '' }, '\u0004'), { typed: '', end: 'enter' })
+    assert.deepEqual(typeKeys({ typed: 'ab' }, '\u0004'), { typed: 'ab' })
   })
   test('keys after Enter are left alone', () => {
     assert.deepEqual(typeKeys({ typed: '' }, 'a\rb'), { typed: 'a', end: 'enter' })
@@ -34,7 +36,7 @@ describe('pickSecret: is the paste the token this prompt wants', () => {
   })
   test('a known token of the wrong kind is named', () => {
     assert.match(pickSecret('xoxb-1-a', SECRETS.user).problem!, /bot token \(xoxb-/)
-    assert.match(pickSecret('xoxe-1-b', SECRETS.config).problem!, /Refresh Token.*Access Token/)
+    assert.match(pickSecret('xoxe-1-b', SECRETS.config).problem!, /^That is the Refresh Token\. Paste the Access Token/)
   })
   test('text that is no token says what to paste', () => {
     assert.match(pickSecret('hello', SECRETS.app).problem!, /xapp-/)

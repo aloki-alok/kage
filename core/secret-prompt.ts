@@ -22,7 +22,12 @@ export function typeKeys(state: Keys, chunk: string): Keys {
     const ch = chars[i]!
     if (ch === '\u0003') return { typed, end: 'cancel' }
     if (ch === '\r' || ch === '\n' || (ch === '\u0004' && !typed)) return { typed, end: 'enter' }
-    if (ch === '\u001b') { while (i + 1 < chars.length && !ESCAPE_END.test(chars[++i]!)); continue }
+    if (ch === '\u001b') {
+      const intro = chars[++i]
+      if (intro === '[') while (i + 1 < chars.length && !ESCAPE_END.test(chars[++i]!));
+      else if (intro === 'O') i++
+      continue
+    }
     if (ch === '\u007f' || ch === '\b') typed = typed.slice(0, -1)
     else if (ch === '\u0015') typed = ''
     else if (ch >= ' ') typed += ch
