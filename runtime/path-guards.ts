@@ -27,7 +27,7 @@ export function configRefusal(tool: string, input: Record<string, unknown>, send
 }
 const CONFIG_NAMES = ['session.env', 'telemetry-id', 'kagelets', 'config.json*', 'crons-import.json*', 'waha', 'threads.json*', 'afk.json*', 'github-threads.json*', 'mail-threads.json*',
   'kage.db*', 'hub.lock', 'hub.log*', 'router.sock', 'ssm.sock', 'keys.sock', '.archive', 'updated-from', 'browser-seen', 'wa-notes', 'retro-sent', 'dream-sent', 'daily-sent', 'crash-dm-at',
-  'config-unknown-told', 'boots', 'held', 'sender', 'ledgers']
+  'config-unknown-told', 'boots', 'held', 'sender', 'ledgers', 'last-seen']
 export function protectConfig(envFile: string, codeDir: string, home = process.env.HOME ?? '', sandbox: boolean | 'kagelet' = false) {
   const dirs = [...new Set([dirname(envFile), realish(dirname(envFile))])]
   const tokens = dirs.flatMap(d => [`${d}/secrets.json*`, `${d}/env*`, `${d}/session.env*`, `${d}/waha/.env*`])
