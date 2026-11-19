@@ -98,7 +98,6 @@ esac
   exe(join(w.root, 'bin', 'node'), `#!/bin/sh\n[ "$(git -C "${w.dir}" log -1 --format=%s)" = two ] && echo "node after merge" >> "${ops}"\nexec "${process.execPath}" "$@"\n`)
   writeFileSync(join(w.dir, 'package-lock.json'), '{"version":"1"}\n')
   writeFileSync(join(w.dir, '.gitignore'), 'node_modules\n')
-  const git = (cwd: string, ...a: string[]) => new Promise<void>((res, rej) => execFile('git', ['-c', 'user.name=t', '-c', 'user.email=t@example.test', ...a], { cwd }, e => e ? rej(e) : res()))
   await git(w.dir, 'init', '-q', '-b', 'main'); await git(w.dir, 'add', '-A'); await git(w.dir, 'commit', '-qm', 'one')
   const origin = join(w.root, 'origin.git'), other = join(w.root, 'other')
   await git(w.root, 'clone', '-q', '--bare', w.dir, origin); await git(w.dir, 'remote', 'add', 'origin', origin); await git(w.dir, 'fetch', '-q', 'origin')
@@ -109,6 +108,7 @@ esac
   const r = await w.run(['update'], '')
   return { r, ops: existsSync(ops) ? readFileSync(ops, 'utf8').trim().split('\n').filter(Boolean) : [] }
 }
+const git = (cwd: string, ...a: string[]) => new Promise<void>((res, rej) => execFile('git', ['-c', 'user.name=t', '-c', 'user.email=t@example.test', ...a], { cwd }, e => e ? rej(e) : res()))
 const touch = (f: string) => writeFileSync(f, '')
 
 describe('kage update moves the code and leaves the restart to the hub', () => {
@@ -116,7 +116,7 @@ describe('kage update moves the code and leaves the restart to the hub', () => {
     const { r, ops } = await updateWorld(true)
     assert.equal(r.code, 0, r.out)
     assert.deepEqual(ops, [], r.out)
-    assert.match(r.out, /next quiet moment/)
+    assert.match(r.out, /I'll switch over when I'm not in the middle of anything, after I install what it needs\./)
   })
   test('with the hub up and the same lockfile, it holds no message and restarts nothing', async () => {
     const { r, ops } = await updateWorld(false)
@@ -127,5 +127,31 @@ describe('kage update moves the code and leaves the restart to the hub', () => {
     const { r, ops } = await updateWorld(true, false)
     assert.equal(r.code, 0, r.out)
     assert.deepEqual(ops, ['npm ci hub=down'], r.out)
+  })
+})
+
+describe('kage update says what is new in plain words', () => {
+  test('feat and fix commits become two short lists; type, scope and PR number go', async () => {
+    const w = world()
+    const origin = join(w.root, 'origin.git'), other = join(w.root, 'other')
+    await git(w.dir, 'init', '-q', '-b', 'main')
+    await git(w.dir, 'add', '-A')
+    await git(w.dir, 'commit', '-qm', 'base')
+    await git(w.root, 'clone', '-q', '--bare', w.dir, origin)
+    await git(w.dir, 'remote', 'add', 'origin', origin)
+    await git(w.dir, 'fetch', '-q', 'origin')
+    await git(w.root, 'clone', '-q', origin, other)
+    for (const m of ['feat(cli): token prompts show a dot per character (#408)', 'feat(cli/slack): kage slack upgrade edits the manifest itself', 'fix(core/slack-scopes): an empty list pastes cleanly', 'refactor(core): one table', 'docs: words'])
+      await git(other, 'commit', '-q', '--allow-empty', '-m', m)
+    await git(other, 'push', '-q', 'origin', 'main')
+    const r = await w.run(['update'], '')
+    assert.equal(r.code, 0, r.out)
+    assert.match(r.out, /◆ Got the new version\./)
+    assert.match(r.out, /What's new for you\n(  › .*\n)*  › kage slack upgrade edits the manifest itself\n/)
+    assert.match(r.out, /  › Token prompts show a dot per character\n/)
+    assert.doesNotMatch(r.out, /Kage slack upgrade/)
+    assert.match(r.out, /Fixed\n  › An empty list pastes cleanly\n/)
+    assert.doesNotMatch(r.out, /refactor|one table|words|#408|\x1b\[/)
+    assert.match(r.out, /I'm not running\. Start me: kage start/)
   })
 })
