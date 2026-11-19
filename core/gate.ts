@@ -113,7 +113,7 @@ export const taskFrom = (by: string | undefined, owner: string, t: TaskBody): Ta
 
 export type Sender = 'owner' | 'trusted' | 'teammate' | 'voice' | 'agent'
 const RANK: Sender[] = ['owner', 'trusted', 'teammate', 'voice', 'agent']
-export const senderOf = (t: { fromOwner: boolean; meta: { channel: string }; agent?: { app: string; person?: string }; trusted?: true }): Sender =>
+export const senderOf = (t: { fromOwner: boolean; meta: { channel: string }; agent?: { app: string; person?: string }; trusted?: string }): Sender =>
   t.meta.channel === 'voice' ? (t.fromOwner ? 'owner' : 'voice') : t.meta.channel === 'email' ? 'teammate'
     : t.agent ? (!t.agent.person ? 'agent' : t.trusted ? 'trusted' : 'teammate') : t.fromOwner ? 'owner' : t.trusted ? 'trusted' : 'teammate'
 

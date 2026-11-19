@@ -28,7 +28,7 @@ const tick = (ms = 5) => new Promise(r => setTimeout(r, ms))
 const ID = '11111111-1111-4111-8111-111111111111'
 const signal = () => new AbortController().signal
 
-function setup(o: { transcript?: boolean; silent?: boolean; dmFails?: boolean; grants?: Record<string, string[]>; allows?: Record<string, string[]>; review?: boolean; manager?: boolean; budgets?: Record<string, number>; models?: Record<string, string>; trusted?: string[]; deferred?: boolean; browser?: boolean; restartMs?: number; sandbox?: boolean; onResult?: (key: string, total: number, resumed: boolean) => void; onMcp?: (q: unknown) => void } = {}) {
+function setup(o: { transcript?: boolean; silent?: boolean; dmFails?: boolean; grants?: Record<string, string[]>; allows?: Record<string, string[]>; review?: boolean; manager?: boolean; budgets?: Record<string, number>; models?: Record<string, string>; trusted?: string[]; deferred?: boolean; browser?: boolean; restartMs?: number; sandbox?: boolean; onResult?: (key: string, total: number, resumed: boolean) => void; onMcp?: (q: unknown) => void; trustedPeople?: { ids: string[] } } = {}) {
   const sdk = fakeSdk(o)
   const dropped: string[] = []
   const keysDropped: string[] = []
@@ -58,6 +58,7 @@ function setup(o: { transcript?: boolean; silent?: boolean; dmFails?: boolean; g
     tools: (_key, send, approve, turnSender) => sessionTools({ title: 'Kage', bot: slack as any, user: slack as any, botDm: () => 'DBOT', dir, ledgers: openLedgers(dir), send, memory: { own: '/own', owner: '/owner' }, approve, turnSender, ...o.browser && { browser: { call: async () => [], block: [] } },
       ...o.manager && { kagelets: { list: () => '', manage: async (a, ask) => `yes: ${await ask!({ kagelet: a.name, tools: 'mcp__gmail__send', job: 'Mail the count.' })}` } } }),
     hasTranscript: () => o.transcript ?? false,
+    ...o.trustedPeople && { trustedNow: (id: string) => o.trustedPeople!.ids.includes(id) },
     toHub: () => {},
     options: { cwd: '/home', settingSources: ['user'] },
     grantOf: key => o.grants?.[key],
@@ -382,7 +383,7 @@ describe('Kage sessions on the Agent SDK', () => {
     const run = async (trusted: boolean) => {
       const t = setup({ transcript: true, restartMs: 60_000 })
       const task = t.task({ fromOwner: false, content: 'Teammate task (UMATE0002, Kevin Test, not the owner): find the contract mail' })
-      if (trusted) task.trusted = true
+      if (trusted) task.trusted = 'UMATE0002'
       t.d.task('C1:5.5', task, 0)
       await tick()
       const r = t.sdk.runs[0]!
@@ -397,10 +398,25 @@ describe('Kage sessions on the Agent SDK', () => {
     assert.match(trusted.post, /only the owner/, "Kage's owner-only tools stay the owner's")
     assert.deepEqual([plain.connectorsOff, plain.gmail], [true, 'deny'])
   })
+  test("taking a teammate's trust away ends it at once, even in a turn already running (#435)", async () => {
+    const people = { ids: ['UMATE0002'] }
+    const t = setup({ transcript: true, restartMs: 60_000, trustedPeople: people })
+    const task = t.task({ fromOwner: false, content: 'Teammate task (UMATE0002, Kevin Test, not the owner): find the contract mail' })
+    task.trusted = 'UMATE0002'
+    t.d.task('C1:5.5', task, 0)
+    await tick()
+    const r = t.sdk.runs[0]!
+    r.emit({ type: 'system', subtype: 'session_state_changed', state: 'running' })
+    const guard = async () => (await r.options.hooks.PreToolUse[0].hooks[0]({ hook_event_name: 'PreToolUse', tool_name: 'mcp__claude_ai_Gmail__search', tool_input: {} }, undefined, { signal: signal() })).hookSpecificOutput?.permissionDecision
+    assert.equal(await guard(), undefined)
+    people.ids = []
+    assert.equal(await guard(), 'deny')
+    t.s.runner.stop('C1:5.5')
+  })
   test("a trusted teammate's message mid-turn does not raise a plain teammate's running turn (#425)", async () => {
     const t = setup({ transcript: true, restartMs: 60_000 })
     const opener = t.task({ fromOwner: false, content: 'Teammate task (UMATE0002, Kevin Test, not the owner): hi' })
-    opener.trusted = true
+    opener.trusted = 'UMATE0002'
     t.d.task('C1:5.5', opener, 0)
     await tick()
     const r = t.sdk.runs[0]!
@@ -414,7 +430,7 @@ describe('Kage sessions on the Agent SDK', () => {
     r.emit({ type: 'system', subtype: 'session_state_changed', state: 'running' })
     assert.equal(await guard(), 'deny', "a plain teammate's turn in a session a trusted teammate opened")
     const mid = t.task({ fromOwner: false, content: 'Teammate task (UMATE0002, Kevin Test, not the owner): also this' })
-    mid.trusted = true
+    mid.trusted = 'UMATE0002'
     t.d.task('C1:5.5', mid, 2)
     await tick()
     assert.equal(await guard(), 'deny', "the trusted reply lifted the plain teammate's turn")

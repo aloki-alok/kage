@@ -208,7 +208,7 @@ export async function connectSlack(o: { dir: string; appToken: string; userToken
       meta,
       origin: { channel: m.channel, ts: m.ts, ...(m.thread_ts && m.thread_ts !== m.ts && { thread: m.thread_ts }) },
       ...(agent && { agent: { app: agent.app, ...(agent.tag && { tag: agent.tag }), ...(agent.person && { person: agent.person }) } }),
-      ...(trusted && { trusted: true as const }),
+      ...(trusted && { trusted: person }),
     })
     const r = asked
       ? o.hub.deliver(asked, task, place)
