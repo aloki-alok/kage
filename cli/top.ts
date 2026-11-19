@@ -7,7 +7,7 @@ import { DatabaseSync } from 'node:sqlite'
 import { ago, boardRows, nextRuns, limitLine, pauseLine, watchingNext, whenLabel, type Live, type Row, type State } from '../core/board.ts'
 import { transcriptLine } from '../core/transcript.ts'
 import { costRows, openWaiting } from '../core/ledgers.ts'
-import { filterRows, rowAt, WIDE } from '../core/top-layout.ts'
+import { channels, filterRows, rowAt, WIDE } from '../core/top-layout.ts'
 import { newLines } from '../runtime/transcript-tail.ts'
 import { BG, resize, toText, W } from './top-screen.ts'
 import { drawFrame, TABS, type Hits, type Step, type Tab, type View } from './top-draw.ts'
@@ -34,6 +34,7 @@ let schedules: ReturnType<typeof schedulesIn> = []
 let next = new Map<string, number>(), nextAt = 0
 let board: Row[] = [], rows: Row[] = []
 let costs: { at: number; usd: number; key: string }[] = [], waiting: { thread: string; what: string }[] = [], ledgersAt = 0
+let hubLog = ''
 let kagelets: KageletRow[] = [], kageletsAt = 0, runs: ReturnType<typeof kageletRuns> = []
 let upSec: number | undefined, upAt = 0
 
@@ -46,9 +47,12 @@ let confirm: { kind: 'cut' | 'remove'; target: string } | undefined
 let suspended = false, pick = 0
 let hits: Hits | undefined
 const CAP = dailyCap(settings().config.kagelets)
+const conn = settings().config.connectors
+const CONNECTORS_ON = [conn?.email?.on && 'email', conn?.whatsapp?.on && 'whatsapp', conn?.voice?.on && 'voice', conn?.github && 'github'].filter((x): x is string => !!x)
 const KAGELETS = kageletsDir(DIR)
 
 const read = (f: string) => { try { return readFileSync(`${DIR}/${f}`, 'utf8') } catch { return '' } }
+const tail = (file: string, bytes: number) => { try { const b = readFileSync(file); return b.subarray(Math.max(0, b.length - bytes)).toString('utf8') } catch { return '' } }
 const mtime = (id: string) => { try { return statSync(`${PROJECT}/${id}.jsonl`).mtimeMs } catch { return 0 } }
 const idOf = (key: string) => known.find(k => k.key === key)?.id
 const placeOf = (key: string) => known.find(k => k.key === key)?.place ?? kagelets.find(k => k.key === key)?.name ?? key
@@ -105,6 +109,7 @@ function refresh(now: number) {
     ledgersAt = now
     try { costs = costRows(ledgerText(db, 'costs')).map(c => ({ at: c.at, usd: c.usd, key: c.key })) } catch {}
     try { waiting = openWaiting(ledgerText(db, 'waiting')) } catch {}
+    hubLog = tail(`${DIR}/hub.log`, 200_000)
   }
   if (now - kageletsAt > 3_000) readKageletRows(now)
   for (const r of board) if (r.state !== 'closed') follow(r.key)
@@ -171,7 +176,8 @@ function view(now: number, t: number): View {
   const midnight = new Date(now).setHours(0, 0, 0, 0)
   return {
     now, t, since: now - boot,
-    version: read('version').split(' ')[0] || undefined, slack: read('status').startsWith('connected') && !!live, hubUp: !!live,
+    version: read('version').split(' ')[0] || undefined, hubUp: !!live,
+    channels: channels({ slack: read('status').startsWith('connected'), log: hubLog, on: CONNECTORS_ON }),
     ...(upSec !== undefined && { upSec: upSec + Math.round((now - upAt) / 1000) }),
     spentToday: Math.round(costs.filter(c => c.at >= midnight).reduce((a, c) => a + c.usd, 0) * 100) / 100,
     ...(live && { slots: { used: live.live.filter(l => l.state === 'busy' || l.state === 'asking' || l.state === 'starting').length, max: live.max } }),
