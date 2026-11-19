@@ -43,6 +43,7 @@ export type ToolContext = {
   job: () => string | undefined
   ownerNow: (key: string) => boolean; ownerOnly: (a: Record<string, unknown>) => boolean; ownerActs: (a: Record<string, unknown>) => boolean; pingIn: (channel: string) => boolean
   name: string | undefined
+  unseenMention: (text: string, also?: readonly string[]) => string | undefined
 }
 
 export const threadPing = (o: { title: string; bot: WebClient; user: WebClient; thread: (key: string) => { chat: string; thread?: string } | undefined; posted: (cells: string[]) => void }) =>
@@ -130,6 +131,13 @@ export function sessionTools(o: {
   }
 
   const names: Record<string, string> = {}
+  const seenIds = new Set<string>(), heldOnce = new Set<string>()
+  const unseenMention = (text: string, also: readonly string[] = []) => {
+    const ids = [...text.matchAll(/<@([UW][A-Z0-9]+)>/g)].map(x => x[1]!).filter(id => !seenIds.has(id) && !also.includes(id))
+    const fresh = ids.filter(id => !heldOnce.has(id))
+    for (const id of ids) { if (heldOnce.has(id)) seenIds.add(id); else heldOnce.add(id) }
+    return fresh.length ? `not sent: ${fresh.map(id => `<@${id}>`).join(', ')} is not anyone in this thread's tasks, so the mention may be a wrong or remembered id that pings a stranger. Check who it is; if it is right, send the same message again and it goes.` : undefined
+  }
   async function nameMentions(text: string) {
     for (const [, id] of text.matchAll(/<@([UW][A-Z0-9]+)>/g)) {
       if (names[id!]) continue
@@ -192,7 +200,7 @@ export function sessionTools(o: {
   const ownerOnly = (a: Record<string, unknown>) => ownerNow(`${String(a.channel)}:${String(a.thread_ts)}`)
   const ownerActs = (a: Record<string, unknown>) => ownerOnly(a) && a.channel !== 'voice' && !agents.get(`${a.channel}:${a.thread_ts}`)
   const pingIn = (channel: string) => [...ownerTask.keys()].some(k => k.startsWith(`${channel}:`) && ownerNow(k))
-  const c: ToolContext = { o, Title, bot, user, s: z.string(), taskChannels, ownerTask, unanswered, askers, agents, sentForPeople, dmThread, links, react, post, change, nameMentions, names, append, ledger, filesOf, jobRun: () => job !== undefined || need !== undefined, job: () => job, need: () => need, ownerNow, ownerOnly, ownerActs, pingIn, name: o.kagelet }
+  const c: ToolContext = { o, Title, bot, user, s: z.string(), taskChannels, ownerTask, unanswered, askers, agents, sentForPeople, dmThread, links, react, post, change, nameMentions, names, append, ledger, filesOf, jobRun: () => job !== undefined || need !== undefined, job: () => job, need: () => need, ownerNow, ownerOnly, ownerActs, pingIn, name: o.kagelet, unseenMention }
   const ownerRead = (a: Record<string, unknown>) => ownerOnly(a) && !agents.get(`${a.channel}:${a.thread_ts}`)
   const reads = o.kagelet || o.dreaming ? [] : slackReadTools(user, ownerRead)
   const tools = [...slackTools(c), ...scheduleTools(c), ...kageletTools(c), ...ownerTools(c), ...browserTools(c), ...reads]
@@ -206,6 +214,7 @@ export function sessionTools(o: {
       try { mkdirSync(filesOf(m.meta.channel, m.meta.thread_ts), { recursive: true, mode: 0o700 }) } catch (e) { log('files folder', e) }
       taskChannels.add(m.meta.channel)
       ownerTask.set(key, m.fromOwner === true)
+      for (const [, id] of m.content.matchAll(/\b([UW][A-Z0-9]+)\b/g)) seenIds.add(id!)
       job = m.job
       need = m.need?.name
       jobThread = key
