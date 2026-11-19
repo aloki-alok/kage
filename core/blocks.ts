@@ -19,7 +19,7 @@ const placeOf = (t: Task | undefined) => t ? (t.meta.permalink ? `<${t.meta.perm
 
 export function planDrop(turn: Task[], reason: string): { reply?: string; dm?: string } {
   const t = blockedTask(turn)
-  const plain = oneLine(reason.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')).slice(0, 500)
+  const plain = oneLine(reason).slice(0, 500).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
   const said = plain ? `It said: “${plain}”` : 'It gave no reason.'
   const owner = !!t && senderOf(t) === 'owner'
   const inThread = !!t && answersInThread(t)

@@ -170,7 +170,7 @@ export function sdkSessions(o: {
           connect()
           if (m.type === 'system' && m.subtype === 'session_state_changed') { sawState = true; s.state = m.state; if (m.state === 'running') unseen = false; if (m.state === 'idle') sendAgain() }
           const life = m as { type: string; command_uuid?: string; state?: string }; if (life.type === 'command_lifecycle' && life.state === 'completed') for (const x of s.turn) if (x.uuid === life.command_uuid) x.read = true
-          if (life.type === 'command_lifecycle' && life.state === 'started') started = life.command_uuid
+          if (life.type === 'command_lifecycle') started = life.state === 'started' ? life.command_uuid : life.command_uuid === started ? undefined : started
           const refused = (m.type === 'system' && m.subtype === 'model_refusal_no_fallback') || (m.type === 'assistant' && !m.parent_tool_use_id && m.message.stop_reason === 'refusal')
           if (refused && !blocked) {
             blocked = true
@@ -180,7 +180,12 @@ export function sdkSessions(o: {
           if (ended && HOOK_ENDINGS.includes(ended.kind) && !ended.prompt_kept) {
             const hit = s.turn.filter(x => x.uuid === started)
             o.onDropped?.(key, (hit.length ? hit : s.turn).map(x => x.task), ended.reason ?? '', ended.kind)
-            if (hit.length) { s.turn = s.turn.filter(x => !hit.includes(x)); o.onTurn?.(key, hit.map(x => x.task), undefined, true) }
+            started = undefined
+            if (hit.length) {
+              s.turn = s.turn.filter(x => !hit.includes(x))
+              if (s.turn.length) s.sender = lowestSender(s.turn.map(x => x.task))
+              o.onTurn?.(key, hit.map(x => x.task), undefined, true)
+            }
           }
           if (m.type === 'rate_limit_event' && m.rate_limit_info.status === 'rejected') ({ rateLimitType: window } = m.rate_limit_info, resetsAt = m.rate_limit_info.resetsAt && (m.rate_limit_info.resetsAt < 1e12 ? m.rate_limit_info.resetsAt * 1000 : m.rate_limit_info.resetsAt))
           if (m.type === 'assistant' && !m.parent_tool_use_id) limit = m.error === 'rate_limit' || m.error === 'overloaded' ? m.error : undefined
