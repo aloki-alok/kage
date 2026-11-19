@@ -239,6 +239,26 @@ describe('Kage sessions on the Agent SDK', () => {
     assert.match(String(now.said.at(-1)), /runs now with the owner's tools/)
     t.s.runner.stop('C1:5.5')
   })
+  test("a teammate who writes during the owner's own turn lowers it, and the owner's message runs again with the owner's tools", async () => {
+    const t = setup({ transcript: true, restartMs: 60_000 })
+    t.d.task('C1:5.5', t.task({ content: 'Task from the owner: post the summary in #ops as Kage' }), 0)
+    await tick()
+    const run = t.sdk.runs[0]!
+    run.emit({ type: 'system', subtype: 'session_state_changed', state: 'running' })
+    await tick()
+    t.d.task('C1:5.5', t.task({ fromOwner: false, content: 'Task from Sam: what is the status' }), 1)
+    await tick()
+    assert.match(await callKage(run, 'post_as_kage', { channel: 'C1', thread_ts: '5.5', to: 'CTEST9', text: 'summary' }), /only the owner/)
+    run.emit({ type: 'command_lifecycle', command_uuid: run.uuids[0], state: 'completed' })
+    run.emit({ type: 'command_lifecycle', command_uuid: run.uuids[1], state: 'completed' })
+    run.emit({ type: 'result', total_cost_usd: 1 })
+    run.emit({ type: 'system', subtype: 'session_state_changed', state: 'idle' })
+    await tick()
+    const now = t.sdk.runs.at(-1)!
+    assert.match(String(now.said.at(-1)), /runs now with the owner's tools[\s\S]*post the summary in #ops as Kage/)
+    assert.match(await callKage(now, 'post_as_kage', { channel: 'C1', thread_ts: '5.5', to: 'CTEST9', text: 'summary' }), /posted as Kage/)
+    t.s.runner.stop('C1:5.5')
+  })
   test("the owner's folded message still runs at the owner's trust when the process exits before it says idle", async () => {
     const t = setup({ transcript: true, restartMs: 60_000 })
     t.d.task('C1:5.5', t.task({ fromOwner: false, content: 'Task from Sam: check the logs' }), 0)
