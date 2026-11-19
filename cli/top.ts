@@ -166,7 +166,7 @@ async function pollHub() {
   if (r?.type === 'board') { live = r; liveAt = Date.now() }
 }
 
-const TONE: Record<string, string> = { fire: 'R', lantern: 'Y', white: 'w', muted: 'm', dim: 'd' }
+const TONE: Record<string, string> = { work: 'R', you: 'Y', white: 'w', muted: 'm', dim: 'd' }
 const tz = () => ` ${new Intl.DateTimeFormat([], { timeZoneName: 'short' }).formatToParts(new Date()).find(p => p.type === 'timeZoneName')?.value ?? ''}`
 const WORD = ['█▄▀ ▄▀█ █▀▀ █▀▀', '█ █ █▀█ █▄█ ██▄']
 function rowLabel(r: Row, now: number) {
