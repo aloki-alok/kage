@@ -4,7 +4,7 @@ import { log } from '../runtime/log.ts'
 import type { Conversation } from '../core/conversations.ts'
 import { meetingTask, parseMeeting } from '../core/meeting.ts'
 import { askOf, askTask, meetCall, meetKey, meetLink, parseSegments, sameQuestion, type Line } from '../core/meetbot.ts'
-import type { Delivery } from '../core/sessions.ts'
+import { startFailedNote, type Delivery } from '../core/sessions.ts'
 import type { Task } from '../core/task.ts'
 import type { Inbox } from '../runtime/store.ts'
 import { slackPlain } from '../core/outbound.ts'
@@ -14,6 +14,7 @@ import { taskAsOther } from '../core/gate.ts'
 const MAX_BODY = 5_000_000
 
 export function connectMeeting(o: {
+  startError?: () => string | undefined
   token: string; port: number; botDm: string
   post: (text: string) => Promise<string | undefined>
   deliver: (c: Conversation, task: Task, place: string) => Delivery
@@ -51,7 +52,7 @@ export function connectMeeting(o: {
       meta: { channel: o.botDm, thread_ts: thread, place, permalink: m.link },
       origin: { channel: o.botDm, ts: thread }, source,
     })
-    if (o.deliver({ connector: 'slack', chat: o.botDm, thread, kind: 'dm' }, task, place) === 'failed') o.notify(`Could not start a session for ${place}.`)
+    if (o.deliver({ connector: 'slack', chat: o.botDm, thread, kind: 'dm' }, task, place) === 'failed') o.notify(startFailedNote(place, o.startError?.()))
     cap.add(t)
     return 'done'
   }

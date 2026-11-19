@@ -1,5 +1,8 @@
 
 export type Delivery = 'sent' | 'starting' | 'queued' | 'held' | 'failed'
+export const startFailedNote = (place: string, why: string | undefined, scheduled = false) =>
+  `Kage could not start a session for ${scheduled ? `a scheduled run in ${place}, so that run did not happen` : `${place}, so that message has no answer yet`}.${why ? ` Cause: ${why.replace(/\s+/g, ' ').slice(0, 200)}.` : ''}
+Run kage doctor and do the fix it names, then ${scheduled ? 'the next scheduled run tries again' : 'tag Kage there again'}.`
 type Unquiet = 'busy' | 'asking' | 'starting' | 'watching' | 'just active' | 'waiting for a slot' | 'open in a terminal'
 
 export type Runner<M = unknown> = { start(key: string, id: string, first?: M): void; stop(key: string): void; lastActivity(key: string): number; busy(key: string): boolean | 'watching'; outlivesHub?(key: string): boolean }
@@ -43,6 +46,7 @@ export class Dispatcher<M> {
     for (const k of keys) if (this.#ids.has(k)) { this.#live.add(k); this.#startedAt.set(k, now) }
   }
 
+  lastStartError(): string | undefined { return this.#startError }
   task(key: string, msg: M, now: number): Delivery {
     this.#touched.set(key, now)
     this.#ending.delete(key)
@@ -251,13 +255,16 @@ export class Dispatcher<M> {
     return this.#busy(key) ? 'busy' : 'ready'
   }
 
+  #startError: string | undefined
   #start(key: string, now: number): boolean {
     if (!this.#ids.has(key)) this.#ids.set(key, this.#opts.newId())
     try {
       this.#runner.start(key, this.#ids.get(key)!, this.#pending.get(key)?.[0])
-    } catch {
+    } catch (e) {
+      this.#startError = String((e as Error)?.message ?? e)
       return false
     }
+    this.#startError = undefined
     this.#live.add(key)
     this.#startedAt.set(key, now)
     return true

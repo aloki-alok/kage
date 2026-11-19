@@ -21,7 +21,7 @@ import { protectConfig } from '../runtime/path-guards.ts'
 import { stopLine } from '../core/board.ts'
 import { modelFor, placeFor, sessionKey, type Conversation, type Lane } from '../core/conversations.ts'
 import { mayStop, senderOf } from '../core/gate.ts'
-import { Dispatcher, mixRunners } from '../core/sessions.ts'
+import { Dispatcher, mixRunners, startFailedNote } from '../core/sessions.ts'
 import { readSettings, setKey, sweepImported } from '../runtime/config-files.ts'
 import { configWatcher } from '../runtime/config-watch.ts'
 import { DEFAULT_MODEL, unknownNames } from '../core/config.ts'
@@ -339,8 +339,8 @@ function failed(m: ToSession) {
   if (m.type !== 'task') return
   limits.turn('', [m], undefined, Date.now())
   log('could not deliver to a session:', m.meta.place, m.origin.ts, `(attach: tmux attach -t ${NAME})`)
-  if (!m.origin.ts) void owner.say(`Could not start a session for a scheduled run in ${m.meta.place}.`)
-  else if (!answersInThread(m)) void owner.say(`Could not start a session for ${m.meta.place}.`)
+  if (!m.origin.ts) void owner.say(startFailedNote(m.meta.place, d.lastStartError(), true))
+  else if (!answersInThread(m)) void owner.say(startFailedNote(m.meta.place, d.lastStartError()))
   else slack.failed(m)
 }
 

@@ -5,7 +5,7 @@ import { githubEvent } from '../core/github.ts'
 import { signedSha256 } from '../core/signature.ts'
 import { slackPlain } from '../core/outbound.ts'
 import { hourCap, listen, readBody } from './webhook.ts'
-import type { Delivery } from '../core/sessions.ts'
+import { startFailedNote, type Delivery } from '../core/sessions.ts'
 import type { Task } from '../core/task.ts'
 import type { Inbox, Saved } from '../runtime/store.ts'
 import { taskAsOther } from '../core/gate.ts'
@@ -13,6 +13,7 @@ import { taskAsOther } from '../core/gate.ts'
 const MAX_BODY = 1_000_000
 
 export function connectGithub(o: {
+  startError?: () => string | undefined
   saved: Saved; secret: string; login: string; port: number; botDm: string
   post: (text: string, thread?: string) => Promise<string | undefined>
   deliver: (c: Conversation, task: Task, place: string) => Delivery
@@ -57,7 +58,7 @@ export function connectGithub(o: {
       meta: { channel: o.botDm, thread_ts: thread, place, permalink: e.url },
       origin: { channel: o.botDm, ts: thread }, ...(source && { source }),
     })
-    if (o.deliver({ connector: 'slack', chat: o.botDm, thread, kind: 'dm' }, task, task.meta.place) === 'failed') o.notify(`Could not start a session for GitHub ${e.thread}.`)
+    if (o.deliver({ connector: 'slack', chat: o.botDm, thread, kind: 'dm' }, task, task.meta.place) === 'failed') o.notify(startFailedNote(`GitHub ${e.thread}`, o.startError?.()))
     return true
   }
 
