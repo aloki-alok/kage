@@ -55,51 +55,46 @@ test('a link says on the card and in the snapshot which site it opens', () => {
 
 test('a role-less row is judged by its name, like a button', () => {
   const row = (name: string) => ({ ref: 1, role: 'element', name })
-  for (const n of ['Send', 'Delete', 'Asha Rao Please send the invoice']) assert.ok(majorAct({ action: 'click', ref: 1 }, row(n)), n)
-  assert.equal(majorAct({ action: 'click', ref: 1 }, row('Asha Rao Are you free today?')), undefined)
+  for (const n of ['Delete', 'Asha Rao Please delete the invoice']) assert.ok(majorAct({ action: 'click', ref: 1 }, row(n)), n)
+  for (const n of ['Send', 'Asha Rao Are you free today?']) assert.equal(majorAct({ action: 'click', ref: 1 }, row(n)), undefined, n)
 })
 
-test('a step is major when it spends, deletes, sends as the owner, grants access or ships', () => {
+test('only a step that cannot be undone asks the owner: money, deleting, access, or shipping to prod (#424)', () => {
   const el = (name: string) => ({ ref: 1, role: 'button', name })
-  for (const n of ['Pay now', 'Buy', 'Delete project', 'Send', 'Post', 'Allow', 'Reinstall to Workspace', 'Authorize', 'Merge pull request', 'Deploy', 'Invite people', 'Confirm transfer'])
+  for (const n of ['Pay now', 'Buy', 'Place order', 'Delete project', 'Remove member', 'Erase all data', 'Allow', 'Reinstall to Workspace', 'Authorize', 'Merge pull request', 'Deploy', 'Confirm transfer', 'Cancel subscription', 'Close account', 'Deactivate', 'Generate new token', 'I understand, change repository visibility', 'Archive', 'Supprimer', '削除', 'Deleting…'])
     assert.ok(majorAct({ action: 'click', ref: 1 }, el(n)), n)
-  for (const n of ['Save Changes', 'Add an OAuth Scope', 'Next', 'Search', 'Settings'])
-    assert.equal(majorAct({ action: 'click', ref: 1 }, el(n)), undefined, n)
-  assert.equal(majorAct({ action: 'open', url: 'https://x.example/' }, undefined, { openHosts: ['x.example'] }), undefined)
+  for (const n of ['Send', 'Post', 'Reply', 'Comment', 'Submit', 'Invite people', 'Share', 'Publish', 'Unsubscribe', 'OK', 'Yes', 'Continue', '', 'Save Changes', 'Next', 'Search', 'Cancel'])
+    assert.equal(majorAct({ action: 'click', ref: 1 }, el(n)), undefined, JSON.stringify(n))
   assert.equal(majorAct({ action: 'type', ref: 1, text: 'hi' }, { ref: 1, role: 'textbox', name: 'Message #general' }), undefined)
-  assert.ok(majorAct({ action: 'press', key: 'Enter' }, { ref: 1, role: 'textbox', name: 'Message #general' }))
-  assert.equal(majorAct({ action: 'press', key: 'Enter' }, { ref: 1, role: 'searchbox', name: 'Search' }), undefined)
+  assert.equal(majorAct({ action: 'press', key: 'Enter' }, { ref: 1, role: 'textbox', name: 'Message #general' }), undefined)
+  assert.ok(majorAct({ action: 'press', key: 'Enter' }, { ref: 1, role: 'textbox', name: 'Type DELETE to confirm' }))
 })
 
-test('labels that hide what a step does are major, and so is leaving for a site no tab has open', () => {
+test('going to another site, or a click after typing, runs with no card unless the step itself cannot be undone (#424)', () => {
   const click = { action: 'click', ref: 1 } as const
   const el = (name: string) => ({ ref: 1, role: 'button', name })
-  for (const n of ['', 'OK', 'Yes', 'Continue', 'I understand, change repository visibility', 'Comment', 'Reply', 'Unsubscribe', 'Cancel subscription', 'Close account', 'Deactivate', 'Generate new token', 'Supprimer', '削除', 'Sends', 'Deleting…', 'Save (styled text: check the picture)'])
-    assert.ok(majorAct(click, el(n)), JSON.stringify(n))
-  assert.equal(majorAct(click, el('Cancel')), undefined)
-  const go = { action: 'navigate', url: 'https://evil.example/?d=secret' } as const
-  assert.ok(majorAct(go, undefined, { openHosts: ['mail.example.com'] }))
-  assert.equal(majorAct({ action: 'open', url: 'https://mail.example.com/inbox' }, undefined, { openHosts: ['mail.example.com'] }), undefined)
-  assert.ok(majorAct(click, el('Save'), { typed: ['Forward to = x@evil.example'] }))
-  assert.ok(majorAct({ action: 'press', key: 'Enter' }, { ref: 1, role: 'textbox', name: 'Amount' }, { typed: ['Amount = 500'] }))
-  assert.equal(majorAct(click, el('Save')), undefined)
+  assert.equal(majorAct({ action: 'navigate', url: 'https://other.example/' }), undefined)
+  assert.equal(majorAct({ action: 'open', url: 'https://other.example/' }), undefined)
+  assert.equal(majorAct(click, el('Save'), { typed: ['Forward to = x@other.example'] }), undefined)
+  assert.ok(majorAct(click, el('Pay'), { typed: ['Amount = 500'] }))
+  assert.ok(majorAct({ action: 'press', key: 'Enter' }, { ref: 1, role: 'textbox', name: 'Confirm' }, { typed: ['Repository name to delete = kage'] }))
 })
 
-test('invisible characters in a control name do not raise a card, and do not hide a major word', () => {
+test('invisible characters or look-alike letters never hide a word that cannot be undone, and alone raise no card (#424)', () => {
   const click = { action: 'click', ref: 1 } as const
   const enter = { action: 'press', key: 'Enter' } as const
   const row = (name: string) => ({ ref: 1, role: 'element', name })
-  const plain = 'Same Same You can call Same Same within the next 7 days.​ 4 November '
+  const plain = 'Same Same You can call Same Same within the next 7 days.\u200b 4 November '
   assert.equal(majorAct(click, row(plain)), undefined)
-  assert.equal(majorAct(enter, { ref: 1, role: 'searchbox', name: 'Search​ ' }), undefined)
-  for (const n of ['Se​nd', 'Del­ete', 'Pay now']) {
+  assert.equal(majorAct(enter, { ref: 1, role: 'searchbox', name: 'Search\u200b ' }), undefined)
+  for (const n of ['De\u200blete', 'Del\u00adete', 'Pay now', 'D\u0435lete', 'P\u0430y now']) {
     assert.ok(majorAct(click, row(n)), JSON.stringify(n))
     assert.ok(majorAct(enter, { ref: 1, role: 'textbox', name: n }), JSON.stringify(n))
   }
-  for (const n of ['नमस्ते', 'Asha \u{1F600}', 'Sаme Same']) {
-    assert.ok(majorAct(click, row(n)), JSON.stringify(n))
-    assert.ok(majorAct(enter, { ref: 1, role: 'searchbox', name: n }), JSON.stringify(n))
+  for (const n of ['\u0928\u092e\u0938\u094d\u0924\u0947', 'Asha \u{1F600}', 'Caf\u00e9', 'Se\u200bnd']) {
+    assert.equal(majorAct(click, row(n)), undefined, JSON.stringify(n))
+    assert.equal(majorAct(enter, { ref: 1, role: 'searchbox', name: n }), undefined, JSON.stringify(n))
   }
-  assert.equal(majorAct(click, row('Se​nd'))?.includes('​'), false)
-  assert.equal(actCard(click, { url: 'https://x.example/', el: row('Se​nd') }), 'x.example: click element "Send"')
+  assert.equal(majorAct(click, row('De\u200blete'))?.includes('\u200b'), false)
+  assert.equal(actCard(click, { url: 'https://x.example/', el: row('Se\u200bnd') }), 'x.example: click element "Send"')
 })
