@@ -1,6 +1,6 @@
 
 import { noChannelTag, oneLine } from './text.ts'
-import { kageFooter } from './outbound.ts'
+import { findSecret, kageFooter } from './outbound.ts'
 
 export type WaMessage = { chat: string; id: string; fromMe: boolean; viaApi?: boolean; text: string; forwarded?: boolean; edited?: boolean }
 type Ctx = { contextInfo?: { isForwarded?: boolean } }
@@ -73,7 +73,10 @@ export function guardPrompt(brief: string, history: WaLine[], reply: string, own
   return { system, prompt: `${owner}'s instruction for this chat: ${oneLine(brief) || 'none'}\n\nChat:\n${lines.join('\n')}\n\nMessage to check:\n${oneLine(reply)}` }
 }
 
-export const ownerNote = (text: string, _name: string): string | undefined => text
+export const ownerNote = (text: string, name: string): string | undefined => findSecret(text) ? undefined : text
+  .replace(/<(https?:[^|>]+)\|([^>]+)>/g, '$2 ($1)').replace(/<(https?:[^>]+)>/g, '$1')
+  .replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&amp;/g, '&')
+  .replace(tagFor(name), (m, lead: string) => `${lead}@\u2060${m.slice(lead.length + 1)}`)
 export const waOutgoing = (text: string, title: string) => `${text}\n\n_${kageFooter(title)}_`
 export const withoutFooter = (text: string) => text.replace(/\n\n_🥷 [^\n]*_$/u, '')
 

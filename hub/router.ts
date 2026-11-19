@@ -172,7 +172,7 @@ const slack = await connectSlack({
 })
 const waOn = config.connectors?.whatsapp?.on !== false && !!secrets.waha?.WAHA_API_KEY
 const owner = ownerChannel({ pick: () => config.owner?.channel, slack: slack.notifyOwner,
-  ...waOn && { whatsapp: wahaToOwner(wahaUrl(config.connectors?.whatsapp?.wahaUrl), secrets.waha!.WAHA_API_KEY!, Title) } })
+  ...waOn && { whatsapp: wahaToOwner(wahaUrl(config.connectors?.whatsapp?.wahaUrl), secrets.waha!.WAHA_API_KEY!, Title, NAME) } })
 
 if (existsSync(THREADS)) {
   const r = store.importThreads(JSON.parse(readFileSync(THREADS, 'utf8')), slack.ids.botDm, Date.now())
