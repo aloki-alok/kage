@@ -117,6 +117,20 @@ describe("a session's Kage tools", () => {
     assert.ok(s.calls.includes('bot post C1 done'))
     assert.ok(!s.calls.some(c => c.includes('COTHER')))
   })
+  test('a mention of a member id the session never saw is held once and named; sending it again posts it (#322)', async () => {
+    const s = setup()
+    s.t.onTask({ ...s.task(), content: 'Task from Sam: ask <@UMATE0002> about the deploy\n> [other:UMATE0003 1.1] I can help' })
+    await s.call('reply', { channel: 'C1', thread_ts: '5.5', text: 'cc <@UMATE0002> and <@UMATE0003>' })
+    assert.equal(s.posts.at(-1)!.text, 'cc <@UMATE0002> and <@UMATE0003>')
+    const before = s.posts.length
+    const held = await s.call('reply', { channel: 'C1', thread_ts: '5.5', text: 'pinging <@UNEVER999> on this' })
+    assert.equal(held.isError, true)
+    assert.match(held.text, /UNEVER999/)
+    assert.equal(s.posts.length, before, 'nothing posted')
+    const again = await s.call('reply', { channel: 'C1', thread_ts: '5.5', text: 'pinging <@UNEVER999> on this' })
+    assert.equal(again.isError, undefined, again.text)
+    assert.equal(s.posts.at(-1)!.text, 'pinging <@UNEVER999> on this')
+  })
   test('a reply to an agent\'s task tags the agent on every part of a split post; a private reply and a person\'s task get no tag', async () => {
     const s = setup()
     s.t.onTask({ ...s.task({ fromOwner: false }), agent: { app: 'ATEST0001', tag: 'UAGENT001' } })
@@ -361,7 +375,7 @@ describe("a session's Kage tools", () => {
   })
   test('a person mention keeps its <@id> on any task, so Slack highlights it', async () => {
     const s = setup()
-    s.t.onTask(s.task({ fromOwner: false }))
+    s.t.onTask({ ...s.task({ fromOwner: false }), content: 'Task from Sam: who is <@U1>?' })
     await s.call('reply', { channel: 'C1', thread_ts: '5.5', text: 'ask <@U1>' })
     s.t.onTask(s.task({ channel: 'C2' }))
     await s.call('reply', { channel: 'C2', thread_ts: '5.5', text: 'ask <@U1>' })
