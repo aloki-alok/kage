@@ -1,6 +1,7 @@
 import { describe, test } from 'node:test'
 import assert from 'node:assert/strict'
-import { trailEvent, trailLine, askedFrom, cardAt, dailyDue, expiredWaiting, grantsLine, heldLine, lastTotals, openWaiting, postedBy, spendSince, staleWaiting, selfReview, tsvRow, turnCost } from '../ledgers.ts'
+import { trailEvent, trailLine, askedFrom, cardAt, dailyDue, expiredWaiting, grantsLine, heldLine, lastTotals, openWaiting, postedBy, spendSince, unanswered, staleWaiting, selfReview, tsvRow, turnCost } from '../ledgers.ts'
+import type { Task } from '../task.ts'
 
 describe('the daily note of what waits on the owner', () => {
   const day = 24 * 3600_000
@@ -199,4 +200,33 @@ test('the daily note lists what the reviewer let run in the day before it, by ka
   assert.equal(heldLine(rows, Date.parse('2026-11-16T05:00:00Z'), Date.parse('2026-11-17T05:00:00Z')),
     '*Let run by the reviewer (3)*\n• ops: a forced or recursive delete ×2\n• docs: a git step that drops work')
   assert.equal(heldLine(rows, Date.parse('2026-11-17T05:00:00Z'), Date.parse('2026-11-18T05:00:00Z')), undefined)
+})
+
+describe('unanswered: a turn that ended with nothing posted for its message', () => {
+  const task = (channel: string, ts: string): Task => ({ type: 'task', content: 'thanks!', fromOwner: false, meta: { channel, thread_ts: '100.0', place: '#x', permalink: '' }, origin: { channel, ts, thread: '100.0' } })
+  const row = (channel: string, ts: string, by: string, key = `${channel}:100.0`) => tsvRow(['2026-11-19T10:00:00.000Z', channel, ts, by, key])
+  test('a thanks that got no reply is unanswered', () => {
+    assert.deepEqual(unanswered([task('C0TEST1', '200.5')], row('C0TEST1', '150.0', 'bot')).map(t => t.origin.ts), ['200.5'])
+  })
+  test('a reply after the message, as Kage or as the owner, answers it', () => {
+    assert.deepEqual(unanswered([task('C0TEST1', '200.5')], row('C0TEST1', '201.0', 'bot')), [])
+    assert.deepEqual(unanswered([task('C0TEST1', '200.5')], row('C0TEST1', '201.0', 'owner')), [])
+  })
+  test('ts compare as numbers, not text: 99.9 is before 100.0', () => {
+    assert.deepEqual(unanswered([task('C0TEST1', '100.0')], row('C0TEST1', '99.9', 'bot')).length, 1)
+    assert.deepEqual(unanswered([task('C0TEST1', '9.5')], row('C0TEST1', '10.0', 'bot')), [])
+  })
+  test('a post in another channel, a deletion or a canvas does not answer it', () => {
+    const rows = row('C0TEST2', '300.0', 'bot') + row('C0TEST1', '300.0', 'deleted') + row('C0TEST1', '300.0', 'canvas')
+    assert.equal(unanswered([task('C0TEST1', '200.5')], rows).length, 1)
+  })
+  test('an approval card posted after the message means Kage is waiting on the owner, not done', () => {
+    assert.deepEqual(unanswered([task('C0TEST1', '200.5')], row('D0TEST9', '210.0', 'card', 'p1')), [])
+  })
+  test('a scheduled run, a kagelet handoff and a message with no Slack ts are never marked', () => {
+    const scheduled = { ...task('C0TEST1', '200.5'), scheduled: true as const }
+    const noTs = { ...task('C0TEST1', ''), origin: { channel: 'C0TEST1', ts: '' } }
+    const handoff = { ...task('C0TEST1', '200.5'), handoff: { chain: 'c', message: 'm', hops: 1 } }
+    assert.deepEqual(unanswered([scheduled, noTs, handoff], ''), [])
+  })
 })

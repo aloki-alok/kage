@@ -53,6 +53,7 @@ import { checkScopes } from '../runtime/slack-scopes.ts'
 import { scopeDm } from '../core/slack-scopes.ts'
 import { startTelemetry } from './telemetry.ts'
 import { answersInThread, blockedTask, planDrop } from '../core/blocks.ts'
+import { unanswered } from '../core/ledgers.ts'
 
 const { ENV_FILE, NAME, Title, TEAMMATES, TRUSTED_APPS, config, secrets, bot, user } = load()
 const { harness = {}, kagelets: kl = {}, afk = {}, connectors: conn = {} } = config
@@ -266,7 +267,7 @@ const d: Dispatcher<ToSession> = new Dispatcher<ToSession>(runner, {
   evictMs: 2 * 60_000, newId: randomUUID, saved,
 })
 const limits = limitPause({
-  store, log, event: detail => ledgers.event({ kind: 'limit', who: 'hub', trace: '', detail }), settle: (tasks, done) => { kag.routes.settle(tasks, done); kag.needs.settle(tasks, done) },
+  store, log, event: detail => ledgers.event({ kind: 'limit', who: 'hub', trace: '', detail }), settle: (tasks, done) => { kag.routes.settle(tasks, done); kag.needs.settle(tasks, done); if (done) for (const t of unanswered(tasks, ledgers.text('posted'))) if (answersInThread(t)) slack.seen(t) },
   tellOwner: text => void slack.notifyOwner(text),
   end: key => d.end(key).filter(m => m.type === 'task'),
   defers: key => !!sdk && !onPane.has(key),
