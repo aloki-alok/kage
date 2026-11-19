@@ -15,6 +15,12 @@ function canvasError(e: any): { isError: true; text: string } {
 }
 
 export function slackTools(c: ToolContext): KageTool[] {
+  const dmLinksHeld = new Set<string>()
+  const dmLinkHeld = (text: string) => {
+    const fresh = [...text.matchAll(/slack\.com\/archives\/(D[A-Z0-9]+)\/p\d+/g)].map(x => x[0]).filter(l => !dmLinksHeld.has(l))
+    for (const l of fresh) dmLinksHeld.add(l)
+    return fresh.length ? `not sent: ${fresh.join(', ')} links a private DM, and everyone in this thread would see it. Say the message went out, in one line, with no link and no summary of what it said. If the asker asked for the link, send the same message again and it goes.` : undefined
+  }
   const { o, Title, bot, user, s, taskChannels, ownerTask, unanswered, askers, agents, sentForPeople, dmThread, links, react, post, change, nameMentions, names, append, ledger, filesOf, ownerNow, ownerOnly, ownerActs, pingIn, name } = c
   const tools: KageTool[] = [{
     name: 'reply',
@@ -35,7 +41,7 @@ export function slackTools(c: ToolContext): KageTool[] {
       const a = args as { channel: string; thread_ts: string; text: string; private?: boolean; owner_asked?: boolean; waiting?: string; waiting_on?: string; mark?: keyof typeof MARKS; wide?: boolean; tag_agent?: boolean }
       const key = `${a.channel}:${a.thread_ts}`
       if (!a.private && !taskChannels.has(a.channel)) return { isError: true, text: 'refused: no task came from that channel; use private=true' }
-      const refusal = secretRefusal(a.text, { private: a.private, ownerAsked: a.owner_asked, fromOwner: ownerNow(key) }) ?? (a.private ? undefined : c.unseenMention(a.text))
+      const refusal = secretRefusal(a.text, { private: a.private, ownerAsked: a.owner_asked, fromOwner: ownerNow(key) }) ?? (a.private ? undefined : c.unseenMention(a.text)) ?? (a.private || a.channel.startsWith('D') ? undefined : dmLinkHeld(a.text))
       if (refusal) return { isError: true, text: refusal }
       if (a.channel === 'voice') {
         if (a.private) return { isError: true, text: 'refused: a voice call has no private reply' }
