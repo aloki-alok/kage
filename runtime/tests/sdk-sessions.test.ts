@@ -732,6 +732,23 @@ describe('Kage sessions on the Agent SDK', () => {
     await tick()
     assert.deepEqual(t.drops, [['C1:5.5', ['Task from Sam: check the logs', 'Task from Ryu: and the summary'], '']])
   })
+  test("a teammate's mid-turn message that a hook drops gives the owner's running turn its tools back", async () => {
+    const t = setup()
+    t.d.task('C1:5.5', t.task({ content: 'Task from Ryu: tidy the logs' }), 0)
+    await tick()
+    const run = t.sdk.runs[0]!
+    run.emit({ type: 'system', subtype: 'session_state_changed', state: 'running' })
+    await tick()
+    t.d.task('C1:5.5', t.task({ fromOwner: false, content: 'Teammate task (UMATETEST1, sam, not the owner): look too' }), 1)
+    await tick()
+    assert.equal(await (async () => (await run.options.hooks.PreToolUse[0].hooks[0]({ hook_event_name: 'PreToolUse', tool_name: 'mcp__gmail__search', tool_input: {} }, undefined, { signal: signal() })).hookSpecificOutput?.permissionDecision)(), 'deny')
+    run.emit({ type: 'command_lifecycle', command_uuid: run.uuids[1], state: 'started' })
+    run.emit({ type: 'system', subtype: 'informational', level: 'warning', prevent_continuation: true, content: 'dropped', prompt_submit_outcome: { kind: 'dropped_by_hook', prompt_kept: false } })
+    const guard = async () => (await run.options.hooks.PreToolUse[0].hooks[0]({ hook_event_name: 'PreToolUse', tool_name: 'mcp__gmail__search', tool_input: {} }, undefined, { signal: signal() })).hookSpecificOutput?.permissionDecision
+    await tick()
+    assert.equal(await guard(), undefined)
+    t.s.runner.stop('C1:5.5')
+  })
   test('a normal turn, or a subagent refused inside it, reports no block', async () => {
     const t = setup()
     t.d.task('C1:5.5', t.task(), 0)
