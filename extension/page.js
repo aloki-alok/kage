@@ -16,6 +16,29 @@ globalThis.__kage ??= (() => {
   const SECRET_NAME = /otp|token|csrf|secret|cvc|cvv|card.?num|ssn|\bpin\b|passw/i
 
   const clean = s => (s ?? '').replace(/\s+/g, ' ').trim()
+  // What the owner sees while Kage acts: a ring where it clicks or types, and a pill in the corner. Styles go
+  // through the CSSOM, which a page's CSP allows, in a closed shadow root the page's CSS cannot reach. Clicks
+  // pass through it (pointer-events: none), so elementFromPoint in prepare still sees only the page.
+  let mark, hideAt = 0
+  const showMark = (x, y) => {
+    if (!mark?.host.isConnected) {
+      const host = document.createElement('kage-mark')
+      host.style.cssText = 'all: initial; position: fixed; inset: 0; z-index: 2147483647; pointer-events: none; display: block'
+      const root = host.attachShadow({ mode: 'closed' })
+      const ring = document.createElement('div'), pill = document.createElement('div')
+      ring.style.cssText = 'position: fixed; width: 28px; height: 28px; margin: -17px 0 0 -17px; border: 3px solid #2563eb; border-radius: 50%; box-shadow: 0 0 0 4px rgba(37, 99, 235, .25); transition: left .15s, top .15s'
+      pill.style.cssText = 'position: fixed; right: 16px; bottom: 16px; padding: 6px 12px; border-radius: 999px; background: #111827; color: #fff; font: 500 12px/1.4 system-ui, sans-serif'
+      pill.textContent = 'Kage is using this tab'
+      root.append(ring, pill)
+      document.documentElement.append(host)
+      mark = { host, ring }
+    }
+    mark.host.style.display = 'block'
+    mark.ring.style.display = x === undefined ? 'none' : 'block'
+    if (x !== undefined) { mark.ring.style.left = `${x}px`; mark.ring.style.top = `${y}px` }
+    hideAt = Date.now() + 5000
+    setTimeout(() => { if (Date.now() >= hideAt && mark) mark.host.style.display = 'none' }, 5100)
+  }
   const refFor = el => {
     let ref = refOf.get(el)
     if (!ref) { ref = next++; refOf.set(el, ref); byRef.set(ref, new WeakRef(el)) }
@@ -124,6 +147,7 @@ globalThis.__kage ??= (() => {
         if (typeof el.select === 'function') el.select()
         else if (el.isContentEditable) { const range = document.createRange(); range.selectNodeContents(el); const sel = getSelection(); sel.removeAllRanges(); sel.addRange(range) }
       }
+      showMark(x, y)
       return { url: location.href, x, y }
     },
     // Before a key: the same site, and focus still on the control the owner's card named. A key with focus on
@@ -133,6 +157,8 @@ globalThis.__kage ??= (() => {
       const f = focusedEl(), d = f ? describe(f) : undefined
       if (!d) return { refused: 'no named control has focus, so it is not clear where the key would land: click the field first' }
       if (expect && (d.role !== expect.role || d.name !== expect.name)) return { refused: 'focus moved since the owner said yes' }
+      const r = f.getBoundingClientRect()
+      showMark(r.left + r.width / 2, r.top + r.height / 2)
       return { url: location.href }
     },
     // The control's box in the viewport, after scrolling it into view, so the extension can crop a picture of it.
