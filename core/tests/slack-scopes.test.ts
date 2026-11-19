@@ -1,6 +1,6 @@
 import { describe, test } from 'node:test'
 import assert from 'node:assert/strict'
-import { BOT_SCOPES, USER_SCOPES, missingScopes, scopeLines, scopeDm, manifestUrl, upgradeSteps } from '../slack-scopes.ts'
+import { BOT_SCOPES, USER_SCOPES, missingScopes, scopeLines, scopeDm, manifestUrl, upgradeSteps, withScopes, pasteSteps, installUrl } from '../slack-scopes.ts'
 
 describe('missingScopes', () => {
   test('lists wanted scopes the app lacks, in wanted order', () => {
@@ -53,20 +53,49 @@ describe('scopeDm: once per distinct missing set', () => {
   })
 })
 
-describe('kage slack upgrade steps', () => {
-  test('the page is the app manifest of this team and app', () => {
-    assert.equal(manifestUrl('T1', 'A1'), 'https://app.slack.com/app-settings/T1/A1/app-manifest')
+describe('withScopes: Kage edits the manifest itself', () => {
+  const app = { display_information: { name: 'K' }, oauth_config: { scopes: { user: ['search:read'], bot: ['chat:write'], user_optional: ['lists:read'] }, pkce_enabled: false }, settings: { interactivity: { is_enabled: true } } }
+  test('appends each missing scope to its list and keeps every other field', () => {
+    const m = withScopes(app, { bot: ['files:write'], user: ['pins:read', 'dnd:read'] })!
+    assert.deepEqual(m.oauth_config.scopes, { user: ['search:read', 'pins:read', 'dnd:read'], bot: ['chat:write', 'files:write'], user_optional: ['lists:read'] })
+    assert.deepEqual({ ...m, oauth_config: undefined }, { ...app, oauth_config: undefined })
+    assert.equal(m.oauth_config.pkce_enabled, false)
   })
-  test('names each missing scope under its list, never asks for a whole manifest, then reinstall', () => {
-    const t = upgradeSteps({ bot: ['files:write'], user: ['files:read', 'mpim:write'] }, 'https://x.test/m').join('\n')
-    assert.match(t, /oauth_config\.scopes\.user.*files:read, mpim:write/)
-    assert.match(t, /oauth_config\.scopes\.bot.*files:write/)
+  test('never adds a scope twice, and does not change the input', () => {
+    const m = withScopes(app, { bot: ['chat:write'], user: [] })!
+    assert.deepEqual(m.oauth_config.scopes.bot, ['chat:write'])
+    assert.deepEqual(app.oauth_config.scopes.user, ['search:read'])
+  })
+  test('a list the manifest lacks is created', () => {
+    assert.deepEqual(withScopes({ oauth_config: { scopes: { bot: ['a'] } } }, { bot: [], user: ['b'] })!.oauth_config.scopes, { bot: ['a'], user: ['b'] })
+  })
+  test('a manifest of the wrong shape gives undefined, so Kage changes nothing', () => {
+    for (const bad of [null, 3, 'x', [], { oauth_config: 1 }, { oauth_config: { scopes: { user: 'x' } } }, { oauth_config: { scopes: { bot: [1] } } }])
+      assert.equal(withScopes(bad, { bot: [], user: ['b'] }), undefined, JSON.stringify(bad))
+  })
+})
+
+describe('kage slack upgrade steps', () => {
+  test('the pages are the app manifest and the install page of this app', () => {
+    assert.equal(manifestUrl('T1', 'A1'), 'https://app.slack.com/app-settings/T1/A1/app-manifest')
+    assert.equal(installUrl('A1'), 'https://api.slack.com/apps/A1/install-on-team')
+  })
+  test('after Kage saved the manifest, only the reinstall is left', () => {
+    const t = upgradeSteps('https://x.test/i').join('\n')
+    assert.match(t, /https:\/\/x\.test\/i/)
+    assert.match(t, /Reinstall to Workspace/)
+    assert.doesNotMatch(t, /manifest/i)
+  })
+  test('by hand: exact JSON lines to paste, under the list each belongs to', () => {
+    const t = pasteSteps({ bot: ['files:write'], user: ['files:read', 'mpim:write'] }, 'https://x.test/m').join('\n')
+    assert.match(t, /After "user": \[ paste:\n\s+"files:read",\n\s+"mpim:write",/)
+    assert.match(t, /After "bot": \[ paste:\n\s+"files:write",/)
+    assert.doesNotMatch(t, /oauth_config\.scopes/)
+    assert.match(t, /If a list is \[\] or missing/)
     assert.match(t, /Save Changes/)
     assert.match(t, /Reinstall to Workspace/)
-    assert.match(t, /Do not paste a whole manifest/)
-    assert.doesNotMatch(t, /bot.*files:read|user.*files:write/)
   })
-  test('a kind with nothing missing gets no line', () => {
-    assert.doesNotMatch(upgradeSteps({ bot: [], user: ['files:read'] }, 'u').join('\n'), /scopes\.bot/)
+  test('a kind with nothing missing gets no list', () => {
+    assert.doesNotMatch(pasteSteps({ bot: [], user: ['files:read'] }, 'u').join('\n'), /"bot"/)
   })
 })
