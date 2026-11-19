@@ -4,7 +4,12 @@ import { arrive, endTurn, NO_TURN, turnSender } from '../core/pane-turn.ts'
 import { senderFile } from '../core/guards.ts'
 import type { Task } from '../core/task.ts'
 
-export const turnMarks = (dir: string, thread: string) => ({ step: `${senderFile(dir, thread)}.step`, stop: `${senderFile(dir, thread)}.stop` })
+const turnMarks = (dir: string, thread: string) => ({ step: `${senderFile(dir, thread)}.step`, stop: `${senderFile(dir, thread)}.stop` })
+export function markTurn(dir: string, thread: string, mark: 'step' | 'stop') {
+  const file = turnMarks(dir, thread)[mark]
+  mkdirSync(dirname(file), { recursive: true, mode: 0o700 })
+  writeFileSync(file, String(Date.now()), { mode: 0o600 })
+}
 
 export function paneTurn(o: { dir: string; thread: string; show: (t: Task) => void; pollMs?: number }) {
   const file = senderFile(o.dir, o.thread), marks = turnMarks(o.dir, o.thread)

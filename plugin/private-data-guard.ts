@@ -1,16 +1,16 @@
-import { readFileSync, writeFileSync } from 'node:fs'
+import { readFileSync } from 'node:fs'
 import { dirname } from 'node:path'
 import { envFilePath, readSettings } from '../runtime/config-files.ts'
 import { memoryDirs, senderFile } from '../core/guards.ts'
 import { toolRefusal } from '../runtime/path-guards.ts'
-import { turnMarks } from '../runtime/pane-turn.ts'
+import { markTurn } from '../runtime/pane-turn.ts'
 
 const thread = process.env.KAGE_THREAD
 if (thread) {
   const { tool_name, tool_input } = JSON.parse(readFileSync(0, 'utf8'))
   const envFile = envFilePath()
   const dir = dirname(envFile)
-  try { writeFileSync(turnMarks(dir, thread).step, String(Date.now()), { mode: 0o600 }) } catch {}
+  try { markTurn(dir, thread, 'step') } catch {}
   let harness, sharedTools
   try { ({ harness, sharedTools } = readSettings(envFile).config) } catch {}
   let sender: string | undefined
