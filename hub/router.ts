@@ -1,5 +1,7 @@
 #!/usr/bin/env node
 import { execFileSync, spawn } from 'node:child_process'
+import { ownerChannel } from '../core/owner-channel.ts'
+import { wahaToOwner, wahaUrl } from '../connectors/whatsapp.ts'
 import { randomUUID } from 'node:crypto'
 import { existsSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
@@ -133,7 +135,7 @@ const { blocked, closedTo, isClosed } = closedThreads({
   store,
   reset: key => d.reset(key),
   say: sayInThread,
-  tellOwner: text => void slack.notifyOwner(text),
+  tellOwner: text => void owner.say(text),
 })
 const dropToldOwner = new Set<string>()
 function dropped(key: string, turn: Task[], reason: string, kind: string) {
@@ -141,7 +143,7 @@ function dropped(key: string, turn: Task[], reason: string, kind: string) {
   runs.emit(key, 'refusal', `hook: ${kind}`)
   const p = planDrop(turn, reason), t = blockedTask(turn)
   if (p.reply && t) sayInThread(key, t, p.reply)
-  if (p.dm && !dropToldOwner.has(key)) { dropToldOwner.add(key); void slack.notifyOwner(p.dm) }
+  if (p.dm && !dropToldOwner.has(key)) { dropToldOwner.add(key); void owner.say(p.dm) }
 }
 const noteTrust = (key: string, t: Task) =>
   t.need || store.noteTask(key, senderOf(t) === 'owner', key in d.saved())
@@ -168,6 +170,9 @@ const slack = await connectSlack({
   triage: jev && !('error' in jev) ? jevTriage(jev, (who, detail) => runs.emit(who, 'triage', detail)) : undefined,
   afk: afk.on === false ? undefined : { memory: memoryDirs(process.env.HOME!, ENV_FILE, harness).owner, model: afk.model || DEFAULT_MODEL, saved: store, call: phoneOwner, jev: jev && !('error' in jev) ? jevAfk(jev) : undefined },
 })
+const waOn = config.connectors?.whatsapp?.on !== false && !!secrets.waha?.WAHA_API_KEY
+const owner = ownerChannel({ pick: () => config.owner?.channel, slack: slack.notifyOwner,
+  ...waOn && { whatsapp: wahaToOwner(wahaUrl(config.connectors?.whatsapp?.wahaUrl), secrets.waha!.WAHA_API_KEY!, Title) } })
 
 if (existsSync(THREADS)) {
   const r = store.importThreads(JSON.parse(readFileSync(THREADS, 'utf8')), slack.ids.botDm, Date.now())
@@ -208,7 +213,7 @@ const sdkLib = harness.runtime === 'tmux' ? undefined : await (async () => ({
   console.error(`Agent SDK not usable (${e.message}), so threads open as tmux panes. Run npm ci, then restart.`)
   return undefined
 })
-const kag = hubKagelets({ dir: DIR, kl, mem: MEM, store, ledgers, runs, title: Title, notify: text => void slack.notifyOwner(text), hasSdk: () => !!sdk,
+const kag = hubKagelets({ dir: DIR, kl, mem: MEM, store, ledgers, runs, title: Title, notify: text => void owner.say(text), hasSdk: () => !!sdk,
   runNow: (id, now) => schedules.runNow(id, now), toSession: (key, task) => toSession(key, task),
   idle: key => !isClosed(key) && d.ready(key) === 'ready' && d.startsNow(key, Date.now()), paused: now => limits.paused(now)?.until, tripwires: () => config.tripwires, openHome: homeThread({ title: Title, bot, user, ids: slack.ids }) })
 const sessionOptions = (claude: string) => ({
@@ -218,7 +223,7 @@ const sessionOptions = (claude: string) => ({
   settings: { autoMemoryDirectory: MEM.own, ...harness.pluginsOff?.length && { enabledPlugins: Object.fromEntries(harness.pluginsOff.map(p => [p, false])) } },
   pathToClaudeCodeExecutable: claude,
 })
-const needs = needsWatch({ store, placeOf, notify: t => slack.notifyOwner(t), ...sdkLib && { look: sdkLook(sdkLib.lib.query as Parameters<typeof sdkLook>[0], sessionOptions(sdkLib.claude)) } })
+const needs = needsWatch({ store, placeOf, notify: t => owner.say(t), ...sdkLib && { look: sdkLook(sdkLib.lib.query as Parameters<typeof sdkLook>[0], sessionOptions(sdkLib.claude)) } })
 const sdk = sdkLib ? sdkSessions({
   sdk: sdkLib.lib,
   deferred,
@@ -272,7 +277,7 @@ const d: Dispatcher<ToSession> = new Dispatcher<ToSession>(runner, {
 })
 const limits = limitPause({
   store, log, event: detail => ledgers.event({ kind: 'limit', who: 'hub', trace: '', detail }), settle: (tasks, done) => { kag.routes.settle(tasks, done); kag.needs.settle(tasks, done); if (done) for (const t of unanswered(tasks, ledgers.text('posted'))) if (answersInThread(t)) slack.seen(t) },
-  tellOwner: text => void slack.notifyOwner(text),
+  tellOwner: text => void owner.say(text),
   end: key => d.end(key).filter(m => m.type === 'task'),
   defers: key => !!sdk && !onPane.has(key),
   notice: (t, text) => void postAsKage({ title: Title, bot, user }, t.meta.channel, t.meta.thread_ts || undefined, text).then(
@@ -291,7 +296,7 @@ const schedules = scheduler({ store, failed,
   ready: key => d.ready(key),
   trusted: key => store.trust(key) === true, job: { end: k => d.reset(k), project: PROJECT, carryChars: () => config.harness?.jobCarryChars ?? 500, laneDefault: () => config.harness?.jobLaneDefault ?? true, freshEvery: () => config.harness?.jobFreshEvery ?? 20, carryCount: () => config.harness?.jobCarry ?? 5, posted: () => ledgers.text('posted') },
   ran: j => ledgers.add('runs', [j.id, j.key]),
-  tripwires: () => config.tripwires ?? {}, event: e => ledgers.event(e), owner: t => void slack.notifyOwner(t), ping: (s, text) => pingThread(s.key, text, s.id),
+  tripwires: () => config.tripwires ?? {}, event: e => ledgers.event(e), owner: t => void owner.say(t), ping: (s, text) => pingThread(s.key, text, s.id),
 })
 const CRONS = `${DIR}/crons-import.json`
 if (existsSync(CRONS) && runningAtStart.size) log('crons-import.json waits: panes are still running, so their jobs are still alive')
@@ -304,26 +309,26 @@ else if (existsSync(CRONS)) {
   } catch (e) {
     log('crons-import.json is unreadable, moved to .bad', e)
     renameSync(CRONS, `${CRONS}.bad`)
-    void slack.notifyOwner('Could not read the cron jobs exported from the panes (crons-import.json.bad). Watchers may need setting up again.')
+    void owner.say('Could not read the cron jobs exported from the panes (crons-import.json.bad). Watchers may need setting up again.')
   }
 }
 
-const { meeting, voice, replies, replayOf, jobs, clock } = startConnectors({ secrets, conn, store, slack, bot, ping: pingThread, NAME, CODE, DIR, d, inbox, deliver, placeOf, failed, schedules, event: ledgers.event, ledgers, tripwires: config.tripwires })
+const { meeting, voice, replies, replayOf, jobs, clock } = startConnectors({ secrets, conn, store, slack, bot, ping: pingThread, say: owner.say, NAME, CODE, DIR, d, inbox, deliver, placeOf, failed, schedules, event: ledgers.event, ledgers, tripwires: config.tripwires })
 listenForCommands(slack.socket, { user, team: slack.ids.team!, commands: COMMANDS, ledgers })
 
 function failed(m: ToSession) {
   if (m.type !== 'task') return
   limits.turn('', [m], undefined, Date.now())
   log('could not deliver to a session:', m.meta.place, m.origin.ts, `(attach: tmux attach -t ${NAME})`)
-  if (!m.origin.ts) void slack.notifyOwner(`Could not start a session for a scheduled run in ${m.meta.place}.`)
-  else if (!answersInThread(m)) void slack.notifyOwner(`Could not start a session for ${m.meta.place}.`)
+  if (!m.origin.ts) void owner.say(`Could not start a session for a scheduled run in ${m.meta.place}.`)
+  else if (!answersInThread(m)) void owner.say(`Could not start a session for ${m.meta.place}.`)
   else slack.failed(m)
 }
 
-const digests = ownerDigests({ dir: DIR, ledgers, store, placeOf, costTracked: !!sdk, expireHours: () => config.waiting?.expireHours ?? 72, notify: t => slack.notifyOwner(t) })
+const digests = ownerDigests({ dir: DIR, ledgers, store, placeOf, costTracked: !!sdk, expireHours: () => config.waiting?.expireHours ?? 72, notify: t => owner.say(t) })
 const dreaming = dreams({ dir: DIR, code: CODE, title: Title, botDm: slack.ids.botDm, mem: MEM, project: PROJECT, kagelets: kag.dir, kmem: kag.kmem, hasSdk: !!sdk,
   store, ledgers, placeOf, paused: () => !!limits.paused(), quiet: now => d.quietEverywhere(now), deliver, toSession })
-const updates = hubUpdates({ code: CODE, dir: DIR, ledgers, quiet: now => d.quietEverywhere(now) && !limits.paused(now), notify: t => slack.notifyOwner(t) })
+const updates = hubUpdates({ code: CODE, dir: DIR, ledgers, quiet: now => d.quietEverywhere(now) && !limits.paused(now), notify: t => owner.say(t) })
 const VERSION = updates.VERSION
 
 runJobs([
@@ -340,12 +345,12 @@ runJobs([
   { name: 'kagelet dreams', every: 10 * 60_000, run: dreaming.kageletDreams },
   { name: 'retro', every: 10 * 60_000, run: digests.weeklyRetro }, ...clock, ...needs.jobs,
   { name: 'kagelet messages', every: 20_000, run: now => { kag.routes.pump(now); kag.needs.pump(now); kag.measure(now) } },
-  { name: 'events', every: 3_600_000, run: now => ledgers.pruneEvents(new Date(now - EVENT_DAYS * 86_400_000).toISOString()) }, ...startTelemetry({ config: config.telemetry, dir: DIR, code: CODE, ledgers, state: store, notify: t => slack.notifyOwner(t), usage: sdk?.usage, shape: () => { const s = store.schedules(); return { email: +!!conn.email?.on, voice: +!!conn.voice?.on, whatsapp: +!!conn.whatsapp?.on, github: +!!conn.github, meeting: +!!conn.meeting, browser: +!!conn.browser, schedules: s.length, tripwires: s.filter(j => j.trigger).length, kagelets: [...kag.lanes()].length, teammates: TEAMMATES.length } } }),
+  { name: 'events', every: 3_600_000, run: now => ledgers.pruneEvents(new Date(now - EVENT_DAYS * 86_400_000).toISOString()) }, ...startTelemetry({ config: config.telemetry, dir: DIR, code: CODE, ledgers, state: store, notify: t => owner.say(t), usage: sdk?.usage, shape: () => { const s = store.schedules(); return { email: +!!conn.email?.on, voice: +!!conn.voice?.on, whatsapp: +!!conn.whatsapp?.on, github: +!!conn.github, meeting: +!!conn.meeting, browser: +!!conn.browser, schedules: s.length, tripwires: s.filter(j => j.trigger).length, kagelets: [...kag.lanes()].length, teammates: TEAMMATES.length } } }),
 ])
 
 const commands = ownerCommands({ d, store, ledgers, limits, MAX, placeOf, closedTo, noteTrust, failed, dropRelay: key => { ssm.drop(key); keys.drop(key) }, botDm: slack.ids.botDm, post: slack.say })
 const watcher = configWatcher({
-  envFile: ENV_FILE, boot: { config, secrets }, log, apply: slack.allow, tell: text => void slack.notifyOwner(text),
+  envFile: ENV_FILE, boot: { config, secrets }, log, apply: slack.allow, tell: text => void owner.say(text),
   event: (kind, keys) => ledgers.event({ kind, who: 'config', trace: '', detail: keys.join(', ') }),
   restartWanted: yes => updates.restartWanted(yes),
 })
@@ -357,17 +362,17 @@ listenForSessions(`${DIR}/router.sock`, d, { ...replies, failed, schedules: jobs
 await slack.start()
 try { for (const f of sweepImported(ENV_FILE)) log(`deleted ${f}, 7 days after the import`) } catch (e) { log(`could not sweep old env files: ${e}`) }
 const updated = updatedNote(DIR, CODE, VERSION)
-if (updated) { log(updated); void slack.notifyOwner(updated).then(sent => { if (sent) clearUpdatedFrom(DIR) }) }
+if (updated) { log(updated); void owner.say(updated).then(sent => { if (sent) clearUpdatedFrom(DIR) }) }
 const unplaced = unknownNames(readSettings(ENV_FILE).config).join(', ')
 const told = `${DIR}/config-unknown-told`
 if (unplaced && (existsSync(told) ? readFileSync(told, 'utf8') : '') !== unplaced) {
-  void slack.notifyOwner(`Kage moved its settings into config.json. It could not place these old lines, so they sit under "unknown": ${unplaced}. Tell me what each one is for, and I will help place it.`)
+  void owner.say(`Kage moved its settings into config.json. It could not place these old lines, so they sit under "unknown": ${unplaced}. Tell me what each one is for, and I will help place it.`)
     .then(sent => { if (sent) writeFileSync(told, unplaced) })
 }
 const SCOPES_TOLD = 'slack-scopes-told'
 void checkScopes({ user: secrets.slack?.user, bot: secrets.slack?.bot }).then(m => {
   const { send, told } = scopeDm(m, store.load(SCOPES_TOLD) as string | undefined)
-  if (send) void slack.notifyOwner(send).then(sent => { if (sent) store.save(SCOPES_TOLD, told) })
+  if (send) void owner.say(send).then(sent => { if (sent) store.save(SCOPES_TOLD, told) })
   else store.save(SCOPES_TOLD, told)
 }).catch(e => log(`scope check failed: ${e}`))
 store.prune(Date.now() - 7 * 86_400_000)

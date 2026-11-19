@@ -127,7 +127,17 @@ export function startWhatsApp(o: { dir: string; name: string; owner: string; wah
   }
 }
 
-export const wahaToOwner = (_url: string, _key: string, _title: string) => async (_text: string) => false
+export function wahaToOwner(url: string, key: string, title: string): (text: string) => Promise<boolean> {
+  const call = (path: string, init?: RequestInit) => fetch(url + path, { ...init, headers: { 'X-Api-Key': key, 'Content-Type': 'application/json' }, signal: AbortSignal.timeout(10_000) })
+  let me: string | undefined
+  return async text => {
+    try {
+      me ??= ((await (await call('/api/sessions/default/me')).json()) as { id?: string } | null)?.id
+      if (!me) return false
+      return (await call('/api/sendText', { method: 'POST', body: JSON.stringify({ session: 'default', chatId: me, text: waOutgoing(text, title) }) })).ok
+    } catch (e) { log('whatsapp owner note failed', e); return false }
+  }
+}
 
 export async function wahaSeen(url: string, key: string, ms = 5_000): Promise<BridgeSeen> {
   const get = (path: string) => fetch(url + path, { headers: { 'X-Api-Key': key }, signal: AbortSignal.timeout(ms) })

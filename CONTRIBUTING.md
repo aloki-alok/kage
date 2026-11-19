@@ -134,6 +134,7 @@ Write logs to stderr only. In a tmux pane, stdout carries the channel protocol, 
 | `afk.ts` | AFK mode: which threads the stand-in watches, when it posts or phones the owner, and what it may say. |
 | `job-needs.ts` | The tools a job names in `needs`: which are live (each connected MCP server's tools, named as a session sees them, and nothing known while one still connects), and the owner's one DM when one goes missing and one when all are back. |
 | `pane-turn.ts` | Who a tmux pane's turn runs for: the lowest sender in it, the owner's message marked when it joins someone else's turn and run again on its own once that turn ends, and a message that came after the turn's last step kept for the next turn. |
+| `owner-channel.ts` | Where a message to the owner goes: the app in `owner.channel`, and the Slack DM when that app is not running or its send fails. |
 | `blocks.ts` | When the safety check stops a turn: the line in the thread, the owner's DM, and whether the thread closes. |
 | `commands.ts` | Local slash commands (`connectors.commands`). |
 | `auto-update.ts` | Whether the hub may move its own checkout to origin's `stable` tag, the link to what changed, and `soakGate`: whether a commit ran long enough on the owner's hub to be released. |

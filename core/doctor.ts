@@ -96,6 +96,12 @@ export const chromeLine = (seenMs: number, nowSec: number, runs?: string, disk?:
 
 export const pathNote = (onPath: boolean): Line | undefined => onPath ? undefined : note('kage is not on your PATH: run ./setup.sh link to type kage <command> anywhere')
 
+export function ownerChannelLine(channel: 'slack' | 'whatsapp' | undefined, whatsappOn: boolean): Line | undefined {
+  if (channel !== 'whatsapp') return undefined
+  return whatsappOn
+    ? note("Kage's messages to you go to your WhatsApp. Approval cards and your commands stay in the Slack DM.")
+    : fail('owner.channel is whatsapp, but the WhatsApp connector is off, so every message goes to Slack. Turn WhatsApp on (docs/settings.md, "WhatsApp"), or run: kage set owner.channel slack')
+}
 export function whatsappLine(s: BridgeSeen, at: { url: string; qr: string }): Line {
   const p = bridgeProblem(s, at)
   return p ? fail(p) : ok('WhatsApp bridge up, session WORKING')

@@ -1,6 +1,6 @@
 import { test, describe } from 'node:test'
 import assert from 'node:assert/strict'
-import { autoUpdateNote, bootNotes, chromeLine, jevLine, keyLines, lingerLine, nodeOk, pathNote, render, report, serviceLines, sessionLines, slackLines, pluginLine, sandboxLine, tokenLines, toolsLine, whatsappLine } from '../doctor.ts'
+import { ownerChannelLine, autoUpdateNote, bootNotes, chromeLine, jevLine, keyLines, lingerLine, nodeOk, pathNote, render, report, serviceLines, sessionLines, slackLines, pluginLine, sandboxLine, tokenLines, toolsLine, whatsappLine } from '../doctor.ts'
 
 const text = (ls: { kind: string; text: string }[]) => ls.map(l => `${l.kind}:${l.text}`)
 
@@ -137,5 +137,15 @@ describe('decisions', () => {
     const down = whatsappLine({ reached: false }, at)
     assert.equal(down.kind, 'fail')
     assert.match(down.text, /docker start kage-waha/)
+  })
+  test('owner channel: nothing for Slack, a note that cards stay in Slack for WhatsApp, a FAIL when WhatsApp is chosen but off (#423)', () => {
+    assert.equal(ownerChannelLine(undefined, true), undefined)
+    assert.equal(ownerChannelLine('slack', false), undefined)
+    const on = ownerChannelLine('whatsapp', true)!
+    assert.equal(on.kind, 'note')
+    assert.match(on.text, /Approval cards .*Slack/)
+    const off = ownerChannelLine('whatsapp', false)!
+    assert.equal(off.kind, 'fail')
+    assert.match(off.text, /kage set owner.channel slack/)
   })
 })
