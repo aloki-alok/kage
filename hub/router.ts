@@ -179,7 +179,7 @@ const waCardCodes = waCards()
 function ownerVerdict(id: string, behavior: 'allow' | 'deny', always?: true): boolean {
   return d.verdict(id, { type: 'verdict', request_id: id, behavior }) || answerCard(id, behavior, always)
 }
-function cardToWhatsApp(c: { id: string; tool: string; description: string; place: string }) {
+function cardToWhatsApp(c: { id: string; tool: string; description: string; place: string; preview: string }) {
   if (config.owner?.channel !== 'whatsapp' || !waSay) return
   const code = waCardCodes.open(c.id)
   const note = waCardNote({ ...c, code }, NAME)

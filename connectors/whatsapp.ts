@@ -105,9 +105,9 @@ export function startWhatsApp(o: { ownerAnswer?: (a: { code: string; behavior: '
   async function onEvent(p: WahaPayload, source?: string, replayed = false) {
     const m = fromWaha(p)
     if (!m.chat) return
-    if (o.ownerAnswer && ownerAnswer(m, m.chat)) {
-      const me = await api('/api/sessions/default/me').then(r => (r as { id?: string } | null)?.id, () => undefined)
-      const a = ownerAnswer(m, me)
+    if (o.ownerAnswer && ownerAnswer(m, [m.chat, ...m.to ? [m.to] : []])) {
+      const me = await api('/api/sessions/default/me').then(r => r as { id?: string; lid?: string } | null, () => null)
+      const a = ownerAnswer(m, [me?.id, me?.lid].filter((x): x is string => !!x))
       if (a) { if (!replayed) o.ownerAnswer(a); return }
     }
     const action = decideWhatsApp(m, armed, o.name, Date.now())

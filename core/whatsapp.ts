@@ -82,9 +82,12 @@ export function ownerAnswer(m: WaMessage, me: readonly string[]): { code: string
   const a = /^\s*(yes|no)\s+(\d{4})\s*$/i.exec(m.text)
   return a ? { code: a[2]!, behavior: a[1]!.toLowerCase() === 'yes' ? 'allow' : 'deny' } : undefined
 }
+const WA_PREVIEW_MAX = 1500
 export function waCardNote(c: { tool: string; place: string; description: string; preview: string; code: string }, name: string): string | undefined {
   const step = c.tool.replace(/^mcp__(.+__)?/, '').replaceAll('_', ' ')
-  return ownerNote(`Approve? ${step} in ${c.place}${c.description ? `\n${c.description}` : ''}\nReply "yes ${c.code}" or "no ${c.code}" here, or answer the card in Slack.`, name)
+  const head = `Approve? ${step} in ${c.place}${c.description ? `\n${c.description}` : ''}`
+  if (c.preview.length > WA_PREVIEW_MAX) return ownerNote(`${head}\nThe step is too long to show here, so answer the card in Slack.`, name)
+  return ownerNote(`${head}${c.preview ? `\n\`\`\`${c.preview}\`\`\`` : ''}\nReply "yes ${c.code}" or "no ${c.code}" here, or answer the card in Slack.`, name)
 }
 export const waOutgoing = (text: string, title: string) => `${text}\n\n_${kageFooter(title)}_`
 export const withoutFooter = (text: string) => text.replace(/\n\n_🥷 [^\n]*_$/u, '')

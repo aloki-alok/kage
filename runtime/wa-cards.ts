@@ -1,7 +1,9 @@
+import { randomInt } from 'node:crypto'
+
 const DAY = 24 * 3600_000
 
 export function waCards(o: { random?: () => number; now?: () => number } = {}) {
-  const random = o.random ?? Math.random, now = o.now ?? Date.now
+  const random = o.random ?? (() => randomInt(10_000) / 10_000), now = o.now ?? Date.now
   const open = new Map<string, { id: string; at: number }>()
   const prune = () => { for (const [code, c] of open) if (now() - c.at > DAY) open.delete(code) }
   return {
