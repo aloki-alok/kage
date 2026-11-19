@@ -5,18 +5,18 @@ import { connect, type Socket } from 'node:net'
 import { askHub, CWD, DIR, settings } from './home.ts'
 import { DatabaseSync } from 'node:sqlite'
 import { ago, boardRows, nextRuns, limitLine, pauseLine, watchingNext, whenLabel, type Live, type Row, type State } from '../core/board.ts'
-import { filterRows, hit, layout, moreLine, STRING, type Layout } from '../core/loom.ts'
 import { transcriptLine } from '../core/transcript.ts'
+import { costRows, openWaiting } from '../core/ledgers.ts'
+import { filterRows, rowAt } from '../core/top-layout.ts'
 import { newLines } from '../runtime/transcript-tail.ts'
-import { BG, clamp, clean, clear, clip, glitch, H, put, resize, toText, W } from './top-screen.ts'
-import { cutString, drawHero, path, string } from './top-art.ts'
+import { BG, resize, toText, W } from './top-screen.ts'
+import { drawFrame, TABS, type Hits, type Step, type Tab, type View } from './top-draw.ts'
 import { schedulesIn } from '../runtime/store.ts'
-import { actionLine, dailyCap, PANEL_KEYS, panelLines, shownState, type PanelAction } from '../core/kagelet-view.ts'
+import { actionLine, dailyCap, kageletRuns, PANEL_KEYS, type PanelAction } from '../core/kagelet-view.ts'
 import { kageletRows, type KageletRow } from '../core/kagelets.ts'
 import { kageletTier } from '../core/access.ts'
 import { kageletsDir, readKagelets } from '../runtime/kagelet-files.ts'
-import { eventsOn, ledgerText } from '../runtime/ledger.ts'
-import { chainLine, chainViews } from '../core/events.ts'
+import { ledgerText } from '../runtime/ledger.ts'
 
 const HOME = process.env.HOME!
 const PROJECT = `${HOME}/.claude/projects/${CWD.replace(/[^A-Za-z0-9]/g, '-')}`
@@ -27,33 +27,31 @@ const db = new DatabaseSync(DB, { readOnly: true })
 const threadsQuery = db.prepare(`select s.key, s.claude_id as id, coalesce(c.place, s.key) as place, coalesce(c.last_seen, 0) as lastSeen,
   coalesce(c.connector, 'slack') as connector from sessions s left join conversations c using (key)`)
 
-type Step = { at: number; text: string }
 type Thread = { key: string; id: string; place: string; lastSeen: number; connector: string }
-let live: Live | undefined
-let liveAt = 0
+let live: Live | undefined, liveAt = 0
 let known: Thread[] = []
 let schedules: ReturnType<typeof schedulesIn> = []
 let next = new Map<string, number>(), nextAt = 0
-let board: Row[] = []
-let view = { live: [] as Row[], ended: [] as Row[] }
+let board: Row[] = [], rows: Row[] = []
+let costs: { at: number; usd: number; key: string }[] = [], waiting: { thread: string; what: string }[] = [], ledgersAt = 0
+let kagelets: KageletRow[] = [], kageletsAt = 0, runs: ReturnType<typeof kageletRuns> = []
+let upSec: number | undefined, upAt = 0
 
-let boot = Date.now()
-let selKey = ''
-let hover: string | undefined
-let open: string | undefined, openAt = 0
-let mode: 'steps' | 'schedules' = 'steps'
+const boot = Date.now()
+let tab: Tab = 'threads', focus: 'list' | 'feed' = 'list'
+let selKey = '', open: string | undefined, openAt = 0, mode: 'steps' | 'schedules' = 'steps'
 let searching = false, query = ''
 let message = '', messageAt = 0
-let confirmCut = ''
-let suspended = false
-let L: Layout | undefined
-let panel = false, pick = 0, confirmRemove = ''
-let kagelets: KageletRow[] = [], kageletsAt = 0, kageletsFailed = '', chains: string[] = []
+let confirm: { kind: 'cut' | 'remove'; target: string } | undefined
+let suspended = false, pick = 0
+let hits: Hits | undefined
 const CAP = dailyCap(settings().config.kagelets)
 const KAGELETS = kageletsDir(DIR)
 
+const read = (f: string) => { try { return readFileSync(`${DIR}/${f}`, 'utf8') } catch { return '' } }
 const mtime = (id: string) => { try { return statSync(`${PROJECT}/${id}.jsonl`).mtimeMs } catch { return 0 } }
 const idOf = (key: string) => known.find(k => k.key === key)?.id
+const placeOf = (key: string) => known.find(k => k.key === key)?.place ?? kagelets.find(k => k.key === key)?.name ?? key
 
 const watchCache = new Map<string, { at: number; next: number | undefined }>()
 function watchNext(key: string, now: number): number | undefined {
@@ -71,13 +69,12 @@ function follow(key: string) {
   const id = idOf(key)
   if (!id) return
   const file = `${PROJECT}/${id}.jsonl`
-  let f = feeds.get(key)
-  if (!f || f.file !== file) {
-    let size = 0
-    try { size = statSync(file).size } catch {}
-    f = { file, offset: Math.max(0, size - 64_000), steps: [], changed: 0 }
-    feeds.set(key, f)
-  }
+  const prev = feeds.get(key)
+  const first = !prev || prev.file !== file
+  let size = 0
+  if (first) try { size = statSync(file).size } catch {}
+  const f = first ? { file, offset: Math.max(0, size - 64_000), steps: [], changed: 0 } : prev
+  if (first) feeds.set(key, f)
   const r = newLines(file, f.offset)
   f.offset = r.offset
   for (const raw of r.lines) {
@@ -86,20 +83,11 @@ function follow(key: string) {
     let at = Date.now()
     try { at = Date.parse(JSON.parse(raw).timestamp) || at } catch {}
     for (const t of text.split('\n')) f.steps.push({ at, text: t })
-    f.changed = Date.now()
+    if (!first) f.changed = Date.now()
   }
   if (f.steps.length > 300) f.steps = f.steps.slice(-300)
 }
 
-const prevState = new Map<string, State>()
-const sinceState = new Map<string, number>()
-const lastY = new Map<string, number>()
-let cuts: { y: number; t0: number }[] = []
-
-function rebuild() {
-  const rows = filterRows(board, query)
-  view = { live: rows.filter(r => r.state !== 'closed'), ended: rows.filter(r => r.state === 'closed') }
-}
 function refresh(now: number) {
   try { known = threadsQuery.all() as Thread[] } catch {}
   if (now - nextAt > 10_000) { schedules = schedulesIn(DB); next = nextRuns(schedules, now); nextAt = now }
@@ -111,25 +99,31 @@ function refresh(now: number) {
     if (w !== undefined && w < (nx.get(l.key) ?? Infinity)) nx.set(l.key, w)
   }
   board = boardRows(known, live, new Map(known.map(k => [k.key, mtime(k.id)])), nx, now).rows
-  if (live) {
-    for (const r of board) {
-      const p = prevState.get(r.key)
-      if (p && p !== 'closed' && r.state === 'closed' && lastY.has(r.key)) cuts.push({ y: lastY.get(r.key)!, t0: now })
-      if (p !== r.state) sinceState.set(r.key, now)
-      prevState.set(r.key, r.state)
-    }
+  rows = filterRows(board, query)
+  if (!rows.some(r => r.key === selKey)) selKey = rows[0]?.key ?? ''
+  if (now - ledgersAt > 3_000) {
+    ledgersAt = now
+    try { costs = costRows(ledgerText(db, 'costs')).map(c => ({ at: c.at, usd: c.usd, key: c.key })) } catch {}
+    try { waiting = openWaiting(ledgerText(db, 'waiting')) } catch {}
   }
-  cuts = cuts.filter(c => now - c.t0 < 1700)
-  if (panel && now - kageletsAt > 3_000) readKageletRows(now)
-  rebuild()
-  for (const r of view.live) follow(r.key)
-  if (open) follow(open)
+  if (now - kageletsAt > 3_000) readKageletRows(now)
+  for (const r of board) if (r.state !== 'closed') follow(r.key)
+  const shown = open ?? selKey
+  if (shown) follow(shown)
+  const picked = kagelets[pick]
+  runs = picked && tab === 'kagelets' ? kageletRuns(picked.name, picked.key ?? '', { runs: ledgerTextSafe('runs'), costs: ledgerTextSafe('costs'), reports: ledgerTextSafe('reports') }, now) : []
+  if (now - upAt > 10_000) {
+    upAt = now
+    const pid = read('status').split(/\s+/)[3]
+    const started = pid ? Date.parse(spawnSync('ps', ['-o', 'lstart=', '-p', pid], { encoding: 'utf8' }).stdout?.trim() ?? '') : NaN
+    upSec = Number.isFinite(started) ? Math.round((now - started) / 1000) : undefined
+  }
 }
 
 function readKageletRows(now: number) {
   kageletsAt = now
-  try { kagelets = kageletRows(readKagelets(KAGELETS), { runs: ledgerText(db, 'runs'), costs: ledgerText(db, 'costs'), reports: ledgerText(db, 'reports'), now }); kageletsFailed = '' } catch (e) { kageletsFailed = `cannot read them: ${(e as Error).message}` }
-  try { chains = chainViews(eventsOn(db, new Date(now).toISOString().slice(0, 10))).map(chainLine) } catch { chains = [] }
+  try { kagelets = kageletRows(readKagelets(KAGELETS), { runs: ledgerText(db, 'runs'), costs: ledgerText(db, 'costs'), reports: ledgerText(db, 'reports'), now }) } catch { kagelets = [] }
+  pick = Math.max(0, Math.min(pick, kagelets.length - 1))
 }
 
 let sock: Socket | undefined
@@ -166,190 +160,51 @@ async function pollHub() {
   if (r?.type === 'board') { live = r; liveAt = Date.now() }
 }
 
-const TONE: Record<string, string> = { work: 'R', you: 'Y', white: 'w', muted: 'm', dim: 'd' }
-const tz = () => ` ${new Intl.DateTimeFormat([], { timeZoneName: 'short' }).formatToParts(new Date()).find(p => p.type === 'timeZoneName')?.value ?? ''}`
-const WORD = ['█▄▀ ▄▀█ █▀▀ █▀▀', '█ █ █▀█ █▄█ ██▄']
-function rowLabel(r: Row, now: number) {
-  return r.state === 'watching' ? `next ${whenLabel(r.next, now)}` : r.state === 'quiet' ? ago(r.ageMs) : r.label
-}
-
-function frame(t: number, since: number): string[] {
-  const now = Date.now()
-  clear()
-  WORD.forEach((l, i) => put(2, 1 + i, l, 'W'))
-
-  const l = layout(W, H, view.live.map(r => r.key), view.ended.map(r => r.key))
-  L = l
-  const clock = live ? `${live.live.length} of ${live.max} strings · ${new Date(now).toTimeString().slice(0, 5)}${tz()}` : existsSync(SOCK) ? 'no live state' : 'hub offline'
-  put(l.right - clock.length + 1, 1, clock, 'm')
-  const asks = board.filter(r => r.state === 'asking').length
-  if (asks) { const a = `◆ ${asks} thread${asks === 1 ? ' waits' : 's wait'} on you`; put(l.right - a.length + 1, 2, a, Math.floor(t / 450) % 2 ? 'Y' : 'y') }
-  const visible = [...l.live, ...l.ended].map(r => r.key)
-  if (!visible.includes(selKey)) selKey = visible[0] ?? ''
-  const active = hover ?? selKey
-  const byKey = new Map([...view.live, ...view.ended].map(r => [r.key, r]))
-  lastY.clear()
-  for (const r of l.live) lastY.set(r.key, r.y)
-
-  if (l.hero) drawHero(l, t, since, boot)
-  const star = l.star
-  const p = l.hero ? clamp((since - 900) / 500) : 1, ease = p * p * (3 - 2 * p)
-  const cx = l.hero ? l.hero.x + l.hero.cols / 2 : 0, cy = l.hero ? l.hero.y + l.hero.rows / 2 : 0
-  if (star && since > 500) put(star.x, star.y, '✦', asks && Math.floor(t / 450) % 2 ? 'Y' : 'r')
-  l.live.forEach((pos, i) => {
-    const r = byKey.get(pos.key)!
-    const style = STRING[r.state]
-    const hot = pos.key === active
-    if (star && since > 500) {
-      const a = since / 300 + i * Math.PI * 2 / Math.max(1, l.live.length)
-      const ox = cx + Math.cos(a) * l.hero!.cols * 0.54, oy = cy + Math.sin(a) * l.hero!.rows * 0.43
-      const nx = ox + (l.lx - 2 - ox) * ease, ny = oy + (pos.y - oy) * ease
-      string(path(star.x + 1, star.y, nx, ny), hot ? 'blink' : style.kind, t, i, sinceState.get(pos.key) ?? boot, since)
-      put(nx, ny, style.glyph, TONE[style.tone]!)
-    } else if (!star) put(l.lx - 2, pos.y, style.glyph, TONE[style.tone]!)
-    if (p < 1) return
-    const tone = TONE[style.tone]!
-    if (hot) put(l.lx - 4, pos.y, '▶', 'R')
-    const label = rowLabel(r, now)
-    put(l.lx, pos.y, clip(r.place, l.right - l.lx - label.length - 2), hot ? 'G' : 'W')
-    put(l.right - label.length, pos.y, label, tone)
-    if (l.rowH > 1) {
-      const step = feeds.get(pos.key)?.steps.at(-1)
-      if (step) put(l.lx, pos.y + 1, clip(step.text, l.right - l.lx), 'm')
-    }
-  })
-  for (const c of cuts) if (star) cutString(path(star.x + 1, star.y, l.lx - 2, c.y), t, c.t0)
-  if (p >= 1) {
-    if (l.ended.length) put(l.lx - 2, l.sepY, '─'.repeat(Math.max(0, l.right - l.lx + 3)), 'k')
-    for (const pos of l.ended) {
-      const r = byKey.get(pos.key)!
-      const hot = pos.key === active, fresh = r.ageMs < 3_600_000
-      put(l.lx - 2, pos.y, '╳', fresh ? 'm' : 'd')
-      if (hot) put(l.lx - 4, pos.y, '▶', 'R')
-      const age = ago(r.ageMs)
-      put(l.lx, pos.y, clip(r.place, l.right - l.lx - age.length - 2), hot ? 'G' : fresh ? 'm' : 'd')
-      put(l.right - age.length, pos.y, age, 'd')
-    }
-    if (l.more > 0 && l.moreY !== undefined) {
-      const line = moreLine(view.ended.slice(l.ended.length))
-      const x = line.length <= W - l.lx ? l.lx - 2 : 2
-      put(x, l.moreY, clip(line, W - x - 2), 'g')
-    }
-    if (!l.live.length && !l.ended.length) put(l.lx, l.sepY, query ? 'no thread matches' : 'no threads yet', 'm')
-    if (open) detail(l, now, byKey)
-    if (panel) kageletPanel(now)
-  }
-  footer(t)
-  glitch(t)
-  return toText()
-}
-
-const STATE_TONE: Record<State, string> = { asking: 'Y', working: 'R', watching: 'w', quiet: 'm', starting: 'r', held: 'm', queued: 'g', closed: 'd' }
-function detail(l: Layout, now: number, byKey: Map<string, Row>) {
-  const r = byKey.get(open!)
-  if (!r) { open = undefined; return }
-  const x0 = l.lx - 3, right = l.right, y0 = 4, y1 = Math.max(y0 + 8, H - 4), w = right - x0
-  const k = STATE_TONE[r.state] === 'R' ? 'r' : STATE_TONE[r.state]!
-  for (let y = y0; y <= y1; y++) put(x0, y, ' '.repeat(w + 1), 'w')
-  put(x0, y0, `┏${'━'.repeat(w - 1)}┓`, k); put(x0, y1, `┗${'━'.repeat(w - 1)}┛`, k)
-  for (let y = y0 + 1; y < y1; y++) { put(x0, y, '┃', k); put(right, y, '┃', k) }
-  const label = r.state === 'closed' ? `ended ${ago(r.ageMs)} ago` : rowLabel(r, now)
-  put(x0 + 2, y0 + 1, clip(`${r.place}`, w - label.length - 6), 'W')
-  put(right - label.length - 1, y0 + 1, label, STATE_TONE[r.state]!)
-  put(x0 + 2, y0 + 2, '─'.repeat(w - 3), 'k')
-  const room = y1 - y0 - 5
-  if (mode === 'schedules') {
-    const mine = schedules.filter(s => s.key === open)
-    if (!mine.length) put(x0 + 3, y0 + 4, 'no schedules for this thread', 'm')
-    mine.slice(0, room).forEach((s, i) => {
-      const at = nextRuns([s], now).get(s.key)
-      put(x0 + 3, y0 + 4 + i, `${s.cron.padEnd(15)} ${(s.recurring ? 'repeats' : 'once').padEnd(8)} ${whenLabel(at, now).padEnd(9)} ${clip(s.prompt.split('\n')[0]!, w - 40)}`, 'm')
-    })
-  } else {
-    const f = feeds.get(open!)
-    const steps = (f?.steps ?? []).slice(-Math.max(1, room))
-    if (!steps.length) put(x0 + 3, y0 + 4, 'nothing in its transcript yet', 'm')
-    const typed = (f?.changed ?? 0) > openAt ? Math.max(0, Math.floor((now - f!.changed) / 22)) : Infinity
-    steps.forEach((s, i) => {
-      const y = y0 + 4 + i
-      const m = /^(\S+)\s+(.*)$/.exec(s.text)
-      const tag = m ? m[1]! : '', text = clean(m ? m[2]! : s.text)
-      const newest = i === steps.length - 1
-      const shown = newest ? Math.min(text.length, typed) : text.length
-      const maxw = right - x0 - 22
-      put(x0 + 3, y, new Date(s.at).toTimeString().slice(0, 8), 'd')
-      put(x0 + 12, y, tag.padEnd(7), tag === 'reply' ? 'R' : tag === 'says' ? 'w' : 'g')
-      put(x0 + 19, y, clip(text.slice(0, shown), maxw), tag === 'reply' ? 'W' : 'm')
-      if (newest && shown < text.length) put(x0 + 19 + Math.min(shown, maxw), y, '▌', 'R')
-    })
-  }
-  const keys = `a attach   x cut   s ${mode === 'steps' ? 'schedules' : 'steps'}   esc close`
-  put(right - keys.length - 2, y1 - 1, keys, 'm')
-}
-
-const SHOWN_TONE: Record<string, string> = { on: 'w', paused: 'm', broken: 'Y', 'over cap': 'Y' }
-function kageletPanel(now: number) {
-  const x0 = 2, right = W - 3, y0 = 4, y1 = H - 3, w = right - x0
-  for (let y = y0; y <= y1; y++) put(0, y, ' '.repeat(W), 'w')
-  put(x0, y0, `┏${'━'.repeat(w - 1)}┓`, 'g'); put(x0, y1, `┗${'━'.repeat(w - 1)}┛`, 'g')
-  for (let y = y0 + 1; y < y1; y++) { put(x0, y, '┃', 'g'); put(right, y, '┃', 'g') }
-  const head = clip(kageletsFailed || (live ? (CAP === undefined ? 'cost today, avg of the last 7 days' : `cap $${CAP.toFixed(2)} a day each`) : 'hub offline: the keys need it'), w - 20)
-  put(x0 + 2, y0 + 1, `Kagelets (${kagelets.length})`, 'W'); put(right - head.length - 1, y0 + 1, head, live && !kageletsFailed ? 'm' : 'Y')
-  put(x0 + 2, y0 + 2, '─'.repeat(w - 3), 'k')
-  if (!kagelets.length) put(x0 + 3, y0 + 4, 'no kagelets yet', 'm')
-  pick = clamp(pick, 0, Math.max(0, kagelets.length - 1))
-  const shown = chains.slice(-Math.min(3, Math.max(0, Math.floor((y1 - y0 - 9) / 2))))
-  shown.forEach((c, i) => put(x0 + 3, y1 - 2 - shown.length + i, clip(`chain ${c}`, w - 4), c.includes('stopped') ? 'Y' : 'm'))
-  const fit = Math.max(1, Math.floor((y1 - y0 - 5 - shown.length) / 2)), from = Math.max(0, pick - fit + 1)
-  panelLines(kagelets, now, CAP).slice(from, from + fit).forEach((line, i) => {
-    const r = kagelets[from + i]!, y = y0 + 3 + i * 2, hot = from + i === pick
-    if (hot) put(x0 + 1, y, '▶', 'R')
-    put(x0 + 3, y, clip(line.main, w - 4), hot ? 'G' : SHOWN_TONE[shownState(r, CAP)]!)
-    put(x0 + 5, y + 1, clip(line.report, w - 6), 'm')
-  })
-  const keys = '⏎ thread   r run now   p pause   u resume   x remove   v revoke standing   esc close'
-  put(right - keys.length - 2, y1 - 1, keys, 'm')
-}
-
-function footer(t: number) {
-  const y = H - 1
-  if (confirmRemove) {
-    put(2, y, clip(`Remove ${confirmRemove}? Its file and its schedule go.`, W - 22), 'Y'); put(W - 19, y, 'y', 'r'); put(W - 17, y, 'remove', 'm'); put(W - 8, y, 'n', 'r'); put(W - 6, y, 'keep', 'm')
-    return
-  }
-  if (confirmCut) {
-    const place = known.find(k => k.key === confirmCut)?.place ?? ''
-    put(2, y, clip(`Cut ${place}? It spins up again on its next task.`, W - 20), 'Y'); put(W - 16, y, 'y', 'r'); put(W - 14, y, 'cut', 'm'); put(W - 8, y, 'n', 'r'); put(W - 6, y, 'keep', 'm')
-    return
-  }
-  if (searching) { put(2, y, `/ ${query}${Math.floor(t / 400) % 2 ? '▌' : ' '}`, 'G'); put(W - 28, y, 'enter keep   esc clear', 'm'); return }
-  if (message && Date.now() - messageAt < 5000) { put(2, y, clip(message, W - 4), 'G'); return }
-  let x = 2
-  const parts: [string, string][] = [['↑↓', 'pick'], ['⏎', 'open'], ['a', 'attach'], ['x', 'cut'], ['s', 'schedules'], ['l', 'kagelets'], ['/', query ? `search: ${query}` : 'search'], ['q', 'quit']]
-  for (const [k, w] of parts) {
-    if (x + k.length + w.length + 1 > W - 2) break
-    put(x, y, k, 'r'); put(x + k.length + 1, y, w, 'm'); x += k.length + w.length + 5
+function view(now: number, t: number): View {
+  const asking = board.find(r => r.state === 'asking')
+  const shown = open ?? selKey
+  const f = shown ? feeds.get(shown) : undefined
+  const midnight = new Date(now).setHours(0, 0, 0, 0)
+  return {
+    now, t, since: now - boot,
+    version: read('version').split(' ')[0] || undefined, slack: read('status').startsWith('connected') && !!live, hubUp: !!live,
+    ...(upSec !== undefined && { upSec: upSec + Math.round((now - upAt) / 1000) }),
+    spentToday: Math.round(costs.filter(c => c.at >= midnight).reduce((a, c) => a + c.usd, 0) * 100) / 100,
+    ...(live && { slots: { used: live.live.filter(l => l.state === 'busy' || l.state === 'asking' || l.state === 'starting').length, max: live.max } }),
+    rows, nowLine: key => feeds.get(key)?.steps.at(-1)?.text.replace(/^reply\s+/, '').replace(/^(\S+)\s+/, '$1 '),
+    ...(asking && { ask: { place: asking.place, what: waiting.find(w => w.thread === asking.key)?.what || 'waits on your answer in Slack' } }),
+    tab, focus, selKey, ...(open && { open }), mode,
+    feed: f?.steps ?? [], typed: (f?.changed ?? 0) > openAt ? Math.max(0, Math.floor((now - f!.changed) / 22)) : Infinity,
+    threadSpend: Math.round(costs.filter(c => c.key === shown && c.at >= midnight).reduce((a, c) => a + c.usd, 0) * 100) / 100,
+    schedules, nextOf: s => nextRuns([s], now).get(s.key), placeOf,
+    kagelets, pick, runs, ...(CAP !== undefined && { cap: CAP }),
+    turns: costs.map(c => c.at), costs,
+    query, searching,
+    ...(confirm && { confirm: confirm.kind === 'cut'
+      ? { title: 'cut this session?', body: [`${placeOf(confirm.target)} is ${board.find(r => r.key === confirm!.target)?.label ?? 'open'}.`, 'Cutting stops its turn now. The next tag starts it again,', 'and it picks up the same conversation.'], yes: 'cut now' }
+      : { title: `remove ${confirm.target}?`, body: [`Its file and its schedule go.`, 'This cannot be undone from here.'], yes: 'remove' } }),
+    ...(message && now - messageAt < 5000 && { message }),
+    ...(live?.paused && { paused: pauseLine(live.paused) }),
   }
 }
+const ledgerTextSafe = (name: Parameters<typeof ledgerText>[1]) => { try { return ledgerText(db, name) } catch { return '' } }
 
 const size = () => ({ cols: Number(process.env.COLUMNS) || process.stdout.columns || 80, rows: Number(process.env.LINES) || process.stdout.rows || 24 })
-const intro = () => (view.live.length && L?.hero ? Date.now() - boot : 1e9)
+let lastRefresh = 0
 function draw() {
   if (suspended) return
   resize(size())
   const now = Date.now()
   if (now - lastRefresh > 1000) { lastRefresh = now; refresh(now) }
-  const text = frame(now, intro())
-  process.stdout.write(`\x1b[H${text.map((l, i) => `\x1b[${i + 1};1H${l}`).join('')}`)
+  hits = drawFrame(view(now, now - boot))
+  process.stdout.write(toText().map((l, i) => `\x1b[${i + 1};1H${l}`).join(''))
 }
-let lastRefresh = 0
 
 if (ONCE) {
   await pollHub()
   resize(size())
   refresh(Date.now())
-  frame(boot, 1e9)
-  if (process.stdout.isTTY) console.log(toText().join('\n'))
+  if (process.stdout.isTTY) { drawFrame(view(Date.now(), 1e9)); console.log(toText().join('\n')) }
   else for (const r of board.filter(r => r.state !== 'closed')) console.log([r.label, r.place, r.next ? `next ${whenLabel(r.next, Date.now())}` : `${ago(r.ageMs)} ago`].join('\t'))
   if (live?.paused) console.log(pauseLine(live.paused))
   const cost = limitLine(live?.limitCounts)
@@ -359,7 +214,7 @@ if (ONCE) {
 
 if (!process.stdin.isTTY || !process.stdout.isTTY) { console.error('kage top needs a terminal. Use --once to print one frame.'); process.exit(1) }
 
-const ENTER = '\x1b[?1049h\x1b[?25l\x1b[?1003h\x1b[?1006h', LEAVE = '\x1b[?1006l\x1b[?1003l\x1b[?25h\x1b[?1049l\x1b[0m'
+const ENTER = '\x1b[?1049h\x1b[?25l\x1b[?1000h\x1b[?1006h', LEAVE = '\x1b[?1006l\x1b[?1000l\x1b[?25h\x1b[?1049l\x1b[0m'
 function enter() { process.stdin.setRawMode(true); process.stdin.resume(); process.stdout.write(`${ENTER}${BG}\x1b[2J`) }
 function leave() { try { process.stdin.setRawMode(false) } catch {} process.stdout.write(LEAVE) }
 let left = false
@@ -372,7 +227,6 @@ process.stdout.on('resize', () => { process.stdout.write(`${BG}\x1b[2J`); draw()
 const say = (m: string) => { message = m; messageAt = Date.now() }
 const CUT_WHY = { closed: 'it is not running', starting: 'it is still starting', busy: 'it is working', asking: 'it waits on your approval' } as const
 const ATTACH_WHY: Partial<Record<State, string>> = { held: 'it is already open in a terminal' }
-const placeOf = (key: string) => known.find(k => k.key === key)?.place ?? key
 
 async function cut(key: string) {
   const r = await ask({ type: 'stop', key })
@@ -383,7 +237,9 @@ async function cut(key: string) {
   refresh(Date.now())
 }
 
-function attach(r: Row) {
+function attach(key: string) {
+  const r = board.find(x => x.key === key)
+  if (!r) return
   const why = ATTACH_WHY[r.state]
   if (!live) return say('Cannot attach: the hub is not running.')
   if (why) return say(`Cannot attach to ${r.place}: ${why}.`)
@@ -406,58 +262,65 @@ async function act(action: PanelAction, name: string) {
   readKageletRows(Date.now())
 }
 
-const target = () => open ?? hover ?? selKey
-const rowOf = (key: string) => board.find(r => r.key === key)
 function openThread(key: string) { open = key; selKey = key; openAt = Date.now(); mode = 'steps'; follow(key) }
+const wide = () => W >= 110
+const move = (d: number) => {
+  if (tab === 'kagelets') { pick = Math.max(0, Math.min(kagelets.length - 1, pick + d)); return }
+  const keys = rows.map(r => r.key), at = Math.max(0, keys.indexOf(selKey))
+  selKey = keys[Math.max(0, Math.min(keys.length - 1, at + d))] ?? selKey
+  if (wide()) { open = undefined; openAt = Date.now() }
+}
 
 const TOKEN = /\x1b\[<(\d+);(\d+);(\d+)([Mm])|\x1b\[[A-D]|\x1b|[\s\S]/gu
 async function onKey(k: string) {
-  const list = [...(L?.live ?? []), ...(L?.ended ?? [])].map(r => r.key)
-  const at = Math.max(0, list.indexOf(selKey))
-  if (confirmCut) { const key = confirmCut; confirmCut = ''; if (k === 'y') await cut(key); return }
-  if (confirmRemove) { const name = confirmRemove; confirmRemove = ''; if (k === 'y') await act('remove', name); return }
-  if (panel) {
-    const name = kagelets[pick]?.name, action = PANEL_KEYS[k]
-    if (k === 'q' || k === '\x03') quit()
-    else if (k === '\x1b' || k === 'l') panel = false
-    else if (k === '\r') { const key = kagelets[pick]?.key; if (key) { panel = false; openThread(key) } }
-    else if (k === '\x1b[A' || k === 'k') pick = Math.max(0, pick - 1)
-    else if (k === '\x1b[B' || k === 'j') pick = Math.min(kagelets.length - 1, pick + 1)
-    else if (action && name) {
-      if (action === 'remove') confirmRemove = name
-      else if (action === 'revoke') { const tools = (kagelets[pick]?.tools ?? []).filter(t => kageletTier(t) === 'write'); if (!tools.length) say(`${name} holds no write tool, so no standing approval.`); for (const t of tools) await act('revoke', t) }
-      else await act(action, name)
-    }
+  if (confirm) {
+    const c = confirm
+    confirm = undefined
+    if (k === 'y') { if (c.kind === 'cut') await cut(c.target); else await act('remove', c.target) }
     return
   }
   if (searching) {
     if (k === '\x1b') { query = ''; searching = false } else if (k === '\r') searching = false
     else if (k === '\x7f') query = query.slice(0, -1)
     else if (k >= ' ' && k.length === 1) query += k
-    rebuild(); return
+    refresh(Date.now())
+    return
   }
-  hover = undefined
   if (k === 'q' || k === '\x03') quit()
-  else if (k === '\x1b') { if (open) open = undefined; else if (query) { query = ''; rebuild() } }
-  else if (k === '\x1b[A' || k === 'k') selKey = list[Math.max(0, at - 1)] ?? selKey
-  else if (k === '\x1b[B' || k === 'j') selKey = list[Math.min(list.length - 1, at + 1)] ?? selKey
-  else if (k === '\r') { if (selKey) openThread(selKey) }
-  else if (k === '/') { searching = true; open = undefined }
+  else if (k === '1' || k === '2' || k === '3') { tab = TABS[Number(k) - 1]!; open = undefined; focus = 'list' }
+  else if (k === '\t') focus = focus === 'list' && wide() ? 'feed' : 'list'
+  else if (k === '\x1b') { if (open) open = undefined; else if (query) { query = ''; refresh(Date.now()) } }
+  else if (k === '\x1b[A' || k === 'k') move(-1)
+  else if (k === '\x1b[B' || k === 'j') move(1)
+  else if (k === '/') { tab = 'threads'; searching = true; open = undefined }
   else if (k === 's') { if (!open && selKey) openThread(selKey); mode = mode === 'steps' ? 'schedules' : 'steps' }
-  else if (k === 'x' && target()) confirmCut = target()
-  else if (k === 'a') { const r = rowOf(target()); if (r) attach(r) }
-  else if (k === 'l') { panel = true; open = undefined; readKageletRows(Date.now()) }
+  else if (tab === 'kagelets') {
+    const picked = kagelets[pick], action = PANEL_KEYS[k]
+    if (k === '\r' && picked?.key) { tab = 'threads'; openThread(picked.key) }
+    else if (action && picked) {
+      if (action === 'remove') confirm = { kind: 'remove', target: picked.name }
+      else if (action === 'revoke') { const tools = picked.tools.filter(t => kageletTier(t) === 'write'); if (!tools.length) say(`${picked.name} holds no write tool, so no standing approval.`); for (const t of tools) await act('revoke', t) }
+      else await act(action, picked.name)
+    }
+  } else if (k === '\r') { if (selKey) openThread(selKey) }
+  else if (k === 'x' && (open ?? selKey)) confirm = { kind: 'cut', target: open ?? selKey }
+  else if (k === 'a' && (open ?? selKey)) attach(open ?? selKey)
 }
+
 function onMouse(b: number, x: number, y: number, press: boolean) {
-  if (!L || intro() < 4100 || panel) return
-  const over = (open && x >= L.lx - 3 && y >= 4) ? undefined : hit(L, x - 1, y - 1)
-  if (b === 35 || b === 32) { hover = over; return }
-  if (b === 0 && press) { if (over) openThread(over); else if (!(open && x >= L.lx - 3)) open = undefined }
+  if (!hits || !press) return
+  const cx = x - 1, cy = y - 1
+  if (b === 64) return move(-1)
+  if (b === 65) return move(1)
+  if (b !== 0) return
+  const t = hits.tabs.find(t => cy === t.y && cx >= t.x0 && cx <= t.x1)
+  if (t) { tab = t.tab; open = undefined; return }
+  const key = rowAt(hits.rows.map(r => ({ key: r.key, y: r.y })), cy)
+  if (key && cx >= hits.list.x0 && cx <= hits.list.x1) { if (key === selKey && !wide()) openThread(key); else { selKey = key; if (wide()) open = undefined } focus = 'list' }
 }
 
 process.stdin.on('data', async b => {
   if (suspended) return
-  if (Date.now() - boot < 4100) boot = Date.now() - 4100
   for (const m of b.toString().matchAll(TOKEN)) {
     if (m[1] !== undefined) onMouse(Number(m[1]), Number(m[2]), Number(m[3]), m[4] === 'M')
     else await onKey(m[0])
@@ -469,4 +332,4 @@ await pollHub()
 refresh(Date.now())
 draw()
 setInterval(() => { void pollHub() }, 1000)
-setInterval(draw, 70)
+setInterval(draw, 100)

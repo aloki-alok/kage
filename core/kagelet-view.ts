@@ -1,5 +1,4 @@
 import { clockTime, whenLabel } from './board.ts'
-import { DEFAULT_MODEL } from './config.ts'
 import type { KageletRow, Report } from './kagelets.ts'
 
 type Caps = { dailyUsd?: number | null; totalDailyUsd?: number | null; chainUsd?: number | null }
@@ -13,14 +12,6 @@ export const shownState = (r: KageletRow, cap: number | undefined) =>
 export const CAP_PAUSE = 'paused: it spent'
 
 const reportText =(r: Report) => r.needs ? `needs: ${r.needs} (${r.summary})` : r.summary
-
-export function panelLines(rows: KageletRow[], now: number, cap?: number) {
-  return rows.map(r => r.state === 'broken' ? { main: `${r.name.padEnd(16)} ${'broken'.padEnd(8)} ${r.error}`, report: '' } : {
-    main: [r.name.padEnd(16), shownState(r, cap).padEnd(8), `last ${r.lastRun ? whenLabel(r.lastRun, now) : 'never'}`.padEnd(14),
-      `next ${whenLabel(r.next, now)}`.padEnd(14), `$${r.costToday.toFixed(2)} avg $${r.avg7.toFixed(2)}`.padEnd(16), `by ${r.by === 'kage' ? 'Kage' : 'owner'}${r.standing ? ', standing' : ''}`].join(' '),
-    report: `${(r.cron || `after ${r.after}`).padEnd(13)} ${(r.model ?? '').padEnd(7)} ${r.result ? `${clockTime(r.result.at, now)} ${reportText(r.result)}` : 'no report yet'}${r.modelWhy && r.model !== DEFAULT_MODEL ? ` (${r.model}: ${r.modelWhy})` : ''}`,
-  })
-}
 
 export type PanelAction = 'run' | 'pause' | 'resume' | 'remove' | 'revoke'
 export const PANEL_KEYS: Record<string, PanelAction> = { r: 'run', p: 'pause', u: 'resume', x: 'remove', v: 'revoke' }
