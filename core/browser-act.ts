@@ -63,21 +63,23 @@ export function actCard(a: Act, at: { url: string; el?: Element }) {
   return `${slackSafe(hostOf(at.url))}: ${line}`
 }
 
-const MAJOR = /\b(pay|buy|purchas|order|checkout|subscrib|unsubscrib|upgrad|delet|remov|destroy|revok|transfer|withdraw|send|sent|post|publish|shar|invit|merg|deploy|releas|approv|allow|authori[sz]|install|reinstall|grant|sign|confirm|submit|comment|reply|forward|tweet|archiv|deactivat|token|visibility|close account|cancel \w+|supprim|effac|envoy|pay[ée]|achet|borrar|elimin|enviar|pagar|comprar|entfern|bezahl|kauf|invia|cancell|acquist)\w*/i
-const GENERIC = /^(ok|okay|yes|continue|proceed|done|accept|agree|got it|i understand.*|\W*)$/i
-const SENDS = /\b(message|reply|comment|compose|chat|email)\b/i
-const plainName = (s: string) => s.replace(/\p{Zs}/gu, ' ').replace(/\p{Cf}/gu, '').trim()
-type ActContext = { openHosts?: string[]; typed?: string[] }
-export function majorAct(a: Act, el?: Element, ctx: ActContext = {}): string | undefined {
-  if (a.action === 'navigate' || a.action === 'open') {
-    const host = (() => { try { return new URL(a.url).hostname } catch { return '' } })()
-    return ctx.openHosts?.includes(host) ? undefined : `it goes to ${host || 'an address'}, which no open tab is on`
-  }
-  if (a.action === 'type') return undefined
+const UNDOABLE_NOT = new RegExp([
+  String.raw`\b(pay|buy|purchas|checkout|subscrib|upgrad|delet|remov|destroy|eras|wipe|revok|transfer|withdraw|merg|deploy(?!ment)|terminat|purg|discard|overwrit|refund|deactivat|authori[sz]|deauthori[sz]|donat|supprim|effac|achet|borrar|elimin|pagar|comprar|entfern|bezahl|kauf|cancell|acquist)\w*`,
+  String.raw`\b(grant|reset|wire|reinstall|pay[ée])\b`, String.raw`^allow$`,
+  String.raw`\b((place|confirm|submit) order|order now|drop (table|database|schema|collection)|empty (trash|bin)|force push|send (money|payment)|cash ?out|leave (workspace|team|organi[sz]ation|channel|group|server)|close (my )?account|cancel (subscription|plan|order|account|membership|payment|transfer)|install to|((re)?generate|create|new|delete|revoke)[\w ]* token|change [\w ]*visibility|(publish|create) release|release now)\b`,
+  '削除|删除|삭제',
+].join('|'), 'i')
+const LOOK_ALIKE: Record<string, string> = Object.fromEntries([...'аеорсухіјѕԁԛԝАВЕКМНОРСТХУІЈЅαονρτυικΑΒΕΖΗΙΚΜΝΟΡΤΥΧ'].map((c, i) => [c, 'aeopcyxijsdqwABEKMHOPCTXYIJSaovptuikABEZHIKMNOPTYX'[i]!]))
+const skeleton = (s: string) => s.normalize('NFKD').replace(/\p{Mn}/gu, '').replace(/./gu, c => LOOK_ALIKE[c] ?? c)
+const cannotUndo = (s: string) => { const t = skeleton(s); return UNDOABLE_NOT.test(t) || UNDOABLE_NOT.test(t.replace(/\s+/g, '')) }
+const lookAlike = (s: string) => s.split(/\s+/).some(w => /\p{Script=Latin}/u.test(w) && /[\p{Script=Cyrillic}\p{Script=Greek}]/u.test(w))
+const plainName = (s: string) => s.normalize('NFKC').replace(/[\p{Cf}\p{Zl}\p{Zp}\uFE0F\u034F]/gu, '').replace(/\p{Zs}/gu, ' ').trim()
+export function majorAct(a: Act, el?: Element, ctx: { typed?: string[] } = {}): string | undefined {
+  if (a.action !== 'click' && !(a.action === 'press' && a.key === 'Enter')) return undefined
   const label = plainName(el?.name ?? '')
-  const hidden = GENERIC.test(label) || /[^\x00-\x7F…]/.test(label) || label.includes('(styled text')
-  const typed = ctx.typed?.length ? `, after typing ${ctx.typed.join('; ')}` : ''
-  if (a.action === 'click' && (MAJOR.test(label) || hidden || (typed && el?.role === 'button'))) return `it clicks "${label}"${typed}`
-  if (a.action === 'press' && a.key === 'Enter' && (MAJOR.test(label) || SENDS.test(label) || hidden || typed)) return `Enter in "${label}" may send or submit it${typed}`
-  return undefined
+  const typed = ctx.typed ?? []
+  const why = cannotUndo(label) || lookAlike(label) || label.includes('(styled text') ? label : typed.find(cannotUndo)
+  if (why === undefined) return undefined
+  const after = typed.length ? `, after typing ${typed.join('; ')}` : ''
+  return a.action === 'click' ? `it clicks "${label}"${after}` : `Enter in "${label}" may confirm it${after}`
 }
