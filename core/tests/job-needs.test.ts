@@ -50,3 +50,7 @@ test("a job saved missing only Kage's own tools is cleared with no DM; a real to
   assert.deepEqual(c!.missing, [DIAL])
   assert.match(c!.dm!, /needs mcp__claude_ai_Dialer__place_call, and/)
 })
+
+test("Kage's own tools on the tmux route are never watched either", () => {
+  assert.deepEqual(needsChanges([{ ...job(), needs: [DIAL, 'mcp__plugin_kage_kage__reply'] }], live([DIAL])), [])
+})
