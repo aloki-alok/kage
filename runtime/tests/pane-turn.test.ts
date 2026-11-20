@@ -1,7 +1,7 @@
 import { afterEach, test } from 'node:test'
 import assert from 'node:assert/strict'
 import { execFileSync } from 'node:child_process'
-import { mkdtempSync, readFileSync } from 'node:fs'
+import { appendFileSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { paneTurn } from '../pane-turn.ts'
@@ -21,6 +21,8 @@ function pane() {
   const hook = (file: string, input: object) => execFileSync(process.execPath, [file], { input: JSON.stringify(input), env, encoding: 'utf8' })
   const slack = { chat: { postMessage: async () => ({ ts: '9.1' }) }, reactions: { add: async () => {} }, users: { info: async () => ({}) } }
   const shown: string[] = []
+  const transcript = join(conf, 'transcript.jsonl')
+  writeFileSync(transcript, '')
   let kage!: ReturnType<typeof sessionTools>
   const turn = paneTurn({ dir: conf, thread: 'C1:5.5', pollMs: 10, show: m => { kage.onTask(m); shown.push(m.content) } })
   opened.push(turn as { close?: () => void })
@@ -33,8 +35,9 @@ function pane() {
     configOpen: () => !hook(GUARD, { tool_name: 'Read', tool_input: { file_path: join(conf, 'config.json') } }).includes('"deny"'),
     plainReadOpen: () => !hook(GUARD, { tool_name: 'Read', tool_input: { file_path: join(conf, 'files', 'notes.txt') } }).includes('"deny"'),
     post: async () => (await kage.tools.find(t => t.name === 'post_as_kage')!.run({ channel: 'C1', thread_ts: '5.5', to: 'CTEST9', text: 'hello' })).text,
-    stopNow: () => { hook(TURN_END, { hook_event_name: 'Stop' }) },
-    turnEnds: async () => { await tick(15); hook(TURN_END, { hook_event_name: 'Stop' }); await tick() },
+    stopNow: () => { hook(TURN_END, { hook_event_name: 'Stop', transcript_path: transcript }) },
+    turnEnds: async () => { await tick(15); hook(TURN_END, { hook_event_name: 'Stop', transcript_path: transcript }); await tick() },
+    writes: (...rows: object[]) => { for (const r of rows) appendFileSync(transcript, `${JSON.stringify(r)}\n`) },
     restart: () => {
       turn.close()
       const again = paneTurn({ dir: conf, thread: 'C1:5.5', pollMs: 10, show: m => { kage.onTask(m); shown.push(m.content) } })
@@ -144,6 +147,29 @@ test("a turn Claude starts on its own after a teammate's turn keeps the teammate
   await p.turnEnds()
   assert.match(p.shown.at(-1)!, /Task from the owner: hi$/)
   assert.equal(p.configOpen(), true)
+})
+
+test("a turn Claude starts on its own keeps the teammate's trust when the owner writes before its first tool call (#421)", async () => {
+  const p = pane()
+  p.teammate('run the build in the background')
+  p.configOpen()
+  p.writes({ type: 'user', message: { role: 'user', content: 'Task from Sam: run the build in the background' } }, { type: 'assistant', message: { role: 'assistant', content: 'started' } })
+  await p.turnEnds()
+  p.writes({ type: 'system', subtype: 'stop_hook_summary' }, { type: 'system', subtype: 'turn_duration' })
+  p.writes({ type: 'user', message: { role: 'user', content: '<task-notification>build done</task-notification>' } })
+  p.owner('hi')
+  assert.equal(p.configOpen(), false)
+})
+
+test("an idle pane that only wrote its own bookkeeping after the turn's end gives the owner's message the owner's tools (#421)", async () => {
+  const p = pane()
+  p.teammate('check the build')
+  p.configOpen()
+  await p.turnEnds()
+  p.writes({ type: 'system', subtype: 'stop_hook_summary' }, { type: 'system', subtype: 'turn_duration' }, { type: 'last-prompt' }, { type: 'ai-title' }, { type: 'system', subtype: 'away_summary' })
+  p.owner('hi')
+  assert.equal(p.configOpen(), true)
+  assert.match(await p.post(), /posted as Kage/)
 })
 
 test("a plugin restart during a teammate's turn keeps that turn at a teammate's trust when the owner writes", async () => {
