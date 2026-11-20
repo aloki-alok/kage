@@ -70,3 +70,11 @@ test('an act is checked where it enters: numbers on screen, a known button, text
   for (const bad of [{ action: 'click', x: -1, y: 2 }, { action: 'click', x: 1 }, { action: 'click', x: 1, y: 2, button: 'middle' }, { action: 'type', text: '' }, { action: 'type', text: 'x'.repeat(5001) }, { action: 'key', keys: 'cmd+banana' }, { action: 'fly' }])
     assert.ok('error' in parseDesktopAct(bad), JSON.stringify(bad))
 })
+
+test('Return in a terminal on a line Kage did not type itself (history, a paste, a click into it) asks', () => {
+  const term = at('', { app: 'Ghostty', role: 'AXTextArea' })
+  const v = desktopVerdict(key('return'), term, undefined)
+  assert.ok('ask' in v)
+  assert.match((v as { ask: string }).ask, /did not type/)
+  assert.deepEqual(desktopVerdict(key('return'), at('Open', { app: 'Preview' }), undefined), { run: true })
+})
