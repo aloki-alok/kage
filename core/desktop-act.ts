@@ -73,11 +73,12 @@ function targetVerdict(u: Under, how: string): Verdict {
   return { run: true }
 }
 
-export function desktopVerdict(a: DesktopAct, under: Under, typedLine: string): Verdict {
+export function desktopVerdict(a: DesktopAct, under: Under, typedLine: string | undefined): Verdict {
   if (a.action === 'key') {
     if (OFF_KEYS.has(a.keys) || /\b(power|eject)$/.test(a.keys)) return { blocked: `the keys ${a.keys} turn off, log out or lock the Mac` }
     if (!PRESSES.has(a.keys.split('+').at(-1)!)) return { run: true }
     if (TERMINALS.has(under.app.toLowerCase()) && /(return|enter)$/.test(a.keys)) {
+      if (typedLine === undefined) return { ask: `it presses Return in ${under.app} on a line it did not type itself` }
       const line = typedLine.trim()
       if (WRECK.test(line)) return { blocked: `the command \`${line}\` turns off or wipes the Mac` }
       return heldCommand(line) ? { ask: `it runs \`${line}\` in ${under.app}` } : { run: true }
