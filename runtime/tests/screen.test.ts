@@ -1,6 +1,7 @@
 import { describe, test } from 'node:test'
 import assert from 'node:assert/strict'
-import { appendFileSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync } from 'node:fs'
+import { appendFileSync, createReadStream, mkdtempSync, readdirSync, readFileSync, rmSync, statSync } from 'node:fs'
+import { createInterface } from 'node:readline'
 import { tmpdir } from 'node:os'
 import { dirname } from 'node:path'
 import { screenRecorder, type Launch } from '../screen.ts'
@@ -118,5 +119,64 @@ describe('Kage Screen in the hub', () => {
     const { dir, screen } = setup(() => ['{"state":"saved"}'], built)
     await screen.shot('/t/s.png')
     assert.deepEqual(built, [`${dir}/Kage Screen.app`])
+  })
+
+})
+
+describe('Kage acting on the Mac, from the hub', () => {
+  function actingHelper(o: { accessibility?: false } = {}) {
+    const launches: Record<string, unknown>[] = [], seen: Record<string, unknown>[] = []
+    let quit: (() => void) | undefined
+    const launch: Launch = (app, log) => {
+      const file = `${dirname(app)}/job.json`
+      const job = JSON.parse(readFileSync(file, 'utf8'))
+      launches.push({ ...job, mode: statSync(file).mode & 0o777 })
+      rmSync(file)
+      const say = (l: object) => appendFileSync(log, JSON.stringify(l) + '\n')
+      const exited = new Promise<number | null>(done => {
+        if (o.accessibility === false) { say({ error: 'accessibility' }); return done(3) }
+        say({ state: 'acting', pid: 500 + launches.length, scale: 2 })
+        const lines = createInterface({ input: createReadStream(job.fifo) })
+        quit = () => { lines.close(); say({ state: 'stopped' }); done(0) }
+        lines.on('line', l => { const c = JSON.parse(l); seen.push(c); say(c.op === 'under' ? { id: c.id, app: 'Finder', role: 'AXButton', label: 'Open' } : { id: c.id, done: true }) })
+        lines.on('close', () => done(0))
+      })
+      return { exited }
+    }
+    return { launch, launches, seen, idle: () => quit?.() }
+  }
+  const setup = (o: { accessibility?: false } = {}) => {
+    const dir = mkdtempSync(`${tmpdir()}/kage-act-`), h = actingHelper(o)
+    const screen = screenRecorder({ folder: dir, code: '/code', build: async () => undefined, launch: h.launch, kill: () => {}, pollMs: 5, waitMs: 2000 })
+    return { dir, screen, ...h }
+  }
+
+  test('one app stays open for every act, and each answer comes back by its id', async () => {
+    const t = setup()
+    assert.deepEqual(await t.screen.act({ op: 'under', x: 10, y: 20 }), { app: 'Finder', role: 'AXButton', label: 'Open' })
+    assert.deepEqual(await t.screen.act({ op: 'click', x: 10, y: 20, button: 'left', count: 1 }), { done: true })
+    assert.equal(t.launches.length, 1)
+    assert.deepEqual(t.seen.map(c => c.op), ['under', 'click'])
+    assert.equal(t.launches[0]!.action, 'act')
+    assert.equal(t.launches[0]!.mode, 0o600)
+    assert.ok(String(t.launches[0]!.fifo).startsWith(t.dir), 'the command pipe is in the screen folder, which only the hub may write')
+    t.idle()
+  })
+
+  test('once the app stops for being idle, the next act opens it again', async () => {
+    const t = setup()
+    await t.screen.act({ op: 'move', x: 1, y: 1 })
+    t.idle()
+    await new Promise(r => setTimeout(r, 30))
+    assert.deepEqual(await t.screen.act({ op: 'move', x: 2, y: 2 }), { done: true })
+    assert.equal(t.launches.length, 2)
+    t.idle()
+  })
+
+  test("with Accessibility off, the act says the owner must turn it on, and where", async () => {
+    const t = setup({ accessibility: false })
+    const r = await t.screen.act({ op: 'move', x: 1, y: 1 })
+    assert.ok('error' in r)
+    assert.match(String(r.error), /Accessibility/)
   })
 })
