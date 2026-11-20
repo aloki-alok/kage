@@ -1,6 +1,6 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { desktopVerdict, parseDesktopAct, type DesktopAct, type Under } from '../desktop-act.ts'
+import { desktopVerdict, parseDesktopAct, parseDesktopSteps, type DesktopAct, type Under } from '../desktop-act.ts'
 
 const at = (label: string, o: Partial<Under> = {}): Under => ({ app: 'Finder', role: 'AXButton', label, ...o })
 const click = (x = 10, y = 10): DesktopAct => ({ action: 'click', x, y, button: 'left', count: 1 })
@@ -64,7 +64,7 @@ test('a label dressed in look-alike letters still asks', () => {
 test('an act is checked where it enters: numbers on screen, a known button, text and keys bounded', () => {
   assert.deepEqual(parseDesktopAct({ action: 'click', x: 100, y: 200 }), { action: 'click', x: 100, y: 200, button: 'left', count: 1 })
   assert.deepEqual(parseDesktopAct({ action: 'click', x: 1, y: 2, button: 'right', count: 2 }), { action: 'click', x: 1, y: 2, button: 'right', count: 2 })
-  assert.deepEqual(parseDesktopAct({ action: 'drag', x: 1, y: 2, to_x: 30, to_y: 40 }), { action: 'drag', x: 1, y: 2, toX: 30, toY: 40 })
+  assert.deepEqual(parseDesktopAct({ action: 'drag', x: 1, y: 2, to_x: 30, to_y: 40 }), { action: 'drag', x: 1, y: 2, path: [[30, 40]] })
   assert.deepEqual(parseDesktopAct({ action: 'scroll', x: 1, y: 2, dy: -3 }), { action: 'scroll', x: 1, y: 2, dy: -3, dx: 0 })
   assert.deepEqual(parseDesktopAct({ action: 'key', keys: 'Cmd+Shift+G' }), { action: 'key', keys: 'shift+cmd+g' })
   for (const bad of [{ action: 'click', x: -1, y: 2 }, { action: 'click', x: 1 }, { action: 'click', x: 1, y: 2, button: 'middle' }, { action: 'type', text: '' }, { action: 'type', text: 'x'.repeat(5001) }, { action: 'key', keys: 'cmd+banana' }, { action: 'fly' }])
@@ -110,4 +110,20 @@ test('pmset and osascript that sleep, shut down or log out the Mac are refused i
 
 test('the backslash key is a key', () => {
   assert.deepEqual(parseDesktopAct({ action: 'key', keys: 'cmd+\\' }), { action: 'key', keys: 'cmd+\\' })
+})
+
+test('a drag can follow a path of points, so a curve is one stroke; each point is a whole number on the screen, at most 200', () => {
+  assert.deepEqual(parseDesktopAct({ action: 'drag', x: 1, y: 2, path: [{ x: 5, y: 6 }, { x: 7, y: 8 }] }), { action: 'drag', x: 1, y: 2, path: [[5, 6], [7, 8]] })
+  const many = Array.from({ length: 201 }, (_, i) => ({ x: i, y: i }))
+  for (const bad of [{ path: [] }, { path: [{ x: -1, y: 2 }] }, { path: [{ x: 1.5, y: 2 }] }, { path: many }, { path: [{ x: 1, y: 2 }], to_x: 3, to_y: 4 }, { path: 'nope' }])
+    assert.ok('error' in parseDesktopAct({ action: 'drag', x: 1, y: 2, ...bad }), JSON.stringify(bad).slice(0, 80))
+})
+
+test('a list of steps is checked whole before any runs: one bad step names its number, and the list is 1 to 100 steps', () => {
+  assert.deepEqual(parseDesktopSteps([{ action: 'move', x: 1, y: 1 }, { action: 'key', keys: 'Cmd+Z' }]), [{ action: 'move', x: 1, y: 1 }, { action: 'key', keys: 'cmd+z' }])
+  const bad = parseDesktopSteps([{ action: 'move', x: 1, y: 1 }, { action: 'click', x: -4, y: 1 }])
+  assert.ok('error' in bad)
+  assert.match((bad as { error: string }).error, /step 2/)
+  for (const list of [[], Array.from({ length: 101 }, () => ({ action: 'move', x: 1, y: 1 })), 'move', [null]])
+    assert.ok('error' in parseDesktopSteps(list), JSON.stringify(list).slice(0, 40))
 })

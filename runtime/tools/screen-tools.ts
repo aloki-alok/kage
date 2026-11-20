@@ -1,10 +1,13 @@
 import { z } from 'zod'
-import { desktopVerdict, parseDesktopAct, sendsLine, type DesktopAct } from '../../core/desktop-act.ts'
+import { desktopVerdict, parseDesktopAct, parseDesktopSteps, sendsLine, type DesktopAct, type Under } from '../../core/desktop-act.ts'
 import type { KageTool, ToolContext } from '../kage-tools.ts'
+import type { ActAnswer } from '../screen.ts'
 
 const MAX_SECONDS = 600
 
-const command = (a: DesktopAct) => a.action === 'drag' ? { op: 'drag', x: a.x, y: a.y, toX: a.toX, toY: a.toY } : { op: a.action, ...a }
+const command = ({ action, ...rest }: DesktopAct) => ({ op: action, ...rest })
+const asUnder = (r: ActAnswer): Under => ({ app: String(r.app ?? ''), role: String(r.role ?? ''), label: String(r.label ?? '') })
+const ran = (n: number) => n === 0 ? 'No step ran.' : n === 1 ? 'Only step 1 ran.' : `Steps 1 to ${n} ran.`
 
 export function screenTools(c: ToolContext): KageTool[] {
   const { o, s, filesOf, ownerActs, name } = c
@@ -16,36 +19,74 @@ export function screenTools(c: ToolContext): KageTool[] {
   const seen = (tool: string, outcome: string) => o.event?.('tool', `${tool} ${outcome}`)
   const typed = new Map<string, string | undefined>()
   const fileFor = (args: Record<string, unknown>, ext: string) => `${filesOf(String(args.channel), String(args.thread_ts))}/screen-${Date.now()}.${ext}`
+  const fail = (text: string) => ({ isError: true as const, text })
+  const lookUnder = async (act: DesktopAct, focus?: Under): Promise<Under | { error: string }> => {
+    const looked = act.action === 'click' ? await screen.act({ op: 'under', x: act.x, y: act.y }) : focus ? {} : act.action === 'key' || act.action === 'type' ? await screen.act({ op: 'focused' }) : {}
+    return 'error' in looked ? { error: String(looked.error) } : act.action === 'click' || !focus ? asUnder(looked) : focus
+  }
+  const verdictOf = (act: DesktopAct, under: Under) => {
+    const v = desktopVerdict(act, under, typed.get(under.app))
+    if ('blocked' in v) seen('screen_act', `${act.action} refused`)
+    return 'blocked' in v ? { blocked: `refused: ${v.blocked}. This is never done on the owner's Mac.` } : v
+  }
+  const perform = async (act: DesktopAct, under: Under): Promise<string | undefined> => {
+    const line = typed.get(under.app)
+    if (act.action !== 'type' && act.action !== 'key') typed.clear()
+    else typed.set(under.app, act.action === 'type' ? line === undefined ? undefined : line + act.text : sendsLine(act.keys) || act.keys === 'ctrl+c' ? '' : undefined)
+    const r = await screen.act(command(act))
+    seen('screen_act', 'error' in r ? `${act.action} failed` : `${act.action} ok`)
+    return 'error' in r ? String(r.error) : undefined
+  }
+  const runSteps = async (acts: DesktopAct[]) => {
+    let front: string | undefined
+    for (const [i, act] of acts.entries()) {
+      const at = `step ${i + 1} of ${acts.length}`
+      const looked = await screen.act({ op: 'focused' })
+      if ('error' in looked) return fail(`${at}: ${String(looked.error)}. ${ran(i)}`)
+      const focus = asUnder(looked)
+      front ??= focus.app
+      if (focus.app !== front) return fail(`${at} did not run: the front app changed from ${front} to ${focus.app}, so the owner may be using the Mac. ${ran(i)} Take a screen_shot before you go on.`)
+      const under = await lookUnder(act, focus)
+      if ('error' in under) return fail(`${at}: ${under.error}. ${ran(i)}`)
+      const v = verdictOf(act, under)
+      if ('blocked' in v) return fail(`${at}: ${v.blocked} ${ran(i)}`)
+      if ('ask' in v) return fail(`${at} needs the owner's yes (${v.ask}), so it did not run. ${ran(i)} Send that step alone as its own screen_act call, so the owner gets a card for it.`)
+      const err = await perform(act, under)
+      if (err) return fail(`${at} failed: ${err}. ${ran(i)}`)
+    }
+    return { text: `done, ${acts.length} steps. Take a screen_shot to see the result.` }
+  }
+  const step = {
+    action: z.enum(['click', 'move', 'drag', 'scroll', 'type', 'key']),
+    x: z.number().optional(), y: z.number().optional(), to_x: z.number().optional().describe('drag: where it ends'), to_y: z.number().optional(),
+    path: z.array(z.object({ x: z.number(), y: z.number() })).optional().describe('drag: instead of to_x and to_y, the points it passes through in order, up to 200, for a curve in one stroke'),
+    button: z.enum(['left', 'right']).optional(), count: z.number().optional().describe('click: 2 for a double click'),
+    dy: z.number().optional().describe('scroll: lines, negative is down'), dx: z.number().optional(),
+    text: s.optional().describe('type: the text'), keys: s.optional().describe('key: one key and its modifiers, such as cmd+shift+g'),
+  }
   return [{
     name: 'screen_act',
-    description: "Act on the owner's Mac as a person would: click (count 2 for a double click, button right for a menu), move, drag, scroll, type text, or press keys (cmd+shift+g, return, down). x and y are pixels on the whole-screen picture screen_shot takes, so take one first, and again after each step that changes the screen. The owner sees Kage's own cursor make each step. Everyday steps run at once. A step that cannot be undone (Delete, Move to Trash, a one-way command in a terminal) waits for the owner's yes, and turning the Mac off, logging out, locking it or erasing it is refused. In a terminal, press ctrl+c first for a clean line, type one line, then press return. Any other key or a click there makes the line unknown, so its Return waits for the owner. Owner tasks only.",
-    shape: {
-      ...where,
-      action: z.enum(['click', 'move', 'drag', 'scroll', 'type', 'key']),
-      x: z.number().optional(), y: z.number().optional(), to_x: z.number().optional().describe('drag: where it ends'), to_y: z.number().optional(),
-      button: z.enum(['left', 'right']).optional(), count: z.number().optional().describe('click: 2 for a double click'),
-      dy: z.number().optional().describe('scroll: lines, negative is down'), dx: z.number().optional(),
-      text: s.optional().describe('type: the text'), keys: s.optional().describe('key: one key and its modifiers, such as cmd+shift+g'),
-    },
+    description: "Act on the owner's Mac as a person would: click (count 2 for a double click, button right for a menu), move, drag (along a path for a curve), scroll, type text, or press keys (cmd+shift+g, return, down). x and y are pixels on the whole-screen picture screen_shot takes, so take one first, and again after each step that changes the screen in a way you cannot predict. For several steps you can plan from one picture (strokes of a drawing, a form), send them as steps, one list in one call: each step is still checked, and the list stops at the first step that fails, is refused, needs the owner's yes, or finds a different app in front (the owner may have taken over). Keep a list in one app. The owner sees Kage's own cursor make each step. Everyday steps run at once. A step that cannot be undone (Delete, Move to Trash, a one-way command in a terminal) waits for the owner's yes, and turning the Mac off, logging out, locking it or erasing it is refused. In a terminal, press ctrl+c first for a clean line, type one line, then press return. Any other key or a click there makes the line unknown, so its Return waits for the owner. Owner tasks only.",
+    shape: { ...where, ...step, action: step.action.optional().describe('one step; leave it out when you send steps'), steps: z.array(z.object(step)).optional().describe('a list of 1 to 100 steps, each shaped like one step, run in order in this one call') },
     async run(args) {
       const no = refused(args); if (no) return no
-      const act = parseDesktopAct(args)
-      if ('error' in act) return { isError: true, text: act.error }
-      const looked = act.action === 'click' ? await screen.act({ op: 'under', x: act.x, y: act.y }) : act.action === 'key' || act.action === 'type' ? await screen.act({ op: 'focused' }) : {}
-      if ('error' in looked) return { isError: true, text: String(looked.error) }
-      const under = { app: String(looked.app ?? ''), role: String(looked.role ?? ''), label: String(looked.label ?? '') }
-      const line = typed.get(under.app)
-      const v = desktopVerdict(act, under, line)
-      if ('blocked' in v) { seen('screen_act', `${act.action} refused`); return { isError: true, text: `refused: ${v.blocked}. This is never done on the owner's Mac.` } }
-      if ('ask' in v) {
-        if (!o.approve) return { isError: true, text: `refused: ${v.ask}, which needs the owner's yes, and this session cannot ask them` }
-        if (!await o.approve('screen_act', `${v.ask}, on your Mac`, { ...act })) { seen('screen_act', `${act.action} owner said no`); return { isError: true, text: 'the owner said no, so nothing was done. Ask them what to do instead.' } }
+      if (args.steps !== undefined) {
+        if (args.action !== undefined) return fail('give action for one step, or steps for a list, not both')
+        const acts = parseDesktopSteps(args.steps)
+        return 'error' in acts ? fail(acts.error) : runSteps(acts)
       }
-      if (act.action !== 'type' && act.action !== 'key') typed.clear()
-      else typed.set(under.app, act.action === 'type' ? line === undefined ? undefined : line + act.text : sendsLine(act.keys) || act.keys === 'ctrl+c' ? '' : undefined)
-      const r = await screen.act(command(act))
-      seen('screen_act', 'error' in r ? `${act.action} failed` : `${act.action} ok`)
-      return 'error' in r ? { isError: true, text: String(r.error) } : { text: 'done. Take a screen_shot to see the result.' }
+      const act = parseDesktopAct(args)
+      if ('error' in act) return fail(act.error)
+      const under = await lookUnder(act)
+      if ('error' in under) return fail(under.error)
+      const v = verdictOf(act, under)
+      if ('blocked' in v) return fail(v.blocked)
+      if ('ask' in v) {
+        if (!o.approve) return fail(`refused: ${v.ask}, which needs the owner's yes, and this session cannot ask them`)
+        if (!await o.approve('screen_act', `${v.ask}, on your Mac`, { ...act })) { seen('screen_act', `${act.action} owner said no`); return fail('the owner said no, so nothing was done. Ask them what to do instead.') }
+      }
+      const err = await perform(act, under)
+      return err ? fail(err) : { text: 'done. Take a screen_shot to see the result.' }
     },
   }, {
     name: 'screen_shot',
