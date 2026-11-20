@@ -28,6 +28,7 @@ check('text drawn by CSS is flagged', snap.elements.some(e => e.name.includes('s
 check('a link names the site it opens', /link "Unsubscribe" -> evil\.example/.test(list), list)
 check('text drawn by CSS inside a child is flagged', snap.elements.filter(e => e.name.includes('styled text')).length >= 2, list)
 check('values hidden in a zero box, drawn transparent or under a cover are not shown', !/tok-/.test(list), list)
+check('a fixed or absolute control that escapes a zero box is listed', !!el('Fixed shell') && !!el('Escaped field'), list)
 
 const rows = (n: string) => snap.elements.filter(e => e.name.includes(n))
 check('a role-less clickable row is listed once, with its text, as an element', ['Asha Rao', 'Ben Lee'].every(n => rows(n).length === 1 && rows(n)[0]!.role === 'element'), list)
