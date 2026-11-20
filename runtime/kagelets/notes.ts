@@ -1,6 +1,6 @@
-import type { Store } from './store.ts'
-import type { Task } from '../core/task.ts'
-import type { Delivery } from '../core/sessions.ts'
+import type { Store } from '../store.ts'
+import type { Task } from '../../core/task.ts'
+import type { Delivery } from '../../core/sessions.ts'
 
 const NOTES = 'kagelet-notes'
 const ASKS = 'kagelet-asks'

@@ -1,5 +1,5 @@
-import type { Kagelet } from './kagelets.ts'
-import { validUserId } from './registry.ts'
+import type { Kagelet } from './kagelet.ts'
+import { validUserId } from '../registry.ts'
 
 export function idLine(frontMatter: string, head: Map<string, string>, key: 'people' | 'owners'): string[] | { error: string } {
   if (frontMatter.split('\n').filter(l => l.trim().startsWith(`${key}:`)).length > 1) return { error: `${key} must be one line` }

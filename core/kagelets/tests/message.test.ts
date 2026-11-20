@@ -1,6 +1,6 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { messageInput, parseMessage } from '../kagelet-message.ts'
+import { messageInput, parseMessage } from '../message.ts'
 
 const ok = { messageId: 'm1', contextId: 'c1', taskId: 't1', from: 'make', to: 'edit', role: 'agent', parts: [{ kind: 'text', text: 'https://example.com/v\nline 2' }], hops: 1 }
 

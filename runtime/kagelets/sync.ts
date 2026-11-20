@@ -1,7 +1,7 @@
-import { parseSessionKey } from '../core/conversations.ts'
-import { memoryBlock } from '../core/kagelet-memory.ts'
-import { chainErrors, parseKagelet, type Kagelet } from '../core/kagelets.ts'
-import type { Store } from './store.ts'
+import { parseSessionKey } from '../../core/conversations.ts'
+import { memoryBlock } from '../../core/kagelets/memory.ts'
+import { chainErrors, parseKagelet, type Kagelet } from '../../core/kagelets/kagelet.ts'
+import type { Store } from '../store.ts'
 
 export const kageletPrompt = (sp: Pick<Kagelet, 'name' | 'job'>, notes: { file: string; text: string }[] = []) => `Run of the kagelet "${sp.name}". Its rules are in your instructions.\n\n${sp.job}${memoryBlock(notes)}`
 

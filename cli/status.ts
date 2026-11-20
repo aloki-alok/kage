@@ -7,10 +7,10 @@ import { spendSince } from '../core/ledgers.ts'
 import { openLedgers } from '../runtime/ledger.ts'
 import { schedulesIn } from '../runtime/store.ts'
 import { voice } from './voice.ts'
-import { kageletRows } from '../core/kagelets.ts'
-import { kageletLine } from '../core/kagelet-view.ts'
+import { kageletRows } from '../core/kagelets/kagelet.ts'
+import { kageletLine } from '../core/kagelets/view.ts'
 import { MARK } from '../core/voice.ts'
-import { kageletsDir, readKagelets } from '../runtime/kagelet-files.ts'
+import { kageletsDir, readKagelets } from '../runtime/kagelets/files.ts'
 
 const read = (f: string) => { try { return readFileSync(`${DIR}/${f}`, 'utf8') } catch { return '' } }
 const now = Date.now()

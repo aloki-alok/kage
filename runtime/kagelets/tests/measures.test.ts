@@ -3,8 +3,8 @@ import assert from 'node:assert/strict'
 import { mkdtempSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { kageletMeasures } from '../kagelet-measures.ts'
-import { openStore } from '../store.ts'
+import { kageletMeasures } from '../measures.ts'
+import { openStore } from '../../store.ts'
 
 const target = { op: '>=' as const, n: 500 }
 function setup() {

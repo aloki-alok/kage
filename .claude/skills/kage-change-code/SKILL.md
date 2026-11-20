@@ -71,7 +71,7 @@ Privacy and trust (each was a real leak, fixed in #193, #206, #207):
 20. Compare Slack `ts` as split numbers, not floats. Write `!(age >= limit)` so a NaN time reads as fresh. (`runtime/channel-watch.ts`, `core/ledgers.ts`)
 21. Never use a bare `JSON.parse` result without a type check. A bare `null` or number must not crash the hub. (`runtime/session-link.ts`)
 22. A message the owner sends into someone else's running turn never lifts that turn's trust. If Claude reads it there, it runs again as the owner's own turn once that turn ends. (`runtime/sdk-sessions.ts`)
-23. Never write to a kagelet or config file through a link. Swap in a fresh copy. (`runtime/kagelet-files.ts`)
+23. Never write to a kagelet or config file through a link. Swap in a fresh copy. (`runtime/kagelets/files.ts`)
 
 Shared homes (update this table when you add one):
 

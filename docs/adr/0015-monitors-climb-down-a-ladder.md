@@ -40,7 +40,7 @@ Every number is a setting with a default (`tripwires.*`, `harness.jobModel`, doc
 - A line longer than `lineMax` is never dropped by an ignore regex, because a regex that sees part of it proves nothing. (`core/tripwire.ts`)
 - An ignore pattern that is invalid, too long or nested-repeating never runs. Upgrade path: RE2. (`core/tripwire.ts`)
 - A probe refusal (changed script, unsafe pattern) pings at once, once per distinct refusal. (`core/tripwire.ts`)
-- A pinned script is fixed only if the user cannot swap it. A writable script or folder is never trusted. (`runtime/probes.ts`, `runtime/kagelet-measures.ts`)
+- A pinned script is fixed only if the user cannot swap it. A writable script or folder is never trusted. (`runtime/probes.ts`, `runtime/kagelets/measures.ts`)
 - A watch's cursor moves only on a finished catch-up while a gap is open, because a live post can land before older missed ones. (`runtime/channel-watch.ts`)
 - A capped catch-up keeps the oldest posts and delays the newest, so none are dropped. Slack `ts` compares as decimal parts, not floats. (`runtime/channel-watch.ts`)
 - Posts taken for a job wait until its run has them. A probe run is marked before handing over, so a crash costs one run, never two. (`runtime/job-events.ts`, `runtime/scheduler.ts`)

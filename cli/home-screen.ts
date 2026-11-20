@@ -1,10 +1,10 @@
 import { readFileSync, writeFileSync } from 'node:fs'
 import { DIR } from './home.ts'
 import { awayFacts, awayLines, awaySince } from '../core/away.ts'
-import { kageletRows } from '../core/kagelets.ts'
+import { kageletRows } from '../core/kagelets/kagelet.ts'
 import { MARK, WORDMARK } from '../core/voice.ts'
 import { openLedgers } from '../runtime/ledger.ts'
-import { kageletsDir, readKagelets } from '../runtime/kagelet-files.ts'
+import { kageletsDir, readKagelets } from '../runtime/kagelets/files.ts'
 import { voice } from './voice.ts'
 
 const up = process.argv[2] === 'up'

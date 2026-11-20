@@ -9,9 +9,9 @@ import { registryOf, withRegistry } from '../core/config.ts'
 import { readSettings, updateConfig, updateSecrets } from '../runtime/config-files.ts'
 import { pauseLine, type Live } from '../core/board.ts'
 import { askHub, DIR, ENV_FILE, settingsExist } from './home.ts'
-import { NAME, resultLine, rowLine, kageletRows, starterFile } from '../core/kagelets.ts'
+import { NAME, resultLine, rowLine, kageletRows, starterFile } from '../core/kagelets/kagelet.ts'
 import { openLedgers } from '../runtime/ledger.ts'
-import { jobPath, kageletsDir, readKagelets, writeJob } from '../runtime/kagelet-files.ts'
+import { jobPath, kageletsDir, readKagelets, writeJob } from '../runtime/kagelets/files.ts'
 import { reload, said } from './reload.ts'
 
 const KAGELETS = kageletsDir(DIR)

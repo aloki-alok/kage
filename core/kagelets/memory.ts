@@ -1,6 +1,6 @@
-import { NAME, type KageletRow } from './kagelets.ts'
-import { dreamDue } from './dream.ts'
-import type { KageEvent } from './events.ts'
+import { NAME, type KageletRow } from './kagelet.ts'
+import { dreamDue } from '../dream.ts'
+import type { KageEvent } from '../events.ts'
 
 const FILE = /^[a-z0-9][a-z0-9._-]{0,60}\.md$/
 const within = (p: string, dir: string) => p === dir || p.startsWith(`${dir.replace(/\/$/, '')}/`)

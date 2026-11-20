@@ -29,7 +29,7 @@ A task is `owner` only when the owner typed it. Slack requires `client_msg_id` a
 - Only the owner's DM carries approvals, and a card is answered in Slack only, because a session's own shell can open the socket. (`core/gate.ts`)
 - The hub finds a card from its message id in the posted ledger, never from its text. Only a `card` row counts, so a copied card is a `bot` row. (`connectors/slack/connect.ts`, `core/ledgers.ts`, `runtime/kage-tools.ts`)
 - A yes approves unless the rest hedges. A no denies on its first word, since a wrong deny is safe. An "always" must be strict, one line, nothing else. (`core/gate.ts`)
-- Untagged words from the owner in a kagelet thread are notes for that kagelet. Nobody else's words steer one. (`connectors/slack/connect.ts`, `runtime/kagelet-notes.ts`)
+- Untagged words from the owner in a kagelet thread are notes for that kagelet. Nobody else's words steer one. (`connectors/slack/connect.ts`, `runtime/kagelets/notes.ts`)
 - Undo (`restore_job`) takes only typed owner words, so a teammate or a job's own run cannot flip jobs back and forth. (`runtime/tools/schedule-tools.ts`)
 - The email `References` header never picks a session. Only someone already in a stored thread resumes it. (`core/email.ts`)
 - DMARC passes on any aligned signature, and Kage's own SES can sign as the domain, so a mail never proves the owner. (`core/email.ts`)

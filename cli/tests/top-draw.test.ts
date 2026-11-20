@@ -2,7 +2,7 @@ import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { drawFrame, type Tab, type View } from '../top-draw.ts'
 import { resize, toText } from '../top-screen.ts'
-import type { KageletRow } from '../../core/kagelets.ts'
+import type { KageletRow } from '../../core/kagelets/kagelet.ts'
 
 const NOW = Date.parse('2026-11-19T14:22:00Z')
 const kagelet: KageletRow = { name: 'deploy-watch', state: 'runs', cron: '*/30 * * * *', tools: [], costToday: 0.11, avg7: 0.09, result: { at: NOW, summary: 'CI green on main' } }

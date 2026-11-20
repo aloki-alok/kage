@@ -1,8 +1,8 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import type { Task } from '../../core/task.ts'
-import { kageletNeeds } from '../kagelet-needs.ts'
-import { openStore } from '../store.ts'
+import type { Task } from '../../../core/task.ts'
+import { kageletNeeds } from '../needs.ts'
+import { openStore } from '../../store.ts'
 
 const LANE = 'C1:5.5#side-kagelet-fude'
 const DAY = 86_400_000

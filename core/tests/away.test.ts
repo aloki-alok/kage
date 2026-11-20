@@ -2,7 +2,7 @@ import { describe, test } from 'node:test'
 import assert from 'node:assert/strict'
 import { awayFacts, awayLines, awaySince } from '../away.ts'
 import type { KageEvent } from '../events.ts'
-import type { KageletRow } from '../kagelets.ts'
+import type { KageletRow } from '../kagelets/kagelet.ts'
 
 const NOW = Date.parse('2026-11-19T18:00:00Z')
 const SINCE = Date.parse('2026-11-19T09:00:00Z')

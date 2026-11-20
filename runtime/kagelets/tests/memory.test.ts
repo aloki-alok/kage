@@ -2,7 +2,7 @@ import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { existsSync, linkSync, lstatSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, symlinkSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
-import { kageletMemory } from '../kagelet-memory.ts'
+import { kageletMemory } from '../memory.ts'
 
 function setup() {
   const base = mkdtempSync(`${tmpdir()}/kmem-`)

@@ -1,8 +1,8 @@
 import { randomUUID } from 'node:crypto'
 import { existsSync, lstatSync, mkdirSync, readdirSync, readFileSync, realpathSync, renameSync, rmSync, unlinkSync, writeFileSync } from 'node:fs'
-import { memoryPath, proposalFrom, type Proposal } from '../core/kagelet-memory.ts'
-import { NAME } from '../core/kagelets.ts'
-import type { EventKind } from '../core/events.ts'
+import { memoryPath, proposalFrom, type Proposal } from '../../core/kagelets/memory.ts'
+import { NAME } from '../../core/kagelets/kagelet.ts'
+import type { EventKind } from '../../core/events.ts'
 
 type Decision = { kagelet: string; id: string; action: 'approve' | 'edit' | 'reject'; text?: string; reason?: string }
 type Saved = Proposal & { id: string; at: number; thread: string }
