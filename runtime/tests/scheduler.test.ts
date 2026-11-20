@@ -9,7 +9,7 @@ import { EVENT } from '../../core/cron.ts'
 import { scheduler } from '../scheduler.ts'
 import { openStore } from '../store.ts'
 
-function setup(result: Delivery = 'sent') {
+function setup(result: Delivery = 'sent', catchUp?: { hours: number; staggerSeconds: number }) {
   const store = openStore(':memory:')
   store.seen('C1:5.5', { connector: 'slack', chat: 'C1', thread: '5.5', kind: 'channel' }, '#ops', 0)
   store.seen('C2:1.1', { connector: 'slack', chat: 'C2', thread: '1.1', kind: 'channel' }, '#two', 0)
@@ -27,7 +27,7 @@ function setup(result: Delivery = 'sent') {
   const clock = { t: 0 }
   const timers: { at: number; fn: (now: number) => void }[] = []
   const s = scheduler({
-    job: { end: k => ended.push(k), freshEvery: () => fresh.every, carryCount: () => fresh.carry, carryChars: () => fresh.chars, laneDefault: () => fresh.lanes, posted: () => fresh.posted, project },
+    job: { end: k => ended.push(k), freshEvery: () => fresh.every, carryCount: () => fresh.carry, carryChars: () => fresh.chars, laneDefault: () => fresh.lanes, posted: () => fresh.posted, project, ...(catchUp && { catchUp: () => catchUp }) },
     store, failed: t => failed.push(t), ran: j => ran.push(j.id),
     deliver: (key, task) => { if (key === breakOn) throw new Error('boom'); sent.push([key, task]); return fresh.failing ? 'failed' : result },
     ready: key => blocked.has(key) ? 'blocked' : busy.has(key) ? 'busy' : 'ready',
@@ -606,5 +606,50 @@ describe('a watch wakes when the thread goes quiet, not on the tick (#428)', () 
     assert.equal(t.sent.length, 0)
     t.s.tick(16 * 60_000)
     assert.equal(t.sent.length, 1)
+  })
+})
+
+describe('runs missed while the hub was off (#486)', () => {
+  const daily = { ...job, cron: '0 9 * * *' }
+  test('the newest missed run goes in once, saying when it was due and how many runs were missed', () => {
+    const t = setup()
+    t.s.add('C1:5.5', daily, at('2026-11-02T08:00:00'))
+    t.s.tick(at('2026-11-02T09:00:10'))
+    t.s.tick(at('2026-11-03T12:00:10'))
+    t.s.tick(at('2026-11-03T12:00:30'))
+    assert.equal(t.sent.length, 2)
+    assert.match(t.sent[0]![1].content, /^Scheduled run/)
+    const [first, second] = t.sent[1]![1].content.split('\n')
+    assert.equal(first, 'Late: due at 2026-11-03 09:00, missed 1 run.')
+    assert.match(second!, /^Scheduled run of job j1/)
+  })
+  test('a run older than catchUpHours runs nothing, posts nothing, and is not counted again', () => {
+    const t = setup('sent', { hours: 2, staggerSeconds: 15 })
+    t.s.add('C1:5.5', daily, at('2026-11-02T08:00:00'))
+    t.s.tick(at('2026-11-02T09:00:10'))
+    t.s.tick(at('2026-11-03T12:00:10'))
+    assert.equal(t.sent.length, 1)
+    assert.equal(t.store.schedules()[0]!.lastFired, at('2026-11-03T12:00:10'))
+    t.s.tick(at('2026-11-04T09:00:10'))
+    assert.equal(t.sent.length, 2)
+    assert.match(t.sent[1]![1].content, /^Scheduled run/)
+  })
+  test('late runs found in one tick start apart, not all at once', () => {
+    const t = setup('sent', { hours: 12, staggerSeconds: 15 })
+    t.s.add('C1:5.5', daily, at('2026-11-02T08:00:00'))
+    t.s.add('C2:1.1', { ...daily, id: 'j2' }, at('2026-11-02T08:00:00'))
+    t.s.tick(at('2026-11-03T12:00:00'))
+    assert.deepEqual(t.sent.map(([k]) => k), ['C1:5.5#side-job-j1'])
+    t.s.tick(at('2026-11-03T12:00:10'))
+    assert.equal(t.sent.length, 1)
+    t.s.tick(at('2026-11-03T12:00:20'))
+    assert.deepEqual(t.sent.map(([k]) => k), ['C1:5.5#side-job-j1', 'C2:1.1#side-job-j2'])
+  })
+  test('a run on time is not held back by a late one', () => {
+    const t = setup('sent', { hours: 12, staggerSeconds: 15 })
+    t.s.add('C1:5.5', daily, at('2026-11-02T08:00:00'))
+    t.s.add('C2:1.1', { ...job, id: 'j2', cron: '0 12 * * *' }, at('2026-11-02T08:00:00'))
+    t.s.tick(at('2026-11-03T12:00:05'))
+    assert.equal(t.sent.length, 2)
   })
 })

@@ -1,6 +1,6 @@
 import { log } from './log.ts'
 import { jobLane, isJobLane, parseSessionKey, threadOfJobLane } from '../core/conversations.ts'
-import { dueSchedules, EVENT, nextRun, parseCron, REPLY, type Schedule } from '../core/cron.ts'
+import { CATCH_UP, dueSchedules, EVENT, nextRun, parseCron, REPLY, type Late, type Schedule } from '../core/cron.ts'
 import { jobCarry } from '../core/ledgers.ts'
 import { sentTexts } from '../core/transcript.ts'
 import { newLines } from './transcript-tail.ts'
@@ -19,6 +19,11 @@ const BUSY_WAIT = 5 * 60_000
 const WATCH_DAYS = 7
 const QUIET_MS = 4_000
 const QUIET_CAP_MS = 15_000
+const two = (n: number) => String(n).padStart(2, '0')
+const lateLine = (l: Late) => {
+  const d = new Date(l.due)
+  return `Late: due at ${d.getFullYear()}-${two(d.getMonth() + 1)}-${two(d.getDate())} ${two(d.getHours())}:${two(d.getMinutes())}, missed ${l.missed} run${l.missed === 1 ? '' : 's'}.`
+}
 
 export function scheduler(o: {
   store: Store
@@ -33,10 +38,11 @@ export function scheduler(o: {
   now?: () => number
   soon?: (fn: (now: number) => void, ms: number) => void
   owner?: (text: string) => void
-  job: { end: (key: string) => void; freshEvery: () => number; carryCount: () => number; carryChars: () => number; laneDefault: () => boolean; posted: () => string; project: string }
+  job: { end: (key: string) => void; freshEvery: () => number; carryCount: () => number; carryChars: () => number; laneDefault: () => boolean; posted: () => string; project: string; catchUp?: () => { hours: number; staggerSeconds: number } }
 }) {
   const { store } = o
   const dueSince = new Map<string, number>()
+  let nextLate = -Infinity
   const heardFor = new Map<string, string[]>()
   const now = o.now ?? Date.now
   const soon = o.soon ?? ((fn, ms) => { setTimeout(() => fn(Date.now()), ms).unref() })
@@ -224,7 +230,9 @@ export function scheduler(o: {
       log('moved', id, 'from', key, 'to', to)
     },
     tick(now: number) {
-      const { fire, drop } = dueSchedules(store.schedules(), now)
+      const catchUp = o.job.catchUp?.() ?? { hours: CATCH_UP / 3600_000, staggerSeconds: 15 }
+      const { fire, drop, late, skipped } = dueSchedules(store.schedules(), now, catchUp.hours * 3600_000)
+      for (const [id, n] of Object.entries(skipped)) { store.fired(id, now); log('missed', id, `${n} run${n === 1 ? '' : 's'}`, `older than ${catchUp.hours} h`) }
       const live = new Set(store.schedules().map(s => jobLane(s.key, s.id)))
       const counts = (store.load('jobRuns') ?? {}) as Record<string, number>
       for (const k of new Set([...Object.keys(store.sessions()), ...Object.keys(counts)])) {
@@ -248,11 +256,14 @@ export function scheduler(o: {
           const r = o.ready(laneOf(s))
           if (r === 'blocked') { dueSince.delete(s.id); continue }
           if (r === 'busy' && now - (dueSince.get(s.id) ?? dueSince.set(s.id, now).get(s.id)!) < BUSY_WAIT) continue
+          const l = late[s.id]
+          if (l && now < nextLate) continue
+          if (l) nextLate = now + catchUp.staggerSeconds * 1000
           dueSince.delete(s.id)
           store.fired(s.id, now)
           o.ran?.(s, now)
           if (!s.recurring) store.removeSchedule(s.id)
-          run(s, `Scheduled run of job ${s.id} (${s.cron}${s.recurring ? '' : ', once'}), set up earlier in this thread. Nobody wrote a new message.\n${s.prompt}`)
+          run(s, `${l ? `${lateLine(l)}\n` : ''}Scheduled run of job ${s.id} (${s.cron}${s.recurring ? '' : ', once'}), set up earlier in this thread. Nobody wrote a new message.\n${s.prompt}`)
         } catch (e) { log('schedule run failed', s.id, e) }
       }
     },

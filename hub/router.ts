@@ -317,7 +317,7 @@ const schedules = scheduler({ store, failed,
   soon: (fn, ms) => { setTimeout(() => { const now = Date.now(); if (!limits.draining(now)) fn(now) }, ms).unref() },
   deliver: kageletDeliver(kag.notes, toSession, kag.board),
   ready: key => d.ready(key),
-  trusted: key => store.trust(key) === true, job: { end: k => d.reset(k), project: PROJECT, carryChars: () => config.harness?.jobCarryChars ?? 500, laneDefault: () => config.harness?.jobLaneDefault ?? true, freshEvery: () => config.harness?.jobFreshEvery ?? 20, carryCount: () => config.harness?.jobCarry ?? 5, posted: () => ledgers.text('posted') },
+  trusted: key => store.trust(key) === true, job: { end: k => d.reset(k), project: PROJECT, carryChars: () => config.harness?.jobCarryChars ?? 500, laneDefault: () => config.harness?.jobLaneDefault ?? true, freshEvery: () => config.harness?.jobFreshEvery ?? 20, carryCount: () => config.harness?.jobCarry ?? 5, posted: () => ledgers.text('posted'), catchUp: () => ({ hours: config.harness?.jobCatchUpHours ?? 12, staggerSeconds: config.harness?.jobCatchUpStaggerSeconds ?? 15 }) },
   ran: j => ledgers.add('runs', [j.id, j.key]),
   tripwires: () => config.tripwires ?? {}, event: e => ledgers.event(e), owner: t => void owner.say(t), ping: (s, text) => pingThread(s.key, text, s.id),
 })
