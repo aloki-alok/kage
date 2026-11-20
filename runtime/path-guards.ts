@@ -87,6 +87,15 @@ function realish(p: string): string {
     rest.unshift(basename(cur))
   }
 }
+export function dreamNoteRefusal(tool: string, input: { file_path?: string; notebook_path?: string }, ownMemory: string): string | undefined {
+  const raw = WRITE_TOOLS.has(tool) ? input.file_path ?? input.notebook_path : undefined
+  if (!raw) return
+  const dir = realish(ownMemory), file = realish(raw)
+  if (!file.startsWith(`${dir}/`) || existsSync(file)) return
+  const name = file.slice(dir.length + 1)
+  if (name === 'MEMORY.md' || name === '.dream-ledger.tsv' || name.startsWith('.archive/')) return
+  return 'A new lesson goes through dream_lessons, which checks it against the threads first. Here you only tidy notes that exist.'
+}
 export function agentReadRefusal(tool: string, input: { file_path?: string; path?: string; pattern?: string }, sender: string | undefined, home = process.env.HOME ?? ''): string | undefined {
   const target = sender !== 'agent' ? undefined : tool === 'Read' ? input.file_path : tool === 'Grep' || tool === 'Glob' ? (input.path ?? home) : undefined
   if (!target) return undefined

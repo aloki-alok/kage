@@ -2,7 +2,8 @@ import { execFile } from 'node:child_process'
 import { readFileSync, statSync, writeFileSync } from 'node:fs'
 import { log } from '../runtime/log.ts'
 import { selfReview } from '../core/ledgers.ts'
-import { dreamDue, dreamTask, threadsSince } from '../core/dream.ts'
+import { chatText, dreamDue, dreamTask, threadsSince, type DreamLesson, type DreamLimits } from '../core/dream.ts'
+import { applyLessons } from '../runtime/dream-lessons.ts'
 import { dreamInput, dreamsDue, kageletDreamTask } from '../core/kagelets/memory.ts'
 import { kageletRows } from '../core/kagelets/kagelet.ts'
 import type { Conversation, Lane } from '../core/conversations.ts'
@@ -26,9 +27,10 @@ export function dreams(o: {
   paused: () => boolean; quiet: (now: number) => boolean
   deliver: (c: Conversation, task: Task, place: string, lane: Lane) => string | undefined
   toSession: (key: string, task: Task) => string | undefined
+  limits: () => DreamLimits
 }) {
   const lastDay = (now: number) => [new Date(now - DAY), new Date(now)].flatMap(t => o.ledgers.events(t.toISOString().slice(0, 10)))
-  const DREAMT = `${o.dir}/dream-sent`, KDREAMT = 'kagelet-dream-last'
+  const DREAMT = `${o.dir}/dream-sent`, KDREAMT = 'kagelet-dream-last', THREADS = 'dream-threads'
   const ownsRepo = canPushToKage(args => new Promise((ok, no) => execFile('gh', args, { timeout: 15_000 }, (e, out) => e ? no(e) : ok(out))))
   return {
     async dream(now: number) {
@@ -37,19 +39,28 @@ export function dreams(o: {
       const snap = snapshotMemory(o.mem.own, now)
       const since = Math.max(last ?? 0, now - DAY)
       const file = (id: string) => `${o.project}/${id}.jsonl`
-      const threads = threadsSince(o.store.sessions(), id => { try { return statSync(file(id)).mtimeMs } catch { return undefined } }, since)
-        .map(t => ({ place: o.placeOf(t.key), file: file(t.id) }))
+      const moved = threadsSince(o.store.sessions(), id => { try { return statSync(file(id)).mtimeMs } catch { return undefined } }, since)
+      o.store.save(THREADS, moved.map(t => t.key))
+      const threads = moved.map(t => ({ place: o.placeOf(t.key), file: file(t.id), key: t.key }))
       const iso = new Date(since).toISOString()
       const mistakes = selfReview(o.ledgers.text('waiting', iso), lastDay(now), iso, o.placeOf)
       const c: Conversation = { connector: 'slack', chat: o.botDm, kind: 'dm', agentDm: true }
       const task = taskAsOwner({
-        content: dreamTask(o.mem, threads, iso, { dir: `${o.code}/skills`, pr: await ownsRepo }, mistakes),
+        content: dreamTask(o.mem, threads, iso, { dir: `${o.code}/skills`, pr: await ownsRepo }, mistakes, o.hasSdk),
         meta: { channel: o.botDm, thread_ts: '', place: `DM with ${o.title} (dream)`, permalink: '' },
         origin: { channel: o.botDm, ts: '' },
         scheduled: true,
       })
       log('dream starts, memory saved to', snap)
       if (o.deliver(c, task, task.meta.place, 'side-dream') !== 'failed') writeFileSync(DREAMT, String(now), { mode: 0o600 })
+    },
+    lessons(lessons: DreamLesson[]) {
+      const sessions = o.store.sessions()
+      const keys = (o.store.load(THREADS) ?? []) as string[]
+      const chats = Object.fromEntries(keys.flatMap(k => sessions[k] ? [[k, chatText(readFile(`${o.project}/${sessions[k]}.jsonl`).split('\n'))]] : []))
+      const said = applyLessons({ dir: o.mem.own, chats, lessons, limits: o.limits(), now: Date.now() })
+      log('dream lessons', said.replace(/\n/g, '; '))
+      return said
     },
     kageletDreams(now: number) {
       if (!o.hasSdk || o.paused()) return

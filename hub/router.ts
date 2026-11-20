@@ -55,6 +55,7 @@ import { startConnectors } from './connectors.ts'
 import { hubUpdates } from './updates.ts'
 import { ownerDigests } from './owner-digests.ts'
 import { dreams } from './dreams.ts'
+import { DREAM_KEY, DREAM_LIMITS, type DreamLesson } from '../core/dream.ts'
 import { closedThreads } from '../runtime/closed-threads.ts'
 import { checkScopes } from '../runtime/slack-scopes.ts'
 import { scopeDm } from '../core/slack-scopes.ts'
@@ -255,7 +256,7 @@ const sdk = sdkLib ? sdkSessions({
     schedules: { add: j => jobs.add(key, j, Date.now()), remove: id => jobs.remove(key, id), list: () => schedules.list(key), hookUrl: id => jobs.hookUrl(id), tune: (id, t) => schedules.tune(key, id, t, Date.now()), restore: id => jobs.swaps.restore(key, id, Date.now()), move: (id, to) => schedules.move(key, id, to, Date.now()) },
     afk: slack.afk?.command,
     settings: { set: (key, value) => setKey(ENV_FILE, key, value) },
-    kagelet: key.split('#side-kagelet-')[1], dreaming: key.split('#side-kdream-')[1], kageletMemory: kag.kmem,
+    kagelet: key.split('#side-kagelet-')[1], dreaming: key.split('#side-kdream-')[1], kageletMemory: kag.kmem, ...key === DREAM_KEY && { dreamLessons: (l: DreamLesson[]) => dreaming.lessons(l) },
     browser: browser && { call: browser.call, block: BROWSER_BLOCK },
     foreignAgents: () => config.askOtherAgents ? [] : foreignAgentTags(slack.ids.apps ?? [], slack.ids.owner),
     meetbot: meeting && { join: meeting.join }, screen: SCREEN,
@@ -268,7 +269,7 @@ const sdk = sdkLib ? sdkSessions({
   toHub: (key, m) => routeReply(key, m, replies),
   options: sessionOptions(sdkLib.claude),
   onMcp: q => { if (needs.watching()) void mcpStatus(q).then(needs.seen).catch(e => log('mcp status failed', e)) },
-  ownerMemory: MEM.owner, sharedTools: config.sharedTools,
+  ownerMemory: MEM.owner, ownMemory: MEM.own, sharedTools: config.sharedTools,
   envFile: ENV_FILE,
   codeDir: CODE, sandbox: owner => sandboxed(config.harness?.sandbox, owner),
   ssm: { sock: SSM_SOCK, shim: SSM_SHIM, issue: key => ssm.issue(key), drop: key => ssm.drop(key) },
@@ -349,7 +350,7 @@ function failed(m: ToSession) {
 }
 
 const digests = ownerDigests({ dir: DIR, ledgers, store, placeOf, costTracked: !!sdk, expireHours: () => config.waiting?.expireHours ?? 72, notify: t => owner.say(t) })
-const dreaming = dreams({ dir: DIR, code: CODE, title: Title, botDm: slack.ids.botDm, mem: MEM, project: PROJECT, kagelets: kag.dir, kmem: kag.kmem, hasSdk: !!sdk,
+const dreaming = dreams({ dir: DIR, code: CODE, title: Title, botDm: slack.ids.botDm, mem: MEM, project: PROJECT, kagelets: kag.dir, kmem: kag.kmem, hasSdk: !!sdk, limits: () => ({ ...DREAM_LIMITS, ...config.dream }),
   store, ledgers, placeOf, paused: () => !!limits.paused(), quiet: now => d.quietEverywhere(now), deliver, toSession })
 const updates = hubUpdates({ code: CODE, dir: DIR, ledgers, quiet: now => d.quietEverywhere(now) && !limits.paused(now), notify: t => owner.say(t) })
 const VERSION = updates.VERSION

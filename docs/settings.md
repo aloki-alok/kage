@@ -111,6 +111,17 @@ curl --unix-socket "$KAGE_KEYS_SOCK" "http://kage/$KAGE_KEYS_TOKEN/api.example.c
 
 The hub fetches `https://api.example.com/v1/things` and adds the key in the header. A request for any other host gets a 403 and no key. The hub does not follow redirects, so a key never leaves its host. Who gets a token follows the SSM relay: owner-only Slack threads, and a thread run with `kage relay allow`. `kage doctor` lists each key by name, host and header, never its value. A tool that reads the key from an environment variable no longer finds it, and a tmux pane has no proxy token, so panes lose these keys too.
 
+## The nightly dream
+
+Each night, while every session is quiet, Kage reads the day's threads for lessons. It sends each lesson to the hub with quotes from the threads that show it. The hub keeps a lesson only when it passes the checks below, writes it into Kage's memory, and logs each lesson it drops, with the reason, in `.dream-ledger.tsv` in that folder. Threads run as tmux panes skip the check, and the dream writes its own notes.
+
+| Setting | Default | Effect |
+|---|---|---|
+| `dream.minChats` | `2` | A lesson needs exact quotes from at least this many different threads. One thread is not a pattern. |
+| `dream.minConfidence` | `0.7` | A lesson the dream rates below this confidence, from 0 to 1, is dropped. |
+| `dream.maxNew` | `6` | The most new lessons kept in one night, the most confident first. |
+| `dream.maxOutdated` | `5` | The most notes retired in one night. A retired note is copied to `.archive/` and taken out of the index. |
+
 ## Questions waiting on you
 
 | Setting | Default | Effect |

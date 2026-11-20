@@ -6,7 +6,8 @@ import { log, logKey } from './log.ts'
 import { channelTag, makeInbox, userMessage, type Inbox } from './sdk-inbox.ts'
 import { ownerOnlyTool } from '../core/guards.ts'
 import { lowest, lowestSender, OWNER_AGAIN, OWNER_MID_TURN, senderOf, type Sender } from '../core/gate.ts'
-import { certFileEnv, protectConfig, toolRefusal } from './path-guards.ts'
+import { DREAM_KEY } from '../core/dream.ts'
+import { certFileEnv, dreamNoteRefusal, protectConfig, toolRefusal } from './path-guards.ts'
 import { grantRefusal, laneOptions, shellGrant } from '../core/kagelets/kagelet.ts'
 import { heldCommand } from '../core/held.ts'
 import { approvalPreview } from '../core/preview.ts'
@@ -47,7 +48,7 @@ export function sdkSessions(o: {
   trustedNow?: (person: string) => boolean
   toHub: (key: string, m: { type: 'mail' | 'wa' | 'voice'; text: string }) => void
   options: Options
-  ownerMemory: string; sharedTools?: readonly string[]
+  ownerMemory: string; ownMemory?: string; sharedTools?: readonly string[]
   codeDir: string; sandbox?: (ownerThread: boolean) => boolean
   envFile: string
   onStart?: () => void; onMcp?: (q: Query) => void
@@ -132,7 +133,7 @@ export function sdkSessions(o: {
             hooks: [async input => {
               const i = input as { tool_name: string; tool_input?: Record<string, string> }
               const grant = o.grantOf?.(key)
-              const path = toolRefusal(i.tool_name, i.tool_input ?? {}, s.turn.some(x => senderOf(x.task) === 'agent') ? 'agent' : senderNow(s), o), held = grant && grantRefusal(i.tool_name, grant, i.tool_input ?? {}, o.allowOf?.(key))
+              const path = toolRefusal(i.tool_name, i.tool_input ?? {}, s.turn.some(x => senderOf(x.task) === 'agent') ? 'agent' : senderNow(s), o) ?? (key === DREAM_KEY && o.ownMemory ? dreamNoteRefusal(i.tool_name, i.tool_input ?? {}, o.ownMemory) : undefined), held = grant && grantRefusal(i.tool_name, grant, i.tool_input ?? {}, o.allowOf?.(key))
               const step = !!held && !path && i.tool_name === 'Bash' && shellGrant(grant!), command = { command: String(i.tool_input?.command ?? '') }
               const taken = step && !!o.deferred?.take(key, 'Bash', command, Date.now()), wait = step && !taken ? o.deferred?.waiting(key, 'Bash', command, Date.now()) : undefined
               const released = taken || step && wait !== 'same' && !!await o.reviewHeld?.(key, command.command), card = step && !released && !wait && o.deferred && s.turn.length ? await defer(key, s, 'Bash', `A kagelet's one-way step: ${heldCommand(command.command)}. Reply \`always\` to run it and let this exact command run with no ask from now on.`, command) : undefined

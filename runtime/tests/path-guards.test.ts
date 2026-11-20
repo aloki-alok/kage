@@ -4,7 +4,7 @@ import { execFileSync } from 'node:child_process'
 import { mkdirSync, mkdtempSync, readFileSync, realpathSync, symlinkSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { agentReadRefusal, certFileEnv, configRefusal, protectConfig, ownerMemoryRefusal } from '../path-guards.ts'
+import { agentReadRefusal, certFileEnv, configRefusal, dreamNoteRefusal, protectConfig, ownerMemoryRefusal } from '../path-guards.ts'
 
 describe("the owner's memory takes only people notes", () => {
   const MEM = '/home/o/.claude/projects/-home-o/memory'
@@ -288,5 +288,18 @@ describe("an agent's task reads no secrets", () => {
     assert.equal(refuse('Read', { file_path: join(home, 'work/README.md') }), undefined)
     assert.equal(refuse('Grep', { path: join(home, 'work') }), undefined)
     assert.equal(agentReadRefusal('Read', { file_path: join(home, '.ssh/id_ed25519') }, 'teammate', home), undefined)
+  })
+})
+
+describe("the dream writes no new note itself: new lessons go through dream_lessons (#488)", () => {
+  const dir = mkdtempSync(join(tmpdir(), 'kage-own-'))
+  writeFileSync(join(dir, 'old.md'), 'x')
+  test('a new note is refused; an existing note, the index and the archive stay open for tidying', () => {
+    assert.match(dreamNoteRefusal('Write', { file_path: join(dir, 'new-lesson.md') }, dir) ?? '', /dream_lessons/)
+    assert.match(dreamNoteRefusal('Write', { file_path: join(dir, 'sub', 'new.md') }, dir) ?? '', /dream_lessons/)
+    for (const f of ['old.md', 'MEMORY.md', '.dream-ledger.tsv', '.archive/old.md']) assert.equal(dreamNoteRefusal('Write', { file_path: join(dir, f) }, dir), undefined, f)
+    assert.equal(dreamNoteRefusal('Edit', { file_path: join(dir, 'old.md') }, dir), undefined)
+    assert.equal(dreamNoteRefusal('Write', { file_path: '/tmp/elsewhere.md' }, dir), undefined)
+    assert.equal(dreamNoteRefusal('Read', { file_path: join(dir, 'new.md') }, dir), undefined)
   })
 })
