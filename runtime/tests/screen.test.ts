@@ -124,7 +124,7 @@ describe('Kage Screen in the hub', () => {
 })
 
 describe('Kage acting on the Mac, from the hub', () => {
-  function actingHelper(o: { accessibility?: false } = {}) {
+  function actingHelper(o: { accessibility?: false; quitsOnFirst?: boolean } = {}) {
     const launches: Record<string, unknown>[] = [], seen: Record<string, unknown>[] = []
     let quit: (() => void) | undefined
     const launch: Launch = (app, log) => {
@@ -138,14 +138,14 @@ describe('Kage acting on the Mac, from the hub', () => {
         say({ state: 'acting', pid: 500 + launches.length, scale: 2 })
         const lines = createInterface({ input: createReadStream(job.fifo) })
         quit = () => { lines.close(); say({ state: 'stopped' }); done(0) }
-        lines.on('line', l => { const c = JSON.parse(l); seen.push(c); say(c.op === 'under' ? { id: c.id, app: 'Finder', role: 'AXButton', label: 'Open' } : { id: c.id, done: true }) })
+        lines.on('line', l => { const c = JSON.parse(l); seen.push(c); if (o.quitsOnFirst && launches.length === 1) { lines.close(); say({ state: 'stopped' }); return done(0) } say(c.op === 'under' ? { id: c.id, app: 'Finder', role: 'AXButton', label: 'Open' } : { id: c.id, done: true }) })
         lines.on('close', () => done(0))
       })
       return { exited }
     }
     return { launch, launches, seen, idle: () => quit?.() }
   }
-  const setup = (o: { accessibility?: false } = {}) => {
+  const setup = (o: { accessibility?: false; quitsOnFirst?: boolean } = {}) => {
     const dir = mkdtempSync(`${tmpdir()}/kage-act-`), h = actingHelper(o)
     const screen = screenRecorder({ folder: dir, code: '/code', build: async () => undefined, launch: h.launch, kill: () => {}, pollMs: 5, waitMs: 2000 })
     return { dir, screen, ...h }
@@ -173,6 +173,13 @@ describe('Kage acting on the Mac, from the hub', () => {
     t.idle()
   })
 
+  test('a command that reaches the app as it leaves for being idle is sent again to a new one, once', async () => {
+    const t = setup({ quitsOnFirst: true })
+    assert.deepEqual(await t.screen.act({ op: 'move', x: 1, y: 1 }), { done: true })
+    assert.equal(t.launches.length, 2)
+    assert.deepEqual(t.seen.map(c => c.op), ['move', 'move'])
+    t.idle()
+  })
   test("with Accessibility off, the act says the owner must turn it on, and where", async () => {
     const t = setup({ accessibility: false })
     const r = await t.screen.act({ op: 'move', x: 1, y: 1 })
