@@ -2,8 +2,10 @@ import { describe, test } from 'node:test'
 import assert from 'node:assert/strict'
 import { execSync } from 'node:child_process'
 import { readFileSync } from 'node:fs'
-import { ALIASES, checkSettings, settingTier, Config, diff, fromEnv, KEYS, NOT_SETTINGS, toEnv, unknownEnv, unknownNames } from '../config.ts'
+import { ALIASES, checkSettings, settingTier, Config, diff, fromEnv, KEYS, toEnv, unknownEnv, unknownNames } from '../config.ts'
 import { parseEnv } from '../settings.ts'
+
+const NOT_SETTINGS = ['KAGE_BIN', 'KAGE_CALL_CODE', 'KAGE_CALL_REASON', 'KAGE_CLAUDE', 'KAGE_DIR', 'KAGE_ENV', 'KAGE_GIT_URL', 'KAGE_KEYS_SOCK', 'KAGE_KEYS_TOKEN', 'KAGE_MEETBOT_HUB', 'KAGE_MEETBOT_PIPELINE', 'KAGE_MEETBOT_PIPELINE_KEY', 'KAGE_MEETBOT_TOKEN', 'KAGE_PANE_SETTINGS', 'KAGE_REF', 'KAGE_SESSION', 'KAGE_SETUP_WAIT', 'KAGE_SLACK_API', 'KAGE_SSM_SOCK', 'KAGE_SSM_TOKEN', 'KAGE_TARBALL', 'KAGE_THREAD']
 
 const FULL = `KAGE_NAME=kage
 KAGE_RUNTIME=tmux
