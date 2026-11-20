@@ -22,7 +22,7 @@ test('the hub measures an objective on its clock, and each run of the kagelet re
   writeJob(kageletsDir(dir), 'posts', `---\nthread: ${LINK}\nschedule: 0 9 * * *\ntools: WebSearch\nby: owner\nobjective: Two posts a week over 500 views\nmeasure: ${measure}\ntarget: >= 500\n---\nWrite and post.\n`)
   const ledgers = openLedgers(dir)
   const kag = hubKagelets({ dir, kl: { measureMinutes: 60 }, mem: { own: join(dir, 'm1'), owner: join(dir, 'm2') }, store: openStore(':memory:'), ledgers,
-    runs: runEvents(ledgers, () => 't1'), title: 'Kage', notify: () => {}, hasSdk: () => true, runNow: () => undefined, toSession: () => 'sent',
+    runs: runEvents(ledgers, () => 't1'), title: 'Kage', notify: () => {}, hasSdk: () => true, runNow: () => undefined, toSession: () => 'sent', lanes: { busy: () => false, last: () => 0, cut: () => {} },
     idle: () => true, paused: () => undefined, tripwires: () => ({}) })
   const runs: string[] = []
   const deliver = kageletDeliver(kag.notes, (_key, t: Task) => { runs.push(t.content); return 'sent' }, kag.board)
@@ -49,7 +49,7 @@ test('the owner\'s always on a held step\'s card writes one allow line into that
   writeJob(kageletsDir(dir), 'posts', `---\nthread: ${LINK}\nschedule: 0 9 * * *\ntools: all\nby: owner\n---\nDeploy staging.\n`)
   const ledgers = openLedgers(dir)
   const kag = hubKagelets({ dir, kl: {}, mem: { own: join(dir, 'm1'), owner: join(dir, 'm2') }, store: openStore(':memory:'), ledgers,
-    runs: runEvents(ledgers, () => 't1'), title: 'Kage', notify: () => {}, hasSdk: () => true, runNow: () => undefined, toSession: () => 'sent',
+    runs: runEvents(ledgers, () => 't1'), title: 'Kage', notify: () => {}, hasSdk: () => true, runNow: () => undefined, toSession: () => 'sent', lanes: { busy: () => false, last: () => 0, cut: () => {} },
     idle: () => true, paused: () => undefined, tripwires: () => ({}) })
   const job = () => readFileSync(join(kageletsDir(dir), 'posts', 'job.md'), 'utf8')
   kag.alwaysAllow(LANE, 'mcp__x__y', { command: 'kubectl apply -f staging/web.yaml' })
@@ -68,7 +68,7 @@ test('a people ask to a kagelet that runs only after another says when it reads 
   writeJob(kageletsDir(dir), 'b', `---\nthread: ${LINK}\nafter: a\ntools: WebSearch\nby: owner\npeople: UTEST1\n---\nSummarize.\n`)
   const ledgers = openLedgers(dir)
   const kag = hubKagelets({ dir, kl: {}, mem: { own: join(dir, 'm1'), owner: join(dir, 'm2') }, store: openStore(':memory:'), ledgers,
-    runs: runEvents(ledgers, () => 't1'), title: 'Kage', notify: () => {}, hasSdk: () => true, runNow: () => undefined, toSession: () => 'sent',
+    runs: runEvents(ledgers, () => 't1'), title: 'Kage', notify: () => {}, hasSdk: () => true, runNow: () => undefined, toSession: () => 'sent', lanes: { busy: () => false, last: () => 0, cut: () => {} },
     idle: () => true, paused: () => undefined, tripwires: () => ({}) })
   kag.sync(Date.now())
   assert.equal(kag.ask('CTEST1', '1700000000.123456', 'b', 'UTEST1', 'add the totals'), 'Noted for b. It runs after a, and reads this then.')
@@ -79,7 +79,7 @@ test('a kagelet owner may ask it for work in its thread, like a person on its pe
   writeJob(kageletsDir(dir), 'b', `---\nthread: ${LINK}\nschedule: 0 9 * * *\ntools: WebSearch\nby: owner\nowners: UTEST2\n---\nSummarize.\n`)
   const ledgers = openLedgers(dir)
   const kag = hubKagelets({ dir, kl: {}, mem: { own: join(dir, 'm1'), owner: join(dir, 'm2') }, store: openStore(':memory:'), ledgers,
-    runs: runEvents(ledgers, () => 't1'), title: 'Kage', notify: () => {}, hasSdk: () => true, runNow: () => undefined, toSession: () => 'sent',
+    runs: runEvents(ledgers, () => 't1'), title: 'Kage', notify: () => {}, hasSdk: () => true, runNow: () => undefined, toSession: () => 'sent', lanes: { busy: () => false, last: () => 0, cut: () => {} },
     idle: () => true, paused: () => undefined, tripwires: () => ({}) })
   kag.sync(Date.now())
   assert.deepEqual(kag.peopleIn('CTEST1', '1700000000.123456'), [{ name: 'b', people: ['UTEST2'] }])

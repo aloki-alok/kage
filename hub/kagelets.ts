@@ -7,7 +7,10 @@ import { chainCap, dailyCap, totalCap } from '../core/kagelets/view.ts'
 import type { Config } from '../core/config.ts'
 import { log } from '../runtime/log.ts'
 import { costCap } from '../runtime/kagelets/cost-cap.ts'
-import { kageletsDir, migrateKagelets, readKagelets, writeJob } from '../runtime/kagelets/files.ts'
+import { kageletsDir, migrateKagelets, pauseKagelet, readKagelets, writeJob } from '../runtime/kagelets/files.ts'
+import { kageletIncidents } from '../runtime/kagelets/incidents.ts'
+import { newLines } from '../runtime/transcript-tail.ts'
+import { transcriptSteps } from '../core/transcript.ts'
 import { kageletManager } from '../runtime/kagelets/manager.ts'
 import { kageletMemory } from '../runtime/kagelets/memory.ts'
 import { kageletDeliver, NOTE_CAP, ownerNotes } from '../runtime/kagelets/notes.ts'
@@ -24,7 +27,8 @@ export function hubKagelets(o: {
   dir: string; kl: NonNullable<Config['kagelets']>; mem: { own: string; owner: string }
   store: Store; ledgers: Ledgers; runs: ReturnType<typeof runEvents>; title: string; notify: (text: string) => void
   hasSdk: () => boolean
-  runNow: (id: string, now: number) => string | undefined
+  runNow: (id: string, now: number, lead?: string) => string | undefined
+  lanes: { busy: (key: string) => boolean; last: (key: string) => number; cut: (key: string) => void }
   toSession: (key: string, task: Task) => Delivery
   idle: (key: string) => boolean; paused: (now: number) => number | undefined
   openHome?: (owners: string[], name: string) => Promise<string>
@@ -39,8 +43,21 @@ export function hubKagelets(o: {
   const kmem = kageletMemory({ dir: KAGELETS, forbid: () => [o.mem.own, o.mem.owner], event: e => ledgers.event(e), waiting: cells => ledgers.add('waiting', cells) })
   const MAX = kl.max || 10
   const CAPS = { each: dailyCap(kl), total: totalCap(kl), chain: chainCap(kl) }
+  const incidents = kageletIncidents({
+    store, perHour: () => kl.incidentsPerHour || 5, stallMs: () => (kl.turnStallMinutes || 20) * 60_000,
+    retry: (name, lead, now) => { const why = o.runNow(`kagelet-${name}`, now, lead); log(`kagelet ${name} retries${why ? `: ${why}` : ''}`) },
+    pause: (name, now) => log(pauseKagelet(KAGELETS, name, true, now)),
+    say: o.notify,
+    last: (key, transcript) => ({
+      words: (transcript ? newLines(transcript, 0).lines : []).flatMap(transcriptSteps).filter(s => s.kind === 'says' || s.kind === 'error').at(-1)?.text ?? '',
+      report: ledgers.text('reports').split('\n').map(l => l.split('\t')).filter(r => r[1] === key.split('#side-kagelet-')[1]).at(-1)?.[2] ?? '',
+    }),
+    live: () => [...grants.keys()].map(key => ({ key, busy: o.lanes.busy(key), last: o.lanes.last(key) })),
+    cut: o.lanes.cut,
+  })
   const sync = (now: number) => {
     migrateKagelets(KAGELETS)
+    incidents.stalls(now)
     let files = readKagelets(KAGELETS)
     if (!o.hasSdk() && files.length) { if (!refused) log('kagelets need the Agent SDK runner (harness.runtime is not tmux), so none runs'); refused = true; files = [] }
     const ran = ledgers.text('runs'), costs = ledgers.text('costs')
@@ -78,7 +95,7 @@ export function hubKagelets(o: {
   const manager = kageletManager({ dir: KAGELETS, max: MAX, ledgers, sync, runNow: o.runNow, store, envCommand: kl.dbRead?.command ?? undefined, log, measures, ...(kl.ownersMax !== undefined && { ownersMax: kl.ownersMax }), ...(o.openHome && { openHome: o.openHome }) })
   const notes = ownerNotes(store, () => ({ kept: kl.notesKept ?? NOTE_CAP.kept, chars: kl.noteChars ?? NOTE_CAP.chars }))
   const routes = kageletRoutes({ dir: KAGELETS, store, ledgers, runs: o.runs, deliver: kageletDeliver(notes, o.toSession, board),
-    idle: o.idle, granted: key => grants.has(key), paused: o.paused, capUsd: CAPS.each, chainUsd: CAPS.chain, log, memory: name => kmem.notes(name) })
+    idle: o.idle, granted: key => grants.has(key), paused: o.paused, capUsd: CAPS.each, chainUsd: CAPS.chain, log, memory: name => kmem.notes(name), done: incidents.ended })
   const needs = kageletNeeds({ store, deliver: o.toSession, idle: o.idle, paused: o.paused, waiting: cells => ledgers.add('waiting', cells), perDay: () => kl.needsPerDay || 5, log })
   const tell = async (name: string, text: string, runNow: boolean, now = Date.now()): Promise<string> => {
     const lane = kageletRows(readKagelets(KAGELETS), { runs: '', costs: '', now }).find(r => r.name === name)?.key
@@ -98,7 +115,7 @@ export function hubKagelets(o: {
     return `Asked ${name}. It answers here.`
   }
   return {
-    dir: KAGELETS, kmem, manager, routes, sync, notes, needs, tell, board, measures, ask,
+    dir: KAGELETS, kmem, manager, routes, sync, notes, needs, tell, board, measures, ask, incidents,
     peopleIn: (chat: string, thread: string) => askable(parsed(), chat, thread).map(k => ({ name: k.name, people: [...k.people ?? [], ...k.owners ?? []] })),
     measure: (now: number) => measures.tick(parsed(), now).catch(e => log('kagelet measure failed', e)),
     lanes: () => grants.keys(),

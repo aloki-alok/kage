@@ -121,6 +121,7 @@ Write logs to stderr only. In a tmux pane, stdout carries the channel protocol, 
 | `kagelets/people.ts` | Who may ask a kagelet for work: its people and owners lines (one line of Slack ids each, at most 3 owners) and the check of an ask in its thread. |
 | `kagelets/kagelet.ts` | A kagelet file (thread, schedule or `after:`, grant, job), the grant check, the chain check (no cycle, no missing kagelet, at most 5 deep), standing approvals per write tool and their revoke, the cost caps (off unless set) and the cost flags. |
 | `kagelets/message.ts` | The message one kagelet sends another (an `after:` handoff or `message_kagelet`): its fields, named after A2A's Message, its delivery states, and the check where it enters the hub. |
+| `kagelets/incidents.ts` | What a failed or stalled kagelet run leads to (#487): one retry with a first line saying why, then one DM to the owner with its last words and report as data and the fix when it is known. A failure a retry cannot fix goes to the owner at once, and `kagelets.incidentsPerHour` failures in an hour pause it. A run the owner stopped never counts. |
 | `kagelets/view.ts` | What a terminal shows of kagelets: the `kage top` panel, its keys, and `kage logs <kagelet>`. |
 | `held.ts` | The hub's check on a kagelet's shell (`tools: all`, ADR 0018): which commands are one-way steps (a deploy, a forced push, a DB write, a delete, a send), held for Kage. It stands behind the OS sandbox, never in place of it. |
 | `held-review.ts` | The cheap reviewer of a held step: the low-stakes kinds it may let run (local deletes and its own branches), what it reads as data, and its RUN or HOLD verdict, which fails closed. |
@@ -214,6 +215,7 @@ Write logs to stderr only. In a tmux pane, stdout carries the channel protocol, 
 | `kagelets/files.ts` | The kagelets folder on disk: one folder per kagelet (`<name>/job.md`, ADR 0018), the paused line, and the one-time move from the old `<name>.md` layout. |
 | `kagelets/sync.ts` | The folder synced into schedules and grants each minute (#57), and the prompt each run reads first. |
 | `kagelets/manager.ts` | The manager's tool (save, pause, resume, run, remove, revoke) and which tools each kagelet is granted: read with no card, a write tool on the owner's first yes, which then stands for that tool, act never. |
+| `kagelets/incidents.ts` | Kagelet incidents on the hub: each run's end from `kagelets/routes.ts`, a lane with no step for `kagelets.turnStallMinutes` cut on the minute sync, the owner's stops, and the state kept in the store across a restart. |
 | `kagelets/cost-cap.ts` | The cost caps on the hub's job loop: a kagelet over a cap is paused and flagged, and the owner is told once a day. |
 | `kagelets/notes.ts` | The owner's words typed in a kagelet's thread, and Kage's answers (`tell_kagelet`), carried to its next run. |
 | `kagelets/needs.ts` | A kagelet's needs to Kage in its thread (ADR 0018): kept in the store until Kage's session there is free, a repeat folded, and past `kagelets.needsPerDay` or a day unhandled, the owner's waiting list. |

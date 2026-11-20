@@ -19,6 +19,7 @@ import { kageletRoutes } from '../kagelets/routes.ts'
 import { syncKagelets } from '../kagelets/sync.ts'
 import type { Task } from '../../core/task.ts'
 import type { ToSession } from '../protocol.ts'
+import { kageletIncidents } from '../kagelets/incidents.ts'
 
 const LINK = 'https://test.slack.com/archives/CTEST1/p1700000000123456'
 const keyOf = (name: string) => `CTEST1:1700000000.123456#side-kagelet-${name}`
@@ -26,7 +27,7 @@ const NINE = new Date(2026, 10, 14, 9, 0).getTime()
 const QUEUED = (to: string) => new RegExp(`^queued for ${to}`)
 const tick = () => new Promise(r => setTimeout(r, 5))
 
-async function hub(o: { chainUsd?: number; capUsd?: number; max?: number; memory?: (name: string) => { file: string; text: string }[] } = {}) {
+async function hub(o: { chainUsd?: number; capUsd?: number; max?: number; memory?: (name: string) => { file: string; text: string }[]; done?: (key: string, failure: string | undefined, transcript: string, now: number) => void } = {}) {
   const dir = mkdtempSync(`${tmpdir()}/kage-chains-`)
   const kagelets = `${dir}/kagelets`, work = `${dir}/files`
   const own = `${work}/CTEST1_1700000000.123456`
@@ -58,7 +59,7 @@ async function hub(o: { chainUsd?: number; capUsd?: number; max?: number; memory
     hub: () => d,
     tools: () => ({ tools: [], instructions: '', onTask() {}, askOwner: async () => {} }) as any,
     hasTranscript: () => false, toHub: () => {}, options: { cwd: dir, settingSources: [] }, ownerMemory: '/owner', envFile: '/cfg/env', codeDir: '/code/kage', restartMs: 10,
-    onResult: (key, total, _resumed, limited) => { const usd = total - (totals.get(key) ?? 0); totals.set(key, total); routes.ended(key, usd, '', clock.now, limited) },
+    onResult: (key, total, _resumed, limited, error) => { const usd = total - (totals.get(key) ?? 0); totals.set(key, total); routes.ended(key, usd, '', clock.now, limited, error) },
     onTurn: (key, ts, limit, done) => limits.turn(key, ts, limit, clock.now, done),
   })
   let ids = 0
@@ -72,7 +73,7 @@ async function hub(o: { chainUsd?: number; capUsd?: number; max?: number; memory
   const schedules = scheduler({ store, deliver: toSession, failed: m => limits.turn('', [m], undefined, clock.now), ready: key => d.ready(key), trusted: () => false, job: { end: () => {}, freshEvery: () => 0, carryCount: () => 0, carryChars: () => 0, laneDefault: () => false, posted: () => '', project: '' }, ran: j => ledgers.add('runs', [j.id, j.key]) })
   const manager = kageletManager({ dir: kagelets, max: 10, ledgers, sync, runNow: (id, now) => schedules.runNow(id, now), store, log: () => {} })
   const routesOn = () => kageletRoutes({ dir: kagelets, store, ledgers, runs, deliver: toSession, granted: key => grants.has(key),
-    idle: key => d.ready(key) === 'ready' && d.startsNow(key, Date.now()), paused: now => limits.paused(now)?.until, capUsd: o.capUsd ?? 2, chainUsd: o.chainUsd, log: () => {}, memory: o.memory })
+    idle: key => d.ready(key) === 'ready' && d.startsNow(key, Date.now()), paused: now => limits.paused(now)?.until, capUsd: o.capUsd ?? 2, chainUsd: o.chainUsd, log: () => {}, memory: o.memory, ...(o.done && { done: o.done }) })
   routes = routesOn()
   const proc = (name: string) => [...sdk.runs].reverse().find(r => r.said.some(x => x.includes(`Run of the kagelet "${name}"`)))!
   const spent = new Map<string, number>()
@@ -591,4 +592,38 @@ test('run now of a kagelet that runs only after another says to run that one, in
   await h.save('a', { schedule: '0 9 * * *' })
   await h.save('b', { after: 'a' })
   assert.equal(await h.manager.manage({ action: 'run', name: 'b' }, NINE), 'b runs only after a: run a now, and b runs when it ends.')
+})
+
+test('a kagelet run that ends with no report is retried once in its lane, saying why, then the owner gets one DM (#487)', async () => {
+  const said: string[] = []
+  let inc!: ReturnType<typeof kageletIncidents>
+  const h = await hub({ done: (...a) => inc.ended(...a) })
+  inc = kageletIncidents({ store: h.store, perHour: () => 5, stallMs: () => 20 * 60_000, retry: (name, lead, now) => { h.schedules.runNow(`kagelet-${name}`, now, lead) },
+    pause: () => {}, say: t => said.push(t), last: () => ({ words: '', report: '' }), live: () => [], cut: () => {} })
+  await h.save('a', { schedule: '0 9 * * *' })
+  h.schedules.tick(NINE)
+  await tick()
+  await h.step('a', { report: false })
+  assert.equal(h.tasksOf('a').length, 2)
+  assert.match(h.tasksOf('a')[1]!.content, /^Retry: the last run ended without a report\. Do the job again, and end with a report\.\nRun now of job kagelet-a/)
+  await h.step('a', { report: false })
+  assert.equal(h.tasksOf('a').length, 2)
+  assert.deepEqual(said.map(x => x.split('\n')[0]), ['Kagelet *a* failed twice in a row, once on a retry: ended without a report.'])
+})
+test("a kagelet run the SDK ends with an error carries the error's name to the owner, and a reported run is no incident (#487)", async () => {
+  const said: string[] = []
+  let inc!: ReturnType<typeof kageletIncidents>
+  const h = await hub({ done: (...a) => inc.ended(...a) })
+  inc = kageletIncidents({ store: h.store, perHour: () => 5, stallMs: () => 20 * 60_000, retry: () => said.push('retry'), pause: () => {}, say: t => said.push(t), last: () => ({ words: '', report: '' }), live: () => [], cut: () => {} })
+  await h.save('a', { schedule: '0 9 * * *' })
+  h.schedules.tick(NINE)
+  await tick()
+  await h.step('a')
+  assert.deepEqual(said, [])
+  h.schedules.runNow('kagelet-a', NINE + 60_000)
+  await tick()
+  h.proc('a').emit({ type: 'result', total_cost_usd: 1, is_error: true, subtype: 'error_max_budget_usd' })
+  await tick()
+  assert.equal(said.length, 1)
+  assert.match(said[0]!,/^Kagelet \*a\* failed: stopped with error_max_budget_usd\.\n.*Likely fix: it hit a cost cap/s)
 })

@@ -110,7 +110,7 @@ const deliver = (c: Conversation, task: Task, place: string, lane: Lane = 'main'
 function stopThread(key: string, cut: boolean): string {
   const now = Date.now()
   const end = (k: string) => {
-    const r = d.endThread(k, cut)
+    kag.incidents.stopped(k, now); const r = d.endThread(k, cut)
     const dropped = 'ok' in r ? r.dropped.filter((m): m is Task => m.type === 'task') : []
     if (dropped.length) limits.turn(k, dropped, undefined, now)
     return { r, dropped: dropped.length }
@@ -237,7 +237,7 @@ const sdkLib = harness.runtime === 'tmux' ? undefined : await (async () => ({
   return undefined
 })
 const kag = hubKagelets({ dir: DIR, kl, mem: MEM, store, ledgers, runs, title: Title, notify: text => void owner.say(text), hasSdk: () => !!sdk,
-  runNow: (id, now) => schedules.runNow(id, now), toSession: (key, task) => toSession(key, task),
+  runNow: (id, now, lead) => schedules.runNow(id, now, lead), toSession: (key, task) => toSession(key, task), lanes: { busy: key => d.ready(key) === 'busy', last: key => runner.lastActivity(key), cut: key => void d.endThread(key, true) },
   idle: key => !isClosed(key) && d.ready(key) === 'ready' && d.startsNow(key, Date.now()), paused: now => limits.paused(now)?.until, tripwires: () => config.tripwires, openHome: homeThread({ title: Title, bot, user, ids: slack.ids }) })
 const sessionOptions = (claude: string) => ({
   cwd: process.cwd(),
@@ -275,9 +275,9 @@ const sdk = sdkLib ? sdkSessions({
   ssm: { sock: SSM_SOCK, shim: SSM_SHIM, issue: key => ssm.issue(key), drop: key => ssm.drop(key) },
   keys: { sock: KEYS_SOCK, issue: key => keys.issue(key), drop: key => keys.drop(key) },
   onStart: () => store.saveSessions(d.saved()),
-  onResult: (key, total, resumed, limited) => {
+  onResult: (key, total, resumed, limited, error) => {
     const usd = recordCost(key, total, resumed)
-    kag.routes.ended(key, usd ?? 0, d.saved()[key] ? `${PROJECT}/${d.saved()[key]}.jsonl` : '', Date.now(), limited)
+    kag.routes.ended(key, usd ?? 0, d.saved()[key] ? `${PROJECT}/${d.saved()[key]}.jsonl` : '', Date.now(), limited, error)
   },
   budgetOf: kag.budgetOf,
   modelOf: key => modelFor(key, config.harness?.jobModel, k => k.includes('#side-kdream-') ? DEFAULT_MODEL : k.startsWith('voice:') && config.connectors?.voice?.model ? config.connectors.voice.model : kag.modelOf(k)),

@@ -184,12 +184,12 @@ export function scheduler(o: {
       }
       return { adopted, skipped }
     },
-    runNow(id: string, now: number): string | undefined {
+    runNow(id: string, now: number, lead?: string): string | undefined {
       const s = store.schedules().find(x => x.id === id)
       if (!s) return `no schedule ${id}: it is paused, removed, or not synced yet`
       store.fired(id, now)
       o.ran?.(s, now)
-      run(s, `Run now of job ${id}, asked for outside its schedule (${s.cron}). Nobody wrote a new message.\n${s.prompt}`)
+      run(s, `${lead ? `${lead}\n` : ''}Run now of job ${id}, asked for outside its schedule (${s.cron}). Nobody wrote a new message.\n${s.prompt}`)
     },
     tune(from: string, id: string, t: TuneArg, now: number): string | undefined {
       const s = store.schedules().find(x => x.id === id && x.key === threadOfJobLane(from))
