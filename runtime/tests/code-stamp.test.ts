@@ -33,3 +33,17 @@ test('editing a test does not restart the hub', () => {
   utimesSync(join(root, 'core', 'gate.test.ts'), 2000, 2000)
   assert.equal(codeStamp(root), before)
 })
+
+test('a change one folder down, as runtime/tools/ or connectors/slack/, moves the stamp, and a test there does not', () => {
+  const root = tree()
+  for (const d of ['runtime/tools', 'connectors/slack', 'connectors/slack/tests']) mkdirSync(join(root, d))
+  for (const f of ['runtime/tools/slack-tools.ts', 'connectors/slack/connect.ts', 'connectors/slack/tests/connect.test.ts']) { writeFileSync(join(root, f), ''); utimesSync(join(root, f), 1000, 1000) }
+  const before = codeStamp(root)
+  utimesSync(join(root, 'connectors/slack/tests/connect.test.ts'), 3000, 3000)
+  assert.equal(codeStamp(root), before)
+  for (const f of ['runtime/tools/slack-tools.ts', 'connectors/slack/connect.ts']) {
+    const was = codeStamp(root)
+    utimesSync(join(root, f), was / 1000 + 10, was / 1000 + 10)
+    assert.ok(codeStamp(root) > was, f)
+  }
+})
