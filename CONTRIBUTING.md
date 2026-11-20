@@ -161,7 +161,7 @@ Write logs to stderr only. In a tmux pane, stdout carries the channel protocol, 
 | `messages.ts` | Every fixed line Kage writes to the owner on its own (a held reply, a failed event, a release, a settings refusal), one function per line. A call site never writes the words itself (#241). |
 | `text.ts` | Text helpers every rule shares: `oneLine`, and `quotedLine` for someone else's text (no `<channel>` tag survives). |
 | `cli-help.ts` | The closest real `kage` command to a mistyped one. |
-| `dream.ts` | The nightly dream job: what it reads for lessons, how it tidies Kage's memory, and which lessons may leave this machine. |
+| `dream.ts` | The nightly dream job: what it reads for lessons, how it tidies Kage's memory, which lessons may leave this machine, and `checkDream`, the check a lesson passes before it reaches memory (#488): two threads or more with exact quotes, enough confidence, a nightly cap. |
 | `signature.ts` | A webhook body signed with a shared secret (`X-Hub-Signature-256`), as GitHub and Meta sign. |
 | `github.ts` | Which GitHub events are the owner's business (a review or failed checks on their PR, an issue or review request given to them, a mention). |
 | `kagelets/memory.ts` | A kagelet's own memory folder (#98): what its prompt reads, and the one path into the folder. |
@@ -189,6 +189,7 @@ Write logs to stderr only. In a tmux pane, stdout carries the channel protocol, 
 | `runtime/tools/kagelet-tools.ts` | A kagelet's tools (report, message another, db_read), its dream's (propose_memory), and the manager's. |
 | `runtime/tools/browser-tools.ts` | The owner's Chrome: list, read, capture, snapshot and act, a major step on the owner's yes. |
 | `runtime/tools/screen-tools.ts` | The owner's Mac screen: a picture of it, a recording that starts, runs while the session works, and stops into the thread's files folder, and `screen_act`, which acts on the Mac by the rules in `core/desktop-act.ts`. |
+| `runtime/tools/dream-tools.ts` | The nightly dream's `dream_lessons`: every lesson goes through the hub's check before it reaches memory. |
 | `runtime/tools/owner-tools.ts` | Only the owner's own Slack task: the meeting bot and changing a setting. |
 | `screen.ts` | Kage Screen seen from the hub: it builds `screen/KageScreen.swift` into an app only when the source changed, writes the one job into the config folder, opens the app, reads the JSON lines it prints, and stops a recording with SIGINT. One recording at a time. To act, one Kage Screen stays open and reads commands from a pipe in that folder, answering each by id, until it sits idle for 5 minutes. |
 | `session-link.ts` | The local socket that panes and the `kage` commands connect to. |
@@ -227,6 +228,7 @@ Write logs to stderr only. In a tmux pane, stdout carries the channel protocol, 
 | `jobs.ts` | The hub's timed work on one clock: each job on its own period, retried next period when it fails. |
 | `kagelets/memory.ts` | A kagelet's memory folder on disk and the proposals waiting on Kage's review. |
 | `key-proxy.ts` | The key proxy (#182): a unix socket that adds a held key to requests for its one host, so the session never sees it. |
+| `dream-lessons.ts` | Applying the dream's checked lessons to Kage's memory: a kept one becomes a note with an index line, a retired note moves to `.archive/`, and every drop is a ledger line. |
 | `memory-snapshot.ts` | A copy of Kage's memory before a dream, so `kage dream undo` restores it. |
 | `repo-access.ts` | Whether this install may push to the Kage repo, which marks the repo owner's hub. |
 | `channel-watch.ts` | Jobs that watch a Slack channel (tripwire rung 2): which jobs a post is for (channel, match, bots allowed), the recent post ids seen per channel, the catch-up cursor, the quoted posts held until the job takes them, and the catch-up after a socket gap, one channel at a time. The hub wires it to `channelPost` and `channelCatchUp` in `connectors/slack/connect.ts`. |

@@ -65,7 +65,7 @@ function setup(o: { saved?: Record<string, string>; transcript?: boolean; silent
     grantOf: key => o.grants?.[key],
     allowOf: key => o.allows?.[key] ?? [],
     ...o.review !== undefined && { reviewHeld: async () => o.review! },
-    ownerMemory: '/owner',
+    ownerMemory: '/owner', ownMemory: '/own-memory',
     envFile: '/cfg/env',
     codeDir: '/code/kage', sandbox: owner => sandboxed(o.sandbox ?? true, owner),
     ssm: { sock: '/cfg/ssm.sock', shim: '/code/kage/cli/ssm-plugin-shim', issue: key => o.trusted?.includes(key) ? `tok-${key}` : undefined, drop: key => { dropped.push(key) } },
@@ -1525,4 +1525,18 @@ test('every path that runs a kagelet turn writes a costs row (#96)', async () =>
     await tick()
     assert.match(ledgers.text('costs'), new RegExp(`\t${LANE.replace(/[.#]/g, '\\$&')}\t0\\.42\t0\\.42\n`), path)
   }
+})
+
+test('only the dream lane is kept from writing a new note in its own memory (#488)', async () => {
+  const t = setup({ transcript: true })
+  const decide = async (key: string) => {
+    t.d.task(key, t.task({}), 0)
+    await tick()
+    const r = t.sdk.runs.at(-1)!
+    const out = await r.options.hooks.PreToolUse[0].hooks[0]({ hook_event_name: 'PreToolUse', tool_name: 'Write', tool_input: { file_path: '/own-memory/new-lesson.md' } }, undefined, { signal: signal() })
+    t.s.runner.stop(key)
+    return out.hookSpecificOutput?.permissionDecision
+  }
+  assert.equal(await decide('dm#side-dream'), 'deny')
+  assert.equal(await decide('C1:5.5'), undefined)
 })

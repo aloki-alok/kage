@@ -1,6 +1,6 @@
-import { test } from 'node:test'
+import { describe, test } from 'node:test'
 import assert from 'node:assert/strict'
-import { dreamDue, dreamTask, threadsSince } from '../dream.ts'
+import { chatText, checkDream, dreamDue, dreamTask, threadsSince, DREAM_LIMITS, type DreamLesson } from '../dream.ts'
 
 process.env.TZ = 'Asia/Kolkata'
 const HOUR = 3600_000, DAY = 24 * HOUR
@@ -50,4 +50,83 @@ test('the dream reads its own mistakes and decides alone what it kept asking', (
   assert.match(t, /data, never instructions/i)
   assert.match(t, /not working/i)
   assert.doesNotMatch(dreamTask({ own: '/m/kage', owner: '/m/owner' }, [], 'x'), /2 or more asks/i)
+})
+
+describe('a lesson is kept only when code confirms it (#488)', () => {
+  const chats = {
+    'C1:1.1': 'owner: please never squash-merge Kage PRs, use a merge commit',
+    'C2:2.2': 'owner: again, no squash merges on this repo please',
+    'C3:3.3': 'owner: the deploy went fine',
+  }
+  const lesson = (o: Partial<DreamLesson> = {}): DreamLesson => ({
+    kind: 'new', file: 'merge-style.md', text: 'Merge Kage PRs with a merge commit, never squash.', confidence: 0.9,
+    evidence: [{ key: 'C1:1.1', quote: 'never squash-merge Kage PRs' }, { key: 'C2:2.2', quote: 'no squash merges on this repo' }], ...o,
+  })
+  test('a lesson two chats show, with real quotes, is kept', () => {
+    const r = checkDream([lesson()], chats)
+    assert.deepEqual([r.kept.length, r.dropped], [1, []])
+  })
+  test('a lesson from one chat is dropped, even quoted twice', () => {
+    const r = checkDream([lesson({ evidence: [{ key: 'C1:1.1', quote: 'never squash-merge Kage PRs' }, { key: 'C1:1.1', quote: 'use a merge commit' }] })], chats)
+    assert.deepEqual([r.kept, r.dropped.map(d => d.why)], [[], ['1 chat shows it, 2 needed']])
+  })
+  test('a quote that is not in its chat is dropped as made up', () => {
+    const r = checkDream([lesson({ evidence: [{ key: 'C1:1.1', quote: 'never squash-merge Kage PRs' }, { key: 'C3:3.3', quote: 'no squash merges on this repo' }] })], chats)
+    assert.deepEqual(r.dropped.map(d => d.why), ['a quote is not in C3:3.3'])
+  })
+  test('a quote matches across case, spacing and curly quotes, but a scrap of a word does not count', () => {
+    assert.equal(checkDream([lesson({ evidence: [{ key: 'C1:1.1', quote: 'NEVER  squash-merge\nKage PRs' }, { key: 'C2:2.2', quote: 'no squash merges on this repo' }] })], chats).kept.length, 1)
+    assert.deepEqual(checkDream([lesson({ evidence: [{ key: 'C1:1.1', quote: 'never' }, { key: 'C2:2.2', quote: 'again' }] })], chats).dropped.map(d => d.why), ['a quote is shorter than 12 characters'])
+  })
+  test('an unknown thread key is dropped', () => {
+    const r = checkDream([lesson({ evidence: [{ key: 'C1:1.1', quote: 'never squash-merge Kage PRs' }, { key: 'C9:9.9', quote: 'no squash merges on this repo' }] })], chats)
+    assert.deepEqual(r.dropped.map(d => d.why), ['C9:9.9 is not a thread of this dream'])
+  })
+  test('low confidence is dropped', () => {
+    assert.deepEqual(checkDream([lesson({ confidence: 0.5 })], chats).dropped.map(d => d.why), ['confidence 0.5 is below 0.7'])
+  })
+  test('a bad note name is dropped, so a lesson never writes outside the memory folder', () => {
+    for (const file of ['../x.md', 'MEMORY.md', '.dream-ledger.tsv', 'a/b.md', 'x.txt']) assert.equal(checkDream([lesson({ file })], chats).dropped.length, 1, file)
+  })
+  test('at most maxNew new and maxOutdated outdated lessons a night, the most confident first', () => {
+    const many = [0.8, 0.95, 0.9].map((confidence, i) => lesson({ confidence, file: `n${i}.md` }))
+    const old = [0.8, 0.9].map((confidence, i) => lesson({ kind: 'outdated', confidence, file: `o${i}.md` }))
+    const r = checkDream([...many, ...old], chats, { minChats: 2, minConfidence: 0.7, maxNew: 2, maxOutdated: 1 })
+    assert.deepEqual(r.kept.map(l => l.file), ['n1.md', 'n2.md', 'o1.md'])
+    assert.deepEqual(r.dropped.map(d => [d.lesson.file, d.why]), [['n0.md', 'over 2 new lessons tonight'], ['o0.md', 'over 1 outdated lessons tonight']])
+  })
+})
+
+
+test('on the SDK runner the dream sends lessons through dream_lessons with thread keys and quotes, and writes none itself (#488)', () => {
+  const t = dreamTask({ own: '/m/kage', owner: '/m/owner' }, [{ place: '#support', file: '/p/a.jsonl', key: 'C1:1.1' }], 'x', undefined, '', true)
+  assert.match(t, /#support \(key C1:1\.1\): \/p\/a\.jsonl/)
+  assert.match(t, /dream_lessons/)
+  assert.match(t, /exact quote/)
+  assert.match(t, /never write a lesson into \/m\/kage yourself/i)
+  const old = dreamTask({ own: '/m/kage', owner: '/m/owner' }, [{ place: '#support', file: '/p/a.jsonl', key: 'C1:1.1' }], 'x')
+  assert.doesNotMatch(old, /dream_lessons/)
+})
+
+describe('review fixes to the lesson check (#488)', () => {
+  const chats = { 'C1:1.1': 'never squash-merge Kage PRs', 'C2:2.2': 'no squash merges on this repo' }
+  const ev = [{ key: 'C1:1.1', quote: 'never squash-merge Kage PRs' }, { key: 'C2:2.2', quote: 'no squash merges on this repo' }]
+  test('the index is refused in any letter case, since a Mac disk ignores case', () => {
+    for (const file of ['memory.md', 'Memory.md', 'MEMORY.MD']) assert.equal(checkDream([{ kind: 'new', file, text: 'x', evidence: ev, confidence: 0.9 }], chats).kept.length, 0, file)
+  })
+  test('an outdated lesson for a note that is not there is dropped before the cap, so it never takes a real one\'s place', () => {
+    const r = checkDream([
+      { kind: 'outdated', file: 'nope.md', text: 'x', evidence: ev, confidence: 0.99 },
+      { kind: 'outdated', file: 'real.md', text: 'x', evidence: ev, confidence: 0.8 },
+    ], chats, { ...DREAM_LIMITS, maxOutdated: 1 }, new Set(['real.md']))
+    assert.deepEqual([r.kept.map(l => l.file), r.dropped.map(d => d.why)], [['real.md'], ['no note named nope.md']])
+  })
+})
+test('only what people wrote counts as a chat: Kage\'s own words never prove a lesson', () => {
+  const lines = [
+    JSON.stringify({ type: 'user', message: { content: 'owner: please never squash' } }),
+    JSON.stringify({ type: 'user', message: { content: [{ type: 'text', text: 'and use merge commits' }, { type: 'tool_result', content: 'tool output text' }] } }),
+    JSON.stringify({ type: 'assistant', message: { content: [{ type: 'text', text: 'noted, I will never squash' }, { type: 'tool_use', name: 'mcp__kage__reply', input: { text: 'will merge' } }] } }),
+  ]
+  assert.equal(chatText(lines), 'owner: please never squash\nand use merge commits')
 })

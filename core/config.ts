@@ -24,6 +24,7 @@ export const Config = z.strictObject({
     agents: z.array(z.strictObject({ app: z.string(), owner: z.string().optional(), tag: z.string().optional() }).refine(a => appEntry(agentLine(a)) !== undefined)).optional(),
   }).optional(),
   waiting: z.strictObject({ expireHours: count }).optional(),
+  dream: z.strictObject({ minChats: count, minConfidence: z.number().min(0).max(1).optional(), maxNew: count, maxOutdated: count }).optional(),
   kagelets: z.strictObject({
     max: count, ownersMax: count, dailyUsd: money, totalDailyUsd: money, chainUsd: money, needsPerDay: count, askRunsPerHour: count, notesKept: count, noteChars: count, measureMinutes: count, trendRuns: count,
     release: z.enum(['rules', 'review']).optional(), reviewsPerDay: count, reviewModel: text,
@@ -102,6 +103,7 @@ export const KEYS: Row[] = [
   R('KAGE_TRIPWIRES_SWAP_AFTER', 'tripwires.swapAfter', int), R('KAGE_TRIPWIRES_SHADOW_WINDOW_MIN', 'tripwires.shadowWindowMin', int), R('KAGE_TRIPWIRES_SWAP_UNDO_DAYS', 'tripwires.swapUndoDays', int), R('KAGE_WAITING_EXPIRE_HOURS', 'waiting.expireHours', int),
   R('KAGE_OWNER_MEMORY', 'harness.ownerMemory'), R('KAGE_MAX_SESSIONS', 'harness.maxSessions', int), R('KAGE_IDLE_MINUTES', 'harness.idleMinutes', int), R('KAGE_JOB_MODEL', 'harness.jobModel'), R('KAGE_JOB_FRESH_EVERY', 'harness.jobFreshEvery', int), R('KAGE_JOB_CARRY', 'harness.jobCarry', int), R('KAGE_JOB_CARRY_CHARS', 'harness.jobCarryChars', int), R('KAGE_JOB_LANE_DEFAULT', 'harness.jobLaneDefault', onoff), R('KAGE_JOB_CATCH_UP_HOURS', 'harness.jobCatchUpHours', int), R('KAGE_JOB_CATCH_UP_STAGGER_SECONDS', 'harness.jobCatchUpStaggerSeconds', int), R('KAGE_SANDBOX', 'harness.sandbox', sandboxCodec), R('KAGE_PLUGINS_OFF', 'harness.pluginsOff', list),
   R('KAGE_OWNER_CHANNEL', 'owner.channel'), R('KAGE_TEAMMATES', 'people.teammates', people), R('KAGE_TRUSTED_PEOPLE', 'people.trusted', people), R('KAGE_TRUSTED_APPS', 'people.agents', agents),
+  R('KAGE_DREAM_MIN_CHATS', 'dream.minChats', int), R('KAGE_DREAM_MIN_CONFIDENCE', 'dream.minConfidence', num), R('KAGE_DREAM_MAX_NEW', 'dream.maxNew', int), R('KAGE_DREAM_MAX_OUTDATED', 'dream.maxOutdated', int),
   R('KAGE_MAX_KAGELETS', 'kagelets.max', int), R('KAGE_KAGELET_OWNERS_MAX', 'kagelets.ownersMax', int), R('KAGE_KAGELET_NEEDS_PER_DAY', 'kagelets.needsPerDay', int), R('KAGE_KAGELET_ASK_RUNS_PER_HOUR', 'kagelets.askRunsPerHour', int), R('KAGE_KAGELET_NOTES_KEPT', 'kagelets.notesKept', int), R('KAGE_KAGELET_NOTE_CHARS', 'kagelets.noteChars', int), R('KAGE_KAGELET_MEASURE_MINUTES', 'kagelets.measureMinutes', int), R('KAGE_KAGELET_TREND_RUNS', 'kagelets.trendRuns', int), R('KAGE_KAGELET_RELEASE', 'kagelets.release'), R('KAGE_KAGELET_REVIEWS_PER_DAY', 'kagelets.reviewsPerDay', int), R('KAGE_KAGELET_REVIEW_MODEL', 'kagelets.reviewModel'), R('KAGE_KAGELET_DAILY_USD', 'kagelets.dailyUsd', num),
   R('KAGE_KAGELET_TOTAL_DAILY_USD', 'kagelets.totalDailyUsd', num), R('KAGE_KAGELET_CHAIN_USD', 'kagelets.chainUsd', num),
   R('KAGE_DB_READ_COMMAND', 'kagelets.dbRead.command'), R('KAGE_DB_READ_MAX_ROWS', 'kagelets.dbRead.maxRows', int),
