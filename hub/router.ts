@@ -110,7 +110,7 @@ const deliver = (c: Conversation, task: Task, place: string, lane: Lane = 'main'
 function stopThread(key: string, cut: boolean): string {
   const now = Date.now()
   const end = (k: string) => {
-    kag.incidents.stopped(k, now); const r = d.endThread(k, cut)
+    kag.incidents.stopped(k, runs.of(k)?.trace); const r = d.endThread(k, cut)
     const dropped = 'ok' in r ? r.dropped.filter((m): m is Task => m.type === 'task') : []
     if (dropped.length) limits.turn(k, dropped, undefined, now)
     return { r, dropped: dropped.length }

@@ -34,10 +34,17 @@ test("the owner's note names the kagelet, quotes its words and report as data, a
   assert.match(note, /Kagelet \*digest\* failed twice in a row/)
   assert.match(note, /last words, as data: .*error: 401 Unauthorized/)
   assert.doesNotMatch(note, /<channel/)
+  assert.doesNotMatch(incidentNote('d', { kind: 'pause', why: 'x' }, { words: 'ping <!here> and <@UTEST1>', report: '' }, 5), /<!here>|<@UTEST1>/)
   assert.match(note, /Likely fix: a tool needs a fresh sign-in/)
   assert.match(incidentNote('digest', { kind: 'pause', why: 'x' }, { words: '', report: '' }, 5), /failed 5 times in an hour, so I paused it/)
   assert.equal(knownFix('the turn ended: error_max_budget_usd')?.startsWith('it hit a cost cap'), true)
   assert.equal(knownFix('the network was slow'), undefined)
+})
+test('a kagelet that cannot be run on its own (an after: step) is told to the owner, never marked as retried (#487)', () => {
+  assert.deepEqual(play([{ at: 0, failure: 'x', retryable: false }, { at: MIN, failure: 'x', retryable: false }]), ['tell', 'none'])
+  let state: IncidentState = {}
+  state = afterRun(state, { name: 'k', at: 0, failure: 'x', retryable: false }, 5).state
+  assert.equal(state.k!.retrying, undefined)
 })
 test('a failure a retry cannot fix (a sign-in, a cost cap) goes to the owner at once, with no retry', () => {
   assert.deepEqual(play([{ at: 0, failure: 'stopped with error_max_budget_usd' }]), ['tell'])

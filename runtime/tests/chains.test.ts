@@ -27,7 +27,7 @@ const NINE = new Date(2026, 10, 14, 9, 0).getTime()
 const QUEUED = (to: string) => new RegExp(`^queued for ${to}`)
 const tick = () => new Promise(r => setTimeout(r, 5))
 
-async function hub(o: { chainUsd?: number; capUsd?: number; max?: number; memory?: (name: string) => { file: string; text: string }[]; done?: (key: string, failure: string | undefined, transcript: string, now: number) => void } = {}) {
+async function hub(o: { chainUsd?: number; capUsd?: number; max?: number; memory?: (name: string) => { file: string; text: string }[]; done?: (key: string, failure: string | undefined, transcript: string, now: number, trace: string) => void } = {}) {
   const dir = mkdtempSync(`${tmpdir()}/kage-chains-`)
   const kagelets = `${dir}/kagelets`, work = `${dir}/files`
   const own = `${work}/CTEST1_1700000000.123456`
@@ -598,7 +598,7 @@ test('a kagelet run that ends with no report is retried once in its lane, saying
   const said: string[] = []
   let inc!: ReturnType<typeof kageletIncidents>
   const h = await hub({ done: (...a) => inc.ended(...a) })
-  inc = kageletIncidents({ store: h.store, perHour: () => 5, stallMs: () => 20 * 60_000, retry: (name, lead, now) => { h.schedules.runNow(`kagelet-${name}`, now, lead) },
+  inc = kageletIncidents({ store: h.store, retryable: () => true, perHour: () => 5, stallMs: () => 20 * 60_000, retry: (name, lead, now) => { h.schedules.runNow(`kagelet-${name}`, now, lead) },
     pause: () => {}, say: t => said.push(t), last: () => ({ words: '', report: '' }), live: () => [], cut: () => {} })
   await h.save('a', { schedule: '0 9 * * *' })
   h.schedules.tick(NINE)
@@ -614,7 +614,7 @@ test("a kagelet run the SDK ends with an error carries the error's name to the o
   const said: string[] = []
   let inc!: ReturnType<typeof kageletIncidents>
   const h = await hub({ done: (...a) => inc.ended(...a) })
-  inc = kageletIncidents({ store: h.store, perHour: () => 5, stallMs: () => 20 * 60_000, retry: () => said.push('retry'), pause: () => {}, say: t => said.push(t), last: () => ({ words: '', report: '' }), live: () => [], cut: () => {} })
+  inc = kageletIncidents({ store: h.store, retryable: () => true, perHour: () => 5, stallMs: () => 20 * 60_000, retry: () => said.push('retry'), pause: () => {}, say: t => said.push(t), last: () => ({ words: '', report: '' }), live: () => [], cut: () => {} })
   await h.save('a', { schedule: '0 9 * * *' })
   h.schedules.tick(NINE)
   await tick()
@@ -626,4 +626,15 @@ test("a kagelet run the SDK ends with an error carries the error's name to the o
   await tick()
   assert.equal(said.length, 1)
   assert.match(said[0]!,/^Kagelet \*a\* failed: stopped with error_max_budget_usd\.\n.*Likely fix: it hit a cost cap/s)
+})
+test('a kagelet run cut by the usage limit is held for the reset, never an incident (#487)', async () => {
+  const said: string[] = []
+  let inc!: ReturnType<typeof kageletIncidents>
+  const h = await hub({ done: (...a) => inc.ended(...a) })
+  inc = kageletIncidents({ store: h.store, retryable: () => true, perHour: () => 5, stallMs: () => 20 * 60_000, retry: () => said.push('retry'), pause: () => {}, say: t => said.push(t), last: () => ({ words: '', report: '' }), live: () => [], cut: () => {} })
+  await h.save('a', { schedule: '0 9 * * *' })
+  h.schedules.tick(NINE)
+  await tick()
+  await h.limitHit('a', NINE + 3_600_000)
+  assert.deepEqual(said, [])
 })

@@ -20,7 +20,7 @@ export function kageletRoutes(o: {
   paused: (now: number) => number | undefined
   capUsd?: number; chainUsd?: number; log: (line: string) => void; newId?: () => string
   memory?: (name: string) => { file: string; text: string }[]
-  done?: (key: string, failure: string | undefined, transcript: string, now: number) => void
+  done?: (key: string, failure: string | undefined, transcript: string, now: number, trace: string) => void
 }) {
   const chains = new Map<string, { usd: number; at: number }>()
   const guard = loopGuard({ perWindow: 20, windowMs: 60_000, hops: Infinity })
@@ -135,7 +135,7 @@ export function kageletRoutes(o: {
         }
       }
       o.runs.end(key, `$${usd.toFixed(2)}`, transcript)
-      if (run && !limited) o.done?.(key, error ? `stopped with ${error}` : run.reported ? undefined : 'ended without a report', transcript, now)
+      if (run && !limited) o.done?.(key, error ? `stopped with ${error}` : run.reported ? undefined : 'ended without a report', transcript, now, run.trace)
     },
   }
 }

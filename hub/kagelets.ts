@@ -45,6 +45,7 @@ export function hubKagelets(o: {
   const CAPS = { each: dailyCap(kl), total: totalCap(kl), chain: chainCap(kl) }
   const incidents = kageletIncidents({
     store, perHour: () => kl.incidentsPerHour || 5, stallMs: () => (kl.turnStallMinutes || 20) * 60_000,
+    retryable: name => !!kageletRows(readKagelets(KAGELETS), { runs: '', costs: '', now: 0 }).find(r => r.name === name)?.cron,
     retry: (name, lead, now) => { const why = o.runNow(`kagelet-${name}`, now, lead); log(`kagelet ${name} retries${why ? `: ${why}` : ''}`) },
     pause: (name, now) => log(pauseKagelet(KAGELETS, name, true, now)),
     say: o.notify,
@@ -52,7 +53,7 @@ export function hubKagelets(o: {
       words: (transcript ? newLines(transcript, 0).lines : []).flatMap(transcriptSteps).filter(s => s.kind === 'says' || s.kind === 'error').at(-1)?.text ?? '',
       report: ledgers.text('reports').split('\n').map(l => l.split('\t')).filter(r => r[1] === key.split('#side-kagelet-')[1]).at(-1)?.[2] ?? '',
     }),
-    live: () => [...grants.keys()].map(key => ({ key, busy: o.lanes.busy(key), last: o.lanes.last(key) })),
+    live: () => [...grants.keys()].map(key => ({ key, busy: o.lanes.busy(key), last: o.lanes.last(key), trace: o.runs.of(key)?.trace })),
     cut: o.lanes.cut,
   })
   const sync = (now: number) => {
