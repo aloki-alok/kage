@@ -29,7 +29,7 @@ const tick = (ms = 5) => new Promise(r => setTimeout(r, ms))
 const ID = '11111111-1111-4111-8111-111111111111'
 const signal = () => new AbortController().signal
 
-function setup(o: { transcript?: boolean; silent?: boolean; dmFails?: boolean; grants?: Record<string, string[]>; allows?: Record<string, string[]>; review?: boolean; manager?: boolean; budgets?: Record<string, number>; models?: Record<string, string>; trusted?: string[]; deferred?: boolean; browser?: boolean; restartMs?: number; sandbox?: boolean | 'teammates'; onResult?: (key: string, total: number, resumed: boolean) => void; onMcp?: (q: unknown) => void; trustedPeople?: { ids: string[] } } = {}) {
+function setup(o: { saved?: Record<string, string>; transcript?: boolean; silent?: boolean; dmFails?: boolean; grants?: Record<string, string[]>; allows?: Record<string, string[]>; review?: boolean; manager?: boolean; budgets?: Record<string, number>; models?: Record<string, string>; trusted?: string[]; deferred?: boolean; browser?: boolean; restartMs?: number; sandbox?: boolean | 'teammates'; onResult?: (key: string, total: number, resumed: boolean) => void; onMcp?: (q: unknown) => void; trustedPeople?: { ids: string[] } } = {}) {
   const sdk = fakeSdk(o)
   const dropped: string[] = []
   const keysDropped: string[] = []
@@ -82,7 +82,7 @@ function setup(o: { transcript?: boolean; silent?: boolean; dmFails?: boolean; g
     onTool: (key, tool, refused) => { tools.push([key, tool, refused]) },
   })
   let n = 0
-  d = new Dispatcher<ToSession>(s.runner, { max: 2, idleMs: 60_000, connectMs: 60_000, evictMs: 1, newId: () => ID.slice(0, -1) + n++ })
+  d = new Dispatcher<ToSession>(s.runner, { max: 2, idleMs: 60_000, connectMs: 60_000, evictMs: 1, newId: () => ID.slice(0, -1) + n++, ...o.saved && { saved: o.saved } })
   const task = (o: { fromOwner?: boolean; place?: string; content?: string; channel?: string } = {}): Task => ({
     type: 'task', content: o.content ?? 'Task from Sam: hi', fromOwner: o.fromOwner ?? true,
     meta: { channel: o.channel ?? 'C1', thread_ts: '5.5', place: o.place ?? '#general', permalink: 'https://x/p' },
@@ -223,6 +223,20 @@ describe('Kage sessions on the Agent SDK', () => {
     await tick()
     assert.equal(await guard('mcp__gmail__search'), undefined)
     t.s.runner.stop('C1:5.5')
+  })
+  test("after a hub restart, the owner's thread resumes with Kage's owner-only tools on its first task (#274)", async () => {
+    const before = setup({ transcript: true })
+    before.d.task('C1:5.5', before.task({ content: 'Task from the owner: hi' }), 0)
+    await tick()
+    const id = before.d.saved()['C1:5.5']!
+    before.s.runner.stop('C1:5.5')
+    const after = setup({ transcript: true, saved: { 'C1:5.5': id } })
+    after.d.task('C1:5.5', after.task({ content: 'Task from the owner: post the summary in #general as Kage' }), 1)
+    await tick()
+    const run = after.sdk.runs[0]!
+    assert.equal(run.options.resume, id)
+    assert.match(await callKage(run, 'post_as_kage', { channel: 'C1', thread_ts: '5.5', to: 'CTEST9', text: 'summary' }), /posted as Kage/)
+    after.s.runner.stop('C1:5.5')
   })
   test("the owner's mid-turn message does not open Kage's own owner-only tools to a teammate's running turn", async () => {
     const t = setup({ transcript: true, restartMs: 60_000 })
