@@ -17,6 +17,7 @@ import { kageletRows, type KageletRow } from '../core/kagelets/kagelet.ts'
 import { kageletTier } from '../core/access.ts'
 import { kageletsDir, readKagelets } from '../runtime/kagelets/files.ts'
 import { ledgerText } from '../runtime/ledger.ts'
+import { leftoverCount } from './top-leftovers.ts'
 
 const HOME = process.env.HOME!
 const PROJECT = `${HOME}/.claude/projects/${CWD.replace(/[^A-Za-z0-9]/g, '-')}`
@@ -183,7 +184,7 @@ function view(now: number, t: number): View {
     ...(live && { slots: { used: live.live.filter(l => l.state === 'busy' || l.state === 'asking' || l.state === 'starting').length, max: live.max } }),
     rows, nowLine: key => feeds.get(key)?.steps.at(-1)?.text.replace(/^reply\s+/, '').replace(/^(\S+)\s+/, '$1 '),
     ...(asking && { ask: { place: asking.place, what: waiting.find(w => w.thread === asking.key)?.what || 'waits on your answer in Slack' } }),
-    tab, focus, selKey, ...(open && { open }), mode,
+    tab, focus, selKey, ...(open && { open }), mode, leftovers: leftoverCount(),
     feed: f?.steps ?? [], typed: (f?.changed ?? 0) > openAt ? Math.max(0, Math.floor((now - f!.changed) / 22)) : Infinity,
     threadSpend: Math.round(costs.filter(c => c.key === shown && c.at >= midnight).reduce((a, c) => a + c.usd, 0) * 100) / 100,
     schedules, nextOf: s => nextRuns([s], now).get(s.key), placeOf,

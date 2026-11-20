@@ -4,6 +4,7 @@ import type { KageletRow } from '../core/kagelets/kagelet.ts'
 import { runLine, shownState, type Run } from '../core/kagelets/view.ts'
 import { activityBins, bars, listRows, MARK, perHour, screen, spinner, type Rect, type Screen } from '../core/top-layout.ts'
 import { clean, clear, clip, fill, H, paint, put, W } from './top-screen.ts'
+import { leftoversLine } from '../core/leftovers.ts'
 
 export type Tab = 'threads' | 'kagelets' | 'schedules'
 export const TABS: Tab[] = ['threads', 'kagelets', 'schedules']
@@ -13,6 +14,7 @@ export type View = {
   version?: string; channels: { name: string; up: boolean | undefined }[]; hubUp: boolean; upSec?: number; spentToday: number; slots?: { used: number; max: number }
   rows: Row[]; nowLine: (key: string) => string | undefined
   ask?: { place: string; what: string }
+  leftovers?: number
   tab: Tab; focus: 'list' | 'feed'; selKey: string; open?: string; mode: 'steps' | 'schedules'
   feed: Step[]; typed: number; threadSpend: number
   schedules: Schedule[]; nextOf: (s: Schedule) => number | undefined; placeOf: (key: string) => string
@@ -73,8 +75,9 @@ function header(v: View) {
 function banner(v: View, y: number) {
   const on = Math.floor(v.t / 800) % 2 === 0
   fill({ x0: 0, y0: y, x1: W - 1, y1: y }, on ? 'ask' : 'bar')
-  const keys = '⏎ open'
-  put(2, y, clip(`◆ ${v.ask!.place} asks you: ${v.ask!.what}`, W - keys.length - 8), on ? 'bg' : 'you')
+  const keys = v.ask ? '⏎ open' : ''
+  const line = v.ask ? `◆ ${v.ask.place} asks you: ${v.ask.what}` : `◆ ${leftoversLine(v.leftovers!)}`
+  put(2, y, clip(line, W - keys.length - 8), on ? 'bg' : 'you')
   put(W - keys.length - 3, y, keys, on ? 'bg' : 'you')
 }
 
@@ -233,9 +236,9 @@ function footer(v: View) {
 
 export function drawFrame(v: View): Hits {
   clear()
-  const s = screen(W, H, !!v.ask)
+  const s = screen(W, H, !!v.ask || !!v.leftovers)
   header(v)
-  if (v.ask) banner(v, s.banner!)
+  if (v.ask || v.leftovers) banner(v, s.banner!)
   const wide = !!s.feed
   const showFeed = !wide && !!v.open && v.tab === 'threads'
   const listFocus = v.focus === 'list' || !wide
