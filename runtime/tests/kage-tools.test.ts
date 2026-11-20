@@ -11,6 +11,7 @@ import { homeThread, postAsKage, sessionTools } from '../kage-tools.ts'
 import { shadowSwaps } from '../shadow-swap.ts'
 import { openStore } from '../store.ts'
 import type { Task } from '../../core/task.ts'
+import type { ScreenRecorder } from '../screen.ts'
 
 function fakeSlack() {
   const calls: string[] = []
@@ -71,7 +72,7 @@ function fakeSlack() {
   return { calls, posts, bot: client('bot'), user: client('owner') }
 }
 
-function setup(o: { noHook?: boolean; settings?: { set(key: string, value: unknown): void }; hubDown?: boolean; dir?: string; kagelet?: string; dreaming?: string; dbRead?: { command: () => string | undefined; maxRows: number; timeoutMs?: number }; approve?: (tool: string, description: string, input: Record<string, unknown>) => Promise<boolean>; browser?: { call(op: string, args: Record<string, unknown>): Promise<unknown>; block: string[] }; meetbot?: { join(link: string): string }; foreignAgents?: () => readonly string[] } = {}) {
+function setup(o: { noHook?: boolean; settings?: { set(key: string, value: unknown): void }; hubDown?: boolean; dir?: string; kagelet?: string; dreaming?: string; dbRead?: { command: () => string | undefined; maxRows: number; timeoutMs?: number }; approve?: (tool: string, description: string, input: Record<string, unknown>) => Promise<boolean>; browser?: { call(op: string, args: Record<string, unknown>): Promise<unknown>; block: string[] }; meetbot?: { join(link: string): string }; screen?: ScreenRecorder; foreignAgents?: () => readonly string[] } = {}) {
   const slack = fakeSlack()
   const dir = o.dir ?? mkdtempSync(join(tmpdir(), 'kage-tools-'))
   const ledgers = openLedgers(dir)
@@ -91,7 +92,7 @@ function setup(o: { noHook?: boolean; settings?: { set(key: string, value: unkno
       move: (id, to) => { if (!jobs.some(j => j.id === id)) return `no job ${id} in this thread`; jobs.find(j => j.id === id).key = to },
     },
     afk: async c => { out.push(`afk ${JSON.stringify(c)}`); return 'AFK on' }, foreignAgents: o.foreignAgents,
-    kagelet: o.kagelet, dreaming: o.dreaming, settings: o.settings, kageletMemory: { propose: (name: string, a: unknown, thread: string) => { out.push(`propose ${name} ${thread} ${JSON.stringify(a)}`); return 'proposed' }, decide: (d: unknown) => { out.push(`decide ${JSON.stringify(d)}`); return 'decided' }, open: () => 'open ones', notes: () => [] } as any, dbRead: o.dbRead, approve: o.approve, browser: o.browser, meetbot: o.meetbot, event: (kind, detail) => { events.push(`${kind} ${detail}`) },
+    kagelet: o.kagelet, dreaming: o.dreaming, settings: o.settings, kageletMemory: { propose: (name: string, a: unknown, thread: string) => { out.push(`propose ${name} ${thread} ${JSON.stringify(a)}`); return 'proposed' }, decide: (d: unknown) => { out.push(`decide ${JSON.stringify(d)}`); return 'decided' }, open: () => 'open ones', notes: () => [] } as any, dbRead: o.dbRead, approve: o.approve, browser: o.browser, meetbot: o.meetbot, screen: o.screen, event: (kind, detail) => { events.push(`${kind} ${detail}`) },
     onReport: r => { routed.push(`report ${JSON.stringify(r)}`) }, toManager: text => { routed.push(`manager ${text}`); return 'sent' },
     tellKagelet: (name, text, run) => { routed.push(`tell ${name}${run ? ' now' : ''}: ${text}`); return `told ${name}` }, message: (to, text) => { routed.push(`message ${to} ${text}`); return `sent to ${to}` },
     kagelets: { list: () => 'the list', manage: async (a, ask) => { out.push(`manage ${JSON.stringify(a)}`); return ask ? `asked: ${await ask({ kagelet: a.name, tools: 'mcp__gmail__send', job: 'j' })}` : 'managed' } },
@@ -1042,6 +1043,53 @@ describe("a kagelet's home with its owners", () => {
     assert.equal(await open(['UOWNER1'], 'leads'), 'https://test.slack.com/archives/DBOT1/p1700000000555555')
     assert.equal(opened.length, 1)
     assert.match(posted[0]!, /^GTEST1 Kagelet \*leads\* posts its work in this thread/)
+  })
+})
+
+describe("the owner's screen", () => {
+  const fakeScreen = (asked: string[] = []): ScreenRecorder => ({
+    async shot(out, app) { asked.push(`shot ${out.split('/').pop()?.replace(/\d+/, 'N')} ${app ?? 'all'}`); return undefined },
+    async start(out, seconds, app) { asked.push(`start ${out.split('/').pop()?.replace(/\d+/, 'N')} ${seconds} ${app ?? 'all'}`); return undefined },
+    async stop() { asked.push('stop'); return { file: '/f/screen.mp4', seconds: 42 } },
+  })
+  test('the owner records the screen into the thread folder, stops it, and gets the file to send', async () => {
+    const asked: string[] = []
+    const s = setup({ screen: fakeScreen(asked) })
+    s.t.onTask(s.task())
+    const started = await s.call('screen_record', { channel: 'C1', thread_ts: '5.5', action: 'start', app: 'Google Chrome' })
+    assert.equal(started.isError, undefined)
+    assert.match(started.text, /recording/i)
+    const stopped = await s.call('screen_record', { channel: 'C1', thread_ts: '5.5', action: 'stop' })
+    assert.match(stopped.text, /\/f\/screen\.mp4.*42 s.*send_file/)
+    const shot = await s.call('screen_shot', { channel: 'C1', thread_ts: '5.5' })
+    assert.match(shot.text, new RegExp(`saved ${s.dir}/files/\\S+\\.png`))
+    assert.deepEqual(asked, ['start screen-N.mp4 300 Google Chrome', 'stop', 'shot screen-N.png all'])
+    assert.deepEqual(s.events, ['tool screen_record start ok', 'tool screen_record stop ok', 'tool screen_shot ok'])
+  })
+  test('a recording is capped at 10 minutes', async () => {
+    const asked: string[] = []
+    const s = setup({ screen: fakeScreen(asked) })
+    s.t.onTask(s.task())
+    await s.call('screen_record', { channel: 'C1', thread_ts: '5.5', action: 'start', seconds: 5000 })
+    assert.deepEqual(asked, ['start screen-N.mp4 600 all'])
+  })
+  test("a teammate, a voice call and an agent's task never reach the screen", async () => {
+    for (const t of [{ channel: 'C1', fromOwner: false, agent: false }, { channel: 'voice', fromOwner: true, agent: false }, { channel: 'C1', fromOwner: true, agent: true }]) {
+      const asked: string[] = []
+      const s = setup({ screen: fakeScreen(asked) })
+      const base = s.task({ fromOwner: t.fromOwner, channel: t.channel })
+      s.t.onTask(t.agent ? { ...base, agent: { app: 'ATEST0001' } } : base)
+      for (const name of ['screen_shot', 'screen_record']) {
+        const r = await s.call(name, { channel: t.channel, thread_ts: '5.5', action: 'start' })
+        assert.equal(r.isError, true, `${name} ${JSON.stringify(t)}`)
+      }
+      assert.deepEqual(asked, [], JSON.stringify(t))
+    }
+  })
+  test("a kagelet and a kagelet's dream get no screen tools, and with no recorder no session does", () => {
+    assert.equal(setup({ kagelet: 'calls', screen: fakeScreen() }).t.tools.some(x => x.name.startsWith('screen_')), false)
+    assert.equal(setup({ dreaming: 'calls', screen: fakeScreen() }).t.tools.some(x => x.name.startsWith('screen_')), false)
+    assert.equal(setup().t.tools.some(x => x.name.startsWith('screen_')), false)
   })
 })
 

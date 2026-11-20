@@ -1,0 +1,122 @@
+import { describe, test } from 'node:test'
+import assert from 'node:assert/strict'
+import { appendFileSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { dirname } from 'node:path'
+import { screenRecorder, type Launch } from '../screen.ts'
+
+type Helper = 'records' | 'finishes' | 'deaf' | 'hangs' | string[]
+
+function fakeHelper(helper: (job: { action: string }) => Helper, jobs: unknown[], signals: string[]) {
+  const running = new Map<number, (signal: string) => void>()
+  let pid = 100
+  const launch: Launch = (app, log) => {
+    const file = `${dirname(app)}/job.json`
+    const job = JSON.parse(readFileSync(file, 'utf8'))
+    jobs.push({ ...job, mode: statSync(file).mode & 0o777 })
+    rmSync(file)
+    const me = ++pid, kind = helper(job), say = (l: string) => appendFileSync(log, l + '\n')
+    const exited = new Promise<number | null>(done => {
+      if (Array.isArray(kind)) { for (const l of kind) say(l); return done(kind.some(l => l.includes('"error"')) ? 1 : 0) }
+      if (kind === 'hangs') return
+      say(`{"state":"recording","pid":${me}}`)
+      if (kind === 'finishes') setTimeout(() => { say('{"state":"saved","seconds":5}'); done(0) }, 10)
+      running.set(me, signal => {
+        signals.push(signal)
+        if (signal === 'SIGKILL') return done(null)
+        if (kind === 'records') { say('{"state":"saved","seconds":42}'); done(0) }
+      })
+    })
+    return { exited }
+  }
+  return { launch, kill: (p: number, signal: string) => running.get(p)?.(signal) }
+}
+
+describe('Kage Screen in the hub', () => {
+  const setup = (helper: (job: { action: string }) => Helper = () => 'records', built: string[] = []) => {
+    const dir = mkdtempSync(`${tmpdir()}/kage-screen-`), jobs: Record<string, unknown>[] = [], signals: string[] = []
+    const h = fakeHelper(helper, jobs, signals)
+    const screen = screenRecorder({ folder: dir, code: '/code', build: async app => { built.push(app); return undefined }, launch: h.launch, kill: h.kill, pollMs: 5, waitMs: 100 })
+    const left = () => readdirSync(dir)
+    return { dir, screen, jobs, signals, left }
+  }
+  test('a recording starts, keeps running, and stop hands back the saved file and its length, leaving no file behind', async () => {
+    const { screen, jobs, signals, left } = setup()
+    assert.equal(await screen.start('/t/a.mp4', 120), undefined)
+    assert.deepEqual(jobs, [{ action: 'record', out: '/t/a.mp4', seconds: 120, mode: 0o600 }])
+    assert.deepEqual(await screen.stop(), { file: '/t/a.mp4', seconds: 42 })
+    assert.deepEqual(signals, ['SIGINT'])
+    assert.deepEqual(left(), [])
+  })
+  test('only one recording runs at a time, and stop with none running says so', async () => {
+    const { screen } = setup()
+    assert.deepEqual(await screen.stop(), { error: 'nothing is recording' })
+    await screen.start('/t/a.mp4', 60)
+    assert.match(await screen.start('/t/b.mp4', 60) ?? '', /already recording/)
+    await screen.stop()
+    assert.equal(await screen.start('/t/c.mp4', 60), undefined)
+  })
+  test('a stop sent while the start is still launching stops that recording', async () => {
+    const { screen } = setup()
+    const [started, stopped] = await Promise.all([screen.start('/t/a.mp4', 60), screen.stop()])
+    assert.equal(started, undefined)
+    assert.deepEqual(stopped, { file: '/t/a.mp4', seconds: 42 })
+  })
+  test('two starts sent together give one recording and one refusal', async () => {
+    const { screen, jobs } = setup()
+    const answers = await Promise.all([screen.start('/t/a.mp4', 60), screen.start('/t/b.mp4', 60)])
+    assert.deepEqual([answers[0], /already recording/.test(answers[1] ?? '')], [undefined, true])
+    assert.equal(jobs.length, 1)
+  })
+  test('a recording that reached its time limit is saved: stop hands it back, and a new one may start', async () => {
+    const { screen, signals, left } = setup(() => 'finishes')
+    await screen.start('/t/a.mp4', 5)
+    await new Promise(r => setTimeout(r, 30))
+    assert.deepEqual(await screen.stop(), { file: '/t/a.mp4', seconds: 5 })
+    assert.deepEqual(signals, [])
+    await screen.start('/t/b.mp4', 5)
+    await new Promise(r => setTimeout(r, 30))
+    assert.equal(await screen.start('/t/c.mp4', 5), undefined)
+    await screen.stop()
+    assert.deepEqual(left(), [])
+  })
+  test('a helper that ignores SIGINT is killed after the wait, and stop says the recording was lost', async () => {
+    const { screen, signals, left } = setup(() => 'deaf')
+    await screen.start('/t/a.mp4', 60)
+    assert.match((await screen.stop() as { error: string }).error, /did not stop/)
+    assert.deepEqual(signals, ['SIGINT', 'SIGKILL'])
+    assert.deepEqual(left(), [])
+  })
+  test('a helper that never answers does not hold up the next call', async () => {
+    let first = true
+    const { screen } = setup(() => first ? (first = false, 'hangs') : ['{"state":"saved"}'])
+    assert.match(await screen.shot('/t/s.png') ?? '', /did not answer/)
+    assert.equal(await screen.shot('/t/s2.png'), undefined)
+  })
+  test('a recording that ended before it started is not left as running', async () => {
+    const { screen } = setup(() => ['{"state":"saved","seconds":0}'])
+    assert.match(await screen.start('/t/a.mp4', 5) ?? '', /ended before it started/)
+    assert.deepEqual(await screen.stop(), { error: 'nothing is recording' })
+  })
+  test('a picture names only the app asked for, comes back as saved, and leaves no file behind', async () => {
+    const { screen, jobs, left } = setup(() => ['{"state":"saved"}'])
+    assert.equal(await screen.shot('/t/s.png', 'Google Chrome'), undefined)
+    assert.deepEqual(jobs, [{ action: 'shot', out: '/t/s.png', app: 'Google Chrome', mode: 0o600 }])
+    assert.deepEqual(left(), [])
+  })
+  test('with no screen permission yet, the answer tells the owner where to turn it on', async () => {
+    const { screen } = setup(() => ['{"error":"permission"}'])
+    assert.match(await screen.shot('/t/s.png') ?? '', /Kage Screen in System Settings > Privacy & Security > Screen & System Audio Recording/)
+    assert.match(await screen.start('/t/a.mp4', 60) ?? '', /System Settings/)
+  })
+  test("the helper's own error comes back as it said it", async () => {
+    const { screen } = setup(() => ['{"error":"no running app named Nope"}'])
+    assert.equal(await screen.shot('/t/s.png', 'Nope'), 'Kage Screen: no running app named Nope')
+  })
+  test('the app is built inside the screen folder before each launch', async () => {
+    const built: string[] = []
+    const { dir, screen } = setup(() => ['{"state":"saved"}'], built)
+    await screen.shot('/t/s.png')
+    assert.deepEqual(built, [`${dir}/Kage Screen.app`])
+  })
+})
