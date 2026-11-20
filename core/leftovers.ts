@@ -6,7 +6,7 @@ export type Container = { engine: 'docker' | 'podman'; name: string; restarts: n
 
 const TEST_RUN_SEC = 10 * 60
 const HOUR_SEC = 60 * 60
-const isTestRun = (command: string) => /^\S*\bnode\b(\s+-\S+)*\s+--test\b/.test(command)
+const isTestRun = (command: string) => /^\S*\bnode\b.*\s--test(\s|$)/.test(command) && !/\s--watch(\s|$)/.test(command)
 
 export function leftoverProcess(p: Proc): string | undefined {
   if (p.cwdGone) return 'its folder is gone'
@@ -27,6 +27,17 @@ export function leftoverLines(procs: Proc[], containers: Container[], own: numbe
   for (const c of containers.filter(crashLooping)) lines.push({ kind: 'note', text: `container ${c.name} restarted ${c.restarts} times, last within the hour: it looks stuck in a crash loop. Stop it: ${c.engine} stop ${c.name}` })
   return lines
 }
+
+export function startedAt(s: string): number {
+  const m = s.trim().match(/^(\d{4}-\d\d-\d\d)[T ](\d\d:\d\d:\d\d)(?:\.(\d+))?\s*(Z|[+-]\d\d:?\d\d)?/)
+  if (!m) return NaN
+  const zone = !m[4] || m[4] === 'Z' ? 'Z' : `${m[4].slice(0, 3)}:${m[4].slice(-2)}`
+  return Date.parse(`${m[1]}T${m[2]}.${(m[3] ?? '0').slice(0, 3).padEnd(3, '0')}${zone}`)
+}
+
+export const leftoversLine = (n: number) => n === 1
+  ? '1 leftover process or container slows this machine: kage doctor lists it'
+  : `${n} leftover processes or containers slow this machine: kage doctor lists them`
 
 export function elapsedSeconds(s: string): number {
   const t = s.trim()

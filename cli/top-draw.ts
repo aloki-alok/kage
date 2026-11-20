@@ -4,6 +4,7 @@ import type { KageletRow } from '../core/kagelets/kagelet.ts'
 import { runLine, shownState, type Run } from '../core/kagelets/view.ts'
 import { activityBins, bars, listRows, MARK, perHour, screen, spinner, type Rect, type Screen } from '../core/top-layout.ts'
 import { clean, clear, clip, fill, H, paint, put, W } from './top-screen.ts'
+import { leftoversLine } from '../core/leftovers.ts'
 
 export type Tab = 'threads' | 'kagelets' | 'schedules'
 export const TABS: Tab[] = ['threads', 'kagelets', 'schedules']
@@ -75,7 +76,7 @@ function banner(v: View, y: number) {
   const on = Math.floor(v.t / 800) % 2 === 0
   fill({ x0: 0, y0: y, x1: W - 1, y1: y }, on ? 'ask' : 'bar')
   const keys = v.ask ? '⏎ open' : ''
-  const line = v.ask ? `◆ ${v.ask.place} asks you: ${v.ask.what}` : `◆ ${v.leftovers} leftover processes or containers slow this machine: kage doctor lists them`
+  const line = v.ask ? `◆ ${v.ask.place} asks you: ${v.ask.what}` : `◆ ${leftoversLine(v.leftovers!)}`
   put(2, y, clip(line, W - keys.length - 8), on ? 'bg' : 'you')
   put(W - keys.length - 3, y, keys, on ? 'bg' : 'you')
 }

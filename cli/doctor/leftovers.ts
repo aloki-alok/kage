@@ -1,13 +1,16 @@
+import { execFile } from 'node:child_process'
 import { existsSync, readlinkSync } from 'node:fs'
 import { userInfo } from 'node:os'
-import { elapsedSeconds, leftoverLines, type Container, type Proc } from '../../core/leftovers.ts'
-import { onPath, sh, type Group } from './context.ts'
+import { promisify } from 'node:util'
+import { elapsedSeconds, leftoverLines, startedAt, type Container, type Proc } from '../../core/leftovers.ts'
+import type { Group } from './context.ts'
 
-function cwdsOnMac(uid: number): Map<number, string> {
-  const out = sh('lsof', ['-a', '-d', 'cwd', '-u', String(uid), '-Fpn'], 10_000).stdout ?? ''
+const run = (cmd: string, args: string[], timeout = 5000) => promisify(execFile)(cmd, args, { timeout, encoding: 'utf8', maxBuffer: 8 << 20 }).then(r => r.stdout, () => '')
+
+async function cwdsOnMac(uid: number): Promise<Map<number, string>> {
   const cwds = new Map<number, string>()
   let pid = 0
-  for (const l of out.split('\n')) {
+  for (const l of (await run('lsof', ['-a', '-d', 'cwd', '-u', String(uid), '-Fpn'], 10_000)).split('\n')) {
     if (l.startsWith('p')) pid = Number(l.slice(1))
     else if (l.startsWith('n') && pid) cwds.set(pid, l.slice(1))
   }
@@ -19,10 +22,9 @@ function cwdGone(pid: number, mac: Map<number, string> | undefined): boolean {
   try { return readlinkSync(`/proc/${pid}/cwd`).endsWith(' (deleted)') } catch { return false }
 }
 
-function processes(): Proc[] {
+async function processes(): Promise<Proc[]> {
   const uid = userInfo().uid
-  const mac = process.platform === 'darwin' ? cwdsOnMac(uid) : undefined
-  const out = sh('ps', ['-o', 'pid=,pcpu=,etime=,args=', '-u', String(uid)], 10_000).stdout ?? ''
+  const [mac, out] = await Promise.all([process.platform === 'darwin' ? cwdsOnMac(uid) : undefined, run('ps', ['-o', 'pid=,pcpu=,etime=,args=', '-u', String(uid)], 10_000)])
   return out.split('\n').flatMap(l => {
     const m = l.trim().match(/^(\d+)\s+([\d.]+)\s+(\S+)\s+(.*)$/)
     if (!m) return []
@@ -31,17 +33,21 @@ function processes(): Proc[] {
   })
 }
 
-function containers(now: number): Container[] {
-  return (['docker', 'podman'] as const).filter(onPath).flatMap(engine => {
-    const ids = (sh(engine, ['ps', '-q'], 5000).stdout ?? '').split('\n').filter(Boolean)
+async function containers(now: number): Promise<Container[]> {
+  const found = await Promise.all((['docker', 'podman'] as const).map(async engine => {
+    const ids = (await run(engine, ['ps', '-q'])).split('\n').filter(Boolean)
     if (!ids.length) return []
-    const out = sh(engine, ['inspect', '--format', '{{.Name}}\t{{.RestartCount}}\t{{.State.StartedAt}}\t{{.State.Restarting}}', ...ids], 5000).stdout ?? ''
+    const out = await run(engine, ['inspect', '--format', '{{.Name}}\t{{.RestartCount}}\t{{.State.StartedAt}}\t{{.State.Restarting}}', ...ids])
     return out.split('\n').filter(Boolean).map(l => {
       const [name, restarts, started, restarting] = l.split('\t')
-      const sec = (now - Date.parse(started!)) / 1000
+      const sec = (now - startedAt(started!)) / 1000
       return { engine, name: name!.replace(/^\//, ''), restarts: Number(restarts) || 0, startedSec: Number.isFinite(sec) ? Math.max(0, sec) : Infinity, restarting: restarting === 'true' }
     })
-  })
+  }))
+  return found.flat()
 }
 
-export const leftovers: Group = () => leftoverLines(processes(), containers(Date.now()), [process.pid, process.ppid])
+export const leftovers: Group = async () => {
+  const [procs, boxes] = await Promise.all([processes(), containers(Date.now())])
+  return leftoverLines(procs, boxes, [process.pid, process.ppid])
+}
