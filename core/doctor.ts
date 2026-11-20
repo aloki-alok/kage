@@ -1,3 +1,4 @@
+import { startsSince } from './boots.ts'
 import { bridgeProblem, type BridgeSeen } from './whatsapp.ts'
 
 export type Line = { kind: 'ok' | 'fail' | 'note'; text: string }
@@ -67,9 +68,11 @@ export const lingerLine = (f: { kind: string; linger: string; user: string }): L
   f.kind === 'systemd' && f.linger !== 'yes' ? fail(`it starts only once you log in: sudo loginctl enable-linger ${f.user}`) : undefined
 
 export function bootNotes(f: { boots: string | undefined; now: number; darwin: boolean }): Line[] {
-  const n = (f.boots ?? '').split('\n').filter(l => Number(l.split(/\s/)[0]) > f.now - 86_400).length
+  const s = startsSince(f.boots, f.now - 86_400)
+  const times = (k: number) => k === 1 ? 'once' : `${k} times`
   return [
-    ...(n > 5 ? [note(`the hub started ${n} times in 24 h: kage logs shows why`)] : []),
+    ...(s.crash ? [note(`the hub crashed ${times(s.crash)} in 24 h. The last one: ${s.lastCrash || 'no error line'}. kage logs has the full error`)] : []),
+    ...(s.unknown ? [note(`the hub stopped ${times(s.unknown)} in 24 h without saying why (killed, out of memory, or power lost). kage logs shows what ran before it`)] : []),
     ...(f.darwin ? [note('with the lid closed this Mac sleeps, and Kage is offline until it wakes')] : []),
   ]
 }
