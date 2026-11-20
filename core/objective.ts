@@ -39,5 +39,5 @@ export function scoreboard(o: Objective, readings: Reading[]): string {
   return [`Objective: ${o.objective}`, `Number: ${now}${values.length > 1 ? `. Trend, oldest first: ${values.join(', ')}` : ''}`,
     ...before !== undefined ? [`Since the last measure: ${moved(before, after!, o.target)}.`] : [],
     ...last?.failed ? [`The last measure failed (${last.failed}): say so in your report, and do not guess the number.`] : [],
-    'Keep working toward it, met or not. End your report with how the number moved since your last run and your next step. If it did not move the way your last run expected, change this run\'s plan.'].join('\n')
+    'Keep working toward it, met or not. End your report with how the number moved since the last measure and your next step. If it did not move the way your last run expected, change this run\'s plan.'].join('\n')
 }

@@ -53,6 +53,6 @@ test('each run reads how the number moved since the last measure, toward or away
   assert.doesNotMatch(scoreboard(errors, [{ at: 0, value: 4 }]), /Since the last measure/)
   assert.doesNotMatch(scoreboard(errors, [{ at: 0, value: 4 }, { at: 1, failed: 'exit 1' }]), /Since the last measure/)
   const ask = scoreboard(errors, [{ at: 0, value: 7 }, { at: 1, value: 4 }])
-  assert.match(ask, /End your report with how the number moved since your last run and your next step/)
+  assert.match(ask, /End your report with how the number moved since the last measure and your next step/)
   assert.match(ask, /did not move the way your last run expected, change this run's plan/)
 })

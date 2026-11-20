@@ -1015,6 +1015,8 @@ describe("a session's Kage tools", () => {
     assert.match(bare.text, /next/)
     assert.equal((await s.call('report', { channel: 'C1', thread_ts: '5.5', summary: 'P1s 7 to 4, down 3', next: 'check which two of the four are oldest' })).isError, undefined)
     assert.match(s.ledgers.text('reports'), /\tp1watch\tP1s 7 to 4, down 3\. Next: check which two of the four are oldest\t\n$/)
+    await s.call('report', { channel: 'C1', thread_ts: '5.5', summary: 'Still 4, why?', next: 'ask Kage' })
+    assert.match(s.ledgers.text('reports'), /\tStill 4, why\? Next: ask Kage\t\n$/)
   })
   test('message_kagelet exists only in a kagelet lane, from its own thread, and the hub routes it (#93)', async () => {
     assert.equal(setup().t.tools.some(x => x.name === 'message_kagelet'), false)

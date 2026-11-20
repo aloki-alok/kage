@@ -45,5 +45,6 @@ test('a kagelet whose number moves between runs reports the change and its next 
   assert.match(fell, /Next: \S/, `a next step is named: ${fell}`)
   const stalled = await run([{ at: 0, value: 7 }, { at: 1, value: 4 }, { at: 2, value: 4 }])
   assert.match(stalled, /no change|unchanged|did not move|didn't move|still 4|stayed|flat|stalled/i, `the stall is named: ${stalled}`)
-  assert.notEqual(stalled.toLowerCase(), fell.toLowerCase(), 'the plan changed after the stall')
+  const next = (r: string) => r.split('Next: ')[1]?.split(' | needs:')[0]?.trim().toLowerCase()
+  assert.notEqual(next(stalled), next(fell), `the next step changed after the stall: ${next(fell)} / ${next(stalled)}`)
 })

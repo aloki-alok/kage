@@ -46,5 +46,6 @@ test("the owner's 'keep watching' ask becomes a kagelet with an objective, measu
   assert.ok(save, `no kagelet was saved. Scheduled: ${JSON.stringify(scheduled)}. Replies: ${replies.join(' / ')}`)
   const goal = objectiveOf(new Map(['objective', 'measure', 'target'].map(k => [k, String(save![k] ?? '')])))
   assert.ok(goal && !('error' in goal), `the kagelet has no full objective: ${JSON.stringify(save)}`)
-  assert.match(replies.join('\n'), /\b0\b|zero|none/i, `the goal it picked is said in the thread: ${replies.join(' / ')}`)
+  const n = (goal as { target: { n: number } }).target.n
+  assert.match(replies.join('\n'), new RegExp(`\\b${n}\\b${n === 0 ? '|zero|none' : ''}`, 'i'), `the goal it picked (${n}) is said in the thread: ${replies.join(' / ')}`)
 })
