@@ -67,6 +67,6 @@ App Review needs `pages_messaging` to reply in DMs and to comments, `pages_manag
 ## See what it did
 
 - `metabot.db` holds one `events` row per message (outcome, label, time), the chat lines, and the drafts (`who = 'draft'`).
-- `missed.jsonl` lists product questions the pack could not answer. Add the answers to the pack.
+- `missed.jsonl` lists product questions the pack could not answer. Add the answers to the pack. A question is deleted after `linesKeptDays`, with the chat lines.
 - The server prints one line per message to stderr: channel, kind and outcome.
 - Events waiting in memory are lost if the server stops. Meta does not resend a message it got a 200 for.
