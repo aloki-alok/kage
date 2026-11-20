@@ -12,6 +12,7 @@ const code = (f: string) => text.get(f)!.replace(/\/\*[\s\S]*?\*\//g, '').replac
 const scripts = execFileSync('git', ['ls-files', '*.sh'], { cwd: root, encoding: 'utf8' }).split('\n').filter(Boolean).map(f => readFileSync(`${root}/${f}`, 'utf8'))
 const lines = (f: string) => text.get(f)!.split('\n').slice(0, -1).filter(l => !l.startsWith('import ')).length
 const inDir = (d: string) => files.filter(f => f.startsWith(`${d}/`) && f.endsWith('.ts') && !f.slice(d.length + 1).includes('/'))
+const under = (d: string) => files.filter(f => f.startsWith(`${d}/`) && f.endsWith('.ts') && !f.includes('/tests/'))
 
 const MAX_LINES = 300
 
@@ -40,12 +41,12 @@ test('core/ is pure: no I/O, no environment, no timers, and imports only core/ (
 })
 
 test('runtime/ and connectors/ never import the hub, the plugin or a root file', () => {
-  const bad = /(from|import\(|require\()\s*['"]\.\.\/(?:(?:hub|plugin)\/)?[^/'"]+['"]/
-  check('rootImports', [...inDir('runtime'), ...inDir('connectors')].filter(f => bad.test(code(f))), DEBT.rootImports)
+  const bad = (f: string) => new RegExp(`(from|import\\(|require\\()\\s*['"]${'\\.\\./'.repeat(f.split('/').length - 1)}(?:(?:hub|plugin)\\/)?[^/'"]+['"]`)
+  check('rootImports', [...under('runtime'), ...under('connectors')].filter(f => bad(f).test(code(f))), DEBT.rootImports)
 })
 
 test('a connector listens only through listen() in connectors/webhook.ts, so a taken port cannot crash the hub', () => {
-  assert.deepEqual(inDir('connectors').filter(f => f !== 'connectors/webhook.ts' && /\bcreateServer\(/.test(code(f))), [])
+  assert.deepEqual(under('connectors').filter(f => f !== 'connectors/webhook.ts' && /\bcreateServer\(/.test(code(f))), [])
 })
 
 test('only core/ builds a Task, so who counts as the owner is decided in one place (ADR 0002, #273)', () => {
