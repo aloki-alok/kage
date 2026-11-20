@@ -24,12 +24,34 @@ export function parseCron(expr: string): Cron {
   return { sets, anyDay: parts[2] === '*', anyWeekday: parts[4] === '*' }
 }
 
-export function cronMatches(expr: string | Cron, d: Date): boolean {
-  const c = typeof expr === 'string' ? parseCron(expr) : expr
-  const [min, hour, dom, mon, dow] = c.sets as [Set<number>, Set<number>, Set<number>, Set<number>, Set<number>]
-  if (!min.has(d.getMinutes()) || !hour.has(d.getHours()) || !mon.has(d.getMonth() + 1)) return false
+function dayMatches(c: Cron, d: Date): boolean {
+  const [, , dom, mon, dow] = c.sets as [Set<number>, Set<number>, Set<number>, Set<number>, Set<number>]
+  if (!mon.has(d.getMonth() + 1)) return false
   const day = dom.has(d.getDate()), weekday = dow.has(d.getDay())
   return c.anyDay || c.anyWeekday ? day && weekday : day || weekday
+}
+
+export function cronMatches(expr: string | Cron, d: Date): boolean {
+  const c = typeof expr === 'string' ? parseCron(expr) : expr
+  return c.sets[0]!.has(d.getMinutes()) && c.sets[1]!.has(d.getHours()) && dayMatches(c, d)
+}
+
+function lastMatch(c: Cron, from: number, floor: number): number | undefined {
+  for (let t = from; t > floor;) {
+    const d = new Date(t)
+    if (!dayMatches(c, d)) { d.setHours(0, 0, 0, 0); t = d.getTime() - MINUTE; continue }
+    if (!c.sets[1]!.has(d.getHours())) { d.setMinutes(0, 0, 0); t = d.getTime() - MINUTE; continue }
+    if (c.sets[0]!.has(d.getMinutes())) return t
+    t -= MINUTE
+  }
+  return undefined
+}
+
+function countMatches(c: Cron, from: number, floor: number): { newest?: number; count: number } {
+  const newest = lastMatch(c, from, floor)
+  let count = 0
+  for (let t = newest; t !== undefined; t = lastMatch(c, t - MINUTE, floor)) count++
+  return { newest, count }
 }
 
 const MINUTE = 60_000
@@ -61,9 +83,12 @@ export type Schedule = {
 }
 
 const LATE = 10 * MINUTE
+export const CATCH_UP = 12 * 3600_000
 
-export function dueSchedules(all: Schedule[], now: number): { fire: Schedule[]; drop: string[] } {
-  const fire: Schedule[] = [], drop: string[] = []
+export type Late = { due: number; missed: number }
+
+export function dueSchedules(all: Schedule[], now: number, catchUp = CATCH_UP): { fire: Schedule[]; drop: string[]; late: Record<string, Late>; skipped: Record<string, number> } {
+  const fire: Schedule[] = [], drop: string[] = [], late: Record<string, Late> = {}, skipped: Record<string, number> = {}
   for (const s of all) {
     if (s.ends && now >= s.ends) { drop.push(s.id); continue }
     if (s.cron === REPLY || s.cron === EVENT) continue
@@ -79,14 +104,18 @@ export function dueSchedules(all: Schedule[], now: number): { fire: Schedule[]; 
       continue
     }
     if (s.lastFired > now && s.lastFired - now < LATE) continue
-    const last = s.lastFired > now ? minuteOf(now) - 1 : s.lastFired
-    for (let t = minuteOf(now); t > Math.max(last, s.created, now - LATE); t -= MINUTE) {
-      if (!cronMatches(c, new Date(t))) continue
+    const last = Math.max(s.lastFired > now ? minuteOf(now) - 1 : s.lastFired, s.created)
+    const edge = now - catchUp
+    const { newest: due, count: missed } = countMatches(c, minuteOf(now), Math.max(last, edge))
+    if (due !== undefined) {
       fire.push(s)
-      break
+      if (missed > 1 || now - due > LATE) late[s.id] = { due, missed }
+      continue
     }
+    const old = countMatches(c, minuteOf(edge), last).count
+    if (old) skipped[s.id] = old
   }
-  return { fire, drop }
+  return { fire, drop, late, skipped }
 }
 
 const CRON_MADE = /Scheduled (\S+) job ([0-9a-f]+)/

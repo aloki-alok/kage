@@ -53,11 +53,31 @@ describe('which schedules fire now', () => {
     const r = dueSchedules([s({ ends: at('2026-11-03T10:00:00').getTime() })], at('2026-11-03T10:15:20').getTime())
     assert.deepEqual([r.fire, r.drop], [[], ['j1']])
   })
-  test('a hub that was down for long fires a missed run once, not a backlog, and not one older than 10 min', () => {
+  test('a hub that was down for long fires a missed run once, not a backlog', () => {
     const late = dueSchedules([s({ lastFired: at('2026-11-03T10:00:00').getTime() })], at('2026-11-03T11:05:00').getTime())
     assert.deepEqual(late.fire.map(x => x.id), ['j1'])
-    const stale = dueSchedules([s({ cron: '0 * * * *', lastFired: at('2026-11-03T10:00:00').getTime() })], at('2026-11-03T11:30:00').getTime())
-    assert.deepEqual(stale.fire, [])
+    assert.deepEqual(late.late.j1, { due: at('2026-11-03T11:00:00').getTime(), missed: 4 })
+  })
+  test('a run on time is not late', () => {
+    const r = dueSchedules([s({ lastFired: at('2026-11-03T10:00:00').getTime() })], at('2026-11-03T10:15:40').getTime())
+    assert.deepEqual([r.fire.map(x => x.id), r.late], [['j1'], {}])
+  })
+  test('after a 3 h gap the newest missed run fires once, with the runs missed counted (#486)', () => {
+    const daily = s({ cron: '0 9 * * *', created: at('2026-11-01T08:00:00').getTime(), lastFired: at('2026-11-02T09:00:00').getTime() })
+    const r = dueSchedules([daily], at('2026-11-03T12:00:10').getTime())
+    assert.deepEqual(r.fire.map(x => x.id), ['j1'])
+    assert.deepEqual(r.late.j1, { due: at('2026-11-03T09:00:00').getTime(), missed: 1 })
+    const often = dueSchedules([s({ lastFired: at('2026-11-03T10:00:00').getTime() })], at('2026-11-03T13:05:00').getTime())
+    assert.deepEqual(often.late.j1, { due: at('2026-11-03T13:00:00').getTime(), missed: 12 })
+  })
+  test('a run older than the catch-up window fires nothing and is counted as skipped once (#486)', () => {
+    const daily = s({ cron: '0 9 * * *', created: at('2026-11-01T08:00:00').getTime(), lastFired: at('2026-11-02T09:00:00').getTime() })
+    const r = dueSchedules([daily], at('2026-11-03T22:01:00').getTime())
+    assert.deepEqual([r.fire, r.skipped], [[], { j1: 1 }])
+    const shorter = dueSchedules([daily], at('2026-11-03T12:00:10').getTime(), 2 * 3600_000)
+    assert.deepEqual([shorter.fire, shorter.skipped], [[], { j1: 1 }])
+    const nothingMissed = dueSchedules([s({ ...daily, lastFired: at('2026-11-03T09:00:00').getTime() })], at('2026-11-03T22:01:00').getTime())
+    assert.deepEqual([nothingMissed.fire, nothingMissed.skipped], [[], {}])
   })
   test('a one-shot is dropped after it fires; a recurring one never ends unless someone cancels it', () => {
     const once = dueSchedules([s({ recurring: false, cron: '15 10 3 11 *' })], at('2026-11-03T10:15:20').getTime())
@@ -115,8 +135,8 @@ describe('a session with a repeating check stays open', () => {
 
 test('a watch never fires on the clock, and is dropped once it ends', () => {
   const w: Schedule = { id: 'w', key: 'C1:1.1', cron: REPLY, prompt: 'p', recurring: true, fromOwner: false, created: 0, lastFired: 0, ends: 10 * 60_000 }
-  assert.deepEqual(dueSchedules([w], 5 * 60_000), { fire: [], drop: [] })
-  assert.deepEqual(dueSchedules([w], 10 * 60_000), { fire: [], drop: ['w'] })
+  assert.deepEqual(dueSchedules([w], 5 * 60_000), { fire: [], drop: [], late: {}, skipped: {} })
+  assert.deepEqual(dueSchedules([w], 10 * 60_000), { fire: [], drop: ['w'], late: {}, skipped: {} })
 })
 
 describe('a schedule in words', () => {
@@ -147,5 +167,5 @@ test('a schedule prompt reads without the Slack ids the hub needs', () => {
 
 test('an event job never fires on the clock', () => {
   const e: Schedule = { id: 'e', key: 'C1:1.1', cron: EVENT, prompt: 'p', recurring: true, fromOwner: false, created: 0, lastFired: 0 }
-  assert.deepEqual(dueSchedules([e], 3_600_000), { fire: [], drop: [] })
+  assert.deepEqual(dueSchedules([e], 3_600_000), { fire: [], drop: [], late: {}, skipped: {} })
 })
