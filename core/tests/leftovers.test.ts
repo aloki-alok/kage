@@ -1,6 +1,6 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { crashLooping, elapsedSeconds, leftoverLines, leftoverProcess, leftoversLine, startedAt, type Container, type Proc } from '../leftovers.ts'
+import { crashLooping, cwdsFromLsof, elapsedSeconds, leftoverLines, leftoverProcess, leftoversLine, startedAt, type Container, type Proc } from '../leftovers.ts'
 
 const proc = (o: Partial<Proc>): Proc => ({ pid: 4242, cpu: 0.5, ageSec: 60, cwdGone: false, command: 'node hub.ts', ...o })
 const box = (o: Partial<Container>): Container => ({ engine: 'docker', name: 'api', restarts: 0, startedSec: 86_400, restarting: false, ...o })
@@ -75,4 +75,10 @@ test("docker's RFC 3339 start and podman's Go time format read the same instant"
 test('the kage top line counts one finding as one', () => {
   assert.equal(leftoversLine(1), '1 leftover process or container slows this machine: kage doctor lists it')
   assert.equal(leftoversLine(2), '2 leftover processes or containers slow this machine: kage doctor lists them')
+})
+
+test("lsof -Fpn's output gives each process its working folder, as kage doctor reads it on macOS", () => {
+  const out = 'p101\nfcwd\nn/Users/someone/projects/kage\np202\nfcwd\nn/private/tmp/gone worktree\np303\nfcwd\n'
+  assert.deepEqual([...cwdsFromLsof(out)], [[101, '/Users/someone/projects/kage'], [202, '/private/tmp/gone worktree']])
+  assert.deepEqual([...cwdsFromLsof('')], [])
 })

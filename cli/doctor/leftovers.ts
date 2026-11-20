@@ -2,20 +2,12 @@ import { execFile } from 'node:child_process'
 import { existsSync, readlinkSync } from 'node:fs'
 import { homedir, userInfo } from 'node:os'
 import { promisify } from 'node:util'
-import { elapsedSeconds, leftoverLines, startedAt, type Container, type Proc } from '../../core/leftovers.ts'
+import { cwdsFromLsof, elapsedSeconds, leftoverLines, startedAt, type Container, type Proc } from '../../core/leftovers.ts'
 import type { Group } from './context.ts'
 
 const run = (cmd: string, args: string[], timeout = 5000) => promisify(execFile)(cmd, args, { timeout, encoding: 'utf8', maxBuffer: 8 << 20 }).then(r => r.stdout, () => '')
 
-async function cwdsOnMac(uid: number): Promise<Map<number, string>> {
-  const cwds = new Map<number, string>()
-  let pid = 0
-  for (const l of (await run('lsof', ['-a', '-d', 'cwd', '-u', String(uid), '-Fpn'], 10_000)).split('\n')) {
-    if (l.startsWith('p')) pid = Number(l.slice(1))
-    else if (l.startsWith('n') && pid) cwds.set(pid, l.slice(1))
-  }
-  return cwds
-}
+const cwdsOnMac = async (uid: number) => cwdsFromLsof(await run('lsof', ['-a', '-d', 'cwd', '-u', String(uid), '-Fpn'], 10_000))
 
 function cwdGone(pid: number, mac: Map<number, string> | undefined): boolean {
   if (mac) { const cwd = mac.get(pid); return !!cwd && !existsSync(cwd) }
