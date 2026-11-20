@@ -1,6 +1,6 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { crashLooping, elapsedSeconds, leftoverLines, leftoverProcess, type Container, type Proc } from '../leftovers.ts'
+import { crashLooping, elapsedSeconds, leftoverLines, leftoverProcess, leftoversLine, startedAt, type Container, type Proc } from '../leftovers.ts'
 
 const proc = (o: Partial<Proc>): Proc => ({ pid: 4242, cpu: 0.5, ageSec: 60, cwdGone: false, command: 'node hub.ts', ...o })
 const box = (o: Partial<Container>): Container => ({ engine: 'docker', name: 'api', restarts: 0, startedSec: 86_400, restarting: false, ...o })
@@ -50,4 +50,29 @@ test("ps elapsed time reads both Linux etimes seconds and macOS etime's [[dd-]hh
   assert.equal(elapsedSeconds('02:00:01'), 7201)
   assert.equal(elapsedSeconds('1-02:00:00'), 93_600)
   assert.equal(elapsedSeconds('bad'), 0)
+})
+
+test('a test run behind other node flags is found, a watch run and --test-only are not (#276 review)', () => {
+  assert.equal(leftoverProcess(proc({ command: 'node --import tsx --test x.test.ts', ageSec: 900 })), 'a test run older than 10 minutes')
+  assert.equal(leftoverProcess(proc({ command: 'node --require ./setup.js --test', ageSec: 900 })), 'a test run older than 10 minutes')
+  assert.equal(leftoverProcess(proc({ command: 'node --test --watch x.test.ts', ageSec: 900 })), undefined)
+  assert.equal(leftoverProcess(proc({ command: 'node --test-only x.test.ts', ageSec: 900 })), undefined)
+})
+
+test('the age reads in minutes under an hour and in hours from the hour on', () => {
+  const at = (ageSec: number) => leftoverLines([proc({ cwdGone: true, ageSec })], [], [])[0]!.text
+  assert.match(at(59 * 60), /up 59 min/)
+  assert.match(at(3600), /up 1 h/)
+})
+
+test("docker's RFC 3339 start and podman's Go time format read the same instant", () => {
+  assert.equal(startedAt('2026-11-20T10:00:00.123456789Z'), Date.parse('2026-11-20T10:00:00.123Z'))
+  assert.equal(startedAt('2026-11-20 10:00:00.123456789 +0000 UTC'), Date.parse('2026-11-20T10:00:00.123Z'))
+  assert.equal(startedAt('2026-11-20 15:30:00 +0530 IST'), Date.parse('2026-11-20T10:00:00Z'))
+  assert.ok(Number.isNaN(startedAt('soon')))
+})
+
+test('the kage top line counts one finding as one', () => {
+  assert.equal(leftoversLine(1), '1 leftover process or container slows this machine: kage doctor lists it')
+  assert.equal(leftoversLine(2), '2 leftover processes or containers slow this machine: kage doctor lists them')
 })

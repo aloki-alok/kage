@@ -52,7 +52,7 @@ test('each chart says what a bar is, its top value and its time range', () => {
 
 test('leftover processes or containers show as one line on top that names kage doctor, and a thread that asks wins the line (#276)', () => {
   const top = frame('threads', 132, 38, { leftovers: 2 })
-  assert.match(top.join('\n'), /2 leftover processes or containers slow this machine: kage doctor lists them/)
+  assert.match(top.join('\n'), /2 leftover processes or containers slow this machine/)
   assert.doesNotMatch(frame('threads').join('\n'), /leftover/)
   const both = frame('threads', 132, 38, { leftovers: 1, ask: { place: '#infra', what: 'approve the deploy' } }).join('\n')
   assert.match(both, /#infra asks you: approve the deploy/)
