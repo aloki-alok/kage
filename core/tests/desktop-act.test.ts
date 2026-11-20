@@ -78,3 +78,10 @@ test('Return in a terminal on a line Kage did not type itself (history, a paste,
   assert.match((v as { ask: string }).ask, /did not type/)
   assert.deepEqual(desktopVerdict(key('return'), at('Open', { app: 'Preview' }), undefined), { run: true })
 })
+
+test('text with a line break typed into a terminal is refused, since each break runs a line unchecked; elsewhere it types', () => {
+  const v = desktopVerdict({ action: 'type', text: 'ls\nrm -rf ~' }, at('', { app: 'Terminal' }), '')
+  assert.ok('blocked' in v)
+  assert.match((v as { blocked: string }).blocked, /one line/)
+  assert.deepEqual(desktopVerdict({ action: 'type', text: 'Dear team,\nthanks' }, at('Body', { app: 'Mail' }), ''), { run: true })
+})
