@@ -226,7 +226,7 @@ const browser = secrets.browserToken ? connectBrowser({ token: secrets.browserTo
   onPoll: (at, v) => { if (at - browserSeen >= 30_000 || v !== seenVersion) { browserSeen = at; seenVersion = v; writeFileSync(`${DIR}/browser-seen`, `${at} ${v ?? ''}`.trim(), { mode: 0o600 }) } } }) : undefined
 void browser?.listening.then(port => log(`browser on: 127.0.0.1:${port}/browser`), e => log('browser could not listen', e))
 const browserBlock = (conn.browser?.block ?? []).join(',')
-const BROWSER_BLOCK = blockList(browserBlock)
+const BROWSER_BLOCK = blockList(browserBlock), SCREEN = process.platform === 'darwin' ? screenRecorder({ folder: `${DIR}/screen`, code: CODE }) : undefined
 for (const e of unreadableBlocks(browserBlock)) log(`connectors.browser.block: "${e}" is not a site, so it blocks nothing`)
 const sdkLib = harness.runtime === 'tmux' ? undefined : await (async () => ({
   lib: await import('@anthropic-ai/claude-agent-sdk'),
@@ -258,7 +258,7 @@ const sdk = sdkLib ? sdkSessions({
     kagelet: key.split('#side-kagelet-')[1], dreaming: key.split('#side-kdream-')[1], kageletMemory: kag.kmem,
     browser: browser && { call: browser.call, block: BROWSER_BLOCK },
     foreignAgents: () => config.askOtherAgents ? [] : foreignAgentTags(slack.ids.apps ?? [], slack.ids.owner),
-    meetbot: meeting && { join: meeting.join }, screen: process.platform === 'darwin' ? screenRecorder({ dir: `${DIR}/screen`, code: CODE }) : undefined,
+    meetbot: meeting && { join: meeting.join }, screen: SCREEN,
     dbRead: { command: () => readCommand(kl.dbRead?.command ?? undefined, store, key.split('#side-kagelet-')[1] ?? ''), maxRows: kl.dbRead?.maxRows || 200 },
     kagelets: { list: () => kag.manager.list(Date.now()), manage: (a, ask) => kag.manager.manage(a, Date.now(), ask) }, approve,
     event: (kind, detail) => runs.emit(key, kind, detail),

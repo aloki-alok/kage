@@ -19,19 +19,22 @@ func emit(_ d: [String: Any]) {
 func fail(_ why: String, _ code: Int32 = 1) -> Never { emit(["error": why]); exit(code) }
 
 final class Recording: NSObject, SCRecordingOutputDelegate, SCStreamDelegate {
-  let stream: SCStream, started = Date()
+  var stream: SCStream?
+  let started = Date()
   var stopping = false
-  init(_ stream: SCStream) { self.stream = stream }
+  // Saving ends with recordingOutputDidFinishRecording. If it never comes, exit so the hub is not left waiting.
   func stop() {
     if stopping { return }
     stopping = true
-    Task { try? await stream.stopCapture() }
+    Task { try? await stream?.stopCapture() }
+    DispatchQueue.main.asyncAfter(deadline: .now() + 15) { fail("the recording did not finish saving") }
   }
   func recordingOutputDidFinishRecording(_ r: SCRecordingOutput) {
     emit(["state": "saved", "seconds": Int(Date().timeIntervalSince(started).rounded())]); exit(0)
   }
   func recordingOutput(_ r: SCRecordingOutput, didFailWithError e: Error) { fail("recording failed: \(e.localizedDescription)") }
-  func stream(_ s: SCStream, didStopWithError e: Error) { if !stopping { fail("the screen stream stopped: \(e.localizedDescription)") } }
+  // The owner stopped it from the menu bar, or the display went away: save what was recorded.
+  func stream(_ s: SCStream, didStopWithError e: Error) { stop() }
 }
 
 var recording: Recording?
@@ -44,7 +47,7 @@ func run() async {
   if !CGPreflightScreenCaptureAccess() { _ = CGRequestScreenCaptureAccess(); fail("permission", 2) }
 
   let content: SCShareableContent
-  do { content = try await SCShareableContent.excludingDesktopWindows(false, onScreenWindowsOnly: true) } catch { fail("permission", 2) }
+  do { content = try await SCShareableContent.excludingDesktopWindows(false, onScreenWindowsOnly: true) } catch { fail("could not read the screen: \(error.localizedDescription)") }
   guard let display = content.displays.first(where: { $0.displayID == CGMainDisplayID() }) ?? content.displays.first else { fail("no display") }
   let filter: SCContentFilter
   if let name = job.app {
@@ -74,8 +77,9 @@ func run() async {
   }
   guard job.action == "record" else { fail("unknown action \(job.action)") }
   config.minimumFrameInterval = CMTime(value: 1, timescale: 30)
-  let stream = SCStream(filter: filter, configuration: config, delegate: nil)
-  let rec = Recording(stream)
+  let rec = Recording()
+  let stream = SCStream(filter: filter, configuration: config, delegate: rec)
+  rec.stream = stream
   let recConfig = SCRecordingOutputConfiguration()
   recConfig.outputURL = out
   recConfig.outputFileType = .mp4
@@ -99,5 +103,7 @@ func run() async {
 // ScreenCaptureKit draws its menu bar indicator with AppKit, so the main thread runs a real app loop.
 let app = NSApplication.shared
 app.setActivationPolicy(.accessory)
+// A picture, or the start of a recording, that hangs (a macOS prompt, a stuck capture) ends here, not never.
+DispatchQueue.main.asyncAfter(deadline: .now() + 30) { if recording == nil { fail("timed out") } }
 Task { await run() }
 app.run()

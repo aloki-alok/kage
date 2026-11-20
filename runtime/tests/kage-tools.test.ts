@@ -1086,8 +1086,9 @@ describe("the owner's screen", () => {
       assert.deepEqual(asked, [], JSON.stringify(t))
     }
   })
-  test('a kagelet gets no screen tools, and with no recorder no session does', () => {
+  test("a kagelet and a kagelet's dream get no screen tools, and with no recorder no session does", () => {
     assert.equal(setup({ kagelet: 'calls', screen: fakeScreen() }).t.tools.some(x => x.name.startsWith('screen_')), false)
+    assert.equal(setup({ dreaming: 'calls', screen: fakeScreen() }).t.tools.some(x => x.name.startsWith('screen_')), false)
     assert.equal(setup().t.tools.some(x => x.name.startsWith('screen_')), false)
   })
 })
