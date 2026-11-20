@@ -25,10 +25,12 @@ test('a fresh install with no boots file runs every check and fails with its fix
   assert.ok(!lines.some(l => l.startsWith('All good')))
 })
 
-test('a boots file with more than five starts in a day adds the note', () => {
+test('planned starts add no note, and a crash in the boots file is named (#255)', () => {
   const now = Math.floor(Date.now() / 1000)
-  const { lines } = doctor({ boots: [1, 2, 3, 4, 5, 6].map(n => now - n).join('\n') + '\n' })
-  assert.ok(lines.includes('note  the hub started 6 times in 24 h: kage logs shows why'), lines.join('\n'))
+  const planned = doctor({ boots: [1, 2, 3, 4, 5, 6].map(n => `${now - n} update`).join('\n') + '\n' }).lines
+  assert.ok(!planned.some(l => l.includes('the hub')), planned.join('\n'))
+  const { lines } = doctor({ boots: `${now - 9} update\n${now - 5} crash TypeError: x is undefined\n` })
+  assert.ok(lines.includes('note  the hub crashed once in 24 h. The last one: TypeError: x is undefined. kage logs has the full error'), lines.join('\n'))
 })
 
 test('a stale status file whose pid is gone is not connected', () => {
