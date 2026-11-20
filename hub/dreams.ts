@@ -30,7 +30,7 @@ export function dreams(o: {
   limits: () => DreamLimits
 }) {
   const lastDay = (now: number) => [new Date(now - DAY), new Date(now)].flatMap(t => o.ledgers.events(t.toISOString().slice(0, 10)))
-  const DREAMT = `${o.dir}/dream-sent`, KDREAMT = 'kagelet-dream-last', THREADS = 'dream-threads'
+  const DREAMT = `${o.dir}/dream-sent`, KDREAMT = 'kagelet-dream-last', THREADS = 'dream-threads', SPENT = 'dream-kept'
   const ownsRepo = canPushToKage(args => new Promise((ok, no) => execFile('gh', args, { timeout: 15_000 }, (e, out) => e ? no(e) : ok(out))))
   return {
     async dream(now: number) {
@@ -41,6 +41,7 @@ export function dreams(o: {
       const file = (id: string) => `${o.project}/${id}.jsonl`
       const moved = threadsSince(o.store.sessions(), id => { try { return statSync(file(id)).mtimeMs } catch { return undefined } }, since)
       o.store.save(THREADS, moved.map(t => t.key))
+      o.store.save(SPENT, { new: 0, outdated: 0 })
       const threads = moved.map(t => ({ place: o.placeOf(t.key), file: file(t.id), key: t.key }))
       const iso = new Date(since).toISOString()
       const mistakes = selfReview(o.ledgers.text('waiting', iso), lastDay(now), iso, o.placeOf)
@@ -58,9 +59,11 @@ export function dreams(o: {
       const sessions = o.store.sessions()
       const keys = (o.store.load(THREADS) ?? []) as string[]
       const chats = Object.fromEntries(keys.flatMap(k => sessions[k] ? [[k, chatText(readFile(`${o.project}/${sessions[k]}.jsonl`).split('\n'))]] : []))
-      const said = applyLessons({ dir: o.mem.own, chats, lessons, limits: o.limits(), now: Date.now() })
-      log('dream lessons', said.replace(/\n/g, '; '))
-      return said
+      const lim = o.limits(), spent = (o.store.load(SPENT) ?? { new: 0, outdated: 0 }) as { new: number; outdated: number }
+      const r = applyLessons({ dir: o.mem.own, chats, lessons, limits: { ...lim, maxNew: Math.max(0, lim.maxNew - spent.new), maxOutdated: Math.max(0, lim.maxOutdated - spent.outdated) }, now: Date.now() })
+      o.store.save(SPENT, { new: spent.new + r.kept.new, outdated: spent.outdated + r.kept.outdated })
+      log('dream lessons', r.said.replace(/\n/g, '; '))
+      return r.said
     },
     kageletDreams(now: number) {
       if (!o.hasSdk || o.paused()) return

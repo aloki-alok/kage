@@ -87,14 +87,21 @@ function realish(p: string): string {
     rest.unshift(basename(cur))
   }
 }
-export function dreamNoteRefusal(tool: string, input: { file_path?: string; notebook_path?: string }, ownMemory: string): string | undefined {
+const DREAM_REFUSAL = 'A new lesson goes through dream_lessons, which checks it against the threads first. Here you only tidy notes that exist, with the Write and Edit tools.'
+export function dreamNoteRefusal(tool: string, input: { file_path?: string; notebook_path?: string; command?: string }, ownMemory: string, home = process.env.HOME ?? ''): string | undefined {
+  const dir = realish(ownMemory)
+  if (tool === 'Bash') {
+    const command = String(input.command ?? '')
+    const names = [ownMemory, dir, ...home && dir.startsWith(`${realish(home)}/`) ? [`~${dir.slice(realish(home).length)}`, `$HOME${dir.slice(realish(home).length)}`] : []]
+    return names.some(n => command.includes(n)) ? DREAM_REFUSAL : undefined
+  }
   const raw = WRITE_TOOLS.has(tool) ? input.file_path ?? input.notebook_path : undefined
   if (!raw) return
-  const dir = realish(ownMemory), file = realish(raw)
+  const file = realish(raw)
   if (!file.startsWith(`${dir}/`) || existsSync(file)) return
   const name = file.slice(dir.length + 1)
   if (name === 'MEMORY.md' || name === '.dream-ledger.tsv' || name.startsWith('.archive/')) return
-  return 'A new lesson goes through dream_lessons, which checks it against the threads first. Here you only tidy notes that exist.'
+  return DREAM_REFUSAL
 }
 export function agentReadRefusal(tool: string, input: { file_path?: string; path?: string; pattern?: string }, sender: string | undefined, home = process.env.HOME ?? ''): string | undefined {
   const target = sender !== 'agent' ? undefined : tool === 'Read' ? input.file_path : tool === 'Grep' || tool === 'Glob' ? (input.path ?? home) : undefined

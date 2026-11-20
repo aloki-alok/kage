@@ -301,5 +301,8 @@ describe("the dream writes no new note itself: new lessons go through dream_less
     assert.equal(dreamNoteRefusal('Edit', { file_path: join(dir, 'old.md') }, dir), undefined)
     assert.equal(dreamNoteRefusal('Write', { file_path: '/tmp/elsewhere.md' }, dir), undefined)
     assert.equal(dreamNoteRefusal('Read', { file_path: join(dir, 'new.md') }, dir), undefined)
+    assert.match(dreamNoteRefusal('Bash', { command: `echo x > ${dir}/n.md` }, dir) ?? '', /dream_lessons/)
+    assert.match(dreamNoteRefusal('Bash', { command: `cat ${realpathSync(dir)}/old.md` }, dir) ?? '', /dream_lessons/)
+    assert.equal(dreamNoteRefusal('Bash', { command: 'ls /tmp' }, dir), undefined)
   })
 })

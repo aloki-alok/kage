@@ -28,7 +28,7 @@ export function dreamTask(m: { own: string; owner: string }, threads: { place: s
     'Nightly dream. Nobody wrote a new message: the hub started this while every session was quiet.',
     ...read,
     `2. Your memory, ${m.own}: first list it with the Glob tool (path ${m.own}, pattern \`**/*\`, then \`.archive/*\`). Only the listing says which files exist. MEMORY.md and the ledger name files that were since merged, renamed or archived, so read a file only after you see it listed. Then merge notes that say the same thing, and where two disagree keep the newer one. Move a note nobody needed for 30 days into ${m.own}/.archive/: Write a copy there, then empty the old file with Write; never delete a file. Keep MEMORY.md in step with the files. Change every file in that folder with the Write and Edit tools, never a shell command: a shell command that names the folder is refused.`,
-    `3. For every new note, move, merge or edit, append one line to ${m.own}/.dream-ledger.tsv (Read it, then Edit or Write it with the new line added): ISO time, action, file, one-line reason.`,
+    `3. For every note you move, merge or edit yourself, append one line to ${m.own}/.dream-ledger.tsv (Read it, then Edit or Write it with the new line added): ISO time, action, file, one-line reason.`,
     `4. The owner's memory, ${m.owner}, is read only for you. List files over 20 KB, index lines whose file is missing, and notes that contradict each other.`,
     ...mistakes ? [mistakesStep(m.own, mistakes)] : [],
     ...skills ? [skillStep(skills)] : [],
@@ -52,11 +52,12 @@ export type DreamLesson = { kind: 'new' | 'outdated'; file: string; text: string
 export type DreamLimits = { minChats: number; minConfidence: number; maxNew: number; maxOutdated: number }
 export const DREAM_LIMITS: DreamLimits = { minChats: 2, minConfidence: 0.7, maxNew: 6, maxOutdated: 5 }
 const MIN_QUOTE = 12
-const NOTE = /^(?!MEMORY\.md$)[\w-]+\.md$/
+const NOTE = /^(?!memory\.md$)[\w-]+\.md$/i
 const plain = (t: string) => t.toLowerCase().replace(/[\u2018\u2019]/g, "'").replace(/[\u201c\u201d]/g, '"').replace(/\s+/g, ' ').trim()
 
-function lessonRefusal(l: DreamLesson, chats: Record<string, string>, lim: DreamLimits): string | undefined {
+function lessonRefusal(l: DreamLesson, chats: Record<string, string>, lim: DreamLimits, notes?: ReadonlySet<string>): string | undefined {
   if (!NOTE.test(l.file)) return `${l.file} is not a plain note name`
+  if (l.kind === 'outdated' && notes && !notes.has(l.file)) return `no note named ${l.file}`
   for (const e of l.evidence) {
     if (!Object.hasOwn(chats, e.key)) return `${e.key} is not a thread of this dream`
     if (plain(e.quote).length < MIN_QUOTE) return `a quote is shorter than ${MIN_QUOTE} characters`
@@ -68,10 +69,10 @@ function lessonRefusal(l: DreamLesson, chats: Record<string, string>, lim: Dream
   return undefined
 }
 
-export function checkDream(lessons: DreamLesson[], chats: Record<string, string>, lim = DREAM_LIMITS): { kept: DreamLesson[]; dropped: { lesson: DreamLesson; why: string }[] } {
+export function checkDream(lessons: DreamLesson[], chats: Record<string, string>, lim = DREAM_LIMITS, notes?: ReadonlySet<string>): { kept: DreamLesson[]; dropped: { lesson: DreamLesson; why: string }[] } {
   const kept: DreamLesson[] = [], dropped: { lesson: DreamLesson; why: string }[] = []
   const left = { new: lim.maxNew, outdated: lim.maxOutdated }
-  const passed = lessons.filter(l => { const why = lessonRefusal(l, chats, lim); if (why) dropped.push({ lesson: l, why }); return !why })
+  const passed = lessons.filter(l => { const why = lessonRefusal(l, chats, lim, notes); if (why) dropped.push({ lesson: l, why }); return !why })
   for (const l of [...passed].sort((a, b) => b.confidence - a.confidence)) {
     if (left[l.kind] > 0) { left[l.kind]--; kept.push(l) } else dropped.push({ lesson: l, why: `over ${l.kind === 'new' ? lim.maxNew : lim.maxOutdated} ${l.kind} lessons tonight` })
   }
@@ -84,12 +85,10 @@ export function chatText(lines: string[]): string {
     let r: { type?: string; message?: { content?: unknown } }
     try { r = JSON.parse(raw) } catch { continue }
     const c = r.message?.content
-    if (r.type === 'user' && typeof c === 'string') { out.push(c); continue }
+    if (r.type !== 'user') continue
+    if (typeof c === 'string') { out.push(c); continue }
     if (!Array.isArray(c)) continue
-    for (const b of c as { type?: string; text?: string; name?: string; input?: { text?: unknown } }[]) {
-      if (b.type === 'text' && b.text && (r.type === 'user' || r.type === 'assistant')) out.push(b.text)
-      else if (r.type === 'assistant' && b.type === 'tool_use' && /^mcp__(plugin_kage_)?kage__reply$/.test(b.name ?? '')) out.push(String(b.input?.text ?? ''))
-    }
+    for (const b of c as { type?: string; text?: string }[]) if (b.type === 'text' && b.text) out.push(b.text)
   }
   return out.join('\n')
 }

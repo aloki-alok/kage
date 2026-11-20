@@ -1,6 +1,6 @@
 import { describe, test } from 'node:test'
 import assert from 'node:assert/strict'
-import { chatText, checkDream, dreamDue, dreamTask, threadsSince, type DreamLesson } from '../dream.ts'
+import { chatText, checkDream, dreamDue, dreamTask, threadsSince, DREAM_LIMITS, type DreamLesson } from '../dream.ts'
 
 process.env.TZ = 'Asia/Kolkata'
 const HOUR = 3600_000, DAY = 24 * HOUR
@@ -97,14 +97,6 @@ describe('a lesson is kept only when code confirms it (#488)', () => {
   })
 })
 
-test('a chat is the text people wrote and Kage replied, from its transcript', () => {
-  const lines = [
-    JSON.stringify({ type: 'user', message: { content: '<channel source="kage">\nplease never squash' } }),
-    JSON.stringify({ type: 'assistant', message: { content: [{ type: 'text', text: 'noted' }, { type: 'tool_use', name: 'mcp__kage__reply', input: { text: 'will merge instead' } }, { type: 'tool_use', name: 'Bash', input: { command: 'rm -rf x' } }] } }),
-    'not json',
-  ]
-  assert.equal(chatText(lines), '<channel source="kage">\nplease never squash\nnoted\nwill merge instead')
-})
 
 test('on the SDK runner the dream sends lessons through dream_lessons with thread keys and quotes, and writes none itself (#488)', () => {
   const t = dreamTask({ own: '/m/kage', owner: '/m/owner' }, [{ place: '#support', file: '/p/a.jsonl', key: 'C1:1.1' }], 'x', undefined, '', true)
@@ -114,4 +106,27 @@ test('on the SDK runner the dream sends lessons through dream_lessons with threa
   assert.match(t, /never write a lesson into \/m\/kage yourself/i)
   const old = dreamTask({ own: '/m/kage', owner: '/m/owner' }, [{ place: '#support', file: '/p/a.jsonl', key: 'C1:1.1' }], 'x')
   assert.doesNotMatch(old, /dream_lessons/)
+})
+
+describe('review fixes to the lesson check (#488)', () => {
+  const chats = { 'C1:1.1': 'never squash-merge Kage PRs', 'C2:2.2': 'no squash merges on this repo' }
+  const ev = [{ key: 'C1:1.1', quote: 'never squash-merge Kage PRs' }, { key: 'C2:2.2', quote: 'no squash merges on this repo' }]
+  test('the index is refused in any letter case, since a Mac disk ignores case', () => {
+    for (const file of ['memory.md', 'Memory.md', 'MEMORY.MD']) assert.equal(checkDream([{ kind: 'new', file, text: 'x', evidence: ev, confidence: 0.9 }], chats).kept.length, 0, file)
+  })
+  test('an outdated lesson for a note that is not there is dropped before the cap, so it never takes a real one\'s place', () => {
+    const r = checkDream([
+      { kind: 'outdated', file: 'nope.md', text: 'x', evidence: ev, confidence: 0.99 },
+      { kind: 'outdated', file: 'real.md', text: 'x', evidence: ev, confidence: 0.8 },
+    ], chats, { ...DREAM_LIMITS, maxOutdated: 1 }, new Set(['real.md']))
+    assert.deepEqual([r.kept.map(l => l.file), r.dropped.map(d => d.why)], [['real.md'], ['no note named nope.md']])
+  })
+})
+test('only what people wrote counts as a chat: Kage\'s own words never prove a lesson', () => {
+  const lines = [
+    JSON.stringify({ type: 'user', message: { content: 'owner: please never squash' } }),
+    JSON.stringify({ type: 'user', message: { content: [{ type: 'text', text: 'and use merge commits' }, { type: 'tool_result', content: 'tool output text' }] } }),
+    JSON.stringify({ type: 'assistant', message: { content: [{ type: 'text', text: 'noted, I will never squash' }, { type: 'tool_use', name: 'mcp__kage__reply', input: { text: 'will merge' } }] } }),
+  ]
+  assert.equal(chatText(lines), 'owner: please never squash\nand use merge commits')
 })
