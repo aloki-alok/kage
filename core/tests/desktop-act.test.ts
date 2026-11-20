@@ -88,7 +88,7 @@ test('text with a line break typed into a terminal is refused, since each break 
 
 test('every key a shell takes as Return is checked like Return (#478 review)', () => {
   const term = at('', { app: 'Terminal' })
-  for (const k of ['ctrl+m', 'ctrl+j', 'ctrl+o', 'shift+return', 'alt+enter']) {
+  for (const k of ['ctrl+m', 'ctrl+j', 'ctrl+o', 'shift+return', 'alt+enter', 'ctrl+shift+m', 'ctrl+alt+j', 'ctrl+cmd+o']) {
     assert.ok('blocked' in desktopVerdict(key(k), term, 'sudo shutdown -h now'), k)
     assert.ok('ask' in desktopVerdict(key(k), term, undefined), k)
   }

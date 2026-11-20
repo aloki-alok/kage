@@ -1156,6 +1156,23 @@ describe("the owner's screen", () => {
     assert.equal((await act({ action: 'key', keys: 'return' })).isError, true)
     assert.equal(cards.length, 3)
   })
+  test('only ctrl+c gives a known line: ctrl+u can leave text after the cursor, and a drag can drop text in (#478 re-review)', async () => {
+    const cards: string[] = []
+    const s = setup({ screen: fakeScreen([], () => ({ app: 'Terminal', role: 'AXTextArea', label: '' })), approve: async (_t, d) => { cards.push(d); return false } })
+    s.t.onTask(s.task())
+    const act = (a: Record<string, unknown>) => s.call('screen_act', { channel: 'C1', thread_ts: '5.5', ...a })
+    await act({ action: 'key', keys: 'ctrl+c' })
+    await act({ action: 'type', text: '; sudo shutdown -h now' })
+    await act({ action: 'key', keys: 'home' })
+    await act({ action: 'key', keys: 'ctrl+u' })
+    await act({ action: 'type', text: 'ls' })
+    assert.equal((await act({ action: 'key', keys: 'return' })).isError, true)
+    await act({ action: 'key', keys: 'ctrl+c' })
+    await act({ action: 'type', text: 'ls ' })
+    await act({ action: 'drag', x: 1, y: 1, to_x: 9, to_y: 9 })
+    assert.equal((await act({ action: 'key', keys: 'return' })).isError, true)
+    assert.equal(cards.length, 2)
+  })
   test("a teammate's task, a voice call and an agent's task never act on the Mac", async () => {
     for (const t of [{ channel: 'C1', fromOwner: false }, { channel: 'voice', fromOwner: true }]) {
       const asked: string[] = []
