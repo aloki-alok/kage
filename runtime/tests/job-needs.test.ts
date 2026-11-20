@@ -87,3 +87,13 @@ test("a session's own MCP status counts once its servers settle", async () => {
   await t.w.seen(await mcpStatus(q, 10))
   assert.equal(t.dms.length, 1)
 })
+
+test("Kage's own tools never read as missing: the clock's probe has no kage server, real sessions do", async () => {
+  const t = setup()
+  t.store.setNeeds('a1b2', [DIAL, 'mcp__kage__reply'])
+  await t.tick(60_000)
+  await t.w.seen([...dialer('connected'), { name: 'kage', status: 'connected', tools: [{ name: 'reply' }] }])
+  await t.tick(120_000)
+  assert.deepEqual(t.dms, [])
+  assert.equal(t.store.jobState('a1b2').missing, undefined)
+})

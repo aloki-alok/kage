@@ -5,7 +5,7 @@ export function privateToolRefusal(tool: string, sender: string | undefined): st
   if (!ownerOnlyTool(tool) || sender === 'owner' || sender === 'trusted') return undefined
   return `${tool} reads the owner's private data, and this task did not come from the owner. Reply that this needs the owner, and stop.`
 }
-const OWN_TOOLS = /^mcp__(kage|plugin_kage_kage)__/
+export const OWN_TOOLS = /^mcp__(kage|plugin_kage_kage)__/
 const OWNER_ACCOUNT = /^mcp__claude_ai_/
 export function mcpToolRefusal(tool: string, sender: string | undefined, shared: readonly string[] = []): string | undefined {
   if (sender === 'owner' || sender === 'trusted' || !tool.startsWith('mcp__') || OWN_TOOLS.test(tool)) return undefined
