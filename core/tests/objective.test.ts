@@ -38,3 +38,21 @@ test('every run reads the scoreboard: the objective, the number against its targ
   assert.match(scoreboard(o, []), /not measured yet/)
   assert.match(scoreboard(o, [{ at: 0, value: 320 }, { at: 1, failed: 'exit 1' }]), /last measure failed \(exit 1\)/)
 })
+
+test('each run reads how the number moved since the last measure, toward or away from the target, and is told to report the change and its next step (#427)', () => {
+  const views = { objective: 'Posts over 500 views', measure: 'm', target: { op: '>=' as const, n: 500 } }
+  const errors = { objective: 'Few signup errors', measure: 'm', target: { op: '<=' as const, n: 2 } }
+  assert.match(scoreboard(views, [{ at: 0, value: 510 }, { at: 1, value: 640 }]), /Since the last measure: 510 to 640, up 130, toward the target/)
+  assert.match(scoreboard(views, [{ at: 0, value: 320 }, { at: 1, value: 450 }]), /Since the last measure: 320 to 450, up 130, toward the target/)
+  assert.match(scoreboard(errors, [{ at: 0, value: 7 }, { at: 1, value: 9 }]), /Since the last measure: 7 to 9, up 2, away from the target/)
+  assert.match(scoreboard(errors, [{ at: 0, value: 7 }, { at: 1, value: 4 }]), /Since the last measure: 7 to 4, down 3, toward the target/)
+  assert.match(scoreboard(errors, [{ at: 0, value: 4 }, { at: 1, value: 4 }]), /Since the last measure: no change \(4\)/)
+  const exact = { objective: 'Exactly 3 replicas', measure: 'm', target: { op: '==' as const, n: 3 } }
+  assert.match(scoreboard(exact, [{ at: 0, value: 1 }, { at: 1, value: 2 }]), /up 1, toward the target/)
+  assert.match(scoreboard(exact, [{ at: 0, value: 4 }, { at: 1, value: 5 }]), /up 1, away from the target/)
+  assert.doesNotMatch(scoreboard(errors, [{ at: 0, value: 4 }]), /Since the last measure/)
+  assert.doesNotMatch(scoreboard(errors, [{ at: 0, value: 4 }, { at: 1, failed: 'exit 1' }]), /Since the last measure/)
+  const ask = scoreboard(errors, [{ at: 0, value: 7 }, { at: 1, value: 4 }])
+  assert.match(ask, /End your report with how the number moved since your last run and your next step/)
+  assert.match(ask, /did not move the way your last run expected, change this run's plan/)
+})
