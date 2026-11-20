@@ -13,6 +13,7 @@
       { "key": "CTEST1:1700000000.123456#side-kagelet-digest", "match": "^Scheduled run of job kagelet-digest" },
       { "key": "CTEST1:1700000000.123456#side-kagelet-digest", "match": "^Retry: the last run went quiet for 20 min\\. Do the job again, and end with a report\\.\\nRun now of job kagelet-digest" }
     ],
+    "cuts": ["CTEST1:1700000000.123456#side-kagelet-digest"],
     "dms": ["^Kagelet \\*digest\\* failed twice in a row, once on a retry: ended without a report\\."]
   }
 }

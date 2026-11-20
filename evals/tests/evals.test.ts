@@ -18,7 +18,7 @@ test('an eval refuses to run against the live Kage config, even through a link',
 })
 
 test('the scorer names a missing, extra or wrong task, DM or tool result, and passes an exact match', () => {
-  const ev = { tasks: [{ key: 'C1:1.1', text: 'Late: due at 09:00\nScheduled run' }], dms: ['Kagelet *a* failed'], calls: ['refused: only the owner'] }
+  const ev = { tasks: [{ key: 'C1:1.1', text: 'Late: due at 09:00\nScheduled run' }], dms: ['Kagelet *a* failed'], calls: ['refused: only the owner'], cuts: [] }
   assert.deepEqual(score(ev, { tasks: [{ key: 'C1:1.1', match: '^Late' }], dms: ['failed'], calls: ['^refused'] }), [])
   assert.match(score(ev, { tasks: [] }).join(), /task: 1 seen, 0 expected/)
   assert.match(score(ev, { tasks: [{ key: 'C2:2.2', match: '^Late' }] }).join(), /task 1: C1:1\.1/)

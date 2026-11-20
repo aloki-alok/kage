@@ -1,4 +1,4 @@
-import { mkdtempSync, realpathSync } from 'node:fs'
+import { mkdtempSync, realpathSync, rmSync } from 'node:fs'
 import { homedir, tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import { createSdkMcpServer, tool } from '@anthropic-ai/claude-agent-sdk'
@@ -31,7 +31,7 @@ export type Step =
   | { task: { thread: string; from: 'owner' | 'teammate'; text: string } }
   | { call: { thread: string; tool: string; args: Record<string, unknown> } }
 
-export type Evidence = { tasks: { key: string; text: string }[]; dms: string[]; calls: string[] }
+export type Evidence = { tasks: { key: string; text: string }[]; dms: string[]; calls: string[]; cuts: string[] }
 
 const THREAD = 'https://test.slack.com/archives/CTEST1/p1700000000123456'
 const laneOf = (name: string) => `CTEST1:1700000000.123456#side-kagelet-${name}`
@@ -51,7 +51,7 @@ export async function scenario(steps: Step[]): Promise<Evidence> {
   let n = 0
   const runs = runEvents(ledgers, () => `t${++n}`, () => clock.now)
   const sdk = fakeSdk()
-  const ev: Evidence = { tasks: [], dms: [], calls: [] }
+  const ev: Evidence = { tasks: [], dms: [], calls: [], cuts: [] }
   const last = new Map<string, number>()
   const slack = { chat: { postMessage: async () => ({ ts: '9.1' }) }, reactions: { add: async () => {} }, users: { info: async () => ({}) } }
   let d!: Dispatcher<ToSession>
@@ -85,7 +85,7 @@ export async function scenario(steps: Step[]): Promise<Evidence> {
     retry: (name, lead, now) => { schedules.runNow(`kagelet-${name}`, now, lead) }, pause: () => {}, say: t => ev.dms.push(t),
     last: () => ({ words: '', report: '' }),
     live: () => [...grants.keys()].map(key => ({ key, busy: d.ready(key) === 'busy', last: last.get(key) ?? 0, trace: runs.of(key)?.trace })),
-    cut: key => { d.endThread(key, true) },
+    cut: key => { ev.cuts.push(key); d.endThread(key, true) },
   })
   routes = kageletRoutes({ dir: kagelets, store, ledgers, runs, deliver: toSession, granted: key => grants.has(key), idle: () => true, paused: () => undefined, log: () => {}, done: incidents.ended })
   const proc = (key: string) => [...sdk.runs].reverse().find(r => r.options.sessionId === d.saved()[key] || r.options.resume === d.saved()[key])
@@ -118,6 +118,7 @@ export async function scenario(steps: Step[]): Promise<Evidence> {
   }
   for (const k of Object.keys(d.saved())) s.runner.stop(k)
   store.close()
+  rmSync(dir, { recursive: true, force: true })
   return ev
 }
 

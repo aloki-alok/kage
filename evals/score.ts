@@ -1,6 +1,6 @@
 import type { Evidence, Step } from './harness.ts'
 
-export type Expect = { tasks?: { key: string; match: string }[]; dms?: string[]; calls?: string[] }
+export type Expect = { tasks?: { key: string; match: string }[]; dms?: string[]; calls?: string[]; cuts?: string[] }
 export type Scenario = { name: string; why: string; steps: Step[]; expect: Expect }
 
 const list = <T>(label: string, got: T[], want: unknown[] | undefined, ok: (g: T, w: never) => boolean, show: (g: T) => string): string[] => {
@@ -16,5 +16,6 @@ export function score(ev: Evidence, expect: Expect): string[] {
     ...list('task', ev.tasks, expect.tasks, (g, w: { key: string; match: string }) => g.key === w.key && new RegExp(w.match).test(g.text), g => `${g.key}: ${firstLines(g.text)}`),
     ...list('dm', ev.dms, expect.dms, (g, w: string) => new RegExp(w).test(g), g => firstLines(g)),
     ...list('call', ev.calls, expect.calls, (g, w: string) => new RegExp(w).test(g), g => g),
+    ...list('cut', ev.cuts, expect.cuts, (g, w: string) => g === w, g => g),
   ]
 }
