@@ -2,7 +2,7 @@ import { randomBytes } from 'node:crypto'
 import { z } from 'zod'
 import { awayCommand } from '../../core/afk.ts'
 import { EVENT, nextRun, parseCron, REPLY } from '../../core/cron.ts'
-import { hookTokenHash, type Trigger } from '../../core/tripwire.ts'
+import { hookTokenHash, tempPaths, type Trigger } from '../../core/tripwire.ts'
 import type { KageTool, ToolContext } from '../kage-tools.ts'
 import type { ProbeArg } from '../probe-jobs.ts'
 
@@ -13,6 +13,12 @@ export function scheduleTools(c: ToolContext): KageTool[] {
   const probeCard = async (description: string, input: Record<string, unknown>) => {
     if (!o.approve) return 'refused: a probe from a teammate\'s task needs the owner\'s yes on a card, and this session cannot show one'
     return await o.approve('schedule', description, input) ? undefined : 'The owner said no. Nothing was scheduled.'
+  }
+  const tempRefusal = (a: Record<string, unknown>, ...texts: (string | undefined)[]) => {
+    const found = tempPaths(texts.filter(Boolean).join('\n'))
+    if (!found.length) return undefined
+    const folder = a.channel && a.thread_ts ? c.filesOf(String(a.channel), String(a.thread_ts)) : `${o.dir}/files/<this thread>`
+    return { isError: true as const, text: `refused: this job names ${found.join(', ')}, a temp folder the OS clears on its own, so the job fails once the file is gone. Copy the file into this thread's files folder, ${folder}/, and name that path instead.` }
   }
   if (jobs) tools.push({
     name: 'schedule',
@@ -52,6 +58,8 @@ export function scheduleTools(c: ToolContext): KageTool[] {
       const cron = trigger ? EVENT : a.cron!
       if (cron !== REPLY && !trigger) try { parseCron(cron) } catch (e) { return { isError: true, text: (e as Error).message } }
       if (!a.prompt.trim()) return { isError: true, text: 'the prompt is empty' }
+      const temp = tempRefusal(args, a.prompt, a.live_prompt, a.probe?.command)
+      if (temp) return temp
       const id = randomBytes(4).toString('hex')
       const recurring = a.recurring !== false
       if (a.probe && !ownerOnly(args)) {
@@ -130,6 +138,8 @@ export function scheduleTools(c: ToolContext): KageTool[] {
       const { id, channel: _c, thread_ts: _t, ...change } = args as { id: string } & Record<string, unknown>
       if (c.jobRun()) return { isError: true, text: 'refused: a job\'s own run may not change its trigger. Put the change you suggest in your report: the owner or a teammate applies it.' }
       if (!Object.keys(change).length) return { isError: true, text: 'nothing to change: give needs, cron, command, ignore, reads or writes' }
+      const temp = tempRefusal(args, typeof change.command === 'string' ? change.command : undefined)
+      if (temp) return temp
       if (!ownerOnly(args)) {
         const why = await probeCard(`Change job ${id}: ${Object.entries(change).map(([k, v]) => `${k} to ${JSON.stringify(v)}`).join(', ')}. Kage runs the command on its clock, as you, with no model. A path in reads or writes is not pinned, so a script listed there can change with no new yes.`, { id, ...change })
         if (why) return { isError: true, text: why }

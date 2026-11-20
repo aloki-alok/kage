@@ -204,6 +204,27 @@ describe("a session's Kage tools", () => {
     assert.equal((await s.call('unschedule', { channel: 'C1', thread_ts: '5.5', id: s.jobs[0].id })).isError, undefined)
     assert.deepEqual(s.jobs, [])
   })
+  test('a job that names a file in a temp folder is refused and pointed at the thread\'s files folder (#461)', async () => {
+    const s = setup()
+    s.t.onTask(s.task())
+    const at = { channel: 'C1', thread_ts: '5.5', cron: '0 10 * * *' }
+    for (const a of [
+      { prompt: 'run python3 /tmp/odoo_helper.py and post the count' },
+      { prompt: 'run "$TMPDIR/helper.py" then post' },
+      { prompt: 'say what changed', probe: { command: 'python3 /var/folders/ab/xyz/T/helper.py' } },
+      { prompt: 'say what changed', probe: { command: 'cat /private/tmp/state.json' } },
+    ]) {
+      const r = await s.call('schedule', { ...at, ...a })
+      assert.equal(r.isError, true, JSON.stringify(a))
+      assert.match(r.text, /temp folder/)
+      assert.ok(r.text.includes(`${s.dir}/files/`), r.text)
+    }
+    assert.deepEqual(s.jobs, [])
+    assert.equal((await s.call('tune_job', { channel: 'C1', thread_ts: '5.5', id: 'j1', command: 'sh /tmp/check.sh' })).isError, true)
+    assert.deepEqual(s.tuned, [])
+    for (const prompt of ['run python3 /Users/sam/.config/kage/files/C1-5.5/helper.py', 'run python3 /home/sam/tmp/helper.py', 'use the template folder', 'alert when df /tmp is over 90%', 'post the size of du -sh /tmp/kage-*'])
+      assert.match((await s.call('schedule', { ...at, prompt })).text, /^Kage schedule/, prompt)
+  })
   test('a schedule names the tools its action needs, so the hub can watch them (#377)', async () => {
     const s = setup()
     s.t.onTask(s.task())
