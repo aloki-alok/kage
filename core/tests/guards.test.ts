@@ -16,6 +16,12 @@ describe('private sources on a teammate task', () => {
       assert.match(privateToolRefusal(t, 'teammate') ?? '', /owner/, t)
     }
   })
+  test("only the owner's task reaches the owner's screen", () => {
+    for (const t of ['mcp__kage__screen_shot', 'mcp__plugin_kage_kage__screen_record']) {
+      assert.equal(privateToolRefusal(t, 'owner'), undefined, t)
+      assert.match(privateToolRefusal(t, 'teammate') ?? '', /owner/, t)
+    }
+  })
   test('other tools are fine for a teammate', () => {
     for (const t of ['WebSearch', 'WebFetch', 'Bash', 'Read', 'mcp__kage__reply', 'mcp__claude_ai_Slack__slack_send_message'])
       assert.equal(privateToolRefusal(t, 'teammate'), undefined)

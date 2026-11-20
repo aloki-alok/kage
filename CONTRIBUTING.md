@@ -88,6 +88,7 @@ Write logs to stderr only. In a tmux pane, stdout carries the channel protocol, 
 | `CLAUDE.md` | The one file coding agents read first: setup steps, the commands that run Kage, and this file (loaded with `@CONTRIBUTING.md`). |
 | `extension/` | Kage's Chrome extension (#114): plain JS, no build. It polls the hub (`connectors/browser.ts`), reads tabs, and acts in them through Chrome's debugger, one action at a time; a major step waits for the owner's yes (core/browser-act.ts majorAct). |
 | `meetbot/` | Kage's meeting bot (#63): its own package, run on any machine with a screen or Xvfb. It drives its own Chromium into a Google Meet and talks to the hub at the meeting webhook (`connectors/meeting.ts`). All of Meet's page knowledge is `meetbot/page.js`. |
+| `screen/` | Kage Screen (macOS 15 or later): a small ScreenCaptureKit app that records the screen or takes one picture of it. It runs as its own app, so macOS asks the owner once to allow it, and the hub and its sessions never hold screen access. `runtime/screen.ts` builds and drives it. |
 | `metabot/` | The Meta bot: answers strangers on a Facebook Page, in Instagram DMs and under Page comments, as its own process with no tools (ADR 0020). One model call, a fixed check, a guard, then a draft or a send by mode. Setup and settings are in `metabot/README.md`. |
 | `waha/` | Kage's WhatsApp bridge (#351): `compose.yaml` runs WAHA in Docker, `up.sh` starts it on the ports in the settings, and `qr.sh` links the owner's phone. No keys: the container reads `waha/.env` in the config folder, which the hub writes from secrets.json. Steps are in docs/settings.md, "WhatsApp". |
 | `skills/` | Skills every Kage session loads (the router passes the repo as a plugin, `hub/router.ts`). Generic lessons only: no names, ids, customers, dates or quotes. |
@@ -180,7 +181,9 @@ Write logs to stderr only. In a tmux pane, stdout carries the channel protocol, 
 | `runtime/tools/schedule-tools.ts` | A thread's schedules in the hub, and AFK mode on and off. |
 | `runtime/tools/kagelet-tools.ts` | A kagelet's tools (report, message another, db_read), its dream's (propose_memory), and the manager's. |
 | `runtime/tools/browser-tools.ts` | The owner's Chrome: list, read, capture, snapshot and act, a major step on the owner's yes. |
+| `runtime/tools/screen-tools.ts` | The owner's Mac screen: a picture of it, or a recording that starts, runs while the session works, and stops into the thread's files folder. |
 | `runtime/tools/owner-tools.ts` | Only the owner's own Slack task: the meeting bot and changing a setting. |
+| `screen.ts` | Kage Screen seen from the hub: it builds `screen/KageScreen.swift` into an app only when the source changed, writes the one job into the config folder, opens the app, reads the JSON lines it prints, and stops a recording with SIGINT. One recording at a time. |
 | `session-link.ts` | The local socket that panes and the `kage` commands connect to. |
 | `terminal-secret.ts` | The hidden token prompt at a terminal: a dot per character and the length while typing, the kind and length once taken, and a retry on the wrong token. Piped input is read whole. |
 | `hub-client.ts` | The client end of that socket: one question to the running hub, one answer. Node modules only, because the shell scripts read settings through `cli/home.ts`, which imports it. |

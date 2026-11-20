@@ -15,6 +15,7 @@ import { connectSlack } from '../connectors/slack/connect.ts'
 import { jevAfk, jevCheck, jevTriage } from '../connectors/jev.ts'
 import { jevConfig } from '../core/jev.ts'
 import { connectBrowser } from '../connectors/browser.ts'
+import { screenRecorder } from '../runtime/screen.ts'
 import { blockList, unreadableBlocks } from '../core/browser.ts'
 import { memoryDirs, sandboxed } from '../core/guards.ts'
 import { protectConfig } from '../runtime/path-guards.ts'
@@ -257,7 +258,7 @@ const sdk = sdkLib ? sdkSessions({
     kagelet: key.split('#side-kagelet-')[1], dreaming: key.split('#side-kdream-')[1], kageletMemory: kag.kmem,
     browser: browser && { call: browser.call, block: BROWSER_BLOCK },
     foreignAgents: () => config.askOtherAgents ? [] : foreignAgentTags(slack.ids.apps ?? [], slack.ids.owner),
-    meetbot: meeting && { join: meeting.join },
+    meetbot: meeting && { join: meeting.join }, screen: process.platform === 'darwin' ? screenRecorder({ dir: `${DIR}/screen`, code: CODE }) : undefined,
     dbRead: { command: () => readCommand(kl.dbRead?.command ?? undefined, store, key.split('#side-kagelet-')[1] ?? ''), maxRows: kl.dbRead?.maxRows || 200 },
     kagelets: { list: () => kag.manager.list(Date.now()), manage: (a, ask) => kag.manager.manage(a, Date.now(), ask) }, approve,
     event: (kind, detail) => runs.emit(key, kind, detail),

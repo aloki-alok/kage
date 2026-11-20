@@ -143,6 +143,12 @@ Ask in a thread: `@kage check the deploy every 30 minutes`, or `@kage tell me wh
 
 Slack is the main channel. Email, voice calls and GitHub events (reviews, failed checks, issues assigned to you) can reach the same Kage too. Each is off until you set it up: see [the settings reference](settings.md).
 
+### Let it see and record your screen (macOS)
+
+Ask Kage in your own thread for a screenshot or a screen recording, such as "record the signup flow in Chrome". It can record the whole main display or only one app's windows. It works while it records and sends you the MP4 in the thread. A recording stops when Kage is done, or after 10 minutes at most.
+
+The first time, macOS asks you to allow **Kage Screen**. Turn it on in System Settings > Privacy & Security > Screen & System Audio Recording, then ask again. Only Kage Screen gets that permission. Kage itself and its sessions do not. Teammates, agents, voice callers and kagelets never reach your screen. It needs macOS 15 or later and the Xcode Command Line Tools (`xcode-select --install`).
+
 ### Let a teammate tag it
 
 ```sh
