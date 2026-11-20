@@ -23,7 +23,7 @@ uv run --with playwright python -m playwright install chromium        # once
 uv run --with playwright python extension/tests/e2e/run.py               # 29 checks, exits 1 on a failure
 ```
 
-Four tests call a real model, so `npm test` skips them. `sandbox.test.ts` starts real sessions with `harness.sandbox` on and checks that the token files, the settings and the hub code stay closed. It also runs one tmux pane (skipped without tmux) that unsets `KAGE_SESSION` and tries to write `config.json` and read `secrets.json`. `sandbox-off.test.ts` starts one with the sandbox off (`harness.sandbox false`, and the owner's own threads by default) and the hub's hook rules: the shell writes, binds a port and reaches the web and the SSM relay, and the token files and settings stay closed. Run these three after any change to `protectConfig` or `toolRefusal` in `runtime/path-guards.ts`, or to a session's sandbox or permission settings. `sandbox-teammates.test.ts` checks the default, `teammates`: a teammate's thread cannot read `secrets.json` with a reworded command, and the owner's own thread binds a local port. They cost a few cents:
+Six tests call a real model, so `npm test` skips them. `sandbox.test.ts` starts real sessions with `harness.sandbox` on and checks that the token files, the settings and the hub code stay closed. It also runs one tmux pane (skipped without tmux) that unsets `KAGE_SESSION` and tries to write `config.json` and read `secrets.json`. `sandbox-off.test.ts` starts one with the sandbox off (`harness.sandbox false`, and the owner's own threads by default) and the hub's hook rules: the shell writes, binds a port and reaches the web and the SSM relay, and the token files and settings stay closed. Run these three after any change to `protectConfig` or `toolRefusal` in `runtime/path-guards.ts`, or to a session's sandbox or permission settings. `sandbox-teammates.test.ts` checks the default, `teammates`: a teammate's thread cannot read `secrets.json` with a reworded command, and the owner's own thread binds a local port. They cost a few cents:
 
 ```sh
 KAGE_LIVE_TESTS=1 node --test runtime/tests/sandbox.test.ts runtime/tests/sandbox-off.test.ts runtime/tests/sandbox-teammates.test.ts
@@ -33,6 +33,12 @@ The fourth, `runtime/kagelets/tests/all-live.test.ts`, runs a session set up as 
 
 ```sh
 KAGE_LIVE_TESTS=1 node --test runtime/kagelets/tests/all-live.test.ts
+```
+
+Two more check goal-seeking kagelets (#427). `keep-watching-live.test.ts` gives a Kage session with the repo's skills the owner's "keep watching the open P1s", and checks it saves a kagelet with an objective, a measure and a target, and says its goal in the thread. `objective-live.test.ts` runs a kagelet three times as its number goes 7, 4, 4, and checks each report names the change and a next step. Run them after any change to `core/objective.ts`, the report tool, or the kagelets and watching-jobs skills:
+
+```sh
+KAGE_LIVE_TESTS=1 node --test runtime/kagelets/tests/keep-watching-live.test.ts runtime/kagelets/tests/objective-live.test.ts
 ```
 
 `tests/upgrade-drill.sh` installs the previous release from a local copy of this repo, keeps an old env file, runs `kage update --stable` to your commit, starts the hub once (it stops at Slack, which refuses its fake tokens), and checks the settings and `kage doctor`. CI runs it on every pull request (`.github/workflows/upgrade.yml`), and `kage release` refuses a commit where it failed. Run it after a change to `install.sh`, `setup.sh`, the settings import or the packages. It upgrades to HEAD, so commit first:
