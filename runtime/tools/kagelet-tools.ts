@@ -27,16 +27,19 @@ export function kageletTools(c: ToolContext): KageTool[] {
     shape: {
       channel: s.describe('channel attribute from the task tag'),
       thread_ts: s.describe('thread_ts attribute from the task tag'),
-      summary: s.describe('one line: what this run found or did'),
+      summary: s.describe('one line: what this run found or did, and how its number moved if it has one'),
+      next: s.describe('one line: your next step, what the next run will do or check'),
       needs: s.optional().describe('what you could not do and need from your manager, in one line; leave out when nothing'),
       output: s.optional().describe('a link or short note a kagelet that runs after you takes as its input; leave out when nothing'),
     },
     async run(args) {
-      const a = args as { channel: string; thread_ts: string; summary: string; needs?: string; output?: string }
+      const a = args as { channel: string; thread_ts: string; summary: string; next?: string; needs?: string; output?: string }
       const key = `${a.channel}:${a.thread_ts}`
       if (!ownerTask.has(key)) return { isError: true, text: 'refused: report from your own thread only' }
+      const next = a.next?.trim()
+      if (!next) return { isError: true, text: 'refused: say your next step in next, in one line, then report again' }
       const needs = a.needs?.trim() ?? ''
-      append('reports', [name, a.summary, needs])
+      append('reports', [name, `${a.summary.trim().replace(/[.\s]+$/, '')}. Next: ${next}`, needs])
       o.event?.('report', needs ? 'needs' : 'ok')
       o.onReport?.({ needs, output: a.output?.trim() ?? '' })
       if (!needs) return { text: 'reported' }
