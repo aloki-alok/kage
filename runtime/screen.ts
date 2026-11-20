@@ -23,6 +23,7 @@ export async function buildApp(code: string, app: string): Promise<string | unde
     await run('swiftc', ['-O', '-o', `${app}/Contents/MacOS/KageScreen`, swift], { timeout: 300_000 })
     copyFileSync(plist, `${app}/Contents/Info.plist`)
     await run('codesign', ['-s', '-', '--force', app], { timeout: 60_000 })
+    await run('tccutil', ['reset', 'ScreenCapture', 'dev.kage.screen'], { timeout: 30_000 }).catch(() => {})
     writeFileSync(stamp, hash, { mode: 0o600 })
     return undefined
   } catch (e) {
