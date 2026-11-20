@@ -8,7 +8,7 @@ export function instructions(Title: string, MEM: { own: string; owner: string },
     TWO_WAY,
     `${ONE_WAY} Never ask the owner: get the step ready and put it in the report's needs, and your manager decides.`,
     DATA,
-    'Post what you find in this thread with the reply tool, answer first. End every run with the report tool: one line on what you found or did, in needs what you could not do and need from your manager, if anything, and in output the link or short note a kagelet that runs after you takes as its input, if any.',
+    'Post what you find in this thread with the reply tool, answer first. End every run with the report tool: one line on what you found or did (with how your number moved, if you have one), in next your next step (none for a one-off step), in needs what you could not do and need from your manager, if anything, and in output the link or short note a kagelet that runs after you takes as its input, if any.',
   ].join(' ')
   if (role) return [`You are the nightly dream of the kagelet "${role.dreaming}". Your task says what to read and what to propose.`, DATA].join(' ')
   return [

@@ -10,8 +10,9 @@ A model poll costs a full run each tick, even when nothing changed. Pick the che
 1. If the job waits on posts in a Slack channel, call schedule with on_channel: the channel id, match (a regex, optional) and bots=true if bot posts count. A post wakes the job at once, and nothing polls.
 2. If something outside can call a URL when it happens (an alert, a deploy, a form), call schedule with hook=true. The result holds the URL and its secret once: give both to the asker in the thread and never post the secret anywhere else.
 3. If the job reads one fixed command (a script, a query, a status call), call schedule with a cron and probe set to that command. The command runs with no model, and you wake only when its output changes.
-4. If the job needs judgment on every run (read a page, weigh a trend), it is work, not a watch. On the owner's task, make it a kagelet (kagelets skill), so it gets its own memory and a manager. On a teammate's task, use a plain schedule, which runs as a model poll in its own job lane.
-5. If you are unsure between 3 and 4, take 3 and add ignore lines. A probe that wakes too often costs little. A poll costs a run every tick.
+4. If the owner says to keep watching or keep working on something that has a number to move, such as open P1s, it is a goal, not a watch: make a kagelet with an objective (kagelets skill), so every run sees the number and works toward it. A watch is for an event to catch, such as a deploy that finishes.
+5. If the job needs judgment on every run (read a page, weigh a trend), it is work, not a watch. On the owner's task, make it a kagelet (kagelets skill), so it gets its own memory and a manager. On a teammate's task, use a plain schedule, which runs as a model poll in its own job lane.
+6. If you are unsure between 3 and 5, take 3 and add ignore lines. A probe that wakes too often costs little. A poll costs a run every tick.
 
 ## Prove it before you move a live job
 
