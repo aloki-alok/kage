@@ -1,15 +1,18 @@
 import { execFile, spawn } from 'node:child_process'
 import { createHash } from 'node:crypto'
-import { copyFileSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { copyFileSync, createWriteStream, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync, type WriteStream } from 'node:fs'
 import { release } from 'node:os'
 import { dirname } from 'node:path'
 import { promisify } from 'node:util'
 
 export type Launch = (app: string, log: string) => { exited: Promise<number | null> }
-type Line = { state?: 'recording' | 'saved'; pid?: number; seconds?: number; error?: string }
+type Line = { state?: 'recording' | 'saved' | 'acting' | 'stopped'; pid?: number; seconds?: number; error?: string; id?: number }
+export type ActAnswer = Record<string, unknown>
+type Acting = { log: string; pipe: WriteStream; next: number; done: boolean; said?: Line[] }
 type Running = { pid: number; out: string; log: string; exited: Promise<number | null>; done: boolean }
 
 const PERMISSION = "macOS needs the owner's yes first. It asked them to turn on Kage Screen in System Settings > Privacy & Security > Screen & System Audio Recording. Tell the owner, and try again once they have."
+const ACCESSIBILITY = "macOS needs the owner's yes first. It asked them to turn on Kage Screen in System Settings > Privacy & Security > Accessibility. Tell the owner, and try again once it is on."
 const run = promisify(execFile)
 
 export async function buildApp(code: string, app: string): Promise<string | undefined> {
@@ -25,6 +28,7 @@ export async function buildApp(code: string, app: string): Promise<string | unde
     await makeIcon(icon, `${app}/Contents/Resources/AppIcon.icns`, `${dirname(app)}/AppIcon.iconset`)
     await run('codesign', ['-s', '-', '--force', app], { timeout: 60_000 })
     await run('tccutil', ['reset', 'ScreenCapture', 'dev.kage.screen'], { timeout: 30_000 }).catch(() => {})
+    await run('tccutil', ['reset', 'Accessibility', 'dev.kage.screen'], { timeout: 30_000 }).catch(() => {})
     writeFileSync(stamp, hash, { mode: 0o600 })
     return undefined
   } catch (e) {
@@ -64,7 +68,7 @@ export function screenRecorder(o: { folder: string; code: string; build?: (app: 
     try { text = readFileSync(log, 'utf8') } catch { return [] }
     return text.split('\n').flatMap(l => { try { const v = JSON.parse(l); return v && typeof v === 'object' ? [v as Line] : [] } catch { return [] } })
   }
-  const failure = (l: Line | undefined) => l?.error === 'permission' ? PERMISSION : `Kage Screen: ${l?.error ?? 'it stopped and said nothing'}`
+  const failure = (l: Line | undefined) => l?.error === 'permission' ? PERMISSION : l?.error === 'accessibility' ? ACCESSIBILITY : `Kage Screen: ${l?.error ?? 'it stopped and said nothing'}`
   const exitsWithin = async (exited: Promise<unknown>, ms: number) => {
     let timer: NodeJS.Timeout | undefined
     const ended = await Promise.race([exited.then(() => true), new Promise<false>(r => { timer = setTimeout(() => r(false), ms) })])
@@ -73,7 +77,7 @@ export function screenRecorder(o: { folder: string; code: string; build?: (app: 
   }
   const serial = <T>(f: () => Promise<T>): Promise<T> => { const p = busy.then(f); busy = p.then(() => {}, () => {}); return p }
 
-  async function launchJob(job: { action: 'record' | 'shot'; out: string; seconds?: number; app?: string }) {
+  async function launchJob(job: { action: 'record' | 'shot'; out: string; seconds?: number; app?: string } | { action: 'act'; fifo: string }) {
     const err = await build(app)
     if (err) return { err }
     mkdirSync(o.folder, { recursive: true, mode: 0o700 })
@@ -93,7 +97,41 @@ export function screenRecorder(o: { folder: string; code: string; build?: (app: 
     return undefined
   }
 
+  let acting: Acting | undefined
+  async function startActing(): Promise<Acting | string> {
+    mkdirSync(o.folder, { recursive: true, mode: 0o700 })
+    const fifo = `${o.folder}/act-${Date.now()}.fifo`
+    try { await run('mkfifo', ['-m', '600', fifo], { timeout: 10_000 }) } catch (e) { return `could not make the command pipe: ${String(e)}` }
+    const r = await launchJob({ action: 'act', fifo })
+    if ('err' in r) { rmSync(fifo, { force: true }); return r.err! }
+    const first = await firstLine(r.log, r.exited)
+    if (first?.state !== 'acting') { rmSync(r.log, { force: true }); rmSync(fifo, { force: true }); return !first ? NO_ANSWER : failure(first) }
+    const a: Acting = { log: r.log, pipe: createWriteStream(fifo), next: 0, done: false }
+    a.pipe.on('error', () => { a.done = true })
+    void r.exited.then(() => { a.said = lines(r.log); a.done = true; a.pipe.destroy(); rmSync(fifo, { force: true }); rmSync(r.log, { force: true }) })
+    return a
+  }
+
+  async function send(command: Record<string, unknown>): Promise<ActAnswer | 'left idle'> {
+    if (!acting || acting.done) { const a = await startActing(); if (typeof a === 'string') return { error: a }; acting = a }
+    const a = acting, id = ++a.next
+    a.pipe.write(JSON.stringify({ ...command, id }) + '\n')
+    for (let waited = 0; waited < waitMs; waited += pollMs) {
+      const said = a.said ?? lines(a.log), answer = said.find(l => l.id === id)
+      if (answer) { const { id: _, ...rest } = answer; return rest }
+      if (a.said) return said.at(-1)?.state === 'stopped' ? 'left idle' : { error: failure(said.at(-1)) }
+      await new Promise(r => setTimeout(r, pollMs))
+    }
+    return { error: NO_ANSWER }
+  }
+
   return {
+    act: (command: { op: string } & Record<string, unknown>) => serial(async (): Promise<ActAnswer> => {
+      const first = await send(command)
+      if (first !== 'left idle') return first
+      const again = await send(command)
+      return again === 'left idle' ? { error: NO_ANSWER } : again
+    }),
     shot: (out: string, appName?: string) => serial(async (): Promise<string | undefined> => {
       const r = await launchJob({ action: 'shot', out, ...appName && { app: appName } })
       if ('err' in r) return r.err

@@ -1058,7 +1058,8 @@ describe("a kagelet's home with its owners", () => {
 })
 
 describe("the owner's screen", () => {
-  const fakeScreen = (asked: string[] = []): ScreenRecorder => ({
+  const fakeScreen = (asked: string[] = [], seen: (op: string) => Record<string, unknown> = () => ({ app: 'Finder', role: 'AXButton', label: 'Open' })): ScreenRecorder => ({
+    async act(c) { asked.push(`${c.op}${c.x !== undefined ? ` ${c.x},${c.y}` : ''}${c.text ? ` ${c.text}` : ''}${c.keys ? ` ${c.keys}` : ''}`); return c.op === 'under' || c.op === 'focused' ? seen(c.op) : { done: true } },
     async shot(out, app) { asked.push(`shot ${out.split('/').pop()?.replace(/\d+/, 'N')} ${app ?? 'all'}`); return undefined },
     async start(out, seconds, app) { asked.push(`start ${out.split('/').pop()?.replace(/\d+/, 'N')} ${seconds} ${app ?? 'all'}`); return undefined },
     async stop() { asked.push('stop'); return { file: '/f/screen.mp4', seconds: 42 } },
@@ -1096,6 +1097,108 @@ describe("the owner's screen", () => {
       }
       assert.deepEqual(asked, [], JSON.stringify(t))
     }
+  })
+  test('Kage acts on the Mac with no card for everyday steps, such as a click in a file picker (#478)', async () => {
+    const asked: string[] = [], cards: string[] = []
+    const s = setup({ screen: fakeScreen(asked), approve: async (_t, d) => { cards.push(d); return true } })
+    s.t.onTask(s.task())
+    const r = await s.call('screen_act', { channel: 'C1', thread_ts: '5.5', action: 'click', x: 300, y: 200 })
+    assert.equal(r.isError, undefined, r.text)
+    assert.deepEqual(asked, ['under 300,200', 'click 300,200'])
+    assert.deepEqual(cards, [])
+  })
+  test('a click that cannot be undone asks the owner once; a no clicks nothing', async () => {
+    for (const yes of [true, false]) {
+      const asked: string[] = [], cards: string[] = []
+      const s = setup({ screen: fakeScreen(asked, () => ({ app: 'Finder', role: 'AXMenuItem', label: 'Move to Trash' })), approve: async (_t, d) => { cards.push(d); return yes } })
+      s.t.onTask(s.task())
+      const r = await s.call('screen_act', { channel: 'C1', thread_ts: '5.5', action: 'click', x: 5, y: 6 })
+      assert.equal(cards.length, 1)
+      assert.match(cards[0]!, /Move to Trash/)
+      assert.deepEqual(asked, yes ? ['under 5,6', 'click 5,6'] : ['under 5,6'])
+      assert.equal(r.isError, yes ? undefined : true)
+    }
+  })
+  test('shutting the Mac down is refused with no card', async () => {
+    const asked: string[] = [], cards: string[] = []
+    const s = setup({ screen: fakeScreen(asked, () => ({ app: 'Safari', role: 'AXMenuItem', label: 'Shut Down…' })), approve: async (_t, d) => { cards.push(d); return true } })
+    s.t.onTask(s.task())
+    const r = await s.call('screen_act', { channel: 'C1', thread_ts: '5.5', action: 'click', x: 5, y: 6 })
+    assert.equal(r.isError, true)
+    assert.match(r.text, /refused/)
+    assert.deepEqual(cards, [])
+    assert.deepEqual(asked, ['under 5,6'])
+  })
+  test('in a terminal, a typed command runs on Return, a wrecking one is refused, and a recalled line asks', async () => {
+    const asked: string[] = [], cards: string[] = []
+    const s = setup({ screen: fakeScreen(asked, () => ({ app: 'Terminal', role: 'AXTextArea', label: '' })), approve: async (_t, d) => { cards.push(d); return false } })
+    s.t.onTask(s.task())
+    const act = (a: Record<string, unknown>) => s.call('screen_act', { channel: 'C1', thread_ts: '5.5', ...a })
+    await act({ action: 'key', keys: 'ctrl+c' })
+    await act({ action: 'type', text: 'ls -la' })
+    assert.equal((await act({ action: 'key', keys: 'return' })).isError, undefined)
+    await act({ action: 'type', text: 'rm -rf ~' })
+    const wreck = await act({ action: 'key', keys: 'return' })
+    assert.equal(wreck.isError, true)
+    assert.match(wreck.text, /refused/)
+    await act({ action: 'key', keys: 'up' })
+    const recalled = await act({ action: 'key', keys: 'return' })
+    assert.equal(recalled.isError, true)
+    assert.match(cards.at(-1) ?? '', /did not type/)
+    assert.deepEqual(asked.filter(a => a.startsWith('key')), ['key ctrl+c', 'key return', 'key up'])
+  })
+  test('a terminal Kage has not typed in starts unknown; ctrl+c gives a clean line; a click or an editing key makes it unknown again (#478 review)', async () => {
+    const asked: string[] = [], cards: string[] = []
+    const s = setup({ screen: fakeScreen(asked, () => ({ app: 'Ghostty', role: 'AXTextArea', label: '' })), approve: async (_t, d) => { cards.push(d); return false } })
+    s.t.onTask(s.task())
+    const act = (a: Record<string, unknown>) => s.call('screen_act', { channel: 'C1', thread_ts: '5.5', ...a })
+    assert.equal((await act({ action: 'key', keys: 'return' })).isError, true)
+    assert.match(cards.at(-1) ?? '', /did not type/)
+    await act({ action: 'key', keys: 'ctrl+c' })
+    await act({ action: 'type', text: 'ls' })
+    assert.equal((await act({ action: 'key', keys: 'return' })).isError, undefined)
+    await act({ action: 'type', text: 'xrm -rf ~' })
+    await act({ action: 'key', keys: 'home' })
+    await act({ action: 'key', keys: 'forwarddelete' })
+    assert.equal((await act({ action: 'key', keys: 'return' })).isError, true)
+    await act({ action: 'key', keys: 'ctrl+u' })
+    await act({ action: 'click', x: 3, y: 3 })
+    await act({ action: 'type', text: 'ls' })
+    assert.equal((await act({ action: 'key', keys: 'return' })).isError, true)
+    assert.equal(cards.length, 3)
+  })
+  test('only ctrl+c gives a known line: ctrl+u can leave text after the cursor, and a drag can drop text in (#478 re-review)', async () => {
+    const cards: string[] = []
+    const s = setup({ screen: fakeScreen([], () => ({ app: 'Terminal', role: 'AXTextArea', label: '' })), approve: async (_t, d) => { cards.push(d); return false } })
+    s.t.onTask(s.task())
+    const act = (a: Record<string, unknown>) => s.call('screen_act', { channel: 'C1', thread_ts: '5.5', ...a })
+    await act({ action: 'key', keys: 'ctrl+c' })
+    await act({ action: 'type', text: '; sudo shutdown -h now' })
+    await act({ action: 'key', keys: 'home' })
+    await act({ action: 'key', keys: 'ctrl+u' })
+    await act({ action: 'type', text: 'ls' })
+    assert.equal((await act({ action: 'key', keys: 'return' })).isError, true)
+    await act({ action: 'key', keys: 'ctrl+c' })
+    await act({ action: 'type', text: 'ls ' })
+    await act({ action: 'drag', x: 1, y: 1, to_x: 9, to_y: 9 })
+    assert.equal((await act({ action: 'key', keys: 'return' })).isError, true)
+    assert.equal(cards.length, 2)
+  })
+  test("a teammate's task, a voice call and an agent's task never act on the Mac", async () => {
+    for (const t of [{ channel: 'C1', fromOwner: false }, { channel: 'voice', fromOwner: true }]) {
+      const asked: string[] = []
+      const s = setup({ screen: fakeScreen(asked), approve: async () => true })
+      s.t.onTask(s.task({ fromOwner: t.fromOwner, channel: t.channel }))
+      assert.equal((await s.call('screen_act', { channel: t.channel, thread_ts: '5.5', action: 'click', x: 1, y: 1 })).isError, true)
+      assert.deepEqual(asked, [])
+    }
+  })
+  test('a bad act is refused before it reaches the Mac', async () => {
+    const asked: string[] = []
+    const s = setup({ screen: fakeScreen(asked), approve: async () => true })
+    s.t.onTask(s.task())
+    assert.equal((await s.call('screen_act', { channel: 'C1', thread_ts: '5.5', action: 'key', keys: 'cmd+banana' })).isError, true)
+    assert.deepEqual(asked, [])
   })
   test("a kagelet and a kagelet's dream get no screen tools, and with no recorder no session does", () => {
     assert.equal(setup({ kagelet: 'calls', screen: fakeScreen() }).t.tools.some(x => x.name.startsWith('screen_')), false)

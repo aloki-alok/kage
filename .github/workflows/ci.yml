@@ -19,3 +19,9 @@ jobs:
       - run: npm ci
       - run: npm run typecheck
       - run: npm test
+  kage-screen:
+    runs-on: macos-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+      - run: swiftc -typecheck screen/KageScreen.swift
