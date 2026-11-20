@@ -28,6 +28,7 @@ export async function buildApp(code: string, app: string): Promise<string | unde
     await makeIcon(icon, `${app}/Contents/Resources/AppIcon.icns`, `${dirname(app)}/AppIcon.iconset`)
     await run('codesign', ['-s', '-', '--force', app], { timeout: 60_000 })
     await run('tccutil', ['reset', 'ScreenCapture', 'dev.kage.screen'], { timeout: 30_000 }).catch(() => {})
+    await run('tccutil', ['reset', 'Accessibility', 'dev.kage.screen'], { timeout: 30_000 }).catch(() => {})
     writeFileSync(stamp, hash, { mode: 0o600 })
     return undefined
   } catch (e) {
