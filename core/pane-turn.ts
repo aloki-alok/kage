@@ -9,6 +9,10 @@ const paneSender = (t: Task) => senderOf({ ...t, fromOwner: t.fromOwner === true
 const lowestIn = (tasks: PaneTurn['tasks'], floor: Sender): Sender => lowest([...tasks.map(x => paneSender(x.task)), floor])
 export const turnSender = (turn: PaneTurn) => lowestIn(turn.tasks, turn.floor)
 
+export const turnStarted = (rowsSinceStop: string) => rowsSinceStop.split('\n').some(l => {
+  try { return ['user', 'assistant'].includes((JSON.parse(l) as { type?: string }).type ?? '') } catch { return false }
+})
+
 export function arrive(turn: PaneTurn, task: Task, at: number, working: boolean): { turn: PaneTurn; shown: Task } {
   const goesOn = turn.open || working
   const next = { ...turn, open: true, tasks: [...goesOn ? turn.tasks : [], { task, at }], floor: goesOn ? turn.floor : 'owner' as const }
