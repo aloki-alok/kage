@@ -1,7 +1,7 @@
 import { existsSync } from 'node:fs'
 import { askHub, DIR } from './home.ts'
 import { pickThread } from './pick-thread.ts'
-import { hasKagelet, kageletsDir, pauseKagelet } from '../runtime/kagelet-files.ts'
+import { hasKagelet, kageletsDir, pauseKagelet } from '../runtime/kagelets/files.ts'
 import { errVoice } from './voice.ts'
 
 if (process.env.KAGE_CLAUDE) { console.error('This shell runs inside Kage: a session cannot stop a thread. The owner runs kage stop in their own terminal, or writes "@kage stop" in the thread.'); process.exit(1) }

@@ -1,7 +1,7 @@
 import { ago, whenLabel, type Row } from '../core/board.ts'
 import type { Schedule } from '../core/cron.ts'
-import type { KageletRow } from '../core/kagelets.ts'
-import { runLine, shownState, type Run } from '../core/kagelet-view.ts'
+import type { KageletRow } from '../core/kagelets/kagelet.ts'
+import { runLine, shownState, type Run } from '../core/kagelets/view.ts'
 import { activityBins, bars, listRows, MARK, perHour, screen, spinner, type Rect, type Screen } from '../core/top-layout.ts'
 import { clean, clear, clip, fill, H, paint, put, W } from './top-screen.ts'
 

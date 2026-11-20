@@ -1,7 +1,7 @@
 import { describe, test } from 'node:test'
 import assert from 'node:assert/strict'
-import { dreamInput, dreamsDue, kageletDreamTask, memoryBlock, memoryPath, proposalFrom } from '../kagelet-memory.ts'
-import type { KageEvent } from '../events.ts'
+import { dreamInput, dreamsDue, kageletDreamTask, memoryBlock, memoryPath, proposalFrom } from '../memory.ts'
+import type { KageEvent } from '../../events.ts'
 
 const DIR = '/h/kagelets'
 const forbid = ['/h/mem/kage', '/h/mem/owner']

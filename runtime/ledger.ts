@@ -3,7 +3,7 @@ import { DatabaseSync } from 'node:sqlite'
 import { log } from './log.ts'
 import { lastTotals, trailEvent, trailLine, tsvRow, turnCost } from '../core/ledgers.ts'
 import { eventRow, whoOf, type EventKind, type KageEvent } from '../core/events.ts'
-import { COST_FLAG } from '../core/kagelets.ts'
+import { COST_FLAG } from '../core/kagelets/kagelet.ts'
 
 export type LedgerName = 'waiting' | 'posted' | 'prod-actions' | 'costs' | 'runs' | 'commands' | 'reports' | 'db-reads' | 'grants' | 'verdicts' | 'boots'
 const NAMES: LedgerName[] = ['waiting', 'posted', 'prod-actions', 'costs', 'runs', 'commands', 'reports', 'db-reads', 'grants', 'verdicts']

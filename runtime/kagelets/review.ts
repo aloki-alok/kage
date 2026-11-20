@@ -1,6 +1,6 @@
-import { heldCommand } from '../core/held.ts'
-import { reviewable, reviewAsk, reviewRuns } from '../core/held-review.ts'
-import { shellGrant } from '../core/kagelets.ts'
+import { heldCommand } from '../../core/held.ts'
+import { reviewable, reviewAsk, reviewRuns } from '../../core/held-review.ts'
+import { shellGrant } from '../../core/kagelets/kagelet.ts'
 
 type Lane = { name: string; tools: string[]; job: string; objective?: { objective: string } }
 

@@ -1,6 +1,6 @@
-import { capCheck, type Caps, type KageletRow } from '../core/kagelets.ts'
-import type { Store } from './store.ts'
-import { pauseKagelet } from './kagelet-files.ts'
+import { capCheck, type Caps, type KageletRow } from '../../core/kagelets/kagelet.ts'
+import type { Store } from '../store.ts'
+import { pauseKagelet } from './files.ts'
 
 const SENT = 'kagelet-cap-sent'
 export function costCap(o: { dir: string; store: Pick<Store, 'load' | 'save'>; title: string; flag: (name: string, why: string) => void; tell: (text: string) => void }, rows: KageletRow[], caps: Caps, now: number): string[] {

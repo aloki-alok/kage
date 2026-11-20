@@ -1,7 +1,7 @@
 import { describe, test } from 'node:test'
 import assert from 'node:assert/strict'
-import { kageletRows, type KageletRow } from '../kagelets.ts'
-import { modelLine, actionLine, CAP_PAUSE, chainCap, dailyCap, totalCap, kageletRuns, PANEL_KEYS, runLine, shownState, kageletLine } from '../kagelet-view.ts'
+import { kageletRows, type KageletRow } from '../kagelet.ts'
+import { modelLine, actionLine, CAP_PAUSE, chainCap, dailyCap, totalCap, kageletRuns, PANEL_KEYS, runLine, shownState, kageletLine } from '../view.ts'
 
 const LINK = 'https://test.slack.com/archives/CTEST1/p1700000000123456'
 const KEY = 'CTEST1:1700000000.123456#side-kagelet-deploys'

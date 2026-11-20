@@ -7,8 +7,8 @@ import { join } from 'node:path'
 import { query } from '@anthropic-ai/claude-agent-sdk'
 import { instructions } from '../../core/instructions.ts'
 import { openStore } from '../store.ts'
-import { ownerNotes } from '../kagelet-notes.ts'
-import { kageletPrompt } from '../kagelet-sync.ts'
+import { ownerNotes } from '../kagelets/notes.ts'
+import { kageletPrompt } from '../kagelets/sync.ts'
 
 const which = (c: string) => { try { return execFileSync('which', [c], { encoding: 'utf8' }).trim() } catch { return '' } }
 const claude = which('claude')

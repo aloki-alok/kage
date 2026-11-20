@@ -1,7 +1,7 @@
 import { describe, test } from 'node:test'
 import assert from 'node:assert/strict'
-import { askable } from '../kagelet-people.ts'
-import { builtinTools, budgetLeft, capCheck, chainErrors, costFlags, grantRefusal, parseKagelet, resultLine, revokeStanding, rowLine, setPaused, addAllow, kageletFile, kageletRows, starterFile, type Kagelet, type KageletRow } from '../kagelets.ts'
+import { askable } from '../people.ts'
+import { builtinTools, budgetLeft, capCheck, chainErrors, costFlags, grantRefusal, parseKagelet, resultLine, revokeStanding, rowLine, setPaused, addAllow, kageletFile, kageletRows, starterFile, type Kagelet, type KageletRow } from '../kagelet.ts'
 
 const file = (head: string, body = 'Post a summary of the deploy log.') => `---\n${head}\n---\n${body}\n`
 const LINK = 'https://test.slack.com/archives/CTEST1/p1700000000123456'

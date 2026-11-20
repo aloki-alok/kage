@@ -1,6 +1,6 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { kageletReview } from '../kagelet-review.ts'
+import { kageletReview } from '../review.ts'
 
 const KEY = 'C1:5.5#side-kagelet-ops'
 const ops = { name: 'ops', key: KEY, tools: ['all'], job: 'Rebuild the docs.' }

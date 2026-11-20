@@ -1,5 +1,5 @@
-import { clockTime, whenLabel } from './board.ts'
-import type { KageletRow, Report } from './kagelets.ts'
+import { clockTime, whenLabel } from '../board.ts'
+import type { KageletRow, Report } from './kagelet.ts'
 
 type Caps = { dailyUsd?: number | null; totalDailyUsd?: number | null; chainUsd?: number | null }
 const dollars = (v: number | null | undefined) => (typeof v === 'number' && Number.isFinite(v) && v >= 0 ? v : undefined)

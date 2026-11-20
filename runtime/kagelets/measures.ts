@@ -1,8 +1,8 @@
-import { meets, readValue, scoreboard, type Objective, type Reading } from '../core/objective.ts'
-import { pinsChanged, type Probe } from '../core/tripwire.ts'
-import { buildProbe, tripwireCfg, type TripwireSettings } from './probe-jobs.ts'
-import { pin, runProbe } from './probes.ts'
-import type { Store } from './store.ts'
+import { meets, readValue, scoreboard, type Objective, type Reading } from '../../core/objective.ts'
+import { pinsChanged, type Probe } from '../../core/tripwire.ts'
+import { buildProbe, tripwireCfg, type TripwireSettings } from '../probe-jobs.ts'
+import { pin, runProbe } from '../probes.ts'
+import type { Store } from '../store.ts'
 
 const READINGS = 'kagelet-readings'
 const APPROVED = 'kagelet-measures'

@@ -3,7 +3,7 @@ import { DatabaseSync } from 'node:sqlite'
 import { isJobLane, parseSessionKey, threadOfJobLane, type Conversation } from '../core/conversations.ts'
 import type { Schedule } from '../core/cron.ts'
 import type { JobState, Trigger } from '../core/tripwire.ts'
-import type { KageletMessage, MessageState } from '../core/kagelet-message.ts'
+import type { KageletMessage, MessageState } from '../core/kagelets/message.ts'
 
 const SCHEMA = `
 create table if not exists conversations (
@@ -39,7 +39,7 @@ create table if not exists state (
   name text primary key,
   value text not null
 );
--- Every message one kagelet sends another (#93, core/kagelet-message.ts), written before it is delivered, so a
+-- Every message one kagelet sends another (#93, core/kagelets/message.ts), written before it is delivered, so a
 -- crash replays it. The text goes once it is read or failed, like the inbox's payload.
 create table if not exists messages (
   message_id text primary key,   -- the dedupe key: the same id is never stored twice

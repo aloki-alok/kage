@@ -1,6 +1,6 @@
 import { costRows, openWaiting } from './ledgers.ts'
 import type { KageEvent } from './events.ts'
-import type { KageletRow } from './kagelets.ts'
+import type { KageletRow } from './kagelets/kagelet.ts'
 
 type AwayFacts = {
   hours: number; replies: number; threads: number; usd: number; kageletRuns: number; lessons: number

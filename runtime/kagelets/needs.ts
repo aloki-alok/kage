@@ -1,9 +1,9 @@
 import { randomUUID } from 'node:crypto'
-import type { Delivery } from '../core/sessions.ts'
-import type { Task } from '../core/task.ts'
-import { quotedLine } from '../core/text.ts'
-import type { Store } from './store.ts'
-import { taskAsOther } from '../core/gate.ts'
+import type { Delivery } from '../../core/sessions.ts'
+import type { Task } from '../../core/task.ts'
+import { quotedLine } from '../../core/text.ts'
+import type { Store } from '../store.ts'
+import { taskAsOther } from '../../core/gate.ts'
 
 const KEY = 'kagelet-needs'
 const DAY = 86_400_000

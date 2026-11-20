@@ -6,8 +6,8 @@ import { tmpdir } from 'node:os'
 import { createServer } from 'node:net'
 import { join } from 'node:path'
 import { query } from '@anthropic-ai/claude-agent-sdk'
-import { grantRefusal } from '../../core/kagelets.ts'
-import { protectConfig, toolRefusal } from '../path-guards.ts'
+import { grantRefusal } from '../../../core/kagelets/kagelet.ts'
+import { protectConfig, toolRefusal } from '../../path-guards.ts'
 
 const which = (c: string) => { try { return execFileSync('which', [c], { encoding: 'utf8' }).trim() } catch { return '' } }
 const claude = which('claude')

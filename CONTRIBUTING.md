@@ -29,10 +29,10 @@ Four tests call a real model, so `npm test` skips them. `sandbox.test.ts` starts
 KAGE_LIVE_TESTS=1 node --test runtime/tests/sandbox.test.ts runtime/tests/sandbox-off.test.ts runtime/tests/sandbox-teammates.test.ts
 ```
 
-The fourth, `kagelet-all-live.test.ts`, runs a session set up as a `tools: all` kagelet: everyday git and web work runs, a forced push and a sending web request are held, and the tokens, the settings, its `job.md` and Kage's code stay closed. Run it after any change to `core/held.ts` or the kagelet grant check:
+The fourth, `runtime/kagelets/tests/all-live.test.ts`, runs a session set up as a `tools: all` kagelet: everyday git and web work runs, a forced push and a sending web request are held, and the tokens, the settings, its `job.md` and Kage's code stay closed. Run it after any change to `core/held.ts` or the kagelet grant check:
 
 ```sh
-KAGE_LIVE_TESTS=1 node --test runtime/tests/kagelet-all-live.test.ts
+KAGE_LIVE_TESTS=1 node --test runtime/kagelets/tests/all-live.test.ts
 ```
 
 `tests/upgrade-drill.sh` installs the previous release from a local copy of this repo, keeps an old env file, runs `kage update --stable` to your commit, starts the hub once (it stops at Slack, which refuses its fake tokens), and checks the settings and `kage doctor`. CI runs it on every pull request (`.github/workflows/upgrade.yml`), and `kage release` refuses a commit where it failed. Run it after a change to `install.sh`, `setup.sh`, the settings import or the packages. It upgrades to HEAD, so commit first:
@@ -110,10 +110,10 @@ Write logs to stderr only. In a tmux pane, stdout carries the channel protocol, 
 | `guards.ts` | Hook rules that need only the tool name and the sender: private sources, voice calls, agents' tasks (read and answer only), Slack posts only through Kage's tools. Where the two memory folders are. |
 | `ledgers.ts` | Reading the ledgers: questions waiting on the owner, what Kage posted, what turns cost, the daily note. |
 | `events.ts` | The event log's row (what happened, never what was said), its 30 days, and a chain read back as `a > b > c` and where it stopped. |
-| `kagelet-people.ts` | Who may ask a kagelet for work: its people and owners lines (one line of Slack ids each, at most 3 owners) and the check of an ask in its thread. |
-| `kagelets.ts` | A kagelet file (thread, schedule or `after:`, grant, job), the grant check, the chain check (no cycle, no missing kagelet, at most 5 deep), standing approvals per write tool and their revoke, the cost caps (off unless set) and the cost flags. |
-| `kagelet-message.ts` | The message one kagelet sends another (an `after:` handoff or `message_kagelet`): its fields, named after A2A's Message, its delivery states, and the check where it enters the hub. |
-| `kagelet-view.ts` | What a terminal shows of kagelets: the `kage top` panel, its keys, and `kage logs <kagelet>`. |
+| `kagelets/people.ts` | Who may ask a kagelet for work: its people and owners lines (one line of Slack ids each, at most 3 owners) and the check of an ask in its thread. |
+| `kagelets/kagelet.ts` | A kagelet file (thread, schedule or `after:`, grant, job), the grant check, the chain check (no cycle, no missing kagelet, at most 5 deep), standing approvals per write tool and their revoke, the cost caps (off unless set) and the cost flags. |
+| `kagelets/message.ts` | The message one kagelet sends another (an `after:` handoff or `message_kagelet`): its fields, named after A2A's Message, its delivery states, and the check where it enters the hub. |
+| `kagelets/view.ts` | What a terminal shows of kagelets: the `kage top` panel, its keys, and `kage logs <kagelet>`. |
 | `held.ts` | The hub's check on a kagelet's shell (`tools: all`, ADR 0018): which commands are one-way steps (a deploy, a forced push, a DB write, a delete, a send), held for Kage. It stands behind the OS sandbox, never in place of it. |
 | `held-review.ts` | The cheap reviewer of a held step: the low-stakes kinds it may let run (local deletes and its own branches), what it reads as data, and its RUN or HOLD verdict, which fails closed. |
 | `held-rules.ts` | The owner's `allow:` lines in a kagelet's `job.md`: which held step each releases, word by word with no model, and the kinds no rule ever releases. |
@@ -154,7 +154,7 @@ Write logs to stderr only. In a tmux pane, stdout carries the channel protocol, 
 | `dream.ts` | The nightly dream job: what it reads for lessons, how it tidies Kage's memory, and which lessons may leave this machine. |
 | `signature.ts` | A webhook body signed with a shared secret (`X-Hub-Signature-256`), as GitHub and Meta sign. |
 | `github.ts` | Which GitHub events are the owner's business (a review or failed checks on their PR, an issue or review request given to them, a mention). |
-| `kagelet-memory.ts` | A kagelet's own memory folder (#98): what its prompt reads, and the one path into the folder. |
+| `kagelets/memory.ts` | A kagelet's own memory folder (#98): what its prompt reads, and the one path into the folder. |
 | `log-repeats.ts` | One log line for a burst of the same line, with its count. |
 | `meeting.ts` | A finished meeting's transcript as one task: notes, decisions, owners, open questions, and proposed actions that wait for the owner's yes. |
 | `quiet.ts` | `kage stop` and `kage restart`: drain the hub, then wait for every thread to end its turn, naming each one. |
@@ -198,22 +198,22 @@ Write logs to stderr only. In a tmux pane, stdout carries the channel protocol, 
 | `hub-log.ts` | The hub log's rotation and the package check, shared by `hub.ts` and the hub. |
 | `path-guards.ts` | Hook rules that follow real paths on disk: the config folder that holds the tokens (secrets.json and env files closed to every session, the owner's too; the rest owner-only, a thread's files folder excepted), the sandbox and file rules each session starts with, and the owner's memory taking only people notes. |
 | `log.ts` | Kage's log line (stderr only) and the logger the Slack clients get. |
-| `kagelet-files.ts` | The kagelets folder on disk: one folder per kagelet (`<name>/job.md`, ADR 0018), the paused line, and the one-time move from the old `<name>.md` layout. |
-| `kagelet-sync.ts` | The folder synced into schedules and grants each minute (#57), and the prompt each run reads first. |
-| `kagelet-manager.ts` | The manager's tool (save, pause, resume, run, remove, revoke) and which tools each kagelet is granted: read with no card, a write tool on the owner's first yes, which then stands for that tool, act never. |
-| `kagelet-cost-cap.ts` | The cost caps on the hub's job loop: a kagelet over a cap is paused and flagged, and the owner is told once a day. |
-| `kagelet-notes.ts` | The owner's words typed in a kagelet's thread, and Kage's answers (`tell_kagelet`), carried to its next run. |
-| `kagelet-needs.ts` | A kagelet's needs to Kage in its thread (ADR 0018): kept in the store until Kage's session there is free, a repeat folded, and past `kagelets.needsPerDay` or a day unhandled, the owner's waiting list. |
-| `kagelet-measures.ts` | Each kagelet's measure on the hub's clock, with no model: pinned like a probe, run only on the owner's yes when Kage wrote it, and the last readings kept for the scoreboard. The value never goes to the event log. |
-| `kagelet-review.ts` | The reviewer on the hub at `kagelets.release` review: one isolated model call per low-stakes held step of a `tools: all` kagelet, at most `kagelets.reviewsPerDay` releases a day each, and one `held` event row per verdict. |
-| `kagelet-routes.ts` | The one route a kagelet's output or message takes to another kagelet (#93), with the loop guard and the chain cap. |
+| `kagelets/files.ts` | The kagelets folder on disk: one folder per kagelet (`<name>/job.md`, ADR 0018), the paused line, and the one-time move from the old `<name>.md` layout. |
+| `kagelets/sync.ts` | The folder synced into schedules and grants each minute (#57), and the prompt each run reads first. |
+| `kagelets/manager.ts` | The manager's tool (save, pause, resume, run, remove, revoke) and which tools each kagelet is granted: read with no card, a write tool on the owner's first yes, which then stands for that tool, act never. |
+| `kagelets/cost-cap.ts` | The cost caps on the hub's job loop: a kagelet over a cap is paused and flagged, and the owner is told once a day. |
+| `kagelets/notes.ts` | The owner's words typed in a kagelet's thread, and Kage's answers (`tell_kagelet`), carried to its next run. |
+| `kagelets/needs.ts` | A kagelet's needs to Kage in its thread (ADR 0018): kept in the store until Kage's session there is free, a repeat folded, and past `kagelets.needsPerDay` or a day unhandled, the owner's waiting list. |
+| `kagelets/measures.ts` | Each kagelet's measure on the hub's clock, with no model: pinned like a probe, run only on the owner's yes when Kage wrote it, and the last readings kept for the scoreboard. The value never goes to the event log. |
+| `kagelets/review.ts` | The reviewer on the hub at `kagelets.release` review: one isolated model call per low-stakes held step of a `tools: all` kagelet, at most `kagelets.reviewsPerDay` releases a day each, and one `held` event row per verdict. |
+| `kagelets/routes.ts` | The one route a kagelet's output or message takes to another kagelet (#93), with the loop guard and the chain cap. |
 | `config-files.ts` | config.json and secrets.json on disk (the schema and the env import table are `core/config.ts`): reading, changing, the first-start import of the old env file, and deleting that file after 7 days. |
 | `code-stamp.ts` | When the code changed, so the hub knows to restart into it. |
 | `auto-update.ts` | The version line, and the git calls that pull origin's `stable` tag (the decision is `core/auto-update.ts`). |
 | `config-watch.ts` | Watching config.json and secrets.json: a `people` change applies now, any other key restarts the hub once it is quiet, and a wrong file is refused and DMed. |
 | `hold-keys.ts` | Taking `sessionKeys` out of the environment before the router loads, so no session copies one (#182). |
 | `jobs.ts` | The hub's timed work on one clock: each job on its own period, retried next period when it fails. |
-| `kagelet-memory.ts` | A kagelet's memory folder on disk and the proposals waiting on Kage's review. |
+| `kagelets/memory.ts` | A kagelet's memory folder on disk and the proposals waiting on Kage's review. |
 | `key-proxy.ts` | The key proxy (#182): a unix socket that adds a held key to requests for its one host, so the session never sees it. |
 | `memory-snapshot.ts` | A copy of Kage's memory before a dream, so `kage dream undo` restores it. |
 | `repo-access.ts` | Whether this install may push to the Kage repo, which marks the repo owner's hub. |

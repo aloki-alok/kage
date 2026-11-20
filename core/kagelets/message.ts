@@ -1,5 +1,5 @@
-import { NAME } from './kagelets.ts'
-import { noChannelTag } from './text.ts'
+import { NAME } from './kagelet.ts'
+import { noChannelTag } from '../text.ts'
 
 type Part = { kind: 'text'; text: string }
 export type KageletMessage = { messageId: string; contextId: string; taskId: string; from: string; to: string; role: 'agent'; parts: Part[]; hops: number }

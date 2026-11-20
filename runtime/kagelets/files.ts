@@ -1,5 +1,5 @@
 import { lstatSync, mkdirSync, readdirSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs'
-import { NAME, setPaused } from '../core/kagelets.ts'
+import { NAME, setPaused } from '../../core/kagelets/kagelet.ts'
 
 export const kageletsDir = (dir: string) => `${dir}/kagelets`
 export const jobPath = (dir: string, name: string) => `${dir}/${name}/job.md`

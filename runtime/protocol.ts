@@ -1,4 +1,4 @@
-import type { PanelAction } from '../core/kagelet-view.ts'
+import type { PanelAction } from '../core/kagelets/view.ts'
 import type { Task } from '../core/task.ts'
 import type { ProbeArg } from './probe-jobs.ts'
 

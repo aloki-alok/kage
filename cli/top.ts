@@ -12,10 +12,10 @@ import { newLines } from '../runtime/transcript-tail.ts'
 import { BG, resize, toText, W } from './top-screen.ts'
 import { drawFrame, TABS, type Hits, type Step, type Tab, type View } from './top-draw.ts'
 import { schedulesIn } from '../runtime/store.ts'
-import { actionLine, dailyCap, kageletRuns, PANEL_KEYS, type PanelAction } from '../core/kagelet-view.ts'
-import { kageletRows, type KageletRow } from '../core/kagelets.ts'
+import { actionLine, dailyCap, kageletRuns, PANEL_KEYS, type PanelAction } from '../core/kagelets/view.ts'
+import { kageletRows, type KageletRow } from '../core/kagelets/kagelet.ts'
 import { kageletTier } from '../core/access.ts'
-import { kageletsDir, readKagelets } from '../runtime/kagelet-files.ts'
+import { kageletsDir, readKagelets } from '../runtime/kagelets/files.ts'
 import { ledgerText } from '../runtime/ledger.ts'
 
 const HOME = process.env.HOME!
