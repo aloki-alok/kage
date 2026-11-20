@@ -39,6 +39,16 @@ export const leftoversLine = (n: number) => n === 1
   ? '1 leftover process or container slows this machine: kage doctor lists it'
   : `${n} leftover processes or containers slow this machine: kage doctor lists them`
 
+export function cwdsFromLsof(out: string): Map<number, string> {
+  const cwds = new Map<number, string>()
+  let pid = 0
+  for (const l of out.split('\n')) {
+    if (l.startsWith('p')) pid = Number(l.slice(1))
+    else if (l.startsWith('n') && pid) cwds.set(pid, l.slice(1))
+  }
+  return cwds
+}
+
 export function elapsedSeconds(s: string): number {
   const t = s.trim()
   if (/^\d+$/.test(t)) return Number(t)
