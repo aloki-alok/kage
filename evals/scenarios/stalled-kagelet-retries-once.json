@@ -1,0 +1,19 @@
+{
+  "name": "a kagelet run that goes quiet is cut, retried once with the reason, and a second failure is one DM (#487)",
+  "why": "A stuck run used to sit as a silent failed row until the owner looked hours later.",
+  "steps": [
+    { "at": "2026-11-14T08:59:00Z" },
+    { "kagelet": "digest", "schedule": "0 9 * * *" },
+    { "at": "2026-11-14T09:00:05Z" }, { "tick": true },
+    { "at": "2026-11-14T09:21:00Z" }, { "stalls": true },
+    { "end": "digest", "report": false }
+  ],
+  "expect": {
+    "tasks": [
+      { "key": "CTEST1:1700000000.123456#side-kagelet-digest", "match": "^Scheduled run of job kagelet-digest" },
+      { "key": "CTEST1:1700000000.123456#side-kagelet-digest", "match": "^Retry: the last run went quiet for 20 min\\. Do the job again, and end with a report\\.\\nRun now of job kagelet-digest" }
+    ],
+    "cuts": ["CTEST1:1700000000.123456#side-kagelet-digest"],
+    "dms": ["^Kagelet \\*digest\\* failed twice in a row, once on a retry: ended without a report\\."]
+  }
+}
