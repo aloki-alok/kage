@@ -6,6 +6,7 @@ import type { SlackMessage } from '../../core/slack-message.ts'
 import { findSecret, guardVerdict, safeReply } from '../../core/outbound.ts'
 import type { Saved } from '../../runtime/store.ts'
 import type { JevAfk } from '../jev.ts'
+import { ownerLines } from '../../core/messages.ts'
 
 type Ids = { owner: string; bot: string; botDm: string; name: string; team?: string }
 const EMOJI = ':ninja:'
@@ -119,17 +120,17 @@ export function startAfk(o: {
     save()
     log('afk triage', key, out.urgency, act)
     if (act.call) void (o.call ? o.call(`${who} in ${place}: ${out.note}`).catch(e => String(e)) : Promise.resolve('no connectors.call.command'))
-      .then(no => o.notify(`:rotating_light: P0 from ${who} in ${where}: ${out.note}\n${no ? `Could not phone you (${no}).` : 'Calling you now.'}`))
+      .then(no => o.notify(ownerLines.afkP0(who, where, out.note, no)))
     if (!act.post || !out.reply) return
     const g = afkGuardPrompt(all, out.reply)
     const why = findSecret(out.reply) ? 'looks like a key or secret' : (v => v.send ? '' : v.reason)(guardVerdict(await claudeOnce({ model: o.model, system: g.system, prompt: g.prompt, cwd: ROOM, tools: '' })))
     const t = state
     if (!t || t.since !== s.since || t.muted.includes(key) || (t.replies[key] ?? 0) >= MAX_REPLIES) return
-    if (why) return void await o.notify(`Held a reply to ${who} in ${where} (${why}). Post it yourself if it is fine:\n${out.reply}`)
+    if (why) return void await o.notify(ownerLines.afkHeld(who, where, why, out.reply))
     t.replies[key] = (t.replies[key] ?? 0) + 1
     save()
     await post(channel, thread_ts, out.reply)
-    await o.notify(`${out.urgency === 'p0' || out.urgency === 'high' ? ':exclamation: ' : ''}Replied to ${who} in ${where}: ${out.note}\n> ${out.reply.replace(/\n/g, '\n> ')}`)
+    await o.notify(ownerLines.afkReplied(out.urgency, who, where, out.note, out.reply))
   }
 
   function heard(m: SlackMessage) {

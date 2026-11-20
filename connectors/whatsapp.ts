@@ -9,6 +9,7 @@ import type { Inbox } from '../runtime/store.ts'
 import { findSecret, guardVerdict } from '../core/outbound.ts'
 import type { Job } from '../runtime/jobs.ts'
 import { bridgeAlert, decideWhatsApp, fromWaha, guardPrompt, standInPrompt, waOutgoing, waTaskContent, withoutFooter, type Arming, type BridgeSeen, type WahaPayload, type WaLine, ownerNote, ownerAnswer } from '../core/whatsapp.ts'
+import { ownerLines } from '../core/messages.ts'
 
 export const wahaUrl = (set?: string | null) => set || 'http://127.0.0.1:3198'
 
@@ -76,7 +77,7 @@ export function startWhatsApp(o: { ownerAnswer?: (a: { code: string; behavior: '
     const verdict = findSecret(text) ? { send: false, reason: 'looks like a key or secret' } : guardVerdict(await claudeOnce({ model: MODEL, system, prompt, cwd: ROOM, tools: '' }))
     if (!verdict.send) {
       log('whatsapp message held in', logRef(chat))
-      o.notify(`Held a WhatsApp message to ${chat.split('@')[0]} (${verdict.reason}). Send it yourself if it is fine:\n${text}`)
+      o.notify(ownerLines.whatsappHeld(chat.split('@')[0]!, verdict.reason, text))
       return 'held'
     }
     await sendText(chat, waOutgoing(text, `${o.name[0]!.toUpperCase()}${o.name.slice(1)}`))

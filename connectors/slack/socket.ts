@@ -2,6 +2,7 @@ import { writeFileSync } from 'node:fs'
 import type { SocketModeClient } from '@slack/socket-mode'
 import { socketWatch } from '../../core/socket-watch.ts'
 import { log } from '../../runtime/log.ts'
+import { ownerLines } from '../../core/messages.ts'
 
 export function keepSocketUp(socket: SocketModeClient, o: { dir: string; name: string; gap: () => void; notifyOwner: (text: string) => void }) {
   const watch = socketWatch({ downMs: 3 * 60_000 })
@@ -20,6 +21,6 @@ export function keepSocketUp(socket: SocketModeClient, o: { dir: string; name: s
     log('slack socket down for 3 minutes: restarting it')
     restarting = true
     socket.disconnect().catch(() => {}).then(() => socket.start()).catch(e => log('slack socket restart failed', e)).finally(() => { restarting = false })
-    if (v === 'restart and tell') o.notifyOwner('Slack has not reconnected for 6 minutes, so I may miss tags. I keep retrying. If it lasts, run `kage logs` on the Mac.')
+    if (v === 'restart and tell') o.notifyOwner(ownerLines.slackDown())
   }, 30_000).unref()
 }

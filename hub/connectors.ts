@@ -17,6 +17,7 @@ import type { Task } from '../core/task.ts'
 import type { ToSession } from '../runtime/protocol.ts'
 import type { Inbox, Store } from '../runtime/store.ts'
 import { taskAsOwner } from '../core/gate.ts'
+import { ownerLines } from '../core/messages.ts'
 
 export function startConnectors(o: {
   secrets: Secrets; conn: NonNullable<Config['connectors']>; store: Store; slack: Awaited<ReturnType<typeof connectSlack>>; bot: WebClient
@@ -93,7 +94,7 @@ export function startConnectors(o: {
     wa: (key: string, text: string) => void whatsapp?.send(key, text).catch(e => log('whatsapp send failed in', logRef(key), e)),
     mail: (key: string, text: string) => void email?.send(key, text).catch(e => {
       log('mail reply failed', logRef(key), e)
-      void o.say(`Email reply failed for ${placeOf(key)}: ${e}`)
+      void o.say(ownerLines.emailReplyFailed(placeOf(key), e))
     }),
   }
   function replayOf(connector: string): ((source: string, payload: string) => Promise<unknown>) | undefined {

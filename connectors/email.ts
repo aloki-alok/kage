@@ -14,6 +14,7 @@ import { claudeOnce, emptyRoom } from '../runtime/claude-once.ts'
 import { DEFAULT_MODEL } from '../core/config.ts'
 import { composeReply, emailBody, emailTaskLine, emailVerdict, mailTask, replyTargets, type InboundMail, type MailConfig } from '../core/email.ts'
 import { taskAsOther } from '../core/gate.ts'
+import { ownerLines } from '../core/messages.ts'
 
 export type Mail = { on?: boolean; address?: string | null; queue?: string | null; ownerEmail?: string | null; region?: string | null; teammateEmails?: string[]; accessKeyId?: string | null; secretAccessKey?: string | null }
 export function connectEmail(o: {
@@ -140,7 +141,7 @@ function startMailbox(o: {
       (system, prompt) => claudeOnce({ model: DEFAULT_MODEL, system, prompt, cwd: room, tools: '' }))
     if (!verdict.send) {
       log('mail reply held for', logRef(key))
-      o.notify(`Held an email reply to ${[...to, ...cc].join(', ')} (${verdict.reason}). Send it yourself if it is fine:\n${body}`)
+      o.notify(ownerLines.emailHeld([...to, ...cc], verdict.reason, body))
       return
     }
     const raw = composeReply({

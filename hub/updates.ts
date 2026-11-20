@@ -5,6 +5,7 @@ import { markUpdatedFrom, pullMain, version } from '../runtime/auto-update.ts'
 import { releaseIfSoaked } from '../runtime/release.ts'
 import { npmCi, packagesStale } from '../runtime/hub-log.ts'
 import type { Ledgers } from '../runtime/ledger.ts'
+import { ownerLines } from '../core/messages.ts'
 
 export function hubUpdates(o: {
   code: string; dir: string; ledgers: Ledgers
@@ -31,7 +32,7 @@ export function hubUpdates(o: {
         try { npmCi(o.code) } catch {
           npmFailedFor = code
           log('npm ci failed for the newer code, so the hub stays on the code it runs. Run npm ci in', o.code)
-          void o.notify(`Kage pulled new code, but \`npm ci\` failed, so it stays on the code it runs. Run \`npm ci\` in ${o.code}, then \`kage restart\`.`)
+          void o.notify(ownerLines.updateNpmFailed(o.code))
           return
         }
       }
@@ -45,10 +46,10 @@ export function hubUpdates(o: {
     },
     async autoRelease(now: number) {
       const r = await releaseIfSoaked(o.code, o.dir, o.ledgers.text('boots'), now).catch(e => ({ skip: `failed: ${e}`, broke: true, candidate: undefined }))
-      if ('broke' in r) void o.notify(`Kage's release stopped part way: ${r.skip}.`)
+      if ('broke' in r) void o.notify(ownerLines.releaseStopped(r.skip))
       if ('skip' in r) { if (r.candidate || r.skip !== lastSkip) log(`auto-release did nothing: ${r.skip}`); lastSkip = r.skip; return }
       log(`auto-release made v${r.version}`)
-      void o.notify(`Released Kage v${r.version}. <${r.url}|Release notes>`)
+      void o.notify(ownerLines.released(r.version, r.url))
     },
   }
 }

@@ -3,6 +3,7 @@ import { basename } from 'node:path'
 import { checkSettings, diff, registryOf, type Config, type Secrets } from '../core/config.ts'
 import type { AllowLists, Reloaded } from '../core/settings.ts'
 import { files, readSettings } from './config-files.ts'
+import { ownerLines } from '../core/messages.ts'
 
 export type Settings = { config: Config; secrets: Secrets }
 export type ConfigEvent = 'config.live' | 'config.restart' | 'config.refused'
@@ -21,7 +22,7 @@ export function configWatcher(o: {
   const tellStray = (ids: string[]) => {
     if (ids.join() === strayTold) return
     strayTold = ids.join()
-    if (ids.length) o.tell(`people.trusted names ${ids.join(', ')}, who ${ids.length === 1 ? 'is' : 'are'} not in people.teammates, so Kage does not trust them. Run kage add <person> --trusted to trust a teammate, or remove the id from people.trusted.`)
+    if (ids.length) o.tell(ownerLines.trustedNotTeammates(ids))
   }
   const atBoot = checkSettings(o.boot.config, o.boot.secrets)
   if (!('error' in atBoot)) tellStray(atBoot.notTrusted)
@@ -62,7 +63,7 @@ export function configWatcher(o: {
   function refuse(reason: string, keys: string[]): Reloaded {
     o.log(`config check ${count} refused: ${reason}`)
     o.event('config.refused', keys)
-    if (reason !== told) { told = reason; o.tell(`Kage did not apply your last settings change and keeps the last good ones: ${reason}`) }
+    if (reason !== told) { told = reason; o.tell(ownerLines.settingsRejected(reason)) }
     return { refused: reason }
   }
 

@@ -2,6 +2,7 @@ import { clockTime } from '../core/board.ts'
 import type { Task } from '../core/task.ts'
 import type { Store } from './store.ts'
 import { logKey } from './log.ts'
+import { ownerLines } from '../core/messages.ts'
 
 export type Limit = { kind: 'rate_limit' | 'overloaded'; until?: number; window?: string }
 const RETRY = { rate_limit: 15 * 60_000, overloaded: 5 * 60_000 }
@@ -113,7 +114,7 @@ export function limitPause(o: {
           lost.push(r.source)
         }
       }
-      if (lost.length) o.tellOwner(`After the usage limit, ${lost.length} held message${lost.length === 1 ? '' : 's'} could not be resumed: ${lost.join(', ')}. Ask again in ${lost.length === 1 ? 'its thread' : 'their threads'}.`)
+      if (lost.length) o.tellOwner(ownerLines.limitLost(lost))
       for (const [job, { key, task }] of [...owed]) { owed.delete(job); counts.replays++; o.redeliver(key, task) }
     }
   }

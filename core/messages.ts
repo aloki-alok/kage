@@ -1,0 +1,28 @@
+const cut = (e: unknown) => String(e).slice(0, 120)
+
+export const ownerLines = {
+  emailHeld: (to: string[], reason: string, body: string) => `Held an email reply to ${to.join(', ')} (${reason}). Send it yourself if it is fine:\n${body}`,
+  emailReplyFailed: (place: string, e: unknown) => `Email reply failed for ${place}: ${e}`,
+  whatsappHeld: (to: string, reason: string, text: string) => `Held a WhatsApp message to ${to} (${reason}). Send it yourself if it is fine:\n${text}`,
+  githubOverCap: (perHour: number, latest: string) => `GitHub sent more than ${perHour} events this hour, so I am skipping them until the hour is up. Latest: ${latest}.`,
+  githubNoThread: (thread: string, url: string) => `A GitHub event for ${thread} could not open its thread here: ${url || 'no link'}`,
+  githubFailed: (e: unknown) => `A GitHub event failed here (${cut(e)}). It runs again if Kage restarts within 10 minutes; otherwise redeliver it from the webhook's page.`,
+  meetingOverCap: (perHour: number, title: string) => `More than ${perHour} meeting transcripts came in this hour, so I am skipping them. Send "${title}" again after the hour is up.`,
+  meetingNoThread: (title: string) => `Notes for the meeting "${title}" could not open a thread here. Send it again.`,
+  meetingFailed: (e: unknown) => `A meeting transcript failed here (${cut(e)}). Send it again.`,
+  afkP0: (who: string, where: string, note: string, callFailed: string | undefined) => `:rotating_light: P0 from ${who} in ${where}: ${note}\n${callFailed ? `Could not phone you (${callFailed}).` : 'Calling you now.'}`,
+  afkHeld: (who: string, where: string, why: string, reply: string) => `Held a reply to ${who} in ${where} (${why}). Post it yourself if it is fine:\n${reply}`,
+  afkReplied: (urgency: string, who: string, where: string, note: string, reply: string) => `${urgency === 'p0' || urgency === 'high' ? ':exclamation: ' : ''}Replied to ${who} in ${where}: ${note}\n> ${reply.replace(/\n/g, '\n> ')}`,
+  agentLoopStopped: (agent: string, place: string, loop: string) => `I stopped answering agent \`${agent}\` in ${place}: ${loop}. Its posts are dropped while it is over the limit. A thread over the limit opens again when a person writes in it.`,
+  slackDown: () => 'Slack has not reconnected for 6 minutes, so I may miss tags. I keep retrying. If it lasts, run `kage logs` on the Mac.',
+  eventJobsPaused: (n: number) => `${n} event job${n === 1 ? ' is' : 's are'} paused because tripwires are off. Run \`kage set tripwires.on true\` to turn ${n === 1 ? 'it' : 'them'} back on.`,
+  jobHookOff: (job: string) => `A webhook call for job ${job} could not run: job webhooks are off (tripwires.hookPort is 0, or tripwires.on is false). The call was dropped.`,
+  cronImportBad: () => 'Could not read the cron jobs exported from the panes (crons-import.json.bad). Watchers may need setting up again.',
+  settingsUnplaced: (unplaced: string) => `Kage moved its settings into config.json. It could not place these old lines, so they sit under "unknown": ${unplaced}. Tell me what each one is for, and I will help place it.`,
+  settingsRejected: (reason: string) => `Kage did not apply your last settings change and keeps the last good ones: ${reason}`,
+  trustedNotTeammates: (ids: string[]) => `people.trusted names ${ids.join(', ')}, who ${ids.length === 1 ? 'is' : 'are'} not in people.teammates, so Kage does not trust them. Run kage add <person> --trusted to trust a teammate, or remove the id from people.trusted.`,
+  updateNpmFailed: (code: string) => `Kage pulled new code, but \`npm ci\` failed, so it stays on the code it runs. Run \`npm ci\` in ${code}, then \`kage restart\`.`,
+  releaseStopped: (skip: string) => `Kage's release stopped part way: ${skip}.`,
+  released: (version: string | undefined, url: string | undefined) => `Released Kage v${version}. <${url}|Release notes>`,
+  limitLost: (lost: string[]) => `After the usage limit, ${lost.length} held message${lost.length === 1 ? '' : 's'} could not be resumed: ${lost.join(', ')}. Ask again in ${lost.length === 1 ? 'its thread' : 'their threads'}.`,
+}
