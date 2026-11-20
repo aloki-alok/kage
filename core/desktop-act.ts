@@ -85,6 +85,7 @@ export function desktopVerdict(a: DesktopAct, under: Under, typedLine: string | 
     }
     return targetVerdict(under, a.keys.endsWith('space') ? 'Space presses' : 'Enter confirms')
   }
+  if (a.action === 'type' && TERMINALS.has(under.app.toLowerCase()) && /[\r\n]/.test(a.text)) return { blocked: 'in a terminal, type one line at a time, then press return with key, so each command is checked' }
   if (a.action === 'click') return targetVerdict(under, 'it clicks')
   return { run: true }
 }
