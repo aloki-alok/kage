@@ -109,7 +109,7 @@ export function dueSchedules(all: Schedule[], now: number, catchUp = CATCH_UP): 
     const { newest: due, count: missed } = countMatches(c, minuteOf(now), Math.max(last, edge))
     if (due !== undefined) {
       fire.push(s)
-      if (missed > 1 || now - due > LATE) late[s.id] = { due, missed }
+      if (now - due > LATE) late[s.id] = { due, missed }
       continue
     }
     const old = countMatches(c, minuteOf(edge), last).count

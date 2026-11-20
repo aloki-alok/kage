@@ -620,7 +620,7 @@ describe('runs missed while the hub was off (#486)', () => {
     assert.equal(t.sent.length, 2)
     assert.match(t.sent[0]![1].content, /^Scheduled run/)
     const [first, second] = t.sent[1]![1].content.split('\n')
-    assert.equal(first, 'Late: due at 2026-11-03 09:00, missed 1 run while Kage was off.')
+    assert.equal(first, 'Late: due at 2026-11-03 09:00, missed 1 run.')
     assert.match(second!, /^Scheduled run of job j1/)
   })
   test('a run older than catchUpHours runs nothing, posts nothing, and is not counted again', () => {

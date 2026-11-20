@@ -56,7 +56,13 @@ describe('which schedules fire now', () => {
   test('a hub that was down for long fires a missed run once, not a backlog', () => {
     const late = dueSchedules([s({ lastFired: at('2026-11-03T10:00:00').getTime() })], at('2026-11-03T11:05:00').getTime())
     assert.deepEqual(late.fire.map(x => x.id), ['j1'])
-    assert.deepEqual(late.late.j1, { due: at('2026-11-03T11:00:00').getTime(), missed: 4 })
+    assert.deepEqual(late.late, {})
+    const longer = dueSchedules([s({ cron: '0 * * * *', lastFired: at('2026-11-03T10:00:00').getTime() })], at('2026-11-03T11:30:00').getTime())
+    assert.deepEqual(longer.late.j1, { due: at('2026-11-03T11:00:00').getTime(), missed: 1 })
+  })
+  test('runs skipped while a lane was busy for a few minutes are not called late', () => {
+    const r = dueSchedules([s({ cron: '*/5 * * * *', lastFired: at('2026-11-03T09:55:20').getTime() })], at('2026-11-03T10:05:20').getTime())
+    assert.deepEqual([r.fire.map(x => x.id), r.late], [['j1'], {}])
   })
   test('a run on time is not late', () => {
     const r = dueSchedules([s({ lastFired: at('2026-11-03T10:00:00').getTime() })], at('2026-11-03T10:15:40').getTime())
@@ -67,7 +73,7 @@ describe('which schedules fire now', () => {
     const r = dueSchedules([daily], at('2026-11-03T12:00:10').getTime())
     assert.deepEqual(r.fire.map(x => x.id), ['j1'])
     assert.deepEqual(r.late.j1, { due: at('2026-11-03T09:00:00').getTime(), missed: 1 })
-    const often = dueSchedules([s({ lastFired: at('2026-11-03T10:00:00').getTime() })], at('2026-11-03T13:05:00').getTime())
+    const often = dueSchedules([s({ lastFired: at('2026-11-03T10:00:00').getTime() })], at('2026-11-03T13:12:00').getTime())
     assert.deepEqual(often.late.j1, { due: at('2026-11-03T13:00:00').getTime(), missed: 12 })
   })
   test('a run older than the catch-up window fires nothing and is counted as skipped once (#486)', () => {

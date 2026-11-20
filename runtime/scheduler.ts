@@ -22,7 +22,7 @@ const QUIET_CAP_MS = 15_000
 const two = (n: number) => String(n).padStart(2, '0')
 const lateLine = (l: Late) => {
   const d = new Date(l.due)
-  return `Late: due at ${d.getFullYear()}-${two(d.getMonth() + 1)}-${two(d.getDate())} ${two(d.getHours())}:${two(d.getMinutes())}, missed ${l.missed} run${l.missed === 1 ? '' : 's'} while Kage was off.`
+  return `Late: due at ${d.getFullYear()}-${two(d.getMonth() + 1)}-${two(d.getDate())} ${two(d.getHours())}:${two(d.getMinutes())}, missed ${l.missed} run${l.missed === 1 ? '' : 's'}.`
 }
 
 export function scheduler(o: {
