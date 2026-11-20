@@ -156,7 +156,8 @@ final class Hands {
   var lastCommand = Date()
   init() {
     let main = CGMainDisplayID()
-    scale = CGFloat(CGDisplayPixelsWide(main)) / max(1, CGDisplayBounds(main).width)
+    let mode = CGDisplayCopyDisplayMode(main)
+    scale = CGFloat(mode?.pixelWidth ?? 2) / CGFloat(max(1, mode?.width ?? 1))
     window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 80, height: 56), styleMask: .borderless, backing: .buffered, defer: false)
     window.isOpaque = false
     window.backgroundColor = .clear

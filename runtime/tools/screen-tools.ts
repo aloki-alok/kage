@@ -3,7 +3,6 @@ import { desktopVerdict, parseDesktopAct, sendsLine, type DesktopAct } from '../
 import type { KageTool, ToolContext } from '../kage-tools.ts'
 
 const MAX_SECONDS = 600
-const CLEARS_LINE = new Set(['ctrl+c', 'ctrl+u'])
 
 const command = (a: DesktopAct) => a.action === 'drag' ? { op: 'drag', x: a.x, y: a.y, toX: a.toX, toY: a.toY } : { op: a.action, ...a }
 
@@ -42,7 +41,8 @@ export function screenTools(c: ToolContext): KageTool[] {
         if (!o.approve) return { isError: true, text: `refused: ${v.ask}, which needs the owner's yes, and this session cannot ask them` }
         if (!await o.approve('screen_act', `${v.ask}, on your Mac`, { ...act })) { seen('screen_act', `${act.action} owner said no`); return { isError: true, text: 'the owner said no, so nothing was done. Ask them what to do instead.' } }
       }
-      typed.set(under.app, act.action === 'type' ? line === undefined ? undefined : line + act.text : act.action === 'key' && (sendsLine(act.keys) || CLEARS_LINE.has(act.keys)) ? '' : undefined)
+      if (act.action !== 'type' && act.action !== 'key') typed.clear()
+      else typed.set(under.app, act.action === 'type' ? line === undefined ? undefined : line + act.text : sendsLine(act.keys) || act.keys === 'ctrl+c' ? '' : undefined)
       const r = await screen.act(command(act))
       seen('screen_act', 'error' in r ? `${act.action} failed` : `${act.action} ok`)
       return 'error' in r ? { isError: true, text: String(r.error) } : { text: 'done. Take a screen_shot to see the result.' }

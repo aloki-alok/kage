@@ -64,7 +64,7 @@ const ERASE = /\berase\b/i
 const WRECK = /\b(shutdown|reboot|halt|poweroff)\b|\bdiskutil\s+(erase\w*|zerodisk|secureerase|partitiondisk|reformat)\b|\bmkfs\b|\bdd\b.*\bof=\/dev\/|\brm\s+(-\S+\s+)*(\/|~|\$HOME)\/?(\s|$)|--no-preserve-root|\bpmset\s+(sleepnow|restartoneshot|shutdown|displaysleepnow)\b|\bosascript\b.*(shut ?down|restart|log ?out|sleep|aevtrlgo|aevtrsdn|aevtrrst|aevtrsht)/i
 const PRESSES = new Set(['return', 'enter', 'space'])
 const FINDER_DELETES = /^(alt\+)?(shift\+)?cmd\+(delete|backspace)$/
-export const sendsLine = (keys: string) => /(^|\+)(return|enter)$/.test(keys) || /^ctrl\+[mjo]$/.test(keys)
+export const sendsLine = (keys: string) => /(^|\+)(return|enter)$/.test(keys) || /^ctrl\+(alt\+)?(shift\+)?(cmd\+)?[mjo]$/.test(keys)
 const DESKTOP_UNDOABLE = /\b(move(d)? to (the )?(trash|bin)|uninstall|force quit)\b/i
 
 function targetVerdict(u: Under, how: string): Verdict {
