@@ -46,7 +46,10 @@ globalThis.__kage ??= (() => {
   }
   // The box whose overflow can clip el: a fixed or absolute element skips the ancestors it escapes. Meta's
   // dashboard draws its whole app in fixed boxes under a zero-height wrapper, so a plain parent walk hid it all.
-  const holdsFixed = st => st.transform !== 'none' || st.perspective !== 'none' || st.filter !== 'none' || /paint|layout|strict|content/.test(st.contain) || /transform|perspective|filter/.test(st.willChange)
+  // Every box that holds fixed children must be here, or a value under it leaks: a missed one is skipped, not checked.
+  const holdsFixed = st => [st.transform, st.translate, st.rotate, st.scale, st.perspective, st.filter, st.backdropFilter].some(v => v && v !== 'none') ||
+    /paint|layout|strict|content/.test(st.contain) || /size/.test(st.containerType) || st.contentVisibility === 'auto' ||
+    /transform|translate|rotate|scale|perspective|filter|contain/.test(st.willChange)
   const clipperOf = el => {
     const pos = getComputedStyle(el).position
     let e = el.parentElement
@@ -67,8 +70,10 @@ globalThis.__kage ??= (() => {
       if (st.clip && st.clip !== 'auto') return false
     }
     // An ancestor that clips its content to nothing (height: 0; overflow: hidden) hides the control too. The page
-    // edge is checked above, so the root boxes, whose overflow belongs to the viewport, are skipped.
-    for (let e = clipperOf(el); e && e !== doc && e !== document.body; e = clipperOf(e)) {
+    // edge is checked above, so the root's overflow, which belongs to the viewport, is skipped. Body's goes to the
+    // viewport too, but only while the root's own overflow is visible.
+    const bodyIsRoot = getComputedStyle(doc).overflow === 'visible'
+    for (let e = clipperOf(el); e && e !== doc && !(e === document.body && bodyIsRoot); e = clipperOf(e)) {
       if (getComputedStyle(e).overflow !== 'visible') { const a = e.getBoundingClientRect(); if (a.width < 2 || a.height < 2) return false }
     }
     return true
