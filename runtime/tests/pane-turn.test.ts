@@ -172,6 +172,16 @@ test("an idle pane that only wrote its own bookkeeping after the turn's end give
   assert.match(await p.post(), /posted as Kage/)
 })
 
+test("the turn's own last rows, which Claude Code may write after the Stop hook reads the transcript, do not make an idle pane look busy (#421)", async () => {
+  const p = pane()
+  p.teammate('check the build')
+  p.configOpen()
+  await p.turnEnds()
+  p.writes({ type: 'assistant', message: { role: 'assistant', content: 'done' } }, { type: 'attachment' }, { type: 'system', subtype: 'stop_hook_summary' }, { type: 'last-prompt' }, { type: 'cost-state' })
+  p.owner('hi')
+  assert.equal(p.configOpen(), true)
+})
+
 test("a plugin restart during a teammate's turn keeps that turn at a teammate's trust when the owner writes", async () => {
   const p = pane()
   p.teammate('check the logs')
