@@ -1,0 +1,18 @@
+{
+  "name": "a daily run missed while the Mac slept runs once when Kage wakes, and says how late it is (#486)",
+  "why": "A schedule looked back only 10 minutes, so a run due during sleep was lost with no line anywhere.",
+  "steps": [
+    { "at": "2026-11-14T08:00:00Z" },
+    { "job": { "thread": "CTEST1:5.5", "id": "j1", "cron": "0 9 * * *", "prompt": "post the daily count" } },
+    { "at": "2026-11-14T09:00:10Z" }, { "tick": true }, { "end": "CTEST1:5.5", "report": true },
+    { "at": "2026-11-15T12:00:10Z" }, { "tick": true },
+    { "at": "2026-11-15T12:00:30Z" }, { "tick": true }
+  ],
+  "expect": {
+    "tasks": [
+      { "key": "CTEST1:5.5", "match": "^Scheduled run of job j1" },
+      { "key": "CTEST1:5.5", "match": "^Late: due at 2026-11-15 09:00, missed 1 run\\.\\nScheduled run of job j1" }
+    ],
+    "dms": []
+  }
+}

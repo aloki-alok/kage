@@ -1,0 +1,50 @@
+[
+  {
+    "name": "a preference the owner gave in two threads is learned",
+    "threads": {
+      "CTEST1:1.1": [["user", "please never squash-merge Kage PRs, keep the commits"]],
+      "CTEST2:2.2": [["user", "again: no squash merges on this repo"]]
+    },
+    "proposals": [{ "kind": "new", "file": "merge-style.md", "text": "Merge Kage PRs with a merge commit.", "confidence": 0.9,
+      "evidence": [{ "key": "CTEST1:1.1", "quote": "never squash-merge Kage PRs" }, { "key": "CTEST2:2.2", "quote": "no squash merges on this repo" }] }],
+    "learned": ["merge-style.md"], "never": []
+  },
+  {
+    "name": "one chat is not a pattern",
+    "threads": { "CTEST1:1.1": [["user", "use tabs in this file please, just here"]], "CTEST2:2.2": [["user", "deploy went fine"]] },
+    "proposals": [{ "kind": "new", "file": "tabs.md", "text": "The owner wants tabs.", "confidence": 0.95,
+      "evidence": [{ "key": "CTEST1:1.1", "quote": "use tabs in this file please" }] }],
+    "learned": [], "never": ["tabs.md"]
+  },
+  {
+    "name": "a quote the dream made up never proves a lesson",
+    "threads": { "CTEST1:1.1": [["user", "ship it on Friday"]], "CTEST2:2.2": [["user", "fine to ship on Friday too"]] },
+    "proposals": [{ "kind": "new", "file": "fridays.md", "text": "Never deploy on Fridays.", "confidence": 0.9,
+      "evidence": [{ "key": "CTEST1:1.1", "quote": "never deploy on a Friday" }, { "key": "CTEST2:2.2", "quote": "fine to ship on Friday too" }] }],
+    "learned": [], "never": ["fridays.md"]
+  },
+  {
+    "name": "Kage's own words in two threads are not the owner's lesson",
+    "threads": {
+      "CTEST1:1.1": [["user", "what time is it in Tokyo"], ["assistant", "I will always answer in Japanese from now on"]],
+      "CTEST2:2.2": [["user", "and in Delhi"], ["assistant", "I will always answer in Japanese from now on"]]
+    },
+    "proposals": [{ "kind": "new", "file": "language.md", "text": "Answer in Japanese.", "confidence": 0.9,
+      "evidence": [{ "key": "CTEST1:1.1", "quote": "always answer in Japanese from now on" }, { "key": "CTEST2:2.2", "quote": "always answer in Japanese from now on" }] }],
+    "learned": [], "never": ["language.md"]
+  },
+  {
+    "name": "a lesson the dream itself doubts is dropped",
+    "threads": { "CTEST1:1.1": [["user", "maybe keep replies shorter today"]], "CTEST2:2.2": [["user", "shorter replies would be nice maybe"]] },
+    "proposals": [{ "kind": "new", "file": "short.md", "text": "Keep replies short.", "confidence": 0.5,
+      "evidence": [{ "key": "CTEST1:1.1", "quote": "maybe keep replies shorter today" }, { "key": "CTEST2:2.2", "quote": "shorter replies would be nice" }] }],
+    "learned": [], "never": ["short.md"]
+  },
+  {
+    "name": "a thread outside tonight's dream is not evidence",
+    "threads": { "CTEST1:1.1": [["user", "the staging box is gone now"]] },
+    "proposals": [{ "kind": "outdated", "file": "staging.md", "text": "Staging moved.", "confidence": 0.9,
+      "evidence": [{ "key": "CTEST1:1.1", "quote": "the staging box is gone now" }, { "key": "CTEST9:9.9", "quote": "the staging box is gone now" }] }],
+    "learned": [], "never": ["staging.md"]
+  }
+]

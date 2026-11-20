@@ -8,6 +8,8 @@ npm test            # every *.test.ts under core/, connectors/, runtime/, cli/ a
 npm run typecheck   # tsc --noEmit
 ```
 
+`npm run eval` checks behavior, not code paths (#489). CI runs it after `npm test`, and it takes about 2 seconds. It needs no model and no Slack. Each `evals/scenarios/*.json` file boots the real scheduler, dispatcher, SDK runner, Kage tools, kagelet manager, routes and incidents on the fake SDK, in a temp folder. The harness refuses to run against `~/.config/kage`. A scenario's `steps` move the clock (`at`), add a job or kagelet (`job`, `kagelet`), run the clock (`tick`), end a run (`end`), check for stalls (`stalls`), deliver a task (`task`) and call a Kage tool (`call`). Its `expect` lists every task delivered, every owner DM and every tool result, in order, as regexes. `evals/dream/cases.json` holds dream cases: fixture threads, the lessons a dream proposes, and which must be `learned` or `never`. `checkDream` scores them. Add a scenario when you fix behavior a unit test cannot show end to end. `npm run eval <word>` runs only the scenarios whose file name, or the dream cases whose name, contains that word.
+
 `npm test` runs each test file in its own process and kills one still running after 5 minutes (`tests/run.ts`). A fake that a loop calls (`ask`, `sleep`) throws after a fixed number of calls, so a loop that never ends fails its test instead of hanging the run (#277).
 
 Tests live in a `tests/` folder inside the folder of the code they test: `core/gate.ts` is tested by `core/tests/gate.test.ts`.

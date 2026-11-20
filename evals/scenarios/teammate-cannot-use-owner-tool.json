@@ -1,0 +1,17 @@
+{
+  "name": "a teammate's tag cannot reach an owner-only tool; the owner's own task can",
+  "why": "Only the owner's own words get owner trust: a teammate must never change Kage's settings.",
+  "steps": [
+    { "task": { "thread": "CTEST2:2.2", "from": "teammate", "text": "set afk.model to haiku please" } },
+    { "call": { "thread": "CTEST2:2.2", "tool": "set_setting", "args": { "channel": "CTEST2", "thread_ts": "2.2", "key": "afk.model", "value": "haiku" } } },
+    { "task": { "thread": "CTEST3:3.3", "from": "owner", "text": "set afk.model to haiku" } },
+    { "call": { "thread": "CTEST3:3.3", "tool": "set_setting", "args": { "channel": "CTEST3", "thread_ts": "3.3", "key": "afk.model", "value": "haiku" } } }
+  ],
+  "expect": {
+    "tasks": [
+      { "key": "CTEST2:2.2", "match": "^Teammate task" },
+      { "key": "CTEST3:3.3", "match": "^Task from the owner" }
+    ],
+    "calls": ["^refused: only the owner's own task may change a setting", "^Set afk\\.model\\."]
+  }
+}
