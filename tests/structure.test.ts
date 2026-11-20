@@ -2,7 +2,6 @@ import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { execFileSync } from 'node:child_process'
 import { readFileSync } from 'node:fs'
-import { basename } from 'node:path'
 
 const root = new URL('..', import.meta.url).pathname
 const files = execFileSync('git', ['ls-files', '--cached', '--others', '--exclude-standard', '*.ts', '*.js'], { cwd: root, encoding: 'utf8' }).split('\n')
@@ -35,8 +34,8 @@ function check(name: string, found: string[], debt: string[]) {
 }
 
 test('core/ is pure: no I/O, no environment, no timers, and imports only core/ (ADR 0001)', () => {
-  const bad = /(from|import\(|require\()\s*['"](node:)?(fs|child_process|net|http|https|os|dgram|tls)(\/promises)?['"]|process\.env|\bset(Timeout|Interval)\(|(from|import\(|require\()\s*['"]\.\.\//
-  check('impureCore', inDir('core').filter(f => bad.test(code(f))), DEBT.impureCore)
+  const bad = (f: string) => new RegExp(`(from|import\\(|require\\()\\s*['"](node:)?(fs|child_process|net|http|https|os|dgram|tls)(\\/promises)?['"]|process\\.env|\\bset(Timeout|Interval)\\(|(from|import\\(|require\\(|^import)\\s*['"]${'\\.\\./'.repeat(f.split('/').length - 1)}`, 'm')
+  check('impureCore', under('core').filter(f => bad(f).test(code(f))), DEBT.impureCore)
 })
 
 test('runtime/ and connectors/ never import the hub, the plugin or a root file', () => {
@@ -71,7 +70,8 @@ test(`a source file is ${MAX_LINES} lines or fewer, imports aside, and a long on
 
 test('every core/, runtime/, runtime/tools/, hub/ and plugin/ file is in the CONTRIBUTING.md code map', () => {
   const map = readFileSync(`${root}/CONTRIBUTING.md`, 'utf8')
-  check('unmapped', [...inDir('core'), ...inDir('runtime')].filter(f => !map.includes(`\`${basename(f)}\``)), DEBT.unmapped)
+  const inLayer = (f: string) => f.split('/').slice(1).join('/')
+  check('unmapped', [...under('core'), ...under('runtime').filter(f => !f.startsWith('runtime/tools/'))].filter(f => !map.includes(`\`${inLayer(f)}\``)), DEBT.unmapped)
   assert.deepEqual([...inDir('hub'), ...inDir('plugin'), ...inDir('runtime/tools')].filter(f => !map.includes(`\`${f}\``)), [], 'add a row for each to the code map')
 })
 
@@ -83,7 +83,7 @@ test('a core/ export is used outside its file: by another source file, or by its
     ...[...code(f).matchAll(/^export (?:type )?\{([^}]*)\}/gm)].flatMap(m => m[1]!.split(',').map(x => x.trim().split(/\s+as\s+/).pop()!).filter(Boolean)),
   ]
   const unused: string[] = []
-  for (const f of inDir('core')) for (const name of exported(f)) {
+  for (const f of under('core')) for (const name of exported(f)) {
     const word = new RegExp(`\\b${name}\\b`, 'g')
     const elsewhere = files.some(g => g !== f && word.test(text.get(g)!)) || scripts.some(t => word.test(t))
     const ownUse = (code(f).match(word) ?? []).length > 1
