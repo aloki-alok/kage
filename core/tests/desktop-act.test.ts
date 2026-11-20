@@ -4,12 +4,12 @@ import { desktopVerdict, parseDesktopAct, type DesktopAct, type Under } from '..
 
 const at = (label: string, o: Partial<Under> = {}): Under => ({ app: 'Finder', role: 'AXButton', label, ...o })
 const click = (x = 10, y = 10): DesktopAct => ({ action: 'click', x, y, button: 'left', count: 1 })
-const key = (keys: string): DesktopAct => ({ action: 'key', keys })
+const key = (keys: string): DesktopAct => { const a = parseDesktopAct({ action: 'key', keys }); if ('error' in a) throw new Error(a.error); return a }
 
 test('everyday steps run with no ask: clicks in a file picker, typing, scrolling, plain keys', () => {
   for (const label of ['Open', 'Choose', 'Downloads', 'report.pdf', 'Cancel', 'Save', 'Show Options']) assert.deepEqual(desktopVerdict(click(), at(label, { app: 'Google Chrome' }), ''), { run: true }, label)
   assert.deepEqual(desktopVerdict({ action: 'type', text: 'quarterly report' }, at('Search'), ''), { run: true })
-  assert.deepEqual(desktopVerdict({ action: 'scroll', x: 5, y: 5, dy: -3 }, at(''), ''), { run: true })
+  assert.deepEqual(desktopVerdict({ action: 'scroll', x: 5, y: 5, dy: -3, dx: 0 }, at(''), ''), { run: true })
   for (const k of ['cmd+shift+g', 'tab', 'down', 'cmd+a', 'escape']) assert.deepEqual(desktopVerdict(key(k), at(''), ''), { run: true }, k)
 })
 
@@ -29,7 +29,7 @@ test("an app's own Restart button asks, it is not the Mac's", () => {
 })
 
 test('erasing a disk or the whole Mac is refused outright', () => {
-  for (const [label, app] of [['Erase', 'Disk Utility'], ['Erase All Content and Settings…', 'System Settings'], ['Erase Mac…', 'System Settings']])
+  for (const [label, app] of [['Erase', 'Disk Utility'], ['Erase All Content and Settings…', 'System Settings'], ['Erase Mac…', 'System Settings']] as const)
     assert.ok('blocked' in desktopVerdict(click(), at(label, { app }), ''), `${app} ${label}`)
 })
 

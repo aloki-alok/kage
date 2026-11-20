@@ -74,6 +74,7 @@ const skeleton = (s: string) => s.normalize('NFKD').replace(/\p{Mn}/gu, '').repl
 const cannotUndo = (s: string) => { const t = skeleton(s); return UNDOABLE_NOT.test(t) || UNDOABLE_NOT.test(t.replace(/\s+/g, '')) }
 const lookAlike = (s: string) => s.split(/\s+/).some(w => /\p{Script=Latin}/u.test(w) && /[\p{Script=Cyrillic}\p{Script=Greek}]/u.test(w))
 const plainName = (s: string) => s.normalize('NFKC').replace(/[\p{Cf}\p{Zl}\p{Zp}\uFE0F\u034F]/gu, '').replace(/\p{Zs}/gu, ' ').trim()
+export const cannotUndoLabel = (label: string) => { const l = plainName(label); return cannotUndo(l) || lookAlike(l) }
 export function majorAct(a: Act, el?: Element, ctx: { typed?: string[] } = {}): string | undefined {
   if (a.action !== 'click' && !(a.action === 'press' && a.key === 'Enter')) return undefined
   const label = plainName(el?.name ?? '')
