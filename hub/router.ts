@@ -48,7 +48,7 @@ import { clearUpdatedFrom, updatedNote } from '../runtime/auto-update.ts'
 import { readCommand } from '../runtime/kagelets/manager.ts'
 import { kageletDeliver } from '../runtime/kagelets/notes.ts'
 import { hubLock } from '../runtime/hub-lock.ts'
-import { rotate } from '../runtime/hub-log.ts'
+import { noteExit, rotate } from '../runtime/hub-log.ts'
 import { hubKagelets } from './kagelets.ts'
 import { ownerCommands } from './owner-commands.ts'
 import { startConnectors } from './connectors.ts'
@@ -82,8 +82,8 @@ if (process.platform === 'darwin') spawn('caffeinate', ['-i', '-w', String(proce
 const MAX = harness.maxSessions || 4
 const IDLE_MIN = harness.idleMinutes || 30
 process.on('unhandledRejection', e => log('unhandled', e))
-for (const sig of ['SIGTERM', 'SIGINT', 'SIGHUP'] as const) process.on(sig, () => { log(`stopped by ${sig}`); process.exit(0) })
-process.on('uncaughtException', e => { log('crashed', e); process.exit(1) })
+for (const sig of ['SIGTERM', 'SIGINT', 'SIGHUP'] as const) process.on(sig, () => { log(`stopped by ${sig}`); noteExit(DIR, 'restart'); process.exit(0) })
+process.on('uncaughtException', e => { log('crashed', e); noteExit(DIR, 'crash', e); process.exit(1) })
 const COMMANDS = new Map<string, string>(Object.entries(conn.commands ?? {}))
 
 const store = openStore(`${DIR}/kage.db`)

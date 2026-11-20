@@ -3,7 +3,7 @@ import { log } from '../runtime/log.ts'
 import { codeStamp } from '../runtime/code-stamp.ts'
 import { markUpdatedFrom, pullMain, version } from '../runtime/auto-update.ts'
 import { releaseIfSoaked } from '../runtime/release.ts'
-import { npmCi, packagesStale } from '../runtime/hub-log.ts'
+import { noteExit, npmCi, packagesStale } from '../runtime/hub-log.ts'
 import type { Ledgers } from '../runtime/ledger.ts'
 import { ownerLines } from '../core/messages.ts'
 
@@ -37,6 +37,7 @@ export function hubUpdates(o: {
         }
       }
       log(newCode ? 'newer code is in place and every session is quiet: restarting into it' : 'settings changed and every session is quiet: restarting to apply them')
+      noteExit(o.dir, newCode ? 'update' : 'settings')
       process.exit(75)
     },
     async autoUpdate() {
