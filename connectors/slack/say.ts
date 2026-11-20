@@ -1,8 +1,8 @@
 import type { WebClient } from '@slack/web-api'
-import type { Conversation } from '../core/conversations.ts'
-import type { Ids } from '../core/gate.ts'
-import type { SlackMessage } from '../core/slack-message.ts'
-import type { Hub } from './slack.ts'
+import type { Conversation } from '../../core/conversations.ts'
+import type { Ids } from '../../core/gate.ts'
+import type { SlackMessage } from '../../core/slack-message.ts'
+import type { Hub } from './connect.ts'
 
 export const sayAsOwner = (o: { user: WebClient; ids: Ids; hub: Pick<Hub, 'take'>; hear: (m: SlackMessage, source: string) => Promise<void> }) =>
   async (text: string, at?: { channel: string; thread_ts: string; kind: Conversation['kind'] }) => {

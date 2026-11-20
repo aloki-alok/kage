@@ -1,7 +1,7 @@
 import { writeFileSync } from 'node:fs'
 import type { SocketModeClient } from '@slack/socket-mode'
-import { socketWatch } from '../core/socket-watch.ts'
-import { log } from '../runtime/log.ts'
+import { socketWatch } from '../../core/socket-watch.ts'
+import { log } from '../../runtime/log.ts'
 
 export function keepSocketUp(socket: SocketModeClient, o: { dir: string; name: string; gap: () => void; notifyOwner: (text: string) => void }) {
   const watch = socketWatch({ downMs: 3 * 60_000 })

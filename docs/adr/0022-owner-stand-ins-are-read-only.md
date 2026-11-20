@@ -6,9 +6,9 @@ Status: Accepted.
 
 - The AFK stand-in and the WhatsApp stand-in run as a separate Claude with read-only memory and read-only GitHub, no MCP, settings or CLAUDE.md. (`core/afk.ts`, `core/whatsapp.ts`, `runtime/claude-once.ts`)
 - Every stand-in post passes the secret check, then a guard model that must answer exactly `SEND`. (`core/afk.ts`, `core/whatsapp.ts`)
-- The AFK stand-in never starts a session. Guests, Slack Connect people, bots and shared channels never get an answer, and an unknown lookup counts as outside. (`connectors/slack-afk.ts`, `core/afk.ts`)
-- A Jev outage never loses a P0. If Jev fails, the Claude triage runs, and the P0 call still goes out. (`connectors/jev.ts`, `connectors/slack-afk.ts`)
-- A failed status read leaves the owner's Slack status alone, because the owner may have set it since. (`connectors/slack-afk.ts`)
+- The AFK stand-in never starts a session. Guests, Slack Connect people, bots and shared channels never get an answer, and an unknown lookup counts as outside. (`connectors/slack/afk.ts`, `core/afk.ts`)
+- A Jev outage never loses a P0. If Jev fails, the Claude triage runs, and the P0 call still goes out. (`connectors/jev.ts`, `connectors/slack/afk.ts`)
+- A failed status read leaves the owner's Slack status alone, because the owner may have set it since. (`connectors/slack/afk.ts`)
 - WhatsApp: only the owner's own `@kage` tag reaches a session. A forward's tag never starts a task. (`hub/connectors.ts`, `core/whatsapp.ts`)
 - WhatsApp stand-in replies are capped per armed chat, to stop a loop with another bot. A session sends only to its own chat. (`core/whatsapp.ts`, `connectors/whatsapp.ts`)
 - Every WhatsApp message from the owner's number ends with a footer, and history strips it so a model never copies it. (`core/whatsapp.ts`)

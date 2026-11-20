@@ -5,13 +5,16 @@ const CODE_DIRS = ['.', 'hub', 'plugin', 'core', 'connectors', 'runtime']
 
 export function codeStamp(root: string): number {
   let newest = 0
-  for (const dir of CODE_DIRS) {
+  const walk = (dir: string, top: boolean) => {
     let names: string[]
-    try { names = readdirSync(join(root, dir)) } catch { continue }
+    try { names = readdirSync(join(root, dir)) } catch { return }
     for (const n of names) {
+      const path = join(dir, n)
+      if (!top && n !== 'tests' && n !== 'node_modules' && !n.startsWith('.')) try { if (statSync(join(root, path)).isDirectory()) { walk(path, false); continue } } catch { continue }
       if (!(n.endsWith('.ts') && !n.endsWith('.test.ts')) && !(dir === '.' && n === 'package-lock.json')) continue
-      try { newest = Math.max(newest, statSync(join(root, dir, n)).mtimeMs) } catch {  }
+      try { newest = Math.max(newest, statSync(join(root, path)).mtimeMs) } catch {  }
     }
   }
+  for (const dir of CODE_DIRS) walk(dir, dir === '.')
   return newest
 }
