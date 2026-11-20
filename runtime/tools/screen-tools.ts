@@ -1,9 +1,9 @@
 import { z } from 'zod'
-import { desktopVerdict, parseDesktopAct, type DesktopAct } from '../../core/desktop-act.ts'
+import { desktopVerdict, parseDesktopAct, sendsLine, type DesktopAct } from '../../core/desktop-act.ts'
 import type { KageTool, ToolContext } from '../kage-tools.ts'
 
 const MAX_SECONDS = 600
-const LINE_CHANGERS = /(^|\+)(up|down|tab)$|^ctrl\+[rpny]$|^cmd\+v$/
+const CLEARS_LINE = new Set(['ctrl+c', 'ctrl+u'])
 
 const command = (a: DesktopAct) => a.action === 'drag' ? { op: 'drag', x: a.x, y: a.y, toX: a.toX, toY: a.toY } : { op: a.action, ...a }
 
@@ -19,7 +19,7 @@ export function screenTools(c: ToolContext): KageTool[] {
   const fileFor = (args: Record<string, unknown>, ext: string) => `${filesOf(String(args.channel), String(args.thread_ts))}/screen-${Date.now()}.${ext}`
   return [{
     name: 'screen_act',
-    description: "Act on the owner's Mac as a person would: click (count 2 for a double click, button right for a menu), move, drag, scroll, type text, or press keys (cmd+shift+g, return, down). x and y are pixels on the whole-screen picture screen_shot takes, so take one first, and again after each step that changes the screen. The owner sees Kage's own cursor make each step. Everyday steps run at once. A step that cannot be undone (Delete, Move to Trash, a one-way command in a terminal) waits for the owner's yes, and turning the Mac off, logging out, locking it or erasing it is refused. In a terminal, type one line, then press return. Owner tasks only.",
+    description: "Act on the owner's Mac as a person would: click (count 2 for a double click, button right for a menu), move, drag, scroll, type text, or press keys (cmd+shift+g, return, down). x and y are pixels on the whole-screen picture screen_shot takes, so take one first, and again after each step that changes the screen. The owner sees Kage's own cursor make each step. Everyday steps run at once. A step that cannot be undone (Delete, Move to Trash, a one-way command in a terminal) waits for the owner's yes, and turning the Mac off, logging out, locking it or erasing it is refused. In a terminal, press ctrl+c first for a clean line, type one line, then press return. Any other key or a click there makes the line unknown, so its Return waits for the owner. Owner tasks only.",
     shape: {
       ...where,
       action: z.enum(['click', 'move', 'drag', 'scroll', 'type', 'key']),
@@ -35,15 +35,14 @@ export function screenTools(c: ToolContext): KageTool[] {
       const looked = act.action === 'click' ? await screen.act({ op: 'under', x: act.x, y: act.y }) : act.action === 'key' || act.action === 'type' ? await screen.act({ op: 'focused' }) : {}
       if ('error' in looked) return { isError: true, text: String(looked.error) }
       const under = { app: String(looked.app ?? ''), role: String(looked.role ?? ''), label: String(looked.label ?? '') }
-      const line = typed.has(under.app) ? typed.get(under.app) : ''
+      const line = typed.get(under.app)
       const v = desktopVerdict(act, under, line)
       if ('blocked' in v) { seen('screen_act', `${act.action} refused`); return { isError: true, text: `refused: ${v.blocked}. This is never done on the owner's Mac.` } }
       if ('ask' in v) {
         if (!o.approve) return { isError: true, text: `refused: ${v.ask}, which needs the owner's yes, and this session cannot ask them` }
         if (!await o.approve('screen_act', `${v.ask}, on your Mac`, { ...act })) { seen('screen_act', `${act.action} owner said no`); return { isError: true, text: 'the owner said no, so nothing was done. Ask them what to do instead.' } }
       }
-      if (act.action === 'type') typed.set(under.app, line === undefined ? undefined : line + act.text)
-      if (act.action === 'key') typed.set(under.app, /(return|enter)$/.test(act.keys) ? '' : LINE_CHANGERS.test(act.keys) ? undefined : line)
+      typed.set(under.app, act.action === 'type' ? line === undefined ? undefined : line + act.text : act.action === 'key' && (sendsLine(act.keys) || CLEARS_LINE.has(act.keys)) ? '' : undefined)
       const r = await screen.act(command(act))
       seen('screen_act', 'error' in r ? `${act.action} failed` : `${act.action} ok`)
       return 'error' in r ? { isError: true, text: String(r.error) } : { text: 'done. Take a screen_shot to see the result.' }

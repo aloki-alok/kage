@@ -14,7 +14,7 @@ export type Verdict = { run: true } | { ask: string } | { blocked: string }
 const MODS = ['ctrl', 'alt', 'shift', 'cmd'] as const
 const MOD_NAMES: Record<string, (typeof MODS)[number]> = { ctrl: 'ctrl', control: 'ctrl', alt: 'alt', option: 'alt', opt: 'alt', shift: 'shift', cmd: 'cmd', command: 'cmd' }
 const KEYS = new Set(['return', 'enter', 'tab', 'space', 'escape', 'esc', 'delete', 'backspace', 'forwarddelete', 'up', 'down', 'left', 'right', 'home', 'end', 'pageup', 'pagedown', 'power', 'eject',
-  ...'abcdefghijklmnopqrstuvwxyz0123456789'.split(''), ...Array.from({ length: 20 }, (_, i) => `f${i + 1}`), ...'-=[]\;\',./`'.split('')])
+  ...'abcdefghijklmnopqrstuvwxyz0123456789'.split(''), ...Array.from({ length: 20 }, (_, i) => `f${i + 1}`), ...'-=[]\\;\',./`'.split('')])
 const MAX_TEXT = 5000
 
 function normalKeys(raw: string): string | undefined {
@@ -61,8 +61,10 @@ const DISK_APPS = new Set(['disk utility', 'system settings', 'system preference
 const TERMINALS = new Set(['terminal', 'iterm2', 'iterm', 'ghostty', 'wezterm', 'warp', 'kitty', 'alacritty', 'hyper', 'tabby'])
 const POWER = /^\s*(shut ?down|restart|log ?out|sleep|lock screen)\b/i
 const ERASE = /\berase\b/i
-const WRECK = /\b(shutdown|reboot|halt|poweroff)\b|\bdiskutil\s+(erase\w*|zerodisk|secureerase|partitiondisk|reformat)\b|\bmkfs\b|\bdd\b.*\bof=\/dev\/|\brm\s+(-\S+\s+)*(\/|~|\$HOME)\/?(\s|$)|--no-preserve-root/i
+const WRECK = /\b(shutdown|reboot|halt|poweroff)\b|\bdiskutil\s+(erase\w*|zerodisk|secureerase|partitiondisk|reformat)\b|\bmkfs\b|\bdd\b.*\bof=\/dev\/|\brm\s+(-\S+\s+)*(\/|~|\$HOME)\/?(\s|$)|--no-preserve-root|\bpmset\s+(sleepnow|restartoneshot|shutdown|displaysleepnow)\b|\bosascript\b.*(shut ?down|restart|log ?out|sleep|aevtrlgo|aevtrsdn|aevtrrst|aevtrsht)/i
 const PRESSES = new Set(['return', 'enter', 'space'])
+const FINDER_DELETES = /^(alt\+)?(shift\+)?cmd\+(delete|backspace)$/
+export const sendsLine = (keys: string) => /(^|\+)(return|enter)$/.test(keys) || /^ctrl\+[mjo]$/.test(keys)
 const DESKTOP_UNDOABLE = /\b(move(d)? to (the )?(trash|bin)|uninstall|force quit)\b/i
 
 function targetVerdict(u: Under, how: string): Verdict {
@@ -76,13 +78,14 @@ function targetVerdict(u: Under, how: string): Verdict {
 export function desktopVerdict(a: DesktopAct, under: Under, typedLine: string | undefined): Verdict {
   if (a.action === 'key') {
     if (OFF_KEYS.has(a.keys) || /\b(power|eject)$/.test(a.keys)) return { blocked: `the keys ${a.keys} turn off, log out or lock the Mac` }
-    if (!PRESSES.has(a.keys.split('+').at(-1)!)) return { run: true }
-    if (TERMINALS.has(under.app.toLowerCase()) && /(return|enter)$/.test(a.keys)) {
+    if (FINDER_DELETES.test(a.keys) && under.app === 'Finder') return { ask: `the keys ${a.keys} move the selected files to the Trash or empty it, in Finder` }
+    if (TERMINALS.has(under.app.toLowerCase()) && sendsLine(a.keys)) {
       if (typedLine === undefined) return { ask: `it presses Return in ${under.app} on a line it did not type itself` }
       const line = typedLine.trim()
       if (WRECK.test(line)) return { blocked: `the command \`${line}\` turns off or wipes the Mac` }
       return heldCommand(line) ? { ask: `it runs \`${line}\` in ${under.app}` } : { run: true }
     }
+    if (!PRESSES.has(a.keys.split('+').at(-1)!)) return { run: true }
     return targetVerdict(under, a.keys.endsWith('space') ? 'Space presses' : 'Enter confirms')
   }
   if (a.action === 'type' && TERMINALS.has(under.app.toLowerCase()) && /[\r\n]/.test(a.text)) return { blocked: 'in a terminal, type one line at a time, then press return with key, so each command is checked' }
