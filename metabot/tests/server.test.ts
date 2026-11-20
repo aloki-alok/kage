@@ -3,7 +3,10 @@ import assert from 'node:assert/strict'
 import { createHmac } from 'node:crypto'
 import { createServer, type Server } from 'node:http'
 import type { AddressInfo } from 'node:net'
-import { webhook } from '../server.ts'
+import { mkdtempSync, readFileSync, statSync, writeFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
+import { pruneMissed, webhook } from '../server.ts'
 import type { MetaEvent } from '../meta.ts'
 
 async function up(got: MetaEvent[][]): Promise<{ url: string; server: Server }> {
@@ -44,5 +47,20 @@ describe('the webhook', () => {
     assert.equal((await fetch(`${url}/webhook`, { method: 'PUT' })).status, 405)
     assert.equal((await fetch(`${url}/health`)).status, 200)
     server.close()
+  })
+})
+
+describe('the missed questions file', () => {
+  test('keeps the question text only as long as the chat lines', () => {
+    const file = join(mkdtempSync(join(tmpdir(), 'metabot-')), 'missed.jsonl')
+    const line = (at: string, question: string) => `${JSON.stringify({ at, question })}\n`
+    writeFileSync(file, line('2026-10-01T00:00:00.000Z', 'old') + '{"at":"2026-11-19T0\n' + line('2026-11-19T00:00:00.000Z', 'new'))
+    pruneMissed(file, Date.parse('2026-11-01T00:00:00.000Z'))
+    assert.equal(readFileSync(file, 'utf8'), line('2026-11-19T00:00:00.000Z', 'new'))
+    assert.equal(statSync(file).mode & 0o777, 0o600)
+  })
+
+  test('a missing file is fine', () => {
+    pruneMissed(join(mkdtempSync(join(tmpdir(), 'metabot-')), 'missed.jsonl'), Date.now())
   })
 })

@@ -1,4 +1,4 @@
-import { appendFileSync } from 'node:fs'
+import { appendFileSync, existsSync, readFileSync, renameSync, writeFileSync } from 'node:fs'
 import { createServer, type IncomingMessage, type RequestListener } from 'node:http'
 import { homedir } from 'node:os'
 import { join } from 'node:path'
@@ -45,6 +45,14 @@ export function webhook(o: { verifyToken: string; appSecret: string; onEvents: (
   }
 }
 
+export function pruneMissed(file: string, before: number) {
+  if (!existsSync(file)) return
+  const fresh = (l: string) => { try { return Date.parse(JSON.parse(l).at) >= before } catch { return false } }
+  const kept = readFileSync(file, 'utf8').split('\n').filter(l => l && fresh(l))
+  writeFileSync(`${file}.tmp`, kept.map(l => `${l}\n`).join(''), { mode: 0o600 })
+  renameSync(`${file}.tmp`, file)
+}
+
 export function serve(dir = process.env.METABOT_DIR || join(homedir(), '.config', 'kage', 'metabot')) {
   const cfg = loadConfig(dir), sec = loadSecrets(dir)
   const store = openStore(join(dir, 'metabot.db'))
@@ -70,7 +78,12 @@ export function serve(dir = process.env.METABOT_DIR || join(homedir(), '.config'
       chains.set(key, next)
     }
   }
-  setInterval(() => store.prune(Date.now() - cfg.linesKeptDays * 86_400_000), 6 * 3_600_000).unref()
+  const prune = () => {
+    const before = Date.now() - cfg.linesKeptDays * 86_400_000
+    store.prune(before)
+    pruneMissed(join(dir, 'missed.jsonl'), before)
+  }
+  setInterval(prune, 6 * 3_600_000).unref()
   const server = createServer(webhook({ verifyToken: sec.verifyToken, appSecret: sec.appSecret, onEvents }))
   server.listen(cfg.port, '127.0.0.1', () => log(`listening on 127.0.0.1:${cfg.port}, mode ${cfg.settings.mode}`))
   return server
