@@ -1,6 +1,6 @@
 import { execFile } from 'node:child_process'
 import { existsSync, readlinkSync } from 'node:fs'
-import { userInfo } from 'node:os'
+import { homedir, userInfo } from 'node:os'
 import { promisify } from 'node:util'
 import { elapsedSeconds, leftoverLines, startedAt, type Container, type Proc } from '../../core/leftovers.ts'
 import type { Group } from './context.ts'
@@ -34,7 +34,8 @@ async function processes(): Promise<Proc[]> {
 }
 
 async function containers(now: number): Promise<Container[]> {
-  const found = await Promise.all((['docker', 'podman'] as const).map(async engine => {
+  const podmanUsed = existsSync(userInfo().uid === 0 ? '/var/lib/containers/storage' : `${homedir()}/.local/share/containers/storage`)
+  const found = await Promise.all((['docker', ...podmanUsed ? ['podman' as const] : []] as const).map(async engine => {
     const ids = (await run(engine, ['ps', '-q'])).split('\n').filter(Boolean)
     if (!ids.length) return []
     const out = await run(engine, ['inspect', '--format', '{{.Name}}\t{{.RestartCount}}\t{{.State.StartedAt}}\t{{.State.Restarting}}', ...ids])
