@@ -114,3 +114,8 @@ test('only a trusted child process gets ...process.env', () => {
   const spread = files.filter(f => /\.\.\.process\.env\b/.test(code(f)))
   assert.deepEqual(spread.filter(f => !FULL_ENV_CHILDREN.includes(f)), [], 'give this child an env allowlist, or add it to FULL_ENV_CHILDREN with the reason')
 })
+
+test('a fixed line to the owner comes from core/messages.ts, never a string written at the call (#241)', () => {
+  const literal = /\b(notifyOwner|owner\.say|o\.(notify|notifyOwner|tell|tellOwner|say))\(\s*['"`]/
+  assert.deepEqual([...under('hub'), ...under('runtime'), ...under('connectors')].filter(f => literal.test(code(f))), [])
+})
