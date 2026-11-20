@@ -89,12 +89,14 @@ describe('decisions', () => {
     assert.equal(lingerLine({ kind: 'systemd', linger: 'yes', user: 'u' }), undefined)
     assert.equal(lingerLine({ kind: 'launchd', linger: '', user: 'u' }), undefined)
   })
-  test('boots: a missing file is zero boots (#90), over five in a day is a note', () => {
+  test('boots: a missing file is zero boots (#90); planned starts say nothing, however many; crashes and unknown stops are named (#255)', () => {
     assert.deepEqual(bootNotes({ boots: undefined, now: 100_000, darwin: false }), [])
-    const old = String(100_000 - 90_000)
-    assert.deepEqual(bootNotes({ boots: `${old}\n99990\n99991\n`, now: 100_000, darwin: false }), [])
-    const six = [1, 2, 3, 4, 5, 6].map(n => 99_000 + n).join('\n')
-    assert.deepEqual(text(bootNotes({ boots: six, now: 100_000, darwin: false })), ['note:the hub started 6 times in 24 h: kage logs shows why'])
+    const planned = [...Array.from({ length: 29 }, (_, i) => `${99_000 + i} update`), ...Array.from({ length: 33 }, (_, i) => `${99_100 + i} restart`), '10000 crash old'].join('\n')
+    assert.deepEqual(bootNotes({ boots: planned, now: 100_000, darwin: false }), [])
+    assert.deepEqual(text(bootNotes({ boots: '99001 crash TypeError: x is undefined\n99002 crash RangeError: too deep\n99003 unknown\n', now: 100_000, darwin: false })), [
+      'note:the hub crashed 2 times in 24 h. The last one: RangeError: too deep. kage logs has the full error',
+      'note:the hub stopped once in 24 h without saying why (killed, out of memory, or power lost). kage logs shows what ran before it',
+    ])
     assert.deepEqual(text(bootNotes({ boots: undefined, now: 1, darwin: true })), ['note:with the lid closed this Mac sleeps, and Kage is offline until it wakes'])
   })
   test('slack: connected shows the status and version, else one FAIL', () => {

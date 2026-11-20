@@ -3,6 +3,7 @@ import { execFileSync, spawnSync } from 'node:child_process'
 import { readFileSync } from 'node:fs'
 import { DIR } from './home.ts'
 import { statusSummary } from '../core/board.ts'
+import { startsSince } from '../core/boots.ts'
 import { spendSince } from '../core/ledgers.ts'
 import { openLedgers } from '../runtime/ledger.ts'
 import { schedulesIn } from '../runtime/store.ts'
@@ -21,12 +22,12 @@ if (pid) try {
   const started = Date.parse(execFileSync('ps', ['-o', 'lstart=', '-p', pid], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim())
   if (started) upSec = Math.round((now - started) / 1000)
 } catch {}
-const boots24h = read('boots').split('\n').filter(l => Number(l.split(/\s/)[0]) > now / 1000 - 86_400).length
+const starts = startsSince(read('boots'), now / 1000 - 86_400)
 const midnight = new Date(now).setHours(0, 0, 0, 0)
 const ledgers = openLedgers(DIR)
 const today = spendSince(ledgers.text('costs'), midnight)
 const summary = statusSummary({
-  version: /^[0-9a-f]{7}/.test(runningVersion) ? runningVersion : undefined, upSec, boots24h, schedules: schedulesIn(`${DIR}/kage.db`).length,
+  version: /^[0-9a-f]{7}/.test(runningVersion) ? runningVersion : undefined, upSec, starts, schedules: schedulesIn(`${DIR}/kage.db`).length,
   spentToday: today.reduce((a, r) => a + r.usd, 0), turnsToday: today.reduce((a, r) => a + r.turns, 0),
 })
 console.log(voice.says(summary.says))

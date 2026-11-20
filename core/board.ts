@@ -1,3 +1,4 @@
+import { startsLine, type Starts } from './boots.ts'
 import { CRON_RECURRING_TTL, cronJobsFromTranscript, nextRun, type Schedule } from './cron.ts'
 
 export type Live = {
@@ -102,13 +103,16 @@ export function stopLine(r: { ok: true; ending?: true; asking?: true; cut?: 'bus
 const UNIT: Record<string, string> = { s: 'second', m: 'minute', h: 'hour', d: 'day' }
 const spoken = (short: string) => { const n = Number(short.slice(0, -1)); return `${n} ${UNIT[short.slice(-1)]}${n === 1 ? '' : 's'}` }
 
-export function statusSummary(f: { version?: string; upSec?: number; boots24h: number; schedules: number; spentToday: number; turnsToday: number }): { says: string; warn?: string } {
+export function statusSummary(f: { version?: string; upSec?: number; starts: Starts; schedules: number; spentToday: number; turnsToday: number }): { says: string; warn?: string } {
   const plural = (n: number, one: string) => `${n} ${one}${n === 1 ? '' : 's'}`
   const spent = f.turnsToday ? `spent $${f.spentToday.toFixed(2)} today over ${plural(f.turnsToday, 'turn')}` : 'spent nothing today'
   const parts = [
     f.version ? `I'm running ${f.version.split(' ')[0]}.` : f.upSec === undefined ? "I'm running." : '',
     f.upSec === undefined ? `I've ${spent}.` : `I've been up ${spoken(ago(f.upSec * 1000))} and ${spent}.`,
     f.schedules ? `${plural(f.schedules, 'schedule')}.` : '',
+    f.starts.total > 1 ? `${startsLine(f.starts)}.` : '',
   ]
-  return { says: parts.filter(Boolean).join(' '), warn: f.boots24h > 10 ? `I restarted ${f.boots24h} times in the last 24 hours.` : undefined }
+  const times = (k: number) => k === 1 ? 'once' : `${k} times`
+  const bad = [...f.starts.crash ? [`crashed ${times(f.starts.crash)}`] : [], ...f.starts.unknown ? [`stopped ${times(f.starts.unknown)} without saying why`] : []]
+  return { says: parts.filter(Boolean).join(' '), warn: bad.length ? `I ${bad.join(' and ')} in the last 24 hours.` : undefined }
 }

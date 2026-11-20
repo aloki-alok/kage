@@ -1,6 +1,6 @@
 import { existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
-import { npmCi, packagesStale, rotate } from './runtime/hub-log.ts'
+import { countBoot, noteExit, npmCi, packagesStale, rotate } from './runtime/hub-log.ts'
 
 const DIR = import.meta.dirname
 const ENV_FILE = process.env.KAGE_ENV || `${process.env.HOME}/.config/kage/env`
@@ -9,14 +9,6 @@ const say = (line: string) => console.error(`${new Date().toISOString()} hub.ts:
 
 const envValue = (text: string, key: string) =>
   text.split('\n').filter(l => l.startsWith(`${key}=`)).map(l => l.slice(key.length + 1)).at(-1)
-
-function countBoot(file: string, now: number): number {
-  let times: number[] = []
-  try { times = readFileSync(file, 'utf8').split('\n').map(Number).filter(t => t > now - 86_400) } catch {}
-  times.push(now)
-  writeFileSync(file, times.join('\n') + '\n')
-  return times.filter(t => t > now - 600).length
-}
 
 const lastLines = (log: string) => {
   try { return readFileSync(log, 'utf8').split('\n').slice(-40).filter(l => l.trim() && !/^\s*at /.test(l)).slice(-5).join('\n') } catch { return '' }
@@ -67,7 +59,7 @@ function claudeCommand(route: string | undefined) {
   const home = (p: string) => (p === '~' ? process.env.HOME! : p.startsWith('~/') ? process.env.HOME + p.slice(1) : p)
   const last = lastLines(log)
   const now = Math.floor(Date.now() / 1000)
-  const boots = countBoot(`${CONF}/boots`, now)
+  const boots = countBoot(CONF, now)
   say(`hub start ${boots} in the last 10 minutes`)
   await crashLoopDm(tokens, boots, last, now)
 
@@ -89,9 +81,10 @@ function claudeCommand(route: string | undefined) {
   process.chdir(process.env.KAGE_CWD)
   try { await import('./hub/router.ts') } catch (e) {
     console.error(e)
-    if (!packagesStale(DIR)) { say('the hub could not load: read the error above'); process.exit(1) }
+    if (!packagesStale(DIR)) { say('the hub could not load: read the error above'); noteExit(CONF, 'crash', e); process.exit(1) }
     say('the hub could not load and its packages are behind package-lock.json: running npm ci, then restarting')
-    try { npmCi(DIR) } catch { say(`npm ci failed: run it in ${DIR} and read the error`); process.exit(1) }
+    try { npmCi(DIR) } catch { say(`npm ci failed: run it in ${DIR} and read the error`); noteExit(CONF, 'crash', 'npm ci failed'); process.exit(1) }
+    noteExit(CONF, 'update')
     process.exit(75)
   }
 }

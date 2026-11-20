@@ -2,6 +2,7 @@ import { describe, test } from 'node:test'
 import assert from 'node:assert/strict'
 import { ago, boardRows, statusSummary, nextRuns, watchingNext, whenLabel, type Live, clockTime, limitLine, pauseLine, stopLine } from '../board.ts'
 import type { Schedule } from '../cron.ts'
+import { startsSince } from '../boots.ts'
 
 const MIN = 60_000, HOUR = 60 * MIN, DAY = 24 * HOUR
 const NOW = new Date(2026, 10, 3, 17, 42, 0).getTime()
@@ -148,19 +149,25 @@ describe('the answer to a stop', () => {
 
 describe('kage status summary, in Kage words', () => {
   test('the version, uptime, spend and schedules in one sentence', () => {
-    const r = statusSummary({ version: '6185ff7 (2026-11-19, v0.4.3)', upSec: 6 * 3600, boots24h: 2, schedules: 4, spentToday: 3.2, turnsToday: 12 })
-    assert.equal(r.says, "I'm running 6185ff7. I've been up 6 hours and spent $3.20 today over 12 turns. 4 schedules.")
+    const r = statusSummary({ version: '6185ff7 (2026-11-19, v0.4.3)', upSec: 6 * 3600, starts: startsSince('1 update\n2 restart\n', 0), schedules: 4, spentToday: 3.2, turnsToday: 12 })
+    assert.equal(r.says, "I'm running 6185ff7. I've been up 6 hours and spent $3.20 today over 12 turns. 4 schedules. 2 starts in 24 h: 1 update, 1 restart, 0 crashes.")
     assert.equal(r.warn, undefined)
   })
-  test('one of each reads in the singular, and nothing spent says so', () => {
-    assert.equal(statusSummary({ upSec: 3600, boots24h: 1, schedules: 1, spentToday: 0, turnsToday: 0 }).says, "I've been up 1 hour and spent nothing today. 1 schedule.")
-    assert.match(statusSummary({ upSec: 45, boots24h: 1, schedules: 0, spentToday: 0, turnsToday: 0 }).says, /up 45 seconds/)
-    assert.match(statusSummary({ upSec: 120, boots24h: 1, schedules: 0, spentToday: 0, turnsToday: 0 }).says, /up 2 minutes/)
-    assert.match(statusSummary({ upSec: 3 * 86400, boots24h: 1, schedules: 0, spentToday: 0, turnsToday: 0 }).says, /up 3 days/)
+  test('a crash or a stop with no cause is the warning, and planned restarts are not (#255)', () => {
+    const base = { upSec: 60, schedules: 0, spentToday: 0, turnsToday: 0 }
+    assert.equal(statusSummary({ ...base, starts: startsSince(Array.from({ length: 63 }, (_, i) => `${i + 1} update`).join('\n'), 0) }).warn, undefined)
+    assert.equal(statusSummary({ ...base, starts: startsSince('1 crash boom\n2 unknown\n3 update\n', 0) }).warn, 'I crashed once and stopped once without saying why in the last 24 hours.')
+    assert.equal(statusSummary({ ...base, starts: startsSince('1 crash boom\n2 crash boom\n', 0) }).warn, 'I crashed 2 times in the last 24 hours.')
   })
-  test('many restarts are a warning, and an unknown uptime is left out', () => {
-    const r = statusSummary({ boots24h: 48, schedules: 0, spentToday: 0, turnsToday: 0 })
+  test('one of each reads in the singular, and nothing spent says so', () => {
+    assert.equal(statusSummary({ upSec: 3600, starts: startsSince('1 update\n', 0), schedules: 1, spentToday: 0, turnsToday: 0 }).says, "I've been up 1 hour and spent nothing today. 1 schedule.")
+    assert.match(statusSummary({ upSec: 45, starts: startsSince('1 update\n', 0), schedules: 0, spentToday: 0, turnsToday: 0 }).says, /up 45 seconds/)
+    assert.match(statusSummary({ upSec: 120, starts: startsSince('1 update\n', 0), schedules: 0, spentToday: 0, turnsToday: 0 }).says, /up 2 minutes/)
+    assert.match(statusSummary({ upSec: 3 * 86400, starts: startsSince('1 update\n', 0), schedules: 0, spentToday: 0, turnsToday: 0 }).says, /up 3 days/)
+  })
+  test('an unknown stop is a warning, and an unknown uptime is left out', () => {
+    const r = statusSummary({ starts: startsSince('1 unknown\n', 0), schedules: 0, spentToday: 0, turnsToday: 0 })
     assert.equal(r.says, "I'm running. I've spent nothing today.")
-    assert.equal(r.warn, 'I restarted 48 times in the last 24 hours.')
+    assert.equal(r.warn, 'I stopped once without saying why in the last 24 hours.')
   })
 })
