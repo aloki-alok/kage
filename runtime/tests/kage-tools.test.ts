@@ -1135,6 +1135,26 @@ describe("the owner's screen", () => {
     assert.match(cards.at(-1) ?? '', /did not type/)
     assert.deepEqual(asked.filter(a => a.startsWith('key')), ['key return', 'key up'])
   })
+  test('a terminal Kage has not typed in starts unknown; ctrl+c gives a clean line; a click or an editing key makes it unknown again (#478 review)', async () => {
+    const asked: string[] = [], cards: string[] = []
+    const s = setup({ screen: fakeScreen(asked, () => ({ app: 'Ghostty', role: 'AXTextArea', label: '' })), approve: async (_t, d) => { cards.push(d); return false } })
+    s.t.onTask(s.task())
+    const act = (a: Record<string, unknown>) => s.call('screen_act', { channel: 'C1', thread_ts: '5.5', ...a })
+    assert.equal((await act({ action: 'key', keys: 'return' })).isError, true)
+    assert.match(cards.at(-1) ?? '', /did not type/)
+    await act({ action: 'key', keys: 'ctrl+c' })
+    await act({ action: 'type', text: 'ls' })
+    assert.equal((await act({ action: 'key', keys: 'return' })).isError, undefined)
+    await act({ action: 'type', text: 'xrm -rf ~' })
+    await act({ action: 'key', keys: 'home' })
+    await act({ action: 'key', keys: 'forwarddelete' })
+    assert.equal((await act({ action: 'key', keys: 'return' })).isError, true)
+    await act({ action: 'key', keys: 'ctrl+u' })
+    await act({ action: 'click', x: 3, y: 3 })
+    await act({ action: 'type', text: 'ls' })
+    assert.equal((await act({ action: 'key', keys: 'return' })).isError, true)
+    assert.equal(cards.length, 3)
+  })
   test("a teammate's task, a voice call and an agent's task never act on the Mac", async () => {
     for (const t of [{ channel: 'C1', fromOwner: false }, { channel: 'voice', fromOwner: true }]) {
       const asked: string[] = []

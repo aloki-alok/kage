@@ -85,3 +85,29 @@ test('text with a line break typed into a terminal is refused, since each break 
   assert.match((v as { blocked: string }).blocked, /one line/)
   assert.deepEqual(desktopVerdict({ action: 'type', text: 'Dear team,\nthanks' }, at('Body', { app: 'Mail' }), ''), { run: true })
 })
+
+test('every key a shell takes as Return is checked like Return (#478 review)', () => {
+  const term = at('', { app: 'Terminal' })
+  for (const k of ['ctrl+m', 'ctrl+j', 'ctrl+o', 'shift+return', 'alt+enter']) {
+    assert.ok('blocked' in desktopVerdict(key(k), term, 'sudo shutdown -h now'), k)
+    assert.ok('ask' in desktopVerdict(key(k), term, undefined), k)
+  }
+})
+
+test("Finder's delete shortcuts ask, as a click on Move to Trash does (#478 review)", () => {
+  for (const k of ['cmd+delete', 'cmd+backspace', 'alt+cmd+delete', 'shift+cmd+delete', 'alt+shift+cmd+delete']) {
+    const v = desktopVerdict(key(k), at('', { app: 'Finder' }), '')
+    assert.ok('ask' in v, k)
+  }
+  assert.deepEqual(desktopVerdict(key('delete'), at('', { app: 'Notes' }), ''), { run: true })
+})
+
+test('pmset and osascript that sleep, shut down or log out the Mac are refused in a terminal (#478 review)', () => {
+  const term = at('', { app: 'Terminal' })
+  for (const line of ['pmset sleepnow', 'sudo pmset restartoneshot 0', `osascript -e 'tell app "System Events" to shut down'`, `osascript -e 'tell application "loginwindow" to «event aevtrlgo»'`, `osascript -e 'tell app "System Events" to log out'`])
+    assert.ok('blocked' in desktopVerdict(key('return'), term, line), line)
+})
+
+test('the backslash key is a key', () => {
+  assert.deepEqual(parseDesktopAct({ action: 'key', keys: 'cmd+\\' }), { action: 'key', keys: 'cmd+\\' })
+})
