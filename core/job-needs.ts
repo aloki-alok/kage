@@ -1,3 +1,5 @@
+import { OWN_TOOLS } from './guards.ts'
+
 type ServerStatus = { name: string; status: string; tools?: { name: string }[] }
 type NeedsJob = { id: string; place: string; needs: string[]; missing?: string[] }
 type Live = { tools: Set<string>; pending: string[] }
@@ -14,7 +16,7 @@ export function liveTools(servers: ServerStatus[]): Live {
   }
 }
 
-const own = (t: string) => t.startsWith('mcp__kage__')
+const own = (t: string) => OWN_TOOLS.test(t)
 
 export function needsChanges(jobs: NeedsJob[], live: Live): { id: string; missing: string[]; dm?: string }[] {
   return jobs.flatMap(j => {
