@@ -7,6 +7,7 @@ import { shadowSwaps } from '../runtime/shadow-swap.ts'
 import { log } from '../runtime/log.ts'
 import type { scheduler } from '../runtime/scheduler.ts'
 import type { Inbox, Store } from '../runtime/store.ts'
+import { ownerLines } from '../core/messages.ts'
 
 export function startJobEvents(o: {
   store: Store; inbox: Inbox; notify: (text: string) => void
@@ -30,7 +31,7 @@ export function startJobEvents(o: {
     for (const s of paused) track(s.key, `paused job=${s.id} reason=off`)
     const set = paused.map(s => s.id).sort().join(',')
     if (paused.length && o.store.load('job-off-told') !== set) {
-      o.notify(`${paused.length} event job${paused.length === 1 ? ' is' : 's are'} paused because tripwires are off. Run \`kage set tripwires.on true\` to turn ${paused.length === 1 ? 'it' : 'them'} back on.`)
+      o.notify(ownerLines.eventJobsPaused(paused.length))
       o.store.save('job-off-told', set)
     }
   }
@@ -58,7 +59,7 @@ export function startJobEvents(o: {
     channelGap: off ? () => {} : ev.channelGap,
     replay: hooks?.replay ?? (async (source: string, payload: string) => {
       o.inbox.handled(source)
-      o.notify(`A webhook call for job ${(JSON.parse(payload) as { job: string }).job} could not run: job webhooks are off (tripwires.hookPort is 0, or tripwires.on is false). The call was dropped.`)
+      o.notify(ownerLines.jobHookOff((JSON.parse(payload) as { job: string }).job))
     }),
     close: () => hooks?.close(),
   }

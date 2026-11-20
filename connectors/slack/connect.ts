@@ -19,6 +19,7 @@ import { heardLine, writeHeard } from './heard.ts'
 import { emptyRoom } from '../../runtime/claude-once.ts'
 import type { Inbox, Saved } from '../../runtime/store.ts'
 import { channelHistory, type ChannelHistory, type ChannelPost } from '../../runtime/channel-watch.ts'
+import { ownerLines } from '../../core/messages.ts'
 
 const PICKED_UP = 'ninja'
 const SEEN = '+1'
@@ -157,7 +158,7 @@ export async function connectSlack(o: { askOtherAgents?: boolean; dir: string; a
     const loop = t.agent && loops.turn(t.agent, thread, Date.now())
     if (t.agent && loop) {
       log(`dropped ${thread} from ${m.user ?? 'no user'} (app ${t.agent}): loop, ${DROPS.loop}: ${loop}`)
-      if (loops.tell(t.agent, Date.now())) void notifyOwner(`I stopped answering agent \`${t.agent}\` in ${await placeOf(m.channel)}: ${loop}. Its posts are dropped while it is over the limit. A thread over the limit opens again when a person writes in it.`)
+      if (loops.tell(t.agent, Date.now())) void notifyOwner(ownerLines.agentLoopStopped(t.agent, await placeOf(m.channel), loop))
       return
     }
     if (t.kind === 'task' && t.agent && o.jev) {

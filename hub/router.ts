@@ -58,6 +58,7 @@ import { closedThreads } from '../runtime/closed-threads.ts'
 import { checkScopes } from '../runtime/slack-scopes.ts'
 import { scopeDm } from '../core/slack-scopes.ts'
 import { startTelemetry } from './telemetry.ts'
+import { ownerLines } from '../core/messages.ts'
 import { answersInThread, blockedTask, planDrop } from '../core/blocks.ts'
 import { unanswered } from '../core/ledgers.ts'
 
@@ -330,7 +331,7 @@ else if (existsSync(CRONS)) {
   } catch (e) {
     log('crons-import.json is unreadable, moved to .bad', e)
     renameSync(CRONS, `${CRONS}.bad`)
-    void owner.say('Could not read the cron jobs exported from the panes (crons-import.json.bad). Watchers may need setting up again.')
+    void owner.say(ownerLines.cronImportBad())
   }
 }
 
@@ -387,7 +388,7 @@ if (updated) { log(updated); void owner.say(updated).then(sent => { if (sent) cl
 const unplaced = unknownNames(readSettings(ENV_FILE).config).join(', ')
 const told = `${DIR}/config-unknown-told`
 if (unplaced && (existsSync(told) ? readFileSync(told, 'utf8') : '') !== unplaced) {
-  void owner.say(`Kage moved its settings into config.json. It could not place these old lines, so they sit under "unknown": ${unplaced}. Tell me what each one is for, and I will help place it.`)
+  void owner.say(ownerLines.settingsUnplaced(unplaced))
     .then(sent => { if (sent) writeFileSync(told, unplaced) })
 }
 const SCOPES_TOLD = 'slack-scopes-told'

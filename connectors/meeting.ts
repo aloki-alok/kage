@@ -10,6 +10,7 @@ import type { Inbox } from '../runtime/store.ts'
 import { slackPlain } from '../core/outbound.ts'
 import { bearerOk, hourCap, listen, readBody } from './webhook.ts'
 import { taskAsOther } from '../core/gate.ts'
+import { ownerLines } from '../core/messages.ts'
 
 const MAX_BODY = 5_000_000
 
@@ -41,11 +42,11 @@ export function connectMeeting(o: {
     if (!m) return 'bad'
     const t = now()
     if (cap.full(t)) {
-      if (cap.tell()) o.notify(`More than ${o.perHour} meeting transcripts came in this hour, so I am skipping them. Send "${m.title}" again after the hour is up.`)
+      if (cap.tell()) o.notify(ownerLines.meetingOverCap(o.perHour, m.title))
       return 'retry'
     }
     const thread = await o.post(`*Meeting:* ${slackPlain(m.title)}${m.link ? ` <${m.link}|open>` : ''}`)
-    if (!thread) { o.notify(`Notes for the meeting "${m.title}" could not open a thread here. Send it again.`); return 'retry' }
+    if (!thread) { o.notify(ownerLines.meetingNoThread(m.title)); return 'retry' }
     const place = `Meeting ${m.title}`
     const task = taskAsOther({
       content: meetingTask(m),
@@ -191,7 +192,7 @@ export function connectMeeting(o: {
         .then(r => res.writeHead(r === 'bad' ? 400 : 202).end())
         .catch(e => {
           log('meeting transcript failed', e)
-          o.notify(`A meeting transcript failed here (${String(e).slice(0, 120)}). Send it again.`)
+          o.notify(ownerLines.meetingFailed(e))
           res.writeHead(500).end()
         })
     })()
