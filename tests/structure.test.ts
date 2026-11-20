@@ -20,7 +20,7 @@ const DEBT = {
   impureCore: [] as string[],
   rootImports: [] as string[],
   longFiles: {
-    'hub/router.ts': 393, 'cli/top.ts': 336,
+    'hub/router.ts': 347, 'cli/top.ts': 331,
   } as Record<string, number>,
   unmapped: [] as string[],
   unusedCoreExports: [
