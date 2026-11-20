@@ -25,11 +25,19 @@ export function meets(value: number, t: Target): boolean {
   return t.op === '<=' ? value <= t.n : t.op === '>=' ? value >= t.n : t.op === '<' ? value < t.n : t.op === '>' ? value > t.n : value === t.n
 }
 
+function moved(before: number, after: number, t: Target): string {
+  if (after === before) return `no change (${after})`
+  const better = t.op === '>=' || t.op === '>' ? after > before : t.op === '<=' || t.op === '<' ? after < before : Math.abs(after - t.n) < Math.abs(before - t.n)
+  return `${before} to ${after}, ${after > before ? 'up' : 'down'} ${+Math.abs(after - before).toFixed(6)}, ${better ? 'toward' : 'away from'} the target`
+}
+
 export function scoreboard(o: Objective, readings: Reading[]): string {
   const values = readings.filter(r => r.value !== undefined).map(r => r.value!)
   const last = readings.at(-1)
   const now = values.length ? `${values.at(-1)} (target ${o.target.op} ${o.target.n}, ${meets(values.at(-1)!, o.target) ? 'met' : 'not met'})` : 'not measured yet'
+  const [before, after] = last?.value !== undefined && readings.at(-2)?.value !== undefined ? [readings.at(-2)!.value!, last.value] : []
   return [`Objective: ${o.objective}`, `Number: ${now}${values.length > 1 ? `. Trend, oldest first: ${values.join(', ')}` : ''}`,
+    ...before !== undefined ? [`Since the last measure: ${moved(before, after!, o.target)}.`] : [],
     ...last?.failed ? [`The last measure failed (${last.failed}): say so in your report, and do not guess the number.`] : [],
-    'Keep working toward it, met or not, and end your report with the number you saw.'].join('\n')
+    'Keep working toward it, met or not. End your report with how the number moved since your last run and your next step. If it did not move the way your last run expected, change this run\'s plan.'].join('\n')
 }
