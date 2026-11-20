@@ -44,6 +44,16 @@ globalThis.__kage ??= (() => {
     if (!ref) { ref = next++; refOf.set(el, ref); byRef.set(ref, new WeakRef(el)) }
     return ref
   }
+  // The box whose overflow can clip el: a fixed or absolute element skips the ancestors it escapes. Meta's
+  // dashboard draws its whole app in fixed boxes under a zero-height wrapper, so a plain parent walk hid it all.
+  const holdsFixed = st => st.transform !== 'none' || st.perspective !== 'none' || st.filter !== 'none' || /paint|layout|strict|content/.test(st.contain) || /transform|perspective|filter/.test(st.willChange)
+  const clipperOf = el => {
+    const pos = getComputedStyle(el).position
+    let e = el.parentElement
+    if (pos === 'fixed') while (e && !holdsFixed(getComputedStyle(e))) e = e.parentElement
+    else if (pos === 'absolute') while (e && getComputedStyle(e).position === 'static' && !holdsFixed(getComputedStyle(e))) e = e.parentElement
+    return e
+  }
   // Seen by a person: laid out, inside the page, not hidden, clipped or see-through anywhere up the tree.
   const shown = el => {
     const r = el.getBoundingClientRect()
@@ -55,8 +65,11 @@ globalThis.__kage ??= (() => {
       if (st.display === 'none' || st.visibility === 'hidden' || Number(st.opacity) < 0.1) return false
       if (st.clipPath && st.clipPath !== 'none') return false
       if (st.clip && st.clip !== 'auto') return false
-      // An ancestor that clips its content to nothing (height: 0; overflow: hidden) hides the control too.
-      if (e !== el && st.overflow !== 'visible') { const a = e.getBoundingClientRect(); if (a.width < 2 || a.height < 2) return false }
+    }
+    // An ancestor that clips its content to nothing (height: 0; overflow: hidden) hides the control too. The page
+    // edge is checked above, so the root boxes, whose overflow belongs to the viewport, are skipped.
+    for (let e = clipperOf(el); e && e !== doc && e !== document.body; e = clipperOf(e)) {
+      if (getComputedStyle(e).overflow !== 'visible') { const a = e.getBoundingClientRect(); if (a.width < 2 || a.height < 2) return false }
     }
     return true
   }

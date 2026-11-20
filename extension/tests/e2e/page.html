@@ -18,6 +18,8 @@
 <a href="https://evil.example/unsub">Unsubscribe</a>
 <button onclick="out.textContent = 'child ghost clicked'"><span class="ghost"></span><span style="font-size:0">Keep</span></button>
 <div style="height:0;overflow:hidden"><input value="tok-zero-box" aria-label="Zero box"></div>
+<div style="height:0;overflow:hidden;position:relative"><input style="position:absolute" value="tok-zero-abs" aria-label="Zero abs"></div>
+<div style="height:0;overflow:hidden"><button style="position:fixed;right:8px;top:8px" onclick="out.textContent = 'fixed clicked'">Fixed shell</button><input style="position:absolute;left:700px;top:60px" aria-label="Escaped field"></div>
 <input value="tok-transparent" aria-label="Transparent" style="color:transparent">
 <div style="position:relative;display:inline-block"><input value="tok-under-cover" aria-label="Under cover"><div style="position:absolute;inset:0;background:#fff"></div></div>
 <input autocomplete="cc-number" value="4111111111111111" aria-label="Card">
