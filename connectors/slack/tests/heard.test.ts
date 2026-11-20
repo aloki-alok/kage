@@ -1,6 +1,6 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { HEARD, heardLine } from '../slack-heard.ts'
+import { HEARD, heardLine } from '../heard.ts'
 
 test('one or two words from the model are posted with the ninja', async () => {
   assert.equal(await heardLine('drop my ask', async () => 'Dropped.\nextra'), 'Dropped. :ninja:')

@@ -1,5 +1,5 @@
-import { findSecret } from '../core/outbound.ts'
-import { claudeOnce } from '../runtime/claude-once.ts'
+import { findSecret } from '../../core/outbound.ts'
+import { claudeOnce } from '../../runtime/claude-once.ts'
 
 export const HEARD = 'Noted :ninja:'
 

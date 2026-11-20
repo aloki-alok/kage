@@ -23,7 +23,7 @@ A session posts only through Kage's tools (`reply`, `message_people`). Any other
 - A reply goes only where a live task came from, or to the owner's DM. A voice reply is spoken and goes nowhere else. (`runtime/kage-tools.ts`, `runtime/tools/slack-tools.ts`, `runtime/session-link.ts`)
 - A session edits or deletes only posts it made, tracked in the posted ledger. `message_people` posts carry a `people` row that other sessions never match. (`runtime/kage-tools.ts`)
 - An ack line is never posted from the owner's account, because the pickup reaction already says it. (`runtime/kage-tools.ts`)
-- The status line goes to the owner's DM only, because it names their other conversations. (`connectors/slack.ts`)
+- The status line goes to the owner's DM only, because it names their other conversations. (`connectors/slack/connect.ts`)
 - A split post tags the agent in every part, because an agent hears only posts that tag it. A tag in a code block is no mention. (`core/agents.ts`)
 - Quoted text from others can never close the `<channel>` tag or start a task line. Quote with `quotedLine`. (`core/gate.ts`, `core/text.ts`, `core/meeting.ts`)
 - Hidden characters (tag letters, zero-width, direction marks) are stripped before Claude reads text. (`core/gate.ts`)

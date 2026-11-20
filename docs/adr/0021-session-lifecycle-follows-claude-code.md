@@ -21,7 +21,7 @@ Status: Accepted.
 - A drain holds every new message, so `kage update` never starts one. (`tests/setup.test.ts`)
 - `plugin/server.ts` takes tasks only after the MCP handshake. It writes the sender file before the task lands, so a failed write drops the task. (`plugin/server.ts`)
 - Run the Claude process from a fixed folder. Claude Code files transcripts by folder, so a different folder forgets every thread. (`hub.ts`)
-- Claude Code with no CLAUDE.md or settings, run with `-p`, denies Bash outside its rules. This was tested 2026-11-04 (`gh pr view` ran, `curl` was refused). (`connectors/slack-afk.ts`, `runtime/claude-once.ts`)
+- Claude Code with no CLAUDE.md or settings, run with `-p`, denies Bash outside its rules. This was tested 2026-11-04 (`gh pr view` ran, `curl` was refused). (`connectors/slack/afk.ts`, `runtime/claude-once.ts`)
 - Go tools verify TLS through trustd on macOS, which the shell sandbox blocks. (`runtime/path-guards.ts`)
 - Slack answers a bad token or missing scope with 200 and a sign-in page. (`runtime/slack-files.ts`)
 - Slack code font fits about 64 characters. A longer row wraps (measured 2026-11-05, Monaco 12 px). (`core/outbound.ts`)

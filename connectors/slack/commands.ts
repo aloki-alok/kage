@@ -1,10 +1,10 @@
 import type { SocketModeClient } from '@slack/socket-mode'
 import type { WebClient } from '@slack/web-api'
 import { execFile } from 'node:child_process'
-import { log } from '../runtime/log.ts'
-import { commandRequest, type CommandRequest } from '../core/commands.ts'
-import { splitForSlack } from '../core/outbound.ts'
-import type { Ledgers } from '../runtime/ledger.ts'
+import { log } from '../../runtime/log.ts'
+import { commandRequest, type CommandRequest } from '../../core/commands.ts'
+import { splitForSlack } from '../../core/outbound.ts'
+import type { Ledgers } from '../../runtime/ledger.ts'
 
 export function listenForCommands(socket: SocketModeClient, o: { user: WebClient; team: string; commands: Map<string, string>; ledgers: Ledgers }) {
   let chain = Promise.resolve()
