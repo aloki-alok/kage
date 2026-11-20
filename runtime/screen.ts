@@ -8,7 +8,7 @@ import { promisify } from 'node:util'
 export type Launch = (app: string, log: string) => { exited: Promise<number | null> }
 type Line = { state?: 'recording' | 'saved' | 'acting' | 'stopped'; pid?: number; seconds?: number; error?: string; id?: number }
 export type ActAnswer = Record<string, unknown>
-type Acting = { log: string; pipe: WriteStream; next: number; done: boolean }
+type Acting = { log: string; pipe: WriteStream; next: number; done: boolean; said?: Line[] }
 type Running = { pid: number; out: string; log: string; exited: Promise<number | null>; done: boolean }
 
 const PERMISSION = "macOS needs the owner's yes first. It asked them to turn on Kage Screen in System Settings > Privacy & Security > Screen & System Audio Recording. Tell the owner, and try again once they have."
@@ -108,22 +108,29 @@ export function screenRecorder(o: { folder: string; code: string; build?: (app: 
     if (first?.state !== 'acting') { rmSync(r.log, { force: true }); rmSync(fifo, { force: true }); return !first ? NO_ANSWER : failure(first) }
     const a: Acting = { log: r.log, pipe: createWriteStream(fifo), next: 0, done: false }
     a.pipe.on('error', () => { a.done = true })
-    void r.exited.then(() => { a.done = true; a.pipe.destroy(); rmSync(fifo, { force: true }); rmSync(r.log, { force: true }) })
+    void r.exited.then(() => { a.said = lines(r.log); a.done = true; a.pipe.destroy(); rmSync(fifo, { force: true }); rmSync(r.log, { force: true }) })
     return a
+  }
+
+  async function send(command: Record<string, unknown>): Promise<ActAnswer | 'left idle'> {
+    if (!acting || acting.done) { const a = await startActing(); if (typeof a === 'string') return { error: a }; acting = a }
+    const a = acting, id = ++a.next
+    a.pipe.write(JSON.stringify({ ...command, id }) + '\n')
+    for (let waited = 0; waited < waitMs; waited += pollMs) {
+      const said = a.said ?? lines(a.log), answer = said.find(l => l.id === id)
+      if (answer) { const { id: _, ...rest } = answer; return rest }
+      if (a.said) return said.at(-1)?.state === 'stopped' ? 'left idle' : { error: failure(said.at(-1)) }
+      await new Promise(r => setTimeout(r, pollMs))
+    }
+    return { error: NO_ANSWER }
   }
 
   return {
     act: (command: { op: string } & Record<string, unknown>) => serial(async (): Promise<ActAnswer> => {
-      if (!acting || acting.done) { const a = await startActing(); if (typeof a === 'string') return { error: a }; acting = a }
-      const a = acting, id = ++a.next
-      a.pipe.write(JSON.stringify({ ...command, id }) + '\n')
-      for (let waited = 0; waited < waitMs; waited += pollMs) {
-        const answer = lines(a.log).find(l => l.id === id)
-        if (answer) { const { id: _, ...rest } = answer; return rest }
-        if (a.done) return { error: failure(lines(a.log).at(-1)) }
-        await new Promise(r => setTimeout(r, pollMs))
-      }
-      return { error: NO_ANSWER }
+      const first = await send(command)
+      if (first !== 'left idle') return first
+      const again = await send(command)
+      return again === 'left idle' ? { error: NO_ANSWER } : again
     }),
     shot: (out: string, appName?: string) => serial(async (): Promise<string | undefined> => {
       const r = await launchJob({ action: 'shot', out, ...appName && { app: appName } })

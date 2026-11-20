@@ -155,7 +155,8 @@ final class Hands {
   let scale: CGFloat
   var lastCommand = Date()
   init() {
-    scale = NSScreen.main?.backingScaleFactor ?? 2
+    let main = CGMainDisplayID()
+    scale = CGFloat(CGDisplayPixelsWide(main)) / max(1, CGDisplayBounds(main).width)
     window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 80, height: 56), styleMask: .borderless, backing: .buffered, defer: false)
     window.isOpaque = false
     window.backgroundColor = .clear
@@ -226,9 +227,9 @@ final class Hands {
     CGEvent(scrollWheelEvent2Source: nil, units: .line, wheelCount: 2, wheel1: Int32(dy), wheel2: Int32(dx), wheel3: 0)?.post(tap: .cghidEventTap)
   }
   func type(_ text: String) {
-    let units = Array(text.utf16)
-    for start in stride(from: 0, to: units.count, by: 16) {
-      var chunk = Array(units[start..<min(start + 16, units.count)])
+    let characters = Array(text)
+    for start in stride(from: 0, to: characters.count, by: 8) {
+      var chunk = Array(String(characters[start..<min(start + 8, characters.count)]).utf16)
       for down in [true, false] {
         let e = CGEvent(keyboardEventSource: nil, virtualKey: 0, keyDown: down)
         e?.keyboardSetUnicodeString(stringLength: chunk.count, unicodeString: &chunk)
@@ -262,10 +263,18 @@ final class Hands {
     let label = [kAXTitleAttribute, kAXDescriptionAttribute, kAXValueAttribute, kAXHelpAttribute].lazy.compactMap { attr($0 as String) }.first { !$0.isEmpty } ?? ""
     return ["app": app, "role": attr(kAXRoleAttribute as String) ?? "", "label": String(label.prefix(200))]
   }
+  // The hit is often an icon or text inside a button, with no label of its own: read up to the control that has one.
   func under(_ p: CGPoint) -> [String: Any] {
     var el: AXUIElement?
     AXUIElementCopyElementAtPosition(AXUIElementCreateSystemWide(), Float(p.x), Float(p.y), &el)
-    return describe(el)
+    var seen = describe(el)
+    for _ in 0..<4 where (seen["label"] as? String ?? "").isEmpty {
+      var parent: CFTypeRef?
+      guard let child = el, AXUIElementCopyAttributeValue(child, kAXParentAttribute as CFString, &parent) == .success, let up = parent else { break }
+      el = (up as! AXUIElement)
+      seen = describe(el)
+    }
+    return seen
   }
   // Enter or Space presses the focused control, or a dialog's default button when no control takes it.
   func focused() -> [String: Any] {
@@ -296,13 +305,13 @@ final class Hands {
     case "scroll": guard let p else { return ["error": "scroll needs x and y"] }; scroll(p, dy: c.dy ?? 0, dx: c.dx ?? 0); return ["done": true]
     case "type": type(c.text ?? ""); return ["done": true]
     case "key": if let why = key(c.keys ?? "") { return ["error": why] }; return ["done": true]
-    case "quit": emit(["state": "stopped"]); exit(0)
     default: return ["error": "unknown command \(c.op)"]
     }
   }
 }
 
 var hands: Hands?
+let work = DispatchQueue(label: "dev.kage.screen.act")
 
 // run() is on a background task, and windows and timers belong to the main thread.
 func startActing(_ job: Job) { DispatchQueue.main.async { startActingOnMain(job) } }
@@ -323,15 +332,24 @@ func startActingOnMain(_ job: Job) {
       while let nl = buffer.firstIndex(of: 0x0a) {
         let line = buffer[buffer.startIndex..<nl]
         buffer.removeSubrange(buffer.startIndex...nl)
-        guard let c = try? JSONDecoder().decode(Command.self, from: line) else { emit(["error": "bad command"]); continue }
-        var answer = a.run(c)
-        answer["id"] = c.id
-        emit(answer)
+        struct Numbered: Decodable { let id: Int }
+        guard let c = try? JSONDecoder().decode(Command.self, from: line) else {
+          if let n = try? JSONDecoder().decode(Numbered.self, from: line) { emit(["id": n.id, "error": "bad command"]) } else { emit(["error": "bad command"]) }
+          continue
+        }
+        work.sync {
+          var answer = a.run(c)
+          answer["id"] = c.id
+          emit(answer)
+        }
       }
     }
   }
-  // Nobody acted for 5 minutes: the work is done, so the cursor leaves the screen.
-  Timer.scheduledTimer(withTimeInterval: 15, repeats: true) { _ in if Date().timeIntervalSince(a.lastCommand) > 300 { emit(["state": "stopped"]); exit(0) } }
+  // Nobody acted for 5 minutes: the work is done, so the cursor leaves the screen. The check runs on the
+  // queue that runs steps, so the app never leaves mid-step, and the hub may resend a step it got no answer to.
+  Timer.scheduledTimer(withTimeInterval: 15, repeats: true) { _ in
+    work.async { if Date().timeIntervalSince(a.lastCommand) > 300 { emit(["state": "stopped"]); exit(0) } }
+  }
 }
 
 // ScreenCaptureKit draws its menu bar indicator with AppKit, so the main thread runs a real app loop.
