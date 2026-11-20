@@ -7,7 +7,7 @@ import type { KageletRow } from '../../core/kagelets/kagelet.ts'
 const NOW = Date.parse('2026-11-19T14:22:00Z')
 const kagelet: KageletRow = { name: 'deploy-watch', state: 'runs', cron: '*/30 * * * *', tools: [], costToday: 0.11, avg7: 0.09, result: { at: NOW, summary: 'CI green on main' } }
 
-function frame(tab: Tab, cols = 132, rows = 38): string[] {
+function frame(tab: Tab, cols = 132, rows = 38, extra: Partial<View> = {}): string[] {
   resize({ cols, rows })
   const v: View = {
     now: NOW, t: 0, since: 1e9, channels: [{ name: 'slack', up: true }, { name: 'email', up: false }], hubUp: true, spentToday: 1.2,
@@ -16,7 +16,7 @@ function frame(tab: Tab, cols = 132, rows = 38): string[] {
     feed: [{ at: NOW, text: 'read   deploy.log' }], typed: Infinity, threadSpend: 0,
     schedules: [{ id: 's1', key: 'C0TEST1:1.0', cron: '*/5 * * * *', prompt: 'check CI', recurring: true, fromOwner: true, created: NOW, lastFired: 0 }],
     nextOf: () => NOW + 60_000, placeOf: () => '#infra-alerts',
-    kagelets: [kagelet], pick: 0, runs: [], turns: [], costs: [], query: '', searching: false,
+    kagelets: [kagelet], pick: 0, runs: [], turns: [], costs: [], query: '', searching: false, ...extra,
   }
   drawFrame(v)
   return toText().map(l => l.replace(/\x1b\[[0-9;]*m/g, ''))
@@ -48,4 +48,13 @@ test('each chart says what a bar is, its top value and its time range', () => {
   assert.match(text, /-60m .*-30m .*now/)
   assert.match(text, /spend per hour/)
   assert.match(text, /\$0\.00 today|\$1\.20 today/)
+})
+
+test('leftover processes or containers show as one line on top that names kage doctor, and a thread that asks wins the line (#276)', () => {
+  const top = frame('threads', 132, 38, { leftovers: 2 })
+  assert.match(top.join('\n'), /2 leftover processes or containers slow this machine: kage doctor lists them/)
+  assert.doesNotMatch(frame('threads').join('\n'), /leftover/)
+  const both = frame('threads', 132, 38, { leftovers: 1, ask: { place: '#infra', what: 'approve the deploy' } }).join('\n')
+  assert.match(both, /#infra asks you: approve the deploy/)
+  assert.doesNotMatch(both, /leftover/)
 })
