@@ -88,7 +88,10 @@ export function commandWords(command: string, home: string): { words: string[]; 
   return { words, cds: words.filter((_, i) => words[i - 1] === 'cd'), outs: [...redirects, ...tees].map(expand) }
 }
 
-export const pinsChanged = (pins: Record<string, string>, now: Record<string, string | undefined>): string[] =>
+const TEMP_PATH = /(?<![\w./~-])(?:(?:\/private)?\/(?:tmp|var\/folders)|\$\{?TMPDIR\}?)\/[^\s'"`);]+/g
+export const tempPaths = (text: string): string[] => [...new Set(text.match(TEMP_PATH) ?? [])].filter(p => !p.includes('*'))
+
+export const pinsChanged =(pins: Record<string, string>, now: Record<string, string | undefined>): string[] =>
   Object.keys(pins).filter(p => now[p] !== pins[p])
 
 const ERROR_LINE_MAX = 200
