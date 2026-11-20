@@ -128,7 +128,6 @@ export const KEYS: Row[] = [
   R('KAGE_BROWSER_TOKEN', 'browserToken', str, true), R('JEV_API_KEY', 'jevKey', str, true), R('KAGE_VOICE_AGENT_KEY', 'voiceAgentKey', str, true), R('KAGE_CLAUDE_TOKEN', 'claudeToken', str, true),
 ]
 export const ALIASES: Record<string, string> = { KAGE_MAX_SPECIALISTS: 'KAGE_MAX_KAGELETS', KAGE_SPECIALIST_DAILY_USD: 'KAGE_KAGELET_DAILY_USD' }
-export const NOT_SETTINGS = ['KAGE_BIN', 'KAGE_CALL_CODE', 'KAGE_CALL_REASON', 'KAGE_CLAUDE', 'KAGE_DIR', 'KAGE_ENV', 'KAGE_GIT_URL', 'KAGE_KEYS_SOCK', 'KAGE_KEYS_TOKEN', 'KAGE_MEETBOT_HUB', 'KAGE_MEETBOT_PIPELINE', 'KAGE_MEETBOT_PIPELINE_KEY', 'KAGE_MEETBOT_TOKEN', 'KAGE_PANE_SETTINGS', 'KAGE_REF', 'KAGE_SESSION', 'KAGE_SETUP_WAIT', 'KAGE_SLACK_API', 'KAGE_SSM_SOCK', 'KAGE_SSM_TOKEN', 'KAGE_TARBALL', 'KAGE_THREAD']
 
 const looksSecret = (name: string, value = '') => /TOKEN|SECRET|KEY|PASS|AUTH|CRED/i.test(name) || /:\/\/[^\s/:@]+:[^\s/@]+@/.test(value)
   || (/^[A-Za-z0-9_+/=.-]{32,}$/.test(value) && /\d/.test(value) && /[A-Za-z]/.test(value) && !/^[/~.]/.test(value))

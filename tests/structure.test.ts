@@ -9,7 +9,7 @@ const files = execFileSync('git', ['ls-files', '--cached', '--others', '--exclud
   .filter(f => f && !/(^|\/)tests\//.test(f) && !f.startsWith('docs/'))
 const text = new Map(files.map(f => [f, readFileSync(`${root}/${f}`, 'utf8')]))
 const code = (f: string) => text.get(f)!.replace(/\/\*[\s\S]*?\*\//g, '').replace(/(^|\s)\/\/.*$/gm, '$1')
-const scripts = execFileSync('git', ['ls-files', '*.sh'], { cwd: root, encoding: 'utf8' }).split('\n').filter(Boolean).map(f => readFileSync(`${root}/${f}`, 'utf8'))
+const scripts = execFileSync('git', ['ls-files', '*.sh', 'tests/*.ts'], { cwd: root, encoding: 'utf8' }).split('\n').filter(f => f && !f.endsWith('.test.ts')).map(f => readFileSync(`${root}/${f}`, 'utf8'))
 const lines = (f: string) => text.get(f)!.split('\n').slice(0, -1).filter(l => !l.startsWith('import ')).length
 const inDir = (d: string) => files.filter(f => f.startsWith(`${d}/`) && f.endsWith('.ts') && !f.slice(d.length + 1).includes('/'))
 const under = (d: string) => files.filter(f => f.startsWith(`${d}/`) && f.endsWith('.ts') && !f.includes('/tests/'))
@@ -25,7 +25,6 @@ const DEBT = {
   } as Record<string, number>,
   unmapped: [] as string[],
   unusedCoreExports: [
-    'core/config.ts NOT_SETTINGS', 'core/config.ts toEnv',
   ] as string[],
 }
 
@@ -41,7 +40,7 @@ test('core/ is pure: no I/O, no environment, no timers, and imports only core/ (
 })
 
 test('runtime/ and connectors/ never import the hub, the plugin or a root file', () => {
-  const bad = (f: string) => new RegExp(`(from|import\\(|require\\()\\s*['"]${'\\.\\./'.repeat(f.split('/').length - 1)}(?:(?:hub|plugin)\\/)?[^/'"]+['"]`)
+  const bad = (f: string) => new RegExp(`(from|import\\(|require\\(|^import)\\s*['"]${'\\.\\./'.repeat(f.split('/').length - 1)}(?:(?:hub|plugin)\\/)?[^/'"]+['"]`, 'm')
   check('rootImports', [...under('runtime'), ...under('connectors')].filter(f => bad(f).test(code(f))), DEBT.rootImports)
 })
 
