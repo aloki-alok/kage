@@ -115,7 +115,7 @@ export function sdkSessions(o: {
       options: {
         ...o.options,
         ...owners && { settingSources: (o.options.settingSources ?? []).filter(x => x !== 'user'), ...owners.model && { model: owners.model }, ...owners.effort && { effort: owners.effort as EffortLevel } },
-        settings: { ...(o.options.settings as object), ...walled, ...owners?.permissions && { permissions: { ...owners.permissions, deny: [...Array.isArray(owners.permissions.deny) ? owners.permissions.deny : [], ...walled.permissions.deny] } }, ...!full && !s.connectors && { disableClaudeAiConnectors: true } },
+        settings: { ...(o.options.settings as object), ...walled, ...owners?.permissions && !grant && { permissions: { ...owners.permissions, deny: [...Array.isArray(owners.permissions.deny) ? owners.permissions.deny : [], ...walled.permissions.deny] } }, ...!full && !s.connectors && { disableClaudeAiConnectors: true } },
         ...(resumed ? { resume: s.id } : { sessionId: s.id }),
         ...(o.modelOf?.(key) && { model: o.modelOf(key) }),
         ...picks.get(key),
