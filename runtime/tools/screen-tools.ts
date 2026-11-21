@@ -7,6 +7,9 @@ const MAX_SECONDS = 600
 
 const command = ({ action, ...rest }: DesktopAct) => ({ op: action, ...rest })
 const asUnder = (r: ActAnswer): Under => ({ app: String(r.app ?? ''), role: String(r.role ?? ''), label: String(r.label ?? '') })
+const expectOf = (act: DesktopAct, u: Under) =>
+  act.action === 'click' || (act.action === 'key' && /(^|\+)(return|enter|space)$/.test(act.keys)) ? { expect: u }
+    : act.action === 'key' || act.action === 'type' ? { expect: { app: u.app } } : {}
 const ran = (n: number) => n === 0 ? 'No step ran.' : n === 1 ? 'Only step 1 ran.' : `Steps 1 to ${n} ran.`
 
 export function screenTools(c: ToolContext): KageTool[] {
@@ -33,7 +36,7 @@ export function screenTools(c: ToolContext): KageTool[] {
     const line = typed.get(under.app)
     if (act.action !== 'type' && act.action !== 'key') typed.clear()
     else typed.set(under.app, act.action === 'type' ? line === undefined ? undefined : line + act.text : sendsLine(act.keys) || act.keys === 'ctrl+c' ? '' : undefined)
-    const r = await screen.act(command(act))
+    const r = await screen.act({ ...command(act), ...expectOf(act, under) })
     seen('screen_act', 'error' in r ? `${act.action} failed` : `${act.action} ok`)
     return 'error' in r ? String(r.error) : undefined
   }

@@ -108,9 +108,11 @@ func run() async {
 // and every answer is one JSON line with the command's id. Kage's own cursor glides to each point first, so the
 // owner sees where it acts. macOS asks once for Accessibility, which posting input and reading controls need.
 // The hub decides what may run (core/desktop-act.ts); this app only refuses keys it has no code for.
+// expect is what the hub's check saw. A click or key acts only if the screen still shows it when the act lands.
+struct Expect: Decodable { let app: String; let role: String?; let label: String? }
 struct Command: Decodable {
   let id: Int; let op: String
-  let x: Double?; let y: Double?; let path: [[Double]]?
+  let x: Double?; let y: Double?; let path: [[Double]]?; let expect: Expect?
   let button: String?; let count: Int?; let dy: Int?; let dx: Int?; let text: String?; let keys: String?
 }
 
@@ -201,7 +203,6 @@ final class Hands {
     }
   }
   func click(_ p: CGPoint, right: Bool, count: Int) {
-    glide(to: p)
     let (down, up, button): (CGEventType, CGEventType, CGMouseButton) = right ? (.rightMouseDown, .rightMouseUp, .right) : (.leftMouseDown, .leftMouseUp, .left)
     for n in 1...max(1, count) {
       for type in [down, up] {
@@ -217,9 +218,13 @@ final class Hands {
   func drag(_ from: CGPoint, through path: [CGPoint]) {
     glide(to: from)
     CGEvent(mouseEventSource: nil, mouseType: .leftMouseDown, mouseCursorPosition: from, mouseButton: .left)?.post(tap: .cghidEventTap)
-    var last = from
+    var last = from, length = 0.0
+    for to in path { length += hypot(to.x - last.x, to.y - last.y); last = to }
+    // About 8 points a step, but never past 1000 steps, so the stroke ends well inside the hub's wait for an answer.
+    let stride = max(8, length / 1000)
+    last = from
     for to in path {
-      let steps = max(1, Int((hypot(to.x - last.x, to.y - last.y) / 8).rounded(.up)))
+      let steps = max(1, Int((hypot(to.x - last.x, to.y - last.y) / stride).rounded(.up)))
       for i in 1...steps {
         let t = Double(i) / Double(steps)
         let p = CGPoint(x: last.x + (to.x - last.x) * t, y: last.y + (to.y - last.y) * t)
@@ -235,19 +240,19 @@ final class Hands {
     glide(to: p)
     CGEvent(scrollWheelEvent2Source: nil, units: .line, wheelCount: 2, wheel1: Int32(dy), wheel2: Int32(dx), wheel3: 0)?.post(tap: .cghidEventTap)
   }
-  func type(_ text: String) {
+  func type(_ text: String, to pid: pid_t) {
     let characters = Array(text)
     for start in stride(from: 0, to: characters.count, by: 8) {
       var chunk = Array(String(characters[start..<min(start + 8, characters.count)]).utf16)
       for down in [true, false] {
         let e = CGEvent(keyboardEventSource: nil, virtualKey: 0, keyDown: down)
         e?.keyboardSetUnicodeString(stringLength: chunk.count, unicodeString: &chunk)
-        e?.post(tap: .cghidEventTap)
+        e?.postToPid(pid)
       }
       usleep(8_000)
     }
   }
-  func key(_ combo: String) -> String? {
+  func key(_ combo: String, to pid: pid_t) -> String? {
     let parts = combo.split(separator: "+").map(String.init)
     guard let last = parts.last, let code = keyCodes[last] else { return "no key named \(combo)" }
     var flags: CGEventFlags = []
@@ -255,28 +260,30 @@ final class Hands {
     for down in [true, false] {
       let e = CGEvent(keyboardEventSource: nil, virtualKey: code, keyDown: down)
       e?.flags = flags
-      e?.post(tap: .cghidEventTap)
+      e?.postToPid(pid)
     }
     return nil
   }
   func describe(_ el: AXUIElement?) -> [String: Any] {
-    var app = NSWorkspace.shared.frontmostApplication?.localizedName ?? ""
-    guard let el else { return ["app": app, "role": "", "label": ""] }
+    let front = NSWorkspace.shared.frontmostApplication
+    var app = front?.localizedName ?? ""
+    guard let el else { return ["app": app, "role": "", "label": "", "pid": front?.processIdentifier ?? 0] }
     func attr(_ name: String) -> String? {
       var v: CFTypeRef?
       guard AXUIElementCopyAttributeValue(el, name as CFString, &v) == .success else { return nil }
       return v as? String
     }
     var pid: pid_t = 0
-    if AXUIElementGetPid(el, &pid) == .success, let owner = NSRunningApplication(processIdentifier: pid)?.localizedName { app = owner }
+    if AXUIElementGetPid(el, &pid) == .success, let owner = NSRunningApplication(processIdentifier: pid)?.localizedName { app = owner } else { pid = front?.processIdentifier ?? 0 }
     let label = [kAXTitleAttribute, kAXDescriptionAttribute, kAXValueAttribute, kAXHelpAttribute].lazy.compactMap { attr($0 as String) }.first { !$0.isEmpty } ?? ""
-    return ["app": app, "role": attr(kAXRoleAttribute as String) ?? "", "label": String(label.prefix(200))]
+    return ["app": app, "role": attr(kAXRoleAttribute as String) ?? "", "label": String(label.prefix(200)), "pid": pid]
   }
   // The hit is often an icon or text inside a button, with no label of its own: read up to the control that has one.
   func under(_ p: CGPoint) -> [String: Any] {
     var el: AXUIElement?
     AXUIElementCopyElementAtPosition(AXUIElementCreateSystemWide(), Float(p.x), Float(p.y), &el)
     var seen = describe(el)
+    if (seen["pid"] as? pid_t) == getpid() { return ["error": "Kage's own cursor is in the way of that point"] }
     for _ in 0..<4 where (seen["label"] as? String ?? "").isEmpty {
       var parent: CFTypeRef?
       guard let child = el, AXUIElementCopyAttributeValue(child, kAXParentAttribute as CFString, &parent) == .success, let up = parent else { break }
@@ -302,23 +309,58 @@ final class Hands {
     }
     return seen
   }
+  // A click or key that lands right after the step before can race the app's redraw (a menu opening, a window
+  // coming to the front), so read until two looks agree, then compare with what the hub's check saw.
+  func settled(_ look: () -> [String: Any]) -> [String: Any] {
+    var last = look()
+    for _ in 0..<10 {
+      usleep(60_000)
+      let now = look()
+      if ["app", "role", "label", "pid", "error"].allSatisfy({ String(describing: now[$0] ?? "") == String(describing: last[$0] ?? "") }) { return now }
+      last = now
+    }
+    return last
+  }
+  func changed(_ seen: [String: Any], _ e: Expect) -> String? {
+    if let why = seen["error"] as? String { return why }
+    for (name, want) in [("app", e.app as String?), ("role", e.role), ("label", e.label)] {
+      guard let want else { continue }
+      let now = seen[name] as? String ?? ""
+      if now != want { return "the screen changed after the check (\(name) is now \"\(now)\", not \"\(want)\"), so nothing was done. Take a screen_shot and send the step again" }
+    }
+    return nil
+  }
+  func pressKeys(_ c: Command, _ e: Expect) -> [String: Any] {
+    let seen = settled(focused)
+    if let why = changed(seen, e) { return ["error": why] }
+    guard let pid = seen["pid"] as? pid_t, pid > 0 else { return ["error": "no app has the keyboard"] }
+    if c.op == "type" { type(c.text ?? "", to: pid); return ["done": true] }
+    if let why = key(c.keys ?? "", to: pid) { return ["error": why] }
+    return ["done": true]
+  }
   func run(_ c: Command) -> [String: Any] {
     lastCommand = Date()
     defer { lastCommand = Date() }
-    DispatchQueue.main.sync { window.alphaValue = 1 }
+    // A zero-length animation replaces a fade still running, where setting alphaValue alone may lose to it.
+    DispatchQueue.main.sync { NSAnimationContext.runAnimationGroup { ctx in ctx.duration = 0; window.animator().alphaValue = 1 } }
     let p = c.x.map { point($0, c.y ?? 0) }
     switch c.op {
     case "under": guard let p else { return ["error": "under needs x and y"] }; return under(p)
     case "focused": return focused()
-    case "click": guard let p else { return ["error": "click needs x and y"] }; click(p, right: c.button == "right", count: c.count ?? 1); return ["done": true]
+    case "click":
+      guard let p, let e = c.expect else { return ["error": "click needs x, y and what the check saw"] }
+      glide(to: p)
+      if let why = changed(settled { under(p) }, e) { return ["error": why] }
+      click(p, right: c.button == "right", count: c.count ?? 1); return ["done": true]
     case "move": guard let p else { return ["error": "move needs x and y"] }; glide(to: p); return ["done": true]
     case "drag":
       let path = (c.path ?? []).compactMap { $0.count == 2 ? point($0[0], $0[1]) : nil }
       guard let p, !path.isEmpty, path.count == c.path?.count else { return ["error": "drag needs x, y and a path of points"] }
       drag(p, through: path); return ["done": true]
     case "scroll": guard let p else { return ["error": "scroll needs x and y"] }; scroll(p, dy: c.dy ?? 0, dx: c.dx ?? 0); return ["done": true]
-    case "type": type(c.text ?? ""); return ["done": true]
-    case "key": if let why = key(c.keys ?? "") { return ["error": why] }; return ["done": true]
+    case "type", "key":
+      guard let e = c.expect else { return ["error": "\(c.op) needs what the check saw"] }
+      return pressKeys(c, e)
     default: return ["error": "unknown command \(c.op)"]
     }
   }
