@@ -25,9 +25,10 @@ for _ in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20; do [[ -s $root/slac
 port="$(head -1 "$root/slack.port")"
 [[ -n $port ]] || { echo "The stand-in Slack did not start." >&2; exit 1; }
 
-# open: a Slack page goes to the stand-in, anything else opens as usual.
+# open: a Slack page goes to the stand-in, anything else opens as usual. KAGE_REHEARSAL_NO_BROWSER=1 opens nothing (for scripted runs).
 cat > "$shims/open" <<SH
 #!/bin/sh
+[ -n "${KAGE_REHEARSAL_NO_BROWSER:-}" ] && exit 0
 case "\$1" in https://api.slack.com/*) exec /usr/bin/open "http://127.0.0.1:$port/\${1#https://api.slack.com/}" ;; esac
 exec /usr/bin/open "\$@"
 SH
@@ -43,7 +44,7 @@ case "\$1" in
   bootstrap|kickstart)
     alive && exit 0
     name="\$(basename "\${!#}" .plist)"; name="\${name##*.}"
-    sh -c 'sleep 3; printf "connected %s pid %s as @%s\n" "\$(date -u +%FT%TZ)" "\$\$" "\$1" > "$home/.config/kage/status"; exec sleep 86400' _ "\$name" &
+    sh -c 'sleep 3; printf "connected %s pid %s as @%s\n" "\$(date -u +%FT%TZ)" "\$\$" "\$1" > "$home/.config/kage/status"; exec sleep 86400' _ "\$name" >/dev/null 2>&1 </dev/null &
     echo \$! > "\$pidf" ;;
   bootout) alive && kill "\$(cat "\$pidf")"; rm -f "\$pidf" ;;
 esac
