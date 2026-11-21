@@ -49,6 +49,12 @@ KAGE_LIVE_TESTS=1 node --test runtime/kagelets/tests/keep-watching-live.test.ts 
 tests/upgrade-drill.sh
 ```
 
+`tests/setup-rehearsal.sh` lets you go through a first install and `kage setup` the way a new person does, from your working tree with uncommitted changes. It runs in a throwaway HOME. A stand-in Slack page on 127.0.0.1 hands out fake tokens, and stand-ins for `open`, `launchctl` and `tmux` keep your real Kage, its LaunchAgent and its tmux session untouched. Run it in a terminal on macOS after any change to what setup prints:
+
+```sh
+tests/setup-rehearsal.sh
+```
+
 There is no build. Node runs the TypeScript files as they are, so write only syntax it can strip (`erasableSyntaxOnly` in `tsconfig.json` enforces it). A running hub restarts into new code by itself once every session is quiet (`runtime/code-stamp.ts`).
 
 Write logs to stderr only. In a tmux pane, stdout carries the channel protocol, so a stray `console.log` breaks it.

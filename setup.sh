@@ -253,7 +253,7 @@ EOF
 slack_check() {  # $1 token: prints the Slack user id (or "ok"), fails with Slack's error
   local api=auth.test; [[ "$1" == xapp-* ]] && api=apps.connections.open
   # The header goes in on stdin, so the token never shows in `ps`.
-  printf 'header = "Authorization: Bearer %s"\n' "$1" | curl -s -X POST "https://slack.com/api/$api" -K - \
+  printf 'header = "Authorization: Bearer %s"\n' "$1" | curl -s -X POST "${KAGE_SLACK_API:-https://slack.com/api}/$api" -K - \
     | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const r=JSON.parse(s);if(!r.ok){console.error("Slack says: "+r.error);process.exit(1)}console.log(r.user_id||"ok")})'
 }
 
