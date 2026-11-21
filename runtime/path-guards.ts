@@ -6,6 +6,7 @@ const CONFIG_TOOLS = new Set(['Read', 'Grep', 'Glob', 'Edit', 'MultiEdit', 'Writ
 const CONFIG_WRITES = new Set(['Edit', 'MultiEdit', 'Write', 'NotebookEdit'])
 const NOT_PATHS = new Set(['content', 'old_string', 'new_string', 'new_source', 'description', 'edits'])
 const TOKEN_FILE = /^(?:secrets\.json|env[\w.-]*|session\.env[\w.-]*|waha)$/
+const SIGNING_FILE = /^screen(?:\/signing|\/?$)/ 
 export function configRefusal(tool: string, input: Record<string, unknown>, sender: string | undefined, envFile: string, home = process.env.HOME ?? ''): string | undefined {
   if (!CONFIG_TOOLS.has(tool)) return
   const dir = dirname(envFile)
@@ -19,8 +20,8 @@ export function configRefusal(tool: string, input: Record<string, unknown>, send
     const first = (r: string) => r.split('/')[0]!
     const closed = `Kage's token files (secrets.json and the env files) are closed to every session, the owner's too. Kage's own tools post as Kage, so no session needs a token. Use the reply or message_people tool.`
     if (tool === 'Bash') return at.some(r => !/^(?:files|memory)\//.test(r)) ? closed : undefined
-    if (CONFIG_WRITES.has(tool)) return at.some(r => first(r) === 'config.json' || TOKEN_FILE.test(first(r))) ? CLOSED_WRITE : undefined
-    return at.some(r => r === '' || r === '.' || /[*?[{]/.test(r) || TOKEN_FILE.test(first(r))) ? closed : undefined
+    if (CONFIG_WRITES.has(tool)) return at.some(r => first(r) === 'config.json' || TOKEN_FILE.test(first(r)) || SIGNING_FILE.test(r)) ? CLOSED_WRITE : undefined
+    return at.some(r => r === '' || r === '.' || /[*?[{]/.test(r) || TOKEN_FILE.test(first(r)) || SIGNING_FILE.test(r)) ? closed : undefined
   }
   if (!at.some(r => !/^(?:files|memory)(?:\/|$)/.test(r))) return
   return `Kage's config folder holds its tokens, and this task did not come from the owner. Reply that this needs the owner, and stop.`

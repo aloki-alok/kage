@@ -1,10 +1,12 @@
 import { describe, test } from 'node:test'
 import assert from 'node:assert/strict'
-import { appendFileSync, createReadStream, mkdtempSync, readdirSync, readFileSync, rmSync, statSync } from 'node:fs'
+import { appendFileSync, copyFileSync, createReadStream, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs'
+import { execFile, execFileSync } from 'node:child_process'
+import { promisify } from 'node:util'
 import { createInterface } from 'node:readline'
 import { tmpdir } from 'node:os'
 import { dirname } from 'node:path'
-import { screenRecorder, type Launch } from '../screen.ts'
+import { buildApp, screenRecorder, type Launch } from '../screen.ts'
 
 type Helper = 'records' | 'finishes' | 'deaf' | 'hangs' | string[]
 
@@ -121,6 +123,45 @@ describe('Kage Screen in the hub', () => {
     assert.deepEqual(built, [`${dir}/Kage Screen.app`])
   })
 
+})
+
+const canBuild = process.platform === 'darwin' && (() => { try { execFileSync('which', ['swiftc']); return true } catch { return false } })()
+describe('building Kage Screen', { skip: !canBuild && 'needs macOS with swiftc' }, () => {
+  test("a rebuild keeps the signature macOS ties its grant to, so only a new signing identity resets the grant", async () => {
+    const code = mkdtempSync(`${tmpdir()}/kage-sign-code-`), folder = mkdtempSync(`${tmpdir()}/kage-sign-app-`), app = `${folder}/Kage Screen.app`
+    mkdirSync(`${code}/screen`); mkdirSync(`${code}/docs/brand`, { recursive: true })
+    copyFileSync(`${import.meta.dirname}/../../docs/brand/icon-dark.png`, `${code}/docs/brand/icon-dark.png`)
+    writeFileSync(`${code}/screen/Info.plist`, readFileSync(`${import.meta.dirname}/../../screen/Info.plist`, 'utf8').replace('dev.kage.screen<', 'dev.kage.screentest<'))
+    const resets: string[] = []
+    const exec = async (cmd: string, args: string[], opts: object) => {
+      if (cmd === 'tccutil') { resets.push(args.join(' ')); return { stdout: '', stderr: '' } }
+      return promisify(execFile)(cmd, args, opts)
+    }
+    const requirement = () => execFileSync('codesign', ['-d', '-r-', app], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] })
+    writeFileSync(`${code}/screen/KageScreen.swift`, 'print("one")\n')
+    assert.equal(await buildApp(code, app, exec), undefined)
+    const first = requirement()
+    assert.deepEqual(resets, ['reset ScreenCapture dev.kage.screentest', 'reset Accessibility dev.kage.screentest'])
+    writeFileSync(`${code}/screen/KageScreen.swift`, 'print("two")\n')
+    assert.equal(await buildApp(code, app, exec), undefined)
+    assert.match(first, /identifier "dev\.kage\.screentest" and certificate leaf = H"[0-9a-f]{40}"/)
+    assert.equal(requirement(), first)
+    assert.equal(resets.length, 2, 'the second build kept the identity, so it reset nothing')
+  })
+  test('a certificate setup that fails halfway leaves nothing behind, so the next build makes a new one', async () => {
+    const code = mkdtempSync(`${tmpdir()}/kage-sign-code-`), folder = mkdtempSync(`${tmpdir()}/kage-sign-app-`), app = `${folder}/Kage Screen.app`
+    mkdirSync(`${code}/screen`); mkdirSync(`${code}/docs/brand`, { recursive: true })
+    copyFileSync(`${import.meta.dirname}/../../docs/brand/icon-dark.png`, `${code}/docs/brand/icon-dark.png`)
+    writeFileSync(`${code}/screen/Info.plist`, readFileSync(`${import.meta.dirname}/../../screen/Info.plist`, 'utf8').replace('dev.kage.screen<', 'dev.kage.screentest<'))
+    writeFileSync(`${code}/screen/KageScreen.swift`, 'print("one")\n')
+    const exec = async (cmd: string, args: string[], opts: object) => {
+      if (cmd === 'tccutil') return { stdout: '', stderr: '' }
+      if (cmd === 'security' && args[0] === 'import') throw new Error('import failed')
+      return promisify(execFile)(cmd, args, opts)
+    }
+    assert.match(await buildApp(code, app, exec) ?? '', /could not build/)
+    assert.deepEqual(readdirSync(folder).filter(f => f.startsWith('signing')), [])
+  })
 })
 
 describe('Kage acting on the Mac, from the hub', () => {

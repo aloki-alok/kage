@@ -1,5 +1,5 @@
 import { execFile, spawn } from 'node:child_process'
-import { createHash } from 'node:crypto'
+import { createHash, randomBytes } from 'node:crypto'
 import { copyFileSync, createWriteStream, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync, type WriteStream } from 'node:fs'
 import { release } from 'node:os'
 import { dirname } from 'node:path'
@@ -15,20 +15,53 @@ const PERMISSION = "macOS needs the owner's yes first. It asked them to turn on 
 const ACCESSIBILITY = "macOS needs the owner's yes first. It asked them to turn on Kage Screen in System Settings > Privacy & Security > Accessibility. Tell the owner, and try again once it is on."
 const run = promisify(execFile)
 
-export async function buildApp(code: string, app: string): Promise<string | undefined> {
+type Exec = (cmd: string, args: string[], opts: { timeout: number }) => Promise<{ stdout: string; stderr: string }>
+
+async function signingIdentity(dir: string, exec: Exec): Promise<string> {
+  const keychain = `${dir}/signing.keychain-db`, passFile = `${dir}/signing-pass`
+  if (!existsSync(keychain) || !existsSync(passFile)) {
+    rmSync(keychain, { force: true })
+    mkdirSync(dir, { recursive: true, mode: 0o700 })
+    const pass = randomBytes(24).toString('hex'), p12 = `${dir}/signing.p12`, key = `${dir}/signing-key.pem`, cert = `${dir}/signing-cert.pem`, conf = `${dir}/signing.cnf`
+    writeFileSync(passFile, pass, { mode: 0o600 })
+    writeFileSync(conf, '[req]\ndistinguished_name=dn\nprompt=no\n[dn]\nCN=Kage Screen\n[ext]\nkeyUsage=critical,digitalSignature\nextendedKeyUsage=critical,codeSigning\nbasicConstraints=critical,CA:false\n', { mode: 0o600 })
+    try {
+      await exec('/usr/bin/openssl', ['req', '-x509', '-newkey', 'rsa:2048', '-nodes', '-keyout', key, '-out', cert, '-days', '36500', '-config', conf, '-extensions', 'ext'], { timeout: 60_000 })
+      await exec('/usr/bin/openssl', ['pkcs12', '-export', '-inkey', key, '-in', cert, '-out', p12, '-passout', `pass:${pass}`], { timeout: 60_000 })
+      await exec('security', ['create-keychain', '-p', pass, keychain], { timeout: 30_000 })
+      await exec('security', ['set-keychain-settings', keychain], { timeout: 30_000 })
+      await exec('security', ['unlock-keychain', '-p', pass, keychain], { timeout: 30_000 })
+      await exec('security', ['import', p12, '-k', keychain, '-P', pass, '-T', '/usr/bin/codesign'], { timeout: 30_000 })
+      await exec('security', ['set-key-partition-list', '-S', 'apple-tool:,apple:', '-s', '-k', pass, keychain], { timeout: 30_000 })
+    } catch (e) {
+      for (const f of [keychain, passFile]) rmSync(f, { force: true })
+      throw e
+    } finally { for (const f of [p12, key, cert, conf]) rmSync(f, { force: true }) }
+  }
+  await exec('security', ['unlock-keychain', '-p', readFileSync(passFile, 'utf8'), keychain], { timeout: 30_000 })
+  const id = /\) ([0-9A-F]{40}) "Kage Screen"/.exec((await exec('security', ['find-identity', keychain], { timeout: 30_000 })).stdout)?.[1]
+  if (!id) throw new Error('the Kage Screen signing certificate is missing from its keychain')
+  return id
+}
+
+export async function buildApp(code: string, app: string, exec: Exec = run): Promise<string | undefined> {
   if (Number(release().split('.')[0]) < 24) return 'Kage Screen needs macOS 15 or later'
-  const swift = `${code}/screen/KageScreen.swift`, plist = `${code}/screen/Info.plist`, icon = `${code}/docs/brand/icon-dark.png`, stamp = `${dirname(app)}/source-hash`
+  const swift = `${code}/screen/KageScreen.swift`, plist = `${code}/screen/Info.plist`, icon = `${code}/docs/brand/icon-dark.png`, stamp = `${dirname(app)}/source-hash`, signedBy = `${dirname(app)}/signed-by`
   const hash = createHash('sha256').update(readFileSync(swift)).update(readFileSync(plist)).update(readFileSync(icon)).digest('hex')
   if (existsSync(`${app}/Contents/MacOS/KageScreen`) && existsSync(stamp) && readFileSync(stamp, 'utf8') === hash) return undefined
   try {
+    const id = await signingIdentity(dirname(app), exec)
     rmSync(app, { recursive: true, force: true })
     mkdirSync(`${app}/Contents/MacOS`, { recursive: true, mode: 0o700 })
-    await run('swiftc', ['-O', '-o', `${app}/Contents/MacOS/KageScreen`, swift], { timeout: 300_000 })
+    await exec('swiftc', ['-O', '-o', `${app}/Contents/MacOS/KageScreen`, swift], { timeout: 300_000 })
     copyFileSync(plist, `${app}/Contents/Info.plist`)
     await makeIcon(icon, `${app}/Contents/Resources/AppIcon.icns`, `${dirname(app)}/AppIcon.iconset`)
-    await run('codesign', ['-s', '-', '--force', app], { timeout: 60_000 })
-    await run('tccutil', ['reset', 'ScreenCapture', 'dev.kage.screen'], { timeout: 30_000 }).catch(() => {})
-    await run('tccutil', ['reset', 'Accessibility', 'dev.kage.screen'], { timeout: 30_000 }).catch(() => {})
+    await exec('codesign', ['-s', id, '--keychain', `${dirname(app)}/signing.keychain-db`, '--force', app], { timeout: 60_000 })
+    if (!existsSync(signedBy) || readFileSync(signedBy, 'utf8') !== id) {
+      const bundle = /<key>CFBundleIdentifier<\/key>\s*<string>([^<]+)<\/string>/.exec(readFileSync(plist, 'utf8'))?.[1] ?? 'dev.kage.screen'
+      for (const service of ['ScreenCapture', 'Accessibility']) await exec('tccutil', ['reset', service, bundle], { timeout: 30_000 }).catch(() => {})
+      writeFileSync(signedBy, id, { mode: 0o600 })
+    }
     writeFileSync(stamp, hash, { mode: 0o600 })
     return undefined
   } catch (e) {
