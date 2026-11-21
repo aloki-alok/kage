@@ -191,13 +191,14 @@ function charts(v: View, s: Screen) {
   }
   put(startA - 1, a!.y1, ' -60m ', 'dim'); put(startA + Math.floor(avail / 2) - 3, a!.y1, ' -30m ', 'dim'); put(endA - 5, a!.y1, ' now ', 'dim')
   const hours = perHour(v.costs, v.now)
-  const width = Math.floor((b!.x1 - b!.x0 - 8) / 2), shown = hours.slice(-width), first = hours.length - shown.length
+  const widest = `$${Math.max(0, ...hours).toFixed(2)}`.length
+  const width = Math.max(1, Math.floor((b!.x1 - 2 - (b!.x0 + 2 + widest)) / 2) + 1), shown = hours.slice(-width), first = hours.length - shown.length
   const topB = Math.max(0, ...shown), labelB = `$${topB.toFixed(2)}`
   pane(b!, false, ['spend per hour'], 0, `$${v.spentToday.toFixed(2)} today`)
   put(b!.x0 + 1, b!.y0 + 1, labelB, 'dim'); put(b!.x0 + 1 + labelB.length - 2, b!.y0 + rows, '$0', 'dim')
   const xB = b!.x0 + 2 + labelB.length
   bars(shown, rows).forEach((line, i) => [...line].forEach((ch, j) => put(xB + j * 2, b!.y0 + 1 + i, ch, j === line.length - 1 ? 'work' : 'mid')))
-  for (const j of [0, Math.floor((shown.length - 1) / 2), shown.length - 1]) if (shown.length) put(xB + j * 2 - 1, b!.y1, ` ${String(first + j).padStart(2, '0')}h `, 'dim')
+  for (const j of [0, Math.floor((shown.length - 1) / 2), shown.length - 1]) if (shown.length) put(Math.min(xB + j * 2 - 1, b!.x1 - 6), b!.y1, ` ${String(first + j).padStart(2, '0')}h `, 'dim')
   pane(c!, false, ['kagelets'], 0, `${v.kagelets.filter(k => k.state === 'runs').length} of ${v.kagelets.length} on`)
   if (!v.kagelets.length) put(c!.x0 + 2, c!.y0 + 2, 'no kagelets yet', 'dim')
   v.kagelets.slice(0, c!.y1 - c!.y0 - 2).forEach((k, i) => {
