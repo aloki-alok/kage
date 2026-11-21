@@ -1200,6 +1200,77 @@ describe("the owner's screen", () => {
     assert.equal((await s.call('screen_act', { channel: 'C1', thread_ts: '5.5', action: 'key', keys: 'cmd+banana' })).isError, true)
     assert.deepEqual(asked, [])
   })
+  test('a list of steps runs in one call: the front app is read before each step, and each step gets its own check', async () => {
+    const asked: string[] = [], cards: string[] = []
+    const s = setup({ screen: fakeScreen(asked), approve: async (_t, d) => { cards.push(d); return true } })
+    s.t.onTask(s.task())
+    const r = await s.call('screen_act', { channel: 'C1', thread_ts: '5.5', steps: [{ action: 'move', x: 1, y: 1 }, { action: 'click', x: 2, y: 2 }, { action: 'type', text: 'hi' }] })
+    assert.equal(r.isError, undefined, r.text)
+    assert.match(r.text, /3 steps/)
+    assert.deepEqual(asked, ['focused', 'move 1,1', 'focused', 'under 2,2', 'click 2,2', 'focused', 'type hi'])
+    assert.deepEqual(cards, [])
+  })
+  test('in a list, a step that needs the owner\'s yes stops the list before it, with no card, and says to send that step alone', async () => {
+    const asked: string[] = [], cards: string[] = []
+    const s = setup({ screen: fakeScreen(asked, op => op === 'under' ? { app: 'Finder', role: 'AXMenuItem', label: 'Move to Trash' } : { app: 'Finder', role: 'AXWindow', label: '' }), approve: async (_t, d) => { cards.push(d); return true } })
+    s.t.onTask(s.task())
+    const r = await s.call('screen_act', { channel: 'C1', thread_ts: '5.5', steps: [{ action: 'move', x: 1, y: 1 }, { action: 'click', x: 5, y: 6 }, { action: 'move', x: 9, y: 9 }] })
+    assert.equal(r.isError, true)
+    assert.match(r.text, /step 2 of 3/)
+    assert.match(r.text, /alone/)
+    assert.match(r.text, /step 1 ran/)
+    assert.deepEqual(cards, [])
+    assert.deepEqual(asked, ['focused', 'move 1,1', 'focused', 'under 5,6'])
+  })
+  test('in a list, a refused step stops the list there', async () => {
+    const asked: string[] = []
+    const s = setup({ screen: fakeScreen(asked, () => ({ app: 'Safari', role: 'AXMenuItem', label: 'Shut Down…' })), approve: async () => true })
+    s.t.onTask(s.task())
+    const r = await s.call('screen_act', { channel: 'C1', thread_ts: '5.5', steps: [{ action: 'click', x: 5, y: 6 }, { action: 'move', x: 9, y: 9 }] })
+    assert.equal(r.isError, true)
+    assert.match(r.text, /refused/)
+    assert.deepEqual(asked, ['focused', 'under 5,6'])
+  })
+  test('when the front app changes in the middle of a list, the owner may have taken over, so the rest does not run', async () => {
+    const asked: string[] = []
+    let looks = 0
+    const s = setup({ screen: fakeScreen(asked, () => ({ app: looks++ === 0 ? 'ExcalidrawZ' : 'Slack', role: 'AXTextArea', label: '' })), approve: async () => true })
+    s.t.onTask(s.task())
+    const r = await s.call('screen_act', { channel: 'C1', thread_ts: '5.5', steps: [{ action: 'drag', x: 1, y: 1, to_x: 5, to_y: 5 }, { action: 'drag', x: 2, y: 2, to_x: 6, to_y: 6 }] })
+    assert.equal(r.isError, true)
+    assert.match(r.text, /ExcalidrawZ/)
+    assert.match(r.text, /Slack/)
+    assert.deepEqual(asked, ['focused', 'drag 1,1', 'focused'])
+  })
+  test('a bad step, or steps with an action beside them, refuses the whole list before anything runs', async () => {
+    const asked: string[] = []
+    const s = setup({ screen: fakeScreen(asked), approve: async () => true })
+    s.t.onTask(s.task())
+    for (const extra of [{ steps: [{ action: 'move', x: 1, y: 1 }, { action: 'key', keys: 'cmd+banana' }] }, { action: 'move', x: 1, y: 1, steps: [{ action: 'move', x: 1, y: 1 }] }, {}])
+      assert.equal((await s.call('screen_act', { channel: 'C1', thread_ts: '5.5', ...extra })).isError, true, JSON.stringify(extra))
+    assert.deepEqual(asked, [])
+  })
+  test('a drag along a path reaches Kage Screen as its list of points', async () => {
+    const sent: Record<string, unknown>[] = []
+    const screen = fakeScreen()
+    const s = setup({ screen: { ...screen, act: async c => { sent.push(c); return screen.act(c) } }, approve: async () => true })
+    s.t.onTask(s.task())
+    await s.call('screen_act', { channel: 'C1', thread_ts: '5.5', action: 'drag', x: 1, y: 2, path: [{ x: 3, y: 4 }, { x: 5, y: 6 }] })
+    assert.deepEqual(sent, [{ op: 'drag', x: 1, y: 2, path: [[3, 4], [5, 6]] }])
+  })
+  test('each act carries what its check saw, so Kage Screen refuses it when the screen changed in between', async () => {
+    const sent: Record<string, unknown>[] = []
+    const screen = fakeScreen([], op => op === 'under' ? { app: 'Finder', role: 'AXButton', label: 'Open' } : { app: 'Finder', role: 'AXButton', label: 'Focused' })
+    const s = setup({ screen: { ...screen, act: async c => { sent.push(c); return screen.act(c) } }, approve: async () => true })
+    s.t.onTask(s.task())
+    const steps = [{ action: 'click', x: 1, y: 1 }, { action: 'key', keys: 'return' }, { action: 'key', keys: 'cmd+c' }, { action: 'type', text: 'hi' }, { action: 'move', x: 2, y: 2 }]
+    assert.equal((await s.call('screen_act', { channel: 'C1', thread_ts: '5.5', steps })).isError, undefined)
+    await s.call('screen_act', { channel: 'C1', thread_ts: '5.5', action: 'click', x: 3, y: 3 })
+    const under = { app: 'Finder', role: 'AXButton', label: 'Open' }, focus = { app: 'Finder', role: 'AXButton', label: 'Focused' }
+    assert.deepEqual(sent.filter(c => c.op !== 'focused' && c.op !== 'under').map(c => [c.op, c.expect]), [
+      ['click', under], ['key', focus], ['key', { app: 'Finder' }], ['type', { app: 'Finder' }], ['move', undefined], ['click', under],
+    ])
+  })
   test("a kagelet and a kagelet's dream get no screen tools, and with no recorder no session does", () => {
     assert.equal(setup({ kagelet: 'calls', screen: fakeScreen() }).t.tools.some(x => x.name.startsWith('screen_')), false)
     assert.equal(setup({ dreaming: 'calls', screen: fakeScreen() }).t.tools.some(x => x.name.startsWith('screen_')), false)

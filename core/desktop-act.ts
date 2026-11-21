@@ -4,7 +4,7 @@ import { heldCommand } from './held.ts'
 export type DesktopAct =
   | { action: 'click'; x: number; y: number; button: 'left' | 'right'; count: 1 | 2 }
   | { action: 'move'; x: number; y: number }
-  | { action: 'drag'; x: number; y: number; toX: number; toY: number }
+  | { action: 'drag'; x: number; y: number; path: (readonly [number, number])[] }
   | { action: 'scroll'; x: number; y: number; dy: number; dx: number }
   | { action: 'type'; text: string }
   | { action: 'key'; keys: string }
@@ -16,6 +16,8 @@ const MOD_NAMES: Record<string, (typeof MODS)[number]> = { ctrl: 'ctrl', control
 const KEYS = new Set(['return', 'enter', 'tab', 'space', 'escape', 'esc', 'delete', 'backspace', 'forwarddelete', 'up', 'down', 'left', 'right', 'home', 'end', 'pageup', 'pagedown', 'power', 'eject',
   ...'abcdefghijklmnopqrstuvwxyz0123456789'.split(''), ...Array.from({ length: 20 }, (_, i) => `f${i + 1}`), ...'-=[]\\;\',./`'.split('')])
 const MAX_TEXT = 5000
+const MAX_PATH = 200
+const MAX_STEPS = 100
 
 function normalKeys(raw: string): string | undefined {
   const parts = raw.toLowerCase().split('+').map(p => p.trim()).filter(Boolean)
@@ -40,7 +42,10 @@ export function parseDesktopAct(a: Record<string, unknown>): DesktopAct | { erro
     case 'move': return at ? { action: 'move', x: at[0], y: at[1] } : { error: 'move needs x and y' }
     case 'drag': {
       const to = spot(a, 'to_x', 'to_y')
-      return at && to ? { action: 'drag', x: at[0], y: at[1], toX: to[0], toY: to[1] } : { error: 'drag needs x, y, to_x and to_y' }
+      if (a.path === undefined) return at && to ? { action: 'drag', x: at[0], y: at[1], path: [to] } : { error: 'drag needs x, y, then to_x and to_y or a path' }
+      const path = Array.isArray(a.path) && a.path.length <= MAX_PATH ? a.path.map(p => p && typeof p === 'object' ? spot(p as Record<string, unknown>, 'x', 'y') : undefined) : []
+      if (!at || to || !path.length || !path.every(p => p)) return { error: `drag needs x, y and a path of 1 to ${MAX_PATH} points, each whole x and y on the screen picture, and no to_x or to_y` }
+      return { action: 'drag', x: at[0], y: at[1], path: path as (readonly [number, number])[] }
     }
     case 'scroll': {
       const dy = Number(a.dy ?? 0), dx = Number(a.dx ?? 0)
@@ -53,6 +58,17 @@ export function parseDesktopAct(a: Record<string, unknown>): DesktopAct | { erro
     }
     default: return { error: 'action is click, move, drag, scroll, type or key' }
   }
+}
+
+export function parseDesktopSteps(steps: unknown): DesktopAct[] | { error: string } {
+  if (!Array.isArray(steps) || !steps.length || steps.length > MAX_STEPS) return { error: `steps is a list of 1 to ${MAX_STEPS} acts` }
+  const acts: DesktopAct[] = []
+  for (const [i, step] of steps.entries()) {
+    const act = step && typeof step === 'object' ? parseDesktopAct(step as Record<string, unknown>) : { error: 'it is not an act' }
+    if ('error' in act) return { error: `step ${i + 1}: ${act.error}. No step ran.` }
+    acts.push(act)
+  }
+  return acts
 }
 
 const OFF_KEYS = new Set(['ctrl+cmd+q', 'shift+cmd+q', 'alt+shift+cmd+q'])
