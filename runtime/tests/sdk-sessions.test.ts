@@ -796,6 +796,15 @@ describe('Kage sessions on the Agent SDK', () => {
     assert.ok(mate.settings.permissions.deny.some((r: string) => r.includes('secrets.json')), "Kage's own deny rules stay")
     t.s.runner.stop('C2:5.5')
   })
+  test("a kagelet lane never gets the owner's permission rules, so every step it takes still meets its grant check", async () => {
+    const LANE = 'C1:5.5#side-kagelet-x'
+    const t = setup({ lean: { mcp: {}, permissions: { defaultMode: 'auto', allow: ['Bash(git push:*)'] } }, grants: { [LANE]: ['all'] } })
+    t.d.task(LANE, t.task({ fromOwner: false }), 1)
+    await tick()
+    const lane = t.sdk.runs[0]!.options
+    assert.deepEqual([lane.settings.permissions.defaultMode, lane.settings.permissions.allow], [undefined, undefined])
+    t.s.runner.stop(LANE)
+  })
   test("each result passes on that turn's tokens and who the turn ran for (#505)", async () => {
     const t = setup()
     t.d.task('C1:5.5', t.task({ fromOwner: false }), 0)
