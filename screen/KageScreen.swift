@@ -240,19 +240,19 @@ final class Hands {
     glide(to: p)
     CGEvent(scrollWheelEvent2Source: nil, units: .line, wheelCount: 2, wheel1: Int32(dy), wheel2: Int32(dx), wheel3: 0)?.post(tap: .cghidEventTap)
   }
-  func type(_ text: String, to pid: pid_t) {
+  func type(_ text: String) {
     let characters = Array(text)
     for start in stride(from: 0, to: characters.count, by: 8) {
       var chunk = Array(String(characters[start..<min(start + 8, characters.count)]).utf16)
       for down in [true, false] {
         let e = CGEvent(keyboardEventSource: nil, virtualKey: 0, keyDown: down)
         e?.keyboardSetUnicodeString(stringLength: chunk.count, unicodeString: &chunk)
-        e?.postToPid(pid)
+        e?.post(tap: .cghidEventTap)
       }
       usleep(8_000)
     }
   }
-  func key(_ combo: String, to pid: pid_t) -> String? {
+  func key(_ combo: String) -> String? {
     let parts = combo.split(separator: "+").map(String.init)
     guard let last = parts.last, let code = keyCodes[last] else { return "no key named \(combo)" }
     var flags: CGEventFlags = []
@@ -260,7 +260,7 @@ final class Hands {
     for down in [true, false] {
       let e = CGEvent(keyboardEventSource: nil, virtualKey: code, keyDown: down)
       e?.flags = flags
-      e?.postToPid(pid)
+      e?.post(tap: .cghidEventTap)
     }
     return nil
   }
@@ -330,12 +330,11 @@ final class Hands {
     }
     return nil
   }
+  // Keys go through the HID tap, not to one process, so system shortcuts (cmd+space, cmd+tab) still work.
   func pressKeys(_ c: Command, _ e: Expect) -> [String: Any] {
-    let seen = settled(focused)
-    if let why = changed(seen, e) { return ["error": why] }
-    guard let pid = seen["pid"] as? pid_t, pid > 0 else { return ["error": "no app has the keyboard"] }
-    if c.op == "type" { type(c.text ?? "", to: pid); return ["done": true] }
-    if let why = key(c.keys ?? "", to: pid) { return ["error": why] }
+    if let why = changed(settled(focused), e) { return ["error": why] }
+    if c.op == "type" { type(c.text ?? ""); return ["done": true] }
+    if let why = key(c.keys ?? "") { return ["error": why] }
     return ["done": true]
   }
   func run(_ c: Command) -> [String: Any] {

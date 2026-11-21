@@ -1260,15 +1260,15 @@ describe("the owner's screen", () => {
   })
   test('each act carries what its check saw, so Kage Screen refuses it when the screen changed in between', async () => {
     const sent: Record<string, unknown>[] = []
-    const screen = fakeScreen()
+    const screen = fakeScreen([], op => op === 'under' ? { app: 'Finder', role: 'AXButton', label: 'Open' } : { app: 'Finder', role: 'AXButton', label: 'Focused' })
     const s = setup({ screen: { ...screen, act: async c => { sent.push(c); return screen.act(c) } }, approve: async () => true })
     s.t.onTask(s.task())
     const steps = [{ action: 'click', x: 1, y: 1 }, { action: 'key', keys: 'return' }, { action: 'key', keys: 'cmd+c' }, { action: 'type', text: 'hi' }, { action: 'move', x: 2, y: 2 }]
     assert.equal((await s.call('screen_act', { channel: 'C1', thread_ts: '5.5', steps })).isError, undefined)
     await s.call('screen_act', { channel: 'C1', thread_ts: '5.5', action: 'click', x: 3, y: 3 })
-    const all = { app: 'Finder', role: 'AXButton', label: 'Open' }
+    const under = { app: 'Finder', role: 'AXButton', label: 'Open' }, focus = { app: 'Finder', role: 'AXButton', label: 'Focused' }
     assert.deepEqual(sent.filter(c => c.op !== 'focused' && c.op !== 'under').map(c => [c.op, c.expect]), [
-      ['click', all], ['key', all], ['key', { app: 'Finder' }], ['type', { app: 'Finder' }], ['move', undefined], ['click', all],
+      ['click', under], ['key', focus], ['key', { app: 'Finder' }], ['type', { app: 'Finder' }], ['move', undefined], ['click', under],
     ])
   })
   test("a kagelet and a kagelet's dream get no screen tools, and with no recorder no session does", () => {
