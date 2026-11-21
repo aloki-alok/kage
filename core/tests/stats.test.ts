@@ -36,6 +36,21 @@ test('spend and turns per day, spend per connector, runs, refusals, turn time an
   assert.doesNotMatch(text, /99/)
 })
 
+test('tokens per turn: the total, the share read from cache, and each kind of thread; older rows are counted apart (#505)', () => {
+  const t = (input: number, cacheWrite: number, cacheRead: number, output: number, who: string) => ({ input, cacheWrite, cacheRead, output, who })
+  const text = statsLines({
+    days: 1, now, events: [], boots: [],
+    costs: [
+      { at: now - 1000, key: 'C0TEST1:1.1', usd: 1, tokens: t(10, 2000, 18_000, 500, 'owner') },
+      { at: now - 2000, key: 'C0TEST1:1.1#side-kagelet-calls', usd: 0.5, tokens: t(0, 10_000, 70_000, 1500, 'kagelet') },
+      { at: now - 3000, key: 'C0TEST1:2.2', usd: 0.2 },
+    ],
+  }).join('\n')
+  assert.match(text, /tokens: 100k in, 88% read from cache, 2k out over 2 turns \(1 turn from before tokens were kept\)/)
+  assert.match(text, /by kind: kagelet 80k · owner 20k$/m)
+  assert.match(text, /11-15 +\$1\.70 +3 turns  100k tokens in$/m)
+})
+
 test('nothing recorded says so', () => {
   assert.deepEqual(statsLines({ days: 7, now, costs: [], events: [], boots: [] }), ['Last 7 days: nothing spent, no runs, no hub starts.'])
 })

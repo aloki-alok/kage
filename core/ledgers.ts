@@ -71,9 +71,13 @@ export function dailyDue(now: number, lastSent: string | undefined): string | un
 
 export const turnCost = (last: number | undefined, total: number, resumed = false) =>
   !(total > 0) ? undefined : last === undefined ? (resumed ? 0 : total) : total < last ? total : Math.round((total - last) * 1e6) / 1e6
+export type Tokens = { input: number; cacheWrite: number; cacheRead: number; output: number; who: string }
+export const threadKind = (key: string, sender: string | undefined) =>
+  key.includes('#side-kagelet-') ? 'kagelet' : key.includes('#side-dream') || key.includes('#side-kdream-') ? 'dream' : sender ?? 'unknown'
 export const costRows = (tsv: string) => tsv.split('\n').filter(Boolean).map(l => {
-  const [when = '', key = '', usd = '', total = ''] = l.split('\t')
-  return { at: Date.parse(when), key, usd: Number(usd), total: Number(total) }
+  const [when = '', key = '', usd = '', total = '', input, cacheWrite, cacheRead, output, who] = l.split('\t')
+  const tokens: Tokens | undefined = who ? { input: Number(input), cacheWrite: Number(cacheWrite), cacheRead: Number(cacheRead), output: Number(output), who } : undefined
+  return { at: Date.parse(when), key, usd: Number(usd), total: Number(total), tokens }
 }).filter(r => r.key && Number.isFinite(r.usd))
 export const lastTotals = (tsv: string) => new Map(costRows(tsv).map(r => [r.key, r.total]))
 export function spendSince(tsv: string, since: number): { key: string; usd: number; turns: number }[] {

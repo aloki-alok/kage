@@ -14,6 +14,7 @@ import { sessionTools } from '../kage-tools.ts'
 import type { Task } from '../../core/task.ts'
 import type { ToSession } from '../protocol.ts'
 import { costRecorder, openLedgers, runEvents } from '../ledger.ts'
+import type { Tokens } from '../../core/ledgers.ts'
 import { kageletDeliver, ownerNotes } from '../kagelets/notes.ts'
 import { kageletRoutes } from '../kagelets/routes.ts'
 import { kageletFile } from '../../core/kagelets/kagelet.ts'
@@ -29,11 +30,12 @@ const tick = (ms = 5) => new Promise(r => setTimeout(r, ms))
 const ID = '11111111-1111-4111-8111-111111111111'
 const signal = () => new AbortController().signal
 
-function setup(o: { saved?: Record<string, string>; transcript?: boolean; silent?: boolean; dmFails?: boolean; grants?: Record<string, string[]>; allows?: Record<string, string[]>; review?: boolean; manager?: boolean; budgets?: Record<string, number>; models?: Record<string, string>; trusted?: string[]; deferred?: boolean; browser?: boolean; restartMs?: number; sandbox?: boolean | 'teammates'; onResult?: (key: string, total: number, resumed: boolean) => void; onMcp?: (q: unknown) => void; trustedPeople?: { ids: string[] } } = {}) {
+function setup(o: { saved?: Record<string, string>; transcript?: boolean; silent?: boolean; dmFails?: boolean; grants?: Record<string, string[]>; allows?: Record<string, string[]>; review?: boolean; manager?: boolean; budgets?: Record<string, number>; models?: Record<string, string>; trusted?: string[]; deferred?: boolean; browser?: boolean; restartMs?: number; sandbox?: boolean | 'teammates'; onResult?: (key: string, total: number, resumed: boolean, tokens?: Tokens) => void; onMcp?: (q: unknown) => void; trustedPeople?: { ids: string[] } } = {}) {
   const sdk = fakeSdk(o)
   const dropped: string[] = []
   const keysDropped: string[] = []
   const results: [string, number, boolean][] = []
+  const tokens: (Tokens | undefined)[] = []
   const blocks: [string, string[], string | null][] = []
   const drops: [string, string[], string][] = []
   const turns: [string, string[], object | undefined, true | undefined][] = []
@@ -72,7 +74,7 @@ function setup(o: { saved?: Record<string, string>; transcript?: boolean; silent
     keys: { sock: '/cfg/keys.sock', issue: key => o.trusted?.includes(key) ? `key-${key}` : undefined, drop: key => { keysDropped.push(key) } },
     restartMs: o.restartMs ?? 10,
     ...o.deferred && { deferred: approvals },
-    onResult: (key, total, resumed) => { results.push([key, total, resumed]); o.onResult?.(key, total, resumed) },
+    onResult: (key, total, resumed, _limited, _error, used) => { results.push([key, total, resumed]); tokens.push(used); o.onResult?.(key, total, resumed, used) },
     ...o.onMcp && { onMcp: o.onMcp },
     budgetOf: key => o.budgets?.[key],
     modelOf: key => o.models?.[key],
@@ -89,7 +91,7 @@ function setup(o: { saved?: Record<string, string>; transcript?: boolean; silent
     origin: { channel: o.channel ?? 'C1', ts: '5.5' },
   })
   const idOf = (text: string) => cardAt(openLedgers(dir).text('posted'), 'DBOT', `9.${posts.lastIndexOf(text) + 1}`)!
-  return { sdk, posts, d, s, task, idOf, approvals, results, blocks, drops, turns, call, servers, tools, keysDropped }
+  return { sdk, posts, d, s, task, idOf, approvals, results, tokens, blocks, drops, turns, call, servers, tools, keysDropped }
 }
 
 async function kageTools(run: { options: any }) {
@@ -758,6 +760,15 @@ describe('Kage sessions on the Agent SDK', () => {
     t.sdk.runs[0]!.emit({ type: 'result', total_cost_usd: 1.25, is_error: true })
     await tick()
     assert.deepEqual(t.results, [['C1:5.5', 1.25, false]])
+  })
+  test("each result passes on that turn's tokens and who the turn ran for (#505)", async () => {
+    const t = setup()
+    t.d.task('C1:5.5', t.task({ fromOwner: false }), 0)
+    await tick()
+    t.sdk.runs[0]!.emit({ type: 'result', total_cost_usd: 0.1, usage: { input_tokens: 2, cache_creation_input_tokens: 4550, cache_read_input_tokens: 8966, output_tokens: 71 } })
+    t.sdk.runs[0]!.emit({ type: 'result', total_cost_usd: 0.2 })
+    await tick()
+    assert.deepEqual(t.tokens, [{ input: 2, cacheWrite: 4550, cacheRead: 8966, output: 71, who: 'teammate' }, undefined])
   })
   test('a kagelet lane runs on its own model, and a thread with none keeps the default', async () => {
     const LANE = 'C1:5.5#side-kagelet-deploys'

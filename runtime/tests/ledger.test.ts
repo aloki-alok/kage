@@ -2,7 +2,8 @@ import { describe, test } from 'node:test'
 import assert from 'node:assert/strict'
 import { existsSync, mkdtempSync, readdirSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
-import { openLedgers, runEvents } from '../ledger.ts'
+import { costRecorder, openLedgers, runEvents } from '../ledger.ts'
+import { costRows } from '../../core/ledgers.ts'
 
 const dir = () => mkdtempSync(`${tmpdir()}/kage-ledger-`)
 
@@ -210,4 +211,12 @@ test('a run tells the chain router whether it reported or had a call refused, an
   assert.equal(runs.of('k'), undefined)
   runs.start('k', 'scheduled', { fresh: true, chain: 'c1', hops: 2 })
   assert.deepEqual([runs.of('k')!.chain, runs.of('k')!.hops], ['c1', 2])
+})
+
+test("a turn's cost row keeps its tokens, and a turn with none still records its cost (#505)", () => {
+  const l = openLedgers(dir())
+  const record = costRecorder(l)
+  record('C1:1.1', 0.5, false, { input: 2, cacheWrite: 4550, cacheRead: 8966, output: 71, who: 'owner' })
+  record('C1:1.1', 0.75, false)
+  assert.deepEqual(costRows(l.text('costs')).map(r => [r.usd, r.tokens?.cacheRead]), [[0.5, 8966], [0.25, undefined]])
 })

@@ -1,6 +1,6 @@
 import { describe, test } from 'node:test'
 import assert from 'node:assert/strict'
-import { trailEvent, trailLine, askedFrom, cardAt, dailyDue, expiredWaiting, grantsLine, heldLine, lastTotals, openWaiting, postedBy, spendSince, unanswered, staleWaiting, selfReview, tsvRow, turnCost } from '../ledgers.ts'
+import { costRows, threadKind, trailEvent, trailLine, askedFrom, cardAt, dailyDue, expiredWaiting, grantsLine, heldLine, lastTotals, openWaiting, postedBy, spendSince, unanswered, staleWaiting, selfReview, tsvRow, turnCost } from '../ledgers.ts'
 import type { Task } from '../task.ts'
 
 describe('the daily note of what waits on the owner', () => {
@@ -229,4 +229,19 @@ describe('unanswered: a turn that ended with nothing posted for its message', ()
     const handoff = { ...task('C0TEST1', '200.5'), handoff: { chain: 'c', message: 'm', hops: 1 } }
     assert.deepEqual(unanswered([scheduled, noTs, handoff], ''), [])
   })
+})
+
+test('a cost row keeps the turn tokens and who ran it; an old row has no tokens (#505)', () => {
+  const tsv = '2026-11-20T10:00:00.000Z\tC1:1.1\t0.5\t0.5\n2026-11-20T10:01:00.000Z\tC1:1.1#side-kagelet-calls\t0.1\t0.1\t2\t4550\t8966\t71\tkagelet\n'
+  const [old, now] = costRows(tsv)
+  assert.equal(old!.tokens, undefined)
+  assert.deepEqual(now!.tokens, { input: 2, cacheWrite: 4550, cacheRead: 8966, output: 71, who: 'kagelet' })
+})
+
+test('who a turn ran for: kagelets and dreams by key, everyone else by sender', () => {
+  assert.equal(threadKind('C1:1.1#side-kagelet-calls', 'owner'), 'kagelet')
+  assert.equal(threadKind('dm#side-dream', 'owner'), 'dream')
+  assert.equal(threadKind('C1:1.1#side-kdream-calls', undefined), 'dream')
+  assert.equal(threadKind('C1:1.1', 'teammate'), 'teammate')
+  assert.equal(threadKind('C1:1.1', undefined), 'unknown')
 })

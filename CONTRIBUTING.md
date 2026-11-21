@@ -156,7 +156,7 @@ Write logs to stderr only. In a tmux pane, stdout carries the channel protocol, 
 | `preview.ts` | How an approval shows the call it asks about. |
 | `transcript.ts` | Turning a Claude Code transcript line into a line a person can follow. `runtime/transcript-tail.ts` reads the new lines from disk. |
 | `telemetry.ts` | What an event row may tell the world (ADR 0019): fixed words and numbers per kind, the crash fingerprint, the OTLP body, whether telemetry is on, and the session env that never sends content. |
-| `stats.ts` | What `kage stats` shows: spend per day and per connector, runs, refusals, turn time and hub starts, from rows Kage already keeps (no content). `cli/stats.ts` reads them. |
+| `stats.ts` | What `kage stats` shows: spend per day and per connector, tokens per turn by kind of thread, runs, refusals, turn time and hub starts, from rows Kage already keeps (no content). `cli/stats.ts` reads them. |
 | `task.ts` | `Task`: what a connector turns a message into, and what a runner takes (ADR 0002). |
 | `instructions.ts` | What every session reads first: who it is (Kage, a kagelet, or a kagelet's nightly dream), whom it serves, how it answers, and each kind of task's limits. A kagelet reads Kage's door rules word for word. |
 | `secret-prompt.ts` | A hidden token prompt's rules: what each key does to the line, whether a paste is the token asked for (and which one it is when not), and how a saved token is shown. `runtime/terminal-secret.ts` draws the prompt, and `cli/ask-secret.ts` is its entry for `setup.sh`. |

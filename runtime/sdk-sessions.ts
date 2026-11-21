@@ -1,3 +1,4 @@
+import { threadKind, type Tokens } from '../core/ledgers.ts'
 import { SLACK_READS, VOICE_READS_LINE, voiceToolOptions } from './slack-read-tools.ts'
 import type { createSdkMcpServer, EffortLevel, Options, Query, SDKMessage, SDKUserMessage, tool } from '@anthropic-ai/claude-agent-sdk'
 import { randomUUID } from 'node:crypto'
@@ -52,7 +53,7 @@ export function sdkSessions(o: {
   codeDir: string; sandbox?: (ownerThread: boolean) => boolean
   envFile: string
   onStart?: () => void; onMcp?: (q: Query) => void
-  onResult?: (key: string, totalUsd: number, resumed: boolean, limited: boolean, error?: string) => void
+  onResult?: (key: string, totalUsd: number, resumed: boolean, limited: boolean, error?: string, tokens?: Tokens) => void
   onBlocked?: (key: string, turn: Task[], category: string | null) => void
   onDropped?: (key: string, turn: Task[], reason: string, kind: string) => void
   onTurn?: (key: string, tasks: Task[], limit?: Limit, done?: true) => void
@@ -197,7 +198,7 @@ export function sdkSessions(o: {
             const status = 'api_error_status' in m ? m.api_error_status : undefined
             limit = status === 429 ? 'rate_limit' : status === 529 ? 'overloaded' : undefined
           }
-          if (m.type === 'result') o.onResult?.(key, m.total_cost_usd, resumed, !!limit, m.is_error ? m.subtype : undefined)
+          if (m.type === 'result') o.onResult?.(key, m.total_cost_usd, resumed, !!limit, m.is_error ? m.subtype : undefined, m.usage && { input: m.usage.input_tokens, cacheWrite: m.usage.cache_creation_input_tokens ?? 0, cacheRead: m.usage.cache_read_input_tokens ?? 0, output: m.usage.output_tokens, who: threadKind(key, senderNow(s)) })
           if (m.type === 'result' && limit) {
             const tasks = s.turn.map(x => x.task)
             s.turn = []
