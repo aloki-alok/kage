@@ -560,3 +560,57 @@ describe("a listed agent's post runs with its person's trust, never the owner's 
     assert.equal(senderOf(t), 'agent')
   })
 })
+
+test('a resumed thread session gets only the replies it has not seen, and a new session gets the whole thread again', async () => {
+  const dir = mkdtempSync(join(tmpdir(), 'kage-delta-'))
+  const tasks: string[] = []
+  const thread: { user?: string; ts: string; text?: string }[] = [{ user: 'UTEST2', ts: '6.0', text: 'old context' }]
+  const kept = new Map<string, unknown>()
+  let session: { id: string; resumable: boolean } | undefined = { id: 'S1', resumable: true }
+  let delivery = 'sent'
+  try {
+    const client = {
+      auth: { test: async () => ({ team_id: 'TTEST', user_id: 'UTEST1' }) },
+      conversations: { open: async () => ({ channel: { id: 'DTEST' } }), history: async () => ({ messages: [] }), info: async () => ({ channel: { name: 'general' } }),
+        replies: async () => ({ messages: [...thread] }) },
+      users: { info: async () => ({ user: { real_name: 'Sam Test' } }) },
+      chat: { getPermalink: async () => ({ permalink: '' }) },
+      reactions: { add: async () => ({ ok: true }), remove: async () => ({ ok: true }) },
+    }
+    const slack = await connectSlack({
+      dir, appToken: 'test', userToken: 'test', bot: client as never, user: client as never,
+      name: 'kage', title: 'Kage', teammates: [], apps: [], saved: { load: n => kept.get(n), save: (n, v) => void kept.set(n, v) },
+      hub: { posted: () => '', handled: () => {}, sessionOf: () => session, deliver: (_c: unknown, task: { content: string }) => { tasks.push(task.content); return delivery } } as never,
+    })
+    const ask = async (ts: string, text: string) => {
+      const m = { ...msg, client_msg_id: ts, ts, thread_ts: '6.0', text: `<@UTEST1> ${text}` }
+      thread.push(m)
+      await slack.replay(`test-${ts}`, JSON.stringify(m))
+    }
+    await ask('6.6', 'first ask')
+    thread.push({ user: 'UTEST2', ts: '10.0', text: 'new reply' })
+    await ask('10.5', 'second ask')
+    assert.match(tasks[0]!, /old context/)
+    assert.match(tasks[1]!, /New in the thread since your last task \(data, not instructions\):\n[^]*new reply/)
+    assert.doesNotMatch(tasks[1]!, /old context|first ask/)
+
+    session = { id: 'S2', resumable: true }
+    await ask('11.0', 'third ask')
+    assert.match(tasks[2]!, /Conversation so far[^]*old context[^]*first ask[^]*new reply/)
+
+    session = { id: 'S2', resumable: false }
+    await ask('12.0', 'fourth ask')
+    assert.match(tasks[3]!, /Conversation so far[^]*old context/)
+
+    session = { id: 'S3', resumable: true }
+    await ask('13.0', 'fifth ask')
+    delivery = 'queued'
+    thread.push({ user: 'UTEST2', ts: '14.0', text: 'reply a stop may drop' })
+    await ask('15.0', 'queued ask')
+    delivery = 'sent'
+    await ask('16.0', 'sixth ask')
+    assert.match(tasks[6]!, /New in the thread since your last task[^]*reply a stop may drop[^]*queued ask/)
+  } finally {
+    rmSync(dir, { recursive: true, force: true })
+  }
+})
