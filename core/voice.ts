@@ -38,4 +38,16 @@ export function spokenStep(step: Step): { text: string; tone: Tone } {
 
 const WORD = ['█▄▀ ▄▀█ █▀▀ █▀▀', '█ █ █▀█ █▄█ ██▄']
 const mirror = (row: string) => row.replace(/[▀▄]/g, c => c === '▀' ? '▄' : '▀')
-export const WORDMARK = { word: WORD, shadow: [` ${mirror(WORD[1]!)}`, `  ${mirror(WORD[0]!)}`] }
+const DEVANAGARI = [
+  '                          ▀██',
+  '                            ▀█▄',
+  ' ▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄██▄▄▄',
+  '▀▀▀▀▀▀▀▀██▀▀▀▀▀▀▀▀▀██▀▀▀▀██▀▀▀▀██▀▀',
+  '   ▄▄▄▄ ██ ▄▄▄▄    ██    ██    ██',
+  '  ██▀▀  ███▀▀▀██   ██    ██    ██',
+  '  ██    ██    ██   ██   ▀██    ██',
+  '  ▀███████  ▄██▀   ██    ▀▀    ██',
+  '        ██         ██          ██',
+  '        ▀▀         ▀▀          ▀▀',
+]
+export const WORDMARK = { word: WORD, shadow: [` ${mirror(WORD[1]!)}`, `  ${mirror(WORD[0]!)}`], devanagari: DEVANAGARI }

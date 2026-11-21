@@ -13,7 +13,7 @@ function world() {
   const dir = join(root, 'code'), conf = join(root, 'conf'), bin = join(root, 'bin'), home = join(root, 'home')
   for (const d of [dir, conf, bin, home, join(dir, 'cli'), join(dir, 'core')]) mkdirSync(d, { recursive: true })
   copyFileSync(join(REPO, 'setup.sh'), join(dir, 'setup.sh'))
-  for (const f of ['manifest.ts', 'config.ts', 'home.ts']) copyFileSync(join(REPO, 'cli', f), join(dir, 'cli', f))
+  for (const f of ['manifest.ts', 'config.ts', 'home.ts', 'setup-flow.ts']) copyFileSync(join(REPO, 'cli', f), join(dir, 'cli', f))
   mkdirSync(join(dir, 'runtime'))
   for (const f of ['config-files.ts', 'hub-client.ts']) copyFileSync(join(REPO, 'runtime', f), join(dir, 'runtime', f))
   symlinkSync(join(REPO, 'node_modules'), join(dir, 'node_modules'))
@@ -48,6 +48,12 @@ describe('kage setup ends with Kage running and connected, not with a list of st
     const r = await w.run(['setup'], ANSWERS)
     assert.equal(r.code, 0, r.out)
     assert.ok(existsSync(join(w.root, 'service-on')), 'the service was turned on')
+    assert.match(r.out, /Connected to Slack\. Tag @kagetest in any thread to try it\./)
+  })
+  test('bare kage on a machine with no settings runs the same setup', async () => {
+    const w = world()
+    const r = await w.run([], ANSWERS)
+    assert.equal(r.code, 0, r.out)
     assert.match(r.out, /Connected to Slack\. Tag @kagetest in any thread to try it\./)
   })
   test('if Slack does not connect in time, it exits non-zero and points at kage doctor', async () => {

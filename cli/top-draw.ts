@@ -55,7 +55,8 @@ function header(v: View) {
   fill({ x0: 0, y0: 0, x1: W - 1, y1: 0 }, 'bar')
   let x = 1
   const seg = (s: string, k: string) => { put(x, 0, s, k, 'bar'); x += [...s].length + 3 }
-  seg(' kage', 'hi'); x -= 2; seg(v.version ?? '', 'dim')
+  put(x, 0, '✦', 'work', 'bar'); x += 2
+  seg('kage', 'hi'); x -= 2; seg(v.version ?? '', 'dim')
   if (!v.hubUp) { put(x, 0, '●', 'bad', 'bar'); x += 2; seg('hub offline', 'mid') }
   else {
     for (const c of v.channels) { put(x, 0, '●', c.up === undefined ? 'you' : c.up ? 'ok' : 'bad', 'bar'); put(x + 2, 0, c.name, 'mid', 'bar'); x += c.name.length + 4 }
@@ -115,7 +116,7 @@ function threadTable(v: View, r: Rect, focus: boolean): { key: string; y: number
 function steps(v: View, r: Rect) {
   if (v.mode === 'schedules') return scheduleRows(v, r, v.schedules.filter(s => s.key === v.open))
   if (!v.feed.length) { put(r.x0 + 2, r.y0 + 2, 'nothing in its transcript yet', 'mid'); return }
-  const room = Math.max(1, r.y1 - r.y0 - 3), width = Math.max(10, r.x1 - r.x0 - 22)
+  const room = Math.max(1, r.y1 - r.y0 - 3), width = Math.max(10, r.x1 - r.x0 - 23)
   const lines: { at?: number; tag: string; text: string; tone: string }[] = []
   v.feed.slice(-room).forEach((s, i, all) => {
     const m = /^(\S+)\s+(.*)$/.exec(s.text)
@@ -129,11 +130,11 @@ function steps(v: View, r: Rect) {
   lines.slice(-room).forEach((l, i) => {
     const y = r.y0 + 2 + i
     if (l.at !== undefined) put(r.x0 + 2, y, new Date(l.at).toTimeString().slice(0, 8), 'dim')
-    put(r.x0 + 12, y, clip(l.tag, 7), l.tag === 'reply' ? 'work' : l.tag === 'task' || l.tag === 'input' ? 'you' : 'mid')
-    put(r.x0 + 20, y, clip(l.text, width), l.tone)
+    put(r.x0 + 12, y, clip(l.tag, 8), l.tag === 'reply' ? 'work' : l.tag === 'task' || l.tag === 'input' ? 'you' : 'mid')
+    put(r.x0 + 21, y, clip(l.text, width), l.tone)
   })
   const last = v.feed.at(-1)
-  if (last && v.typed < last.text.length) { const end = lines.at(-1)!; put(r.x0 + 20 + [...end.text].length, r.y0 + 1 + Math.min(lines.length, room), '▌', 'work') }
+  if (last && v.typed < last.text.length) { const end = lines.at(-1)!; put(r.x0 + 21 + [...end.text].length, r.y0 + 1 + Math.min(lines.length, room), '▌', 'work') }
   put(r.x0 + 2, r.y1 - 1, `$${v.threadSpend.toFixed(2)} today in this thread`, 'dim')
 }
 
@@ -191,13 +192,14 @@ function charts(v: View, s: Screen) {
   }
   put(startA - 1, a!.y1, ' -60m ', 'dim'); put(startA + Math.floor(avail / 2) - 3, a!.y1, ' -30m ', 'dim'); put(endA - 5, a!.y1, ' now ', 'dim')
   const hours = perHour(v.costs, v.now)
-  const width = Math.floor((b!.x1 - b!.x0 - 8) / 2), shown = hours.slice(-width), first = hours.length - shown.length
+  const widest = `$${Math.max(0, ...hours).toFixed(2)}`.length
+  const width = Math.max(1, Math.floor((b!.x1 - 2 - (b!.x0 + 2 + widest)) / 2) + 1), shown = hours.slice(-width), first = hours.length - shown.length
   const topB = Math.max(0, ...shown), labelB = `$${topB.toFixed(2)}`
   pane(b!, false, ['spend per hour'], 0, `$${v.spentToday.toFixed(2)} today`)
   put(b!.x0 + 1, b!.y0 + 1, labelB, 'dim'); put(b!.x0 + 1 + labelB.length - 2, b!.y0 + rows, '$0', 'dim')
   const xB = b!.x0 + 2 + labelB.length
   bars(shown, rows).forEach((line, i) => [...line].forEach((ch, j) => put(xB + j * 2, b!.y0 + 1 + i, ch, j === line.length - 1 ? 'work' : 'mid')))
-  for (const j of [0, Math.floor((shown.length - 1) / 2), shown.length - 1]) if (shown.length) put(xB + j * 2 - 1, b!.y1, ` ${String(first + j).padStart(2, '0')}h `, 'dim')
+  for (const j of [0, Math.floor((shown.length - 1) / 2), shown.length - 1]) if (shown.length) put(Math.min(xB + j * 2 - 1, b!.x1 - 6), b!.y1, ` ${String(first + j).padStart(2, '0')}h `, 'dim')
   pane(c!, false, ['kagelets'], 0, `${v.kagelets.filter(k => k.state === 'runs').length} of ${v.kagelets.length} on`)
   if (!v.kagelets.length) put(c!.x0 + 2, c!.y0 + 2, 'no kagelets yet', 'dim')
   v.kagelets.slice(0, c!.y1 - c!.y0 - 2).forEach((k, i) => {
