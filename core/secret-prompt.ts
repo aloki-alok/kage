@@ -49,3 +49,18 @@ export function pickSecret(pasted: string, want: Secret): { value: string; probl
 }
 
 export const shownAs = (token: string) => `${kindOf(token)?.prefix ?? token.slice(0, 4)}… (${token.length} characters)`
+
+export type SlackSlots = Partial<Record<'app' | 'user' | 'bot', string>>
+const SLACK = [['app', SECRETS.app], ['user', SECRETS.user], ['bot', SECRETS.bot]] as const
+
+export function fillSlackTokens(slots: SlackSlots, pasted: string): { slots: SlackSlots; problem?: string } {
+  const next = { ...slots }
+  let problem: string | undefined
+  for (const word of pasted.split(/\s+/).filter(Boolean)) {
+    const slot = SLACK.find(([, s]) => word.startsWith(s.prefix))
+    if (slot) { next[slot[0]] = word; continue }
+    const other = kindOf(word)
+    problem = other ? `That is a ${other.name}. Paste the tokens that start with xapp-, xoxp- or xoxb-.` : 'That is not a Slack token. They start with xapp-, xoxp- or xoxb-.'
+  }
+  return problem ? { slots: next, problem } : { slots: next }
+}
