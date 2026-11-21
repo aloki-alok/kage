@@ -52,8 +52,9 @@ exit 0
 SH
 chmod +x "$shims/open" "$shims/tmux" "$shims/launchctl"
 
-# The working tree as the tarball the install line would download.
-(cd "$repo" && git ls-files -z -co --exclude-standard | tar --null -T - -s ',^,kage/,' -czf "$root/kage.tar.gz")
+# The working tree as the tarball the install line would download. A file deleted but not yet committed is left out.
+(cd "$repo" && git ls-files -z -co --exclude-standard | while IFS= read -r -d '' f; do [[ -e $f ]] && printf '%s\0' "$f"; done \
+  | tar --null -T - -s ',^,kage/,' -czf "$root/kage.tar.gz")
 
 printf '\033[2mRehearsal in %s. Slack is a stand-in at http://127.0.0.1:%s\033[0m\n\n' "$root" "$port"
 env -i HOME="$home" PATH="$shims:$PATH" TERM="${TERM:-xterm-256color}" COLORTERM="${COLORTERM:-}" LANG="${LANG:-en_US.UTF-8}" \

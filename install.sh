@@ -15,7 +15,7 @@ if [[ -t 1 ]]; then MARK=$'\033[38;2;45;190;160m✦\033[0m' WAIT=$'\033[38;2;230
 else MARK='✦' WAIT='◆' DIM='' OFF=''; fi
 say() { printf '  %s  %-12s %s%s%s\n' "$MARK" "$1" "$DIM" "${2:-}" "$OFF"; }
 die() { printf '  %s  %s\n' "$WAIT" "$*" >&2; exit 1; }
-short() { local t='~'; printf '%s' "${1/#$HOME/$t}"; }
+short() { local t='~'; if [[ $1 == "$HOME" || $1 == "$HOME"/* ]]; then printf '%s' "$t${1#"$HOME"}"; else printf '%s' "$1"; fi; }
 
 command -v curl >/dev/null && command -v tar >/dev/null || die "curl and tar are required."
 command -v node >/dev/null || die "Node.js 22.18 or newer is required: https://nodejs.org (macOS: brew install node)"

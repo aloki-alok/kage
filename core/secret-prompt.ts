@@ -64,3 +64,14 @@ export function fillSlackTokens(slots: SlackSlots, pasted: string): { slots: Sla
   }
   return problem ? { slots: next, problem } : { slots: next }
 }
+
+export function typeLines(typed: string, chunk: string): { typed: string; lines: string[]; cancel?: boolean } {
+  const segments = chunk.split(/\r\n|\r|\n/), lines: string[] = []
+  let state: Keys = { typed }
+  for (let i = 0; i < segments.length; i++) {
+    state = typeKeys(state, segments[i]!)
+    if (state.end === 'cancel') return { typed: state.typed, lines, cancel: true }
+    if (i < segments.length - 1 || state.end === 'enter') { lines.push(state.typed); state = { typed: '' } }
+  }
+  return { typed: state.typed, lines }
+}

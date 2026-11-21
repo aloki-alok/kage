@@ -3,29 +3,29 @@ import { readFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { createInterface } from 'node:readline/promises'
 import { validName } from '../core/gate.ts'
-import { fillSlackTokens, type SlackSlots } from '../core/secret-prompt.ts'
+import { fillSlackTokens, typeLines, type SlackSlots } from '../core/secret-prompt.ts'
 import { FLICKER, MARK, WORDMARK, painter } from '../core/voice.ts'
 import { envFilePath } from '../runtime/config-files.ts'
 
 const ROOT = join(import.meta.dirname, '..')
-const tty = Boolean(process.stdout.isTTY && process.stdin.isTTY)
-const v = painter(tty && !process.env.NO_COLOR)
+const keys = Boolean(process.stdin.isTTY), screen = Boolean(process.stdout.isTTY)
+const v = painter(screen && !process.env.NO_COLOR)
 const out = (s = '') => process.stdout.write(`${s}\n`)
 const rail = v.faint('│')
 const gap = () => out(`  ${rail}`)
 const done = (label: string, detail = '') => out(`  ${v.work(MARK.kage)}  ${label.padEnd(12)} ${v.dim(detail)}`.trimEnd())
 const needs = (s: string) => out(`  ${v.you(MARK.you)}  ${s}`)
-const erase = (lines: number) => { if (tty && lines) process.stdout.write(`\x1b[${lines}A\r\x1b[J`) }
-const link = (url: string, text: string) => tty ? `\x1b]8;;${url}\x07${text}\x1b]8;;\x07` : text
+const erase = (lines: number) => { if (screen && lines) process.stdout.write(`\x1b[${lines}A\r\x1b[J`) }
+const link = (url: string, text: string) => screen ? `\x1b]8;;${url}\x07${text}\x1b]8;;\x07` : text
 const sh = (args: string[], input?: string) => {
   const r = spawnSync('./setup.sh', args, { cwd: ROOT, input, encoding: 'utf8' })
   return { ok: r.status === 0, out: `${r.stdout ?? ''}${r.stderr ?? ''}`.trim() }
 }
 const stop = (why: string) => { needs(v.you(why)); process.exit(1) }
 
-const piped = tty ? [] : readFileSync(0, 'utf8').split('\n')
+const piped = keys ? [] : readFileSync(0, 'utf8').split('\n')
 async function ask(prompt: string): Promise<string> {
-  if (!tty) { process.stdout.write(`${prompt}\n`); return (piped.shift() ?? '').trim() }
+  if (!keys) { process.stdout.write(`${prompt}\n`); return (piped.shift() ?? '').trim() }
   const rl = createInterface({ input: process.stdin, output: process.stdout })
   try { return (await rl.question(prompt)).trim() } finally { rl.close() }
 }
@@ -33,7 +33,7 @@ async function ask(prompt: string): Promise<string> {
 function header() {
   const right = ['', '', '', `${v.work(MARK.kage)} Hi. I'm Kage, and this sets me up in your Slack.`, v.dim('   About three minutes: a few clicks in Slack, then one paste.'), v.dim('   Ctrl-C stops at any step, and nothing is half done.')]
   const art = WORDMARK.devanagari
-  if (!tty || (process.stdout.columns ?? 0) < 80) { for (const l of right.slice(3)) out(l); out(); return }
+  if (!screen || (process.stdout.columns ?? 0) < 80) { for (const l of right.slice(3)) out(l); out(); return }
   const w = Math.max(...art.map(l => [...l].length))
   out()
   for (let i = 0; i < art.length; i++) out(`  ${(art[i] ?? '').padEnd(w)}   ${right[i] ?? ''}`.trimEnd())
@@ -86,13 +86,10 @@ function hiddenLines(draw: (typed: string) => void, take: (line: string) => bool
     let typed = ''
     const end = () => { process.stdin.off('data', onKey); process.stdin.setRawMode(false); process.stdin.pause(); resolve() }
     const onKey = (chunk: Buffer) => {
-      for (const ch of chunk.toString('utf8')) {
-        if (ch === '\u0003') { process.stdin.setRawMode(false); out(); process.exit(130) }
-        if (ch === '\r' || ch === '\n') { const line = typed; typed = ''; if (take(line)) return end(); continue }
-        if (ch === '\u007f' || ch === '\b') typed = typed.slice(0, -1)
-        else if (ch === '\u0015') typed = ''
-        else if (ch >= ' ') typed += ch
-      }
+      const r = typeLines(typed, chunk.toString('utf8'))
+      if (r.cancel) { process.stdin.setRawMode(false); out(); process.exit(130) }
+      typed = r.typed
+      for (const line of r.lines) if (line.trim() && take(line)) return end()
       draw(typed)
     }
     process.stdin.on('data', onKey); process.stdin.resume(); draw(typed)
@@ -101,9 +98,9 @@ function hiddenLines(draw: (typed: string) => void, take: (line: string) => bool
 
 async function tokens(start: SlackSlots): Promise<SlackSlots> {
   let slots = start, problem = ''
-  if (tty) process.stdin.setRawMode(true)
+  if (keys) process.stdin.setRawMode(true)
   needs(`Paste the three tokens here, in any order ${v.dim('(one at a time is fine)')}`)
-  if (!tty) {
+  if (!keys) {
     while (!full(slots) && piped.length) slots = fillSlackTokens(slots, piped.shift()!).slots
     if (!full(slots)) stop('Need all three tokens: xapp-..., xoxp-..., xoxb-...')
     return slots
@@ -131,7 +128,7 @@ async function save(nameIs: string): Promise<void> {
     const r = sh(['save', nameIs], `${slots.app} ${slots.user} ${slots.bot}\n`)
     if (r.ok) { done('Tokens', `checked with Slack · you are ${r.out.match(/\((U[A-Z0-9]+)\)/)?.[1] ?? 'the owner'}`); return }
     const bad = r.out.match(/\((xapp|xoxp|xoxb)-\) rejected/)?.[1]
-    if (!tty || !bad) stop(r.out.split('\n').filter(Boolean).pop() ?? 'Slack refused the tokens.')
+    if (!keys || !bad) stop(r.out.split('\n').filter(Boolean).pop() ?? 'Slack refused the tokens.')
     needs(v.you(`Slack refused the ${bad}- token. Copy it again from Slack.`))
     const key = SLOTS.find(([, p]) => p === bad)![0]
     slots = { ...slots, [key]: undefined }
@@ -153,10 +150,10 @@ async function start(nameIs: string) {
   const dir = dirname(envFilePath()), wait = Number(process.env.KAGE_SETUP_WAIT ?? 90), began = Date.now()
   let frame = 0
   while (!connected(dir) && Date.now() - began < wait * 1000) {
-    if (tty) process.stdout.write(`\r\x1b[2K  ${v.work(FLICKER[frame++ % FLICKER.length]!)}  ${'Starting'.padEnd(12)} ${v.dim(`waiting for Slack · ${Math.round((Date.now() - began) / 1000)} s`)}`)
+    if (screen) process.stdout.write(`\r\x1b[2K  ${v.work(FLICKER[frame++ % FLICKER.length]!)}  ${'Starting'.padEnd(12)} ${v.dim(`waiting for Slack · ${Math.round((Date.now() - began) / 1000)} s`)}`)
     await new Promise(res => setTimeout(res, 250))
   }
-  if (tty) process.stdout.write('\r\x1b[2K')
+  if (screen) process.stdout.write('\r\x1b[2K')
   if (!connected(dir)) stop(`Not connected to Slack after ${wait} s. Run kage doctor: it names the fix for each problem.`)
   done(`Connected to Slack. Tag @${nameIs} in any thread to try it.`)
   gap()
