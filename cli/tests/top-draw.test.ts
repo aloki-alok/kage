@@ -67,3 +67,8 @@ test('a chart pane keeps its corners: hour labels and bars stay inside it, whate
     assert.match(bottom, /^\s*(╰[^╰╯]*╯\s*)+$/, `${cols} cols: ${bottom}`)
   }
 })
+
+test('a step names its kind in full, so schedule reads as schedule', () => {
+  const text = frame('threads', 132, 38, { feed: [{ at: NOW, text: 'schedule  check CI in five minutes' }] }).join('\n')
+  assert.match(text, /schedule check CI|schedule +check CI/)
+})
