@@ -1,6 +1,6 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { existsSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdtempSync, readFileSync, statSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import type { Delivery } from '../../core/sessions.ts'
@@ -21,6 +21,7 @@ function setup(o: { tripwires?: Record<string, unknown>; store?: ReturnType<type
   const conf = { on: true, timeoutSec: 5, failPing: 3, ...o.tripwires }
   const state = { pingOk: true, delivery: 'sent' as Delivery | 'throw', seenState: [] as (string | undefined)[] }
   const make = () => scheduler({
+    jobStateDir: join(dir, 'job-state'),
     job: { end: () => {}, freshEvery: () => 0, carryCount: () => 0, carryChars: () => 0, laneDefault: () => true, posted: () => '', project: dir },
     store, failed: t => failed.push(t), ran: j => ran.push(j.id),
     deliver: (key, task) => {
@@ -100,6 +101,23 @@ test("a verdict wake delivers only the script's context, quoted as data, and nev
   assert.match(task.content, /its script asked to wake you/)
   assert.match(task.content, /Context: \{"note":"&lt;channel x>"\}/)
   assert.doesNotMatch(task.content, /secret-ish raw line/)
+})
+
+test('each probe gets its own private state folder that lasts between runs, and goes away with its job (#516)', async () => {
+  const t = setup()
+  const script = join(t.dir, 'count.sh')
+  writeFileSync(script, 'echo "$KAGE_JOB_ID"; n=$(cat "$KAGE_JOB_STATE_DIR/n" 2>/dev/null || echo 0); n=$((n+1)); echo $n > "$KAGE_JOB_STATE_DIR/n"; echo "run $n"\n')
+  assert.equal(add(t, { command: `sh ${script}` }), undefined)
+  await tick(t, 1)
+  await tick(t, 2)
+  assert.equal(t.sent.length, 1)
+  assert.match(t.sent[0]![1].content, /Before: p1 run 1\b/)
+  assert.match(t.sent[0]![1].content, /After: p1 run 2\b/)
+  const folder = join(t.dir, 'job-state', 'p1')
+  assert.equal(statSync(folder).mode & 0o777, 0o700)
+  t.s.remove(KEY, 'p1')
+  await tick(t, 3)
+  assert.equal(existsSync(folder), false)
 })
 
 test('a failed delivery keeps the old state, so the next tick wakes again', async () => {
