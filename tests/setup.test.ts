@@ -50,6 +50,12 @@ describe('kage setup ends with Kage running and connected, not with a list of st
     assert.ok(existsSync(join(w.root, 'service-on')), 'the service was turned on')
     assert.match(r.out, /Connected to Slack\. Tag @kagetest in any thread to try it\./)
   })
+  test('bare kage on a machine with no settings runs the same setup', async () => {
+    const w = world()
+    const r = await w.run([], ANSWERS)
+    assert.equal(r.code, 0, r.out)
+    assert.match(r.out, /Connected to Slack\. Tag @kagetest in any thread to try it\./)
+  })
   test('if Slack does not connect in time, it exits non-zero and points at kage doctor', async () => {
     const w = world()
     const r = await w.run(['setup'], ANSWERS, { FAKE_NO_CONNECT: '1' })
