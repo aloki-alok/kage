@@ -130,7 +130,7 @@ describe('decide', () => {
     for (const line of ['{"wake": "yes"}', '{"wake": true', '{"wake": true, "context": "x"}', '[true]']) {
       const s: JobState = { fp: fpOf(`v1\n${line}`), last: `v1\n${line}`, fails: 0 }
       assert.equal(decide(s, ok(`v1\n${line}`), probe, o).wake, undefined, line)
-      assert.ok(decide(s, ok(`v2\n${line}`), probe, o).wake?.after, line)
+      assert.ok(decide(s, ok(`v2\n${line}`), probe, o).wake, line)
     }
   })
   test('an ignored line changing does not wake', () => {

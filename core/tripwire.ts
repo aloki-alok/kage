@@ -97,7 +97,19 @@ export const pinsChanged =(pins: Record<string, string>, now: Record<string, str
 const ERROR_LINE_MAX = 200
 const firstLine = (s: string) => (s.split('\n').map(l => l.trim()).find(Boolean) ?? '').slice(0, ERROR_LINE_MAX)
 
-export function decide(state: JobState, run: { ok: boolean; out: string; fp: string; err?: string; refused?: string }, probe: Probe, o: { failPing: number; lineMax: number }): { state: JobState; wake?: { before?: string; after: string }; ping?: string } {
+const plainObject = (v: unknown): v is Record<string, unknown> => !!v && typeof v === 'object' && !Array.isArray(v)
+function verdictOf(out: string): { wake: boolean; context?: string } | undefined {
+  const last = out.trimEnd().split('\n').at(-1)?.trim() ?? ''
+  if (!last.startsWith('{')) return undefined
+  let v: unknown
+  try { v = JSON.parse(last) } catch { return undefined }
+  if (!plainObject(v) || typeof v.wake !== 'boolean' || (v.context !== undefined && !plainObject(v.context))) return undefined
+  return { wake: v.wake, ...v.context !== undefined && { context: JSON.stringify(v.context) } }
+}
+
+export type Wake = { before?: string; after: string } | { context: string }
+
+export function decide(state: JobState, run: { ok: boolean; out: string; fp: string; err?: string; refused?: string }, probe: Probe, o: { failPing: number; lineMax: number }): { state: JobState; wake?: Wake; ping?: string } {
   if (run.refused) {
     const ping = run.refused === state.refused ? undefined : `A tripwire probe is stopped: ${probe.command}\n${run.refused}\nFix: add a file the probe reads to reads, a file it writes to writes, or approve the probe again.`
     return { state: { ...state, refused: run.refused }, ...(ping && { ping }) }
@@ -111,6 +123,8 @@ export function decide(state: JobState, run: { ok: boolean; out: string; fp: str
   const fp = run.fp
   const { refused: _, ...kept } = state
   const next = { ...kept, fp, last: after, fails: 0 }
+  const verdict = verdictOf(run.out)
+  if (verdict) return { state: next, ...verdict.wake && { wake: { context: verdict.context ?? '{}' } } }
   if (state.fp === fp) return { state: { ...kept, fails: 0 } }
   if (state.fp === undefined) return { state: next }
   return { state: next, wake: { before: state.last, after } }
