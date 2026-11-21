@@ -23,25 +23,19 @@ function tailOf(file: string): string[] {
 }
 
 export function threadRotator(o: RotatorOptions) {
-  const promisedDelta = new Map<string, string>()
   const transcript = (id: string) => `${o.project}/${id}.jsonl`
-  const due = (key: string, id: string) => rotateDue(key, contextTokens(tailOf(transcript(id))), o.limit())
+  const rotating = (key: string, lines: string[]) => o.ready(key) === 'ready' && rotateDue(key, contextTokens(lines), o.limit())
   return {
     sessionOf(key: string) {
       const id = o.idOf(key)
       if (!id) return undefined
-      const resumable = o.hasTranscript(id) && !due(key, id)
-      if (resumable) promisedDelta.set(key, id)
-      else promisedDelta.delete(key)
-      return { id, resumable }
+      return { id, resumable: o.hasTranscript(id) && !rotating(key, tailOf(transcript(id))) }
     },
     before(key: string, task: Task): Task {
-      const promised = promisedDelta.get(key)
-      promisedDelta.delete(key)
       const id = o.idOf(key)
-      if (!id || promised === id || o.ready(key) !== 'ready') return task
+      if (!id || task.deltaOf === id) return task
       const lines = tailOf(transcript(id))
-      if (!rotateDue(key, contextTokens(lines), o.limit())) return task
+      if (!rotating(key, lines)) return task
       const { count, chars } = o.carry()
       const carry = rotateCarry(sentTexts(lines), count, chars, transcript(id))
       o.reset(key)

@@ -9,7 +9,7 @@ import { taskAsOther } from '../../core/gate.ts'
 const KEY = 'CTEST1:1.1'
 const turn = (tokens: number, said?: string) => JSON.stringify({ type: 'assistant', message: { usage: { input_tokens: 1, cache_read_input_tokens: tokens - 1 },
   content: said ? [{ type: 'tool_use', name: 'mcp__kage__reply', input: { text: said } }] : [] } }) + '\n'
-const task = () => taskAsOther({ content: 'Task from Sam: next', meta: { channel: 'CTEST1', thread_ts: '1.1', place: '#test', permalink: '' }, origin: { channel: 'CTEST1', ts: '2.2' } })
+const task = (deltaOf?: string) => ({ ...taskAsOther({ content: 'Task from Sam: next', meta: { channel: 'CTEST1', thread_ts: '1.1', place: '#test', permalink: '' }, origin: { channel: 'CTEST1', ts: '2.2' } }), ...(deltaOf && { deltaOf }) })
 
 function rig(tokens: number) {
   const project = mkdtempSync(join(tmpdir(), 'kage-rotate-'))
@@ -50,14 +50,24 @@ test('a thread under the limit, a busy one, a side lane and a missing session ke
   } finally { t.done() }
 })
 
-test('a task built as a delta for the live session is never moved to a new one, even if the limit is crossed meanwhile', () => {
+test('a task built as a delta for the live session stays in it, even if another task crossed the limit meanwhile', () => {
   const t = rig(150_000)
   try {
     assert.deepEqual(t.r.sessionOf(KEY), { id: 'S1', resumable: true })
     appendFileSync(join(t.project, 'S1.jsonl'), turn(300_000))
-    assert.equal(t.r.before(KEY, task()).content, 'Task from Sam: next')
+    assert.equal(t.r.before(KEY, task('S1')).content, 'Task from Sam: next')
     assert.deepEqual(t.resets, [])
     assert.match(t.r.before(KEY, task()).content, /new session/)
     assert.deepEqual(t.resets, [KEY])
+  } finally { t.done() }
+})
+
+test('a due session that is busy stays resumable, so the thread is not sent whole into a session that holds it', () => {
+  const t = rig(250_000)
+  try {
+    t.setReady('busy')
+    assert.deepEqual(t.r.sessionOf(KEY), { id: 'S1', resumable: true })
+    t.setReady('ready')
+    assert.deepEqual(t.r.sessionOf(KEY), { id: 'S1', resumable: false })
   } finally { t.done() }
 })

@@ -106,8 +106,10 @@ const deliver = (c: Conversation, task: Task, place: string, lane: Lane = 'main'
   const key = sessionKey(c, { lane })
   if (by && !d.saved()[key] && !starters.has(key)) starters.set(key, by)
   store.seen(key, c, place, Date.now())
-  log(`task for ${place} (${logKey(key)}): ${task.fromOwner ? 'from the owner' : 'not from the owner'}${task.scheduled ? ', scheduled' : ''}, ${d.saved()[key] ? 'resumes its session' : 'new session'}`)
-  return toSession(key, task)
+  const was = d.saved()[key]
+  const r = toSession(key, task)
+  log(`task for ${place} (${logKey(key)}): ${task.fromOwner ? 'from the owner' : 'not from the owner'}${task.scheduled ? ', scheduled' : ''}, ${was && was === d.saved()[key] ? 'resumes its session' : 'new session'}`)
+  return r
 }
 function stopThread(key: string, cut: boolean): string {
   const now = Date.now()

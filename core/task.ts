@@ -11,4 +11,5 @@ export type Task = {
   scheduled?: true
   handoff?: { chain: string; message: string; hops: number }
   need?: { name: string; id: string }
+  deltaOf?: string
 }

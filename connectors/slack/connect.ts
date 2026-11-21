@@ -191,7 +191,8 @@ export async function connectSlack(o: { askOtherAgents?: boolean; saved?: Saved;
     const conv = slackConversation(m, ids.botDm, kagePosted)
     const markKey = !asked && !t.side && conv.thread ? sessionKey(conv) : undefined
     const marks = () => (o.saved?.load('threadMarks') ?? {}) as Record<string, ThreadMark>
-    const since = markKey ? seenUpTo(marks()[markKey], o.hub.sessionOf?.(conv, 'main')) : undefined
+    const session = markKey ? o.hub.sessionOf?.(conv, 'main') : undefined
+    const since = markKey ? seenUpTo(marks()[markKey], session) : undefined
     const [place, ctx, link] = await Promise.all([
       placeOf(asked?.chat ?? m.channel),
       m.channel === ids.botDm && !m.thread_ts ? Promise.resolve({ text: '', files: [] as SlackFile[] }) : contextOf(m, false, since),
@@ -222,6 +223,7 @@ export async function connectSlack(o: { askOtherAgents?: boolean; saved?: Saved;
       origin: { channel: m.channel, ts: m.ts, ...(m.thread_ts && m.thread_ts !== m.ts && { thread: m.thread_ts }) },
       ...(agent && { agent: { app: agent.app, ...(agent.tag && { tag: agent.tag }), ...(agent.person && { person: agent.person }) } }),
       ...(trusted && { trusted: person }),
+      ...(since && session && { deltaOf: session.id }),
     })
     const r = asked
       ? o.hub.deliver(asked, task, place)
