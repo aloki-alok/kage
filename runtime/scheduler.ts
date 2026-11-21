@@ -231,7 +231,7 @@ export function scheduler(o: {
       log('moved', id, 'from', key, 'to', to)
     },
     tick(now: number) {
-      probes.tidy(new Set(store.schedules().map(s => s.id)))
+      probes.tidy(new Set([...store.schedules().map(s => s.id), ...Object.keys((store.load('swapped-out') ?? {}) as object)]))
       const catchUp = o.job.catchUp?.() ?? { hours: CATCH_UP / 3600_000, staggerSeconds: 15 }
       const { fire, drop, late, skipped } = dueSchedules(store.schedules(), now, catchUp.hours * 3600_000)
       for (const [id, n] of Object.entries(skipped)) { store.fired(id, now); log('missed', id, `${n} run${n === 1 ? '' : 's'}`, `older than ${catchUp.hours} h`) }

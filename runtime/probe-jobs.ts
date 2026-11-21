@@ -59,7 +59,7 @@ export function probeJobs(o: {
   async function check(s: Schedule, probe: Probe, now: number) {
     const t = tripwireCfg(o.settings())
     await flush(s, t.failPing)
-    const stateDir = o.stateDir && join(o.stateDir, s.id)
+    const stateDir = o.stateDir && /^[\w-]+$/.test(s.id) ? join(o.stateDir, s.id) : undefined
     if (stateDir) mkdirSync(stateDir, { recursive: true, mode: 0o700 })
     const run = await runProbe(probe, { timeoutMs: t.timeoutSec * 1000, maxBytes: t.maxKb * 1024, patternMax: t.patternMax, lineMax: t.lineMax, ...(t.env && { env: t.env }), ...(stateDir && { job: { id: s.id, stateDir } }) })
     const live = o.store.schedules().find(x => x.id === s.id)
