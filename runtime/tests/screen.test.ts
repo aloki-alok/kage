@@ -148,6 +148,20 @@ describe('building Kage Screen', { skip: !canBuild && 'needs macOS with swiftc' 
     assert.equal(requirement(), first)
     assert.equal(resets.length, 2, 'the second build kept the identity, so it reset nothing')
   })
+  test('a certificate setup that fails halfway leaves nothing behind, so the next build makes a new one', async () => {
+    const code = mkdtempSync(`${tmpdir()}/kage-sign-code-`), folder = mkdtempSync(`${tmpdir()}/kage-sign-app-`), app = `${folder}/Kage Screen.app`
+    mkdirSync(`${code}/screen`); mkdirSync(`${code}/docs/brand`, { recursive: true })
+    copyFileSync(`${import.meta.dirname}/../../docs/brand/icon-dark.png`, `${code}/docs/brand/icon-dark.png`)
+    writeFileSync(`${code}/screen/Info.plist`, readFileSync(`${import.meta.dirname}/../../screen/Info.plist`, 'utf8').replace('dev.kage.screen<', 'dev.kage.screentest<'))
+    writeFileSync(`${code}/screen/KageScreen.swift`, 'print("one")\n')
+    const exec = async (cmd: string, args: string[], opts: object) => {
+      if (cmd === 'tccutil') return { stdout: '', stderr: '' }
+      if (cmd === 'security' && args[0] === 'import') throw new Error('import failed')
+      return promisify(execFile)(cmd, args, opts)
+    }
+    assert.match(await buildApp(code, app, exec) ?? '', /could not build/)
+    assert.deepEqual(readdirSync(folder).filter(f => f.startsWith('signing')), [])
+  })
 })
 
 describe('Kage acting on the Mac, from the hub', () => {

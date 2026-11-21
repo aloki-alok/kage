@@ -119,6 +119,8 @@ describe("the token file on a task the owner did not send (#117)", () => {
       no('Edit', { file_path: '/home/o/.config/kage/env.new' }, s)
       no('Read', { file_path: '/home/o/.config/kage/screen/signing-pass' }, s)
       no('Read', { file_path: '/home/o/.config/kage/screen/signing.keychain-db' }, s)
+      no('Grep', { pattern: '.', path: '/home/o/.config/kage/screen' }, s)
+      no('Glob', { pattern: 'signing*', path: '/home/o/.config/kage/screen/' }, s)
     }
     no('Grep', { pattern: 'xox', path: '/home/o/.config/kage' }, 'owner')
   })
