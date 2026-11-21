@@ -58,3 +58,12 @@ test('leftover processes or containers show as one line on top that names kage d
   assert.match(both, /#infra asks you: approve the deploy/)
   assert.doesNotMatch(both, /leftover/)
 })
+
+test('a chart pane keeps its corners: hour labels and bars stay inside it, whatever the top value', () => {
+  const costs = Array.from({ length: 15 }, (_, h) => ({ at: NOW - h * 3_600_000, usd: h === 0 ? 11.41 : 0.5 }))
+  for (const cols of [100, 120, 132]) {
+    const lines = frame('threads', cols, 36, { costs, spentToday: 20.05 })
+    const bottom = lines.findLast(l => l.includes('╰') && l.includes('h '))!
+    assert.match(bottom, /^\s*(╰[^╰╯]*╯\s*)+$/, `${cols} cols: ${bottom}`)
+  }
+})
