@@ -164,6 +164,7 @@ Write logs to stderr only. In a tmux pane, stdout carries the channel protocol, 
 | `voice.ts` | How the `kage` command speaks and looks: one color for Kage and its work, a warm one only for what needs the owner, the marks (✦ • ◆ ◌), the wait flicker, the wordmark with its cast shadow, and a session step in Kage's words for `kage logs`. `setup.sh` repeats the colors, marks and flicker, and the test checks they match. `cli/voice.ts` turns color on only at a terminal without `NO_COLOR`. |
 | `messages.ts` | Every fixed line Kage writes to the owner on its own (a held reply, a failed event, a release, a settings refusal), one function per line. A call site never writes the words itself (#241). |
 | `text.ts` | Text helpers every rule shares: `oneLine`, and `quotedLine` for someone else's text (no `<channel>` tag survives). |
+| `setting-docs.ts` | What `kage set` says with no value: every setting from `docs/settings.md` by section with its value and default, one setting in full, and the closest key to a typo. |
 | `cli-help.ts` | The closest real `kage` command to a mistyped one. |
 | `dream.ts` | The nightly dream job: what it reads for lessons, how it tidies Kage's memory, which lessons may leave this machine, and `checkDream`, the check a lesson passes before it reaches memory (#488): two threads or more with exact quotes, enough confidence, a nightly cap. |
 | `signature.ts` | A webhook body signed with a shared secret (`X-Hub-Signature-256`), as GitHub and Meta sign. |

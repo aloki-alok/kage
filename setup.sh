@@ -34,13 +34,13 @@ Run|stop|[thread or kagelet] [--now or --cut-running]|Stop Kage once every runni
 Run|restart|[--cut-running]|Restart the hub once every running turn ends; new messages wait and run after it|kage restart
 Run|update|[--stable]|Pull the newest Kage now (or the latest release with --stable) and restart into it at the next quiet moment; local changes are left as they are|kage update
 Run|reload||Read the settings files again with no restart: who may tag Kage changes at once|kage reload
-Run|set|key value|Change one setting in config.json, such as harness.maxSessions. A list is JSON|kage set harness.maxSessions 6
-Run|status||One look at every session and what it is doing|kage status
+Run|set|[key] [value]|Change one setting in config.json. With no key: every setting, its value and what it does. With only a key: that one in full|kage set harness.maxSessions 6
+Run|status||One look at the hub (version, uptime, spend, starts by cause), every session and every kagelet|kage status
 Run|logs|[lines, -f or kagelet]|Follow the hub log live, with the steps of every session (tools, replies), like tail -f. A number prints that many lines and exits. With a kagelet: its last runs, newest first, with cost, ok or failed, and its report|kage logs 200
 Run|run||Run the hub in the foreground for a supervisor other than launchd or systemd (Docker: --init); output goes to kage logs|kage run
 Run|cost|[days]|What each thread spent, most first (1 day unless you say)|kage cost 7
 Run|telemetry|[show]|What this Kage sends and where: on or off, the endpoint, and the next batch with show|kage telemetry show
-Run|stats|[days]|Spend per day and per connector, runs, refusals, turn time and hub starts (7 days unless you say)|kage stats 30
+Run|stats|[days]|Spend and tokens per day, per connector and per kind of thread, the share read from cache, runs, refusals, turn time and hub starts (7 days unless you say)|kage stats 30
 Run|release|[--dry-run]|Tag the next version on main, publish its notes and move the stable tag that installs follow (repo admin only). --dry-run prints the version and notes and changes nothing|kage release --dry-run
 Run|dream|undo|Put the memory back to how it was before the last weekly dream|kage dream undo
 Watch|schedules||Every schedule and reply watch, in every thread|kage schedules
