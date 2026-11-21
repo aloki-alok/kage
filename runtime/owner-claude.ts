@@ -11,5 +11,5 @@ export function ownerClaude(env: { HOME?: string; CLAUDE_CONFIG_DIR?: string } =
   const settings = json(`${dir}/settings.json`)
   const state = json(env.CLAUDE_CONFIG_DIR ? `${dir}/.claude.json` : `${env.HOME || homedir()}/.claude.json`)
   const mcp = record(state.mcpServers)
-  return { model: text(settings.model), effort: text(settings.effortLevel), mcp }
+  return { model: text(settings.model), effort: text(settings.effortLevel), mcp, permissions: record(settings.permissions) }
 }

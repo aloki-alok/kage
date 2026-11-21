@@ -30,7 +30,7 @@ const tick = (ms = 5) => new Promise(r => setTimeout(r, ms))
 const ID = '11111111-1111-4111-8111-111111111111'
 const signal = () => new AbortController().signal
 
-function setup(o: { saved?: Record<string, string>; transcript?: boolean; silent?: boolean; dmFails?: boolean; grants?: Record<string, string[]>; allows?: Record<string, string[]>; review?: boolean; manager?: boolean; budgets?: Record<string, number>; models?: Record<string, string>; trusted?: string[]; deferred?: boolean; browser?: boolean; restartMs?: number; sandbox?: boolean | 'teammates'; onResult?: (key: string, total: number, resumed: boolean, tokens?: Tokens) => void; lean?: { model?: string; effort?: string; mcp: Record<string, unknown> }; onMcp?: (q: unknown) => void; trustedPeople?: { ids: string[] } } = {}) {
+function setup(o: { saved?: Record<string, string>; transcript?: boolean; silent?: boolean; dmFails?: boolean; grants?: Record<string, string[]>; allows?: Record<string, string[]>; review?: boolean; manager?: boolean; budgets?: Record<string, number>; models?: Record<string, string>; trusted?: string[]; deferred?: boolean; browser?: boolean; restartMs?: number; sandbox?: boolean | 'teammates'; onResult?: (key: string, total: number, resumed: boolean, tokens?: Tokens) => void; lean?: { model?: string; effort?: string; mcp: Record<string, unknown>; permissions?: Record<string, unknown> }; onMcp?: (q: unknown) => void; trustedPeople?: { ids: string[] } } = {}) {
   const sdk = fakeSdk(o)
   const dropped: string[] = []
   const keysDropped: string[] = []
@@ -782,6 +782,28 @@ describe('Kage sessions on the Agent SDK', () => {
     assert.deepEqual(trusted.settingSources, ['user', 'project', 'local'])
     assert.deepEqual([kagelet.settingSources, kagelet.model, Object.keys(kagelet.mcpServers).sort()], [['project', 'local'], 'sonnet', ['kage', 'linear']])
     t.s.runner.stop('C3:5.5'); t.s.runner.stop(LANE)
+  })
+  test("a thread without the owner's user setup still runs with the owner's permission rules, so allowed commands raise no card", async () => {
+    const permissions = { defaultMode: 'auto', allow: ['Bash(aws ssm describe-instance-information:*)'], deny: ['Bash(rm -rf /:*)'] }
+    const t = setup({ lean: { mcp: {}, permissions } })
+    t.d.task('C2:5.5', t.task({ fromOwner: false, channel: 'C2' }), 0)
+    await tick()
+    const mate = t.sdk.runs[0]!.options
+    assert.deepEqual(mate.settingSources, ['project', 'local'])
+    assert.equal(mate.settings.permissions.defaultMode, 'auto')
+    assert.deepEqual(mate.settings.permissions.allow, permissions.allow)
+    assert.ok(mate.settings.permissions.deny.includes('Bash(rm -rf /:*)'), "the owner's deny rules stay")
+    assert.ok(mate.settings.permissions.deny.some((r: string) => r.includes('secrets.json')), "Kage's own deny rules stay")
+    t.s.runner.stop('C2:5.5')
+  })
+  test("a kagelet lane never gets the owner's permission rules, so every step it takes still meets its grant check", async () => {
+    const LANE = 'C1:5.5#side-kagelet-x'
+    const t = setup({ lean: { mcp: {}, permissions: { defaultMode: 'auto', allow: ['Bash(git push:*)'] } }, grants: { [LANE]: ['all'] } })
+    t.d.task(LANE, t.task({ fromOwner: false }), 1)
+    await tick()
+    const lane = t.sdk.runs[0]!.options
+    assert.deepEqual([lane.settings.permissions.defaultMode, lane.settings.permissions.allow], [undefined, undefined])
+    t.s.runner.stop(LANE)
   })
   test("each result passes on that turn's tokens and who the turn ran for (#505)", async () => {
     const t = setup()
