@@ -60,10 +60,12 @@ esac
 
 if [[ -f "${KAGE_ENV:-$HOME/.config/kage/env}" || -f "$(dirname "${KAGE_ENV:-$HOME/.config/kage/env}")/config.json" ]]; then
   say "Kage is up to date. If it is running, kage restart picks up the new code."
-elif [[ -r /dev/tty ]]; then
+# A coding agent's shell has no terminal: /dev/tty passes -r there but fails to open, so test the open itself.
+elif { : </dev/tty; } 2>/dev/null; then
   say "Setting up"
   # Under curl | bash, stdin is this script, so the setup questions read the terminal instead.
   "$BIN/kage" setup </dev/tty
 else
-  say "Installed. Run kage setup to connect it to Slack."
+  say "Installed. To connect it to Slack, run kage setup in a terminal."
+  say "Coding agent: follow $DIR/CLAUDE.md from step 1."
 fi
