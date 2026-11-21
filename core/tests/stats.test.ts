@@ -48,6 +48,7 @@ test('tokens per turn: the total, the share read from cache, and each kind of th
   }).join('\n')
   assert.match(text, /tokens: 100k in, 88% read from cache, 2k out over 2 turns \(1 turn from before tokens were kept\)/)
   assert.match(text, /by kind: kagelet 80k · owner 20k$/m)
+  assert.match(text, /11-15 +\$1\.70 +3 turns  100k tokens in$/m)
 })
 
 test('nothing recorded says so', () => {

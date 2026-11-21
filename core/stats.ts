@@ -23,7 +23,8 @@ export function statsLines(f: { costs: Cost[]; events: KageEvent[]; boots: numbe
   for (let start = new Date(f.now).setHours(0, 0, 0, 0); start >= from; start -= DAY) {
     const inDay = <T>(xs: T[], at: (x: T) => number) => xs.filter(x => at(x) >= start && at(x) < start + DAY)
     const c = inDay(costs, x => x.at)
-    lines.push(`${dayLabel(start)}  ${money(c.reduce((a, x) => a + x.usd, 0)).padStart(8)}  ${plural(c.length, 'turn')}`)
+    const kept = c.flatMap(x => x.tokens ? [x.tokens] : [])
+    lines.push(`${dayLabel(start)}  ${money(c.reduce((a, x) => a + x.usd, 0)).padStart(8)}  ${plural(c.length, 'turn')}${kept.length ? `  ${kilo(kept.reduce((a, t) => a + t.input + t.cacheWrite + t.cacheRead, 0))} tokens in` : ''}`)
   }
   const by = new Map<string, number>()
   for (const c of costs) by.set(connectorOf(c.key), (by.get(connectorOf(c.key)) ?? 0) + c.usd)
