@@ -120,6 +120,20 @@ test('each probe gets its own private state folder that lasts between runs, and 
   assert.equal(existsSync(folder), false)
 })
 
+test("a job swapped out by its twin keeps its state folder while the swap can still be undone (#516)", async () => {
+  const t = setup()
+  await baseline(t)
+  const folder = join(t.dir, 'job-state', 'p1')
+  assert.equal(existsSync(folder), true)
+  t.store.save('swapped-out', { p1: { at: T0 } })
+  t.s.remove(KEY, 'p1')
+  await tick(t, 2)
+  assert.equal(existsSync(folder), true)
+  t.store.save('swapped-out', {})
+  await tick(t, 3)
+  assert.equal(existsSync(folder), false)
+})
+
 test('a failed delivery keeps the old state, so the next tick wakes again', async () => {
   const t = setup()
   await baseline(t)
