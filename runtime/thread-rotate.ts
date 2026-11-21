@@ -24,6 +24,10 @@ function tailOf(file: string): string[] {
 
 export function threadRotator(o: RotatorOptions) {
   const transcript = (id: string) => `${o.project}/${id}.jsonl`
+  const withCarry = (task: Task, oldId: string, lines: string[]): Task => {
+    const { count, chars } = o.carry()
+    return { ...task, content: `${rotateCarry(sentTexts(lines), count, chars, transcript(oldId))}\n${task.content}` }
+  }
   const rotating = (key: string, lines: string[]) => o.ready(key) === 'ready' && rotateDue(key, contextTokens(lines), o.limit())
   return {
     sessionOf(key: string) {
@@ -33,13 +37,12 @@ export function threadRotator(o: RotatorOptions) {
     },
     before(key: string, task: Task): Task {
       const id = o.idOf(key)
+      if (task.deltaOf && task.deltaOf !== id) return withCarry(task, task.deltaOf, tailOf(transcript(task.deltaOf)))
       if (!id || task.deltaOf === id) return task
       const lines = tailOf(transcript(id))
       if (!rotating(key, lines)) return task
-      const { count, chars } = o.carry()
-      const carry = rotateCarry(sentTexts(lines), count, chars, transcript(id))
       o.reset(key)
-      return { ...task, content: `${carry}\n${task.content}` }
+      return withCarry(task, id, lines)
     },
   }
 }

@@ -71,3 +71,15 @@ test('a due session that is busy stays resumable, so the thread is not sent whol
     assert.deepEqual(t.r.sessionOf(KEY), { id: 'S1', resumable: false })
   } finally { t.done() }
 })
+
+test('a delta built for a session that has since changed gets the carry from that old session, and resets nothing', () => {
+  const t = rig(150_000)
+  try {
+    writeFileSync(join(t.project, 'S0.jsonl'), turn(250_000, 'old post'))
+    const out = t.r.before(KEY, task('S0'))
+    assert.match(out.content, /new session[^]*S0\.jsonl[^]*> old post\nTask from Sam: next$/)
+    assert.deepEqual(t.resets, [])
+    delete t.ids[KEY]
+    assert.match(t.r.before(KEY, task('S0')).content, /S0\.jsonl/)
+  } finally { t.done() }
+})
