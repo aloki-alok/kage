@@ -226,7 +226,7 @@ export async function connectSlack(o: { askOtherAgents?: boolean; saved?: Saved;
     const r = asked
       ? o.hub.deliver(asked, task, place)
       : o.hub.deliver(conv, task, t.side ? `${place} (side)` : place, t.side ? `side-${m.ts}` : 'main', m.user)
-    const now = markKey && (r === 'sent' || r === 'starting' || r === 'queued') ? o.hub.sessionOf?.(conv, 'main') : undefined
+    const now = markKey && r === 'sent' ? o.hub.sessionOf?.(conv, 'main') : undefined
     if (markKey && now) o.saved?.save('threadMarks', markSeen(marks(), markKey, { id: now.id, ts: m.ts }))
     if (r === 'queued' || r === 'held') react(m.channel, m.ts, WAITING)
     else if (r === 'sent' && replaying.has(m.ts)) unreact(m.channel, m.ts, WAITING)

@@ -567,6 +567,7 @@ test('a resumed thread session gets only the replies it has not seen, and a new 
   const thread: { user?: string; ts: string; text?: string }[] = [{ user: 'UTEST2', ts: '6.0', text: 'old context' }]
   const kept = new Map<string, unknown>()
   let session: { id: string; resumable: boolean } | undefined = { id: 'S1', resumable: true }
+  let delivery = 'sent'
   try {
     const client = {
       auth: { test: async () => ({ team_id: 'TTEST', user_id: 'UTEST1' }) },
@@ -579,7 +580,7 @@ test('a resumed thread session gets only the replies it has not seen, and a new 
     const slack = await connectSlack({
       dir, appToken: 'test', userToken: 'test', bot: client as never, user: client as never,
       name: 'kage', title: 'Kage', teammates: [], apps: [], saved: { load: n => kept.get(n), save: (n, v) => void kept.set(n, v) },
-      hub: { posted: () => '', handled: () => {}, sessionOf: () => session, deliver: (_c: unknown, task: { content: string }) => { tasks.push(task.content); return 'sent' } } as never,
+      hub: { posted: () => '', handled: () => {}, sessionOf: () => session, deliver: (_c: unknown, task: { content: string }) => { tasks.push(task.content); return delivery } } as never,
     })
     const ask = async (ts: string, text: string) => {
       const m = { ...msg, client_msg_id: ts, ts, thread_ts: '6.0', text: `<@UTEST1> ${text}` }
@@ -600,6 +601,15 @@ test('a resumed thread session gets only the replies it has not seen, and a new 
     session = { id: 'S2', resumable: false }
     await ask('12.0', 'fourth ask')
     assert.match(tasks[3]!, /Conversation so far[^]*old context/)
+
+    session = { id: 'S3', resumable: true }
+    await ask('13.0', 'fifth ask')
+    delivery = 'queued'
+    thread.push({ user: 'UTEST2', ts: '14.0', text: 'reply a stop may drop' })
+    await ask('15.0', 'queued ask')
+    delivery = 'sent'
+    await ask('16.0', 'sixth ask')
+    assert.match(tasks[6]!, /New in the thread since your last task[^]*reply a stop may drop[^]*queued ask/)
   } finally {
     rmSync(dir, { recursive: true, force: true })
   }
