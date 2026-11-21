@@ -307,7 +307,7 @@ cmd_claude_login() {
 for a in "$@"; do [[ $a == -h || $a == --help ]] && { [[ $1 == "$a" || $1 == help ]] && cmd_help || cmd_help "$1"; exit 0; }; done
 
 case "${1:-}" in
-  "") if has_settings; then node cli/home-screen.ts "$(running && echo up || echo down)"; else cmd_interactive; fi ;;
+  "") if has_settings; then node cli/home-screen.ts "$(running && echo up || echo down)"; else node cli/setup-flow.ts; fi ;;
   help) cmd_help "${2:-}" ;;
   setup) node cli/setup-flow.ts ;;
   check) cmd_check ;;
