@@ -115,7 +115,7 @@ function threadTable(v: View, r: Rect, focus: boolean): { key: string; y: number
 function steps(v: View, r: Rect) {
   if (v.mode === 'schedules') return scheduleRows(v, r, v.schedules.filter(s => s.key === v.open))
   if (!v.feed.length) { put(r.x0 + 2, r.y0 + 2, 'nothing in its transcript yet', 'mid'); return }
-  const room = Math.max(1, r.y1 - r.y0 - 3), width = Math.max(10, r.x1 - r.x0 - 22)
+  const room = Math.max(1, r.y1 - r.y0 - 3), width = Math.max(10, r.x1 - r.x0 - 23)
   const lines: { at?: number; tag: string; text: string; tone: string }[] = []
   v.feed.slice(-room).forEach((s, i, all) => {
     const m = /^(\S+)\s+(.*)$/.exec(s.text)
@@ -129,11 +129,11 @@ function steps(v: View, r: Rect) {
   lines.slice(-room).forEach((l, i) => {
     const y = r.y0 + 2 + i
     if (l.at !== undefined) put(r.x0 + 2, y, new Date(l.at).toTimeString().slice(0, 8), 'dim')
-    put(r.x0 + 12, y, clip(l.tag, 7), l.tag === 'reply' ? 'work' : l.tag === 'task' || l.tag === 'input' ? 'you' : 'mid')
-    put(r.x0 + 20, y, clip(l.text, width), l.tone)
+    put(r.x0 + 12, y, clip(l.tag, 8), l.tag === 'reply' ? 'work' : l.tag === 'task' || l.tag === 'input' ? 'you' : 'mid')
+    put(r.x0 + 21, y, clip(l.text, width), l.tone)
   })
   const last = v.feed.at(-1)
-  if (last && v.typed < last.text.length) { const end = lines.at(-1)!; put(r.x0 + 20 + [...end.text].length, r.y0 + 1 + Math.min(lines.length, room), '▌', 'work') }
+  if (last && v.typed < last.text.length) { const end = lines.at(-1)!; put(r.x0 + 21 + [...end.text].length, r.y0 + 1 + Math.min(lines.length, room), '▌', 'work') }
   put(r.x0 + 2, r.y1 - 1, `$${v.threadSpend.toFixed(2)} today in this thread`, 'dim')
 }
 
