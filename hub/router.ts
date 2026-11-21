@@ -315,7 +315,7 @@ limits.restore()
 d.adopt(Object.keys(saved).filter(k => runningAtStart.has(saved[k]!)), Date.now())
 restoreHolds(DIR, d)
 const pingThread = threadPing({ title: Title, bot, user, thread: key => store.conversation(key)?.conversation, posted: cells => ledgers.add('posted', cells) })
-const schedules = scheduler({ store, failed,
+const schedules = scheduler({ store, failed, jobStateDir: `${DIR}/job-state`,
   soon: (fn, ms) => { setTimeout(() => { const now = Date.now(); if (!limits.draining(now)) fn(now) }, ms).unref() },
   deliver: kageletDeliver(kag.notes, toSession, kag.board),
   ready: key => d.ready(key),

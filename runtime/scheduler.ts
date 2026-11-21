@@ -38,6 +38,7 @@ export function scheduler(o: {
   now?: () => number
   soon?: (fn: (now: number) => void, ms: number) => void
   owner?: (text: string) => void
+  jobStateDir?: string
   job: { end: (key: string) => void; freshEvery: () => number; carryCount: () => number; carryChars: () => number; laneDefault: () => boolean; posted: () => string; project: string; catchUp?: () => { hours: number; staggerSeconds: number } }
 }) {
   const { store } = o
@@ -88,7 +89,7 @@ export function scheduler(o: {
   }
   const wakeSince = new Map<string, number>()
   const probes = probeJobs({
-    store, settings: () => o.tripwires?.() ?? {}, event: e => o.event?.(e), ping: async (s, text) => await o.ping?.(s, text) ?? false, owner: t => o.owner?.(t),
+    store, stateDir: o.jobStateDir, settings: () => o.tripwires?.() ?? {}, event: e => o.event?.(e), ping: async (s, text) => await o.ping?.(s, text) ?? false, owner: t => o.owner?.(t),
     wake(s, text, now) {
       const r = o.ready(laneOf(s))
       if (r === 'blocked') return 'blocked'
@@ -230,6 +231,7 @@ export function scheduler(o: {
       log('moved', id, 'from', key, 'to', to)
     },
     tick(now: number) {
+      probes.tidy(new Set(store.schedules().map(s => s.id)))
       const catchUp = o.job.catchUp?.() ?? { hours: CATCH_UP / 3600_000, staggerSeconds: 15 }
       const { fire, drop, late, skipped } = dueSchedules(store.schedules(), now, catchUp.hours * 3600_000)
       for (const [id, n] of Object.entries(skipped)) { store.fired(id, now); log('missed', id, `${n} run${n === 1 ? '' : 's'}`, `older than ${catchUp.hours} h`) }

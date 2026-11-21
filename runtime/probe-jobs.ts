@@ -1,3 +1,5 @@
+import { existsSync, mkdirSync, readdirSync, rmSync } from 'node:fs'
+import { join } from 'node:path'
 import { tripwireDetail } from '../core/events.ts'
 import { quotedLine } from '../core/text.ts'
 import { decide, safePattern, type Probe, type Wake } from '../core/tripwire.ts'
@@ -36,6 +38,7 @@ export function probeJobs(o: {
   ping: (s: Schedule, text: string) => Promise<boolean>
   owner: (text: string) => void
   wake: (s: Schedule, text: string, now: number) => 'sent' | 'busy' | 'blocked' | 'failed'
+  stateDir?: string
 }) {
   const running = new Map<string, Promise<void>>()
   const emit = (s: Schedule, action: string, f: Record<string, string | number>) => o.event({ kind: 'tripwire', who: s.key, trace: '', detail: tripwireDetail(action, f) })
@@ -56,7 +59,9 @@ export function probeJobs(o: {
   async function check(s: Schedule, probe: Probe, now: number) {
     const t = tripwireCfg(o.settings())
     await flush(s, t.failPing)
-    const run = await runProbe(probe, { timeoutMs: t.timeoutSec * 1000, maxBytes: t.maxKb * 1024, patternMax: t.patternMax, lineMax: t.lineMax, ...(t.env && { env: t.env }) })
+    const stateDir = o.stateDir && join(o.stateDir, s.id)
+    if (stateDir) mkdirSync(stateDir, { recursive: true, mode: 0o700 })
+    const run = await runProbe(probe, { timeoutMs: t.timeoutSec * 1000, maxBytes: t.maxKb * 1024, patternMax: t.patternMax, lineMax: t.lineMax, ...(t.env && { env: t.env }), ...(stateDir && { job: { id: s.id, stateDir } }) })
     const live = o.store.schedules().find(x => x.id === s.id)
     if (!live || JSON.stringify(live.trigger) !== JSON.stringify(s.trigger)) return emit(s, 'tick', { job: s.id, outcome: 'discarded', ms: run.ms, kb: 0 })
     const d = decide(o.store.jobState(s.id), run, probe, { failPing: t.failPing, lineMax: t.lineMax })
@@ -90,5 +95,9 @@ export function probeJobs(o: {
       running.set(s.id, p)
     },
     settled: () => Promise.all(running.values()).then(() => {}),
+    tidy(live: Set<string>) {
+      if (!o.stateDir || !existsSync(o.stateDir)) return
+      for (const id of readdirSync(o.stateDir)) if (!live.has(id) && !running.has(id)) rmSync(join(o.stateDir, id), { recursive: true, force: true })
+    },
   }
 }
