@@ -6,7 +6,7 @@ const CONFIG_TOOLS = new Set(['Read', 'Grep', 'Glob', 'Edit', 'MultiEdit', 'Writ
 const CONFIG_WRITES = new Set(['Edit', 'MultiEdit', 'Write', 'NotebookEdit'])
 const NOT_PATHS = new Set(['content', 'old_string', 'new_string', 'new_source', 'description', 'edits'])
 const TOKEN_FILE = /^(?:secrets\.json|env[\w.-]*|session\.env[\w.-]*|waha)$/
-const SIGNING_FILE = /^screen\/signing/ 
+const SIGNING_FILE = /^screen(?:\/signing|\/?$)/ 
 export function configRefusal(tool: string, input: Record<string, unknown>, sender: string | undefined, envFile: string, home = process.env.HOME ?? ''): string | undefined {
   if (!CONFIG_TOOLS.has(tool)) return
   const dir = dirname(envFile)

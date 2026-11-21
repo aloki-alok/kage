@@ -21,6 +21,7 @@ async function signingIdentity(dir: string, exec: Exec): Promise<string> {
   const keychain = `${dir}/signing.keychain-db`, passFile = `${dir}/signing-pass`
   if (!existsSync(keychain) || !existsSync(passFile)) {
     rmSync(keychain, { force: true })
+    mkdirSync(dir, { recursive: true, mode: 0o700 })
     const pass = randomBytes(24).toString('hex'), p12 = `${dir}/signing.p12`, key = `${dir}/signing-key.pem`, cert = `${dir}/signing-cert.pem`, conf = `${dir}/signing.cnf`
     writeFileSync(passFile, pass, { mode: 0o600 })
     writeFileSync(conf, '[req]\ndistinguished_name=dn\nprompt=no\n[dn]\nCN=Kage Screen\n[ext]\nkeyUsage=critical,digitalSignature\nextendedKeyUsage=critical,codeSigning\nbasicConstraints=critical,CA:false\n', { mode: 0o600 })
@@ -32,6 +33,9 @@ async function signingIdentity(dir: string, exec: Exec): Promise<string> {
       await exec('security', ['unlock-keychain', '-p', pass, keychain], { timeout: 30_000 })
       await exec('security', ['import', p12, '-k', keychain, '-P', pass, '-T', '/usr/bin/codesign'], { timeout: 30_000 })
       await exec('security', ['set-key-partition-list', '-S', 'apple-tool:,apple:', '-s', '-k', pass, keychain], { timeout: 30_000 })
+    } catch (e) {
+      for (const f of [keychain, passFile]) rmSync(f, { force: true })
+      throw e
     } finally { for (const f of [p12, key, cert, conf]) rmSync(f, { force: true }) }
   }
   await exec('security', ['unlock-keychain', '-p', readFileSync(passFile, 'utf8'), keychain], { timeout: 30_000 })
