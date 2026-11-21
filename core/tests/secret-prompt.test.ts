@@ -1,6 +1,6 @@
 import { describe, test } from 'node:test'
 import assert from 'node:assert/strict'
-import { typeKeys, pickSecret, shownAs, SECRETS } from '../secret-prompt.ts'
+import { typeKeys, pickSecret, shownAs, SECRETS, fillSlackTokens } from '../secret-prompt.ts'
 
 describe('typeKeys: what a hidden prompt holds after each key', () => {
   test('characters add, backspace removes, Enter ends', () => {
@@ -47,4 +47,21 @@ test('shownAs names the kind and length, never more than the prefix', () => {
   assert.equal(shownAs('xoxp-1234567890-secret'), 'xoxp-… (22 characters)')
   assert.ok(!shownAs('xoxp-1234567890-secret').includes('secret'))
   assert.equal(shownAs('sk-ant-oat01-abc'), 'sk-ant-oat… (16 characters)')
+})
+
+describe('fillSlackTokens: one prompt takes the three Slack tokens in any order', () => {
+  test('each token goes to its slot by its prefix, one paste or several', () => {
+    const one = fillSlackTokens({}, 'xoxb-3 xapp-1')
+    assert.deepEqual(one, { slots: { bot: 'xoxb-3', app: 'xapp-1' } })
+    assert.deepEqual(fillSlackTokens(one.slots, ' xoxp-2 '), { slots: { bot: 'xoxb-3', app: 'xapp-1', user: 'xoxp-2' } })
+  })
+  test('a second token of a kind replaces the first, so a wrong paste is fixed by pasting again', () => {
+    assert.deepEqual(fillSlackTokens({ user: 'xoxp-old' }, 'xoxp-new').slots, { user: 'xoxp-new' })
+  })
+  test('anything else is named and fills no slot', () => {
+    const r = fillSlackTokens({ app: 'xapp-1' }, 'hello xoxp-2')
+    assert.deepEqual(r.slots, { app: 'xapp-1', user: 'xoxp-2' })
+    assert.match(r.problem!, /xapp-, xoxp- or xoxb-/)
+    assert.match(fillSlackTokens({}, 'xoxe.xoxp-1-a').problem!, /configuration Access Token/)
+  })
 })
