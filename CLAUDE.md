@@ -12,7 +12,7 @@ Each step ends with a check. Go to the next step only when the check passes.
    ```sh
    curl -fsSL https://raw.githubusercontent.com/aloki-alok/kage/main/install.sh | bash
    ```
-   Check: it ends with `Coding agent: follow <folder>/CLAUDE.md from step 1`. Run every later command from that folder. If it names a missing tool, install it (macOS: `brew install node`; Claude Code: https://code.claude.com/docs/en/quickstart), then run the line again. If it ends with `Kage is up to date`, Kage is set up already, so go to step 3.
+   Check: it ends with `Coding agent: follow <folder>/CLAUDE.md from step 1`. Run every later command from that folder. If it names a missing tool, install it (macOS: `brew install node`; Claude Code: https://code.claude.com/docs/en/quickstart), then run the line again. If it ends with `Up to date`, Kage is set up already, so go to step 3.
 
 2. **Person:** connect Slack in a terminal window. The tokens must never pass through you: do not ask for them in chat, and if the person pastes one anyway, tell them to regenerate it in Slack. Open the window:
    ```sh
@@ -21,7 +21,7 @@ Each step ends with a check. Go to the next step only when the check passes.
    On Linux, ask them to run `kage setup` in a new terminal. Then tell the person what the window does:
    1. It asks for the name they tag in Slack. Enter keeps `kage`.
    2. It opens Slack with the app filled in and lists the clicks: **Next** and **Create**, an app-level token with the scope `connections:write`, then **Install App > Install to Workspace > Allow**. If Slack says the app needs approval, a workspace admin approves it once.
-   3. They paste the three tokens into hidden prompts. Kage then starts and waits for Slack.
+   3. They paste the three tokens into one hidden prompt, in any order. Kage then starts and waits for Slack.
 
    Check: ask the person to tell you when the window ends with `Connected to Slack. Tag @<name> in any thread to try it.` If it stops on an error, the line names the fix.
 

@@ -98,10 +98,6 @@ kage_name() { NAME="$(cfg_get name)"; NAME="${NAME:-kage}"; }
 old_tmux() { command -v tmux >/dev/null && tmux has-session -t "=$NAME" 2>/dev/null; }
 running() { kage_name; ./service.sh running 2>/dev/null || old_tmux; }
 # The hub writes the status file (connectors/slack/connect.ts): its first word is the socket's state, its fourth the hub's pid.
-connected() {
-  local st; st="$(dirname "$ENV_FILE")/status"
-  [[ -f $st && $(awk '{print $1}' "$st") == connected ]] && ps -p "$(awk '{print $4}' "$st")" >/dev/null 2>&1
-}
 LOG="$(dirname "$ENV_FILE")/hub.log"
 
 cmd_start() {
@@ -305,26 +301,6 @@ cmd_claude_login() {
   says "Saved. I'll switch to this Claude login when I'm not in the middle of anything."
 }
 
-cmd_interactive() {
-  say "1/5  Checking tools"; cmd_check
-  say "2/5  Pick a name"; read -r -p "What do you call it in Slack? [kage] " n; valid_name "$n"
-  say "3/5  Create your Slack app"; cmd_app "$NAME"
-  read -r -p "Press Enter when you have the three tokens. "
-  say "4/5  Save your tokens"; cmd_save "$NAME"
-  say "5/5  Start it"; cmd_start >/dev/null
-  # The first start installs the Agent SDK before the hub runs, so the wait covers only the connect.
-  local wait="${KAGE_SETUP_WAIT:-90}"
-  local frames=('⋅' '∙' '•' '∙') n=0
-  while (( n < wait * 2 )); do
-    connected && break
-    [[ -t 1 ]] && printf '\r  %s%s%s %swaiting for Slack · %s s%s' "$FIRE" "${frames[n % 4]}" "$OFF" "$DIM" "$((n / 2))" "$OFF"
-    sleep 0.5; n=$((n + 1))
-  done
-  [[ -t 1 ]] && printf '\r\033[2K'
-  connected || die "Not connected to Slack after $wait s. Run kage doctor: it names the fix for each problem."
-  echo; says "Connected to Slack. Tag @$NAME in any thread to try it."
-  command -v kage >/dev/null || echo "To type kage from anywhere, run ./setup.sh link once."
-}
 
 # Help comes first, so "kage add --help" never reaches a command that would act on it.
 [[ "${1:-}" == --version ]] && { cmd_version; exit 0; }
@@ -333,7 +309,7 @@ for a in "$@"; do [[ $a == -h || $a == --help ]] && { [[ $1 == "$a" || $1 == hel
 case "${1:-}" in
   "") if has_settings; then node cli/home-screen.ts "$(running && echo up || echo down)"; else cmd_interactive; fi ;;
   help) cmd_help "${2:-}" ;;
-  setup) cmd_interactive ;;
+  setup) node cli/setup-flow.ts ;;
   check) cmd_check ;;
   app) cmd_app "${2:-}" ;;
   save) cmd_save "${2:-}" ;;
