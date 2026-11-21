@@ -783,6 +783,19 @@ describe('Kage sessions on the Agent SDK', () => {
     assert.deepEqual([kagelet.settingSources, kagelet.model, Object.keys(kagelet.mcpServers).sort()], [['project', 'local'], 'sonnet', ['kage', 'linear']])
     t.s.runner.stop('C3:5.5'); t.s.runner.stop(LANE)
   })
+  test("a thread without the owner's user setup still runs with the owner's permission rules, so allowed commands raise no card", async () => {
+    const permissions = { defaultMode: 'auto', allow: ['Bash(aws ssm describe-instance-information:*)'], deny: ['Bash(rm -rf /:*)'] }
+    const t = setup({ lean: { mcp: {}, permissions } })
+    t.d.task('C2:5.5', t.task({ fromOwner: false, channel: 'C2' }), 0)
+    await tick()
+    const mate = t.sdk.runs[0]!.options
+    assert.deepEqual(mate.settingSources, ['project', 'local'])
+    assert.equal(mate.settings.permissions.defaultMode, 'auto')
+    assert.deepEqual(mate.settings.permissions.allow, permissions.allow)
+    assert.ok(mate.settings.permissions.deny.includes('Bash(rm -rf /:*)'), "the owner's deny rules stay")
+    assert.ok(mate.settings.permissions.deny.some((r: string) => r.includes('secrets.json')), "Kage's own deny rules stay")
+    t.s.runner.stop('C2:5.5')
+  })
   test("each result passes on that turn's tokens and who the turn ran for (#505)", async () => {
     const t = setup()
     t.d.task('C1:5.5', t.task({ fromOwner: false }), 0)
