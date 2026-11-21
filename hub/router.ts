@@ -58,6 +58,7 @@ import { ownerDigests } from './owner-digests.ts'
 import { dreams } from './dreams.ts'
 import { DREAM_KEY, DREAM_LIMITS, type DreamLesson } from '../core/dream.ts'
 import { closedThreads } from '../runtime/closed-threads.ts'
+import { threadRotator } from '../runtime/thread-rotate.ts'
 import { checkScopes } from '../runtime/slack-scopes.ts'
 import { scopeDm } from '../core/slack-scopes.ts'
 import { startTelemetry } from './telemetry.ts'
@@ -124,11 +125,13 @@ function stopThread(key: string, cut: boolean): string {
     : lanes.length ? { ok: true as const, ...(laneEnding && { ending: true as const }), dropped: let_go } : r
   return stopLine(main, schedules.list(key).map(s => s.prompt.slice(0, 60)), lanes.length)
 }
+const PROJECT = claudeProject(process.cwd())
+const rotator = threadRotator({ project: PROJECT, limit: () => config.harness?.rotateTokens ?? 200_000, carry: () => ({ count: config.harness?.jobCarry ?? 5, chars: config.harness?.jobCarryChars ?? 500 }), idOf: k => d.saved()[k], hasTranscript: id => tmux.hasTranscript(id), ready: k => d.ready(k), reset: k => d.reset(k) })
 const toSession = (key: string, task: Task) => {
   if (closedTo(key, task)) return 'sent'
   if (limits.hold(key, task, Date.now())) return 'held'
   noteTrust(key, task)
-  const r = d.task(key, task, Date.now())
+  const r = d.task(key, rotator.before(key, task), Date.now())
   if (r !== 'failed') {
     limits.delivered(key, task)
     if (sdk && !onPane.has(key)) runs.start(key, task.scheduled ? `scheduled ${task.job ?? ''}` : `task from the ${senderOf(task)}`, { fresh: !!task.scheduled, ...(task.handoff && { chain: task.handoff.chain, hops: task.handoff.hops }) })
@@ -138,12 +141,7 @@ const toSession = (key: string, task: Task) => {
 const sayInThread = (key: string, t: Task, text: string) => void postAsKage({ title: Title, bot, user }, t.meta.channel, t.meta.thread_ts || undefined, text).then(
   r => ledgers.add('posted', [t.meta.channel, r.ts, r.by, key]),
   e => log('could not post in the thread', logKey(key), e?.data?.error ?? e))
-const { blocked, closedTo, isClosed } = closedThreads({
-  store,
-  reset: key => d.reset(key),
-  say: sayInThread,
-  tellOwner: text => void owner.say(text),
-})
+const { blocked, closedTo, isClosed } = closedThreads({ store, reset: key => d.reset(key), say: sayInThread, tellOwner: text => void owner.say(text) })
 const dropToldOwner = new Set<string>()
 function dropped(key: string, turn: Task[], reason: string, kind: string) {
   log('a hook dropped the prompt in', logKey(key), kind)
@@ -172,7 +170,7 @@ const slack = await connectSlack({
       const key = sessionKey(c, { lane: 'main' })
       return mayStop(by, slack.ids.owner, starters, key) ? stopThread(key, cut) : 'Only the owner, or the teammate whose task started this thread, can stop it.'
     }, verdict: (id, behavior, always) => ownerVerdict(id, behavior, always), status: () => commands.status(), heard: m => schedules.heard(m), channelPost: p => jobs.channelPost(p), channelCatchUp: h => jobs.channelCatchUp(h), channelGap: () => jobs.channelGap(),
-    posted: () => ledgers.text('posted'), sessionOf: (c, lane) => { const id = d.saved()[sessionKey(c, { lane })]; return id ? { id, resumable: tmux.hasTranscript(id) } : undefined }, kageletsIn: (chat, thread) => kag.peopleIn(chat, thread), kageletAsk: (chat, thread, name, from, text) => kag.ask(chat, thread, name, from, text), ownerWrote: (chat, thread, text) => { for (const k of kag.notes.wrote(kag.lanes(), chat, thread, text)) runs.emit(k, 'owner-note', `${text.length} characters`) }, ...inbox },
+    posted: () => ledgers.text('posted'), sessionOf: (c, lane) => rotator.sessionOf(sessionKey(c, { lane })), kageletsIn: (chat, thread) => kag.peopleIn(chat, thread), kageletAsk: (chat, thread, name, from, text) => kag.ask(chat, thread, name, from, text), ownerWrote: (chat, thread, text) => { for (const k of kag.notes.wrote(kag.lanes(), chat, thread, text)) runs.emit(k, 'owner-note', `${text.length} characters`) }, ...inbox },
   jev: jev && !('error' in jev) ? jevCheck(jev) : undefined, ackWords: config.jev?.ackWords !== false,
   triage: jev && !('error' in jev) ? jevTriage(jev, (who, detail) => runs.emit(who, 'triage', detail)) : undefined,
   afk: afk.on === false ? undefined : { memory: memoryDirs(process.env.HOME!, ENV_FILE, harness).owner, model: afk.model || DEFAULT_MODEL, saved: store, call: phoneOwner, jev: jev && !('error' in jev) ? jevAfk(jev) : undefined },
@@ -219,7 +217,6 @@ const tmux = tmuxPanes({
   onStart: () => store.saveSessions(d.saved()),
 })
 const MEM = memoryDirs(process.env.HOME!, ENV_FILE, harness)
-const PROJECT = claudeProject(process.cwd())
 const recordCost = costRecorder(ledgers)
 rmSync(`${DIR}/browser-seen`, { force: true })
 let seenVersion: string | undefined

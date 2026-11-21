@@ -127,6 +127,7 @@ Write logs to stderr only. In a tmux pane, stdout carries the channel protocol, 
 | `guards.ts` | Hook rules that need only the tool name and the sender: private sources, voice calls, agents' tasks (read and answer only), Slack posts only through Kage's tools. Where the two memory folders are. |
 | `ledgers.ts` | Reading the ledgers: questions waiting on the owner, what Kage posted, what turns cost, the daily note. |
 | `thread-delta.ts` | Which thread replies a task carries: only those after the last task when the same session resumes, the whole thread for a new or reset session, and how Slack `ts` values compare. |
+| `thread-rotate.ts` | When a long thread starts a new session: the context its last turn read, the limit that makes it due, and the note the new session gets. |
 | `events.ts` | The event log's row (what happened, never what was said), its 30 days, and a chain read back as `a > b > c` and where it stopped. |
 | `kagelets/people.ts` | Who may ask a kagelet for work: its people and owners lines (one line of Slack ids each, at most 3 owners) and the check of an ask in its thread. |
 | `kagelets/kagelet.ts` | A kagelet file (thread, schedule or `after:`, grant, job), the grant check, the chain check (no cycle, no missing kagelet, at most 5 deep), standing approvals per write tool and their revoke, the cost caps (off unless set) and the cost flags. |
@@ -220,6 +221,7 @@ Write logs to stderr only. In a tmux pane, stdout carries the channel protocol, 
 | `wa-cards.ts` | The 4-digit codes that let the owner answer an approval card from WhatsApp: one per open card, used once, gone after a day. |
 | `deferred-approvals.ts` | An approval card that waits outside its session (#177): the turn ends when the card posts, the store keeps the card across a restart, the first answer wins, and a yes is spent by one retry of the same call. |
 | `closed-threads.ts` | A thread the safety check stopped: it starts on a new session, and a teammate's stays closed until the owner writes in it. |
+| `thread-rotate.ts` | Moving a long thread to a new session before its next task, reading only the transcript's tail, and never moving a task built as a delta for the old session. |
 | `hub-lock.ts` | One hub per machine: a listening socket the OS frees when the hub dies. |
 | `hub-log.ts` | The hub log's rotation and the package check, shared by `hub.ts` and the hub. |
 | `path-guards.ts` | Hook rules that follow real paths on disk: the config folder that holds the tokens (secrets.json and env files closed to every session, the owner's too; the rest owner-only, a thread's files folder excepted), the sandbox and file rules each session starts with, and the owner's memory taking only people notes. |
