@@ -26,7 +26,7 @@ export function configRefusal(tool: string, input: Record<string, unknown>, send
   if (!at.some(r => !/^(?:files|memory)(?:\/|$)/.test(r))) return
   return `Kage's config folder holds its tokens, and this task did not come from the owner. Reply that this needs the owner, and stop.`
 }
-const CONFIG_NAMES = ['session.env', 'telemetry-id', 'kagelets', 'config.json*', 'crons-import.json*', 'waha', 'screen', 'threads.json*', 'afk.json*', 'github-threads.json*', 'mail-threads.json*',
+const CONFIG_NAMES = ['session.env', 'telemetry-id', 'kagelets', 'job-state', 'config.json*', 'crons-import.json*', 'waha', 'screen', 'threads.json*', 'afk.json*', 'github-threads.json*', 'mail-threads.json*',
   'kage.db*', 'hub.lock', 'hub.log*', 'router.sock', 'ssm.sock', 'keys.sock', '.archive', 'updated-from', 'browser-seen', 'wa-notes', 'retro-sent', 'dream-sent', 'daily-sent', 'crash-dm-at',
   'config-unknown-told', 'boots', 'held', 'sender', 'ledgers', 'last-seen']
 export function protectConfig(envFile: string, codeDir: string, home = process.env.HOME ?? '', sandbox: boolean | 'kagelet' = false) {

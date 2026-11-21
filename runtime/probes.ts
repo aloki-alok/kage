@@ -44,7 +44,7 @@ const DEFAULT_ENV = ['PATH', 'HOME', 'LANG', 'USER', 'TMPDIR', 'SSH_AUTH_SOCK']
 
 export type ProbeRun = { ok: boolean; out: string; err: string; fp: string; truncated: boolean; refused?: string; ms: number; why?: string }
 
-export async function runProbe(p: Probe, o: { timeoutMs: number; maxBytes: number; patternMax: number; lineMax: number; home?: string; env?: string[] }): Promise<ProbeRun> {
+export async function runProbe(p: Probe, o: { timeoutMs: number; maxBytes: number; patternMax: number; lineMax: number; home?: string; env?: string[]; job?: { id: string; stateDir: string } }): Promise<ProbeRun> {
   const start = Date.now()
   const refuse = (why: string): ProbeRun => ({ ok: false, out: '', err: '', fp: '', truncated: false, refused: why, ms: Date.now() - start })
   try {
@@ -58,6 +58,7 @@ export async function runProbe(p: Probe, o: { timeoutMs: number; maxBytes: numbe
       const env: Record<string, string> = {}
       for (const k of o.env ?? DEFAULT_ENV) if (process.env[k] !== undefined) env[k] = process.env[k]!
       if (o.home) env.HOME = o.home
+      if (o.job) { env.KAGE_JOB_ID = o.job.id; env.KAGE_JOB_STATE_DIR = o.job.stateDir }
       const child = spawn('/bin/sh', ['-c', p.command], { detached: true, stdio: ['ignore', 'pipe', 'pipe'], env })
       const hasher = lineHasher(p.ignore, o.lineMax), decoder = new StringDecoder('utf8')
       let buf = Buffer.alloc(0), errBuf = Buffer.alloc(0), truncated = false, timedOut = false, done = false
