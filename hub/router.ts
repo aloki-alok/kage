@@ -275,8 +275,8 @@ const sdk = sdkLib ? sdkSessions({
   ssm: { sock: SSM_SOCK, shim: SSM_SHIM, issue: key => ssm.issue(key), drop: key => ssm.drop(key) },
   keys: { sock: KEYS_SOCK, issue: key => keys.issue(key), drop: key => keys.drop(key) },
   onStart: () => store.saveSessions(d.saved()),
-  onResult: (key, total, resumed, limited, error) => {
-    const usd = recordCost(key, total, resumed)
+  onResult: (key, total, resumed, limited, error, tokens) => {
+    const usd = recordCost(key, total, resumed, tokens)
     kag.routes.ended(key, usd ?? 0, d.saved()[key] ? `${PROJECT}/${d.saved()[key]}.jsonl` : '', Date.now(), limited, error)
   },
   budgetOf: kag.budgetOf,

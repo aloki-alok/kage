@@ -1,8 +1,9 @@
 import { ago } from './board.ts'
 import { parseSessionKey } from './conversations.ts'
 import type { KageEvent } from './events.ts'
+import type { Tokens } from './ledgers.ts'
 
-type Cost = { at: number; key: string; usd: number }
+type Cost = { at: number; key: string; usd: number; tokens?: Tokens }
 const DAY = 86_400_000
 const money = (n: number) => `$${n.toFixed(2)}`
 const plural = (n: number, one: string) => `${n} ${one}${n === 1 ? '' : 's'}`
@@ -27,6 +28,7 @@ export function statsLines(f: { costs: Cost[]; events: KageEvent[]; boots: numbe
   const by = new Map<string, number>()
   for (const c of costs) by.set(connectorOf(c.key), (by.get(connectorOf(c.key)) ?? 0) + c.usd)
   if (by.size) lines.push('', `by connector: ${[...by].map(([k, usd]) => `${k} ${money(usd)}`).join(' · ')}`)
+  lines.push(...tokenLines(costs))
   const starts = new Map(events.filter(e => e.kind === 'run.start').map(e => [e.trace, Date.parse(e.at)]))
   const ends = events.filter(e => e.kind === 'run.end')
   const refusals = events.filter(e => e.kind === 'refusal').length
@@ -35,4 +37,22 @@ export function statsLines(f: { costs: Cost[]; events: KageEvent[]; boots: numbe
   const took = ends.flatMap(e => starts.has(e.trace) ? [Date.parse(e.at) - starts.get(e.trace)!] : []).sort((a, b) => a - b)
   if (took.length) lines.push(`turn time: p50 ${ago(percentile(took, 0.5))}, p90 ${ago(percentile(took, 0.9))}`)
   return lines
+}
+
+const kilo = (n: number) => n >= 1e6 ? `${(n / 1e6).toFixed(1)}M` : n >= 1000 ? `${Math.round(n / 1000)}k` : String(n)
+
+function tokenLines(costs: Cost[]): string[] {
+  const kept = costs.flatMap(c => c.tokens ? [c.tokens] : [])
+  if (!kept.length) return []
+  const inOf = (t: Tokens) => t.input + t.cacheWrite + t.cacheRead
+  const all = kept.reduce((a, t) => a + inOf(t), 0)
+  const read = kept.reduce((a, t) => a + t.cacheRead, 0)
+  const out = kept.reduce((a, t) => a + t.output, 0)
+  const older = costs.length - kept.length
+  const kinds = new Map<string, number>()
+  for (const t of kept) kinds.set(t.who, (kinds.get(t.who) ?? 0) + inOf(t))
+  return [
+    `tokens: ${kilo(all)} in, ${all ? Math.round(100 * read / all) : 0}% read from cache, ${kilo(out)} out over ${plural(kept.length, 'turn')}${older ? ` (${plural(older, 'turn')} from before tokens were kept)` : ''}`,
+    `by kind: ${[...kinds].sort((a, b) => b[1] - a[1]).map(([k, n]) => `${k} ${kilo(n)}`).join(' · ')}`,
+  ]
 }

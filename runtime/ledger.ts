@@ -1,7 +1,7 @@
 import { existsSync, readdirSync, readFileSync, renameSync } from 'node:fs'
 import { DatabaseSync } from 'node:sqlite'
 import { log } from './log.ts'
-import { lastTotals, trailEvent, trailLine, tsvRow, turnCost } from '../core/ledgers.ts'
+import { lastTotals, trailEvent, trailLine, tsvRow, turnCost, type Tokens } from '../core/ledgers.ts'
 import { eventRow, whoOf, type EventKind, type KageEvent } from '../core/events.ts'
 import { COST_FLAG } from '../core/kagelets/kagelet.ts'
 
@@ -125,11 +125,11 @@ export function runEvents(l: Pick<Ledgers, 'event'>, newId: () => string, clock 
 
 export function costRecorder(l: Pick<Ledgers, 'add' | 'text'>) {
   const totals = lastTotals(l.text('costs'))
-  return (key: string, total: number, resumed: boolean) => {
+  return (key: string, total: number, resumed: boolean, tokens?: Tokens) => {
     const usd = turnCost(totals.get(key), total, resumed)
     if (usd === undefined) return undefined
     totals.set(key, total)
-    l.add('costs', [key, String(usd), String(total)])
+    l.add('costs', [key, String(usd), String(total), ...tokens ? [tokens.input, tokens.cacheWrite, tokens.cacheRead, tokens.output, tokens.who].map(String) : []])
     return usd
   }
 }
