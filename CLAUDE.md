@@ -4,51 +4,34 @@ You are setting up Kage for the person you work with. Kage lets them tag `@kage`
 
 Do every step yourself. Ask the person only for the steps marked **Person**, because only a human can click in Slack or in the Claude admin page. When you need them, say exactly what to click, and wait.
 
-Run every command from the repo root. Each step ends with a check. Go to the next step only when the check passes.
+Each step ends with a check. Go to the next step only when the check passes.
 
 ## Set it up
 
-1. Check the tools.
+1. Install Kage. Skip this step if you already ran the install line.
    ```sh
-   ./setup.sh check
+   curl -fsSL https://raw.githubusercontent.com/aloki-alok/kage/main/install.sh | bash
    ```
-   Check: it prints `ok:`. If a tool is missing, install it (macOS: `brew install node`). For Claude Code, see https://code.claude.com/docs/en/quickstart.
+   Check: it ends with `Coding agent: follow <folder>/CLAUDE.md from step 1`. Run every later command from that folder. If it names a missing tool, install it (macOS: `brew install node`; Claude Code: https://code.claude.com/docs/en/quickstart), then run the line again. If it ends with `Kage is up to date`, Kage is set up already, so go to step 3.
 
-2. Pick the name. Ask the person what they want to tag in Slack. If they have no preference, use `kage`. The name starts with a lowercase letter, then 1 to 20 lowercase letters, digits or dashes. Use the same name in every step.
-
-3. Make the Slack app.
+2. **Person:** connect Slack in a terminal window. The tokens must never pass through you: do not ask for them in chat, and if the person pastes one anyway, tell them to regenerate it in Slack. Open the window:
    ```sh
-   ./setup.sh app <name>
+   osascript -e "tell application \"Terminal\" to do script \"cd '$PWD' && ./setup.sh setup\"" -e 'tell application "Terminal" to activate'
    ```
-   Check: it prints a `Create link`. It also tries to open that link in the browser.
+   On Linux, ask them to run `kage setup` in a new terminal. Then tell the person what the window does:
+   1. It asks for the name they tag in Slack. Enter keeps `kage`.
+   2. It opens Slack with the app filled in and lists the clicks: **Next** and **Create**, an app-level token with the scope `connections:write`, then **Install App > Install to Workspace > Allow**. If Slack says the app needs approval, a workspace admin approves it once.
+   3. They paste the three tokens into hidden prompts. Kage then starts and waits for Slack.
 
-4. **Person:** create the app and copy three tokens. Give them the link from step 3 and these steps:
-   1. Pick the workspace, then click **Next** and **Create**.
-   2. Open **Basic Information > App-Level Tokens > Generate**. Use any name and the scope `connections:write`. Copy the `xapp-` token.
-   3. Open **Install App > Install to Workspace > Allow**. Copy the User OAuth Token (`xoxp-`) and the Bot User OAuth Token (`xoxb-`).
+   Check: ask the person to tell you when the window ends with `Connected to Slack. Tag @<name> in any thread to try it.` If it stops on an error, the line names the fix.
 
-   If Slack says the app needs approval, a workspace admin approves it once.
-
-5. **Person:** save the tokens. The tokens must never pass through you: do not ask for them in chat, and if the person pastes one anyway, tell them to regenerate it in Slack. Open a terminal window where they paste the tokens into hidden prompts:
-   ```sh
-   osascript -e "tell application \"Terminal\" to do script \"cd '$PWD' && ./setup.sh save <name>\"" -e 'tell application "Terminal" to activate'
-   ```
-   On Linux, ask them to run `kage save <name>` in a terminal (the install line put `kage` on PATH; in a terminal opened before the install, run `~/.local/bin/kage save <name>`). The window prints `Saved. I'm @<name>, and I answer to you (U...)` when the tokens work.
-   Check: `./setup.sh doctor` shows `ok` for the three `SLACK_` tokens. The other lines may still fail at this point.
-
-6. Start it.
-   ```sh
-   ./setup.sh start
-   ```
-   Check: it prints `Waking up`. It turns on the service, so macOS or Linux keeps Kage running and starts it at login. The first start installs the Agent SDK, which takes about a minute. On Linux, if it prints a `sudo loginctl enable-linger` line, ask the person to run it, so Kage also starts at boot with no login.
-
-7. Prove it works.
+3. Prove it works.
    ```sh
    ./setup.sh doctor
    ```
-   Check: the last line is `All good`. Every `FAIL` line names its fix. Do that fix, then run the doctor again. Kage takes about 20 seconds to connect after a start.
+   Check: the last line is `All good`. Every `FAIL` line names its fix. Do that fix, then run the doctor again. On Linux, if `loginctl show-user "$USER" -p Linger` prints `Linger=no`, ask the person to run `sudo loginctl enable-linger $USER`, so Kage also starts at boot with no login.
 
-8. Tell the person to tag `@<name>` in any Slack thread. They get 🥷 when Kage picks the task up, then 🗡️ for a quick answer, 📜 when Kage waits on their reply, and ⚔️ when the task is done. A message that needed nothing, such as a thanks inside a thread, ends with 👍 in place of the 🥷. Each thread runs in its own Claude Code session.
+4. Tell the person to tag `@<name>` in any Slack thread. They get 🥷 when Kage picks the task up, then 🗡️ for a quick answer, 📜 when Kage waits on their reply, and ⚔️ when the task is done. A message that needed nothing, such as a thanks inside a thread, ends with 👍 in place of the 🥷. Each thread runs in its own Claude Code session.
 
 ## Run it
 

@@ -64,7 +64,6 @@ test('a tarball install run again with git becomes a clean main checkout in plac
 test('a first install from a coding agent, with no terminal, succeeds and names the setup file the agent follows', async () => {
   const w = world()
   rmSync(join(w.home, '.config/kage/env'))
-  // detached runs it in a new session with no controlling terminal, as in an agent's shell, wherever the test runs.
   const child = spawn('/bin/bash', [join(REPO, 'install.sh')], { detached: true, stdio: ['ignore', 'pipe', 'pipe'], env: w.env })
   let out = ''
   child.stdout.on('data', d => { out += d }); child.stderr.on('data', d => { out += d })
