@@ -15,4 +15,7 @@ test("the owner's Claude Code model, effort and user MCP servers are read from t
   writeFileSync(join(other, 'settings.json'), JSON.stringify({ model: 'sonnet' }))
   assert.deepEqual(ownerClaude({ HOME: home, CLAUDE_CONFIG_DIR: other }), { model: 'sonnet', effort: undefined, mcp: {} })
   assert.deepEqual(ownerClaude({ HOME: join(home, 'missing') }), { model: undefined, effort: undefined, mcp: {} })
+  writeFileSync(join(home, '.claude/settings.json'), 'null')
+  writeFileSync(join(home, '.claude.json'), JSON.stringify({ mcpServers: ['linear'] }))
+  assert.deepEqual(ownerClaude({ HOME: home }), { model: undefined, effort: undefined, mcp: {} })
 })
