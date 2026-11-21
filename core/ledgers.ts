@@ -1,6 +1,7 @@
 import { quotedLine } from './text.ts'
 import type { KageEvent } from './events.ts'
 import type { Task } from './task.ts'
+import { tsAfter } from './thread-delta.ts'
 
 export const tsvRow = (cells: (string | undefined)[]) => cells.map(c => (c ?? '').replace(/[\t\r\n]+/g, ' ')).join('\t') + '\n'
 
@@ -14,18 +15,13 @@ export function openWaiting(tsv: string): { when: string; thread: string; link: 
   return [...open.values()].flat()
 }
 
-const tsParts = (ts: string) => ts.split('.').map(Number) as [number, number?]
-const later = (a: string, b: string) => {
-  const [as, af = 0] = tsParts(a), [bs, bf = 0] = tsParts(b)
-  return as > bs || (as === bs && af > bf)
-}
 const ANSWERS = new Set(['bot', 'owner', 'card'])
 
 export function unanswered(tasks: Task[], posted: string): Task[] {
   const rows = posted.split('\n').filter(Boolean).map(l => l.split('\t'))
   return tasks.filter(t => {
     if (!t.origin.ts || t.scheduled || t.handoff || t.need || t.job) return false
-    return !rows.some(([, channel = '', ts = '', by = '']) => ANSWERS.has(by) && later(ts, t.origin.ts) && (channel === t.origin.channel || by === 'card'))
+    return !rows.some(([, channel = '', ts = '', by = '']) => ANSWERS.has(by) && tsAfter(ts, t.origin.ts) && (channel === t.origin.channel || by === 'card'))
   })
 }
 
