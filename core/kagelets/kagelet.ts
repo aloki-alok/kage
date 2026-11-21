@@ -159,6 +159,8 @@ const WEB_TOOLS = ['WebFetch', 'WebSearch']
 export const shellGrant = (grant: string[] | undefined) => !!grant?.includes(ALL)
 export const covers = (grant: string[], tool: string) => grant.includes(tool) || (shellGrant(grant) && !tool.startsWith('mcp__') && tool !== DB_READ)
 export const builtinTools = (grant: string[]) => shellGrant(grant) ? undefined : [...grant.filter(t => WEB_TOOLS.includes(t)), 'ToolSearch']
+export const grantServers = <T>(servers: Record<string, T>, grant: string[] | undefined): Record<string, T> =>
+  Object.fromEntries(Object.entries(servers).filter(([name]) => grant?.some(t => t.startsWith(`mcp__${name}__`))))
 export const laneOptions = (grant: string[]) => shellGrant(grant) ? { settingSources: [] } : { tools: builtinTools(grant)! }
 
 export function grantRefusal(tool: string, grant: string[], input: Record<string, unknown> = {}, allow: string[] = []) {

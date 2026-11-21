@@ -9,7 +9,7 @@ import { ownerOnlyTool } from '../core/guards.ts'
 import { lowest, lowestSender, OWNER_AGAIN, OWNER_MID_TURN, senderOf, type Sender } from '../core/gate.ts'
 import { DREAM_KEY } from '../core/dream.ts'
 import { certFileEnv, dreamNoteRefusal, protectConfig, toolRefusal } from './path-guards.ts'
-import { grantRefusal, laneOptions, shellGrant } from '../core/kagelets/kagelet.ts'
+import { grantRefusal, grantServers, laneOptions, shellGrant } from '../core/kagelets/kagelet.ts'
 import { heldCommand } from '../core/held.ts'
 import { approvalPreview } from '../core/preview.ts'
 import type { Dispatcher, Runner } from '../core/sessions.ts'
@@ -28,6 +28,7 @@ export type Sdk = {
   tool: typeof tool
 }
 type Pick = { model?: string; effort?: EffortLevel }
+export type Lean = { model?: string; effort?: string; mcp: Record<string, unknown> }
 type Session = {
   id: string
   kage: Kage
@@ -65,6 +66,7 @@ export function sdkSessions(o: {
   deferred?: ReturnType<typeof deferredApprovals>
   keys?: { sock: string; issue: (key: string) => string | undefined; drop: (key: string) => void }
   restartMs?: number
+  lean?: () => Lean | undefined
 }) {
   const senderNow = (s: { sender?: Sender; turn: { task: Task }[] }): Sender | undefined =>
     s.sender !== 'trusted' ? s.sender : s.turn.some(x => x.task.trusted) && s.turn.every(x => !x.task.trusted || (o.trustedNow?.(x.task.trusted) ?? true)) ? 'trusted' : 'teammate'
@@ -104,6 +106,7 @@ export function sdkSessions(o: {
     const resumed = o.hasTranscript(s.id)
     const budget = o.budgetOf?.(key)
     const grant = o.grantOf?.(key)
+    const owners = !full && !s.connectors ? o.lean?.() : undefined
     const walled = protectConfig(o.envFile, o.codeDir, undefined, shellGrant(grant) ? 'kagelet' : o.sandbox?.(s.ownerThread) === true)
     const ssmToken = grant ? undefined : o.ssm?.issue(key)
     const keysToken = grant ? undefined : o.keys?.issue(key)
@@ -111,6 +114,7 @@ export function sdkSessions(o: {
       prompt: inbox,
       options: {
         ...o.options,
+        ...owners && { settingSources: (o.options.settingSources ?? []).filter(x => x !== 'user'), ...owners.model && { model: owners.model }, ...owners.effort && { effort: owners.effort as EffortLevel } },
         settings: { ...(o.options.settings as object), ...walled, ...!full && !s.connectors && { disableClaudeAiConnectors: true } },
         ...(resumed ? { resume: s.id } : { sessionId: s.id }),
         ...(o.modelOf?.(key) && { model: o.modelOf(key) }),
@@ -118,7 +122,7 @@ export function sdkSessions(o: {
         ...budget !== undefined && { maxBudgetUsd: budget },
         ...grant && laneOptions(grant),
         systemPrompt: { type: 'preset', preset: 'claude_code' },
-        mcpServers: { ...o.options.mcpServers, kage: server },
+        mcpServers: { ...o.options.mcpServers, ...owners && grantServers(owners.mcp, grant), kage: server },
         disallowedTools: [...o.options.disallowedTools ?? [], 'CronCreate', 'CronDelete', 'CronList'],
         env: { ...env, ...certFileEnv(), CLAUDE_CODE_EMIT_SESSION_STATE_EVENTS: '1', KAGE_SESSION: '1', ...ssmToken && { KAGE_SSM_TOKEN: ssmToken, KAGE_SSM_SOCK: o.ssm!.sock, PATH: `${o.ssm!.shim}:${env.PATH}` }, ...keysToken && { KAGE_KEYS_TOKEN: keysToken, KAGE_KEYS_SOCK: o.keys!.sock } },
         canUseTool: (name, input, x) => o.grantOf?.(key)
