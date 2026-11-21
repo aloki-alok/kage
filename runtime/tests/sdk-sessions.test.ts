@@ -30,7 +30,7 @@ const tick = (ms = 5) => new Promise(r => setTimeout(r, ms))
 const ID = '11111111-1111-4111-8111-111111111111'
 const signal = () => new AbortController().signal
 
-function setup(o: { saved?: Record<string, string>; transcript?: boolean; silent?: boolean; dmFails?: boolean; grants?: Record<string, string[]>; allows?: Record<string, string[]>; review?: boolean; manager?: boolean; budgets?: Record<string, number>; models?: Record<string, string>; trusted?: string[]; deferred?: boolean; browser?: boolean; restartMs?: number; sandbox?: boolean | 'teammates'; onResult?: (key: string, total: number, resumed: boolean, tokens?: Tokens) => void; onMcp?: (q: unknown) => void; trustedPeople?: { ids: string[] } } = {}) {
+function setup(o: { saved?: Record<string, string>; transcript?: boolean; silent?: boolean; dmFails?: boolean; grants?: Record<string, string[]>; allows?: Record<string, string[]>; review?: boolean; manager?: boolean; budgets?: Record<string, number>; models?: Record<string, string>; trusted?: string[]; deferred?: boolean; browser?: boolean; restartMs?: number; sandbox?: boolean | 'teammates'; onResult?: (key: string, total: number, resumed: boolean, tokens?: Tokens) => void; lean?: { model?: string; effort?: string; mcp: Record<string, unknown> }; onMcp?: (q: unknown) => void; trustedPeople?: { ids: string[] } } = {}) {
   const sdk = fakeSdk(o)
   const dropped: string[] = []
   const keysDropped: string[] = []
@@ -63,7 +63,8 @@ function setup(o: { saved?: Record<string, string>; transcript?: boolean; silent
     hasTranscript: () => o.transcript ?? false,
     ...o.trustedPeople && { trustedNow: (id: string) => o.trustedPeople!.ids.includes(id) },
     toHub: () => {},
-    options: { cwd: '/home', settingSources: ['user'] },
+    options: { cwd: '/home', settingSources: ['user', 'project', 'local'] },
+    ...o.lean && { lean: () => o.lean },
     grantOf: key => o.grants?.[key],
     allowOf: key => o.allows?.[key] ?? [],
     ...o.review !== undefined && { reviewHeld: async () => o.review! },
@@ -760,6 +761,27 @@ describe('Kage sessions on the Agent SDK', () => {
     t.sdk.runs[0]!.emit({ type: 'result', total_cost_usd: 1.25, is_error: true })
     await tick()
     assert.deepEqual(t.results, [['C1:5.5', 1.25, false]])
+  })
+  test("only the owner's and trusted threads load the owner's user setup; others get its model and only the MCP servers their grant names (#506)", async () => {
+    const lean = { model: 'opus[1m]', effort: 'high', mcp: { linear: { command: 'linear-mcp' }, notes: { command: 'notes-mcp' } } }
+    const LANE = 'C1:5.5#side-kagelet-x'
+    const t = setup({ lean, trustedPeople: { ids: ['UTESTTRUST1'] }, grants: { [LANE]: ['Read', 'mcp__linear__list_issues'] }, models: { [LANE]: 'sonnet' } })
+    t.d.task('C1:5.5', t.task({ content: 'Task from the owner: go' }), 0)
+    t.d.task('C2:5.5', t.task({ fromOwner: false, channel: 'C2' }), 0)
+    await tick()
+    const [owner, mate] = t.sdk.runs.map(r => r.options)
+    t.s.runner.stop('C1:5.5'); t.s.runner.stop('C2:5.5')
+    await tick()
+    t.d.task('C3:5.5', { ...t.task({ fromOwner: false, channel: 'C3' }), trusted: 'UTESTTRUST1' }, 1)
+    t.d.task(LANE, t.task({ fromOwner: false }), 1)
+    await tick()
+    const [trusted, kagelet] = t.sdk.runs.slice(2).map(r => r.options)
+    assert.deepEqual(owner.settingSources, ['user', 'project', 'local'])
+    assert.equal(owner.model, undefined)
+    assert.deepEqual([mate.settingSources, mate.model, mate.effort, Object.keys(mate.mcpServers)], [['project', 'local'], 'opus[1m]', 'high', ['kage']])
+    assert.deepEqual(trusted.settingSources, ['user', 'project', 'local'])
+    assert.deepEqual([kagelet.settingSources, kagelet.model, Object.keys(kagelet.mcpServers).sort()], [['project', 'local'], 'sonnet', ['kage', 'linear']])
+    t.s.runner.stop('C3:5.5'); t.s.runner.stop(LANE)
   })
   test("each result passes on that turn's tokens and who the turn ran for (#505)", async () => {
     const t = setup()

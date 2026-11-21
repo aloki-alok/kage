@@ -42,6 +42,7 @@ import { askSocket } from '../runtime/hub-client.ts'
 import { listenForSessions, restoreHolds, routeReply } from '../runtime/session-link.ts'
 import { openStore, type Inbox } from '../runtime/store.ts'
 import { costRecorder, openLedgers, runEvents } from '../runtime/ledger.ts'
+import { ownerClaude } from '../runtime/owner-claude.ts'
 import { EVENT_DAYS } from '../core/events.ts'
 import { claudeProject, tmuxPanes } from '../runtime/tmux-panes.ts'
 import { clearUpdatedFrom, updatedNote } from '../runtime/auto-update.ts'
@@ -274,7 +275,7 @@ const sdk = sdkLib ? sdkSessions({
   codeDir: CODE, sandbox: owner => sandboxed(config.harness?.sandbox, owner),
   ssm: { sock: SSM_SOCK, shim: SSM_SHIM, issue: key => ssm.issue(key), drop: key => ssm.drop(key) },
   keys: { sock: KEYS_SOCK, issue: key => keys.issue(key), drop: key => keys.drop(key) },
-  onStart: () => store.saveSessions(d.saved()),
+  onStart: () => store.saveSessions(d.saved()), lean: () => harness.leanSessions === false ? undefined : ownerClaude(),
   onResult: (key, total, resumed, limited, error, tokens) => {
     const usd = recordCost(key, total, resumed, tokens)
     kag.routes.ended(key, usd ?? 0, d.saved()[key] ? `${PROJECT}/${d.saved()[key]}.jsonl` : '', Date.now(), limited, error)

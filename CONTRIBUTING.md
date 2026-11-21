@@ -183,6 +183,7 @@ Write logs to stderr only. In a tmux pane, stdout carries the channel protocol, 
 | File | Holds |
 |---|---|
 | `sdk-sessions.ts` | The default runner: an Agent SDK session per key, inside the hub. `runtime/tests/fake-sdk.ts` is the fake SDK its tests drive. |
+| `owner-claude.ts` | The owner's own Claude Code setup as a lean session needs it (#506): the model and effort in `~/.claude/settings.json` and the user MCP servers in `~/.claude.json`, read when each session opens. |
 | `sdk-inbox.ts` | A session's input on the Agent SDK: the tasks waiting for its process, read as one stream. |
 | `tmux-panes.ts` | The other runner: a Claude Code pane per key. |
 | `job-needs.ts` | The MCP tools jobs need, on the hub's clock: a session with no prompt reads the SDK's MCP server status with no model turn (every 10 minutes, only while a job names `needs`), each owner session adds its own status at start, and the owner gets one DM per miss and one when it is back. The miss shows in `kage schedules` as `blocked:`. |
