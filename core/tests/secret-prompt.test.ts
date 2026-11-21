@@ -1,6 +1,6 @@
 import { describe, test } from 'node:test'
 import assert from 'node:assert/strict'
-import { typeKeys, pickSecret, shownAs, SECRETS, fillSlackTokens } from '../secret-prompt.ts'
+import { typeKeys, pickSecret, shownAs, SECRETS, fillSlackTokens, typeLines } from '../secret-prompt.ts'
 
 describe('typeKeys: what a hidden prompt holds after each key', () => {
   test('characters add, backspace removes, Enter ends', () => {
@@ -63,5 +63,20 @@ describe('fillSlackTokens: one prompt takes the three Slack tokens in any order'
     assert.deepEqual(r.slots, { app: 'xapp-1', user: 'xoxp-2' })
     assert.match(r.problem!, /xapp-, xoxp- or xoxb-/)
     assert.match(fillSlackTokens({}, 'xoxe.xoxp-1-a').problem!, /configuration Access Token/)
+  })
+})
+
+describe('typeLines: a hidden prompt that takes several lines in one session', () => {
+  test('a paste ending in CR LF gives one line, not an empty second one', () => {
+    assert.deepEqual(typeLines('', 'hello\r\n'), { typed: '', lines: ['hello'] })
+  })
+  test('three tokens on three lines give three lines, and text after the last Enter stays typed', () => {
+    assert.deepEqual(typeLines('', 'xapp-1\nxoxp-2\rxoxb-3\r\nab'), { typed: 'ab', lines: ['xapp-1', 'xoxp-2', 'xoxb-3'] })
+  })
+  test('arrow keys add nothing to a token', () => {
+    assert.deepEqual(typeLines('xoxb-1', '\u001b[A\u001b[D2'), { typed: 'xoxb-12', lines: [] })
+  })
+  test('Ctrl-C cancels', () => {
+    assert.equal(typeLines('xo', 'x\u0003').cancel, true)
   })
 })
