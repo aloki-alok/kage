@@ -2,6 +2,8 @@
 import { tilde } from '../core/config.ts'
 import { ENV_FILE } from './home.ts'
 import { readSettings, setKey, updateConfig, updateSecrets } from '../runtime/config-files.ts'
+import { readFileSync } from 'node:fs'
+import { keyHelp, settingDocs, settingsOverview } from '../core/setting-docs.ts'
 
 const die = (msg: string): never => { console.error(msg); process.exit(1) }
 const [cmd = '', key = '', ...rest] = process.argv.slice(2)
@@ -27,13 +29,18 @@ if (cmd === 'has') {
   if (v === undefined || v === null) process.exit(0)
   console.log(key === 'harness.cwd' ? tilde(String(v), process.env.HOME!) : Array.isArray(v) && v.every(x => typeof x === 'string') ? v.join(',') : typeof v === 'object' ? JSON.stringify(v) : String(v))
 } else if (cmd === 'set') {
-  if (!key || rest.length !== 1) die('Usage: kage set <key> <value>, a key such as harness.maxSessions. kage help set shows an example.')
+  const docs = settingDocs(readFileSync(new URL('../docs/settings.md', import.meta.url), 'utf8'))
+  let config: unknown = {}
+  try { config = readSettings(ENV_FILE).config } catch {}
+  if (!key) { console.log(settingsOverview(docs, k => walk(config, k)).join('\n')); process.exit(0) }
+  if (!rest.length) { const help = keyHelp(docs, key, walk(config, key)); console.log(help.join('\n')); process.exit(help.length > 1 ? 0 : 1) }
+  if (rest.length !== 1) die(`Usage: kage set ${key} <value>. A value with spaces goes in quotes, and a list is JSON.`)
   const value = rest[0]!
   let parsed: unknown = value
   try { parsed = JSON.parse(value) } catch {}
   try {
     setKey(ENV_FILE, key, parsed)
-  } catch (e) { die(`Not changed: ${(e as Error).message.replace(/^config\.json: /, '')}`) }
+  } catch (e) { die([`Not changed: ${(e as Error).message.replace(/^config\.json: /, '')}`, ...docs.some(d => d.key === key) ? [] : keyHelp(docs, key, undefined)].join('\n')) }
   console.log(`Set ${key}. The people lists apply at once. Any other key applies by itself once every session is quiet (or run kage restart).`)
 } else if (cmd === 'save') {
   const words = (await new Promise<string>(res => { let t = ''; process.stdin.on('data', d => t += d).on('end', () => res(t)) })).split(/\s+/).filter(Boolean)
