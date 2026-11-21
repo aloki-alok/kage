@@ -110,7 +110,7 @@ func run() async {
 // The hub decides what may run (core/desktop-act.ts); this app only refuses keys it has no code for.
 struct Command: Decodable {
   let id: Int; let op: String
-  let x: Double?; let y: Double?; let toX: Double?; let toY: Double?
+  let x: Double?; let y: Double?; let path: [[Double]]?
   let button: String?; let count: Int?; let dy: Int?; let dx: Int?; let text: String?; let keys: String?
 }
 
@@ -187,6 +187,8 @@ final class Hands {
     DispatchQueue.main.sync { place(at: p, animated: true) }
     usleep(190_000)
     CGEvent(mouseEventSource: nil, mouseType: .mouseMoved, mouseCursorPosition: p, mouseButton: .left)?.post(tap: .cghidEventTap)
+    // Web views (ExcalidrawZ, Electron apps) drop a click that lands with the move that brought the mouse there.
+    usleep(60_000)
   }
   func pulse() {
     DispatchQueue.main.async {
@@ -211,17 +213,23 @@ final class Hands {
     }
     pulse()
   }
-  func drag(_ from: CGPoint, _ to: CGPoint) {
+  // One stroke through every point of the path, a dragged event about every 8 points, so a curve stays smooth.
+  func drag(_ from: CGPoint, through path: [CGPoint]) {
     glide(to: from)
     CGEvent(mouseEventSource: nil, mouseType: .leftMouseDown, mouseCursorPosition: from, mouseButton: .left)?.post(tap: .cghidEventTap)
-    for i in 1...20 {
-      let t = Double(i) / 20
-      let p = CGPoint(x: from.x + (to.x - from.x) * t, y: from.y + (to.y - from.y) * t)
-      CGEvent(mouseEventSource: nil, mouseType: .leftMouseDragged, mouseCursorPosition: p, mouseButton: .left)?.post(tap: .cghidEventTap)
-      DispatchQueue.main.sync { place(at: p, animated: false) }
-      usleep(12_000)
+    var last = from
+    for to in path {
+      let steps = max(1, Int((hypot(to.x - last.x, to.y - last.y) / 8).rounded(.up)))
+      for i in 1...steps {
+        let t = Double(i) / Double(steps)
+        let p = CGPoint(x: last.x + (to.x - last.x) * t, y: last.y + (to.y - last.y) * t)
+        CGEvent(mouseEventSource: nil, mouseType: .leftMouseDragged, mouseCursorPosition: p, mouseButton: .left)?.post(tap: .cghidEventTap)
+        DispatchQueue.main.sync { place(at: p, animated: false) }
+        usleep(8_000)
+      }
+      last = to
     }
-    CGEvent(mouseEventSource: nil, mouseType: .leftMouseUp, mouseCursorPosition: to, mouseButton: .left)?.post(tap: .cghidEventTap)
+    CGEvent(mouseEventSource: nil, mouseType: .leftMouseUp, mouseCursorPosition: last, mouseButton: .left)?.post(tap: .cghidEventTap)
   }
   func scroll(_ p: CGPoint, dy: Int, dx: Int) {
     glide(to: p)
@@ -296,13 +304,18 @@ final class Hands {
   }
   func run(_ c: Command) -> [String: Any] {
     lastCommand = Date()
+    defer { lastCommand = Date() }
+    DispatchQueue.main.sync { window.alphaValue = 1 }
     let p = c.x.map { point($0, c.y ?? 0) }
     switch c.op {
     case "under": guard let p else { return ["error": "under needs x and y"] }; return under(p)
     case "focused": return focused()
     case "click": guard let p else { return ["error": "click needs x and y"] }; click(p, right: c.button == "right", count: c.count ?? 1); return ["done": true]
     case "move": guard let p else { return ["error": "move needs x and y"] }; glide(to: p); return ["done": true]
-    case "drag": guard let p, let tx = c.toX, let ty = c.toY else { return ["error": "drag needs both points"] }; drag(p, point(tx, ty)); return ["done": true]
+    case "drag":
+      let path = (c.path ?? []).compactMap { $0.count == 2 ? point($0[0], $0[1]) : nil }
+      guard let p, !path.isEmpty, path.count == c.path?.count else { return ["error": "drag needs x, y and a path of points"] }
+      drag(p, through: path); return ["done": true]
     case "scroll": guard let p else { return ["error": "scroll needs x and y"] }; scroll(p, dy: c.dy ?? 0, dx: c.dx ?? 0); return ["done": true]
     case "type": type(c.text ?? ""); return ["done": true]
     case "key": if let why = key(c.keys ?? "") { return ["error": why] }; return ["done": true]
@@ -346,10 +359,15 @@ func startActingOnMain(_ job: Job) {
       }
     }
   }
-  // Nobody acted for 5 minutes: the work is done, so the cursor leaves the screen. The check runs on the
-  // queue that runs steps, so the app never leaves mid-step, and the hub may resend a step it got no answer to.
-  Timer.scheduledTimer(withTimeInterval: 15, repeats: true) { _ in
-    work.async { if Date().timeIntervalSince(a.lastCommand) > 300 { emit(["state": "stopped"]); exit(0) } }
+  // Idle 4 seconds: Kage's cursor fades so it never sits on the owner's screen, and the next step brings it back.
+  // Idle 5 minutes: the work is done and the app leaves. The check runs on the queue that runs steps, so the app
+  // never leaves or fades mid-step, and the hub may resend a step it got no answer to.
+  Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { _ in
+    work.async {
+      let idle = Date().timeIntervalSince(a.lastCommand)
+      if idle > 300 { emit(["state": "stopped"]); exit(0) }
+      if idle > 4 { DispatchQueue.main.async { if a.window.alphaValue == 1 { NSAnimationContext.runAnimationGroup { ctx in ctx.duration = 0.4; a.window.animator().alphaValue = 0 } } } }
+    }
   }
 }
 
