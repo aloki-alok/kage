@@ -55,7 +55,8 @@ function header(v: View) {
   fill({ x0: 0, y0: 0, x1: W - 1, y1: 0 }, 'bar')
   let x = 1
   const seg = (s: string, k: string) => { put(x, 0, s, k, 'bar'); x += [...s].length + 3 }
-  seg(' kage', 'hi'); x -= 2; seg(v.version ?? '', 'dim')
+  put(x, 0, '✦', 'work', 'bar'); x += 2
+  seg('kage', 'hi'); x -= 2; seg(v.version ?? '', 'dim')
   if (!v.hubUp) { put(x, 0, '●', 'bad', 'bar'); x += 2; seg('hub offline', 'mid') }
   else {
     for (const c of v.channels) { put(x, 0, '●', c.up === undefined ? 'you' : c.up ? 'ok' : 'bad', 'bar'); put(x + 2, 0, c.name, 'mid', 'bar'); x += c.name.length + 4 }
