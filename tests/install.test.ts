@@ -1,7 +1,8 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { execFileSync } from 'node:child_process'
-import { chmodSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, writeFileSync } from 'node:fs'
+import { execFileSync, spawn } from 'node:child_process'
+import { once } from 'node:events'
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { pullMain } from '../runtime/auto-update.ts'
@@ -27,15 +28,15 @@ function world() {
   writeFileSync(join(origin, 'setup.sh'), '#!/bin/sh\n'); chmodSync(join(origin, 'setup.sh'), 0o755)
   commit(origin, 'a.ts', 'v1')
   execFileSync('git', ['archive', '--format=tar.gz', '--prefix=kage-main/', '-o', join(root, 'main.tar.gz'), 'main'], { cwd: origin })
-  const install = (env: Record<string, string> = {}) => execFileSync('/bin/bash', [join(REPO, 'install.sh')], {
-    encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'],
-    env: {
-      PATH: `${bin}:${dirname(process.execPath)}:${process.env.PATH}`, HOME: home, KAGE_DIR: dir, KAGE_BIN: bin, KAGE_GIT_URL: origin,
-      GIT_AUTHOR_NAME: 't', GIT_AUTHOR_EMAIL: 't@example.com', GIT_COMMITTER_NAME: 't', GIT_COMMITTER_EMAIL: 't@example.com',
-      GIT_CONFIG_COUNT: '1', GIT_CONFIG_KEY_0: 'pull.rebase', GIT_CONFIG_VALUE_0: 'true', ...env,
-    },
+  const env = {
+    PATH: `${bin}:${dirname(process.execPath)}:${process.env.PATH}`, HOME: home, KAGE_DIR: dir, KAGE_BIN: bin, KAGE_GIT_URL: origin,
+    GIT_AUTHOR_NAME: 't', GIT_AUTHOR_EMAIL: 't@example.com', GIT_COMMITTER_NAME: 't', GIT_COMMITTER_EMAIL: 't@example.com',
+    GIT_CONFIG_COUNT: '1', GIT_CONFIG_KEY_0: 'pull.rebase', GIT_CONFIG_VALUE_0: 'true',
+  }
+  const install = (extra: Record<string, string> = {}) => execFileSync('/bin/bash', [join(REPO, 'install.sh')], {
+    encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'], env: { ...env, ...extra },
   })
-  return { root, origin, dir, home, install }
+  return { root, origin, dir, home, env, install }
 }
 
 test('a tarball install run again with git becomes a clean main checkout in place, which then updates itself', async () => {
@@ -58,6 +59,18 @@ test('a tarball install run again with git becomes a clean main checkout in plac
   git(w.origin, '-c', 'user.name=t', '-c', 'user.email=t@example.com', 'tag', '-f', '-a', '-m', 'stable', 'stable')
   assert.equal(await pullMain(w.dir), 'pulled')
   assert.equal(readFileSync(join(w.dir, 'c.ts'), 'utf8'), 'v3')
+})
+
+test('a first install from a coding agent, with no terminal, succeeds and names the setup file the agent follows', async () => {
+  const w = world()
+  rmSync(join(w.home, '.config/kage/env'))
+  // detached runs it in a new session with no controlling terminal, as in an agent's shell, wherever the test runs.
+  const child = spawn('/bin/bash', [join(REPO, 'install.sh')], { detached: true, stdio: ['ignore', 'pipe', 'pipe'], env: w.env })
+  let out = ''
+  child.stdout.on('data', d => { out += d }); child.stderr.on('data', d => { out += d })
+  const [code] = await once(child, 'close')
+  assert.equal(code, 0, out)
+  assert.match(out, new RegExp(`follow ${join(w.dir, 'CLAUDE.md')}`))
 })
 
 test('run again on a checkout, it fast-forwards; a checkout with its own edits is left alone', () => {
