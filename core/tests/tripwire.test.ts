@@ -115,6 +115,24 @@ describe('decide', () => {
     assert.equal(r.state.last, 'v2')
     assert.equal(r.state.fp, fpOf('v2'))
   })
+  test('a verdict line saying wake false keeps a changed output quiet (#516)', () => {
+    const r = decide({ fp: fpOf('v1'), last: 'v1', fails: 0 }, ok('v2\n{"wake": false}'), probe, o)
+    assert.equal(r.wake, undefined)
+    assert.equal(r.state.fp, fpOf('v2\n{"wake": false}'))
+  })
+  test('a verdict line saying wake true wakes on the same output, and the wake carries only its context (#516)', () => {
+    const out = 'v1\n{"wake": true, "context": {"replies": 2}}'
+    const s: JobState = { fp: fpOf(out), last: out, fails: 0 }
+    assert.deepEqual(decide(s, ok(out), probe, o).wake, { context: '{"replies":2}' })
+    assert.deepEqual(decide({ fails: 0 }, ok(out), probe, o).wake, { context: '{"replies":2}' })
+  })
+  test('a last line that is not a valid verdict falls back to the change rule (#516)', () => {
+    for (const line of ['{"wake": "yes"}', '{"wake": true', '{"wake": true, "context": "x"}', '[true]']) {
+      const s: JobState = { fp: fpOf(`v1\n${line}`), last: `v1\n${line}`, fails: 0 }
+      assert.equal(decide(s, ok(`v1\n${line}`), probe, o).wake, undefined, line)
+      assert.ok(decide(s, ok(`v2\n${line}`), probe, o).wake, line)
+    }
+  })
   test('an ignored line changing does not wake', () => {
     const p = { ...probe, ignore: ['^ts='] }
     const first = decide({ fails: 0 }, ok('a\nts=1', p.ignore), p, o)

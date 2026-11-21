@@ -37,6 +37,7 @@ Every number is a setting with a default (`tripwires.*`, `harness.jobModel`, doc
 ## More mechanics, fixed in code
 
 - A probe fingerprints stdout only, so a stderr warning cannot wake the job. The first good run records a baseline and wakes nothing. (`core/tripwire.ts`)
+- A last stdout line of `{"wake": true|false, "context": {...}}` decides the wake in place of the fingerprint, and the session gets only the context, quoted as data. Any other last line, a non-boolean wake or a non-object context leaves the fingerprint rule in charge. (#516, `core/tripwire.ts`)
 - A line longer than `lineMax` is never dropped by an ignore regex, because a regex that sees part of it proves nothing. (`core/tripwire.ts`)
 - An ignore pattern that is invalid, too long or nested-repeating never runs. Upgrade path: RE2. (`core/tripwire.ts`)
 - A probe refusal (changed script, unsafe pattern) pings at once, once per distinct refusal. (`core/tripwire.ts`)

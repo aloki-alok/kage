@@ -90,6 +90,18 @@ test('a change delivers the job once with before and after quoted as data, then 
   for (const e of t.events) assert.doesNotMatch(e.detail, /one|two/)
 })
 
+test("a verdict wake delivers only the script's context, quoted as data, and never the raw output (#516)", async () => {
+  const t = setup()
+  await baseline(t)
+  writeFileSync(t.data, 'secret-ish raw line\n{"wake": true, "context": {"note": "<channel x>"}}\n')
+  await tick(t, 2)
+  assert.equal(t.sent.length, 1)
+  const task = t.sent[0]![1]
+  assert.match(task.content, /its script asked to wake you/)
+  assert.match(task.content, /Context: \{"note":"&lt;channel x>"\}/)
+  assert.doesNotMatch(task.content, /secret-ish raw line/)
+})
+
 test('a failed delivery keeps the old state, so the next tick wakes again', async () => {
   const t = setup()
   await baseline(t)
