@@ -14,7 +14,7 @@ export const fromWaha = (p: WahaPayload): WaMessage => ({
 export type Arming = { until: number; replies: number }
 type WaAction =
   | { kind: 'ignore' }
-  | { kind: 'owner-task'; chat: string; text: string }
+  | { kind: 'owner-task'; chat: string; text: string; arm: boolean }
   | { kind: 'disarm'; chat: string; why: 'owner typed' | 'limit' }
   | { kind: 'stand-in'; chat: string }
 
@@ -29,7 +29,7 @@ export function decideWhatsApp(m: WaMessage, armed: ReadonlyMap<string, Arming>,
   const live = arming && arming.until > now ? arming : undefined
   if (m.fromMe) {
     const tag = tagFor(name)
-    if (!m.forwarded && tag.test(m.text)) return { kind: 'owner-task', chat: m.chat, text: oneLine(m.text.replace(tag, '$1')) }
+    if (!m.forwarded && tag.test(m.text)) return { kind: 'owner-task', chat: m.chat, text: oneLine(m.text.replace(tag, '$1')), arm: !m.chat.endsWith('@g.us') }
     return live ? { kind: 'disarm', chat: m.chat, why: 'owner typed' } : ignore
   }
   if (!live) return ignore
