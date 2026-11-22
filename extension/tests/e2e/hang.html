@@ -1,0 +1,4 @@
+<!doctype html>
+<title>Busy page</title>
+<!-- Holds its main thread for 90 s, so a script Kage injects cannot run: a stand-in for a page stuck in a dialog or a long script (#528). -->
+<script>const end = Date.now() + 90_000; while (Date.now() < end) {}</script>

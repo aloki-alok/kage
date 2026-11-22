@@ -181,13 +181,21 @@ async function loop() {
       let body
       try {
         if (!Object.hasOwn(ops, cmd.op)) throw new Error(`unknown command ${cmd.op}`)
-        body = { id: cmd.id, ok: true, data: await ops[cmd.op](cmd.args ?? {}) }
+        body = { id: cmd.id, ok: true, data: await withDeadline(ops[cmd.op](cmd.args ?? {}), cmd.ms) }
       } catch (e) { body = { id: cmd.id, ok: false, error: String(e?.message ?? e) } }
       await fetch(`${hub}/browser/result`, { method: 'POST', headers: { ...auth, 'content-type': 'application/json' }, body: JSON.stringify(body) }).catch(() => {})
     }
   } finally { polling = false }
 }
 const sleep = ms => new Promise(r => setTimeout(r, ms))
+// A command stuck in a page (an open dialog, a long script) must not hold the loop, or no poll follows and the alarm
+// cannot restart a loop that still runs (#528). Past the hub's own wait it fails, and the loop takes the next one.
+function withDeadline(work, ms) {
+  if (!(ms > 0)) return work   // an older hub sends no ms
+  let timer
+  const late = new Promise((_, no) => { timer = setTimeout(() => no(new Error(`it did not finish in ${Math.round(ms / 1000)} s`)), ms) })
+  return Promise.race([work, late]).finally(() => clearTimeout(timer))
+}
 
 // A service worker sleeps when idle; the alarm wakes it and restarts the loop if it died.
 chrome.alarms.create('kage-poll', { periodInMinutes: 0.5 })

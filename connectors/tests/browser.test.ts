@@ -23,6 +23,7 @@ test('a call reaches the extension on its next poll, and its result comes back t
   const cmd = await (await poll).json() as { id: string; op: string; args: unknown }
   assert.equal(cmd.op, 'read')
   assert.deepEqual(cmd.args, { tabId: 7 })
+  assert.equal((cmd as { ms?: unknown }).ms, 20_000, 'the extension gives up at the time the hub does (#528)')
   assert.equal((await result({ id: cmd.id, ok: true, data: { title: 'T' } })).status, 200)
   assert.deepEqual(await answer, { title: 'T' })
 })

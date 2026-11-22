@@ -3,8 +3,9 @@ import type { ServerResponse } from 'node:http'
 import { bearerOk, listen, readBody } from './webhook.ts'
 
 const MAX_BODY = 20_000_000
+export const BROWSER_STALE_MS = 60_000
 
-type Cmd = { id: string; op: string; args: unknown }
+type Cmd = { id: string; op: string; args: unknown; ms: number }
 
 export function connectBrowser(o: {
   token: string; port: number
@@ -15,7 +16,7 @@ export function connectBrowser(o: {
   onPoll?: (at: number, version?: string) => void
 }) {
   const now = o.now ?? Date.now
-  const pollMs = o.pollMs ?? 25_000, callMs = o.callMs ?? 20_000, staleMs = o.staleMs ?? 60_000
+  const pollMs = o.pollMs ?? 25_000, callMs = o.callMs ?? 20_000, staleMs = o.staleMs ?? BROWSER_STALE_MS
   const queue: Cmd[] = []
   const sent = new Map<string, Cmd>()
   const pending = new Map<string, { resolve: (v: unknown) => void; reject: (e: Error) => void; timer: NodeJS.Timeout }>()
@@ -50,7 +51,7 @@ export function connectBrowser(o: {
         reject(new Error(`the Chrome extension did not answer in ${Math.round(callMs / 1000)} s`))
       }, callMs)
       pending.set(id, { resolve, reject, timer })
-      queue.push({ id, op, args })
+      queue.push({ id, op, args, ms: callMs })
       flush()
     })
   }
