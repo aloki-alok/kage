@@ -115,7 +115,7 @@ export function startWhatsApp(o: { ownerAnswer?: (a: { code: string; behavior: '
     log('whatsapp', action.kind, logRef(m.chat))
     if (action.kind === 'disarm') { armed.delete(action.chat); return }
     if (action.kind === 'stand-in') { void standIn(action.chat); return }
-    if (!replayed) armed.set(action.chat, { until: Date.now() + ARM_MS, replies: 0, brief: action.text })
+    if (!replayed && action.arm) armed.set(action.chat, { until: Date.now() + ARM_MS, replies: 0, brief: action.text })
     const place = `WhatsApp chat ${logRef(action.chat)}`
     o.onTask({ chat: action.chat, place, content: waTaskContent(action.text, place, action.chat, await history(action.chat), o.name, o.owner), ...(source && { source }) })
   }

@@ -28,11 +28,15 @@ describe('other people never drive Kage', () => {
 describe("the owner's tag is the only way in", () => {
   test('his tag at the start becomes a task without the tag', () => {
     assert.deepEqual(decide(msg({ fromMe: true, text: '@kage take over this, reply for me' })),
-      { kind: 'owner-task', chat: CHAT, text: 'take over this, reply for me' })
+      { kind: 'owner-task', chat: CHAT, text: 'take over this, reply for me', arm: true })
   })
   test('his tag inside normal text works too, any case', () => {
     assert.deepEqual(decide(msg({ fromMe: true, text: 'hmm @Kage, make an issue for this' })),
-      { kind: 'owner-task', chat: CHAT, text: 'hmm make an issue for this' })
+      { kind: 'owner-task', chat: CHAT, text: 'hmm make an issue for this', arm: true })
+  })
+  test('in a group the tag still hands Kage the task, but the group is never armed, so no member can steer a stand-in that writes as the owner (#230)', () => {
+    assert.deepEqual(decide(msg({ chat: '120363000000000001@g.us', fromMe: true, text: '@kage sum up this group' })),
+      { kind: 'owner-task', chat: '120363000000000001@g.us', text: 'sum up this group', arm: false })
   })
   test('an email address or a longer word is not a tag', () => {
     for (const text of ['mail kage@kage.example.com', 'see @kage.example.com', '@kagebot hi']) {
@@ -63,7 +67,7 @@ describe('the owner typing takes the chat back', () => {
   })
   test('his tagged message in an armed chat is an instruction, not a takeover', () => {
     assert.deepEqual(decide(msg({ fromMe: true, text: '@kage keep it short' }), armed()),
-      { kind: 'owner-task', chat: CHAT, text: 'keep it short' })
+      { kind: 'owner-task', chat: CHAT, text: 'keep it short', arm: true })
   })
   test('arming ends at its time', () => {
     assert.deepEqual(decide(msg({ text: 'hello?' }), armed({ until: NOW })), { kind: 'ignore' })

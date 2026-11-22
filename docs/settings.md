@@ -235,6 +235,8 @@ WhatsApp runs through [WAHA](https://github.com/devlikeapro/waha), an unofficial
 
 When it is on, you type `@kage <task>` in any chat to hand Kage a task. The chat is also armed for an hour: a stand-in answers new messages there as you, until you type in the chat yourself. A guard reads every message before it leaves, and holds anything internal for you in your Slack DM.
 
+A group chat is never armed. Your tag in a group still hands Kage the task, but no stand-in answers the group as you. In a group, anyone could steer a stand-in that writes as you, and only the guard model would stand between their words and a message sent from your number.
+
 | Setting | Default | Effect |
 |---|---|---|
 | `connectors.whatsapp.on` | on | WhatsApp starts when secrets.json holds `waha` with `WAHA_API_KEY` and `WHATSAPP_HOOK_HMAC_KEY`: the WhatsApp container's env, name to value. Kage writes `~/.config/kage/waha/.env` from it for the container at each start, and a `waha/.env` made by hand moves into secrets.json once. After a key changes, restart the container. `false` turns it off. |
