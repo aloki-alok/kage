@@ -1,6 +1,6 @@
 import { describe, test } from 'node:test'
 import assert from 'node:assert/strict'
-import { ownerAnswer, waCardNote, ownerNote, bridgeAlert, bridgeProblem, decideWhatsApp, fromWaha, standInPrompt, guardPrompt, waTaskContent, waOutgoing, withoutFooter, MAX_STAND_IN_REPLIES, type Arming, type BridgeSeen, type WaMessage } from '../whatsapp.ts'
+import { ownerAnswer, waCardNote, ownerNote, bridgeAlert, bridgeProblem, decideWhatsApp, fromWaha, historyLines, standInPrompt, guardPrompt, waTaskContent, waOutgoing, withoutFooter, MAX_STAND_IN_REPLIES, type Arming, type BridgeSeen, type WaMessage } from '../whatsapp.ts'
 
 const NOW = 1_000_000
 const CHAT = '919000000001@c.us'
@@ -234,5 +234,41 @@ describe("an approval card answered on WhatsApp (#423)", () => {
     assert.match(note, /yes 4821/)
     assert.match(note, /no 4821/)
     assert.equal(waCardNote({ tool: 'Bash', place: '#ops', description: 'run it', preview: 'export KEY=AKIAIOSFODNN7EXAMPLE', code: '4821' }, 'kage'), undefined)
+  })
+})
+
+describe('the chat history keeps voice notes, photos, videos and files as marked lines (#235)', () => {
+  const media = (timestamp: number, Message: Record<string, object>, body?: string) => ({ timestamp, fromMe: false, hasMedia: true, ...body && { body }, _data: { Message } })
+  const rows = [
+    media(5, { audioMessage: { seconds: 42, PTT: true } }),
+    { timestamp: 1, fromMe: true, body: 'on my way\n\n_🥷 kage_' },
+    media(2, { imageMessage: { caption: 'the invoice' } }),
+    media(3, { imageMessage: { caption: 'see this' } }, 'see this'),
+    media(4, { videoMessage: { seconds: 75 } }),
+    media(6, { documentMessage: { fileName: 'quote.pdf', caption: 'signed' } }),
+    media(7, { audioMessage: { seconds: 3 } }),
+    media(8, { stickerMessage: {} }),
+    media(9, { imageMessage: {} }),
+  ]
+  test('each kind gets its own mark, with the length and the caption when it has them, in time order', () => {
+    assert.deepEqual(historyLines(rows), [
+      { fromMe: true, text: 'on my way' },
+      { fromMe: false, text: '[photo] the invoice' },
+      { fromMe: false, text: '[photo] see this' },
+      { fromMe: false, text: '[video, 1:15]' },
+      { fromMe: false, text: '[voice note, 0:42]' },
+      { fromMe: false, text: '[file: quote.pdf] signed' },
+      { fromMe: false, text: '[audio, 0:03]' },
+      { fromMe: false, text: '[sticker]' },
+      { fromMe: false, text: '[photo]' },
+    ])
+  })
+  test('a row with no text and no media it knows stays out, as before', () => {
+    assert.deepEqual(historyLines([{ timestamp: 1, fromMe: false, _data: { Message: { templateMessage: {} } } }, { timestamp: 2, fromMe: false, body: '' }]), [])
+  })
+  test('the stand-in and the guard read the same marked line, so neither answers as if nothing was said', () => {
+    const history = historyLines([media(1, { audioMessage: { seconds: 42, PTT: true } })])
+    assert.match(standInPrompt('', history, 'kage', 'Sam').prompt, /\[them\] \[voice note, 0:42\]/)
+    assert.match(guardPrompt('', history, 'ok', 'Sam').prompt, /\[them\] \[voice note, 0:42\]/)
   })
 })

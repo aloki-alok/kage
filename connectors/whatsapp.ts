@@ -8,7 +8,7 @@ import { listen, readBody } from './webhook.ts'
 import type { Inbox } from '../runtime/store.ts'
 import { findSecret, guardVerdict } from '../core/outbound.ts'
 import type { Job } from '../runtime/jobs.ts'
-import { bridgeAlert, decideWhatsApp, fromWaha, guardPrompt, standInPrompt, waOutgoing, waTaskContent, withoutFooter, type Arming, type BridgeSeen, type WahaPayload, type WaLine, ownerNote, ownerAnswer } from '../core/whatsapp.ts'
+import { bridgeAlert, decideWhatsApp, fromWaha, guardPrompt, historyLines, standInPrompt, waOutgoing, waTaskContent, type Arming, type BridgeSeen, type WahaPayload, type WahaRow, type WaLine, ownerNote, ownerAnswer } from '../core/whatsapp.ts'
 import { ownerLines } from '../core/messages.ts'
 
 export const wahaUrl = (set?: string | null) => set || 'http://127.0.0.1:3198'
@@ -68,8 +68,7 @@ export function startWhatsApp(o: { ownerAnswer?: (a: { code: string; behavior: '
     return r.json() as Promise<any>
   }
   async function history(chat: string): Promise<WaLine[]> {
-    const rows = await api(`/api/default/chats/${encodeURIComponent(chat)}/messages?limit=50&downloadMedia=false`).catch(() => []) as { fromMe?: boolean; body?: string; timestamp?: number }[]
-    return rows.filter(r => r.body).sort((a, b) => (a.timestamp ?? 0) - (b.timestamp ?? 0)).map(r => ({ fromMe: !!r.fromMe, text: withoutFooter(r.body!) }))
+    return historyLines(await api(`/api/default/chats/${encodeURIComponent(chat)}/messages?limit=50&downloadMedia=false`).catch(() => []) as WahaRow[])
   }
   async function send(chat: string, text: string, hist?: WaLine[]) {
     const brief = armed.get(chat)?.brief ?? ''

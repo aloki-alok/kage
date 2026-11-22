@@ -92,6 +92,22 @@ export function waCardNote(c: { tool: string; place: string; description: string
 export const waOutgoing = (text: string, title: string) => `${text}\n\n_${kageFooter(title)}_`
 export const withoutFooter = (text: string) => text.replace(/\n\n_🥷 [^\n]*_$/u, '')
 
+type Media = { seconds?: number; caption?: string; PTT?: boolean; fileName?: string; title?: string } | undefined
+export type WahaRow = { fromMe?: boolean; body?: string; timestamp?: number; _data?: { Message?: Record<string, Media> } }
+const length = (m: NonNullable<Media>) => m.seconds ? `, ${Math.floor(Math.round(m.seconds) / 60)}:${String(Math.round(m.seconds) % 60).padStart(2, '0')}` : ''
+function mediaMark(m: Record<string, Media>): string | undefined {
+  if (m.audioMessage) return `${m.audioMessage.PTT ? 'voice note' : 'audio'}${length(m.audioMessage)}`
+  if (m.imageMessage) return 'photo'
+  if (m.videoMessage) return `video${length(m.videoMessage)}`
+  if (m.documentMessage) return `file: ${m.documentMessage.fileName || m.documentMessage.title || 'no name'}`
+  if (m.stickerMessage) return 'sticker'
+}
+export const historyLines = (rows: WahaRow[]): WaLine[] => [...rows].sort((a, b) => (a.timestamp ?? 0) - (b.timestamp ?? 0)).flatMap(r => {
+  const m = r._data?.Message ?? {}, mark = mediaMark(m), caption = r.body || Object.values(m).find(v => v?.caption)?.caption
+  const text = mark ? [`[${mark}]`, caption].filter(Boolean).join(' ') : r.body
+  return text ? [{ fromMe: !!r.fromMe, text: withoutFooter(text) }] : []
+})
+
 export type BridgeSeen = { reached: false } | { reached: true; code: number; status?: string }
 const CONTAINER = 'kage-waha'
 
