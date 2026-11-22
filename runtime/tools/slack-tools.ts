@@ -2,11 +2,12 @@ import { readFileSync, realpathSync, statSync } from 'node:fs'
 import { basename, extname } from 'node:path'
 import { z } from 'zod'
 import { foreignAgentRefusal } from '../../core/agents.ts'
-import { openWaiting } from '../../core/ledgers.ts'
+import { openWaiting, ownerMayBeAsked } from '../../core/ledgers.ts'
 import { findSecret, layoutRefusal, ownerPost, safeReply, secretRefusal, splitForSlack } from '../../core/outbound.ts'
 import type { KageTool, ToolContext } from '../kage-tools.ts'
 
 const MARKS = { ack: '', question: 'scroll', answer: 'dagger_knife', done: 'crossed_swords' } as const
+const ASKED_OWNER_ALREADY = 'not sent: you already asked the owner once in this thread and they replied, so their messages since are the answer. Decide it yourself and report after. A one-way step goes through its approval card, not a new ask. Post the reply again without waiting.'
 const HUB_DOWN = 'not sent: Kage is restarting. Wait a few seconds and send it again.'
 function canvasError(e: any): { isError: true; text: string } {
   const why = e?.data?.error
@@ -65,6 +66,7 @@ export function slackTools(c: ToolContext): KageTool[] {
       if (ask && on !== 'owner' && !/^[UW][A-Z0-9]{2,}$/.test(on ?? '')) return { isError: true, text: 'not sent: with waiting, set waiting_on to "owner" or the Slack id (U...) of the person who must answer' }
       if (ask && on !== 'owner' && a.private) return { isError: true, text: 'not sent: a teammate cannot see the owner\'s DM. Ask them in the thread, or set waiting_on to "owner"' }
       if (ask && on !== 'owner' && !a.text.includes(`<@${on}>`)) a.text = `<@${on}>${/^(```|\|)/.test(a.text) ? '\n' : ' '}${a.text}`
+      if (ask && on === 'owner' && !ownerMayBeAsked(ledger('waiting'), key, Date.now())) return { isError: true, text: ASKED_OWNER_ALREADY }
       const layout = layoutRefusal(a.text, a)
       if (layout) return { isError: true, text: layout }
       const { via, where: at } = a.private ? await post(key, o.botDm(), dmThread.get(key), a.text) : await post(key, a.channel, a.thread_ts, a.text, a.tag_agent ? { tag: agents.get(key)?.tag } : {}, a.mark === 'ack')

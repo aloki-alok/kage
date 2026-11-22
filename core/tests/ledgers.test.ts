@@ -1,6 +1,6 @@
 import { describe, test } from 'node:test'
 import assert from 'node:assert/strict'
-import { costRows, threadKind, trailEvent, trailLine, askedFrom, cardAt, dailyDue, expiredWaiting, grantsLine, heldLine, lastTotals, openWaiting, dailyAverage, postedBy, spendSince, unanswered, staleWaiting, selfReview, tsvRow, turnCost } from '../ledgers.ts'
+import { ownerMayBeAsked, costRows, threadKind, trailEvent, trailLine, askedFrom, cardAt, dailyDue, expiredWaiting, grantsLine, heldLine, lastTotals, openWaiting, dailyAverage, postedBy, spendSince, unanswered, staleWaiting, selfReview, tsvRow, turnCost } from '../ledgers.ts'
 import type { Task } from '../task.ts'
 
 describe('the daily note of what waits on the owner', () => {
@@ -251,4 +251,32 @@ test('who a turn ran for: kagelets and dreams by key, everyone else by sender', 
   assert.equal(threadKind('C1:1.1#side-kdream-calls', undefined), 'dream')
   assert.equal(threadKind('C1:1.1', 'teammate'), 'teammate')
   assert.equal(threadKind('C1:1.1', undefined), 'unknown')
+})
+
+describe('one owner ask per thread', () => {
+  const now = Date.parse('2026-11-04T12:00:00Z')
+  const row = (when: string, status: string, thread: string, what = '') => `${when}\t${status}\t${thread}\t\t${what}\n`
+  const asked = row('2026-11-04T01:00:00Z', 'open', 'C1:1.1', 'Deploy?')
+  test('a thread with no earlier ask may ask', () => {
+    assert.equal(ownerMayBeAsked('', 'C1:1.1', now), true)
+  })
+  test('an ask still open does not block the thread', () => {
+    assert.equal(ownerMayBeAsked(asked, 'C1:1.1', now), true)
+  })
+  test('a thread whose ask the owner closed in the last day may not ask again', () => {
+    const rows = asked + row('2026-11-04T02:00:00Z', 'answered', 'C1:1.1')
+    assert.equal(ownerMayBeAsked(rows, 'C1:1.1', now), false)
+  })
+  test('another thread may still ask', () => {
+    const rows = asked + row('2026-11-04T02:00:00Z', 'answered', 'C1:1.1')
+    assert.equal(ownerMayBeAsked(rows, 'C1:2.2', now), true)
+  })
+  test('after a day the thread may ask again', () => {
+    const rows = row('2026-11-02T01:00:00Z', 'open', 'C1:1.1', 'Deploy?') + row('2026-11-03T11:59:00Z', 'answered', 'C1:1.1')
+    assert.equal(ownerMayBeAsked(rows, 'C1:1.1', now), true)
+  })
+  test('an ask that expired unanswered does not block', () => {
+    const rows = asked + row('2026-11-04T02:00:00Z', 'expired', 'C1:1.1')
+    assert.equal(ownerMayBeAsked(rows, 'C1:1.1', now), true)
+  })
 })

@@ -866,6 +866,27 @@ describe("a session's Kage tools", () => {
     await s.call('reply', { channel: 'C1', thread_ts: '5.5', text: 'And deploy?', waiting: 'Deploy it?', waiting_on: 'owner' })
     assert.equal(s.ledgers.text('waiting').split('\n').filter(l => l.includes('\topen\t')).length, 2)
   })
+  test('after the owner replied to an ask, a reworded owner ask in that thread is refused and posts nothing', async () => {
+    const s = setup()
+    s.t.onTask(s.task())
+    await s.call('reply', { channel: 'C1', thread_ts: '5.5', text: 'PR?', waiting: 'Open a PR?', waiting_on: 'owner' })
+    s.t.onTask(s.task())
+    const posted = s.posts.length
+    const r = await s.call('reply', { channel: 'C1', thread_ts: '5.5', text: 'Shall I open the PR now?', waiting: 'Open the PR now?', waiting_on: 'owner' })
+    assert.equal(r.isError, true)
+    assert.match(r.text, /already asked the owner once/)
+    assert.equal(s.posts.length, posted)
+    assert.equal((await s.call('waiting', {})).text, 'nothing is waiting')
+    assert.equal((await s.call('reply', { channel: 'C1', thread_ts: '5.5', text: 'Opened the PR.' })).isError, undefined)
+  })
+  test('a teammate ask in a thread where the owner replied still goes through', async () => {
+    const s = setup()
+    s.t.onTask(s.task())
+    await s.call('reply', { channel: 'C1', thread_ts: '5.5', text: 'PR?', waiting: 'Open a PR?', waiting_on: 'owner' })
+    s.t.onTask(s.task())
+    const r = await s.call('reply', { channel: 'C1', thread_ts: '5.5', text: 'Can you check?', waiting: 'Check', waiting_on: 'UTEAM0001' })
+    assert.equal(r.isError, undefined)
+  })
   test('a scheduled run in the thread does not answer its open question', async () => {
     const s = setup()
     s.t.onTask(s.task())

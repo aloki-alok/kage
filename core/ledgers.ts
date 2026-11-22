@@ -15,6 +15,20 @@ export function openWaiting(tsv: string): { when: string; thread: string; link: 
   return [...open.values()].flat()
 }
 
+const OWNER_ASK_ONCE_MS = 24 * 3600_000
+
+export function ownerMayBeAsked(tsv: string, thread: string, now: number, windowMs = OWNER_ASK_ONCE_MS): boolean {
+  let asked = false
+  for (const line of tsv.split('\n')) {
+    const [when = '', status, key = ''] = line.split('\t')
+    if (key !== thread) continue
+    if (status === 'open') asked = true
+    else if (status === 'answered' && asked && now - Date.parse(when) < windowMs) return false
+    else if (status === 'answered' || status === 'expired') asked = false
+  }
+  return true
+}
+
 const ANSWERS = new Set(['bot', 'owner', 'card'])
 
 export function unanswered(tasks: Task[], posted: string): Task[] {
