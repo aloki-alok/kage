@@ -1,6 +1,6 @@
 import { describe, test } from 'node:test'
 import assert from 'node:assert/strict'
-import { cardVerdicts, reviewable, reviewAsk, reviewEvidence, reviewRuns } from '../held-review.ts'
+import { cardVerdictCells, cardVerdicts, reviewable, reviewAsk, reviewEvidence, reviewRuns } from '../held-review.ts'
 
 describe('the reviewer of a held step', () => {
   test('may take only steps that stay on the team\'s side: a local delete and its own branches', () => {
@@ -42,8 +42,15 @@ describe('the evidence a reviewer must earn before it releases a kind of step', 
     assert.deepEqual(reviewEvidence(cardVerdicts(ledger([...runs(19, 2), row(2, 'deny')])), KIND, NOW, BAR), { earned: false, agree: 19, total: 20 })
     assert.deepEqual(reviewEvidence(cardVerdicts(ledger(runs(60, 2))), KIND, NOW, BAR), { earned: true, agree: 60, total: 60 })
   })
-  test('the same 60 lapse once the newest is older than the evidence window', () => {
-    assert.deepEqual(reviewEvidence(cardVerdicts(ledger(runs(60, 31))), KIND, NOW, BAR), { earned: false, agree: 0, total: 0 })
+  test('the same 60 lapse once the newest is older than the evidence window, and one fresh verdict renews them all', () => {
+    assert.deepEqual(reviewEvidence(cardVerdicts(ledger(runs(60, 31))), KIND, NOW, BAR), { earned: false, agree: 60, total: 60 })
+    assert.deepEqual(reviewEvidence(cardVerdicts(ledger([...runs(30, 31), ...runs(30, 2)])), KIND, NOW, BAR), { earned: true, agree: 60, total: 60 })
+  })
+  test('a verdict row the hub writes reads back as the same verdict', () => {
+    const at = new Date(NOW).toISOString()
+    const cells = cardVerdictCells({ key: 'C0TEST1:5.5#side-kagelet-ops', tool: 'Bash', kind: KIND, fp: 'abcdef012345', owner: 'deny', review: 'run' })
+    assert.deepEqual(cardVerdicts(`${[at, ...cells].join('\t')}\n`), [{ at: NOW, kind: KIND, owner: 'deny', review: 'run' }])
+    assert.deepEqual(cardVerdicts(`${[at, ...cardVerdictCells({ key: 'k', tool: 'Bash', kind: KIND, fp: 'f', owner: 'allow' })].join('\t')}\n`)[0]?.review, '')
   })
   test('only run calls the owner answered count: hold calls, unreviewed and expired cards, and other kinds do not', () => {
     const noise = [row(1, 'allow', 'hold'), row(1, 'deny', ''), row(1, 'expired'), row(1, 'allow', 'run', 'a git step that drops work')]

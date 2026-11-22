@@ -32,6 +32,8 @@ export const reviewRuns = (out: string) => /^RUN\.?$/.test((out.trim().split('\n
 type CardVerdictRow = { at: number; kind: string; owner: string; review: string }
 type ReviewBar = { minVerdicts: number; minAgreement: number; evidenceDays: number }
 
+export const cardVerdictCells = (v: { key: string; tool: string; kind: string; fp: string; owner: string; review?: string }) => [v.key, v.tool, v.kind, v.fp, v.owner, v.review ?? '']
+
 export const cardVerdicts = (tsv: string): CardVerdictRow[] => tsv.split('\n').map(l => l.split('\t'))
   .filter(c => c.length >= 7 && Number.isFinite(Date.parse(c[0]!)))
   .map(c => ({ at: Date.parse(c[0]!), kind: c[3]!, owner: c[5]!, review: c[6]! }))
@@ -43,8 +45,8 @@ const wilsonLower = (agree: number, total: number) => {
 }
 
 export function reviewEvidence(rows: CardVerdictRow[], kind: string, now: number, bar: ReviewBar) {
-  const since = now - bar.evidenceDays * 86_400_000
-  const judged = rows.filter(r => r.kind === kind && r.review === 'run' && r.at >= since && ['allow', 'always', 'deny'].includes(r.owner))
+  const judged = rows.filter(r => r.kind === kind && r.review === 'run' && ['allow', 'always', 'deny'].includes(r.owner))
   const agree = judged.filter(r => r.owner !== 'deny').length, total = judged.length
-  return { earned: total > 0 && total >= bar.minVerdicts && wilsonLower(agree, total) >= bar.minAgreement, agree, total }
+  const fresh = judged.some(r => r.at >= now - bar.evidenceDays * 86_400_000)
+  return { earned: fresh && total >= bar.minVerdicts && wilsonLower(agree, total) >= bar.minAgreement, agree, total }
 }

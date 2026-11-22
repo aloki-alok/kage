@@ -86,8 +86,8 @@ export function hubKagelets(o: {
     event: (key, detail) => o.runs.emit(key, 'held', detail),
     today: () => new Date().toISOString().slice(0, 10),
     evidence: kind => {
-      const bar = { minVerdicts: kl.reviewMinVerdicts || 20, minAgreement: kl.reviewMinAgreement ?? 0.95, evidenceDays: kl.reviewEvidenceDays || 30 }, now = Date.now()
-      return reviewEvidence(cardVerdicts(ledgers.text('card-verdicts', new Date(now - bar.evidenceDays * 86_400_000).toISOString())), kind, now, bar)
+      const bar = { minVerdicts: kl.reviewMinVerdicts || 20, minAgreement: kl.reviewMinAgreement ?? 0.95, evidenceDays: kl.reviewEvidenceDays || 30 }
+      return reviewEvidence(cardVerdicts(ledgers.text('card-verdicts')), kind, Date.now(), bar)
     },
   })
   const alwaysAllow = (key: string, tool: string, input: Record<string, unknown>) => {
