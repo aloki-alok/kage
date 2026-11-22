@@ -139,6 +139,14 @@ Each night, while every session is quiet, Kage reads the day's threads for lesso
 | `afk.on` | on | `false` turns AFK mode off. On, tell Kage you are stepping away in any words ("cover for me, lunch for an hour"). It watches threads that mention or DM you and stays quiet unless you are mentioned again or it is urgent. A P0 phones you through `connectors.call.command`. Say you are back in any words for the summary. Threads run as tmux panes cannot switch it yet. |
 | `afk.model` | `sonnet` | The model the stand-in uses. |
 
+## Screen
+
+How Kage sees and acts on your Mac (`screen_shot`, `screen_act`, macOS only).
+
+| Setting | Default | Effect |
+|---|---|---|
+| `screen.shotLongSide` | `1280` | The longest side, in pixels, of a picture `screen_shot` takes of your Mac. The model sees a larger picture shrunk, and aims worse on it, so Kage keeps pictures this size and maps each `screen_act` point back to the screen. |
+
 ## Telemetry
 
 Counts and failure codes from this install, sent to an OpenTelemetry (OTLP) endpoint so the people who build Kage see what breaks. Message text, prompts, replies and tool input are never sent. Kage's own records hold no names, ids or paths. Claude Code's records also carry the signed-in account's email and ids, and the Kage receiver drops them before storing (ADR 0019). `kage telemetry` says whether it is on, and `kage telemetry show` prints the exact next batch.

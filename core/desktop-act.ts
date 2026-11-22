@@ -10,6 +10,7 @@ export type DesktopAct =
   | { action: 'key'; keys: string }
 export type Under = { app: string; role: string; label: string }
 export type Verdict = { run: true } | { ask: string } | { blocked: string }
+export type Picture = { width: number; height: number; pointsWide: number; pointsHigh: number }
 
 const MODS = ['ctrl', 'alt', 'shift', 'cmd'] as const
 const MOD_NAMES: Record<string, (typeof MODS)[number]> = { ctrl: 'ctrl', control: 'ctrl', alt: 'alt', option: 'alt', opt: 'alt', shift: 'shift', cmd: 'cmd', command: 'cmd' }
@@ -58,6 +59,13 @@ export function parseDesktopAct(a: Record<string, unknown>): DesktopAct | { erro
     }
     default: return { error: 'action is click, move, drag, scroll, type or key' }
   }
+}
+
+export function onScreen(a: DesktopAct, p: Picture): DesktopAct {
+  if (!('x' in a)) return a
+  const kx = p.pointsWide / p.width, ky = p.pointsHigh / p.height
+  const moved = { ...a, x: a.x * kx, y: a.y * ky }
+  return moved.action === 'drag' ? { ...moved, path: moved.path.map(([x, y]) => [x * kx, y * ky] as const) } : moved
 }
 
 export function parseDesktopSteps(steps: unknown): DesktopAct[] | { error: string } {

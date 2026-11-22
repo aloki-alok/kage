@@ -1,6 +1,6 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { desktopVerdict, parseDesktopAct, parseDesktopSteps, type DesktopAct, type Under } from '../desktop-act.ts'
+import { desktopVerdict, onScreen, parseDesktopAct, parseDesktopSteps, type DesktopAct, type Under } from '../desktop-act.ts'
 
 const at = (label: string, o: Partial<Under> = {}): Under => ({ app: 'Finder', role: 'AXButton', label, ...o })
 const click = (x = 10, y = 10): DesktopAct => ({ action: 'click', x, y, button: 'left', count: 1 })
@@ -126,4 +126,14 @@ test('a list of steps is checked whole before any runs: one bad step names its n
   assert.match((bad as { error: string }).error, /step 2/)
   for (const list of [[], Array.from({ length: 101 }, () => ({ action: 'move', x: 1, y: 1 })), 'move', [null]])
     assert.ok('error' in parseDesktopSteps(list), JSON.stringify(list).slice(0, 40))
+})
+
+test('a point on the picture maps to screen points, on a Retina and a plain display (#508)', () => {
+  const retina = { width: 1280, height: 800, pointsWide: 1440, pointsHigh: 900 }
+  assert.deepEqual(onScreen(click(640, 400), retina), click(720, 450))
+  const plain = { width: 1280, height: 720, pointsWide: 1920, pointsHigh: 1080 }
+  assert.deepEqual(onScreen({ action: 'scroll', x: 1280, y: 720, dy: -3, dx: 0 }, plain), { action: 'scroll', x: 1920, y: 1080, dy: -3, dx: 0 })
+  assert.deepEqual(onScreen({ action: 'drag', x: 0, y: 0, path: [[640, 360], [100, 50]] }, plain), { action: 'drag', x: 0, y: 0, path: [[960, 540], [150, 75]] })
+  assert.deepEqual(onScreen({ action: 'type', text: 'hi' }, retina), { action: 'type', text: 'hi' })
+  assert.deepEqual(onScreen(click(100, 100), { width: 1000, height: 500, pointsWide: 2000, pointsHigh: 1500 }), click(200, 300))
 })
