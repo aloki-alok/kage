@@ -46,8 +46,16 @@ export function githubOwner(o: { login?: string; userId?: number; me?: { login: 
   return { login, ...(userId !== undefined && { userId }) }
 }
 
-export const appManifest = (o: { login: string; hook: string; back: string }) => ({
-  name: `Kage ${o.login.toLowerCase()}`, url: 'https://github.com/aloki-alok/kage', public: true,
+export function appName(typed: string): { name: string } | { problem: string } {
+  const name = typed.trim().replace(/^@/, '').toLowerCase()
+  if (!name) return { problem: 'Type the name people will tag.' }
+  if (name.length > 34) return { problem: 'GitHub allows at most 34 characters.' }
+  if (!/^[a-z0-9]+(-[a-z0-9]+)*$/.test(name)) return { problem: 'Use letters, digits and single hyphens inside the name.' }
+  return { name }
+}
+
+export const appManifest = (o: { name: string; hook: string; back: string }) => ({
+  name: o.name, url: 'https://github.com/aloki-alok/kage', public: true,
   hook_attributes: { url: o.hook, active: true },
   redirect_url: o.back,
   default_permissions: { issues: 'write', pull_requests: 'write', contents: 'read', metadata: 'read' },

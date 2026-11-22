@@ -146,12 +146,12 @@ Slack is the main channel. Email, voice calls and tags on GitHub can reach the s
 ### Let people tag Kage on GitHub
 
 ```sh
-kage connect github              # makes the Kage app on GitHub: you click Create, then Install
+kage connect github              # makes the Kage app on GitHub: you name it, click Create, then Install
 kage connect github --org acme   # lets it work in an org too: install it there on the page it opens
 kage connect github off          # turns it off; the app stays on GitHub until you delete it there
 ```
 
-Kage gets its own GitHub App, named for you, and people tag it like a person: `@kage-<you>`. Only a tag wakes it: a review request, an assignment or a failed check does not. Each tag opens one thread in your DM per issue or pull request. A tag from you runs as you, and Kage still asks before it pushes, comments or changes anything. A tag from anyone else the repo lists as owner, member or collaborator may only read and answer, and the answer comes to you. A tag from anyone else is ignored, and so is an install of the app on an account you did not allow.
+Kage gets its own GitHub App, with a name you pick, and people tag it like a person: `@hey-kage`. The setup page says if a name is free, another app, or someone's account (a tag would ping them). To rename it later, change the name in the app's settings on GitHub, then run `kage set connectors.github.app.slug <new name>`. Only a tag wakes it: a review request, an assignment or a failed check does not. Each tag opens one thread in your DM per issue or pull request. A tag from you runs as you, and Kage still asks before it pushes, comments or changes anything. A tag from anyone else the repo lists as owner, member or collaborator may only read and answer, and the answer comes to you. A tag from anyone else is ignored, and so is an install of the app on an account you did not allow.
 
 GitHub must reach your machine, so it needs `kage tunnel on` and Funnel first (settings, "Reach Kage from other machines"). GitHub is optional, and nothing else in Kage needs it.
 
