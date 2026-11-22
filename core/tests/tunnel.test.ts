@@ -84,8 +84,23 @@ describe('one tunnel for every Kage port another machine needs', () => {
   test('what Kage records as its own is what it serves now: each wanted path, and an old one it failed to close', () => {
     const now = serving({ funnel: true, paths: { '/github': KAGE['/github'], '/hook': KAGE['/hook'], '/app': 'http://127.0.0.1:3000', '/kage-funnel-check': 'http://127.0.0.1:9' } })
     const s = owning({ config: { connectors: { github: { login: 'me' } } } as Config, secrets: { githubSecret: 's' } as Secrets }, { '/hook': KAGE['/hook'] })
-    assert.deepEqual(tunnelRecord(s, now, 'on'), { '/github': KAGE['/github'], '/hook': KAGE['/hook'] })
-    assert.deepEqual(tunnelRecord(s, now, 'off'), { '/hook': KAGE['/hook'] })
+    assert.deepEqual(tunnelRecord(s, now, { '/github': KAGE['/github'] }), { '/github': KAGE['/github'], '/hook': KAGE['/hook'] })
+    assert.deepEqual(tunnelRecord(s, now, {}), { '/hook': KAGE['/hook'] })
+  })
+
+  test('a handler the owner made is never recorded as Kage\'s, even when it points where Kage would', () => {
+    const theirs = serving({ paths: { '/mcp': KAGE['/mcp'] } })
+    assert.deepEqual(tunnelRecord(all, theirs, {}), {})
+  })
+
+  test('when Tailscale\'s state cannot be read after a run, the record keeps what Kage owned and what it set out to open', () => {
+    const s = owning(none, { '/hook': KAGE['/hook'] })
+    assert.deepEqual(tunnelRecord(s, undefined, { '/github': KAGE['/github'] }), { '/hook': KAGE['/hook'], '/github': KAGE['/github'] })
+  })
+
+  test('the plan names each path it opens with its target, so Kage records them before it runs', () => {
+    assert.deepEqual(plan(all, {}).opens, { '/github': KAGE['/github'], '/mcp': KAGE['/mcp'], '/voice': KAGE['/voice'], '/hook': KAGE['/hook'] })
+    assert.deepEqual(plan(all, {}, { funnel: false }).opens, {})
   })
 
   test('with Funnel not allowed, the public routes wait and the tailnet route still opens', () => {

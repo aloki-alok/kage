@@ -13,6 +13,8 @@ const to = arg as 'on' | 'off'
 const bin = tailscaleBin() ?? die('Tailscale is not installed. Get it at https://tailscale.com/download, sign in, then run kage tunnel on again.')
 const before = tailscaleState(bin)
 if (!before.running) die('Tailscale is not running. Run tailscale up, then kage tunnel on again.')
+const unread = (did: string) => `Kage could not read what Tailscale serves (tailscale serve status --json failed), so it ${did}. Run kage tunnel ${to} again.`
+if (before.serve === undefined) die(unread('changed nothing'))
 const said = (e: unknown) => ['stdout', 'stderr'].map(k => String((e as Record<string, unknown>)[k] ?? '')).join('\n').split('\n').map(l => l.trim()).filter(l => l && !l.startsWith('Warning:'))
 const funnelLink = () => {
   const check = ['--https=8443', '--set-path=/kage-funnel-check']
@@ -26,6 +28,8 @@ const funnelLink = () => {
 
 const s = settings()
 const plan = tunnelPlan(s, { funnel: before.funnel, status: before.serve }, to)
+const save = (routes: Record<string, string>) => updateConfig(ENV_FILE, c => ({ ...c, tunnel: { provider: to === 'on' ? 'tailscale' : 'off', ...Object.keys(routes).length && { routes } } }))
+save(tunnelRecord(s, undefined, plan.opens))
 const failed: string[] = []
 for (const args of plan.run) {
   try { tailscaleRun(bin, args) } catch (e) { failed.push(`tailscale ${args.join(' ')}: ${said(e).join(' ') || (e as Error).message}`) }
@@ -35,13 +39,14 @@ if (plan.waitsForFunnel && !plan.foreign.length) {
   const link = funnelLink()
   failed.push(`Funnel is not allowed for this machine, so the public routes stay closed. Allow it${link ? ` at ${link}` : ' in the Tailscale admin page'}, then run kage tunnel on again.`)
 }
-const now = tailscaleState(bin), wanted = to === 'on' ? tunnelRoutes(s) : [], routes = tunnelRecord(s, now.serve, to)
-updateConfig(ENV_FILE, c => ({ ...c, tunnel: { provider: to === 'on' ? 'tailscale' : 'off', ...Object.keys(routes).length && { routes } } }))
-const left = to === 'off' ? Object.keys(routes) : []
+const now = tailscaleState(bin), wanted = to === 'on' ? tunnelRoutes(s) : [], routes = tunnelRecord(s, now.serve, plan.opens)
+save(routes)
+if (now.serve === undefined) failed.push(unread('kept every route it may have opened in its record'))
+const left = to === 'off' && now.serve !== undefined ? Object.keys(routes) : []
 for (const p of left) failed.push(`Kage could not close ${p} on port 8443. Run tailscale serve --https=8443 --set-path=${p} off.`)
 
-for (const line of tunnelLines({ provider: 'tailscale', installed: true, ...now, routes: wanted, status: now.serve })) console.log(render(line))
-if (to === 'off' && !left.length) console.log('Every Kage route is closed.')
-else if (!wanted.length) console.log('No connector that is on needs a route. Run kage tunnel on again after you turn one on.')
+if (now.serve !== undefined) for (const line of tunnelLines({ provider: 'tailscale', installed: true, ...now, routes: wanted, status: now.serve })) console.log(render(line))
+if (to === 'off' && now.serve !== undefined && !left.length) console.log('Every Kage route is closed.')
+else if (to === 'on' && !wanted.length) console.log('No connector that is on needs a route. Run kage tunnel on again after you turn one on.')
 for (const f of failed) console.error(f)
 process.exit(failed.length ? 1 : 0)

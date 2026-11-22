@@ -28,31 +28,33 @@ export function tunnelRoutes({ config, secrets }: { config: Config; secrets: Sec
 
 const CHECK_PATH = '/kage-funnel-check'
 
-function served(settings: { config: Config; secrets: Secrets }, status: unknown, to: 'on' | 'off') {
+function ownership(settings: { config: Config }, status: unknown) {
   const s = (status ?? {}) as ServeStatus, web = kageWeb(s), handlers = web?.[1].Handlers ?? {}
   const recorded = settings.config.tunnel?.routes ?? {}
-  const wanted = to === 'on' ? tunnelRoutes(settings) : []
-  const want = new Map(wanted.flatMap(r => r.reach === 'internet' ? r.paths.map(p => [p, target(r.port, p)] as const) : []))
   const owned = (p: string, h: { Proxy?: string }) => p === CHECK_PATH || (OWN_PATHS.includes(p) && recorded[p] === h.Proxy)
-  return { s, handlers, want, wanted, owned, funnelOn: !!web && s.AllowFunnel?.[web[0]] === true }
+  return { s, web, handlers, recorded, owned }
 }
 
 export function tunnelPlan(settings: { config: Config; secrets: Secrets }, now: { funnel: boolean; status: unknown }, to: 'on' | 'off') {
-  const { s, handlers, want, wanted, owned, funnelOn } = served(settings, now.status, to)
+  const { s, web, handlers, owned } = ownership(settings, now.status)
+  const wanted = to === 'on' ? tunnelRoutes(settings) : []
+  const want = new Map(wanted.flatMap(r => r.reach === 'internet' ? r.paths.map(p => [p, target(r.port, p)] as const) : []))
+  const funnelOn = !!web && s.AllowFunnel?.[web[0]] === true
   const foreign = Object.entries(handlers).filter(([p, h]) => !owned(p, h)).map(([p]) => p)
   const close = Object.entries(handlers).filter(([p, h]) => owned(p, h) && want.get(p) !== h.Proxy).map(([p]) => ['serve', `--https=${PUBLIC_PORT}`, `--set-path=${p}`, 'off'])
-  const open = foreign.length || !now.funnel ? [] : [...want].filter(([p, t]) => handlers[p]?.Proxy !== t || !funnelOn)
-    .map(([p, t]) => ['funnel', '--bg', '--yes', `--https=${PUBLIC_PORT}`, `--set-path=${p}`, t])
+  const opens = Object.fromEntries(foreign.length || !now.funnel ? [] : [...want].filter(([p, t]) => handlers[p]?.Proxy !== t || !funnelOn))
+  const open = Object.entries(opens).map(([p, t]) => ['funnel', '--bg', '--yes', `--https=${PUBLIC_PORT}`, `--set-path=${p}`, t])
   const meetingPort = settings.config.connectors?.meeting?.port || 8790, meetingWanted = wanted.some(r => r.name === 'meeting')
   const forwarded = s.TCP?.[meetingPort]?.TCPForward === local(meetingPort)
   const tcp = meetingWanted && !forwarded ? [['serve', '--bg', '--yes', `--tcp=${meetingPort}`, `tcp://${local(meetingPort)}`]]
     : !meetingWanted && forwarded ? [['serve', `--tcp=${meetingPort}`, 'off']] : []
-  return { run: [...close, ...open, ...tcp], foreign, waitsForFunnel: !now.funnel && want.size > 0 }
+  return { run: [...close, ...open, ...tcp], opens, foreign, waitsForFunnel: !now.funnel && want.size > 0 }
 }
 
-export function tunnelRecord(settings: { config: Config; secrets: Secrets }, status: unknown, to: 'on' | 'off'): Record<string, string> {
-  const { handlers, want, owned } = served(settings, status, to)
-  return Object.fromEntries(Object.entries(handlers).filter(([p, h]) => p !== CHECK_PATH && (want.get(p) === h.Proxy || owned(p, h))).map(([p, h]) => [p, h.Proxy!]))
+export function tunnelRecord(settings: { config: Config }, status: unknown, opened: Record<string, string>): Record<string, string> {
+  const { handlers, recorded, owned } = ownership(settings, status)
+  if (status === undefined) return { ...recorded, ...opened }
+  return Object.fromEntries(Object.entries(handlers).filter(([p, h]) => p !== CHECK_PATH && (owned(p, h) || opened[p] === h.Proxy)).map(([p, h]) => [p, h.Proxy!]))
 }
 
 export function routeStates(routes: TunnelRoute[], status: unknown) {
