@@ -16,6 +16,7 @@ test('each connector gets one line: on or off, when it last heard something, and
     'voice     on · nothing heard since the hub started 35m ago',
     'meetings  off',
     'github    off',
+    'sms       off',
     'jev       off',
   ])
 })
@@ -41,8 +42,8 @@ test('Jev shows its calls and failures since midnight, and a skipped triage is n
   h.see(['answering C1:5.5 from app A0BOT0001: jev needs_reply 0.91 (threshold 0.5)'], start + 4 * MIN)
   h.see(['dropped C1:5.5 from app A0BOT0001: jev does not check this agent'], start + 4 * MIN)
   h.see(['dropped C1:5.5 from U0AAA0001 (app A0BOT0001): loop, too many turns: 5'], start + 4 * MIN)
-  assert.equal(h.lines(start + 5 * MIN)[5], 'jev       on · 3 calls today, 1 failed')
-  assert.equal(h.lines(Date.parse('2026-11-23T00:30:00'))[5], 'jev       on · 0 calls today')
+  assert.equal(h.lines(start + 5 * MIN).at(-1), 'jev       on · 3 calls today, 1 failed')
+  assert.equal(h.lines(Date.parse('2026-11-23T00:30:00')).at(-1), 'jev       on · 0 calls today')
 })
 
 test('a down WhatsApp bridge stays on the line until it is back, past the hour (#256 review)', () => {
@@ -67,4 +68,10 @@ test('lines that name no connector, or name one in passing, change nothing', () 
   h.see([{ not: 'a string' }], start + MIN)
   h.see(['session for whatsapp ended'], start + MIN)
   assert.equal(h.lines(start + 2 * MIN)[1], 'whatsapp  on · nothing heard since the hub started 2m ago')
+})
+
+test('SMS shows on from its start line, and a text in counts as heard', () => {
+  const h = started('sms')
+  h.see(['sms text in'], start + 2 * MIN)
+  assert.equal(h.lines(start + 5 * MIN).find(l => l.startsWith('sms')), 'sms       on · last heard 3m ago')
 })

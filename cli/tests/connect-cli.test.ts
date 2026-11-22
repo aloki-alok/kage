@@ -75,7 +75,7 @@ test('a name that is not a connector, or an off with no switch yet, is refused w
   const w = world({}, { meetingToken: 'm' })
   const bad = w.run(['slack'])
   assert.equal(bad.code, 1)
-  assert.match(bad.out, /github, browser, email, voice, whatsapp or meeting/)
+  assert.match(bad.out, /github, browser, email, voice, whatsapp, meeting or sms/)
   const meeting = w.run(['meeting', 'off'])
   assert.equal(meeting.code, 1)
   assert.deepEqual(w.read('secrets'), { meetingToken: 'm' })
