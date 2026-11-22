@@ -23,16 +23,25 @@ export const pauseLine = (p: Pause, now = Date.now()) => {
   const held = p.held === 0 ? 'No message is held.' : p.held === 1 ? `1 message is held, and it runs ${when}.` : `${p.held} messages are held, and they run ${when}.`
   return p.draining ? `Stopping for a restart or a stop: new messages wait. ${held}` : `Paused by the usage limit until ${clockTime(p.until, now)}. ${held}`
 }
-type Known = { key: string; place: string; lastSeen: number; connector: string }
+type Known = { key: string; place: string; lastSeen: number; connector: string; topic?: string }
 export type State = 'asking' | 'working' | 'starting' | 'watching' | 'queued' | 'held' | 'quiet' | 'closed'
-export type Row = { key: string; place: string; connector: string; state: State; label: string; ageMs: number; next?: number }
+export type Row = { key: string; place: string; connector: string; state: State; label: string; ageMs: number; next?: number; topic?: string }
+export const FOLDED = '+ended'
+
+const ASKER = /^(Task from [^:\n]{1,60}|Teammate task \([^)\n]{0,120}\)|Scheduled check[^:\n]{0,60}|[A-Z][^:\n]{0,40} task[^:\n]{0,60}):\s*/
+const PREAMBLE = /^(Scheduled run of job|Tripwire of job|This job started a new session|Job \w+ woke)\b|^(Before|After|Context):|^<\//
+export function topicOf(firstAsk: string): string | undefined {
+  const body = firstAsk.replace(/^<channel[^>]*>\s*/, '').split('\n').map(l => l.trim()).find(l => l && !l.startsWith('>') && !PREAMBLE.test(l))
+  const words = body?.replace(ASKER, '').replace(/<@[A-Z0-9]+>/g, '').split(/\s+/).filter(Boolean).slice(0, 6)
+  return words?.length ? words.join(' ') : undefined
+}
 
 const MIN = 60_000, HOUR = 60 * MIN, DAY = 24 * HOUR
 const ORDER: State[] = ['asking', 'working', 'starting', 'watching', 'queued', 'held', 'quiet', 'closed']
 const LABEL: Record<State, string> = { asking: 'asks you', working: 'working', starting: 'starting', watching: 'watching', queued: 'queued', held: 'in terminal', quiet: 'quiet', closed: 'closed' }
 const FROM_HUB = { busy: 'working', asking: 'asking', starting: 'starting', watching: 'watching', quiet: 'quiet' } as const
 
-export function boardRows(known: Known[], live: Live | undefined, activity: Map<string, number>, next: Map<string, number>, now: number): { rows: Row[] } {
+export function boardRows(known: Known[], live: Live | undefined, activity: Map<string, number>, next: Map<string, number>, now: number, showEnded = false): { rows: Row[] } {
   const hub = new Map<string, { state: State; quietMs?: number }>()
   for (const l of live?.live ?? []) hub.set(l.key, { state: FROM_HUB[l.state], quietMs: l.quietMs })
   for (const k of live?.waiting ?? []) hub.set(k, { state: 'queued' })
@@ -43,10 +52,13 @@ export function boardRows(known: Known[], live: Live | undefined, activity: Map<
     const state = h?.state ?? 'closed'
     const ageMs = Math.max(0, h?.quietMs ?? now - Math.max(k.lastSeen, activity.get(k.key) ?? 0))
     const n = next.get(k.key)
-    rows.push({ key: k.key, place: k.place, connector: k.connector, state, label: LABEL[state], ageMs, ...(n !== undefined && { next: n }) })
+    rows.push({ key: k.key, place: k.place, connector: k.connector, state, label: LABEL[state], ageMs, ...(n !== undefined && { next: n }), ...(k.topic && { topic: k.topic }) })
   }
   rows.sort((a, b) => ORDER.indexOf(a.state) - ORDER.indexOf(b.state) || a.ageMs - b.ageMs)
-  return { rows }
+  const old = rows.filter(r => r.state === 'closed' && r.ageMs > DAY)
+  if (!old.length) return { rows }
+  const fold: Row = { key: FOLDED, place: showEnded ? `fold ${old.length} ended` : `+${old.length} ended earlier`, connector: '', state: 'closed', label: showEnded ? '⏎ folds' : '⏎ lists', ageMs: old[0]!.ageMs }
+  return { rows: [...showEnded ? rows : rows.filter(r => !old.includes(r)), fold] }
 }
 
 export function ago(ms: number): string {

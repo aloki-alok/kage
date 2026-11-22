@@ -1,10 +1,11 @@
 #!/usr/bin/env node
 import { spawnSync } from 'node:child_process'
 import { existsSync, readFileSync, statSync } from 'node:fs'
+import { topicReader } from './top-topics.ts'
 import { connect, type Socket } from 'node:net'
 import { askHub, CWD, DIR, settings } from './home.ts'
 import { DatabaseSync } from 'node:sqlite'
-import { ago, boardRows, nextRuns, limitLine, pauseLine, watchingNext, whenLabel, type Live, type Row, type State } from '../core/board.ts'
+import { ago, boardRows, FOLDED, nextRuns, limitLine, pauseLine, watchingNext, whenLabel, type Live, type Row, type State } from '../core/board.ts'
 import { transcriptLine } from '../core/transcript.ts'
 import { costRows, openWaiting } from '../core/ledgers.ts'
 import { channels, filterRows, rowAt, WIDE } from '../core/top-layout.ts'
@@ -20,7 +21,7 @@ import { ledgerText } from '../runtime/ledger.ts'
 import { leftoverCount } from './top-leftovers.ts'
 
 const HOME = process.env.HOME!
-const PROJECT = `${HOME}/.claude/projects/${CWD.replace(/[^A-Za-z0-9]/g, '-')}`
+const PROJECT = `${HOME}/.claude/projects/${CWD.replace(/[^A-Za-z0-9]/g, '-')}`, topicFor = topicReader(PROJECT)
 const DB = `${DIR}/kage.db`, SOCK = `${DIR}/router.sock`
 const ONCE = process.argv.includes('--once')
 if (!existsSync(DB)) { console.error(`No ${DB} yet: start Kage first.`); process.exit(1) }
@@ -30,7 +31,7 @@ const threadsQuery = db.prepare(`select s.key, s.claude_id as id, coalesce(c.pla
 
 type Thread = { key: string; id: string; place: string; lastSeen: number; connector: string }
 let live: Live | undefined, liveAt = 0
-let known: Thread[] = []
+let known: Thread[] = [], showEnded = false
 let schedules: ReturnType<typeof schedulesIn> = []
 let next = new Map<string, number>(), nextAt = 0
 let board: Row[] = [], rows: Row[] = []
@@ -103,7 +104,7 @@ function refresh(now: number) {
     const w = watchNext(l.key, now)
     if (w !== undefined && w < (nx.get(l.key) ?? Infinity)) nx.set(l.key, w)
   }
-  board = boardRows(known, live, new Map(known.map(k => [k.key, mtime(k.id)])), nx, now).rows
+  board = boardRows(known.map(k => ({ ...k, topic: topicFor(k.id) })), live, new Map(known.map(k => [k.key, mtime(k.id)])), nx, now, showEnded || !!query).rows
   rows = filterRows(board, query)
   if (!rows.some(r => r.key === selKey)) selKey = rows[0]?.key ?? ''
   if (now - ledgersAt > 3_000) {
@@ -273,7 +274,7 @@ async function act(action: PanelAction, name: string) {
   readKageletRows(Date.now())
 }
 
-function openThread(key: string) { open = key; selKey = key; openAt = Date.now(); mode = 'steps'; follow(key) }
+function openThread(key: string) { if (key === FOLDED) return; open = key; selKey = key; openAt = Date.now(); mode = 'steps'; follow(key) }
 const wide = () => W >= WIDE
 const move = (d: number) => {
   if (tab === 'kagelets') { pick = Math.max(0, Math.min(kagelets.length - 1, pick + d)); readRuns(Date.now()); return }
@@ -317,9 +318,9 @@ async function onKey(k: string) {
     }
   } else if (tab !== 'threads') return
   else if (k === 's') { if (!open && selKey) openThread(selKey); mode = mode === 'steps' ? 'schedules' : 'steps' }
-  else if (k === '\r') { if (selKey) openThread(selKey) }
-  else if (k === 'x' && (open ?? selKey)) confirm = { kind: 'cut', target: open ?? selKey }
-  else if (k === 'a' && (open ?? selKey)) attach(open ?? selKey)
+  else if (k === '\r') { if (selKey === FOLDED) { showEnded = !showEnded; refresh(Date.now()) } else if (selKey) openThread(selKey) }
+  else if (k === 'x' && (open ?? selKey) && (open ?? selKey) !== FOLDED) confirm = { kind: 'cut', target: open ?? selKey }
+  else if (k === 'a' && (open ?? selKey) && (open ?? selKey) !== FOLDED) attach(open ?? selKey)
 }
 
 function onMouse(b: number, x: number, y: number, press: boolean) {

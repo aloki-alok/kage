@@ -1,4 +1,4 @@
-import { ago, whenLabel, type Row } from '../core/board.ts'
+import { ago, FOLDED, whenLabel, type Row } from '../core/board.ts'
 import type { Schedule } from '../core/cron.ts'
 import type { KageletRow } from '../core/kagelets/kagelet.ts'
 import { runLine, shownState, type Run } from '../core/kagelets/view.ts'
@@ -89,7 +89,7 @@ function threadTable(v: View, r: Rect, focus: boolean): { key: string; y: number
   const head = r.y0 + 1
   let y0 = head + 1
   if (v.searching || v.query) { put(r.x0 + 2, head, '/', 'work'); put(r.x0 + 4, head, `${v.query}${v.searching && Math.floor(v.t / 450) % 2 ? '▌' : ''}`, 'hi'); y0 = head + 2 }
-  const cols: [number, string][] = [[cx.place, 'PLACE'], ...(from ? [[cx.from, 'FROM']] as [number, string][] : []), [cx.state, 'STATE'], [cx.now, 'NOW']]
+  const cols: [number, string][] = [[cx.place, 'PLACE'], ...(from ? [[cx.from, 'FROM']] as [number, string][] : []), [cx.state, 'STATE'], [cx.now, 'ABOUT · NOW']]
   if (!(v.searching || v.query)) { for (const [x, h] of cols) put(x, head, h, 'dim'); put(x1 - 4, head, 'AGE', 'dim') }
   const room = r.y1 - y0
   const shown = listRows(v.rows.map(x => x.key), v.selKey, room)
@@ -104,8 +104,9 @@ function threadTable(v: View, r: Rect, focus: boolean): { key: string; y: number
     put(r.x0 + 2, y, row.state === 'working' ? spinner(v.t + s.y * 130) : m.glyph, fg(TONE[m.tone]))
     put(cx.place, y, clip(row.place, 18), fg(row.state === 'asking' || row.state === 'working' ? 'hi' : live ? 'ink' : 'mid'))
     if (from) put(cx.from, y, clip(row.connector, 8), fg('dim'))
-    put(cx.state, y, row.state === 'closed' ? 'ended' : row.label, fg(TONE[m.tone]))
-    const line = row.state === 'watching' ? `next check ${whenLabel(row.next, v.now)}` : v.nowLine(row.key) ?? ''
+    put(cx.state, y, row.key === FOLDED ? row.label : row.state === 'closed' ? 'ended' : row.label, fg(TONE[m.tone]))
+    const step = row.state === 'watching' ? `next check ${whenLabel(row.next, v.now)}` : live ? v.nowLine(row.key) : undefined
+    const line = [row.topic, step].filter(Boolean).join(' · ')
     put(cx.now, y, clip(clean(line), nowW), fg(live ? 'mid' : 'dim'))
     const age = ago(row.ageMs)
     put(x1 - 1 - age.length, y, age, fg('dim'))
