@@ -29,6 +29,11 @@ describe('one tunnel for every Kage port another machine needs', () => {
     assert.deepEqual(tunnelRoutes({ config: { connectors: { github: { login: 'me' } } } as Config, secrets: { githubToken: 't' } as Secrets }), [])
   })
 
+  test('every route Kage could have opened, at its set port, so a connector turned off since loses its route too', () => {
+    const none = { config: { connectors: { github: { port: 9100 } }, tripwires: {} } as Config, secrets: {} as Secrets }
+    assert.deepEqual(tunnelRoutes(none, { all: true }).map(r => `${r.name}:${r.port}`), ['github:9100', 'voice:8787', 'meeting:8790'])
+  })
+
   test('a public route is a funnel on 443 by path that keeps the path; a tailnet route is a serve of its own port; off undoes each', () => {
     const [github, voice, , meeting] = tunnelRoutes(all)
     assert.deepEqual(tailscaleArgs(github!, 'on'), [['funnel', '--bg', '--yes', '--https=443', '--set-path=/github', 'http://127.0.0.1:8789/github']])

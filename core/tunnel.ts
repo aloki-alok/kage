@@ -12,13 +12,13 @@ type ServeStatus = {
 const PUBLIC_PORT = 443
 const local = (port: number) => `127.0.0.1:${port}`
 
-export function tunnelRoutes({ config, secrets }: { config: Config; secrets: Secrets }): TunnelRoute[] {
-  const c = config.connectors, t = config.tripwires
+export function tunnelRoutes({ config, secrets }: { config: Config; secrets: Secrets }, o: { all?: boolean } = {}): TunnelRoute[] {
+  const c = config.connectors, t = config.tripwires, on = (x: boolean) => o.all || x
   const routes: (TunnelRoute | false)[] = [
-    !!secrets.githubSecret && !!c?.github?.login && { name: 'github', port: c.github.port || 8789, paths: ['/github'], reach: 'internet' },
-    !!secrets.voiceToken && c?.voice?.on !== false && { name: 'voice', port: c?.voice?.port || 8787, paths: ['/mcp', '/voice'], reach: 'internet' },
-    !!t?.hookPort && t.on !== false && { name: 'hooks', port: t.hookPort, paths: ['/hook'], reach: 'internet' },
-    !!secrets.meetingToken && { name: 'meeting', port: c?.meeting?.port || 8790, paths: [], reach: 'tailnet' },
+    on(!!secrets.githubSecret && !!c?.github?.login) && { name: 'github', port: c?.github?.port || 8789, paths: ['/github'], reach: 'internet' },
+    on(!!secrets.voiceToken && c?.voice?.on !== false) && { name: 'voice', port: c?.voice?.port || 8787, paths: ['/mcp', '/voice'], reach: 'internet' },
+    !!t?.hookPort && on(t.on !== false) && { name: 'hooks', port: t.hookPort, paths: ['/hook'], reach: 'internet' },
+    on(!!secrets.meetingToken) && { name: 'meeting', port: c?.meeting?.port || 8790, paths: [], reach: 'tailnet' },
   ]
   return routes.filter(r => r !== false)
 }
