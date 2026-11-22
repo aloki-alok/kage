@@ -28,3 +28,25 @@ export function reviewAsk(o: { kagelet: string; job: string; objective?: string;
 }
 
 export const reviewRuns = (out: string) => /^RUN\.?$/.test((out.trim().split('\n')[0] ?? '').trim())
+
+type CardVerdictRow = { at: number; kind: string; owner: string; review: string }
+type ReviewBar = { minVerdicts: number; minAgreement: number; evidenceDays: number }
+
+export const cardVerdictCells = (v: { key: string; tool: string; kind: string; fp: string; owner: string; review?: string }) => [v.key, v.tool, v.kind, v.fp, v.owner, v.review ?? '']
+
+export const cardVerdicts = (tsv: string): CardVerdictRow[] => tsv.split('\n').map(l => l.split('\t'))
+  .filter(c => c.length >= 7 && Number.isFinite(Date.parse(c[0]!)))
+  .map(c => ({ at: Date.parse(c[0]!), kind: c[3]!, owner: c[5]!, review: c[6]! }))
+
+const Z_ONE_SIDED_95 = 1.645
+const wilsonLower = (agree: number, total: number) => {
+  const p = agree / total, z2 = Z_ONE_SIDED_95 ** 2
+  return (p + z2 / (2 * total) - Z_ONE_SIDED_95 * Math.sqrt(p * (1 - p) / total + z2 / (4 * total * total))) / (1 + z2 / total)
+}
+
+export function reviewEvidence(rows: CardVerdictRow[], kind: string, now: number, bar: ReviewBar) {
+  const judged = rows.filter(r => r.kind === kind && r.review === 'run' && ['allow', 'always', 'deny'].includes(r.owner))
+  const agree = judged.filter(r => r.owner !== 'deny').length, total = judged.length
+  const fresh = judged.some(r => r.at >= now - bar.evidenceDays * 86_400_000)
+  return { earned: fresh && total >= bar.minVerdicts && wilsonLower(agree, total) >= bar.minAgreement, agree, total }
+}

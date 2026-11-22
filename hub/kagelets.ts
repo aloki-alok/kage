@@ -19,6 +19,7 @@ import { kageletNeeds } from '../runtime/kagelets/needs.ts'
 import { kageletRoutes } from '../runtime/kagelets/routes.ts'
 import { kageletReview } from '../runtime/kagelets/review.ts'
 import { claudeOnce, emptyRoom } from '../runtime/claude-once.ts'
+import { cardVerdicts, reviewEvidence } from '../core/held-review.ts'
 import { syncKagelets } from '../runtime/kagelets/sync.ts'
 import type { Ledgers, runEvents } from '../runtime/ledger.ts'
 import type { Store } from '../runtime/store.ts'
@@ -84,6 +85,10 @@ export function hubKagelets(o: {
     ask: a => claudeOnce({ ...a, cwd: emptyRoom(o.dir), tools: '', timeoutMs: 30_000 }),
     event: (key, detail) => o.runs.emit(key, 'held', detail),
     today: () => new Date().toISOString().slice(0, 10),
+    evidence: kind => {
+      const bar = { minVerdicts: kl.reviewMinVerdicts || 20, minAgreement: kl.reviewMinAgreement ?? 0.95, evidenceDays: kl.reviewEvidenceDays || 30 }
+      return reviewEvidence(cardVerdicts(ledgers.text('card-verdicts')), kind, Date.now(), bar)
+    },
   })
   const alwaysAllow = (key: string, tool: string, input: Record<string, unknown>) => {
     const k = tool === 'Bash' ? parsed().find(x => x.key === key) : undefined, f = k && readKagelets(KAGELETS).find(x => x.name === k.name)

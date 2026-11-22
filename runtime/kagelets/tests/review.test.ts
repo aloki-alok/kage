@@ -4,28 +4,29 @@ import { kageletReview } from '../review.ts'
 
 const KEY = 'C1:5.5#side-kagelet-ops'
 const ops = { name: 'ops', key: KEY, tools: ['all'], job: 'Rebuild the docs.' }
-function setup(o: { release?: 'rules' | 'review' | 'shadow'; perDay?: number; answer?: string; tools?: string[] } = {}) {
-  const asked: string[] = [], events: [string, string][] = []
+function setup(o: { release?: 'rules' | 'review' | 'shadow'; perDay?: number; answer?: string; tools?: string[]; earned?: boolean } = {}) {
+  const asked: string[] = [], events: [string, string][] = [], kinds: string[] = []
   const r = kageletReview({
     settings: () => ({ release: o.release ?? 'review', perDay: o.perDay ?? 10, model: 'haiku' }),
     kagelet: key => key === KEY ? { ...ops, tools: o.tools ?? ops.tools } : undefined,
     ask: async a => { asked.push(a.prompt); return o.answer ?? 'RUN' },
     event: (key, detail) => { events.push([key, detail]) },
     today: () => '2026-11-16',
+    evidence: kind => { kinds.push(kind); return o.earned === false ? { earned: false, agree: 12, total: 12 } : { earned: true, agree: 60, total: 60 } },
   })
-  return { r, asked, events }
+  return { r, asked, events, kinds }
 }
 
 test('at release review, a low-stakes held step the model says RUN to runs, and the event row names the kind, never the command', async () => {
   const s = setup()
   assert.deepEqual(await s.r(KEY, 'rm -rf build'), { release: true, said: 'run' })
   assert.match(s.asked[0]!, /Step: rm -rf build/)
-  assert.deepEqual(s.events, [[KEY, 'released by reviewer: a forced or recursive delete']])
+  assert.deepEqual(s.events, [[KEY, 'released by reviewer: a forced or recursive delete (60 of 60 agree)']])
 })
 test('a HOLD keeps it held, and says so in the event row', async () => {
   const s = setup({ answer: 'HOLD: shared branch' })
   assert.deepEqual(await s.r(KEY, 'git push --force origin feat/a'), { release: false, said: 'hold' })
-  assert.deepEqual(s.events, [[KEY, 'kept by reviewer: a forced push or a branch delete']])
+  assert.deepEqual(s.events, [[KEY, 'kept by reviewer: a forced push or a branch delete (60 of 60 agree)']])
 })
 test('nothing is asked at release rules (the default), for a prod step, for a kagelet without all, or for an unknown lane', async () => {
   for (const [s, key, c] of [[setup({ release: 'rules' }), KEY, 'rm -rf build'], [setup(), KEY, 'kubectl apply -f prod.yaml'], [setup({ tools: ['WebFetch'] }), KEY, 'rm -rf build'], [setup(), 'C9:1.1', 'rm -rf build']] as const) {
@@ -40,7 +41,7 @@ test('past the daily cap per kagelet, nothing more is asked or released that day
   assert.equal(s.asked.length, 2)
 })
 test('a failed model call keeps the step held', async () => {
-  const s = kageletReview({ settings: () => ({ release: 'review', perDay: 10, model: 'haiku' }), kagelet: () => ops, ask: async () => { throw new Error('claude exited 1') }, event: () => {}, today: () => 'd' })
+  const s = kageletReview({ settings: () => ({ release: 'review', perDay: 10, model: 'haiku' }), kagelet: () => ops, ask: async () => { throw new Error('claude exited 1') }, event: () => {}, today: () => 'd', evidence: () => ({ earned: true, agree: 60, total: 60 }) })
   assert.deepEqual(await s(KEY, 'rm -rf build'), { release: false })
 })
 test('parallel calls never pass the daily cap', async () => {
@@ -51,7 +52,7 @@ test('parallel calls never pass the daily cap', async () => {
 })
 test('a HOLD gives its slot back, so only released steps count', async () => {
   let answer = 'HOLD: no'
-  const r = kageletReview({ settings: () => ({ release: 'review', perDay: 1, model: 'haiku' }), kagelet: () => ops, ask: async () => answer, event: () => {}, today: () => 'd' })
+  const r = kageletReview({ settings: () => ({ release: 'review', perDay: 1, model: 'haiku' }), kagelet: () => ops, ask: async () => answer, event: () => {}, today: () => 'd', evidence: () => ({ earned: true, agree: 60, total: 60 }) })
   assert.equal((await r(KEY, 'rm -rf build')).release, false)
   answer = 'RUN'
   assert.equal((await r(KEY, 'rm -rf build')).release, true)
@@ -66,5 +67,16 @@ test('at release shadow, the reviewer gives its verdict but never releases, and 
 test('at release shadow, every ask counts toward the daily cap, since none is a release', async () => {
   const s = setup({ release: 'shadow', perDay: 2, answer: 'HOLD: no' })
   for (let i = 0; i < 3; i++) await s.r(KEY, 'rm -rf build')
+  assert.equal(s.asked.length, 2)
+})
+test('at release review, a run call on a kind with no earned evidence keeps the card and says how far it got', async () => {
+  const s = setup({ earned: false })
+  assert.deepEqual(await s.r(KEY, 'rm -rf build'), { release: false, said: 'run' })
+  assert.deepEqual(s.kinds, ['a forced or recursive delete'])
+  assert.deepEqual(s.events, [[KEY, 'reviewer would run, not yet earned: a forced or recursive delete (12 of 12 agree)']])
+})
+test('an unearned run call keeps its daily slot, so a kagelet that retries cannot ask the model without end', async () => {
+  const s = setup({ earned: false, perDay: 2 })
+  for (let i = 0; i < 5; i++) await s.r(KEY, 'rm -rf build')
   assert.equal(s.asked.length, 2)
 })
