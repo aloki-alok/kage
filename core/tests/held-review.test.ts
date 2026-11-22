@@ -1,6 +1,6 @@
 import { describe, test } from 'node:test'
 import assert from 'node:assert/strict'
-import { reviewable, reviewAsk, reviewRuns } from '../held-review.ts'
+import { cardVerdicts, reviewable, reviewAsk, reviewEvidence, reviewRuns } from '../held-review.ts'
 
 describe('the reviewer of a held step', () => {
   test('may take only steps that stay on the team\'s side: a local delete and its own branches', () => {
@@ -29,5 +29,31 @@ describe('the reviewer of a held step', () => {
     assert.equal(reviewRuns('RUN'), true)
     assert.equal(reviewRuns('RUN.\nbecause'), true)
     for (const out of ['HOLD: prod', 'RUN it, unless prod', 'I think RUN', '', 'run']) assert.equal(reviewRuns(out), false, out)
+  })
+})
+
+describe('the evidence a reviewer must earn before it releases a kind of step', () => {
+  const DAY = 86_400_000, NOW = Date.parse('2026-12-20T00:00:00Z')
+  const KIND = 'a forced or recursive delete', BAR = { minVerdicts: 20, minAgreement: 0.95, evidenceDays: 30 }
+  const row = (ageDays: number, owner: string, review = 'run', kind = KIND) => [new Date(NOW - ageDays * DAY).toISOString(), 'C0TEST1:5.5#side-kagelet-ops', 'Bash', kind, 'abcdef012345', owner, review].join('\t')
+  const ledger = (rows: string[]) => rows.map(r => `${r}\n`).join('')
+  const runs = (n: number, ageDays: number, owner = 'allow') => Array.from({ length: n }, () => row(ageDays, owner))
+  test('19 of 20 agreeing run calls are not enough, and 60 of 60 are', () => {
+    assert.deepEqual(reviewEvidence(cardVerdicts(ledger([...runs(19, 2), row(2, 'deny')])), KIND, NOW, BAR), { earned: false, agree: 19, total: 20 })
+    assert.deepEqual(reviewEvidence(cardVerdicts(ledger(runs(60, 2))), KIND, NOW, BAR), { earned: true, agree: 60, total: 60 })
+  })
+  test('the same 60 lapse once the newest is older than the evidence window', () => {
+    assert.deepEqual(reviewEvidence(cardVerdicts(ledger(runs(60, 31))), KIND, NOW, BAR), { earned: false, agree: 0, total: 0 })
+  })
+  test('only run calls the owner answered count: hold calls, unreviewed and expired cards, and other kinds do not', () => {
+    const noise = [row(1, 'allow', 'hold'), row(1, 'deny', ''), row(1, 'expired'), row(1, 'allow', 'run', 'a git step that drops work')]
+    assert.deepEqual(reviewEvidence(cardVerdicts(ledger([...runs(60, 2), ...noise])), KIND, NOW, BAR), { earned: true, agree: 60, total: 60 })
+  })
+  test('an always counts as agreement, and a single deny among few calls keeps the kind unearned', () => {
+    assert.equal(reviewEvidence(cardVerdicts(ledger(runs(60, 2, 'always'))), KIND, NOW, BAR).earned, true)
+    assert.equal(reviewEvidence(cardVerdicts(ledger([...runs(30, 2), row(2, 'deny')])), KIND, NOW, BAR).earned, false)
+  })
+  test('a malformed row is skipped, never read as agreement', () => {
+    assert.deepEqual(cardVerdicts('not a row\n\t\t\n'), [])
   })
 })

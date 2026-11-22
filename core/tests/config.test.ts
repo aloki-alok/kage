@@ -56,6 +56,9 @@ KAGE_KAGELET_INCIDENTS_PER_HOUR=4
 KAGE_KAGELET_RELEASE=review
 KAGE_KAGELET_REVIEWS_PER_DAY=4
 KAGE_KAGELET_REVIEW_MODEL=haiku
+KAGE_KAGELET_REVIEW_MIN_VERDICTS=20
+KAGE_KAGELET_REVIEW_MIN_AGREEMENT=0.95
+KAGE_KAGELET_REVIEW_EVIDENCE_DAYS=30
 KAGE_KAGELET_DAILY_USD=2.5
 KAGE_KAGELET_OWNERS_MAX=4
 KAGE_KAGELET_TOTAL_DAILY_USD=10
@@ -292,7 +295,7 @@ describe('which keys a session may change on its own', () => {
     for (const k of ['waiting.expireHours', 'top.threadCostBar', 'kagelets.max', 'kagelets.dailyUsd', 'kagelets.totalDailyUsd', 'kagelets.chainUsd', 'kagelets.needsPerDay', 'kagelets.measureMinutes', 'kagelets.trendRuns', 'kagelets.turnStallMinutes', 'kagelets.incidentsPerHour', 'afk.on', 'afk.model', 'harness.jobModel', 'harness.jobFreshEvery', 'harness.jobCarry', 'harness.jobCarryChars', 'harness.rotateTokens', 'harness.jobLaneDefault', 'harness.jobCatchUpHours', 'harness.jobCatchUpStaggerSeconds', 'jev.threshold', 'jev.model', 'tripwires.timeoutSec', 'tripwires.maxKb', 'tripwires.failPing', 'tripwires.patternMax', 'tripwires.lineMax', 'tripwires.maxPosts', 'tripwires.catchUpMax', 'tripwires.seenMax', 'tripwires.hookPerHour', 'connectors.voice.port', 'connectors.voice.max', 'connectors.github.perHour', 'connectors.browser.port', 'connectors.whatsapp.model', 'connectors.whatsapp.hookPort', 'connectors.whatsapp.checkMinutes']) assert.equal(settingTier(k), 'safe', k)
   })
   test('anything that grants power needs the owner: people, a command, a connector on, harness, and any key not listed', () => {
-    for (const k of ['people.teammates', 'people.agents', 'askOtherAgents', 'connectors.call.command', 'kagelets.dbRead.command', 'kagelets.dbRead.maxRows', 'kagelets.release', 'kagelets.reviewsPerDay', 'kagelets.reviewModel', 'connectors.commands', 'connectors.email.on', 'connectors.voice.on', 'connectors.whatsapp.on', 'connectors.whatsapp.hookHost', 'harness.maxSessions', 'harness.sandbox', 'harness.pluginsOff', 'dream.minChats', 'dream.minConfidence', 'dream.maxNew', 'dream.maxOutdated', 'harness.route', 'harness.cwd', 'autoUpdate', 'name', 'connectors.email.address', 'jev.agents', 'connectors.browser.block', 'sharedTools', 'tripwires.on', 'tripwires.env', 'tripwires.hookPort', 'tripwires.hookHost']) assert.equal(settingTier(k), 'power', k)
+    for (const k of ['people.teammates', 'people.agents', 'askOtherAgents', 'connectors.call.command', 'kagelets.dbRead.command', 'kagelets.dbRead.maxRows', 'kagelets.release', 'kagelets.reviewsPerDay', 'kagelets.reviewModel', 'kagelets.reviewMinVerdicts', 'kagelets.reviewMinAgreement', 'kagelets.reviewEvidenceDays', 'connectors.commands', 'connectors.email.on', 'connectors.voice.on', 'connectors.whatsapp.on', 'connectors.whatsapp.hookHost', 'harness.maxSessions', 'harness.sandbox', 'harness.pluginsOff', 'dream.minChats', 'dream.minConfidence', 'dream.maxNew', 'dream.maxOutdated', 'harness.route', 'harness.cwd', 'autoUpdate', 'name', 'connectors.email.address', 'jev.agents', 'connectors.browser.block', 'sharedTools', 'tripwires.on', 'tripwires.env', 'tripwires.hookPort', 'tripwires.hookHost']) assert.equal(settingTier(k), 'power', k)
   })
   test('secrets, the schema version and unplaced env lines are never settable, and a prototype path is refused', () => {
     for (const k of ['secrets', 'secrets.slack.bot', 'version', 'unknown', 'unknown.KAGE_X', '__proto__.x', 'harness.__proto__.x', 'constructor.prototype.x', '']) assert.equal(settingTier(k), 'never', k)
