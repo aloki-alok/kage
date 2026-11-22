@@ -121,6 +121,36 @@ describe('approvals that wait outside a session', () => {
     assert.deepEqual(seen.map(v => v.owner), ['expired'])
   })
 
+  test('a no holds that exact step on that thread for the hold days; a yes, another step or another thread is not held', () => {
+    const DAY = 24 * HOUR
+    const a = deferredApprovals(openStore(':memory:'), undefined, () => 7)
+    const lane = 'C0TEST1:5.5#side-kagelet-ops'
+    a.add({ ...call, key: lane, id: 'h1', input: { command: 'git push --force origin feat/a' } }, 0)
+    a.add({ ...call, key: lane, id: 'h2', input: { command: 'rm -rf build' } }, 0)
+    a.answer('h1', 'deny', 10)
+    a.answer('h2', 'allow', 10)
+    assert.equal(a.deniedAt(lane, 'Bash', { command: 'git push --force origin feat/a' }, DAY), 10)
+    assert.equal(a.deniedAt(lane, 'Bash', { command: 'rm -rf build' }, DAY), undefined)
+    assert.equal(a.deniedAt(lane, 'Bash', { command: 'git push --force origin feat/b' }, DAY), undefined)
+    assert.equal(a.deniedAt('C0TEST1:5.5#side-kagelet-docs', 'Bash', { command: 'git push --force origin feat/a' }, DAY), undefined)
+    assert.equal(deferredApprovals(openStore(':memory:')).deniedAt(lane, 'Bash', { command: 'x' }, 0), undefined)
+    assert.equal(a.deniedAt(lane, 'Bash', { command: 'git push --force origin feat/a' }, 7 * DAY + 10), undefined)
+  })
+
+  test('a hold survives a restart, and lifting a kagelet\'s holds clears only that kagelet\'s', () => {
+    const store = openStore(':memory:')
+    const a = deferredApprovals(store, undefined, () => 7)
+    for (const [id, key] of [['u1', 'C0TEST1:5.5#side-kagelet-ops'], ['u2', 'C0TEST1:5.5#side-kagelet-ops'], ['u3', 'C0TEST1:6.6#side-kagelet-docs']] as const) {
+      a.add({ ...call, id, key, input: { command: `rm -rf ${id}` } }, 0)
+      a.answer(id, 'deny', 1)
+    }
+    const after = deferredApprovals(store, undefined, () => 7)
+    assert.equal(after.unhold('ops'), 2)
+    assert.equal(after.deniedAt('C0TEST1:5.5#side-kagelet-ops', 'Bash', { command: 'rm -rf u1' }, 2), undefined)
+    assert.equal(after.deniedAt('C0TEST1:6.6#side-kagelet-docs', 'Bash', { command: 'rm -rf u3' }, 2), 1)
+    assert.equal(after.unhold('ops'), 0)
+  })
+
   test('a no tells the thread to stop and spends nothing', () => {
     const a = deferredApprovals(openStore(':memory:'))
     a.add(call, 0)
