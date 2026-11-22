@@ -25,3 +25,18 @@ test("the dream's lessons are read from tonight's thread transcripts, and the ni
   assert.match(d.lessons([{ kind: 'new', file: 'x.md', text: 'x', confidence: 0.9, evidence: [{ key: 'CTEST1:1.1', quote: 'keep commits small please' }, { key: 'CTEST3:3.3', quote: 'keep commits small please' }] }]), /CTEST3:3\.3 is not a thread of this dream/)
   assert.equal(readFileSync(join(own, 'merge.md'), 'utf8'), 'Merge commits, never squash.\n')
 })
+
+test("the dream's task lists the files in both memory folders, read by the hub at the start (#563)", async () => {
+  const root = mkdtempSync(join(tmpdir(), 'kage-dreams-')), own = join(root, 'own'), owner = join(root, 'owner')
+  mkdirSync(own); mkdirSync(owner)
+  writeFileSync(join(own, 'kage-note.md'), 'a')
+  writeFileSync(join(owner, 'owner-note.md'), 'b')
+  const sent: string[] = []
+  const d = dreams({ dir: root, code: root, title: 'Kage', botDm: 'DTEST', mem: { own, owner }, project: join(root, 'proj'), kagelets: join(root, 'k'), kmem: {} as never, hasSdk: true,
+    store: openStore(':memory:'), ledgers: { events: () => [], text: () => '' } as never, placeOf: k => k, paused: () => false, quiet: () => true,
+    deliver: (_c, task) => { sent.push(task.content); return 'sent' }, toSession: () => 'sent', limits: () => DREAM_LIMITS })
+  await d.dream(new Date(2026, 10, 4, 3, 0).getTime())
+  assert.equal(sent.length, 1)
+  assert.match(sent[0]!, /kage-note\.md 1 KB/)
+  assert.match(sent[0]!, /owner-note\.md 1 KB/)
+})
