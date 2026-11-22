@@ -4,7 +4,7 @@ import { dirname, join } from 'node:path'
 import { createInterface } from 'node:readline/promises'
 import { validName } from '../core/gate.ts'
 import { fillSlackTokens, typeLines, type SlackSlots } from '../core/secret-prompt.ts'
-import { FLICKER, MARK, WORDMARK, painter } from '../core/voice.ts'
+import { FLICKER, MARK, besideWordmark, painter } from '../core/voice.ts'
 import { envFilePath } from '../runtime/config-files.ts'
 
 const ROOT = join(import.meta.dirname, '..')
@@ -31,11 +31,9 @@ async function ask(prompt: string): Promise<string> {
 }
 
 function header() {
-  const art = WORDMARK.pixel
-  if (screen && (process.stdout.columns ?? 0) >= 2 + Math.max(...art.map(l => [...l].length))) { out(); for (const l of art) out(`  ${v.work(l)}`); out() }
-  out(`${v.work(MARK.kage)} Hi. I'm Kage, and this sets me up in your Slack.`)
-  out(v.dim('   About three minutes: a few clicks in Slack, then one paste.'))
-  out(v.dim('   Ctrl-C stops at any step, and nothing is half done.'))
+  const right = ['', `${v.work(MARK.kage)} Hi, I'm Kage. Let's get me into Slack.`, v.dim('  3 minutes · Ctrl-C quits')]
+  out()
+  for (const line of screen && (process.stdout.columns ?? 0) >= 80 ? besideWordmark(v, right) : right.slice(1)) out(line)
   out()
 }
 
@@ -50,7 +48,7 @@ async function name(): Promise<string> {
     const typed = (await ask(`  ${v.you(MARK.you)}  What do you call me in Slack? ${v.dim('[kage]')} `)).toLowerCase() || 'kage'
     erase(1 + Math.min(tries, 1))
     if (validName(typed)) { done('Name', `@${typed}`); return typed }
-    needs(`${typed} will not work as a Slack name. Use a short lowercase word: letters, digits, dashes.`)
+    needs(`${typed} won't work. Use lowercase letters, digits, dashes.`)
   }
 }
 
@@ -63,11 +61,11 @@ async function slackApp(nameIs: string) {
     `  ${rail}  ${v.dim('1')}  Pick the workspace, then ${v.work('Next')} and ${v.work('Create')}`,
     `  ${rail}  ${v.dim('2')}  Basic Information › App-Level Tokens › ${v.work('Generate')}, scope ${v.work('connections:write')}`,
     `  ${rail}  ${v.dim('3')}  Install App › Install to Workspace › ${v.work('Allow')}`,
-    `  ${rail}  ${v.dim('If Slack asks for approval, a workspace admin gives it once.')}`,
+    `  ${rail}  ${v.dim('Needs approval? A workspace admin gives it once.')}`,
   ]
   for (const l of lines) out(l)
   for (;;) {
-    const a = await ask(`  ${rail}  ${v.you('Press enter when Slack shows the three tokens')} ${v.dim('(o opens it again)')} `)
+    const a = await ask(`  ${rail}  ${v.you('Enter when you see the tokens')} ${v.dim('(o reopens)')} `)
     if (a.toLowerCase() !== 'o') break
     spawnSync(process.platform === 'darwin' ? 'open' : 'xdg-open', [url])
     erase(1)
@@ -98,7 +96,7 @@ function hiddenLines(draw: (typed: string) => void, take: (line: string) => bool
 async function tokens(start: SlackSlots): Promise<SlackSlots> {
   let slots = start, problem = ''
   if (keys) process.stdin.setRawMode(true)
-  needs(`Paste the three tokens here, in any order ${v.dim('(one at a time is fine)')}`)
+  needs(`Paste the three tokens ${v.dim('(any order)')}`)
   if (!keys) {
     while (!full(slots) && piped.length) slots = fillSlackTokens(slots, piped.shift()!).slots
     if (!full(slots)) stop('Need all three tokens: xapp-..., xoxp-..., xoxb-...')
@@ -107,7 +105,7 @@ async function tokens(start: SlackSlots): Promise<SlackSlots> {
   const block = (typed: string) => [
     `  ${rail}  ${slotLine(slots)}`,
     `  ${rail}  ${v.you('›')} ${v.dim('•'.repeat(Math.min(typed.length, 24)))}${typed ? v.dim(` ${typed.length}`) : ''}`,
-    `  ${rail}  ${problem ? v.you(problem) : v.dim('They stay on this computer, in a file only you can read.')}`,
+    `  ${rail}  ${problem ? v.you(problem) : v.dim('They stay on this computer.')}`,
   ]
   let drawn = 0
   const draw = (typed: string) => { erase(drawn); const b = block(typed); for (const l of b) out(l); drawn = b.length }
@@ -125,10 +123,10 @@ async function save(nameIs: string): Promise<void> {
   for (;;) {
     slots = await tokens(slots)
     const r = sh(['save', nameIs], `${slots.app} ${slots.user} ${slots.bot}\n`)
-    if (r.ok) { done('Tokens', `checked with Slack · you are ${r.out.match(/\((U[A-Z0-9]+)\)/)?.[1] ?? 'the owner'}`); return }
+    if (r.ok) { done('Tokens', 'ok'); return }
     const bad = r.out.match(/\((xapp|xoxp|xoxb)-\) rejected/)?.[1]
     if (!keys || !bad) stop(r.out.split('\n').filter(Boolean).pop() ?? 'Slack refused the tokens.')
-    needs(v.you(`Slack refused the ${bad}- token. Copy it again from Slack.`))
+    needs(v.you(`Slack refused the ${bad}- token. Copy it again.`))
     const key = SLOTS.find(([, p]) => p === bad)![0]
     slots = { ...slots, [key]: undefined }
   }
@@ -156,11 +154,11 @@ async function start(nameIs: string) {
   if (!connected(dir)) stop(`Not connected to Slack after ${wait} s. Run kage doctor: it names the fix for each problem.`)
   done(`Connected to Slack. Tag @${nameIs} in any thread to try it.`)
   gap()
-  out(`  ${v.faint('╰')}  ${v.dim('You will see 🥷 when I pick a task up and ⚔️ when it is done.')}`)
+  out(`  ${v.faint('╰')}  ${v.dim('🥷 when I start, ⚔️ when I finish.')}`)
   out()
   out(`     ${v.command('kage top'.padEnd(13))}${v.dim('watch me work')}`)
   out(`     ${v.command('kage doctor'.padEnd(13))}${v.dim('check on me')}`)
-  if (spawnSync('sh', ['-c', 'command -v kage'], { encoding: 'utf8' }).status !== 0) out(`     ${v.dim('To type kage from anywhere, open a new terminal or run ./setup.sh link once.')}`)
+  if (spawnSync('sh', ['-c', 'command -v kage'], { encoding: 'utf8' }).status !== 0) out(`     ${v.dim('Open a new terminal to use kage.')}`)
   out()
 }
 

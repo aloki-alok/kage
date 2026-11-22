@@ -38,16 +38,11 @@ export function spokenStep(step: Step): { text: string; tone: Tone } {
 
 const WORD = ['█▄▀ ▄▀█ █▀▀ █▀▀', '█ █ █▀█ █▄█ ██▄']
 const mirror = (row: string) => row.replace(/[▀▄]/g, c => c === '▀' ? '▄' : '▀')
-const PIXEL = [
-  '██       ▄▄      ▄▄▄▄▄          ▄▄▄▄▄  ▄▄      ▄▄▄▄▄▄',
-  '██     ▄██▀   ▄██▀▀▀▀▀██      ▄██▀▀▀▀▀▄██    ▄██▀▀▀▀██▄',
-  '██   ▄██▀     ▀▀       ██    ██▀      ▀██   ▄█▀      ▀█▄',
-  '██ ▄██▀          ▄▄▄▄▄███    ██        ██   ██▄▄▄▄▄▄▄▄██',
-  '████▀██▄      ▄██▀▀▀▀▀ ██    ██        ██   ██▀▀▀▀▀▀▀▀▀▀',
-  '██▀   ▀██▄    ██       ██    ▀██▄     ███   ▀█▄       ▄▄',
-  '██      ▀██   ▀█▄▄▄▄▄▄▀██▄     ▀█████▀ ██    ▀██▄▄▄▄▄██▀',
-  '▀▀       ▀▀     ▀▀▀▀▀   ▀▀   ▄▄        ██      ▀▀▀▀▀▀',
-  '                             ▀██▄▄▄▄▄▄██▀',
-  '                                ▀▀▀▀▀▀',
-]
-export const WORDMARK = { word: WORD, shadow: [` ${mirror(WORD[1]!)}`, `  ${mirror(WORD[0]!)}`], pixel: PIXEL }
+export const WORDMARK = { word: WORD, shadow: [` ${mirror(WORD[1]!)}`, `  ${mirror(WORD[0]!)}`] }
+
+export function besideWordmark(v: ReturnType<typeof painter>, right: string[]): string[] {
+  const { word, shadow } = WORDMARK
+  const width = Math.max(...[...word, ...shadow].map(l => [...l].length))
+  const art = ['', ...word.map(l => l.padEnd(width)), ...shadow.map((l, i) => i ? v.faint(l.padEnd(width)) : v.dim(l.padEnd(width)))]
+  return Array.from({ length: Math.max(art.length, right.length) }, (_, i) => `${art[i] ?? ' '.repeat(width)}   ${right[i] ?? ''}`.trimEnd())
+}
