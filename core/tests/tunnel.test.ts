@@ -1,6 +1,6 @@
 import { describe, test } from 'node:test'
 import assert from 'node:assert/strict'
-import { routeStates, tunnelLines, tunnelPlan, tunnelRoutes } from '../tunnel.ts'
+import { routeStates, tunnelLines, tunnelPlan, tunnelRecord, tunnelRoutes } from '../tunnel.ts'
 import type { Config, Secrets } from '../config.ts'
 
 const HOST = 'box.tail1.ts.net'
@@ -17,7 +17,9 @@ const serving = (o: { funnel?: boolean; port?: number; paths?: Record<string, st
 }
 const KAGE = { '/github': 'http://127.0.0.1:8789/github', '/mcp': 'http://127.0.0.1:8787/mcp', '/voice': 'http://127.0.0.1:8787/voice', '/hook': 'http://127.0.0.1:8792/hook' }
 const MEETING = { 8790: { TCPForward: '127.0.0.1:8790' } }
+const owning = <T extends { config: Config }>(s: T, routes: Record<string, string> = KAGE): T => ({ ...s, config: { ...s.config, tunnel: { routes } } })
 const plan = (s: typeof all, status: object, o: { funnel?: boolean; to?: 'on' | 'off' } = {}) => tunnelPlan(s, { funnel: o.funnel ?? true, status }, o.to ?? 'on')
+const OFF = (p: string) => ['serve', '--https=8443', `--set-path=${p}`, 'off']
 
 describe('one tunnel for every Kage port another machine needs', () => {
   test('each connector that is on gets one route: what the internet calls is public, the meeting bot stays on the tailnet', () => {
@@ -46,30 +48,44 @@ describe('one tunnel for every Kage port another machine needs', () => {
       ['serve', '--bg', '--yes', '--tcp=8790', 'tcp://127.0.0.1:8790'],
     ])
     assert.deepEqual([p.foreign, p.waitsForFunnel], [[], false])
-    assert.deepEqual(plan(all, { ...serving({ funnel: true, paths: KAGE, tcp: MEETING }) }).run, [])
+    assert.deepEqual(plan(owning(all), serving({ funnel: true, paths: KAGE, tcp: MEETING })).run, [])
   })
 
   test('a route of a connector turned off since is closed, even a hook whose port is now unset, and a route that moved port is opened again', () => {
-    const stale = serving({ funnel: true, paths: { ...KAGE, '/github': 'http://127.0.0.1:9100/github' }, tcp: MEETING })
-    assert.deepEqual(plan({ config: { connectors: { github: { login: 'me' } } } as Config, secrets: { githubSecret: 's' } as Secrets }, stale).run, [
-      ['funnel', '--https=8443', '--set-path=/github', 'off'],
-      ['funnel', '--https=8443', '--set-path=/mcp', 'off'],
-      ['funnel', '--https=8443', '--set-path=/voice', 'off'],
-      ['funnel', '--https=8443', '--set-path=/hook', 'off'],
+    const moved = { ...KAGE, '/github': 'http://127.0.0.1:9100/github' }
+    const stale = serving({ funnel: true, paths: moved, tcp: MEETING })
+    assert.deepEqual(plan(owning({ config: { connectors: { github: { login: 'me' } } } as Config, secrets: { githubSecret: 's' } as Secrets }, moved), stale).run, [
+      OFF('/github'), OFF('/mcp'), OFF('/voice'), OFF('/hook'),
       ['funnel', '--bg', '--yes', '--https=8443', '--set-path=/github', 'http://127.0.0.1:8789/github'],
       ['serve', '--tcp=8790', 'off'],
     ])
   })
 
-  test('the owner\'s own handlers are never touched: nothing on 443, and a TCP forward of the meeting port to somewhere else stays', () => {
+  test('the owner\'s own handlers are never touched: nothing on 443, a TCP forward of the meeting port to somewhere else, or their own /mcp on 8443', () => {
     const owners = { ...serving({ port: 443, paths: { '/mcp': 'http://127.0.0.1:3000/mcp' } }), TCP: { 443: { HTTPS: true }, 8790: { TCPForward: '127.0.0.1:9999' } } }
     assert.deepEqual(plan(none, owners, { to: 'off' }).run, [])
+    const theirs = serving({ paths: { '/mcp': 'http://127.0.0.1:8787/mcp' } })
+    assert.deepEqual(plan(none, theirs, { to: 'off' }).run, [])
+    assert.deepEqual(plan(all, theirs).foreign, ['/mcp'])
   })
 
-  test('a handler on 8443 that Kage did not make stops every public route, because Funnel would make that handler public too', () => {
-    const p = plan(all, serving({ paths: { '/app': 'http://127.0.0.1:3000' }, tcp: MEETING }))
-    assert.deepEqual(p.foreign, ['/app'])
-    assert.equal(p.run.some(a => a[0] === 'funnel'), false)
+  test('a handler on 8443 that Kage did not make stops every opening, because Funnel would make it public too, but Kage still closes its own', () => {
+    const p = plan(owning(none, { '/github': KAGE['/github'] }), serving({ funnel: true, paths: { '/app': 'http://127.0.0.1:3000', '/github': KAGE['/github'] } }), { to: 'off' })
+    assert.deepEqual([p.foreign, p.run], [['/app'], [OFF('/github')]])
+    assert.equal(plan(all, serving({ paths: { '/app': 'http://127.0.0.1:3000' }, tcp: MEETING })).run.some(a => a[0] === 'funnel'), false)
+  })
+
+  test('a route with the right handler but Funnel turned off for the port is opened again, and a leftover check route is always closed', () => {
+    const p = plan(owning(all), serving({ paths: { ...KAGE, '/kage-funnel-check': 'http://127.0.0.1:9' }, tcp: MEETING }))
+    assert.deepEqual(p.run[0], OFF('/kage-funnel-check'))
+    assert.equal(p.run.filter(a => a[0] === 'funnel').length, 4)
+  })
+
+  test('what Kage records as its own is what it serves now: each wanted path, and an old one it failed to close', () => {
+    const now = serving({ funnel: true, paths: { '/github': KAGE['/github'], '/hook': KAGE['/hook'], '/app': 'http://127.0.0.1:3000', '/kage-funnel-check': 'http://127.0.0.1:9' } })
+    const s = owning({ config: { connectors: { github: { login: 'me' } } } as Config, secrets: { githubSecret: 's' } as Secrets }, { '/hook': KAGE['/hook'] })
+    assert.deepEqual(tunnelRecord(s, now, 'on'), { '/github': KAGE['/github'], '/hook': KAGE['/hook'] })
+    assert.deepEqual(tunnelRecord(s, now, 'off'), { '/hook': KAGE['/hook'] })
   })
 
   test('with Funnel not allowed, the public routes wait and the tailnet route still opens', () => {
@@ -78,11 +94,9 @@ describe('one tunnel for every Kage port another machine needs', () => {
     assert.equal(p.waitsForFunnel, true)
   })
 
-  test('off closes every route Kage made and only those', () => {
-    assert.deepEqual(plan(all, serving({ funnel: true, paths: KAGE, tcp: MEETING }), { to: 'off' }).run, [
-      ['funnel', '--https=8443', '--set-path=/github', 'off'], ['funnel', '--https=8443', '--set-path=/mcp', 'off'],
-      ['funnel', '--https=8443', '--set-path=/voice', 'off'], ['funnel', '--https=8443', '--set-path=/hook', 'off'],
-      ['serve', '--tcp=8790', 'off'],
+  test('off closes every route Kage made and only those, with serve so no Funnel check stands in the way', () => {
+    assert.deepEqual(plan(owning(all), serving({ funnel: true, paths: KAGE, tcp: MEETING }), { to: 'off' }).run, [
+      OFF('/github'), OFF('/mcp'), OFF('/voice'), OFF('/hook'), ['serve', '--tcp=8790', 'off'],
     ])
   })
 

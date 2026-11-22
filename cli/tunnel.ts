@@ -2,7 +2,7 @@
 import { execFileSync } from 'node:child_process'
 import { ENV_FILE, settings } from './home.ts'
 import { updateConfig } from '../runtime/config-files.ts'
-import { tunnelLines, tunnelPlan, tunnelRoutes } from '../core/tunnel.ts'
+import { tunnelLines, tunnelPlan, tunnelRecord, tunnelRoutes } from '../core/tunnel.ts'
 import { render } from '../core/doctor.ts'
 import { tailscaleBin, tailscaleRun, tailscaleState } from './tailscale.ts'
 
@@ -35,11 +35,13 @@ if (plan.waitsForFunnel && !plan.foreign.length) {
   const link = funnelLink()
   failed.push(`Funnel is not allowed for this machine, so the public routes stay closed. Allow it${link ? ` at ${link}` : ' in the Tailscale admin page'}, then run kage tunnel on again.`)
 }
-updateConfig(ENV_FILE, c => ({ ...c, tunnel: { ...c.tunnel, provider: to === 'on' ? 'tailscale' : 'off' } }))
+const now = tailscaleState(bin), wanted = to === 'on' ? tunnelRoutes(s) : [], routes = tunnelRecord(s, now.serve, to)
+updateConfig(ENV_FILE, c => ({ ...c, tunnel: { provider: to === 'on' ? 'tailscale' : 'off', ...Object.keys(routes).length && { routes } } }))
+const left = to === 'off' ? Object.keys(routes) : []
+for (const p of left) failed.push(`Kage could not close ${p} on port 8443. Run tailscale serve --https=8443 --set-path=${p} off.`)
 
-const now = tailscaleState(bin), wanted = to === 'on' ? tunnelRoutes(s) : []
 for (const line of tunnelLines({ provider: 'tailscale', installed: true, ...now, routes: wanted, status: now.serve })) console.log(render(line))
-if (to === 'off') console.log('Every Kage route is closed.')
+if (to === 'off' && !left.length) console.log('Every Kage route is closed.')
 else if (!wanted.length) console.log('No connector that is on needs a route. Run kage tunnel on again after you turn one on.')
 for (const f of failed) console.error(f)
 process.exit(failed.length ? 1 : 0)
