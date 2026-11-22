@@ -18,10 +18,6 @@ die() { printf '  %s  %s\n' "$WAIT" "$*" >&2; exit 1; }
 short() { local t='~'; if [[ $1 == "$HOME" || $1 == "$HOME"/* ]]; then printf '%s' "$t${1#"$HOME"}"; else printf '%s' "$1"; fi; }
 
 command -v curl >/dev/null && command -v tar >/dev/null || die "curl and tar are required."
-command -v node >/dev/null || die "Node.js 22.18 or newer is required: https://nodejs.org (macOS: brew install node)"
-node -e 'const [a,b]=process.versions.node.split(".").map(Number); process.exit(a>22||(a===22&&b>=18)?0:1)' \
-  || die "Node $(node -v) is too old: Kage needs 22.18 or newer (macOS: brew upgrade node)."
-command -v claude >/dev/null || die "Claude Code is required: https://code.claude.com/docs/en/quickstart"
 
 mkdir -p "$DIR"
 # KAGE_TARBALL: a local .tar.gz instead of GitHub, for testing the tarball route. KAGE_GIT_URL: the same for git.
@@ -45,6 +41,8 @@ else
   else curl -fsSL "https://codeload.github.com/$REPO/tar.gz/$REF" | tar -xz --strip-components=1 -C "$DIR"; fi
 fi
 
+# setup.sh check holds the one Node and Claude Code check (#120).
+"$DIR/setup.sh" check >/dev/null || exit 1
 npm_out="$(cd "$DIR" && npm ci --omit=dev --no-audit --no-fund --no-update-notifier --loglevel=error 2>&1)" \
   || die "npm ci failed in $(short "$DIR"):"$'\n'"$npm_out"
 say "Packages" "ready"
