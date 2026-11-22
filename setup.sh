@@ -24,6 +24,7 @@ COMMANDS='Set up|setup||Walk through the first setup, one step at a time|kage se
 Set up|check||Check that node 22.18+ and claude are installed (and tmux, for KAGE_RUNTIME=tmux)|kage check
 Set up|app|[name]|Write the Slack app for the name you tag, and open the link that creates it|kage app kage
 Set up|save|[name]|Paste the three Slack tokens into hidden prompts; each is checked with Slack|kage save
+Set up|tunnel|[on or off]|Open a route for each connector another machine calls (GitHub, voice, job hooks on the internet; the meeting bot on your tailnet) through Tailscale, or close them all|kage tunnel on
 Set up|github|[off]|Turn on GitHub: a thread in your DM when someone mentions you, asks for your review, assigns you, reviews your pull request or fails its checks. Uses your gh login and needs no public URL. off turns it off|kage github
 Set up|claude-login||Save the Claude login Kage runs on, so its sessions use their own seat. Get the token with claude setup-token, signed in as Kage|kage claude-login
 Set up|doctor||Check every part, and print the command that fixes each problem|kage doctor
@@ -340,6 +341,7 @@ case "${1:-}" in
   app) cmd_app "${2:-}" ;;
   save) cmd_save "${2:-}" ;;
   github) cmd_github "${2:-}" ;;
+  tunnel) node cli/tunnel.ts "${2:-on}" ;;
   claude-login) cmd_claude_login ;;
   doctor) node cli/doctor/run.ts ;;
   slack) node cli/slack.ts "${2:-}" ;;
