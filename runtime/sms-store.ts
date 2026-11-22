@@ -95,9 +95,9 @@ function sendingIn(db: DatabaseSync, now: Now) {
     where not exists (select 1 from sms_messages m where m.direction = 'out' and m.campaign_id = c.campaign_id and m.person_id = c.person_id)
     order by c.campaign_id, c.rowid limit ?`)
   const claimRow = db.prepare(`insert or ignore into sms_messages (campaign_id, person_id, direction, status, segments, at)
-    select ?1, ?2, 'out', 'claimed', ?3, ?4
-    where not exists (select 1 from sms_optouts where person_id = ?2)
-    and (?1 is null or exists (select 1 from sms_campaigns where id = ?1 and state = 'sending'))`)
+    select c, p, 'out', 'claimed', ?, ? from (select ? as c, ? as p)
+    where not exists (select 1 from sms_optouts where person_id = p)
+    and (c is null or exists (select 1 from sms_campaigns where id = c and state = 'sending'))`)
   const unclaim = db.prepare(`delete from sms_messages where id = ? and status = 'claimed' and provider_id is null`)
   const statusOf = db.prepare('select status from sms_messages where id = ?')
   const byProvider = db.prepare(`select id, status from sms_messages where direction = 'out' and provider_id = ?`)
@@ -109,7 +109,7 @@ function sendingIn(db: DatabaseSync, now: Now) {
       return pending.all(limit) as SmsSend[]
     },
     claim(campaign: number | null, person: number, segments: number): number | undefined {
-      const r = claimRow.run(campaign, person, segments, now())
+      const r = claimRow.run(segments, now(), campaign, person)
       return r.changes ? Number(r.lastInsertRowid) : undefined
     },
     accepted(row: number, providerId: string) {
