@@ -93,7 +93,7 @@ export function autoUpdateNote(f: { off: boolean; git: boolean; branch?: string;
 }
 
 export const chromeLine = (seenMs: number, nowSec: number, staleMs: number, runs?: string, disk?: string): Line =>
-  nowSec * 1000 - seenMs >= staleMs ? fail('Chrome extension not connected: run kage add browser for the steps to load the extension folder in chrome://extensions')
+  nowSec * 1000 - seenMs >= staleMs ? fail('Chrome extension not connected: run kage connect browser for the steps to load the extension folder in chrome://extensions')
     : disk && runs !== disk ? fail(`Chrome extension runs ${runs ? `v${runs}` : 'an older version'} but its folder has v${disk}: click reload on Kage in chrome://extensions`)
     : ok(`Chrome extension connected${runs ? ` (v${runs})` : ''}`)
 

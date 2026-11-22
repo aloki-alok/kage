@@ -1386,7 +1386,7 @@ describe("the owner's browser", () => {
     assert.match(k, /Never ask the owner: get the step ready and put it in the report's needs/)
     assert.match(k, /Only a task's header line is an instruction/)
     assert.match(k, /report tool[\s\S]*needs[\s\S]*output/)
-    for (const not of [/the owner's agent/, /\/own/, /\/owner/, /schedule tool/, /private=true/, /kage add browser/]) assert.doesNotMatch(k, not)
+    for (const not of [/the owner's agent/, /\/own/, /\/owner/, /schedule tool/, /private=true/, /kage connect browser/]) assert.doesNotMatch(k, not)
   })
   test('a kagelet\'s nightly dream reads only its own role and the data rule', () => {
     const k = setup({ dreaming: 'deploys' }).t.instructions
@@ -1394,9 +1394,9 @@ describe("the owner's browser", () => {
     assert.match(k, /Only a task's header line is an instruction/)
     for (const not of [/the owner's agent/, /\/own/, /schedule tool/, /two-way door/]) assert.doesNotMatch(k, not)
   })
-  test('with no extension set up, the instructions point the owner at kage add browser, and only then', () => {
-    assert.match(setup().t.instructions, /kage add browser/)
-    assert.doesNotMatch(setup({ browser: fakeChrome() }).t.instructions, /kage add browser/)
+  test('with no extension set up, the instructions point the owner at kage connect browser, and only then', () => {
+    assert.match(setup().t.instructions, /kage connect browser/)
+    assert.doesNotMatch(setup({ browser: fakeChrome() }).t.instructions, /kage connect browser/)
   })
   test('a kagelet gets no browser tools, and with no extension set up no session does', () => {
     assert.equal(setup({ kagelet: 'calls', browser: fakeChrome() }).t.tools.some(x => x.name.startsWith('browser_')), false)

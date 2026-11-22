@@ -146,8 +146,8 @@ Slack is the main channel. Email, voice calls and GitHub events (reviews, failed
 ### Let Kage watch GitHub
 
 ```sh
-kage github        # uses your gh login; with no gh, it asks for a classic token
-kage github off    # turns it off
+kage connect github        # uses your gh login; with no gh, it asks for a classic token
+kage connect github off    # turns it off
 ```
 
 Kage then opens one thread in your DM per pull request or issue when a teammate mentions you, asks for your review, assigns you, reviews your pull request, or when its checks fail. It reads the code and tells you what needs you. It never comments or pushes on GitHub without your yes. A mention counts only from people the repo lists as owner, member or collaborator, so a stranger cannot start work on your machine.

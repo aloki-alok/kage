@@ -11,9 +11,10 @@ import { scopes } from './scopes.ts'
 import { whatsapp } from './whatsapp.ts'
 import { leftovers } from './leftovers.ts'
 import { tunnel } from './tunnel.ts'
+import { connect } from './connect.ts'
 
 const lines: Line[] = []
-for (const [group, run] of Object.entries({ setup, session, service, slack, update, browser, whatsapp, tunnel, path, scopes, leftovers })) {
+for (const [group, run] of Object.entries({ setup, session, service, slack, update, connect, browser, whatsapp, tunnel, path, scopes, leftovers })) {
   try { lines.push(...await run()) } catch (e) { lines.push({ kind: 'fail', text: `${group}: the check did not run (${(e as Error).message})` }) }
 }
 const r = report(lines, name)

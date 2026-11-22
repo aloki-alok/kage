@@ -26,7 +26,7 @@ Tests live in a `tests/` folder inside the folder of the code they test: `core/g
 
 The rules Kage follows, and why, are in [`docs/adr/`](docs/adr/). Read the ones that bind your change before you write code.
 
-The Chrome extension (`extension/`) runs in a browser, so `npm test` cannot reach it. Its end-to-end check loads it into Chromium, pairs it the way `kage add browser` does, and attacks it with `extension/tests/e2e/page.html` (forged refs, overlays, mousemove traps, masked secrets). Run it after any change to `extension/`, `connectors/browser.ts` or `core/browser*.ts`:
+The Chrome extension (`extension/`) runs in a browser, so `npm test` cannot reach it. Its end-to-end check loads it into Chromium, pairs it the way `kage connect browser` does, and attacks it with `extension/tests/e2e/page.html` (forged refs, overlays, mousemove traps, masked secrets). Run it after any change to `extension/`, `connectors/browser.ts` or `core/browser*.ts`:
 
 ```sh
 uv run --with playwright python -m playwright install chromium        # once
@@ -189,6 +189,7 @@ Write logs to stderr only. In a tmux pane, stdout carries the channel protocol, 
 | `setting-docs.ts` | What `kage set` says with no value: every setting from `docs/settings.md` by section with its value and default, one setting in full, and the closest key to a typo. |
 | `cli-help.ts` | The closest real `kage` command to a mistyped one. |
 | `dream.ts` | The nightly dream job: what it reads for lessons, how it tidies Kage's memory, which lessons may leave this machine, and `checkDream`, the check a lesson passes before it reaches memory (#488): two threads or more with exact quotes, enough confidence, a nightly cap. |
+| `connect.ts` | Whether each connector is on (#551): one table, from the settings, that `kage connect`, the tunnel and the doctor read. A connector is on, turned off by the owner, or unset with the settings it still needs, and the one step left for each. `cli/connect.ts` is `kage connect`: the list, the Chrome extension's pairing, and on or off for the connectors with an on setting. `kage connect github` is the GitHub walk in `setup.sh`. |
 | `tunnel.ts` | One tunnel for every Kage port another machine needs (#492): the route each connector that is on gets (public by path on Kage's own port 8443 for what the internet calls, the tailnet for the meeting bot), the Tailscale commands that open and close only the routes Kage recorded as its own, each route's state read back from `tailscale serve status`, and the doctor's lines. `cli/tunnel.ts` is `kage tunnel`, `cli/tailscale.ts` finds and asks Tailscale, and `cli/doctor/tunnel.ts` is the doctor line. |
 | `signature.ts` | A webhook body signed with a shared secret (`X-Hub-Signature-256`), as GitHub and Meta sign. |
 | `github.ts` | Which GitHub events are the owner's business (a review or failed checks on their PR, an issue or review request given to them, a mention). |

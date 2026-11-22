@@ -1,12 +1,8 @@
-import { randomBytes } from 'node:crypto'
-import { spawn, spawnSync } from 'node:child_process'
-import { fileURLToPath } from 'node:url'
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
-import { addBrowserAgainLines, addBrowserLines, addBrowserPlan, extensionId, HOST, hostBrowsers, hostManifest } from '../core/browser-pair.ts'
+import { existsSync } from 'node:fs'
 import { findPeople, type Person } from '../core/gate.ts'
 import { add, kindOf, ownerPerson, remove, type Entry, pastedId } from '../core/registry.ts'
 import { registryOf, withRegistry } from '../core/config.ts'
-import { readSettings, updateConfig, updateSecrets } from '../runtime/config-files.ts'
+import { readSettings, updateConfig } from '../runtime/config-files.ts'
 import { pauseLine, type Live } from '../core/board.ts'
 import { askHub, DIR, ENV_FILE, settingsExist } from './home.ts'
 import { NAME, resultLine, rowLine, kageletRows, starterFile } from '../core/kagelets/kagelet.ts'
@@ -27,31 +23,6 @@ if (cmd === 'add' && args[0] === 'kagelet') {
   if (existsSync(`${KAGELETS}/${name}`)) die(`${KAGELETS}/${name} already exists. Edit its job.md, or pick another name.`)
   try { writeJob(KAGELETS, name, starterFile()) } catch (e) { die((e as Error).message) }
   console.log(`Wrote ${file}, paused.\nFill in its thread, schedule, tools and job, then run kage start ${name}. It runs within a minute.`)
-  process.exit(0)
-}
-if (cmd === 'add' && args[0] === 'browser') {
-  if (!settingsExist()) die(`No settings in ${DIR}. Run kage setup first.`)
-  const plan = addBrowserPlan({ hasToken: !!readSettings(ENV_FILE).secrets.browserToken, reinstall: args.includes('--reinstall') })
-  if (!plan.newToken && !args.includes('--show-token')) { console.log(addBrowserAgainLines().join('\n')); process.exit(0) }
-  const token = plan.newToken ? randomBytes(24).toString('hex') : readSettings(ENV_FILE).secrets.browserToken!
-  if (plan.newToken) updateSecrets(ENV_FILE, s => ({ ...s, browserToken: token }))
-  const ext = fileURLToPath(new URL('../extension', import.meta.url))
-  const id = extensionId(JSON.parse(readFileSync(`${ext}/manifest.json`, 'utf8')).key)
-  const helper = `${DIR}/browser-pair.sh`
-  const pairer = fileURLToPath(new URL('./browser-pair.ts', import.meta.url))
-  if ([ENV_FILE, process.execPath, pairer].some(p => p.includes("'"))) die('A path here holds a quote mark, which the pairing helper cannot name. Move Kage or node to a path without one.')
-  writeFileSync(helper, `#!/bin/sh\nKAGE_ENV='${ENV_FILE}' exec '${process.execPath}' '${pairer}'\n`, { mode: 0o700 })
-  const found = hostBrowsers(process.platform, process.env.HOME!, existsSync)
-  for (const { dir } of found) {
-    mkdirSync(dir, { recursive: true })
-    writeFileSync(`${dir}/${HOST}.json`, JSON.stringify(hostManifest(helper, id), null, 2) + '\n')
-  }
-  const run = (cmd: string, a: string[], input?: string) => spawnSync(cmd, a, { input, stdio: ['pipe', 'ignore', 'ignore'], timeout: 5000 }).status === 0
-  const mac = process.platform === 'darwin'
-  if (!plan.open) { console.log(`Token: ${token}`); process.exit(0) }
-  const opened = mac ? run('open', ['-a', 'Google Chrome', 'chrome://extensions']) : ['google-chrome', 'chromium', 'brave-browser', 'microsoft-edge'].some(b => run('which', [b]) && (spawn(b, ['chrome://extensions'], { detached: true, stdio: 'ignore' }).unref(), true))
-  const revealed = mac && run('open', ['-R', ext])
-  console.log(addBrowserLines({ names: found.map(b => b.name), ext, token, showToken: args.includes('--show-token'), platform: process.platform, opened, revealed }).join('\n'))
   process.exit(0)
 }
 if (!settingsExist()) die(`No settings in ${DIR}. Run kage setup first.`)
