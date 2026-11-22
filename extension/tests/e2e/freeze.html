@@ -1,0 +1,5 @@
+<!doctype html>
+<title>Freeze page</title>
+<p id="out">ready</p>
+<button onclick="setTimeout(() => { const end = Date.now() + 40_000; while (Date.now() < end) {} }, 50)">Freeze</button>
+<button onclick="document.getElementById('out').textContent = 'late clicked'">Late</button>

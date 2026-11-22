@@ -5,7 +5,7 @@ import { bearerOk, listen, readBody } from './webhook.ts'
 const MAX_BODY = 20_000_000
 export const BROWSER_STALE_MS = 60_000
 
-type Cmd = { id: string; op: string; args: unknown; ms: number }
+type Cmd = { id: string; op: string; args: unknown; until: number }
 
 export function connectBrowser(o: {
   token: string; port: number
@@ -35,7 +35,8 @@ export function connectBrowser(o: {
     if (!waiter || !queue.length) return
     const c = queue.shift()!
     sent.set(c.id, c)
-    release(200, JSON.stringify(c))
+    const { until, ...cmd } = c
+    release(200, JSON.stringify({ ...cmd, ms: Math.max(1, until - now()) }))
   }
   const connected = () => !!waiter || now() - lastPoll < staleMs
 
@@ -51,7 +52,7 @@ export function connectBrowser(o: {
         reject(new Error(`the Chrome extension did not answer in ${Math.round(callMs / 1000)} s`))
       }, callMs)
       pending.set(id, { resolve, reject, timer })
-      queue.push({ id, op, args, ms: callMs })
+      queue.push({ id, op, args, until: now() + callMs })
       flush()
     })
   }
