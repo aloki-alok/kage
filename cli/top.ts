@@ -5,7 +5,7 @@ import { topicReader } from './top-topics.ts'
 import { connect, type Socket } from 'node:net'
 import { askHub, CWD, DIR, settings } from './home.ts'
 import { DatabaseSync } from 'node:sqlite'
-import { ago, boardRows, FOLDED, nextRuns, limitLine, pauseLine, watchingNext, whenLabel, type Live, type Row, type State } from '../core/board.ts'
+import { boardRows, FOLDED, liveThreadLines, nextRuns, limitLine, pauseLine, watchingNext, type Live, type Row, type State } from '../core/board.ts'
 import { transcriptLine } from '../core/transcript.ts'
 import { costRows, openWaiting } from '../core/ledgers.ts'
 import { channels, filterRows, rowAt, WIDE } from '../core/top-layout.ts'
@@ -217,7 +217,7 @@ if (ONCE) {
   resize(size())
   refresh(Date.now())
   if (process.stdout.isTTY) { drawFrame(view(Date.now(), 1e9)); console.log(toText().join('\n')) }
-  else for (const r of board.filter(r => r.state !== 'closed')) console.log([r.label, r.place, r.next ? `next ${whenLabel(r.next, Date.now())}` : `${ago(r.ageMs)} ago`].join('\t'))
+  else for (const l of liveThreadLines(board, key => { follow(key); return feeds.get(key)?.steps.at(-1)?.text })) console.log(l)
   if (live?.paused) console.log(pauseLine(live.paused))
   const cost = limitLine(live?.limitCounts)
   if (cost) console.log(cost)

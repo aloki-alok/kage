@@ -37,8 +37,9 @@ if (health.length) {
   console.log(`\nConnectors`)
   for (const l of health) console.log(`  ${/ off$/.test(l) ? voice.dim(l) : / failed \d+x /.test(l) ? voice.needsYou(l) : l}`)
 }
-console.log()
-spawnSync(process.execPath, [new URL('./top.ts', import.meta.url).pathname, '--once'], { stdio: 'inherit' })
+const threads = spawnSync(process.execPath, [new URL('./top.ts', import.meta.url).pathname, '--once'], { stdio: ['ignore', 'pipe', 'inherit'], encoding: 'utf8' }).stdout.split('\n').filter(Boolean)
+console.log(`\nThreads ${voice.dim(threads.length ? '' : 'none busy')}`)
+for (const l of threads) console.log(`  ${/^asks you/.test(l) ? voice.needsYou(l) : l}`)
 const kagelets = kageletRows(readKagelets(kageletsDir(DIR)), { runs: ledgers.text('runs'), costs: ledgers.text('costs'), now })
 if (kagelets.length) {
   console.log(`\nKagelets ${voice.dim(`${kagelets.filter(k => k.state === 'runs').length} of ${kagelets.length} on`)}`)
