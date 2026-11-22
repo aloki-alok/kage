@@ -1,7 +1,7 @@
 import { describe, test } from 'node:test'
 import assert from 'node:assert/strict'
 import { createHmac } from 'node:crypto'
-import { appManifest, githubMention, githubOwner, installedOn } from '../github.ts'
+import { appManifest, appName, githubMention, githubOwner, installedOn } from '../github.ts'
 import { signedSha256 } from '../signature.ts'
 
 const sign = (secret: string, body: string) => `sha256=${createHmac('sha256', secret).update(body).digest('hex')}`
@@ -90,9 +90,9 @@ describe('Kage acts only on installations on the accounts the owner allows', () 
 })
 
 describe('the app Kage asks GitHub to create', () => {
-  test('a public app named for the owner, sending only the events a tag can come in, to the tunnel, and back to Kage when made', () => {
-    assert.deepEqual(appManifest({ login: 'Ryu-Dev', hook: 'https://box.tail1.ts.net:8443/github', back: 'http://127.0.0.1:5555/done' }), {
-      name: 'Kage ryu-dev', url: 'https://github.com/aloki-alok/kage', public: true,
+  test('a public app with the name the owner picked, sending only the events a tag can come in, to the tunnel, and back to Kage when made', () => {
+    assert.deepEqual(appManifest({ name: 'hey-kage', hook: 'https://box.tail1.ts.net:8443/github', back: 'http://127.0.0.1:5555/done' }), {
+      name: 'hey-kage', url: 'https://github.com/aloki-alok/kage', public: true,
       hook_attributes: { url: 'https://box.tail1.ts.net:8443/github', active: true },
       redirect_url: 'http://127.0.0.1:5555/done',
       default_permissions: { issues: 'write', pull_requests: 'write', contents: 'read', metadata: 'read' },
@@ -114,5 +114,14 @@ describe('whose tags run as the owner, chosen at setup', () => {
     assert.deepEqual(githubOwner({ login: 'ryu-dev', me: other, needId: false }), { login: 'ryu-dev' })
     assert.match((githubOwner({ login: 'ryu-dev', me: other, needId: true }) as { error: string }).error, /gh auth login as ryu-dev/)
     assert.match((githubOwner({ needId: false }) as { error: string }).error, /connectors\.github\.login/)
+  })
+})
+
+describe('the name people tag', () => {
+  test('a name is what people type after @: lowercase letters, digits and inner hyphens, at most 34, with a leading @ and case dropped', () => {
+    assert.deepEqual(appName(' @Hey-Kage '), { name: 'hey-kage' })
+    assert.deepEqual(appName('kage2'), { name: 'kage2' })
+    assert.deepEqual(appName('a'.repeat(34)), { name: 'a'.repeat(34) })
+    for (const bad of ['', '@', 'hey kage', 'kage!', '-kage', 'kage-', 'ka--ge', 'a'.repeat(35)]) assert.ok('problem' in appName(bad), bad)
   })
 })

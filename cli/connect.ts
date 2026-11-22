@@ -104,8 +104,7 @@ async function connectGithub(): Promise<never> {
   change(() => updateSecrets(ENV_FILE, x => ({ ...x, githubAppKey: app.key, githubSecret: app.secret })))
   github({ ...gh, login, userId: known ?? app.ownerId, app: { id: app.id, slug: app.slug }, accounts: [...new Set([login, ...(org ? [org] : []), ...(gh.accounts ?? [])])] })
   spawnSync(process.execPath, [fileURLToPath(new URL('./tunnel.ts', import.meta.url)), 'on'], { stdio: 'inherit', env: process.env })
-  browse(`${app.url}/installations/new`)
-  quit(`github is on as @${app.slug}. Install it on the repos where people should tag it (${app.url}/installations/new), then tag @${app.slug} in an issue to try it.`)
+  quit(`github is on as @${app.slug}. Install it from the tab Kage opened, or at ${app.url}/installations/new, then tag @${app.slug} in an issue to try it.`)
 }
 
 function ghUser(): { login: string; id: number } | undefined {
