@@ -45,6 +45,7 @@ describe('one tunnel for every Kage port another machine needs', () => {
     assert.deepEqual(state(serving({ paths })), ['github tailnet', 'voice tailnet', 'hooks closed', 'meeting closed'])
     assert.deepEqual(state(serving({ funnel: true, paths: { '/github': 'http://127.0.0.1:9999/github' } })), ['github closed', 'voice closed', 'hooks closed', 'meeting closed'])
     assert.deepEqual(state({}), ['github closed', 'voice closed', 'hooks closed', 'meeting closed'])
+    assert.deepEqual(state(serving({ funnel: true, paths: { '/mcp': 'http://127.0.0.1:8787/mcp' } }))[1], 'voice closed')
   })
 
   test('the doctor shows each route with its public address, and names the one fix when Tailscale or a route is not ready', () => {
