@@ -746,6 +746,13 @@ describe("a session's Kage tools", () => {
     assert.equal((await none.call('reply', { channel: 'sms', thread_ts: '7', text: 'hi' })).isError, true)
     assert.deepEqual(none.out, [])
   })
+  test('a text reply that names a contact no task came from is refused before any card', async () => {
+    const cards: string[] = []
+    const s = setup({ approve: async (tool, description) => { cards.push(`${tool} ${description}`); return true } })
+    s.t.onTask(s.task({ channel: 'sms', thread_ts: '7', fromOwner: false }))
+    assert.equal((await s.call('reply', { channel: 'sms', thread_ts: '8', text: 'hi' })).isError, true)
+    assert.deepEqual([cards, s.out], [[], []])
+  })
   test('the instructions limit a voice call to the reply tool and to nothing private', () => {
     const i = setup().t.instructions
     assert.match(i, /Voice task/)

@@ -51,6 +51,7 @@ export function slackTools(c: ToolContext): KageTool[] {
       }
       if (a.channel === 'sms') {
         if (a.private) return { isError: true, text: 'refused: a text conversation has no private reply' }
+        if (!ownerTask.has(key)) return { isError: true, text: 'refused: no task came from that text conversation' }
         if (!o.approve) return { isError: true, text: 'refused: a text needs the owner\'s yes on a Slack card, and this session cannot show one' }
         if (!await o.approve('reply', `Text to SMS contact ${a.thread_ts}: ${a.text}`, { text: a.text })) return { isError: true, text: 'The owner said no on the Slack card. Nothing was sent.' }
         if (o.send({ type: 'sms', text: a.text }) === false) return { isError: true, text: HUB_DOWN }
