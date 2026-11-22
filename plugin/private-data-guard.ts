@@ -15,6 +15,6 @@ if (thread) {
   try { ({ harness, sharedTools } = readSettings(envFile).config) } catch {}
   let sender: string | undefined
   try { sender = readFileSync(senderFile(dir, thread), 'utf8').trim() } catch {}
-  const reason = toolRefusal(tool_name, tool_input ?? {}, sender, { ownerMemory: memoryDirs(process.env.HOME!, envFile, harness).owner, envFile, sharedTools })
+  const reason = toolRefusal(tool_name, tool_input ?? {}, sender, { ownerMemory: memoryDirs(process.env.HOME!, envFile, harness).owner, envFile, sharedTools, side: thread.includes('#side-') })
   if (reason) console.log(JSON.stringify({ hookSpecificOutput: { hookEventName: 'PreToolUse', permissionDecision: 'deny', permissionDecisionReason: reason } }))
 }

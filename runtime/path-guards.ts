@@ -62,7 +62,7 @@ const WRITE_TOOLS = new Set(['Write', 'Edit', 'MultiEdit', 'NotebookEdit'])
 const READ_TOOLS = new Set(['Read', 'Grep', 'Glob'])
 export function ownerMemoryRefusal(
   tool: string, input: { file_path?: string; notebook_path?: string; path?: string; pattern?: string }, ownerMemory: string, sender?: string,
-  home = process.env.HOME ?? '', cwd = process.cwd(),
+  home = process.env.HOME ?? '', cwd = process.cwd(), side = false,
 ): string | undefined {
   const write = WRITE_TOOLS.has(tool)
   const read = READ_TOOLS.has(tool) && sender !== 'owner'
@@ -72,12 +72,15 @@ export function ownerMemoryRefusal(
   const raw = tool === 'Glob' ? resolve(tilde(input.path ?? cwd), tilde((input.pattern ?? '').split(/[*?[{]/)[0]!))
     : input.file_path ?? input.notebook_path ?? input.path ?? (read && tool !== 'Read' ? cwd : undefined)
   if (!raw) return
-  const file = realish(raw.replace(/^~(?=\/)/, home)).replace(/\/$/, '').toLowerCase()
+  const real = realish(raw.replace(/^~(?=\/)/, home)).replace(/\/$/, '')
+  const file = real.toLowerCase()
   if (read && tool !== 'Read' && dir.startsWith(`${file}/`)) return `This search would reach the owner's memory. Search a folder outside it, with its path.`
   if (file !== dir && !file.startsWith(`${dir}/`)) return
   const name = file.slice(dir.length + 1)
   if (/^user_[\w-]+\.md$/.test(name) || (write && name === 'memory.md' && tool !== 'Write')) return
-  return `The owner's memory gives you only people notes (user_<name>.md). Save your own lessons in your own memory folder.`
+  if (sender === 'owner' && !side && (tool === 'Edit' || tool === 'MultiEdit' || tool === 'Write') && existsSync(real)) return
+  const refusal = `The owner's memory gives you only people notes (user_<name>.md). Save your own lessons in your own memory folder.`
+  return sender === 'owner' && !side && tool === 'Write' ? `${refusal} A new note that is not about a person belongs in Kage's memory.` : refusal
 }
 
 function realish(p: string): string {
@@ -112,7 +115,7 @@ export function agentReadRefusal(tool: string, input: { file_path?: string; path
     || SECRET_FILE.test(full) || SECRET_GLOB.test(glob)
   return secret ? `${target} may hold secrets, and an agent's task does not read them.` : undefined
 }
-export function toolRefusal(tool: string, input: Record<string, unknown>, sender: string | undefined, o: { ownerMemory: string; envFile: string; sharedTools?: readonly string[] }): string | undefined {
+export function toolRefusal(tool: string, input: Record<string, unknown>, sender: string | undefined, o: { ownerMemory: string; envFile: string; sharedTools?: readonly string[]; side?: boolean }): string | undefined {
   return agentToolRefusal(tool, sender) ?? agentReadRefusal(tool, input as { file_path?: string }, sender) ?? privateToolRefusal(tool, sender) ?? voiceToolRefusal(tool, sender) ?? mcpToolRefusal(tool, sender, o.sharedTools) ?? slackSendRefusal(tool)
-    ?? ownerMemoryRefusal(tool, input as { file_path?: string }, o.ownerMemory, sender) ?? configRefusal(tool, input, sender, o.envFile)
+    ?? ownerMemoryRefusal(tool, input as { file_path?: string }, o.ownerMemory, sender, undefined, undefined, o.side) ?? configRefusal(tool, input, sender, o.envFile)
 }

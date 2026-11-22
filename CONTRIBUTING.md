@@ -245,7 +245,7 @@ Write logs to stderr only. In a tmux pane, stdout carries the channel protocol, 
 | `thread-rotate.ts` | Moving a long thread to a new session before its next task, reading only the transcript's tail, and never moving a task built as a delta for the old session. |
 | `hub-lock.ts` | One hub per machine: a listening socket the OS frees when the hub dies. |
 | `hub-log.ts` | The hub log's rotation and the package check, shared by `hub.ts` and the hub. |
-| `path-guards.ts` | Hook rules that follow real paths on disk: the config folder that holds the tokens (secrets.json and env files closed to every session, the owner's too; the rest owner-only, a thread's files folder excepted), the sandbox and file rules each session starts with, and the owner's memory taking only people notes. |
+| `path-guards.ts` | Hook rules that follow real paths on disk: the config folder that holds the tokens (secrets.json and env files closed to every session, the owner's too; the rest owner-only, a thread's files folder excepted), the sandbox and file rules each session starts with, and the owner's memory: every session may write people notes (`user_<name>.md`) and edit the index, the owner's own task may also edit or overwrite any note that exists, and a side lane (the dream, a kagelet) never does. A new note that is not about a person stays in Kage's own memory. |
 | `log.ts` | Kage's log line (stderr only) and the logger the Slack clients get. |
 | `kagelets/files.ts` | The kagelets folder on disk: one folder per kagelet (`<name>/job.md`, ADR 0018), the paused line, and the one-time move from the old `<name>.md` layout. |
 | `kagelets/sync.ts` | The folder synced into schedules and grants each minute (#57), and the prompt each run reads first. |
