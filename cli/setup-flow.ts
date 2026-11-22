@@ -31,12 +31,11 @@ async function ask(prompt: string): Promise<string> {
 }
 
 function header() {
-  const right = ['', '', '', `${v.work(MARK.kage)} Hi. I'm Kage, and this sets me up in your Slack.`, v.dim('   About three minutes: a few clicks in Slack, then one paste.'), v.dim('   Ctrl-C stops at any step, and nothing is half done.')]
-  const art = WORDMARK.devanagari
-  if (!screen || (process.stdout.columns ?? 0) < 80) { for (const l of right.slice(3)) out(l); out(); return }
-  const w = Math.max(...art.map(l => [...l].length))
-  out()
-  for (let i = 0; i < art.length; i++) out(`  ${(art[i] ?? '').padEnd(w)}   ${right[i] ?? ''}`.trimEnd())
+  const art = WORDMARK.pixel
+  if (screen && (process.stdout.columns ?? 0) >= 2 + Math.max(...art.map(l => [...l].length))) { out(); for (const l of art) out(`  ${v.work(l)}`); out() }
+  out(`${v.work(MARK.kage)} Hi. I'm Kage, and this sets me up in your Slack.`)
+  out(v.dim('   About three minutes: a few clicks in Slack, then one paste.'))
+  out(v.dim('   Ctrl-C stops at any step, and nothing is half done.'))
   out()
 }
 
