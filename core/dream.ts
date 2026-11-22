@@ -15,13 +15,15 @@ export function threadsSince(sessions: Record<string, string>, mtime: (id: strin
 }
 
 export type MemoryFile = { name: string; kb: number; date: string }
-type MemoryListing = { own: MemoryFile[]; owner: MemoryFile[] }
+type MemoryListing = { own: MemoryFile[] | undefined; owner: MemoryFile[] | undefined }
 const LISTING_CAP = 200
 
-function listed(dir: string, files: MemoryFile[]): string {
+function listed(dir: string, files: MemoryFile[] | undefined): string {
+  const head = `   Listing of ${dir} (name, size, last change; .archive/ marks an archived note):`
+  if (!files) return `${head}\n   (folder not readable, so judge no file missing from it tonight)`
   const shown = files.slice(0, LISTING_CAP).map(f => `   ${f.name} ${f.kb} KB ${f.date}`)
   const cut = files.length - shown.length
-  return [`   Listing of ${dir} (name, size, last change):`, ...shown.length ? shown : ['   (no files)'], ...cut > 0 ? [`   ... ${cut} more files not shown`] : []].join('\n')
+  return [head, ...shown.length ? shown : ['   (no files)'], ...cut > 0 ? [`   ... ${cut} more files not shown`] : []].join('\n')
 }
 
 export function dreamTask(m: { own: string; owner: string }, threads: { place: string; file: string; key?: string }[], since: string, skills?: { dir: string; pr: boolean }, mistakes = '', checked = false, listing: MemoryListing = { own: [], owner: [] }): string {

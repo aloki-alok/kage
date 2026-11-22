@@ -54,6 +54,12 @@ test('a listing over the cap shows the first lines and counts the rest', () => {
   assert.match(t, /250 more files not shown/)
 })
 
+test('a folder the hub could not read says so, so the dream judges no file missing from it', () => {
+  const t = dreamTask({ own: '/m/kage', owner: '/m/owner' }, [], 'x', undefined, '', false, { own: [], owner: undefined })
+  assert.match(t, /Listing of \/m\/owner[^\n]*\n {3}\(folder not readable/)
+  assert.match(t, /Listing of \/m\/kage[^\n]*\n {3}\(no files\)/)
+})
+
 test('the dream reads its own mistakes and decides alone what it kept asking', () => {
   const t = dreamTask({ own: '/m/kage', owner: '/m/owner' }, [], '2026-11-08T00:00:00.000Z', undefined, 'BLOCK-X')
   assert.match(t, /BLOCK-X/)
