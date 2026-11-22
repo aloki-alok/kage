@@ -15,7 +15,13 @@ function github() {
   const fetch = (async (url: string, init?: { headers?: Record<string, string> }) => {
     s.asked.push({ url, ...init?.headers?.['If-Modified-Since'] && { modified: init.headers['If-Modified-Since'] } })
     const json = (body: unknown, status = 200) => new Response(JSON.stringify(body), { status, headers: { 'x-poll-interval': s.interval, 'last-modified': 'Sun, 22 Nov 2026 08:10:00 GMT' } })
-    if (url.includes('/notifications?')) return s.status === 200 ? json(s.list) : new Response(null, { status: s.status, headers: { 'x-poll-interval': s.interval } })
+    if (url.includes('/notifications?')) {
+      if (s.status !== 200) return new Response(null, { status: s.status, headers: { 'x-poll-interval': s.interval } })
+      const page = Number(/[?&]page=(\d+)/.exec(url)?.[1] ?? 1), newest = [...s.list].reverse(), rows = newest.slice((page - 1) * 2, page * 2)
+      const r = json(rows)
+      if (page * 2 < newest.length) r.headers.set('link', `<https://api.github.com/notifications?all=true&page=${page + 1}>; rel="next", <https://api.github.com/notifications?all=true&page=9>; rel="last"`)
+      return r
+    }
     if (s.failing.has(url)) return json({}, 502)
     if (url.endsWith('/issues/7')) return json(issue)
     const id = /comments\/(\d+)$/.exec(url)?.[1]
@@ -49,6 +55,14 @@ describe('reading GitHub notifications with no public URL', () => {
     assert.match(last.url, /since=2026-11-22T07:59:30\.000Z/)
     assert.equal(last.modified, 'Sun, 22 Nov 2026 08:10:00 GMT')
     assert.deepEqual(t.fed, ['github:c:12'])
+  })
+
+  test('a backlog longer than one page is read to its oldest notification, as after a night asleep', async () => {
+    const t = setup()
+    t.s.list = ['12', '13', '14', '15', '16'].map((id, i) => mention(id, `2026-11-22T08:00:3${i}Z`))
+    await t.once(NOW)
+    assert.deepEqual(t.fed, ['github:c:12', 'github:c:13', 'github:c:14', 'github:c:15', 'github:c:16'])
+    assert.equal(t.s.asked.filter(a => a.url.includes('/notifications?')).length, 3)
   })
 
   test('it waits as long as GitHub asks, never under a minute', async () => {
