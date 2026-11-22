@@ -1,7 +1,7 @@
 import { describe, test } from 'node:test'
 import assert from 'node:assert/strict'
 import { createHmac } from 'node:crypto'
-import { appManifest, githubMention, installedOn } from '../github.ts'
+import { appManifest, githubMention, githubOwner, installedOn } from '../github.ts'
 import { signedSha256 } from '../signature.ts'
 
 const sign = (secret: string, body: string) => `sha256=${createHmac('sha256', secret).update(body).digest('hex')}`
@@ -98,5 +98,21 @@ describe('the app Kage asks GitHub to create', () => {
       default_permissions: { issues: 'write', pull_requests: 'write', contents: 'read', metadata: 'read' },
       default_events: ['issue_comment', 'issues', 'pull_request', 'pull_request_review', 'pull_request_review_comment'],
     })
+  })
+})
+
+describe('whose tags run as the owner, chosen at setup', () => {
+  const me = { login: 'Ryu-Dev', id: 9 }
+  test('the user id comes from the saved setting first, then from the gh login when it is the same person', () => {
+    assert.deepEqual(githubOwner({ login: 'ryu-dev', userId: 4, me, needId: true }), { login: 'ryu-dev', userId: 4 })
+    assert.deepEqual(githubOwner({ me, needId: true }), { login: 'Ryu-Dev', userId: 9 })
+    assert.deepEqual(githubOwner({ login: 'ryu-dev', me, needId: true }), { login: 'ryu-dev', userId: 9 })
+  })
+
+  test('a gh login of someone else gives no id, and where the new app cannot supply it (an org app, an app made before) setup stops', () => {
+    const other = { login: 'kim', id: 5 }
+    assert.deepEqual(githubOwner({ login: 'ryu-dev', me: other, needId: false }), { login: 'ryu-dev' })
+    assert.match((githubOwner({ login: 'ryu-dev', me: other, needId: true }) as { error: string }).error, /gh auth login as ryu-dev/)
+    assert.match((githubOwner({ needId: false }) as { error: string }).error, /connectors\.github\.login/)
   })
 })

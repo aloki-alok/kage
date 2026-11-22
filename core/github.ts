@@ -38,6 +38,14 @@ export function installedOn(installations: { id: number; account?: { login?: str
   return new Set(installations.filter(i => allowed.has(i.account?.login?.toLowerCase() ?? '')).map(i => i.id))
 }
 
+export function githubOwner(o: { login?: string; userId?: number; me?: { login: string; id: number }; needId: boolean }): { login: string; userId?: number } | { error: string } {
+  const login = o.login ?? o.me?.login
+  if (!login) return { error: 'Run gh auth login, or kage set connectors.github.login <your GitHub username>, then run kage connect github again.' }
+  const userId = o.userId ?? (o.me?.login.toLowerCase() === login.toLowerCase() ? o.me.id : undefined)
+  if (o.needId && userId === undefined) return { error: `Run gh auth login as ${login}, so Kage can save your GitHub user id, then run kage connect github again.` }
+  return { login, ...(userId !== undefined && { userId }) }
+}
+
 export const appManifest = (o: { login: string; hook: string; back: string }) => ({
   name: `Kage ${o.login.toLowerCase()}`, url: 'https://github.com/aloki-alok/kage', public: true,
   hook_attributes: { url: o.hook, active: true },

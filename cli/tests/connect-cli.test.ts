@@ -90,7 +90,7 @@ test('a Kage session cannot turn a connector on or off', () => {
 })
 
 test('github off deletes the app keys, keeps who you are, and says the app stays on GitHub until deleted there', () => {
-  const w = world({ connectors: { github: { login: 'me', userId: 1, accounts: ['me'], port: 9100, app: { id: 1, slug: 'kage-me' } } } }, { githubAppKey: 'k', githubSecret: 's', voiceToken: 'v' })
+  const w = world({ connectors: { github: { login: 'me', userId: 1, accounts: ['me'], port: 9100, app: { id: 1, slug: 'kage-me' } } } }, { githubAppKey: 'k', githubSecret: 's', githubToken: 'ghp_old', voiceToken: 'v' })
   const r = w.run(['github', 'off'])
   assert.equal(r.code, 0)
   assert.match(r.out, /@kage-me stays on GitHub until you delete it: https:\/\/github\.com\/apps\/kage-me/)
