@@ -28,7 +28,7 @@ export function kageletReview(o: {
       return { release: false, ...said && { said } }
     }
     const ev = o.evidence(kind), release = said === 'run' && ev.earned, tally = `(${ev.agree} of ${ev.total} agree)`
-    if (!release) counted.set(day, counted.get(day)! - 1)
+    if (said !== 'run') counted.set(day, counted.get(day)! - 1)
     o.event(key, said === 'run' && !release ? `reviewer would run, not yet earned: ${kind} ${tally}` : `${release ? 'released' : 'kept'} by reviewer: ${kind} ${tally}`)
     return { release, ...said && { said } }
   }

@@ -75,8 +75,8 @@ test('at release review, a run call on a kind with no earned evidence keeps the 
   assert.deepEqual(s.kinds, ['a forced or recursive delete'])
   assert.deepEqual(s.events, [[KEY, 'reviewer would run, not yet earned: a forced or recursive delete (12 of 12 agree)']])
 })
-test('an unearned run call gives its daily slot back, so only releases count', async () => {
-  const s = setup({ earned: false, perDay: 1 })
-  for (let i = 0; i < 3; i++) await s.r(KEY, 'rm -rf build')
-  assert.equal(s.asked.length, 3)
+test('an unearned run call keeps its daily slot, so a kagelet that retries cannot ask the model without end', async () => {
+  const s = setup({ earned: false, perDay: 2 })
+  for (let i = 0; i < 5; i++) await s.r(KEY, 'rm -rf build')
+  assert.equal(s.asked.length, 2)
 })
