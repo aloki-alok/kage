@@ -53,7 +53,8 @@ export function connectGithub(o: {
       return true
     }
     cap.add(now)
-    const line = `*GitHub:* ${slackPlain(e.headline)}${/^https:\/\/[^\s<>|]+$/.test(e.url) ? ` <${e.url}|open>` : ''}`
+    const headline = slackPlain(e.headline), name = slackPlain(e.thread)
+    const line = `*GitHub:* ${/^https:\/\/[^\s<>|]+$/.test(e.url) ? headline.replace(name, `<${e.url}|${name}>`) : headline}`
     const place = `GitHub ${e.thread}`
     const known = threads[e.thread]
     const ts = await o.post(line, known)
