@@ -213,9 +213,9 @@ valid_name() {
 }
 
 cmd_check() {
-  command -v node >/dev/null || die "Node.js 22.18 or newer is required: https://nodejs.org"
+  command -v node >/dev/null || die "Node.js 22.18 or newer is required: https://nodejs.org (macOS: brew install node)"
   node -e 'const [a,b]=process.versions.node.split(".").map(Number); process.exit(a>22||(a===22&&b>=18)?0:1)' \
-    || die "Node $(node -v) is too old: Kage runs TypeScript directly, which needs Node 22.18+."
+    || die "Node $(node -v) is too old: Kage runs TypeScript directly, which needs Node 22.18+ (macOS: brew upgrade node)."
   command -v claude >/dev/null || die "Claude Code is required: https://code.claude.com/docs/en/quickstart"
   local tm=""
   if [[ "$(cfg_get harness.runtime)" == tmux ]]; then
@@ -227,17 +227,19 @@ cmd_check() {
 
 cmd_app() {
   valid_name "${1:-}"
-  KAGE_NAME="$NAME" node cli/manifest.ts > slack-manifest.json
-  URL="https://api.slack.com/apps?new_app=1&manifest_json=$(node -e 'process.stdout.write(encodeURIComponent(require("fs").readFileSync("slack-manifest.json","utf8")))')"
+  local manifest; manifest="$(dirname "$ENV_FILE")/slack-manifest.json"
+  mkdir -p "$(dirname "$manifest")"
+  KAGE_NAME="$NAME" node cli/manifest.ts > "$manifest"
+  URL="https://api.slack.com/apps?new_app=1&manifest_json=$(node -e 'process.stdout.write(encodeURIComponent(require("fs").readFileSync(process.argv[1],"utf8")))' "$manifest")"
   (open "$URL" 2>/dev/null || xdg-open "$URL" 2>/dev/null || true) &
   cat <<EOF
-Manifest: $PWD/slack-manifest.json
+Manifest: $manifest
 Create link (opened in the browser if possible):
 $URL
 
 In the browser:
   1. Pick your workspace, then click Next and Create.
-     (If the form is empty, choose "From a manifest" and paste slack-manifest.json.)
+     (If the form is empty, choose "From a manifest" and paste the manifest file above.)
   2. Basic Information > App-Level Tokens > Generate: any name, scope connections:write.
      Copy the token (xapp-...).
   3. Install App > Install to Workspace > Allow.
