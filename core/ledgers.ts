@@ -87,6 +87,15 @@ export function spendSince(tsv: string, since: number): { key: string; usd: numb
   return [...by.values()].sort((a, b) => b.usd - a.usd)
 }
 
+export function dailyAverage(tsv: string, midnight: number, days = 7): number | undefined {
+  const DAY = 86_400_000, rows = costRows(tsv).filter(r => r.at < midnight)
+  const first = Math.min(...rows.map(r => r.at))
+  if (!rows.length) return undefined
+  const span = Math.min(days, Math.ceil((midnight - first) / DAY))
+  const sum = rows.filter(r => r.at >= midnight - span * DAY).reduce((a, r) => a + r.usd, 0)
+  return Math.round(sum / span * 100) / 100
+}
+
 export function grantsLine(tsv: string, from: number, to: number): string | undefined {
   const by = { read: 'read', standing: 'your standing yes' } as Record<string, string>
   const got = tsv.split('\n').map(l => l.split('\t')).filter(([at = '', , status = '']) => by[status] && Date.parse(at) >= from && Date.parse(at) < to)

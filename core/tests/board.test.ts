@@ -153,6 +153,10 @@ describe('kage status summary, in Kage words', () => {
     assert.equal(r.says, "I'm running 6185ff7. I've been up 6 hours and spent $3.20 today over 12 turns. 4 schedules. 2 starts in 24 h: 1 update, 1 restart, 0 crashes.")
     assert.equal(r.warn, undefined)
   })
+  test("today's spend sits next to the 7-day daily average (#258)", () => {
+    const r = statusSummary({ upSec: 3600, starts: startsSince('', 0), schedules: 0, spentToday: 84, turnsToday: 30, dailyAverage: 61 })
+    assert.match(r.says, /spent \$84\.00 today over 30 turns, against a 7-day average of \$61\.00\./)
+  })
   test('a crash or a stop with no cause is the warning, and planned restarts are not (#255)', () => {
     const base = { upSec: 60, schedules: 0, spentToday: 0, turnsToday: 0 }
     assert.equal(statusSummary({ ...base, starts: startsSince(Array.from({ length: 63 }, (_, i) => `${i + 1} update`).join('\n'), 0) }).warn, undefined)

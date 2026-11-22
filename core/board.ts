@@ -115,9 +115,9 @@ export function stopLine(r: { ok: true; ending?: true; asking?: true; cut?: 'bus
 const UNIT: Record<string, string> = { s: 'second', m: 'minute', h: 'hour', d: 'day' }
 const spoken = (short: string) => { const n = Number(short.slice(0, -1)); return `${n} ${UNIT[short.slice(-1)]}${n === 1 ? '' : 's'}` }
 
-export function statusSummary(f: { version?: string; upSec?: number; starts: Starts; schedules: number; spentToday: number; turnsToday: number }): { says: string; warn?: string } {
+export function statusSummary(f: { version?: string; upSec?: number; starts: Starts; schedules: number; spentToday: number; turnsToday: number; dailyAverage?: number }): { says: string; warn?: string } {
   const plural = (n: number, one: string) => `${n} ${one}${n === 1 ? '' : 's'}`
-  const spent = f.turnsToday ? `spent $${f.spentToday.toFixed(2)} today over ${plural(f.turnsToday, 'turn')}` : 'spent nothing today'
+  const spent = `${f.turnsToday ? `spent $${f.spentToday.toFixed(2)} today over ${plural(f.turnsToday, 'turn')}` : 'spent nothing today'}${f.dailyAverage !== undefined ? `, against a 7-day average of $${f.dailyAverage.toFixed(2)}` : ''}`
   const parts = [
     f.version ? `I'm running ${f.version.split(' ')[0]}.` : f.upSec === undefined ? "I'm running." : '',
     f.upSec === undefined ? `I've ${spent}.` : `I've been up ${spoken(ago(f.upSec * 1000))} and ${spent}.`,
