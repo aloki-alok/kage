@@ -11,6 +11,7 @@
   "scripts": {
     "test": "node tests/run.ts 'core/**/*.test.ts' 'connectors/**/*.test.ts' 'runtime/**/*.test.ts' 'cli/**/*.test.ts' 'hub/**/*.test.ts' 'plugin/**/*.test.ts' 'metabot/**/*.test.ts' 'evals/**/*.test.ts' 'tests/*.test.ts'",
     "eval": "node evals/run.ts",
+    "eval:live": "node evals/live/run.ts",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
