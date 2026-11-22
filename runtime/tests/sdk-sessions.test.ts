@@ -1,6 +1,6 @@
 import { describe, test } from 'node:test'
 import assert from 'node:assert/strict'
-import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, realpathSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { createSdkMcpServer, tool } from '@anthropic-ai/claude-agent-sdk'
@@ -30,7 +30,7 @@ const tick = (ms = 5) => new Promise(r => setTimeout(r, ms))
 const ID = '11111111-1111-4111-8111-111111111111'
 const signal = () => new AbortController().signal
 
-function setup(o: { saved?: Record<string, string>; transcript?: boolean; silent?: boolean; dmFails?: boolean; grants?: Record<string, string[]>; allows?: Record<string, string[]>; review?: boolean | { release: boolean; said?: 'run' | 'hold' }; holdDays?: number; onReview?: () => void; manager?: boolean; budgets?: Record<string, number>; models?: Record<string, string>; trusted?: string[]; deferred?: boolean; browser?: boolean; restartMs?: number; sandbox?: boolean | 'teammates'; onResult?: (key: string, total: number, resumed: boolean, tokens?: Tokens) => void; lean?: { model?: string; effort?: string; mcp: Record<string, unknown>; permissions?: Record<string, unknown> }; onMcp?: (q: unknown) => void; trustedPeople?: { ids: string[] } } = {}) {
+function setup(o: { saved?: Record<string, string>; transcript?: boolean; silent?: boolean; dmFails?: boolean; grants?: Record<string, string[]>; allows?: Record<string, string[]>; review?: boolean | { release: boolean; said?: 'run' | 'hold' }; holdDays?: number; onReview?: () => void; manager?: boolean; budgets?: Record<string, number>; models?: Record<string, string>; trusted?: string[]; deferred?: boolean; browser?: boolean; restartMs?: number; sandbox?: boolean | 'teammates'; onResult?: (key: string, total: number, resumed: boolean, tokens?: Tokens) => void; lean?: { model?: string; effort?: string; mcp: Record<string, unknown>; permissions?: Record<string, unknown> }; onMcp?: (q: unknown) => void; trustedPeople?: { ids: string[] }; ownerMemory?: string } = {}) {
   const sdk = fakeSdk(o)
   const dropped: string[] = []
   const keysDropped: string[] = []
@@ -68,7 +68,7 @@ function setup(o: { saved?: Record<string, string>; transcript?: boolean; silent
     grantOf: key => o.grants?.[key],
     allowOf: key => o.allows?.[key] ?? [],
     ...o.review !== undefined && { reviewHeld: async () => { o.onReview?.(); return typeof o.review === 'boolean' ? { release: o.review, said: o.review ? 'run' as const : 'hold' as const } : o.review! } },
-    ownerMemory: '/owner', ownMemory: '/own-memory',
+    ownerMemory: o.ownerMemory ?? '/owner', ownMemory: '/own-memory',
     envFile: '/cfg/env',
     codeDir: '/code/kage', sandbox: owner => sandboxed(o.sandbox ?? true, owner),
     ssm: { sock: '/cfg/ssm.sock', shim: '/code/kage/cli/ssm-plugin-shim', issue: key => o.trusted?.includes(key) ? `tok-${key}` : undefined, drop: key => { dropped.push(key) } },
@@ -1207,6 +1207,19 @@ describe('Kage sessions on the Agent SDK', () => {
     assert.equal((await run('Bash', { command: 'cat /cfg/env' })).hookSpecificOutput.permissionDecision, 'deny')
     assert.equal((await run('Read', { file_path: '/cfg/secrets.json' })).hookSpecificOutput.permissionDecision, 'deny')
     assert.deepEqual(await run('Read', { file_path: '/cfg/config.json' }), {})
+  })
+  test("the owner's own thread may edit an existing note in the owner's memory, and the dream lane on the owner's task may not (#564)", async () => {
+    const owner = realpathSync(mkdtempSync(join(tmpdir(), 'kage-owner-mem-')))
+    writeFileSync(join(owner, 'style.md'), 'x')
+    const t = setup({ ownerMemory: owner })
+    const edit = { file_path: join(owner, 'style.md'), old_string: 'x', new_string: 'y' }
+    const hookOf = (i: number) => t.sdk.runs[i]!.options.hooks.PreToolUse[0].hooks[0]
+    t.d.task('C1:5.5', t.task(), 0)
+    await tick()
+    assert.deepEqual(await hookOf(0)({ hook_event_name: 'PreToolUse', tool_name: 'Edit', tool_input: edit }, undefined, { signal: signal() }), {})
+    t.d.task('dm#side-dream', t.task(), 1)
+    await tick()
+    assert.equal((await hookOf(1)({ hook_event_name: 'PreToolUse', tool_name: 'Edit', tool_input: edit }, undefined, { signal: signal() })).hookSpecificOutput.permissionDecision, 'deny')
   })
   test('a kagelet lane gets only its grant, and approves nothing: a call that would ask is denied', async () => {
     const t = setup({ grants: { 'C1:5.5#side-kagelet-deploys': ['WebSearch'] } })

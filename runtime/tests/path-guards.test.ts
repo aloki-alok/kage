@@ -4,7 +4,7 @@ import { execFileSync } from 'node:child_process'
 import { mkdirSync, mkdtempSync, readFileSync, realpathSync, symlinkSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { agentReadRefusal, certFileEnv, configRefusal, dreamNoteRefusal, protectConfig, ownerMemoryRefusal } from '../path-guards.ts'
+import { agentReadRefusal, certFileEnv, configRefusal, dreamNoteRefusal, protectConfig, ownerMemoryRefusal, toolRefusal } from '../path-guards.ts'
 
 describe("the owner's memory takes only people notes", () => {
   const MEM = '/home/o/.claude/projects/-home-o/memory'
@@ -308,5 +308,31 @@ describe("the dream writes no new note itself: new lessons go through dream_less
     assert.match(dreamNoteRefusal('Bash', { command: `echo x > ${dir}/n.md` }, dir) ?? '', /dream_lessons/)
     assert.match(dreamNoteRefusal('Bash', { command: `cat ${realpathSync(dir)}/old.md` }, dir) ?? '', /dream_lessons/)
     assert.equal(dreamNoteRefusal('Bash', { command: 'ls /tmp' }, dir), undefined)
+  })
+})
+
+describe("the owner's own task may fix the owner's memory", () => {
+  const root = mkdtempSync(join(tmpdir(), 'kage-owner-mem-'))
+  const mem = join(root, 'memory')
+  mkdirSync(mem)
+  writeFileSync(join(mem, 'feedback_x.md'), 'x')
+  const as = (sender: string | undefined, tool: string, name: string, side = false) =>
+    toolRefusal(tool, { file_path: join(mem, name) }, sender, { ownerMemory: mem, envFile: join(root, 'cfg', 'env'), side })
+  test('an Edit or MultiEdit of a note that exists passes', () => {
+    assert.equal(as('owner', 'Edit', 'feedback_x.md'), undefined)
+    assert.equal(as('owner', 'MultiEdit', 'feedback_x.md'), undefined)
+  })
+  test('a Write over a note that exists passes, a Write of a new note is refused', () => {
+    assert.equal(as('owner', 'Write', 'feedback_x.md'), undefined)
+    assert.match(as('owner', 'Write', 'project_y.md') ?? '', /people notes.*Kage's memory/)
+    assert.match(as('owner', 'Edit', 'project_y.md') ?? '', /people notes/)
+  })
+  test('every other sender keeps the old rule', () => {
+    for (const sender of ['teammate', 'trusted', undefined]) assert.match(as(sender, 'Edit', 'feedback_x.md') ?? '', /people notes/, String(sender))
+    for (const sender of ['agent', 'voice']) assert.ok(as(sender, 'Edit', 'feedback_x.md'), sender)
+  })
+  test('a side lane such as the dream stays read only, though it runs as the owner', () => {
+    assert.match(as('owner', 'Edit', 'feedback_x.md', true) ?? '', /people notes/)
+    assert.match(as('owner', 'Write', 'feedback_x.md', true) ?? '', /people notes/)
   })
 })
