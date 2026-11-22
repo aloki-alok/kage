@@ -1,7 +1,7 @@
 import type { Config, Secrets } from './config.ts'
 import type { Line } from './doctor.ts'
 
-export type TunnelRoute = { name: 'github' | 'voice' | 'hooks' | 'meeting'; port: number; paths: string[]; reach: 'internet' | 'tailnet' }
+type TunnelRoute = { name: 'github' | 'voice' | 'hooks' | 'meeting'; port: number; paths: string[]; reach: 'internet' | 'tailnet' }
 type RouteState = 'internet' | 'tailnet' | 'closed'
 type ServeStatus = {
   TCP?: Record<string, { TCPForward?: string }>

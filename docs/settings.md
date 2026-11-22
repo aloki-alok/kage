@@ -168,6 +168,23 @@ Counts and failure codes from this install, sent to an OpenTelemetry (OTLP) endp
 | `telemetry.endpoint` | `https://monitor.omnidim.io/kage` | The OTLP/HTTP base URL: the Kage team's receiver, which keeps only counts and codes. Point it at your own collector to keep the data yourself. Kage posts to `<endpoint>/v1/logs`, and each session's Claude Code sends its own logs there too. |
 | `telemetry.on` | on | You get one DM before anything is sent. `false` sends nothing. `KAGE_TELEMETRY=off` or `DO_NOT_TRACK=1` in the hub's environment does the same. |
 
+## Reach Kage from other machines
+
+One tunnel serves every Kage port another machine needs (#492). `kage tunnel on` opens a route for each connector that is on, and closes the route of each one that is off. `kage tunnel off` closes them all. `kage doctor` shows each route. It needs [Tailscale](https://tailscale.com/download) running on this machine. A public route also needs Funnel allowed for this machine in the Tailscale admin page, once.
+
+| Route | Who calls it | Reach |
+|---|---|---|
+| github | GitHub's webhook, when `githubSecret` is set | public at `https://<machine>.<tailnet>.ts.net/github` |
+| voice | the voice agent, when `voiceToken` is set | public at `/mcp` and `/voice` |
+| hooks | job webhooks, when `tripwires.hookPort` is set | public at `/hook/<job>` |
+| meeting | the meeting bot, when `meetingToken` is set | your tailnet only, at `<machine>.<tailnet>.ts.net:<port>` |
+
+Each public route still checks its own secret or token, so the URL alone lets nobody in.
+
+| Setting | Default | What it does |
+|---|---|---|
+| `tunnel.provider` | `off` | `tailscale` once `kage tunnel on` ran, and `off` again after `kage tunnel off`. `kage doctor` checks the routes only while it is `tailscale`. |
+
 ## Tripwires
 
 A tripwire runs a shell command on a clock and wakes a session only when the command's output changes. The first good run records the baseline and wakes nothing. A command that edits itself, or a file it names that you could change, is refused when that file changes, until you approve it again. Pinning is best effort: the approval card lists the files a probe reads as data, and those are the only files whose change does not stop it.

@@ -156,7 +156,7 @@ It works for every repo and organization you can see, with nothing to set up the
 
 ### Get GitHub events at once
 
-Reading notifications takes up to a minute. A webhook brings each event within a second, but GitHub must reach your machine, so it needs a public URL to `127.0.0.1:8789/github`. Set `githubSecret`, then add the webhook on a repo or an organization ([settings](settings.md), `githubSecret`). When a webhook secret is set, Kage stops reading notifications, so each event arrives once.
+Reading notifications takes up to a minute. A webhook brings each event within a second, but GitHub must reach your machine, so it needs a public URL. Set `githubSecret`, run `kage tunnel on` for the URL (settings, "Reach Kage from other machines"), then add the webhook on a repo or an organization ([settings](settings.md), `githubSecret`). When a webhook secret is set, Kage stops reading notifications, so each event arrives once.
 
 ### Let it see and record your screen (macOS)
 
