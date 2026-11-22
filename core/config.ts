@@ -40,6 +40,7 @@ export const Config = z.strictObject({
   jev: z.strictObject({ agents: strings, threshold: money, model: text, url: text, ackWords: yes }).optional(),
   telemetry: z.strictObject({ on: yes, endpoint: text }).optional(),
   screen: z.strictObject({ shotLongSide: count }).optional(),
+  top: z.strictObject({ threadCostBar: money }).optional(),
   tripwires: z.strictObject({ on: yes, timeoutSec: count, maxKb: count, failPing: count, patternMax: count, lineMax: count, maxPosts: count, catchUpMax: count, seenMax: count, hookPort: count, hookHost: text, hookPerHour: count, env: strings, swapAfter: count, shadowWindowMin: count, swapUndoDays: count }).optional(),
   connectors: z.strictObject({
     email: z.strictObject({ on: yes, address: text, queue: text, ownerEmail: text, region: text, teammateEmails: strings }).optional(),
@@ -114,7 +115,7 @@ export const KEYS: Row[] = [
   R('KAGE_TRIPWIRES', 'tripwires.on', onoff), R('KAGE_TRIPWIRES_TIMEOUT_SEC', 'tripwires.timeoutSec', int), R('KAGE_TRIPWIRES_MAX_KB', 'tripwires.maxKb', int),
   R('KAGE_TRIPWIRES_FAIL_PING', 'tripwires.failPing', int), R('KAGE_TRIPWIRES_PATTERN_MAX', 'tripwires.patternMax', int), R('KAGE_TRIPWIRES_LINE_MAX', 'tripwires.lineMax', int),
   R('KAGE_TRIPWIRES_ENV', 'tripwires.env', list),
-  R('KAGE_TELEMETRY', 'telemetry.on', onoff), R('KAGE_TELEMETRY_ENDPOINT', 'telemetry.endpoint'), R('KAGE_SCREEN_SHOT_LONG_SIDE', 'screen.shotLongSide', int),
+  R('KAGE_TELEMETRY', 'telemetry.on', onoff), R('KAGE_TELEMETRY_ENDPOINT', 'telemetry.endpoint'), R('KAGE_SCREEN_SHOT_LONG_SIDE', 'screen.shotLongSide', int), R('KAGE_TOP_THREAD_COST_BAR', 'top.threadCostBar', num),
   R('KAGE_EMAIL', 'connectors.email.on', onoff), R('KAGE_MAIL_ADDRESS', 'connectors.email.address'), R('KAGE_MAIL_QUEUE', 'connectors.email.queue'),
   R('KAGE_OWNER_EMAIL', 'connectors.email.ownerEmail'), R('KAGE_AWS_REGION', 'connectors.email.region'), R('KAGE_TEAMMATE_EMAILS', 'connectors.email.teammateEmails', list),
   R('KAGE_VOICE', 'connectors.voice.on', onoff), R('KAGE_VOICE_PORT', 'connectors.voice.port', int), R('KAGE_VOICE_MAX', 'connectors.voice.max', int),
@@ -226,7 +227,7 @@ export function checkSettings(c: Config, s: Secrets): { name: string; teammates:
   return { name, teammates, trusted: trusted.filter(id => teammates.includes(id)), notTrusted: trusted.filter(id => !teammates.includes(id)), apps: (c.people?.agents ?? []).map(agentLine) }
 }
 
-const SAFE = [/^kagelets\.(max|dailyUsd|totalDailyUsd|chainUsd|needsPerDay|askRunsPerHour|notesKept|noteChars|measureMinutes|trendRuns|turnStallMinutes|incidentsPerHour)$/, /^waiting\.expireHours$/, /^afk\.(on|model)$/, /^harness\.(jobModel|jobFreshEvery|jobCarry|jobCarryChars|rotateTokens|jobLaneDefault|jobCatchUpHours|jobCatchUpStaggerSeconds)$/, /^jev\.(threshold|model|ackWords)$/, /^tripwires\.(timeoutSec|maxKb|failPing|patternMax|lineMax|maxPosts|catchUpMax|seenMax|hookPerHour|swapAfter|shadowWindowMin|swapUndoDays)$/,
+const SAFE = [/^kagelets\.(max|dailyUsd|totalDailyUsd|chainUsd|needsPerDay|askRunsPerHour|notesKept|noteChars|measureMinutes|trendRuns|turnStallMinutes|incidentsPerHour)$/, /^waiting\.expireHours$/, /^top\.threadCostBar$/, /^afk\.(on|model)$/, /^harness\.(jobModel|jobFreshEvery|jobCarry|jobCarryChars|rotateTokens|jobLaneDefault|jobCatchUpHours|jobCatchUpStaggerSeconds)$/, /^jev\.(threshold|model|ackWords)$/, /^tripwires\.(timeoutSec|maxKb|failPing|patternMax|lineMax|maxPosts|catchUpMax|seenMax|hookPerHour|swapAfter|shadowWindowMin|swapUndoDays)$/,
   /^connectors\.(voice|github|meeting|browser|whatsapp)\.(port|max|perHour|hookPort)$/, /^connectors\.whatsapp\.(model|checkMinutes)$/]
 export function settingTier(key: string): 'safe' | 'power' | 'never' {
   const parts = key.split('.')

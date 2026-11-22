@@ -1,6 +1,7 @@
 import { describe, test } from 'node:test'
 import assert from 'node:assert/strict'
-import { activityBins, bars, channels, filterRows, listRows, MARK, perMinute, perHour, rowAt, screen, spinner } from '../top-layout.ts'
+import { activityBins, bars, channels, costCell, FILTERS, filterRows, listRows, MARK, nextFilter, perMinute, perHour, rowAt, screen, spentToday, spinner } from '../top-layout.ts'
+import { FOLDED } from '../board.ts'
 import type { Row } from '../board.ts'
 
 describe('screen: which panes a terminal gets', () => {
@@ -152,5 +153,39 @@ describe('which connectors the top bar names', () => {
   })
   test('a connector that is on but never logged reads as starting, not up', () => {
     assert.deepEqual(channels({ slack: true, log: '', on: ['github'] }), [{ name: 'slack', up: true }, { name: 'github', up: undefined }])
+  })
+})
+
+describe('kage top filters and shows what each thread cost today (#259)', () => {
+  const row = (key: string, connector: string, state: Row['state']): Row => ({ key, place: key, connector, state, label: state, ageMs: 0 })
+  const rows = [row('C1:1', 'slack', 'working'), row('m1', 'email', 'quiet'), row('w1', 'whatsapp', 'asking'), row('C2:2#side-kagelet-ab12', 'slack', 'watching'), row('v1', 'voice', 'closed'), row(FOLDED, '', 'closed')]
+  const keys = (f: Parameters<typeof filterRows>[2]) => filterRows(rows, '', f).map(r => r.key)
+  test('the filter key steps through every thread, running ones, each connector and kagelets, then back', () => {
+    assert.deepEqual([...FILTERS], ['all', 'running', 'slack', 'email', 'whatsapp', 'voice', 'kagelets'])
+    assert.equal(nextFilter('all'), 'running')
+    assert.equal(nextFilter('kagelets'), 'all')
+  })
+  test('running keeps only the threads that are busy right now', () => {
+    assert.deepEqual(keys('running'), ['C1:1', 'w1'])
+  })
+  test('a connector filter keeps its own threads, and a kagelet thread counts as a kagelet, not as Slack', () => {
+    assert.deepEqual(keys('slack'), ['C1:1'])
+    assert.deepEqual(keys('kagelets'), ['C2:2#side-kagelet-ab12'])
+    assert.deepEqual(keys('voice'), ['v1'])
+  })
+  test('every thread keeps the fold row, any other filter drops it, and search still narrows the filtered rows', () => {
+    assert.deepEqual(keys('all'), rows.map(r => r.key))
+    assert.deepEqual(filterRows(rows, 'w', 'running').map(r => r.key), ['w1'])
+  })
+  test('cost per thread adds up today only, by thread', () => {
+    const now = new Date(2026, 10, 22, 15).getTime(), midnight = new Date(now).setHours(0, 0, 0, 0)
+    const costs = [{ at: midnight - 1, usd: 9, key: 'a' }, { at: midnight + 1, usd: 1.25, key: 'a' }, { at: now, usd: 2, key: 'a' }, { at: now, usd: 0.5, key: 'b' }]
+    assert.deepEqual([...spentToday(costs, now)], [['a', 3.25], ['b', 0.5]])
+  })
+  test('the cost cell is blank under a cent, and a thread at or over the bar is flagged', () => {
+    assert.equal(costCell(undefined, 5), undefined)
+    assert.equal(costCell(0.004, 5), undefined)
+    assert.deepEqual(costCell(1.2, 5), { text: '$1.20', over: false })
+    assert.deepEqual(costCell(5, 5), { text: '$5.00', over: true })
   })
 })

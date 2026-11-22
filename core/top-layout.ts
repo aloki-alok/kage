@@ -1,4 +1,4 @@
-import type { Row, State } from './board.ts'
+import { BUSY, FOLDED, type Row, type State } from './board.ts'
 
 export type Rect = { x0: number; y0: number; x1: number; y1: number }
 export type Screen = { banner?: number; list: Rect; feed?: Rect; charts?: Rect[] }
@@ -82,10 +82,22 @@ export const MARK: Record<State, { glyph: string; tone: Tone }> = {
 const SPIN = '⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏'
 export const spinner = (t: number) => SPIN[Math.floor(t / 100) % SPIN.length]!
 
-export const filterRows = (rows: Row[], query: string): Row[] => {
+export const FILTERS = ['all', 'running', 'slack', 'email', 'whatsapp', 'voice', 'kagelets'] as const
+export type Filter = typeof FILTERS[number]
+export const nextFilter = (f: Filter): Filter => FILTERS[(FILTERS.indexOf(f) + 1) % FILTERS.length]!
+const kindOf = (r: Row) => r.key.includes('#side-kagelet-') ? 'kagelets' : r.connector
+const keeps = (r: Row, f: Filter) => f === 'all' || (r.key !== FOLDED && (f === 'running' ? BUSY.includes(r.state) : kindOf(r) === f))
+export const filterRows = (rows: Row[], query: string, filter: Filter = 'all'): Row[] => {
   const q = query.trim().toLowerCase()
-  return q ? rows.filter(r => r.place.toLowerCase().includes(q)) : rows
+  return rows.filter(r => keeps(r, filter) && (!q || r.place.toLowerCase().includes(q)))
 }
+
+export function spentToday(costs: { at: number; usd: number; key: string }[], now: number): Map<string, number> {
+  const midnight = new Date(now).setHours(0, 0, 0, 0), by = new Map<string, number>()
+  for (const c of costs) if (c.at >= midnight && c.at <= now) by.set(c.key, Math.round(((by.get(c.key) ?? 0) + c.usd) * 1e6) / 1e6)
+  return by
+}
+export const costCell = (usd: number | undefined, bar: number) => usd === undefined || usd < 0.005 ? undefined : { text: `$${usd.toFixed(2)}`, over: usd >= bar }
 
 const STEPS = [1, 2, 3, 5, 10, 15]
 export function activityBins(times: number[], now: number, width: number): { bins: number[]; minutes: number } {
