@@ -125,8 +125,6 @@ async function intoKageGroup(tab) {
 
 const settings = () => chrome.storage.local.get({ hub: 'http://127.0.0.1:8791', token: '' })
 
-// kage add browser registers a helper only this extension may start (core/browser-pair.ts). It answers with the
-// token from the settings file, so a new token needs no paste. Returns true when it gave a different token.
 const HOST = 'dev.kage.pair'
 // At most one ask per 5 minutes: the alarm restarts the loop every 30 s, and each ask starts a process. Kept in
 // session storage, since Chrome restarts an idle service worker and that would reset a variable.
@@ -174,7 +172,6 @@ async function loop() {
       const auth = { authorization: `Bearer ${token}` }
       let r
       try { r = await fetch(`${hub}/browser/next`, { headers: { ...auth, 'x-kage-extension': chrome.runtime.getManifest().version } }) } catch { await setState('unreachable'); await sleep(5000); continue }
-      // A refused token may be an old one: kage add browser made a new one since. Ask the helper once.
       if (r.status === 401) { if (await pair()) continue; await setState('refused'); return }
       // Only the hub answers 200 or 204 here: any other status is some other service on that port, or a wrong path.
       if (r.status !== 200 && r.status !== 204) { await setState('unreachable'); await sleep(5000); continue }

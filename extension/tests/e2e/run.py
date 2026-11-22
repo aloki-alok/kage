@@ -1,6 +1,3 @@
-# Runs check.ts against the real extension in Chromium, paired the way a person's browser is (kage add browser),
-# in a throwaway home folder. From the repo root: uv run --with playwright python extension/tests/e2e/run.py
-# (once: uvx playwright install chromium). Exits with check.ts's code.
 import json
 import asyncio, os, shutil, socket, subprocess, sys, tempfile
 from pathlib import Path
@@ -15,7 +12,6 @@ def free_port():
 
 async def main():
     home = Path(tempfile.mkdtemp(prefix='kage-e2e-'))
-    # Chromium looks for the pairing helper in its profile folder, and kage add browser registers it only where that folder exists.
     profile = home / ('Library/Application Support/Chromium' if sys.platform == 'darwin' else '.config/chromium')
     profile.mkdir(parents=True)
     (home / '.config' / 'kage').mkdir(parents=True)
@@ -34,7 +30,7 @@ async def main():
         (stubs / c).write_text('#!/bin/sh\nexit 0\n')
         (stubs / c).chmod(0o755)
     env['PATH'] = f"{stubs}:{env['PATH']}"
-    subprocess.run(['node', 'cli/registry.ts', 'add', 'browser'], cwd=ROOT, env=env, check=True, stdout=subprocess.DEVNULL)
+    subprocess.run(['node', 'cli/connect.ts', 'browser'], cwd=ROOT, env=env, check=True, stdout=subprocess.DEVNULL)
     token = json.loads((home / '.config' / 'kage' / 'secrets.json').read_text())['browserToken']
     site = subprocess.Popen([sys.executable, '-m', 'http.server', str(page_port), '--bind', '127.0.0.1', '-d', str(Path(__file__).parent)], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     check = subprocess.Popen(['node', str(Path(__file__).parent / 'check.ts')], cwd=ROOT, env={**env, 'KAGE_E2E_TOKEN': token, 'KAGE_E2E_PORT': str(hub_port), 'KAGE_E2E_EXT': str(EXT)})

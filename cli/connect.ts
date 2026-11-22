@@ -5,6 +5,7 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { addBrowserAgainLines, addBrowserLines, addBrowserPlan, extensionId, HOST, hostBrowsers, hostManifest } from '../core/browser-pair.ts'
 import { connectLines, connectorStates, connectorStep, OFF_NOTES, type ConnectorName } from '../core/connect.ts'
 import { readSettings, updateConfig, updateSecrets } from '../runtime/config-files.ts'
+import type { Config } from '../core/config.ts'
 import { DIR, ENV_FILE, settingsExist } from './home.ts'
 
 const die = (msg: string): never => { console.error(msg); process.exit(1) }
@@ -21,22 +22,27 @@ const n = name as ConnectorName
 const off = args[0] === 'off'
 
 if (n === 'github') die('Run kage connect github: setup.sh walks it.')
+const before = state()[n]
+const quit = (line: string): never => { console.log(line); process.exit(0) }
+if (off && before.state === 'unset') quit(`${n} is not set up, so it is off already.`)
+if (off && before.state === 'off') quit(`${n} is off already.`)
 if (n === 'browser' && off) {
   change(() => updateSecrets(ENV_FILE, ({ browserToken: _, ...s }) => s))
-  console.log(`browser is off. ${OFF_NOTES.browser}`)
-  process.exit(0)
+  quit(`browser is off. ${OFF_NOTES.browser}`)
 }
 if (n === 'browser') pairBrowser()
 if (n === 'meeting' && off) die('The meeting bot has no off switch yet. Remove meetingToken from secrets.json to turn it off.')
 const switched = SWITCHED.find(k => k === n)
-if (switched && (off || readSettings(ENV_FILE).config.connectors?.[switched]?.on === false)) change(() => updateConfig(ENV_FILE, c => {
-  const { on: _, ...rest } = c.connectors?.[switched] ?? {}
-  return { ...c, connectors: { ...c.connectors, [switched]: off ? { ...rest, on: false } : rest } }
-}))
-const now = state()[n]
-if (off) { console.log(`${n} is off. ${OFF_NOTES[n] ?? ''}`.trim()); process.exit(0) }
-if (now.state === 'on') { console.log(`${n} is on. Kage picks it up once it is not in the middle of anything.`); process.exit(0) }
-die(`${n} ${connectorStep(n, now)}`)
+const turned = (c: Config): Config => {
+  const { on: _, ...rest } = c.connectors?.[switched!] ?? {}
+  return { ...c, connectors: { ...c.connectors, [switched!]: off ? { ...rest, on: false } : rest } }
+}
+const now = readSettings(ENV_FILE)
+const after = switched ? connectorStates({ ...now, config: turned(now.config) })[n] : before
+if (switched && after.state !== before.state && (off || after.state === 'on')) change(() => updateConfig(ENV_FILE, turned))
+if (off) quit(`${n} is off. ${OFF_NOTES[n] ?? ''}`.trim())
+if (after.state === 'on') quit(`${n} is on. Kage picks it up once it is not in the middle of anything.`)
+die(`${n} ${connectorStep(n, after)}`)
 
 function pairBrowser(): never {
   const plan = addBrowserPlan({ hasToken: !!readSettings(ENV_FILE).secrets.browserToken, reinstall: args.includes('--reinstall') })

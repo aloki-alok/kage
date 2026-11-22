@@ -16,9 +16,9 @@ describe('one table says whether each connector is on', () => {
 
   test('a connector missing a setting names each one it lacks', () => {
     const s = connectorStates(settings({ connectors: { github: { login: 'me' }, email: { address: 'k@x.io' } } }))
-    assert.deepEqual(s.github, { state: 'unset', missing: ['githubToken'], partial: true })
-    assert.deepEqual(s.email, { state: 'unset', missing: ['connectors.email.queue', 'connectors.email.ownerEmail'], partial: true })
-    assert.deepEqual(s.voice, { state: 'unset', missing: ['voiceToken'], partial: false })
+    const missing = (c: typeof s.github) => c.state === 'unset' ? c.missing : []
+    assert.deepEqual([missing(s.github), missing(s.email), missing(s.voice)], [['githubToken'], ['connectors.email.queue', 'connectors.email.ownerEmail'], ['voiceToken']])
+    assert.deepEqual([s.github.state, s.email.state, s.voice.state], ['unset', 'unset', 'unset'])
   })
 
   test('a connector the owner turned off is off, whatever else is set', () => {

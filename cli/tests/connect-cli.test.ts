@@ -30,11 +30,11 @@ test('kage connect lists every connector with its state and the one step left', 
 })
 
 test('off turns a connector off and names what stays outside Kage, and connect turns it back on', () => {
-  const w = world({ connectors: { voice: { port: 9000 } } }, { voiceToken: 'v' })
+  const w = world({ connectors: { voice: { port: 9000 }, email: { address: 'k@x.io' } } }, { voiceToken: 'v' })
   const off = w.run(['voice', 'off'])
   assert.equal(off.code, 0)
   assert.match(off.out, /voice is off\..*kage tunnel on/)
-  assert.deepEqual(w.read('config').connectors.voice, { port: 9000, on: false })
+  assert.deepEqual(w.read('config').connectors, { voice: { port: 9000, on: false }, email: { address: 'k@x.io' } })
   const on = w.run(['voice'])
   assert.equal(on.code, 0)
   assert.match(on.out, /voice is on\./)
@@ -48,6 +48,19 @@ test('a connector that still needs settings says which, and changes nothing', ()
   assert.equal(r.code, 1)
   assert.match(r.out, /email needs connectors\.email\.queue and connectors\.email\.ownerEmail: kage set <key> <value>/)
   assert.deepEqual(w.read('config').connectors.email, { address: 'k@x.io' })
+})
+
+test('connect and off write only when the connector really changes state', () => {
+  const never = world({})
+  assert.match(never.run(['voice', 'off']).out, /voice is not set up, so it is off already/)
+  assert.equal(never.read('config').connectors, undefined)
+  const offNoToken = world({ connectors: { voice: { on: false } } })
+  const r = offNoToken.run(['voice'])
+  assert.equal(r.code, 1)
+  assert.match(r.out, /voice needs voiceToken/)
+  assert.deepEqual(offNoToken.read('config').connectors, { voice: { on: false } })
+  const noBrowser = world({}, { voiceToken: 'v' })
+  assert.match(noBrowser.run(['browser', 'off']).out, /browser is not set up, so it is off already/)
 })
 
 test('browser off deletes the token the extension pairs with, and says the extension stays in Chrome', () => {
