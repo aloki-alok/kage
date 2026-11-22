@@ -1,6 +1,6 @@
 import { describe, test } from 'node:test'
 import assert from 'node:assert/strict'
-import { costRows, threadKind, trailEvent, trailLine, askedFrom, cardAt, dailyDue, expiredWaiting, grantsLine, heldLine, lastTotals, openWaiting, postedBy, spendSince, unanswered, staleWaiting, selfReview, tsvRow, turnCost } from '../ledgers.ts'
+import { costRows, threadKind, trailEvent, trailLine, askedFrom, cardAt, dailyDue, expiredWaiting, grantsLine, heldLine, lastTotals, openWaiting, dailyAverage, postedBy, spendSince, unanswered, staleWaiting, selfReview, tsvRow, turnCost } from '../ledgers.ts'
 import type { Task } from '../task.ts'
 
 describe('the daily note of what waits on the owner', () => {
@@ -132,6 +132,13 @@ describe('the cost ledger', () => {
   test('the last total per thread comes back from the file, so a restart does not count a turn twice', () => {
     const tsv = [tsvRow(['2026-11-06T01:00:00Z', 'C1:1.1', '0.4', '0.4']), tsvRow(['2026-11-06T02:00:00Z', 'C1:1.1', '0.35', '0.75']), tsvRow(['2026-11-06T02:00:00Z', 'dm', '0.2', '0.2'])].join('')
     assert.deepEqual(lastTotals(tsv), new Map([['C1:1.1', 0.75], ['dm', 0.2]]))
+  })
+  test('the daily average spend over the 7 days before today, counting only days since the first spend (#258)', () => {
+    const day = 86_400_000, today = Date.parse('2026-11-22T00:00:00Z')
+    const row = (daysAgo: number, usd: number) => tsvRow([new Date(today - daysAgo * day + 3_600_000).toISOString(), 'dm', String(usd), '0'])
+    assert.equal(dailyAverage([row(1, 10), row(2, 20), row(7, 40), row(8, 999), row(0, 500)].join(''), today), 10)
+    assert.equal(dailyAverage([row(1, 6), row(2, 6)].join(''), today), 6)
+    assert.equal(dailyAverage(row(0, 5), today), undefined)
   })
   test('spend per thread since a time, most expensive first, with its turns', () => {
     const tsv = [

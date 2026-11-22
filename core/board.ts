@@ -61,6 +61,13 @@ export function boardRows(known: Known[], live: Live | undefined, activity: Map<
   return { rows: [...showEnded ? rows : rows.filter(r => !old.includes(r)), fold] }
 }
 
+const BUSY: State[] = ['asking', 'working', 'starting', 'queued', 'held']
+export function liveThreadLines(rows: Row[], stepOf: (key: string) => string | undefined, max = 8): string[] {
+  const busy = rows.filter(r => BUSY.includes(r.state))
+  const lines = busy.slice(0, max).map(r => [r.label, r.place, r.topic, `${ago(r.ageMs)} ago`, r.state === 'asking' ? undefined : stepOf(r.key)].filter(Boolean).join(' · '))
+  return busy.length > max ? [...lines, `+${busy.length - max} more in kage top`] : lines
+}
+
 export function ago(ms: number): string {
   const s = Math.max(0, Math.floor(ms / 1000))
   if (s < 60) return `${s}s`
@@ -115,9 +122,9 @@ export function stopLine(r: { ok: true; ending?: true; asking?: true; cut?: 'bus
 const UNIT: Record<string, string> = { s: 'second', m: 'minute', h: 'hour', d: 'day' }
 const spoken = (short: string) => { const n = Number(short.slice(0, -1)); return `${n} ${UNIT[short.slice(-1)]}${n === 1 ? '' : 's'}` }
 
-export function statusSummary(f: { version?: string; upSec?: number; starts: Starts; schedules: number; spentToday: number; turnsToday: number }): { says: string; warn?: string } {
+export function statusSummary(f: { version?: string; upSec?: number; starts: Starts; schedules: number; spentToday: number; turnsToday: number; dailyAverage?: number }): { says: string; warn?: string } {
   const plural = (n: number, one: string) => `${n} ${one}${n === 1 ? '' : 's'}`
-  const spent = f.turnsToday ? `spent $${f.spentToday.toFixed(2)} today over ${plural(f.turnsToday, 'turn')}` : 'spent nothing today'
+  const spent = `${f.turnsToday ? `spent $${f.spentToday.toFixed(2)} today over ${plural(f.turnsToday, 'turn')}` : 'spent nothing today'}${f.dailyAverage !== undefined ? `, against a 7-day average of $${f.dailyAverage.toFixed(2)}` : ''}`
   const parts = [
     f.version ? `I'm running ${f.version.split(' ')[0]}.` : f.upSec === undefined ? "I'm running." : '',
     f.upSec === undefined ? `I've ${spent}.` : `I've been up ${spoken(ago(f.upSec * 1000))} and ${spent}.`,

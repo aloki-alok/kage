@@ -1,6 +1,6 @@
 import { describe, test } from 'node:test'
 import assert from 'node:assert/strict'
-import { ago, boardRows, FOLDED, topicOf, statusSummary, nextRuns, watchingNext, whenLabel, type Live, clockTime, limitLine, pauseLine, stopLine } from '../board.ts'
+import { ago, boardRows, FOLDED, liveThreadLines, topicOf, statusSummary, type Row, nextRuns, watchingNext, whenLabel, type Live, clockTime, limitLine, pauseLine, stopLine } from '../board.ts'
 import type { Schedule } from '../cron.ts'
 import { startsSince } from '../boots.ts'
 
@@ -153,6 +153,10 @@ describe('kage status summary, in Kage words', () => {
     assert.equal(r.says, "I'm running 6185ff7. I've been up 6 hours and spent $3.20 today over 12 turns. 4 schedules. 2 starts in 24 h: 1 update, 1 restart, 0 crashes.")
     assert.equal(r.warn, undefined)
   })
+  test("today's spend sits next to the 7-day daily average (#258)", () => {
+    const r = statusSummary({ upSec: 3600, starts: startsSince('', 0), schedules: 0, spentToday: 84, turnsToday: 30, dailyAverage: 61 })
+    assert.match(r.says, /spent \$84\.00 today over 30 turns, against a 7-day average of \$61\.00\./)
+  })
   test('a crash or a stop with no cause is the warning, and planned restarts are not (#255)', () => {
     const base = { upSec: 60, schedules: 0, spentToday: 0, turnsToday: 0 }
     assert.equal(statusSummary({ ...base, starts: startsSince(Array.from({ length: 63 }, (_, i) => `${i + 1} update`).join('\n'), 0) }).warn, undefined)
@@ -200,5 +204,19 @@ describe('rows say what each thread is, and old ended sessions fold away (#257)'
   })
   test('each row carries its topic', () => {
     assert.equal(boardRows([{ ...known('a')[0]!, topic: 'count the open P1s' }], live(), new Map(), new Map(), NOW).rows[0]!.topic, 'count the open P1s')
+  })
+})
+
+describe('kage status lists what each busy thread is doing (#258)', () => {
+  const row = (key: string, state: Row['state'], topic?: string): Row => ({ key, place: `#${key}`, connector: 'slack', state, label: state === 'asking' ? 'asks you' : state, ageMs: 4 * MIN, ...topic && { topic } })
+  test('working, starting, queued, held and asking threads show place, topic, age and the step they are on; quiet and ended ones do not', () => {
+    const lines = liveThreadLines([row('a', 'working', 'count the open P1s'), row('b', 'asking', 'approve the refund'), row('c', 'quiet'), row('d', 'closed')], k => k === 'a' ? 'Bash  gh issue list' : 'reply  hi')
+    assert.deepEqual(lines, ['working · #a · count the open P1s · 4m ago · Bash  gh issue list', 'asks you · #b · approve the refund · 4m ago'])
+  })
+  test('past the cap the rest are counted, so status stays short', () => {
+    const many = Array.from({ length: 11 }, (_, i) => row(`t${i}`, 'working'))
+    const lines = liveThreadLines(many, () => undefined, 8)
+    assert.equal(lines.length, 9)
+    assert.equal(lines.at(-1), '+3 more in kage top')
   })
 })

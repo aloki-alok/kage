@@ -4,7 +4,7 @@ import { readFileSync } from 'node:fs'
 import { askHub, DIR } from './home.ts'
 import { statusSummary } from '../core/board.ts'
 import { startsSince } from '../core/boots.ts'
-import { spendSince } from '../core/ledgers.ts'
+import { dailyAverage, spendSince } from '../core/ledgers.ts'
 import { openLedgers } from '../runtime/ledger.ts'
 import { schedulesIn } from '../runtime/store.ts'
 import { voice } from './voice.ts'
@@ -28,7 +28,7 @@ const ledgers = openLedgers(DIR)
 const today = spendSince(ledgers.text('costs'), midnight)
 const summary = statusSummary({
   version: /^[0-9a-f]{7}/.test(runningVersion) ? runningVersion : undefined, upSec, starts, schedules: schedulesIn(`${DIR}/kage.db`).length,
-  spentToday: today.reduce((a, r) => a + r.usd, 0), turnsToday: today.reduce((a, r) => a + r.turns, 0),
+  spentToday: today.reduce((a, r) => a + r.usd, 0), turnsToday: today.reduce((a, r) => a + r.turns, 0), dailyAverage: dailyAverage(ledgers.text('costs'), midnight),
 })
 console.log(voice.says(summary.says))
 if (summary.warn) console.log(`  ${voice.needsYou(summary.warn)} ${voice.dim('Ask')} ${voice.command('kage doctor')} ${voice.dim('why.')}`)
@@ -37,8 +37,9 @@ if (health.length) {
   console.log(`\nConnectors`)
   for (const l of health) console.log(`  ${/ off$/.test(l) ? voice.dim(l) : / failed \d+x /.test(l) ? voice.needsYou(l) : l}`)
 }
-console.log()
-spawnSync(process.execPath, [new URL('./top.ts', import.meta.url).pathname, '--once'], { stdio: 'inherit' })
+const threads = spawnSync(process.execPath, [new URL('./top.ts', import.meta.url).pathname, '--once'], { stdio: ['ignore', 'pipe', 'inherit'], encoding: 'utf8' }).stdout.split('\n').filter(Boolean)
+console.log(`\nThreads ${voice.dim(threads.length ? '' : 'none busy')}`)
+for (const l of threads) console.log(`  ${/^asks you/.test(l) ? voice.needsYou(l) : l}`)
 const kagelets = kageletRows(readKagelets(kageletsDir(DIR)), { runs: ledgers.text('runs'), costs: ledgers.text('costs'), now })
 if (kagelets.length) {
   console.log(`\nKagelets ${voice.dim(`${kagelets.filter(k => k.state === 'runs').length} of ${kagelets.length} on`)}`)
