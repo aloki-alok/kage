@@ -3,8 +3,8 @@
 <plist version="1.0">
 <dict>
   <key>CFBundleIdentifier</key><string>dev.kage.screen</string>
-  <key>CFBundleName</key><string>Kage Screen</string>
-  <key>CFBundleDisplayName</key><string>Kage Screen</string>
+  <key>CFBundleName</key><string>Kage</string>
+  <key>CFBundleDisplayName</key><string>Kage</string>
   <key>CFBundleExecutable</key><string>KageScreen</string>
   <key>CFBundleIconFile</key><string>AppIcon</string>
   <key>CFBundlePackageType</key><string>APPL</string>

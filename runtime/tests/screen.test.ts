@@ -1,6 +1,6 @@
 import { describe, test } from 'node:test'
 import assert from 'node:assert/strict'
-import { appendFileSync, copyFileSync, createReadStream, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs'
+import { appendFileSync, copyFileSync, createReadStream, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs'
 import { execFile, execFileSync } from 'node:child_process'
 import { promisify } from 'node:util'
 import { createInterface } from 'node:readline'
@@ -113,7 +113,7 @@ describe('Kage Screen in the hub', () => {
   })
   test('with no screen permission yet, the answer tells the owner where to turn it on', async () => {
     const { screen } = setup(() => ['{"error":"permission"}'])
-    assert.match(String(await screen.shot('/t/s.png')), /Kage Screen in System Settings > Privacy & Security > Screen & System Audio Recording/)
+    assert.match(String(await screen.shot('/t/s.png')), /turn on Kage in System Settings > Privacy & Security > Screen & System Audio Recording/)
     assert.match(await screen.start('/t/a.mp4', 60) ?? '', /System Settings/)
   })
   test("the helper's own error comes back as it said it", async () => {
@@ -124,7 +124,7 @@ describe('Kage Screen in the hub', () => {
     const built: string[] = []
     const { dir, screen } = setup(() => ['{"state":"saved","width":1280,"height":800,"pointsWide":1440,"pointsHigh":900}'], built)
     await screen.shot('/t/s.png')
-    assert.deepEqual(built, [`${dir}/Kage Screen.app`])
+    assert.deepEqual(built, [`${dir}/Kage.app`])
   })
 
 })
@@ -132,7 +132,8 @@ describe('Kage Screen in the hub', () => {
 const canBuild = process.platform === 'darwin' && (() => { try { execFileSync('which', ['swiftc']); return true } catch { return false } })()
 describe('building Kage Screen', { skip: !canBuild && 'needs macOS with swiftc' }, () => {
   test("a rebuild keeps the signature macOS ties its grant to, so only a new signing identity resets the grant", async () => {
-    const code = mkdtempSync(`${tmpdir()}/kage-sign-code-`), folder = mkdtempSync(`${tmpdir()}/kage-sign-app-`), app = `${folder}/Kage Screen.app`
+    const code = mkdtempSync(`${tmpdir()}/kage-sign-code-`), folder = mkdtempSync(`${tmpdir()}/kage-sign-app-`), app = `${folder}/Kage.app`
+    mkdirSync(`${folder}/Kage Screen.app/Contents`, { recursive: true })
     mkdirSync(`${code}/screen`); mkdirSync(`${code}/docs/brand`, { recursive: true })
     copyFileSync(`${import.meta.dirname}/../../docs/brand/icon-dark.png`, `${code}/docs/brand/icon-dark.png`)
     writeFileSync(`${code}/screen/Info.plist`, readFileSync(`${import.meta.dirname}/../../screen/Info.plist`, 'utf8').replace('dev.kage.screen<', 'dev.kage.screentest<'))
@@ -151,9 +152,11 @@ describe('building Kage Screen', { skip: !canBuild && 'needs macOS with swiftc' 
     assert.match(first, /identifier "dev\.kage\.screentest" and certificate leaf = H"[0-9a-f]{40}"/)
     assert.equal(requirement(), first)
     assert.equal(resets.length, 2, 'the second build kept the identity, so it reset nothing')
+    assert.ok(!existsSync(`${folder}/Kage Screen.app`), 'the app from before the rename is gone, so System Settings lists one Kage')
+    assert.match(execFileSync('defaults', ['read', `${app}/Contents/Info`, 'CFBundleDisplayName'], { encoding: 'utf8' }), /^Kage\n$/)
   })
   test('a certificate setup that fails halfway leaves nothing behind, so the next build makes a new one', async () => {
-    const code = mkdtempSync(`${tmpdir()}/kage-sign-code-`), folder = mkdtempSync(`${tmpdir()}/kage-sign-app-`), app = `${folder}/Kage Screen.app`
+    const code = mkdtempSync(`${tmpdir()}/kage-sign-code-`), folder = mkdtempSync(`${tmpdir()}/kage-sign-app-`), app = `${folder}/Kage.app`
     mkdirSync(`${code}/screen`); mkdirSync(`${code}/docs/brand`, { recursive: true })
     copyFileSync(`${import.meta.dirname}/../../docs/brand/icon-dark.png`, `${code}/docs/brand/icon-dark.png`)
     writeFileSync(`${code}/screen/Info.plist`, readFileSync(`${import.meta.dirname}/../../screen/Info.plist`, 'utf8').replace('dev.kage.screen<', 'dev.kage.screentest<'))

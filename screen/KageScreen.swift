@@ -1,5 +1,5 @@
 // Kage Screen: records the owner's screen, or takes one picture of it, with ScreenCaptureKit (runtime/screen.ts).
-// It runs as its own app, so macOS asks the owner once to allow "Kage Screen", and the hub and its sessions get
+// It runs as its own app, so macOS asks the owner once to allow "Kage", and the hub and its sessions get
 // no screen access of their own. It takes no arguments: its one job is job.json beside the app, which only the
 // hub may write (CONFIG_NAMES in runtime/path-guards.ts), and it deletes that file before it starts.
 // Every line it prints is one JSON object. A recording stops on SIGINT, SIGTERM or the job's seconds.

@@ -13,8 +13,8 @@ export type ActAnswer = Record<string, unknown>
 type Acting = { log: string; pipe: WriteStream; next: number; done: boolean; said?: Line[] }
 type Running = { pid: number; out: string; log: string; exited: Promise<number | null>; done: boolean }
 
-const PERMISSION = "macOS needs the owner's yes first. It asked them to turn on Kage Screen in System Settings > Privacy & Security > Screen & System Audio Recording. Tell the owner, and try again once they have."
-const ACCESSIBILITY = "macOS needs the owner's yes first. It asked them to turn on Kage Screen in System Settings > Privacy & Security > Accessibility. Tell the owner, and try again once it is on."
+const PERMISSION = "macOS needs the owner's yes first. It asked them to turn on Kage in System Settings > Privacy & Security > Screen & System Audio Recording. Tell the owner, and try again once they have."
+const ACCESSIBILITY = "macOS needs the owner's yes first. It asked them to turn on Kage in System Settings > Privacy & Security > Accessibility. Tell the owner, and try again once it is on."
 const run = promisify(execFile)
 
 type Exec = (cmd: string, args: string[], opts: { timeout: number }) => Promise<{ stdout: string; stderr: string }>
@@ -53,7 +53,7 @@ export async function buildApp(code: string, app: string, exec: Exec = run): Pro
   if (existsSync(`${app}/Contents/MacOS/KageScreen`) && existsSync(stamp) && readFileSync(stamp, 'utf8') === hash) return undefined
   try {
     const id = await signingIdentity(dirname(app), exec)
-    rmSync(app, { recursive: true, force: true })
+    for (const old of [app, `${dirname(app)}/Kage Screen.app`]) rmSync(old, { recursive: true, force: true })
     mkdirSync(`${app}/Contents/MacOS`, { recursive: true, mode: 0o700 })
     await exec('swiftc', ['-O', '-o', `${app}/Contents/MacOS/KageScreen`, swift], { timeout: 300_000 })
     copyFileSync(plist, `${app}/Contents/Info.plist`)
@@ -90,7 +90,7 @@ const openApp: Launch = (app, log) => {
 }
 
 export function screenRecorder(o: { folder: string; code: string; longSide?: number; build?: (app: string) => Promise<string | undefined>; launch?: Launch; kill?: (pid: number, signal: NodeJS.Signals) => void; pollMs?: number; waitMs?: number }) {
-  const app = `${o.folder}/Kage Screen.app`
+  const app = `${o.folder}/Kage.app`
   const build = o.build ?? (a => buildApp(o.code, a))
   const launch = o.launch ?? openApp, kill = o.kill ?? ((pid, signal) => { try { process.kill(pid, signal) } catch {} })
   const pollMs = o.pollMs ?? 100, waitMs = o.waitMs ?? 30_000
