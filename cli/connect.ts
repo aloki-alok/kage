@@ -13,14 +13,14 @@ import { tailscaleBin, tailscaleState } from './tailscale.ts'
 
 const die = (msg: string): never => { console.error(msg); process.exit(1) }
 const [name, ...args] = process.argv.slice(2)
-const NAMES: ConnectorName[] = ['github', 'browser', 'email', 'voice', 'whatsapp', 'meeting']
-const SWITCHED = ['email', 'voice', 'whatsapp'] as const
+const NAMES: ConnectorName[] = ['github', 'browser', 'email', 'voice', 'whatsapp', 'meeting', 'sms']
+const SWITCHED = ['email', 'voice', 'whatsapp', 'sms'] as const
 if (!settingsExist()) die(`No settings in ${DIR}. Run kage setup first.`)
 const state = () => connectorStates(readSettings(ENV_FILE))
 const change = (write: () => void) => { try { write() } catch (e) { die((e as Error).message) } }
 
 if (!name) { console.log(connectLines(state()).join('\n')); process.exit(0) }
-if (!NAMES.includes(name as ConnectorName)) die(`kage connect takes github, browser, email, voice, whatsapp or meeting, not ${name}.`)
+if (!NAMES.includes(name as ConnectorName)) die(`kage connect takes github, browser, email, voice, whatsapp, meeting or sms, not ${name}.`)
 const n = name as ConnectorName
 const off = args[0] === 'off'
 

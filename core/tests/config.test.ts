@@ -121,6 +121,15 @@ KAGE_WAHA_URL=http://127.0.0.1:4000
 KAGE_WA_HOOK_HOST=0.0.0.0
 KAGE_WA_HOOK_PORT=4001
 KAGE_WA_CHECK_MINUTES=2
+KAGE_SMS=on
+KAGE_SMS_PROVIDER=telnyx
+KAGE_SMS_FROM=+14155550100
+KAGE_SMS_PORT=8794
+KAGE_SMS_PER_HOUR=40
+KAGE_SMS_PER_MINUTE=20
+KAGE_SMS_PUBLIC_URL=https://kage.example.test/sms
+KAGE_SMS_ACCOUNT_SID=AC0TEST
+KAGE_SMS_TELNYX_PUBLIC_KEY=telnyx-public-fake
 KAGE_COMMANDS=/lookup=/work/lookup.mjs,/other=/work/other.mjs
 SLACK_APP_TOKEN=xapp-test-fake
 SLACK_USER_TOKEN=xoxp-test-fake
@@ -135,6 +144,8 @@ KAGE_BROWSER_TOKEN=browser-fake
 JEV_API_KEY=jev-fake
 KAGE_VOICE_AGENT_KEY=voice-agent-fake
 KAGE_CLAUDE_TOKEN=sk-ant-oat01-fake
+KAGE_TWILIO_AUTH_TOKEN=twilio-fake
+KAGE_TELNYX_API_KEY=telnyx-fake
 `
 
 describe('importing an env file', () => {

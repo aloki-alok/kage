@@ -1,7 +1,8 @@
 import type { Config, Secrets } from './config.ts'
 import type { Line } from './doctor.ts'
+import { smsProvider } from './sms.ts'
 
-export type ConnectorName = 'github' | 'browser' | 'email' | 'voice' | 'whatsapp' | 'meeting'
+export type ConnectorName = 'github' | 'browser' | 'email' | 'voice' | 'whatsapp' | 'meeting' | 'sms'
 type ConnectorState = { state: 'on' } | { state: 'off' } | { state: 'unset'; missing: string[]; partial: boolean }
 
 const need = (settings: [string, unknown][], turnedOff = false): ConnectorState => {
@@ -18,11 +19,16 @@ export function connectorStates({ config, secrets }: { config: Config; secrets: 
     voice: need([['voiceToken', secrets.voiceToken]], c.voice?.on === false),
     whatsapp: need([['waha.WAHA_API_KEY', secrets.waha?.WAHA_API_KEY]], c.whatsapp?.on === false),
     meeting: need([['meetingToken', secrets.meetingToken]]),
+    sms: need([['connectors.sms.from', c.sms?.from], ['connectors.sms.publicUrl', c.sms?.publicUrl], ...smsKeys(c.sms, secrets)], c.sms?.on === false),
   }
 }
 
+const smsKeys = (sms: NonNullable<Config['connectors']>['sms'], secrets: Secrets): [string, unknown][] => smsProvider(sms) === 'twilio'
+  ? [['connectors.sms.accountSid', sms?.accountSid], ['twilioAuthToken', secrets.twilioAuthToken]]
+  : [['connectors.sms.telnyxPublicKey', sms?.telnyxPublicKey], ['telnyxApiKey', secrets.telnyxApiKey]]
+
 const WALKED: ConnectorName[] = ['github', 'browser']
-const DOCS: Record<ConnectorName, string> = { github: 'Voice and calls', browser: 'Voice and calls', email: 'Email', voice: 'Voice and calls', whatsapp: 'WhatsApp', meeting: 'Voice and calls' }
+const DOCS: Record<ConnectorName, string> = { github: 'Voice and calls', browser: 'Voice and calls', email: 'Email', voice: 'Voice and calls', whatsapp: 'WhatsApp', meeting: 'Voice and calls', sms: 'SMS' }
 const and = (names: string[]) => names.length < 2 ? names.join('') : `${names.slice(0, -1).join(', ')} and ${names.at(-1)}`
 
 export function connectorStep(name: ConnectorName, s: ConnectorState): string {
@@ -41,6 +47,7 @@ export const OFF_NOTES: Partial<Record<ConnectorName, string>> = {
   email: 'The SES receiving rule and the SQS queue stay in AWS until you delete them there.',
   voice: 'Its public route stays open until you run kage tunnel on.',
   whatsapp: 'The WAHA bridge keeps running in Docker until you stop its container.',
+  sms: "The number keeps its webhook at your provider until you change it there.",
 }
 
 export const halfSetLines = (states: Record<ConnectorName, ConnectorState>): Line[] =>

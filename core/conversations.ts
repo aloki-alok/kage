@@ -3,6 +3,7 @@ const OFF_SLACK = {
   email: { prefix: 'mail:', kind: 'mail' },
   whatsapp: { prefix: 'wa:', kind: 'chat' },
   voice: { prefix: 'voice:', kind: 'chat' },
+  sms: { prefix: 'sms:', kind: 'chat' },
 } as const
 type OffSlack = keyof typeof OFF_SLACK
 export const isOffSlack = (connector: string): connector is OffSlack => Object.hasOwn(OFF_SLACK, connector)

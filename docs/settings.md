@@ -309,6 +309,28 @@ To keep your own compose file instead, skip these steps and make it match Kage's
 
 If the bridge stops or the phone unlinks, Kage hears no `@kage` tag from WhatsApp. `kage doctor` then prints a FAIL line with the fix, such as `docker start kage-waha` or `waha/qr.sh`. The hub checks the bridge every `connectors.whatsapp.checkMinutes` (5 by default). It DMs you once when the bridge goes down, and once more when it is back. A session seen STARTING once is not down, because every container restart passes through it. It is down if it is still STARTING on the next check. If Slack refuses the DM, the hub sends it again on the next check. A `docker stop` keeps the container down until you start it again.
 
+## SMS
+
+Kage texts US numbers through Telnyx (the default) or Twilio. You start a campaign from a Slack thread: Kage loads the numbers, shows you the count and the text on a card, and sends only after your yes. Each campaign posts its report in that thread: sent, delivered, failed, replies and opt-outs. A reply from a person becomes a task with the most limited rights (read and answer), and each text back waits for your yes on a card.
+
+Every send obeys these rules. A number that texted STOP never gets another text until it texts START. Campaign texts go out only from 2pm to 8pm Eastern. A crash never texts anyone twice: each contact is claimed before its send. Kage stores the status, error code and segment count of each text, never its words. If the provider refuses Kage's credentials, the sending campaigns pause and you get one DM.
+
+US carriers block texts from a number that has no registered 10DLC brand and campaign. Register both in the provider's console before the first send.
+
+| Setting | Default | Effect |
+|---|---|---|
+| `connectors.sms.on` | on once set up | SMS runs once `from`, `publicUrl` and the provider's keys are set. `false` turns it off (`kage connect sms off`). |
+| `connectors.sms.provider` | `telnyx` | `telnyx` or `twilio`. |
+| `connectors.sms.from` | none | The number Kage texts from, in E.164 (`+14155550100`). Texts sent to any other number are ignored. |
+| `connectors.sms.port` | `8793` | The local port the provider's webhook calls, at `/sms`. |
+| `connectors.sms.publicUrl` | none | The public URL that reaches that port, ending in `/sms`. Kage gives it to the provider for delivery reports, and Twilio's signature check needs it exact. |
+| `connectors.sms.perHour` | `30` | Texts from people that Kage answers per hour. Past it, Kage stores them and DMs you once. |
+| `connectors.sms.perMinute` | `30` | Campaign texts sent per minute. |
+| `connectors.sms.accountSid` | none | Twilio only: the account SID. |
+| `connectors.sms.telnyxPublicKey` | none | Telnyx only: the public key that signs its webhooks (Telnyx console, Keys and Credentials). |
+| `twilioAuthToken` | none | secrets.json. Twilio only: the auth token. It sends texts and checks Twilio's webhook signature. |
+| `telnyxApiKey` | none | secrets.json. Telnyx only: the API key that sends texts. |
+
 ## Slash commands
 
 | Setting | Default | Effect |

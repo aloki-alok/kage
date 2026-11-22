@@ -1,12 +1,12 @@
 import { oneLine } from './text.ts'
 
-const NAMES = ['email', 'whatsapp', 'voice', 'meetings', 'github', 'jev'] as const
+const NAMES = ['email', 'whatsapp', 'voice', 'meetings', 'github', 'sms', 'jev'] as const
 type ConnectorName = (typeof NAMES)[number]
-const WHO: [RegExp, ConnectorName][] = [[/^(mail|email)\b/, 'email'], [/^whatsapp\b/, 'whatsapp'], [/^voice\b/, 'voice'], [/^(meeting|meetings|meetbot exited)\b/, 'meetings'], [/^github\b/, 'github'], [/^jev\b/, 'jev']]
+const WHO: [RegExp, ConnectorName][] = [[/^(mail|email)\b/, 'email'], [/^whatsapp\b/, 'whatsapp'], [/^voice\b/, 'voice'], [/^(meeting|meetings|meetbot exited)\b/, 'meetings'], [/^github\b/, 'github'], [/^sms\b/, 'sms'], [/^jev\b/, 'jev']]
 const FAILS = /\b(failed|could not|bridge down|bad event|exited)\b/
 const START = /^\w+ on:|^jev checks /
 const JEV_LINE = /^triage [^:]+(?::[^:]+)?: \w+: (.*)$|^(?:answering|dropped) \S+ from app \S+: (.*)$/, JEV_SKIP = /^(no jev call|conversation unavailable|jev does not check)/, JEV_FAIL = /^jev (failed|answered HTTP)|^jev: /
-const OUTGOING = /^(mail (sent|reply)|whatsapp (stand-in|card|send held)|(github|meeting) post failed)\b/
+const OUTGOING = /^(mail (sent|reply)|whatsapp (stand-in|card|send held)|sms (reply|report)|(github|meeting) post failed)\b/
 const HOUR = 3_600_000
 
 const ago = (ms: number) => ms < 60_000 ? 'just now' : ms < HOUR ? `${Math.floor(ms / 60_000)}m ago` : ms < 86_400_000 ? `${Math.floor(ms / HOUR)}h ago` : `${Math.floor(ms / 86_400_000)}d ago`

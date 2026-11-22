@@ -51,6 +51,7 @@ export const Config = z.strictObject({
     meeting: z.strictObject({ port: count, perHour: count, agentApi: text, agentId: count }).optional(),
     browser: z.strictObject({ port: count, block: strings }).optional(),
     whatsapp: z.strictObject({ on: yes, memory: text, model: text, wahaUrl: text, hookHost: text, hookPort: count, checkMinutes: count }).optional(),
+    sms: z.strictObject({ on: yes, provider: z.enum(['twilio', 'telnyx']).optional(), from: text, port: count, perHour: count, perMinute: count, publicUrl: text, accountSid: text, telnyxPublicKey: text }).optional(),
     commands: z.record(z.string().regex(/^\/[a-z][a-z0-9-]{1,30}$/), z.string().regex(/^\/\S+$/)).optional(),
   }).optional(),
   unknown: z.record(z.string(), z.string().nullable()).optional(),
@@ -62,7 +63,7 @@ const sec = z.string().nullable().optional()
 export const Secrets = z.strictObject({
   slack: z.strictObject({ app: sec, user: sec, bot: sec }).optional(),
   aws: z.strictObject({ accessKeyId: sec, secretAccessKey: sec }).optional(),
-  voiceToken: sec, githubSecret: sec, githubAppKey: sec, githubToken: sec, meetingToken: sec, browserToken: sec, jevKey: sec, voiceAgentKey: sec, claudeToken: sec,
+  voiceToken: sec, githubSecret: sec, githubAppKey: sec, githubToken: sec, meetingToken: sec, browserToken: sec, jevKey: sec, voiceAgentKey: sec, claudeToken: sec, twilioAuthToken: sec, telnyxApiKey: sec,
   waha: z.record(z.string().regex(/^[A-Z][A-Z0-9_]*$/), z.string()).optional(),
   cartesiaKey: sec,   // compat: remove after 2026-12-15 (Cartesia speech is gone; an old secrets.json still holds it, and the schema is strict)
   unknown: z.record(z.string(), z.string()).optional(),
@@ -128,11 +129,15 @@ export const KEYS: Row[] = [
   R('KAGE_BROWSER_PORT', 'connectors.browser.port', int), R('KAGE_BROWSER_BLOCK', 'connectors.browser.block', list),
   R('KAGE_WHATSAPP', 'connectors.whatsapp.on', onoff), R('KAGE_WA_MEMORY', 'connectors.whatsapp.memory'), R('KAGE_WA_MODEL', 'connectors.whatsapp.model'),
   R('KAGE_WAHA_URL', 'connectors.whatsapp.wahaUrl'), R('KAGE_WA_HOOK_HOST', 'connectors.whatsapp.hookHost'), R('KAGE_WA_HOOK_PORT', 'connectors.whatsapp.hookPort', int), R('KAGE_WA_CHECK_MINUTES', 'connectors.whatsapp.checkMinutes', int),
+  R('KAGE_SMS', 'connectors.sms.on', onoff), R('KAGE_SMS_PROVIDER', 'connectors.sms.provider'), R('KAGE_SMS_FROM', 'connectors.sms.from'), R('KAGE_SMS_PORT', 'connectors.sms.port', int),
+  R('KAGE_SMS_PER_HOUR', 'connectors.sms.perHour', int), R('KAGE_SMS_PER_MINUTE', 'connectors.sms.perMinute', int), R('KAGE_SMS_PUBLIC_URL', 'connectors.sms.publicUrl'),
+  R('KAGE_SMS_ACCOUNT_SID', 'connectors.sms.accountSid'), R('KAGE_SMS_TELNYX_PUBLIC_KEY', 'connectors.sms.telnyxPublicKey'),
   R('KAGE_COMMANDS', 'connectors.commands', commands),
   R('SLACK_APP_TOKEN', 'slack.app', str, true), R('SLACK_USER_TOKEN', 'slack.user', str, true), R('SLACK_BOT_TOKEN', 'slack.bot', str, true),
   R('KAGE_AWS_ACCESS_KEY_ID', 'aws.accessKeyId', str, true), R('KAGE_AWS_SECRET_ACCESS_KEY', 'aws.secretAccessKey', str, true),
   R('KAGE_VOICE_TOKEN', 'voiceToken', str, true), R('KAGE_GITHUB_SECRET', 'githubSecret', str, true), R('KAGE_GITHUB_APP_KEY', 'githubAppKey', lines, true), R('KAGE_MEETING_TOKEN', 'meetingToken', str, true),
   R('KAGE_BROWSER_TOKEN', 'browserToken', str, true), R('JEV_API_KEY', 'jevKey', str, true), R('KAGE_VOICE_AGENT_KEY', 'voiceAgentKey', str, true), R('KAGE_CLAUDE_TOKEN', 'claudeToken', str, true),
+  R('KAGE_TWILIO_AUTH_TOKEN', 'twilioAuthToken', str, true), R('KAGE_TELNYX_API_KEY', 'telnyxApiKey', str, true),
 ]
 export const ALIASES: Record<string, string> = { KAGE_MAX_SPECIALISTS: 'KAGE_MAX_KAGELETS', KAGE_SPECIALIST_DAILY_USD: 'KAGE_KAGELET_DAILY_USD' }
 
@@ -215,7 +220,7 @@ export function badValue(c: Config): string | undefined {
   for (const [path, v] of [['harness.memory', c.harness?.memory], ['harness.ownerMemory', c.harness?.ownerMemory], ['harness.cwd', c.harness?.cwd], ['connectors.whatsapp.memory', c.connectors?.whatsapp?.memory]] as const)
     if (v && /['"\\]/.test(v)) return `${path} must not hold a quote or a backslash`
   const k = c.connectors
-  for (const [path, v] of [['voice.port', k?.voice?.port], ['github.port', k?.github?.port], ['meeting.port', k?.meeting?.port], ['browser.port', k?.browser?.port], ['whatsapp.hookPort', k?.whatsapp?.hookPort]] as const)
+  for (const [path, v] of [['voice.port', k?.voice?.port], ['github.port', k?.github?.port], ['meeting.port', k?.meeting?.port], ['browser.port', k?.browser?.port], ['whatsapp.hookPort', k?.whatsapp?.hookPort], ['sms.port', k?.sms?.port]] as const)
     if (v != null && !(Number.isInteger(v) && v >= 1024 && v <= 65535)) return `connectors.${path} must be a port from 1024 to 65535`
   const hook = c.tripwires?.hookPort
   if (hook && !(Number.isInteger(hook) && hook >= 1024 && hook <= 65535)) return 'tripwires.hookPort must be 0 (off) or a port from 1024 to 65535'
@@ -231,7 +236,7 @@ export function checkSettings(c: Config, s: Secrets): { name: string; teammates:
 }
 
 const SAFE = [/^kagelets\.(max|dailyUsd|totalDailyUsd|chainUsd|needsPerDay|askRunsPerHour|notesKept|noteChars|measureMinutes|trendRuns|turnStallMinutes|incidentsPerHour)$/, /^waiting\.expireHours$/, /^top\.threadCostBar$/, /^afk\.(on|model)$/, /^harness\.(jobModel|jobFreshEvery|jobCarry|jobCarryChars|rotateTokens|jobLaneDefault|jobCatchUpHours|jobCatchUpStaggerSeconds)$/, /^jev\.(threshold|model|ackWords)$/, /^tripwires\.(timeoutSec|maxKb|failPing|patternMax|lineMax|maxPosts|catchUpMax|seenMax|hookPerHour|swapAfter|shadowWindowMin|swapUndoDays)$/,
-  /^connectors\.(voice|github|meeting|browser|whatsapp)\.(port|max|perHour|hookPort)$/, /^connectors\.whatsapp\.(model|checkMinutes)$/]
+  /^connectors\.(voice|github|meeting|browser|whatsapp|sms)\.(port|max|perHour|hookPort)$/, /^connectors\.sms\.perMinute$/, /^connectors\.whatsapp\.(model|checkMinutes)$/]
 export function settingTier(key: string): 'safe' | 'power' | 'never' {
   const parts = key.split('.')
   if (!key || parts.some(p => !p || ['__proto__', 'constructor', 'prototype'].includes(p)) || ['secrets', 'version', 'unknown'].includes(parts[0]!)) return 'never'

@@ -6,6 +6,10 @@ import { connectEmail } from '../connectors/email.ts'
 import { connectGithub } from '../connectors/github.ts'
 import { connectMeeting } from '../connectors/meeting.ts'
 import { connectVoice } from '../connectors/voice.ts'
+import { connectSms } from '../connectors/sms.ts'
+import { smsSender } from '../connectors/sms-send.ts'
+import { openSmsStore } from '../runtime/sms-store.ts'
+import { smsProvider } from '../core/sms.ts'
 import { bridgeClock, startWhatsApp, wahaSeen, wahaUrl } from '../connectors/whatsapp.ts'
 import type { connectSlack } from '../connectors/slack/connect.ts'
 import { startJobEvents } from './job-events.ts'
@@ -89,6 +93,7 @@ export function startConnectors(o: {
     on: !!whatsapp, minutes: conn.whatsapp?.checkMinutes, look: () => wahaSeen(url, secrets.waha!.WAHA_API_KEY!), at: { url, qr: `${CODE}/waha/qr.sh` }, state: store, notify: slack.notifyOwner,
   })
 
+  const sms = startSms(o)
   const jobs = startJobEvents({ store, inbox, ping: o.ping, notify: text => void o.say(text), schedules: o.schedules, event: o.event, ledgers: o.ledgers, tripwires: o.tripwires })
 
   const replies = {
@@ -98,10 +103,37 @@ export function startConnectors(o: {
       log('mail reply failed', logRef(key), e)
       void o.say(ownerLines.emailReplyFailed(placeOf(key), e))
     }),
+    sms: (key: string, text: string) => void sms?.connector.reply(key, text),
   }
   function replayOf(connector: string): ((source: string, payload: string) => Promise<unknown>) | undefined {
-    return ({ slack: slack.replay, github: github?.replay, meeting: meeting?.replay, whatsapp: whatsapp?.replay, hook: jobs.replay } as Record<string, ((source: string, payload: string) => Promise<unknown>) | undefined>)[connector]
+    return ({ slack: slack.replay, github: github?.replay, meeting: meeting?.replay, whatsapp: whatsapp?.replay, sms: sms?.connector.replay, hook: jobs.replay } as Record<string, ((source: string, payload: string) => Promise<unknown>) | undefined>)[connector]
   }
 
-  return { github, meeting, email, voice, whatsapp, replies, replayOf, jobs, clock }
+  return { github, meeting, email, voice, whatsapp, sms, replies, replayOf, jobs, clock }
+}
+
+function startSms(o: Parameters<typeof startConnectors>[0]) {
+  const { conn, secrets, bot, d, DIR } = o
+  const c = conn.sms
+  const provider = smsProvider(c)
+  const creds = provider === 'twilio' ? c?.accountSid && secrets.twilioAuthToken : secrets.telnyxApiKey && c?.telnyxPublicKey
+  if (!c || c.on === false || !c.from || !c.publicUrl || !creds) return undefined
+  const keys = { accountSid: c.accountSid ?? undefined, twilioAuthToken: secrets.twilioAuthToken ?? undefined, telnyxApiKey: secrets.telnyxApiKey ?? undefined }
+  const store = openSmsStore(`${DIR}/kage.db`)
+  const connector = connectSms({
+    provider, from: c.from, port: c.port || 8793, publicUrl: c.publicUrl, perHour: c.perHour || 30, perMinute: c.perMinute || 30,
+    twilioAuthToken: keys.twilioAuthToken, telnyxPublicKey: c.telnyxPublicKey ?? undefined,
+    send: smsSender({ provider, statusUrl: c.publicUrl, ...keys }),
+    store, inbox: o.inbox, deliver: (conversation, task, place) => o.deliver(conversation, task, place),
+    notify: text => void o.say(text),
+    post: async (thread, text) => {
+      const [channel, ts] = thread.split(':')
+      if (!channel) return false
+      return bot.chat.postMessage({ channel, text, ...(ts && /^\d+\.\d+$/.test(ts) && { thread_ts: ts }) })
+        .then(r => r.ok === true, e => { log('sms report post failed', e); return false })
+    },
+    startError: () => d.lastStartError(),
+  })
+  void connector.listening.then(port => log(`sms on: 127.0.0.1:${port}/sms`), e => log('sms could not listen', e))
+  return { connector, campaigns: store }
 }
