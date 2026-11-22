@@ -156,18 +156,7 @@ It works for every repo and organization you can see, with nothing to set up the
 
 ### Get GitHub events at once
 
-Reading notifications takes up to a minute. For events within a second, GitHub sends a webhook to your machine instead, so it needs a public URL. Pick one tunnel:
-
-| Tunnel | Needs | Start it |
-|---|---|---|
-| Tailscale Funnel | A free Tailscale account, Tailscale on this machine | `tailscale funnel --bg 8789`. The URL is `https://<machine>.<tailnet>.ts.net/github`. |
-| Cloudflare Tunnel | A Cloudflare account and a domain on it | `cloudflared tunnel create kage`, `cloudflared tunnel route dns kage kage-github.<your domain>`, then run it with an ingress rule to `http://127.0.0.1:8789`. |
-
-1. Make a secret: `openssl rand -hex 32`.
-2. Save it as `githubSecret` in `~/.config/kage/secrets.json`, then run `kage restart`.
-3. On GitHub, add a webhook on a repo, or on an organization for all its repos (you need admin rights there). Use your tunnel URL ending in `/github`, content type JSON, your secret, and these events: pull request reviews, pull requests, issues, issue comments, check suites.
-
-When a webhook secret is set, Kage stops reading notifications, so each event arrives once.
+Reading notifications takes up to a minute. A webhook brings each event within a second, but GitHub must reach your machine, so it needs a public URL to `127.0.0.1:8789/github`. Set `githubSecret`, then add the webhook on a repo or an organization ([settings](settings.md), `githubSecret`). When a webhook secret is set, Kage stops reading notifications, so each event arrives once.
 
 ### Let it see and record your screen (macOS)
 

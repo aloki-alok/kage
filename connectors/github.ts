@@ -75,7 +75,7 @@ export function connectGithub(o: {
   let stopped = false, timer: ReturnType<typeof setTimeout> | undefined
   if ('poll' in o.via) {
     const once = pollGithub({ ...o.via.poll, login: o.login, saved: o.saved, refused: () => o.notify(ownerLines.githubTokenRefused()),
-      feed: async (type, body, source) => { if (o.inbox.take(source, 'github', JSON.stringify({ type, body }))) await run(type, body, source).catch(failed) } })
+      feed: async (type, body, source) => { if (!stopped && o.inbox.take(source, 'github', JSON.stringify({ type, body }))) await run(type, body, source).catch(failed) } })
     const tick = async () => {
       const wait = await once(Date.now()).catch(e => { log('github poll failed', e); return 60_000 })
       if (!stopped) timer = setTimeout(tick, wait)

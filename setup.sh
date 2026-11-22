@@ -290,7 +290,6 @@ cmd_save() {
   quietly "The tokens are in $(dirname "$ENV_FILE")/secrets.json, readable only by you."
 }
 
-# Kage's own Claude login, so its sessions use their own seat. The prompt is hidden, so the token never shows on screen or in ps.
 cmd_github() {
   if [[ "${1:-}" == off ]]; then
     node cli/config.ts github-off || exit 1
@@ -307,9 +306,14 @@ cmd_github() {
   fi
   umask 077
   login="$(printf '%s\n' "$t" | node cli/config.ts save-github)" || exit 1
-  says "GitHub is on for @$login. I start reading your notifications once I am not in the middle of anything."
+  if node cli/config.ts has secrets.githubSecret; then
+    says "Saved for @$login. A webhook secret is set, so I keep the webhook. Run kage github off, then kage github, to read notifications instead."
+  else
+    says "GitHub is on for @$login. I start reading your notifications once I am not in the middle of anything."
+  fi
 }
 
+# Kage's own Claude login, so its sessions use their own seat. The prompt is hidden, so the token never shows on screen or in ps.
 cmd_claude_login() {
   local t
   if [[ -t 0 ]]; then
