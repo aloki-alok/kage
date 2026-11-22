@@ -12,10 +12,10 @@ import { openStore } from '../../runtime/store.ts'
 
 const inbox = { take: () => true, handled: () => {}, has: () => false }
 const deliver = () => 'sent' as const
-type Server = { listening: Promise<number>; close?: () => unknown }
+type Server = { listening?: Promise<number>; close?: () => unknown }
 
 const cases: { name: string; start: () => Server; routes: [method: string, path: string, headers?: Record<string, string>][] }[] = [
-  { name: 'github', start: () => connectGithub({ saved: openStore(':memory:'), secret: 's', login: 'me', port: 0, botDm: 'DB', perHour: 5, notify: () => {}, inbox, post: async () => '1', deliver }),
+  { name: 'github', start: () => connectGithub({ saved: openStore(':memory:'), via: { webhook: { secret: 's', port: 0 } }, login: 'me', botDm: 'DB', perHour: 5, notify: () => {}, inbox, post: async () => '1', deliver }),
     routes: [['POST', '/github', { 'x-hub-signature-256': 'sha256=00' }], ['POST', '/github']] },
   { name: 'meeting', start: () => connectMeeting({ token: 't', port: 0, botDm: 'DB', perHour: 5, pollMs: 50, name: 'kage', askWaitMs: 50, end: () => {}, notify: () => {}, now: () => 0, untake: () => {}, inbox, post: async () => '1', deliver }),
     routes: [['POST', '/meeting'], ['GET', '/meetbot/next'], ['POST', '/meetbot/segments'], ['POST', '/meetbot/ended'], ['POST', '/meeting', { authorization: 'Bearer wrong' }]] },
@@ -31,7 +31,7 @@ for (const c of cases) {
   test(`${c.name}: every route answers 401 without its credential`, { timeout: 10_000 }, async () => {
     const s = c.start()
     try {
-      const port = await s.listening
+      const port = await s.listening!
       for (const [method, path, headers] of c.routes) {
         const r = await fetch(`http://127.0.0.1:${port}${path}`, { method, headers, ...(method === 'POST' && { body: '{}' }) })
         assert.equal(r.status, 401, `${method} ${path} ${JSON.stringify(headers ?? {})}`)

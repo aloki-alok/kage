@@ -30,14 +30,16 @@ export function startConnectors(o: {
   schedules: Parameters<typeof startJobEvents>[0]['schedules']; event: Parameters<typeof startJobEvents>[0]['event']; ledgers: Parameters<typeof startJobEvents>[0]['ledgers']; tripwires: Config['tripwires']
 }) {
   const { secrets, conn, store, slack, bot, NAME, CODE, DIR, d, inbox, deliver, placeOf, failed } = o
-  const github = secrets.githubSecret && conn.github?.login ? connectGithub({ startError: () => d.lastStartError(),
-    saved: store, secret: secrets.githubSecret, login: conn.github.login, port: conn.github.port || 8789, botDm: slack.ids.botDm,
+  const via = secrets.githubSecret ? { webhook: { secret: secrets.githubSecret, port: conn.github?.port || 8789 } } : secrets.githubToken ? { poll: { token: secrets.githubToken } } : undefined
+  const github = via && conn.github?.login ? connectGithub({ startError: () => d.lastStartError(),
+    saved: store, via, login: conn.github.login, botDm: slack.ids.botDm,
     post: (text, thread) => bot.chat.postMessage({ channel: slack.ids.botDm, text, ...(thread && { thread_ts: thread }) }).then(r => r.ts, e => { log('github post failed', e); return undefined }),
     deliver: (c, task, place) => deliver(c, task, place),
     notify: text => void o.say(text),
     perHour: conn.github.perHour || 20, inbox,
   }) : undefined
-  void github?.listening.then(port => log(`github on: 127.0.0.1:${port}/github for @${conn.github?.login}`), e => log('github could not listen', e))
+  if (github && !github.listening) log(`github on: reading notifications for @${conn.github?.login}`)
+  void github?.listening?.then(port => log(`github on: 127.0.0.1:${port}/github for @${conn.github?.login}`), e => log('github could not listen', e))
   const meeting = secrets.meetingToken ? connectMeeting({ startError: () => d.lastStartError(),
     token: secrets.meetingToken, port: conn.meeting?.port || 8790, botDm: slack.ids.botDm,
     post: text => bot.chat.postMessage({ channel: slack.ids.botDm, text }).then(r => r.ts, e => { log('meeting post failed', e); return undefined }),

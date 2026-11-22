@@ -1,6 +1,7 @@
 import { describe, test } from 'node:test'
 import assert from 'node:assert/strict'
 import { pollGithub } from '../github-poll.ts'
+import { connectGithub } from '../github.ts'
 import { openStore } from '../../runtime/store.ts'
 
 const NOW = Date.parse('2026-11-22T08:00:00Z')
@@ -81,4 +82,26 @@ describe('reading GitHub notifications with no public URL', () => {
     await t.once(NOW)
     assert.deepEqual(t.fed, ['github:c:13'])
   })
+})
+
+test('in poll mode a mention opens one thread at teammate trust, and a restart does not post it again', async () => {
+  const gh = github(), store = openStore(':memory:'), posts: string[] = [], tasks: boolean[] = []
+  const at = new Date(Date.now() + 1000).toISOString()
+  gh.s.list = [mention('12', at)]
+  const start = () => connectGithub({ saved: store, via: { poll: { token: 't', fetch: gh.fetch } }, login: 'ryu-dev', botDm: 'DB', perHour: 5, notify: () => {},
+    inbox: { take: (s, c, p) => store.take(s, c, p, Date.now()), handled: s => store.handled(s), has: s => store.has(s) },
+    post: async text => { posts.push(text); return '100' }, deliver: (_c, task) => { tasks.push(task.fromOwner === true); return 'sent' } })
+  const reads = () => gh.s.asked.filter(a => a.url.endsWith('/comments/12')).length
+  const until = async (ok: () => boolean) => { for (let i = 0; i < 200 && !ok(); i++) await new Promise(r => setTimeout(r, 5)) }
+  const first = start()
+  await until(() => tasks.length === 1)
+  first.close()
+  const second = start()
+  await until(() => reads() === 2)
+  await new Promise(r => setTimeout(r, 20))
+  second.close()
+  assert.equal(reads(), 2)
+  assert.equal(posts.length, 1)
+  assert.match(posts[0]!, /kim mentioned you on acme\/app#7/)
+  assert.deepEqual(tasks, [false])
 })
