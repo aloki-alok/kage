@@ -1,5 +1,5 @@
 import { z } from 'zod'
-import { desktopVerdict, parseDesktopAct, parseDesktopSteps, sendsLine, type DesktopAct, type Under } from '../../core/desktop-act.ts'
+import { desktopVerdict, onScreen, parseDesktopAct, parseDesktopSteps, sendsLine, type DesktopAct, type Picture, type Under } from '../../core/desktop-act.ts'
 import type { KageTool, ToolContext } from '../kage-tools.ts'
 import type { ActAnswer } from '../screen.ts'
 
@@ -21,6 +21,8 @@ export function screenTools(c: ToolContext): KageTool[] {
   const refused = (args: Record<string, unknown>) => ownerActs(args) ? undefined : { isError: true as const, text: "refused: only the owner's own task sees their screen" }
   const seen = (tool: string, outcome: string) => o.event?.('tool', `${tool} ${outcome}`)
   const typed = new Map<string, string | undefined>()
+  let picture: Picture | undefined
+  const NO_PICTURE = 'take a screen_shot first: x and y are pixels on its picture'
   const fileFor = (args: Record<string, unknown>, ext: string) => `${filesOf(String(args.channel), String(args.thread_ts))}/screen-${Date.now()}.${ext}`
   const fail = (text: string) => ({ isError: true as const, text })
   const lookUnder = async (act: DesktopAct, focus?: Under): Promise<Under | { error: string }> => {
@@ -69,17 +71,21 @@ export function screenTools(c: ToolContext): KageTool[] {
   }
   return [{
     name: 'screen_act',
-    description: "Act on the owner's Mac as a person would: click (count 2 for a double click, button right for a menu), move, drag (along a path for a curve), scroll, type text, or press keys (cmd+shift+g, return, down). x and y are pixels on the whole-screen picture screen_shot takes, so take one first, and again after each step that changes the screen in a way you cannot predict. For several steps you can plan from one picture (strokes of a drawing, a form), send them as steps, one list in one call: each step is still checked, and the list stops at the first step that fails, is refused, needs the owner's yes, or finds a different app in front (the owner may have taken over). Keep a list in one app. The owner sees Kage's own cursor make each step. Everyday steps run at once. A step that cannot be undone (Delete, Move to Trash, a one-way command in a terminal) waits for the owner's yes, and turning the Mac off, logging out, locking it or erasing it is refused. In a terminal, press ctrl+c first for a clean line, type one line, then press return. Any other key or a click there makes the line unknown, so its Return waits for the owner. Owner tasks only.",
+    description: "Act on the owner's Mac as a person would: click (count 2 for a double click, button right for a menu), move, drag (along a path for a curve), scroll, type text, or press keys (cmd+shift+g, return, down). x and y are pixels on the latest screen_shot picture (its answer names the size), so take one first, and again after each step that changes the screen in a way you cannot predict. For several steps you can plan from one picture (strokes of a drawing, a form), send them as steps, one list in one call: each step is still checked, and the list stops at the first step that fails, is refused, needs the owner's yes, or finds a different app in front (the owner may have taken over). Keep a list in one app. The owner sees Kage's own cursor make each step. Everyday steps run at once. A step that cannot be undone (Delete, Move to Trash, a one-way command in a terminal) waits for the owner's yes, and turning the Mac off, logging out, locking it or erasing it is refused. In a terminal, press ctrl+c first for a clean line, type one line, then press return. Any other key or a click there makes the line unknown, so its Return waits for the owner. Owner tasks only.",
     shape: { ...where, ...step, action: step.action.optional().describe('one step; leave it out when you send steps'), steps: z.array(z.object(step)).optional().describe('a list of 1 to 100 steps, each shaped like one step, run in order in this one call') },
     async run(args) {
       const no = refused(args); if (no) return no
       if (args.steps !== undefined) {
         if (args.action !== undefined) return fail('give action for one step, or steps for a list, not both')
         const acts = parseDesktopSteps(args.steps)
-        return 'error' in acts ? fail(acts.error) : runSteps(acts)
+        if ('error' in acts) return fail(acts.error)
+        if (!picture && acts.some(a => 'x' in a)) return fail(NO_PICTURE)
+        return runSteps(acts.map(a => picture ? onScreen(a, picture) : a))
       }
-      const act = parseDesktopAct(args)
-      if ('error' in act) return fail(act.error)
+      const parsed = parseDesktopAct(args)
+      if ('error' in parsed) return fail(parsed.error)
+      if (!picture && 'x' in parsed) return fail(NO_PICTURE)
+      const act = picture ? onScreen(parsed, picture) : parsed
       const under = await lookUnder(act)
       if ('error' in under) return fail(under.error)
       const v = verdictOf(act, under)
@@ -98,9 +104,11 @@ export function screenTools(c: ToolContext): KageTool[] {
     async run(args) {
       const no = refused(args); if (no) return no
       const file = fileFor(args, 'png')
-      const err = await screen.shot(file, args.app as string | undefined)
-      seen('screen_shot', err ? 'failed' : 'ok')
-      return err ? { isError: true, text: err } : { text: `saved ${file}` }
+      const r = await screen.shot(file, args.app as string | undefined)
+      seen('screen_shot', typeof r === 'string' ? 'failed' : 'ok')
+      if (typeof r === 'string') return { isError: true, text: r }
+      picture = r
+      return { text: `saved ${file}, ${r.width} by ${r.height} pixels. screen_act x and y are pixels on this picture.` }
     },
   }, {
     name: 'screen_record',

@@ -1060,9 +1060,26 @@ describe("a kagelet's home with its owners", () => {
 describe("the owner's screen", () => {
   const fakeScreen = (asked: string[] = [], seen: (op: string) => Record<string, unknown> = () => ({ app: 'Finder', role: 'AXButton', label: 'Open' })): ScreenRecorder => ({
     async act(c) { asked.push(`${c.op}${c.x !== undefined ? ` ${c.x},${c.y}` : ''}${c.text ? ` ${c.text}` : ''}${c.keys ? ` ${c.keys}` : ''}`); return c.op === 'under' || c.op === 'focused' ? seen(c.op) : { done: true } },
-    async shot(out, app) { asked.push(`shot ${out.split('/').pop()?.replace(/\d+/, 'N')} ${app ?? 'all'}`); return undefined },
+    async shot(out, app) { asked.push(`shot ${out.split('/').pop()?.replace(/\d+/, 'N')} ${app ?? 'all'}`); return { width: 100, height: 50, pointsWide: 100, pointsHigh: 50 } },
     async start(out, seconds, app) { asked.push(`start ${out.split('/').pop()?.replace(/\d+/, 'N')} ${seconds} ${app ?? 'all'}`); return undefined },
     async stop() { asked.push('stop'); return { file: '/f/screen.mp4', seconds: 42 } },
+  })
+  const looked = async (s: { call: (n: string, a: Record<string, unknown>) => Promise<unknown>; events: string[] }, asked: string[] = []) => {
+    await s.call('screen_shot', { channel: 'C1', thread_ts: '5.5' })
+    asked.length = 0; s.events.length = 0
+  }
+  test('screen_act maps x and y from the last picture to screen points, and needs a picture first (#508)', async () => {
+    const asked: string[] = []
+    const screen = { ...fakeScreen(asked), shot: async () => ({ width: 1280, height: 800, pointsWide: 1440, pointsHigh: 900 }) }
+    const s = setup({ screen, approve: async () => true })
+    s.t.onTask(s.task())
+    const before = await s.call('screen_act', { channel: 'C1', thread_ts: '5.5', action: 'click', x: 640, y: 400 })
+    assert.match(before.text, /take a screen_shot first/)
+    assert.deepEqual(asked, [])
+    assert.match((await s.call('screen_shot', { channel: 'C1', thread_ts: '5.5' })).text, /1280 by 800 pixels/)
+    await s.call('screen_act', { channel: 'C1', thread_ts: '5.5', action: 'click', x: 640, y: 400 })
+    assert.deepEqual(asked, ['under 720,450', 'click 720,450'])
+    assert.equal((await s.call('screen_act', { channel: 'C1', thread_ts: '5.5', action: 'key', keys: 'cmd+a' })).isError, undefined)
   })
   test('the owner records the screen into the thread folder, stops it, and gets the file to send', async () => {
     const asked: string[] = []
@@ -1082,6 +1099,7 @@ describe("the owner's screen", () => {
     const asked: string[] = []
     const s = setup({ screen: fakeScreen(asked) })
     s.t.onTask(s.task())
+    await looked(s, asked)
     await s.call('screen_record', { channel: 'C1', thread_ts: '5.5', action: 'start', seconds: 5000 })
     assert.deepEqual(asked, ['start screen-N.mp4 600 all'])
   })
@@ -1102,6 +1120,7 @@ describe("the owner's screen", () => {
     const asked: string[] = [], cards: string[] = []
     const s = setup({ screen: fakeScreen(asked), approve: async (_t, d) => { cards.push(d); return true } })
     s.t.onTask(s.task())
+    await looked(s, asked)
     const r = await s.call('screen_act', { channel: 'C1', thread_ts: '5.5', action: 'click', x: 300, y: 200 })
     assert.equal(r.isError, undefined, r.text)
     assert.deepEqual(asked, ['under 300,200', 'click 300,200'])
@@ -1112,6 +1131,7 @@ describe("the owner's screen", () => {
       const asked: string[] = [], cards: string[] = []
       const s = setup({ screen: fakeScreen(asked, () => ({ app: 'Finder', role: 'AXMenuItem', label: 'Move to Trash' })), approve: async (_t, d) => { cards.push(d); return yes } })
       s.t.onTask(s.task())
+    await looked(s, asked)
       const r = await s.call('screen_act', { channel: 'C1', thread_ts: '5.5', action: 'click', x: 5, y: 6 })
       assert.equal(cards.length, 1)
       assert.match(cards[0]!, /Move to Trash/)
@@ -1123,6 +1143,7 @@ describe("the owner's screen", () => {
     const asked: string[] = [], cards: string[] = []
     const s = setup({ screen: fakeScreen(asked, () => ({ app: 'Safari', role: 'AXMenuItem', label: 'Shut Down…' })), approve: async (_t, d) => { cards.push(d); return true } })
     s.t.onTask(s.task())
+    await looked(s, asked)
     const r = await s.call('screen_act', { channel: 'C1', thread_ts: '5.5', action: 'click', x: 5, y: 6 })
     assert.equal(r.isError, true)
     assert.match(r.text, /refused/)
@@ -1133,6 +1154,7 @@ describe("the owner's screen", () => {
     const asked: string[] = [], cards: string[] = []
     const s = setup({ screen: fakeScreen(asked, () => ({ app: 'Terminal', role: 'AXTextArea', label: '' })), approve: async (_t, d) => { cards.push(d); return false } })
     s.t.onTask(s.task())
+    await looked(s, asked)
     const act = (a: Record<string, unknown>) => s.call('screen_act', { channel: 'C1', thread_ts: '5.5', ...a })
     await act({ action: 'key', keys: 'ctrl+c' })
     await act({ action: 'type', text: 'ls -la' })
@@ -1151,6 +1173,7 @@ describe("the owner's screen", () => {
     const asked: string[] = [], cards: string[] = []
     const s = setup({ screen: fakeScreen(asked, () => ({ app: 'Ghostty', role: 'AXTextArea', label: '' })), approve: async (_t, d) => { cards.push(d); return false } })
     s.t.onTask(s.task())
+    await looked(s, asked)
     const act = (a: Record<string, unknown>) => s.call('screen_act', { channel: 'C1', thread_ts: '5.5', ...a })
     assert.equal((await act({ action: 'key', keys: 'return' })).isError, true)
     assert.match(cards.at(-1) ?? '', /did not type/)
@@ -1171,6 +1194,7 @@ describe("the owner's screen", () => {
     const cards: string[] = []
     const s = setup({ screen: fakeScreen([], () => ({ app: 'Terminal', role: 'AXTextArea', label: '' })), approve: async (_t, d) => { cards.push(d); return false } })
     s.t.onTask(s.task())
+    await looked(s)
     const act = (a: Record<string, unknown>) => s.call('screen_act', { channel: 'C1', thread_ts: '5.5', ...a })
     await act({ action: 'key', keys: 'ctrl+c' })
     await act({ action: 'type', text: '; sudo shutdown -h now' })
@@ -1197,6 +1221,7 @@ describe("the owner's screen", () => {
     const asked: string[] = []
     const s = setup({ screen: fakeScreen(asked), approve: async () => true })
     s.t.onTask(s.task())
+    await looked(s, asked)
     assert.equal((await s.call('screen_act', { channel: 'C1', thread_ts: '5.5', action: 'key', keys: 'cmd+banana' })).isError, true)
     assert.deepEqual(asked, [])
   })
@@ -1204,6 +1229,7 @@ describe("the owner's screen", () => {
     const asked: string[] = [], cards: string[] = []
     const s = setup({ screen: fakeScreen(asked), approve: async (_t, d) => { cards.push(d); return true } })
     s.t.onTask(s.task())
+    await looked(s, asked)
     const r = await s.call('screen_act', { channel: 'C1', thread_ts: '5.5', steps: [{ action: 'move', x: 1, y: 1 }, { action: 'click', x: 2, y: 2 }, { action: 'type', text: 'hi' }] })
     assert.equal(r.isError, undefined, r.text)
     assert.match(r.text, /3 steps/)
@@ -1214,6 +1240,7 @@ describe("the owner's screen", () => {
     const asked: string[] = [], cards: string[] = []
     const s = setup({ screen: fakeScreen(asked, op => op === 'under' ? { app: 'Finder', role: 'AXMenuItem', label: 'Move to Trash' } : { app: 'Finder', role: 'AXWindow', label: '' }), approve: async (_t, d) => { cards.push(d); return true } })
     s.t.onTask(s.task())
+    await looked(s, asked)
     const r = await s.call('screen_act', { channel: 'C1', thread_ts: '5.5', steps: [{ action: 'move', x: 1, y: 1 }, { action: 'click', x: 5, y: 6 }, { action: 'move', x: 9, y: 9 }] })
     assert.equal(r.isError, true)
     assert.match(r.text, /step 2 of 3/)
@@ -1226,6 +1253,7 @@ describe("the owner's screen", () => {
     const asked: string[] = []
     const s = setup({ screen: fakeScreen(asked, () => ({ app: 'Safari', role: 'AXMenuItem', label: 'Shut Down…' })), approve: async () => true })
     s.t.onTask(s.task())
+    await looked(s, asked)
     const r = await s.call('screen_act', { channel: 'C1', thread_ts: '5.5', steps: [{ action: 'click', x: 5, y: 6 }, { action: 'move', x: 9, y: 9 }] })
     assert.equal(r.isError, true)
     assert.match(r.text, /refused/)
@@ -1236,6 +1264,7 @@ describe("the owner's screen", () => {
     let looks = 0
     const s = setup({ screen: fakeScreen(asked, () => ({ app: looks++ === 0 ? 'ExcalidrawZ' : 'Slack', role: 'AXTextArea', label: '' })), approve: async () => true })
     s.t.onTask(s.task())
+    await looked(s, asked)
     const r = await s.call('screen_act', { channel: 'C1', thread_ts: '5.5', steps: [{ action: 'drag', x: 1, y: 1, to_x: 5, to_y: 5 }, { action: 'drag', x: 2, y: 2, to_x: 6, to_y: 6 }] })
     assert.equal(r.isError, true)
     assert.match(r.text, /ExcalidrawZ/)
@@ -1246,6 +1275,7 @@ describe("the owner's screen", () => {
     const asked: string[] = []
     const s = setup({ screen: fakeScreen(asked), approve: async () => true })
     s.t.onTask(s.task())
+    await looked(s, asked)
     for (const extra of [{ steps: [{ action: 'move', x: 1, y: 1 }, { action: 'key', keys: 'cmd+banana' }] }, { action: 'move', x: 1, y: 1, steps: [{ action: 'move', x: 1, y: 1 }] }, {}])
       assert.equal((await s.call('screen_act', { channel: 'C1', thread_ts: '5.5', ...extra })).isError, true, JSON.stringify(extra))
     assert.deepEqual(asked, [])
@@ -1255,6 +1285,7 @@ describe("the owner's screen", () => {
     const screen = fakeScreen()
     const s = setup({ screen: { ...screen, act: async c => { sent.push(c); return screen.act(c) } }, approve: async () => true })
     s.t.onTask(s.task())
+    await looked(s)
     await s.call('screen_act', { channel: 'C1', thread_ts: '5.5', action: 'drag', x: 1, y: 2, path: [{ x: 3, y: 4 }, { x: 5, y: 6 }] })
     assert.deepEqual(sent, [{ op: 'drag', x: 1, y: 2, path: [[3, 4], [5, 6]] }])
   })
@@ -1263,6 +1294,7 @@ describe("the owner's screen", () => {
     const screen = fakeScreen([], op => op === 'under' ? { app: 'Finder', role: 'AXButton', label: 'Open' } : { app: 'Finder', role: 'AXButton', label: 'Focused' })
     const s = setup({ screen: { ...screen, act: async c => { sent.push(c); return screen.act(c) } }, approve: async () => true })
     s.t.onTask(s.task())
+    await looked(s)
     const steps = [{ action: 'click', x: 1, y: 1 }, { action: 'key', keys: 'return' }, { action: 'key', keys: 'cmd+c' }, { action: 'type', text: 'hi' }, { action: 'move', x: 2, y: 2 }]
     assert.equal((await s.call('screen_act', { channel: 'C1', thread_ts: '5.5', steps })).isError, undefined)
     await s.call('screen_act', { channel: 'C1', thread_ts: '5.5', action: 'click', x: 3, y: 3 })

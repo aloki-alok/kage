@@ -5,8 +5,10 @@ import { release } from 'node:os'
 import { dirname } from 'node:path'
 import { promisify } from 'node:util'
 
+import type { Picture } from '../core/desktop-act.ts'
+
 export type Launch = (app: string, log: string) => { exited: Promise<number | null> }
-type Line = { state?: 'recording' | 'saved' | 'acting' | 'stopped'; pid?: number; seconds?: number; error?: string; id?: number }
+type Line = { state?: 'recording' | 'saved' | 'acting' | 'stopped'; pid?: number; seconds?: number; error?: string; id?: number; width?: number; height?: number; pointsWide?: number; pointsHigh?: number }
 export type ActAnswer = Record<string, unknown>
 type Acting = { log: string; pipe: WriteStream; next: number; done: boolean; said?: Line[] }
 type Running = { pid: number; out: string; log: string; exited: Promise<number | null>; done: boolean }
@@ -87,7 +89,7 @@ const openApp: Launch = (app, log) => {
   return { exited: new Promise(done => { child.on('exit', done); child.on('error', () => done(null)) }) }
 }
 
-export function screenRecorder(o: { folder: string; code: string; build?: (app: string) => Promise<string | undefined>; launch?: Launch; kill?: (pid: number, signal: NodeJS.Signals) => void; pollMs?: number; waitMs?: number }) {
+export function screenRecorder(o: { folder: string; code: string; longSide?: number; build?: (app: string) => Promise<string | undefined>; launch?: Launch; kill?: (pid: number, signal: NodeJS.Signals) => void; pollMs?: number; waitMs?: number }) {
   const app = `${o.folder}/Kage Screen.app`
   const build = o.build ?? (a => buildApp(o.code, a))
   const launch = o.launch ?? openApp, kill = o.kill ?? ((pid, signal) => { try { process.kill(pid, signal) } catch {} })
@@ -110,7 +112,7 @@ export function screenRecorder(o: { folder: string; code: string; build?: (app: 
   }
   const serial = <T>(f: () => Promise<T>): Promise<T> => { const p = busy.then(f); busy = p.then(() => {}, () => {}); return p }
 
-  async function launchJob(job: { action: 'record' | 'shot'; out: string; seconds?: number; app?: string } | { action: 'act'; fifo: string }) {
+  async function launchJob(job: { action: 'record' | 'shot'; out: string; seconds?: number; app?: string; longSide?: number } | { action: 'act'; fifo: string }) {
     const err = await build(app)
     if (err) return { err }
     mkdirSync(o.folder, { recursive: true, mode: 0o700 })
@@ -165,13 +167,16 @@ export function screenRecorder(o: { folder: string; code: string; build?: (app: 
       const again = await send(command)
       return again === 'left idle' ? { error: NO_ANSWER } : again
     }),
-    shot: (out: string, appName?: string) => serial(async (): Promise<string | undefined> => {
-      const r = await launchJob({ action: 'shot', out, ...appName && { app: appName } })
-      if ('err' in r) return r.err
+    shot: (out: string, appName?: string) => serial(async (): Promise<string | Picture> => {
+      const r = await launchJob({ action: 'shot', out, ...appName && { app: appName }, ...o.longSide && { longSide: o.longSide } })
+      if ('err' in r) return r.err!
       const ended = await exitsWithin(r.exited, waitMs)
       const last = lines(r.log).at(-1)
       rmSync(r.log, { force: true })
-      return !ended ? NO_ANSWER : last?.state === 'saved' ? undefined : failure(last)
+      if (!ended) return NO_ANSWER
+      if (last?.state !== 'saved') return failure(last)
+      const { width, height, pointsWide, pointsHigh } = last
+      return width && height && pointsWide && pointsHigh ? { width, height, pointsWide, pointsHigh } : 'Kage Screen saved the picture but not its size: it runs an older build, so try again'
     }),
     start: (out: string, seconds: number, appName?: string) => serial(async (): Promise<string | undefined> => {
       if (current && !current.done) return 'already recording: stop that recording first'

@@ -145,6 +145,7 @@ Counts and failure codes from this install, sent to an OpenTelemetry (OTLP) endp
 
 | Setting | Default | Effect |
 |---|---|---|
+| `screen.shotLongSide` | `1280` | The longest side, in pixels, of a picture `screen_shot` takes of your Mac. The model sees a larger picture shrunk, and aims worse on it, so Kage keeps pictures this size and maps each `screen_act` point back to the screen. |
 | `telemetry.endpoint` | `https://monitor.omnidim.io/kage` | The OTLP/HTTP base URL: the Kage team's receiver, which keeps only counts and codes. Point it at your own collector to keep the data yourself. Kage posts to `<endpoint>/v1/logs`, and each session's Claude Code sends its own logs there too. |
 | `telemetry.on` | on | You get one DM before anything is sent. `false` sends nothing. `KAGE_TELEMETRY=off` or `DO_NOT_TRACK=1` in the hub's environment does the same. |
 

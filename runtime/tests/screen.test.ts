@@ -36,10 +36,10 @@ function fakeHelper(helper: (job: { action: string }) => Helper, jobs: unknown[]
 }
 
 describe('Kage Screen in the hub', () => {
-  const setup = (helper: (job: { action: string }) => Helper = () => 'records', built: string[] = []) => {
+  const setup = (helper: (job: { action: string }) => Helper = () => 'records', built: string[] = [], longSide?: number) => {
     const dir = mkdtempSync(`${tmpdir()}/kage-screen-`), jobs: Record<string, unknown>[] = [], signals: string[] = []
     const h = fakeHelper(helper, jobs, signals)
-    const screen = screenRecorder({ folder: dir, code: '/code', build: async app => { built.push(app); return undefined }, launch: h.launch, kill: h.kill, pollMs: 5, waitMs: 100 })
+    const screen = screenRecorder({ folder: dir, code: '/code', build: async app => { built.push(app); return undefined }, launch: h.launch, kill: h.kill, pollMs: 5, waitMs: 100, ...longSide && { longSide } })
     const left = () => readdirSync(dir)
     return { dir, screen, jobs, signals, left }
   }
@@ -92,24 +92,28 @@ describe('Kage Screen in the hub', () => {
   })
   test('a helper that never answers does not hold up the next call', async () => {
     let first = true
-    const { screen } = setup(() => first ? (first = false, 'hangs') : ['{"state":"saved"}'])
-    assert.match(await screen.shot('/t/s.png') ?? '', /did not answer/)
-    assert.equal(await screen.shot('/t/s2.png'), undefined)
+    const { screen } = setup(() => first ? (first = false, 'hangs') : ['{"state":"saved","width":1280,"height":800,"pointsWide":1440,"pointsHigh":900}'])
+    assert.match(String(await screen.shot('/t/s.png')), /did not answer/)
+    assert.deepEqual(await screen.shot('/t/s2.png'), { width: 1280, height: 800, pointsWide: 1440, pointsHigh: 900 })
   })
   test('a recording that ended before it started is not left as running', async () => {
     const { screen } = setup(() => ['{"state":"saved","seconds":0}'])
     assert.match(await screen.start('/t/a.mp4', 5) ?? '', /ended before it started/)
     assert.deepEqual(await screen.stop(), { error: 'nothing is recording' })
   })
-  test('a picture names only the app asked for, comes back as saved, and leaves no file behind', async () => {
-    const { screen, jobs, left } = setup(() => ['{"state":"saved"}'])
-    assert.equal(await screen.shot('/t/s.png', 'Google Chrome'), undefined)
-    assert.deepEqual(jobs, [{ action: 'shot', out: '/t/s.png', app: 'Google Chrome', mode: 0o600 }])
+  test('a picture names only the app asked for and the long side, comes back with its size, and leaves no file behind (#508)', async () => {
+    const { screen, jobs, left } = setup(() => ['{"state":"saved","width":1280,"height":800,"pointsWide":1440,"pointsHigh":900}'], [], 1280)
+    assert.deepEqual(await screen.shot('/t/s.png', 'Google Chrome'), { width: 1280, height: 800, pointsWide: 1440, pointsHigh: 900 })
+    assert.deepEqual(jobs, [{ action: 'shot', out: '/t/s.png', app: 'Google Chrome', longSide: 1280, mode: 0o600 }])
     assert.deepEqual(left(), [])
+  })
+  test('a picture saved with no size, from an older build, is an error, so no click is mapped from a guess (#508)', async () => {
+    const { screen } = setup(() => ['{"state":"saved"}'])
+    assert.match(String(await screen.shot('/t/s.png')), /not its size/)
   })
   test('with no screen permission yet, the answer tells the owner where to turn it on', async () => {
     const { screen } = setup(() => ['{"error":"permission"}'])
-    assert.match(await screen.shot('/t/s.png') ?? '', /Kage Screen in System Settings > Privacy & Security > Screen & System Audio Recording/)
+    assert.match(String(await screen.shot('/t/s.png')), /Kage Screen in System Settings > Privacy & Security > Screen & System Audio Recording/)
     assert.match(await screen.start('/t/a.mp4', 60) ?? '', /System Settings/)
   })
   test("the helper's own error comes back as it said it", async () => {
@@ -118,7 +122,7 @@ describe('Kage Screen in the hub', () => {
   })
   test('the app is built inside the screen folder before each launch', async () => {
     const built: string[] = []
-    const { dir, screen } = setup(() => ['{"state":"saved"}'], built)
+    const { dir, screen } = setup(() => ['{"state":"saved","width":1280,"height":800,"pointsWide":1440,"pointsHigh":900}'], built)
     await screen.shot('/t/s.png')
     assert.deepEqual(built, [`${dir}/Kage Screen.app`])
   })

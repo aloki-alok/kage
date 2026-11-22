@@ -11,7 +11,7 @@ import QuartzCore
 import ScreenCaptureKit
 import UniformTypeIdentifiers
 
-struct Job: Decodable { let action: String; let out: String?; let seconds: Double?; let app: String?; let fifo: String? }
+struct Job: Decodable { let action: String; let out: String?; let seconds: Double?; let app: String?; let fifo: String?; let longSide: Double? }
 
 func emit(_ d: [String: Any]) {
   var data = try! JSONSerialization.data(withJSONObject: d)
@@ -63,8 +63,9 @@ func run() async {
   }
   let config = SCStreamConfiguration()
   let px = CGSize(width: filter.contentRect.width * CGFloat(filter.pointPixelScale), height: filter.contentRect.height * CGFloat(filter.pointPixelScale))
-  // A video fits in 1920 by 1080: full Retina size is about 19 Mbit/s, too big to send. A picture keeps every pixel.
-  let fit = job.action == "record" ? min(1, 1920 / px.width, 1080 / px.height) : 1
+  // A video fits in 1920 by 1080: full Retina size is about 19 Mbit/s, too big to send. A picture fits the hub's long
+  // side, since the model sees a large picture shrunk and would aim on a smaller one than screen_act maps from.
+  let fit = job.action == "record" ? min(1, 1920 / px.width, 1080 / px.height) : min(1, (job.longSide ?? .infinity) / max(px.width, px.height))
   config.width = Int(px.width * fit) / 2 * 2
   config.height = Int(px.height * fit) / 2 * 2
   config.showsCursor = true
@@ -76,7 +77,7 @@ func run() async {
       guard let dest = CGImageDestinationCreateWithURL(out as CFURL, UTType.png.identifier as CFString, 1, nil) else { fail("cannot write \(outPath)") }
       CGImageDestinationAddImage(dest, image, nil)
       if !CGImageDestinationFinalize(dest) { fail("cannot write \(outPath)") }
-      emit(["state": "saved"]); exit(0)
+      emit(["state": "saved", "width": image.width, "height": image.height, "pointsWide": Double(filter.contentRect.width), "pointsHigh": Double(filter.contentRect.height)]); exit(0)
     } catch { fail("screenshot failed: \(error.localizedDescription)") }
   }
   guard job.action == "record" else { fail("unknown action \(job.action)") }
@@ -154,12 +155,8 @@ final class CursorView: NSView {
 
 final class Hands {
   let window: NSWindow
-  let scale: CGFloat
   var lastCommand = Date()
   init() {
-    let main = CGMainDisplayID()
-    let mode = CGDisplayCopyDisplayMode(main)
-    scale = CGFloat(mode?.pixelWidth ?? 2) / CGFloat(max(1, mode?.width ?? 1))
     window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 80, height: 56), styleMask: .borderless, backing: .buffered, defer: false)
     window.isOpaque = false
     window.backgroundColor = .clear
@@ -173,8 +170,8 @@ final class Hands {
     place(at: now, animated: false)
     window.orderFrontRegardless()
   }
-  // Points from the screen picture's pixels; CG puts the origin top left, AppKit bottom left.
-  func point(_ x: Double, _ y: Double) -> CGPoint { CGPoint(x: x / Double(scale), y: y / Double(scale)) }
+  // The hub sends screen points (core/desktop-act.ts onScreen); CG puts the origin top left, AppKit bottom left.
+  func point(_ x: Double, _ y: Double) -> CGPoint { CGPoint(x: x, y: y) }
   func place(at p: CGPoint, animated: Bool) {
     let height = NSScreen.screens.first?.frame.height ?? 0
     let origin = NSPoint(x: p.x - 4, y: height - p.y - window.frame.height + 4)
@@ -376,7 +373,7 @@ func startActingOnMain(_ job: Job) {
   if !AXIsProcessTrustedWithOptions([kAXTrustedCheckOptionPrompt.takeUnretainedValue() as String: true] as CFDictionary) { fail("accessibility", 3) }
   let a = Hands()
   hands = a
-  emit(["state": "acting", "pid": Int(getpid()), "scale": Double(a.scale)])
+  emit(["state": "acting", "pid": Int(getpid())])
   Thread.detachNewThread {
     guard let input = FileHandle(forReadingAtPath: fifo) else { fail("cannot read \(fifo)") }
     var buffer = Data()

@@ -39,6 +39,7 @@ export const Config = z.strictObject({
   afk: z.strictObject({ on: yes, model: text }).optional(),
   jev: z.strictObject({ agents: strings, threshold: money, model: text, url: text, ackWords: yes }).optional(),
   telemetry: z.strictObject({ on: yes, endpoint: text }).optional(),
+  screen: z.strictObject({ shotLongSide: count }).optional(),
   tripwires: z.strictObject({ on: yes, timeoutSec: count, maxKb: count, failPing: count, patternMax: count, lineMax: count, maxPosts: count, catchUpMax: count, seenMax: count, hookPort: count, hookHost: text, hookPerHour: count, env: strings, swapAfter: count, shadowWindowMin: count, swapUndoDays: count }).optional(),
   connectors: z.strictObject({
     email: z.strictObject({ on: yes, address: text, queue: text, ownerEmail: text, region: text, teammateEmails: strings }).optional(),
@@ -113,7 +114,7 @@ export const KEYS: Row[] = [
   R('KAGE_TRIPWIRES', 'tripwires.on', onoff), R('KAGE_TRIPWIRES_TIMEOUT_SEC', 'tripwires.timeoutSec', int), R('KAGE_TRIPWIRES_MAX_KB', 'tripwires.maxKb', int),
   R('KAGE_TRIPWIRES_FAIL_PING', 'tripwires.failPing', int), R('KAGE_TRIPWIRES_PATTERN_MAX', 'tripwires.patternMax', int), R('KAGE_TRIPWIRES_LINE_MAX', 'tripwires.lineMax', int),
   R('KAGE_TRIPWIRES_ENV', 'tripwires.env', list),
-  R('KAGE_TELEMETRY', 'telemetry.on', onoff), R('KAGE_TELEMETRY_ENDPOINT', 'telemetry.endpoint'),
+  R('KAGE_TELEMETRY', 'telemetry.on', onoff), R('KAGE_TELEMETRY_ENDPOINT', 'telemetry.endpoint'), R('KAGE_SCREEN_SHOT_LONG_SIDE', 'screen.shotLongSide', int),
   R('KAGE_EMAIL', 'connectors.email.on', onoff), R('KAGE_MAIL_ADDRESS', 'connectors.email.address'), R('KAGE_MAIL_QUEUE', 'connectors.email.queue'),
   R('KAGE_OWNER_EMAIL', 'connectors.email.ownerEmail'), R('KAGE_AWS_REGION', 'connectors.email.region'), R('KAGE_TEAMMATE_EMAILS', 'connectors.email.teammateEmails', list),
   R('KAGE_VOICE', 'connectors.voice.on', onoff), R('KAGE_VOICE_PORT', 'connectors.voice.port', int), R('KAGE_VOICE_MAX', 'connectors.voice.max', int),
