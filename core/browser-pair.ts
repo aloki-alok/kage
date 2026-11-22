@@ -33,7 +33,7 @@ export const addBrowserPlan = (f: { hasToken: boolean; reinstall: boolean }) =>
 export const addBrowserAgainLines = () => [
   'Kage in Chrome is already set up, so nothing changed. Run kage doctor to see whether it is connected.',
   'If it is not: in chrome://extensions, turn Kage on if it is off, then click its reload arrow.',
-  'If Kage is not listed there at all, run kage add browser --reinstall.',
+  'If Kage is not listed there at all, run kage connect browser --reinstall.',
 ]
 
 export const hostManifest = (path: string, id: string) => ({

@@ -54,9 +54,9 @@ if (cmd === 'has') {
   updateSecrets(ENV_FILE, s => ({ ...s, claudeToken: token }))
 } else if (cmd === 'save-github') {
   const token = (await new Promise<string>(res => { let t = ''; process.stdin.on('data', d => t += d).on('end', () => res(t)) })).trim()
-  const ask = (path: string) => fetch(`https://api.github.com${path}`, { headers: { Authorization: `Bearer ${token}`, Accept: 'application/vnd.github+json' } }).catch(() => die('No answer from GitHub. Check the network, then run kage github again.'))
+  const ask = (path: string) => fetch(`https://api.github.com${path}`, { headers: { Authorization: `Bearer ${token}`, Accept: 'application/vnd.github+json' } }).catch(() => die('No answer from GitHub. Check the network, then run kage connect github again.'))
   const user = await ask('/user')
-  if (!user.ok) die(`GitHub refused this token (${user.status}). Run gh auth login, or make a new classic token, then run kage github again.`)
+  if (!user.ok) die(`GitHub refused this token (${user.status}). Run gh auth login, or make a new classic token, then run kage connect github again.`)
   if (!(await ask('/notifications?per_page=1')).ok) die('This token cannot read notifications. Use a gh login, or a classic token with the notifications and repo scopes: fine-grained tokens cannot read notifications.')
   const { login } = await user.json() as { login: string }
   updateSecrets(ENV_FILE, s => ({ ...s, githubToken: token }))

@@ -13,7 +13,7 @@ const cases: [string, string][] = [
   [L.githubNoThread('repo#2', 'https://x.test/2'), 'A GitHub event for repo#2 could not open its thread here: https://x.test/2'],
   [L.githubFailed('x'.repeat(130), true), `A GitHub event failed here (${'x'.repeat(120)}). It runs again if Kage restarts within 10 minutes; otherwise redeliver it from the webhook's page.`],
   [L.githubFailed('x', false), 'A GitHub event failed here (x). It runs again if Kage restarts within 10 minutes.'],
-  [L.githubTokenRefused(), 'GitHub refused the saved token, so I cannot read your GitHub notifications. Run kage github to save a new one.'],
+  [L.githubTokenRefused(), 'GitHub refused the saved token, so I cannot read your GitHub notifications. Run kage connect github to save a new one.'],
   [L.meetingOverCap(5, 'Standup'), 'More than 5 meeting transcripts came in this hour, so I am skipping them. Send "Standup" again after the hour is up.'],
   [L.meetingNoThread('Standup'), 'Notes for the meeting "Standup" could not open a thread here. Send it again.'],
   [L.meetingFailed(new Error('bad')), 'A meeting transcript failed here (Error: bad). Send it again.'],

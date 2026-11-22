@@ -25,7 +25,7 @@ Set up|check||Check that node 22.18+ and claude are installed (and tmux, for KAG
 Set up|app|[name]|Write the Slack app for the name you tag, and open the link that creates it|kage app kage
 Set up|save|[name]|Paste the three Slack tokens into hidden prompts; each is checked with Slack|kage save
 Set up|tunnel|[on or off]|Open a route for each connector another machine calls (GitHub, voice, job hooks on the internet; the meeting bot on your tailnet) through Tailscale, or close them all|kage tunnel on
-Set up|github|[off]|Turn on GitHub: a thread in your DM when someone mentions you, asks for your review, assigns you, reviews your pull request or fails its checks. Uses your gh login and needs no public URL. off turns it off|kage github
+Set up|connect|[name] [off]|List every connector, on or off, with the one step left. With a name it turns that one on, or off with off: github (your notifications, with your gh login), browser (pairs the Kage extension in Chrome), email, voice, whatsapp, meeting|kage connect browser
 Set up|claude-login||Save the Claude login Kage runs on, so its sessions use their own seat. Get the token with claude setup-token, signed in as Kage|kage claude-login
 Set up|doctor||Check every part, and print the command that fixes each problem|kage doctor
 Set up|slack|upgrade|Add the Slack scopes Kage needs and the app lacks: adds them to the app manifest with one Slack configuration token (or prints the lines to paste), then opens Reinstall and waits|kage slack upgrade
@@ -49,7 +49,7 @@ Watch|schedules||Every schedule and reply watch, in every thread|kage schedules
 Watch|top||The live console: every thread, its feed, attach and stop, by mouse or keys|kage top
 Watch|watch|[place]|Follow every step every session takes, as it happens|kage watch support
 Watch|attach|[place or link]|Take a thread into this terminal, by its place or its Slack link in quotes; Kage gets it back when you quit|kage attach "https://example.slack.com/archives/C0123ABC/p1700000000123456"
-People|add|<person>, <app id> <owner>, kagelet <name> or browser|Let a person tag Kage (a mention, member id, email, name or @handle), or an agent with the person or agent it answers to. kagelet <name> writes a paused starter file for a kagelet. browser turns Kage in Chrome on and prints the token for its extension|kage add priya
+People|add|<person>, <app id> <owner> or kagelet <name>|Let a person tag Kage (a mention, member id, email, name or @handle), or an agent with the person or agent it answers to. kagelet <name> writes a paused starter file for a kagelet|kage add priya
 People|remove|<person or app id>|Take a person or an agent off the list; whoever answers to them goes too|kage remove priya
 People|list||Who may tag Kage besides you: each person, with their agents under them. Then the kagelets Kage manages: schedule, last and next run, cost today|kage list
 People|tell|<place> <message>|Tell a thread something as you; its session takes it after the current turn|kage tell support use the staging db
@@ -308,7 +308,7 @@ cmd_github() {
   umask 077
   login="$(printf '%s\n' "$t" | node cli/config.ts save-github)" || exit 1
   if node cli/config.ts has secrets.githubSecret; then
-    says "Saved for @$login. A webhook secret is set, so I keep the webhook. Run kage github off, then kage github, to read notifications instead."
+    says "Saved for @$login. A webhook secret is set, so I keep the webhook. Run kage connect github off, then kage connect github, to read notifications instead."
   else
     says "GitHub is on for @$login. I start reading your notifications once I am not in the middle of anything."
   fi
@@ -340,7 +340,7 @@ case "${1:-}" in
   check) cmd_check ;;
   app) cmd_app "${2:-}" ;;
   save) cmd_save "${2:-}" ;;
-  github) cmd_github "${2:-}" ;;
+  connect) if [[ ${2:-} == github ]]; then cmd_github "${3:-}"; else node cli/connect.ts "${@:2}"; fi ;;
   tunnel) node cli/tunnel.ts "${2:-on}" ;;
   claude-login) cmd_claude_login ;;
   doctor) node cli/doctor/run.ts ;;

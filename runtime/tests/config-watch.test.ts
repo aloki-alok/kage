@@ -111,7 +111,7 @@ describe('the watcher itself', () => {
     t.w.close()
   })
 
-  test('a new browser token (kage add browser) asks for the quiet restart, and no value is logged', () => {
+  test('a new browser token (kage connect browser) asks for the quiet restart, and no value is logged', () => {
     const t = setup()
     updateSecrets(t.env, s => ({ ...s, browserToken: 'browser-token-fake' }))
     assert.deepEqual((t.w.check() as { restart: string[] }).restart, ['secrets.browserToken'])

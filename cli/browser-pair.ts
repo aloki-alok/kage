@@ -7,7 +7,7 @@ function answer(): unknown {
   let s
   try { s = readSettings(ENV_FILE) } catch { return { error: `no settings in ${ENV_FILE.replace(/\/[^/]*$/, '')}: run kage setup` } }
   const token = s.secrets.browserToken
-  if (!token) return { error: 'Kage in Chrome is off: run kage add browser' }
+  if (!token) return { error: 'Kage in Chrome is off: run kage connect browser' }
   return { token, hub: `http://127.0.0.1:${s.config.connectors?.browser?.port || 8791}` }
 }
 

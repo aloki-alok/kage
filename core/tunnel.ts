@@ -1,5 +1,6 @@
 import type { Config, Secrets } from './config.ts'
 import type { Line } from './doctor.ts'
+import { connectorStates } from './connect.ts'
 
 type TunnelRoute = { name: 'github' | 'voice' | 'hooks' | 'meeting'; port: number; paths: string[]; reach: 'internet' | 'tailnet' }
 type RouteState = 'internet' | 'tailnet' | 'closed'
@@ -16,12 +17,12 @@ const kageWeb = (s: ServeStatus) => Object.entries(s.Web ?? {}).find(([host]) =>
 const funnelled = (s: ServeStatus) => { const web = kageWeb(s); return !!web && s.AllowFunnel?.[web[0]] === true }
 
 export function tunnelRoutes({ config, secrets }: { config: Config; secrets: Secrets }): TunnelRoute[] {
-  const c = config.connectors, t = config.tripwires
+  const c = config.connectors, t = config.tripwires, on = connectorStates({ config, secrets })
   const routes: (TunnelRoute | false)[] = [
-    !!secrets.githubSecret && !!c?.github?.login && { name: 'github', port: c.github.port || 8789, paths: ['/github'], reach: 'internet' },
-    !!secrets.voiceToken && c?.voice?.on !== false && { name: 'voice', port: c?.voice?.port || 8787, paths: ['/mcp', '/voice'], reach: 'internet' },
+    on.github.state === 'on' && !!secrets.githubSecret && { name: 'github', port: c?.github?.port || 8789, paths: ['/github'], reach: 'internet' },
+    on.voice.state === 'on' && { name: 'voice', port: c?.voice?.port || 8787, paths: ['/mcp', '/voice'], reach: 'internet' },
     !!t?.hookPort && t.on !== false && { name: 'hooks', port: t.hookPort, paths: ['/hook'], reach: 'internet' },
-    !!secrets.meetingToken && { name: 'meeting', port: c?.meeting?.port || 8790, paths: [], reach: 'tailnet' },
+    on.meeting.state === 'on' && { name: 'meeting', port: c?.meeting?.port || 8790, paths: [], reach: 'tailnet' },
   ]
   return routes.filter(r => r !== false)
 }
