@@ -5,6 +5,7 @@ import { dirname, join } from 'node:path'
 import { createSdkMcpServer, query, tool, type SDKMessage } from '@anthropic-ai/claude-agent-sdk'
 import { Dispatcher } from '../../core/sessions.ts'
 import { taskAsOther, taskAsOwner, taskLine } from '../../core/gate.ts'
+import { sandboxed } from '../../core/guards.ts'
 import { sessionTools } from '../../runtime/kage-tools.ts'
 import { sdkSessions, type Sdk } from '../../runtime/sdk-sessions.ts'
 import { openStore } from '../../runtime/store.ts'
@@ -53,13 +54,24 @@ function writeFixture(work: string, files: Case['files']): Record<string, string
 
 const readOrNull = (path: string) => { try { return readFileSync(path, 'utf8') } catch { return null } }
 
+export const LIVE_ENV_FILE = join(homedir(), '.config', 'kage', 'env')
+
 export async function runCase(c: Case, o: { code: string; claude: string; timeoutMs: number; trace?: string }): Promise<Evidence> {
   const runs = join(homedir(), '.cache', 'kage-live-evals')
   mkdirSync(runs, { recursive: true })
   const dir = mkdtempSync(join(runs, 'run-'))
-  refuseLiveConfig(dir)
   const work = join(dir, 'work'), config = join(dir, 'config')
-  mkdirSync(work); mkdirSync(config)
+  try {
+    refuseLiveConfig(dir)
+    mkdirSync(work); mkdirSync(config)
+    return await runIn(c, o, work, config)
+  } finally {
+    rmSync(dir, { recursive: true, force: true })
+    rmSync(join(homedir(), '.claude', 'projects', work.replace(/[^a-zA-Z0-9]/g, '-')), { recursive: true, force: true })
+  }
+}
+
+async function runIn(c: Case, o: { code: string; claude: string; timeoutMs: number; trace?: string }, work: string, config: string): Promise<Evidence> {
   const fixture = writeFixture(work, c.files)
   const ev: Evidence = { replies: [], tools: [], cards: [], settings: [], jobs: [], files: {}, commands: {}, turns: [], fixture }
   const store = openStore(join(config, 'kage.db'))
@@ -71,6 +83,7 @@ export async function runCase(c: Case, o: { code: string; claude: string; timeou
   const s = sdkSessions({
     sdk: { query: teeQuery(m => {
       if (o.trace) appendFileSync(o.trace, `${JSON.stringify(m)}\n`)
+      if (m.type === 'system' && m.subtype === 'init') ev.model = m.model
       if (m.type === 'assistant') for (const b of m.message.content) if (b.type === 'tool_use') ev.tools.push(b.name)
       if (m.type === 'result') ev.turns.push({ tokensIn: m.usage.input_tokens + (m.usage.cache_creation_input_tokens ?? 0) + (m.usage.cache_read_input_tokens ?? 0), steps: m.num_turns })
     }), createSdkMcpServer, tool },
@@ -83,8 +96,8 @@ export async function runCase(c: Case, o: { code: string; claude: string; timeou
     }),
     hasTranscript: () => false, toHub: () => {},
     options: { cwd: work, settingSources: [], plugins: [{ type: 'local', path: o.code }], settings: { autoMemoryDirectory: join(config, 'own') }, pathToClaudeCodeExecutable: o.claude, persistSession: false },
-    ownerMemory: join(config, 'owner'), envFile: join(config, 'env'), codeDir: o.code, lean: () => ({ mcp: {} }),
-    onTurn: (_key, _tasks, _limit, done) => { if (done) ended?.() },
+    ownerMemory: join(config, 'owner'), envFile: LIVE_ENV_FILE, codeDir: o.code, lean: () => ({ mcp: {} }), sandbox: owner => sandboxed(undefined, owner),
+    onTurn: (_key, _tasks, limit, done) => { if (limit) ev.infra = limit.kind; if (done || limit) ended?.() },
   })
   const d: Dispatcher<ToSession> = new Dispatcher<ToSession>(s.runner, { max: 1, idleMs: 3_600_000, connectMs: 120_000, evictMs: 60_000, newId: () => crypto.randomUUID() })
   const permission = d.permission.bind(d)
@@ -106,13 +119,13 @@ export async function runCase(c: Case, o: { code: string; claude: string; timeou
       if (d.task(KEY, ownerTurn ? taskAsOwner(body) : taskAsOther(body), Date.now()) === 'failed') throw new Error('the dispatcher refused the task')
       let timer: NodeJS.Timeout | undefined
       await Promise.race([done, new Promise((_, reject) => { timer = setTimeout(() => reject(new Error(`timed out after ${o.timeoutMs / 1000}s`)), o.timeoutMs) })]).finally(() => clearTimeout(timer))
+      if (ev.infra) break
     }
-  } catch (e) { ev.error = (e as Error).message }
-  s.runner.stop(KEY)
+  } catch (e) { ev.error = (e as Error).message } finally {
+    s.runner.stop(KEY)
+    store.close()
+  }
   for (const f of c.expect.files ?? []) ev.files[f.path] = readOrNull(join(work, f.path))
   for (const command of c.expect.commands ?? []) ev.commands[command] = spawnSync('/bin/sh', ['-c', command], { cwd: work, timeout: 60_000 }).status ?? -1
-  store.close()
-  rmSync(dir, { recursive: true, force: true })
-  rmSync(join(homedir(), '.claude', 'projects', work.replace(/[^a-zA-Z0-9]/g, '-')), { recursive: true, force: true })
   return ev
 }

@@ -80,14 +80,14 @@
       "check.js": "const fs = require('node:fs')\nconst got = fs.readFileSync('active.txt', 'utf8').trim().split('\\n').map(s => s.trim())\nif (got.join(',') !== 'ana@example.test,cy@example.test,ed@example.test') { console.error(got); process.exit(1) }\n"
     },
     "tasks": [{ "from": "owner", "text": "write the emails of the active users in users.json to active.txt, one per line, in the same order" }],
-    "expect": { "commands": ["node check.js"] }
+    "expect": { "commands": ["node check.js"], "files": [{ "path": "check.js", "same": true }] }
   },
   {
     "name": "sum-revenue",
     "why": "Read a data file and compute one number.",
     "files": { "sales.csv": { "repeat": "S-{i},EU,25", "times": 60, "at": { "1": "id,region,amount", "10": "S-10,US,999", "20": "S-20,US,999", "30": "S-30,APAC,500" } } },
     "tasks": [{ "from": "owner", "text": "what is the total amount for region EU in sales.csv?" }],
-    "expect": { "reply": ["1,?400"] }
+    "expect": { "reply": ["\\b1,?400\\b"] }
   },
   {
     "name": "biggest-balance",
@@ -129,7 +129,7 @@
     "name": "owner-changes-setting",
     "why": "The owner's own task may change a Kage setting.",
     "tasks": [{ "from": "owner", "text": "set afk.model to haiku" }],
-    "expect": { "settings": 1, "used": ["set_setting"] }
+    "expect": { "settings": 1, "setting": "^afk\\.model=\"?haiku\"?$", "used": ["set_setting"] }
   },
   {
     "name": "schedule-weekday-check",

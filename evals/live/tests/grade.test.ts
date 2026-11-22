@@ -40,6 +40,13 @@ test('a run that crashed or timed out fails with its reason', () => {
   assert.match(grade(evidence({ error: 'timed out after 480s' }), {}).join(), /timed out after 480s/)
 })
 
+test('a jobs or settings count must match, a setting must match key=value, and a check that never ran fails', () => {
+  assert.match(grade(evidence({ jobs: [] }), { jobs: 1 }).join(), /jobs: 0 seen, 1 expected/)
+  assert.deepEqual(grade(evidence({ settings: [{ key: 'afk.model', value: 'haiku' }] }), { settings: 1, setting: '^afk\\.model=haiku$' }), [])
+  assert.match(grade(evidence({ settings: [{ key: 'model', value: 'haiku' }] }), { setting: '^afk\\.model=haiku$' }).join(), /setting model=haiku does not match/)
+  assert.match(grade(evidence({ commands: {} }), { commands: ['node check.js'] }).join(), /node check\.js exited never/)
+})
+
 test('a generated fixture repeats a line with its number and puts the planted lines where asked', () => {
   const text = fixtureText({ repeat: 'INFO ok id={i}', times: 4, at: { 3: 'ERROR boom' } })
   assert.equal(text, 'INFO ok id=1\nINFO ok id=2\nERROR boom\nINFO ok id=4\n')
@@ -49,12 +56,25 @@ test('a generated fixture repeats a line with its number and puts the planted li
 test('the summary gives passes, the median tokens in per turn with its spread, and the median steps', () => {
   const runs = [evidence({ turns: [{ tokensIn: 100, steps: 2 }] }), evidence({ turns: [{ tokensIn: 300, steps: 4 }] }), evidence({ turns: [{ tokensIn: 200, steps: 3 }] })]
   const s = summarize('c', runs, [[], ['miss'], []])
-  assert.deepEqual(s, { name: 'c', passes: 2, runs: 3, tokensIn: { median: 200, min: 100, max: 300 }, steps: 3, misses: [['miss']] })
+  assert.deepEqual(s, { name: 'c', passes: 2, runs: 3, infra: 0, tokensIn: { median: 200, min: 100, max: 300 }, steps: 3, misses: [['miss']] })
+})
+
+test('tokens in per turn average the turns of a run, and a run with no turn adds no token number', () => {
+  const two = evidence({ turns: [{ tokensIn: 100, steps: 2 }, { tokensIn: 300, steps: 4 }] })
+  const s = summarize('c', [two, evidence({ turns: [], error: 'timed out after 480s' })], [[], ['timed out after 480s']])
+  assert.deepEqual(s.tokensIn, { median: 200, min: 200, max: 200 })
+  assert.equal(s.steps, 6)
+})
+
+test('a run the API cut short (rate limit, overload) counts as neither a pass nor a fail', () => {
+  const s = summarize('c', [evidence(), evidence({ infra: 'rate_limit' }), evidence()], [[], ['api'], []])
+  assert.deepEqual([s.passes, s.runs, s.infra], [2, 2, 1])
 })
 
 test('the gate fails a case that fails in 2 or more of 3 runs after a change, when it failed in fewer before', () => {
-  const row = (name: string, passes: number) => ({ name, passes, runs: 3, tokensIn: { median: 1, min: 1, max: 1 }, steps: 1, misses: [] })
+  const row = (name: string, passes: number, runs = 3) => ({ name, passes, runs, infra: 3 - runs, tokensIn: { median: 1, min: 1, max: 1 }, steps: 1, misses: [] })
   assert.deepEqual(gate([row('a', 3), row('b', 1), row('c', 3)], [row('a', 2), row('b', 0), row('c', 1)]), ['c: passed 3 of 3 before, 1 of 3 after'])
   assert.deepEqual(gate([row('a', 2)], [row('a', 0)]), ['a: passed 2 of 3 before, 0 of 3 after'])
   assert.deepEqual(gate([row('a', 3)], []), ['a: missing from the after run'])
+  assert.deepEqual(gate([row('a', 3)], [row('a', 2, 2)]), ['a: 1 run hit an API limit after, so run the case again'])
 })
