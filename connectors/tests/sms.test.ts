@@ -287,6 +287,38 @@ describe('sending a campaign', () => {
       assert.equal(t.told.length, 1)
     } finally { t.sms.close() }
   })
+  test('a report waits for the last text in flight, so a busy answer to it still texts that contact', async () => {
+    let answer: (a: Answer) => void = () => {}, busy = true
+    const t = await setup({ perMinute: 5, answer: () => (busy ? new Promise<Answer>(r => { answer = r }) : undefined) })
+    try {
+      const id = t.campaign([A])
+      const sending = t.sms.tick()
+      await new Promise(r => setImmediate(r))
+      const reporting = t.sms.tick()
+      busy = false
+      answer({ error: 'http-429', auth: false, again: true })
+      await Promise.all([sending, reporting])
+      assert.deepEqual([t.store.campaign(id)!.state, t.posts.length], ['sending', 0])
+      await t.sms.tick()
+      await t.sms.tick()
+      assert.deepEqual(t.sent.map(s => s.to), [A, A])
+      assert.deepEqual([t.store.campaign(id)!.state, t.posts.length], ['done', 1])
+    } finally { t.sms.close() }
+  })
+  test('a pause clears the failed post count, so a resumed campaign gets 3 fresh tries', async () => {
+    const t = await setup({ perMinute: 5, postFails: () => true })
+    try {
+      const id = t.campaign([A])
+      await t.sms.tick()
+      await t.sms.tick()
+      t.store.move(id, 'pause')
+      await t.sms.tick()
+      t.store.move(id, 'resume')
+      await t.sms.tick()
+      await t.sms.tick()
+      assert.deepEqual([t.store.campaign(id)!.state, t.told], ['sending', []])
+    } finally { t.sms.close() }
+  })
   test('a report post that hangs does not hold up the texts of another campaign', async () => {
     let hang = false, sentB: () => void = () => {}
     const reachedB = new Promise<void>(r => { sentB = r })

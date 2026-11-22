@@ -14,7 +14,7 @@ export const ownerLines = {
   smsOverCap: (perHour: number) => `More than ${perHour} texts came in this hour, so I am storing them without answering until the hour is up. Each one counts in its campaign report.`,
   smsAuthFailed: (code: string) => `The SMS provider refused Kage's credentials (code ${code}), so I paused the campaigns that were sending. Fix the keys in secrets.json, then resume each campaign.`,
   smsReportUnposted: (tries: number, report: string) => `A campaign report did not post in its thread after ${tries} tries, so I marked the campaign done and put the report here:\n${report}`,
-  smsReplyFailed:(place: string, code: string) => `A text reply to ${place} did not go out: the SMS provider said ${code}.`,
+  smsReplyFailed: (place: string, code: string) => `A text reply to ${place} did not go out: the SMS provider said ${code}.`,
   afkP0: (who: string, where: string, note: string, callFailed: string | undefined) => `:rotating_light: P0 from ${who} in ${where}: ${note}\n${callFailed ? `Could not phone you (${callFailed}).` : 'Calling you now.'}`,
   afkHeld: (who: string, where: string, why: string, reply: string) => `Held a reply to ${who} in ${where} (${why}). Post it yourself if it is fine:\n${reply}`,
   afkReplied: (urgency: string, who: string, where: string, note: string, reply: string) => `${urgency === 'p0' || urgency === 'high' ? ':exclamation: ' : ''}Replied to ${who} in ${where}: ${note}\n> ${reply.replace(/\n/g, '\n> ')}`,

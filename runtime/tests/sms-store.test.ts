@@ -62,11 +62,13 @@ describe('sending a campaign', () => {
     assert.deepEqual(s.nextBatch(5).map(b => b.phone), [A, C])
     assert.equal(s.report(id)!.counts.skipped, 1)
   })
-  test('a campaign is listed as sent once every contact has a row, and stays sending until it is moved to done', () => {
+  test('a campaign is listed as sent once every contact has a settled row, and stays sending until it is moved to done', () => {
     const { s, id } = launched(fresh(), [A])
     assert.deepEqual(s.sentCampaigns(), [])
     const [b] = s.nextBatch(1)
-    s.claim(b!.campaign, b!.person, 1)
+    const row = s.claim(b!.campaign, b!.person, 1)!
+    assert.deepEqual(s.sentCampaigns(), [], 'a text still in flight keeps the campaign out of the report')
+    s.accepted(row, 'SM0TEST1')
     assert.deepEqual(s.sentCampaigns(), [id])
     assert.equal(s.campaign(id)?.state, 'sending')
     s.move(id, 'finish')

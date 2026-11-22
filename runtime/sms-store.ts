@@ -59,7 +59,8 @@ function campaignsIn(db: DatabaseSync, now: Now, person: (phone: string) => numb
     finished_at = case when ? in ('done', 'cancelled') then ? else finished_at end where id = ?`)
   const allSent = db.prepare(`select id from sms_campaigns k where state = 'sending' and not exists (
     select 1 from sms_contacts c where c.campaign_id = k.id and not exists (
-      select 1 from sms_messages m where m.direction = 'out' and m.campaign_id = c.campaign_id and m.person_id = c.person_id))`)
+      select 1 from sms_messages m where m.direction = 'out' and m.campaign_id = c.campaign_id and m.person_id = c.person_id
+        and not (m.status = 'claimed' and m.provider_id is null)))`)
 
   const campaign = (id: number) => one.get(id) as SmsCampaign | undefined
   const move = (id: number, action: CampaignAction): CampaignState | undefined => {

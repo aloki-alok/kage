@@ -116,7 +116,9 @@ function campaignSender(o: SmsOptions, sendOne: (to: string, body: string) => Pr
   const clock = o.clock ?? (() => new Date())
   const failedPosts = new Map<number, number>()
   async function reportSent() {
-    for (const id of o.store.sentCampaigns()) {
+    const sent = o.store.sentCampaigns()
+    for (const id of failedPosts.keys()) if (!sent.includes(id)) failedPosts.delete(id)
+    for (const id of sent) {
       const c = o.store.campaign(id), numbers = o.store.report(id)
       if (!c || !numbers) continue
       const report = campaignReport({ ...numbers, state: 'done' })
