@@ -33,7 +33,7 @@ export function startTelemetry(o: Deps) {
   const event = (kind: 'boot' | 'error' | 'shape', detail: string) => o.ledgers.event({ kind, who: 'hub', trace: '', detail })
   event('boot', lastRunWhy(`${o.dir}/hub.log`))
   const lastError = new Map<string, number>()
-  tapLog(first => { const c = errorCode(first), now = Date.now(); if (c && now - (lastError.get(c) ?? 0) > 60_000) { lastError.set(c, now); event('error', c) } })
+  tapLog(([first]) => { const c = errorCode(first), now = Date.now(); if (c && now - (lastError.get(c) ?? 0) > 60_000) { lastError.set(c, now); event('error', c) } })
   const shape = () => {
     const day = new Date().toISOString().slice(0, 10)
     if (!o.shape || o.state.load('shape-day') === day) return

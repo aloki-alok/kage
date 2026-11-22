@@ -9,7 +9,8 @@ import { existsSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync 
 import { fileURLToPath } from 'node:url'
 import { dirname } from 'node:path'
 import { load } from './config.ts'
-import { log, logKey } from '../runtime/log.ts'
+import { log, logKey, tapLog } from '../runtime/log.ts'
+import { connectorHealth } from '../core/connector-health.ts'
 import { listenForCommands } from '../connectors/slack/commands.ts'
 import { connectSlack } from '../connectors/slack/connect.ts'
 import { jevAfk, jevCheck, jevTriage } from '../connectors/jev.ts'
@@ -68,6 +69,8 @@ import { unanswered } from '../core/ledgers.ts'
 
 const { ENV_FILE, NAME, Title, TEAMMATES, TRUSTED_PEOPLE, TRUSTED_APPS, config, secrets, bot, user } = load()
 const { harness = {}, kagelets: kl = {}, afk = {}, connectors: conn = {} } = config
+const health = connectorHealth(Date.now())
+tapLog(a => health.see(a, Date.now()))
 const DIR = dirname(ENV_FILE)
 const CODE = dirname(dirname(fileURLToPath(import.meta.url)))
 if (await askSocket(`${DIR}/router.sock`, { type: 'board' }, 2000).then(() => true, () => false)) {
@@ -377,7 +380,7 @@ const watcher = configWatcher({
   restartWanted: yes => updates.restartWanted(yes),
 })
 const reload = watcher.check
-listenForSessions(`${DIR}/router.sock`, d, { ...replies, failed, schedules: jobs, tell: commands.tell, say: commands.say, relay: commands.relay, reload, paused: () => limits.paused(), limitCounts: () => limits.counts,
+listenForSessions(`${DIR}/router.sock`, d, { ...replies, failed, health: () => health.lines(Date.now()), schedules: jobs, tell: commands.tell, say: commands.say, relay: commands.relay, reload, paused: () => limits.paused(), limitCounts: () => limits.counts,
   end: (key, cut) => stopThread(key, cut), kagelet: (action, name) => kag.manager.manage({ action, name }, Date.now()),
   quiesce: () => { const now = Date.now(); limits.drain(now); return d.unquiet(now).filter(u => u.why !== 'just active' && u.why !== 'open in a terminal') }, callCode: voice?.issueCode })
 

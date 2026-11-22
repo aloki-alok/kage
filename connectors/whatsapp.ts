@@ -160,6 +160,7 @@ export async function wahaSeen(url: string, key: string, ms = 5_000): Promise<Br
 const DOWN = 'whatsapp-bridge-down'
 export function bridgeClock(o: { on: boolean; minutes?: number; look: () => Promise<BridgeSeen>; at: { url: string; qr: string }; state: { load(name: string): unknown; save(name: string, value: unknown): void }; notify: (text: string) => Promise<boolean> }): Job[] {
   if (!o.on) { o.state.save(DOWN, undefined); return [] }
+  if (o.state.load(DOWN) === true) log('whatsapp bridge down, as it was before the hub started')
   let starting = false
   return [{ name: 'whatsapp bridge', every: (o.minutes || 5) * 60_000, run: async () => {
     const r = bridgeAlert({ down: o.state.load(DOWN) === true, starting }, await o.look(), o.at)
