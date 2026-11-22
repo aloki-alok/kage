@@ -85,6 +85,7 @@ export async function connectSlack(o: { askOtherAgents?: boolean; saved?: Saved;
   }
   const ownerName = (await nameOf(ids.owner)).split(' ')[0] || 'the owner'
 
+  const groupNames = new Map<string, string>()
   async function placeOf(channel: string): Promise<string> {
     if (channel === ids.botDm) return `DM with ${o.title}`
     const info = await user.conversations.info({ channel }).catch(() => null)
@@ -92,9 +93,12 @@ export async function connectSlack(o: { askOtherAgents?: boolean; saved?: Saved;
     if (!c) return channel
     if (c.is_im) return `DM with ${await nameOf((c as { user?: string }).user)}`
     if (c.is_mpim) {
-      const others = ((await user.conversations.members({ channel }).catch(() => null))?.members ?? []).filter(u => u !== ids.owner)
-      const names = await Promise.all(others.slice(0, 4).map(async u => (await nameOf(u)).split(' ')[0]))
-      return names.length ? `group DM: ${names.join(', ')}${others.length > 4 ? ` +${others.length - 4}` : ''}` : 'group DM'
+      if (!groupNames.has(channel)) {
+        const others = ((await user.conversations.members({ channel }).catch(() => null))?.members ?? []).filter(u => u !== ids.owner && u !== ids.bot)
+        const names = await Promise.all(others.slice(0, 4).map(async u => (await nameOf(u)).split(' ')[0]))
+        groupNames.set(channel, names.length ? `group DM: ${names.join(', ')}${others.length > 4 ? ` +${others.length - 4}` : ''}` : 'group DM')
+      }
+      return groupNames.get(channel)!
     }
     return `#${c.name}`
   }

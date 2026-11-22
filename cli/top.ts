@@ -104,7 +104,7 @@ function refresh(now: number) {
     const w = watchNext(l.key, now)
     if (w !== undefined && w < (nx.get(l.key) ?? Infinity)) nx.set(l.key, w)
   }
-  board = boardRows(known.map(k => ({ ...k, topic: topicFor(k.id) })), live, new Map(known.map(k => [k.key, mtime(k.id)])), nx, now, showEnded).rows
+  board = boardRows(known.map(k => ({ ...k, topic: topicFor(k.id) })), live, new Map(known.map(k => [k.key, mtime(k.id)])), nx, now, showEnded || !!query).rows
   rows = filterRows(board, query)
   if (!rows.some(r => r.key === selKey)) selKey = rows[0]?.key ?? ''
   if (now - ledgersAt > 3_000) {
@@ -274,7 +274,7 @@ async function act(action: PanelAction, name: string) {
   readKageletRows(Date.now())
 }
 
-function openThread(key: string) { open = key; selKey = key; openAt = Date.now(); mode = 'steps'; follow(key) }
+function openThread(key: string) { if (key === FOLDED) return; open = key; selKey = key; openAt = Date.now(); mode = 'steps'; follow(key) }
 const wide = () => W >= WIDE
 const move = (d: number) => {
   if (tab === 'kagelets') { pick = Math.max(0, Math.min(kagelets.length - 1, pick + d)); readRuns(Date.now()); return }
@@ -318,9 +318,9 @@ async function onKey(k: string) {
     }
   } else if (tab !== 'threads') return
   else if (k === 's') { if (!open && selKey) openThread(selKey); mode = mode === 'steps' ? 'schedules' : 'steps' }
-  else if (k === '\r') { if (selKey === FOLDED) { showEnded = true; refresh(Date.now()) } else if (selKey) openThread(selKey) }
-  else if (k === 'x' && (open ?? selKey)) confirm = { kind: 'cut', target: open ?? selKey }
-  else if (k === 'a' && (open ?? selKey)) attach(open ?? selKey)
+  else if (k === '\r') { if (selKey === FOLDED) { showEnded = !showEnded; refresh(Date.now()) } else if (selKey) openThread(selKey) }
+  else if (k === 'x' && (open ?? selKey) && (open ?? selKey) !== FOLDED) confirm = { kind: 'cut', target: open ?? selKey }
+  else if (k === 'a' && (open ?? selKey) && (open ?? selKey) !== FOLDED) attach(open ?? selKey)
 }
 
 function onMouse(b: number, x: number, y: number, press: boolean) {

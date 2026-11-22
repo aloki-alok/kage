@@ -104,7 +104,7 @@ function threadTable(v: View, r: Rect, focus: boolean): { key: string; y: number
     put(r.x0 + 2, y, row.state === 'working' ? spinner(v.t + s.y * 130) : m.glyph, fg(TONE[m.tone]))
     put(cx.place, y, clip(row.place, 18), fg(row.state === 'asking' || row.state === 'working' ? 'hi' : live ? 'ink' : 'mid'))
     if (from) put(cx.from, y, clip(row.connector, 8), fg('dim'))
-    put(cx.state, y, row.key === FOLDED ? '⏎ lists' : row.state === 'closed' ? 'ended' : row.label, fg(TONE[m.tone]))
+    put(cx.state, y, row.key === FOLDED ? row.label : row.state === 'closed' ? 'ended' : row.label, fg(TONE[m.tone]))
     const step = row.state === 'watching' ? `next check ${whenLabel(row.next, v.now)}` : live ? v.nowLine(row.key) : undefined
     const line = [row.topic, step].filter(Boolean).join(' · ')
     put(cx.now, y, clip(clean(line), nowW), fg(live ? 'mid' : 'dim'))

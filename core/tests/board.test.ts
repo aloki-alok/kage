@@ -48,7 +48,7 @@ describe('what each thread is doing, in the order the owner must look', () => {
   test('with ended sessions shown, every closed thread is listed, newest first, with the channel it came from', () => {
     const k = [{ key: 'old', place: '#old', lastSeen: NOW - 9 * DAY, connector: 'email' }, { key: 'new', place: '#new', lastSeen: NOW - HOUR, connector: 'whatsapp' }]
     const r = boardRows(k, live(), new Map(), new Map(), NOW, true).rows
-    assert.deepEqual(r.map(x => [x.key, x.connector]), [['new', 'whatsapp'], ['old', 'email']])
+    assert.deepEqual(r.filter(x => x.key !== FOLDED).map(x => [x.key, x.connector]), [['new', 'whatsapp'], ['old', 'email']])
   })
   test('with the hub down every thread reads closed, so nothing looks alive that is not', () => {
     const r = rows(known('a'), undefined)
@@ -190,7 +190,9 @@ describe('rows say what each thread is, and old ended sessions fold away (#257)'
     const folded = rows(k, l).rows
     assert.deepEqual(folded.map(r => r.key), ['a', 'b', FOLDED])
     assert.equal(folded.at(-1)!.place, '+3 ended earlier')
-    assert.deepEqual(boardRows(k, l, new Map(), new Map(), NOW, true).rows.map(r => r.key), ['a', 'b', 'old1', 'old2', 'old3'])
+    const open = boardRows(k, l, new Map(), new Map(), NOW, true).rows
+    assert.deepEqual(open.map(r => r.key), ['a', 'b', 'old1', 'old2', 'old3', FOLDED])
+    assert.equal(open.at(-1)!.place, 'fold 3 ended')
   })
   test('a quiet live session is never folded, however old', () => {
     const k = [{ key: 'q', place: '#q', lastSeen: NOW - 3 * DAY, connector: 'slack' }]

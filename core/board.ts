@@ -56,9 +56,9 @@ export function boardRows(known: Known[], live: Live | undefined, activity: Map<
   }
   rows.sort((a, b) => ORDER.indexOf(a.state) - ORDER.indexOf(b.state) || a.ageMs - b.ageMs)
   const old = rows.filter(r => r.state === 'closed' && r.ageMs > DAY)
-  if (showEnded || !old.length) return { rows }
-  const fold: Row = { key: FOLDED, place: `+${old.length} ended earlier`, connector: '', state: 'closed', label: '', ageMs: old[0]!.ageMs }
-  return { rows: [...rows.filter(r => !old.includes(r)), fold] }
+  if (!old.length) return { rows }
+  const fold: Row = { key: FOLDED, place: showEnded ? `fold ${old.length} ended` : `+${old.length} ended earlier`, connector: '', state: 'closed', label: showEnded ? '⏎ folds' : '⏎ lists', ageMs: old[0]!.ageMs }
+  return { rows: [...showEnded ? rows : rows.filter(r => !old.includes(r)), fold] }
 }
 
 export function ago(ms: number): string {
