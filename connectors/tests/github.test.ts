@@ -39,6 +39,7 @@ test('a signed tag of the app opens one DM thread per issue, and a tagger who is
     assert.equal((await t.send(review(12))).status, 202)
     assert.equal(t.posts.length, 2)
     assert.equal(t.posts[0]!.thread, undefined)
+    assert.equal(t.posts[0]!.text, '*GitHub:* kim tagged @kage-me on <https://gh/r|acme/app#12> Faster calls')
     assert.equal(t.posts[1]!.thread, '100')
     assert.deepEqual(t.tasks.map(x => x.key), ['DB:100', 'DB:100'])
     assert.deepEqual([t.tasks[0]!.fromOwner, t.tasks[0]!.outsider], [false, 'kim'])
