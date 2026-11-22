@@ -79,6 +79,7 @@ let wait, asked = 0
 function paint() { sh.textContent = '@' + n.value + ${JSON.stringify(ASK)}; fit() }
 async function check() {
   const mine = ++asked
+  go.disabled = true
   out.className = ''; out.textContent = 'Checking @' + n.value.trim().replace(/^@/, '') + ' on GitHub.'
   const r = await fetch('/name?n=' + encodeURIComponent(n.value)).then(x => x.json()).catch(() => ({ ok: true, say: 'Kage could not check the name. GitHub says so on the next page if it is taken.' }))
   if (mine !== asked) return

@@ -2,6 +2,7 @@ import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { request } from 'node:http'
 import { createApp, nameCheck } from '../github-app.ts'
+import { donePage, failPage, namePage } from '../github-page.ts'
 
 const made = { id: 123456, slug: 'hey-kage', pem: '-----BEGIN RSA PRIVATE KEY-----\nFAKE\n-----END RSA PRIVATE KEY-----\n', webhook_secret: 'whsec', owner: { login: 'ryu-dev', id: 9 }, html_url: 'https://github.com/apps/hey-kage' }
 
@@ -126,4 +127,18 @@ test('a name is free only when it is neither an app nor someone\'s account, a ba
   asked.length = 0
   assert.equal((await nameCheck('hey kage', lookup([], []))).ok, false)
   assert.deepEqual(asked, [])
+})
+
+test('what GitHub or the owner sends is shown as text on every page, never run as markup', () => {
+  const evil = '"><script>alert(1)</script>'
+  const pages = [
+    donePage({ slug: `x${evil}`, url: `https://github.com/apps/x${evil}`, hook: `https://h${evil}`, account: `a${evil}` }),
+    namePage({ name: `n${evil}`, account: `a${evil}`, problem: `p${evil}` }),
+    failPage({ title: `t${evil}`, why: `w${evil}` }),
+  ]
+  for (const page of pages) {
+    assert.doesNotMatch(page, /<script>alert/)
+    assert.doesNotMatch(page, /"><script/)
+    assert.match(page, /&quot;&gt;&lt;script&gt;alert\(1\)&lt;\/script&gt;/)
+  }
 })
