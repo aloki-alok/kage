@@ -1,10 +1,10 @@
 type GithubMention = { thread: string; headline: string; quoted: string; url: string; by: string; fromOwner: boolean; installation?: number }
 
-type User = { login?: string; type?: string }
+type User = { login?: string; type?: string; id?: number }
 type Said = { body?: string | null; user?: User; html_url?: string; author_association?: string }
 type Item = Said & { number?: number; title?: string }
 type Payload = {
-  action?: string; repository?: { full_name?: string }; installation?: { id?: number }
+  action?: string; repository?: { full_name?: string }; installation?: { id?: number }; sender?: User
   issue?: Item; pull_request?: Item; comment?: Said; review?: Said
 }
 
@@ -18,17 +18,17 @@ const WHERE: Record<string, { action: string; said: (p: Payload) => Said | undef
 }
 const escape = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
 
-export function githubMention(type: string, raw: unknown, who: { slug: string; owner: string }): GithubMention | undefined {
+export function githubMention(type: string, raw: unknown, who: { slug: string; ownerId: number }): GithubMention | undefined {
   const p = (raw ?? {}) as Payload, where = WHERE[type], repo = p.repository?.full_name
   if (!where || p.action !== where.action || !repo || !who.slug) return undefined
-  const said = where.said(p), item = where.item(p), by = said?.user?.login ?? ''
-  if (!said || !item || said.user?.type === 'Bot' || by.endsWith('[bot]') || !TRUSTED.has(said.author_association ?? '')) return undefined
+  const said = where.said(p), item = where.item(p), by = said?.user?.login ?? '', author = said?.user?.id
+  if (!said || !item || author === undefined || p.sender?.id !== author || said.user?.type === 'Bot' || !TRUSTED.has(said.author_association ?? '')) return undefined
   const body = (said.body ?? '').trim()
   if (!new RegExp(`(^|[^\\w-])@${escape(who.slug)}(?![\\w-])`, 'i').test(body)) return undefined
   const thread = `${repo}#${item.number}`
   return {
     thread, headline: `${by} tagged @${who.slug} on ${thread} ${item.title ?? ''}`.trim(), quoted: body,
-    url: said.html_url ?? item.html_url ?? '', by, fromOwner: by.toLowerCase() === who.owner.toLowerCase(),
+    url: said.html_url ?? item.html_url ?? '', by, fromOwner: author === who.ownerId,
     ...(p.installation?.id !== undefined && { installation: p.installation.id }),
   }
 }

@@ -90,16 +90,17 @@ test('a Kage session cannot turn a connector on or off', () => {
 })
 
 test('github off deletes the app keys, keeps who you are, and says the app stays on GitHub until deleted there', () => {
-  const w = world({ connectors: { github: { login: 'me', accounts: ['me'], port: 9100, app: { id: 1, slug: 'kage-me' } } } }, { githubAppKey: 'k', githubSecret: 's', voiceToken: 'v' })
+  const w = world({ connectors: { github: { login: 'me', userId: 1, accounts: ['me'], port: 9100, app: { id: 1, slug: 'kage-me' } } } }, { githubAppKey: 'k', githubSecret: 's', voiceToken: 'v' })
   const r = w.run(['github', 'off'])
   assert.equal(r.code, 0)
   assert.match(r.out, /@kage-me stays on GitHub until you delete it: https:\/\/github\.com\/apps\/kage-me/)
   assert.deepEqual(w.read('secrets'), { voiceToken: 'v' })
-  assert.deepEqual(w.read('config').connectors.github, { login: 'me', accounts: ['me'], port: 9100 })
+  assert.match(r.out, /kage tunnel on closes its public address/)
+  assert.deepEqual(w.read('config').connectors.github, { login: 'me', userId: 1, accounts: ['me'], port: 9100 })
 })
 
 test('github --org adds the org to the accounts Kage acts on, and points at the page that installs it there', () => {
-  const w = world({ connectors: { github: { login: 'me', accounts: ['me'], app: { id: 1, slug: 'kage-me' } } } }, { githubAppKey: 'k', githubSecret: 's' })
+  const w = world({ connectors: { github: { login: 'me', userId: 1, accounts: ['me'], app: { id: 1, slug: 'kage-me' } } } }, { githubAppKey: 'k', githubSecret: 's' })
   const r = w.run(['github', '--org', 'acme'])
   assert.equal(r.code, 0)
   assert.match(r.out, /Open https:\/\/github\.com\/apps\/kage-me\/installations\/new/)

@@ -15,7 +15,7 @@ const deliver = () => 'sent' as const
 type Server = { listening?: Promise<number>; close?: () => unknown }
 
 const cases: { name: string; start: () => Server; routes: [method: string, path: string, headers?: Record<string, string>][] }[] = [
-  { name: 'github', start: () => connectGithub({ saved: openStore(':memory:'), owner: 'me', accounts: ['me'], app: { id: 1, slug: 'kage-me', key: 'k' }, installations: async () => [], secret: 's', port: 0, botDm: 'DB', perHour: 5, notify: () => {}, inbox, post: async () => '1', deliver }),
+  { name: 'github', start: () => connectGithub({ saved: openStore(':memory:'), ownerId: 1, accounts: ['me'], app: { id: 1, slug: 'kage-me', key: 'k' }, installations: async () => [], secret: 's', port: 0, botDm: 'DB', perHour: 5, notify: () => {}, inbox, post: async () => '1', deliver }),
     routes: [['POST', '/github', { 'x-hub-signature-256': 'sha256=00' }], ['POST', '/github']] },
   { name: 'meeting', start: () => connectMeeting({ token: 't', port: 0, botDm: 'DB', perHour: 5, pollMs: 50, name: 'kage', askWaitMs: 50, end: () => {}, notify: () => {}, now: () => 0, untake: () => {}, inbox, post: async () => '1', deliver }),
     routes: [['POST', '/meeting'], ['GET', '/meetbot/next'], ['POST', '/meetbot/segments'], ['POST', '/meetbot/ended'], ['POST', '/meeting', { authorization: 'Bearer wrong' }]] },

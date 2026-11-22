@@ -82,7 +82,7 @@ async function connectGithub(): Promise<never> {
     const { app, ...rest } = gh
     change(() => updateSecrets(ENV_FILE, ({ githubAppKey: _k, githubSecret: _s, ...x }) => x))
     github(rest)
-    quit(`github is off. The app @${app.slug} stays on GitHub until you delete it: https://github.com/apps/${app.slug}, then App settings, Advanced, Delete.`)
+    quit(`github is off. The app @${app.slug} stays on GitHub until you delete it: https://github.com/apps/${app.slug}, then App settings, Advanced, Delete. Then kage tunnel on closes its public address.`)
   }
   if (gh.app && s.secrets.githubAppKey && s.secrets.githubSecret) {
     const accounts = [...new Set([...(gh.accounts ?? [gh.login ?? '']), ...(org ? [org] : [])].filter(Boolean))]
@@ -92,13 +92,14 @@ async function connectGithub(): Promise<never> {
   }
   const bin = tailscaleBin(), ts = bin ? tailscaleState(bin) : undefined, host = ts?.dns?.replace(/\.$/, '')
   if (!ts?.running || !ts.funnel || !host) die('GitHub needs a public address for the app. Run kage tunnel on, allow Funnel when it asks, then run kage connect github again.')
-  const login = gh.login ?? (() => { try { return execFileSync('gh', ['api', 'user', '--jq', '.login'], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'], timeout: 15_000 }).trim() || undefined } catch { return undefined } })()
-  if (!login && org) die('Run gh auth login, or kage set connectors.github.login <your GitHub username>, then run kage connect github again.')
+  const me = (() => { try { return JSON.parse(execFileSync('gh', ['api', 'user', '--jq', '{login, id}'], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'], timeout: 15_000 })) as { login: string; id: number } } catch { return undefined } })()
+  const login = gh.login ?? me?.login ?? die('Run gh auth login, or kage set connectors.github.login <your GitHub username>, then run kage connect github again.')
+  const known = gh.userId ?? (me?.login.toLowerCase() === login.toLowerCase() ? me.id : undefined)
+  if (org && !known) die(`Run gh auth login as ${login}, so Kage can save your GitHub user id, then run kage connect github --org ${org} again.`)
   console.log('Opening GitHub. Click Create GitHub App there, and Kage takes it from here.')
-  const app = await createApp({ login: login ?? 'kage', org, hook: `https://${host}:8443/github`, open: browse }).catch((e: Error) => die(e.message))
-  const owner = login ?? app.owner
+  const app = await createApp({ login, org, hook: `https://${host}:8443/github`, open: browse }).catch((e: Error) => die(e.message))
   change(() => updateSecrets(ENV_FILE, x => ({ ...x, githubAppKey: app.key, githubSecret: app.secret })))
-  github({ ...gh, login: owner, app: { id: app.id, slug: app.slug }, accounts: [...new Set([owner, ...(org ? [org] : []), ...(gh.accounts ?? [])])] })
+  github({ ...gh, login, userId: known ?? app.ownerId, app: { id: app.id, slug: app.slug }, accounts: [...new Set([login, ...(org ? [org] : []), ...(gh.accounts ?? [])])] })
   spawnSync(process.execPath, [fileURLToPath(new URL('./tunnel.ts', import.meta.url)), 'on'], { stdio: 'inherit', env: process.env })
   browse(`${app.url}/installations/new`)
   quit(`github is on as @${app.slug}. Install it on the repos where people should tag it (${app.url}/installations/new), then tag @${app.slug} in an issue to try it.`)

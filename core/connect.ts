@@ -12,7 +12,7 @@ const need = (settings: [string, unknown][], turnedOff = false): ConnectorState 
 export function connectorStates({ config, secrets }: { config: Config; secrets: Secrets }): Record<ConnectorName, ConnectorState> {
   const c = config.connectors ?? {}
   return {
-    github: need([['connectors.github.app.id', c.github?.app], ['connectors.github.login', c.github?.login], ['githubAppKey', secrets.githubAppKey], ['githubSecret', secrets.githubSecret]]),
+    github: need([['connectors.github.app.id', c.github?.app], ['connectors.github.login', c.github?.login], ['connectors.github.userId', c.github?.userId], ['githubAppKey', secrets.githubAppKey], ['githubSecret', secrets.githubSecret]]),
     browser: need([['browserToken', secrets.browserToken]]),
     email: need([['connectors.email.address', c.email?.address], ['connectors.email.queue', c.email?.queue], ['connectors.email.ownerEmail', c.email?.ownerEmail]], c.email?.on === false),
     voice: need([['voiceToken', secrets.voiceToken]], c.voice?.on === false),

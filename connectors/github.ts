@@ -16,7 +16,7 @@ const MAX_BODY = 1_000_000
 
 export function connectGithub(o: {
   startError?: () => string | undefined
-  saved: Saved; botDm: string; owner: string; accounts: string[]
+  saved: Saved; botDm: string; ownerId: number; accounts: string[]
   app: { id: number; slug: string; key: string }; secret: string; port: number
   installations?: () => Promise<{ id: number; account?: { login?: string } }[]>
   post: (text: string, thread?: string) => Promise<string | undefined>
@@ -27,9 +27,9 @@ export function connectGithub(o: {
 }) {
   const list = o.installations ?? (() => appInstallations(o.app))
   let allowed: Set<number> = new Set()
-  const refresh = () => list().then(all => { allowed = installedOn(all, o.accounts); log(`github on: @${o.app.slug}, ${allowed.size} installation${allowed.size === 1 ? '' : 's'} on ${o.accounts.join(', ')}`) },
-    e => log('github could not list the app installations', e))
-  const ready = refresh()
+  const refresh = () => list().then(all => { allowed = installedOn(all, o.accounts); log(`github on: @${o.app.slug}, ${allowed.size} installation${allowed.size === 1 ? '' : 's'} on ${o.accounts.join(', ')}`); return true },
+    e => { log('github could not list the app installations', e); return false })
+  let listed = refresh()
   const threads = (o.saved.load('github-threads') ?? {}) as Record<string, string>
   let chain: Promise<unknown> = Promise.resolve()
   const cap = hourCap(o.perHour)
@@ -41,11 +41,11 @@ export function connectGithub(o: {
   async function handleOne(type: string, body: string, source?: string) {
     let payload: unknown
     try { payload = JSON.parse(body) } catch { return false }
-    if (type === 'installation' || type === 'installation_repositories') { await refresh(); return false }
-    const e = githubMention(type, payload, { slug: o.app.slug, owner: o.owner })
+    if (!await listed) listed = refresh()
+    if (type === 'installation') { await listed; installChanged(payload as Installed); return false }
+    const e = githubMention(type, payload, { slug: o.app.slug, ownerId: o.ownerId })
     if (!e) return false
-    await ready
-    if (e.installation !== undefined && !allowed.has(e.installation)) await refresh()
+    await listed
     if (e.installation === undefined || !allowed.has(e.installation)) { log(`github dropped ${e.thread}: installation ${e.installation ?? 'none'} is not on ${o.accounts.join(', ')}`); return false }
     const now = Date.now()
     if (cap.full(now)) {
@@ -75,6 +75,13 @@ export function connectGithub(o: {
     const task = e.fromOwner ? taskAsOwner(ask) : { ...taskAsOther(ask), outsider: e.by }
     if (o.deliver({ connector: 'slack', chat: o.botDm, thread, kind: 'dm' }, task, task.meta.place) === 'failed') o.notify(startFailedNote(`GitHub ${e.thread}`, o.startError?.()))
     return true
+  }
+
+  type Installed = { action?: string; installation?: { id: number; account?: { login?: string } } }
+  function installChanged(p: Installed) {
+    if (!p.installation) return
+    if (p.action === 'deleted' || p.action === 'suspend') allowed.delete(p.installation.id)
+    if (p.action === 'created' || p.action === 'unsuspend') for (const id of installedOn([p.installation], o.accounts)) allowed.add(id)
   }
 
   const run = async (type: string, body: string, source?: string) => {

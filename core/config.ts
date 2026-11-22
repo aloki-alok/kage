@@ -47,7 +47,7 @@ export const Config = z.strictObject({
     email: z.strictObject({ on: yes, address: text, queue: text, ownerEmail: text, region: text, teammateEmails: strings }).optional(),
     voice: z.strictObject({ on: yes, port: count, max: count, perHour: count, model: text }).optional(),
     call: z.strictObject({ command: text }).optional(),
-    github: z.strictObject({ login: text, port: count, perHour: count, app: z.strictObject({ id: z.number().int().positive(), slug: z.string().regex(/^[a-z0-9][a-z0-9-]*$/) }).optional(), accounts: strings }).optional(),
+    github: z.strictObject({ login: text, userId: z.number().int().positive().optional(), port: count, perHour: count, app: z.strictObject({ id: z.number().int().positive(), slug: z.string().regex(/^[a-z0-9][a-z0-9-]*$/) }).optional(), accounts: strings }).optional(),
     meeting: z.strictObject({ port: count, perHour: count, agentApi: text, agentId: count }).optional(),
     browser: z.strictObject({ port: count, block: strings }).optional(),
     whatsapp: z.strictObject({ on: yes, memory: text, model: text, wahaUrl: text, hookHost: text, hookPort: count, checkMinutes: count }).optional(),
@@ -62,7 +62,7 @@ const sec = z.string().nullable().optional()
 export const Secrets = z.strictObject({
   slack: z.strictObject({ app: sec, user: sec, bot: sec }).optional(),
   aws: z.strictObject({ accessKeyId: sec, secretAccessKey: sec }).optional(),
-  voiceToken: sec, githubSecret: sec, githubAppKey: sec, meetingToken: sec, browserToken: sec, jevKey: sec, voiceAgentKey: sec, claudeToken: sec,
+  voiceToken: sec, githubSecret: sec, githubAppKey: sec, githubToken: sec, meetingToken: sec, browserToken: sec, jevKey: sec, voiceAgentKey: sec, claudeToken: sec,
   waha: z.record(z.string().regex(/^[A-Z][A-Z0-9_]*$/), z.string()).optional(),
   cartesiaKey: sec,   // compat: remove after 2026-12-15 (Cartesia speech is gone; an old secrets.json still holds it, and the schema is strict)
   unknown: z.record(z.string(), z.string()).optional(),
@@ -123,7 +123,7 @@ export const KEYS: Row[] = [
   R('KAGE_VOICE', 'connectors.voice.on', onoff), R('KAGE_VOICE_PORT', 'connectors.voice.port', int), R('KAGE_VOICE_MAX', 'connectors.voice.max', int),
   R('KAGE_VOICE_PER_HOUR', 'connectors.voice.perHour', int), R('KAGE_VOICE_MODEL', 'connectors.voice.model'), R('KAGE_CALL_COMMAND', 'connectors.call.command'),
   R('KAGE_GITHUB_LOGIN', 'connectors.github.login'), R('KAGE_GITHUB_PORT', 'connectors.github.port', int), R('KAGE_GITHUB_PER_HOUR', 'connectors.github.perHour', int),
-  R('KAGE_GITHUB_APP_ID', 'connectors.github.app.id', int), R('KAGE_GITHUB_APP_SLUG', 'connectors.github.app.slug'), R('KAGE_GITHUB_ACCOUNTS', 'connectors.github.accounts', list),
+  R('KAGE_GITHUB_APP_ID', 'connectors.github.app.id', int), R('KAGE_GITHUB_APP_SLUG', 'connectors.github.app.slug'), R('KAGE_GITHUB_ACCOUNTS', 'connectors.github.accounts', list), R('KAGE_GITHUB_USER_ID', 'connectors.github.userId', int),
   R('KAGE_MEETING_PORT', 'connectors.meeting.port', int), R('KAGE_MEETING_PER_HOUR', 'connectors.meeting.perHour', int), R('KAGE_MEETING_AGENT_API', 'connectors.meeting.agentApi'), R('KAGE_MEETING_AGENT_ID', 'connectors.meeting.agentId', int),
   R('KAGE_BROWSER_PORT', 'connectors.browser.port', int), R('KAGE_BROWSER_BLOCK', 'connectors.browser.block', list),
   R('KAGE_WHATSAPP', 'connectors.whatsapp.on', onoff), R('KAGE_WA_MEMORY', 'connectors.whatsapp.memory'), R('KAGE_WA_MODEL', 'connectors.whatsapp.model'),

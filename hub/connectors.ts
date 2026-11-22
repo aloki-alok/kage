@@ -31,8 +31,8 @@ export function startConnectors(o: {
 }) {
   const { secrets, conn, store, slack, bot, NAME, CODE, DIR, d, inbox, deliver, placeOf, failed } = o
   const gh = conn.github, app = gh?.app
-  const github = app && gh?.login && secrets.githubSecret && secrets.githubAppKey ? connectGithub({ startError: () => d.lastStartError(),
-    saved: store, botDm: slack.ids.botDm, owner: gh.login, accounts: gh.accounts?.length ? gh.accounts : [gh.login],
+  const github = app && gh?.login && gh.userId && secrets.githubSecret && secrets.githubAppKey ? connectGithub({ startError: () => d.lastStartError(),
+    saved: store, botDm: slack.ids.botDm, ownerId: gh.userId, accounts: gh.accounts?.length ? gh.accounts : [gh.login],
     app: { id: app.id, slug: app.slug, key: secrets.githubAppKey }, secret: secrets.githubSecret, port: gh.port || 8789,
     post: (text, thread) => bot.chat.postMessage({ channel: slack.ids.botDm, text, ...(thread && { thread_ts: thread }) }).then(r => r.ts, e => { log('github post failed', e); return undefined }),
     deliver: (c, task, place) => deliver(c, task, place),
