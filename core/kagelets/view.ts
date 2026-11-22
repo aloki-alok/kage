@@ -13,8 +13,8 @@ export const CAP_PAUSE = 'paused: it spent'
 
 const reportText =(r: Report) => r.needs ? `needs: ${r.needs} (${r.summary})` : r.summary
 
-export type PanelAction = 'run' | 'pause' | 'resume' | 'remove' | 'revoke'
-export const PANEL_KEYS: Record<string, PanelAction> = { r: 'run', p: 'pause', u: 'resume', x: 'remove', v: 'revoke' }
+export type PanelAction = 'run' | 'pause' | 'resume' | 'remove' | 'revoke' | 'unhold'
+export const PANEL_KEYS: Record<string, PanelAction> = { r: 'run', p: 'pause', u: 'resume', x: 'remove', v: 'revoke', h: 'unhold' }
 
 export function actionLine(r: { type?: string; text?: string; refused?: string } | undefined, up: boolean) {
   if (r?.type !== 'kagelet') r = undefined
