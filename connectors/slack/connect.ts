@@ -91,7 +91,11 @@ export async function connectSlack(o: { askOtherAgents?: boolean; saved?: Saved;
     const c = info?.channel
     if (!c) return channel
     if (c.is_im) return `DM with ${await nameOf((c as { user?: string }).user)}`
-    if (c.is_mpim) return 'group DM'
+    if (c.is_mpim) {
+      const others = ((await user.conversations.members({ channel }).catch(() => null))?.members ?? []).filter(u => u !== ids.owner)
+      const names = await Promise.all(others.slice(0, 4).map(async u => (await nameOf(u)).split(' ')[0]))
+      return names.length ? `group DM: ${names.join(', ')}${others.length > 4 ? ` +${others.length - 4}` : ''}` : 'group DM'
+    }
     return `#${c.name}`
   }
 

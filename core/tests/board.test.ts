@@ -1,6 +1,6 @@
 import { describe, test } from 'node:test'
 import assert from 'node:assert/strict'
-import { ago, boardRows, statusSummary, nextRuns, watchingNext, whenLabel, type Live, clockTime, limitLine, pauseLine, stopLine } from '../board.ts'
+import { ago, boardRows, FOLDED, topicOf, statusSummary, nextRuns, watchingNext, whenLabel, type Live, clockTime, limitLine, pauseLine, stopLine } from '../board.ts'
 import type { Schedule } from '../cron.ts'
 import { startsSince } from '../boots.ts'
 
@@ -45,9 +45,9 @@ describe('what each thread is doing, in the order the owner must look', () => {
       { activity: new Map([['b', NOW - 3 * MIN], ['c', NOW - 9 * HOUR]]) }).rows
     assert.deepEqual(Object.fromEntries(r.map(x => [x.key, x.ageMs])), { a: 9 * MIN, b: 3 * MIN, c: 5 * HOUR })
   })
-  test('every closed thread is listed, newest first, with the channel it came from', () => {
+  test('with ended sessions shown, every closed thread is listed, newest first, with the channel it came from', () => {
     const k = [{ key: 'old', place: '#old', lastSeen: NOW - 9 * DAY, connector: 'email' }, { key: 'new', place: '#new', lastSeen: NOW - HOUR, connector: 'whatsapp' }]
-    const r = boardRows(k, live(), new Map(), new Map(), NOW).rows
+    const r = boardRows(k, live(), new Map(), new Map(), NOW, true).rows
     assert.deepEqual(r.map(x => [x.key, x.connector]), [['new', 'whatsapp'], ['old', 'email']])
   })
   test('with the hub down every thread reads closed, so nothing looks alive that is not', () => {
@@ -169,5 +169,34 @@ describe('kage status summary, in Kage words', () => {
     const r = statusSummary({ starts: startsSince('1 unknown\n', 0), schedules: 0, spentToday: 0, turnsToday: 0 })
     assert.equal(r.says, "I'm running. I've spent nothing today.")
     assert.equal(r.warn, 'I stopped once without saying why in the last 24 hours.')
+  })
+})
+
+describe('rows say what each thread is, and old ended sessions fold away (#257)', () => {
+  test('the topic is the first ask, in up to 6 words, with the task tag and the sender line taken off', () => {
+    const ask = '<channel source="kage" channel="C1" thread_ts="1.1" place="#eng">\nTask from Sam: check the default bot model providers that are enabled\ngrep for them in our docs'
+    assert.equal(topicOf(ask), 'check the default bot model providers')
+    assert.equal(topicOf('<channel source="kage" place="DM">\nTeammate task (U0AAA0001, Bo Test, not the owner): <@U0BBB0002> why is   the dialer slow?'), 'why is the dialer slow?')
+    assert.equal(topicOf('<channel source="kage">\n'), undefined)
+    assert.equal(topicOf('Scheduled check in #ops: count the open P1s'), 'count the open P1s')
+    assert.equal(topicOf('<channel source="kage">\nScheduled run of job ea27ece0 (*/15 * * * *), set up earlier. Nobody wrote a new message.\nLead pipeline monitor for the sales team, read-only.'), 'Lead pipeline monitor for the sales')
+    assert.equal(topicOf('<channel source="kage">\nTripwire of job ab12 (*/15 * * * *): the probe ran with no model and its output changed.\nBefore: MOBILE=443\nAfter: MOBILE=10\nPost when stock is low'), 'Post when stock is low')
+    assert.equal(topicOf('<channel source="kage">\n</channel>'), undefined)
+    assert.equal(topicOf('<channel source="kage">\nThis job started a new session. Its last posts, oldest first:\n> numbers are low\n> still low\nWatch the fresh number count'), 'Watch the fresh number count')
+  })
+  test('sessions that ended more than a day ago fold into one row, and opening it lists them', () => {
+    const k = [...known('a', 'b'), ...['old1', 'old2', 'old3'].map(key => ({ key, place: `#${key}`, lastSeen: NOW - 2 * DAY, connector: 'slack' }))]
+    const l = live({ live: [{ key: 'a', state: 'busy', quietMs: 1_000 }] })
+    const folded = rows(k, l).rows
+    assert.deepEqual(folded.map(r => r.key), ['a', 'b', FOLDED])
+    assert.equal(folded.at(-1)!.place, '+3 ended earlier')
+    assert.deepEqual(boardRows(k, l, new Map(), new Map(), NOW, true).rows.map(r => r.key), ['a', 'b', 'old1', 'old2', 'old3'])
+  })
+  test('a quiet live session is never folded, however old', () => {
+    const k = [{ key: 'q', place: '#q', lastSeen: NOW - 3 * DAY, connector: 'slack' }]
+    assert.deepEqual(rows(k, live({ live: [{ key: 'q', state: 'quiet', quietMs: 3 * DAY }] })).rows.map(r => r.key), ['q'])
+  })
+  test('each row carries its topic', () => {
+    assert.equal(boardRows([{ ...known('a')[0]!, topic: 'count the open P1s' }], live(), new Map(), new Map(), NOW).rows[0]!.topic, 'count the open P1s')
   })
 })
