@@ -156,6 +156,9 @@ describe('one tunnel for every Kage port another machine needs', () => {
     assert.deepEqual(lines({ funnel: false, status: serving({ tcp: MEETING }) }).slice(0, 2), [
       'fail github is closed: Funnel is not allowed for this machine. Run kage tunnel on for the link that allows it.',
       'fail hooks is closed: Funnel is not allowed for this machine. Run kage tunnel on for the link that allows it.'])
+    const theirs = serving({ funnel: true, paths: { '/github': KAGE['/github'], '/app': 'http://127.0.0.1:3000' }, tcp: MEETING })
+    assert.deepEqual(lines({ status: theirs, foreign: ['/app'] })[0], 'fail /app on port 8443 is public, because Funnel is on for that port. Move it to another port, or run kage tunnel off.')
+    assert.deepEqual(lines({ status: serving({ paths: { '/app': 'http://127.0.0.1:3000' } }), foreign: ['/app'] }).some(l => l.includes('/app')), false)
     assert.deepEqual(lines({ status: serving({ paths: { '/github': KAGE['/github'] }, tcp: MEETING }) })[0], 'fail github is on your tailnet only, and GitHub calls it from the internet. Allow Funnel for this machine in the Tailscale admin page, then run kage tunnel on.')
   })
 })

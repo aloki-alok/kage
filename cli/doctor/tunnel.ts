@@ -1,4 +1,4 @@
-import { tunnelLines, tunnelRoutes } from '../../core/tunnel.ts'
+import { tunnelLines, tunnelPlan, tunnelRoutes } from '../../core/tunnel.ts'
 import { settings } from '../home.ts'
 import { tailscaleBin, tailscaleState } from '../tailscale.ts'
 import type { Group } from './context.ts'
@@ -9,5 +9,6 @@ export const tunnel: Group = async () => {
   if (provider !== 'tailscale' || !routes.length) return []
   const bin = tailscaleBin()
   const now = bin ? tailscaleState(bin) : { running: false, funnel: false, serve: {} }
-  return tunnelLines({ provider, installed: !!bin, ...now, routes, status: now.serve })
+  const foreign = tunnelPlan(s, { funnel: now.funnel, status: now.serve }, 'on').foreign
+  return tunnelLines({ provider, installed: !!bin, ...now, routes, status: now.serve, foreign })
 }
