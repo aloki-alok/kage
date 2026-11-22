@@ -115,19 +115,19 @@ describe('decisions', () => {
     assert.equal(autoUpdateNote({ ...base, origin: 'stable' }), undefined)
     assert.match((autoUpdateNote({ ...base, origin: 'diverged' }) as { text: string }).text, /stuck: the stable tag is not on this checkout's history/)
   })
-  test('chrome: seen within 120 s is connected', () => {
-    assert.equal(chromeLine(1_000_000_000_000 - 119_000, 1_000_000_000).kind, 'ok')
-    assert.equal(chromeLine(1_000_000_000_000 - 121_000, 1_000_000_000).kind, 'fail')
-    assert.equal(chromeLine(0, 1_000_000_000).kind, 'fail')
-    assert.doesNotMatch((chromeLine(0, 1_000_000_000) as { text: string }).text, /paste|prints a new one/)
+  test('chrome: connected only while the last poll is newer than the stale time the browser tools use (#528)', () => {
+    assert.equal(chromeLine(1_000_000_000_000 - 59_000, 1_000_000_000, 60_000).kind, 'ok')
+    assert.equal(chromeLine(1_000_000_000_000 - 61_000, 1_000_000_000, 60_000).kind, 'fail')
+    assert.equal(chromeLine(0, 1_000_000_000, 60_000).kind, 'fail')
+    assert.doesNotMatch((chromeLine(0, 1_000_000_000, 60_000) as { text: string }).text, /paste|prints a new one/)
   })
   test('chrome: names the version it runs, and fails when the folder holds a newer one', () => {
     const now = 1_000_000_000, seen = now * 1000
-    assert.equal((chromeLine(seen, now, '0.4.1', '0.4.1') as { text: string }).text, 'Chrome extension connected (v0.4.1)')
-    const old = chromeLine(seen, now, '0.4.0', '0.4.1') as { kind: string; text: string }
+    assert.equal((chromeLine(seen, now, 60_000, '0.4.1', '0.4.1') as { text: string }).text, 'Chrome extension connected (v0.4.1)')
+    const old = chromeLine(seen, now, 60_000, '0.4.0', '0.4.1') as { kind: string; text: string }
     assert.equal(old.kind, 'fail')
     assert.match(old.text, /runs v0\.4\.0.*v0\.4\.1.*chrome:\/\/extensions/)
-    assert.equal(chromeLine(seen, now, undefined, '0.4.1').kind, 'fail')
+    assert.equal(chromeLine(seen, now, 60_000, undefined, '0.4.1').kind, 'fail')
   })
   test('path note only when kage is not on PATH', () => {
     assert.equal(pathNote(true), undefined)

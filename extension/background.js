@@ -36,26 +36,29 @@ const ops = {
     return ready(await inPage(tabId, 'describe', [ref]))
   },
   // expect: the site and control the owner approved. page.js checks them, the view and the hit point in one go.
-  async click({ tabId, ref, expect }) {
+  async click({ tabId, ref, expect }, gone) {
     void driving()
     const at = ready(await inPage(tabId, 'prepare', [ref, false, expect]))
+    tooLate(gone)
     // Press and release only, right after the hit test: a mouse move first would give the page's mousemove
     // handlers a turn to lay something over the control between the check and the click.
     const base = { x: at.x, y: at.y, button: 'left', clickCount: 1 }
     await cdp(tabId, [['Input.dispatchMouseEvent', { ...base, type: 'mousePressed' }], ['Input.dispatchMouseEvent', { ...base, type: 'mouseReleased' }]])
     return { url: at.url }
   },
-  async type({ tabId, ref, text, expect }) {
+  async type({ tabId, ref, text, expect }, gone) {
     void driving()
     const at = ready(await inPage(tabId, 'prepare', [ref, true, expect]))
+    tooLate(gone)
     await cdp(tabId, [['Input.insertText', { text: String(text) }]])
     return { url: at.url }
   },
-  async press({ tabId, key, expect }) {
+  async press({ tabId, key, expect }, gone) {
     void driving()
     const code = KEYCODES[key]
     if (!code) throw new Error(`unknown key ${key}`)
     const at = ready(await inPage(tabId, 'keyTarget', [expect]))
+    tooLate(gone)
     const k = { key, code: key, windowsVirtualKeyCode: code, nativeVirtualKeyCode: code, ...(key === 'Enter' && { text: '\r' }) }
     await cdp(tabId, [['Input.dispatchKeyEvent', { ...k, type: 'keyDown' }], ['Input.dispatchKeyEvent', { ...k, type: 'keyUp' }]])
     return { url: at.url }
@@ -181,14 +184,24 @@ async function loop() {
       let body
       try {
         if (!Object.hasOwn(ops, cmd.op)) throw new Error(`unknown command ${cmd.op}`)
-        body = { id: cmd.id, ok: true, data: await ops[cmd.op](cmd.args ?? {}) }
+        body = { id: cmd.id, ok: true, data: await withDeadline(gone => ops[cmd.op](cmd.args ?? {}, gone), cmd.ms) }
       } catch (e) { body = { id: cmd.id, ok: false, error: String(e?.message ?? e) } }
       await fetch(`${hub}/browser/result`, { method: 'POST', headers: { ...auth, 'content-type': 'application/json' }, body: JSON.stringify(body) }).catch(() => {})
     }
   } finally { polling = false }
 }
 const sleep = ms => new Promise(r => setTimeout(r, ms))
-
+// A command stuck in a page (an open dialog, a long script) must not hold the loop, or no poll follows and the alarm
+// cannot restart a loop that still runs (#528). Past the hub's own wait it fails, and the loop takes the next one.
+// The stuck command still runs on: gone() tells an action it is too late, so a retry and it never both land.
+function withDeadline(work, ms) {
+  let late = false, timer
+  const running = work(() => late)
+  if (!(ms > 0)) return running   // an older hub sends no ms
+  const deadline = new Promise((_, no) => { timer = setTimeout(() => { late = true; no(new Error(`it did not finish in ${Math.round(ms / 1000)} s`)) }, ms) })
+  return Promise.race([running, deadline]).finally(() => clearTimeout(timer))
+}
+const tooLate = gone => { if (gone()) throw new Error('the hub gave up on this action, so it was not done') }
 // A service worker sleeps when idle; the alarm wakes it and restarts the loop if it died.
 chrome.alarms.create('kage-poll', { periodInMinutes: 0.5 })
 chrome.alarms.onAlarm.addListener(() => { void loop(); void reloadIfChanged() })

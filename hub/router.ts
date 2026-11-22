@@ -221,10 +221,8 @@ const tmux = tmuxPanes({
 const MEM = memoryDirs(process.env.HOME!, ENV_FILE, harness)
 const recordCost = costRecorder(ledgers)
 rmSync(`${DIR}/browser-seen`, { force: true })
-let seenVersion: string | undefined
-let browserSeen = 0
 const browser = secrets.browserToken ? connectBrowser({ token: secrets.browserToken, port: conn.browser?.port || 8791,
-  onPoll: (at, v) => { if (at - browserSeen >= 30_000 || v !== seenVersion) { browserSeen = at; seenVersion = v; writeFileSync(`${DIR}/browser-seen`, `${at} ${v ?? ''}`.trim(), { mode: 0o600 }) } } }) : undefined
+  onPoll: (at, v) => writeFileSync(`${DIR}/browser-seen`, `${at} ${v ?? ''}`.trim(), { mode: 0o600 }) }) : undefined
 void browser?.listening.then(port => log(`browser on: 127.0.0.1:${port}/browser`), e => log('browser could not listen', e))
 const browserBlock = (conn.browser?.block ?? []).join(',')
 const BROWSER_BLOCK = blockList(browserBlock), SCREEN = process.platform === 'darwin' ? screenRecorder({ folder: `${DIR}/screen`, code: CODE }) : undefined

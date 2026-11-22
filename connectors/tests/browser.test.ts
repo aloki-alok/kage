@@ -27,6 +27,19 @@ test('a call reaches the extension on its next poll, and its result comes back t
   assert.deepEqual(await answer, { title: 'T' })
 })
 
+test('a command tells the extension the time the hub still waits, so both give up together (#528)', async t => {
+  let clock = 1_000_000
+  const { b, next } = await hub({ now: () => clock, callMs: 20_000, pollMs: 30 })
+  t.after(() => b.close())
+  await (await next()).body?.cancel().catch(() => {})
+  const answer = b.call('tabs', {}).catch(() => {})
+  clock += 5_000
+  const cmd = await (await next()).json() as { ms?: unknown; until?: unknown }
+  assert.equal(cmd.ms, 15_000)
+  assert.equal(cmd.until, undefined)
+  b.close(); await answer
+})
+
 test('a call made before the poll waits for it', async t => {
   const { b, next, result } = await hub({ pollMs: 30 })
   t.after(() => b.close())

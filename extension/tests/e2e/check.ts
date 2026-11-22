@@ -66,6 +66,21 @@ check('a tab Kage opened can be acted in at once', ((await b.call('crop', { tabI
 const again = await b.call('open', { url: t.url }) as { tabId: number }
 check("Kage's next tab opens in the same window", (await b.call('tabs', {}) as Tab[]).find(x => x.id === again.tabId)!.windowId === mine.windowId)
 
+const frozen = await b.call('open', { url: t.url.replace('page.html', 'freeze.html') }) as { tabId: number }
+await new Promise(r => setTimeout(r, 1000))
+const fsnap = await b.call('snapshot', { tabId: frozen.tabId }) as Snapshot
+const fel = (n: string) => fsnap.elements.find(e => e.name === n)!
+const fact = (n: string) => b.call('click', { tabId: frozen.tabId, ref: fel(n).ref, expect: { host: '127.0.0.1', role: 'button', name: n } }).catch(() => {})
+await fact('Freeze')
+const frozenAt = Date.now()
+await new Promise(r => setTimeout(r, 500))
+await fact('Late')
+const next = await b.call('tabs', {}).then(() => 'answered', (e: Error) => e.message)
+check('after a command stuck in a busy page, the next command is answered', next === 'answered', next)
+await new Promise(r => setTimeout(r, Math.max(0, frozenAt + 43_000 - Date.now())))
+const late = (await b.call('read', { tabId: frozen.tabId }) as Page).text
+check('a click the hub gave up on does not land once the page frees up', !late.includes('late clicked'), late)
+
 const want = (JSON.parse(readFileSync(`${process.env.KAGE_E2E_EXT}/manifest.json`, 'utf8')) as { version: string }).version
 check('each poll names the version the extension runs, for kage doctor', polledVersion === want, String(polledVersion))
 
