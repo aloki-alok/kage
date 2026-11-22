@@ -2,7 +2,7 @@ import { readFileSync, writeFileSync } from 'node:fs'
 import { DIR } from './home.ts'
 import { awayFacts, awayLines, awaySince } from '../core/away.ts'
 import { kageletRows } from '../core/kagelets/kagelet.ts'
-import { MARK, WORDMARK } from '../core/voice.ts'
+import { MARK, besideWordmark } from '../core/voice.ts'
 import { openLedgers } from '../runtime/ledger.ts'
 import { kageletsDir, readKagelets } from '../runtime/kagelets/files.ts'
 import { voice } from './voice.ts'
@@ -33,11 +33,7 @@ const right = [
 ]
 
 const wide = Boolean(process.stdout.isTTY) && (process.stdout.columns ?? 0) >= 80
-if (wide) {
-  const width = Math.max(...[...WORDMARK.word, ...WORDMARK.shadow].map(l => [...l].length))
-  const art = ['', ...WORDMARK.word.map(l => l.padEnd(width)), ...WORDMARK.shadow.map((l, i) => i ? voice.faint(l.padEnd(width)) : voice.dim(l.padEnd(width)))]
-  const pad = ' '.repeat(width)
-  for (let i = 0; i < Math.max(art.length, right.length); i++) console.log(`${art[i] ?? pad}   ${right[i] ?? ''}`.trimEnd())
-} else for (const line of right.slice(1)) console.log(line)
+if (wide) for (const line of besideWordmark(voice, right)) console.log(line)
+else for (const line of right.slice(1)) console.log(line)
 
 try { writeFileSync(`${DIR}/last-seen`, String(now)) } catch {}
