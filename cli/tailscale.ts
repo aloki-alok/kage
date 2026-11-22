@@ -10,8 +10,8 @@ export function tailscaleBin(): string | undefined {
 export const tailscaleRun = (bin: string, args: string[]) =>
   execFileSync(bin, args, { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'], timeout: 30_000 })
 
-export function tailscaleState(bin: string): { running: boolean; dns?: string; serve: unknown } {
+export function tailscaleState(bin: string): { running: boolean; funnel: boolean; dns?: string; serve: unknown } {
   const json = (args: string[]) => { try { return JSON.parse(tailscaleRun(bin, args) || '{}') } catch { return {} } }
-  const status = json(['status', '--json']) as { BackendState?: string; Self?: { DNSName?: string } }
-  return { running: status.BackendState === 'Running', dns: status.Self?.DNSName, serve: json(['serve', 'status', '--json']) }
+  const status = json(['status', '--json']) as { BackendState?: string; Self?: { DNSName?: string; CapMap?: Record<string, unknown> } }
+  return { running: status.BackendState === 'Running', funnel: 'funnel' in (status.Self?.CapMap ?? {}), dns: status.Self?.DNSName, serve: json(['serve', 'status', '--json']) }
 }

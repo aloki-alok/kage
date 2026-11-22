@@ -8,6 +8,6 @@ export const tunnel: Group = async () => {
   const provider = s.config.tunnel?.provider, routes = tunnelRoutes(s)
   if (provider !== 'tailscale' || !routes.length) return []
   const bin = tailscaleBin()
-  const now = bin ? tailscaleState(bin) : { running: false, serve: {} }
-  return tunnelLines({ provider, running: now.running, ...'dns' in now && { dns: now.dns }, routes, status: now.serve })
+  const now = bin ? tailscaleState(bin) : { running: false, funnel: false, serve: {} }
+  return tunnelLines({ provider, ...now, routes, status: now.serve })
 }

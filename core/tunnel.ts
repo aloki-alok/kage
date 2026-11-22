@@ -44,12 +44,13 @@ export function routeStates(routes: TunnelRoute[], status: unknown) {
 
 const list = (names: string[]) => names.length < 2 ? names.join('') : `${names.slice(0, -1).join(', ')} and ${names.at(-1)}`
 
-export function tunnelLines(f: { provider?: 'tailscale' | 'off'; running: boolean; dns?: string; routes: TunnelRoute[]; status: unknown }): Line[] {
+export function tunnelLines(f: { provider?: 'tailscale' | 'off'; running: boolean; funnel: boolean; dns?: string; routes: TunnelRoute[]; status: unknown }): Line[] {
   if (f.provider !== 'tailscale' || !f.routes.length) return []
   if (!f.running) return [{ kind: 'fail', text: `Tailscale is stopped, so ${list(f.routes.map(r => r.name))} ${f.routes.length > 1 ? 'are' : 'is'} closed. Run tailscale up, then kage tunnel on.` }]
   const host = (f.dns ?? '').replace(/\.$/, '')
   return routeStates(f.routes, f.status).map(({ route: r, state }): Line =>
-    state === 'closed' ? { kind: 'fail', text: `${r.name} is closed. Run kage tunnel on.` }
+    state === 'closed' && r.reach === 'internet' && !f.funnel ? { kind: 'fail', text: `${r.name} is closed: Funnel is not allowed for this machine. Run kage tunnel on for the link that allows it.` }
+    : state === 'closed' ? { kind: 'fail', text: `${r.name} is closed. Run kage tunnel on.` }
     : r.reach === 'tailnet' ? { kind: 'ok', text: `${r.name} is on your tailnet at ${host}:${r.port}` }
     : state === 'tailnet' ? { kind: 'fail', text: `${r.name} is on your tailnet only, and ${r.name === 'github' ? 'GitHub calls it' : 'its caller is'} from the internet. Allow Funnel for this machine in the Tailscale admin page, then run kage tunnel on.` }
     : { kind: 'ok', text: `${r.name} is public at https://${host}${r.paths[0]}` })

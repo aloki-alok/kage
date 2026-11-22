@@ -56,10 +56,13 @@ describe('one tunnel for every Kage port another machine needs', () => {
   test('the doctor shows each route with its public address, and names the one fix when Tailscale or a route is not ready', () => {
     const routes = tunnelRoutes({ ...all, secrets: { githubSecret: 's', meetingToken: 'm' } as Secrets })
     const up = serving({ funnel: true, paths: { '/github': 'http://127.0.0.1:8789/github' }, tcp: { 8790: { TCPForward: '127.0.0.1:8790' } } })
-    const lines = (f: Partial<Parameters<typeof tunnelLines>[0]>) => tunnelLines({ provider: 'tailscale', running: true, dns: `${HOST}.`, routes, status: up, ...f }).map(l => `${l.kind} ${l.text}`)
+    const lines = (f: Partial<Parameters<typeof tunnelLines>[0]>) => tunnelLines({ provider: 'tailscale', running: true, funnel: true, dns: `${HOST}.`, routes, status: up, ...f }).map(l => `${l.kind} ${l.text}`)
     assert.deepEqual(lines({}), [`ok github is public at https://${HOST}/github`, 'fail hooks is closed. Run kage tunnel on.', `ok meeting is on your tailnet at ${HOST}:8790`])
     assert.deepEqual(lines({ running: false }), ['fail Tailscale is stopped, so github, hooks and meeting are closed. Run tailscale up, then kage tunnel on.'])
     assert.deepEqual(lines({ provider: undefined }), [])
+    assert.deepEqual(lines({ funnel: false, status: serving({ tcp: { 8790: { TCPForward: '127.0.0.1:8790' } } }) }).slice(0, 2), [
+      'fail github is closed: Funnel is not allowed for this machine. Run kage tunnel on for the link that allows it.',
+      'fail hooks is closed: Funnel is not allowed for this machine. Run kage tunnel on for the link that allows it.'])
     assert.deepEqual(lines({ status: serving({ paths: { '/github': 'http://127.0.0.1:8789/github' }, tcp: { 8790: { TCPForward: '127.0.0.1:8790' } } }) })[0], 'fail github is on your tailnet only, and GitHub calls it from the internet. Allow Funnel for this machine in the Tailscale admin page, then run kage tunnel on.')
   })
 })
