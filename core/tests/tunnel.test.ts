@@ -19,6 +19,7 @@ const KAGE = { '/github': 'http://127.0.0.1:8789/github', '/mcp': 'http://127.0.
 const MEETING = { 8790: { TCPForward: '127.0.0.1:8790' } }
 const owning = <T extends { config: Config }>(s: T, routes: Record<string, string> = KAGE): T => ({ ...s, config: { ...s.config, tunnel: { targets: Object.values(routes) } } })
 const plan = (s: typeof all, status: object, o: { funnel?: boolean; to?: 'on' | 'off' } = {}) => tunnelPlan(s, { funnel: o.funnel ?? true, status }, o.to ?? 'on')
+const set = (a: string[]) => new Set(a)
 const OFF = (p: string) => ['serve', '--https=8443', `--set-path=${p}`, 'off']
 
 describe('one tunnel for every Kage port another machine needs', () => {
@@ -84,7 +85,7 @@ describe('one tunnel for every Kage port another machine needs', () => {
   test('what Kage records as its own is what it serves now: each wanted path, and an old one it failed to close', () => {
     const now = serving({ funnel: true, paths: { '/github': KAGE['/github'], '/hook': KAGE['/hook'], '/app': 'http://127.0.0.1:3000', '/kage-funnel-check': 'http://127.0.0.1:9' } })
     const s = owning({ config: { connectors: { github: { login: 'me' } } } as Config, secrets: { githubSecret: 's' } as Secrets }, { '/hook': KAGE['/hook'] })
-    assert.deepEqual(tunnelRecord(s, now, { '/github': KAGE['/github'] }), [KAGE['/github'], KAGE['/hook']])
+    assert.deepEqual(set(tunnelRecord(s, now, { '/github': KAGE['/github'] })), set([KAGE['/github'], KAGE['/hook']]))
     assert.deepEqual(tunnelRecord(s, now, {}), [KAGE['/hook']])
   })
 
@@ -93,15 +94,23 @@ describe('one tunnel for every Kage port another machine needs', () => {
     assert.deepEqual(tunnelRecord(all, theirs, {}), [])
   })
 
+  test('a target Kage made claims only the path it was made for, never the owner\'s handler on another path that points there', () => {
+    const s = owning({ config: { connectors: { github: { login: 'me' } } } as Config, secrets: { githubSecret: 's' } as Secrets }, { '/github': KAGE['/github'] })
+    const now = serving({ funnel: true, paths: { '/github': KAGE['/github'], '/mcp': KAGE['/github'] } })
+    assert.deepEqual(plan(s, now).foreign, ['/mcp'])
+    assert.deepEqual(plan(s, now, { to: 'off' }).run, [OFF('/github')])
+    assert.deepEqual(tunnelRecord(s, now, {}), [KAGE['/github']])
+  })
+
   test('when Tailscale\'s state cannot be read after a run, the record keeps what Kage owned and what it set out to open', () => {
     const s = owning(none, { '/hook': KAGE['/hook'] })
-    assert.deepEqual(tunnelRecord(s, undefined, { '/github': KAGE['/github'] }), [KAGE['/hook'], KAGE['/github']])
+    assert.deepEqual(set(tunnelRecord(s, undefined, { '/github': KAGE['/github'] })), set([KAGE['/hook'], KAGE['/github']]))
   })
 
   test('a path that moved port keeps its old target in the record until a read shows it gone, so a crash mid-move still lets off close it', () => {
     const moved = 'http://127.0.0.1:9100/github'
     const record = tunnelRecord(owning(none, { '/github': KAGE['/github'] }), undefined, { '/github': moved })
-    assert.deepEqual(record, [KAGE['/github'], moved])
+    assert.deepEqual(set(record), set([KAGE['/github'], moved]))
     const s = { ...none, config: { ...none.config, tunnel: { targets: record } } }
     const old = serving({ funnel: true, paths: { '/github': KAGE['/github'] } })
     assert.deepEqual(plan(s, old, { to: 'off' }).run, [OFF('/github')])

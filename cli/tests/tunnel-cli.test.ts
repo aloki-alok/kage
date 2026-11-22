@@ -19,8 +19,8 @@ const STAND_IN = [
   'exit 0',
 ].join('\n')
 
-const serving = (paths: Record<string, string>) => JSON.stringify({
-  TCP: { 8443: { HTTPS: true } }, Web: { [HOST]: { Handlers: Object.fromEntries(Object.entries(paths).map(([p, to]) => [p, { Proxy: to }])) } }, AllowFunnel: { [HOST]: true },
+const serving = (paths: Record<string, string>, tcp: object = {}) => JSON.stringify({
+  TCP: { 8443: { HTTPS: true }, ...tcp }, Web: { [HOST]: { Handlers: Object.fromEntries(Object.entries(paths).map(([p, to]) => [p, { Proxy: to }])) } }, AllowFunnel: { [HOST]: true },
 })
 
 function world(config: object, serve: string) {
@@ -57,14 +57,24 @@ test('Kage killed inside its first command still has every target it set out to 
   const r = w.run('on', { CRASH: '1' })
   assert.equal(r.signal, 'SIGKILL')
   assert.equal(w.ran().length, 1)
-  assert.deepEqual(w.tunnel().targets, [...Object.values(OLD), ...NEW])
+  assert.deepEqual(new Set(w.tunnel().targets), new Set([...Object.values(OLD), ...NEW]))
+})
+
+test('a failed read after the run keeps every target Kage had and set out to open, and shows no route state', () => {
+  const w = world({ tunnel: { provider: 'tailscale', targets: Object.values(OLD) }, connectors: { voice: { port: 9200 } } }, serving(OLD))
+  const r = w.run('on', { FAIL_READ: '2' })
+  assert.equal(r.code, 1)
+  assert.match(r.out, /kept every route it may have opened/)
+  assert.doesNotMatch(r.out, /voice is/)
+  assert.deepEqual(new Set(w.tunnel().targets), new Set([...Object.values(OLD), ...NEW]))
 })
 
 test('off names each route still served after it ran, the check route too, and never says every route is closed', () => {
-  const w = world({ tunnel: { provider: 'tailscale', targets: Object.values(OLD) } }, serving({ ...OLD, '/kage-funnel-check': 'http://127.0.0.1:9' }))
+  const w = world({ tunnel: { provider: 'tailscale', targets: Object.values(OLD) } }, serving({ ...OLD, '/kage-funnel-check': 'http://127.0.0.1:9' }, { 8790: { TCPForward: '127.0.0.1:8790' } }))
   const r = w.run('off', { FAIL_CMD: '1' })
   assert.equal(r.code, 1)
   for (const p of ['/kage-funnel-check', '/mcp', '/voice']) assert.match(r.out, new RegExp(`Kage could not close a route\\. Run tailscale serve --https=8443 --set-path=${p} off\\.`))
+  assert.match(r.out, /Run tailscale serve --tcp=8790 off\./)
   assert.doesNotMatch(r.out, /Every Kage route is closed/)
 })
 

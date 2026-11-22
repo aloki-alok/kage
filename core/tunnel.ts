@@ -10,7 +10,6 @@ type ServeStatus = {
 }
 
 const PUBLIC_PORT = 8443
-const OWN_PATHS = ['/github', '/mcp', '/voice', '/hook']
 const local = (port: number) => `127.0.0.1:${port}`
 const target = (port: number, path: string) => `http://${local(port)}${path}`
 const kageWeb = (s: ServeStatus) => Object.entries(s.Web ?? {}).find(([host]) => host.endsWith(`:${PUBLIC_PORT}`))
@@ -31,7 +30,7 @@ const CHECK_PATH = '/kage-funnel-check'
 function ownership(settings: { config: Config }, status: unknown) {
   const s = (status ?? {}) as ServeStatus, web = kageWeb(s), handlers = web?.[1].Handlers ?? {}
   const made = settings.config.tunnel?.targets ?? []
-  const owned = (p: string, h: { Proxy?: string }) => p === CHECK_PATH || (OWN_PATHS.includes(p) && made.includes(h.Proxy ?? ''))
+  const owned = (p: string, h: { Proxy?: string }) => p === CHECK_PATH || (made.includes(h.Proxy ?? '') && new URL(h.Proxy!).pathname === p)
   return { s, web, handlers, made, owned }
 }
 
