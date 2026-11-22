@@ -8,7 +8,7 @@ import { DatabaseSync } from 'node:sqlite'
 import { boardRows, FOLDED, liveThreadLines, nextRuns, limitLine, pauseLine, watchingNext, type Live, type Row, type State } from '../core/board.ts'
 import { transcriptLine } from '../core/transcript.ts'
 import { costRows, openWaiting } from '../core/ledgers.ts'
-import { channels, filterRows, rowAt, WIDE } from '../core/top-layout.ts'
+import { channels, filterRows, nextFilter, rowAt, spentToday, WIDE, type Filter } from '../core/top-layout.ts'
 import { newLines } from '../runtime/transcript-tail.ts'
 import { BG, resize, toText, W } from './top-screen.ts'
 import { drawFrame, TABS, type Hits, type Step, type Tab, type View } from './top-draw.ts'
@@ -43,12 +43,12 @@ let upSec: number | undefined, upAt = 0
 const boot = Date.now()
 let tab: Tab = 'threads', focus: 'list' | 'feed' = 'list'
 let selKey = '', open: string | undefined, openAt = 0, mode: 'steps' | 'schedules' = 'steps'
-let searching = false, query = ''
+let searching = false, query = '', filter: Filter = 'all'
 let message = '', messageAt = 0
 let confirm: { kind: 'cut' | 'remove'; target: string } | undefined
 let suspended = false, pick = 0
 let hits: Hits | undefined
-const CAP = dailyCap(settings().config.kagelets)
+const CAP = dailyCap(settings().config.kagelets), COST_BAR = settings().config.top?.threadCostBar ?? 5
 const conn = settings().config.connectors
 const CONNECTORS_ON = [conn?.email?.on && 'email', conn?.whatsapp?.on && 'whatsapp', conn?.voice?.on && 'voice', conn?.github && 'github'].filter((x): x is string => !!x)
 const KAGELETS = kageletsDir(DIR)
@@ -104,8 +104,8 @@ function refresh(now: number) {
     const w = watchNext(l.key, now)
     if (w !== undefined && w < (nx.get(l.key) ?? Infinity)) nx.set(l.key, w)
   }
-  board = boardRows(known.map(k => ({ ...k, topic: topicFor(k.id) })), live, new Map(known.map(k => [k.key, mtime(k.id)])), nx, now, showEnded || !!query).rows
-  rows = filterRows(board, query)
+  board = boardRows(known.map(k => ({ ...k, topic: topicFor(k.id) })), live, new Map(known.map(k => [k.key, mtime(k.id)])), nx, now, showEnded || !!query || filter !== 'all').rows
+  rows = filterRows(board, query, filter)
   if (!rows.some(r => r.key === selKey)) selKey = rows[0]?.key ?? ''
   if (now - ledgersAt > 3_000) {
     ledgersAt = now
@@ -126,8 +126,7 @@ function refresh(now: number) {
 }
 
 function readRuns(now: number) {
-  const picked = kagelets[pick]
-  runs = picked && tab === 'kagelets' ? kageletRuns(picked.name, picked.key ?? '', { runs: ledgerTextSafe('runs'), costs: ledgerTextSafe('costs'), reports: ledgerTextSafe('reports') }, now) : []
+  const picked = kagelets[pick]; runs = picked && tab === 'kagelets' ? kageletRuns(picked.name, picked.key ?? '', { runs: ledgerTextSafe('runs'), costs: ledgerTextSafe('costs'), reports: ledgerTextSafe('reports') }, now) : []
 }
 
 function readKageletRows(now: number) {
@@ -187,11 +186,11 @@ function view(now: number, t: number): View {
     ...(asking && { ask: { place: asking.place, what: waiting.find(w => w.thread === asking.key)?.what || 'waits on your answer in Slack' } }),
     tab, focus, selKey, ...(open && { open }), mode, leftovers: leftoverCount(),
     feed: f?.steps ?? [], typed: (f?.changed ?? 0) > openAt ? Math.max(0, Math.floor((now - f!.changed) / 22)) : Infinity,
-    threadSpend: Math.round(costs.filter(c => c.key === shown && c.at >= midnight).reduce((a, c) => a + c.usd, 0) * 100) / 100,
+    threadSpend: (shown && spentToday(costs, now).get(shown)) || 0,
     schedules, nextOf: s => nextRuns([s], now).get(s.key), placeOf,
     kagelets, pick, runs, ...(CAP !== undefined && { cap: CAP }),
     turns: costs.map(c => c.at), costs,
-    query, searching,
+    query, searching, filter, costBar: COST_BAR,
     ...(confirm && { confirm: confirm.kind === 'cut'
       ? { title: 'cut this session?', body: [`${placeOf(confirm.target)} is ${board.find(r => r.key === confirm!.target)?.label ?? 'open'}.`, 'Cutting stops its turn now. The next tag starts it again,', 'and it picks up the same conversation.'], yes: 'cut now' }
       : { title: `remove ${confirm.target}?`, body: [`Its file and its schedule go.`, 'This cannot be undone from here.'], yes: 'remove' } }),
@@ -317,6 +316,7 @@ async function onKey(k: string) {
       else await act(action, picked.name)
     }
   } else if (tab !== 'threads') return
+  else if (k === 'f') { filter = nextFilter(filter); refresh(Date.now()) }
   else if (k === 's') { if (!open && selKey) openThread(selKey); mode = mode === 'steps' ? 'schedules' : 'steps' }
   else if (k === '\r') { if (selKey === FOLDED) { showEnded = !showEnded; refresh(Date.now()) } else if (selKey) openThread(selKey) }
   else if (k === 'x' && (open ?? selKey) && (open ?? selKey) !== FOLDED) confirm = { kind: 'cut', target: open ?? selKey }

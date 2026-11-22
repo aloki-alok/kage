@@ -2,7 +2,7 @@ import { ago, FOLDED, whenLabel, type Row } from '../core/board.ts'
 import type { Schedule } from '../core/cron.ts'
 import type { KageletRow } from '../core/kagelets/kagelet.ts'
 import { runLine, shownState, type Run } from '../core/kagelets/view.ts'
-import { activityBins, bars, listRows, MARK, perHour, screen, spinner, type Rect, type Screen } from '../core/top-layout.ts'
+import { activityBins, bars, costCell, listRows, MARK, perHour, screen, spentToday, spinner, type Filter, type Rect, type Screen } from '../core/top-layout.ts'
 import { clean, clear, clip, fill, H, paint, put, W } from './top-screen.ts'
 import { leftoversLine } from '../core/leftovers.ts'
 
@@ -19,8 +19,8 @@ export type View = {
   feed: Step[]; typed: number; threadSpend: number
   schedules: Schedule[]; nextOf: (s: Schedule) => number | undefined; placeOf: (key: string) => string
   kagelets: KageletRow[]; pick: number; runs: Run[]; cap?: number
-  turns: number[]; costs: { at: number; usd: number }[]
-  query: string; searching: boolean
+  turns: number[]; costs: { at: number; usd: number; key: string }[]
+  query: string; searching: boolean; filter: Filter; costBar: number
   confirm?: { title: string; body: string[]; yes: string }
   message?: string; paused?: string
 }
@@ -85,16 +85,16 @@ function banner(v: View, y: number) {
 function threadTable(v: View, r: Rect, focus: boolean): { key: string; y: number }[] {
   const x1 = r.x1, from = x1 - r.x0 >= 80
   const cx = { place: r.x0 + 4, from: r.x0 + 23, state: from ? r.x0 + 32 : r.x0 + 23, now: from ? r.x0 + 44 : r.x0 + 35 }
-  const nowW = Math.max(8, x1 - cx.now - 6)
+  const nowW = Math.max(8, x1 - cx.now - 14), spent = spentToday(v.costs, v.now)
   const head = r.y0 + 1
   let y0 = head + 1
   if (v.searching || v.query) { put(r.x0 + 2, head, '/', 'work'); put(r.x0 + 4, head, `${v.query}${v.searching && Math.floor(v.t / 450) % 2 ? '▌' : ''}`, 'hi'); y0 = head + 2 }
   const cols: [number, string][] = [[cx.place, 'PLACE'], ...(from ? [[cx.from, 'FROM']] as [number, string][] : []), [cx.state, 'STATE'], [cx.now, 'ABOUT · NOW']]
-  if (!(v.searching || v.query)) { for (const [x, h] of cols) put(x, head, h, 'dim'); put(x1 - 4, head, 'AGE', 'dim') }
+  if (!(v.searching || v.query)) { for (const [x, h] of cols) put(x, head, h, 'dim'); put(x1 - 11, head, 'COST', 'dim'); put(x1 - 4, head, 'AGE', 'dim') }
   const room = r.y1 - y0
   const shown = listRows(v.rows.map(x => x.key), v.selKey, room)
   const byKey = new Map(v.rows.map(x => [x.key, x]))
-  if (!v.rows.length) put(r.x0 + 4, y0, v.query ? 'no thread matches' : 'no threads yet', 'mid')
+  if (!v.rows.length) put(r.x0 + 4, y0, v.query || v.filter !== 'all' ? 'no thread matches' : 'no threads yet', 'mid')
   for (const s of shown) {
     const row = byKey.get(s.key)!, y = y0 + s.y, on = s.key === v.selKey
     const m = MARK[row.state]
@@ -108,7 +108,8 @@ function threadTable(v: View, r: Rect, focus: boolean): { key: string; y: number
     const step = row.state === 'watching' ? `next check ${whenLabel(row.next, v.now)}` : live ? v.nowLine(row.key) : undefined
     const line = [row.topic, step].filter(Boolean).join(' · ')
     put(cx.now, y, clip(clean(line), nowW), fg(live ? 'mid' : 'dim'))
-    const age = ago(row.ageMs)
+    const cost = costCell(spent.get(row.key), v.costBar), age = ago(row.ageMs)
+    if (cost) put(x1 - 6 - cost.text.length, y, cost.text, fg(cost.over ? 'you' : 'dim'))
     put(x1 - 1 - age.length, y, age, fg('dim'))
   }
   return shown.map(s => ({ key: s.key, y: y0 + s.y }))
@@ -230,7 +231,7 @@ function footer(v: View) {
   if (v.message) { put(2, y, clip(v.message, W - 4), 'hi', 'bar'); return }
   if (v.paused) { put(2, y, clip(v.paused, W - 4), 'you', 'bar'); return }
   let x = 2
-  for (const [a, b] of [['1-3', 'tabs'], ['tab', 'pane'], ['↑↓', 'pick'], ['/', 'search'], ['q', 'quit']]) {
+  for (const [a, b] of [['1-3', 'tabs'], ['tab', 'pane'], ['↑↓', 'pick'], ['/', 'search'], ['f', v.filter === 'all' ? 'filter' : `filter: ${v.filter}`], ['q', 'quit']]) {
     put(x, y, a!, 'work', 'bar'); put(x + a!.length + 1, y, b!, 'mid', 'bar'); x += a!.length + b!.length + 5
   }
   const tip = 'mouse: click a row or a tab'

@@ -61,7 +61,7 @@ export function boardRows(known: Known[], live: Live | undefined, activity: Map<
   return { rows: [...showEnded ? rows : rows.filter(r => !old.includes(r)), fold] }
 }
 
-const BUSY: State[] = ['asking', 'working', 'starting', 'queued', 'held']
+export const BUSY: State[] = ['asking', 'working', 'starting', 'queued', 'held']
 export function liveThreadLines(rows: Row[], stepOf: (key: string) => string | undefined, max = 8): string[] {
   const busy = rows.filter(r => BUSY.includes(r.state))
   const lines = busy.slice(0, max).map(r => [r.label, r.place, r.topic, `${ago(r.ageMs)} ago`, r.state === 'asking' ? undefined : stepOf(r.key)].filter(Boolean).join(' · '))

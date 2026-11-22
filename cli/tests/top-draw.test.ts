@@ -16,7 +16,7 @@ function frame(tab: Tab, cols = 132, rows = 38, extra: Partial<View> = {}): stri
     feed: [{ at: NOW, text: 'read   deploy.log' }], typed: Infinity, threadSpend: 0,
     schedules: [{ id: 's1', key: 'C0TEST1:1.0', cron: '*/5 * * * *', prompt: 'check CI', recurring: true, fromOwner: true, created: NOW, lastFired: 0 }],
     nextOf: () => NOW + 60_000, placeOf: () => '#infra-alerts',
-    kagelets: [kagelet], pick: 0, runs: [], turns: [], costs: [], query: '', searching: false, ...extra,
+    kagelets: [kagelet], pick: 0, runs: [], turns: [], costs: [], query: '', searching: false, filter: 'all', costBar: 5, ...extra,
   }
   drawFrame(v)
   return toText().map(l => l.replace(/\x1b\[[0-9;]*m/g, ''))
@@ -60,7 +60,7 @@ test('leftover processes or containers show as one line on top that names kage d
 })
 
 test('a chart pane keeps its corners: hour labels and bars stay inside it, whatever the top value', () => {
-  const costs = Array.from({ length: 15 }, (_, h) => ({ at: NOW - h * 3_600_000, usd: h === 0 ? 11.41 : 0.5 }))
+  const costs = Array.from({ length: 15 }, (_, h) => ({ at: NOW - h * 3_600_000, usd: h === 0 ? 11.41 : 0.5, key: 'C0TEST1:1.0' }))
   for (const cols of [100, 120, 132]) {
     const lines = frame('threads', cols, 36, { costs, spentToday: 20.05 })
     const bottom = lines.findLast(l => l.includes('╰') && l.includes('h '))!
@@ -71,4 +71,11 @@ test('a chart pane keeps its corners: hour labels and bars stay inside it, whate
 test('a step names its kind in full, so schedule reads as schedule', () => {
   const text = frame('threads', 132, 38, { feed: [{ at: NOW, text: 'schedule  check CI in five minutes' }] }).join('\n')
   assert.match(text, /schedule check CI|schedule +check CI/)
+})
+
+test('a thread row shows what it cost today, and the footer names the filter in use (#259)', () => {
+  const lines = frame('threads', 132, 38, { costs: [{ at: NOW - 60_000, usd: 6.4, key: 'C0TEST1:1.0' }, { at: NOW - 2 * 86_400_000, usd: 50, key: 'C0TEST1:1.0' }], filter: 'running' })
+  assert.match(lines.find(l => l.includes('#infra-alerts') && l.includes('working'))!, /\$6\.40\s+8s/)
+  assert.match(lines.at(-1)!, /f filter: running/)
+  assert.match(frame('threads').at(-1)!, /f filter\b/)
 })

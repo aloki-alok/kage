@@ -147,6 +147,14 @@ How Kage sees and acts on your Mac (`screen_shot`, `screen_act`, macOS only).
 |---|---|---|
 | `screen.shotLongSide` | `1280` | The longest side, in pixels, of a picture `screen_shot` takes of your Mac. The model sees a larger picture shrunk, and aims worse on it, so Kage keeps pictures this size and maps each `screen_act` point back to the screen. |
 
+## Kage top
+
+What `kage top` shows.
+
+| Setting | Default | Effect |
+|---|---|---|
+| `top.threadCostBar` | `5` | Dollars. A thread that cost this much or more today shows its cost in the warning color in `kage top`. |
+
 ## Telemetry
 
 Counts and failure codes from this install, sent to an OpenTelemetry (OTLP) endpoint so the people who build Kage see what breaks. Message text, prompts, replies and tool input are never sent. Kage's own records hold no names, ids or paths. Claude Code's records also carry the signed-in account's email and ids, and the Kage receiver drops them before storing (ADR 0019). `kage telemetry` says whether it is on, and `kage telemetry show` prints the exact next batch.
