@@ -19,7 +19,7 @@ const funnelled = (s: ServeStatus) => { const web = kageWeb(s); return !!web && 
 export function tunnelRoutes({ config, secrets }: { config: Config; secrets: Secrets }): TunnelRoute[] {
   const c = config.connectors, t = config.tripwires, on = connectorStates({ config, secrets })
   const routes: (TunnelRoute | false)[] = [
-    on.github.state === 'on' && !!secrets.githubSecret && { name: 'github', port: c?.github?.port || 8789, paths: ['/github'], reach: 'internet' },
+    on.github.state === 'on' && { name: 'github', port: c?.github?.port || 8789, paths: ['/github'], reach: 'internet' },
     on.voice.state === 'on' && { name: 'voice', port: c?.voice?.port || 8787, paths: ['/mcp', '/voice'], reach: 'internet' },
     !!t?.hookPort && t.on !== false && { name: 'hooks', port: t.hookPort, paths: ['/hook'], reach: 'internet' },
     on.meeting.state === 'on' && { name: 'meeting', port: c?.meeting?.port || 8790, paths: [], reach: 'tailnet' },

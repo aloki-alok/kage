@@ -8,16 +8,16 @@ const settings = (config: Partial<Config>, secrets: Partial<Secrets> = {}) => ({
 describe('one table says whether each connector is on', () => {
   test('a connector with every setting it needs is on, and GitHub counts a token or a webhook secret', () => {
     const s = connectorStates(settings(
-      { connectors: { github: { login: 'me' }, email: { address: 'k@x.io', queue: 'q', ownerEmail: 'o@x.io' } } },
-      { githubSecret: 's', browserToken: 'b', voiceToken: 'v', waha: { WAHA_API_KEY: 'w' }, meetingToken: 'm' }))
+      { connectors: { github: { login: 'me', userId: 1, app: { id: 1, slug: 'kage-me' } }, email: { address: 'k@x.io', queue: 'q', ownerEmail: 'o@x.io' } } },
+      { githubSecret: 's', githubAppKey: 'k', browserToken: 'b', voiceToken: 'v', waha: { WAHA_API_KEY: 'w' }, meetingToken: 'm' }))
     assert.deepEqual(Object.values(s).map(c => c.state), ['on', 'on', 'on', 'on', 'on', 'on'])
-    assert.equal(connectorStates(settings({ connectors: { github: { login: 'me' } } }, { githubToken: 't' })).github.state, 'on')
+    assert.equal(connectorStates(settings({ connectors: { github: { login: 'me' } } }, { githubSecret: 's' })).github.state, 'unset')
   })
 
   test('a connector missing a setting names each one it lacks', () => {
     const s = connectorStates(settings({ connectors: { github: { login: 'me' }, email: { address: 'k@x.io' } } }))
     const missing = (c: typeof s.github) => c.state === 'unset' ? c.missing : []
-    assert.deepEqual([missing(s.github), missing(s.email), missing(s.voice)], [['githubToken'], ['connectors.email.queue', 'connectors.email.ownerEmail'], ['voiceToken']])
+    assert.deepEqual([missing(s.github), missing(s.email), missing(s.voice)], [['connectors.github.app.id', 'connectors.github.userId', 'githubAppKey', 'githubSecret'], ['connectors.email.queue', 'connectors.email.ownerEmail'], ['voiceToken']])
     assert.deepEqual([s.github.state, s.email.state, s.voice.state], ['unset', 'unset', 'unset'])
   })
 
@@ -29,7 +29,7 @@ describe('one table says whether each connector is on', () => {
 
 describe('kage connect lists every connector with the one step left', () => {
   test('one row per connector: on, off with how to turn it back on, or what it still needs', () => {
-    const s = settings({ connectors: { github: { login: 'me' }, voice: { on: false }, email: { address: 'k@x.io' } } }, { githubToken: 't', voiceToken: 'v' })
+    const s = settings({ connectors: { github: { login: 'me', userId: 1, app: { id: 1, slug: 'kage-me' } }, voice: { on: false }, email: { address: 'k@x.io' } } }, { githubSecret: 's', githubAppKey: 'k', voiceToken: 'v' })
     assert.deepEqual(connectLines(connectorStates(s)), [
       'on     github    ',
       'unset  browser   run kage connect browser',

@@ -2,7 +2,7 @@ import { describe, test } from 'node:test'
 import assert from 'node:assert/strict'
 import { execSync } from 'node:child_process'
 import { readFileSync } from 'node:fs'
-import { ALIASES, checkSettings, settingTier, Config, diff, fromEnv, KEYS, toEnv, unknownEnv, unknownNames } from '../config.ts'
+import { ALIASES, checkSettings, settingTier, Config, diff, fromEnv, KEYS, Secrets, toEnv, unknownEnv, unknownNames } from '../config.ts'
 import { parseEnv } from '../settings.ts'
 
 const NOT_SETTINGS = ['KAGE_BIN', 'KAGE_CALL_CODE', 'KAGE_CALL_REASON', 'KAGE_CLAUDE', 'KAGE_DIR', 'KAGE_ENV', 'KAGE_GIT_URL', 'KAGE_JOB_ID', 'KAGE_JOB_STATE_DIR', 'KAGE_KEYS_SOCK', 'KAGE_KEYS_TOKEN', 'KAGE_MEETBOT_HUB', 'KAGE_MEETBOT_PIPELINE', 'KAGE_MEETBOT_PIPELINE_KEY', 'KAGE_MEETBOT_TOKEN', 'KAGE_PANE_SETTINGS', 'KAGE_REF', 'KAGE_SESSION', 'KAGE_SETUP_WAIT', 'KAGE_SLACK_API', 'KAGE_SSM_SOCK', 'KAGE_SSM_TOKEN', 'KAGE_TARBALL', 'KAGE_THREAD']
@@ -104,6 +104,10 @@ KAGE_CALL_COMMAND=/work/bin/call
 KAGE_GITHUB_LOGIN=octo-test
 KAGE_GITHUB_PORT=9002
 KAGE_GITHUB_PER_HOUR=15
+KAGE_GITHUB_APP_ID=123456
+KAGE_GITHUB_APP_SLUG=kage-octo
+KAGE_GITHUB_ACCOUNTS=octo-test,acme
+KAGE_GITHUB_USER_ID=4242
 KAGE_MEETING_PORT=9003
 KAGE_MEETING_PER_HOUR=5
 KAGE_MEETING_AGENT_API=https://voice.example.test
@@ -125,7 +129,7 @@ KAGE_AWS_ACCESS_KEY_ID=AKIATESTFAKE
 KAGE_AWS_SECRET_ACCESS_KEY=fake-secret-value
 KAGE_VOICE_TOKEN=voice-fake
 KAGE_GITHUB_SECRET=gh-fake
-KAGE_GITHUB_TOKEN=gho-fake
+KAGE_GITHUB_APP_KEY=-----BEGIN RSA PRIVATE KEY-----\nFAKE\n-----END RSA PRIVATE KEY-----
 KAGE_MEETING_TOKEN=meet-fake
 KAGE_BROWSER_TOKEN=browser-fake
 JEV_API_KEY=jev-fake
@@ -310,5 +314,11 @@ describe('the old env file\'s own keys', () => {
   test('a key Kage has no setting for comes back as an env line, a secret one too, so sessions keep it after the import', () => {
     const { config, secrets } = fromEnv({ MY_TOOL_URL: 'https://x.test', MY_TOOL_API_KEY: 'sk-test-1234567890abcdef', SLACK_BOT_TOKEN: 'xoxb-TEST' })
     assert.deepEqual(unknownEnv(config, secrets), { MY_TOOL_URL: 'https://x.test', MY_TOOL_API_KEY: 'sk-test-1234567890abcdef' })
+  })
+})
+
+describe('a secrets.json from an older Kage', () => {
+  test('still loads when it holds the GitHub token the old connector used, so the hub keeps starting', () => {
+    assert.equal(Secrets.safeParse({ githubToken: 'ghp_old', githubSecret: 's' }).success, true)
   })
 })

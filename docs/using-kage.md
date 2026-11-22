@@ -141,22 +141,19 @@ Ask in a thread: `@kage check the deploy every 30 minutes`, or `@kage tell me wh
 
 ### Other places to reach it
 
-Slack is the main channel. Email, voice calls and GitHub events (reviews, failed checks, issues assigned to you) can reach the same Kage too. Each is off until you set it up: see [the settings reference](settings.md).
+Slack is the main channel. Email, voice calls and tags on GitHub can reach the same Kage too. Each is off until you set it up: see [the settings reference](settings.md).
 
-### Let Kage watch GitHub
+### Let people tag Kage on GitHub
 
 ```sh
-kage connect github        # uses your gh login; with no gh, it asks for a classic token
-kage connect github off    # turns it off
+kage connect github              # makes the Kage app on GitHub: you click Create, then Install
+kage connect github --org acme   # lets it work in an org too: install it there on the page it opens
+kage connect github off          # turns it off; the app stays on GitHub until you delete it there
 ```
 
-Kage then opens one thread in your DM per pull request or issue when a teammate mentions you, asks for your review, assigns you, reviews your pull request, or when its checks fail. It reads the code and tells you what needs you. It never comments or pushes on GitHub without your yes. A mention counts only from people the repo lists as owner, member or collaborator, so a stranger cannot start work on your machine.
+Kage gets its own GitHub App, named for you, and people tag it like a person: `@kage-<you>`. Only a tag wakes it: a review request, an assignment or a failed check does not. Each tag opens one thread in your DM per issue or pull request. A tag from you runs as you, and Kage still asks before it pushes, comments or changes anything. A tag from anyone else the repo lists as owner, member or collaborator may only read and answer, and the answer comes to you. A tag from anyone else is ignored, and so is an install of the app on an account you did not allow.
 
-It works for every repo and organization you can see, with nothing to set up there and no public URL: Kage reads your GitHub notifications about once a minute. GitHub is optional, and nothing else in Kage needs it.
-
-### Get GitHub events at once
-
-Reading notifications takes up to a minute. A webhook brings each event within a second, but GitHub must reach your machine, so it needs a public URL. Set `githubSecret`, run `kage tunnel on` for the URL (settings, "Reach Kage from other machines"), then add the webhook on a repo or an organization ([settings](settings.md), `githubSecret`). When a webhook secret is set, Kage stops reading notifications, so each event arrives once.
+GitHub must reach your machine, so it needs `kage tunnel on` and Funnel first (settings, "Reach Kage from other machines"). GitHub is optional, and nothing else in Kage needs it.
 
 ### Let it see and record your screen (macOS)
 
