@@ -5,6 +5,8 @@ const KEYWORDS: Record<string, SmsKeyword> = {
   START: 'start', UNSTOP: 'start', YES: 'start',
   HELP: 'help', INFO: 'help',
 }
+export const smsProvider = (sms?: { provider?: 'twilio' | 'telnyx' }): 'twilio' | 'telnyx' => sms?.provider ?? 'telnyx'
+
 export type SmsKeyword = 'stop' | 'start' | 'help'
 export const smsKeyword = (text: string): SmsKeyword | undefined => KEYWORDS[text.trim().replace(/[.!]$/, '').toUpperCase()]
 

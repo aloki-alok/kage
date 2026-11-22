@@ -1,5 +1,6 @@
 import type { Config, Secrets } from './config.ts'
 import type { Line } from './doctor.ts'
+import { smsProvider } from './sms.ts'
 
 export type ConnectorName = 'github' | 'browser' | 'email' | 'voice' | 'whatsapp' | 'meeting' | 'sms'
 type ConnectorState = { state: 'on' } | { state: 'off' } | { state: 'unset'; missing: string[]; partial: boolean }
@@ -22,9 +23,9 @@ export function connectorStates({ config, secrets }: { config: Config; secrets: 
   }
 }
 
-const smsKeys = (sms: NonNullable<Config['connectors']>['sms'], secrets: Secrets): [string, unknown][] => sms?.provider === 'telnyx'
-  ? [['connectors.sms.telnyxPublicKey', sms.telnyxPublicKey], ['telnyxApiKey', secrets.telnyxApiKey]]
-  : [['connectors.sms.accountSid', sms?.accountSid], ['twilioAuthToken', secrets.twilioAuthToken]]
+const smsKeys = (sms: NonNullable<Config['connectors']>['sms'], secrets: Secrets): [string, unknown][] => smsProvider(sms) === 'twilio'
+  ? [['connectors.sms.accountSid', sms?.accountSid], ['twilioAuthToken', secrets.twilioAuthToken]]
+  : [['connectors.sms.telnyxPublicKey', sms?.telnyxPublicKey], ['telnyxApiKey', secrets.telnyxApiKey]]
 
 const WALKED: ConnectorName[] = ['github', 'browser']
 const DOCS: Record<ConnectorName, string> = { github: 'Voice and calls', browser: 'Voice and calls', email: 'Email', voice: 'Voice and calls', whatsapp: 'WhatsApp', meeting: 'Voice and calls', sms: 'SMS' }

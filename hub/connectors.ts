@@ -9,6 +9,7 @@ import { connectVoice } from '../connectors/voice.ts'
 import { connectSms } from '../connectors/sms.ts'
 import { smsSender } from '../connectors/sms-send.ts'
 import { openSmsStore } from '../runtime/sms-store.ts'
+import { smsProvider } from '../core/sms.ts'
 import { bridgeClock, startWhatsApp, wahaSeen, wahaUrl } from '../connectors/whatsapp.ts'
 import type { connectSlack } from '../connectors/slack/connect.ts'
 import { startJobEvents } from './job-events.ts'
@@ -114,7 +115,7 @@ export function startConnectors(o: {
 function startSms(o: Parameters<typeof startConnectors>[0]) {
   const { conn, secrets, bot, d, DIR } = o
   const c = conn.sms
-  const provider = c?.provider ?? 'twilio'
+  const provider = smsProvider(c)
   const creds = provider === 'twilio' ? c?.accountSid && secrets.twilioAuthToken : secrets.telnyxApiKey && c?.telnyxPublicKey
   if (!c || c.on === false || !c.from || !c.publicUrl || !creds) return undefined
   const keys = { accountSid: c.accountSid ?? undefined, twilioAuthToken: secrets.twilioAuthToken ?? undefined, telnyxApiKey: secrets.telnyxApiKey ?? undefined }

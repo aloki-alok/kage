@@ -164,7 +164,7 @@ describe('one tunnel for every Kage port another machine needs', () => {
 })
 
 test('SMS that is on gets a public route to its webhook at /sms', () => {
-  const sms = { config: { connectors: { sms: { from: '+14155550100', publicUrl: 'https://kage.example.test/sms', accountSid: 'AC0TEST', port: 8794 } } } as Config, secrets: { twilioAuthToken: 't' } as Secrets }
+  const sms = { config: { connectors: { sms: { from: '+14155550100', publicUrl: 'https://kage.example.test/sms', telnyxPublicKey: 'p', port: 8794 } } } as Config, secrets: { telnyxApiKey: 'k' } as Secrets }
   assert.deepEqual(tunnelRoutes(sms), [{ name: 'sms', port: 8794, paths: ['/sms'], reach: 'internet' }])
   assert.deepEqual(tunnelRoutes({ ...sms, config: { connectors: { sms: { ...sms.config.connectors!.sms, on: false } } } as Config }), [])
 })

@@ -311,7 +311,7 @@ If the bridge stops or the phone unlinks, Kage hears no `@kage` tag from WhatsAp
 
 ## SMS
 
-Kage texts US numbers through Twilio (the default) or Telnyx. You start a campaign from a Slack thread: Kage loads the numbers, shows you the count and the text on a card, and sends only after your yes. Each campaign posts its report in that thread: sent, delivered, failed, replies and opt-outs. A reply from a person becomes a task with the most limited rights (read and answer), and each text back waits for your yes on a card.
+Kage texts US numbers through Telnyx (the default) or Twilio. You start a campaign from a Slack thread: Kage loads the numbers, shows you the count and the text on a card, and sends only after your yes. Each campaign posts its report in that thread: sent, delivered, failed, replies and opt-outs. A reply from a person becomes a task with the most limited rights (read and answer), and each text back waits for your yes on a card.
 
 Every send obeys these rules. A number that texted STOP never gets another text until it texts START. Campaign texts go out only from 2pm to 8pm Eastern. A crash never texts anyone twice: each contact is claimed before its send. Kage stores the status, error code and segment count of each text, never its words. If the provider refuses Kage's credentials, the sending campaigns pause and you get one DM.
 
@@ -320,7 +320,7 @@ US carriers block texts from a number that has no registered 10DLC brand and cam
 | Setting | Default | Effect |
 |---|---|---|
 | `connectors.sms.on` | on once set up | SMS runs once `from`, `publicUrl` and the provider's keys are set. `false` turns it off (`kage connect sms off`). |
-| `connectors.sms.provider` | `twilio` | `twilio` or `telnyx`. |
+| `connectors.sms.provider` | `telnyx` | `telnyx` or `twilio`. |
 | `connectors.sms.from` | none | The number Kage texts from, in E.164 (`+14155550100`). Texts sent to any other number are ignored. |
 | `connectors.sms.port` | `8793` | The local port the provider's webhook calls, at `/sms`. |
 | `connectors.sms.publicUrl` | none | The public URL that reaches that port, ending in `/sms`. Kage gives it to the provider for delivery reports, and Twilio's signature check needs it exact. |
