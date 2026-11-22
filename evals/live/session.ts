@@ -113,5 +113,6 @@ export async function runCase(c: Case, o: { code: string; claude: string; timeou
   for (const command of c.expect.commands ?? []) ev.commands[command] = spawnSync('/bin/sh', ['-c', command], { cwd: work, timeout: 60_000 }).status ?? -1
   store.close()
   rmSync(dir, { recursive: true, force: true })
+  rmSync(join(homedir(), '.claude', 'projects', work.replace(/[^a-zA-Z0-9]/g, '-')), { recursive: true, force: true })
   return ev
 }
