@@ -6,7 +6,7 @@ import { gate, grade, summarize, type Evidence, type Row } from './grade.ts'
 import { runCase, type Case } from './session.ts'
 
 const { values, positionals } = parseArgs({ allowPositionals: true, options: {
-  runs: { type: 'string', default: '3' }, jobs: { type: 'string', default: '4' }, out: { type: 'string' }, compare: { type: 'boolean', default: false }, timeout: { type: 'string', default: '480' },
+  runs: { type: 'string', default: '3' }, jobs: { type: 'string', default: '4' }, out: { type: 'string' }, compare: { type: 'boolean', default: false }, timeout: { type: 'string', default: '480' }, trace: { type: 'string' },
 } })
 
 type Report = { commit: string; at: string; runs: number; rows: Row[] }
@@ -29,7 +29,7 @@ let next = 0
 await Promise.all(Array.from({ length: Number(values.jobs) }, async () => {
   while (next < work.length) {
     const c = work[next++]!
-    const ev = await runCase(c, { code, claude, timeoutMs })
+    const ev = await runCase(c, { code, claude, timeoutMs, ...values.trace && { trace: join(values.trace, `${c.name}-${next}.jsonl`) } })
     results.set(c.name, [...results.get(c.name) ?? [], ev])
     const misses = grade(ev, c.expect)
     process.stderr.write(`${misses.length ? 'FAIL' : 'ok  '}  ${c.name}${misses.map(m => `\n      ${m}`).join('')}\n`)

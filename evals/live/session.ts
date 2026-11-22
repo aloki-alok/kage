@@ -1,6 +1,6 @@
 import { spawnSync } from 'node:child_process'
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
-import { tmpdir } from 'node:os'
+import { appendFileSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { homedir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { createSdkMcpServer, query, tool, type SDKMessage } from '@anthropic-ai/claude-agent-sdk'
 import { Dispatcher } from '../../core/sessions.ts'
@@ -53,8 +53,10 @@ function writeFixture(work: string, files: Case['files']): Record<string, string
 
 const readOrNull = (path: string) => { try { return readFileSync(path, 'utf8') } catch { return null } }
 
-export async function runCase(c: Case, o: { code: string; claude: string; timeoutMs: number }): Promise<Evidence> {
-  const dir = mkdtempSync(join(tmpdir(), 'kage-live-'))
+export async function runCase(c: Case, o: { code: string; claude: string; timeoutMs: number; trace?: string }): Promise<Evidence> {
+  const runs = join(homedir(), '.cache', 'kage-live-evals')
+  mkdirSync(runs, { recursive: true })
+  const dir = mkdtempSync(join(runs, 'run-'))
   refuseLiveConfig(dir)
   const work = join(dir, 'work'), config = join(dir, 'config')
   mkdirSync(work); mkdirSync(config)
@@ -68,6 +70,7 @@ export async function runCase(c: Case, o: { code: string; claude: string; timeou
   let ended: (() => void) | undefined
   const s = sdkSessions({
     sdk: { query: teeQuery(m => {
+      if (o.trace) appendFileSync(o.trace, `${JSON.stringify(m)}\n`)
       if (m.type === 'assistant') for (const b of m.message.content) if (b.type === 'tool_use') ev.tools.push(b.name)
       if (m.type === 'result') ev.turns.push({ tokensIn: m.usage.input_tokens + (m.usage.cache_creation_input_tokens ?? 0) + (m.usage.cache_read_input_tokens ?? 0), steps: m.num_turns })
     }), createSdkMcpServer, tool },
