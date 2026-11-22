@@ -39,6 +39,9 @@ const cases: [string, string][] = [
   [L.released('0.4.4', 'https://x.test/r'), 'Released Kage v0.4.4. <https://x.test/r|Release notes>'],
   [L.limitLost(['#a']), 'After the usage limit, 1 held message could not be resumed: #a. Ask again in its thread.'],
   [L.limitLost(['#a', '#b']), 'After the usage limit, 2 held messages could not be resumed: #a, #b. Ask again in their threads.'],
+  [L.smsOverCap(30), 'More than 30 texts came in this hour, so I am storing them without answering until the hour is up. Each one counts in its campaign report.'],
+  [L.smsAuthFailed('20003'), "The SMS provider refused Kage's credentials (code 20003), so I paused the campaigns that were sending. Fix the keys in secrets.json, then resume each campaign."],
+  [L.smsReplyFailed('SMS contact 7', '21610'), 'A text reply to SMS contact 7 did not go out: the SMS provider said 21610.'],
 ]
 
 test('each owner line reads exactly as the line it replaced', () => {
