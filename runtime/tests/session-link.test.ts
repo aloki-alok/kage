@@ -253,7 +253,7 @@ test('kage top runs, pauses, resumes and removes a kagelet through the manager; 
   }
   try {
     for (const action of ['run', 'pause', 'resume', 'remove', 'revoke']) assert.deepEqual(await ask({ type: 'kagelet', action, name: 'deploys' }), { type: 'kagelet', text: `deploys: ${action} done` })
-    assert.deepEqual(await ask({ type: 'kagelet', action: 'save', name: 'deploys' }), { type: 'kagelet', refused: 'kage top runs, pauses, resumes or removes a kagelet, or revokes the standing approval, not save' })
+    assert.deepEqual(await ask({ type: 'kagelet', action: 'save', name: 'deploys' }), { type: 'kagelet', refused: 'kage top runs, pauses, resumes or removes a kagelet, revokes the standing approval, or lifts deny holds, not save' })
     await ask({ type: 'kagelet', action: 'remove', name: 'deploys' }, 'B')
     assert.deepEqual(done, ['run deploys', 'pause deploys', 'resume deploys', 'remove deploys', 'revoke deploys'])
   } finally { server.close() }

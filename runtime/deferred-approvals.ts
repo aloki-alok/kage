@@ -4,6 +4,7 @@ import type { Task } from '../core/task.ts'
 import type { Saved } from './store.ts'
 
 const NAME = 'deferred-approvals'
+const DENY_HOLDS = 'deny-holds'
 const YES_TTL = 60 * 60_000
 const CARD_TTL = 24 * 60 * 60_000
 const OPEN_PER_KEY = 5
@@ -16,12 +17,18 @@ export type CardVerdict = { key: string; tool: string; kind: string; fp: string;
 const same = (r: Call, key: string, tool: string, input: Record<string, unknown>) =>
   r.key === key && r.tool === tool && JSON.stringify(r.input) === JSON.stringify(input)
 
+const fingerprint = (tool: string, input: Record<string, unknown>) => createHash('sha256').update(`${tool}\n${JSON.stringify(input)}`).digest('hex').slice(0, 12)
+const holdKey = (key: string, tool: string, input: Record<string, unknown>) => `${key}\n${fingerprint(tool, input)}`
+
 const verdictOf = (c: Call, owner: CardVerdict['owner']): CardVerdict => ({
   key: c.key, tool: c.tool, kind: (c.tool === 'Bash' && heldCommand(String(c.input.command ?? ''))) || c.tool,
-  fp: createHash('sha256').update(`${c.tool}\n${JSON.stringify(c.input)}`).digest('hex').slice(0, 12), owner, ...c.review && { review: c.review },
+  fp: fingerprint(c.tool, c.input), owner, ...c.review && { review: c.review },
 })
 
-export function deferredApprovals(store: Saved, heard: (v: CardVerdict) => void = () => {}) {
+export function deferredApprovals(store: Saved, heard: (v: CardVerdict) => void = () => {}, holdDays: () => number = () => 0) {
+  const holdMs = () => holdDays() * 24 * 60 * 60_000
+  const holds = (now: number): Record<string, number> => Object.fromEntries(Object.entries((store.load(DENY_HOLDS) ?? {}) as Record<string, number>).filter(([, at]) => now - at < holdMs()))
+  const putHolds = (h: Record<string, number>) => store.save(DENY_HOLDS, Object.keys(h).length ? h : undefined)
   const rows = (): Record<string, Row> => (store.load(NAME) ?? {}) as Record<string, Row>
   const put = (r: Record<string, Row>) => store.save(NAME, Object.keys(r).length ? r : undefined)
   const sweep = (r: Record<string, Row>, now: number) => {
@@ -39,6 +46,7 @@ export function deferredApprovals(store: Saved, heard: (v: CardVerdict) => void 
       if (!row || row.yes) return undefined
       if (behavior === 'allow') r[id] = { ...row, yes: now }; else delete r[id]
       put(r)
+      if (behavior === 'deny' && holdMs() > 0) putHolds({ ...holds(now), [holdKey(row.key, row.tool, row.input)]: now })
       heard(verdictOf(row, behavior === 'deny' ? 'deny' : always ? 'always' : 'allow'))
       return row
     },
@@ -48,6 +56,15 @@ export function deferredApprovals(store: Saved, heard: (v: CardVerdict) => void 
       put(r)
       const open = Object.values(r).filter(w => w.key === key && w.yes === undefined)
       return open.some(w => same(w, key, tool, input)) ? 'same' : open.length >= OPEN_PER_KEY ? 'full' : undefined
+    },
+    deniedAt(key: string, tool: string, input: Record<string, unknown>, now: number): number | undefined {
+      return holds(now)[holdKey(key, tool, input)]
+    },
+    unhold(kagelet: string, now: number): number {
+      const live = holds(now), ofKagelet = (k: string) => k.split('\n')[0]!.endsWith(`#side-kagelet-${kagelet}`)
+      const lifted = Object.keys(live).filter(ofKagelet)
+      putHolds(Object.fromEntries(Object.entries(live).filter(([k]) => !ofKagelet(k))))
+      return lifted.length
     },
     take(key: string, tool: string, input: Record<string, unknown>, now: number): boolean {
       const r = rows()

@@ -47,8 +47,8 @@ describe('the kagelets panel in kage top', () => {
 })
 
 describe('the panel keys', () => {
-  test('r runs now, p pauses, u resumes, x removes, v revokes the standing approval of each tool the kagelet holds by one; nothing saves a file', () => {
-    assert.deepEqual(PANEL_KEYS, { r: 'run', p: 'pause', u: 'resume', x: 'remove', v: 'revoke' })
+  test('r runs now, p pauses, u resumes, x removes, v revokes the standing approval of each tool the kagelet holds by one, h lifts its deny holds; nothing saves a file', () => {
+    assert.deepEqual(PANEL_KEYS, { r: 'run', p: 'pause', u: 'resume', x: 'remove', v: 'revoke', h: 'unhold' })
   })
   test('the hub answer becomes one line; a hub that is down or silent is said plainly', () => {
     assert.equal(actionLine({ type: 'kagelet', text: 'deploys is paused within a minute.' }, true), 'deploys is paused within a minute.')

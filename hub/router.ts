@@ -93,7 +93,7 @@ process.on('uncaughtException', e => { log('crashed', e); noteExit(DIR, 'crash',
 const COMMANDS = new Map<string, string>(Object.entries(conn.commands ?? {}))
 
 const store = openStore(`${DIR}/kage.db`)
-const deferred = deferredApprovals(store, v => ledgers.add('card-verdicts', cardVerdictCells(v)))
+const deferred = deferredApprovals(store, v => ledgers.add('card-verdicts', cardVerdictCells(v)), () => kl.denyHoldDays ?? 7)
 const answerCard = (id: string, behavior: 'allow' | 'deny', always?: true) => answerDeferred(deferred, (key, task) => { if (toSession(key, task) === 'failed') failed(task) }, id, behavior, Date.now(), always && (c => kag.alwaysAllow(c.key, c.tool, c.input)))
 const SSM_SOCK = `${DIR}/ssm.sock`, SSM_SHIM = `${CODE}/cli/ssm-plugin-shim`
 const ssm = ssmRelay({ path: SSM_SOCK, plugin: findPlugin(undefined, [SSM_SHIM]), trusted: key => store.relayOk(key), log })
@@ -382,7 +382,7 @@ const watcher = configWatcher({
 })
 const reload = watcher.check
 listenForSessions(`${DIR}/router.sock`, d, { ...replies, failed, health: () => health.lines(Date.now()), schedules: jobs, tell: commands.tell, say: commands.say, relay: commands.relay, reload, paused: () => limits.paused(), limitCounts: () => limits.counts,
-  end: (key, cut) => stopThread(key, cut), kagelet: (action, name) => kag.manager.manage({ action, name }, Date.now()),
+  end: (key, cut) => stopThread(key, cut), kagelet: (action, name) => action === 'unhold' ? Promise.resolve(ownerLines.holdsLifted(name, deferred.unhold(name, Date.now()))) : kag.manager.manage({ action, name }, Date.now()),
   quiesce: () => { const now = Date.now(); limits.drain(now); return d.unquiet(now).filter(u => u.why !== 'just active' && u.why !== 'open in a terminal') }, callCode: voice?.issueCode })
 
 await slack.start()

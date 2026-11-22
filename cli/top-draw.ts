@@ -248,7 +248,7 @@ export function drawFrame(v: View): Hits {
   const listFocus = v.focus === 'list' || !wide
   const hints: Record<Tab, [string, string][]> = {
     threads: [['⏎', 'open'], ['a', 'attach'], ['x', 'cut']],
-    kagelets: [['r', 'run'], ['p', 'pause'], ['u', 'resume'], ['v', 'revoke'], ['x', 'remove']],
+    kagelets: [['r', 'run'], ['p', 'pause'], ['u', 'resume'], ['v', 'revoke'], ['h', 'unhold'], ['x', 'remove']],
     schedules: [],
   }
   let rows: { key: string; y: number }[] = []

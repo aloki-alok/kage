@@ -30,7 +30,7 @@ const tick = (ms = 5) => new Promise(r => setTimeout(r, ms))
 const ID = '11111111-1111-4111-8111-111111111111'
 const signal = () => new AbortController().signal
 
-function setup(o: { saved?: Record<string, string>; transcript?: boolean; silent?: boolean; dmFails?: boolean; grants?: Record<string, string[]>; allows?: Record<string, string[]>; review?: boolean | { release: boolean; said?: 'run' | 'hold' }; manager?: boolean; budgets?: Record<string, number>; models?: Record<string, string>; trusted?: string[]; deferred?: boolean; browser?: boolean; restartMs?: number; sandbox?: boolean | 'teammates'; onResult?: (key: string, total: number, resumed: boolean, tokens?: Tokens) => void; lean?: { model?: string; effort?: string; mcp: Record<string, unknown>; permissions?: Record<string, unknown> }; onMcp?: (q: unknown) => void; trustedPeople?: { ids: string[] } } = {}) {
+function setup(o: { saved?: Record<string, string>; transcript?: boolean; silent?: boolean; dmFails?: boolean; grants?: Record<string, string[]>; allows?: Record<string, string[]>; review?: boolean | { release: boolean; said?: 'run' | 'hold' }; holdDays?: number; onReview?: () => void; manager?: boolean; budgets?: Record<string, number>; models?: Record<string, string>; trusted?: string[]; deferred?: boolean; browser?: boolean; restartMs?: number; sandbox?: boolean | 'teammates'; onResult?: (key: string, total: number, resumed: boolean, tokens?: Tokens) => void; lean?: { model?: string; effort?: string; mcp: Record<string, unknown>; permissions?: Record<string, unknown> }; onMcp?: (q: unknown) => void; trustedPeople?: { ids: string[] } } = {}) {
   const sdk = fakeSdk(o)
   const dropped: string[] = []
   const keysDropped: string[] = []
@@ -51,7 +51,7 @@ function setup(o: { saved?: Record<string, string>; transcript?: boolean; silent
     users: { info: async () => ({}) },
   }
   const dir = mkdtempSync(join(tmpdir(), 'kage-sdk-'))
-  const approvals = deferredApprovals(openStore(':memory:'))
+  const approvals = deferredApprovals(openStore(':memory:'), undefined, () => o.holdDays ?? 0)
   const servers: Parameters<typeof createSdkMcpServer>[0][] = []
   const call = (name: string, args: object) => (servers.at(-1)!.tools!.find(x => x.name === name)!.handler as any)(args, {})
   let d!: Dispatcher<ToSession>
@@ -67,7 +67,7 @@ function setup(o: { saved?: Record<string, string>; transcript?: boolean; silent
     ...o.lean && { lean: () => o.lean },
     grantOf: key => o.grants?.[key],
     allowOf: key => o.allows?.[key] ?? [],
-    ...o.review !== undefined && { reviewHeld: async () => typeof o.review === 'boolean' ? { release: o.review, said: o.review ? 'run' as const : 'hold' as const } : o.review! },
+    ...o.review !== undefined && { reviewHeld: async () => { o.onReview?.(); return typeof o.review === 'boolean' ? { release: o.review, said: o.review ? 'run' as const : 'hold' as const } : o.review! } },
     ownerMemory: '/owner', ownMemory: '/own-memory',
     envFile: '/cfg/env',
     codeDir: '/code/kage', sandbox: owner => sandboxed(o.sandbox ?? true, owner),
@@ -1280,6 +1280,24 @@ describe('Kage sessions on the Agent SDK', () => {
     assert.equal(t.posts.length, 2)
     t.approvals.answer(t.idOf(t.posts[1]!), 'allow', Date.now())
     assert.equal((await run({ command: 'kubectl apply -f other.yaml' })).hookSpecificOutput.permissionDecision, 'deny')
+  })
+  test("a step the owner denied is refused on retry with the date, with no new card and no reviewer call", async () => {
+    const key = 'C1:5.5#side-kagelet-ops'
+    let asked = 0
+    const t = setup({ grants: { [key]: ['all'] }, deferred: true, holdDays: 7, review: { release: false, said: 'run' }, onReview: () => { asked++ } })
+    t.d.task(key, t.task({ fromOwner: false }), 0)
+    await tick()
+    const run = (command: string) => t.sdk.runs[0]!.options.hooks.PreToolUse[0].hooks[0]({ hook_event_name: 'PreToolUse', tool_name: 'Bash', tool_input: { command } }, undefined, { signal: signal() })
+    await run('rm -rf build')
+    const deniedOn = Date.now()
+    t.approvals.answer(t.idOf(t.posts[0]!), 'deny', deniedOn)
+    const again = await run('rm -rf build')
+    assert.equal(again.hookSpecificOutput.permissionDecision, 'deny')
+    assert.match(again.hookSpecificOutput.permissionDecisionReason, new RegExp(`owner said no to this exact step on ${new Date(deniedOn).toLocaleDateString('en-CA')}`))
+    assert.equal(t.posts.length, 1)
+    assert.equal(asked, 1)
+    await run('rm -rf dist')
+    assert.equal(t.posts.length, 2)
   })
   test('a kagelet has at most a few open cards: past them, a held step goes to its needs as before', async () => {
     const key = 'C1:5.5#side-kagelet-ops'
