@@ -38,8 +38,27 @@ test('Jev shows its calls and failures since midnight, and a skipped triage is n
   h.see(['triage C1:5.5: react: owner react 0.96, reaction thumbsup 0.90, 300 ms'], start + 2 * MIN)
   h.see(['triage C1:5.5: session: jev failed (timeout), reaction none 0.00, 4000 ms'], start + 3 * MIN)
   h.see(['afk: jev failed (timeout), using the Claude triage'], start + 4 * MIN)
-  assert.equal(h.lines(start + 5 * MIN)[5], 'jev       on · 3 calls today, 2 failed')
+  h.see(['answering C1:5.5 from app A0BOT0001: jev needs_reply 0.91 (threshold 0.5)'], start + 4 * MIN)
+  h.see(['dropped C1:5.5 from app A0BOT0001: jev does not check this agent'], start + 4 * MIN)
+  h.see(['dropped C1:5.5 from U0AAA0001 (app A0BOT0001): loop, too many turns: 5'], start + 4 * MIN)
+  assert.equal(h.lines(start + 5 * MIN)[5], 'jev       on · 3 calls today, 1 failed')
   assert.equal(h.lines(Date.parse('2026-11-23T00:30:00'))[5], 'jev       on · 0 calls today')
+})
+
+test('a down WhatsApp bridge stays on the line until it is back, past the hour (#256 review)', () => {
+  const h = started('whatsapp')
+  h.see(['whatsapp bridge down'], start + MIN)
+  assert.match(h.lines(start + 3 * 60 * MIN)[1]!, /^whatsapp  on · bridge down · /)
+  h.see(['whatsapp bridge back'], start + 4 * 60 * MIN)
+  assert.doesNotMatch(h.lines(start + 4 * 60 * MIN)[1]!, /bridge down/)
+})
+
+test('what Kage sent is not something heard, and a Slack post failure is not the connector failing', () => {
+  const h = started('email', 'meetings')
+  h.see(['mail sent for', 'ab12', 'to', 2, 'people'], start + MIN)
+  h.see(['meeting post failed', new Error('not_in_channel')], start + MIN)
+  assert.equal(h.lines(start + 2 * MIN)[0], 'email     on · nothing heard since the hub started 2m ago')
+  assert.equal(h.lines(start + 2 * MIN)[3], 'meetings  on · nothing heard since the hub started 2m ago')
 })
 
 test('lines that name no connector, or name one in passing, change nothing', () => {
