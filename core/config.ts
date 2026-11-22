@@ -41,7 +41,7 @@ export const Config = z.strictObject({
   telemetry: z.strictObject({ on: yes, endpoint: text }).optional(),
   screen: z.strictObject({ shotLongSide: count }).optional(),
   top: z.strictObject({ threadCostBar: money }).optional(),
-  tunnel: z.strictObject({ provider: z.enum(['tailscale', 'off']).optional(), routes: z.record(z.string().regex(/^\/[\w-]+$/), z.string()).optional() }).optional(),
+  tunnel: z.strictObject({ provider: z.enum(['tailscale', 'off']).optional(), targets: strings }).optional(),
   tripwires: z.strictObject({ on: yes, timeoutSec: count, maxKb: count, failPing: count, patternMax: count, lineMax: count, maxPosts: count, catchUpMax: count, seenMax: count, hookPort: count, hookHost: text, hookPerHour: count, env: strings, swapAfter: count, shadowWindowMin: count, swapUndoDays: count }).optional(),
   connectors: z.strictObject({
     email: z.strictObject({ on: yes, address: text, queue: text, ownerEmail: text, region: text, teammateEmails: strings }).optional(),
@@ -88,15 +88,13 @@ const agents: Codec = {
   },
   write: (a: Agent[]) => a.map(agentLine).join(','),
 }
-const pathMap = (pair: RegExp): Codec => ({
+const commands: Codec = {
   read: v => {
-    const pairs = items(v).map(e => pair.exec(e))
+    const pairs = items(v).map(e => /^(\/[a-z][a-z0-9-]{1,30})=(\/\S+)$/.exec(e))
     return pairs.every(Boolean) && new Set(pairs.map(m => m![1])).size === pairs.length ? Object.fromEntries(pairs.map(m => [m![1], m![2]])) : undefined
   },
   write: (o: Record<string, string>) => Object.entries(o).map(([k, p]) => `${k}=${p}`).join(','),
-})
-const commands = pathMap(/^(\/[a-z][a-z0-9-]{1,30})=(\/\S+)$/)
-const routes = pathMap(/^(\/[\w-]+)=(https?:\/\/\S+)$/)
+}
 
 type Row = { env: string; path: string; codec: Codec; secret?: true }
 const R = (env: string, path: string, codec: Codec = str, secret?: true): Row => ({ env, path, codec, ...(secret && { secret }) })
@@ -118,7 +116,7 @@ export const KEYS: Row[] = [
   R('KAGE_TRIPWIRES', 'tripwires.on', onoff), R('KAGE_TRIPWIRES_TIMEOUT_SEC', 'tripwires.timeoutSec', int), R('KAGE_TRIPWIRES_MAX_KB', 'tripwires.maxKb', int),
   R('KAGE_TRIPWIRES_FAIL_PING', 'tripwires.failPing', int), R('KAGE_TRIPWIRES_PATTERN_MAX', 'tripwires.patternMax', int), R('KAGE_TRIPWIRES_LINE_MAX', 'tripwires.lineMax', int),
   R('KAGE_TRIPWIRES_ENV', 'tripwires.env', list),
-  R('KAGE_TELEMETRY', 'telemetry.on', onoff), R('KAGE_TELEMETRY_ENDPOINT', 'telemetry.endpoint'), R('KAGE_SCREEN_SHOT_LONG_SIDE', 'screen.shotLongSide', int), R('KAGE_TOP_THREAD_COST_BAR', 'top.threadCostBar', num), R('KAGE_TUNNEL_PROVIDER', 'tunnel.provider'), R('KAGE_TUNNEL_ROUTES', 'tunnel.routes', routes),
+  R('KAGE_TELEMETRY', 'telemetry.on', onoff), R('KAGE_TELEMETRY_ENDPOINT', 'telemetry.endpoint'), R('KAGE_SCREEN_SHOT_LONG_SIDE', 'screen.shotLongSide', int), R('KAGE_TOP_THREAD_COST_BAR', 'top.threadCostBar', num), R('KAGE_TUNNEL_PROVIDER', 'tunnel.provider'), R('KAGE_TUNNEL_TARGETS', 'tunnel.targets', list),
   R('KAGE_EMAIL', 'connectors.email.on', onoff), R('KAGE_MAIL_ADDRESS', 'connectors.email.address'), R('KAGE_MAIL_QUEUE', 'connectors.email.queue'),
   R('KAGE_OWNER_EMAIL', 'connectors.email.ownerEmail'), R('KAGE_AWS_REGION', 'connectors.email.region'), R('KAGE_TEAMMATE_EMAILS', 'connectors.email.teammateEmails', list),
   R('KAGE_VOICE', 'connectors.voice.on', onoff), R('KAGE_VOICE_PORT', 'connectors.voice.port', int), R('KAGE_VOICE_MAX', 'connectors.voice.max', int),

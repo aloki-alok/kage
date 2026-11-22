@@ -184,7 +184,7 @@ Each public route still checks its own secret or token, so the URL alone lets no
 | Setting | Default | What it does |
 |---|---|---|
 | `tunnel.provider` | `off` | `tailscale` once `kage tunnel on` ran, and `off` again after `kage tunnel off`. `kage doctor` checks the routes only while it is `tailscale`. |
-| `tunnel.routes` | none | Set by `kage tunnel`: each path it opened on port 8443 and where that path points. Kage closes or changes only these, so a handler you made there is never touched. Do not edit it. |
+| `tunnel.targets` | none | Set by `kage tunnel`: each local address a path on port 8443 points at that Kage made. Kage closes or changes only these, so a handler you made there is never touched. Do not edit it. |
 
 ## Tripwires
 

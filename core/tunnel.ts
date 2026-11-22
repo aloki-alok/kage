@@ -30,9 +30,9 @@ const CHECK_PATH = '/kage-funnel-check'
 
 function ownership(settings: { config: Config }, status: unknown) {
   const s = (status ?? {}) as ServeStatus, web = kageWeb(s), handlers = web?.[1].Handlers ?? {}
-  const recorded = settings.config.tunnel?.routes ?? {}
-  const owned = (p: string, h: { Proxy?: string }) => p === CHECK_PATH || (OWN_PATHS.includes(p) && recorded[p] === h.Proxy)
-  return { s, web, handlers, recorded, owned }
+  const made = settings.config.tunnel?.targets ?? []
+  const owned = (p: string, h: { Proxy?: string }) => p === CHECK_PATH || (OWN_PATHS.includes(p) && made.includes(h.Proxy ?? ''))
+  return { s, web, handlers, made, owned }
 }
 
 export function tunnelPlan(settings: { config: Config; secrets: Secrets }, now: { funnel: boolean; status: unknown }, to: 'on' | 'off') {
@@ -51,10 +51,10 @@ export function tunnelPlan(settings: { config: Config; secrets: Secrets }, now: 
   return { run: [...close, ...open, ...tcp], opens, foreign, waitsForFunnel: !now.funnel && want.size > 0 }
 }
 
-export function tunnelRecord(settings: { config: Config }, status: unknown, opened: Record<string, string>): Record<string, string> {
-  const { handlers, recorded, owned } = ownership(settings, status)
-  if (status === undefined) return { ...recorded, ...opened }
-  return Object.fromEntries(Object.entries(handlers).filter(([p, h]) => p !== CHECK_PATH && (owned(p, h) || opened[p] === h.Proxy)).map(([p, h]) => [p, h.Proxy!]))
+export function tunnelRecord(settings: { config: Config }, status: unknown, opened: Record<string, string>): string[] {
+  const { handlers, made, owned } = ownership(settings, status)
+  if (status === undefined) return [...new Set([...made, ...Object.values(opened)])]
+  return Object.entries(handlers).filter(([p, h]) => p !== CHECK_PATH && (owned(p, h) || opened[p] === h.Proxy)).map(([, h]) => h.Proxy!)
 }
 
 export function routeStates(routes: TunnelRoute[], status: unknown) {

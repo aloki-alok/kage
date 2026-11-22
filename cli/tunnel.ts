@@ -28,7 +28,7 @@ const funnelLink = () => {
 
 const s = settings()
 const plan = tunnelPlan(s, { funnel: before.funnel, status: before.serve }, to)
-const save = (routes: Record<string, string>) => updateConfig(ENV_FILE, c => ({ ...c, tunnel: { provider: to === 'on' ? 'tailscale' : 'off', ...Object.keys(routes).length && { routes } } }))
+const save = (targets: string[]) => updateConfig(ENV_FILE, c => ({ ...c, tunnel: { provider: to === 'on' ? 'tailscale' : 'off', ...targets.length && { targets } } }))
 save(tunnelRecord(s, undefined, plan.opens))
 const failed: string[] = []
 for (const args of plan.run) {
@@ -39,11 +39,12 @@ if (plan.waitsForFunnel && !plan.foreign.length) {
   const link = funnelLink()
   failed.push(`Funnel is not allowed for this machine, so the public routes stay closed. Allow it${link ? ` at ${link}` : ' in the Tailscale admin page'}, then run kage tunnel on again.`)
 }
-const now = tailscaleState(bin), wanted = to === 'on' ? tunnelRoutes(s) : [], routes = tunnelRecord(s, now.serve, plan.opens)
-save(routes)
+const now = tailscaleState(bin), wanted = to === 'on' ? tunnelRoutes(s) : [], targets = tunnelRecord(s, now.serve, plan.opens)
+save(targets)
 if (now.serve === undefined) failed.push(unread('kept every route it may have opened in its record'))
-const left = to === 'off' && now.serve !== undefined ? Object.keys(routes) : []
-for (const p of left) failed.push(`Kage could not close ${p} on port 8443. Run tailscale serve --https=8443 --set-path=${p} off.`)
+const made = { ...s, config: { ...s.config, tunnel: { targets } } }
+const left = to === 'off' && now.serve !== undefined ? tunnelPlan(made, { funnel: false, status: now.serve }, 'off').run : []
+for (const args of left) failed.push(`Kage could not close a route. Run tailscale ${args.join(' ')}.`)
 
 if (now.serve !== undefined) for (const line of tunnelLines({ provider: 'tailscale', installed: true, ...now, routes: wanted, status: now.serve })) console.log(render(line))
 if (to === 'off' && now.serve !== undefined && !left.length) console.log('Every Kage route is closed.')
