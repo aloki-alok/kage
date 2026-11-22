@@ -143,6 +143,32 @@ Ask in a thread: `@kage check the deploy every 30 minutes`, or `@kage tell me wh
 
 Slack is the main channel. Email, voice calls and GitHub events (reviews, failed checks, issues assigned to you) can reach the same Kage too. Each is off until you set it up: see [the settings reference](settings.md).
 
+### Let Kage watch GitHub
+
+```sh
+kage github        # uses your gh login; with no gh, it asks for a classic token
+kage github off    # turns it off
+```
+
+Kage then opens one thread in your DM per pull request or issue when a teammate mentions you, asks for your review, assigns you, reviews your pull request, or when its checks fail. It reads the code and tells you what needs you. It never comments or pushes on GitHub without your yes. A mention counts only from people the repo lists as owner, member or collaborator, so a stranger cannot start work on your machine.
+
+It works for every repo and organization you can see, with nothing to set up there and no public URL: Kage reads your GitHub notifications about once a minute. GitHub is optional, and nothing else in Kage needs it.
+
+### Get GitHub events at once
+
+Reading notifications takes up to a minute. For events within a second, GitHub sends a webhook to your machine instead, so it needs a public URL. Pick one tunnel:
+
+| Tunnel | Needs | Start it |
+|---|---|---|
+| Tailscale Funnel | A free Tailscale account, Tailscale on this machine | `tailscale funnel --bg 8789`. The URL is `https://<machine>.<tailnet>.ts.net/github`. |
+| Cloudflare Tunnel | A Cloudflare account and a domain on it | `cloudflared tunnel create kage`, `cloudflared tunnel route dns kage kage-github.<your domain>`, then run it with an ingress rule to `http://127.0.0.1:8789`. |
+
+1. Make a secret: `openssl rand -hex 32`.
+2. Save it as `githubSecret` in `~/.config/kage/secrets.json`, then run `kage restart`.
+3. On GitHub, add a webhook on a repo, or on an organization for all its repos (you need admin rights there). Use your tunnel URL ending in `/github`, content type JSON, your secret, and these events: pull request reviews, pull requests, issues, issue comments, check suites.
+
+When a webhook secret is set, Kage stops reading notifications, so each event arrives once.
+
 ### Let it see and record your screen (macOS)
 
 Ask Kage in your own thread for a screenshot or a screen recording, such as "record the signup flow in Chrome". It can record the whole main display or only one app's windows. It works while it records and sends you the MP4 in the thread. A recording stops when Kage is done, or after 10 minutes at most.

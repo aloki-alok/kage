@@ -7,6 +7,7 @@ export const SECRETS = {
   config: { prefix: 'xoxe.xoxp-', name: 'configuration Access Token' },
   refresh: { prefix: 'xoxe-', name: 'configuration Refresh Token' },
   claude: { prefix: 'sk-ant-oat', name: 'Claude token' },
+  github: { prefix: 'gh', name: 'GitHub token' },
 } satisfies Record<string, Secret>
 
 const KNOWN: Secret[] = Object.values(SECRETS)
