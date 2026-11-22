@@ -115,7 +115,7 @@ export function listenForSessions(path: string, d: Dispatcher<ToSession>, o: Rep
         } else if (m.type === 'kagelet' && !key && !held && typeof m.name === 'string') {
           const action = (m as { action?: unknown }).action as PanelAction
           const answer = (r: { text: string } | { refused: string }) => sock.write(JSON.stringify({ type: 'kagelet', ...r }) + '\n')
-          if (!Object.values(PANEL_KEYS).includes(action)) answer({ refused: `kage top runs, pauses, resumes or removes a kagelet, or revokes the standing approval, not ${String(action)}` })
+          if (!Object.values(PANEL_KEYS).includes(action)) answer({ refused: `kage top runs, pauses, resumes or removes a kagelet, revokes the standing approval, or lifts deny holds, not ${String(action)}` })
           else if (!o.kagelet) answer({ refused: 'this hub cannot act on kagelets' })
           else void o.kagelet(action, m.name).then(text => answer({ text }), (e: Error) => answer({ refused: e.message }))
         } else if (m.type === 'stop' && !key && !held && typeof m.key === 'string') {

@@ -133,6 +133,7 @@ describe('approvals that wait outside a session', () => {
     assert.equal(a.deniedAt(lane, 'Bash', { command: 'rm -rf build' }, DAY), undefined)
     assert.equal(a.deniedAt(lane, 'Bash', { command: 'git push --force origin feat/b' }, DAY), undefined)
     assert.equal(a.deniedAt('C0TEST1:5.5#side-kagelet-docs', 'Bash', { command: 'git push --force origin feat/a' }, DAY), undefined)
+    assert.equal(a.deniedAt('C0TEST2:9.9#side-kagelet-ops', 'Bash', { command: 'git push --force origin feat/a' }, DAY), undefined)
     assert.equal(deferredApprovals(openStore(':memory:')).deniedAt(lane, 'Bash', { command: 'x' }, 0), undefined)
     assert.equal(a.deniedAt(lane, 'Bash', { command: 'git push --force origin feat/a' }, 7 * DAY + 10), undefined)
   })
@@ -145,10 +146,22 @@ describe('approvals that wait outside a session', () => {
       a.answer(id, 'deny', 1)
     }
     const after = deferredApprovals(store, undefined, () => 7)
-    assert.equal(after.unhold('ops'), 2)
+    assert.equal(after.unhold('ops', 2), 2)
     assert.equal(after.deniedAt('C0TEST1:5.5#side-kagelet-ops', 'Bash', { command: 'rm -rf u1' }, 2), undefined)
     assert.equal(after.deniedAt('C0TEST1:6.6#side-kagelet-docs', 'Bash', { command: 'rm -rf u3' }, 2), 1)
-    assert.equal(after.unhold('ops'), 0)
+    assert.equal(after.unhold('ops', 3), 0)
+  })
+
+  test('lifting counts only live holds, and a kagelet whose name ends like another keeps its own', () => {
+    const DAY = 24 * HOUR
+    const a = deferredApprovals(openStore(':memory:'), undefined, () => 7)
+    for (const [id, key, at] of [['p1', 'C0TEST1:5.5#side-kagelet-ops', 0], ['p3', 'C0TEST1:6.6#side-kagelet-xops', 6 * DAY]] as const) {
+      a.add({ ...call, id, key, input: { command: `rm -rf ${id}` } }, at)
+      a.answer(id, 'deny', at)
+    }
+    assert.equal(a.unhold('ops', 10 * DAY), 0)
+    assert.equal(a.deniedAt('C0TEST1:6.6#side-kagelet-xops', 'Bash', { command: 'rm -rf p3' }, 10 * DAY), 6 * DAY)
+    assert.equal(a.unhold('xops', 10 * DAY), 1)
   })
 
   test('a no tells the thread to stop and spends nothing', () => {

@@ -60,11 +60,10 @@ export function deferredApprovals(store: Saved, heard: (v: CardVerdict) => void 
     deniedAt(key: string, tool: string, input: Record<string, unknown>, now: number): number | undefined {
       return holds(now)[holdKey(key, tool, input)]
     },
-    unhold(kagelet: string): number {
-      const h = (store.load(DENY_HOLDS) ?? {}) as Record<string, number>
-      const lifted = Object.keys(h).filter(k => k.split('\n')[0]!.endsWith(`#side-kagelet-${kagelet}`))
-      for (const k of lifted) delete h[k]
-      putHolds(h)
+    unhold(kagelet: string, now: number): number {
+      const live = holds(now), ofKagelet = (k: string) => k.split('\n')[0]!.endsWith(`#side-kagelet-${kagelet}`)
+      const lifted = Object.keys(live).filter(ofKagelet)
+      putHolds(Object.fromEntries(Object.entries(live).filter(([k]) => !ofKagelet(k))))
       return lifted.length
     },
     take(key: string, tool: string, input: Record<string, unknown>, now: number): boolean {

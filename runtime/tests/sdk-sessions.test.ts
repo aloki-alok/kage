@@ -1293,7 +1293,7 @@ describe('Kage sessions on the Agent SDK', () => {
     t.approvals.answer(t.idOf(t.posts[0]!), 'deny', deniedOn)
     const again = await run('rm -rf build')
     assert.equal(again.hookSpecificOutput.permissionDecision, 'deny')
-    assert.match(again.hookSpecificOutput.permissionDecisionReason, new RegExp(`owner said no to this exact step on ${new Date(deniedOn).toISOString().slice(0, 10)}`))
+    assert.match(again.hookSpecificOutput.permissionDecisionReason, new RegExp(`owner said no to this exact step on ${new Date(deniedOn).toLocaleDateString('en-CA')}`))
     assert.equal(t.posts.length, 1)
     assert.equal(asked, 1)
     await run('rm -rf dist')
