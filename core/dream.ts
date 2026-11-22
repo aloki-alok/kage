@@ -14,7 +14,17 @@ export function threadsSince(sessions: Record<string, string>, mtime: (id: strin
     .map(([key, id]) => ({ key, id }))
 }
 
-export function dreamTask(m: { own: string; owner: string }, threads: { place: string; file: string; key?: string }[], since: string, skills?: { dir: string; pr: boolean }, mistakes = '', checked = false): string {
+export type MemoryFile = { name: string; kb: number; date: string }
+type MemoryListing = { own: MemoryFile[]; owner: MemoryFile[] }
+const LISTING_CAP = 200
+
+function listed(dir: string, files: MemoryFile[]): string {
+  const shown = files.slice(0, LISTING_CAP).map(f => `   ${f.name} ${f.kb} KB ${f.date}`)
+  const cut = files.length - shown.length
+  return [`   Listing of ${dir} (name, size, last change):`, ...shown.length ? shown : ['   (no files)'], ...cut > 0 ? [`   ... ${cut} more files not shown`] : []].join('\n')
+}
+
+export function dreamTask(m: { own: string; owner: string }, threads: { place: string; file: string; key?: string }[], since: string, skills?: { dir: string; pr: boolean }, mistakes = '', checked = false, listing: MemoryListing = { own: [], owner: [] }): string {
   const read = threads.length
     ? [
         `1. Today's threads. Read what happened in each one after ${since}: the tasks (\`jq -r 'select(.type=="user" and .timestamp>"${since}") | .message.content | if type=="string" then . else (map(select(.type=="text").text) | join("\\n")) end | select(length>0)' <file>\`).`,
@@ -27,9 +37,11 @@ export function dreamTask(m: { own: string; owner: string }, threads: { place: s
   return [
     'Nightly dream. Nobody wrote a new message: the hub started this while every session was quiet.',
     ...read,
-    `2. Your memory, ${m.own}: first list it with the Glob tool (path ${m.own}, pattern \`**/*\`, then \`.archive/*\`). Only the listing says which files exist. MEMORY.md and the ledger name files that were since merged, renamed or archived, so read a file only after you see it listed. Then merge notes that say the same thing, and where two disagree keep the newer one. Move a note nobody needed for 30 days into ${m.own}/.archive/: Write a copy there, then empty the old file with Write; never delete a file. Keep MEMORY.md in step with the files. Change every file in that folder with the Write and Edit tools, never a shell command: a shell command that names the folder is refused.`,
+    `2. Your memory, ${m.own}. The listing of ${m.own} below is every file in it as of the start of this dream, so read a file only if it is listed. MEMORY.md and the ledger name files that were since merged, renamed or archived. Merge notes that say the same thing, and where two disagree keep the newer one. Move a note nobody needed for 30 days into ${m.own}/.archive/: Write a copy there, then empty the old file with Write; never delete a file. Keep MEMORY.md in step with the files. Change every file in that folder with the Write and Edit tools, never a shell command: a shell command that names the folder is refused.`,
+    listed(m.own, listing.own),
     `3. For every note you move, merge or edit yourself, append one line to ${m.own}/.dream-ledger.tsv (Read it, then Edit or Write it with the new line added): ISO time, action, file, one-line reason.`,
-    `4. The owner's memory, ${m.owner}, is read only for you. List files over 20 KB, index lines whose file is missing, and notes that contradict each other.`,
+    `4. The owner's memory, ${m.owner}, is read only for you. From the listing below, name the files over 20 KB. Also name index lines whose file is not listed, and notes that contradict each other.`,
+    listed(m.owner, listing.owner),
     ...mistakes ? [mistakesStep(m.own, mistakes)] : [],
     ...skills ? [skillStep(skills)] : [],
     '5. Reply here in at most 5 lines: what you learned from the threads, what you changed in your memory, then what the owner should look at in theirs. Nothing changed and nothing found: one line saying so.',

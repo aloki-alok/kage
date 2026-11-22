@@ -11,6 +11,7 @@ import type { Task } from '../core/task.ts'
 import { readKagelets } from '../runtime/kagelets/files.ts'
 import type { kageletMemory } from '../runtime/kagelets/memory.ts'
 import type { Ledgers } from '../runtime/ledger.ts'
+import { listMemory } from '../runtime/memory-listing.ts'
 import { snapshotMemory } from '../runtime/memory-snapshot.ts'
 import { canPushToKage } from '../runtime/repo-access.ts'
 import type { Store } from '../runtime/store.ts'
@@ -47,7 +48,7 @@ export function dreams(o: {
       const mistakes = selfReview(o.ledgers.text('waiting', iso), lastDay(now), iso, o.placeOf)
       const c: Conversation = { connector: 'slack', chat: o.botDm, kind: 'dm', agentDm: true }
       const task = taskAsOwner({
-        content: dreamTask(o.mem, threads, iso, { dir: `${o.code}/skills`, pr: await ownsRepo }, mistakes, o.hasSdk),
+        content: dreamTask(o.mem, threads, iso, { dir: `${o.code}/skills`, pr: await ownsRepo }, mistakes, o.hasSdk, { own: listMemory(o.mem.own, true), owner: listMemory(o.mem.owner, false) }),
         meta: { channel: o.botDm, thread_ts: '', place: `DM with ${o.title} (dream)`, permalink: '' },
         origin: { channel: o.botDm, ts: '' },
         scheduled: true,

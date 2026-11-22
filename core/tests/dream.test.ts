@@ -35,11 +35,23 @@ test('the dream names each thread and its transcript, and asks for lessons from 
   assert.match(dreamTask({ own: '/m/kage', owner: '/m/owner' }, [], 'x'), /no threads moved/i)
 })
 
-test("the dream lists its memory folder first and changes it with Write and Edit, not a shell", () => {
-  const t = dreamTask({ own: "/m/kage", owner: "/m/owner" }, [], "x")
-  assert.match(t, /Glob tool \(path \/m\/kage/)
-  assert.match(t, /only the listing says which files exist/i)
+test('the dream gets both memory listings in its task, needs no listing tool, and changes memory with Write and Edit', () => {
+  const listing = { own: [{ name: 'merge-style.md', kb: 2, date: '2026-11-10' }, { name: '.archive/old.md', kb: 1, date: '2026-10-01' }], owner: [{ name: 'big-note.md', kb: 31, date: '2026-11-12' }] }
+  const t = dreamTask({ own: '/m/kage', owner: '/m/owner' }, [], 'x', undefined, '', false, listing)
+  assert.match(t, /merge-style\.md 2 KB 2026-11-10/)
+  assert.match(t, /\.archive\/old\.md 1 KB 2026-10-01/)
+  assert.match(t, /big-note\.md 31 KB 2026-11-12/)
+  assert.match(t, /only if it is listed/i)
+  assert.doesNotMatch(t, /Glob/)
   assert.match(t, /Write and Edit tools, never a shell command/)
+})
+
+test('a listing over the cap shows the first lines and counts the rest', () => {
+  const own = Array.from({ length: 450 }, (_, i) => ({ name: `n${String(i).padStart(3, '0')}.md`, kb: 1, date: '2026-11-10' }))
+  const t = dreamTask({ own: '/m/kage', owner: '/m/owner' }, [], 'x', undefined, '', false, { own, owner: [] })
+  assert.match(t, /n199\.md/)
+  assert.doesNotMatch(t, /n200\.md/)
+  assert.match(t, /250 more files not shown/)
 })
 
 test('the dream reads its own mistakes and decides alone what it kept asking', () => {

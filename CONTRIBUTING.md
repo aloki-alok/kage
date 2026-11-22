@@ -267,6 +267,7 @@ Write logs to stderr only. In a tmux pane, stdout carries the channel protocol, 
 | `key-proxy.ts` | The key proxy (#182): a unix socket that adds a held key to requests for its one host, so the session never sees it. |
 | `dream-lessons.ts` | Applying the dream's checked lessons to Kage's memory: a kept one becomes a note with an index line, a retired note moves to `.archive/`, and every drop is a ledger line. |
 | `memory-snapshot.ts` | A copy of Kage's memory before a dream, so `kage dream undo` restores it. |
+| `memory-listing.ts` | The files in Kage's memory and in the owner's, with size and last change. The dream task carries them, so the dream needs no listing tool. |
 | `repo-access.ts` | Whether this install may push to the Kage repo, which marks the repo owner's hub. |
 | `channel-watch.ts` | Jobs that watch a Slack channel (tripwire rung 2): which jobs a post is for (channel, match, bots allowed), the recent post ids seen per channel, the catch-up cursor, the quoted posts held until the job takes them, and the catch-up after a socket gap, one channel at a time. The hub wires it to `channelPost` and `channelCatchUp` in `connectors/slack/connect.ts`. |
 | `job-events.ts` | The rules between an event and its job (tripwire rung 2): a refused unsafe match, the watch set and removed with its job, a post or a catch-up turned into a wake of the job's lane, the capped catch-up repeated until the channel is read, one ping per failing channel, and one `tripwire` event row per step (ids and counts only). |
