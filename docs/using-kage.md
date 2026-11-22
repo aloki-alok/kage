@@ -143,6 +143,21 @@ Ask in a thread: `@kage check the deploy every 30 minutes`, or `@kage tell me wh
 
 Slack is the main channel. Email, voice calls and GitHub events (reviews, failed checks, issues assigned to you) can reach the same Kage too. Each is off until you set it up: see [the settings reference](settings.md).
 
+### Let Kage watch GitHub
+
+```sh
+kage github        # uses your gh login; with no gh, it asks for a classic token
+kage github off    # turns it off
+```
+
+Kage then opens one thread in your DM per pull request or issue when a teammate mentions you, asks for your review, assigns you, reviews your pull request, or when its checks fail. It reads the code and tells you what needs you. It never comments or pushes on GitHub without your yes. A mention counts only from people the repo lists as owner, member or collaborator, so a stranger cannot start work on your machine.
+
+It works for every repo and organization you can see, with nothing to set up there and no public URL: Kage reads your GitHub notifications about once a minute. GitHub is optional, and nothing else in Kage needs it.
+
+### Get GitHub events at once
+
+Reading notifications takes up to a minute. A webhook brings each event within a second, but GitHub must reach your machine, so it needs a public URL to `127.0.0.1:8789/github`. Set `githubSecret`, then add the webhook on a repo or an organization ([settings](settings.md), `githubSecret`). When a webhook secret is set, Kage stops reading notifications, so each event arrives once.
+
 ### Let it see and record your screen (macOS)
 
 Ask Kage in your own thread for a screenshot or a screen recording, such as "record the signup flow in Chrome". It can record the whole main display or only one app's windows. It works while it records and sends you the MP4 in the thread. A recording stops when Kage is done, or after 10 minutes at most.

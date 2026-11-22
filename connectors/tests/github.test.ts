@@ -14,12 +14,12 @@ async function setup(postMs = 0, perHour = 100, store: Store = openStore(':memor
   let failing = () => false
   let throwing = false
   const gh = connectGithub({
-    saved: store, secret: SECRET, login: 'me', port: 0, botDm: 'DB', perHour, notify: (t: string) => void told.push(t),
+    saved: store, via: { webhook: { secret: SECRET, port: 0 } }, login: 'me', botDm: 'DB', perHour, notify: (t: string) => void told.push(t),
     inbox: { take: (s, c, p) => store.take(s, c, p, Date.now()), handled: s => store.handled(s), has: s => store.has(s) },
     post: async (text, thread) => { await new Promise(r => setTimeout(r, postMs)); if (failing()) return undefined; posts.push({ text, ...(thread && { thread }) }); return String(ts++) },
     deliver: (c, task) => { if (throwing) throw new Error('runner down'); tasks.push({ key: `${c.chat}:${c.thread}`, content: task.content, fromOwner: task.fromOwner === true }); sources.push(task.source); return 'sent' },
   })
-  const port = await gh.listening
+  const port = await gh.listening!
   const send = (body: string, type = 'pull_request_review', sig: string | undefined = undefined, id = '') => {
     const headers: Record<string, string> = { 'x-github-event': type, 'x-hub-signature-256': sig ?? `sha256=${createHmac('sha256', SECRET).update(body).digest('hex')}`, 'content-type': 'application/json' }
     if (id) headers['x-github-delivery'] = id

@@ -183,6 +183,7 @@ Write logs to stderr only. In a tmux pane, stdout carries the channel protocol, 
 | `dream.ts` | The nightly dream job: what it reads for lessons, how it tidies Kage's memory, which lessons may leave this machine, and `checkDream`, the check a lesson passes before it reaches memory (#488): two threads or more with exact quotes, enough confidence, a nightly cap. |
 | `signature.ts` | A webhook body signed with a shared secret (`X-Hub-Signature-256`), as GitHub and Meta sign. |
 | `github.ts` | Which GitHub events are the owner's business (a review or failed checks on their PR, an issue or review request given to them, a mention). |
+| `github-notices.ts` | A GitHub notification read back as the webhook event it stands for, so polling and the webhook share `github.ts`'s rules. Which notifications Kage acts on, the reads each costs, and the source id that keeps each one to a single run. `connectors/github-poll.ts` reads them from a cursor kept in the store. |
 | `kagelets/memory.ts` | A kagelet's own memory folder (#98): what its prompt reads, and the one path into the folder. |
 | `log-repeats.ts` | One log line for a burst of the same line, with its count. |
 | `meeting.ts` | A finished meeting's transcript as one task: notes, decisions, owners, open questions, and proposed actions that wait for the owner's yes. |

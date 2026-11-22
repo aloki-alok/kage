@@ -10,12 +10,14 @@ import type { Task } from '../core/task.ts'
 import type { Inbox, Saved } from '../runtime/store.ts'
 import { taskAsOther } from '../core/gate.ts'
 import { ownerLines } from '../core/messages.ts'
+import { pollGithub } from './github-poll.ts'
 
 const MAX_BODY = 1_000_000
 
 export function connectGithub(o: {
   startError?: () => string | undefined
-  saved: Saved; secret: string; login: string; port: number; botDm: string
+  saved: Saved; login: string; botDm: string
+  via: { webhook: { secret: string; port: number } } | { poll: { token: string; fetch?: typeof fetch } }
   post: (text: string, thread?: string) => Promise<string | undefined>
   deliver: (c: Conversation, task: Task, place: string) => Delivery
   notify: (text: string) => void
@@ -68,26 +70,34 @@ export function connectGithub(o: {
     if (source) o.inbox.handled(source)
     return took
   }
-  const { listening, close: closeServer } = listen((req, res) => {
+  const failed = (e: unknown) => { log('github event failed', e); o.notify(ownerLines.githubFailed(e, 'webhook' in o.via)) }
+  const server = 'webhook' in o.via ? webhook(o.via.webhook) : undefined
+  let stopped = false, timer: ReturnType<typeof setTimeout> | undefined
+  if ('poll' in o.via) {
+    const once = pollGithub({ ...o.via.poll, login: o.login, saved: o.saved, refused: () => o.notify(ownerLines.githubTokenRefused()),
+      feed: async (type, body, source) => { if (!stopped && o.inbox.take(source, 'github', JSON.stringify({ type, body }))) await run(type, body, source).catch(failed) } })
+    const tick = async () => {
+      const wait = await once(Date.now()).catch(e => { log('github poll failed', e); return 60_000 })
+      if (!stopped) timer = setTimeout(tick, wait)
+    }
+    void tick()
+  }
+  function webhook(w: { secret: string; port: number }) { return listen((req, res) => {
     if (req.method !== 'POST' || req.url !== '/github') { res.writeHead(404).end(); return }
     void (async () => {
       const raw = await readBody(req, MAX_BODY)
       if (!raw) { res.writeHead(413).end(); req.destroy(); return }
       const body = raw.toString('utf8')
-      if (!signedSha256(o.secret, body, req.headers['x-hub-signature-256'] as string | undefined)) { res.writeHead(401).end(); return }
+      if (!signedSha256(w.secret, body, req.headers['x-hub-signature-256'] as string | undefined)) { res.writeHead(401).end(); return }
       const type = String(req.headers['x-github-event'] ?? '')
       const id = String(req.headers['x-github-delivery'] ?? '')
       const source = id ? `github:${id}` : undefined
       if (source && !o.inbox.take(source, 'github', JSON.stringify({ type, body }))) { res.writeHead(202).end(); return }
       run(type, body, source)
         .then(took => res.writeHead(took ? 202 : 204).end())
-        .catch(e => {
-          log('github event failed', e)
-          o.notify(ownerLines.githubFailed(e))
-          res.writeHead(500).end()
-        })
+        .catch(e => { failed(e); res.writeHead(500).end() })
     })()
-  }, o.port)
+  }, w.port) }
   const replay = async (source: string, payload: string) => { const { type, body } = JSON.parse(payload); return run(type, body, source) }
-  return { listening, replay, close: closeServer }
+  return { listening: server?.listening, replay, close: () => { stopped = true; clearTimeout(timer); server?.close() } }
 }
