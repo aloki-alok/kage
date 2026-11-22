@@ -174,7 +174,7 @@ One tunnel serves every Kage port another machine needs (#492). Public routes us
 
 | Route | Who calls it | Reach |
 |---|---|---|
-| github | GitHub's webhook, when `githubSecret` is set | public at `https://<machine>.<tailnet>.ts.net:8443/github` |
+| github | the Kage GitHub App's webhook, once `kage connect github` made the app | public at `https://<machine>.<tailnet>.ts.net:8443/github` |
 | voice | the voice agent, when `voiceToken` is set | public at `/mcp` and `/voice` |
 | hooks | job webhooks, when `tripwires.hookPort` is set | public at `/hook/<job>` |
 | meeting | the meeting bot, when `meetingToken` is set | your tailnet only, at `<machine>.<tailnet>.ts.net:<port>` |
@@ -229,9 +229,12 @@ Email is on when `connectors.email.address`, `connectors.email.queue` and `conne
 |---|---|---|
 | `voiceToken` | none | secrets.json. Turns voice on: an MCP endpoint with one tool, `ask_kage`, behind `Authorization: Bearer <token>`. |
 | Hang-up webhook | same voice port | Send `POST /voice/ended` with the same Bearer `voiceToken` and JSON with `call_id` or `session_id` set to the MCP session id (or pass the `mcp-session-id` header) when the caller hangs up. Ends that call at once. Unknown or repeated ids do nothing and return 204; a bad token gets 401. |
-| `githubToken` | none | secrets.json. With `connectors.github.login`, turns GitHub on with no public URL: Kage reads your GitHub notifications about once a minute, as often as GitHub allows. `kage connect github` saves it from your `gh` login. It needs the `notifications` or `repo` scope of a classic token or a `gh` login, because GitHub's fine-grained tokens cannot read notifications. |
-| `githubSecret` | none | secrets.json. Turns on the webhook instead of reading notifications, for events within a second. It needs a public URL that reaches the webhook at `127.0.0.1:<port>/github`, which is checked against this secret. Then add the webhook on a repo or an organization (content type JSON, events: pull request reviews, pull requests, issues, issue comments, check suites). When both are set, the webhook wins. |
-| `connectors.github.login` | none | Your GitHub username. `kage connect github` sets it. Only events that are yours wake Kage: a review on your pull request, failed checks on it, an issue or a review request given to you, a comment that mentions you, from people the repo lists as owner, member or collaborator. Each pull request or issue gets one thread in your DM with Kage. |
+| `connectors.github.app.id` | none | Your Kage GitHub App's id. `kage connect github` sets it when you create the app. With `githubAppKey`, `githubSecret`, `connectors.github.app.slug` and `connectors.github.login`, it turns GitHub on: a tag of `@<slug>` in an issue, a pull request, a review or an inline comment wakes Kage, and nothing else does. |
+| `connectors.github.app.slug` | none | The app's name on GitHub, the one people tag. `kage connect github` sets it. |
+| `githubAppKey` | none | secrets.json. The app's private key. Kage signs short-lived tokens with it to list the app's installations. `kage connect github` saves it, and it never leaves this machine. |
+| `githubSecret` | none | secrets.json. The app's webhook secret. Every delivery is checked against it. `kage connect github` saves it. |
+| `connectors.github.login` | none | Your GitHub username. A tag from it runs as you, and every write still waits for your yes on a card. A tag from anyone else GitHub lists as owner, member or collaborator on the repo may only read and answer. Anyone else is ignored. |
+| `connectors.github.accounts` | your login | The GitHub accounts (you and your orgs) whose installations of the app Kage acts on. An install on any other account is ignored, and its events are dropped. `kage connect github --org <name>` adds an org. |
 | `connectors.github.port` | `8789` | The local port the GitHub webhook listens on. Only the webhook uses it. |
 | `connectors.github.perHour` | `20` | At most this many GitHub events start work in an hour; past it, you get one note and the rest are skipped until the hour is up. |
 | `meetingToken` | none | secrets.json. Turns meeting notes on: a webhook at `127.0.0.1:<port>/meeting` behind `Authorization: Bearer <token>`. Post a finished transcript as JSON: `{"title", "link", "segments": [{"speaker", "text", "start"}]}`, the shape Vexa's `GET /transcripts/...` returns. Each meeting gets a thread in your DM with Kage: notes, decisions, owners, open questions, and follow-ups Kage does only after your yes. |

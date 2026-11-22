@@ -47,7 +47,7 @@ export const Config = z.strictObject({
     email: z.strictObject({ on: yes, address: text, queue: text, ownerEmail: text, region: text, teammateEmails: strings }).optional(),
     voice: z.strictObject({ on: yes, port: count, max: count, perHour: count, model: text }).optional(),
     call: z.strictObject({ command: text }).optional(),
-    github: z.strictObject({ login: text, port: count, perHour: count }).optional(),
+    github: z.strictObject({ login: text, port: count, perHour: count, app: z.strictObject({ id: z.number().int().positive(), slug: z.string().regex(/^[a-z0-9][a-z0-9-]*$/) }).optional(), accounts: strings }).optional(),
     meeting: z.strictObject({ port: count, perHour: count, agentApi: text, agentId: count }).optional(),
     browser: z.strictObject({ port: count, block: strings }).optional(),
     whatsapp: z.strictObject({ on: yes, memory: text, model: text, wahaUrl: text, hookHost: text, hookPort: count, checkMinutes: count }).optional(),
@@ -62,7 +62,7 @@ const sec = z.string().nullable().optional()
 export const Secrets = z.strictObject({
   slack: z.strictObject({ app: sec, user: sec, bot: sec }).optional(),
   aws: z.strictObject({ accessKeyId: sec, secretAccessKey: sec }).optional(),
-  voiceToken: sec, githubSecret: sec, githubToken: sec, meetingToken: sec, browserToken: sec, jevKey: sec, voiceAgentKey: sec, claudeToken: sec,
+  voiceToken: sec, githubSecret: sec, githubAppKey: sec, meetingToken: sec, browserToken: sec, jevKey: sec, voiceAgentKey: sec, claudeToken: sec,
   waha: z.record(z.string().regex(/^[A-Z][A-Z0-9_]*$/), z.string()).optional(),
   cartesiaKey: sec,   // compat: remove after 2026-12-15 (Cartesia speech is gone; an old secrets.json still holds it, and the schema is strict)
   unknown: z.record(z.string(), z.string()).optional(),
@@ -80,6 +80,7 @@ const sandboxCodec: Codec = { read: v => (v === 'on' ? true : v === 'off' ? fals
 const onoff: Codec = { read: v => (v === 'on' ? true : v === 'off' ? false : undefined), write: (b: boolean) => (b ? 'on' : 'off') }
 const items = (v: string) => v.split(',').map(s => s.trim()).filter(Boolean)
 const list: Codec = { read: items, write: (a: string[]) => a.join(',') }
+const lines: Codec = { read: v => v.replace(/\\n/g, '\n'), write: (v: string) => v.replace(/\n/g, '\\n') }
 const people: Codec = { read: v => (items(v).every(validUserId) ? items(v) : undefined), write: (a: string[]) => a.join(',') }
 const agents: Codec = {
   read: v => {
@@ -122,6 +123,7 @@ export const KEYS: Row[] = [
   R('KAGE_VOICE', 'connectors.voice.on', onoff), R('KAGE_VOICE_PORT', 'connectors.voice.port', int), R('KAGE_VOICE_MAX', 'connectors.voice.max', int),
   R('KAGE_VOICE_PER_HOUR', 'connectors.voice.perHour', int), R('KAGE_VOICE_MODEL', 'connectors.voice.model'), R('KAGE_CALL_COMMAND', 'connectors.call.command'),
   R('KAGE_GITHUB_LOGIN', 'connectors.github.login'), R('KAGE_GITHUB_PORT', 'connectors.github.port', int), R('KAGE_GITHUB_PER_HOUR', 'connectors.github.perHour', int),
+  R('KAGE_GITHUB_APP_ID', 'connectors.github.app.id', int), R('KAGE_GITHUB_APP_SLUG', 'connectors.github.app.slug'), R('KAGE_GITHUB_ACCOUNTS', 'connectors.github.accounts', list),
   R('KAGE_MEETING_PORT', 'connectors.meeting.port', int), R('KAGE_MEETING_PER_HOUR', 'connectors.meeting.perHour', int), R('KAGE_MEETING_AGENT_API', 'connectors.meeting.agentApi'), R('KAGE_MEETING_AGENT_ID', 'connectors.meeting.agentId', int),
   R('KAGE_BROWSER_PORT', 'connectors.browser.port', int), R('KAGE_BROWSER_BLOCK', 'connectors.browser.block', list),
   R('KAGE_WHATSAPP', 'connectors.whatsapp.on', onoff), R('KAGE_WA_MEMORY', 'connectors.whatsapp.memory'), R('KAGE_WA_MODEL', 'connectors.whatsapp.model'),
@@ -129,7 +131,7 @@ export const KEYS: Row[] = [
   R('KAGE_COMMANDS', 'connectors.commands', commands),
   R('SLACK_APP_TOKEN', 'slack.app', str, true), R('SLACK_USER_TOKEN', 'slack.user', str, true), R('SLACK_BOT_TOKEN', 'slack.bot', str, true),
   R('KAGE_AWS_ACCESS_KEY_ID', 'aws.accessKeyId', str, true), R('KAGE_AWS_SECRET_ACCESS_KEY', 'aws.secretAccessKey', str, true),
-  R('KAGE_VOICE_TOKEN', 'voiceToken', str, true), R('KAGE_GITHUB_SECRET', 'githubSecret', str, true), R('KAGE_GITHUB_TOKEN', 'githubToken', str, true), R('KAGE_MEETING_TOKEN', 'meetingToken', str, true),
+  R('KAGE_VOICE_TOKEN', 'voiceToken', str, true), R('KAGE_GITHUB_SECRET', 'githubSecret', str, true), R('KAGE_GITHUB_APP_KEY', 'githubAppKey', lines, true), R('KAGE_MEETING_TOKEN', 'meetingToken', str, true),
   R('KAGE_BROWSER_TOKEN', 'browserToken', str, true), R('JEV_API_KEY', 'jevKey', str, true), R('KAGE_VOICE_AGENT_KEY', 'voiceAgentKey', str, true), R('KAGE_CLAUDE_TOKEN', 'claudeToken', str, true),
 ]
 export const ALIASES: Record<string, string> = { KAGE_MAX_SPECIALISTS: 'KAGE_MAX_KAGELETS', KAGE_SPECIALIST_DAILY_USD: 'KAGE_KAGELET_DAILY_USD' }

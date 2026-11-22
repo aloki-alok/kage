@@ -1,5 +1,5 @@
 import { randomBytes } from 'node:crypto'
-import { spawn, spawnSync } from 'node:child_process'
+import { execFileSync, spawn, spawnSync } from 'node:child_process'
 import { fileURLToPath } from 'node:url'
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { addBrowserAgainLines, addBrowserLines, addBrowserPlan, extensionId, HOST, hostBrowsers, hostManifest } from '../core/browser-pair.ts'
@@ -7,6 +7,8 @@ import { connectLines, connectorStates, connectorStep, OFF_NOTES, type Connector
 import { readSettings, updateConfig, updateSecrets } from '../runtime/config-files.ts'
 import type { Config } from '../core/config.ts'
 import { DIR, ENV_FILE, settingsExist } from './home.ts'
+import { createApp } from './github-app.ts'
+import { tailscaleBin, tailscaleState } from './tailscale.ts'
 
 const die = (msg: string): never => { console.error(msg); process.exit(1) }
 const [name, ...args] = process.argv.slice(2)
@@ -21,9 +23,9 @@ if (!NAMES.includes(name as ConnectorName)) die(`kage connect takes github, brow
 const n = name as ConnectorName
 const off = args[0] === 'off'
 
-if (n === 'github') die('Run kage connect github: setup.sh walks it.')
+const quit: (line: string) => never = line => { console.log(line); process.exit(0) }
+if (n === 'github') await connectGithub()
 const before = state()[n]
-const quit = (line: string): never => { console.log(line); process.exit(0) }
 if (off && before.state === 'unset') quit(`${n} is not set up, so it is off already.`)
 if (off && before.state === 'off') quit(`${n} is off already.`)
 if (n === 'browser' && off) {
@@ -67,4 +69,42 @@ function pairBrowser(): never {
   const revealed = mac && run('open', ['-R', ext])
   console.log(addBrowserLines({ names: found.map(b => b.name), ext, token, showToken: args.includes('--show-token'), platform: process.platform, opened, revealed }).join('\n'))
   process.exit(0)
+}
+
+async function connectGithub(): Promise<never> {
+  const s = readSettings(ENV_FILE), gh = s.config.connectors?.github ?? {}
+  const at = args.indexOf('--org'), org = at >= 0 ? args[at + 1] : undefined
+  if (at >= 0 && !/^[\w-]+$/.test(org ?? '')) die('Usage: kage connect github --org <org name>')
+  const github = (g: NonNullable<NonNullable<Config['connectors']>['github']>) => change(() => updateConfig(ENV_FILE, c => ({ ...c, connectors: { ...c.connectors, github: g } })))
+  const install = (slug: string) => `https://github.com/apps/${slug}/installations/new`
+  if (off) {
+    if (!gh.app) quit('github is not set up, so it is off already.')
+    const { app, ...rest } = gh
+    change(() => updateSecrets(ENV_FILE, ({ githubAppKey: _k, githubSecret: _s, ...x }) => x))
+    github(rest)
+    quit(`github is off. The app @${app.slug} stays on GitHub until you delete it: https://github.com/apps/${app.slug}, then App settings, Advanced, Delete.`)
+  }
+  if (gh.app && s.secrets.githubAppKey && s.secrets.githubSecret) {
+    const accounts = [...new Set([...(gh.accounts ?? [gh.login ?? '']), ...(org ? [org] : [])].filter(Boolean))]
+    if (org) github({ ...gh, accounts })
+    browse(install(gh.app.slug))
+    quit(`github is on as @${gh.app.slug} for ${accounts.join(', ')}. Install it where people should tag it: ${install(gh.app.slug)}`)
+  }
+  const bin = tailscaleBin(), ts = bin ? tailscaleState(bin) : undefined, host = ts?.dns?.replace(/\.$/, '')
+  if (!ts?.running || !ts.funnel || !host) die('GitHub needs a public address for the app. Run kage tunnel on, allow Funnel when it asks, then run kage connect github again.')
+  const login = gh.login ?? (() => { try { return execFileSync('gh', ['api', 'user', '--jq', '.login'], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'], timeout: 15_000 }).trim() || undefined } catch { return undefined } })()
+  if (!login && org) die('Run gh auth login, or kage set connectors.github.login <your GitHub username>, then run kage connect github again.')
+  console.log('Opening GitHub. Click Create GitHub App there, and Kage takes it from here.')
+  const app = await createApp({ login: login ?? 'kage', org, hook: `https://${host}:8443/github`, open: browse }).catch((e: Error) => die(e.message))
+  const owner = login ?? app.owner
+  change(() => updateSecrets(ENV_FILE, x => ({ ...x, githubAppKey: app.key, githubSecret: app.secret })))
+  github({ ...gh, login: owner, app: { id: app.id, slug: app.slug }, accounts: [...new Set([owner, ...(org ? [org] : []), ...(gh.accounts ?? [])])] })
+  spawnSync(process.execPath, [fileURLToPath(new URL('./tunnel.ts', import.meta.url)), 'on'], { stdio: 'inherit', env: process.env })
+  browse(`${app.url}/installations/new`)
+  quit(`github is on as @${app.slug}. Install it on the repos where people should tag it (${app.url}/installations/new), then tag @${app.slug} in an issue to try it.`)
+}
+
+function browse(url: string) {
+  const opener = process.platform === 'darwin' ? 'open' : 'xdg-open'
+  if (!process.stdout.isTTY || spawnSync(opener, [url], { stdio: 'ignore', timeout: 5000 }).status !== 0) console.log(`Open ${url}`)
 }

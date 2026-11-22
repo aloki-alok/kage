@@ -366,6 +366,11 @@ describe('who a task counts as', () => {
     assert.equal(senderOf({ ...t('C1', true), agent: { app: 'A0AGENT01' } }), 'agent')
     assert.equal(senderOf({ ...t('C1', false), agent: { app: 'A0AGENT01' } }), 'agent')
   })
+  test('someone outside the owner\'s people who tagged Kage elsewhere, such as on GitHub, may only read and answer, even flagged trusted', () => {
+    assert.equal(senderOf({ ...t('C1', false), outsider: 'kim' }), 'agent')
+    assert.equal(senderOf({ ...t('C1', false), outsider: 'kim', trusted: 'UMATE0002' }), 'agent')
+    assert.equal(senderOf(t('C1', true)), 'owner')
+  })
   test('a trusted teammate is trusted; an agent of a trusted teammate is too; email never is (#425)', () => {
     assert.equal(senderOf({ ...t('C1', false), trusted: 'UMATE0002' }), 'trusted')
     assert.equal(senderOf({ ...t('C1', false), trusted: 'UMATE0002', agent: { app: 'A0AGENT01', person: 'UMATE0002' } }), 'trusted')

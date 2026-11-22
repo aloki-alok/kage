@@ -4,8 +4,8 @@ import { routeStates, tunnelLines, tunnelPlan, tunnelRecord, tunnelRoutes } from
 import type { Config, Secrets } from '../config.ts'
 
 const HOST = 'box.tail1.ts.net'
-const all = { config: { connectors: { github: { login: 'me' }, voice: {}, meeting: {} }, tripwires: { hookPort: 8792 } } as Config,
-  secrets: { githubSecret: 's', voiceToken: 'v', meetingToken: 'm' } as Secrets }
+const all = { config: { connectors: { github: { login: 'me', app: { id: 1, slug: 'kage-me' } }, voice: {}, meeting: {} }, tripwires: { hookPort: 8792 } } as Config,
+  secrets: { githubSecret: 's', githubAppKey: 'k', voiceToken: 'v', meetingToken: 'm' } as Secrets }
 const none = { config: { connectors: {} } as Config, secrets: {} as Secrets }
 const serving = (o: { funnel?: boolean; port?: number; paths?: Record<string, string>; tcp?: Record<string, object> }) => {
   const at = `${HOST}:${o.port ?? 8443}`
@@ -32,11 +32,11 @@ describe('one tunnel for every Kage port another machine needs', () => {
     ])
   })
 
-  test('a connector that is off, or a GitHub read by notifications, gets no route, and a set port is used', () => {
-    const some = { config: { connectors: { github: { login: 'me', port: 9100 }, voice: { on: false } }, tripwires: { hookPort: 8792, on: false } } as Config,
-      secrets: { githubSecret: 's', voiceToken: 'v' } as Secrets }
+  test('a connector that is off, or a GitHub with no app made yet, gets no route, and a set port is used', () => {
+    const some = { config: { connectors: { github: { login: 'me', port: 9100, app: { id: 1, slug: 'kage-me' } }, voice: { on: false } }, tripwires: { hookPort: 8792, on: false } } as Config,
+      secrets: { githubSecret: 's', githubAppKey: 'k', voiceToken: 'v' } as Secrets }
     assert.deepEqual(tunnelRoutes(some), [{ name: 'github', port: 9100, paths: ['/github'], reach: 'internet' }])
-    assert.deepEqual(tunnelRoutes({ config: { connectors: { github: { login: 'me' } } } as Config, secrets: { githubToken: 't' } as Secrets }), [])
+    assert.deepEqual(tunnelRoutes({ config: { connectors: { github: { login: 'me' } } } as Config, secrets: { githubSecret: 's' } as Secrets }), [])
   })
 
   test('opening funnels each public path on Kage\'s own port 8443 with its path kept, serves the meeting port on the tailnet, and never touches 443', () => {
@@ -55,7 +55,7 @@ describe('one tunnel for every Kage port another machine needs', () => {
   test('a route of a connector turned off since is closed, even a hook whose port is now unset, and a route that moved port is opened again', () => {
     const moved = { ...KAGE, '/github': 'http://127.0.0.1:9100/github' }
     const stale = serving({ funnel: true, paths: moved, tcp: MEETING })
-    assert.deepEqual(plan(owning({ config: { connectors: { github: { login: 'me' } } } as Config, secrets: { githubSecret: 's' } as Secrets }, moved), stale).run, [
+    assert.deepEqual(plan(owning({ config: { connectors: { github: { login: 'me', app: { id: 1, slug: 'kage-me' } } } } as Config, secrets: { githubSecret: 's', githubAppKey: 'k' } as Secrets }, moved), stale).run, [
       OFF('/github'), OFF('/mcp'), OFF('/voice'), OFF('/hook'),
       ['funnel', '--bg', '--yes', '--https=8443', '--set-path=/github', 'http://127.0.0.1:8789/github'],
       ['serve', '--tcp=8790', 'off'],
@@ -84,7 +84,7 @@ describe('one tunnel for every Kage port another machine needs', () => {
 
   test('what Kage records as its own is what it serves now: each wanted path, and an old one it failed to close', () => {
     const now = serving({ funnel: true, paths: { '/github': KAGE['/github'], '/hook': KAGE['/hook'], '/app': 'http://127.0.0.1:3000', '/kage-funnel-check': 'http://127.0.0.1:9' } })
-    const s = owning({ config: { connectors: { github: { login: 'me' } } } as Config, secrets: { githubSecret: 's' } as Secrets }, { '/hook': KAGE['/hook'] })
+    const s = owning({ config: { connectors: { github: { login: 'me', app: { id: 1, slug: 'kage-me' } } } } as Config, secrets: { githubSecret: 's', githubAppKey: 'k' } as Secrets }, { '/hook': KAGE['/hook'] })
     assert.deepEqual(set(tunnelRecord(s, now, { '/github': KAGE['/github'] })), set([KAGE['/github'], KAGE['/hook']]))
     assert.deepEqual(tunnelRecord(s, now, {}), [KAGE['/hook']])
   })
@@ -95,7 +95,7 @@ describe('one tunnel for every Kage port another machine needs', () => {
   })
 
   test('a target Kage made claims only the path it was made for, never the owner\'s handler on another path that points there', () => {
-    const s = owning({ config: { connectors: { github: { login: 'me' } } } as Config, secrets: { githubSecret: 's' } as Secrets }, { '/github': KAGE['/github'] })
+    const s = owning({ config: { connectors: { github: { login: 'me', app: { id: 1, slug: 'kage-me' } } } } as Config, secrets: { githubSecret: 's', githubAppKey: 'k' } as Secrets }, { '/github': KAGE['/github'] })
     const now = serving({ funnel: true, paths: { '/github': KAGE['/github'], '/mcp': KAGE['/github'] } })
     assert.deepEqual(plan(s, now).foreign, ['/mcp'])
     assert.deepEqual(plan(s, now, { to: 'off' }).run, [OFF('/github')])
@@ -146,7 +146,7 @@ describe('one tunnel for every Kage port another machine needs', () => {
   })
 
   test('the doctor shows each route with its public address, and names the one fix when Tailscale or a route is not ready', () => {
-    const routes = tunnelRoutes({ ...all, secrets: { githubSecret: 's', meetingToken: 'm' } as Secrets })
+    const routes = tunnelRoutes({ ...all, secrets: { githubSecret: 's', githubAppKey: 'k', meetingToken: 'm' } as Secrets })
     const up = serving({ funnel: true, paths: { '/github': KAGE['/github'] }, tcp: MEETING })
     const lines = (f: Partial<Parameters<typeof tunnelLines>[0]>) => tunnelLines({ provider: 'tailscale', installed: true, running: true, funnel: true, dns: `${HOST}.`, routes, status: up, ...f }).map(l => `${l.kind} ${l.text}`)
     assert.deepEqual(lines({}), [`ok github is public at https://${HOST}:8443/github`, 'fail hooks is closed. Run kage tunnel on.', `ok meeting is on your tailnet at ${HOST}:8790`])

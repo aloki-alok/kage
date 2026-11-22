@@ -52,17 +52,4 @@ if (cmd === 'has') {
   const token = (await new Promise<string>(res => { let t = ''; process.stdin.on('data', d => t += d).on('end', () => res(t)) })).trim()
   if (!/^sk-ant-oat\S+$/.test(token)) die('Not a Claude login token: run claude setup-token and paste the sk-ant-oat... line it prints.')
   updateSecrets(ENV_FILE, s => ({ ...s, claudeToken: token }))
-} else if (cmd === 'save-github') {
-  const token = (await new Promise<string>(res => { let t = ''; process.stdin.on('data', d => t += d).on('end', () => res(t)) })).trim()
-  const ask = (path: string) => fetch(`https://api.github.com${path}`, { headers: { Authorization: `Bearer ${token}`, Accept: 'application/vnd.github+json' } }).catch(() => die('No answer from GitHub. Check the network, then run kage connect github again.'))
-  const user = await ask('/user')
-  if (!user.ok) die(`GitHub refused this token (${user.status}). Run gh auth login, or make a new classic token, then run kage connect github again.`)
-  if (!(await ask('/notifications?per_page=1')).ok) die('This token cannot read notifications. Use a gh login, or a classic token with the notifications and repo scopes: fine-grained tokens cannot read notifications.')
-  const { login } = await user.json() as { login: string }
-  updateSecrets(ENV_FILE, s => ({ ...s, githubToken: token }))
-  updateConfig(ENV_FILE, c => ({ ...c, connectors: { ...c.connectors, github: { ...c.connectors?.github, login } } }))
-  console.log(login)
-} else if (cmd === 'github-off') {
-  updateSecrets(ENV_FILE, ({ githubToken: _token, githubSecret: _secret, ...s }) => s)
-  updateConfig(ENV_FILE, ({ connectors: { github: _github, ...connectors } = {}, ...c }) => ({ ...c, connectors }))
-} else die('Usage: config.ts get <key> | has <key> | check-slack <app|user|bot> | set <key> <value> | save <name> | save-claude | save-github | github-off')
+} else die('Usage: config.ts get <key> | has <key> | check-slack <app|user|bot> | set <key> <value> | save <name> | save-claude')

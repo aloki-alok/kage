@@ -13,7 +13,7 @@ const inbox = { take: () => true, handled: () => {}, has: () => false }
 const deliver = () => 'sent' as const
 
 const starts: Record<string, (port: number) => { listening?: Promise<number>; close?: () => unknown } | undefined> = {
-  github: port => connectGithub({ saved: openStore(':memory:'), via: { webhook: { secret: 's', port } }, login: 'me', botDm: 'DB', perHour: 5, notify: () => {}, inbox, post: async () => '1', deliver }),
+  github: port => connectGithub({ saved: openStore(':memory:'), owner: 'me', accounts: ['me'], app: { id: 1, slug: 'kage-me', key: 'k' }, installations: async () => [], secret: 's', port, botDm: 'DB', perHour: 5, notify: () => {}, inbox, post: async () => '1', deliver }),
   meeting: port => connectMeeting({ token: 't', port, botDm: 'DB', perHour: 5, pollMs: 50, name: 'kage', askWaitMs: 50, end: () => {}, notify: () => {}, now: () => 0, untake: () => {}, inbox, post: async () => '1', deliver }),
   voice: port => connectVoice({ voice: { token: 't', port }, name: 'kage', waitMs: 50, now: () => 0, slot: () => true, end: () => {}, deliver, failed: () => {} }),
   browser: port => connectBrowser({ token: 't', port }),

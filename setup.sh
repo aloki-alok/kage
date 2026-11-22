@@ -25,7 +25,7 @@ Set up|check||Check that node 22.18+ and claude are installed (and tmux, for KAG
 Set up|app|[name]|Write the Slack app for the name you tag, and open the link that creates it|kage app kage
 Set up|save|[name]|Paste the three Slack tokens into hidden prompts; each is checked with Slack|kage save
 Set up|tunnel|[on or off]|Open a route for each connector another machine calls (GitHub, voice, job hooks on the internet; the meeting bot on your tailnet) through Tailscale, or close them all|kage tunnel on
-Set up|connect|[name] [off]|List every connector, on or off, with the one step left. With a name it turns that one on, or off with off: github (your notifications, with your gh login), browser (pairs the Kage extension in Chrome), email, voice, whatsapp, meeting|kage connect browser
+Set up|connect|[name] [off]|List every connector, on or off, with the one step left. With a name it turns that one on, or off with off: github (makes the Kage app, so people tag it on GitHub; --org adds an org), browser (pairs the Kage extension in Chrome), email, voice, whatsapp, meeting|kage connect github
 Set up|claude-login||Save the Claude login Kage runs on, so its sessions use their own seat. Get the token with claude setup-token, signed in as Kage|kage claude-login
 Set up|doctor||Check every part, and print the command that fixes each problem|kage doctor
 Set up|slack|upgrade|Add the Slack scopes Kage needs and the app lacks: adds them to the app manifest with one Slack configuration token (or prints the lines to paste), then opens Reinstall and waits|kage slack upgrade
@@ -291,29 +291,6 @@ cmd_save() {
   quietly "The tokens are in $(dirname "$ENV_FILE")/secrets.json, readable only by you."
 }
 
-cmd_github() {
-  if [[ "${1:-}" == off ]]; then
-    node cli/config.ts github-off || exit 1
-    says "GitHub is off. A webhook you added on GitHub still sends until you delete it there."
-    return
-  fi
-  local t="" login
-  command -v gh >/dev/null 2>&1 && t="$(gh auth token 2>/dev/null || true)"
-  if [[ -z "$t" && -t 0 ]]; then
-    tells "No gh login here. Make a classic token with the notifications and repo scopes at https://github.com/settings/tokens/new, then paste it."
-    t="$(node cli/ask-secret.ts github "GitHub token (ghp_...): ")" || exit 1
-  elif [[ -z "$t" ]]; then
-    t="$(cat)"
-  fi
-  umask 077
-  login="$(printf '%s\n' "$t" | node cli/config.ts save-github)" || exit 1
-  if node cli/config.ts has secrets.githubSecret; then
-    says "Saved for @$login. A webhook secret is set, so I keep the webhook. Run kage connect github off, then kage connect github, to read notifications instead."
-  else
-    says "GitHub is on for @$login. I start reading your notifications once I am not in the middle of anything."
-  fi
-}
-
 # Kage's own Claude login, so its sessions use their own seat. The prompt is hidden, so the token never shows on screen or in ps.
 cmd_claude_login() {
   local t
@@ -340,7 +317,7 @@ case "${1:-}" in
   check) cmd_check ;;
   app) cmd_app "${2:-}" ;;
   save) cmd_save "${2:-}" ;;
-  connect) if [[ ${2:-} == github ]]; then cmd_github "${3:-}"; else node cli/connect.ts "${@:2}"; fi ;;
+  connect) node cli/connect.ts "${@:2}" ;;
   tunnel) node cli/tunnel.ts "${2:-on}" ;;
   claude-login) cmd_claude_login ;;
   doctor) node cli/doctor/run.ts ;;
