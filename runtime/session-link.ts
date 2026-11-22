@@ -45,6 +45,7 @@ export function listenForSessions(path: string, d: Dispatcher<ToSession>, o: Rep
   paused?: () => { until: number; held: number } | undefined
   limitCounts?: () => LimitCounts
   quiesce?: () => { key: string; why: string }[]
+  health?: () => string[]
   end?: (key: string, cut: boolean) => string
   kagelet?: (action: PanelAction, name: string) => Promise<string>
 }) {
@@ -86,6 +87,8 @@ export function listenForSessions(path: string, d: Dispatcher<ToSession>, o: Rep
           const paused = o.paused?.()
           const limitCounts = o.limitCounts?.()
           sock.write(JSON.stringify({ type: 'board', ...d.status(Date.now()), ...(paused && { paused }), ...(limitCounts && { limitCounts }) }) + '\n')
+        } else if (m.type === 'health' && !key && !held) {
+          sock.write(JSON.stringify({ type: 'health', lines: o.health?.() ?? [] }) + '\n')
         } else if (m.type === 'end' && !key && !held && o.end && typeof m.key === 'string') {
           sock.write(JSON.stringify({ type: 'end', text: o.end(m.key, (m as { cut?: unknown }).cut === true) }) + '\n')
         } else if (m.type === 'quiesce' && !key && !held && o.quiesce) {

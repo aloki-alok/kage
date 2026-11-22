@@ -7,6 +7,7 @@ export type ToSession = Task | Verdict
 
 export type FromSession =
   | { type: 'board' }
+  | { type: 'health' }
   | { type: 'end'; key: string; cut?: boolean }
   | { type: 'quiesce' }
   | { type: 'reload' }

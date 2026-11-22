@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 import { execFileSync, spawnSync } from 'node:child_process'
 import { readFileSync } from 'node:fs'
-import { DIR } from './home.ts'
+import { askHub, DIR } from './home.ts'
 import { statusSummary } from '../core/board.ts'
 import { startsSince } from '../core/boots.ts'
 import { spendSince } from '../core/ledgers.ts'
@@ -32,6 +32,11 @@ const summary = statusSummary({
 })
 console.log(voice.says(summary.says))
 if (summary.warn) console.log(`  ${voice.needsYou(summary.warn)} ${voice.dim('Ask')} ${voice.command('kage doctor')} ${voice.dim('why.')}`)
+const health = await askHub<{ lines?: string[] }>({ type: 'health' }).then(a => a.lines ?? [], () => [])
+if (health.length) {
+  console.log(`\nConnectors`)
+  for (const l of health) console.log(`  ${/ off$/.test(l) ? voice.dim(l) : / failed \d+x /.test(l) ? voice.needsYou(l) : l}`)
+}
 console.log()
 spawnSync(process.execPath, [new URL('./top.ts', import.meta.url).pathname, '--once'], { stdio: 'inherit' })
 const kagelets = kageletRows(readKagelets(kageletsDir(DIR)), { runs: ledgers.text('runs'), costs: ledgers.text('costs'), now })

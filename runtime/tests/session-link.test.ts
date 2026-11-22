@@ -395,3 +395,21 @@ test('the console lists, allows and denies relay threads, and a session cannot',
   assert.deepEqual(calls, ['allow A', 'list '])
   server.close()
 })
+
+test('a health question gets the connector lines the hub keeps in memory (#256)', async t => {
+  const d = new Dispatcher<ToSession>(
+    { start: () => {}, stop: () => {}, lastActivity: () => 0, busy: () => false },
+    { max: 2, idleMs: 9e9, connectMs: 9e9, evictMs: 0, newId: () => 'id1' },
+  )
+  const sock = join(mkdtempSync(join(tmpdir(), 'kage-link-')), 's.sock')
+  const server = listenForSessions(sock, d, { mail: () => {}, wa: () => {}, voice: () => {}, failed: () => {}, schedules: { add: () => undefined, remove: () => {} }, health: () => ['email     on · last heard 2m ago'] })
+  t.after(() => server.close())
+  await until(() => server.listening)
+  const c = connect(sock)
+  let reply = ''
+  c.on('data', b => { reply += b })
+  c.write(JSON.stringify({ type: 'health' }) + '\n')
+  await until(() => reply.includes('\n'))
+  c.destroy()
+  assert.deepEqual(JSON.parse(reply), { type: 'health', lines: ['email     on · last heard 2m ago'] })
+})

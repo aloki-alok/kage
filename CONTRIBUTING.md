@@ -190,6 +190,7 @@ Write logs to stderr only. In a tmux pane, stdout carries the channel protocol, 
 | `retro.ts` | The weekly retro: what Kage's own ledgers say to change. It proposes; the owner decides. |
 | `settings.ts` | The old env file read once for import, the answer `kage reload` gives, and which settings apply without a restart. |
 | `skill-lessons.ts` | The check a lesson passes before the dream shares it with every install: nothing that tells whose Kage learned it. |
+| `connector-health.ts` | What `kage status` says of each connector (#256): on or off from the hub's own start lines, when it last heard something, its failures in the past hour, and Jev's calls today. The hub feeds it every log line (`tapLog` in `runtime/log.ts`) and keeps it in memory only. |
 | `socket-watch.ts` | When to restart the Slack socket by hand, because its own reconnect can stay down. |
 | `board.ts`, `top-layout.ts` | What `kage top` shows: each thread's state and row (`board.ts`), and where its panes go for a terminal size, the list scroll, the state marks and the chart math (`top-layout.ts`). `cli/top.ts` reads the hub and the store and takes keys and the mouse, `cli/top-draw.ts` draws the header, the ask banner, the tabbed panes, the charts and the dialogs, and `cli/top-screen.ts` is its grid of cells. |
 

@@ -4,9 +4,9 @@ import { inspect } from 'node:util'
 import { monitorEventLoopDelay } from 'node:perf_hooks'
 import { repeats } from '../core/log-repeats.ts'
 
-let tap: ((first: unknown) => void) | undefined
-export const tapLog = (f: (first: unknown) => void) => { tap = f }
-export const log = (...a: unknown[]) => { console.error(new Date().toISOString(), '[kage]', ...a); tap?.(a[0]) }
+const taps: ((args: unknown[]) => void)[] = []
+export const tapLog = (f: (args: unknown[]) => void) => { taps.push(f) }
+export const log = (...a: unknown[]) => { console.error(new Date().toISOString(), '[kage]', ...a); for (const t of taps) t(a) }
 export const logRef = (s: string) => createHash('sha256').update(s.toLowerCase()).digest('hex').slice(0, 8)
 export const logKey = (key: string) => key.replace(/wa:(.+)$/, (_, chat: string) => `wa:${logRef(chat)}`)
 const once = repeats(10 * 60_000)
