@@ -94,7 +94,7 @@ export const withoutFooter = (text: string) => text.replace(/\n\n_🥷 [^\n]*_$/
 
 type Media = { seconds?: number; caption?: string; PTT?: boolean; fileName?: string; title?: string } | undefined
 export type WahaRow = { fromMe?: boolean; body?: string; timestamp?: number; _data?: { Message?: Record<string, Media> } }
-const length = (m: NonNullable<Media>) => m.seconds ? `, ${Math.floor(Math.round(m.seconds) / 60)}:${String(Math.round(m.seconds) % 60).padStart(2, '0')}` : ''
+const length = (m: NonNullable<Media>, s = Math.round(m.seconds ?? 0)) => s ? `, ${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}` : ''
 function mediaMark(m: Record<string, Media>): string | undefined {
   if (m.audioMessage) return `${m.audioMessage.PTT ? 'voice note' : 'audio'}${length(m.audioMessage)}`
   if (m.imageMessage) return 'photo'

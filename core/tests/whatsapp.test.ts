@@ -247,6 +247,7 @@ describe('the chat history keeps voice notes, photos, videos and files as marked
     media(4, { videoMessage: { seconds: 75 } }),
     media(6, { documentMessage: { fileName: 'quote.pdf', caption: 'signed' } }),
     media(7, { audioMessage: { seconds: 3 } }),
+    media(7.5, { audioMessage: { seconds: 0.4 } }),
     media(8, { stickerMessage: {} }),
     media(9, { imageMessage: {} }),
   ]
@@ -259,6 +260,7 @@ describe('the chat history keeps voice notes, photos, videos and files as marked
       { fromMe: false, text: '[voice note, 0:42]' },
       { fromMe: false, text: '[file: quote.pdf] signed' },
       { fromMe: false, text: '[audio, 0:03]' },
+      { fromMe: false, text: '[audio]' },
       { fromMe: false, text: '[sticker]' },
       { fromMe: false, text: '[photo]' },
     ])
