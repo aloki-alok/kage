@@ -12,10 +12,10 @@ const issue = (o: Record<string, unknown> = {}) => ({ number: 7, title: 'Faster 
 const pr = (o: Record<string, unknown> = {}) => issue({ number: 12, html_url: 'https://github.com/acme/app/pull/12', user: { login: me }, ...o })
 const comment = (o: Record<string, unknown> = {}) => ({ id: 55, body: `@${me} can you look?`, user: { login: 'kim' }, html_url: 'https://github.com/acme/app/issues/7#issuecomment-55', author_association: 'MEMBER', created_at: AFTER, ...o })
 const review = (o: Record<string, unknown> = {}) => ({ id: 9, state: 'CHANGES_REQUESTED', body: 'add a test', user: { login: 'kim' }, html_url: 'https://github.com/acme/app/pull/12#pullrequestreview-9', author_association: 'MEMBER', submitted_at: AFTER, ...o })
-const issuePages = (comments: object[], o: Record<string, unknown> = {}) => ({ [`${API}/issues/7`]: issue(o), [`${API}/issues/7/comments?since=${AFTER_ISO}&per_page=100`]: comments })
+const issuePages = (comments: object[], o: Record<string, unknown> = {}) => ({ [`${API}/issues/7`]: issue(o), [`${API}/issues/7/comments?since=${AFTER_ISO}&per_page=100&page=1`]: comments })
 const prPages = (o: { pr?: Record<string, unknown>; comments?: object[]; inline?: object[]; reviews?: object[] }) => ({
-  [`${API}/pulls/12`]: pr(o.pr), [`${API}/issues/12/comments?since=${AFTER_ISO}&per_page=100`]: o.comments ?? [],
-  [`${API}/pulls/12/comments?since=${AFTER_ISO}&per_page=100`]: o.inline ?? [], [`${API}/pulls/12/reviews?per_page=100`]: o.reviews ?? [] })
+  [`${API}/pulls/12`]: pr(o.pr), [`${API}/issues/12/comments?since=${AFTER_ISO}&per_page=100&page=1`]: o.comments ?? [],
+  [`${API}/pulls/12/comments?since=${AFTER_ISO}&per_page=100&page=1`]: o.inline ?? [], [`${API}/pulls/12/reviews?per_page=100&page=1`]: o.reviews ?? [] })
 
 function api(pages: Record<string, unknown>) {
   const asked: string[] = []
@@ -75,6 +75,17 @@ describe('a GitHub notification read by polling becomes the same event a webhook
     const both = await events(onPr('author'), prPages({ reviews: [review({ id: 8, submitted_at: BEFORE }), review(), review({ id: 10, state: 'APPROVED', user: { login: 'lee' }, submitted_at: LATER })] }))
     assert.deepEqual(both.lines, ['acme/app#12 | kim requested changes on acme/app#12 Faster calls', 'acme/app#12 | lee approved acme/app#12 Faster calls'])
     assert.deepEqual((await events(onPr('author'), prPages({ reviews: [review({ user: { login: me } })] }))).lines, [])
+  })
+
+  test('a review with an inline comment that mentions you on your own pull request opens the thread once, as the review', async () => {
+    const r = await events(onPr('author'), prPages({ reviews: [review()], inline: [comment({ id: 70, pull_request_review_id: 9 })] }))
+    assert.deepEqual(r.lines, ['acme/app#12 | kim requested changes on acme/app#12 Faster calls'])
+  })
+
+  test('a busy pull request with more than 100 reviews still shows the newest one', async () => {
+    const old = Array.from({ length: 100 }, (_, i) => review({ id: 100 + i, user: { login: me }, submitted_at: BEFORE }))
+    const pages = { ...prPages({ reviews: old }), [`${API}/pulls/12/reviews?per_page=100&page=2`]: [review({ state: 'APPROVED' })] }
+    assert.deepEqual((await events(onPr('author'), pages)).lines, ['acme/app#12 | kim approved acme/app#12 Faster calls'])
   })
 
   test('a failed workflow run on a branch with an open pull request opens that pull request\'s thread', async () => {

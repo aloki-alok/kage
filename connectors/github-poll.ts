@@ -49,19 +49,19 @@ export function pollGithub(o: {
       raw.push(...await p.json())
       left = more(p)
     }
-    if (left) log(`github: more than ${PAGES} pages of notifications since the last read, so the oldest were skipped`)
+    if (left) log('github: stopped before the oldest new notifications, so some were not read')
     let done = cursor.since
     for (const n of notices(raw)) {
       const key = n.id
       try {
         for (const f of await noticeFeeds(n, get, o.login, since)) await o.feed(f.type, JSON.stringify(f.payload), f.source)
+        tries.delete(key)
       } catch (e) {
         const tried = (tries.get(key) ?? 0) + 1
         tries.set(key, tried)
         if (tried < TRIES) { o.saved.save(CURSOR, { since: done }); return wait }
-        log(`github notification ${n.repository.full_name} skipped after ${TRIES} tries`, e)
+        if (tried === TRIES) log(`github notification ${n.repository.full_name} skipped after ${TRIES} tries`, e)
       }
-      tries.delete(key)
       if (n.updated_at > done) done = n.updated_at
     }
     const modified = r.headers.get('last-modified')

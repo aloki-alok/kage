@@ -1,10 +1,11 @@
 type User = { login?: string }
-type Item = { id?: number; number?: number; title?: string; html_url?: string; body?: string | null; user?: User; author_association?: string; created_at?: string; requested_reviewers?: User[]; assignees?: User[] }
+type Item = { id?: number; pull_request_review_id?: number; number?: number; title?: string; html_url?: string; body?: string | null; user?: User; author_association?: string; created_at?: string; requested_reviewers?: User[]; assignees?: User[] }
 type Review = { id?: number; state?: string; body?: string | null; user?: User; html_url?: string; author_association?: string; submitted_at?: string }
 type Notice = { id: string; reason: string; updated_at: string; repository: { full_name: string }; subject: { type: string; title: string; url: string | null } }
 type Feed = { type: string; payload: object; source: string }
 
 const ACTS_ON = new Set(['mention', 'team_mention', 'comment', 'author', 'review_requested', 'assign', 'ci_activity'])
+const PAGES = 10
 const CI_FAILED = /^(.+?) workflow run(?:, Attempt #\d+)? failed for (.+) branch$/
 
 export function notices(raw: unknown): Notice[] {
@@ -31,17 +32,26 @@ export async function noticeFeeds(n: Notice, get: (url: string) => Promise<unkno
   if (!s.url) return []
   const mine = (u?: User) => u?.login?.toLowerCase() === me.toLowerCase()
   const isPr = s.type === 'PullRequest', after = `since=${new Date(since).toISOString()}&per_page=100`
-  const list = async <T>(url: string) => (await get(url) ?? []) as T[]
+  const list = async <T>(url: string) => {
+    const rows: T[] = []
+    for (let page = 1; page <= PAGES; page++) {
+      const got = (await get(`${url}&page=${page}`) ?? []) as T[]
+      rows.push(...got)
+      if (got.length < 100) break
+    }
+    return rows
+  }
   const item = await get(s.url) as Item
   const comments = await list<Item>(`${s.url.replace('/pulls/', '/issues/')}/comments?${after}`)
   const inline = isPr ? await list<Item>(`${s.url}/comments?${after}`) : []
   const reviews = isPr ? await list<Review>(`${s.url}/reviews?per_page=100`) : []
+  const asReview = new Set(mine(item.user) ? reviews.map(r => r.id) : [])
   const said = (comment: object, source: string): Feed => ({ type: 'issue_comment', source, payload: { action: 'created', repository, issue: item, comment } })
   const theirs = reviews.filter(r => !mine(r.user) && fresh(r.submitted_at))
   const feeds = [
     ...n.reason === 'mention' && fresh(item.created_at) ? [said(item, `github:b:${n.id}`)] : [],
     ...comments.filter(c => fresh(c.created_at)).map(c => said(c, `github:c:${c.id}`)),
-    ...inline.filter(c => fresh(c.created_at)).map(c => said(c, `github:pc:${c.id}`)),
+    ...inline.filter(c => fresh(c.created_at) && !asReview.has(c.pull_request_review_id)).map(c => said(c, `github:pc:${c.id}`)),
     ...mine(item.user) ? theirs.map((r): Feed => ({ type: 'pull_request_review', source: `github:r:${r.id}`, payload: { action: 'submitted', repository, pull_request: item, review: { ...r, state: r.state?.toLowerCase() } } }))
       : theirs.map(r => said(r, `github:rm:${r.id}`)),
   ]

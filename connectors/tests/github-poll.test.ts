@@ -97,6 +97,16 @@ describe('reading GitHub notifications with no public URL', () => {
     assert.deepEqual(t.fed, ['github:c:13'])
   })
 
+  test('a thread already skipped is passed over at once, so it never holds back a newer one again', async () => {
+    const t = setup()
+    t.s.list = [mention('12', '2026-11-22T08:00:30Z')]
+    t.s.failing.add(`${API}/issues/12`)
+    for (let i = 0; i < 3; i++) await t.once(NOW)
+    t.s.list.push(mention('14', '2026-11-22T08:00:50Z'))
+    await t.once(NOW)
+    assert.deepEqual(t.fed, ['github:c:14'])
+  })
+
   test('a failing thread that keeps getting new activity is still skipped after three tries, so it never blocks the rest', async () => {
     const t = setup()
     t.s.list = [mention('12', '2026-11-22T08:00:30Z'), mention('13', '2026-11-22T08:00:40Z')]
