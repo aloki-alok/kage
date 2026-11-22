@@ -92,7 +92,7 @@ process.on('uncaughtException', e => { log('crashed', e); noteExit(DIR, 'crash',
 const COMMANDS = new Map<string, string>(Object.entries(conn.commands ?? {}))
 
 const store = openStore(`${DIR}/kage.db`)
-const deferred = deferredApprovals(store)
+const deferred = deferredApprovals(store, v => ledgers.add('card-verdicts', [v.key, v.tool, v.kind, v.fp, v.owner, v.review ?? '']))
 const answerCard = (id: string, behavior: 'allow' | 'deny', always?: true) => answerDeferred(deferred, (key, task) => { if (toSession(key, task) === 'failed') failed(task) }, id, behavior, Date.now(), always && (c => kag.alwaysAllow(c.key, c.tool, c.input)))
 const SSM_SOCK = `${DIR}/ssm.sock`, SSM_SHIM = `${CODE}/cli/ssm-plugin-shim`
 const ssm = ssmRelay({ path: SSM_SOCK, plugin: findPlugin(undefined, [SSM_SHIM]), trusted: key => store.relayOk(key), log })

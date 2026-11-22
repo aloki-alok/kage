@@ -30,7 +30,7 @@ const tick = (ms = 5) => new Promise(r => setTimeout(r, ms))
 const ID = '11111111-1111-4111-8111-111111111111'
 const signal = () => new AbortController().signal
 
-function setup(o: { saved?: Record<string, string>; transcript?: boolean; silent?: boolean; dmFails?: boolean; grants?: Record<string, string[]>; allows?: Record<string, string[]>; review?: boolean; manager?: boolean; budgets?: Record<string, number>; models?: Record<string, string>; trusted?: string[]; deferred?: boolean; browser?: boolean; restartMs?: number; sandbox?: boolean | 'teammates'; onResult?: (key: string, total: number, resumed: boolean, tokens?: Tokens) => void; lean?: { model?: string; effort?: string; mcp: Record<string, unknown>; permissions?: Record<string, unknown> }; onMcp?: (q: unknown) => void; trustedPeople?: { ids: string[] } } = {}) {
+function setup(o: { saved?: Record<string, string>; transcript?: boolean; silent?: boolean; dmFails?: boolean; grants?: Record<string, string[]>; allows?: Record<string, string[]>; review?: boolean | { release: boolean; said?: 'run' | 'hold' }; manager?: boolean; budgets?: Record<string, number>; models?: Record<string, string>; trusted?: string[]; deferred?: boolean; browser?: boolean; restartMs?: number; sandbox?: boolean | 'teammates'; onResult?: (key: string, total: number, resumed: boolean, tokens?: Tokens) => void; lean?: { model?: string; effort?: string; mcp: Record<string, unknown>; permissions?: Record<string, unknown> }; onMcp?: (q: unknown) => void; trustedPeople?: { ids: string[] } } = {}) {
   const sdk = fakeSdk(o)
   const dropped: string[] = []
   const keysDropped: string[] = []
@@ -67,7 +67,7 @@ function setup(o: { saved?: Record<string, string>; transcript?: boolean; silent
     ...o.lean && { lean: () => o.lean },
     grantOf: key => o.grants?.[key],
     allowOf: key => o.allows?.[key] ?? [],
-    ...o.review !== undefined && { reviewHeld: async () => o.review! },
+    ...o.review !== undefined && { reviewHeld: async () => typeof o.review === 'boolean' ? { release: o.review, said: o.review ? 'run' as const : 'hold' as const } : o.review! },
     ownerMemory: '/owner', ownMemory: '/own-memory',
     envFile: '/cfg/env',
     codeDir: '/code/kage', sandbox: owner => sandboxed(o.sandbox ?? true, owner),
@@ -1299,6 +1299,17 @@ describe('Kage sessions on the Agent SDK', () => {
       await tick()
       const out = await t.sdk.runs[0]!.options.hooks.PreToolUse[0].hooks[0]({ hook_event_name: 'PreToolUse', tool_name: 'Bash', tool_input: { command } }, undefined, { signal: signal() })
       assert.equal(out.hookSpecificOutput?.permissionDecision, want, `${review} ${command}`)
+    }
+  })
+  test("a shadow reviewer's verdict rides on the owner's card, and the step still waits for the owner", async () => {
+    const key = 'C1:5.5#side-kagelet-ops'
+    for (const said of ['run', 'hold'] as const) {
+      const t = setup({ grants: { [key]: ['all'] }, review: { release: false, said }, deferred: true })
+      t.d.task(key, t.task({ fromOwner: false }), 0)
+      await tick()
+      const out = await t.sdk.runs[0]!.options.hooks.PreToolUse[0].hooks[0]({ hook_event_name: 'PreToolUse', tool_name: 'Bash', tool_input: { command: 'rm -rf build' } }, undefined, { signal: signal() })
+      assert.match(out.hookSpecificOutput?.permissionDecisionReason, /owner's card is posted/)
+      assert.equal(t.approvals.answer(t.idOf(t.posts[0]!), 'deny', Date.now())?.review, said)
     }
   })
   test("the owner's yes is spent before the reviewer is asked, and an open card keeps the step with the owner", async () => {

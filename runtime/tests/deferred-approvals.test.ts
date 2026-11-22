@@ -79,6 +79,48 @@ describe('approvals that wait outside a session', () => {
     }
     assert.deepEqual(kept, ['a1 Bash'])
   })
+  test('each answer writes one verdict: the step kind, a fingerprint for the command, the owner and the reviewer, never the command', () => {
+    const seen: object[] = []
+    const a = deferredApprovals(openStore(':memory:'), v => { seen.push(v) })
+    const push = { ...call, input: { command: 'git push --force origin feat/a' } }
+    a.add({ ...push, id: 'v1', review: 'run' }, 0)
+    a.add({ ...push, id: 'v2' }, 0)
+    a.add({ ...call, id: 'v3', tool: 'mcp__gmail__send', input: { to: 'x' } }, 0)
+    answerDeferred(a, () => {}, 'v1', 'allow', 1, () => {})
+    answerDeferred(a, () => {}, 'v2', 'deny', 2)
+    answerDeferred(a, () => {}, 'v3', 'allow', 3)
+    answerDeferred(a, () => {}, 'v3', 'allow', 4)
+    const fp = (seen[0] as { fp: string }).fp
+    assert.match(fp, /^[0-9a-f]{12}$/)
+    assert.deepEqual(seen, [
+      { key: 'CTEST1:5.5', tool: 'Bash', kind: 'a forced push or a branch delete', fp, owner: 'always', review: 'run' },
+      { key: 'CTEST1:5.5', tool: 'Bash', kind: 'a forced push or a branch delete', fp, owner: 'deny' },
+      { key: 'CTEST1:5.5', tool: 'mcp__gmail__send', kind: 'mcp__gmail__send', fp: (seen[2] as { fp: string }).fp, owner: 'allow' },
+    ])
+    assert.notEqual((seen[2] as { fp: string }).fp, fp)
+    assert.doesNotMatch(JSON.stringify(seen), /feat\/a/)
+  })
+
+  test('a card nobody answered before it went stale writes one expired verdict; a spent yes going stale writes none', () => {
+    const seen: { owner: string }[] = []
+    const a = deferredApprovals(openStore(':memory:'), v => { seen.push(v) })
+    a.add({ ...call, id: 'e1' }, 0)
+    a.add({ ...call, id: 'e2', input: { command: 'pwd' } }, 0)
+    a.answer('e2', 'allow', 1)
+    a.take('CTEST1:9.9', 'Bash', { command: 'ls' }, 25 * HOUR)
+    a.take('CTEST1:9.9', 'Bash', { command: 'ls' }, 26 * HOUR)
+    assert.deepEqual(seen.map(v => v.owner), ['allow', 'expired'])
+  })
+
+  test('a stale card seen by a wait check and then by a new card is reported expired once', () => {
+    const seen: { owner: string }[] = []
+    const a = deferredApprovals(openStore(':memory:'), v => { seen.push(v) })
+    a.add({ ...call, id: 'w1' }, 0)
+    a.waiting('CTEST1:9.9', 'Bash', { command: 'ls' }, 25 * HOUR)
+    a.add({ ...call, id: 'w2', input: { command: 'pwd' } }, 26 * HOUR)
+    assert.deepEqual(seen.map(v => v.owner), ['expired'])
+  })
+
   test('a no tells the thread to stop and spends nothing', () => {
     const a = deferredApprovals(openStore(':memory:'))
     a.add(call, 0)

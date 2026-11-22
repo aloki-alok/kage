@@ -1,3 +1,5 @@
+import { createHash } from 'node:crypto'
+import { heldCommand } from '../core/held.ts'
 import type { Task } from '../core/task.ts'
 import type { Saved } from './store.ts'
 
@@ -6,30 +8,44 @@ const YES_TTL = 60 * 60_000
 const CARD_TTL = 24 * 60 * 60_000
 const OPEN_PER_KEY = 5
 
-type Call = { key: string; tool: string; input: Record<string, unknown>; task: Task }
+type Review = 'run' | 'hold'
+type Call = { key: string; tool: string; input: Record<string, unknown>; task: Task; review?: Review }
 type Row = Call & { at: number; yes?: number }
+export type CardVerdict = { key: string; tool: string; kind: string; fp: string; owner: 'allow' | 'always' | 'deny' | 'expired'; review?: Review }
 
 const same = (r: Call, key: string, tool: string, input: Record<string, unknown>) =>
   r.key === key && r.tool === tool && JSON.stringify(r.input) === JSON.stringify(input)
 
-export function deferredApprovals(store: Saved) {
+const verdictOf = (c: Call, owner: CardVerdict['owner']): CardVerdict => ({
+  key: c.key, tool: c.tool, kind: (c.tool === 'Bash' && heldCommand(String(c.input.command ?? ''))) || c.tool,
+  fp: createHash('sha256').update(`${c.tool}\n${JSON.stringify(c.input)}`).digest('hex').slice(0, 12), owner, ...c.review && { review: c.review },
+})
+
+export function deferredApprovals(store: Saved, heard: (v: CardVerdict) => void = () => {}) {
   const rows = (): Record<string, Row> => (store.load(NAME) ?? {}) as Record<string, Row>
   const put = (r: Record<string, Row>) => store.save(NAME, Object.keys(r).length ? r : undefined)
-  const sweep = (r: Record<string, Row>, now: number) => { for (const [i, w] of Object.entries(r)) if (now - w.at >= CARD_TTL || (w.yes !== undefined && now - w.yes >= YES_TTL)) delete r[i] }
+  const sweep = (r: Record<string, Row>, now: number) => {
+    for (const [i, w] of Object.entries(r)) {
+      if (w.yes === undefined && now - w.at >= CARD_TTL) { delete r[i]; heard(verdictOf(w, 'expired')) }
+      else if (w.yes !== undefined && (now - w.at >= CARD_TTL || now - w.yes >= YES_TTL)) delete r[i]
+    }
+  }
   return {
     add(c: Call & { id: string }, now: number) { const r = rows(); sweep(r, now); const { id, ...call } = c; r[id] = { ...call, at: now }; put(r) },
-    answer(id: string, behavior: 'allow' | 'deny', now: number): Call | undefined {
+    answer(id: string, behavior: 'allow' | 'deny', now: number, always?: boolean): Call | undefined {
       const r = rows()
       const row = r[id]
       if (row && now - row.at >= CARD_TTL) { sweep(r, now); put(r); return undefined }
       if (!row || row.yes) return undefined
       if (behavior === 'allow') r[id] = { ...row, yes: now }; else delete r[id]
       put(r)
+      heard(verdictOf(row, behavior === 'deny' ? 'deny' : always ? 'always' : 'allow'))
       return row
     },
     waiting(key: string, tool: string, input: Record<string, unknown>, now: number): 'same' | 'full' | undefined {
       const r = rows()
       sweep(r, now)
+      put(r)
       const open = Object.values(r).filter(w => w.key === key && w.yes === undefined)
       return open.some(w => same(w, key, tool, input)) ? 'same' : open.length >= OPEN_PER_KEY ? 'full' : undefined
     },
@@ -46,7 +62,7 @@ export function deferredApprovals(store: Saved) {
 }
 
 export function answerDeferred(a: ReturnType<typeof deferredApprovals>, send: (key: string, task: Task) => void, id: string, behavior: 'allow' | 'deny', now: number, always?: (c: Call) => void): boolean {
-  const c = a.answer(id, behavior, now)
+  const c = a.answer(id, behavior, now, !!always)
   if (!c) return false
   const text = behavior === 'allow' ? `The owner said yes to the card for ${c.tool}. Run that same call again now, with the same input.` : `The owner said no to the card for ${c.tool}. Do not run it. Tell the thread you stopped.`
   send(c.key, { ...c.task, content: `Approval answer: ${text}` })

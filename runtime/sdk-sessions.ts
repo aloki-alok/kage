@@ -16,6 +16,7 @@ import type { Dispatcher, Runner } from '../core/sessions.ts'
 import type { sessionTools } from './kage-tools.ts'
 import { eventNeedsCard } from '../core/tripwire.ts'
 import type { deferredApprovals } from './deferred-approvals.ts'
+import type { Review } from './kagelets/review.ts'
 import type { Limit } from './limit-pause.ts'
 import type { Task } from '../core/task.ts'
 import { MODELS } from '../core/config.ts'
@@ -58,7 +59,7 @@ export function sdkSessions(o: {
   onBlocked?: (key: string, turn: Task[], category: string | null) => void
   onDropped?: (key: string, turn: Task[], reason: string, kind: string) => void
   onTurn?: (key: string, tasks: Task[], limit?: Limit, done?: true) => void
-  grantOf?: (key: string) => string[] | undefined; allowOf?: (key: string) => string[]; reviewHeld?: (key: string, command: string) => Promise<boolean>
+  grantOf?: (key: string) => string[] | undefined; allowOf?: (key: string) => string[]; reviewHeld?: (key: string, command: string) => Promise<Review>
   onTool?: (key: string, tool: string, refused?: string) => void
   budgetOf?: (key: string) => number | undefined
   modelOf?: (key: string) => string | undefined
@@ -141,7 +142,7 @@ export function sdkSessions(o: {
               const path = toolRefusal(i.tool_name, i.tool_input ?? {}, s.turn.some(x => senderOf(x.task) === 'agent') ? 'agent' : senderNow(s), o) ?? (key === DREAM_KEY && o.ownMemory ? dreamNoteRefusal(i.tool_name, i.tool_input ?? {}, o.ownMemory) : undefined), held = grant && grantRefusal(i.tool_name, grant, i.tool_input ?? {}, o.allowOf?.(key))
               const step = !!held && !path && i.tool_name === 'Bash' && shellGrant(grant!), command = { command: String(i.tool_input?.command ?? '') }
               const taken = step && !!o.deferred?.take(key, 'Bash', command, Date.now()), wait = step && !taken ? o.deferred?.waiting(key, 'Bash', command, Date.now()) : undefined
-              const released = taken || step && wait !== 'same' && !!await o.reviewHeld?.(key, command.command), card = step && !released && !wait && o.deferred && s.turn.length ? await defer(key, s, 'Bash', `A kagelet's one-way step: ${heldCommand(command.command)}. Reply \`always\` to run it and let this exact command run with no ask from now on.`, command) : undefined
+              const review = step && !taken && wait !== 'same' ? await o.reviewHeld?.(key, command.command) : undefined, released = taken || !!review?.release, card = step && !released && !wait && o.deferred && s.turn.length ? await defer(key, s, 'Bash', `A kagelet's one-way step: ${heldCommand(command.command)}. Reply \`always\` to run it and let this exact command run with no ask from now on.`, command, review?.said) : undefined
               const reason = released ? undefined : card?.interrupt || wait === 'same' ? `Held: ${heldCommand(command.command)} is a one-way step. The owner's card is posted, so it is not in your needs. Go on with the rest of the job; when they answer, a new task says so.` : held || path
               if (grant) o.onTool?.(key, i.tool_name, reason || undefined)
               return reason ? { hookSpecificOutput: { hookEventName: 'PreToolUse', permissionDecision: 'deny', permissionDecisionReason: reason } } : released ? { hookSpecificOutput: { hookEventName: 'PreToolUse', permissionDecision: 'allow' } } : {}
@@ -250,14 +251,14 @@ export function sdkSessions(o: {
     })
   }
 
-  async function defer(key: string, s: Session, tool: string, description: string, input: Record<string, unknown>) {
+  async function defer(key: string, s: Session, tool: string, description: string, input: Record<string, unknown>, review?: Review['said']) {
     const store = o.deferred!
     const id = requestId()
     try { await s.kage.askOwner({ id, tool, description, preview: approvalPreview(tool, input) }) } catch (e: any) {
       log('permission prompt failed', e?.data?.error ?? e)
       return { behavior: 'deny' as const, message: 'The owner did not approve this.' }
     }
-    store.add({ id, key, tool, input, task: s.turn.at(-1)!.task }, Date.now())
+    store.add({ id, key, tool, input, task: s.turn.at(-1)!.task, ...review && { review } }, Date.now())
     return { behavior: 'deny' as const, interrupt: true, message: "The owner's card is posted. This turn ends here. When they answer, a new task says so." }
   }
 
