@@ -170,11 +170,11 @@ Counts and failure codes from this install, sent to an OpenTelemetry (OTLP) endp
 
 ## Reach Kage from other machines
 
-One tunnel serves every Kage port another machine needs (#492). `kage tunnel on` opens a route for each connector that is on, and closes the route of each one that is off. `kage tunnel off` closes them all. `kage doctor` shows each route. It needs [Tailscale](https://tailscale.com/download) running on this machine. A public route also needs Funnel allowed for this machine in the Tailscale admin page, once.
+One tunnel serves every Kage port another machine needs (#492). Public routes use port 8443, which Kage keeps to itself: Funnel publishes a whole port, so `kage tunnel on` refuses while something Kage did not make is served there, and it never touches your other ports. `kage tunnel on` opens a route for each connector that is on, and closes the route of each one that is off. `kage tunnel off` closes them all. `kage doctor` shows each route. It needs [Tailscale](https://tailscale.com/download) running on this machine. A public route also needs Funnel allowed for this machine in the Tailscale admin page, once.
 
 | Route | Who calls it | Reach |
 |---|---|---|
-| github | GitHub's webhook, when `githubSecret` is set | public at `https://<machine>.<tailnet>.ts.net/github` |
+| github | GitHub's webhook, when `githubSecret` is set | public at `https://<machine>.<tailnet>.ts.net:8443/github` |
 | voice | the voice agent, when `voiceToken` is set | public at `/mcp` and `/voice` |
 | hooks | job webhooks, when `tripwires.hookPort` is set | public at `/hook/<job>` |
 | meeting | the meeting bot, when `meetingToken` is set | your tailnet only, at `<machine>.<tailnet>.ts.net:<port>` |

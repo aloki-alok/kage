@@ -10,7 +10,7 @@ type ServeStatus = {
 }
 
 const PUBLIC_PORT = 8443
-const KAGE_PATHS = ['/github', '/mcp', '/voice', '/hook']
+const OWN_PATHS = ['/github', '/mcp', '/voice', '/hook']
 const local = (port: number) => `127.0.0.1:${port}`
 const target = (port: number, path: string) => `http://${local(port)}${path}`
 const kageWeb = (s: ServeStatus) => Object.entries(s.Web ?? {}).find(([host]) => host.endsWith(`:${PUBLIC_PORT}`))
@@ -30,7 +30,7 @@ export function tunnelPlan(settings: { config: Config; secrets: Secrets }, now: 
   const s = (now.status ?? {}) as ServeStatus, handlers = kageWeb(s)?.[1].Handlers ?? {}
   const wanted = to === 'on' ? tunnelRoutes(settings) : []
   const want = new Map(wanted.flatMap(r => r.reach === 'internet' ? r.paths.map(p => [p, target(r.port, p)] as const) : []))
-  const foreign = Object.keys(handlers).filter(p => !KAGE_PATHS.includes(p))
+  const foreign = Object.keys(handlers).filter(p => !OWN_PATHS.includes(p))
   const meetingPort = settings.config.connectors?.meeting?.port || 8790, meetingWanted = wanted.some(r => r.name === 'meeting')
   const forwarded = s.TCP?.[meetingPort]?.TCPForward === local(meetingPort)
   const web = foreign.length ? [] : [

@@ -9,5 +9,5 @@ export const tunnel: Group = async () => {
   if (provider !== 'tailscale' || !routes.length) return []
   const bin = tailscaleBin()
   const now = bin ? tailscaleState(bin) : { running: false, funnel: false, serve: {} }
-  return tunnelLines({ provider, ...now, routes, status: now.serve })
+  return tunnelLines({ provider, installed: !!bin, ...now, routes, status: now.serve })
 }
