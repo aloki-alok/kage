@@ -1081,7 +1081,7 @@ describe("the owner's screen", () => {
     assert.deepEqual(asked, ['under 720,450', 'click 720,450'])
     asked.length = 0
     await s.call('screen_act', { channel: 'C1', thread_ts: '5.5', steps: [{ action: 'move', x: 128, y: 80 }, { action: 'click', x: 640, y: 400 }] })
-    assert.deepEqual(asked.filter(a => !a.startsWith('focused')), ['move 144,90', 'under 720,450', 'click 720,450'])
+    assert.deepEqual((asked as string[]).filter(a => !a.startsWith('focused')), ['move 144,90', 'under 720,450', 'click 720,450'])
     assert.equal((await s.call('screen_act', { channel: 'C1', thread_ts: '5.5', action: 'key', keys: 'cmd+a' })).isError, undefined)
   })
   test('the owner records the screen into the thread folder, stops it, and gets the file to send', async () => {
