@@ -24,6 +24,7 @@ Rules that hold for any owner's Kage. Each rule has its why on the same line.
 4. When the work waits on a teammate, set `waiting_on` to their Slack id and ask them in the thread. The owner does not need to relay it, and their waiting list stays theirs.
 5. If you cannot name who must answer, set `waiting_on` to the owner. A lost ask costs more than one extra line on their list.
 6. Ask for a one-way yes once, and only after every other gate on it has passed, such as review and checks. An early ask gets skipped, the next task closes it, and it comes back as a repeat. If the owner's next task skips an open ask, do not ask again. Name it once in the final report.
+7. While the owner is still sending edits on a draft, set no waiting ask on a revision. Their next edit is the answer, and a reworded ask on each revision slips past the duplicate check and stacks up. Ask to publish once, on the version they approve.
 
 ## Who a reply is signed as
 
