@@ -125,10 +125,11 @@ function startSms(o: Parameters<typeof startConnectors>[0]) {
     send: smsSender({ provider, statusUrl: c.publicUrl, ...keys }),
     store, inbox: o.inbox, deliver: (conversation, task, place) => o.deliver(conversation, task, place),
     notify: text => void o.say(text),
-    post: (thread, text) => {
+    post: async (thread, text) => {
       const [channel, ts] = thread.split(':')
-      if (!channel) return
-      void bot.chat.postMessage({ channel, text, ...(ts && /^\d+\.\d+$/.test(ts) && { thread_ts: ts }) }).catch(e => log('sms report post failed', e))
+      if (!channel) return false
+      return bot.chat.postMessage({ channel, text, ...(ts && /^\d+\.\d+$/.test(ts) && { thread_ts: ts }) })
+        .then(r => r.ok === true, e => { log('sms report post failed', e); return false })
     },
     startError: () => d.lastStartError(),
   })

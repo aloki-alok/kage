@@ -22,8 +22,9 @@ type SmsOptions = {
   send: SmsSend; store: SmsStore; inbox: Inbox
   deliver: (c: Conversation, task: Task, place: string) => Delivery
   notify: (text: string) => void
-  post: (thread: string, text: string) => void
+  post: (thread: string, text: string) => Promise<boolean>
   startError?: () => string | undefined
+  clock?: () => Date
 }
 const placeOf = (person: number) => `SMS contact ${person}`
 
@@ -36,7 +37,7 @@ export function connectSms(o: SmsOptions) {
   }
   const server = webhook(o, run)
   const sendOne = (to: string, body: string): Promise<SmsSent> =>
-    o.send(to, o.from, body).catch(e => { log('sms send failed', e); return { error: 'network', auth: false } })
+    o.send(to, o.from, body).catch(e => { log('sms send failed', e); return { error: 'network', auth: false, again: false } })
   const tick = campaignSender(o, sendOne)
   const timer = o.tickMs === 0 ? undefined : setInterval(() => void tick(), o.tickMs ?? 60_000)
   timer?.unref()
@@ -100,8 +101,8 @@ function replier(o: SmsOptions, sendOne: (to: string, body: string) => Promise<S
   return async (key: string, text: string): Promise<boolean> => {
     const person = Number(key.slice('sms:'.length))
     const phone = o.store.phoneOf(person)
-    if (!phone || o.store.optedOut(person)) { log('sms reply refused: unknown or opted-out contact', person); return false }
-    const row = o.store.claim(null, person, smsSegments(text).segments)!
+    const row = phone === undefined ? undefined : o.store.claim(null, person, smsSegments(text).segments)
+    if (phone === undefined || row === undefined) { log('sms reply refused: unknown or opted-out contact', person); return false }
     const r = await sendOne(phone, text)
     if ('id' in r) { o.store.accepted(row, r.id); return true }
     o.store.refused(row, r.error)
@@ -111,25 +112,32 @@ function replier(o: SmsOptions, sendOne: (to: string, body: string) => Promise<S
 }
 
 function campaignSender(o: SmsOptions, sendOne: (to: string, body: string) => Promise<SmsSent>) {
-  async function sendBatch(now: Date) {
-    for (const c of o.store.finishSent()) {
-      const numbers = o.store.report(c.id)
-      if (numbers) o.post(c.thread, campaignReport(numbers))
+  const clock = o.clock ?? (() => new Date())
+  async function reportSent() {
+    for (const id of o.store.sentCampaigns()) {
+      const c = o.store.campaign(id), numbers = o.store.report(id)
+      if (!c || !numbers) continue
+      if (await o.post(c.thread, campaignReport({ ...numbers, state: 'done' }))) o.store.move(id, 'finish')
+      else log('sms campaign report not posted, trying again next tick', id)
     }
-    if (!inSendWindow(now)) return
+  }
+  async function sendBatch() {
+    await reportSent()
     const batch = o.store.nextBatch(o.perMinute)
     for (const b of batch) {
+      if (!inSendWindow(clock())) return
       const row = o.store.claim(b.campaign, b.person, smsSegments(b.body).segments)
       if (row === undefined) continue
       const r = await sendOne(b.phone, b.body)
       if ('id' in r) { o.store.accepted(row, r.id); continue }
-      o.store.refused(row, r.error)
-      if (!r.auth) continue
+      if (!r.again) { o.store.refused(row, r.error); continue }
+      o.store.release(row)
+      if (!r.auth) return
       for (const id of new Set(batch.map(x => x.campaign))) o.store.move(id, 'pause')
       o.notify(ownerLines.smsAuthFailed(r.error))
       return
     }
   }
-  let ticking: Promise<void> = Promise.resolve()
-  return (now = new Date()) => (ticking = ticking.then(() => sendBatch(now)).catch(e => log('sms tick failed', e)))
+  let running: Promise<void> | undefined
+  return () => (running ??= sendBatch().catch(e => log('sms tick failed', e)).finally(() => { running = undefined }))
 }

@@ -80,7 +80,7 @@ function campaignsIn(db: DatabaseSync, now: Now, person: (phone: string) => numb
       for (const phone of c.phones) added += Number(addContact.run(id, person(phone)).changes)
       return { id, added, repeated: c.phones.length - added }
     }),
-    finishSent: (): SmsCampaign[] => (allSent.all() as { id: number }[]).flatMap(({ id }) => (move(id, 'finish') ? [campaign(id)!] : [])),
+    sentCampaigns: (): number[] => (allSent.all() as { id: number }[]).map(({ id }) => Number(id)),
   }
 }
 
@@ -94,7 +94,11 @@ function sendingIn(db: DatabaseSync, now: Now) {
     join sms_people p on p.id = c.person_id
     where not exists (select 1 from sms_messages m where m.direction = 'out' and m.campaign_id = c.campaign_id and m.person_id = c.person_id)
     order by c.campaign_id, c.rowid limit ?`)
-  const claimRow = db.prepare(`insert or ignore into sms_messages (campaign_id, person_id, direction, status, segments, at) values (?, ?, 'out', 'claimed', ?, ?)`)
+  const claimRow = db.prepare(`insert or ignore into sms_messages (campaign_id, person_id, direction, status, segments, at)
+    select ?1, ?2, 'out', 'claimed', ?3, ?4
+    where not exists (select 1 from sms_optouts where person_id = ?2)
+    and (?1 is null or exists (select 1 from sms_campaigns where id = ?1 and state = 'sending'))`)
+  const unclaim = db.prepare(`delete from sms_messages where id = ? and status = 'claimed' and provider_id is null`)
   const statusOf = db.prepare('select status from sms_messages where id = ?')
   const byProvider = db.prepare(`select id, status from sms_messages where direction = 'out' and provider_id = ?`)
   const writeStatus = db.prepare('update sms_messages set status = ?, error_code = coalesce(?, error_code) where id = ?')
@@ -113,6 +117,7 @@ function sendingIn(db: DatabaseSync, now: Now) {
       if (current) writeProvider.run(providerId, nextStatus(current, 'queued'), row)
     },
     refused: (row: number, code: string) => { writeStatus.run('failed', code, row) },
+    release: (row: number) => { unclaim.run(row) },
     status(providerId: string, incoming: SmsStatus, error?: string): boolean {
       const row = byProvider.get(providerId) as { id: number; status: SmsStatus } | undefined
       if (!row) return false
@@ -131,7 +136,6 @@ function hearingIn(db: DatabaseSync, now: Now, person: (phone: string) => number
     values (?, ?, 'in', ?, 'delivered', ?, 0, ?)`)
   const addOptOut = db.prepare('insert into sms_optouts (person_id, at) values (?, ?) on conflict do nothing')
   const dropOptOut = db.prepare('delete from sms_optouts where person_id = ?')
-  const isOptedOut = db.prepare('select 1 from sms_optouts where person_id = ?')
   return {
     heard: (phone: string, providerId: string, keyword?: SmsKeyword): { person: number; campaign?: number; fresh: boolean } => inTransaction(db, () => {
       const id = person(phone)
@@ -144,7 +148,6 @@ function hearingIn(db: DatabaseSync, now: Now, person: (phone: string) => number
       return { person: id, campaign, fresh: true }
     }),
     optOut: (id: number) => { addOptOut.run(id, now()) },
-    optedOut: (id: number) => Boolean(isOptedOut.get(id)),
   }
 }
 

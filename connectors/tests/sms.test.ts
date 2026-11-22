@@ -13,24 +13,26 @@ const IN_WINDOW = new Date('2026-11-23T20:00:00Z'), NIGHT = new Date('2026-11-23
 const telnyxKeys = generateKeyPairSync('ed25519')
 const telnyxPublic = telnyxKeys.publicKey.export({ format: 'der', type: 'spki' }).subarray(-32).toString('base64')
 
-async function setup(o: { provider?: 'twilio' | 'telnyx'; perHour?: number; perMinute?: number; answer?: (to: string) => SmsSent | 'throw' } = {}) {
+type Answer = SmsSent | 'throw' | undefined
+async function setup(o: { provider?: 'twilio' | 'telnyx'; perHour?: number; perMinute?: number; answer?: (to: string) => Answer | Promise<Answer>; postFails?: () => boolean } = {}) {
   const store = openSmsStore(':memory:', () => '2026-11-23T20:00:00.000Z')
   const kv = openStore(':memory:')
   const sent: { to: string; body: string }[] = [], tasks: { key: string; content: string; outsider?: string; source?: string }[] = []
   const told: string[] = [], posts: { thread: string; text: string }[] = []
-  let n = 0
+  let n = 0, now = IN_WINDOW
   const sms = connectSms({
     provider: o.provider ?? 'twilio', from: OURS, port: 0, publicUrl: URL_, perHour: o.perHour ?? 10, perMinute: o.perMinute ?? 2, tickMs: 0,
-    twilioAuthToken: TOKEN, telnyxPublicKey: telnyxPublic,
+    twilioAuthToken: TOKEN, telnyxPublicKey: telnyxPublic, clock: () => now,
     send: async (to, _from, body) => {
-      const a = o.answer?.(to)
+      const a = await o.answer?.(to)
       if (a === 'throw') throw new Error('network down')
       sent.push({ to, body })
       return a ?? { id: `SM0TEST${++n}` }
     },
     store, inbox: { take: (s, c, p) => kv.take(s, c, p, Date.now()), handled: s => kv.handled(s), has: s => kv.has(s) },
     deliver: (c, task) => { tasks.push({ key: `${c.connector}:${c.chat}`, content: task.content, ...(task.outsider && { outsider: task.outsider }), ...(task.source && { source: task.source }) }); return 'sent' },
-    notify: t => void told.push(t), post: (thread, text) => void posts.push({ thread, text }),
+    notify: t => void told.push(t),
+    post: async (thread, text) => { if (o.postFails?.()) return false; posts.push({ thread, text }); return true },
   })
   const port = await sms.listening
   const twilio = (params: Record<string, string>, sig?: string) => {
@@ -48,8 +50,9 @@ async function setup(o: { provider?: 'twilio' | 'telnyx'; perHour?: number; perM
     store.move(id, 'launch')
     return id
   }
-  return { sms, store, sent, tasks, told, posts, twilio, telnyx, campaign }
+  return { sms, store, sent, tasks, told, posts, twilio, telnyx, campaign, setNow: (d: Date) => { now = d } }
 }
+type Setup = Awaited<ReturnType<typeof setup>>
 const text = (MessageSid: string, Body: string, From = A) => ({ MessageSid, SmsStatus: 'received', From, To: OURS, Body })
 
 describe('a text that comes in', () => {
@@ -57,7 +60,7 @@ describe('a text that comes in', () => {
     const t = await setup()
     try {
       const id = t.campaign([A])
-      await t.sms.tick(IN_WINDOW)
+      await t.sms.tick()
       const r = await t.twilio(text('SM0IN1', 'what time do you open?'))
       assert.equal(r.status, 200)
       assert.equal(await r.text(), '<Response></Response>')
@@ -92,7 +95,7 @@ describe('a text that comes in', () => {
       await t.twilio(text('SM0IN4', 'stop'))
       assert.equal(t.tasks.length, 0)
       t.campaign([A, B])
-      await t.sms.tick(IN_WINDOW)
+      await t.sms.tick()
       assert.deepEqual(t.sent.map(s => s.to), [B])
     } finally { t.sms.close() }
   })
@@ -122,7 +125,7 @@ describe('a text that comes in', () => {
       assert.equal(t.tasks.length, 1)
       assert.equal((await t.telnyx(inbound, Math.floor(Date.now() / 1000) - 600)).status, 401)
       const id = t.campaign([B])
-      await t.sms.tick(IN_WINDOW)
+      await t.sms.tick()
       await t.telnyx({ data: { event_type: 'message.finalized', payload: { id: 'SM0TEST1', to: [{ status: 'delivered' }] } } })
       assert.equal(t.store.report(id)!.counts.delivered, 1)
     } finally { t.sms.close() }
@@ -134,7 +137,8 @@ describe('sending a campaign', () => {
     const t = await setup()
     try {
       t.campaign()
-      await t.sms.tick(NIGHT)
+      t.setNow(NIGHT)
+      await t.sms.tick()
       assert.equal(t.sent.length, 0)
     } finally { t.sms.close() }
   })
@@ -142,9 +146,9 @@ describe('sending a campaign', () => {
     const t = await setup({ perMinute: 2 })
     try {
       t.campaign()
-      await t.sms.tick(IN_WINDOW)
+      await t.sms.tick()
       assert.equal(t.sent.length, 2)
-      await t.sms.tick(IN_WINDOW)
+      await t.sms.tick()
       assert.deepEqual(t.sent.map(s => s.to), [A, B, C])
     } finally { t.sms.close() }
   })
@@ -152,7 +156,7 @@ describe('sending a campaign', () => {
     const t = await setup({ perMinute: 5 })
     try {
       t.campaign()
-      await Promise.all([t.sms.tick(IN_WINDOW), t.sms.tick(IN_WINDOW)])
+      await Promise.all([t.sms.tick(), t.sms.tick()])
       assert.equal(t.sent.length, 3)
     } finally { t.sms.close() }
   })
@@ -160,10 +164,10 @@ describe('sending a campaign', () => {
     const t = await setup({ perMinute: 5 })
     try {
       const id = t.campaign([A])
-      await t.sms.tick(IN_WINDOW)
+      await t.sms.tick()
       await t.twilio({ MessageSid: 'SM0TEST1', MessageStatus: 'delivered' })
-      await t.sms.tick(IN_WINDOW)
-      await t.sms.tick(IN_WINDOW)
+      await t.sms.tick()
+      await t.sms.tick()
       assert.equal(t.store.report(id)!.counts.delivered, 1)
       assert.equal(t.posts.length, 1)
       assert.equal(t.posts[0]!.thread, 'D0TEST1:1.1')
@@ -174,21 +178,97 @@ describe('sending a campaign', () => {
     const t = await setup({ perMinute: 5, answer: to => (to === A ? 'throw' : { id: `SM0TEST${to.slice(-1)}` }) })
     try {
       const id = t.campaign()
-      await t.sms.tick(IN_WINDOW)
-      await t.sms.tick(IN_WINDOW)
+      await t.sms.tick()
+      await t.sms.tick()
       assert.deepEqual(t.sent.map(s => s.to), [B, C])
       assert.equal(t.store.report(id)!.errors.network, 1)
     } finally { t.sms.close() }
   })
   test('refused credentials pause the campaign and tell the owner once', async () => {
-    const t = await setup({ perMinute: 5, answer: () => ({ error: '20003', auth: true }) })
+    const t = await setup({ perMinute: 5, answer: () => ({ error: '20003', auth: true, again: true }) })
     try {
       const id = t.campaign()
-      await t.sms.tick(IN_WINDOW)
-      await t.sms.tick(IN_WINDOW)
+      await t.sms.tick()
+      await t.sms.tick()
       assert.equal(t.sent.length, 1)
       assert.equal(t.store.campaign(id)!.state, 'paused')
       assert.equal(t.told.length, 1)
+    } finally { t.sms.close() }
+  })
+  test('once the keys are fixed and the campaign resumes, the contact the provider refused is texted', async () => {
+    let refuse = true
+    const t = await setup({ perMinute: 5, answer: () => (refuse ? { error: '20003', auth: true, again: true } : undefined) })
+    try {
+      const id = t.campaign()
+      await t.sms.tick()
+      refuse = false
+      t.store.move(id, 'resume')
+      await t.sms.tick()
+      assert.deepEqual(t.sent.map(s => s.to), [A, A, B, C])
+    } finally { t.sms.close() }
+  })
+  test('a busy provider leaves the contact for the next tick instead of failing it', async () => {
+    let busy = true
+    const t = await setup({ perMinute: 5, answer: () => (busy ? { error: 'http-429', auth: false, again: true } : undefined) })
+    try {
+      const id = t.campaign([A])
+      await t.sms.tick()
+      busy = false
+      await t.sms.tick()
+      assert.deepEqual(t.sent.map(s => s.to), [A, A])
+      assert.deepEqual(t.store.report(id)!.errors, {})
+    } finally { t.sms.close() }
+  })
+  test('a tick that comes while a batch is still sending is dropped, so the per-minute cap holds', async () => {
+    let release = () => {}
+    const slow = new Promise<void>(r => { release = r })
+    const t = await setup({ perMinute: 2, answer: async () => { await slow; return undefined } })
+    try {
+      t.campaign()
+      const first = t.sms.tick(), second = t.sms.tick()
+      release()
+      await Promise.all([first, second])
+      assert.equal(t.sent.length, 2)
+    } finally { t.sms.close() }
+  })
+  test('a batch stops when 8pm Eastern comes during it', async () => {
+    const t: Setup = await setup({ perMinute: 5, answer: () => { t.setNow(NIGHT); return undefined } })
+    try {
+      t.campaign()
+      await t.sms.tick()
+      assert.equal(t.sent.length, 1)
+    } finally { t.sms.close() }
+  })
+  test('a cancel during a batch stops the rest of it', async () => {
+    let id = 0
+    const t: Setup = await setup({ perMinute: 5, answer: () => { t.store.move(id, 'cancel'); return undefined } })
+    try {
+      id = t.campaign()
+      await t.sms.tick()
+      assert.deepEqual(t.sent.map(s => s.to), [A])
+    } finally { t.sms.close() }
+  })
+  test('a STOP during a batch keeps that number out of the rest of it', async () => {
+    const t: Setup = await setup({ perMinute: 5, answer: to => { if (to === A) t.store.heard(B, 'SM0STOP', 'stop'); return undefined } })
+    try {
+      t.campaign()
+      await t.sms.tick()
+      assert.deepEqual(t.sent.map(s => s.to), [A, C])
+    } finally { t.sms.close() }
+  })
+  test('a report that fails to post keeps the campaign sending, and the next tick posts it', async () => {
+    let fail = true
+    const t = await setup({ perMinute: 5, postFails: () => fail })
+    try {
+      const id = t.campaign([A])
+      await t.sms.tick()
+      await t.sms.tick()
+      assert.equal(t.store.campaign(id)!.state, 'sending')
+      fail = false
+      await t.sms.tick()
+      await t.sms.tick()
+      assert.equal(t.store.campaign(id)!.state, 'done')
+      assert.equal(t.posts.length, 1)
     } finally { t.sms.close() }
   })
 })

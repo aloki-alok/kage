@@ -1,5 +1,5 @@
 export type SmsProvider = 'twilio' | 'telnyx'
-export type SmsSent = { id: string } | { error: string; auth: boolean }
+export type SmsSent = { id: string } | { error: string; auth: boolean; again: boolean }
 export type SmsSend = (to: string, from: string, body: string) => Promise<SmsSent>
 
 const TWILIO_API = 'https://api.twilio.com/2010-04-01'
@@ -29,9 +29,10 @@ export function smsSender(o: {
     const json = await res.json().catch(() => undefined) as Record<string, any> | undefined
     if (res.ok) {
       const id = o.provider === 'twilio' ? json?.sid : json?.data?.id
-      return typeof id === 'string' && id ? { id } : { error: 'no-id', auth: false }
+      return typeof id === 'string' && id ? { id } : { error: 'no-id', auth: false, again: false }
     }
     const code = o.provider === 'twilio' ? json?.code : Array.isArray(json?.errors) ? json.errors[0]?.code : undefined
-    return { error: code === undefined || code === null ? `http-${res.status}` : String(code), auth: res.status === 401 || res.status === 403 }
+    const auth = res.status === 401 || res.status === 403
+    return { error: code === undefined || code === null ? `http-${res.status}` : String(code), auth, again: auth || res.status === 429 || res.status >= 500 }
   }
 }

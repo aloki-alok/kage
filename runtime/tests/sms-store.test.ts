@@ -62,14 +62,40 @@ describe('sending a campaign', () => {
     assert.deepEqual(s.nextBatch(5).map(b => b.phone), [A, C])
     assert.equal(s.report(id)!.counts.skipped, 1)
   })
-  test('the campaign is done once every contact has a row, and the finished list names it once', () => {
+  test('a campaign is listed as sent once every contact has a row, and stays sending until it is moved to done', () => {
     const { s, id } = launched(fresh(), [A])
-    assert.deepEqual(s.finishSent(), [])
+    assert.deepEqual(s.sentCampaigns(), [])
     const [b] = s.nextBatch(1)
     s.claim(b!.campaign, b!.person, 1)
-    assert.deepEqual(s.finishSent().map(c => c.id), [id])
-    assert.equal(s.campaign(id)?.state, 'done')
-    assert.deepEqual(s.finishSent(), [])
+    assert.deepEqual(s.sentCampaigns(), [id])
+    assert.equal(s.campaign(id)?.state, 'sending')
+    s.move(id, 'finish')
+    assert.deepEqual(s.sentCampaigns(), [])
+  })
+  test('a claim for a campaign that is no longer sending gets nothing', () => {
+    for (const action of ['pause', 'cancel'] as const) {
+      const { s, id } = launched()
+      const [b] = s.nextBatch(1)
+      s.move(id, action)
+      assert.equal(s.claim(b!.campaign, b!.person, 1), undefined, action)
+    }
+  })
+  test('a claim for a number that opted out after the batch was read gets nothing, for a campaign or a reply', () => {
+    const { s } = launched()
+    const [b] = s.nextBatch(1)
+    s.optOut(b!.person)
+    assert.equal(s.claim(b!.campaign, b!.person, 1), undefined)
+    assert.equal(s.claim(null, b!.person, 1), undefined)
+  })
+  test('a released claim frees the contact for the next batch, and a row the provider took is never released', () => {
+    const { s } = launched(fresh(), [A, B])
+    const [a, b] = s.nextBatch(2)
+    const rowA = s.claim(a!.campaign, a!.person, 1)!
+    const rowB = s.claim(b!.campaign, b!.person, 1)!
+    s.accepted(rowB, 'SM0TEST9')
+    s.release(rowA)
+    s.release(rowB)
+    assert.deepEqual(s.nextBatch(5).map(x => x.phone), [A])
   })
 })
 
@@ -111,10 +137,10 @@ describe('tracking what happened to each text', () => {
     const [b] = s.nextBatch(1)
     s.accepted(s.claim(b!.campaign, b!.person, 1)!, 'SM0TEST6')
     s.heard(A, 'SM0TEST7', 'stop')
-    assert.equal(s.optedOut(s.person(A)), true)
+    assert.equal(s.claim(null, s.person(A), 1), undefined)
     assert.deepEqual([s.report(id)!.optOuts, s.report(id)!.replies], [1, 0])
     s.heard(A, 'SM0TEST8', 'start')
-    assert.equal(s.optedOut(s.person(A)), false)
+    assert.ok(s.claim(null, s.person(A), 1))
     assert.equal(s.report(id)!.optOuts, 1)
   })
   test('a resent STOP is counted once', () => {
