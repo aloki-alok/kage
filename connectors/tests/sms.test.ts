@@ -14,7 +14,7 @@ const telnyxKeys = generateKeyPairSync('ed25519')
 const telnyxPublic = telnyxKeys.publicKey.export({ format: 'der', type: 'spki' }).subarray(-32).toString('base64')
 
 type Answer = SmsSent | 'throw' | undefined
-async function setup(o: { provider?: 'twilio' | 'telnyx'; perHour?: number; perMinute?: number; answer?: (to: string) => Answer | Promise<Answer>; postFails?: () => boolean } = {}) {
+async function setup(o: { provider?: 'twilio' | 'telnyx'; perHour?: number; perMinute?: number; answer?: (to: string) => Answer | Promise<Answer>; postFails?: () => boolean; postHangs?: () => boolean } = {}) {
   const store = openSmsStore(':memory:', () => '2026-11-23T20:00:00.000Z')
   const kv = openStore(':memory:')
   const sent: { to: string; body: string }[] = [], tasks: { key: string; content: string; outsider?: string; source?: string }[] = []
@@ -32,7 +32,7 @@ async function setup(o: { provider?: 'twilio' | 'telnyx'; perHour?: number; perM
     store, inbox: { take: (s, c, p) => kv.take(s, c, p, Date.now()), handled: s => kv.handled(s), has: s => kv.has(s) },
     deliver: (c, task) => { tasks.push({ key: `${c.connector}:${c.chat}`, content: task.content, ...(task.outsider && { outsider: task.outsider }), ...(task.source && { source: task.source }) }); return 'sent' },
     notify: t => void told.push(t),
-    post: async (thread, text) => { if (o.postFails?.()) return false; posts.push({ thread, text }); return true },
+    post: async (thread, text) => { if (o.postHangs?.()) return new Promise<boolean>(() => {}); if (o.postFails?.()) return false; posts.push({ thread, text }); return true },
   })
   const port = await sms.listening
   const twilio = (params: Record<string, string>, sig?: string) => {
@@ -269,6 +269,36 @@ describe('sending a campaign', () => {
       await t.sms.tick()
       assert.equal(t.store.campaign(id)!.state, 'done')
       assert.equal(t.posts.length, 1)
+    } finally { t.sms.close() }
+  })
+  test('a report that fails to post 3 times goes to the owner instead, and the campaign is done', async () => {
+    const t = await setup({ perMinute: 5, postFails: () => true })
+    try {
+      const id = t.campaign([A])
+      await t.sms.tick()
+      await t.sms.tick()
+      await t.sms.tick()
+      assert.deepEqual([t.store.campaign(id)!.state, t.told], ['sending', []])
+      await t.sms.tick()
+      assert.equal(t.store.campaign(id)!.state, 'done')
+      assert.equal(t.told.length, 1)
+      assert.match(t.told[0]!, /promo/)
+      await t.sms.tick()
+      assert.equal(t.told.length, 1)
+    } finally { t.sms.close() }
+  })
+  test('a report post that hangs does not hold up the texts of another campaign', async () => {
+    let hang = false, sentB: () => void = () => {}
+    const reachedB = new Promise<void>(r => { sentB = r })
+    const t = await setup({ perMinute: 5, postHangs: () => hang, answer: to => { if (to === B) sentB(); return undefined } })
+    try {
+      t.campaign([A])
+      await t.sms.tick()
+      t.campaign([B])
+      hang = true
+      void t.sms.tick()
+      const timedOut = new Promise<string>(r => setTimeout(() => r('timed out'), 1000).unref())
+      assert.equal(await Promise.race([reachedB.then(() => 'sent'), timedOut]), 'sent')
     } finally { t.sms.close() }
   })
 })

@@ -41,6 +41,7 @@ const cases: [string, string][] = [
   [L.limitLost(['#a', '#b']), 'After the usage limit, 2 held messages could not be resumed: #a, #b. Ask again in their threads.'],
   [L.smsOverCap(30), 'More than 30 texts came in this hour, so I am storing them without answering until the hour is up. Each one counts in its campaign report.'],
   [L.smsAuthFailed('20003'), "The SMS provider refused Kage's credentials (code 20003), so I paused the campaigns that were sending. Fix the keys in secrets.json, then resume each campaign."],
+  [L.smsReportUnposted(3, 'promo: done'), 'A campaign report did not post in its thread after 3 tries, so I marked the campaign done and put the report here:\npromo: done'],
   [L.smsReplyFailed('SMS contact 7', '21610'), 'A text reply to SMS contact 7 did not go out: the SMS provider said 21610.'],
 ]
 

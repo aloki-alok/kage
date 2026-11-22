@@ -14,6 +14,7 @@ import { hourCap, listen, readBody } from './webhook.ts'
 
 const MAX_BODY = 64_000
 const OUTSIDER = 'a person who texted the SMS number'
+const REPORT_TRIES = 3
 type Inbound = Extract<SmsEvent, { kind: 'inbound' }>
 
 type SmsOptions = {
@@ -113,16 +114,22 @@ function replier(o: SmsOptions, sendOne: (to: string, body: string) => Promise<S
 
 function campaignSender(o: SmsOptions, sendOne: (to: string, body: string) => Promise<SmsSent>) {
   const clock = o.clock ?? (() => new Date())
+  const failedPosts = new Map<number, number>()
   async function reportSent() {
     for (const id of o.store.sentCampaigns()) {
       const c = o.store.campaign(id), numbers = o.store.report(id)
       if (!c || !numbers) continue
-      if (await o.post(c.thread, campaignReport({ ...numbers, state: 'done' }))) o.store.move(id, 'finish')
-      else log('sms campaign report not posted, trying again next tick', id)
+      const report = campaignReport({ ...numbers, state: 'done' })
+      if (await o.post(c.thread, report)) { failedPosts.delete(id); o.store.move(id, 'finish'); continue }
+      const tries = (failedPosts.get(id) ?? 0) + 1
+      log('sms campaign report not posted', id, tries)
+      if (tries < REPORT_TRIES) { failedPosts.set(id, tries); continue }
+      failedPosts.delete(id)
+      o.notify(ownerLines.smsReportUnposted(tries, report))
+      o.store.move(id, 'finish')
     }
   }
   async function sendBatch() {
-    await reportSent()
     const batch = o.store.nextBatch(o.perMinute)
     for (const b of batch) {
       if (!inSendWindow(clock())) return
@@ -138,6 +145,10 @@ function campaignSender(o: SmsOptions, sendOne: (to: string, body: string) => Pr
       return
     }
   }
-  let running: Promise<void> | undefined
-  return () => (running ??= sendBatch().catch(e => log('sms tick failed', e)).finally(() => { running = undefined }))
+  let running: Promise<void> | undefined, reporting: Promise<void> | undefined
+  return () => {
+    reporting ??= reportSent().catch(e => log('sms report failed', e)).finally(() => { reporting = undefined })
+    running ??= sendBatch().catch(e => log('sms tick failed', e)).finally(() => { running = undefined })
+    return Promise.all([reporting, running]).then(() => undefined)
+  }
 }

@@ -15,11 +15,11 @@ test('Twilio: a form post with basic auth and the status callback, and the messa
   assert.equal((seen[0]!.init.headers as Record<string, string>).authorization, `Basic ${Buffer.from('AC0TEST:tok').toString('base64')}`)
 })
 
-test('Twilio: a refusal returns its code, and a 401 is an auth failure, and a 401 or a 500 may be tried again', async () => {
+test('Twilio: a refusal returns its code, and a 401 is an auth failure, a 401 may be tried again, and a 500 may not, because the text may have gone out', async () => {
   const base = { provider: 'twilio' as const, statusUrl: 'u', accountSid: 'AC0TEST', twilioAuthToken: 'tok' }
   assert.deepEqual(await smsSender({ ...base, fetch: fake(400, { code: 21610, message: 'unsubscribed' }) })('+1', '+1', 'x'), { error: '21610', auth: false, again: false })
   assert.deepEqual(await smsSender({ ...base, fetch: fake(401, { code: 20003 }) })('+1', '+1', 'x'), { error: '20003', auth: true, again: true })
-  assert.deepEqual(await smsSender({ ...base, fetch: fake(500, 'oops') })('+1', '+1', 'x'), { error: 'http-500', auth: false, again: true })
+  assert.deepEqual(await smsSender({ ...base, fetch: fake(500, 'oops') })('+1', '+1', 'x'), { error: 'http-500', auth: false, again: false })
 })
 
 test('a 429 may be tried again, and a 200 with no id may not, because the text may have gone out', async () => {

@@ -33,6 +33,6 @@ export function smsSender(o: {
     }
     const code = o.provider === 'twilio' ? json?.code : Array.isArray(json?.errors) ? json.errors[0]?.code : undefined
     const auth = res.status === 401 || res.status === 403
-    return { error: code === undefined || code === null ? `http-${res.status}` : String(code), auth, again: auth || res.status === 429 || res.status >= 500 }
+    return { error: code === undefined || code === null ? `http-${res.status}` : String(code), auth, again: auth || res.status === 429 }
   }
 }
