@@ -316,7 +316,7 @@ async function onKey(k: string) {
       else await act(action, picked.name)
     }
   } else if (tab !== 'threads') return
-  else if (k === 'f') { filter = nextFilter(filter); refresh(Date.now()) }
+  else if (k === 'f') { filter = nextFilter(filter); open = undefined; refresh(Date.now()) }
   else if (k === 's') { if (!open && selKey) openThread(selKey); mode = mode === 'steps' ? 'schedules' : 'steps' }
   else if (k === '\r') { if (selKey === FOLDED) { showEnded = !showEnded; refresh(Date.now()) } else if (selKey) openThread(selKey) }
   else if (k === 'x' && (open ?? selKey) && (open ?? selKey) !== FOLDED) confirm = { kind: 'cut', target: open ?? selKey }
