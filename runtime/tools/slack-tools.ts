@@ -49,6 +49,13 @@ export function slackTools(c: ToolContext): KageTool[] {
         if (o.send({ type: 'voice', text: a.text }) === false) return { isError: true, text: HUB_DOWN }
         return { text: 'spoken to the caller' }
       }
+      if (a.channel === 'sms') {
+        if (a.private) return { isError: true, text: 'refused: a text conversation has no private reply' }
+        if (!o.approve) return { isError: true, text: 'refused: a text needs the owner\'s yes on a Slack card, and this session cannot show one' }
+        if (!await o.approve('reply', `Text to SMS contact ${a.thread_ts}: ${a.text}`, { text: a.text })) return { isError: true, text: 'The owner said no on the Slack card. Nothing was sent.' }
+        if (o.send({ type: 'sms', text: a.text }) === false) return { isError: true, text: HUB_DOWN }
+        return { text: 'texted after the owner\'s yes' }
+      }
       if ((a.channel === 'whatsapp' || a.channel === 'email') && !a.private) {
         if (o.send({ type: a.channel === 'email' ? 'mail' : 'wa', text: a.text }) === false) return { isError: true, text: HUB_DOWN }
         return { text: a.channel === 'email' ? 'sent by email' : 'handed to the guard: it goes out as the owner, or to their Slack DM if the guard holds it' }

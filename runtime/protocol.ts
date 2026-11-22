@@ -4,6 +4,7 @@ import type { ProbeArg } from './probe-jobs.ts'
 
 export type Verdict = { type: 'verdict'; request_id: string; behavior: 'allow' | 'deny' }
 export type ToSession = Task | Verdict
+export type ChannelReply = { type: 'mail' | 'wa' | 'voice' | 'sms'; text: string }
 
 export type FromSession =
   | { type: 'board' }
@@ -20,8 +21,7 @@ export type FromSession =
   | { type: 'hold'; key: string; pid: number }
   | { type: 'hello'; key: string }
   | { type: 'permission'; id: string }
-  | { type: 'mail'; text: string }
+  | ChannelReply
   | { type: 'schedule'; id: string; cron: string; prompt: string; recurring: boolean; probe?: ProbeArg; shadow?: { of: string; live: string } }
   | { type: 'unschedule'; id: string }
-  | { type: 'wa'; text: string }
-  | { type: 'voice'; text: string }
+

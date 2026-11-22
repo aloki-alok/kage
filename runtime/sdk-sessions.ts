@@ -20,7 +20,7 @@ import type { Review } from './kagelets/review.ts'
 import type { Limit } from './limit-pause.ts'
 import type { Task } from '../core/task.ts'
 import { MODELS } from '../core/config.ts'
-import type { ToSession } from './protocol.ts'
+import type { ChannelReply, ToSession } from './protocol.ts'
 
 type Kage = ReturnType<typeof sessionTools>
 export type Sdk = {
@@ -46,10 +46,10 @@ type Session = {
 export function sdkSessions(o: {
   sdk: Sdk
   hub: () => Dispatcher<ToSession>
-  tools: (key: string, send: (m: { type: 'mail' | 'wa' | 'voice'; text: string }) => void, approve: (tool: string, description: string, input: Record<string, unknown>) => Promise<boolean>, turnSender: () => Sender | undefined) => Kage
+  tools: (key: string, send: (m: ChannelReply) => void, approve: (tool: string, description: string, input: Record<string, unknown>) => Promise<boolean>, turnSender: () => Sender | undefined) => Kage
   hasTranscript: (id: string) => boolean
   trustedNow?: (person: string) => boolean
-  toHub: (key: string, m: { type: 'mail' | 'wa' | 'voice'; text: string }) => void
+  toHub: (key: string, m: ChannelReply) => void
   options: Options
   ownerMemory: string; ownMemory?: string; sharedTools?: readonly string[]
   codeDir: string; sandbox?: (ownerThread: boolean) => boolean

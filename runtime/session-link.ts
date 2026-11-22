@@ -8,15 +8,15 @@ import type { Dispatcher } from '../core/sessions.ts'
 import type { Reloaded } from '../core/settings.ts'
 import { isJobLane } from '../core/conversations.ts'
 import { log } from './log.ts'
-import type { FromSession, ToSession } from './protocol.ts'
+import type { ChannelReply, FromSession, ToSession } from './protocol.ts'
 import type { scheduler } from './scheduler.ts'
 
-type Replies = { mail: (key: string, text: string) => void; wa: (key: string, text: string) => void; voice: (key: string, text: string) => void }
+const REPLY_PREFIX: Record<ChannelReply['type'], string> = { mail: 'mail:', wa: 'wa:', voice: 'voice:', sms: 'sms:' }
+type Replies = Record<ChannelReply['type'], (key: string, text: string) => void>
+const isReplyType = (t: unknown): t is ChannelReply['type'] => typeof t === 'string' && Object.hasOwn(REPLY_PREFIX, t)
 
-export function routeReply(key: string, m: { type: 'mail' | 'wa' | 'voice'; text: string }, o: Replies) {
-  if (m.type === 'mail' && key.startsWith('mail:')) o.mail(key, m.text)
-  else if (m.type === 'wa' && key.startsWith('wa:')) o.wa(key, m.text)
-  else if (m.type === 'voice' && key.startsWith('voice:')) o.voice(key, m.text)
+export function routeReply(key: string, m: ChannelReply, o: Replies) {
+  if (key.startsWith(REPLY_PREFIX[m.type])) o[m.type](key, m.text)
 }
 
 const holdFile = (dir: string, key: string) => join(dir, 'held', encodeURIComponent(key))
@@ -125,7 +125,7 @@ export function listenForSessions(path: string, d: Dispatcher<ToSession>, o: Rep
           else sock.destroy()
         } else if (m.type === 'permission' && key && typeof m.id === 'string') {
           d.permission(key, m.id)
-        } else if ((m.type === 'mail' || m.type === 'wa' || m.type === 'voice') && key && typeof m.text === 'string') {
+        } else if (isReplyType(m.type) && key && typeof m.text === 'string') {
           routeReply(key, { type: m.type, text: m.text }, o)
         } else if (m.type === 'schedule' && key) {
           const j = m as Partial<{ id: string; cron: string; prompt: string; recurring: boolean; lane: boolean; probe: ProbeArg; shadow: { of: string; live: string } }>
