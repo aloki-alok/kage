@@ -89,9 +89,9 @@ export function guardVerdict(out: string): { send: boolean; reason: string } {
 }
 
 export const FOOTER_ID = 'kage-footer'
-export type Signer = { asked?: string; from?: string; via?: string }
+export type Signer = { asked?: string; from?: string; via?: string; scheduled?: boolean }
 export const kageFooter = (title: string, s: Signer = {}) =>
-  `🥷 ${title}${s.via ? ` · ${s.via}` : ''}${s.asked ? ` · asked by ${s.asked}` : s.from ? ` · from ${s.from}` : ''}`
+  `🥷 ${title}${s.via ? ` · ${s.via}` : ''}${s.asked ? ` · asked by ${s.asked}` : s.from ? ` · from ${s.from}` : ''}${s.scheduled ? ' · scheduled check' : ''}`
 
 export function ownerPost(title: string, typed: string, s: Signer = {}) {
   const foot = kageFooter(title, s)
