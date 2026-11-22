@@ -728,6 +728,24 @@ describe("a session's Kage tools", () => {
     assert.deepEqual(s.out, ['voice hi'])
     assert.deepEqual(s.calls, [])
   })
+  test('a text reply goes to the hub only after the owner\'s yes on a card, never to the owner DM, and a no sends nothing', async () => {
+    const cards: string[] = []
+    const yes = setup({ approve: async (tool, description) => { cards.push(`${tool} ${description}`); return true } })
+    yes.t.onTask(yes.task({ channel: 'sms', thread_ts: '7', fromOwner: false }))
+    assert.equal((await yes.call('reply', { channel: 'sms', thread_ts: '7', text: 'We open at 9.', private: true })).isError, true)
+    assert.match((await yes.call('reply', { channel: 'sms', thread_ts: '7', text: 'We open at 9.' })).text, /texted/)
+    assert.deepEqual(yes.out, ['sms We open at 9.'])
+    assert.match(cards[0]!, /^reply .*We open at 9\./)
+    assert.deepEqual(yes.calls, [])
+    const no = setup({ approve: async () => false })
+    no.t.onTask(no.task({ channel: 'sms', thread_ts: '7', fromOwner: false }))
+    assert.equal((await no.call('reply', { channel: 'sms', thread_ts: '7', text: 'hi' })).isError, true)
+    assert.deepEqual(no.out, [])
+    const none = setup()
+    none.t.onTask(none.task({ channel: 'sms', thread_ts: '7', fromOwner: false }))
+    assert.equal((await none.call('reply', { channel: 'sms', thread_ts: '7', text: 'hi' })).isError, true)
+    assert.deepEqual(none.out, [])
+  })
   test('the instructions limit a voice call to the reply tool and to nothing private', () => {
     const i = setup().t.instructions
     assert.match(i, /Voice task/)

@@ -7,6 +7,7 @@ import { log } from './log.ts'
 import type { AfkCommand } from '../core/afk.ts'
 import type { Schedule } from '../core/cron.ts'
 import type { ProbeArg, TuneArg } from './probe-jobs.ts'
+import type { ChannelReply } from './protocol.ts'
 import { addressed, foreignAgentRefusal, mentionedIds } from '../core/agents.ts'
 import { filesFolderName } from '../core/conversations.ts'
 import { plainName, teammateOf, type Sender } from '../core/gate.ts'
@@ -27,6 +28,7 @@ import type { DreamLesson } from '../core/dream.ts'
 import { browserTools } from './tools/browser-tools.ts'
 import { screenTools } from './tools/screen-tools.ts'
 import type { ScreenRecorder } from './screen.ts'
+import { smsTools, type SmsCampaigns } from './tools/sms-tools.ts'
 import { answersInThread } from '../core/blocks.ts'
 
 export type Result = { text: string; isError?: true }
@@ -91,7 +93,7 @@ export function sessionTools(o: {
   botDm: () => string
   dir: string
   ledgers: Ledgers
-  send: (m: { type: 'mail' | 'wa' | 'voice'; text: string }) => boolean | void
+  send: (m: ChannelReply) => boolean | void
   memory: { own: string; owner: string }
   schedules?: { add(j: Pick<Schedule, 'id' | 'cron' | 'prompt' | 'recurring' | 'lane' | 'trigger' | 'needs'> & { probe?: ProbeArg; shadow?: { of: string; live: string } }): string | void | Promise<string | void>; remove(id: string): void; list(): Schedule[]; tune?(id: string, t: TuneArg): string | void; hookUrl?(id: string): string | undefined; restore?(id: string): string | undefined; move?(id: string, to: string): string | undefined }
   afk?: (c: AfkCommand) => Promise<string>
@@ -107,6 +109,7 @@ export function sessionTools(o: {
   event?: (kind: EventKind, detail: string) => void
   browser?: { call(op: string, args: Record<string, unknown>): Promise<unknown>; block: string[] }
   meetbot?: { join(link: string): string }
+  sms?: SmsCampaigns
   screen?: ScreenRecorder
   foreignAgents?: () => readonly string[]
   onReport?: (r: { needs: string; output: string }) => void
@@ -213,7 +216,7 @@ export function sessionTools(o: {
   const c: ToolContext = { o, Title, bot, user, s: z.string(), taskChannels, ownerTask, unanswered, askers, agents, sentForPeople, dmThread, links, react, post, change, nameMentions, names, append, ledger, filesOf, jobRun: () => job !== undefined || need !== undefined, job: () => job, need: () => need, ownerNow, ownerOnly, ownerActs, pingIn, name: o.kagelet, unseenMention }
   const ownerRead = (a: Record<string, unknown>) => ownerOnly(a) && !agents.get(`${a.channel}:${a.thread_ts}`)
   const reads = o.kagelet || o.dreaming ? [] : slackReadTools(user, ownerRead)
-  const tools = [...slackTools(c), ...scheduleTools(c), ...kageletTools(c), ...ownerTools(c), ...browserTools(c), ...screenTools(c), ...dreamTools(c), ...reads]
+  const tools = [...slackTools(c), ...scheduleTools(c), ...kageletTools(c), ...ownerTools(c), ...smsTools(c), ...browserTools(c), ...screenTools(c), ...dreamTools(c), ...reads]
   const browser = o.browser
 
   return {
