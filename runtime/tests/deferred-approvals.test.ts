@@ -112,6 +112,15 @@ describe('approvals that wait outside a session', () => {
     assert.deepEqual(seen.map(v => v.owner), ['allow', 'expired'])
   })
 
+  test('a stale card seen by a wait check and then by a new card is reported expired once', () => {
+    const seen: { owner: string }[] = []
+    const a = deferredApprovals(openStore(':memory:'), v => { seen.push(v) })
+    a.add({ ...call, id: 'w1' }, 0)
+    a.waiting('CTEST1:9.9', 'Bash', { command: 'ls' }, 25 * HOUR)
+    a.add({ ...call, id: 'w2', input: { command: 'pwd' } }, 26 * HOUR)
+    assert.deepEqual(seen.map(v => v.owner), ['expired'])
+  })
+
   test('a no tells the thread to stop and spends nothing', () => {
     const a = deferredApprovals(openStore(':memory:'))
     a.add(call, 0)
