@@ -57,8 +57,8 @@ Only a listed agent's post goes to Jev, at most its first 4,000 characters, with
 | `kagelets.notesKept` | `10` | Notes one kagelet keeps for its next run, per list: the owner's words and Kage's answers in one list, asks from its `people:` line in another. Past this many, the oldest goes. |
 | `kagelets.noteChars` | `2000` | Characters kept of each such note. |
 | `kagelets.measureMinutes` | `60` | How often Kage runs each kagelet's measure, with no model. Each run reads the latest number. |
-| `kagelets.release` | `rules` | Who answers a held shell step of a `tools: all` kagelet that no `allow:` line covers. `rules`: you, each time. `review`: a cheap model may let a low-stakes one run (a local delete, a forced push to a branch that is not protected, a git step that drops work). Every prod, customer, money or access step still comes to you. |
-| `kagelets.reviewsPerDay` | `10` | At `review`, the most held steps the reviewer lets run per kagelet a day. Past it, they come to you. |
+| `kagelets.release` | `rules` | Who answers a held shell step of a `tools: all` kagelet that no `allow:` line covers. `rules`: you, each time. `shadow`: you still answer each one, and a cheap model also gives its own run or hold call on the low-stakes ones, saved next to your answer in the `card-verdicts` ledger, so you can see how often it agrees with you before you let it act (#542). `review`: that model may let a low-stakes one run (a local delete, a forced push to a branch that is not protected, a git step that drops work). Every prod, customer, money or access step still comes to you. |
+| `kagelets.reviewsPerDay` | `10` | At `review`, the most held steps the reviewer lets run per kagelet a day. Past it, they come to you. At `shadow`, the most it reviews per kagelet a day. |
 | `kagelets.reviewModel` | `haiku` | The model the reviewer asks. |
 | `kagelets.trendRuns` | `5` | How many past measures a run sees as its trend. |
 | `kagelets.turnStallMinutes` | `20` | A kagelet run that takes no step for this many minutes is ended and counts as a failure. |

@@ -27,7 +27,7 @@ export const Config = z.strictObject({
   dream: z.strictObject({ minChats: count, minConfidence: z.number().min(0).max(1).optional(), maxNew: count, maxOutdated: count }).optional(),
   kagelets: z.strictObject({
     max: count, ownersMax: count, dailyUsd: money, totalDailyUsd: money, chainUsd: money, needsPerDay: count, askRunsPerHour: count, notesKept: count, noteChars: count, measureMinutes: count, trendRuns: count, turnStallMinutes: count, incidentsPerHour: count,
-    release: z.enum(['rules', 'review']).optional(), reviewsPerDay: count, reviewModel: text,
+    release: z.enum(['rules', 'shadow', 'review']).optional(), reviewsPerDay: count, reviewModel: text,
     dbRead: z.strictObject({ command: text, maxRows: count }).optional(),
   }).optional(),
   sessionKeys: z.record(z.string().regex(/^[A-Z][A-Z0-9_]*$/), z.strictObject({
