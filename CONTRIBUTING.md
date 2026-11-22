@@ -10,6 +10,14 @@ npm run typecheck   # tsc --noEmit
 
 `npm run eval` checks behavior, not code paths (#489). CI runs it after `npm test`, and it takes about 2 seconds. It needs no model and no Slack. Each `evals/scenarios/*.json` file boots the real scheduler, dispatcher, SDK runner, Kage tools, kagelet manager, routes and incidents on the fake SDK, in a temp folder. The harness refuses to run against `~/.config/kage`. A scenario's `steps` move the clock (`at`), add a job or kagelet (`job`, `kagelet`), run the clock (`tick`), end a run (`end`), check for stalls (`stalls`), deliver a task (`task`) and call a Kage tool (`call`). Its `expect` lists every task delivered, every owner DM and every tool result, in order, as regexes. `evals/dream/cases.json` holds dream cases: fixture threads, the lessons a dream proposes, and which must be `learned` or `never`. `checkDream` scores them. Add a scenario when you fix behavior a unit test cannot show end to end. `npm run eval <word>` runs only the scenarios whose file name, or the dream cases whose name, contains that word.
 
+`npm run eval:live` checks that Kage still does its work well, on the real model (#553). It costs real tokens, so CI never runs it. Each case in `evals/live/cases.json` writes fake files into a temp folder, gives a real Kage session (the SDK runner, Kage's tools and skills, the hub's guards, no owner settings) one or more tasks from the owner or a teammate, and grades what the session left: its replies, files, tool calls, approval cards, settings, schedules and the exit code of a check command. The owner says yes to a card in an owner task and no in a teammate task, inside the turn: the hub's deferred cards (`runtime/deferred-approvals.ts`) are not in the eval. Teammate threads get the default sandbox, the live config folder is walled as in the hub, and a `kage` command a session runs reads an empty eval config, so a run never changes the live Kage. Each case runs 3 times, and the table gives passes, tokens in per turn (median and range) and model steps. A run that ends on an API limit counts as neither a pass nor a fail, and the gate asks for the case to run again. A change that aims to save tokens runs the set before and after, and the gate fails it when a case fails in 2 or more of 3 runs after the change but in fewer before:
+
+```sh
+npm run eval:live -- --out before.json          # on main; add a word to run only the cases that contain it
+npm run eval:live -- --out after.json           # on the branch
+npm run eval:live -- --compare before.json after.json
+```
+
 `npm test` runs each test file in its own process and kills one still running after 5 minutes (`tests/run.ts`). A fake that a loop calls (`ask`, `sleep`) throws after a fixed number of calls, so a loop that never ends fails its test instead of hanging the run (#277).
 
 Tests live in a `tests/` folder inside the folder of the code they test: `core/gate.ts` is tested by `core/tests/gate.test.ts`.
