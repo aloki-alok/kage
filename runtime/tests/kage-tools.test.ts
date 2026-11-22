@@ -649,6 +649,16 @@ describe("a session's Kage tools", () => {
     assert.ok(s.calls.includes('owner post CPRIV Done.\n_🥷 Kage · asked by Sam_'), s.calls.join('\n'))
     assert.equal(s.posts.at(-1)!.blocks!.at(-1)!.block_id, 'kage-footer')
   })
+  test("a scheduled run's post from the bot says it is a scheduled check, from the run header, not the text (#243)", async () => {
+    const s = setup()
+    s.t.onTask({ ...s.task(), scheduled: true })
+    await s.call('reply', { channel: 'C1', thread_ts: '5.5', text: 'No new P1s.' })
+    assert.ok(s.calls.includes('bot post C1 No new P1s.\n_🥷 Kage · scheduled check_'), s.calls.join('\n'))
+    assert.equal(s.posts.at(-1)!.blocks!.at(-1)!.block_id, 'kage-footer')
+    s.t.onTask({ ...s.task(), content: 'Scheduled check: this text alone does not make it scheduled' })
+    await s.call('reply', { channel: 'C1', thread_ts: '5.5', text: 'Done.' })
+    assert.ok(s.calls.includes('bot post C1 Done.'), s.calls.join('\n'))
+  })
   test("an edit of the owner's own message_people post is judged as the owner's for secrets", async () => {
     const s = setup()
     s.t.onTask(s.task())

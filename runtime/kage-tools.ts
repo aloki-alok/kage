@@ -73,7 +73,7 @@ export async function postAsKage(o: { title: string; bot: WebClient; user: WebCl
 export async function postAsKage(o: { title: string; bot: WebClient; user: WebClient }, channel: string, thread_ts: string | undefined, text: string,
   signer: Signer = {}, asOwner = true): Promise<Posted | undefined> {
   try {
-    const r = await o.bot.chat.postMessage({ channel, thread_ts, ...signer.via || signer.asked ? ownerPost(o.title, text, signer) : { text }, unfurl_links: false })
+    const r = await o.bot.chat.postMessage({ channel, thread_ts, ...signer.via || signer.asked || signer.scheduled ? ownerPost(o.title, text, signer) : { text }, unfurl_links: false })
     return { ts: r.ts!, by: 'bot' }
   } catch (e: any) {
     if (!['not_in_channel', 'channel_not_found'].includes(e?.data?.error)) throw e
@@ -126,6 +126,7 @@ export function sessionTools(o: {
   const agents = new Map<string, Task['agent']>()
   const sentForPeople = new Map<string, Signer>()
   const footers = new Map<string, Signer>()
+  const scheduledRun = new Map<string, boolean>()
   const dmThread = new Map<string, string>()
   const links = new Map<string, string>()
   let where = 'a thread'
@@ -157,7 +158,7 @@ export function sessionTools(o: {
   async function post(key: string, channel: string, thread_ts: string | undefined, text: string, to: { tag?: string } = {}, ack = false) {
     let parts = splitForSlack(safeReply(text).trim() || '(empty reply)')
     if (to.tag) parts = addressed(parts, to.tag)
-    const signer = { asked: askers.get(key)?.name, via: o.kagelet }
+    const signer = { asked: askers.get(key)?.name, via: o.kagelet, scheduled: scheduledRun.get(key) && channel !== o.botDm() }
     let via = Title, sent: string[] = []
     for (const part of parts) {
       const r = ack ? await postAsKage(o, channel, thread_ts, part, signer, false) : await postAsKage(o, channel, thread_ts, part, signer)
@@ -228,6 +229,7 @@ export function sessionTools(o: {
       need = m.need?.name
       jobThread = key
       askers.set(key, teammateOf(m.content))
+      scheduledRun.set(key, m.scheduled === true)
       agents.set(key, m.agent)
       if (m.origin.channel === o.botDm() && m.origin.thread) dmThread.set(key, m.origin.thread)
       else if (m.origin.ts) dmThread.delete(key)
