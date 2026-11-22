@@ -25,13 +25,19 @@ uv run --with playwright python -m playwright install chromium        # once
 uv run --with playwright python extension/tests/e2e/run.py               # 29 checks, exits 1 on a failure
 ```
 
-Six tests call a real model, so `npm test` skips them. `sandbox.test.ts` starts real sessions with `harness.sandbox` on and checks that the token files, the settings and the hub code stay closed. It also runs one tmux pane (skipped without tmux) that unsets `KAGE_SESSION` and tries to write `config.json` and read `secrets.json`. `sandbox-off.test.ts` starts one with the sandbox off (`harness.sandbox false`, and the owner's own threads by default) and the hub's hook rules: the shell writes, binds a port and reaches the web and the SSM relay, and the token files and settings stay closed. Run these three after any change to `protectConfig` or `toolRefusal` in `runtime/path-guards.ts`, or to a session's sandbox or permission settings. `sandbox-teammates.test.ts` checks the default, `teammates`: a teammate's thread cannot read `secrets.json` with a reworded command, and the owner's own thread binds a local port. They cost a few cents:
+Seven tests call a real model, so `npm test` skips them. `sandbox.test.ts` starts real sessions with `harness.sandbox` on and checks that the token files, the settings and the hub code stay closed. It also runs one tmux pane (skipped without tmux) that unsets `KAGE_SESSION` and tries to write `config.json` and read `secrets.json`. `sandbox-off.test.ts` starts one with the sandbox off (`harness.sandbox false`, and the owner's own threads by default) and the hub's hook rules: the shell writes, binds a port and reaches the web and the SSM relay, and the token files and settings stay closed. Run these three after any change to `protectConfig` or `toolRefusal` in `runtime/path-guards.ts`, or to a session's sandbox or permission settings. `sandbox-teammates.test.ts` checks the default, `teammates`: a teammate's thread cannot read `secrets.json` with a reworded command, and the owner's own thread binds a local port. They cost a few cents:
 
 ```sh
 KAGE_LIVE_TESTS=1 node --test runtime/tests/sandbox.test.ts runtime/tests/sandbox-off.test.ts runtime/tests/sandbox-teammates.test.ts
 ```
 
-The fourth, `runtime/kagelets/tests/all-live.test.ts`, runs a session set up as a `tools: all` kagelet: everyday git and web work runs, a forced push and a sending web request are held, and the tokens, the settings, its `job.md` and Kage's code stay closed. Run it after any change to `core/held.ts` or the kagelet grant check:
+`runtime/tests/agent-allow-lines-live.test.ts` checks that an owner allow line and auto mode, which skip `canUseTool`, still cannot run a shell command on an agent's task, because the PreToolUse hook refuses it first (#518). Run it after an Agent SDK upgrade or any change to the session hook:
+
+```sh
+KAGE_LIVE_TESTS=1 node --test runtime/tests/agent-allow-lines-live.test.ts
+```
+
+The fifth, `runtime/kagelets/tests/all-live.test.ts`, runs a session set up as a `tools: all` kagelet: everyday git and web work runs, a forced push and a sending web request are held, and the tokens, the settings, its `job.md` and Kage's code stay closed. Run it after any change to `core/held.ts` or the kagelet grant check:
 
 ```sh
 KAGE_LIVE_TESTS=1 node --test runtime/kagelets/tests/all-live.test.ts
