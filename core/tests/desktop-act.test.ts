@@ -135,4 +135,5 @@ test('a point on the picture maps to screen points, on a Retina and a plain disp
   assert.deepEqual(onScreen({ action: 'scroll', x: 1280, y: 720, dy: -3, dx: 0 }, plain), { action: 'scroll', x: 1920, y: 1080, dy: -3, dx: 0 })
   assert.deepEqual(onScreen({ action: 'drag', x: 0, y: 0, path: [[640, 360], [100, 50]] }, plain), { action: 'drag', x: 0, y: 0, path: [[960, 540], [150, 75]] })
   assert.deepEqual(onScreen({ action: 'type', text: 'hi' }, retina), { action: 'type', text: 'hi' })
+  assert.deepEqual(onScreen(click(100, 100), { width: 1000, height: 500, pointsWide: 2000, pointsHigh: 1500 }), click(200, 300))
 })
