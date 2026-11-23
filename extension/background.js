@@ -1,6 +1,6 @@
 // Kage's Chrome extension (#114): polls the owner's own Kage hub for a command, runs it in this browser, and
 // posts the result back. It answers only its own hub, on this machine, with the token from its options.
-// The hub decides what a session may see and do (src/core/browser.ts, src/core/browser-act.ts). Every action that changes a
+// The hub decides what a session may see and do (core/browser.ts, core/browser-act.ts). Every action that changes a
 // page reaches this side only after the owner's yes on the hub's approval card.
 
 const MAX_TEXT = 300_000   // the hub cuts further; this keeps one huge page from filling the post
