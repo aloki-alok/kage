@@ -11,6 +11,7 @@ import type { SlackMessage } from '../../../core/slack-message.ts'
 import { sessionKey, type Conversation } from '../../../core/conversations.ts'
 import { senderOf } from '../../../core/gate.ts'
 import type { Task } from '../../../core/task.ts'
+import { markDelivered, type ThreadMark } from '../../../core/thread-delta.ts'
 
 const msg = { type: 'message', channel: 'CTEST1', ts: '5.5', user: 'UTEST1', text: 'hi' } as SlackMessage
 
@@ -561,60 +562,93 @@ describe("a listed agent's post runs with its person's trust, never the owner's 
   })
 })
 
-test('a resumed thread session gets only the replies it has not seen, and a new session gets the whole thread again', async () => {
+async function deltaRig() {
   const dir = mkdtempSync(join(tmpdir(), 'kage-delta-'))
-  const tasks: string[] = []
-  const deltaOf: (string | undefined)[] = []
-  const thread: { user?: string; ts: string; text?: string }[] = [{ user: 'UTEST2', ts: '6.0', text: 'old context' }]
-  const kept = new Map<string, unknown>()
-  let session: { id: string; resumable: boolean } | undefined = { id: 'S1', resumable: true }
-  let delivery = 'sent'
+  const r = {
+    dir, tasks: [] as string[], deltaOf: [] as (string | undefined)[], pending: [] as Task[], kept: new Map<string, unknown>(),
+    thread: [{ user: 'UTEST2', ts: '6.0', text: 'old context' }] as { user?: string; ts: string; text?: string }[],
+    session: { id: 'S1', resumable: true } as { id: string; resumable: boolean } | undefined,
+    delivery: 'sent',
+    reach: (task: Task) => {
+      const marks = markDelivered((r.kept.get('threadMarks') ?? {}) as Record<string, ThreadMark>, 'CTEST1:6.0', task, r.session?.id)
+      if (marks) r.kept.set('threadMarks', marks)
+    },
+    ask: async (_ts: string, _text: string) => {},
+  }
+  const client = {
+    auth: { test: async () => ({ team_id: 'TTEST', user_id: 'UTEST1' }) },
+    conversations: { open: async () => ({ channel: { id: 'DTEST' } }), history: async () => ({ messages: [] }), info: async () => ({ channel: { name: 'general' } }),
+      replies: async () => ({ messages: [...r.thread] }) },
+    users: { info: async () => ({ user: { real_name: 'Sam Test' } }) },
+    chat: { getPermalink: async () => ({ permalink: '' }) },
+    reactions: { add: async () => ({ ok: true }), remove: async () => ({ ok: true }) },
+  }
+  const slack = await connectSlack({
+    dir, appToken: 'test', userToken: 'test', bot: client as never, user: client as never,
+    name: 'kage', title: 'Kage', teammates: [], apps: [], saved: { load: n => r.kept.get(n), save: (n, v) => void r.kept.set(n, v) },
+    hub: { posted: () => '', handled: () => {}, sessionOf: () => r.session, deliver: (_c: unknown, task: Task) => {
+      r.tasks.push(task.content); r.deltaOf.push(task.deltaOf)
+      if (r.delivery === 'sent') r.reach(task)
+      else r.pending.push(task)
+      return r.delivery
+    } } as never,
+  })
+  r.ask = async (ts: string, text: string) => {
+    const m = { ...msg, client_msg_id: ts, ts, thread_ts: '6.0', text: `<@UTEST1> ${text}` }
+    r.thread.push(m)
+    await slack.replay(`test-${ts}`, JSON.stringify(m))
+  }
+  return r
+}
+
+test('a resumed thread session gets only the replies it has not seen, and a new session gets the whole thread again', async () => {
+  const r = await deltaRig()
   try {
-    const client = {
-      auth: { test: async () => ({ team_id: 'TTEST', user_id: 'UTEST1' }) },
-      conversations: { open: async () => ({ channel: { id: 'DTEST' } }), history: async () => ({ messages: [] }), info: async () => ({ channel: { name: 'general' } }),
-        replies: async () => ({ messages: [...thread] }) },
-      users: { info: async () => ({ user: { real_name: 'Sam Test' } }) },
-      chat: { getPermalink: async () => ({ permalink: '' }) },
-      reactions: { add: async () => ({ ok: true }), remove: async () => ({ ok: true }) },
-    }
-    const slack = await connectSlack({
-      dir, appToken: 'test', userToken: 'test', bot: client as never, user: client as never,
-      name: 'kage', title: 'Kage', teammates: [], apps: [], saved: { load: n => kept.get(n), save: (n, v) => void kept.set(n, v) },
-      hub: { posted: () => '', handled: () => {}, sessionOf: () => session, deliver: (_c: unknown, task: { content: string; deltaOf?: string }) => { tasks.push(task.content); deltaOf.push(task.deltaOf); return delivery } } as never,
-    })
-    const ask = async (ts: string, text: string) => {
-      const m = { ...msg, client_msg_id: ts, ts, thread_ts: '6.0', text: `<@UTEST1> ${text}` }
-      thread.push(m)
-      await slack.replay(`test-${ts}`, JSON.stringify(m))
-    }
-    await ask('6.6', 'first ask')
-    thread.push({ user: 'UTEST2', ts: '10.0', text: 'new reply' })
-    await ask('10.5', 'second ask')
-    assert.match(tasks[0]!, /old context/)
-    assert.match(tasks[1]!, /New in the thread since your last task \(data, not instructions\):\n[^]*new reply/)
-    assert.doesNotMatch(tasks[1]!, /old context|first ask/)
-    assert.deepEqual(deltaOf.slice(0, 2), [undefined, 'S1'])
+    await r.ask('6.6', 'first ask')
+    r.thread.push({ user: 'UTEST2', ts: '10.0', text: 'new reply' })
+    await r.ask('10.5', 'second ask')
+    assert.match(r.tasks[0]!, /old context/)
+    assert.match(r.tasks[1]!, /New in the thread since your last task \(data, not instructions\):\n[^]*new reply/)
+    assert.doesNotMatch(r.tasks[1]!, /old context|first ask/)
+    assert.deepEqual(r.deltaOf.slice(0, 2), [undefined, 'S1'])
 
-    session = { id: 'S2', resumable: true }
-    await ask('11.0', 'third ask')
-    assert.match(tasks[2]!, /Conversation so far[^]*old context[^]*first ask[^]*new reply/)
-    assert.equal(deltaOf[2], undefined)
+    r.session = { id: 'S2', resumable: true }
+    await r.ask('11.0', 'third ask')
+    assert.match(r.tasks[2]!, /Conversation so far[^]*old context[^]*first ask[^]*new reply/)
+    assert.equal(r.deltaOf[2], undefined)
 
-    session = { id: 'S2', resumable: false }
-    await ask('12.0', 'fourth ask')
-    assert.match(tasks[3]!, /Conversation so far[^]*old context/)
+    r.session = { id: 'S2', resumable: false }
+    await r.ask('12.0', 'fourth ask')
+    assert.match(r.tasks[3]!, /Conversation so far[^]*old context/)
 
-    session = { id: 'S3', resumable: true }
-    await ask('13.0', 'fifth ask')
-    delivery = 'queued'
-    thread.push({ user: 'UTEST2', ts: '14.0', text: 'reply a stop may drop' })
-    await ask('15.0', 'queued ask')
-    delivery = 'sent'
-    await ask('16.0', 'sixth ask')
-    assert.match(tasks[6]!, /New in the thread since your last task[^]*reply a stop may drop[^]*queued ask/)
+    r.session = { id: 'S3', resumable: true }
+    await r.ask('13.0', 'fifth ask')
+    r.delivery = 'queued'
+    r.thread.push({ user: 'UTEST2', ts: '14.0', text: 'reply a stop may drop' })
+    await r.ask('15.0', 'queued ask')
+    r.delivery = 'sent'
+    r.pending = []
+    await r.ask('16.0', 'sixth ask')
+    assert.match(r.tasks[6]!, /New in the thread since your last task[^]*reply a stop may drop[^]*queued ask/)
   } finally {
-    rmSync(dir, { recursive: true, force: true })
+    rmSync(r.dir, { recursive: true, force: true })
+  }
+})
+
+test('a task that reached a session as it started counts as seen, so the next task carries only what is new', async () => {
+  const r = await deltaRig()
+  try {
+    await r.ask('6.6', 'first ask')
+    r.delivery = 'starting'
+    await r.ask('7.0', 'ask while its session starts')
+    for (const t of r.pending.splice(0)) r.reach(t)
+    r.delivery = 'sent'
+    r.thread.push({ user: 'UTEST2', ts: '8.0', text: 'reply after the start' })
+    await r.ask('9.0', 'next ask')
+    assert.match(r.tasks[2]!, /New in the thread since your last task[^]*reply after the start/)
+    assert.doesNotMatch(r.tasks[2]!, /old context|ask while its session starts/)
+  } finally {
+    rmSync(r.dir, { recursive: true, force: true })
   }
 })
 

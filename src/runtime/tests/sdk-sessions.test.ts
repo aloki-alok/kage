@@ -30,7 +30,7 @@ const tick = (ms = 5) => new Promise(r => setTimeout(r, ms))
 const ID = '11111111-1111-4111-8111-111111111111'
 const signal = () => new AbortController().signal
 
-function setup(o: { saved?: Record<string, string>; transcript?: boolean; silent?: boolean; dmFails?: boolean; grants?: Record<string, string[]>; allows?: Record<string, string[]>; review?: boolean | { release: boolean; said?: 'run' | 'hold' }; holdDays?: number; onReview?: () => void; manager?: boolean; budgets?: Record<string, number>; models?: Record<string, string>; trusted?: string[]; deferred?: boolean; browser?: boolean; restartMs?: number; sandbox?: boolean | 'teammates'; onResult?: (key: string, total: number, resumed: boolean, tokens?: Tokens) => void; lean?: { model?: string; effort?: string; mcp: Record<string, unknown>; permissions?: Record<string, unknown> }; onMcp?: (q: unknown) => void; trustedPeople?: { ids: string[] }; ownerMemory?: string } = {}) {
+function setup(o: { saved?: Record<string, string>; transcript?: boolean; silent?: boolean; dmFails?: boolean; grants?: Record<string, string[]>; allows?: Record<string, string[]>; review?: boolean | { release: boolean; said?: 'run' | 'hold' }; holdDays?: number; onReview?: () => void; manager?: boolean; budgets?: Record<string, number>; models?: Record<string, string>; trusted?: string[]; deferred?: boolean; browser?: boolean; restartMs?: number; sandbox?: boolean | 'teammates'; onResult?: (key: string, total: number, resumed: boolean, tokens?: Tokens) => void; lean?: { model?: string; effort?: string; mcp: Record<string, unknown>; permissions?: Record<string, unknown> }; onMcp?: (q: unknown) => void; trustedPeople?: { ids: string[] }; ownerMemory?: string; commandOutput?: number } = {}) {
   const sdk = fakeSdk(o)
   const dropped: string[] = []
   const keysDropped: string[] = []
@@ -70,7 +70,7 @@ function setup(o: { saved?: Record<string, string>; transcript?: boolean; silent
     ...o.review !== undefined && { reviewHeld: async () => { o.onReview?.(); return typeof o.review === 'boolean' ? { release: o.review, said: o.review ? 'run' as const : 'hold' as const } : o.review! } },
     ownerMemory: o.ownerMemory ?? '/owner', ownMemory: '/own-memory',
     envFile: '/cfg/env',
-    codeDir: '/code/kage', sandbox: owner => sandboxed(o.sandbox ?? true, owner),
+    codeDir: '/code/kage', sandbox: owner => sandboxed(o.sandbox ?? true, owner), ...o.commandOutput !== undefined && { commandOutput: () => o.commandOutput! },
     ssm: { sock: '/cfg/ssm.sock', shim: '/code/kage/cli/ssm-plugin-shim', issue: key => o.trusted?.includes(key) ? `tok-${key}` : undefined, drop: key => { dropped.push(key) } },
     keys: { sock: '/cfg/keys.sock', issue: key => o.trusted?.includes(key) ? `key-${key}` : undefined, drop: key => { keysDropped.push(key) } },
     restartMs: o.restartMs ?? 10,
@@ -1045,6 +1045,27 @@ describe('Kage sessions on the Agent SDK', () => {
     v.d.task('voice:c1', v.task({ channel: 'voice', fromOwner: false }), 0)
     await tick()
     assert.equal(v.sdk.runs[0]!.options.settings.sandbox?.enabled, true, 'a caller who is not the owner')
+  })
+  test('every shell command a session runs goes through the long-output wrapper, and harness.commandOutputChars 0 turns it off (#550)', async () => {
+    const outer = process.env.CLAUDE_CODE_SHELL_PREFIX
+    delete process.env.CLAUDE_CODE_SHELL_PREFIX
+    const t = setup()
+    t.d.task('C1:5.5', t.task(), 0)
+    await tick()
+    const env = t.sdk.runs[0]!.options.env
+    assert.equal(env.CLAUDE_CODE_SHELL_PREFIX, '/code/kage/src/runtime/long-output.sh')
+    assert.equal(env.KAGE_OUTPUT_CHARS, '3000')
+    const off = setup({ commandOutput: 0 })
+    off.d.task('C1:5.5', off.task(), 0)
+    await tick()
+    assert.equal(off.sdk.runs[0]!.options.env.CLAUDE_CODE_SHELL_PREFIX, undefined)
+    process.env.CLAUDE_CODE_SHELL_PREFIX = '/owner/own-prefix.sh'
+    try {
+      const own = setup({ commandOutput: 3000 })
+      own.d.task('C1:5.5', own.task(), 0)
+      await tick()
+      assert.equal(own.sdk.runs[0]!.options.env.CLAUDE_CODE_SHELL_PREFIX, '/owner/own-prefix.sh', 'the owner\'s own prefix is kept')
+    } finally { if (outer) process.env.CLAUDE_CODE_SHELL_PREFIX = outer; else delete process.env.CLAUDE_CODE_SHELL_PREFIX }
   })
   test('with harness.sandbox off a session gets no OS sandbox, and the token files and config.json stay denied to the file tools', async () => {
     const t = setup({ sandbox: false })

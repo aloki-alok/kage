@@ -20,7 +20,7 @@ export function mixRunners<M>(panes: Runner<M>, next: Runner<M>, onPane: Set<str
 
 export class Dispatcher<M> {
   #runner: Runner<M>
-  #opts: { max: number; idleMs: number; connectMs: number; evictMs: number; newId: () => string }
+  #opts: { max: number; idleMs: number; connectMs: number; evictMs: number; newId: () => string; onSent?: (key: string, m: M) => void }
   #ids: Map<string, string>
   #live = new Set<string>()
   #conns = new Map<string, (m: M) => void>()
@@ -33,7 +33,7 @@ export class Dispatcher<M> {
   #perms = new Map<string, string>()
   #startedAt = new Map<string, number>()
 
-  constructor(w: Runner<M>, o: { max: number; idleMs: number; connectMs: number; evictMs: number; newId: () => string; saved?: Record<string, string> }) {
+  constructor(w: Runner<M>, o: { max: number; idleMs: number; connectMs: number; evictMs: number; newId: () => string; saved?: Record<string, string>; onSent?: (key: string, m: M) => void }) {
     this.#runner = w
     this.#opts = o
     this.#ids = new Map(Object.entries(o.saved ?? {}))
@@ -54,6 +54,7 @@ export class Dispatcher<M> {
     if (send) {
       this.#midTurn.set(key, this.#busy(key) ? [...(this.#midTurn.get(key) ?? []), msg] : [])
       send(msg)
+      this.#opts.onSent?.(key, msg)
       return 'sent'
     }
     if (!this.#pending.has(key)) this.#startedAt.set(key, now)
@@ -196,7 +197,7 @@ export class Dispatcher<M> {
   connect(key: string, send: (m: M) => void): boolean {
     if (!this.#live.has(key)) return false
     this.#conns.set(key, send)
-    for (const m of this.#pending.get(key) ?? []) send(m)
+    for (const m of this.#pending.get(key) ?? []) { send(m); this.#opts.onSent?.(key, m) }
     this.#pending.delete(key)
     return true
   }

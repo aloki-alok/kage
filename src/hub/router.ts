@@ -22,6 +22,7 @@ import { memoryDirs, sandboxed } from '../core/guards.ts'
 import { protectConfig } from '../runtime/path-guards.ts'
 import { stopLine } from '../core/board.ts'
 import { modelFor, placeFor, sessionKey, type Conversation, type Lane } from '../core/conversations.ts'
+import { markDelivered, type ThreadMark } from '../core/thread-delta.ts'
 import { mayStop, senderOf } from '../core/gate.ts'
 import { foreignAgentTags } from '../core/agents.ts'
 import { Dispatcher, mixRunners, startFailedNote } from '../core/sessions.ts'
@@ -273,7 +274,7 @@ const sdk = sdkLib ? sdkSessions({
   onMcp: q => { if (needs.watching()) void mcpStatus(q).then(needs.seen).catch(e => log('mcp status failed', e)) },
   ownerMemory: MEM.owner, ownMemory: MEM.own, sharedTools: config.sharedTools,
   envFile: ENV_FILE,
-  codeDir: CODE, sandbox: owner => sandboxed(config.harness?.sandbox, owner),
+  codeDir: CODE, sandbox: owner => sandboxed(config.harness?.sandbox, owner), commandOutput: () => config.harness?.commandOutputChars,
   ssm: { sock: SSM_SOCK, shim: SSM_SHIM, issue: key => ssm.issue(key), drop: key => ssm.drop(key) },
   keys: { sock: KEYS_SOCK, issue: key => keys.issue(key), drop: key => keys.drop(key) },
   onStart: () => store.saveSessions(d.saved()), lean: () => harness.leanSessions === false ? undefined : ownerClaude(),
@@ -299,7 +300,7 @@ const onPane = new Set(Object.keys(saved).filter(k => runningAtStart.has(saved[k
 const runner = !sdk ? tmux.runner : onPane.size ? mixRunners(tmux.runner, sdk.runner, onPane) : sdk.runner
 const d: Dispatcher<ToSession> = new Dispatcher<ToSession>(runner, {
   max: MAX, idleMs: IDLE_MIN * 60_000, connectMs: (CLAUDE.includes('development-channels') ? 30 : 3) * 60_000,
-  evictMs: 2 * 60_000, newId: randomUUID, saved,
+  evictMs: 2 * 60_000, newId: randomUUID, saved, onSent: (key, m) => { const marks = m.type === 'task' && markDelivered((store.load('threadMarks') ?? {}) as Record<string, ThreadMark>, key, m, d.saved()[key]); if (marks) store.save('threadMarks', marks) },
 })
 const limits = limitPause({
   store, log, event: detail => ledgers.event({ kind: 'limit', who: 'hub', trace: '', detail }), settle: (tasks, done) => { kag.routes.settle(tasks, done); kag.needs.settle(tasks, done); if (done) for (const t of unanswered(tasks, ledgers.text('posted'))) if (answersInThread(t)) slack.seen(t) },
