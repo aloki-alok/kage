@@ -29,7 +29,7 @@ export function settings(dir = join(homedir(), '.config', 'kage-meetbot')): Sett
   }
 }
 
-export async function attend(page: Page, link: string, o: {
+type AttendOptions = {
   name: string; consent: string
   heard: (lines: Seg[]) => Promise<void> | void
   said?: string[]
@@ -38,80 +38,100 @@ export async function attend(page: Page, link: string, o: {
   aloneMs?: number
   stop?: () => boolean
   voice?: (page: Page, ended: () => void) => Promise<() => void>
-}): Promise<Seg[]> {
-  const admitMs = o.admitMs ?? 10 * 60_000, aloneMs = o.aloneMs ?? 2 * 60_000
-  const k = <T>(fn: string, arg?: unknown) => page.evaluate(([f, a]) => (window as any).__kage[f as string](a), [fn, arg] as const) as Promise<T>
-  const mark = (kind: string) => k<boolean>('mark', kind)
-  const click = async (kind: string) => (await mark(kind)) && page.click(`[data-kage="${kind}"]`, { timeout: 3000 }).then(() => true, () => false)
-  const until = async (what: () => Promise<boolean>, ms: number) => { for (const end = Date.now() + ms; Date.now() < end; await sleep(500)) if (await what()) return true; return false }
+}
+type Meet = { page: Page; o: AttendOptions; all: Seg[]; t0: number; hangUp?: () => void; agentGone: boolean; lastCompany: number; captionsChecked: boolean }
 
+const k = <T>(m: Meet, fn: string, arg?: unknown) => m.page.evaluate(([f, a]) => (window as any).__kage[f as string](a), [fn, arg] as const) as Promise<T>
+const mark = (m: Meet, kind: string) => k<boolean>(m, 'mark', kind)
+const click = async (m: Meet, kind: string) => (await mark(m, kind)) && m.page.click(`[data-kage="${kind}"]`, { timeout: 3000 }).then(() => true, () => false)
+const until = async (what: () => Promise<boolean>, ms: number) => { for (const end = Date.now() + ms; Date.now() < end; await sleep(500)) if (await what()) return true; return false }
+
+async function chat(m: Meet, text: string) {
+  if (!await until(async () => (await mark(m, 'chatBox')) || (await click(m, 'chatOpen'), false), 10_000)) return false
+  await m.page.fill('[data-kage="chatBox"]', text)
+  await m.page.press('[data-kage="chatBox"]', 'Enter')
+  return true
+}
+
+async function enter(m: Meet, link: string, admitMs: number) {
+  const { page, o } = m
   await page.goto(link, { waitUntil: 'domcontentloaded' })
-  await until(async () => (await mark('name')) || (await mark('join')), 15_000)
-  if (await mark('name')) await page.fill('[data-kage="name"]', o.name)
-  if (!await until(async () => (await click('blocker'), click('join')), 30_000)) {
-    const d = await k<string>('dialog')
-    throw new Error(d ? `a Meet popup is in the way: ${d}` : `no join button on the Meet page; buttons: ${await k<string>('buttons')}`)
+  await until(async () => (await mark(m, 'name')) || (await mark(m, 'join')), 15_000)
+  if (await mark(m, 'name')) await page.fill('[data-kage="name"]', o.name)
+  if (!await until(async () => (await click(m, 'blocker'), click(m, 'join')), 30_000)) {
+    const d = await k<string>(m, 'dialog')
+    throw new Error(d ? `a Meet popup is in the way: ${d}` : `no join button on the Meet page; buttons: ${await k<string>(m, 'buttons')}`)
   }
   log('asked to join', link)
   const admitted = await until(async () => {
-    await click('noticeJoin')
-    const s = await k<string>('state')
+    await click(m, 'noticeJoin')
+    const s = await k<string>(m, 'state')
     if (s === 'refused' || s === 'ended') throw new Error(`Meet did not let Kage in (${s})`)
     return s === 'in'
   }, admitMs)
   if (!admitted) throw new Error('nobody let Kage in')
   log('in the call')
-  await k('face', `data:image/jpeg;base64,${readFileSync(new URL('../docs/kage-avatar.jpg', import.meta.url)).toString('base64')}`).catch(() => {})
-  let agentGone = false
-  const hangUp = o.voice ? await o.voice(page, () => { agentGone = true }).catch(e => { log('voice agent not connected, using captions:', String(e)); return undefined }) : undefined
+  await k(m, 'face', `data:image/jpeg;base64,${readFileSync(new URL('../docs/kage-avatar.jpg', import.meta.url)).toString('base64')}`).catch(() => {})
+  m.hangUp = o.voice ? await o.voice(page, () => { m.agentGone = true }).catch(e => { log('voice agent not connected, using captions:', String(e)); return undefined }) : undefined
+  if (!await chat(m, o.consent)) log('no chat box: the consent line was not posted')
+  await click(m, 'micOn')
+  await click(m, 'camOn')
+  if (!await click(m, 'captionsOn')) await page.keyboard.press('c')
+}
 
-  const chat = async (text: string) => {
-    if (!await until(async () => (await mark('chatBox')) || (await click('chatOpen'), false), 10_000)) return false
-    await page.fill('[data-kage="chatBox"]', text)
-    await page.press('[data-kage="chatBox"]', 'Enter')
-    return true
+async function answer(m: Meet) {
+  for (const text of m.o.said?.splice(0) ?? []) {
+    if (m.hangUp) { log('the voice agent speaks in this call; not saying an answer of', text.length, 'chars'); continue }
+    let spoken = false
+    log('saying an answer of', text.length, 'chars')
+    if (m.o.speak) try { await k(m, 'say', (await m.o.speak(text)).toString('base64')); spoken = true } catch (e) { log('speaking failed, posting in chat:', String(e)) }
+    if (!spoken) await chat(m, text).catch(() => false)
   }
-  if (!await chat(o.consent)) log('no chat box: the consent line was not posted')
-  await click('micOn')
-  await click('camOn')
-  if (!await click('captionsOn')) await page.keyboard.press('c')
+}
 
-  const all: Seg[] = []
-  const t0 = Date.now()
-  let lastCompany = Date.now(), captionsChecked = false
+async function listen(m: Meet) {
+  const { o, t0 } = m
+  const lines = await k<{ speaker: string; text: string }[]>(m, 'settled').catch(() => [])
+  if (lines.length) {
+    const segs = lines.map(l => ({ ...l, ...(l.speaker === 'You' || l.speaker === o.name ? { speaker: o.name, self: true } : {}), start: Math.round((Date.now() - t0) / 1000) }))
+    m.all.push(...segs)
+    log('heard', segs.length, 'caption lines')
+    await Promise.resolve(o.heard(segs)).catch(e => log('posting lines failed', String(e)))
+  }
+  if (!m.all.length && !m.captionsChecked && Date.now() - t0 > 20_000) {
+    m.captionsChecked = true
+    log(await k<boolean>(m, 'captionsShown') ? 'captions are on, nobody has spoken yet' : 'no captions on the page after 20 s: Meet may have moved its captions')
+  }
+}
+
+async function over(m: Meet, aloneMs: number): Promise<boolean> {
+  if (m.agentGone) { log('the voice agent hung up, leaving'); await click(m, 'leave'); return true }
+  const s = await k<string>(m, 'state').catch(() => 'ended')
+  if (s === 'ended' || s === 'refused') return true
+  if (await k<number>(m, 'others').catch(() => -1) !== 0) m.lastCompany = Date.now()
+  else if (Date.now() - m.lastCompany >= aloneMs) { log('alone in the call, leaving'); await click(m, 'leave').catch(() => {}); return true }
+  return false
+}
+
+export async function attend(page: Page, link: string, o: AttendOptions): Promise<Seg[]> {
+  const admitMs = o.admitMs ?? 10 * 60_000, aloneMs = o.aloneMs ?? 2 * 60_000
+  const m: Meet = { page, o, all: [], t0: 0, agentGone: false, lastCompany: 0, captionsChecked: false }
+  await enter(m, link, admitMs)
+  m.t0 = Date.now()
+  m.lastCompany = Date.now()
   while (!o.stop?.()) {
     await sleep(1000)
     if (page.isClosed()) break
-    for (const text of o.said?.splice(0) ?? []) {
-      if (hangUp) { log('the voice agent speaks in this call; not saying an answer of', text.length, 'chars'); continue }
-      let spoken = false
-      log('saying an answer of', text.length, 'chars')
-      if (o.speak) try { await k('say', (await o.speak(text)).toString('base64')); spoken = true } catch (e) { log('speaking failed, posting in chat:', String(e)) }
-      if (!spoken) await chat(text).catch(() => false)
-    }
-    if (hangUp && await click('micOn').catch(() => false)) log('was muted, unmuted')
-    if (await click('camOn').catch(() => false)) log('tile on')
-    const lines = await k<{ speaker: string; text: string }[]>('settled').catch(() => [])
-    if (lines.length) {
-      const segs = lines.map(l => ({ ...l, ...(l.speaker === 'You' || l.speaker === o.name ? { speaker: o.name, self: true } : {}), start: Math.round((Date.now() - t0) / 1000) }))
-      all.push(...segs)
-      log('heard', segs.length, 'caption lines')
-      await Promise.resolve(o.heard(segs)).catch(e => log('posting lines failed', String(e)))
-    }
-    if (!all.length && !captionsChecked && Date.now() - t0 > 20_000) {
-      captionsChecked = true
-      log(await k<boolean>('captionsShown') ? 'captions are on, nobody has spoken yet' : 'no captions on the page after 20 s: Meet may have moved its captions')
-    }
-    if (agentGone) { log('the voice agent hung up, leaving'); await click('leave'); break }
-    const s = await k<string>('state').catch(() => 'ended')
-    if (s === 'ended' || s === 'refused') break
-    if (await k<number>('others').catch(() => -1) !== 0) lastCompany = Date.now()
-    else if (Date.now() - lastCompany >= aloneMs) { log('alone in the call, leaving'); await click('leave').catch(() => {}); break }
+    await answer(m)
+    if (m.hangUp && await click(m, 'micOn').catch(() => false)) log('was muted, unmuted')
+    if (await click(m, 'camOn').catch(() => false)) log('tile on')
+    await listen(m)
+    if (await over(m, aloneMs)) break
   }
-  if (o.stop?.()) await click('leave')
-  hangUp?.()
-  log('call over', all.length, 'lines')
-  return all
+  if (o.stop?.()) await click(m, 'leave')
+  m.hangUp?.()
+  log('call over', m.all.length, 'lines')
+  return m.all
 }
 
 export function hub(s: Pick<Settings, 'hub' | 'token'>) {
