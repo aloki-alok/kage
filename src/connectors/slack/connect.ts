@@ -102,8 +102,8 @@ export async function connectSlack(o: Options) {
     try { await hear(m, source) } finally { k.replaying.delete(m.ts) }
   }
   const allow = (l: { teammates: string[]; trusted: string[]; apps: string[] }) => { ids.teammates = l.teammates; ids.trusted = l.trusted; ids.apps = l.apps }
-  const { placeOf, nameOf } = dir
-  return { ids, ownerName, botUser, socket, failed, seen, notifyOwner: k.notifyOwner, placeOf, nameOf, afk: k.afk, replay, allow, say: sayAsOwner({ user, ids, hub: o.hub, hear }), start: () => socket.start() }
+  const { placeOf, nameOf, knownNames } = dir
+  return { ids, ownerName, botUser, socket, failed, seen, notifyOwner: k.notifyOwner, placeOf, nameOf, knownNames, afk: k.afk, replay, allow, say: sayAsOwner({ user, ids, hub: o.hub, hear }), start: () => socket.start() }
 }
 
 async function slackIds(o: Options) {

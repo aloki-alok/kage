@@ -144,6 +144,16 @@ Each night, while every session is quiet, Kage reads the day's threads for lesso
 | `dream.maxNew` | `6` | The most new lessons kept in one night, the most confident first. |
 | `dream.maxOutdated` | `5` | The most notes retired in one night. A retired note is copied to `.archive/` and taken out of the index. |
 
+## Reports to the Kage repo
+
+A session can file a bug, an idea or feedback about Kage itself to the GitHub repo of this Kage checkout, the `origin` remote, so a fork files to the fork. Kage removes names, Slack ids, emails, home paths, tokens, addresses, hostnames and quotes first. Then you get a card with the exact title and body, and nothing is sent without your yes. A teammate's task asks you the same way, and an agent's task never files. If `gh` is signed in, Kage files the issue and posts its link. If not, it posts a prefilled link that you open and submit.
+
+| Setting | Default | Effect |
+|---|---|---|
+| `report.enabled` | `true` | `false` removes the tool from every session. |
+| `report.perDay` | `3` | The most filings a day. A filing you said no to does not count. |
+| `report.repo` | origin of the checkout | The repo to file to, as `owner/name`. |
+
 ## Questions waiting on you
 
 | Setting | Default | Effect |
