@@ -228,6 +228,27 @@ describe('Kage acting on the Mac, from the hub', () => {
     assert.deepEqual(t.seen.map(c => c.op), ['move', 'move'])
     t.idle()
   })
+  test('a command pipe that breaks while the app still runs fails that act, and the next act opens a new app', async () => {
+    const dir = mkdtempSync(`${tmpdir()}/kage-act-`)
+    let launches = 0
+    const exits: (() => void)[] = []
+    const launch: Launch = (app, log) => {
+      const job = JSON.parse(readFileSync(`${dirname(app)}/job.json`, 'utf8'))
+      launches++
+      const say = (l: object) => appendFileSync(log, JSON.stringify(l) + '\n')
+      say({ state: 'acting', pid: 600 + launches })
+      const input = createReadStream(job.fifo), lines = createInterface({ input })
+      lines.on('line', l => { const c = JSON.parse(l); say({ id: c.id, done: true }); if (launches === 1) input.destroy() })
+      return { exited: new Promise<null>(done => exits.push(() => { input.destroy(); done(null) })) }
+    }
+    const screen = screenRecorder({ folder: dir, code: '/code', build: async () => undefined, launch, kill: () => {}, pollMs: 5, waitMs: 300 })
+    assert.deepEqual(await screen.act({ op: 'move', x: 1, y: 1 }), { done: true })
+    await new Promise(r => setTimeout(r, 30))
+    await screen.act({ op: 'move', x: 2, y: 2 })
+    assert.deepEqual(await screen.act({ op: 'move', x: 3, y: 3 }), { done: true })
+    assert.equal(launches, 2)
+    for (const exit of exits) exit()
+  })
   test("with Accessibility off, the act says the owner must turn it on, and where", async () => {
     const t = setup({ accessibility: false })
     const r = await t.screen.act({ op: 'move', x: 1, y: 1 })
