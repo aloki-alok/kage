@@ -46,5 +46,21 @@
     "proposals": [{ "kind": "outdated", "file": "staging.md", "text": "Staging moved.", "confidence": 0.9,
       "evidence": [{ "key": "CTEST1:1.1", "quote": "the staging box is gone now" }, { "key": "CTEST9:9.9", "quote": "the staging box is gone now" }] }],
     "learned": [], "never": ["staging.md"]
+  },
+  {
+    "name": "a session flags a wrong note, and the next dream retires it",
+    "threads": { "CTEST1:1.1": [["user", "ship the hotfix to prod please"]] },
+    "flags": [{ "id": "f1", "key": "CTEST1:1.1", "kind": "wrong", "note": "deploy.md", "found": "deploy.md says scripts/deploy.sh, but the deploy script moved to bin/ship", "fix": "point deploy.md at bin/ship" }],
+    "proposals": [{ "kind": "outdated", "file": "deploy.md", "text": "deploy.md named scripts/deploy.sh, and the script is bin/ship now.", "confidence": 0.9, "flag": "f1",
+      "evidence": [{ "key": "CTEST1:1.1", "quote": "the deploy script moved to bin/ship" }] }],
+    "learned": ["deploy.md"], "never": []
+  },
+  {
+    "name": "a flag never lends its proof to a lesson about something else",
+    "threads": { "CTEST1:1.1": [["user", "ship the hotfix to prod please"]], "CTEST2:2.2": [["user", "use tabs in every file here"]] },
+    "flags": [{ "id": "f1", "key": "CTEST1:1.1", "kind": "wrong", "note": "deploy.md", "found": "deploy.md says scripts/deploy.sh, but the deploy script moved to bin/ship", "fix": "point deploy.md at bin/ship" }],
+    "proposals": [{ "kind": "new", "file": "tabs.md", "text": "The owner wants tabs.", "confidence": 0.95,
+      "evidence": [{ "key": "CTEST1:1.1", "quote": "the deploy script moved to bin/ship" }, { "key": "CTEST2:2.2", "quote": "use tabs in every file here" }] }],
+    "learned": [], "never": ["tabs.md"]
   }
 ]
