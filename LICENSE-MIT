@@ -3,8 +3,8 @@ Some files in this repository are under the MIT License instead of LICENSE:
 - Every file as it was released before the commit that added this file. Those
   releases stay MIT, and anyone who got them keeps the MIT rights to them.
 - The Jev classifier, contributed in pull request #89 (merged as #132):
-  core/jev.ts, connectors/jev.ts, cli/jev-doctor.ts, core/tests/jev.test.ts,
-  connectors/tests/jev.test.ts.
+  src/core/jev.ts, src/connectors/jev.ts, src/cli/jev-doctor.ts, src/core/tests/jev.test.ts,
+  src/connectors/tests/jev.test.ts.
 
 MIT License
 
