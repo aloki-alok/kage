@@ -15,6 +15,6 @@ jobs:
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: lts/*
-      - run: uvx --from git+https://github.com/aloki-alok/kagestack@47a13ed7c10b90bac185d29c04b1de8338eda292 ks ci --base "$BASE"
+      - run: uvx --from git+https://github.com/aloki-alok/kagestack@350f75f58f88306eb0973eba3164cf65e3608a97 ks ci --base "$BASE"
         env:
           BASE: origin/${{ github.base_ref }}
