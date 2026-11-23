@@ -1,7 +1,7 @@
 import { describe, test } from 'node:test'
 import assert from 'node:assert/strict'
 import { generateKeyPairSync, sign } from 'node:crypto'
-import { telnyxEvent, telnyxSigned, twilioEvent, twilioSigned } from '../sms-providers.ts'
+import { telnyxEvent, telnyxSigned, twilioBodySigned, twilioEvent, twilioSigned, twilioStreamEvents } from '../sms-providers.ts'
 
 describe('a Twilio webhook is checked before it is read', () => {
   const url = 'https://mycompany.com/myapp.php?foo=1&bar=2'
@@ -15,6 +15,40 @@ describe('a Twilio webhook is checked before it is read', () => {
     assert.equal(twilioSigned('54321', url, params, 'RSOYDt4T1cUTdK1PDd93/VVr8B8='), false)
     assert.equal(twilioSigned('12345', url, params, undefined), false)
     assert.equal(twilioSigned('', url, params, 'RSOYDt4T1cUTdK1PDd93/VVr8B8='), false)
+  })
+})
+
+describe('a Twilio Event Streams post is checked before it is read', () => {
+  const body = '[{"type":"x"}]'
+  const url = 'https://kage.example.test/sms/events?bodySHA256=d3b89d368528f8a83b4ebd125bb252a36ad0a8b212778aed5768e3341ebfbc3d'
+  const sig = '+713TmrK2nyFF/B/YMK9XyNCVBQ='
+  test("a signature made by Twilio's own validator passes", () => {
+    assert.equal(twilioBodySigned('12345', url, body, sig), true)
+  })
+  test('a changed body, a missing body hash, another token or no header fails', () => {
+    assert.equal(twilioBodySigned('12345', url, '[{"type":"y"}]', sig), false)
+    assert.equal(twilioBodySigned('12345', 'https://kage.example.test/sms/events', body, sig), false)
+    assert.equal(twilioBodySigned('54321', url, body, sig), false)
+    assert.equal(twilioBodySigned('12345', url, body, undefined), false)
+  })
+})
+
+describe('what a Twilio Event Streams post means', () => {
+  const received = (data: Record<string, unknown>) => ({ type: 'com.twilio.messaging.inbound-message.received', data })
+  const text = { messageSid: 'SM0TEST1', from: '+14155550100', to: '+14155550199', body: 'hi there' }
+  test('each incoming text in the batch', () => {
+    assert.deepEqual(twilioStreamEvents([received(text), received({ ...text, messageSid: 'SM0TEST2', body: '' })]), [
+      { kind: 'inbound', id: 'SM0TEST1', from: '+14155550100', to: '+14155550199', text: 'hi there' },
+      { kind: 'inbound', id: 'SM0TEST2', from: '+14155550100', to: '+14155550199', text: '' },
+    ])
+  })
+  test('a single event that is not in an array still counts', () => {
+    assert.equal(twilioStreamEvents(received(text)).length, 1)
+  })
+  test('other event types, broken events and bodies that are not events are ignored', () => {
+    assert.deepEqual(twilioStreamEvents([{ type: 'com.twilio.messaging.message.delivered', data: text }, received({ ...text, messageSid: undefined }), received({ ...text, body: 7 }), null, 3]), [])
+    assert.deepEqual(twilioStreamEvents(null), [])
+    assert.deepEqual(twilioStreamEvents('text'), [])
   })
 })
 

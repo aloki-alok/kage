@@ -1,4 +1,4 @@
-import { createHmac, createPublicKey, timingSafeEqual, verify } from 'node:crypto'
+import { createHash, createHmac, createPublicKey, timingSafeEqual, verify } from 'node:crypto'
 import type { SmsStatus } from './sms.ts'
 
 export type SmsEvent =
@@ -11,6 +11,24 @@ export function twilioSigned(authToken: string, url: string, params: Record<stri
   const want = Buffer.from(createHmac('sha1', authToken).update(signed).digest('base64'))
   const got = Buffer.from(header)
   return got.length === want.length && timingSafeEqual(got, want)
+}
+
+export function twilioBodySigned(authToken: string, url: string, body: string | Buffer, header: string | undefined): boolean {
+  const hash = URL.canParse(url) ? new URL(url).searchParams.get('bodySHA256') : null
+  if (!hash) return false
+  const want = Buffer.from(createHash('sha256').update(body).digest('hex'))
+  const got = Buffer.from(hash.toLowerCase())
+  return got.length === want.length && timingSafeEqual(got, want) && twilioSigned(authToken, url, {}, header)
+}
+
+const INBOUND_EVENT = 'com.twilio.messaging.inbound-message.received'
+export function twilioStreamEvents(body: unknown): SmsEvent[] {
+  return (Array.isArray(body) ? body : [body]).flatMap(e => {
+    const d = (e as { type?: unknown; data?: Record<string, unknown> } | null)?.data
+    if ((e as { type?: unknown })?.type !== INBOUND_EVENT || !d || typeof d !== 'object') return []
+    const id = str(d.messageSid), from = str(d.from), to = str(d.to)
+    return id && from && to && typeof d.body === 'string' ? [{ kind: 'inbound' as const, id, from, to, text: d.body }] : []
+  })
 }
 
 const ED25519_SPKI = Buffer.from('302a300506032b6570032100', 'hex')

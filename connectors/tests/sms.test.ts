@@ -1,6 +1,6 @@
 import { describe, test } from 'node:test'
 import assert from 'node:assert/strict'
-import { createHmac, generateKeyPairSync, sign } from 'node:crypto'
+import { createHash, createHmac, generateKeyPairSync, sign } from 'node:crypto'
 import { connectSms } from '../sms.ts'
 import type { SmsSent } from '../sms-send.ts'
 import { openSmsStore } from '../../runtime/sms-store.ts'
@@ -45,12 +45,19 @@ async function setup(o: { provider?: 'twilio' | 'telnyx'; perHour?: number; perM
     return fetch(`http://127.0.0.1:${port}/sms`, { method: 'POST', body: raw, headers: { 'content-type': 'application/json', 'telnyx-timestamp': String(at),
       'telnyx-signature-ed25519': sign(null, Buffer.from(`${at}|${raw}`), telnyxKeys.privateKey).toString('base64') } })
   }
+  const events = (body: unknown, o: { sig?: string; hash?: string | null } = {}) => {
+    const raw = JSON.stringify(body)
+    const hash = o.hash === undefined ? createHash('sha256').update(raw).digest('hex') : o.hash
+    const query = hash === null ? '' : `?bodySHA256=${hash}`
+    return fetch(`http://127.0.0.1:${port}/sms/events${query}`, { method: 'POST', body: raw, headers: { 'content-type': 'application/json',
+      'x-twilio-signature': o.sig ?? createHmac('sha1', TOKEN).update(`${URL_}/events${query}`).digest('base64') } })
+  }
   const campaign = (phones = [A, B, C]) => {
     const { id } = store.createCampaign({ name: 'promo', body: 'Sale ends Friday. Reply STOP to opt out.', thread: 'D0TEST1:1.1', phones })
     store.move(id, 'launch')
     return id
   }
-  return { sms, store, sent, tasks, told, posts, twilio, telnyx, campaign, setNow: (d: Date) => { now = d } }
+  return { sms, store, sent, tasks, told, posts, twilio, telnyx, events, campaign, setNow: (d: Date) => { now = d } }
 }
 type Setup = Awaited<ReturnType<typeof setup>>
 const text = (MessageSid: string, Body: string, From = A) => ({ MessageSid, SmsStatus: 'received', From, To: OURS, Body })
@@ -128,6 +135,45 @@ describe('a text that comes in', () => {
       await t.sms.tick()
       await t.telnyx({ data: { event_type: 'message.finalized', payload: { id: 'SM0TEST1', to: [{ status: 'delivered' }] } } })
       assert.equal(t.store.report(id)!.counts.delivered, 1)
+    } finally { t.sms.close() }
+  })
+})
+
+describe('a text that comes in through Twilio Event Streams', () => {
+  const received = (messageSid: string, body: string, to = OURS) => ({ type: 'com.twilio.messaging.inbound-message.received', data: { messageSid, from: A, to, body } })
+  test('a signed batch starts one task per text to our number, and texts to other numbers on the account are dropped', async () => {
+    const t = await setup()
+    try {
+      const r = await t.events([received('SM0EV1', 'are you open?'), received('SM0EV2', 'not for you', '+14155550000')])
+      assert.equal(r.status, 200)
+      assert.equal(t.tasks.length, 1)
+      assert.equal(t.tasks[0]!.source, 'sms:SM0EV1')
+      assert.match(t.tasks[0]!.content, /are you open/)
+    } finally { t.sms.close() }
+  })
+  test('a bad signature, a body hash that does not match, or no body hash is refused and starts nothing', async () => {
+    const t = await setup()
+    try {
+      assert.equal((await t.events([received('SM0EV3', 'hi')], { sig: 'AAAA' })).status, 401)
+      assert.equal((await t.events([received('SM0EV3', 'hi')], { hash: '0'.repeat(64) })).status, 401)
+      assert.equal((await t.events([received('SM0EV3', 'hi')], { hash: null })).status, 401)
+      assert.equal(t.tasks.length, 0)
+    } finally { t.sms.close() }
+  })
+  test('the same text through the form webhook and through Event Streams starts one task', async () => {
+    const t = await setup()
+    try {
+      await t.twilio(text('SM0EV4', 'hello'))
+      await t.events([received('SM0EV4', 'hello')])
+      await t.events([received('SM0EV4', 'hello')])
+      assert.equal(t.tasks.length, 1)
+    } finally { t.sms.close() }
+  })
+  test('a Telnyx install has no Event Streams route', async () => {
+    const t = await setup({ provider: 'telnyx' })
+    try {
+      assert.equal((await t.events([received('SM0EV5', 'hi')])).status, 404)
+      assert.equal(t.tasks.length, 0)
     } finally { t.sms.close() }
   })
 })
