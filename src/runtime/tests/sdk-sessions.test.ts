@@ -1047,6 +1047,8 @@ describe('Kage sessions on the Agent SDK', () => {
     assert.equal(v.sdk.runs[0]!.options.settings.sandbox?.enabled, true, 'a caller who is not the owner')
   })
   test('every shell command a session runs goes through the long-output wrapper, and harness.commandOutputChars 0 turns it off (#550)', async () => {
+    const outer = process.env.CLAUDE_CODE_SHELL_PREFIX
+    delete process.env.CLAUDE_CODE_SHELL_PREFIX
     const t = setup()
     t.d.task('C1:5.5', t.task(), 0)
     await tick()
@@ -1063,7 +1065,7 @@ describe('Kage sessions on the Agent SDK', () => {
       own.d.task('C1:5.5', own.task(), 0)
       await tick()
       assert.equal(own.sdk.runs[0]!.options.env.CLAUDE_CODE_SHELL_PREFIX, '/owner/own-prefix.sh', 'the owner\'s own prefix is kept')
-    } finally { delete process.env.CLAUDE_CODE_SHELL_PREFIX }
+    } finally { if (outer) process.env.CLAUDE_CODE_SHELL_PREFIX = outer; else delete process.env.CLAUDE_CODE_SHELL_PREFIX }
   })
   test('with harness.sandbox off a session gets no OS sandbox, and the token files and config.json stay denied to the file tools', async () => {
     const t = setup({ sandbox: false })
