@@ -28,14 +28,17 @@ export function configRefusal(tool: string, input: Record<string, unknown>, send
   if (!at.some(r => !/^(?:files|memory)(?:\/|$)/.test(r))) return
   return `Kage's config folder holds its tokens, and this task did not come from the owner. Reply that this needs the owner, and stop.`
 }
-const SECRET_HELPERS = /\bsecurity\b[^;&|\n]*\b(?:find-(?:generic|internet)-password|dump-keychain)\b|\bop\s+(?:read|inject|run|item\s+get)\b|\b(?:go)?pass\s+(?:show\b|[\w.-]+\/)/
-const squash = (s: string) => s.replace(/\s+/g, ' ').trim()
+const AT_COMMAND = String.raw`(?:^|[;&|(\x60]|\$\(|\b(?:sh|bash|zsh|eval|exec|env|xargs|sudo|command|nohup|time)\s+(?:-\S+\s+)*)\s*(?:\w+=\S*\s+)*`
+const SECRET_HELPER = new RegExp(AT_COMMAND + String.raw`(?:security\s+(?:-\S+\s+)*(?:find-(?:generic|internet)-password|dump-keychain)|op\s+(?:--?[\w-]+(?:[= ]\S+)?\s+)*(?:read|inject|run|item|document)|(?:go)?pass\s+(?:-\S+\s+)*(?:show|otp|\S+\/)|lpass\s+show|secret-tool\s+lookup|bw\s+get)\b`)
+const plainShell = (s: string) => s.replace(/\\\n/g, ' ').replace(/['"]/g, '').replace(/\s+/g, ' ').trim()
+const escaped = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+const asCommand = (c: string) => new RegExp(String.raw`(?:^|[\s;&|(\x60])${escaped(c)}(?=$|[\s;&|)\x60])`)
 function secretCommandRefusal(tool: string, input: Record<string, unknown>, envFile: string): string | undefined {
   if (tool !== 'Bash' || typeof input.command !== 'string') return
   let commands: string[]
-  try { commands = secretCommands(SecretsFile.parse(JSON.parse(readFileSync(join(dirname(envFile), 'secrets.json'), 'utf8')))).flatMap(c => [squash(c.command), squash(c.command).replace(/^\S*\//, '')]) } catch { return }
-  const asked = squash(input.command)
-  if (!commands.length || !(SECRET_HELPERS.test(asked) || commands.some(c => asked.includes(c)))) return
+  try { commands = secretCommands(SecretsFile.parse(JSON.parse(readFileSync(join(dirname(envFile), 'secrets.json'), 'utf8')))).flatMap(c => [plainShell(c.command), plainShell(c.command).replace(/^\S*\//, '')]) } catch { return }
+  const asked = plainShell(input.command)
+  if (!commands.length || !(SECRET_HELPER.test(asked) || commands.some(c => asCommand(c).test(asked)))) return
   return `Kage's tokens come from commands in secrets.json, so no session may run one, or another secret helper (op read, security find-*, pass show). Kage's own tools post as Kage, so no session needs a token.`
 }
 const CONFIG_NAMES = ['session.env', 'telemetry-id', 'kagelets', 'job-state', 'config.json*', 'crons-import.json*', 'waha', 'screen', 'threads.json*', 'afk.json*', 'github-threads.json*', 'mail-threads.json*',

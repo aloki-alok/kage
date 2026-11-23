@@ -345,12 +345,16 @@ describe('a session may not run the command a secret names (#158)', () => {
   }
   const bash = (o: { ownerMemory: string; envFile: string }, command: string, sender = 'owner') => toolRefusal('Bash', { command }, sender, o)
 
-  test('with a command-backed secret, its command and the secret helpers are refused, for the owner too', () => {
-    const o = folder({ slack: { bot: { command: 'op read op://kage/slack-bot' } }, jevKey: { command: '/usr/local/bin/kage-token jev' } })
-    for (const c of ['op read op://kage/slack-bot', 'echo $(op  read   op://kage/slack-bot)', 'op read op://other/item', 'op item get kage', 'security find-generic-password -w -s kage', 'security find-internet-password -s x', 'pass show kage/bot', 'X=1 /usr/local/bin/kage-token   jev | cat', 'kage-token jev', 'security -q find-generic-password -w -s k', 'security dump-keychain -d', 'op inject -i t.tpl', 'op run -- env', 'pass kage/bot', 'gopass show kage/bot'])
+  test('with a command-backed secret, its command and the secret helpers are refused where a command starts, for the owner too', () => {
+    const o = folder({ slack: { bot: { command: 'op read op://kage/slack-bot' } }, jevKey: { command: '/usr/local/bin/kage-token jev' }, voiceToken: { command: '/opt/bin/pw' } })
+    for (const c of ['op read op://kage/slack-bot', 'echo $(op  read   op://kage/slack-bot)', 'op read op://other/item', 'op item get kage', 'op --account me read op://x', 'op document get x', 'op inject -i t.tpl', 'op run -- env',
+      'security find-generic-password -w -s kage', 'security -q find-internet-password -s x', 'security dump-keychain -d', 'pass show kage/bot', 'pass kage/bot', 'pass -c kage/bot', 'pass otp kage/bot', 'gopass show kage/bot', 'lpass show x', 'secret-tool lookup s k', 'bw get password x',
+      'X=1 /usr/local/bin/kage-token   jev | cat', 'kage-token jev', "kage-token 'jev'", "'/usr/local/bin/kage-token' jev", 'kage-token \\\n jev', 'sh -c "op read x"', 'eval "$(op read x)"', 'X=1 op read x', 'ls; pw'])
       assert.match(bash(o, c) ?? '', /secret/, c)
     assert.match(bash(o, 'op read op://kage/slack-bot', 'teammate') ?? '', /secret/)
-    for (const c of ['ls -la', 'git status', 'echo operator read', 'security list-keychains', 'npm test -- --pass-with-no-tests', 'echo tests pass', 'pass ls']) assert.equal(bash(o, c), undefined, c)
+    for (const c of ['ls -la', 'git status', 'pwd', 'echo operator read', 'security list-keychains', 'npm test -- --pass-with-no-tests', 'echo tests pass', 'pass ls', 'grep -rn "op read" src/', 'rg "pass show" docs',
+      'git log --grep "security find-generic-password"', 'git commit -m "no-op run when idle"', 'git commit -m "make lint pass src/x.ts"', 'mysql --pass foo/bar', 'echo "op inject docs"', 'ls ~/opt/bin/pwd'])
+      assert.equal(bash(o, c), undefined, c)
     assert.equal(toolRefusal('Read', { file_path: '/tmp/op read' }, 'owner', o), undefined)
   })
 
