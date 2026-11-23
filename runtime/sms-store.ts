@@ -2,7 +2,7 @@ import { DatabaseSync } from 'node:sqlite'
 import { campaignMove, nextStatus, type CampaignAction, type CampaignNumbers, type CampaignState, type SmsKeyword, type SmsStatus } from '../core/sms.ts'
 
 export type SmsStore = ReturnType<typeof openSmsStore>
-export type SmsCampaign = { id: number; name: string; state: CampaignState; body: string; thread: string; created: string }
+type SmsCampaign = { id: number; name: string; state: CampaignState; body: string; thread: string; created: string }
 export type SmsSend = { campaign: number; person: number; phone: string; body: string }
 type Now = () => string
 

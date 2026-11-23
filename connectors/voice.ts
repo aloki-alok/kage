@@ -13,11 +13,11 @@ import type { Delivery } from '../core/sessions.ts'
 import type { Task } from '../core/task.ts'
 import { bearerOk, hourCap, listen, readBody } from './webhook.ts'
 
-export const MAX_QUESTION = 600
+const MAX_QUESTION = 600
 const STILL = 'Kage is still working on it. Ask again in a moment and you will get the answer.'
 const FAILED = 'Kage could not start a session for this call right now. Try again later.'
 
-export function ownerVoiceTaskLine(question: string): string {
+function ownerVoiceTaskLine(question: string): string {
   return 'Voice task from the owner (a call Kage placed to the owner, verified by a one-time code): do what the owner asks, with your normal tools, approvals and context. For a one-way step (a production write, a delete, money, an outside send, an access grant, a protected merge, a commitment), do not do it: say it needs their yes in Slack, because a misheard word is easy to act on. '
     + 'Your reply is spoken: answer in one to three short spoken sentences, plain words, no markdown, no links. For long work, say what you are doing and reply when done. '
     + `The owner's words, as heard: ${JSON.stringify(oneLine(question))}`

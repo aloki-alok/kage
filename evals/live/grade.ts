@@ -4,7 +4,7 @@ export type Evidence = {
   jobs: { cron: string; prompt: string }[]; files: Record<string, string | null>; commands: Record<string, number>
   turns: Turn[]; fixture?: Record<string, string>; error?: string; infra?: string; model?: string
 }
-export type FileCheck = { path: string; match?: string; absent?: string; same?: true }
+type FileCheck = { path: string; match?: string; absent?: string; same?: true }
 export type Expect = {
   reply?: string[]; noReply?: string[]; used?: string[]; unused?: string[]
   cards?: number; settings?: number; setting?: string; jobs?: number; jobCron?: string

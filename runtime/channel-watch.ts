@@ -1,6 +1,6 @@
 import type { Saved } from './store.ts'
 
-export type ChannelWatch = { channel: string; match?: string; bots: boolean }
+type ChannelWatch = { channel: string; match?: string; bots: boolean }
 export type ChannelPost = { channel: string; ts: string; user?: string; app_id?: string; bot?: boolean; text: string; quoted: string }
 
 const DEFAULT_MAX_POSTS = 20
@@ -44,7 +44,7 @@ export function channelHistory(history: History, max: number, toPosts: (m: unkno
 }
 
 type Seen = { ts: string[]; cursor?: string }
-export type CatchUpResult = { channel: string; truncated: boolean; error?: unknown }
+type CatchUpResult = { channel: string; truncated: boolean; error?: unknown }
 
 export function channelWatches(saved: Saved, o: { maxPosts?: () => number; seenMax?: () => number } = {}) {
   const maxPosts = o.maxPosts ?? (() => DEFAULT_MAX_POSTS)

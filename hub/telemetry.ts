@@ -15,7 +15,7 @@ type Deps = {
   shape?: () => Record<string, number>
 }
 
-export function installId(dir: string): string {
+function installId(dir: string): string {
   const f = `${dir}/telemetry-id`
   if (existsSync(f)) return readFileSync(f, 'utf8').trim()
   const id = randomUUID()

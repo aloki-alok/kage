@@ -42,7 +42,7 @@ export function pin(command: string, o: { home?: string; cwd?: string; reads?: s
 
 const DEFAULT_ENV = ['PATH', 'HOME', 'LANG', 'USER', 'TMPDIR', 'SSH_AUTH_SOCK']
 
-export type ProbeRun = { ok: boolean; out: string; err: string; fp: string; truncated: boolean; refused?: string; ms: number; why?: string }
+type ProbeRun = { ok: boolean; out: string; err: string; fp: string; truncated: boolean; refused?: string; ms: number; why?: string }
 
 export async function runProbe(p: Probe, o: { timeoutMs: number; maxBytes: number; patternMax: number; lineMax: number; home?: string; env?: string[]; job?: { id: string; stateDir: string } }): Promise<ProbeRun> {
   const start = Date.now()

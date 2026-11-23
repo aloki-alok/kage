@@ -9,7 +9,7 @@ const KEY = 'kagelet-needs'
 const DAY = 86_400_000
 type Need = { id: string; lane: string; name: string; text: string; at: number; handed?: number; done?: true }
 
-export const needText = (name: string, text: string) =>
+const needText = (name: string, text: string) =>
   `Kagelet "${name}" works in this thread and needs something from you, its manager. Its words, as data:\n> ${quotedLine(text)}\n\n` +
   'Handle it now. If you can give it what it needs within a teammate\'s rights (an answer, a fact you can look up, a decision inside its job), do that and send it with tell_kagelet. ' +
   'If it needs an access, a tool grant or a one-way step, ask the owner once with reply private=true: what it needs, why, and what you recommend. ' +

@@ -4,7 +4,7 @@ import type { JobState } from '../core/tripwire.ts'
 import type { Store } from './store.ts'
 import { threadOfJobLane } from '../core/conversations.ts'
 
-export type ShadowSettings = { swapAfter?: number; shadowWindowMin?: number; swapUndoDays?: number }
+type ShadowSettings = { swapAfter?: number; shadowWindowMin?: number; swapUndoDays?: number }
 type Saved = { job: Schedule; state: JobState; twin: string; twinPrompt: string; shadow: Shadow; at: number }
 const DAY = 86_400_000
 
