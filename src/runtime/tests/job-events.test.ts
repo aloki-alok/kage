@@ -172,3 +172,65 @@ describe('a hub restart', () => {
     assert.deepEqual(second.e.watching(), [])
   })
 })
+
+describe('held posts', () => {
+  const held = (maxPosts = 20, jobs = [channelJob('j1')], saved = memory()) => {
+    const wakes: { id: string; quotes: string[]; done?: () => void; failed?: (s: Schedule) => void }[] = []
+    const rows: string[] = []
+    const e = jobEvents({ saved, schedules: () => jobs, wake: (id, quotes, x) => { wakes.push({ id, quotes, ...x }) },
+      track: (who, detail) => rows.push(`${who} ${detail}`), ping: () => {}, cfg: () => ({ patternMax: 50, maxPosts, seenMax: 500 }) })
+    e.started('j1', jobs[0]!.trigger!)
+    return { e, wakes, rows, saved, jobs }
+  }
+
+  test('a matched post stays held until its wake is done, so a restart wakes the job with it again, and only once it is done is it gone', () => {
+    const t = held()
+    t.e.channelPost(post('5.5'))
+    const again = held(20, t.jobs, t.saved)
+    again.e.rebuild()
+    assert.deepEqual(again.wakes.map(w => [w.id, w.quotes]), [['j1', ['> [bot 5.5] post 5.5']]])
+    t.wakes[0]!.done!()
+    const after = held(20, t.jobs, t.saved)
+    after.e.rebuild()
+    assert.deepEqual(after.wakes, [])
+  })
+
+  test('held posts keep only the newest maxPosts, a stopped job holds nothing, and a job gone on restart drops its held posts', () => {
+    const t = held(1)
+    t.e.channelPost(post('5.5'))
+    t.e.channelPost(post('6.6'))
+    const again = held(1, t.jobs, t.saved)
+    again.e.rebuild()
+    assert.deepEqual(again.wakes.map(w => w.quotes), [['> [bot 6.6] post 6.6']])
+    t.e.stopped('j1')
+    const stopped = held(1, t.jobs, t.saved)
+    stopped.e.rebuild()
+    assert.deepEqual(stopped.wakes, [])
+    t.e.started('j1', t.jobs[0]!.trigger!)
+    t.e.channelPost(post('7.7'))
+    const gone = held(1, [channelJob('j2')], t.saved)
+    gone.e.rebuild()
+    assert.deepEqual(gone.wakes, [])
+    assert.equal(t.saved.load('job-held') && Object.keys(t.saved.load('job-held') as object).length, 0)
+  })
+
+  test('a wake that fails writes a failed row', () => {
+    const t = held()
+    t.e.channelPost(post('5.5'))
+    t.wakes[0]!.failed!(t.jobs[0]!)
+    assert.equal(t.rows.at(-1), 'CTEST1:1.1 wake job=j1 failed=1')
+  })
+
+  test('two catch-ups at once run one after the other, never interleaved', async () => {
+    const t = held()
+    const log: string[] = []
+    let n = 0
+    const h: ChannelHistory = { newest: async () => '1.0', fetch: async c => { const i = ++n; log.push(`start ${i}`); await new Promise(r => setTimeout(r, 20)); log.push(`end ${i}`); return { posts: [], truncated: false } } }
+    t.e.rebuild()
+    t.e.channelPost(post('1.0'))
+    t.e.channelGap()
+    await Promise.all([t.e.channelCatchUp(h), t.e.channelCatchUp(h)])
+    assert.ok(log.length >= 2)
+    for (let i = 0; i < log.length; i += 2) assert.deepEqual([log[i]!.split(' ')[0], log[i + 1]!.split(' ')[0]], ['start', 'end'])
+  })
+})
