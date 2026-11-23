@@ -11,13 +11,13 @@ describe('private sources on a teammate task', () => {
   })
   test('an unknown sender is refused', () => assert.ok(privateToolRefusal(MAIL, undefined)))
   test("only the owner's task reaches the owner's browser", () => {
-    for (const t of ['mcp__kage__browser_tabs', 'mcp__kage__browser_read', 'mcp__plugin_kage_kage__browser_screenshot']) {
+    for (const t of ['mcp__kage__browser_tabs', 'mcp__kage__browser_read', 'mcp__plugin_kage_kage__browser_take_screenshot', 'mcp__kage__browser_click', 'mcp__kage__browser_navigate']) {
       assert.equal(privateToolRefusal(t, 'owner'), undefined, t)
       assert.match(privateToolRefusal(t, 'teammate') ?? '', /owner/, t)
     }
   })
   test("only the owner's task reaches the owner's screen", () => {
-    for (const t of ['mcp__kage__screen_shot', 'mcp__plugin_kage_kage__screen_record', 'mcp__kage__screen_act']) {
+    for (const t of ['mcp__kage__computer', 'mcp__plugin_kage_kage__computer', 'mcp__plugin_kage_kage__screen_record']) {
       assert.equal(privateToolRefusal(t, 'owner'), undefined, t)
       assert.match(privateToolRefusal(t, 'teammate') ?? '', /owner/, t)
     }
