@@ -29,7 +29,7 @@ if (cmd === 'has') {
   if (v === undefined || v === null) process.exit(0)
   console.log(key === 'harness.cwd' ? tilde(String(v), process.env.HOME!) : Array.isArray(v) && v.every(x => typeof x === 'string') ? v.join(',') : typeof v === 'object' ? JSON.stringify(v) : String(v))
 } else if (cmd === 'set') {
-  const docs = settingDocs(readFileSync(new URL('../docs/settings.md', import.meta.url), 'utf8'))
+  const docs = settingDocs(readFileSync(new URL('../../docs/settings.md', import.meta.url), 'utf8'))
   let config: unknown = {}
   try { config = readSettings(ENV_FILE).config } catch {}
   if (!key) { console.log(settingsOverview(docs, k => walk(config, k)).join('\n')); process.exit(0) }

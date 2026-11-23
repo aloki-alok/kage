@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # The kage command. `./setup.sh link` puts it on PATH as `kage`; `kage help` lists every command.
-# Commands live in the COMMANDS table below and in the case at the bottom; core/tests/cli-help.test.ts
+# Commands live in the COMMANDS table below and in the case at the bottom; src/core/tests/cli-help.test.ts
 # checks that the two list the same names.
 set -euo pipefail
 cd "$(dirname "$(readlink -f "$0")")"  # readlink: works when run through the kage link
@@ -76,13 +76,13 @@ cmd_help() {
 
 # Bare kage: the few commands used every day. kage help has the rest.
 unknown() {
-  local guess; guess="$(node -e 'import("./core/cli-help.ts").then(m=>{const s=m.suggest(process.argv[1],process.argv.slice(2));if(s)console.log(s)})' "$1" $(printf '%s\n' "$COMMANDS" | cut -d'|' -f2) 2>/dev/null || true)"
+  local guess; guess="$(node -e 'import("./src/core/cli-help.ts").then(m=>{const s=m.suggest(process.argv[1],process.argv.slice(2));if(s)console.log(s)})' "$1" $(printf '%s\n' "$COMMANDS" | cut -d'|' -f2) 2>/dev/null || true)"
   printf 'No command "%s".%s Run kage help for the list.\n' "$1" "${guess:+ Did you mean kage $guess?}" >&2
   exit 2
 }
 
 # Before kage stop or restart: the hub takes no new turns and this waits until every running turn ends,
-# naming each thread (cli/quiet.ts). --cut-running cuts them instead. Inside Kage, --force is needed, and it cuts:
+# naming each thread (src/cli/quiet.ts). --cut-running cuts them instead. Inside Kage, --force is needed, and it cuts:
 # waiting would wait on this very session.
 quiet_first() {
   local cmd=$1 force="" cut="" a; shift
@@ -92,14 +92,14 @@ quiet_first() {
     cut=--cut-running
   fi
   running || return 0
-  node cli/quiet.ts $cut
+  node src/cli/quiet.ts $cut
 }
 
 kage_name() { NAME="$(cfg_get name)"; NAME="${NAME:-kage}"; }
 # compat: remove after 2026-12-15: a hub started before the service existed runs in a tmux session (start.sh). kage service on moves it.
 old_tmux() { command -v tmux >/dev/null && tmux has-session -t "=$NAME" 2>/dev/null; }
 running() { kage_name; ./service.sh running 2>/dev/null || old_tmux; }
-# The hub writes the status file (connectors/slack/connect.ts): its first word is the socket's state, its fourth the hub's pid.
+# The hub writes the status file (src/connectors/slack/connect.ts): its first word is the socket's state, its fourth the hub's pid.
 LOG="$(dirname "$ENV_FILE")/hub.log"
 
 cmd_start() {
@@ -137,7 +137,7 @@ cmd_update() {
   [[ "$(git rev-list --count "$ref..HEAD")" == 0 ]] || die "This checkout has commits that are not on $ref, so it was left as it is."
   old="$(git rev-parse --short HEAD)"
   [[ "$(git rev-parse HEAD)" != "$(git rev-parse "$ref^{commit}")" ]] || { says "I'm already on the newest version."; return; }
-  # A running hub restarts into the new code at its next quiet moment and runs npm ci itself first (hub/updates.ts), so update
+  # A running hub restarts into the new code at its next quiet moment and runs npm ci itself first (src/hub/updates.ts), so update
   # never drains: a drain held every new message until each running turn ended (#309). No node runs after the merge, because
   # node beside the hub's npm ci crashes on a half-deleted package (#302); running is asked first for that reason.
   local packages="" up=""
@@ -185,12 +185,12 @@ cmd_restart() {
 
 cmd_status() {
   running || { says "I'm not running."; next "Start me:" "kage start"; return 1; }
-  node cli/status.ts
+  node src/cli/status.ts
 }
 
-# The version the hub read at its start (hub/router.ts writes it), and the version of the code on disk.
+# The version the hub read at its start (src/hub/router.ts writes it), and the version of the code on disk.
 running_version() { cat "$(dirname "$ENV_FILE")/version" 2>/dev/null || echo unknown; }
-disk_version() { node -e 'import("./runtime/auto-update.ts").then(m=>console.log(m.version(process.cwd())))'; }
+disk_version() { node -e 'import("./src/runtime/auto-update.ts").then(m=>console.log(m.version(process.cwd())))'; }
 cmd_version() {
   local disk run; disk="$(disk_version)"; run="$(running_version)"
   echo "kage $disk"
@@ -199,9 +199,9 @@ cmd_version() {
 
 cmd_logs() {
   kage_name
-  # No argument (or -f): follow the hub log and every session's steps live, like tail -f (cli/watch.ts --hub).
+  # No argument (or -f): follow the hub log and every session's steps live, like tail -f (src/cli/watch.ts --hub).
   # A number prints that many lines of the hub log and exits.
-  if [[ -z "${1:-}" || "${1:-}" == -f ]]; then [[ -f $LOG ]] || die "No hub log yet: $LOG"; exec node cli/watch.ts --hub; fi
+  if [[ -z "${1:-}" || "${1:-}" == -f ]]; then [[ -f $LOG ]] || die "No hub log yet: $LOG"; exec node src/cli/watch.ts --hub; fi
   local n="$1"; [[ $n =~ ^[0-9]+$ ]] || die "kage logs follows the log live. Give a number, like kage logs 200, to print that many lines and exit"
   if [[ -f $LOG ]]; then tail -n "$n" "$LOG"; return; fi
   # A hub from start.sh logs only to its tmux window, about 2,000 lines; the blank rows below the last line are dropped.
@@ -231,7 +231,7 @@ cmd_app() {
   valid_name "${1:-}"
   local manifest; manifest="$(dirname "$ENV_FILE")/slack-manifest.json"
   mkdir -p "$(dirname "$manifest")"
-  KAGE_NAME="$NAME" node cli/manifest.ts > "$manifest"
+  KAGE_NAME="$NAME" node src/cli/manifest.ts > "$manifest"
   URL="https://api.slack.com/apps?new_app=1&manifest_json=$(node -e 'process.stdout.write(encodeURIComponent(require("fs").readFileSync(process.argv[1],"utf8")))' "$manifest")"
   (open "$URL" 2>/dev/null || xdg-open "$URL" 2>/dev/null || true) &
   cat <<EOF
@@ -257,8 +257,8 @@ slack_check() {  # $1 token: prints the Slack user id (or "ok"), fails with Slac
     | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const r=JSON.parse(s);if(!r.ok){console.error("Slack says: "+r.error);process.exit(1)}console.log(r.user_id||"ok")})'
 }
 
-# Settings come from config.json and secrets.json (cli/config.ts); an unset one prints nothing.
-cfg_get() { node cli/config.ts get "$1" 2>/dev/null || true; }
+# Settings come from config.json and secrets.json (src/cli/config.ts); an unset one prints nothing.
+cfg_get() { node src/cli/config.ts get "$1" 2>/dev/null || true; }
 has_settings() { [[ -f "$(dirname "$ENV_FILE")/config.json" || -f "$ENV_FILE" ]]; }
 
 cmd_save() {
@@ -267,9 +267,9 @@ cmd_save() {
   local APP="" USR="" BOT="" t input
   if [[ -t 0 ]]; then  # a person at a terminal: hidden prompts, so the tokens never show
     local a u b
-    a="$(node cli/ask-secret.ts app "App-level token (xapp-...): ")" || exit 1
-    u="$(node cli/ask-secret.ts user "User OAuth token (xoxp-...): ")" || exit 1
-    b="$(node cli/ask-secret.ts bot "Bot token (xoxb-...): ")" || exit 1
+    a="$(node src/cli/ask-secret.ts app "App-level token (xapp-...): ")" || exit 1
+    u="$(node src/cli/ask-secret.ts user "User OAuth token (xoxp-...): ")" || exit 1
+    b="$(node src/cli/ask-secret.ts bot "Bot token (xoxb-...): ")" || exit 1
     input="$a $u $b"
   else
     input="$(cat)"
@@ -284,9 +284,9 @@ cmd_save() {
 
   mkdir -p "$(dirname "$ENV_FILE")" && chmod 700 "$(dirname "$ENV_FILE")"
   umask 077
-  # The tokens go to secrets.json and the name to config.json; every other setting stays (cli/config.ts). printf is a
+  # The tokens go to secrets.json and the name to config.json; every other setting stays (src/cli/config.ts). printf is a
   # builtin, so the tokens never show in `ps`.
-  printf '%s %s %s\n' "$APP" "$USR" "$BOT" | node cli/config.ts save "$NAME" || die "Could not write the settings in $(dirname "$ENV_FILE")."
+  printf '%s %s %s\n' "$APP" "$USR" "$BOT" | node src/cli/config.ts save "$NAME" || die "Could not write the settings in $(dirname "$ENV_FILE")."
   says "Saved. I'm @$NAME, and I answer to you ($OWNER)."
   quietly "The tokens are in $(dirname "$ENV_FILE")/secrets.json, readable only by you."
 }
@@ -296,12 +296,12 @@ cmd_claude_login() {
   local t
   if [[ -t 0 ]]; then
     tells "Run claude setup-token signed in as my own Claude account, then paste the token it prints."
-    t="$(node cli/ask-secret.ts claude "Claude token (sk-ant-oat...): ")" || exit 1
+    t="$(node src/cli/ask-secret.ts claude "Claude token (sk-ant-oat...): ")" || exit 1
   else
     t="$(cat)"
   fi
   umask 077
-  printf '%s\n' "$t" | node cli/config.ts save-claude || exit 1
+  printf '%s\n' "$t" | node src/cli/config.ts save-claude || exit 1
   says "Saved. I'll switch to this Claude login when I'm not in the middle of anything."
 }
 
@@ -311,46 +311,46 @@ cmd_claude_login() {
 for a in "$@"; do [[ $a == -h || $a == --help ]] && { [[ $1 == "$a" || $1 == help ]] && cmd_help || cmd_help "$1"; exit 0; }; done
 
 case "${1:-}" in
-  "") if has_settings; then node cli/home-screen.ts "$(running && echo up || echo down)"; else node cli/setup-flow.ts; fi ;;
+  "") if has_settings; then node src/cli/home-screen.ts "$(running && echo up || echo down)"; else node src/cli/setup-flow.ts; fi ;;
   help) cmd_help "${2:-}" ;;
-  setup) node cli/setup-flow.ts ;;
+  setup) node src/cli/setup-flow.ts ;;
   check) cmd_check ;;
   app) cmd_app "${2:-}" ;;
   save) cmd_save "${2:-}" ;;
-  connect) node cli/connect.ts "${@:2}" ;;
-  tunnel) node cli/tunnel.ts "${2:-on}" ;;
+  connect) node src/cli/connect.ts "${@:2}" ;;
+  tunnel) node src/cli/tunnel.ts "${2:-on}" ;;
   claude-login) cmd_claude_login ;;
-  doctor) node cli/doctor/run.ts ;;
-  slack) node cli/slack.ts "${2:-}" ;;
+  doctor) node src/cli/doctor/run.ts ;;
+  slack) node src/cli/slack.ts "${2:-}" ;;
   link) mkdir -p ~/.local/bin && ln -sf "$PWD/setup.sh" ~/.local/bin/kage && says "Done. You can type kage from anywhere (it needs ~/.local/bin on your PATH)." ;;
   service) ./service.sh "${2:-}" ;;
   run) NODE_OPTIONS="$HUB_NODE_OPTIONS" exec node hub.ts ;;
-  # A kagelet's name: resume it (cli/stop.ts). Otherwise the hub.
-  start) if [[ $# -gt 1 ]]; then node cli/stop.ts --resume "${@:2}"; else cmd_start; fi ;;
-  # A thread (any word that is not a flag) or --now: one session (cli/stop.ts). Otherwise the whole hub.
-  stop) if [[ " ${*:2} " == *" --now "* ]] || { [[ $# -gt 1 ]] && printf '%s\n' "${@:2}" | grep -qv '^--'; }; then node cli/stop.ts "${@:2}"; else cmd_stop "${@:2}"; fi ;;
+  # A kagelet's name: resume it (src/cli/stop.ts). Otherwise the hub.
+  start) if [[ $# -gt 1 ]]; then node src/cli/stop.ts --resume "${@:2}"; else cmd_start; fi ;;
+  # A thread (any word that is not a flag) or --now: one session (src/cli/stop.ts). Otherwise the whole hub.
+  stop) if [[ " ${*:2} " == *" --now "* ]] || { [[ $# -gt 1 ]] && printf '%s\n' "${@:2}" | grep -qv '^--'; }; then node src/cli/stop.ts "${@:2}"; else cmd_stop "${@:2}"; fi ;;
   restart) cmd_restart "${@:2}" ;;
   update) cmd_update "${@:2}" ;;
-  reload) node cli/reload.ts ;;
-  set) node cli/config.ts set "${@:2}" ;;
+  reload) node src/cli/reload.ts ;;
+  set) node src/cli/config.ts set "${@:2}" ;;
   status) cmd_status ;;
-  # A kagelet's name (it starts with a letter): its runs (cli/kagelet-logs.ts). Otherwise the hub log.
-  logs) if [[ ${2:-} =~ ^[a-z] ]]; then node cli/kagelet-logs.ts "$2"; else cmd_logs "${2:-}"; fi ;;
-  cost) node cli/cost.ts "${@:2}" ;;
-  stats) node cli/stats.ts "${@:2}" ;;
-  telemetry) node cli/telemetry.ts "${@:2}" ;;
-  schedules) node cli/schedules.ts ;;
-  release) node cli/release.ts "${@:2}" ;;
-  dream) node cli/dream.ts "${@:2}" ;;
-  top) node cli/top.ts "${@:2}" ;;
-  watch) node cli/watch.ts "${@:2}" ;;
-  attach) node cli/attach.ts "${@:2}" ;;
-  tell) node cli/tell.ts "${@:2}" ;;
-  relay) node cli/relay.ts "${@:2}" ;;
-  add) node cli/registry.ts "$@" ;;
-  remove) node cli/registry.ts "$@" ;;
-  list) node cli/registry.ts "$@" ;;
-  call) node cli/call.ts ;;
-  export-crons) node cli/export-crons.ts "${@:2}" ;;   # one-time move of CronCreate jobs out of tmux panes; not in help
+  # A kagelet's name (it starts with a letter): its runs (src/cli/kagelet-logs.ts). Otherwise the hub log.
+  logs) if [[ ${2:-} =~ ^[a-z] ]]; then node src/cli/kagelet-logs.ts "$2"; else cmd_logs "${2:-}"; fi ;;
+  cost) node src/cli/cost.ts "${@:2}" ;;
+  stats) node src/cli/stats.ts "${@:2}" ;;
+  telemetry) node src/cli/telemetry.ts "${@:2}" ;;
+  schedules) node src/cli/schedules.ts ;;
+  release) node src/cli/release.ts "${@:2}" ;;
+  dream) node src/cli/dream.ts "${@:2}" ;;
+  top) node src/cli/top.ts "${@:2}" ;;
+  watch) node src/cli/watch.ts "${@:2}" ;;
+  attach) node src/cli/attach.ts "${@:2}" ;;
+  tell) node src/cli/tell.ts "${@:2}" ;;
+  relay) node src/cli/relay.ts "${@:2}" ;;
+  add) node src/cli/registry.ts "$@" ;;
+  remove) node src/cli/registry.ts "$@" ;;
+  list) node src/cli/registry.ts "$@" ;;
+  call) node src/cli/call.ts ;;
+  export-crons) node src/cli/export-crons.ts "${@:2}" ;;   # one-time move of CronCreate jobs out of tmux panes; not in help
   *) unknown "$1" ;;
 esac

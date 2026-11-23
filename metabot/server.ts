@@ -3,7 +3,7 @@ import { createServer, type IncomingMessage, type RequestListener } from 'node:h
 import { homedir } from 'node:os'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { signedSha256 } from '../core/signature.ts'
+import { signedSha256 } from '../src/core/signature.ts'
 import { loadConfig, loadSecrets, readJobAndPack } from './config.ts'
 import { threadKey } from './decide.ts'
 import { graphPost } from './graph.ts'

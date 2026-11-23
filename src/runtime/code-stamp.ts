@@ -1,7 +1,7 @@
 import { readdirSync, statSync } from 'node:fs'
 import { join } from 'node:path'
 
-const CODE_DIRS = ['.', 'hub', 'plugin', 'core', 'connectors', 'runtime']
+const CODE_DIRS = ['.', 'plugin', 'src/hub', 'src/core', 'src/connectors', 'src/runtime']
 
 export function codeStamp(root: string): number {
   let newest = 0

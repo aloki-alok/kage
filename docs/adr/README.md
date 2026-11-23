@@ -4,7 +4,7 @@ Each file records one rule Kage follows, why, and how it is checked. Read the on
 
 | ADR | Decision | Status |
 |---|---|---|
-| [0001](0001-core-is-pure.md) | `core/` holds pure rules | Accepted, with known debt |
+| [0001](0001-core-is-pure.md) | `src/core/` holds pure rules | Accepted, with known debt |
 | [0002](0002-connectors-build-tasks.md) | Connectors build a `Task`. Core decides who may drive Kage | Accepted |
 | [0003](0003-hub-writes-the-store.md) | The hub is the only writer of the store | Accepted |
 | [0004](0004-only-typed-owner-messages-are-owner.md) | Only a message the owner typed counts as the owner | Accepted |

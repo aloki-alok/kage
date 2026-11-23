@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs'
-import { connectBrowser } from '../../../connectors/browser.ts'
-import { elementsResult, type Snapshot } from '../../../core/browser-act.ts'
-import type { Page, Tab } from '../../../core/browser.ts'
+import { connectBrowser } from '../../../src/connectors/browser.ts'
+import { elementsResult, type Snapshot } from '../../../src/core/browser-act.ts'
+import type { Page, Tab } from '../../../src/core/browser.ts'
 
 const b = connectBrowser({ token: process.env.KAGE_E2E_TOKEN!, port: Number(process.env.KAGE_E2E_PORT), callMs: 30_000, onPoll: (_, v) => { polledVersion = v } })
 let polledVersion: string | undefined

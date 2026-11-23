@@ -1,6 +1,6 @@
 import { readFileSync } from 'node:fs'
-import { ALIASES, KEYS, toEnv, unknownEnv } from '../core/config.ts'
-import { parseEnv } from '../core/settings.ts'
+import { ALIASES, KEYS, toEnv, unknownEnv } from '../src/core/config.ts'
+import { parseEnv } from '../src/core/settings.ts'
 
 const [dir, before] = process.argv.slice(2) as [string, string]
 const json = (f: string) => JSON.parse(readFileSync(`${dir}/${f}`, 'utf8'))

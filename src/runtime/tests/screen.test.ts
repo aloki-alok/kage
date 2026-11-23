@@ -135,8 +135,8 @@ describe('building Kage Screen', { skip: !canBuild && 'needs macOS with swiftc' 
     const code = mkdtempSync(`${tmpdir()}/kage-sign-code-`), folder = mkdtempSync(`${tmpdir()}/kage-sign-app-`), app = `${folder}/Kage.app`
     mkdirSync(`${folder}/Kage Screen.app/Contents`, { recursive: true })
     mkdirSync(`${code}/screen`); mkdirSync(`${code}/docs/brand`, { recursive: true })
-    copyFileSync(`${import.meta.dirname}/../../docs/brand/icon-dark.png`, `${code}/docs/brand/icon-dark.png`)
-    writeFileSync(`${code}/screen/Info.plist`, readFileSync(`${import.meta.dirname}/../../screen/Info.plist`, 'utf8').replace('dev.kage.screen<', 'dev.kage.screentest<'))
+    copyFileSync(`${import.meta.dirname}/../../../docs/brand/icon-dark.png`, `${code}/docs/brand/icon-dark.png`)
+    writeFileSync(`${code}/screen/Info.plist`, readFileSync(`${import.meta.dirname}/../../../screen/Info.plist`, 'utf8').replace('dev.kage.screen<', 'dev.kage.screentest<'))
     const resets: string[] = []
     const exec = async (cmd: string, args: string[], opts: object) => {
       if (cmd === 'tccutil') { resets.push(args.join(' ')); return { stdout: '', stderr: '' } }
@@ -158,8 +158,8 @@ describe('building Kage Screen', { skip: !canBuild && 'needs macOS with swiftc' 
   test('a certificate setup that fails halfway leaves nothing behind, so the next build makes a new one', async () => {
     const code = mkdtempSync(`${tmpdir()}/kage-sign-code-`), folder = mkdtempSync(`${tmpdir()}/kage-sign-app-`), app = `${folder}/Kage.app`
     mkdirSync(`${code}/screen`); mkdirSync(`${code}/docs/brand`, { recursive: true })
-    copyFileSync(`${import.meta.dirname}/../../docs/brand/icon-dark.png`, `${code}/docs/brand/icon-dark.png`)
-    writeFileSync(`${code}/screen/Info.plist`, readFileSync(`${import.meta.dirname}/../../screen/Info.plist`, 'utf8').replace('dev.kage.screen<', 'dev.kage.screentest<'))
+    copyFileSync(`${import.meta.dirname}/../../../docs/brand/icon-dark.png`, `${code}/docs/brand/icon-dark.png`)
+    writeFileSync(`${code}/screen/Info.plist`, readFileSync(`${import.meta.dirname}/../../../screen/Info.plist`, 'utf8').replace('dev.kage.screen<', 'dev.kage.screentest<'))
     writeFileSync(`${code}/screen/KageScreen.swift`, 'print("one")\n')
     const exec = async (cmd: string, args: string[], opts: object) => {
       if (cmd === 'tccutil') return { stdout: '', stderr: '' }

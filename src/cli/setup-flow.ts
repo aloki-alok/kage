@@ -7,7 +7,7 @@ import { fillSlackTokens, typeLines, type SlackSlots } from '../core/secret-prom
 import { FLICKER, MARK, besideWordmark, painter } from '../core/voice.ts'
 import { envFilePath } from '../runtime/config-files.ts'
 
-const ROOT = join(import.meta.dirname, '..')
+const ROOT = join(import.meta.dirname, '../..')
 const keys = Boolean(process.stdin.isTTY), screen = Boolean(process.stdout.isTTY)
 const v = painter(screen && !process.env.NO_COLOR)
 const out = (s = '') => process.stdout.write(`${s}\n`)

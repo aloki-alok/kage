@@ -7,7 +7,7 @@ body:
       value: Kage fills this form. The fingerprint line lets a second install add to this issue instead of opening a new one.
   - type: input
     id: fingerprint
-    attributes: { label: Fingerprint, description: "kage-fp: plus 12 hex, from core/telemetry.ts crashFingerprint, or none." }
+    attributes: { label: Fingerprint, description: "kage-fp: plus 12 hex, from src/core/telemetry.ts crashFingerprint, or none." }
     validations: { required: true }
   - type: textarea
     id: what

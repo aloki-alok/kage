@@ -4,9 +4,9 @@ name: meetbot
 on:
   push:
     branches: [main]
-    paths: ['meetbot/**', 'connectors/meeting.ts', 'core/meetbot.ts', 'core/meeting.ts', '.github/workflows/meetbot.yml']
+    paths: ['meetbot/**', 'src/connectors/meeting.ts', 'src/core/meetbot.ts', 'src/core/meeting.ts', '.github/workflows/meetbot.yml']
   pull_request:
-    paths: ['meetbot/**', 'connectors/meeting.ts', 'core/meetbot.ts', 'core/meeting.ts', '.github/workflows/meetbot.yml']
+    paths: ['meetbot/**', 'src/connectors/meeting.ts', 'src/core/meetbot.ts', 'src/core/meeting.ts', '.github/workflows/meetbot.yml']
 permissions:
   contents: read
 jobs:

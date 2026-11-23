@@ -1,6 +1,6 @@
 import { existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
-import { countBoot, noteExit, npmCi, packagesStale, rotate } from './runtime/hub-log.ts'
+import { countBoot, noteExit, npmCi, packagesStale, rotate } from './src/runtime/hub-log.ts'
 
 const DIR = import.meta.dirname
 const ENV_FILE = process.env.KAGE_ENV || `${process.env.HOME}/.config/kage/env`
@@ -45,9 +45,9 @@ function claudeCommand(route: string | undefined) {
   if (!existsSync(ENV_FILE) && !existsSync(`${CONF}/config.json`)) { console.error(`No settings in ${CONF} yet. Run kage setup first.`); process.exit(0) }
   const log = `${CONF}/hub.log`
   rotate(log)
-  let files: typeof import('./runtime/config-files.ts') | undefined
+  let files: typeof import('./src/runtime/config-files.ts') | undefined
   try {
-    files = await import('./runtime/config-files.ts')
+    files = await import('./src/runtime/config-files.ts')
     const to = files.importLegacy(ENV_FILE)
     if (to) say(`imported the env file into config.json and secrets.json; the old file is now ${to} and goes in 7 days`)
     if (files.syncWaha(ENV_FILE)) say('wrote waha/.env from secrets.json: restart the WhatsApp container so it reads the new keys')
@@ -68,10 +68,10 @@ function claudeCommand(route: string | undefined) {
     if ((statSync(sessionEnv).mode & 0o777) === 0o600) process.loadEnvFile(sessionEnv)
     else say(`${sessionEnv} is not private, so it was skipped. Run chmod 600 on it.`)
   }
-  try { for (const [k, v] of Object.entries((await import('./core/config.ts')).unknownEnv(cfg, sec))) process.env[k] ??= v }
+  try { for (const [k, v] of Object.entries((await import('./src/core/config.ts')).unknownEnv(cfg, sec))) process.env[k] ??= v }
   catch (e) { say(`could not export the env file's own keys: ${e}`) }
   if (sec.claudeToken) { process.env.CLAUDE_CODE_OAUTH_TOKEN = sec.claudeToken; delete process.env.ANTHROPIC_API_KEY }
-  await (await import('./runtime/hold-keys.ts')).holdKeys(Object.keys(cfg.sessionKeys ?? {}), say)
+  await (await import('./src/runtime/hold-keys.ts')).holdKeys(Object.keys(cfg.sessionKeys ?? {}), say)
   const mem = home(cfg.harness?.memory ?? envValue(legacy, 'KAGE_MEMORY') ?? '') || `${CONF}/memory`
   if (/['"\\]/.test(mem + DIR)) { say('Move kage or KAGE_MEMORY to a path without quotes or backslashes.'); process.exit(0) }
   mkdirSync(mem, { recursive: true })
@@ -79,7 +79,7 @@ function claudeCommand(route: string | undefined) {
   process.env.KAGE_CLAUDE = claudeCommand(cfg.harness?.route ?? envValue(legacy, 'KAGE_ROUTE'))
   process.env.KAGE_CWD = home(cfg.harness?.cwd ?? envValue(legacy, 'KAGE_CWD') ?? '') || process.env.KAGE_CWD || process.env.HOME!
   process.chdir(process.env.KAGE_CWD)
-  try { await import('./hub/router.ts') } catch (e) {
+  try { await import('./src/hub/router.ts') } catch (e) {
     console.error(e)
     if (!packagesStale(DIR)) { say('the hub could not load: read the error above'); noteExit(CONF, 'crash', e); process.exit(1) }
     say('the hub could not load and its packages are behind package-lock.json: running npm ci, then restarting')

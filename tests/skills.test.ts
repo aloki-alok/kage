@@ -1,7 +1,7 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { readdirSync, readFileSync } from 'node:fs'
-import { wordingProblems } from '../core/skill-lessons.ts'
+import { wordingProblems } from '../src/core/skill-lessons.ts'
 
 const ROOT = new URL('../skills/', import.meta.url)
 const dirs = readdirSync(ROOT, { withFileTypes: true }).filter(d => d.isDirectory()).map(d => d.name)

@@ -57,7 +57,7 @@ test('kage set <key> explains it; a typo gets the closest key', () => {
 })
 
 test('the real docs give every key a default and an effect', () => {
-  const docs = settingDocs(readFileSync(new URL('../../docs/settings.md', import.meta.url), 'utf8'))
+  const docs = settingDocs(readFileSync(new URL('../../../docs/settings.md', import.meta.url), 'utf8'))
   assert.ok(docs.length > 80, String(docs.length))
   assert.deepEqual(docs.filter(d => !d.default || !d.effect).map(d => d.key), [])
 })

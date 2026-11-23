@@ -1,9 +1,9 @@
 import { readFileSync } from 'node:fs'
 import { dirname } from 'node:path'
-import { envFilePath, readSettings } from '../runtime/config-files.ts'
-import { memoryDirs, senderFile } from '../core/guards.ts'
-import { toolRefusal } from '../runtime/path-guards.ts'
-import { markTurn } from '../runtime/pane-turn.ts'
+import { envFilePath, readSettings } from '../src/runtime/config-files.ts'
+import { memoryDirs, senderFile } from '../src/core/guards.ts'
+import { toolRefusal } from '../src/runtime/path-guards.ts'
+import { markTurn } from '../src/runtime/pane-turn.ts'
 
 const thread = process.env.KAGE_THREAD
 if (thread) {

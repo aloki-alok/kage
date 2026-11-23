@@ -160,7 +160,7 @@ describe('importing an env file', () => {
   })
 
   test('the fixture holds every setting the grep in docs/settings.md finds', () => {
-    const found = execSync(`grep -rhoE 'KAGE_[A-Z_]+' --include=*.ts --include=*.sh . --exclude-dir=node_modules --exclude-dir=tests | sort -u`, { cwd: new URL('../..', import.meta.url), encoding: 'utf8' }).trim().split('\n')
+    const found = execSync(`grep -rhoE 'KAGE_[A-Z_]+' --include=*.ts --include=*.sh . --exclude-dir=node_modules --exclude-dir=tests | sort -u`, { cwd: new URL('../../..', import.meta.url), encoding: 'utf8' }).trim().split('\n')
     const known = new Set([...KEYS.map(k => k.env), ...Object.keys(ALIASES), ...NOT_SETTINGS])
     assert.deepEqual(found.filter(n => !known.has(n)), [])
     const env = parseEnv(FULL)
@@ -300,7 +300,7 @@ describe('what the hub needs to run', () => {
 
 describe('docs/settings.md', () => {
   test('names exactly the keys in the table, one row each', () => {
-    const docs = readFileSync(new URL('../../docs/settings.md', import.meta.url), 'utf8')
+    const docs = readFileSync(new URL('../../../docs/settings.md', import.meta.url), 'utf8')
     const listed = docs.split('\n').filter(l => l.startsWith('| `')).flatMap(l => [...l.split('|')[1]!.matchAll(/`([^`]+)`/g)].map(m => m[1]!))
     const keys = KEYS.map(k => k.path)
     assert.deepEqual(keys.filter(k => !listed.includes(k)), [], 'in the table, missing from the docs')

@@ -9,7 +9,7 @@ A cheaper twin runs beside a monitor (ADR 0015). The hub grades the twin. The mo
 1. **The link is data.** A twin's `job_state.shadow` holds `of` (the old job's id), `live` (the prompt it runs once it is live) and `since`. It is set with `schedule`'s `shadow_of` and `live_prompt`, by a person's task only. A job's own run may not make a twin.
 2. **The old job's acts carry its id.** When a job's run posts into its own thread, or logs a prod write, the ledger row carries the job id. A private DM to the owner is not an act. A job that acts some other way (a phone call alone) posts what it did, or the hub has nothing to pair.
 3. **The twin states a verdict, never a match.** A twin's run calls `shadow_verdict(act, what)`. It posts the "SHADOW ... would ..." line to the owner and writes a `verdicts` ledger row. A twin that never wakes writes nothing, which counts as "would stay quiet".
-4. **The hub pairs them on its job clock** (`core/shadow.ts`), within `tripwires.shadowWindowMin` of each other:
+4. **The hub pairs them on its job clock** (`src/core/shadow.ts`), within `tripwires.shadowWindowMin` of each other:
    - old job acted, twin said act: a **match**.
    - old job acted, twin said nothing or quiet: a **miss**.
    - twin said act, old job did not: a **miss** (false alarm).
@@ -27,9 +27,9 @@ A cheaper twin runs beside a monitor (ADR 0015). The hub grades the twin. The mo
 
 ## How it is checked
 
-`core/tests/shadow.test.ts` (match, both kinds of miss, quiet ignored, one count per run, window edges) and `runtime/tests/shadow-swap.test.ts` (the swap's order and restore).
+`src/core/tests/shadow.test.ts` (match, both kinds of miss, quiet ignored, one count per run, window edges) and `src/runtime/tests/shadow-swap.test.ts` (the swap's order and restore).
 
 ## Swap and restore
 
-- A twin shadows one live job, never another twin. Only the owner's own task may make one. (`runtime/scheduler.ts`, `runtime/tools/schedule-tools.ts`)
-- A crash cut swap is finished on the next tick: the twin is live and the old job still runs. Restore puts the twin back first. (`runtime/shadow-swap.ts`)
+- A twin shadows one live job, never another twin. Only the owner's own task may make one. (`src/runtime/scheduler.ts`, `src/runtime/tools/schedule-tools.ts`)
+- A crash cut swap is finished on the next tick: the twin is live and the old job still runs. Restore puts the twin back first. (`src/runtime/shadow-swap.ts`)

@@ -9,8 +9,8 @@ import { sessionTools } from '../kage-tools.ts'
 import { openLedgers } from '../ledger.ts'
 import type { Task } from '../../core/task.ts'
 
-const GUARD = new URL('../../plugin/private-data-guard.ts', import.meta.url).pathname
-const TURN_END = new URL('../../plugin/turn-end.ts', import.meta.url).pathname
+const GUARD = new URL('../../../plugin/private-data-guard.ts', import.meta.url).pathname
+const TURN_END = new URL('../../../plugin/turn-end.ts', import.meta.url).pathname
 const tick = (ms = 80) => new Promise(r => setTimeout(r, ms))
 const opened: { close?: () => void }[] = []
 afterEach(() => { for (const p of opened.splice(0)) p.close?.() })
@@ -206,6 +206,6 @@ test("the owner's own turns never run twice", async () => {
 })
 
 test('the plugin runs the turn-end hook when a pane turn stops', () => {
-  const { hooks } = JSON.parse(readFileSync(new URL('../../hooks/hooks.json', import.meta.url), 'utf8'))
+  const { hooks } = JSON.parse(readFileSync(new URL('../../../hooks/hooks.json', import.meta.url), 'utf8'))
   assert.match(hooks.Stop[0].hooks[0].command, /plugin\/turn-end\.ts/)
 })

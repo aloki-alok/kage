@@ -239,7 +239,7 @@ describe('protectConfig: what the sandbox and the file rules close', () => {
     for (const n of ['crons-import.json*', 'waha', 'threads.json*', 'afk.json*', 'github-threads.json*', 'mail-threads.json*', 'kage.db*', 'hub.lock', 'router.sock']) assert.ok(deny.includes(`${real(dir)}/${n}`), n)
   })
   test('every name the code builds under the config folder with ${DIR}/, ${CONF}/ or ${o.dir}/ is on that list or is files/ or memory/', () => {
-    const root = new URL('../../', import.meta.url).pathname
+    const root = new URL('../../../', import.meta.url).pathname
     const names = w.sandbox!.filesystem.denyWrite.map(d => d.split('/').pop()!)
     const covered = (n: string) => names.some(d => d === n || (d.endsWith('*') && n.startsWith(d.slice(0, -1))))
     const seen = new Set<string>()

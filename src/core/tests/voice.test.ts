@@ -33,7 +33,7 @@ describe('painter: the shadow skin', () => {
     assert.deepEqual(WORDMARK.shadow, [' █ █ █▄█ █▀█ ██▀', '  █▀▄ ▀▄█ █▄▄ █▄▄'])
   })
   test('the shell uses the same skin', () => {
-    const sh = readFileSync(join(import.meta.dirname, '..', '..', 'setup.sh'), 'utf8')
+    const sh = readFileSync(join(import.meta.dirname, '..', '..', '..', 'setup.sh'), 'utf8')
     for (const rgb of Object.values(SKIN)) assert.ok(sh.includes(rgb), `setup.sh lacks ${rgb}`)
     for (const m of [MARK.kage, MARK.you]) assert.ok(sh.includes(m), `setup.sh lacks ${m}`)
     assert.ok(!sh.includes('255;77;61'), 'setup.sh still has the old red')

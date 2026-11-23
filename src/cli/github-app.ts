@@ -6,7 +6,7 @@ import { appManifest, appName } from '../core/github.ts'
 import { donePage, failPage, goPage, namePage } from './github-page.ts'
 
 type App = { id: number; slug: string; key: string; secret: string; ownerId: number; url: string }
-const FONT = new URL('../docs/brand/fonts/GeistPixel-Square.woff2', import.meta.url)
+const FONT = new URL('../../docs/brand/fonts/GeistPixel-Square.woff2', import.meta.url)
 const html = (res: ServerResponse, status: number, body: string) => res.writeHead(status, { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store' }).end(body)
 
 export async function nameCheck(typed: string, fetchFn: typeof fetch): Promise<{ ok: boolean; say: string }> {
