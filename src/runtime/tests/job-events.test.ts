@@ -225,7 +225,7 @@ describe('held posts', () => {
     const t = held()
     const log: string[] = []
     let n = 0
-    const h: ChannelHistory = { newest: async () => '1.0', fetch: async c => { const i = ++n; log.push(`start ${i}`); await new Promise(r => setTimeout(r, 20)); log.push(`end ${i}`); return { posts: [], truncated: false } } }
+    const h: ChannelHistory = { newest: async () => '1.0', fetch: async () => { const i = ++n; log.push(`start ${i}`); await new Promise(r => setTimeout(r, 20)); log.push(`end ${i}`); return { posts: [], truncated: false } } }
     t.e.rebuild()
     t.e.channelPost(post('1.0'))
     t.e.channelGap()
