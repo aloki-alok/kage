@@ -37,7 +37,6 @@ function rebuild(j: Jobs) {
   for (const id of Object.keys(watches.list())) if (!all.some(s => s.id === id)) watches.remove(id)
   for (const s of all) started(j, s.id, s.trigger)
   for (const [id, quotes] of Object.entries(held(o))) { if (all.some(s => s.id === id)) wake(j, id, quotes, release(o, id, quotes)); else setHeld(o, id, []) }
-  watches.gapOpened()
 }
 
 function channelPost(j: Jobs, post: ChannelPost) {
