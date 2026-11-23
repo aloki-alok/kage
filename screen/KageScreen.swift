@@ -115,7 +115,11 @@ struct Command: Decodable {
   let id: Int; let op: String
   let x: Double?; let y: Double?; let path: [[Double]]?; let expect: Expect?
   let button: String?; let count: Int?; let dy: Int?; let dx: Int?; let text: String?; let keys: String?
+  let app: String?; let max: Int?; let snapshot: Int?; let ref: Int?; let how: String?
 }
+struct Snapshot { let id: Int; let pid: pid_t; let window: AXUIElement; let title: String; let refs: [AXUIElement] }
+let fieldRoles: Set<String> = ["AXTextField", "AXTextArea", "AXComboBox", "AXSearchField"]
+let usefulActions: Set<String> = ["AXPress", "AXConfirm", "AXPick", "AXIncrement", "AXDecrement", "AXOpen"]
 
 let keyCodes: [String: CGKeyCode] = [
   "a": 0, "s": 1, "d": 2, "f": 3, "h": 4, "g": 5, "z": 6, "x": 7, "c": 8, "v": 9, "b": 11, "q": 12, "w": 13, "e": 14, "r": 15,
@@ -156,6 +160,8 @@ final class CursorView: NSView {
 final class Hands {
   let window: NSWindow
   var lastCommand = Date()
+  var snapshot: Snapshot?
+  var looks = 0
   init() {
     window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 80, height: 56), styleMask: .borderless, backing: .buffered, defer: false)
     window.isOpaque = false
@@ -343,6 +349,8 @@ final class Hands {
     switch c.op {
     case "under": guard let p else { return ["error": "under needs x and y"] }; return under(p)
     case "focused": return focused()
+    case "look": return look(c)
+    case "ref": return onRef(c)
     case "click":
       guard let p, let e = c.expect else { return ["error": "click needs x, y and what the check saw"] }
       glide(to: p)
@@ -359,6 +367,104 @@ final class Hands {
       return pressKeys(c, e)
     default: return ["error": "unknown command \(c.op)"]
     }
+  }
+}
+
+func ax(_ el: AXUIElement, _ name: String) -> CFTypeRef? {
+  var v: CFTypeRef?
+  return AXUIElementCopyAttributeValue(el, name as CFString, &v) == .success ? v : nil
+}
+func axText(_ el: AXUIElement, _ name: String) -> String { (ax(el, name) as? String) ?? "" }
+func actionsOf(_ el: AXUIElement) -> [String] {
+  var names: CFArray?
+  return AXUIElementCopyActionNames(el, &names) == .success ? (names as? [String] ?? []) : []
+}
+func frameOf(_ el: AXUIElement) -> CGRect? {
+  guard let p = ax(el, kAXPositionAttribute as String), let z = ax(el, kAXSizeAttribute as String) else { return nil }
+  var at = CGPoint.zero, size = CGSize.zero
+  guard AXValueGetValue(p as! AXValue, .cgPoint, &at), AXValueGetValue(z as! AXValue, .cgSize, &size), size.width > 0, size.height > 0 else { return nil }
+  return CGRect(origin: at, size: size)
+}
+func labelOf(_ el: AXUIElement) -> String {
+  [kAXTitleAttribute, kAXDescriptionAttribute, kAXHelpAttribute, kAXPlaceholderValueAttribute].lazy.map { axText(el, $0 as String) }.first { !$0.isEmpty } ?? ""
+}
+
+extension Hands {
+  func target(_ name: String?) -> NSRunningApplication? {
+    guard let n = name?.lowercased() else { return NSWorkspace.shared.frontmostApplication }
+    return NSWorkspace.shared.runningApplications.first { $0.localizedName?.lowercased() == n || $0.bundleIdentifier?.lowercased() == n }
+  }
+  func look(_ c: Command) -> [String: Any] {
+    guard let app = target(c.app) else { return ["error": "no running app named \(c.app ?? "")"] }
+    let pid = app.processIdentifier, appEl = AXUIElementCreateApplication(pid), name = app.localizedName ?? ""
+    AXUIElementSetAttributeValue(appEl, "AXManualAccessibility" as CFString, kCFBooleanTrue)
+    guard let raw = ax(appEl, kAXFocusedWindowAttribute as String) ?? ax(appEl, kAXMainWindowAttribute as String) else { return ["error": "\(name) has no window open"] }
+    let win = raw as! AXUIElement, title = axText(win, kAXTitleAttribute as String), most = max(1, min(c.max ?? 60, 500))
+    var found: [(rank: Int, el: AXUIElement, row: [String: Any])] = [], stack: [(AXUIElement, Int)] = [(win, 0)]
+    let deadline = Date().addingTimeInterval(1.5), find = (c.text ?? "").lowercased()
+    while let (el, depth) = stack.popLast(), Date() < deadline, found.count < 3000 {
+      let role = axText(el, kAXRoleAttribute as String), actions = actionsOf(el).filter { usefulActions.contains($0) }
+      let value = ax(el, kAXValueAttribute as String) as? String ?? "", label = labelOf(el)
+      let rank = fieldRoles.contains(role) ? 0 : !actions.isEmpty ? 1 : role == "AXStaticText" && !value.isEmpty ? 2 : -1
+      if rank >= 0, el != win, frameOf(el) != nil, find.isEmpty || "\(role) \(label) \(value)".lowercased().contains(find) {
+        var row: [String: Any] = ["role": role, "label": String(label.prefix(200)), "enabled": (ax(el, kAXEnabledAttribute as String) as? Bool) ?? true, "actions": actions]
+        if !value.isEmpty { row["value"] = String(value.prefix(300)) }
+        found.append((rank, el, row))
+      }
+      if depth < 40, let kids = ax(el, kAXChildrenAttribute as String) as? [AXUIElement] { stack.append(contentsOf: kids.reversed().map { ($0, depth + 1) }) }
+    }
+    let kept = found.indices.sorted { (found[$0].rank, $0) < (found[$1].rank, $1) }.prefix(most).sorted()
+    let refs = kept.map { found[$0].el }, total = found.count
+    let rows = kept.enumerated().map { n, i in found[i].row.merging(["ref": n + 1]) { a, _ in a } }
+    looks += 1
+    snapshot = Snapshot(id: looks, pid: pid, window: win, title: title, refs: refs)
+    let focus = (ax(appEl, kAXFocusedUIElementAttribute as String)).map { describe(($0 as! AXUIElement)) } ?? describe(nil)
+    return ["snapshot": looks, "app": name, "pid": Int(pid), "window": title, "focused": ["role": focus["role"] ?? "", "label": focus["label"] ?? ""], "elements": rows, "total": total, "complete": stack.isEmpty]
+  }
+  func scene(_ pid: pid_t) -> [String: String] {
+    let front = NSWorkspace.shared.frontmostApplication, appEl = AXUIElementCreateApplication(pid)
+    let win = ax(appEl, kAXFocusedWindowAttribute as String).map { $0 as! AXUIElement }
+    let focus = ax(appEl, kAXFocusedUIElementAttribute as String).map { $0 as! AXUIElement }
+    let count = (ax(appEl, kAXWindowsAttribute as String) as? [AXUIElement])?.count ?? 0
+    let sheet = win.flatMap { w in (ax(w, kAXChildrenAttribute as String) as? [AXUIElement])?.contains { axText($0, kAXRoleAttribute as String) == "AXSheet" } } ?? false
+    return ["app": front?.localizedName ?? "", "window": win.map { axText($0, kAXTitleAttribute as String) } ?? "", "focus": focus.map { "\(axText($0, kAXRoleAttribute as String)) \"\(labelOf($0))\"" } ?? "", "windows": String(count), "sheet": sheet ? "yes" : "no"]
+  }
+  func whatChanged(_ a: [String: String], _ b: [String: String]) -> String {
+    var lines: [String] = []
+    if a["app"] != b["app"] { lines.append("the front app is now \(b["app"] ?? "")") }
+    if a["window"] != b["window"] { lines.append("the window is now \"\(b["window"] ?? "")\"") }
+    if Int(b["windows"] ?? "0") ?? 0 > Int(a["windows"] ?? "0") ?? 0 || (a["sheet"] == "no" && b["sheet"] == "yes") { lines.append("a new window or dialog opened") }
+    if a["focus"] != b["focus"] { lines.append("focus moved to \(b["focus"] ?? "")") }
+    return lines.isEmpty ? "nothing in the window's title, focus or dialogs changed" : lines.joined(separator: "; ")
+  }
+  func onRef(_ c: Command) -> [String: Any] {
+    guard let s = snapshot, let id = c.snapshot, let r = c.ref, let how = c.how else { return ["error": "a ref act needs snapshot, ref and how"] }
+    guard id == s.id else { return ["error": "r\(r) is from an older look, so nothing was done. Look again and use a ref from that look"] }
+    guard r >= 1, r <= s.refs.count else { return ["error": "the last look has no r\(r)"] }
+    let appEl = AXUIElementCreateApplication(s.pid)
+    guard NSWorkspace.shared.frontmostApplication?.processIdentifier == s.pid || how == "set",
+          let now = ax(appEl, kAXFocusedWindowAttribute as String), CFEqual(now, s.window), axText(now as! AXUIElement, kAXTitleAttribute as String) == s.title
+    else { return ["error": "the window changed since the look, so nothing was done. Look again"] }
+    let el = s.refs[r - 1]
+    if let e = c.expect, let why = changed(describe(el), e) { return ["error": why] }
+    let before = scene(s.pid), box = frameOf(el)
+    if let b = box { glide(to: CGPoint(x: b.midX, y: b.midY)) }
+    switch how {
+    case "press":
+      if AXUIElementPerformAction(el, kAXPressAction as CFString) != .success {
+        guard let b = box else { return ["error": "r\(r) cannot be pressed and has no place on screen"] }
+        click(CGPoint(x: b.midX, y: b.midY), right: false, count: 1)
+      }
+    case "set":
+      if AXUIElementSetAttributeValue(el, kAXValueAttribute as CFString, (c.text ?? "") as CFString) != .success { return ["error": "r\(r) takes no value. Use how type"] }
+    case "type":
+      AXUIElementSetAttributeValue(el, kAXFocusedAttribute as CFString, kCFBooleanTrue)
+      usleep(80_000)
+      type(c.text ?? "")
+    default: return ["error": "how is press, set or type"]
+    }
+    usleep(300_000)
+    return ["done": true, "changed": whatChanged(before, scene(s.pid))]
   }
 }
 
