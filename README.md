@@ -43,7 +43,7 @@ If something is off, run `kage doctor`. It names the fix.
 
 ## Report a bug
 
-Open a [GitHub issue](https://github.com/aloki-alok/kage/issues). To change the code, start with [CONTRIBUTING.md](CONTRIBUTING.md).
+Open a [GitHub issue](https://github.com/aloki-alok/kage/issues). To change the code, start with [CONTRIBUTING.md](CONTRIBUTING.md). Everyone here follows the [code of conduct](CODE_OF_CONDUCT.md).
 
 ## License
 
