@@ -89,123 +89,137 @@ const openApp: Launch = (app, log) => {
   return { exited: new Promise(done => { child.on('exit', done); child.on('error', () => done(null)) }) }
 }
 
-export function screenRecorder(o: { folder: string; code: string; longSide?: number; build?: (app: string) => Promise<string | undefined>; launch?: Launch; kill?: (pid: number, signal: NodeJS.Signals) => void; pollMs?: number; waitMs?: number }) {
+type Options = { folder: string; code: string; longSide?: number; build?: (app: string) => Promise<string | undefined>; launch?: Launch; kill?: (pid: number, signal: NodeJS.Signals) => void; pollMs?: number; waitMs?: number }
+type Job = { action: 'record' | 'shot'; out: string; seconds?: number; app?: string; longSide?: number } | { action: 'act'; fifo: string }
+type Rec = {
+  o: Options; app: string; build: (app: string) => Promise<string | undefined>; launch: Launch; kill: (pid: number, signal: NodeJS.Signals) => void
+  pollMs: number; waitMs: number; current?: Running; acting?: Acting; busy: Promise<void>
+}
+const NO_ANSWER = 'Kage Screen did not answer in time. Try again.'
+
+export function screenRecorder(o: Options) {
   const app = `${o.folder}/Kage.app`
-  const build = o.build ?? (a => buildApp(o.code, a))
-  const launch = o.launch ?? openApp, kill = o.kill ?? ((pid, signal) => { try { process.kill(pid, signal) } catch {} })
-  const pollMs = o.pollMs ?? 100, waitMs = o.waitMs ?? 30_000
-  const NO_ANSWER = 'Kage Screen did not answer in time. Try again.'
-  let current: Running | undefined
-  let busy = Promise.resolve()
-
-  const lines = (log: string): Line[] => {
-    let text = ''
-    try { text = readFileSync(log, 'utf8') } catch { return [] }
-    return text.split('\n').flatMap(l => { try { const v = JSON.parse(l); return v && typeof v === 'object' ? [v as Line] : [] } catch { return [] } })
+  const r: Rec = {
+    o, app, build: o.build ?? (a => buildApp(o.code, a)), launch: o.launch ?? openApp, kill: o.kill ?? ((pid, signal) => { try { process.kill(pid, signal) } catch {} }),
+    pollMs: o.pollMs ?? 100, waitMs: o.waitMs ?? 30_000, busy: Promise.resolve(),
   }
-  const failure = (l: Line | undefined) => l?.error === 'permission' ? PERMISSION : l?.error === 'accessibility' ? ACCESSIBILITY : `Kage Screen: ${l?.error ?? 'it stopped and said nothing'}`
-  const exitsWithin = async (exited: Promise<unknown>, ms: number) => {
-    let timer: NodeJS.Timeout | undefined
-    const ended = await Promise.race([exited.then(() => true), new Promise<false>(r => { timer = setTimeout(() => r(false), ms) })])
-    clearTimeout(timer)
-    return ended
-  }
-  const serial = <T>(f: () => Promise<T>): Promise<T> => { const p = busy.then(f); busy = p.then(() => {}, () => {}); return p }
-
-  async function launchJob(job: { action: 'record' | 'shot'; out: string; seconds?: number; app?: string; longSide?: number } | { action: 'act'; fifo: string }) {
-    const err = await build(app)
-    if (err) return { err }
-    mkdirSync(o.folder, { recursive: true, mode: 0o700 })
-    const log = `${o.folder}/out-${Date.now()}-${Math.random().toString(36).slice(2, 8)}.log`
-    writeFileSync(log, '', { mode: 0o600 })
-    writeFileSync(`${o.folder}/job.json`, JSON.stringify(job), { mode: 0o600 })
-    return { log, exited: launch(app, log).exited }
-  }
-  async function firstLine(log: string, exited: Promise<unknown>) {
-    let ended = false
-    void exited.then(() => { ended = true })
-    for (let waited = 0; waited < waitMs; waited += pollMs) {
-      const first = lines(log)[0]
-      if (first || ended) return first ?? lines(log)[0]
-      await new Promise(r => setTimeout(r, pollMs))
-    }
-    return undefined
-  }
-
-  let acting: Acting | undefined
-  async function startActing(): Promise<Acting | string> {
-    mkdirSync(o.folder, { recursive: true, mode: 0o700 })
-    const fifo = `${o.folder}/act-${Date.now()}.fifo`
-    try { await run('mkfifo', ['-m', '600', fifo], { timeout: 10_000 }) } catch (e) { return `could not make the command pipe: ${String(e)}` }
-    const r = await launchJob({ action: 'act', fifo })
-    if ('err' in r) { rmSync(fifo, { force: true }); return r.err! }
-    const first = await firstLine(r.log, r.exited)
-    if (first?.state !== 'acting') { rmSync(r.log, { force: true }); rmSync(fifo, { force: true }); return !first ? NO_ANSWER : failure(first) }
-    const a: Acting = { log: r.log, pipe: createWriteStream(fifo), next: 0, done: false }
-    a.pipe.on('error', () => { a.done = true })
-    void r.exited.then(() => { a.said = lines(r.log); a.done = true; a.pipe.destroy(); rmSync(fifo, { force: true }); rmSync(r.log, { force: true }) })
-    return a
-  }
-
-  async function send(command: Record<string, unknown>): Promise<ActAnswer | 'left idle'> {
-    if (!acting || acting.done) { const a = await startActing(); if (typeof a === 'string') return { error: a }; acting = a }
-    const a = acting, id = ++a.next
-    a.pipe.write(JSON.stringify({ ...command, id }) + '\n')
-    for (let waited = 0; waited < waitMs; waited += pollMs) {
-      const said = a.said ?? lines(a.log), answer = said.find(l => l.id === id)
-      if (answer) { const { id: _, ...rest } = answer; return rest }
-      if (a.said) return said.at(-1)?.state === 'stopped' ? 'left idle' : { error: failure(said.at(-1)) }
-      await new Promise(r => setTimeout(r, pollMs))
-    }
-    return { error: NO_ANSWER }
-  }
-
   return {
-    act: (command: { op: string } & Record<string, unknown>) => serial(async (): Promise<ActAnswer> => {
-      const first = await send(command)
-      if (first !== 'left idle') return first
-      const again = await send(command)
-      return again === 'left idle' ? { error: NO_ANSWER } : again
-    }),
-    shot: (out: string, appName?: string) => serial(async (): Promise<string | Picture> => {
-      const r = await launchJob({ action: 'shot', out, ...appName && { app: appName }, ...o.longSide && { longSide: o.longSide } })
-      if ('err' in r) return r.err!
-      const ended = await exitsWithin(r.exited, waitMs)
-      const last = lines(r.log).at(-1)
-      rmSync(r.log, { force: true })
-      if (!ended) return NO_ANSWER
-      if (last?.state !== 'saved') return failure(last)
-      const { width, height, pointsWide, pointsHigh } = last
-      return width && height && pointsWide && pointsHigh ? { width, height, pointsWide, pointsHigh } : 'Kage Screen saved the picture but not its size: it runs an older build, so try again'
-    }),
-    start: (out: string, seconds: number, appName?: string) => serial(async (): Promise<string | undefined> => {
-      if (current && !current.done) return 'already recording: stop that recording first'
-      if (current) rmSync(current.log, { force: true })
-      current = undefined
-      const r = await launchJob({ action: 'record', out, seconds, ...appName && { app: appName } })
-      if ('err' in r) return r.err
-      const first = await firstLine(r.log, r.exited)
-      if (first?.state !== 'recording' || !first.pid) {
-        rmSync(r.log, { force: true })
-        return !first ? NO_ANSWER : first.state === 'saved' ? 'the recording ended before it started' : failure(first)
-      }
-      const rec: Running = { pid: first.pid, out, log: r.log, exited: r.exited, done: false }
-      void r.exited.then(() => { rec.done = true })
-      current = rec
-      return undefined
-    }),
-    stop: () => serial(async (): Promise<{ file: string; seconds: number } | { error: string }> => {
-      const rec = current
-      if (!rec) return { error: 'nothing is recording' }
-      current = undefined
-      if (!rec.done) kill(rec.pid, 'SIGINT')
-      const ended = await exitsWithin(rec.exited, waitMs)
-      if (!ended) kill(rec.pid, 'SIGKILL')
-      const last = lines(rec.log).at(-1)
-      rmSync(rec.log, { force: true })
-      if (!ended) return { error: 'Kage Screen did not stop, so the recording was lost' }
-      return last?.state === 'saved' ? { file: rec.out, seconds: last.seconds ?? 0 } : { error: failure(last) }
-    }),
+    act: (command: { op: string } & Record<string, unknown>) => serial(r, () => act(r, command)),
+    shot: (out: string, appName?: string) => serial(r, () => shot(r, out, appName)),
+    start: (out: string, seconds: number, appName?: string) => serial(r, () => start(r, out, seconds, appName)),
+    stop: () => serial(r, () => stop(r)),
   }
 }
 export type ScreenRecorder = ReturnType<typeof screenRecorder>
+
+const lines = (log: string): Line[] => {
+  let text = ''
+  try { text = readFileSync(log, 'utf8') } catch { return [] }
+  return text.split('\n').flatMap(l => { try { const v = JSON.parse(l); return v && typeof v === 'object' ? [v as Line] : [] } catch { return [] } })
+}
+const failure = (l: Line | undefined) => l?.error === 'permission' ? PERMISSION : l?.error === 'accessibility' ? ACCESSIBILITY : `Kage Screen: ${l?.error ?? 'it stopped and said nothing'}`
+const exitsWithin = async (exited: Promise<unknown>, ms: number) => {
+  let timer: NodeJS.Timeout | undefined
+  const ended = await Promise.race([exited.then(() => true), new Promise<false>(res => { timer = setTimeout(() => res(false), ms) })])
+  clearTimeout(timer)
+  return ended
+}
+const serial = <T>(r: Rec, f: () => Promise<T>): Promise<T> => { const p = r.busy.then(f); r.busy = p.then(() => {}, () => {}); return p }
+
+async function launchJob(r: Rec, job: Job) {
+  const { o } = r
+  const err = await r.build(r.app)
+  if (err) return { err }
+  mkdirSync(o.folder, { recursive: true, mode: 0o700 })
+  const log = `${o.folder}/out-${Date.now()}-${Math.random().toString(36).slice(2, 8)}.log`
+  writeFileSync(log, '', { mode: 0o600 })
+  writeFileSync(`${o.folder}/job.json`, JSON.stringify(job), { mode: 0o600 })
+  return { log, exited: r.launch(r.app, log).exited }
+}
+
+async function firstLine(r: Rec, log: string, exited: Promise<unknown>) {
+  let ended = false
+  void exited.then(() => { ended = true })
+  for (let waited = 0; waited < r.waitMs; waited += r.pollMs) {
+    const first = lines(log)[0]
+    if (first || ended) return first ?? lines(log)[0]
+    await new Promise(res => setTimeout(res, r.pollMs))
+  }
+  return undefined
+}
+
+async function startActing(r: Rec): Promise<Acting | string> {
+  mkdirSync(r.o.folder, { recursive: true, mode: 0o700 })
+  const fifo = `${r.o.folder}/act-${Date.now()}.fifo`
+  try { await run('mkfifo', ['-m', '600', fifo], { timeout: 10_000 }) } catch (e) { return `could not make the command pipe: ${String(e)}` }
+  const j = await launchJob(r, { action: 'act', fifo })
+  if ('err' in j) { rmSync(fifo, { force: true }); return j.err! }
+  const first = await firstLine(r, j.log, j.exited)
+  if (first?.state !== 'acting') { rmSync(j.log, { force: true }); rmSync(fifo, { force: true }); return !first ? NO_ANSWER : failure(first) }
+  const a: Acting = { log: j.log, pipe: createWriteStream(fifo), next: 0, done: false }
+  a.pipe.on('error', () => { a.done = true })
+  void j.exited.then(() => { a.said = lines(j.log); a.done = true; a.pipe.destroy(); rmSync(fifo, { force: true }); rmSync(j.log, { force: true }) })
+  return a
+}
+
+async function send(r: Rec, command: Record<string, unknown>): Promise<ActAnswer | 'left idle'> {
+  if (!r.acting || r.acting.done) { const a = await startActing(r); if (typeof a === 'string') return { error: a }; r.acting = a }
+  const a = r.acting, id = ++a.next
+  a.pipe.write(JSON.stringify({ ...command, id }) + '\n')
+  for (let waited = 0; waited < r.waitMs; waited += r.pollMs) {
+    const said = a.said ?? lines(a.log), answer = said.find(l => l.id === id)
+    if (answer) { const { id: _, ...rest } = answer; return rest }
+    if (a.said) return said.at(-1)?.state === 'stopped' ? 'left idle' : { error: failure(said.at(-1)) }
+    await new Promise(res => setTimeout(res, r.pollMs))
+  }
+  return { error: NO_ANSWER }
+}
+
+async function act(r: Rec, command: { op: string } & Record<string, unknown>): Promise<ActAnswer> {
+  const first = await send(r, command)
+  if (first !== 'left idle') return first
+  const again = await send(r, command)
+  return again === 'left idle' ? { error: NO_ANSWER } : again
+}
+
+async function shot(r: Rec, out: string, appName?: string): Promise<string | Picture> {
+  const j = await launchJob(r, { action: 'shot', out, ...appName && { app: appName }, ...r.o.longSide && { longSide: r.o.longSide } })
+  if ('err' in j) return j.err!
+  const ended = await exitsWithin(j.exited, r.waitMs)
+  const last = lines(j.log).at(-1)
+  rmSync(j.log, { force: true })
+  if (!ended) return NO_ANSWER
+  if (last?.state !== 'saved') return failure(last)
+  const { width, height, pointsWide, pointsHigh } = last
+  return width && height && pointsWide && pointsHigh ? { width, height, pointsWide, pointsHigh } : 'Kage Screen saved the picture but not its size: it runs an older build, so try again'
+}
+
+async function start(r: Rec, out: string, seconds: number, appName?: string): Promise<string | undefined> {
+  if (r.current && !r.current.done) return 'already recording: stop that recording first'
+  if (r.current) rmSync(r.current.log, { force: true })
+  r.current = undefined
+  const j = await launchJob(r, { action: 'record', out, seconds, ...appName && { app: appName } })
+  if ('err' in j) return j.err
+  const first = await firstLine(r, j.log, j.exited)
+  if (first?.state !== 'recording' || !first.pid) {
+    rmSync(j.log, { force: true })
+    return !first ? NO_ANSWER : first.state === 'saved' ? 'the recording ended before it started' : failure(first)
+  }
+  const rec: Running = { pid: first.pid, out, log: j.log, exited: j.exited, done: false }
+  void j.exited.then(() => { rec.done = true })
+  r.current = rec
+  return undefined
+}
+
+async function stop(r: Rec): Promise<{ file: string; seconds: number } | { error: string }> {
+  const rec = r.current
+  if (!rec) return { error: 'nothing is recording' }
+  r.current = undefined
+  if (!rec.done) r.kill(rec.pid, 'SIGINT')
+  const ended = await exitsWithin(rec.exited, r.waitMs)
+  if (!ended) r.kill(rec.pid, 'SIGKILL')
+  const last = lines(rec.log).at(-1)
+  rmSync(rec.log, { force: true })
+  if (!ended) return { error: 'Kage Screen did not stop, so the recording was lost' }
+  return last?.state === 'saved' ? { file: rec.out, seconds: last.seconds ?? 0 } : { error: failure(last) }
+}
