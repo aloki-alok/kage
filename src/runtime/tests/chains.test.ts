@@ -638,3 +638,9 @@ test('a kagelet run cut by the usage limit is held for the reset, never an incid
   await h.limitHit('a', NINE + 3_600_000)
   assert.deepEqual(said, [])
 })
+
+test('only a kagelet can message a kagelet: a thread that is not one gets no send', async () => {
+  const h = await hub({})
+  await h.save('b', { schedule: '0 10 * * *' })
+  assert.equal(h.routes.message('C1:5.5', 'b', 'go', NINE), 'not sent: only a kagelet can message a kagelet')
+})
