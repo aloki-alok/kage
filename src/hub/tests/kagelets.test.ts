@@ -84,3 +84,48 @@ test('a kagelet owner may ask it for work in its thread, like a person on its pe
   kag.sync(Date.now())
   assert.deepEqual(kag.peopleIn('CTEST1', '1700000000.123456'), [{ name: 'b', people: ['UTEST2'] }])
 })
+
+test('a sync grants each runnable kagelet its lane, model, allow lines and budget, and without the Agent SDK it grants none', async () => {
+  const dir = mkdtempSync(join(tmpdir(), 'kage-hub-sync-'))
+  writeJob(kageletsDir(dir), 'posts', `---\nthread: ${LINK}\nschedule: 0 9 * * *\ntools: WebSearch\nby: owner\nmodel: opus\nallow: git status\n---\nPost.\n`)
+  const ledgers = openLedgers(dir)
+  let sdk = true
+  const kag = hubKagelets({ dir, kl: { dailyUsd: 2 }, mem: { own: join(dir, 'm1'), owner: join(dir, 'm2') }, store: openStore(':memory:'), ledgers,
+    runs: runEvents(ledgers, () => 't1'), title: 'Kage', notify: () => {}, hasSdk: () => sdk, runNow: () => undefined, toSession: () => 'sent', lanes: { busy: () => false, last: () => 0, cut: () => {} },
+    idle: () => true, paused: () => undefined, tripwires: () => ({}) })
+  assert.equal(await kag.tell('posts', 'hi', false), 'no kagelet named "posts" runs here')
+  kag.sync(Date.now())
+  assert.deepEqual([...kag.lanes()], [LANE])
+  assert.deepEqual(kag.grantOf(LANE), ['WebSearch'])
+  assert.equal(kag.modelOf(LANE), 'opus')
+  assert.deepEqual(kag.allowOf(LANE), ['git status'])
+  assert.equal(kag.budgetOf(LANE), 2)
+  assert.equal(kag.budgetOf('CTEST1:1700000000.123456'), undefined)
+  assert.deepEqual(kag.grantOf('CTEST1:1.2#side-kagelet-gone'), [])
+  assert.equal(kag.grantOf('CTEST1:1.2'), undefined)
+  assert.equal(await kag.tell('posts', 'hi', false), 'told posts: its next run reads it')
+  sdk = false
+  kag.sync(Date.now())
+  assert.deepEqual([...kag.lanes()], [])
+  assert.equal(kag.modelOf(LANE), undefined)
+  assert.deepEqual(kag.allowOf(LANE), [])
+})
+
+test('a kagelet past kagelets.max gets no lane, model or allow lines, and one over its daily cap pauses with a report and a waiting row', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'kage-hub-cap-'))
+  const LINK2 = 'https://test.slack.com/archives/CTEST2/p1700000000123456', LANE2 = 'CTEST2:1700000000.123456#side-kagelet-zz'
+  writeJob(kageletsDir(dir), 'posts', `---\nthread: ${LINK}\nschedule: 0 9 * * *\ntools: WebSearch\nby: owner\n---\nPost.\n`)
+  writeJob(kageletsDir(dir), 'zz', `---\nthread: ${LINK2}\nschedule: 0 9 * * *\ntools: WebSearch\nby: owner\nmodel: opus\nallow: git status\n---\nMore.\n`)
+  const ledgers = openLedgers(dir)
+  const kag = hubKagelets({ dir, kl: { max: 1, dailyUsd: 1 }, mem: { own: join(dir, 'm1'), owner: join(dir, 'm2') }, store: openStore(':memory:'), ledgers,
+    runs: runEvents(ledgers, () => 't1'), title: 'Kage', notify: () => {}, hasSdk: () => true, runNow: () => undefined, toSession: () => 'sent', lanes: { busy: () => false, last: () => 0, cut: () => {} },
+    idle: () => true, paused: () => undefined, tripwires: () => ({}) })
+  kag.sync(Date.now())
+  assert.deepEqual([...kag.lanes()], [LANE])
+  assert.equal(kag.modelOf(LANE2), undefined)
+  assert.deepEqual(kag.allowOf(LANE2), [])
+  ledgers.add('costs', [LANE, '3', '3'])
+  kag.sync(Date.now())
+  assert.match(ledgers.text('reports'), /^\S+\tposts\t.*daily cap.*\tthe owner to resume it, or a higher cap$/m)
+  assert.match(ledgers.text('waiting'), /\topen\tCTEST1:1700000000\.123456\t.*\tkagelet posts .*daily cap/)
+})
