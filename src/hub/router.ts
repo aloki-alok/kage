@@ -208,7 +208,7 @@ const browser = secrets.browserToken ? connectBrowser({ token: secrets.browserTo
   onPoll: (at, v) => writeFileSync(`${DIR}/browser-seen`, `${at} ${v ?? ''}`.trim(), { mode: 0o600 }) }) : undefined
 void browser?.listening.then(port => log(`browser on: 127.0.0.1:${port}/browser`), e => log('browser could not listen', e))
 const browserBlock = (conn.browser?.block ?? []).join(',')
-const BROWSER_BLOCK = blockList(browserBlock), SCREEN = process.platform === 'darwin' ? screenRecorder({ folder: `${DIR}/screen`, code: CODE, longSide: config.screen?.shotLongSide || 1280 }) : undefined
+const BROWSER_BLOCK = blockList(browserBlock), SCREEN = process.platform === 'darwin' ? screenRecorder({ folder: `${DIR}/screen`, code: CODE, longSide: config.screen?.shotLongSide || 1280, lookElements: config.screen?.lookElements || 60 }) : undefined
 for (const e of unreadableBlocks(browserBlock)) log(`connectors.browser.block: "${e}" is not a site, so it blocks nothing`)
 const sdkLib = harness.runtime === 'tmux' ? undefined : await (async () => ({
   lib: await import('@anthropic-ai/claude-agent-sdk'),

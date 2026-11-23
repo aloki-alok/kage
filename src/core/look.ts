@@ -15,7 +15,7 @@ export function parseLook(answer: Record<string, unknown>): Look | { error: stri
   return parsed.success ? parsed.data : { error: 'Kage Screen answered a look in a shape the hub does not know: it may run an older build, so try again' }
 }
 
-export const roleWords = (role: string) => role.replace(/^AX/, '').replace(/([a-z])([A-Z])/g, '$1 $2').toLowerCase() || 'element'
+const roleWords = (role: string) => role.replace(/^AX/, '').replace(/([a-z])([A-Z])/g, '$1 $2').toLowerCase() || 'element'
 const quoted = (s: string) => `"${quotedLine(s)}"`
 
 function elementLine(e: LookElement) {

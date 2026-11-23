@@ -89,7 +89,7 @@ const openApp: Launch = (app, log) => {
   return { exited: new Promise(done => { child.on('exit', done); child.on('error', () => done(null)) }) }
 }
 
-type Options = { folder: string; code: string; longSide?: number; build?: (app: string) => Promise<string | undefined>; launch?: Launch; kill?: (pid: number, signal: NodeJS.Signals) => void; pollMs?: number; waitMs?: number }
+type Options = { folder: string; code: string; longSide?: number; lookElements?: number; build?: (app: string) => Promise<string | undefined>; launch?: Launch; kill?: (pid: number, signal: NodeJS.Signals) => void; pollMs?: number; waitMs?: number }
 type Job = { action: 'record' | 'shot'; out: string; seconds?: number; app?: string; longSide?: number } | { action: 'act'; fifo: string }
 type Rec = {
   o: Options; app: string; build: (app: string) => Promise<string | undefined>; launch: Launch; kill: (pid: number, signal: NodeJS.Signals) => void
@@ -120,6 +120,7 @@ export function screenRecorder(o: Options) {
   }
   return {
     act: (command: { op: string } & Record<string, unknown>) => serial(r, () => act(r, command)),
+    look: (app?: string, find?: string) => serial(r, () => act(r, { op: 'look', max: o.lookElements ?? 60, ...app && { app }, ...find && { text: find } })),
     shot: (out: string, appName?: string) => serial(r, () => shot(r, out, appName)),
     start: (out: string, seconds: number, appName?: string) => serial(r, () => start(r, out, seconds, appName)),
     stop: () => serial(r, () => stop(r)),

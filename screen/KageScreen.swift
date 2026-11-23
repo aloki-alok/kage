@@ -446,7 +446,8 @@ extension Hands {
           let now = ax(appEl, kAXFocusedWindowAttribute as String), CFEqual(now, s.window), axText(now as! AXUIElement, kAXTitleAttribute as String) == s.title
     else { return ["error": "the window changed since the look, so nothing was done. Look again"] }
     let el = s.refs[r - 1]
-    if let e = c.expect, let why = changed(describe(el), e) { return ["error": why] }
+    let seen: [String: Any] = ["app": NSRunningApplication(processIdentifier: s.pid)?.localizedName ?? "", "role": axText(el, kAXRoleAttribute as String), "label": labelOf(el)]
+    if let e = c.expect, let why = changed(seen, e) { return ["error": why] }
     let before = scene(s.pid), box = frameOf(el)
     if let b = box { glide(to: CGPoint(x: b.midX, y: b.midY)) }
     switch how {
