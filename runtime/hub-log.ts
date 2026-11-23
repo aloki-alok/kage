@@ -14,7 +14,7 @@ export const packagesStale = (dir: string) => {
 export const npmCi = (dir: string) =>
   execFileSync('npm', ['ci', '--no-audit', '--no-fund', '--loglevel=error'], { cwd: dir, stdio: ['ignore', 'inherit', 'inherit'], timeout: 300_000 })
 
-export type ExitCause = 'update' | 'settings' | 'restart' | 'crash'
+type ExitCause = 'update' | 'settings' | 'restart' | 'crash'
 
 export function noteExit(dir: string, cause: ExitCause, error?: unknown) {
   const line = error instanceof Error ? `${error.name}: ${error.message}` : error === undefined ? '' : String(error)

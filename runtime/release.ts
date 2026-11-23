@@ -10,14 +10,14 @@ const sh = async (root: string, cmd: string, ...args: string[]) =>
   (await promisify(execFile)(cmd, args, { cwd: root, encoding: 'utf8', timeout: 120_000, env: { ...process.env, GIT_TERMINAL_PROMPT: '0' } })).stdout.trim()
 const tryOut = async (root: string, cmd: string, ...args: string[]) => { try { return await sh(root, cmd, ...args) } catch { return undefined } }
 
-export const isOwnerHub = async (root: string) => await tryOut(root, 'gh', 'repo', 'view', '--json', 'viewerPermission', '-q', '.viewerPermission') === 'ADMIN'
+const isOwnerHub = async (root: string) => await tryOut(root, 'gh', 'repo', 'view', '--json', 'viewerPermission', '-q', '.viewerPermission') === 'ADMIN'
 
-export async function aheadOfStable(root: string, sha: string): Promise<boolean> {
+async function aheadOfStable(root: string, sha: string): Promise<boolean> {
   if (!await tryOut(root, 'git', 'rev-parse', '-q', '--verify', 'refs/tags/stable^{commit}')) return true
   if (await tryOut(root, 'git', 'merge-base', '--is-ancestor', 'refs/tags/stable', sha) === undefined) return false
   return !await inert(root, 'refs/tags/stable', sha)
 }
-export const fetchRefs = (root: string) =>
+const fetchRefs = (root: string) =>
   sh(root, 'git', 'fetch', '-q', '--force', 'origin', 'main', 'refs/tags/stable:refs/tags/stable').catch(() => sh(root, 'git', 'fetch', '-q', 'origin', 'main'))
 
 function writeVersion(root: string, version: string) {
@@ -95,7 +95,7 @@ async function inert(root: string, from: string, to: string): Promise<boolean> {
   } catch { return false }
 }
 
-export async function readBoots(root: string, text: string, now: number): Promise<Boot[]> {
+async function readBoots(root: string, text: string, now: number): Promise<Boot[]> {
   const rows = text.split('\n').filter(Boolean).map(l => { const [at = '', sha = ''] = l.split('\t'); return { at: Date.parse(at), sha } })
     .filter(r => r.sha && r.at > now - 30 * 86_400_000)
   const boots: Boot[] = []

@@ -16,7 +16,7 @@ export const readCommand = (envCommand: string | undefined, store: Pick<Store, '
   envCommand || commands(store)[kagelet] || (store.load(OLD_READ_COMMAND) as string | undefined)
 const standings = (store: Pick<Store, 'load'>) => (store.load(STANDING) ?? {}) as Standing
 
-export const OWNERS_HOME = 'owners'
+const OWNERS_HOME = 'owners'
 const HOME_STANDIN = 'https://kage.slack.com/archives/C0HOME00/p1000000000000000'
 export type AskOwner = (card: { kagelet: string; tools: string; job: string; measure?: string; people?: string; owners?: string }) => Promise<boolean>
 

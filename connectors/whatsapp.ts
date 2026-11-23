@@ -13,7 +13,7 @@ import { ownerLines } from '../core/messages.ts'
 
 export const wahaUrl = (set?: string | null) => set || 'http://127.0.0.1:3198'
 
-export type WaTask = { chat: string; place: string; content: string; source?: string }
+type WaTask = { chat: string; place: string; content: string; source?: string }
 const ARM_MS = 60 * 60_000
 
 const MAX_BODY = 1_000_000

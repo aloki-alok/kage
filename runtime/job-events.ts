@@ -3,7 +3,7 @@ import type { Schedule } from '../core/cron.ts'
 import { channelWatches, type ChannelHistory, type ChannelPost } from './channel-watch.ts'
 import type { Saved } from './store.ts'
 
-export type WakeOptions = { done?: () => void; ran?: (s: Schedule, n: number) => void; failed?: (s: Schedule) => void }
+type WakeOptions = { done?: () => void; ran?: (s: Schedule, n: number) => void; failed?: (s: Schedule) => void }
 
 export function jobEvents(o: {
   saved: Saved

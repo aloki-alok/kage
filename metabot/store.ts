@@ -2,7 +2,7 @@ import { DatabaseSync } from 'node:sqlite'
 import type { Line } from './prompt.ts'
 import type { Thread } from './decide.ts'
 
-export type EventRow = { at: number; key: string; kind: string; outcome: string; label?: string; ms: number }
+type EventRow = { at: number; key: string; kind: string; outcome: string; label?: string; ms: number }
 export type Store = ReturnType<typeof openStore>
 
 export function openStore(file: string) {

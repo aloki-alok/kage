@@ -14,6 +14,7 @@ const inDir = (d: string) => files.filter(f => f.startsWith(`${d}/`) && f.endsWi
 const under = (d: string) => files.filter(f => f.startsWith(`${d}/`) && f.endsWith('.ts') && !f.includes('/tests/'))
 
 const MAX_LINES = 300
+const EXPORT_LAYERS = ['core', 'runtime', 'connectors', 'hub', 'cli', 'plugin', 'metabot', 'meetbot', 'evals']
 
 const DEBT = {
   commented: [] as string[],
@@ -23,8 +24,7 @@ const DEBT = {
     'hub/router.ts': 347, 'cli/top.ts': 331,
   } as Record<string, number>,
   unmapped: [] as string[],
-  unusedCoreExports: [
-  ] as string[],
+  unusedExports: [] as string[],
 }
 
 function check(name: string, found: string[], debt: string[]) {
@@ -75,7 +75,7 @@ test('every core/, runtime/, runtime/tools/, hub/ and plugin/ file is in the CON
   assert.deepEqual([...inDir('hub'), ...inDir('plugin'), ...inDir('runtime/tools')].filter(f => !map.includes(`\`${f}\``)), [], 'add a row for each to the code map')
 })
 
-test('a core/ export is used outside its file: by another source file, or by its own file and a test', () => {
+test('an export is used outside its file: by another source file, or by its own file and a test', () => {
   const tests = execFileSync('git', ['ls-files', '--cached', '--others', '--exclude-standard', '*/tests/*.ts'], { cwd: root, encoding: 'utf8' }).split('\n').filter(Boolean)
   const testText = tests.map(f => readFileSync(`${root}/${f}`, 'utf8'))
   const exported = (f: string) => [
@@ -83,14 +83,14 @@ test('a core/ export is used outside its file: by another source file, or by its
     ...[...code(f).matchAll(/^export (?:type )?\{([^}]*)\}/gm)].flatMap(m => m[1]!.split(',').map(x => x.trim().split(/\s+as\s+/).pop()!).filter(Boolean)),
   ]
   const unused: string[] = []
-  for (const f of under('core')) for (const name of exported(f)) {
+  for (const f of EXPORT_LAYERS.flatMap(under)) for (const name of exported(f)) {
     const word = new RegExp(`\\b${name}\\b`, 'g')
     const elsewhere = files.some(g => g !== f && word.test(text.get(g)!)) || scripts.some(t => word.test(t))
     const ownUse = (code(f).match(word) ?? []).length > 1
     const tested = testText.some(t => new RegExp(`\\b${name}\\b`).test(t))
     if (!elsewhere && !(ownUse && tested)) unused.push(`${f} ${name}`)
   }
-  check('unusedCoreExports', unused, DEBT.unusedCoreExports)
+  check('unusedExports', unused, DEBT.unusedExports)
 })
 
 test('a .ts file has no comments: names say what code does, and the why lives in the commit and the ADRs', () => {

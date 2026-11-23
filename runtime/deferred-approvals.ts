@@ -12,7 +12,7 @@ const OPEN_PER_KEY = 5
 type Review = 'run' | 'hold'
 type Call = { key: string; tool: string; input: Record<string, unknown>; task: Task; review?: Review }
 type Row = Call & { at: number; yes?: number }
-export type CardVerdict = { key: string; tool: string; kind: string; fp: string; owner: 'allow' | 'always' | 'deny' | 'expired'; review?: Review }
+type CardVerdict = { key: string; tool: string; kind: string; fp: string; owner: 'allow' | 'always' | 'deny' | 'expired'; review?: Review }
 
 const same = (r: Call, key: string, tool: string, input: Record<string, unknown>) =>
   r.key === key && r.tool === tool && JSON.stringify(r.input) === JSON.stringify(input)
