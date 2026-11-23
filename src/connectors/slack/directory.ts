@@ -54,5 +54,5 @@ export function slackDirectory(user: WebClient, ids: Ids, title: string) {
     return { text, files: msgs.flatMap(x => (x as { files?: SlackFile[] }).files ?? []) }
   }
 
-  return { nameOf, placeOf, contextOf }
+  return { nameOf, placeOf, contextOf, knownNames: () => [...names.values()] }
 }
