@@ -23,7 +23,7 @@ import type { Inbox, Store } from '../runtime/store.ts'
 import { taskAsOwner } from '../core/gate.ts'
 import { ownerLines } from '../core/messages.ts'
 
-export function startConnectors(o: {
+type Options = {
   secrets: Secrets; conn: NonNullable<Config['connectors']>; store: Store; slack: Awaited<ReturnType<typeof connectSlack>>; bot: WebClient
   ping: Parameters<typeof startJobEvents>[0]['ping']
   say: (text: string) => Promise<boolean>
@@ -32,36 +32,12 @@ export function startConnectors(o: {
   deliver: (c: Conversation, task: Task, place: string, lane?: Lane, by?: string) => Delivery
   placeOf: (key: string) => string; failed: (m: ToSession) => void
   schedules: Parameters<typeof startJobEvents>[0]['schedules']; event: Parameters<typeof startJobEvents>[0]['event']; ledgers: Parameters<typeof startJobEvents>[0]['ledgers']; tripwires: Config['tripwires']
-}) {
-  const { secrets, conn, store, slack, bot, NAME, CODE, DIR, d, inbox, deliver, placeOf, failed } = o
-  const gh = conn.github, app = gh?.app
-  const github = app && gh?.login && gh.userId && secrets.githubSecret && secrets.githubAppKey ? connectGithub({ startError: () => d.lastStartError(),
-    saved: store, botDm: slack.ids.botDm, ownerId: gh.userId, accounts: gh.accounts?.length ? gh.accounts : [gh.login],
-    app: { id: app.id, slug: app.slug, key: secrets.githubAppKey }, secret: secrets.githubSecret, port: gh.port || 8789,
-    post: (text, thread) => bot.chat.postMessage({ channel: slack.ids.botDm, text, ...(thread && { thread_ts: thread }) }).then(r => r.ts, e => { log('github post failed', e); return undefined }),
-    deliver: (c, task, place) => deliver(c, task, place),
-    notify: text => void o.say(text),
-    perHour: gh.perHour || 20, inbox,
-  }) : undefined
-  void github?.listening.then(port => log(`github listening: 127.0.0.1:${port}/github`), e => log('github could not listen', e))
-  const meeting = secrets.meetingToken ? connectMeeting({ startError: () => d.lastStartError(),
-    token: secrets.meetingToken, port: conn.meeting?.port || 8790, botDm: slack.ids.botDm,
-    post: text => bot.chat.postMessage({ channel: slack.ids.botDm, text }).then(r => r.ts, e => { log('meeting post failed', e); return undefined }),
-    deliver: (c, task, place) => deliver(c, task, place),
-    notify: text => void o.say(text),
-    perHour: conn.meeting?.perHour || 10, inbox, untake: source => store.untake(source), name: NAME,
-    end: key => { if (meetCall(key)) d.end(key) },
-  }) : undefined
-  void meeting?.listening.then(port => { log(`meetings on: 127.0.0.1:${port}/meeting`); if (existsSync(`${CODE}/meetbot/node_modules`)) meetbot(port) }, e => log('meetings could not listen', e))
-  function meetbot(port: number) {
-    const child: ChildProcess = spawn(process.execPath, ['bot.ts'], { cwd: `${CODE}/meetbot`, stdio: ['ignore', 'pipe', 'pipe'],
-      env: { ...Object.fromEntries(['PATH', 'HOME', 'TMPDIR', 'LANG', 'DISPLAY', 'XDG_RUNTIME_DIR', 'PLAYWRIGHT_BROWSERS_PATH'].flatMap(k => (process.env[k] ? [[k, process.env[k]]] : []))), KAGE_MEETBOT_HUB: `http://127.0.0.1:${port}`, KAGE_MEETBOT_TOKEN: secrets.meetingToken ?? "", KAGE_MEETBOT_PIPELINE: conn.meeting?.agentApi && conn.meeting.agentId ? JSON.stringify({ api: conn.meeting.agentApi, agent: conn.meeting.agentId }) : "", KAGE_MEETBOT_PIPELINE_KEY: secrets.voiceAgentKey ?? "" } })
-    const lines = (b: Buffer) => { for (const l of b.toString().split('\n')) if (l.trim()) log(`meetbot: ${l.replace(/^\S+Z /, '')}`) }
-    child.stdout?.on('data', lines)
-    child.stderr?.on('data', lines)
-    child.on('exit', (code: number | null) => { log(`meetbot exited (${code}), starting it again in 10 s`); setTimeout(() => meetbot(port), 10_000).unref() })
-    process.once('exit', () => { child.kill() })
-  }
+}
+
+export function startConnectors(o: Options) {
+  const { secrets, conn, store, slack, NAME, CODE, DIR, d, inbox, deliver, placeOf } = o
+  const github = startGithub(o)
+  const meeting = startMeeting(o)
   const email = connectEmail({
     mail: { ...conn.email, teammateEmails: o.emails, accessKeyId: secrets.aws?.accessKeyId, secretAccessKey: secrets.aws?.secretAccessKey }, saved: store, name: NAME, nameOf: slack.nameOf, deliver, inbox, dir: DIR,
     notify: text => void o.say(text),
@@ -73,20 +49,7 @@ export function startConnectors(o: {
     slot: key => d.hasFreeSlot(key),
     failed: task => void o.say(startFailedNote(task.meta.place, d.lastStartError())),
   })
-  const whatsapp = conn.whatsapp?.on !== false && secrets.waha?.WAHA_API_KEY ? startWhatsApp({
-    dir: DIR, name: NAME, owner: slack.ownerName, waha: secrets.waha, whatsapp: conn.whatsapp ?? {}, inbox,
-    notify: text => void slack.notifyOwner(text),
-    memory: conn.whatsapp?.memory || `${DIR}/wa-notes`, ownerAnswer: o.ownerAnswer,
-    onTask(t) {
-      const task = taskAsOwner({
-        content: t.content,
-        meta: { channel: 'whatsapp', thread_ts: t.chat, place: t.place, permalink: '' },
-        origin: { channel: 'whatsapp', ts: t.chat }, ...(t.source && { source: t.source }),
-      })
-      log('whatsapp task in', logRef(t.chat))
-      if (deliver({ connector: 'whatsapp', chat: t.chat, kind: 'chat' }, task, t.place) === 'failed') failed(task)
-    },
-  }) : undefined
+  const whatsapp = startWhatsapp(o)
 
   const url = wahaUrl(conn.whatsapp?.wahaUrl)
   const clock = bridgeClock({
@@ -112,7 +75,65 @@ export function startConnectors(o: {
   return { github, meeting, email, voice, whatsapp, sms, replies, replayOf, jobs, clock }
 }
 
-function startSms(o: Parameters<typeof startConnectors>[0]) {
+function startGithub(o: Options) {
+  const { secrets, conn, store, slack, bot, d, inbox, deliver } = o
+  const gh = conn.github, app = gh?.app
+  const github = app && gh?.login && gh.userId && secrets.githubSecret && secrets.githubAppKey ? connectGithub({ startError: () => d.lastStartError(),
+    saved: store, botDm: slack.ids.botDm, ownerId: gh.userId, accounts: gh.accounts?.length ? gh.accounts : [gh.login],
+    app: { id: app.id, slug: app.slug, key: secrets.githubAppKey }, secret: secrets.githubSecret, port: gh.port || 8789,
+    post: (text, thread) => bot.chat.postMessage({ channel: slack.ids.botDm, text, ...(thread && { thread_ts: thread }) }).then(r => r.ts, e => { log('github post failed', e); return undefined }),
+    deliver: (c, task, place) => deliver(c, task, place),
+    notify: text => void o.say(text),
+    perHour: gh.perHour || 20, inbox,
+  }) : undefined
+  void github?.listening.then(port => log(`github listening: 127.0.0.1:${port}/github`), e => log('github could not listen', e))
+  return github
+}
+
+function startMeeting(o: Options) {
+  const { secrets, conn, store, slack, bot, NAME, CODE, d, inbox, deliver } = o
+  const meeting = secrets.meetingToken ? connectMeeting({ startError: () => d.lastStartError(),
+    token: secrets.meetingToken, port: conn.meeting?.port || 8790, botDm: slack.ids.botDm,
+    post: text => bot.chat.postMessage({ channel: slack.ids.botDm, text }).then(r => r.ts, e => { log('meeting post failed', e); return undefined }),
+    deliver: (c, task, place) => deliver(c, task, place),
+    notify: text => void o.say(text),
+    perHour: conn.meeting?.perHour || 10, inbox, untake: source => store.untake(source), name: NAME,
+    end: key => { if (meetCall(key)) d.end(key) },
+  }) : undefined
+  void meeting?.listening.then(port => { log(`meetings on: 127.0.0.1:${port}/meeting`); if (existsSync(`${CODE}/meetbot/node_modules`)) meetbot(o, port) }, e => log('meetings could not listen', e))
+  return meeting
+}
+
+function meetbot(o: Options, port: number) {
+  const { secrets, conn, CODE } = o
+  const child: ChildProcess = spawn(process.execPath, ['bot.ts'], { cwd: `${CODE}/meetbot`, stdio: ['ignore', 'pipe', 'pipe'],
+    env: { ...Object.fromEntries(['PATH', 'HOME', 'TMPDIR', 'LANG', 'DISPLAY', 'XDG_RUNTIME_DIR', 'PLAYWRIGHT_BROWSERS_PATH'].flatMap(k => (process.env[k] ? [[k, process.env[k]]] : []))), KAGE_MEETBOT_HUB: `http://127.0.0.1:${port}`, KAGE_MEETBOT_TOKEN: secrets.meetingToken ?? "", KAGE_MEETBOT_PIPELINE: conn.meeting?.agentApi && conn.meeting.agentId ? JSON.stringify({ api: conn.meeting.agentApi, agent: conn.meeting.agentId }) : "", KAGE_MEETBOT_PIPELINE_KEY: secrets.voiceAgentKey ?? "" } })
+  const lines = (b: Buffer) => { for (const l of b.toString().split('\n')) if (l.trim()) log(`meetbot: ${l.replace(/^\S+Z /, '')}`) }
+  child.stdout?.on('data', lines)
+  child.stderr?.on('data', lines)
+  child.on('exit', (code: number | null) => { log(`meetbot exited (${code}), starting it again in 10 s`); setTimeout(() => meetbot(o, port), 10_000).unref() })
+  process.once('exit', () => { child.kill() })
+}
+
+function startWhatsapp(o: Options) {
+  const { secrets, conn, slack, DIR, NAME, inbox, deliver, failed } = o
+  return conn.whatsapp?.on !== false && secrets.waha?.WAHA_API_KEY ? startWhatsApp({
+    dir: DIR, name: NAME, owner: slack.ownerName, waha: secrets.waha, whatsapp: conn.whatsapp ?? {}, inbox,
+    notify: text => void slack.notifyOwner(text),
+    memory: conn.whatsapp?.memory || `${DIR}/wa-notes`, ownerAnswer: o.ownerAnswer,
+    onTask(t) {
+      const task = taskAsOwner({
+        content: t.content,
+        meta: { channel: 'whatsapp', thread_ts: t.chat, place: t.place, permalink: '' },
+        origin: { channel: 'whatsapp', ts: t.chat }, ...(t.source && { source: t.source }),
+      })
+      log('whatsapp task in', logRef(t.chat))
+      if (deliver({ connector: 'whatsapp', chat: t.chat, kind: 'chat' }, task, t.place) === 'failed') failed(task)
+    },
+  }) : undefined
+}
+
+function startSms(o: Options) {
   const { conn, secrets, bot, d, DIR } = o
   const c = conn.sms
   const provider = smsProvider(c)
