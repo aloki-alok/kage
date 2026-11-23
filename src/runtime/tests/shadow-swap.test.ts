@@ -128,3 +128,31 @@ test('each miss is told once, also when a later miss sorts before one already to
   assert.match(t.dms[0]!, /false alarm/)
   assert.match(t.dms[1]!, /tw missed an event/)
 })
+
+test('the ledgers are read from one shadow window before the twin started', () => {
+  const t = setup({ shadowWindowMin: 45 })
+  const asked: string[] = []
+  const sw = shadowSwaps({ store: t.store, settings: () => ({ shadowWindowMin: 45 }), ledgers: { text: (name, since) => { asked.push(`${name} ${since}`); return '' } },
+    ping: () => {}, owner: () => {}, event: () => {}, remove: () => {}, restore: () => {} })
+  sw.tick(T0 + 60 * M)
+  assert.deepEqual(asked, ['posted', 'prod-actions', 'verdicts'].map(n => `${n} ${iso(T0 - 45 * M)}`))
+})
+
+test('a quiet verdict is not an act: the twin that stays quiet while the old job acts misses, and never swaps in', () => {
+  const t = setup()
+  for (const h of [1, 2, 3]) { t.acted(T0 + h * 60 * M); t.said(T0 + h * 60 * M + 2 * M, false) }
+  t.sw.tick(T0 + 5 * 60 * M)
+  assert.ok(t.store.jobState('tw').shadow)
+  assert.deepEqual(t.removed, [])
+  assert.equal(t.dms.filter(d => / missed an event/.test(d)).length, 3)
+})
+
+test('undo brings the old job back with the state it had, such as its failure count', () => {
+  const t = setup()
+  t.store.setJobState('old', { fails: 2 })
+  for (const h of [1, 2, 3]) { t.acted(T0 + h * 60 * M); t.said(T0 + h * 60 * M + 2 * M) }
+  t.sw.tick(T0 + 5 * 60 * M)
+  assert.deepEqual(t.removed, ['old'])
+  assert.equal(t.sw.restore('C1:5.5', 'old', T0 + 6 * 60 * M), undefined)
+  assert.equal(t.store.jobState('old').fails, 2)
+})
