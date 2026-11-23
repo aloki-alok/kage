@@ -33,4 +33,4 @@ A task is `owner` only when the owner typed it. Slack requires `client_msg_id` a
 - Undo (`restore_job`) takes only typed owner words, so a teammate or a job's own run cannot flip jobs back and forth. (`src/runtime/tools/schedule-tools.ts`)
 - The email `References` header never picks a session. Only someone already in a stored thread resumes it. (`src/core/email.ts`)
 - DMARC passes on any aligned signature, and Kage's own SES can sign as the domain, so a mail never proves the owner. (`src/core/email.ts`)
-- WhatsApp is the owner's phone, easier to steal than Slack. A WhatsApp task messages people only after a yes on a Slack card. (`src/runtime/tools/slack-tools.ts`)
+- WhatsApp is the owner's phone, easier to steal than Slack. A WhatsApp task messages people only after a yes on a Slack card. (`src/runtime/tools/slack-people.ts`)
