@@ -1700,6 +1700,14 @@ describe("acting in the owner's browser", () => {
     await s.call('browser_act', { ...at, action: 'click', ref: 2 })
     assert.match(cards[0]!, /no picture/)
   })
+  test('a picture taken on a blocked site never reaches Slack, and the card says it has no picture', async () => {
+    const cards: string[] = []
+    const s = setup({ browser: { ...chrome({}), call: async (op: string, args: Record<string, unknown>) => op === 'crop' ? { url: 'https://bank.example.com/', png: PNG } : chrome({}).call(op, args) }, approve: asking(true, cards) })
+    s.t.onTask(s.task())
+    await s.call('browser_act', { ...at, action: 'click', ref: 2 })
+    assert.equal(s.calls.filter(c => c.includes('kage-before-')).length, 0, s.calls.join('|'))
+    assert.match(cards[0]!, /no picture/)
+  })
   test('a blocked site, or a blocked address to go to, is refused with no card', async () => {
     const cards: string[] = []
     const s = setupAct({ url: 'https://bank.example.com/pay' }, asking(true, cards))
