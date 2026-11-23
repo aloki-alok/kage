@@ -214,6 +214,14 @@ describe("a session's Kage tools", () => {
     await s.call('schedule', { cron: '*/30 * * * *', prompt: 'plain' })
     assert.equal('model' in s.jobs[1], false)
   })
+  test('lane false reaches the hub as false, so the job runs in this thread', async () => {
+    const s = setup()
+    s.t.onTask(s.task())
+    await s.call('schedule', { cron: '*/15 * * * *', prompt: 'in the thread', lane: false })
+    await s.call('schedule', { cron: '*/15 * * * *', prompt: 'beside it', lane: true })
+    await s.call('schedule', { cron: '*/15 * * * *', prompt: 'default' })
+    assert.deepEqual(s.jobs.map(j => j.lane), [false, true, undefined])
+  })
   test('a teammate\'s task may only move a job to haiku', async () => {
     const s = setup()
     s.t.onTask(s.task({ fromOwner: false }))
