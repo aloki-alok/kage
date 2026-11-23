@@ -617,3 +617,50 @@ test('a resumed thread session gets only the replies it has not seen, and a new 
     rmSync(dir, { recursive: true, force: true })
   }
 })
+
+const threadClient = (posts: { channel: string; text: string }[]) => ({
+  auth: { test: async () => ({ team_id: 'TTEST', user_id: 'UTEST1' }) },
+  conversations: { open: async () => ({ channel: { id: 'DTEST' } }), history: async () => ({ messages: [] }), info: async () => ({ channel: { name: 'test' } }), replies: async () => ({ messages: [] }) },
+  chat: { getPermalink: async () => ({ permalink: 'https://test.invalid/p' }), postMessage: async (o: { channel: string; text: string }) => { posts.push(o); return { ok: true } } },
+  users: { info: async () => ({ user: { real_name: 'Sam Test' } }) },
+  reactions: { add: async () => ({ ok: true }), remove: async () => ({ ok: true }) },
+})
+
+test("the owner's own untagged words are never quoted to the hub as heard, a teammate's are", async () => {
+  const dir = mkdtempSync(join(tmpdir(), 'kage-heard-'))
+  const heard: string[] = []
+  try {
+    const client = threadClient([])
+    const slack = await connectSlack({
+      dir, appToken: 'test', userToken: 'test', bot: client as never, user: client as never,
+      name: 'kage', title: 'Kage', teammates: ['UTEST2'], apps: [],
+      hub: { posted: () => '', handled: () => {}, heard: (h: { quoted: string }) => void heard.push(h.quoted), ownerWrote: () => {}, deliver: () => assert.fail('an untagged post starts no task') } as never,
+    })
+    await slack.replay('s1', JSON.stringify({ type: 'message', channel: 'CTEST2', ts: '7.8', thread_ts: '7.7', user: 'UTEST1', client_msg_id: 'm1', text: 'my own words' }))
+    await slack.replay('s2', JSON.stringify({ type: 'message', channel: 'CTEST2', ts: '7.9', thread_ts: '7.7', user: 'UTEST2', client_msg_id: 'm2', text: 'teammate words' }))
+    assert.equal(heard.length, 1)
+    assert.match(heard[0]!, /teammate words/)
+  } finally {
+    rmSync(dir, { recursive: true, force: true })
+  }
+})
+
+test('an agent that keeps answering in one thread with no person between is stopped, and the owner is told once', async () => {
+  const dir = mkdtempSync(join(tmpdir(), 'kage-agent-loop-'))
+  const posts: { channel: string; text: string }[] = []
+  let delivered = 0
+  try {
+    const client = threadClient(posts)
+    const slack = await connectSlack({
+      dir, appToken: 'test', userToken: 'test', bot: client as never, user: client as never,
+      name: 'kage', title: 'Kage', teammates: ['UMATE0002'], apps: ['ATEST0001'],
+      hub: { posted: () => '', handled: () => {}, heard: () => {}, deliver: () => { delivered++; return 'sent' } } as never,
+    })
+    for (let i = 1; i <= 6; i++) await slack.replay(`s${i}`, JSON.stringify({ ...msg, ts: `5.${i + 5}`, thread_ts: '5.5', user: 'UMATE0002', app_id: 'ATEST0001', bot_id: 'BTEST0001', text: `<@UTEST1> step ${i}` }))
+    assert.equal(delivered, 4)
+    const told = posts.filter(p => p.channel === 'DTEST' && p.text.includes('I stopped answering agent `ATEST0001`'))
+    assert.equal(told.length, 1, posts.map(p => p.text).join('|'))
+  } finally {
+    rmSync(dir, { recursive: true, force: true })
+  }
+})
