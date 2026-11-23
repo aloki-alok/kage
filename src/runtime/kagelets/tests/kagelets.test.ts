@@ -312,6 +312,14 @@ test('tools: all takes the owner\'s card for each kagelet: its yes never stands 
   assert.match(await u.m.manage({ action: 'save', name: 'x', ...all, job: 'Delete the old branches.' }, 5, yes.ask), /saved x/)
   assert.equal(yes.cards.length, 3)
 })
+test('a stored standing yes for all never skips the card: all asks the owner every time', async () => {
+  const u = manager()
+  const yes = owner(true)
+  u.store.save('standing-approvals', { all: 1 })
+  assert.match(await u.m.manage({ action: 'save', name: 'x', ...job, tools: ['all'] }, 1, yes.ask), /saved x/)
+  assert.deepEqual(yes.cards.map(c => c.tools), ['all'])
+  assert.doesNotMatch(readFileSync(`${u.dir}/x/job.md`, 'utf8'), /standing/)
+})
 test('a save by Kage keeps the owner\'s allow lines, and its tool input can add none', async () => {
   const u = manager()
   const yes = owner(true)
