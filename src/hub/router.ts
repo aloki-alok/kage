@@ -25,7 +25,7 @@ import { modelFor, placeFor, sessionKey, type Conversation, type Lane } from '..
 import { mayStop, senderOf } from '../core/gate.ts'
 import { foreignAgentTags } from '../core/agents.ts'
 import { Dispatcher, mixRunners, startFailedNote } from '../core/sessions.ts'
-import { readSettings, setKey, sweepImported } from '../runtime/config-files.ts'
+import { readSettings, setKey, sweepKeptCopies, tidyPeople } from '../runtime/config-files.ts'
 import { configWatcher } from '../runtime/config-watch.ts'
 import { DEFAULT_MODEL, unknownNames } from '../core/config.ts'
 import type { Task } from '../core/task.ts'
@@ -386,7 +386,8 @@ listenForSessions(`${DIR}/router.sock`, d, { ...replies, failed, health: () => h
   quiesce: () => { const now = Date.now(); limits.drain(now); return d.unquiet(now).filter(u => u.why !== 'just active' && u.why !== 'open in a terminal') }, callCode: voice?.issueCode })
 
 await slack.start()
-try { for (const f of sweepImported(ENV_FILE)) log(`deleted ${f}, 7 days after the import`) } catch (e) { log(`could not sweep old env files: ${e}`) }
+try { for (const f of sweepKeptCopies(ENV_FILE)) log(`deleted ${f}, 7 days after it was kept`) } catch (e) { log(`could not sweep old settings files: ${e}`) }
+void tidyPeople(ENV_FILE, email => user.users.lookupByEmail({ email }).then(r => r.user?.id)).then(done => { if (done) { log(`config.json now lists teammates in one list, ${done.moved.length} email(s) moved onto Slack users; old file kept as ${done.backup}`); void owner.say(ownerLines.peopleTidied(done.backup, done.moved, done.unchecked)) } }).catch(e => log(`could not tidy config.json: ${e}`))
 const updated = updatedNote(DIR, CODE, VERSION)
 if (updated) { log(updated); void owner.say(updated).then(sent => { if (sent) clearUpdatedFrom(DIR) }) }
 const unplaced = unknownNames(readSettings(ENV_FILE).config).join(', ')

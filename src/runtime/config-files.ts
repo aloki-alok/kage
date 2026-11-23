@@ -1,6 +1,6 @@
 import { existsSync, mkdirSync, readdirSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
-import { badValue, Config, fromEnv, Secrets, settingTier } from '../core/config.ts'
+import { badValue, Config, fromEnv, mergeTeammateEmails, oldPeopleShape, Secrets, settingTier } from '../core/config.ts'
 import { parseEnv } from '../core/settings.ts'
 
 export const envFilePath = () => process.env.KAGE_ENV || `${process.env.HOME}/.config/kage/env`
@@ -60,6 +60,26 @@ export function importLegacy(envFile: string, now = new Date()): string | undefi
   return to
 }
 
+export async function tidyPeople(envFile: string, userOfEmail: (email: string) => Promise<string | undefined>, now = new Date()) {
+  const f = files(envFile)
+  if (!existsSync(f.config)) return undefined
+  const before = readFileSync(f.config, 'utf8')
+  if (!oldPeopleShape(json(before))) return undefined
+  const config = parse(Config, f.config)
+  const found: Record<string, string> = {}
+  let unchecked = 0
+  for (const t of config.people?.teammates ?? []) {
+    const user = t.email && !t.user ? await userOfEmail(t.email).catch(() => { unchecked++; return undefined }) : undefined
+    if (user) found[t.email!] = user
+  }
+  if (readFileSync(f.config, 'utf8') !== before) return undefined
+  const { teammates, moved } = mergeTeammateEmails(config.people?.teammates ?? [], found)
+  const backup = `config.json.before-tidy-${stamp(now)}`
+  writeFileSync(join(f.dir, backup), before, { mode: 0o600 })
+  write(f.config, checked(Config, 'config.json', { ...config, people: { ...config.people, ...(teammates.length && { teammates }) } }))
+  return { backup, moved, unchecked }
+}
+
 export function syncWaha(envFile: string): boolean {
   const f = files(envFile), file = join(f.dir, 'waha', '.env')
   const s = existsSync(f.secrets) ? parse(Secrets, f.secrets) : {}
@@ -75,12 +95,13 @@ export function syncWaha(envFile: string): boolean {
   return true
 }
 
-export function sweepImported(envFile: string, now = new Date()): string[] {
+export function sweepKeptCopies(envFile: string, now = new Date()): string[] {
   const f = files(envFile)
-  const prefix = `${envFile.split('/').pop()}.imported-`
+  const prefixes = [`${envFile.split('/').pop()}.imported-`, 'config.json.before-tidy-']
   const gone: string[] = []
-  for (const name of readdirSync(f.dir).filter(n => n.startsWith(prefix))) {
-    const m = /^(\d{4})(\d\d)(\d\d)T(\d\d)(\d\d)(\d\d)Z$/.exec(name.slice(prefix.length))
+  for (const name of readdirSync(f.dir)) {
+    const prefix = prefixes.find(p => name.startsWith(p))
+    const m = prefix && /^(\d{4})(\d\d)(\d\d)T(\d\d)(\d\d)(\d\d)Z$/.exec(name.slice(prefix.length))
     if (m && now.getTime() - Date.UTC(+m[1]!, +m[2]! - 1, +m[3]!, +m[4]!, +m[5]!, +m[6]!) > 7 * 86_400_000) { rmSync(join(f.dir, name)); gone.push(name) }
   }
   return gone

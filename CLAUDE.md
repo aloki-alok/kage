@@ -67,7 +67,7 @@ The install line puts `kage` on your PATH (in a git checkout, run `./setup.sh li
 
 Never run `kage stop` or `kage restart` from inside a Kage session: it ends that session too. The command refuses unless you add `--force`, which cuts every running turn, this session's too.
 
-Settings are in `~/.config/kage/config.json`. The tokens are in `~/.config/kage/secrets.json` (mode 600). Never print the token file, copy it or commit it. An old `env` file becomes `config.json` and `secrets.json` on the first start of this version, and the old file is kept as `env.imported-<time>` for 7 days.
+Settings are in `~/.config/kage/config.json`. The tokens are in `~/.config/kage/secrets.json` (mode 600). Never print the token file, copy it or commit it. An old `env` file becomes `config.json` and `secrets.json` on the first start of this version, and the old file is kept as `env.imported-<time>` for 7 days. A `config.json` that still keeps teammates, trusted people and teammate emails in three lists is rewritten once into the one `people.teammates` list. Each email moves onto the listed Slack user that Slack says owns it, and the old file is kept as `config.json.before-tidy-<time>` for 7 days.
 
 ## Change the code
 

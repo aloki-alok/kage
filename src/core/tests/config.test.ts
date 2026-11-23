@@ -2,7 +2,7 @@ import { describe, test } from 'node:test'
 import assert from 'node:assert/strict'
 import { execSync } from 'node:child_process'
 import { readFileSync } from 'node:fs'
-import { ALIASES, checkSettings, settingTier, Config, diff, fromEnv, KEYS, Secrets, toEnv, unknownEnv, unknownNames } from '../config.ts'
+import { ALIASES, checkSettings, settingTier, Config, diff, fromEnv, KEYS, mergeTeammateEmails, oldPeopleShape, Secrets, toEnv, unknownEnv, unknownNames } from '../config.ts'
 import { parseEnv } from '../settings.ts'
 
 const NOT_SETTINGS = ['KAGE_BIN', 'KAGE_CALL_CODE', 'KAGE_CALL_REASON', 'KAGE_CLAUDE', 'KAGE_DIR', 'KAGE_ENV', 'KAGE_GIT_URL', 'KAGE_JOB_ID', 'KAGE_JOB_STATE_DIR', 'KAGE_KEYS_SOCK', 'KAGE_KEYS_TOKEN', 'KAGE_MEETBOT_HUB', 'KAGE_MEETBOT_PIPELINE', 'KAGE_MEETBOT_PIPELINE_KEY', 'KAGE_MEETBOT_TOKEN', 'KAGE_PANE_SETTINGS', 'KAGE_REF', 'KAGE_SESSION', 'KAGE_SETUP_WAIT', 'KAGE_SLACK_API', 'KAGE_SSM_SOCK', 'KAGE_SSM_TOKEN', 'KAGE_TARBALL', 'KAGE_THREAD']
@@ -285,7 +285,30 @@ describe('people and the registry', () => {
     assert.deepEqual(messy.people?.teammates, [{ email: 'a@example.test' }])
   })
   test('the fold of the three old teammate lists is deleted from core/config.ts by 2027-01-31', () => {
-    assert.ok(Date.now() < Date.parse('2027-01-31'), 'delete foldOldPeople and this test')
+    assert.ok(Date.now() < Date.parse('2027-01-31'), 'delete foldOldPeople, oldPeopleShape, mergeTeammateEmails, tidyPeople, ownerLines.peopleTidied, the config.json.before-tidy- sweep prefix, their tests and this test')
+  })
+  test('only a file with an old teammate list counts as the old shape', () => {
+    assert.equal(oldPeopleShape({ version: 1, people: { teammates: ['UTEST0001'] } }), true)
+    assert.equal(oldPeopleShape({ version: 1, people: { teammates: [{ user: 'UTEST0001' }], trusted: [] } }), true)
+    assert.equal(oldPeopleShape({ version: 1, connectors: { email: { on: true, teammateEmails: [] } } }), true)
+    assert.equal(oldPeopleShape({ version: 1, people: { teammates: [{ user: 'UTEST0001' }, { email: 'a@example.test' }] } }), false)
+    assert.equal(oldPeopleShape({ version: 1 }), false)
+    assert.equal(oldPeopleShape(null), false)
+  })
+  test("an email-only teammate moves onto the listed Slack user it belongs to, and keeps that user's trust", () => {
+    const listed = [{ user: 'UTEST0001', trusted: true as const }, { user: 'UTEST0002' }, { email: 'a@example.test' }, { email: 'b@example.test' }]
+    const merged = mergeTeammateEmails(listed, { 'a@example.test': 'UTEST0001', 'b@example.test': 'UTEST0009' })
+    assert.deepEqual(merged.teammates, [{ user: 'UTEST0001', email: 'a@example.test', trusted: true }, { user: 'UTEST0002' }, { email: 'b@example.test' }])
+    assert.deepEqual(merged.moved, [{ email: 'a@example.test', user: 'UTEST0001' }])
+  })
+  test('a user that already has an email keeps it, and the other email stays its own entry', () => {
+    const listed = [{ user: 'UTEST0001', email: 'old@example.test' }, { email: 'a@example.test' }]
+    assert.deepEqual(mergeTeammateEmails(listed, { 'a@example.test': 'UTEST0001' }), { teammates: listed, moved: [] })
+  })
+  test('two emails for one user: only the first moves onto it', () => {
+    const listed = [{ user: 'UTEST0001' }, { email: 'a@example.test' }, { email: 'b@example.test' }]
+    const merged = mergeTeammateEmails(listed, { 'a@example.test': 'UTEST0001', 'b@example.test': 'UTEST0001' })
+    assert.deepEqual(merged.teammates, [{ user: 'UTEST0001', email: 'a@example.test' }, { email: 'b@example.test' }])
   })
   test('the old env lines for teammates, trust and teammate emails import into the one list', () => {
     const { config } = fromEnv(parseEnv(FULL))

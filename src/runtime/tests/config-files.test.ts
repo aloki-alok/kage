@@ -3,7 +3,7 @@ import assert from 'node:assert/strict'
 import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, statSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { hasSettings, importLegacy, setKey, readSettings, sweepImported, syncWaha, updateConfig, updateSecrets } from '../config-files.ts'
+import { hasSettings, importLegacy, setKey, readSettings, sweepKeptCopies, syncWaha, tidyPeople, updateConfig, updateSecrets } from '../config-files.ts'
 
 const ENV = 'KAGE_NAME=kagetest\nKAGE_MAX_SESSIONS=6\nKAGE_TEAMMATES=UTEST0001\nSLACK_APP_TOKEN=xapp-fake\nSLACK_USER_TOKEN=xoxp-fake\nSLACK_BOT_TOKEN=xoxb-fake\nKAGE_ODD_TOKEN=xoxb-secret-fake\n'
 const world = (text = ENV) => {
@@ -42,7 +42,7 @@ describe('the first start imports the env file', () => {
     assert.equal(to, `${w.env}.imported-20261114T101500Z`)
     assert.ok(!existsSync(w.env))
     assert.equal(readSettings(w.env).config.name, 'kagetest')
-    assert.deepEqual(sweepImported(w.env, new Date('2026-11-22T10:15:01Z')), ['env.imported-20261114T090000Z', 'env.imported-20261114T101500Z'])
+    assert.deepEqual(sweepKeptCopies(w.env, new Date('2026-11-22T10:15:01Z')), ['env.imported-20261114T090000Z', 'env.imported-20261114T101500Z'])
   })
   test('before the import, the env file reads the same as after, and nothing is written', () => {
     const w = world()
@@ -58,12 +58,62 @@ describe('the first start imports the env file', () => {
   })
 })
 
+describe('a config.json in the old teammate shape is rewritten once', () => {
+  const OLD = { version: 1, people: { teammates: ['UTEST0001', 'UTEST0002'], trusted: ['UTEST0001'] }, connectors: { email: { on: true, teammateEmails: ['a@example.test', 'b@example.test'] } } }
+  const oldWorld = (config: unknown = OLD) => {
+    const w = world('')
+    const file = join(w.dir, 'config.json')
+    writeFileSync(file, JSON.stringify(config), { mode: 0o600 })
+    return { ...w, file, before: readFileSync(file, 'utf8') }
+  }
+  const NOW = new Date('2026-11-23T08:00:00Z')
+  test('it writes the one list, keeps the old file beside it at mode 600, and moves an email onto its Slack user', async () => {
+    const w = oldWorld()
+    const done = await tidyPeople(w.env, async e => (e === 'a@example.test' ? 'UTEST0002' : undefined), NOW)
+    assert.deepEqual(done, { backup: 'config.json.before-tidy-20261123T080000Z', moved: [{ email: 'a@example.test', user: 'UTEST0002' }], unchecked: 0 })
+    assert.equal(readFileSync(join(w.dir, done!.backup), 'utf8'), w.before)
+    assert.equal(mode(join(w.dir, done!.backup)), 0o600)
+    assert.deepEqual(JSON.parse(readFileSync(w.file, 'utf8')), { version: 1, people: { teammates: [{ user: 'UTEST0001', trusted: true }, { user: 'UTEST0002', email: 'a@example.test' }, { email: 'b@example.test' }] }, connectors: { email: { on: true } } })
+    assert.equal(mode(w.file), 0o600)
+  })
+  test('a second start finds the clean shape and writes nothing', async () => {
+    const w = oldWorld()
+    await tidyPeople(w.env, async () => undefined, NOW)
+    const after = readFileSync(w.file, 'utf8'), files = readdirSync(w.dir).sort()
+    assert.equal(await tidyPeople(w.env, async () => 'UTEST0001', new Date('2026-11-24T08:00:00Z')), undefined)
+    assert.equal(readFileSync(w.file, 'utf8'), after)
+    assert.deepEqual(readdirSync(w.dir).sort(), files)
+  })
+  test('a failed Slack lookup still tidies the file, moves nothing, and counts the emails it could not check', async () => {
+    const w = oldWorld()
+    const done = await tidyPeople(w.env, async () => { throw new Error('missing_scope') }, NOW)
+    assert.deepEqual(done?.moved, [])
+    assert.equal(done?.unchecked, 2)
+    assert.equal(JSON.parse(readFileSync(w.file, 'utf8')).people.teammates.length, 4)
+  })
+  test('a file the owner changed during the lookups is left alone until the next start', async () => {
+    const w = oldWorld()
+    const done = await tidyPeople(w.env, async () => { writeFileSync(w.file, JSON.stringify({ ...OLD, name: 'kagetest' })); return undefined }, NOW)
+    assert.equal(done, undefined)
+    assert.equal(JSON.parse(readFileSync(w.file, 'utf8')).name, 'kagetest')
+    assert.deepEqual(readdirSync(w.dir), ['config.json'])
+  })
+  test('with no config.json there is nothing to tidy', async () => {
+    assert.equal(await tidyPeople(world('').env, async () => undefined, NOW), undefined)
+  })
+})
+
 describe('imported env files go after 7 days', () => {
+  test('a kept config.json.before-tidy-* also goes after 7 days', () => {
+    const w = world('')
+    for (const t of ['20261101T000000Z', '20261110T000000Z']) writeFileSync(join(w.dir, `config.json.before-tidy-${t}`), 'x')
+    assert.deepEqual(sweepKeptCopies(w.env, new Date('2026-11-14T00:00:00Z')), ['config.json.before-tidy-20261101T000000Z'])
+  })
   test('only an env.imported-* older than 7 days is deleted', () => {
     const w = world('')
     for (const t of ['20261101T000000Z', '20261110T000000Z']) writeFileSync(`${w.env}.imported-${t}`, 'x')
     writeFileSync(join(w.dir, 'env.imported-notatime'), 'x')
-    assert.deepEqual(sweepImported(w.env, new Date('2026-11-14T00:00:00Z')), ['env.imported-20261101T000000Z'])
+    assert.deepEqual(sweepKeptCopies(w.env, new Date('2026-11-14T00:00:00Z')), ['env.imported-20261101T000000Z'])
     assert.deepEqual(readdirSync(w.dir).sort(), ['env.imported-20261110T000000Z', 'env.imported-notatime'])
   })
 })
