@@ -1,4 +1,7 @@
-import { test, mock } from 'node:test'
+import { test, mock, after } from 'node:test'
+import { mkdtempSync, rmSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 import assert from 'node:assert/strict'
 import { startAfk } from '../afk.ts'
 import type { SlackMessage } from '../../../core/slack-message.ts'
@@ -7,6 +10,8 @@ import type { Status } from '../../../core/afk.ts'
 const ids = { owner: 'UOWN', bot: 'UBOT', botDm: 'DBOT', name: 'kage', team: 'TTEST' }
 const PRIOR: Status = { status_text: 'lunch', status_emoji: ':pizza:' }
 const ping = (o: Partial<SlackMessage> = {}) => ({ type: 'message', channel: 'CTEST2', ts: '9.1', user: 'UMATE', client_msg_id: 'x', text: '<@UOWN> prod is down', ...o }) as SlackMessage
+const dir = mkdtempSync(join(tmpdir(), 'kage-afk-'))
+after(() => rmSync(dir, { recursive: true, force: true }))
 const settle = async () => { for (let i = 0; i < 20; i++) await new Promise(r => setImmediate(r)) }
 
 function stand(urgency: 'p0' | 'high' | 'normal' | 'low') {
@@ -22,8 +27,8 @@ function stand(urgency: 'p0' | 'high' | 'normal' | 'low') {
     chat: { getPermalink: async () => ({ permalink: '' }), postMessage: async () => assert.fail('an outsider never gets a post') },
   }
   const afk = startAfk({
-    dir: '/nonexistent', title: 'Kage', ownerName: 'Ryu', ids, bot: user as never, user: user as never,
-    memory: '/nonexistent', model: 'test', saved: { load: () => kept, save: (_: string, v: unknown) => { kept = v } } as never,
+    dir, title: 'Kage', ownerName: 'Ryu', ids, bot: user as never, user: user as never,
+    memory: dir, model: 'test', saved: { load: () => kept, save: (_: string, v: unknown) => { kept = v } } as never,
     notify: async text => { told.push(text); return true },
     contextOf: async () => '', placeOf: async () => '#test', nameOf: async () => 'Sam',
     call: async reason => { calls.push(reason); return '' },
