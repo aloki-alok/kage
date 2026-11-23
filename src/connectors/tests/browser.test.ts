@@ -107,3 +107,25 @@ test('a result without the token gets 401, and one over the size cap gets 413, a
   assert.ok(!r || r.status === 413, String(r?.status))
   assert.equal(settled, false)
 })
+
+test('a call that timed out before any poll never reaches the extension later', async t => {
+  const { b, next } = await hub({ callMs: 40, pollMs: 30 })
+  t.after(() => b.close())
+  await (await next()).body?.cancel().catch(() => {})
+  await new Promise(r => setTimeout(r, 35))
+  const late = b.call('tabs', {}).catch(e => e)
+  await new Promise(r => setTimeout(r, 80))
+  assert.match(String(await late), /did not answer/)
+  const poll = await next()
+  assert.equal(poll.status, 204)
+})
+
+test('only ok: true counts as success; any other ok is the error it carries', async t => {
+  const { b, next, result } = await hub({ pollMs: 30 })
+  t.after(() => b.close())
+  await (await next()).body?.cancel().catch(() => {})
+  const answer = assert.rejects(b.call('read', {}), /it broke/)
+  const cmd = await (await next()).json() as { id: string }
+  await result({ id: cmd.id, ok: 'yes', data: 'forged', error: 'it broke' })
+  await answer
+})

@@ -30,7 +30,7 @@ async def main():
         (stubs / c).write_text('#!/bin/sh\nexit 0\n')
         (stubs / c).chmod(0o755)
     env['PATH'] = f"{stubs}:{env['PATH']}"
-    subprocess.run(['node', 'cli/connect.ts', 'browser'], cwd=ROOT, env=env, check=True, stdout=subprocess.DEVNULL)
+    subprocess.run(['node', 'src/cli/connect.ts', 'browser'], cwd=ROOT, env=env, check=True, stdout=subprocess.DEVNULL)
     token = json.loads((home / '.config' / 'kage' / 'secrets.json').read_text())['browserToken']
     site = subprocess.Popen([sys.executable, '-m', 'http.server', str(page_port), '--bind', '127.0.0.1', '-d', str(Path(__file__).parent)], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     check = subprocess.Popen(['node', str(Path(__file__).parent / 'check.ts')], cwd=ROOT, env={**env, 'KAGE_E2E_TOKEN': token, 'KAGE_E2E_PORT': str(hub_port), 'KAGE_E2E_EXT': str(EXT)})

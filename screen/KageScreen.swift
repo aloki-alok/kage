@@ -1,7 +1,7 @@
-// Kage Screen: records the owner's screen, or takes one picture of it, with ScreenCaptureKit (runtime/screen.ts).
+// Kage Screen: records the owner's screen, or takes one picture of it, with ScreenCaptureKit (src/runtime/screen.ts).
 // It runs as its own app, so macOS asks the owner once to allow "Kage", and the hub and its sessions get
 // no screen access of their own. It takes no arguments: its one job is job.json beside the app, which only the
-// hub may write (CONFIG_NAMES in runtime/path-guards.ts), and it deletes that file before it starts.
+// hub may write (CONFIG_NAMES in src/runtime/path-guards.ts), and it deletes that file before it starts.
 // Every line it prints is one JSON object. A recording stops on SIGINT, SIGTERM or the job's seconds.
 import AppKit
 import ApplicationServices
@@ -108,7 +108,7 @@ func run() async {
 // Acting on the Mac: the hub writes one JSON command per line into a FIFO only it may write (the job's fifo),
 // and every answer is one JSON line with the command's id. Kage's own cursor glides to each point first, so the
 // owner sees where it acts. macOS asks once for Accessibility, which posting input and reading controls need.
-// The hub decides what may run (core/desktop-act.ts); this app only refuses keys it has no code for.
+// The hub decides what may run (src/core/desktop-act.ts); this app only refuses keys it has no code for.
 // expect is what the hub's check saw. A click or key acts only if the screen still shows it when the act lands.
 struct Expect: Decodable { let app: String; let role: String?; let label: String? }
 struct Command: Decodable {
@@ -170,7 +170,7 @@ final class Hands {
     place(at: now, animated: false)
     window.orderFrontRegardless()
   }
-  // The hub sends screen points (core/desktop-act.ts onScreen); CG puts the origin top left, AppKit bottom left.
+  // The hub sends screen points (src/core/desktop-act.ts onScreen); CG puts the origin top left, AppKit bottom left.
   func point(_ x: Double, _ y: Double) -> CGPoint { CGPoint(x: x, y: y) }
   func place(at p: CGPoint, animated: Bool) {
     let height = NSScreen.screens.first?.frame.height ?? 0
