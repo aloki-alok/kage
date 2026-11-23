@@ -1,7 +1,8 @@
 #!/usr/bin/env node
 import { execFileSync, spawn } from 'node:child_process'
-import { waCards } from '../runtime/wa-cards.ts'
-import { waCardNote } from '../core/whatsapp.ts'
+import { whatsappCards } from './whatsapp-cards.ts'
+import { callOwner } from './phone-owner.ts'
+import { importCrons, replayMissed, startupNotes } from './startup.ts'
 import { ownerChannel } from '../core/owner-channel.ts'
 import { wahaToOwner, wahaUrl } from '../connectors/whatsapp.ts'
 import { randomUUID } from 'node:crypto'
@@ -26,9 +27,9 @@ import { markDelivered, type ThreadMark } from '../core/thread-delta.ts'
 import { mayStop, senderOf } from '../core/gate.ts'
 import { foreignAgentTags } from '../core/agents.ts'
 import { Dispatcher, mixRunners, startFailedNote } from '../core/sessions.ts'
-import { readSettings, setKey, sweepKeptCopies, tidyPeople } from '../runtime/config-files.ts'
+import { setKey, sweepKeptCopies, tidyPeople } from '../runtime/config-files.ts'
 import { configWatcher } from '../runtime/config-watch.ts'
-import { DEFAULT_MODEL, unknownNames } from '../core/config.ts'
+import { DEFAULT_MODEL } from '../core/config.ts'
 import type { Task } from '../core/task.ts'
 import type { ToSession } from '../runtime/protocol.ts'
 import { homeThread, postAsKage, sessionTools, threadPing } from '../runtime/kage-tools.ts'
@@ -48,7 +49,6 @@ import { costRecorder, openLedgers, runEvents } from '../runtime/ledger.ts'
 import { ownerClaude } from '../runtime/owner-claude.ts'
 import { EVENT_DAYS } from '../core/events.ts'
 import { claudeProject, tmuxPanes } from '../runtime/tmux-panes.ts'
-import { clearUpdatedFrom, updatedNote } from '../runtime/auto-update.ts'
 import { readCommand } from '../runtime/kagelets/manager.ts'
 import { kageletDeliver } from '../runtime/kagelets/notes.ts'
 import { hubLock } from '../runtime/hub-lock.ts'
@@ -62,8 +62,6 @@ import { dreams } from './dreams.ts'
 import { DREAM_KEY, DREAM_LIMITS, type DreamLesson } from '../core/dream.ts'
 import { closedThreads } from '../runtime/closed-threads.ts'
 import { threadRotator } from '../runtime/thread-rotate.ts'
-import { checkScopes } from '../runtime/slack-scopes.ts'
-import { scopeDm } from '../core/slack-scopes.ts'
 import { startTelemetry } from './telemetry.ts'
 import { ownerLines } from '../core/messages.ts'
 import { answersInThread, blockedTask, planDrop } from '../core/blocks.ts'
@@ -159,14 +157,7 @@ function dropped(key: string, turn: Task[], reason: string, kind: string) {
 }
 const noteTrust = (key: string, t: Task) =>
   t.need || store.noteTask(key, senderOf(t) === 'owner', key in d.saved())
-function phoneOwner(reason: string): Promise<string> {
-  const command = conn.call?.command
-  if (!command) return Promise.resolve('no connectors.call.command')
-  if (!voice) return Promise.resolve('voice is off (voiceToken)')
-  const p = spawn(command, { shell: true, stdio: 'ignore', env: { ...process.env, KAGE_CALL_CODE: voice.issueCode(), KAGE_CALL_REASON: reason.slice(0, 300) } })
-  const timer = setTimeout(() => p.kill(), 60_000)
-  return new Promise(res => { p.on('error', e => res(String(e))); p.on('close', code => { clearTimeout(timer); res(code === 0 ? '' : `dialer exited ${code ?? 'on timeout'}`) }) })
-}
+const phoneOwner = (reason: string) => callOwner(conn.call?.command, voice, reason)
 const jev = jevConfig(config.jev, secrets.jevKey)
 if (jev && 'error' in jev) log(`jev is off: ${jev.error}`)
 else if (jev) log(`jev checks ${jev.agents === 'all' ? 'every listed agent' : jev.agents.join(', ')} at threshold ${jev.threshold}`)
@@ -185,23 +176,10 @@ const slack = await connectSlack({
 const waOn = config.connectors?.whatsapp?.on !== false && !!secrets.waha?.WAHA_API_KEY
 const waSay = waOn ? wahaToOwner(wahaUrl(config.connectors?.whatsapp?.wahaUrl), secrets.waha!.WAHA_API_KEY!, Title, NAME) : undefined
 const owner = ownerChannel({ pick: () => config.owner?.channel, slack: slack.notifyOwner, ...waSay && { whatsapp: waSay } })
-const waCardCodes = waCards()
 function ownerVerdict(id: string, behavior: 'allow' | 'deny', always?: true): boolean {
   return d.verdict(id, { type: 'verdict', request_id: id, behavior }) || answerCard(id, behavior, always)
 }
-function cardToWhatsApp(c: { id: string; tool: string; description: string; place: string; preview: string }) {
-  if (config.owner?.channel !== 'whatsapp' || !waSay) return
-  const code = waCardCodes.open(c.id)
-  const note = waCardNote({ ...c, code }, NAME)
-  if (!note) { waCardCodes.take(code); return }
-  void waSay(note).then(sent => { if (!sent) waCardCodes.take(code) })
-}
-function answerFromWhatsApp(a: { code: string; behavior: 'allow' | 'deny' }) {
-  const id = waCardCodes.take(a.code)
-  const done = !!id && ownerVerdict(id, a.behavior)
-  log('whatsapp card answer', a.code, id ? (done ? a.behavior : 'already answered') : 'no such card')
-  void waSay?.(!id ? `No card waits on ${a.code}.` : done ? (a.behavior === 'allow' ? 'Approved.' : 'Denied.') : 'That card was already answered.')
-}
+const waCardsOut = whatsappCards({ channel: () => config.owner?.channel, ...waSay && { say: waSay }, name: NAME, verdict: ownerVerdict })
 
 if (existsSync(THREADS)) {
   const r = store.importThreads(JSON.parse(readFileSync(THREADS, 'utf8')), slack.ids.botDm, Date.now())
@@ -255,7 +233,7 @@ const sdk = sdkLib ? sdkSessions({
   deferred,
   hub: () => d,
   tools: (key, send, approve, turnSender) => sessionTools({
-    title: Title, bot, user, botDm: () => slack.ids.botDm, dir: DIR, ledgers, send, memory: MEM, turnSender, cardOut: cardToWhatsApp,
+    title: Title, bot, user, botDm: () => slack.ids.botDm, dir: DIR, ledgers, send, memory: MEM, turnSender, cardOut: waCardsOut.send,
     schedules: { add: j => jobs.add(key, j, Date.now()), remove: id => jobs.remove(key, id), list: () => schedules.list(key), hookUrl: id => jobs.hookUrl(id), tune: (id, t) => schedules.tune(key, id, t, Date.now()), restore: id => jobs.swaps.restore(key, id, Date.now()), move: (id, to) => schedules.move(key, id, to, Date.now()) },
     afk: slack.afk?.command,
     settings: { set: (key, value) => setKey(ENV_FILE, key, value) },
@@ -325,22 +303,9 @@ const schedules = scheduler({ store, failed, jobStateDir: `${DIR}/job-state`,
   ran: j => ledgers.add('runs', [j.id, j.key]),
   tripwires: () => config.tripwires ?? {}, event: e => ledgers.event(e), owner: t => void owner.say(t), ping: (s, text) => pingThread(s.key, text, s.id),
 })
-const CRONS = `${DIR}/crons-import.json`
-if (existsSync(CRONS) && runningAtStart.size) log('crons-import.json waits: panes are still running, so their jobs are still alive')
-else if (existsSync(CRONS)) {
-  try {
-    const f = JSON.parse(readFileSync(CRONS, 'utf8'))
-    const r = schedules.adopt(f.jobs, f.ranUntil)
-    log(`adopted ${r.adopted.length} cron jobs from the panes${r.skipped.length ? `, skipped ${r.skipped.join(' ')}` : ''}`)
-    renameSync(CRONS, `${CRONS}.imported`)
-  } catch (e) {
-    log('crons-import.json is unreadable, moved to .bad', e)
-    renameSync(CRONS, `${CRONS}.bad`)
-    void owner.say(ownerLines.cronImportBad())
-  }
-}
+importCrons(DIR, runningAtStart.size, schedules, t => void owner.say(t))
 
-const { meeting, email, voice, sms, replies, replayOf, jobs, clock } = startConnectors({ secrets, conn, store, slack, bot, ping: pingThread, say: owner.say, ownerAnswer: answerFromWhatsApp, NAME, CODE, DIR, d, inbox, deliver, placeOf, failed, emails: TEAMMATE_EMAILS, schedules, event: ledgers.event, ledgers, tripwires: config.tripwires })
+const { meeting, email, voice, sms, replies, replayOf, jobs, clock } = startConnectors({ secrets, conn, store, slack, bot, ping: pingThread, say: owner.say, ownerAnswer: waCardsOut.answer, NAME, CODE, DIR, d, inbox, deliver, placeOf, failed, emails: TEAMMATE_EMAILS, schedules, event: ledgers.event, ledgers, tripwires: config.tripwires })
 listenForCommands(slack.socket, { user, team: slack.ids.team!, commands: COMMANDS, ledgers })
 
 function failed(m: ToSession) {
@@ -389,27 +354,8 @@ listenForSessions(`${DIR}/router.sock`, d, { ...replies, failed, health: () => h
 await slack.start()
 try { for (const f of sweepKeptCopies(ENV_FILE)) log(`deleted ${f}, 7 days after it was kept`) } catch (e) { log(`could not sweep old settings files: ${e}`) }
 void tidyPeople(ENV_FILE, email => user.users.lookupByEmail({ email }).then(r => r.user?.id)).then(done => { if (done) { log(`config.json now lists teammates in one list, ${done.moved.length} email(s) moved onto Slack users; old file kept as ${done.backup}`); void owner.say(ownerLines.peopleTidied(done.backup, done.moved, done.unchecked)) } }).catch(e => log(`could not tidy config.json: ${e}`))
-const updated = updatedNote(DIR, CODE, VERSION)
-if (updated) { log(updated); void owner.say(updated).then(sent => { if (sent) clearUpdatedFrom(DIR) }) }
-const unplaced = unknownNames(readSettings(ENV_FILE).config).join(', ')
-const told = `${DIR}/config-unknown-told`
-if (unplaced && (existsSync(told) ? readFileSync(told, 'utf8') : '') !== unplaced) {
-  void owner.say(ownerLines.settingsUnplaced(unplaced))
-    .then(sent => { if (sent) writeFileSync(told, unplaced) })
-}
-const SCOPES_TOLD = 'slack-scopes-told'
-void checkScopes({ user: secrets.slack?.user, bot: secrets.slack?.bot }).then(m => {
-  const { send, told } = scopeDm(m, store.load(SCOPES_TOLD) as string | undefined)
-  if (send) void owner.say(send).then(sent => { if (sent) store.save(SCOPES_TOLD, told) })
-  else store.save(SCOPES_TOLD, told)
-}).catch(e => log(`scope check failed: ${e}`))
+startupNotes({ dir: DIR, code: CODE, version: VERSION, envFile: ENV_FILE, store, say: owner.say, tokens: { user: secrets.slack?.user, bot: secrets.slack?.bot } })
 store.prune(Date.now() - 7 * 86_400_000)
 kag.routes.replay(Date.now()); kag.needs.replay(Date.now())
-const missed = store.unhandled(Date.now() - 10 * 60_000)
-if (missed.length) log(`replaying ${missed.length} message${missed.length === 1 ? '' : 's'} the last run heard but never handled`)
-for (const r of missed) {
-  const replay = replayOf(r.connector)
-  if (replay) void replay(r.source, r.payload).catch(e => log('replay failed', r.source, e))
-  else { log('cannot replay', r.source, '(its connector is off)'); store.handled(r.source) }
-}
+replayMissed(store, replayOf, Date.now())
 log(`listening as ${slack.botUser} (@${NAME}) for ${slack.ownerName} ${slack.ids.owner}; up to ${MAX} sessions; teammates ${TEAMMATES.join(',') || 'none'}`)

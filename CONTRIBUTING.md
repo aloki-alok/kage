@@ -100,6 +100,9 @@ Write logs to stderr only. In a tmux pane, stdout carries the channel protocol, 
 | `src/hub/kagelets.ts` | Kagelets in the hub: the minute sync of their files into schedules and grants, the cost flags and caps, their memory, the manager's side, the owner's notes to one, and the chains between them. |
 | `src/hub/telemetry.ts` | Telemetry in the hub (ADR 0019): the install id, the minute export job, Claude Code's telemetry env for every session, and the crash code written before exit. |
 | `src/hub/owner-commands.ts` | What the owner asks from their terminal or DM: the status line, `kage tell`, `kage relay`, and `say` (an app on this Mac posts as the owner). |
+| `src/hub/whatsapp-cards.ts` | An approval card sent to the owner on WhatsApp when they picked that channel, with a four-digit code, and their `yes` or `no` reply answering that card once. |
+| `src/hub/phone-owner.ts` | Calling the owner: runs `connectors.call.command` with a one-time voice code and the reason, and says why when it cannot. |
+| `src/hub/startup.ts` | What the hub does once at start after it connects: adopts cron jobs exported from tmux panes, tells the owner about an update, unplaced settings or missing Slack scopes, and replays messages the last run heard but never handled. |
 | `plugin/server.ts` | For tmux panes only: serves Kage's tools over MCP inside each pane and relays approvals. |
 | `plugin/private-data-guard.ts` | The plugin hook (`hooks/hooks.json`) that runs the rules in `src/core/guards.ts` and `src/runtime/path-guards.ts` inside tmux panes. The SDK runner applies the same rules in process. |
 | `plugin/turn-end.ts` | The plugin's Stop hook: marks the end of a pane's turn, so `src/runtime/pane-turn.ts` can give the owner's folded-in message its own turn with the owner's tools. |
