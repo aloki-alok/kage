@@ -197,7 +197,7 @@ function trustOf(db: DatabaseSync) {
     else db.prepare('delete from relay_allow where key = ?').run(key)
   },
   relayOk(key: string): boolean {
-    return this.trust(key) === true || db.prepare('select 1 from relay_allow where key = ?').get(key) !== undefined
+    return this.trust(key) === true || db.prepare('select 1 from relay_allow where key = ?').get(threadOfJobLane(key)) !== undefined
   },
   noteTask(key: string, fromOwner: boolean, known: boolean) {
     if (isJobLane(key)) return
