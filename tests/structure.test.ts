@@ -1,7 +1,7 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { execFileSync } from 'node:child_process'
-import { readFileSync } from 'node:fs'
+import { existsSync, readFileSync } from 'node:fs'
 import { posix } from 'node:path'
 
 const root = new URL('..', import.meta.url).pathname
@@ -109,6 +109,11 @@ test('code marked "compat: remove after <date>" is gone by that date', () => {
 })
 
 const FULL_ENV_CHILDREN = ['src/hub/phone-owner.ts', 'src/cli/call.ts', 'src/cli/doctor/context.ts', 'src/runtime/release.ts']
+test('a path the code builds from the repo root exists, so moving a folder cannot strand it (#574)', () => {
+  const built = files.flatMap(f => [...code(f).matchAll(/\$\{[\w.!?()]*(?:CODE|codeDir|ROOT)[\w.!?()]*\}\/([^`$\s'"]+)/g)].map(m => `${f}: ${m[1]}`))
+  assert.deepEqual(built.filter(b => !b.includes('node_modules') && !existsSync(`${root}/${b.split(': ')[1]}`)), [])
+})
+
 test('only a trusted child process gets ...process.env', () => {
   const spread = files.filter(f => /\.\.\.process\.env\b/.test(code(f)))
   assert.deepEqual(spread.filter(f => !FULL_ENV_CHILDREN.includes(f)), [], 'give this child an env allowlist, or add it to FULL_ENV_CHILDREN with the reason')
