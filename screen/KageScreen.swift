@@ -120,7 +120,7 @@ struct Command: Decodable {
   let button: String?; let count: Int?; let dy: Int?; let dx: Int?; let text: String?; let keys: String?
   let app: String?; let max: Int?; let snapshot: Int?; let ref: Int?; let how: String?
 }
-struct Snapshot { let id: Int; let pid: pid_t; let window: AXUIElement; let title: String; let refs: [AXUIElement] }
+struct Snapshot { let id: Int; let pid: pid_t; let window: AXUIElement; let refs: [AXUIElement] }
 let fieldRoles: Set<String> = ["AXTextField", "AXTextArea", "AXComboBox", "AXSearchField"]
 let usefulActions: Set<String> = ["AXPress", "AXConfirm", "AXPick", "AXIncrement", "AXDecrement", "AXOpen"]
 
@@ -424,7 +424,7 @@ extension Hands {
     let refs = kept.map { found[$0].el }, total = found.count
     let rows = kept.enumerated().map { n, i in found[i].row.merging(["ref": n + 1]) { a, _ in a } }
     looks += 1
-    snapshot = Snapshot(id: looks, pid: pid, window: win, title: title, refs: refs)
+    snapshot = Snapshot(id: looks, pid: pid, window: win, refs: refs)
     let focus = asElement(ax(appEl, kAXFocusedUIElementAttribute as String)).map { describe($0) } ?? describe(nil)
     return ["snapshot": looks, "app": name, "pid": Int(pid), "window": title, "focused": ["role": focus["role"] ?? "", "label": focus["label"] ?? ""], "elements": rows, "total": total, "complete": stack.isEmpty]
   }
@@ -449,9 +449,13 @@ extension Hands {
     guard id == s.id else { return ["error": "r\(r) is from an older look, so nothing was done. Look again and use a ref from that look"] }
     guard r >= 1, r <= s.refs.count else { return ["error": "the last look has no r\(r)"] }
     let appEl = AXUIElementCreateApplication(s.pid)
-    guard NSWorkspace.shared.frontmostApplication?.processIdentifier == s.pid || how == "set",
-          let now = asElement(ax(appEl, kAXFocusedWindowAttribute as String)), CFEqual(now, s.window), axText(now, kAXTitleAttribute as String) == s.title
-    else { return ["error": "the window changed since the look, so nothing was done. Look again"] }
+    if how != "set", NSWorkspace.shared.frontmostApplication?.processIdentifier != s.pid {
+      NSRunningApplication(processIdentifier: s.pid)?.activate()
+      usleep(400_000)
+    }
+    guard let now = asElement(ax(appEl, kAXFocusedWindowAttribute as String)), CFEqual(now, s.window)
+    else { return ["error": "the app's front window is not the one the look read, so nothing was done. Look again"] }
+    if how != "set", NSWorkspace.shared.frontmostApplication?.processIdentifier != s.pid { return ["error": "the app did not come to the front, so nothing was done"] }
     let el = s.refs[r - 1]
     let seen: [String: Any] = ["app": NSRunningApplication(processIdentifier: s.pid)?.localizedName ?? "", "role": axText(el, kAXRoleAttribute as String), "label": labelOf(el)]
     if let e = c.expect, let why = changed(seen, e) { return ["error": why] }
