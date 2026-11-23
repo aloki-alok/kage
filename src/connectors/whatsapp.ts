@@ -50,86 +50,89 @@ export function wahaHandler(hmac: string, inbox: Inbox, run: (p: WahaPayload, so
   }
 }
 
-export function startWhatsApp(o: { ownerAnswer?: (a: { code: string; behavior: 'allow' | 'deny' }) => void; dir: string; name: string; owner: string; waha: Record<string, string>; whatsapp: { wahaUrl?: string | null; model?: string | null; hookHost?: string | null; hookPort?: number }; memory: string; inbox: Inbox; onTask: (t: WaTask) => void; notify: (text: string) => void }) {
-  const waha = o.waha
-  const URL = wahaUrl(o.whatsapp.wahaUrl)
-  const HMAC = waha.WHATSAPP_HOOK_HMAC_KEY
+type Options = { ownerAnswer?: (a: { code: string; behavior: 'allow' | 'deny' }) => void; dir: string; name: string; owner: string; waha: Record<string, string>; whatsapp: { wahaUrl?: string | null; model?: string | null; hookHost?: string | null; hookPort?: number }; memory: string; inbox: Inbox; onTask: (t: WaTask) => void; notify: (text: string) => void }
+type Chats = {
+  o: Options; url: string; model: string; room: string
+  armed: Map<string, Arming & { brief: string }>; busy: Map<string, boolean>
+}
+
+export function startWhatsApp(o: Options) {
+  const HMAC = o.waha.WHATSAPP_HOOK_HMAC_KEY
   if (!HMAC) throw new Error('secrets.json waha has no WHATSAPP_HOOK_HMAC_KEY: the webhook would have no secret')
-  const MODEL = o.whatsapp.model || DEFAULT_MODEL
-  const ROOM = emptyRoom(o.dir)
+  const ch: Chats = { o, url: wahaUrl(o.whatsapp.wahaUrl), model: o.whatsapp.model || DEFAULT_MODEL, room: emptyRoom(o.dir), armed: new Map(), busy: new Map() }
   mkdirSync(o.memory, { recursive: true, mode: 0o700 })
-
-  const armed = new Map<string, Arming & { brief: string }>()
-  const busy = new Map<string, boolean>()
-
-  const api = async (path: string, init?: RequestInit) => {
-    const r = await fetch(URL + path, { ...init, headers: { 'X-Api-Key': waha.WAHA_API_KEY!, 'Content-Type': 'application/json' } })
-    if (!r.ok) throw new Error(`WAHA ${path} ${r.status}`)
-    return r.json() as Promise<any>
-  }
-  async function history(chat: string): Promise<WaLine[]> {
-    return historyLines(await api(`/api/default/chats/${encodeURIComponent(chat)}/messages?limit=50&downloadMedia=false`).catch(() => []) as WahaRow[])
-  }
-  async function send(chat: string, text: string, hist?: WaLine[]) {
-    const brief = armed.get(chat)?.brief ?? ''
-    const { system, prompt } = guardPrompt(brief, hist ?? await history(chat), text, o.owner)
-    const verdict = findSecret(text) ? { send: false, reason: 'looks like a key or secret' } : guardVerdict(await claudeOnce({ model: MODEL, system, prompt, cwd: ROOM, tools: '' }))
-    if (!verdict.send) {
-      log('whatsapp message held in', logRef(chat))
-      o.notify(ownerLines.whatsappHeld(chat.split('@')[0]!, verdict.reason, text))
-      return 'held'
-    }
-    await sendText(chat, waOutgoing(text, `${o.name[0]!.toUpperCase()}${o.name.slice(1)}`))
-    return 'sent'
-  }
-  const sendText = (chatId: string, text: string) => api('/api/sendText', { method: 'POST', body: JSON.stringify({ session: 'default', chatId, text }) })
-
-  async function standIn(chat: string) {
-    if (busy.get(chat) !== undefined) { busy.set(chat, true); return }
-    busy.set(chat, false)
-    try {
-      do {
-        busy.set(chat, false)
-        const a = armed.get(chat)
-        if (!a) break
-        const hist = await history(chat)
-        const { system, prompt } = standInPrompt(a.brief, hist, o.name, o.owner)
-        const text = await claudeOnce({ model: MODEL, system, prompt, cwd: o.memory, tools: 'Read,Grep,Glob' })
-        if (!text || !armed.has(chat)) continue
-        a.replies++
-        log('whatsapp stand-in', await send(chat, text, hist), 'in', logRef(chat), `(${a.replies})`)
-      } while (busy.get(chat))
-    } catch (e) { log('whatsapp stand-in failed in', logRef(chat), e) } finally { busy.delete(chat) }
-  }
-
-  async function onEvent(p: WahaPayload, source?: string, replayed = false) {
-    const m = fromWaha(p)
-    if (!m.chat) return
-    if (o.ownerAnswer && ownerAnswer(m, [m.chat, ...m.to ? [m.to] : []])) {
-      const me = await api('/api/sessions/default/me').then(r => r as { id?: string; lid?: string } | null, () => null)
-      const a = ownerAnswer(m, [me?.id, me?.lid].filter((x): x is string => !!x))
-      if (a) { if (!replayed) o.ownerAnswer(a); return }
-    }
-    const action = decideWhatsApp(m, armed, o.name, Date.now())
-    if (action.kind === 'ignore') return
-    log('whatsapp', action.kind, logRef(m.chat))
-    if (action.kind === 'disarm') { armed.delete(action.chat); return }
-    if (action.kind === 'stand-in') { void standIn(action.chat); return }
-    if (!replayed && action.arm) armed.set(action.chat, { until: Date.now() + ARM_MS, replies: 0, brief: action.text })
-    const place = `WhatsApp chat ${logRef(action.chat)}`
-    o.onTask({ chat: action.chat, place, content: waTaskContent(action.text, place, action.chat, await history(action.chat), o.name, o.owner), ...(source && { source }) })
-  }
-
-  const run = (p: WahaPayload, source?: string, replayed = false) => onEvent(p, source, replayed).then(() => { if (source) o.inbox.handled(source) }, err => log('whatsapp event failed', err))
+  const run = (p: WahaPayload, source?: string, replayed = false) => onEvent(ch, p, source, replayed).then(() => { if (source) o.inbox.handled(source) }, err => log('whatsapp event failed', err))
   const HOST = o.whatsapp.hookHost || '127.0.0.1'
   const PORT = o.whatsapp.hookPort || 3199
-  void listen(wahaHandler(HMAC, o.inbox, run), PORT, HOST).listening
-    .then(() => log(`whatsapp on: listening on ${HOST}:${PORT}`), e => log('whatsapp could not listen', e))
-
+  const hook = listen(wahaHandler(HMAC, o.inbox, run), PORT, HOST)
+  void hook.listening.then(() => log(`whatsapp on: listening on ${HOST}:${PORT}`), e => log('whatsapp could not listen', e))
   return {
-    send: async (key: string, text: string) => { await send(key.slice('wa:'.length), text) },
+    send: async (key: string, text: string) => { await send(ch, key.slice('wa:'.length), text) },
     replay: async (source: string, payload: string) => run(JSON.parse(payload) as WahaPayload, source, true),
+    close: hook.close,
   }
+}
+
+async function api(ch: Chats, path: string, init?: RequestInit) {
+  const r = await fetch(ch.url + path, { ...init, headers: { 'X-Api-Key': ch.o.waha.WAHA_API_KEY!, 'Content-Type': 'application/json' } })
+  if (!r.ok) throw new Error(`WAHA ${path} ${r.status}`)
+  return r.json() as Promise<any>
+}
+
+async function history(ch: Chats, chat: string): Promise<WaLine[]> {
+  return historyLines(await api(ch, `/api/default/chats/${encodeURIComponent(chat)}/messages?limit=50&downloadMedia=false`).catch(() => []) as WahaRow[])
+}
+
+async function send(ch: Chats, chat: string, text: string, hist?: WaLine[]) {
+  const { o } = ch
+  const brief = ch.armed.get(chat)?.brief ?? ''
+  const { system, prompt } = guardPrompt(brief, hist ?? await history(ch, chat), text, o.owner)
+  const verdict = findSecret(text) ? { send: false, reason: 'looks like a key or secret' } : guardVerdict(await claudeOnce({ model: ch.model, system, prompt, cwd: ch.room, tools: '' }))
+  if (!verdict.send) {
+    log('whatsapp message held in', logRef(chat))
+    o.notify(ownerLines.whatsappHeld(chat.split('@')[0]!, verdict.reason, text))
+    return 'held'
+  }
+  await api(ch, '/api/sendText', { method: 'POST', body: JSON.stringify({ session: 'default', chatId: chat, text: waOutgoing(text, `${o.name[0]!.toUpperCase()}${o.name.slice(1)}`) }) })
+  return 'sent'
+}
+
+async function standIn(ch: Chats, chat: string) {
+  const { o, busy, armed } = ch
+  if (busy.get(chat) !== undefined) { busy.set(chat, true); return }
+  busy.set(chat, false)
+  try {
+    do {
+      busy.set(chat, false)
+      const a = armed.get(chat)
+      if (!a) break
+      const hist = await history(ch, chat)
+      const { system, prompt } = standInPrompt(a.brief, hist, o.name, o.owner)
+      const text = await claudeOnce({ model: ch.model, system, prompt, cwd: o.memory, tools: 'Read,Grep,Glob' })
+      if (!text || !armed.has(chat)) continue
+      a.replies++
+      log('whatsapp stand-in', await send(ch, chat, text, hist), 'in', logRef(chat), `(${a.replies})`)
+    } while (busy.get(chat))
+  } catch (e) { log('whatsapp stand-in failed in', logRef(chat), e) } finally { busy.delete(chat) }
+}
+
+async function onEvent(ch: Chats, p: WahaPayload, source?: string, replayed = false) {
+  const { o, armed } = ch
+  const m = fromWaha(p)
+  if (!m.chat) return
+  if (o.ownerAnswer && ownerAnswer(m, [m.chat, ...m.to ? [m.to] : []])) {
+    const me = await api(ch, '/api/sessions/default/me').then(r => r as { id?: string; lid?: string } | null, () => null)
+    const a = ownerAnswer(m, [me?.id, me?.lid].filter((x): x is string => !!x))
+    if (a) { if (!replayed) o.ownerAnswer(a); return }
+  }
+  const action = decideWhatsApp(m, armed, o.name, Date.now())
+  if (action.kind === 'ignore') return
+  log('whatsapp', action.kind, logRef(m.chat))
+  if (action.kind === 'disarm') { armed.delete(action.chat); return }
+  if (action.kind === 'stand-in') { void standIn(ch, action.chat); return }
+  if (!replayed && action.arm) armed.set(action.chat, { until: Date.now() + ARM_MS, replies: 0, brief: action.text })
+  const place = `WhatsApp chat ${logRef(action.chat)}`
+  o.onTask({ chat: action.chat, place, content: waTaskContent(action.text, place, action.chat, await history(ch, action.chat), o.name, o.owner), ...(source && { source }) })
 }
 
 export function wahaToOwner(url: string, key: string, title: string, name: string): (text: string) => Promise<boolean> {
