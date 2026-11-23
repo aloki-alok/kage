@@ -54,7 +54,7 @@ export function connectEmail(o: {
     },
   })
   log(`email on: ${cfg.self}, ${cfg.teammates.length} teammates`)
-  return { send }
+  return { send, allow: (emails: string[]) => { cfg.teammates = emails } }
 }
 
 type Thread = { mail: InboundMail }

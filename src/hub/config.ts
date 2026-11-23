@@ -15,7 +15,7 @@ export function load() {
     noteExit(dirname(ENV_FILE), 'crash', `settings refused: ${ok.error}`)
     process.exit(1)
   }
-  const { name: NAME, teammates: TEAMMATES, trusted: TRUSTED_PEOPLE, apps: TRUSTED_APPS } = ok
+  const { name: NAME, teammates: TEAMMATES, trusted: TRUSTED_PEOPLE, emails: TEAMMATE_EMAILS, apps: TRUSTED_APPS } = ok
   return {
     ENV_FILE,
     config: settings.config,
@@ -24,6 +24,7 @@ export function load() {
     Title: NAME[0]!.toUpperCase() + NAME.slice(1),
     TEAMMATES,
     TRUSTED_PEOPLE,
+    TEAMMATE_EMAILS,
     TRUSTED_APPS,
     bot: new WebClient(settings.secrets.slack!.bot!, { logger }),
     user: new WebClient(settings.secrets.slack!.user!, { logger }),

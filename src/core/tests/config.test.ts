@@ -254,26 +254,51 @@ describe('people and the registry', () => {
     const { registryOf, withRegistry, checkSettings } = await import('../config.ts')
     const entries = [{ kind: 'person' as const, id: 'UTEST0001', trusted: true as const }, { kind: 'person' as const, id: 'UTEST0002' }]
     const c = Config.parse(withRegistry({ version: 1, name: 'kage' }, entries))
-    assert.deepEqual(c.people?.trusted, ['UTEST0001'])
+    assert.deepEqual(c.people?.teammates, [{ user: 'UTEST0001', trusted: true }, { user: 'UTEST0002' }])
     assert.deepEqual(registryOf(c), entries)
     const ok = checkSettings(c, { version: 1, slack: { app: 'a', user: 'u', bot: 'b' } } as never)
     assert.deepEqual('trusted' in ok && ok.trusted, ['UTEST0001'])
-    assert.equal(Config.parse(withRegistry(c, [entries[1]!])).people?.trusted, undefined)
+    assert.deepEqual(Config.parse(withRegistry(c, [entries[1]!])).people?.teammates, [{ user: 'UTEST0002' }])
   })
-  test('a trusted id that is not a listed teammate is not trusted, and the rest of the file still applies (#435)', async () => {
-    const { checkSettings } = await import('../config.ts')
-    const c = Config.parse({ version: 1, people: { teammates: ['UTEST0002'], trusted: ['UTEST0001', 'UTEST0002'] } })
-    const ok = checkSettings(c, { slack: { app: 'a', user: 'u', bot: 'b' } } as never)
-    assert.ok(!('error' in ok))
-    assert.deepEqual([ok.teammates, ok.trusted, ok.notTrusted], [['UTEST0002'], ['UTEST0002'], ['UTEST0001']])
+  test('each teammate is one entry: a Slack user, an email, or both, with trust on the entry', () => {
+    const c = Config.parse({ version: 1, people: { teammates: [{ user: 'UTEST0001', email: 'a@example.test', trusted: true }, { email: 'b@example.test' }, { user: 'UTEST0002' }] } })
+    const ok = checkSettings(c, { slack: { app: 'a', user: 'u', bot: 'b' } })
+    assert.deepEqual(ok, { name: 'kage', teammates: ['UTEST0001', 'UTEST0002'], trusted: ['UTEST0001'], emails: ['a@example.test', 'b@example.test'], apps: [] })
+    assert.throws(() => Config.parse({ version: 1, people: { teammates: [{}] } }), /teammates/)
+    assert.throws(() => Config.parse({ version: 1, people: { teammates: [{ email: 'b@example.test', trusted: true }] } }), /teammates/)
+    assert.throws(() => Config.parse({ version: 1, people: { teammates: [{ email: 'not an address' }] } }), /teammates/)
+  })
+  test('adding or removing a person keeps every email: on the person while listed, and the email-only entries', async () => {
+    const { registryOf, withRegistry } = await import('../config.ts')
+    const c = Config.parse({ version: 1, people: { teammates: [{ user: 'UTEST0001', email: 'a@example.test' }, { email: 'b@example.test' }] } })
+    const added = Config.parse(withRegistry(c, [...registryOf(c), { kind: 'person', id: 'UTEST0002' }]))
+    assert.deepEqual(added.people?.teammates, [{ user: 'UTEST0001', email: 'a@example.test' }, { user: 'UTEST0002' }, { email: 'b@example.test' }])
+    assert.deepEqual(Config.parse(withRegistry(added, [{ kind: 'person', id: 'UTEST0002' }])).people?.teammates, [{ user: 'UTEST0002' }, { email: 'b@example.test' }])
+  })
+  test('a config.json from an older Kage folds its three teammate lists into one, and a trusted id that is no teammate is dropped (#435)', () => {
+    const c = Config.parse({ version: 1, people: { teammates: ['UTEST0001', 'UTEST0002'], trusted: ['UTEST0001', 'UTEST0009'] }, connectors: { email: { on: true, teammateEmails: ['a@example.test'] } } })
+    assert.deepEqual(c.people, { teammates: [{ user: 'UTEST0001', trusted: true }, { user: 'UTEST0002' }, { email: 'a@example.test' }] })
+    assert.deepEqual(c.connectors, { email: { on: true } })
+    const mixed = Config.parse({ version: 1, people: { teammates: [{ user: 'UTEST0001' }, 'UTEST0002'], trusted: ['UTEST0001'] } })
+    assert.deepEqual(mixed.people?.teammates, [{ user: 'UTEST0001', trusted: true }, { user: 'UTEST0002' }])
+    const messy = Config.parse({ version: 1, connectors: { email: { on: true, teammateEmails: [' a@example.test ', 'bob'] } } })
+    assert.deepEqual(messy.people?.teammates, [{ email: 'a@example.test' }])
+  })
+  test('the fold of the three old teammate lists is deleted from core/config.ts by 2027-01-31', () => {
+    assert.ok(Date.now() < Date.parse('2027-01-31'), 'delete foldOldPeople and this test')
+  })
+  test('the old env lines for teammates, trust and teammate emails import into the one list', () => {
+    const { config } = fromEnv(parseEnv(FULL))
+    assert.deepEqual(config.people?.teammates, [{ user: 'UTEST0001', trusted: true }, { user: 'UTEST0002' }, { email: 'a@example.test' }, { email: 'b@example.test' }])
+    assert.equal(JSON.stringify(config.connectors?.email).includes('teammate'), false)
   })
 })
 
 describe('what the hub needs to run', () => {
   const secrets = { slack: { app: 'xapp-fake', user: 'xoxp-fake', bot: 'xoxb-fake' } }
   test('a good config gives the name and both people lists, an agent as app:owner:tag', () => {
-    const config = Config.parse({ version: 1, people: { teammates: ['UTEST0001'], agents: [{ app: 'ATEST0001', owner: 'UTEST0001', tag: 'UTEST0003' }, { app: 'ATEST0009' }] } })
-    assert.deepEqual(checkSettings(config, secrets), { name: 'kage', teammates: ['UTEST0001'], trusted: [], notTrusted: [], apps: ['ATEST0001:UTEST0001:UTEST0003', 'ATEST0009'] })
+    const config = Config.parse({ version: 1, people: { teammates: [{ user: 'UTEST0001' }], agents: [{ app: 'ATEST0001', owner: 'UTEST0001', tag: 'UTEST0003' }, { app: 'ATEST0009' }] } })
+    assert.deepEqual(checkSettings(config, secrets), { name: 'kage', teammates: ['UTEST0001'], trusted: [], emails: [], apps: ['ATEST0001:UTEST0001:UTEST0003', 'ATEST0009'] })
   })
   test('a missing token is refused by its path, and a bad name by itself', () => {
     assert.match((checkSettings({ version: 1 }, { slack: { app: 'a', bot: 'b' } }) as { error: string }).error, /slack\.user/)

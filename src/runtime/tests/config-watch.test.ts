@@ -25,26 +25,26 @@ function setup() {
 describe('a changed people list applies now', () => {
   test('it is applied, logged as config.live with the key name, and no restart is asked', () => {
     const t = setup()
-    updateConfig(t.env, c => ({ ...c, people: { teammates: ['UTEST0001', 'UTEST0002'], agents: [] } }))
+    updateConfig(t.env, c => ({ ...c, people: { teammates: [{ user: 'UTEST0001' }, { user: 'UTEST0002' }], agents: [] } }))
     const r = t.w.check()
     assert.deepEqual(r, { changed: ['people.teammates: added UTEST0002'], restart: [], count: 1 })
-    assert.deepEqual(t.seen.applied, [{ teammates: ['UTEST0001', 'UTEST0002'], trusted: [], apps: [] }])
+    assert.deepEqual(t.seen.applied, [{ teammates: ['UTEST0001', 'UTEST0002'], trusted: [], emails: [], apps: [] }])
     assert.deepEqual(t.seen.events, [['config.live', ['people.teammates']]])
     assert.deepEqual(t.seen.restart, [])
-    updateConfig(t.env, c => ({ ...c, people: { teammates: ['UTEST0002'], agents: [] } }))
+    updateConfig(t.env, c => ({ ...c, people: { teammates: [{ user: 'UTEST0002' }], agents: [] } }))
     assert.deepEqual((t.w.check() as { changed: string[] }).changed, ['people.teammates: removed UTEST0001'])
     assert.ok(!t.seen.log.join('\n').includes('xox'), 'no token in the log')
     t.w.close()
   })
-  test('a trusted id that is no teammate is named to the owner once, whatever else changed (#435)', () => {
+  test('a teammate email added or removed applies now, and the address shows nowhere', () => {
     const t = setup()
-    updateConfig(t.env, c => ({ ...c, people: { teammates: ['UTEST0001'], trusted: ['UTEST0009'], agents: [] } }))
-    t.w.check()
-    assert.equal(t.seen.told.length, 1)
-    assert.match(t.seen.told[0]!, /UTEST0009/)
-    updateConfig(t.env, c => ({ ...c, people: { teammates: ['UTEST0001', 'UTEST0002'], trusted: ['UTEST0009'], agents: [] } }))
-    t.w.check()
-    assert.equal(t.seen.told.length, 1, 'told once, not on every later edit')
+    updateConfig(t.env, c => ({ ...c, people: { teammates: [{ user: 'UTEST0001', email: 'a@example.test' }, { email: 'b@example.test' }], agents: [] } }))
+    const r = t.w.check() as { changed: string[] }
+    assert.deepEqual(t.seen.applied, [{ teammates: ['UTEST0001'], trusted: [], emails: ['a@example.test', 'b@example.test'], apps: [] }])
+    updateConfig(t.env, c => ({ ...c, people: { teammates: [{ user: 'UTEST0001' }], agents: [] } }))
+    const back = t.w.check() as { changed: string[] }
+    assert.deepEqual((t.seen.applied[1] as { emails: string[] }).emails, [])
+    assert.ok(!JSON.stringify([r, back, t.seen.log, t.seen.events, t.seen.told]).includes('example.test'))
     t.w.close()
   })
 })
@@ -80,7 +80,7 @@ describe('a wrong file is refused', () => {
     assert.ok(!t.seen.told[0]!.includes('xoxb-fake-value'))
     assert.deepEqual(t.seen.events[0], ['config.refused', ['harness.maxSesion']])
     assert.deepEqual(t.seen.applied, [])
-    writeFileSync(join(t.dir, 'config.json'), JSON.stringify({ version: 1, name: 'kagetest', people: { teammates: ['UTEST0001'] } }))
+    writeFileSync(join(t.dir, 'config.json'), JSON.stringify({ version: 1, name: 'kagetest', people: { teammates: [{ user: 'UTEST0001' }] } }))
     assert.ok('changed' in t.w.check())
     writeFileSync(join(t.dir, 'config.json'), '{ not json')
     t.w.check()
@@ -105,9 +105,9 @@ describe('a schema-valid value the hub cannot run on is refused too', () => {
 describe('the watcher itself', () => {
   test('a write to config.json is checked by itself, with no call', { timeout: 20_000 }, async () => {
     const t = setup()
-    updateConfig(t.env, c => ({ ...c, people: { teammates: ['UTEST0001', 'UTEST0003'], agents: [] } }))
+    updateConfig(t.env, c => ({ ...c, people: { teammates: [{ user: 'UTEST0001' }, { user: 'UTEST0003' }], agents: [] } }))
     await t.applied
-    assert.deepEqual(t.seen.applied, [{ teammates: ['UTEST0001', 'UTEST0003'], trusted: [], apps: [] }])
+    assert.deepEqual(t.seen.applied, [{ teammates: ['UTEST0001', 'UTEST0003'], trusted: [], emails: [], apps: [] }])
     t.w.close()
   })
 

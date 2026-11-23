@@ -74,7 +74,7 @@ describe('kage save writes the tokens to secrets.json, private, and keeps the ot
     assert.deepEqual(secrets.slack, { app: 'xapp-TEST', user: 'xoxp-TEST', bot: 'xoxb-TEST' })
     const config = JSON.parse(readFileSync(join(w.conf, 'config.json'), 'utf8'))
     assert.equal(config.name, 'kagetest')
-    assert.deepEqual(config.people.teammates, ['UTEST2'])
+    assert.deepEqual(config.people.teammates, [{ user: 'UTEST2' }])
     for (const f of ['config.json', 'secrets.json']) assert.equal(statSync(join(w.conf, f)).mode & 0o777, 0o600, f)
     assert.ok(!r.out.includes('xoxp-TEST'), 'no token in the output')
     assert.deepEqual(readdirSync(w.conf).filter(f => !f.startsWith('env.imported-') && !['config.json', 'secrets.json'].includes(f)), [], 'no temp file left behind')
