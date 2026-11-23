@@ -240,3 +240,40 @@ describe('an install from before 0.4.0 keeps its own keys (a teammate lost a too
     assert.equal(env.SLACK_BOT_TOKEN, undefined, 'Kage\'s own tokens stay out')
   })
 })
+
+describe('a secret that names a command (#158)', () => {
+  const commandWorld = () => {
+    const w = world('')
+    const count = join(w.dir, 'runs')
+    writeFileSync(join(w.dir, 'config.json'), JSON.stringify({ version: 1 }))
+    writeFileSync(join(w.dir, 'secrets.json'), JSON.stringify({
+      slack: { app: 'xapp-plain', bot: { command: `echo run >> '${count}'; printf 'xoxb-%s\\n' from-command` } },
+      jevKey: { command: 'echo leaked-$((40+2)) >&2; exit 3' },
+      voiceToken: { command: 'true' },
+    }), { mode: 0o600 })
+    return { ...w, count }
+  }
+
+  test('readSettings puts the output in place, runs each command once per process, and names each failure without its output', () => {
+    const w = commandWorld()
+    const first = readSettings(w.env)
+    assert.equal(first.secrets.slack?.bot, 'xoxb-from-command')
+    assert.equal(first.secrets.slack?.app, 'xapp-plain')
+    assert.equal(first.secrets.jevKey, undefined)
+    assert.equal(first.secrets.voiceToken, undefined)
+    assert.deepEqual(first.failed.map(f => f.path), ['voiceToken', 'jevKey'])
+    assert.doesNotMatch(JSON.stringify(first.failed), /leaked-42/)
+    readSettings(w.env)
+    assert.equal(readFileSync(w.count, 'utf8'), 'run\n')
+  })
+
+  test('changing another secret keeps the command on disk, and never writes its output', () => {
+    const w = commandWorld()
+    updateSecrets(w.env, s => ({ ...s, browserToken: 'browser-fake' }))
+    syncWaha(w.env)
+    const disk = readFileSync(join(w.dir, 'secrets.json'), 'utf8')
+    assert.match(disk, /"command": "echo run/)
+    assert.doesNotMatch(disk, /xoxb-from-command/)
+    assert.equal(JSON.parse(disk).browserToken, 'browser-fake')
+  })
+})

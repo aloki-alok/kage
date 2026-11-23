@@ -1,3 +1,4 @@
+import { execFileSync } from 'node:child_process'
 import { existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { countBoot, noteExit, npmCi, packagesStale, rotate } from './src/runtime/hub-log.ts'
@@ -10,6 +11,13 @@ const say = (line: string) => console.error(`${new Date().toISOString()} hub.ts:
 const envValue = (text: string, key: string) =>
   text.split('\n').filter(l => l.startsWith(`${key}=`)).map(l => l.slice(key.length + 1)).at(-1)
 
+const secretValue = (v: unknown) => {
+  if (typeof v === 'string') return v
+  const command = (v as { command?: unknown } | undefined)?.command
+  if (typeof command !== 'string') return undefined
+  try { return execFileSync('/bin/sh', ['-c', command], { encoding: 'utf8', timeout: 30_000, stdio: ['ignore', 'pipe', 'ignore'] }).replace(/\r?\n$/, '') || undefined } catch { return undefined }
+}
+
 const lastLines = (log: string) => {
   try { return readFileSync(log, 'utf8').split('\n').slice(-40).filter(l => l.trim() && !/^\s*at /.test(l)).slice(-5).join('\n') } catch { return '' }
 }
@@ -21,10 +29,11 @@ async function slack(method: string, token: string, form: Record<string, string>
   return await r.json() as { ok: boolean; user_id?: string }
 }
 
-async function crashLoopDm(tokens: { user: string; bot: string }, boots: number, last: string, now: number) {
+async function crashLoopDm(tokensOf: () => { user: string; bot: string }, boots: number, last: string, now: number) {
   const sentAt = `${CONF}/crash-dm-at`
   if (boots < 3 || now - Number(existsSync(sentAt) ? readFileSync(sentAt, 'utf8') : 0) < 3600) return
   try {
+    const tokens = tokensOf()
     const owner = (await slack('auth.test', tokens.user)).user_id
     const text = `Kage started ${boots} times in 10 minutes, so it is probably crashing. The last lines of its log:\n\`\`\`\n${last}\n\`\`\`\nRun kage logs for more.`
     if (owner && (await slack('chat.postMessage', tokens.bot, { channel: owner, text })).ok) writeFileSync(sentAt, String(now))
@@ -55,7 +64,7 @@ function claudeCommand(route: string | undefined) {
   const json = (f: string) => { try { return JSON.parse(readFileSync(f, 'utf8')) } catch { return {} } }
   const cfg = json(`${CONF}/config.json`), sec = json(`${CONF}/secrets.json`)
   const legacy = existsSync(ENV_FILE) ? readFileSync(ENV_FILE, 'utf8') : ''
-  const tokens = { user: sec.slack?.user ?? envValue(legacy, 'SLACK_USER_TOKEN') ?? '', bot: sec.slack?.bot ?? envValue(legacy, 'SLACK_BOT_TOKEN') ?? '' }
+  const tokens = () => ({ user: secretValue(sec.slack?.user) ?? envValue(legacy, 'SLACK_USER_TOKEN') ?? '', bot: secretValue(sec.slack?.bot) ?? envValue(legacy, 'SLACK_BOT_TOKEN') ?? '' })
   const home = (p: string) => (p === '~' ? process.env.HOME! : p.startsWith('~/') ? process.env.HOME + p.slice(1) : p)
   const last = lastLines(log)
   const now = Math.floor(Date.now() / 1000)
@@ -70,7 +79,8 @@ function claudeCommand(route: string | undefined) {
   }
   try { for (const [k, v] of Object.entries((await import('./src/core/config.ts')).unknownEnv(cfg, sec))) process.env[k] ??= v }
   catch (e) { say(`could not export the env file's own keys: ${e}`) }
-  if (sec.claudeToken) { process.env.CLAUDE_CODE_OAUTH_TOKEN = sec.claudeToken; delete process.env.ANTHROPIC_API_KEY }
+  const claudeToken = secretValue(sec.claudeToken)
+  if (claudeToken) { process.env.CLAUDE_CODE_OAUTH_TOKEN = claudeToken; delete process.env.ANTHROPIC_API_KEY }
   await (await import('./src/runtime/hold-keys.ts')).holdKeys(Object.keys(cfg.sessionKeys ?? {}), say)
   const mem = home(cfg.harness?.memory ?? envValue(legacy, 'KAGE_MEMORY') ?? '') || `${CONF}/memory`
   if (/['"\\]/.test(mem + DIR)) { say('Move kage or KAGE_MEMORY to a path without quotes or backslashes.'); process.exit(0) }
