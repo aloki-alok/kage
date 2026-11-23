@@ -25,8 +25,7 @@ Only your own terminal runs `kage set`: it refuses inside a Kage session. No ses
 | `slack.bot` | required | secrets.json. The `xoxb-` token Kage posts with. |
 | `name` | `kage` | The word you tag (`@kage`), the tmux session name, and the label on posts. |
 | `owner.channel` | `slack` | Where Kage's messages to you go: `slack` (the DM with Kage) or `whatsapp` (your own "message yourself" chat, which needs the WhatsApp bridge). If a WhatsApp send fails, or the message holds something that looks like a key, it goes to Slack instead. Each approval card also comes to WhatsApp with a code: reply `yes 4821` or `no 4821` in that chat, or answer the card in Slack, and the first answer counts. Your commands stay in the Slack DM. |
-| `people.teammates` | empty | A list of Slack user ids who may also tag Kage. Use `kage add`. |
-| `people.trusted` | empty | Teammates whose tasks, and their agents' tasks, may use your claude.ai connectors and other MCP tools. An id that is not also in `people.teammates` is not trusted, and Kage DMs you about it. Secrets, your memory, your browser and one-way steps stay as for any teammate. Use `kage add <person> --trusted`. |
+| `people.teammates` | empty | Everyone besides you who may task Kage, one entry each: `{ "user": "<Slack user id>", "email": "<address>", "trusted": true }`. An entry needs a `user`, an `email`, or both. A `user` may tag Kage in Slack. An `email` may write to Kage's address. `trusted` (only with a `user`) lets their tasks, and their agents' tasks, use your claude.ai connectors and other MCP tools. Secrets, your memory, your browser and one-way steps stay as for any teammate. Use `kage add <person>`, with `--trusted` to trust them. |
 | `people.agents` | empty | A list of agents. Each is `{ "app": "<app id>", "owner": "<owner id>", "tag": "<user id>" }`. The `tag` is the agent's own Slack user id, set when Kage knows it: Kage tags the agent with it on every part of a reply. The owner is a listed person, or a listed agent. Use `kage add <app id> <owner>`. A tagged post from the app, made with its owner's token, counts as that person's task. It never counts as the owner's. An app id with no owner counts with any listed teammate's token. |
 
 ## Agent replies (Jev classifier)
@@ -220,7 +219,6 @@ Email is on when `connectors.email.address`, `connectors.email.queue` and `conne
 | `connectors.email.ownerEmail` | none | Your address. Its domain is the only one Kage replies to. |
 | `aws.accessKeyId`, `aws.secretAccessKey` | none | secrets.json. AWS keys for SQS and SES. |
 | `connectors.email.region` | `us-west-1` | Their region. |
-| `connectors.email.teammateEmails` | empty | A list of teammates' addresses. |
 | `connectors.email.on` | on | `false` is the kill switch. |
 
 ## Voice and calls

@@ -28,7 +28,7 @@ export function startConnectors(o: {
   ping: Parameters<typeof startJobEvents>[0]['ping']
   say: (text: string) => Promise<boolean>
   ownerAnswer: (a: { code: string; behavior: 'allow' | 'deny' }) => void
-  NAME: string; CODE: string; DIR: string; d: Dispatcher<ToSession>; inbox: Inbox
+  NAME: string; CODE: string; DIR: string; d: Dispatcher<ToSession>; inbox: Inbox; emails: string[]
   deliver: (c: Conversation, task: Task, place: string, lane?: Lane, by?: string) => Delivery
   placeOf: (key: string) => string; failed: (m: ToSession) => void
   schedules: Parameters<typeof startJobEvents>[0]['schedules']; event: Parameters<typeof startJobEvents>[0]['event']; ledgers: Parameters<typeof startJobEvents>[0]['ledgers']; tripwires: Config['tripwires']
@@ -63,7 +63,7 @@ export function startConnectors(o: {
     process.once('exit', () => { child.kill() })
   }
   const email = connectEmail({
-    mail: { ...conn.email, accessKeyId: secrets.aws?.accessKeyId, secretAccessKey: secrets.aws?.secretAccessKey }, saved: store, name: NAME, nameOf: slack.nameOf, deliver, inbox, dir: DIR,
+    mail: { ...conn.email, teammateEmails: o.emails, accessKeyId: secrets.aws?.accessKeyId, secretAccessKey: secrets.aws?.secretAccessKey }, saved: store, name: NAME, nameOf: slack.nameOf, deliver, inbox, dir: DIR,
     notify: text => void o.say(text),
     failed: task => void o.say(startFailedNote(task.meta.place, d.lastStartError())),
   })

@@ -12,15 +12,34 @@ const count = z.number().int().nonnegative().optional()
 const money = z.number().nonnegative().nullable().optional()
 const yes = z.boolean().optional()
 const strings = z.array(z.string()).optional()
+const isAddress = (v: string) => /^[^\s@]+@[^\s@]+$/.test(v)
+const teammate = z.strictObject({ user: z.string().refine(validUserId).optional(), email: z.string().refine(isAddress).optional(), trusted: z.literal(true).optional() })
+  .refine(t => t.user || t.email, 'a teammate needs a Slack user or an email').refine(t => !t.trusted || t.user, 'only a Slack user can be trusted')
+export type Teammate = z.infer<typeof teammate>
 
-export const Config = z.strictObject({
+type Parts = { user?: string[]; trusted?: string[]; email?: string[] }
+const teammatesFrom = (p: Parts): Teammate[] | undefined => {
+  const all = [...(p.user ?? []).map(user => ({ user, ...(p.trusted?.includes(user) && { trusted: true as const }) })), ...(p.email ?? []).map(email => ({ email }))]
+  return all.length ? all : undefined
+}
+const arrayOr = (v: unknown): any[] => (Array.isArray(v) ? v : [])
+const foldOldPeople = (raw: any) => {
+  const people = raw?.people, mail = raw?.connectors?.email
+  if (!(arrayOr(people?.teammates).some(t => typeof t === 'string') || people?.trusted !== undefined || mail?.teammateEmails !== undefined)) return raw
+  const { trusted, ...keptPeople } = people ?? {}
+  const { teammateEmails, ...keptMail } = mail ?? {}
+  const listed = arrayOr(people?.teammates)
+  const teammates = [...listed.filter(t => typeof t !== 'string'), ...(teammatesFrom({ user: listed.filter(t => typeof t === 'string'), trusted: arrayOr(trusted), email: arrayOr(teammateEmails) }) ?? [])]
+  return { ...raw, people: { ...keptPeople, ...(teammates.length && { teammates }) }, ...(mail && { connectors: { ...raw.connectors, email: keptMail } }) }
+}
+
+export const Config = z.preprocess(foldOldPeople, z.strictObject({
   version: z.literal(1),
   name: z.string().optional(),
   owner: z.strictObject({ channel: z.enum(['slack', 'whatsapp']).optional() }).optional(),
   harness: z.strictObject({ runtime: text, route: text, cwd: text, memory: text, ownerMemory: text, maxSessions: count, idleMinutes: count, jobModel: text, jobFreshEvery: count, jobCarry: count, jobCarryChars: count, rotateTokens: count, jobLaneDefault: yes, leanSessions: yes, jobCatchUpHours: count, jobCatchUpStaggerSeconds: count, sandbox: z.union([z.boolean(), z.literal('teammates')]).optional(), pluginsOff: strings }).optional(),
   people: z.strictObject({
-    teammates: z.array(z.string().refine(validUserId)).optional(),
-    trusted: z.array(z.string().refine(validUserId)).optional(),
+    teammates: z.array(teammate).optional(),
     agents: z.array(z.strictObject({ app: z.string(), owner: z.string().optional(), tag: z.string().optional() }).refine(a => appEntry(agentLine(a)) !== undefined)).optional(),
   }).optional(),
   waiting: z.strictObject({ expireHours: count }).optional(),
@@ -44,7 +63,7 @@ export const Config = z.strictObject({
   tunnel: z.strictObject({ provider: z.enum(['tailscale', 'off']).optional(), targets: strings }).optional(),
   tripwires: z.strictObject({ on: yes, timeoutSec: count, maxKb: count, failPing: count, patternMax: count, lineMax: count, maxPosts: count, catchUpMax: count, seenMax: count, hookPort: count, hookHost: text, hookPerHour: count, env: strings, swapAfter: count, shadowWindowMin: count, swapUndoDays: count }).optional(),
   connectors: z.strictObject({
-    email: z.strictObject({ on: yes, address: text, queue: text, ownerEmail: text, region: text, teammateEmails: strings }).optional(),
+    email: z.strictObject({ on: yes, address: text, queue: text, ownerEmail: text, region: text }).optional(),
     voice: z.strictObject({ on: yes, port: count, max: count, perHour: count, model: text }).optional(),
     call: z.strictObject({ command: text }).optional(),
     github: z.strictObject({ login: text, userId: z.number().int().positive().optional(), port: count, perHour: count, app: z.strictObject({ id: z.number().int().positive(), slug: z.string().regex(/^[a-z0-9][a-z0-9-]*$/) }).optional(), accounts: strings }).optional(),
@@ -55,7 +74,7 @@ export const Config = z.strictObject({
     commands: z.record(z.string().regex(/^\/[a-z][a-z0-9-]{1,30}$/), z.string().regex(/^\/\S+$/)).optional(),
   }).optional(),
   unknown: z.record(z.string(), z.string().nullable()).optional(),
-})
+}))
 export type Config = z.infer<typeof Config>
 export type KeyRoute = NonNullable<Config['sessionKeys']>[string]
 
@@ -83,6 +102,7 @@ const items = (v: string) => v.split(',').map(s => s.trim()).filter(Boolean)
 const list: Codec = { read: items, write: (a: string[]) => a.join(',') }
 const lines: Codec = { read: v => v.replace(/\\n/g, '\n'), write: (v: string) => v.replace(/\n/g, '\\n') }
 const people: Codec = { read: v => (items(v).every(validUserId) ? items(v) : undefined), write: (a: string[]) => a.join(',') }
+const emails: Codec = { read: v => (items(v).every(isAddress) ? items(v) : undefined), write: (a: string[]) => a.join(',') }
 const agents: Codec = {
   read: v => {
     const es = items(v).map(appEntry)
@@ -98,8 +118,13 @@ const commands: Codec = {
   write: (o: Record<string, string>) => Object.entries(o).map(([k, p]) => `${k}=${p}`).join(','),
 }
 
-type Row = { env: string; path: string; codec: Codec; secret?: true }
+type Row = { env: string; path: string; codec: Codec; secret?: true; part?: keyof Parts }
 const R = (env: string, path: string, codec: Codec = str, secret?: true): Row => ({ env, path, codec, ...(secret && { secret }) })
+const teammatePart = (env: string, part: keyof Parts, codec: Codec): Row => ({ env, path: 'people.teammates', codec, part })
+const partOf = (c: Config, part: keyof Parts) => {
+  const values = (c.people?.teammates ?? []).flatMap(t => (part === 'email' ? [t.email] : part === 'trusted' && !t.trusted ? [] : [t.user])).filter(v => v !== undefined)
+  return values.length ? values : undefined
+}
 export const KEYS: Row[] = [
   R('KAGE_NAME', 'name'),
   R('KAGE_RUNTIME', 'harness.runtime'), R('KAGE_ROUTE', 'harness.route'), R('KAGE_CWD', 'harness.cwd'), R('KAGE_MEMORY', 'harness.memory'),
@@ -107,7 +132,7 @@ export const KEYS: Row[] = [
   R('KAGE_TRIPWIRES_HOOK_PORT', 'tripwires.hookPort', int), R('KAGE_TRIPWIRES_HOOK_HOST', 'tripwires.hookHost'), R('KAGE_TRIPWIRES_HOOK_PER_HOUR', 'tripwires.hookPerHour', int),
   R('KAGE_TRIPWIRES_SWAP_AFTER', 'tripwires.swapAfter', int), R('KAGE_TRIPWIRES_SHADOW_WINDOW_MIN', 'tripwires.shadowWindowMin', int), R('KAGE_TRIPWIRES_SWAP_UNDO_DAYS', 'tripwires.swapUndoDays', int), R('KAGE_WAITING_EXPIRE_HOURS', 'waiting.expireHours', int),
   R('KAGE_OWNER_MEMORY', 'harness.ownerMemory'), R('KAGE_MAX_SESSIONS', 'harness.maxSessions', int), R('KAGE_IDLE_MINUTES', 'harness.idleMinutes', int), R('KAGE_JOB_MODEL', 'harness.jobModel'), R('KAGE_JOB_FRESH_EVERY', 'harness.jobFreshEvery', int), R('KAGE_JOB_CARRY', 'harness.jobCarry', int), R('KAGE_JOB_CARRY_CHARS', 'harness.jobCarryChars', int), R('KAGE_ROTATE_TOKENS', 'harness.rotateTokens', int), R('KAGE_JOB_LANE_DEFAULT', 'harness.jobLaneDefault', onoff), R('KAGE_LEAN_SESSIONS', 'harness.leanSessions', onoff), R('KAGE_JOB_CATCH_UP_HOURS', 'harness.jobCatchUpHours', int), R('KAGE_JOB_CATCH_UP_STAGGER_SECONDS', 'harness.jobCatchUpStaggerSeconds', int), R('KAGE_SANDBOX', 'harness.sandbox', sandboxCodec), R('KAGE_PLUGINS_OFF', 'harness.pluginsOff', list),
-  R('KAGE_OWNER_CHANNEL', 'owner.channel'), R('KAGE_TEAMMATES', 'people.teammates', people), R('KAGE_TRUSTED_PEOPLE', 'people.trusted', people), R('KAGE_TRUSTED_APPS', 'people.agents', agents),
+  R('KAGE_OWNER_CHANNEL', 'owner.channel'), teammatePart('KAGE_TEAMMATES', 'user', people), teammatePart('KAGE_TRUSTED_PEOPLE', 'trusted', people), teammatePart('KAGE_TEAMMATE_EMAILS', 'email', emails), R('KAGE_TRUSTED_APPS', 'people.agents', agents),
   R('KAGE_DREAM_MIN_CHATS', 'dream.minChats', int), R('KAGE_DREAM_MIN_CONFIDENCE', 'dream.minConfidence', num), R('KAGE_DREAM_MAX_NEW', 'dream.maxNew', int), R('KAGE_DREAM_MAX_OUTDATED', 'dream.maxOutdated', int),
   R('KAGE_MAX_KAGELETS', 'kagelets.max', int), R('KAGE_KAGELET_OWNERS_MAX', 'kagelets.ownersMax', int), R('KAGE_KAGELET_NEEDS_PER_DAY', 'kagelets.needsPerDay', int), R('KAGE_KAGELET_ASK_RUNS_PER_HOUR', 'kagelets.askRunsPerHour', int), R('KAGE_KAGELET_NOTES_KEPT', 'kagelets.notesKept', int), R('KAGE_KAGELET_NOTE_CHARS', 'kagelets.noteChars', int), R('KAGE_KAGELET_MEASURE_MINUTES', 'kagelets.measureMinutes', int), R('KAGE_KAGELET_TREND_RUNS', 'kagelets.trendRuns', int), R('KAGE_KAGELET_TURN_STALL_MINUTES', 'kagelets.turnStallMinutes', int), R('KAGE_KAGELET_INCIDENTS_PER_HOUR', 'kagelets.incidentsPerHour', int), R('KAGE_KAGELET_RELEASE', 'kagelets.release'), R('KAGE_KAGELET_REVIEWS_PER_DAY', 'kagelets.reviewsPerDay', int), R('KAGE_KAGELET_REVIEW_MODEL', 'kagelets.reviewModel'), R('KAGE_KAGELET_REVIEW_MIN_VERDICTS', 'kagelets.reviewMinVerdicts', int), R('KAGE_KAGELET_REVIEW_MIN_AGREEMENT', 'kagelets.reviewMinAgreement', num), R('KAGE_KAGELET_REVIEW_EVIDENCE_DAYS', 'kagelets.reviewEvidenceDays', int), R('KAGE_KAGELET_DENY_HOLD_DAYS', 'kagelets.denyHoldDays', int), R('KAGE_KAGELET_DAILY_USD', 'kagelets.dailyUsd', num),
   R('KAGE_KAGELET_TOTAL_DAILY_USD', 'kagelets.totalDailyUsd', num), R('KAGE_KAGELET_CHAIN_USD', 'kagelets.chainUsd', num),
@@ -120,7 +145,7 @@ export const KEYS: Row[] = [
   R('KAGE_TRIPWIRES_ENV', 'tripwires.env', list),
   R('KAGE_TELEMETRY', 'telemetry.on', onoff), R('KAGE_TELEMETRY_ENDPOINT', 'telemetry.endpoint'), R('KAGE_SCREEN_SHOT_LONG_SIDE', 'screen.shotLongSide', int), R('KAGE_TOP_THREAD_COST_BAR', 'top.threadCostBar', num), R('KAGE_TUNNEL_PROVIDER', 'tunnel.provider'), R('KAGE_TUNNEL_TARGETS', 'tunnel.targets', list),
   R('KAGE_EMAIL', 'connectors.email.on', onoff), R('KAGE_MAIL_ADDRESS', 'connectors.email.address'), R('KAGE_MAIL_QUEUE', 'connectors.email.queue'),
-  R('KAGE_OWNER_EMAIL', 'connectors.email.ownerEmail'), R('KAGE_AWS_REGION', 'connectors.email.region'), R('KAGE_TEAMMATE_EMAILS', 'connectors.email.teammateEmails', list),
+  R('KAGE_OWNER_EMAIL', 'connectors.email.ownerEmail'), R('KAGE_AWS_REGION', 'connectors.email.region'),
   R('KAGE_VOICE', 'connectors.voice.on', onoff), R('KAGE_VOICE_PORT', 'connectors.voice.port', int), R('KAGE_VOICE_MAX', 'connectors.voice.max', int),
   R('KAGE_VOICE_PER_HOUR', 'connectors.voice.perHour', int), R('KAGE_VOICE_MODEL', 'connectors.voice.model'), R('KAGE_CALL_COMMAND', 'connectors.call.command'),
   R('KAGE_GITHUB_LOGIN', 'connectors.github.login'), R('KAGE_GITHUB_PORT', 'connectors.github.port', int), R('KAGE_GITHUB_PER_HOUR', 'connectors.github.perHour', int),
@@ -160,13 +185,17 @@ export function fromEnv(env: Env): { config: Config; secrets: Secrets } {
   const flat: Env = { ...env }
   for (const [old, now] of Object.entries(ALIASES)) if (old in flat) { if (!(now in flat)) flat[now] = flat[old]!; delete flat[old] }
   const known = new Map(KEYS.map(k => [k.env, k]))
+  const parts: Parts = {}
   for (const [name, value] of Object.entries(flat).sort(([a], [b]) => a.localeCompare(b))) {
     const row = known.get(name)
     const v = row?.codec.read(value)
-    if (row && v !== undefined) put(row.secret ? secrets : config, row.path, v)
+    if (row?.part && v !== undefined) parts[row.part] = v as string[]
+    else if (row && v !== undefined) put(row.secret ? secrets : config, row.path, v)
     else if (looksSecret(name, value)) { unknown[name] = null; secretUnknown[name] = value }
     else unknown[name] = value
   }
+  const teammates = teammatesFrom(parts)
+  if (teammates) put(config, 'people.teammates', teammates)
   if (Object.keys(unknown).length) config.unknown = unknown
   if (Object.keys(secretUnknown).length) secrets.unknown = secretUnknown
   return { config: Config.parse(config), secrets: Secrets.parse(secrets) }
@@ -175,7 +204,7 @@ export function fromEnv(env: Env): { config: Config; secrets: Secrets } {
 export function toEnv(config: Config, secrets: Secrets): Env {
   const env: Env = {}
   for (const k of KEYS) {
-    const v = get(k.secret ? secrets : config, k.path)
+    const v = k.part ? partOf(config, k.part) : get(k.secret ? secrets : config, k.path)
     if (v !== undefined && v !== null) env[k.env] = k.codec.write(v)
   }
   return { ...env, ...unknownEnv(config, secrets) }
@@ -202,17 +231,24 @@ export function diff(before: { config: Config; secrets: Secrets }, after: { conf
 }
 
 export const registryOf = (c: Config): Entry[] => [
-  ...(c.people?.teammates ?? []).map(id => ({ kind: 'person' as const, id, ...c.people?.trusted?.includes(id) && { trusted: true as const } })),
+  ...(c.people?.teammates ?? []).flatMap(t => (t.user ? [{ kind: 'person' as const, id: t.user, ...(t.trusted && { trusted: true as const }) }] : [])),
   ...(c.people?.agents ?? []).map(a => ({ kind: 'agent' as const, id: a.app, ...(a.owner && { owner: a.owner }), ...(a.tag && { tag: a.tag }) })),
 ]
-export const withRegistry = (c: Config, entries: Entry[]): Config => ({
-  ...c,
-  people: {
-    teammates: [...new Set(entries.filter(e => e.kind === 'person').map(e => e.id))],
-    ...entries.some(e => e.kind === 'person' && e.trusted) && { trusted: [...new Set(entries.flatMap(e => (e.kind === 'person' && e.trusted ? [e.id] : [])))] },
-    agents: entries.flatMap(e => (e.kind === 'agent' ? [{ app: e.id, ...(e.owner && { owner: e.owner }), ...(e.tag && { tag: e.tag }) }] : [])),
-  },
-})
+export const withRegistry = (c: Config, entries: Entry[]): Config => {
+  const listed = c.people?.teammates ?? []
+  const persons = entries.flatMap(e => (e.kind === 'person' ? [e] : []))
+  const user = (id: string) => {
+    const email = listed.find(t => t.user === id)?.email
+    return { user: id, ...(email && { email }), ...(persons.some(e => e.id === id && e.trusted) && { trusted: true as const }) }
+  }
+  return {
+    ...c,
+    people: {
+      teammates: [...[...new Set(persons.map(e => e.id))].map(user), ...listed.filter(t => !t.user)],
+      agents: entries.flatMap(e => (e.kind === 'agent' ? [{ app: e.id, ...(e.owner && { owner: e.owner }), ...(e.tag && { tag: e.tag }) }] : [])),
+    },
+  }
+}
 
 export const tilde = (p: string, home: string) => (p === '~' ? home : p.startsWith('~/') ? home + p.slice(1) : p)
 
@@ -225,14 +261,13 @@ export function badValue(c: Config): string | undefined {
   const hook = c.tripwires?.hookPort
   if (hook && !(Number.isInteger(hook) && hook >= 1024 && hook <= 65535)) return 'tripwires.hookPort must be 0 (off) or a port from 1024 to 65535'
 }
-export function checkSettings(c: Config, s: Secrets): { name: string; teammates: string[]; trusted: string[]; notTrusted: string[]; apps: string[] } | { error: string } {
+export function checkSettings(c: Config, s: Secrets): { name: string; teammates: string[]; trusted: string[]; emails: string[]; apps: string[] } | { error: string } {
   for (const [path, v] of [['slack.app', s.slack?.app], ['slack.user', s.slack?.user], ['slack.bot', s.slack?.bot]] as const) if (!v) return { error: `${path} is missing in secrets.json` }
   const bad = badValue(c)
   if (bad) return { error: bad }
   const name = (c.name || 'kage').toLowerCase()
   if (!validName(name)) return { error: `name "${name}" must be a short lowercase word (letters, digits, dashes)` }
-  const teammates = c.people?.teammates ?? [], trusted = c.people?.trusted ?? []
-  return { name, teammates, trusted: trusted.filter(id => teammates.includes(id)), notTrusted: trusted.filter(id => !teammates.includes(id)), apps: (c.people?.agents ?? []).map(agentLine) }
+  return { name, teammates: partOf(c, 'user') ?? [], trusted: partOf(c, 'trusted') ?? [], emails: partOf(c, 'email') ?? [], apps: (c.people?.agents ?? []).map(agentLine) }
 }
 
 const SAFE = [/^kagelets\.(max|dailyUsd|totalDailyUsd|chainUsd|needsPerDay|askRunsPerHour|notesKept|noteChars|measureMinutes|trendRuns|turnStallMinutes|incidentsPerHour)$/, /^waiting\.expireHours$/, /^top\.threadCostBar$/, /^afk\.(on|model)$/, /^harness\.(jobModel|jobFreshEvery|jobCarry|jobCarryChars|rotateTokens|jobLaneDefault|jobCatchUpHours|jobCatchUpStaggerSeconds)$/, /^jev\.(threshold|model|ackWords)$/, /^tripwires\.(timeoutSec|maxKb|failPing|patternMax|lineMax|maxPosts|catchUpMax|seenMax|hookPerHour|swapAfter|shadowWindowMin|swapUndoDays)$/,

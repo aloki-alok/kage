@@ -68,7 +68,7 @@ import { ownerLines } from '../core/messages.ts'
 import { answersInThread, blockedTask, planDrop } from '../core/blocks.ts'
 import { unanswered } from '../core/ledgers.ts'
 
-const { ENV_FILE, NAME, Title, TEAMMATES, TRUSTED_PEOPLE, TRUSTED_APPS, config, secrets, bot, user } = load()
+const { ENV_FILE, NAME, Title, TEAMMATES, TRUSTED_PEOPLE, TEAMMATE_EMAILS, TRUSTED_APPS, config, secrets, bot, user } = load()
 const { harness = {}, kagelets: kl = {}, afk = {}, connectors: conn = {} } = config
 const health = connectorHealth(Date.now())
 tapLog(a => health.see(a, Date.now()))
@@ -339,7 +339,7 @@ else if (existsSync(CRONS)) {
   }
 }
 
-const { meeting, voice, sms, replies, replayOf, jobs, clock } = startConnectors({ secrets, conn, store, slack, bot, ping: pingThread, say: owner.say, ownerAnswer: answerFromWhatsApp, NAME, CODE, DIR, d, inbox, deliver, placeOf, failed, schedules, event: ledgers.event, ledgers, tripwires: config.tripwires })
+const { meeting, email, voice, sms, replies, replayOf, jobs, clock } = startConnectors({ secrets, conn, store, slack, bot, ping: pingThread, say: owner.say, ownerAnswer: answerFromWhatsApp, NAME, CODE, DIR, d, inbox, deliver, placeOf, failed, emails: TEAMMATE_EMAILS, schedules, event: ledgers.event, ledgers, tripwires: config.tripwires })
 listenForCommands(slack.socket, { user, team: slack.ids.team!, commands: COMMANDS, ledgers })
 
 function failed(m: ToSession) {
@@ -376,7 +376,7 @@ runJobs([
 
 const commands = ownerCommands({ d, store, ledgers, limits, MAX, placeOf, closedTo, noteTrust, failed, dropRelay: key => { ssm.drop(key); keys.drop(key) }, botDm: slack.ids.botDm, post: slack.say })
 const watcher = configWatcher({
-  envFile: ENV_FILE, boot: { config, secrets }, log, apply: slack.allow, tell: text => void owner.say(text),
+  envFile: ENV_FILE, boot: { config, secrets }, log, apply: l => { slack.allow(l); email?.allow(l.emails) }, tell: text => void owner.say(text),
   event: (kind, keys) => ledgers.event({ kind, who: 'config', trace: '', detail: keys.join(', ') }),
   restartWanted: yes => updates.restartWanted(yes),
 })

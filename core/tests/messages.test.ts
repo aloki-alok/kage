@@ -32,8 +32,6 @@ const cases: [string, string][] = [
   [L.cronImportBad(), 'Could not read the cron jobs exported from the panes (crons-import.json.bad). Watchers may need setting up again.'],
   [L.settingsUnplaced('FOO, BAR'), 'Kage moved its settings into config.json. It could not place these old lines, so they sit under "unknown": FOO, BAR. Tell me what each one is for, and I will help place it.'],
   [L.settingsRejected('people.trusted: bad id'), 'Kage did not apply your last settings change and keeps the last good ones: people.trusted: bad id'],
-  [L.trustedNotTeammates(['UTEST1']), 'people.trusted names UTEST1, who is not in people.teammates, so Kage does not trust them. Run kage add <person> --trusted to trust a teammate, or remove the id from people.trusted.'],
-  [L.trustedNotTeammates(['UTEST1', 'UTEST2']), 'people.trusted names UTEST1, UTEST2, who are not in people.teammates, so Kage does not trust them. Run kage add <person> --trusted to trust a teammate, or remove the id from people.trusted.'],
   [L.updateNpmFailed('/opt/kage'), 'Kage pulled new code, but `npm ci` failed, so it stays on the code it runs. Run `npm ci` in /opt/kage, then `kage restart`.'],
   [L.releaseStopped('tag exists'), "Kage's release stopped part way: tag exists."],
   [L.released('0.4.4', 'https://x.test/r'), 'Released Kage v0.4.4. <https://x.test/r|Release notes>'],

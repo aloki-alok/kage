@@ -25,7 +25,6 @@ export const ownerLines = {
   cronImportBad: () => 'Could not read the cron jobs exported from the panes (crons-import.json.bad). Watchers may need setting up again.',
   settingsUnplaced: (unplaced: string) => `Kage moved its settings into config.json. It could not place these old lines, so they sit under "unknown": ${unplaced}. Tell me what each one is for, and I will help place it.`,
   settingsRejected: (reason: string) => `Kage did not apply your last settings change and keeps the last good ones: ${reason}`,
-  trustedNotTeammates: (ids: string[]) => `people.trusted names ${ids.join(', ')}, who ${ids.length === 1 ? 'is' : 'are'} not in people.teammates, so Kage does not trust them. Run kage add <person> --trusted to trust a teammate, or remove the id from people.trusted.`,
   updateNpmFailed: (code: string) => `Kage pulled new code, but \`npm ci\` failed, so it stays on the code it runs. Run \`npm ci\` in ${code}, then \`kage restart\`.`,
   releaseStopped: (skip: string) => `Kage's release stopped part way: ${skip}.`,
   released: (version: string | undefined, url: string | undefined) => `Released Kage v${version}. <${url}|Release notes>`,

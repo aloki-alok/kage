@@ -4,6 +4,7 @@ import { checkSettings, diff, registryOf, type Config, type Secrets } from '../c
 import type { AllowLists, Reloaded } from '../core/settings.ts'
 import { files, readSettings } from './config-files.ts'
 import { ownerLines } from '../core/messages.ts'
+import { logRef } from './log.ts'
 
 export type Settings = { config: Config; secrets: Secrets }
 export type ConfigEvent = 'config.live' | 'config.restart' | 'config.refused'
@@ -18,15 +19,8 @@ export function configWatcher(o: {
   restartWanted: (yes: boolean) => void
   debounceMs?: number
 }) {
-  let last = o.boot, count = 0, announced = '', told = '', strayTold = ''
-  const tellStray = (ids: string[]) => {
-    if (ids.join() === strayTold) return
-    strayTold = ids.join()
-    if (ids.length) o.tell(ownerLines.trustedNotTeammates(ids))
-  }
-  const atBoot = checkSettings(o.boot.config, o.boot.secrets)
-  if (!('error' in atBoot)) tellStray(atBoot.notTrusted)
-  const lists = (s: Settings) => ({ 'people.teammates': registryOf(s.config).filter(e => e.kind === 'person'), 'people.agents': registryOf(s.config).filter(e => e.kind === 'agent') })
+  let last = o.boot, count = 0, announced = '', told = ''
+  const lists = (s: Settings) => ({ 'people.teammates': (s.config.people?.teammates ?? []).map(t => ({ ...t, id: t.user ?? logRef(t.email!), email: t.email && logRef(t.email) })), 'people.agents': registryOf(s.config).filter(e => e.kind === 'agent') })
   type Key = keyof ReturnType<typeof lists>
 
   function check(): Reloaded {
@@ -38,7 +32,6 @@ export function configWatcher(o: {
     const cwd = next.config.harness?.cwd?.replace(/^~(?=\/|$)/, process.env.HOME!)
     if (cwd && !(existsSync(cwd) && statSync(cwd).isDirectory())) return refuse('harness.cwd is not a folder that exists', ['harness.cwd'])
     told = ''
-    tellStray(ok.notTrusted)
     const live = (Object.keys(lists(last)) as Key[]).filter(k => JSON.stringify(lists(last)[k]) !== JSON.stringify(lists(next)[k]))
     const changed = live.map(k => {
       const a = lists(last)[k].map(e => e.id), b = lists(next)[k].map(e => e.id)
@@ -46,7 +39,7 @@ export function configWatcher(o: {
       return `${k}: ${parts.join(', ') || 'changed'}`
     })
     if (live.length) {
-      o.apply({ teammates: ok.teammates, trusted: ok.trusted, apps: ok.apps })
+      o.apply({ teammates: ok.teammates, trusted: ok.trusted, emails: ok.emails, apps: ok.apps })
       o.event('config.live', live)
     }
     last = next
