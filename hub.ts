@@ -11,11 +11,13 @@ const say = (line: string) => console.error(`${new Date().toISOString()} hub.ts:
 const envValue = (text: string, key: string) =>
   text.split('\n').filter(l => l.startsWith(`${key}=`)).map(l => l.slice(key.length + 1)).at(-1)
 
-const secretValue = (v: unknown) => {
+const runAlone = (command: string) => {
+  try { return execFileSync('/bin/sh', ['-c', command], { encoding: 'utf8', timeout: 30_000, stdio: ['ignore', 'pipe', 'ignore'] }).replace(/\r?\n$/, '') || undefined } catch { return undefined }
+}
+const secretValue = (v: unknown, run: (command: string) => string | undefined = runAlone) => {
   if (typeof v === 'string') return v
   const command = (v as { command?: unknown } | undefined)?.command
-  if (typeof command !== 'string') return undefined
-  try { return execFileSync('/bin/sh', ['-c', command], { encoding: 'utf8', timeout: 30_000, stdio: ['ignore', 'pipe', 'ignore'] }).replace(/\r?\n$/, '') || undefined } catch { return undefined }
+  return typeof command === 'string' ? run(command) : undefined
 }
 
 const lastLines = (log: string) => {
@@ -64,7 +66,7 @@ function claudeCommand(route: string | undefined) {
   const json = (f: string) => { try { return JSON.parse(readFileSync(f, 'utf8')) } catch { return {} } }
   const cfg = json(`${CONF}/config.json`), sec = json(`${CONF}/secrets.json`)
   const legacy = existsSync(ENV_FILE) ? readFileSync(ENV_FILE, 'utf8') : ''
-  const tokens = () => ({ user: secretValue(sec.slack?.user) ?? envValue(legacy, 'SLACK_USER_TOKEN') ?? '', bot: secretValue(sec.slack?.bot) ?? envValue(legacy, 'SLACK_BOT_TOKEN') ?? '' })
+  const tokens = () => ({ user: secretValue(sec.slack?.user, files?.secretOutput) ?? envValue(legacy, 'SLACK_USER_TOKEN') ?? '', bot: secretValue(sec.slack?.bot, files?.secretOutput) ?? envValue(legacy, 'SLACK_BOT_TOKEN') ?? '' })
   const home = (p: string) => (p === '~' ? process.env.HOME! : p.startsWith('~/') ? process.env.HOME + p.slice(1) : p)
   const last = lastLines(log)
   const now = Math.floor(Date.now() / 1000)
@@ -79,7 +81,7 @@ function claudeCommand(route: string | undefined) {
   }
   try { for (const [k, v] of Object.entries((await import('./src/core/config.ts')).unknownEnv(cfg, sec))) process.env[k] ??= v }
   catch (e) { say(`could not export the env file's own keys: ${e}`) }
-  const claudeToken = secretValue(sec.claudeToken)
+  const claudeToken = secretValue(sec.claudeToken, files?.secretOutput)
   if (claudeToken) { process.env.CLAUDE_CODE_OAUTH_TOKEN = claudeToken; delete process.env.ANTHROPIC_API_KEY }
   await (await import('./src/runtime/hold-keys.ts')).holdKeys(Object.keys(cfg.sessionKeys ?? {}), say)
   const mem = home(cfg.harness?.memory ?? envValue(legacy, 'KAGE_MEMORY') ?? '') || `${CONF}/memory`

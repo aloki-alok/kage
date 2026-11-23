@@ -28,12 +28,12 @@ export function configRefusal(tool: string, input: Record<string, unknown>, send
   if (!at.some(r => !/^(?:files|memory)(?:\/|$)/.test(r))) return
   return `Kage's config folder holds its tokens, and this task did not come from the owner. Reply that this needs the owner, and stop.`
 }
-const SECRET_HELPERS = /\b(?:security\s+find-(?:generic|internet)-password|op\s+(?:read|item\s+get)|pass\s+show)\b/
+const SECRET_HELPERS = /\bsecurity\b[^;&|\n]*\b(?:find-(?:generic|internet)-password|dump-keychain)\b|\bop\s+(?:read|inject|run|item\s+get)\b|\b(?:go)?pass\s+(?:show\b|[\w.-]+\/)/
 const squash = (s: string) => s.replace(/\s+/g, ' ').trim()
 function secretCommandRefusal(tool: string, input: Record<string, unknown>, envFile: string): string | undefined {
   if (tool !== 'Bash' || typeof input.command !== 'string') return
   let commands: string[]
-  try { commands = secretCommands(SecretsFile.parse(JSON.parse(readFileSync(join(dirname(envFile), 'secrets.json'), 'utf8')))).map(c => squash(c.command)) } catch { return }
+  try { commands = secretCommands(SecretsFile.parse(JSON.parse(readFileSync(join(dirname(envFile), 'secrets.json'), 'utf8')))).flatMap(c => [squash(c.command), squash(c.command).replace(/^\S*\//, '')]) } catch { return }
   const asked = squash(input.command)
   if (!commands.length || !(SECRET_HELPERS.test(asked) || commands.some(c => asked.includes(c)))) return
   return `Kage's tokens come from commands in secrets.json, so no session may run one, or another secret helper (op read, security find-*, pass show). Kage's own tools post as Kage, so no session needs a token.`

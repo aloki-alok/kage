@@ -347,10 +347,10 @@ describe('a session may not run the command a secret names (#158)', () => {
 
   test('with a command-backed secret, its command and the secret helpers are refused, for the owner too', () => {
     const o = folder({ slack: { bot: { command: 'op read op://kage/slack-bot' } }, jevKey: { command: '/usr/local/bin/kage-token jev' } })
-    for (const c of ['op read op://kage/slack-bot', 'echo $(op  read   op://kage/slack-bot)', 'op read op://other/item', 'op item get kage', 'security find-generic-password -w -s kage', 'security find-internet-password -s x', 'pass show kage/bot', 'X=1 /usr/local/bin/kage-token   jev | cat'])
+    for (const c of ['op read op://kage/slack-bot', 'echo $(op  read   op://kage/slack-bot)', 'op read op://other/item', 'op item get kage', 'security find-generic-password -w -s kage', 'security find-internet-password -s x', 'pass show kage/bot', 'X=1 /usr/local/bin/kage-token   jev | cat', 'kage-token jev', 'security -q find-generic-password -w -s k', 'security dump-keychain -d', 'op inject -i t.tpl', 'op run -- env', 'pass kage/bot', 'gopass show kage/bot'])
       assert.match(bash(o, c) ?? '', /secret/, c)
     assert.match(bash(o, 'op read op://kage/slack-bot', 'teammate') ?? '', /secret/)
-    for (const c of ['ls -la', 'git status', 'echo operator read', 'security list-keychains']) assert.equal(bash(o, c), undefined, c)
+    for (const c of ['ls -la', 'git status', 'echo operator read', 'security list-keychains', 'npm test -- --pass-with-no-tests', 'echo tests pass', 'pass ls']) assert.equal(bash(o, c), undefined, c)
     assert.equal(toolRefusal('Read', { file_path: '/tmp/op read' }, 'owner', o), undefined)
   })
 

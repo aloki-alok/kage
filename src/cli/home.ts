@@ -8,7 +8,7 @@ import { askSocket } from '../runtime/hub-client.ts'
 export const ENV_FILE = envFilePath()
 export const DIR = dirname(ENV_FILE)
 export const settingsExist = () => hasSettings(ENV_FILE)
-export const settings = (): ReturnType<typeof readSettings> => { try { return readSettings(ENV_FILE) } catch { return { config: { version: 1 }, secrets: {}, failed: [] } } }
+export const settings = (): ReturnType<typeof readSettings> => { try { return readSettings(ENV_FILE) } catch { return { config: { version: 1 }, secrets: {}, failed: () => [] } } }
 export const CWD = tilde(settings().config.harness?.cwd || process.env.KAGE_CWD || process.env.HOME!, process.env.HOME!)
 
 export function placeNamer(): (key: string) => string {

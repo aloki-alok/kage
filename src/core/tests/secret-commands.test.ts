@@ -1,7 +1,7 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { Secrets, SecretsFile } from '../config.ts'
-import { resolveSecrets, secretCommands } from '../secret-commands.ts'
+import { failedSecrets, lazySecrets, secretCommands } from '../secret-commands.ts'
 
 const file = SecretsFile.parse({
   slack: { app: 'xapp-plain', bot: { command: 'op read op://kage/bot' }, user: { command: 'security find-generic-password -w -s kage-user' } },
@@ -27,17 +27,21 @@ test('secretCommands lists each secret that names a command, by its dotted path'
   assert.deepEqual(secretCommands(SecretsFile.parse({ slack: { app: 'a' } })), [])
 })
 
-test('resolveSecrets puts each command output in place, keeps plain values, and names each failed command', () => {
+test('lazySecrets runs a command only when its secret is read, and keeps plain values', () => {
   const ran: string[] = []
-  const out = resolveSecrets(file, (c: string) => { ran.push(c); return c.startsWith('op ') ? 'xoxb-from-op' : c.startsWith('pass ') ? undefined : 'xoxp-from-keychain' })
-  assert.deepEqual(ran, ['security find-generic-password -w -s kage-user', 'op read op://kage/bot', 'pass show kage/jev'])
-  assert.deepEqual(out.secrets, Secrets.parse({ slack: { app: 'xapp-plain', bot: 'xoxb-from-op', user: 'xoxp-from-keychain' }, githubToken: null, waha: { WAHA_API_KEY: 'plain' }, unknown: { OTHER: 'x' } }))
-  assert.equal('jevKey' in out.secrets, false)
-  assert.deepEqual(out.failed, [{ path: 'jevKey', command: 'pass show kage/jev' }])
+  const run = (c: string) => { ran.push(c); return c.startsWith('op ') ? 'xoxb-from-op' : c.startsWith('pass ') ? undefined : 'xoxp-from-keychain' }
+  const s = lazySecrets(file, run)
+  assert.equal(s.slack?.app, 'xapp-plain')
+  assert.equal(s.githubToken, null)
+  assert.deepEqual(s.waha, { WAHA_API_KEY: 'plain' })
+  assert.deepEqual(ran, [], 'no command runs before its secret is read')
+  assert.equal(s.slack?.bot, 'xoxb-from-op')
+  assert.deepEqual(ran, ['op read op://kage/bot'])
+  assert.equal(s.jevKey, undefined)
+  assert.deepEqual({ ...s.slack }, { app: 'xapp-plain', user: 'xoxp-from-keychain', bot: 'xoxb-from-op' })
 })
 
-test('a file with no commands resolves to itself and runs nothing', () => {
-  const plain = SecretsFile.parse({ slack: { app: 'a', user: 'u', bot: 'b' }, claudeToken: 't' })
-  const out = resolveSecrets(plain, () => assert.fail('ran a command'))
-  assert.deepEqual(out, { secrets: plain, failed: [] })
+test('failedSecrets names each secret whose command printed nothing', () => {
+  assert.deepEqual(failedSecrets(file, c => (c.startsWith('pass ') ? undefined : 'v')), [{ path: 'jevKey', command: 'pass show kage/jev' }])
+  assert.deepEqual(failedSecrets(SecretsFile.parse({ slack: { app: 'a' } }), () => assert.fail('ran a command')), [])
 })

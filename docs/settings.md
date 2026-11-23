@@ -127,10 +127,10 @@ Any token in `secrets.json` may name a command instead of holding the value, the
 { "slack": { "bot": { "command": "op read op://kage/slack-bot" } }, "jevKey": { "command": "security find-generic-password -w -s kage-jev" } }
 ```
 
-- Kage runs each command once per process, with `/bin/sh`, and keeps the output in memory only. It never writes the output to disk, a log or a session's environment. `claudeToken` is the one exception: it reaches every session as its Claude login, as a plain value does.
-- If a command fails, times out after 30 seconds or prints nothing, the token is unset. The hub log and `kage doctor` name the token and the command, never what the command printed. Run the command in a terminal to see why.
+- Kage runs a command with `/bin/sh` only when it needs that token, at most once per process, and keeps the output in memory only. The hub runs them at start. `kage doctor` runs them to check them. It never writes the output to disk, a log or a session's environment. `claudeToken` is the one exception: it reaches every session as its Claude login, as a plain value does.
+- If a command fails, times out after 30 seconds or prints nothing, the token is unset until the next start. The hub log and `kage doctor` name the token and the command, never what the command printed. Run the command in a terminal to see why, fix it, then run `kage restart`.
 - A command that writes one token, such as `kage connect browser`, keeps every other token as it is, commands included. `kage save` writes all three Slack tokens, so it replaces their commands with the values you paste.
-- While any token names a command, no session may run that command, or `op read`, `op item get`, `security find-*-password` or `pass show`. This includes your own threads. It is a word check behind the sandbox, so `secrets.json` (mode 600) stays the safer default: the sandbox closes that file to every session.
+- While any token names a command, no session may run that command or a secret helper: `op read`, `op inject`, `op run`, `op item get`, `security find-*-password`, `security dump-keychain`, `pass show`, `pass <name>/...` and `gopass`. This includes your own threads, and quoted text too, so `git commit -m "op read ..."` is refused as well. It is a word check behind the sandbox, so `secrets.json` (mode 600) stays the safer default: the sandbox closes that file to every session.
 - `waha` keys stay plain values, because Kage writes them into `waha/.env` for the WhatsApp container.
 
 ## The nightly dream

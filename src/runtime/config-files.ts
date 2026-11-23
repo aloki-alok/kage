@@ -2,7 +2,7 @@ import { execFileSync } from 'node:child_process'
 import { existsSync, mkdirSync, readdirSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { badValue, Config, fromEnv, mergeTeammateEmails, oldPeopleShape, Secrets, SecretsFile, settingTier } from '../core/config.ts'
-import { resolveSecrets, type SecretCommand } from '../core/secret-commands.ts'
+import { failedSecrets, lazySecrets, type SecretCommand } from '../core/secret-commands.ts'
 import { parseEnv } from '../core/settings.ts'
 
 export const envFilePath = () => process.env.KAGE_ENV || `${process.env.HOME}/.config/kage/env`
@@ -109,24 +109,24 @@ export function sweepKeptCopies(envFile: string, now = new Date()): string[] {
   return gone
 }
 
-const secretValues = new Map<string, string>()
-function runSecret(command: string): string | undefined {
-  if (!secretValues.has(command)) {
-    try {
-      const out = execFileSync('/bin/sh', ['-c', command], { encoding: 'utf8', timeout: 30_000, stdio: ['ignore', 'pipe', 'ignore'] }).replace(/\r?\n$/, '')
-      if (out) secretValues.set(command, out)
-    } catch {}
+const secretOutputs = new Map<string, string | undefined>()
+export function secretOutput(command: string): string | undefined {
+  if (!secretOutputs.has(command)) {
+    let out: string | undefined
+    try { out = execFileSync('/bin/sh', ['-c', command], { encoding: 'utf8', timeout: 30_000, stdio: ['ignore', 'pipe', 'ignore'] }).replace(/\r?\n$/, '') || undefined } catch {}
+    secretOutputs.set(command, out)
   }
-  return secretValues.get(command)
+  return secretOutputs.get(command)
 }
 
-export function readSettings(envFile: string): { config: Config; secrets: Secrets; failed: SecretCommand[] } {
+export function readSettings(envFile: string): { config: Config; secrets: Secrets; failed: () => SecretCommand[] } {
   const f = files(envFile)
   if (!existsSync(f.config)) {
     if (!existsSync(f.legacy)) throw new Error(`No settings at ${f.dir}. Run kage setup first.`)
-    return { ...fromEnv(parseEnv(readFileSync(f.legacy, 'utf8'))), failed: [] }
+    return { ...fromEnv(parseEnv(readFileSync(f.legacy, 'utf8'))), failed: () => [] }
   }
-  return { config: parse(Config, f.config), ...resolveSecrets(existsSync(f.secrets) ? parse(SecretsFile, f.secrets) : {}, runSecret) }
+  const file = existsSync(f.secrets) ? parse(SecretsFile, f.secrets) : {}
+  return { config: parse(Config, f.config), secrets: lazySecrets(file, secretOutput), failed: () => failedSecrets(file, secretOutput) }
 }
 
 const sessionRefusal = () => { if (process.env.KAGE_SESSION || process.env.KAGE_THREAD) throw new Error("not changed: settings change only from the owner's own terminal. Say what you want changed, and the owner runs kage set.") }

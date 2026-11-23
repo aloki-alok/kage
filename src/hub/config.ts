@@ -9,7 +9,7 @@ export function load() {
   const ENV_FILE = envFilePath()
   let settings
   try { settings = readSettings(ENV_FILE) } catch (e) { log((e as Error).message); noteExit(dirname(ENV_FILE), 'crash', e); process.exit(1) }
-  for (const f of settings.failed) log(`secrets.json ${f.path} is unset: its command failed or printed nothing (${f.command})`)
+  for (const f of settings.failed()) log(`secrets.json ${f.path} is unset: its command failed or printed nothing (${f.command})`)
   const ok = checkSettings(settings.config, settings.secrets)
   if ('error' in ok) {
     log(`${ok.error} (${ENV_FILE})`)

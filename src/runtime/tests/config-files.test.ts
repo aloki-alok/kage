@@ -1,4 +1,5 @@
 import { describe, test } from 'node:test'
+import { spawnSync } from 'node:child_process'
 import assert from 'node:assert/strict'
 import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, statSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
@@ -49,7 +50,8 @@ describe('the first start imports the env file', () => {
     const before = readSettings(w.env)
     assert.deepEqual(readdirSync(w.dir), ['env'])
     importLegacy(w.env)
-    assert.deepEqual(readSettings(w.env), before)
+    const after = readSettings(w.env)
+    assert.deepEqual({ config: after.config, secrets: after.secrets, failed: after.failed() }, { config: before.config, secrets: before.secrets, failed: before.failed() })
   })
   test('with no settings at all, reading says to run setup', () => {
     const w = world('')
@@ -254,17 +256,30 @@ describe('a secret that names a command (#158)', () => {
     return { ...w, count }
   }
 
-  test('readSettings puts the output in place, runs each command once per process, and names each failure without its output', () => {
+  test('readSettings runs a command only when its secret is read, once per process, failures included', () => {
     const w = commandWorld()
+    const fails = join(w.dir, 'fails')
+    writeFileSync(join(w.dir, 'secrets.json'), readFileSync(join(w.dir, 'secrets.json'), 'utf8').replace('echo leaked', `echo f >> '${fails}'; echo leaked`))
     const first = readSettings(w.env)
+    assert.equal(first.config.version, 1)
+    assert.equal(existsSync(w.count), false, 'reading the config runs no command')
+    assert.equal(existsSync(fails), false, 'reading the config runs no command')
     assert.equal(first.secrets.slack?.bot, 'xoxb-from-command')
     assert.equal(first.secrets.slack?.app, 'xapp-plain')
+    assert.deepEqual(first.failed().map(f => f.path), ['voiceToken', 'jevKey'])
     assert.equal(first.secrets.jevKey, undefined)
-    assert.equal(first.secrets.voiceToken, undefined)
-    assert.deepEqual(first.failed.map(f => f.path), ['voiceToken', 'jevKey'])
-    assert.doesNotMatch(JSON.stringify(first.failed), /leaked-42/)
-    readSettings(w.env)
+    assert.equal(readSettings(w.env).secrets.slack?.bot, 'xoxb-from-command')
+    readSettings(w.env).failed()
     assert.equal(readFileSync(w.count, 'utf8'), 'run\n')
+    assert.equal(readFileSync(fails, 'utf8'), 'f\n')
+  })
+
+  test("a command's stderr never reaches Kage's own output", () => {
+    const w = commandWorld()
+    const code = `import { readSettings } from ${JSON.stringify(new URL('../config-files.ts', import.meta.url).pathname)}; const s = readSettings(${JSON.stringify(w.env)}); s.secrets.jevKey; console.log(JSON.stringify(s.failed()))`
+    const r = spawnSync(process.execPath, ['--input-type=module', '-e', code], { encoding: 'utf8' })
+    assert.match(r.stdout, /jevKey/)
+    assert.doesNotMatch(r.stdout + r.stderr, /leaked-42/)
   })
 
   test('changing another secret keeps the command on disk, and never writes its output', () => {
