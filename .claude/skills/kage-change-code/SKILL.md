@@ -45,7 +45,7 @@ Copy the nearest sibling before you write anything new. `CONTRIBUTING.md` has th
 
 1. Names say what a thing does, so a reader needs no comment to know it. A file is named for its one job (`transcript-tail.ts`, not `utils.ts`). A function is a verb phrase (`readKagelets`, `planBlock`). A value is a noun for what it holds (`ownerMemoryDir`, not `kmem` or `d`). No made-up words (`realish`), no one-letter names outside a short loop. Rename when you touch a vague name.
 2. One file, one job. If a file passes 300 lines, split it along its jobs before you add to it.
-3. A function does one thing and fits on a screen (about 80 lines). A 6-way `if` on an action becomes one function per action.
+3. A function does one thing and stays at 60 lines or fewer. The `ks` CI job fails a change that pushes one past 60. A 6-way `if` on an action becomes one function per action.
 4. Grep before you write a helper: `git grep -n "const <name>\|function <name>"`. Reuse the shared home below. If two files need the same new helper, put it in the shared home in the same PR.
 5. Pass state in explicitly (a context object or arguments). A module-level `Map` needs a line that prunes it.
    Export only what another file needs. A helper a test drives directly may stay exported.

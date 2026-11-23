@@ -22,7 +22,7 @@ npm run eval:live -- --compare before.json after.json
 
 Tests live in a `tests/` folder inside the folder of the code they test: `core/gate.ts` is tested by `core/tests/gate.test.ts`.
 
-`tests/structure.test.ts` checks the layout itself (ADR 0014): `core/` stays pure, nothing below the root imports a root file, no source file passes 300 lines, every `core/` and `runtime/` file is in the tables below, and no `core/` export goes unneeded. Each rule lists today's breaks as debt that may only shrink. The skill `.claude/skills/kage-change-code` has the rest of the clean-code rules.
+`tests/structure.test.ts` checks the layout itself (ADR 0014): `core/` stays pure, nothing below the root imports a root file, no source file passes 300 lines, every `core/` and `runtime/` file is in the tables below, and no export goes unneeded. Each rule lists today's breaks as debt that may only shrink. The `ks` CI job ([kagestack](https://github.com/aloki-alok/kagestack), pinned in `.github/workflows/ks.yml`) fails a pull request that adds a comment or a skipped test, or that pushes a function past 60 lines. Run it locally with `uvx --from git+https://github.com/aloki-alok/kagestack ks check`. The skill `.claude/skills/kage-change-code` has the rest of the clean-code rules.
 
 The rules Kage follows, and why, are in [`docs/adr/`](docs/adr/). Read the ones that bind your change before you write code.
 
