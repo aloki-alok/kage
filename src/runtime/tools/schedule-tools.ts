@@ -8,7 +8,7 @@ import type { ProbeArg } from '../probe-jobs.ts'
 
 type Jobs = NonNullable<ToolContext['o']['schedules']>
 type Afk = NonNullable<ToolContext['o']['afk']>
-type ScheduleArgs = { cron?: string; prompt: string; needs?: string[]; recurring?: boolean; lane?: boolean; probe?: ProbeArg; on_channel?: { channel: string; match?: string; bots?: boolean }; hook?: boolean; shadow_of?: string; live_prompt?: string }
+type ScheduleArgs = { cron?: string; prompt: string; model?: string; needs?: string[]; recurring?: boolean; lane?: boolean; probe?: ProbeArg; on_channel?: { channel: string; match?: string; bots?: boolean }; hook?: boolean; shadow_of?: string; live_prompt?: string }
 
 export function scheduleTools(c: ToolContext): KageTool[] {
   return [...c.o.schedules ? jobTools(c, c.o.schedules) : [], ...c.o.afk ? awayTools(c, c.o.afk) : []]
@@ -59,6 +59,7 @@ function scheduleTool(c: ToolContext, jobs: Jobs): KageTool {
       }).optional().describe('a clock schedule only. The command is pinned when set, with every script it names: an edited script stops the probe until a new yes. A teammate\'s probe needs the owner\'s yes on a card'),
       shadow_of: s.optional().describe('make this job a twin of that job id in this thread: it runs beside it and acts on nothing. Each run ends with shadow_verdict. The hub swaps it in by itself after enough real events where both agree, and stops for the owner on any miss (ADR 0017)'),
       live_prompt: s.optional().describe('with shadow_of: the prompt this twin runs once it swaps in and acts for real'),
+      model: s.optional().describe('the model this job\'s runs use, e.g. haiku for a job that only checks and reports. Default: harness.jobModel, else the sessions\' model. Needs the job\'s own lane'),
       needs: z.array(z.string()).optional().describe('the MCP tools the job\'s action needs, by their full name (mcp__server__tool). Kage checks them on its clock with no model and tells the owner once when one is gone, before a run needs it'),
       channel: s.optional().describe('with probe: channel attribute from the task tag'),
       thread_ts: s.optional().describe('with probe: thread_ts attribute from the task tag'),
@@ -87,7 +88,7 @@ async function runSchedule(c: ToolContext, jobs: Jobs, args: Record<string, unkn
     const why = await probeCard(c, `Run the command ${a.probe.command} on a clock (${cron}), as you, with no model, and wake a session when its output changes. Scripts it names are pinned.`, { cron, probe: a.probe })
     if (why) return { isError: true, text: why }
   }
-  const no = await jobs.add({ id, cron, prompt: a.prompt, recurring, ...(trigger && { trigger }), ...(a.lane !== undefined && { lane: a.lane ? true as const : undefined }), ...(a.needs?.length && { needs: a.needs }), ...(a.probe && { probe: a.probe }), ...(a.shadow_of && { shadow: { of: a.shadow_of, live: a.live_prompt! } }) })
+  const no = await jobs.add({ id, cron, prompt: a.prompt, recurring, ...(trigger && { trigger }), ...(a.lane !== undefined && { lane: a.lane ? true as const : undefined }), ...(a.needs?.length && { needs: a.needs }), ...(a.model && { model: a.model }), ...(a.probe && { probe: a.probe }), ...(a.shadow_of && { shadow: { of: a.shadow_of, live: a.live_prompt! } }) })
   if (no) return { isError: true, text: no }
   if (trigger?.kind === 'channel') return { text: `Kage schedule ${id} set, wakes on a post in channel ${trigger.channel}${trigger.match !== undefined ? ` matching ${trigger.match}` : ''}${trigger.bots ? ', bots included' : ''}. No model runs between posts. Kept by Kage: it survives restarts and runs until unschedule.` }
   if (token) return { text: `Kage schedule ${id} set, wakes on a call to its webhook. Shown once, give both to whoever sends the calls:\nURL: ${jobs.hookUrl!(id)}\nToken: ${token}\nSend: POST with the header "Authorization: Bearer <token>". The body reaches the job as data. Kept by Kage: it survives restarts and runs until unschedule.` }
@@ -211,7 +212,7 @@ function schedulesTool(jobs: Jobs): KageTool {
     shape: {},
     async run() {
       const all = jobs.list()
-      return { text: all.length ? all.map(j => `${j.id} ${j.cron}${j.recurring ? '' : ' (once)'} ${j.prompt.split('\n')[0]!.slice(0, 120)}`).join('\n') : 'no schedules in this thread' }
+      return { text: all.length ? all.map(j => `${j.id} ${j.cron}${j.recurring ? '' : ' (once)'}${j.model ? ` on ${j.model}` : ''} ${j.prompt.split('\n')[0]!.slice(0, 120)}`).join('\n') : 'no schedules in this thread' }
     },
   }
 }

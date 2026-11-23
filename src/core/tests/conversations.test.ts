@@ -138,3 +138,13 @@ test('a job lane runs on harness.jobModel, or the sessions\' own model when unse
   assert.equal(modelFor('C1:5.5#side-job-j1', '', other), undefined)
   assert.equal(modelFor('C1:5.5', 'haiku', other), 'other:C1:5.5')
 })
+
+test('a job lane runs on its own schedule\'s model first, then harness.jobModel', () => {
+  const other = (k: string) => `other:${k}`
+  const own = (id: string) => (id === 'j1' ? 'haiku' : undefined)
+  assert.equal(modelFor('C1:5.5#side-job-j1', 'sonnet', other, own), 'haiku')
+  assert.equal(modelFor('ops/C1:5.5#side-job-j1', undefined, other, own), 'haiku')
+  assert.equal(modelFor('C1:5.5#side-job-j2', 'sonnet', other, own), 'sonnet')
+  assert.equal(modelFor('C1:5.5#side-job-j2', undefined, other, own), undefined)
+  assert.equal(modelFor('C1:5.5', 'sonnet', other, own), 'other:C1:5.5')
+})

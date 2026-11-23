@@ -17,7 +17,7 @@ for (const s of all) {
   const when = s.cron === REPLY
     ? `${cadence(s.cron)}, until ${s.ends ? day(s.ends) : 'cancelled'}`
     : `${cadence(s.cron)}${s.recurring ? '' : ', once'}${next ? `, next ${whenLabel(next.getTime(), Date.now())}` : ''}`
-  console.log(fit(`${s.id}  ${place(s.key)}${s.fromOwner ? '' : ' (teammate)'}  ${when}`))
+  console.log(fit(`${s.id}  ${place(s.key)}${s.fromOwner ? '' : ' (teammate)'}  ${when}${s.model ? `, on ${s.model}` : ''}`))
   if (s.trigger) console.log(fit(`    ${triggerLine(s.trigger)}`))
   if (missing.has(s.id)) console.log(fit(`    blocked: ${missing.get(s.id)!.join(', ')}`))
   console.log(fit(`    ${promptPreview(s.prompt)}`))

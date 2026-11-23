@@ -261,7 +261,7 @@ const sdk = sdkLib ? sdkSessions({
     kag.routes.ended(key, usd ?? 0, d.saved()[key] ? `${PROJECT}/${d.saved()[key]}.jsonl` : '', Date.now(), limited, error)
   },
   budgetOf: kag.budgetOf,
-  modelOf: key => modelFor(key, config.harness?.jobModel, k => k.includes('#side-kdream-') ? DEFAULT_MODEL : k.startsWith('voice:') && config.connectors?.voice?.model ? config.connectors.voice.model : kag.modelOf(k)),
+  modelOf: key => modelFor(key, config.harness?.jobModel, k => k.includes('#side-kdream-') ? DEFAULT_MODEL : k.startsWith('voice:') && config.connectors?.voice?.model ? config.connectors.voice.model : kag.modelOf(k), id => store.schedules().find(s => s.id === id)?.model),
   onBlocked: blocked, onDropped: dropped,
   onTurn: (key, tasks, limit, done) => limits.turn(key, tasks, limit, Date.now(), done),
   grantOf: kag.grantOf, allowOf: kag.allowOf, reviewHeld: kag.reviewHeld,

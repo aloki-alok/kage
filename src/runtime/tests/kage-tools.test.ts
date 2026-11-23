@@ -205,6 +205,15 @@ describe("a session's Kage tools", () => {
     assert.equal((await s.call('unschedule', { channel: 'C1', thread_ts: '5.5', id: s.jobs[0].id })).isError, undefined)
     assert.deepEqual(s.jobs, [])
   })
+  test('a schedule may name its own model, which reaches the hub and shows in the list', async () => {
+    const s = setup()
+    s.t.onTask(s.task())
+    assert.equal((await s.call('schedule', { cron: '*/15 * * * *', prompt: 'check the queue', model: 'haiku' })).isError, undefined)
+    assert.equal(s.jobs[0].model, 'haiku')
+    assert.match((await s.call('schedules', {})).text, /\*\/15 \* \* \* \* on haiku check the queue/)
+    await s.call('schedule', { cron: '*/30 * * * *', prompt: 'plain' })
+    assert.equal('model' in s.jobs[1], false)
+  })
   test('a schedule has exactly one trigger, a probe only on a clock, and a twin with both of its prompts', async () => {
     const s = setup()
     s.t.onTask(s.task())

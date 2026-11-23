@@ -4,6 +4,7 @@ import { appEntry, validUserId, type Entry } from './registry.ts'
 
 export const MODELS = ['fable', 'opus', 'sonnet', 'haiku'] as const
 export const DEFAULT_MODEL = 'sonnet'
+export const modelRefusal = (m: string) => new RegExp(`^(${MODELS.join('|')}|claude-[a-z0-9.-]+(\\[1m\\])?)$`).test(m) ? undefined : `model must be sonnet, opus, haiku, fable or a claude-... id, not "${m}"`
 
 export type Env = Record<string, string>
 

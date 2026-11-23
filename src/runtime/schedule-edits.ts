@@ -1,6 +1,7 @@
 import { log } from './log.ts'
 import { parseSessionKey, threadOfJobLane } from '../core/conversations.ts'
 import { EVENT, nextRun, parseCron, REPLY, type Schedule } from '../core/cron.ts'
+import { modelRefusal } from '../core/config.ts'
 import { buildProbe, tripwireCfg, type ProbeArg, type TripwireSettings, type TuneArg } from './probe-jobs.ts'
 import { safePattern, type Trigger } from '../core/tripwire.ts'
 import { pin } from './probes.ts'
@@ -12,7 +13,7 @@ const RUNS_WITHIN = 4 * 366 * DAY
 export const WATCH_DAYS = 7
 
 type Host = { store: Store; trusted: (key: string) => boolean; tripwires?: () => TripwireSettings; job: { laneDefault: () => boolean } }
-export type NewJob = Pick<Schedule, 'id' | 'cron' | 'prompt' | 'recurring' | 'lane' | 'trigger' | 'needs'> & { probe?: ProbeArg; shadow?: { of: string; live: string } }
+export type NewJob = Pick<Schedule, 'id' | 'cron' | 'prompt' | 'recurring' | 'lane' | 'trigger' | 'needs' | 'model'> & { probe?: ProbeArg; shadow?: { of: string; live: string } }
 
 export const listOf = (store: Store, key: string) => store.schedules().filter(s => s.key === threadOfJobLane(key))
 const patternMaxOf = (o: Host) => tripwireCfg(o.tripwires?.() ?? {}).patternMax
@@ -38,6 +39,8 @@ export function add(o: Host, from: string, j: NewJob, now: number): string | und
   if (c?.connector !== 'slack') return 'schedules work in Slack threads only'
   if (watch && c.agentDm) return 'a watch needs a thread other people write in; only you write in this DM'
   if (listOf(store, key).length >= PER_THREAD) return `this thread already has ${PER_THREAD} schedules`
+  const lane = !watch && (event || (j.lane ?? o.job.laneDefault()))
+  if (j.model) { const bad = modelRefusal(j.model) ?? (lane ? undefined : 'a job with its own model needs its own lane: drop lane false, or the model'); if (bad) return bad }
   const trigger = triggerOf(o, j, watch, event)
   if (typeof trigger === 'string') return trigger
   if (j.shadow) {
@@ -46,7 +49,7 @@ export function add(o: Host, from: string, j: NewJob, now: number): string | und
     if (store.jobState(of).shadow) return `${of} is itself a twin: shadow the job it shadows`
   }
   const { probe: _, shadow, ...plain } = j
-  store.addSchedule({ ...plain, ...(trigger && { trigger }), key, fromOwner: o.trusted(key), created: now, lastFired: 0, ...(!watch && (event || (j.lane ?? o.job.laneDefault())) ? { lane: true } : { lane: undefined }), ...(watch && { recurring: true, ends: now + WATCH_DAYS * DAY }), ...(event && { recurring: true }) })
+  store.addSchedule({ ...plain, ...(trigger && { trigger }), key, fromOwner: o.trusted(key), created: now, lastFired: 0, ...(lane ? { lane: true } : { lane: undefined }), ...(watch && { recurring: true, ends: now + WATCH_DAYS * DAY }), ...(event && { recurring: true }) })
   if (shadow) store.setJobState(j.id, { ...store.jobState(j.id), shadow: { of: shadow.of, live: shadow.live, since: now } })
   log('scheduled', j.id, j.cron, 'for', key)
 }
