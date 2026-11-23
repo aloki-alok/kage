@@ -24,5 +24,6 @@ jobs:
       - run: npm ci   # the e2e test imports the hub's own code too
         working-directory: .
       - run: npm ci
+      - run: ../node_modules/.bin/tsc --noEmit -p .
       - run: npx playwright-core install --with-deps chromium
       - run: npm test
