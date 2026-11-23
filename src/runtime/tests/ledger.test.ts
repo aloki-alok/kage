@@ -1,6 +1,6 @@
 import { describe, test } from 'node:test'
 import assert from 'node:assert/strict'
-import { existsSync, mkdtempSync, readdirSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { costRecorder, openLedgers, runEvents } from '../ledger.ts'
 import { costRows } from '../../core/ledgers.ts'
@@ -55,6 +55,23 @@ describe('the ledgers live in kage.db, and read back as the TSV text the parsers
     openLedgers(d).close()
     writeFileSync(`${d}/waiting.tsv`, '2026-11-02T00:00:00.000Z\topen\tk\tl\tsecond\n')
     assert.match(openLedgers(d).text('waiting'), /first\n.*second\n$/s)
+  })
+  test('an import file that cannot be read is skipped and rolled back, so the next file and new rows still land for every opener', () => {
+    const d = dir()
+    mkdirSync(`${d}/costs.tsv.importing-1-1`)
+    writeFileSync(`${d}/posted.tsv.importing-1-2`, '2026-11-01T00:00:00.000Z\tC1\t1.1\tbot\tk\n')
+    const l = openLedgers(d, () => '2026-11-09T00:00:00.000Z')
+    l.add('waiting', ['open', 'k', 'l', 'new'])
+    const other = openLedgers(d)
+    assert.equal(other.text('posted').split('\n').filter(Boolean).length, 1)
+    assert.match(other.text('waiting'), /\tnew\n$/)
+    assert.equal(existsSync(`${d}/costs.tsv.importing-1-1`), true)
+  })
+  test('the opener hears each row added, with its cells as written', () => {
+    const got: string[] = []
+    const l = openLedgers(dir(), undefined, undefined, (name, cells) => { got.push(`${name} ${cells.join('|')}`) })
+    l.add('posted', ['C1', '1.1', 'two\nlines'])
+    assert.deepEqual(got, ['posted C1|1.1|two\nlines'])
   })
   test('a failed write is logged, never thrown: a ledger must not block a reply', () => {
     const l = openLedgers(dir())
