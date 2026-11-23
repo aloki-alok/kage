@@ -12,6 +12,7 @@ import { shadowSwaps } from '../shadow-swap.ts'
 import { openStore } from '../store.ts'
 import type { Task } from '../../core/task.ts'
 import type { ScreenRecorder } from '../screen.ts'
+import type { SessionReport } from '../tools/report-tools.ts'
 import type { Dismissal, DreamLesson, NewFlag } from '../../core/dream.ts'
 
 function fakeSlack() {
@@ -73,7 +74,7 @@ function fakeSlack() {
   return { calls, posts, bot: client('bot'), user: client('owner') }
 }
 
-function setup(o: { noHook?: boolean; settings?: { set(key: string, value: unknown): void }; hubDown?: boolean; dir?: string; kagelet?: string; dreaming?: string; dbRead?: { command: () => string | undefined; maxRows: number; timeoutMs?: number }; approve?: (tool: string, description: string, input: Record<string, unknown>) => Promise<boolean>; browser?: { call(op: string, args: Record<string, unknown>): Promise<unknown>; block: string[] }; meetbot?: { join(link: string): string }; screen?: ScreenRecorder; foreignAgents?: () => readonly string[]; flagKnowledge?: (f: NewFlag) => void; dreamLessons?: (l: DreamLesson[], d?: Dismissal[]) => string } = {}) {
+function setup(o: { noHook?: boolean; settings?: { set(key: string, value: unknown): void }; hubDown?: boolean; dir?: string; kagelet?: string; dreaming?: string; dbRead?: { command: () => string | undefined; maxRows: number; timeoutMs?: number }; approve?: (tool: string, description: string, input: Record<string, unknown>) => Promise<boolean>; browser?: { call(op: string, args: Record<string, unknown>): Promise<unknown>; block: string[] }; meetbot?: { join(link: string): string }; screen?: ScreenRecorder; foreignAgents?: () => readonly string[]; flagKnowledge?: (f: NewFlag) => void; dreamLessons?: (l: DreamLesson[], d?: Dismissal[]) => string; report?: SessionReport } = {}) {
   const slack = fakeSlack()
   const dir = o.dir ?? mkdtempSync(join(tmpdir(), 'kage-tools-'))
   const ledgers = openLedgers(dir)
@@ -93,7 +94,7 @@ function setup(o: { noHook?: boolean; settings?: { set(key: string, value: unkno
       move: (id, to) => { if (!jobs.some(j => j.id === id)) return `no job ${id} in this thread`; jobs.find(j => j.id === id).key = to },
     },
     afk: async c => { out.push(`afk ${JSON.stringify(c)}`); return 'AFK on' }, foreignAgents: o.foreignAgents,
-    kagelet: o.kagelet, dreaming: o.dreaming, settings: o.settings, flagKnowledge: o.flagKnowledge, dreamLessons: o.dreamLessons, kageletMemory: { propose: (name: string, a: unknown, thread: string) => { out.push(`propose ${name} ${thread} ${JSON.stringify(a)}`); return 'proposed' }, decide: (d: unknown) => { out.push(`decide ${JSON.stringify(d)}`); return 'decided' }, open: () => 'open ones', notes: () => [] } as any, dbRead: o.dbRead, approve: o.approve, browser: o.browser, meetbot: o.meetbot, screen: o.screen, event: (kind, detail) => { events.push(`${kind} ${detail}`) },
+    kagelet: o.kagelet, dreaming: o.dreaming, settings: o.settings, flagKnowledge: o.flagKnowledge, dreamLessons: o.dreamLessons, report: o.report, kageletMemory: { propose: (name: string, a: unknown, thread: string) => { out.push(`propose ${name} ${thread} ${JSON.stringify(a)}`); return 'proposed' }, decide: (d: unknown) => { out.push(`decide ${JSON.stringify(d)}`); return 'decided' }, open: () => 'open ones', notes: () => [] } as any, dbRead: o.dbRead, approve: o.approve, browser: o.browser, meetbot: o.meetbot, screen: o.screen, event: (kind, detail) => { events.push(`${kind} ${detail}`) },
     onReport: r => { routed.push(`report ${JSON.stringify(r)}`) }, toManager: text => { routed.push(`manager ${text}`); return 'sent' },
     tellKagelet: (name, text, run) => { routed.push(`tell ${name}${run ? ' now' : ''}: ${text}`); return `told ${name}` }, message: (to, text) => { routed.push(`message ${to} ${text}`); return `sent to ${to}` },
     kagelets: { list: () => 'the list', manage: async (a, ask) => { out.push(`manage ${JSON.stringify(a)}`); return ask ? `asked: ${await ask({ kagelet: a.name, tools: 'mcp__gmail__send', job: 'j' })}` : 'managed' } },
@@ -2086,5 +2087,71 @@ describe('flag_knowledge: a working session flags a missing or wrong note for th
     const s = setup({ dreamLessons: (l, d) => { seen.push(l.map(x => x.flag), d); return 'kept 0' } })
     await s.call('dream_lessons', { lessons: [{ kind: 'outdated', file: 'deploy.md', text: 't', evidence: [], confidence: 0.9, flag: 'f1' }], dismiss: [{ flag: 'f2', reason: 'keys.md covers it' }] })
     assert.deepEqual(seen, [['f1'], [{ flag: 'f2', reason: 'keys.md covers it' }]])
+  })
+})
+
+describe("report_issue: a session files a bug or an idea to the Kage repo, on the owner's yes (#543)", () => {
+  const issue = { kind: 'bug', title: 'Reply failed for Sam', what: 'Sending to sam@example.com from /Users/sam/kage failed', expected: 'It sends' }
+  const run = (o: { yes?: boolean; fails?: boolean; repo?: string; perDay?: number; noCard?: boolean } = {}) => {
+    const cards: { description: string; input: Record<string, unknown> }[] = [], filed: { repo: string; title: string; body: string; labels: string[] }[] = []
+    const report: SessionReport = {
+      repo: async () => 'repo' in o ? o.repo : 'some-fork/kage',
+      file: async (repo, title, body, labels) => { if (o.fails) throw new Error('gh: not logged in'); filed.push({ repo, title, body, labels }); return 'https://github.com/some-fork/kage/issues/9' },
+      system: { version: '0.4.6 abc1234', system: 'linux x64' }, perDay: o.perDay ?? 3, names: () => ['Sam Lee'],
+    }
+    const s = setup({ report, approve: o.noCard ? undefined : async (_t, description, input) => { cards.push({ description, input }); return o.yes ?? true } })
+    s.t.onTask(s.task())
+    s.t.onTask({ ...s.task({ thread_ts: '7.7' }), agent: { app: 'ATEST1' } })
+    s.t.onTask(s.task({ fromOwner: false, thread_ts: '8.8' }))
+    return { s, cards, filed, call: (thread_ts = '5.5') => s.call('report_issue', { channel: 'C1', thread_ts, ...issue }) }
+  }
+  test('on a yes it files the scrubbed body with gh, and the card showed that exact body', async () => {
+    const t = run()
+    const r = await t.call()
+    assert.equal(r.isError, undefined)
+    assert.match(r.text, /issues\/9/)
+    assert.equal(t.cards.length, 1)
+    const sent = t.filed[0]!
+    assert.deepEqual([sent.repo, sent.title, sent.labels], ['some-fork/kage', 'Reply failed for [name]', ['bug', 'from-agent']])
+    assert.equal(t.cards[0]!.input.body, sent.body)
+    assert.match(t.cards[0]!.description, /some-fork\/kage/)
+    const shown = JSON.stringify(t.cards[0]) + sent.body + sent.title
+    for (const leak of ['sam@example.com', '/Users/sam', 'Sam']) assert.equal(shown.includes(leak), false, leak)
+  })
+  test('a no sends nothing, and gh signed out gives a prefilled link to open', async () => {
+    const no = run({ yes: false })
+    assert.equal((await no.call()).isError, true)
+    assert.deepEqual(no.filed, [])
+    const out = run({ fails: true })
+    const r = await out.call()
+    assert.equal(r.isError, undefined)
+    assert.match(r.text, /https:\/\/github\.com\/some-fork\/kage\/issues\/new\?template=agent-report\.yml/)
+  })
+  test("a teammate's task asks the owner too, an agent's task never files, and no card route or repo files nothing", async () => {
+    const t = run()
+    assert.equal((await t.call('8.8')).isError, undefined)
+    assert.equal(t.cards.length, 1)
+    assert.equal((await t.call('7.7')).isError, true)
+    assert.equal(t.cards.length, 1)
+    for (const o of [{ noCard: true }, { repo: undefined }]) {
+      const n = run(o)
+      assert.equal((await n.call()).isError, true, JSON.stringify(o))
+      assert.deepEqual(n.filed, [], JSON.stringify(o))
+    }
+  })
+  test('at most perDay filings a day, and a denied one does not count', async () => {
+    const t = run({ perDay: 1 })
+    await t.call()
+    const r = await t.call()
+    assert.equal(r.isError, true)
+    assert.match(r.text, /1 a day/)
+    assert.equal(t.filed.length, 1)
+    const d = run({ perDay: 1, yes: false })
+    await d.call()
+    await d.call()
+    assert.equal(d.cards.length, 2)
+  })
+  test('a hub with reporting off gives no tool', () => {
+    assert.equal(setup().t.tools.some(x => x.name === 'report_issue'), false)
   })
 })
