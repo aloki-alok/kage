@@ -45,12 +45,13 @@ async function setup(o: { provider?: 'twilio' | 'telnyx'; perHour?: number; perM
     return fetch(`http://127.0.0.1:${port}/sms`, { method: 'POST', body: raw, headers: { 'content-type': 'application/json', 'telnyx-timestamp': String(at),
       'telnyx-signature-ed25519': sign(null, Buffer.from(`${at}|${raw}`), telnyxKeys.privateKey).toString('base64') } })
   }
-  const events = (body: unknown, o: { sig?: string; hash?: string | null } = {}) => {
+  const events = (body: unknown, o: { sig?: string; hash?: string | null; path?: string } = {}) => {
     const raw = JSON.stringify(body)
     const hash = o.hash === undefined ? createHash('sha256').update(raw).digest('hex') : o.hash
     const query = hash === null ? '' : `?bodySHA256=${hash}`
-    return fetch(`http://127.0.0.1:${port}/sms/events${query}`, { method: 'POST', body: raw, headers: { 'content-type': 'application/json',
-      'x-twilio-signature': o.sig ?? createHmac('sha1', TOKEN).update(`${URL_}/events${query}`).digest('base64') } })
+    const path = o.path ?? '/sms/events'
+    return fetch(`http://127.0.0.1:${port}${path}${query}`, { method: 'POST', body: raw, headers: { 'content-type': 'application/json',
+      'x-twilio-signature': o.sig ?? createHmac('sha1', TOKEN).update(`${URL_}${path.slice('/sms'.length)}${query}`).digest('base64') } })
   }
   const campaign = (phones = [A, B, C]) => {
     const { id } = store.createCampaign({ name: 'promo', body: 'Sale ends Friday. Reply STOP to opt out.', thread: 'D0TEST1:1.1', phones })
@@ -167,6 +168,14 @@ describe('a text that comes in through Twilio Event Streams', () => {
       await t.events([received('SM0EV4', 'hello')])
       await t.events([received('SM0EV4', 'hello')])
       assert.equal(t.tasks.length, 1)
+    } finally { t.sms.close() }
+  })
+  test('a signed post to a path that only starts with the Event Streams path gets 404', async () => {
+    const t = await setup()
+    try {
+      assert.equal((await t.events([received('SM0EV6', 'hi')], { path: '/sms/events/x' })).status, 404)
+      assert.equal((await t.events([received('SM0EV6', 'hi')], { path: '/sms/eventsX' })).status, 404)
+      assert.equal(t.tasks.length, 0)
     } finally { t.sms.close() }
   })
   test('a Telnyx install has no Event Streams route', async () => {
