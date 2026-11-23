@@ -64,3 +64,25 @@ test("today's filings count toward the daily cap, and a denied or capped one doe
   ].map(r => r.join('\t')).join('\n')
   assert.equal(reportsToday(rows, '2026-11-24'), 2)
 })
+
+test('the scrub also takes app tokens, bearer tokens, channel names, links, phone numbers, single quotes, Windows paths and names with accents', () => {
+  const text = [
+    'token xapp-1-A0TEST-123-abcdef and Bearer abcdefghijklmnopqrstuvwxyzABCDEF',
+    'posted in #customer-acme and <#C0TEST1234|customer-acme>',
+    'opened https://acme.com/reset?token=abc123',
+    'called +1 415 555 0134',
+    "she said 'ship it tonight' then",
+    'C:\\Users\\zoe\\kage failed for Zoë',
+  ].join('\n')
+  const out = scrubReport({ kind: 'bug', title: 't', what: text, expected: 'e' }, ['Zoë']).what
+  for (const leak of ['xapp-', 'abcdefghijklmnop', 'customer-acme', 'acme.com', 'token=abc', '555 0134', 'ship it tonight', 'zoe', 'Zoë']) assert.equal(out.includes(leak), false, `${leak} in ${out}`)
+})
+
+test('the scrub leaves capital words and plain apostrophes alone', () => {
+  const r = scrubReport({ kind: 'bug', title: 'ATTACHMENTS do not upload', what: "the users' guide and the owners' list", expected: 'e' }, [])
+  assert.deepEqual([r.title, r.what], ['ATTACHMENTS do not upload', "the users' guide and the owners' list"])
+})
+
+test('a remote with credentials in it still names its repo', () => {
+  assert.equal(repoFromRemote('https://x-access-token:abc@github.com/some-fork/kage.git'), 'some-fork/kage')
+})

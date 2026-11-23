@@ -3,7 +3,7 @@ export type IssueReport = { kind: IssueKind; title: string; what: string; expect
 export type IssueSystem = { version: string; system: string }
 
 const REPO = /^[\w.-]+\/[\w.-]+$/
-const REMOTE = /^(?:https:\/\/github\.com\/|git@github\.com:|ssh:\/\/git@github\.com\/)([\w.-]+\/[\w.-]+?)(?:\.git)?\/?$/
+const REMOTE = /^(?:https:\/\/(?:[^@/\s]+@)?github\.com\/|git@github\.com:|ssh:\/\/git@github\.com\/)([\w.-]+\/[\w.-]+?)(?:\.git)?\/?$/
 
 export function repoFromRemote(remote: string, setting?: string): string | undefined {
   if (setting !== undefined) return REPO.test(setting) ? setting : undefined
@@ -11,18 +11,28 @@ export function repoFromRemote(remote: string, setting?: string): string | undef
 }
 
 const SCRUBS: [RegExp, string][] = [
-  [/\b(?:xox[abposr]-[\w-]+|gh[pousr]_\w{20,}|github_pat_\w{20,}|sk-[\w-]{20,}|AKIA[0-9A-Z]{16})/g, '[token]'],
+  [/\b(?:xox[abposr]-[\w-]+|xapp-[\w-]+|gh[pousr]_\w{20,}|github_pat_\w{20,}|sk-[\w-]{20,}|AKIA[0-9A-Z]{16})/g, '[token]'],
+  [/\bBearer\s+[\w.~+/=-]{8,}/gi, 'Bearer [token]'],
+  [/<#[A-Z0-9]+(?:\|[^>]*)?>/g, '[channel]'],
+  [/<@[A-Z0-9]+(?:\|[^>]*)?>/g, '[person]'],
+  [/https?:\/\/[^\s<>|]+/g, '[link]'],
   [/[\w.+-]+@[\w-]+(?:\.[\w-]+)+/g, '[email]'],
+  [/(?<![\w-])#[a-z0-9][\w-]*/gi, '[channel]'],
   [/\/(?:Users|home)\/[^/\s]+/g, '~'],
-  [/\b[UCDGWAT][0-9A-Z]{8,}\b/g, '[id]'],
+  [/\b[A-Z]:\\(?:Users|home)\\[^\\\s]+/gi, '~'],
+  [/\b[UCDGWAT](?=[0-9A-Z]*\d)[0-9A-Z]{8,}\b/g, '[id]'],
   [/\b(?:\d{1,3}\.){3}\d{1,3}\b/g, '[address]'],
+  [/\+?\d[\d\s().-]{7,}\d/g, '[number]'],
   [/\b(?:[a-z0-9-]+\.){2,}[a-z]{2,}\b/gi, '[host]'],
   [/["“][^"”\n]{3,}["”]/g, '[quote]'],
+  [/(?<!\w)['‘][^'’\n]{3,}['’](?!\w)/g, '[quote]'],
 ]
+
+const escaped = (n: string) => n.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
 
 function scrub(text: string, names: string[]): string {
   let out = SCRUBS.reduce((t, [re, to]) => t.replace(re, to), text)
-  for (const n of names.filter(n => n.trim().length > 1)) out = out.replace(new RegExp(`\\b${n.trim().replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`, 'gi'), '[name]')
+  for (const n of names.filter(n => n.trim().length > 1)) out = out.replace(new RegExp(`(?<![\\p{L}\\p{N}_])${escaped(n.trim())}(?![\\p{L}\\p{N}_])`, 'giu'), '[name]')
   return out.trim()
 }
 

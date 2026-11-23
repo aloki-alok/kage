@@ -2151,7 +2151,27 @@ describe("report_issue: a session files a bug or an idea to the Kage repo, on th
     await d.call()
     assert.equal(d.cards.length, 2)
   })
-  test('a hub with reporting off gives no tool', () => {
+  test('a hub with reporting off, a kagelet or a dream gives no tool', () => {
     assert.equal(setup().t.tools.some(x => x.name === 'report_issue'), false)
+    const report = { repo: async () => 'a/b', file: async () => 'u', system: { version: 'v', system: 's' }, perDay: 3 }
+    for (const o of [{ kagelet: 'watch' }, { dreaming: 'watch' }, { dreamLessons: () => '' }]) assert.equal(setup({ ...o, report }).t.tools.some(x => x.name === 'report_issue'), false, JSON.stringify(o))
+  })
+  test('a voice call never files, and the ledger keeps the outcome and the repo, never the text', async () => {
+    const t = run()
+    t.s.t.onTask(t.s.task({ channel: 'voice', thread_ts: 'voice:c1' }))
+    assert.equal((await t.s.call('report_issue', { channel: 'voice', thread_ts: 'voice:c1', ...issue })).isError, true)
+    await t.call()
+    const out = run({ fails: true })
+    await out.call()
+    const rows = (l: string) => l.split('\n').filter(Boolean).map(r => r.split('\t').slice(1))
+    assert.deepEqual(rows(t.s.ledgers.text('issue-reports')), [['C1:5.5', 'bug', 'filed', 'some-fork/kage', 'https://github.com/some-fork/kage/issues/9']])
+    assert.deepEqual(rows(out.s.ledgers.text('issue-reports')), [['C1:5.5', 'bug', 'link', 'some-fork/kage', '']])
+  })
+  test('a body too long for the card is refused before the card, so the owner never approves a cut preview', async () => {
+    const t = run()
+    const r = await t.s.call('report_issue', { channel: 'C1', thread_ts: '5.5', ...issue, what: 'x'.repeat(2500) })
+    assert.equal(r.isError, true)
+    assert.match(r.text, /shorten/i)
+    assert.equal(t.cards.length, 0)
   })
 })

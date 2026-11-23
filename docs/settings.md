@@ -146,7 +146,7 @@ Each night, while every session is quiet, Kage reads the day's threads for lesso
 
 ## Reports to the Kage repo
 
-A session can file a bug, an idea or feedback about Kage itself to the GitHub repo of this Kage checkout, the `origin` remote, so a fork files to the fork. Kage removes names, Slack ids, emails, home paths, tokens, addresses, hostnames and quotes first. Then you get a card with the exact title and body, and nothing is sent without your yes. A teammate's task asks you the same way, and an agent's task never files. If `gh` is signed in, Kage files the issue and posts its link. If not, it posts a prefilled link that you open and submit.
+A session can file a bug, an idea or feedback about Kage itself to the GitHub repo of this Kage checkout, the `origin` remote, so a fork files to the fork. Kage removes names it knows, Slack ids, mentions, channel names, links, emails, phone numbers, home paths, tokens, addresses, hostnames and quotes first, and refuses a body over 2,000 characters so the card shows all of it. Then you get a card with the exact title and body, and nothing is sent without your yes. A teammate's task asks you the same way, and an agent's task never files. If `gh` is signed in, Kage files the issue and posts its link. If not, it posts a prefilled link that you open and submit.
 
 | Setting | Default | Effect |
 |---|---|---|

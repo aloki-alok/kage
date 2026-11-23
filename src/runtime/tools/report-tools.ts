@@ -10,31 +10,34 @@ export type SessionReport = {
   names?: () => string[]
 }
 
+const MAX_BODY = 2000
+
 const namesOf = (c: ToolContext, r: SessionReport) => {
   const known = [...Object.values(c.names), ...[...c.askers.values()].flatMap(a => a ? [a.name] : []), ...r.names?.() ?? []]
   return [...new Set(known.flatMap(n => [n, ...n.split(/\s+/)]))]
 }
 
 async function report(c: ToolContext, r: SessionReport, a: IssueReport & { channel: string; thread_ts: string }): Promise<Result> {
-  const key = `${a.channel}:${a.thread_ts}`, log = (outcome: string, url = '') => c.append('issue-reports', [key, a.kind, outcome, url])
+  const key = `${a.channel}:${a.thread_ts}`, log = (outcome: string, repo = '', url = '') => c.append('issue-reports', [key, a.kind, outcome, repo, url])
   if (!c.ownerTask.has(key) || c.agents.get(key) || a.channel === 'voice') return { isError: true, text: "refused: an agent's task or a voice call never files an issue" }
   if (!c.o.approve) return { isError: true, text: 'refused: filing needs the owner\'s yes on a card, and this session cannot show one' }
   if (reportsToday(c.ledger('issue-reports'), new Date().toISOString().slice(0, 10)) >= r.perDay) { log('capped'); return { isError: true, text: `refused: this install files at most ${r.perDay} a day (report.perDay)` } }
   const repo = await r.repo()
   if (!repo) return { isError: true, text: 'refused: no GitHub repo found for this Kage checkout. Set report.repo.' }
   const clean = scrubReport(a, namesOf(c, r)), { labels, body } = issueBody(clean, r.system)
+  if (body.length > MAX_BODY) return { isError: true, text: `refused: the body is ${body.length} characters. Shorten it to under ${MAX_BODY}, so the owner's card shows all of it.` }
   if (!await c.o.approve('report_issue', `File this ${clean.kind} to ${repo}. It holds only what you see here.\n*${clean.title}*\n${body}`, { repo, title: clean.title, body })) {
-    log('denied')
+    log('denied', repo)
     return { isError: true, text: 'The owner said no. Nothing was sent.' }
   }
   try {
     const url = await r.file(repo, clean.title, body, labels)
-    log('filed', url)
+    log('filed', repo, url)
     c.o.event?.('tool', `report_issue ${clean.kind} filed`)
     return { text: `Filed: ${url}. Post this link in the thread in one line.` }
   } catch {
     const link = issueLink(repo, clean, r.system)
-    log('link', link)
+    log('link', repo)
     c.o.event?.('tool', `report_issue ${clean.kind} link`)
     return { text: `gh could not file it here. Post this link in the thread in one line, for the owner to open and submit: ${link}` }
   }
