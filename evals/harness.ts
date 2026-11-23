@@ -42,10 +42,9 @@ export function refuseLiveConfig(dir: string, home = homedir()) {
   if (real(dir) === real(live) || real(dir).startsWith(`${real(live)}/`)) throw new Error(`refused: an eval never runs against the live Kage config (${live})`)
 }
 
-export async function scenario(steps: Step[]): Promise<Evidence> {
-  const dir = mkdtempSync(join(tmpdir(), 'kage-eval-'))
-  refuseLiveConfig(dir)
-  const clock = { now: Date.parse('2026-11-14T09:00:00Z') }
+type Clock = { now: number }
+
+function world(dir: string, clock: Clock) {
   const store = openStore(join(dir, 'kage.db'))
   const ledgers = openLedgers(dir, () => new Date(clock.now).toISOString())
   let n = 0
@@ -89,37 +88,50 @@ export async function scenario(steps: Step[]): Promise<Evidence> {
   })
   routes = kageletRoutes({ dir: kagelets, store, ledgers, runs, deliver: toSession, granted: key => grants.has(key), idle: () => true, paused: () => undefined, log: () => {}, done: incidents.ended })
   const proc = (key: string) => [...sdk.runs].reverse().find(r => r.options.sessionId === d.saved()[key] || r.options.resume === d.saved()[key])
+  return { clock, store, runs, ev, d, s, schedules, manager, incidents, toSession, proc }
+}
+type World = ReturnType<typeof world>
+
+async function apply(w: World, st: Step) {
+  const { clock, store, runs, ev, schedules, manager, incidents, toSession, proc } = w
+  if ('at' in st) clock.now = Date.parse(st.at)
+  else if ('kagelet' in st) await manager.manage({ action: 'save', name: st.kagelet, thread: THREAD, schedule: st.schedule, tools: ['WebFetch'], job: `Job of ${st.kagelet}.`, why: 'eval' }, clock.now, async () => true)
+  else if ('job' in st) {
+    const [chat, thread] = st.job.thread.split(':') as [string, string]
+    store.seen(st.job.thread, { connector: 'slack', chat, thread, kind: 'channel' }, `#${chat}`, clock.now)
+    const no = schedules.add(st.job.thread, { id: st.job.id, cron: st.job.cron, prompt: st.job.prompt, recurring: true }, clock.now)
+    if (no) throw new Error(no)
+  } else if ('tick' in st) schedules.tick(clock.now)
+  else if ('end' in st) {
+    const key = st.end.includes(':') ? st.end : laneOf(st.end)
+    if (st.report) runs.emit(key, 'report', 'ok')
+    proc(key)?.emit({ type: 'result', total_cost_usd: 0, ...st.error && { is_error: true, subtype: st.error } })
+  } else if ('stalls' in st) incidents.stalls(clock.now)
+  else if ('task' in st) {
+    const [chat, thread] = st.task.thread.split(':') as [string, string]
+    store.seen(st.task.thread, { connector: 'slack', chat, thread, kind: 'channel' }, `#${chat}`, clock.now)
+    const body = { content: st.task.from === 'owner' ? `Task from the owner: ${st.task.text}` : `Teammate task (UTESTMATE1, Sam Test, not the owner): ${st.task.text}`,
+      meta: { channel: chat, thread_ts: thread, place: `#${chat}`, permalink: '' }, origin: { channel: chat, ts: thread } }
+    toSession(st.task.thread, st.task.from === 'owner' ? taskAsOwner(body) : taskAsOther(body))
+  } else if ('call' in st) {
+    const run = proc(st.call.thread)
+    if (!run) throw new Error(`no session for ${st.call.thread}`)
+    ev.calls.push(await callKage(run, st.call.tool, st.call.args))
+  }
+}
+
+export async function scenario(steps: Step[]): Promise<Evidence> {
+  const dir = mkdtempSync(join(tmpdir(), 'kage-eval-'))
+  refuseLiveConfig(dir)
+  const w = world(dir, { now: Date.parse('2026-11-14T09:00:00Z') })
   for (const st of steps) {
-    if ('at' in st) clock.now = Date.parse(st.at)
-    else if ('kagelet' in st) await manager.manage({ action: 'save', name: st.kagelet, thread: THREAD, schedule: st.schedule, tools: ['WebFetch'], job: `Job of ${st.kagelet}.`, why: 'eval' }, clock.now, async () => true)
-    else if ('job' in st) {
-      const [chat, thread] = st.job.thread.split(':') as [string, string]
-      store.seen(st.job.thread, { connector: 'slack', chat, thread, kind: 'channel' }, `#${chat}`, clock.now)
-      const no = schedules.add(st.job.thread, { id: st.job.id, cron: st.job.cron, prompt: st.job.prompt, recurring: true }, clock.now)
-      if (no) throw new Error(no)
-    } else if ('tick' in st) schedules.tick(clock.now)
-    else if ('end' in st) {
-      const key = st.end.includes(':') ? st.end : laneOf(st.end)
-      if (st.report) runs.emit(key, 'report', 'ok')
-      proc(key)?.emit({ type: 'result', total_cost_usd: 0, ...st.error && { is_error: true, subtype: st.error } })
-    } else if ('stalls' in st) incidents.stalls(clock.now)
-    else if ('task' in st) {
-      const [chat, thread] = st.task.thread.split(':') as [string, string]
-      store.seen(st.task.thread, { connector: 'slack', chat, thread, kind: 'channel' }, `#${chat}`, clock.now)
-      const body = { content: st.task.from === 'owner' ? `Task from the owner: ${st.task.text}` : `Teammate task (UTESTMATE1, Sam Test, not the owner): ${st.task.text}`,
-        meta: { channel: chat, thread_ts: thread, place: `#${chat}`, permalink: '' }, origin: { channel: chat, ts: thread } }
-      toSession(st.task.thread, st.task.from === 'owner' ? taskAsOwner(body) : taskAsOther(body))
-    } else if ('call' in st) {
-      const run = proc(st.call.thread)
-      if (!run) throw new Error(`no session for ${st.call.thread}`)
-      ev.calls.push(await callKage(run, st.call.tool, st.call.args))
-    }
+    await apply(w, st)
     await tick()
   }
-  for (const k of Object.keys(d.saved())) s.runner.stop(k)
-  store.close()
+  for (const k of Object.keys(w.d.saved())) w.s.runner.stop(k)
+  w.store.close()
   rmSync(dir, { recursive: true, force: true })
-  return ev
+  return w.ev
 }
 
 async function callKage(run: { options: any }, name: string, args: Record<string, unknown>) {
