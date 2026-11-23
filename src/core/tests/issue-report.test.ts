@@ -86,3 +86,13 @@ test('the scrub leaves capital words and plain apostrophes alone', () => {
 test('a remote with credentials in it still names its repo', () => {
   assert.equal(repoFromRemote('https://x-access-token:abc@github.com/some-fork/kage.git'), 'some-fork/kage')
 })
+
+test('the scrub keeps what a bug report needs: issue refs, dates, versions, file names, identifiers and long numbers', () => {
+  const kept = 'issue #541 and PR #12 on 2026-11-24 at 10:30:45, kage 0.4.6 on node 22.11.0, src/core/dream.test.ts:123 and setup.sh, call fooBar.baz.qux() at 1732400000000, pid 123456789, hash abcdef1234567890'
+  assert.equal(scrubReport({ kind: 'bug', title: 't', what: kept, expected: 'e' }, []).what, kept)
+})
+
+test('a host with two labels, and phone numbers in their usual shapes, are scrubbed', () => {
+  const out = scrubReport({ kind: 'bug', title: 't', what: 'sent from example.com and www.acme.io/path, call (415) 555-0134 or +44 20 7946 0958', expected: 'e' }, []).what
+  for (const leak of ['example.com', 'acme.io', '555-0134', '7946']) assert.equal(out.includes(leak), false, `${leak} in ${out}`)
+})
