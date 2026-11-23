@@ -133,10 +133,11 @@ test('a job lane is the thread key plus the job id, and its thread is found by s
 
 test('a job lane runs on harness.jobModel, or the sessions\' own model when unset; any other key asks its own rule', () => {
   const other = (k: string) => `other:${k}`
-  assert.equal(modelFor('C1:5.5#side-job-j1', 'haiku', other), 'haiku')
-  assert.equal(modelFor('C1:5.5#side-job-j1', undefined, other), undefined)
-  assert.equal(modelFor('C1:5.5#side-job-j1', '', other), undefined)
-  assert.equal(modelFor('C1:5.5', 'haiku', other), 'other:C1:5.5')
+  const none = () => undefined
+  assert.equal(modelFor('C1:5.5#side-job-j1', 'haiku', other, none), 'haiku')
+  assert.equal(modelFor('C1:5.5#side-job-j1', undefined, other, none), undefined)
+  assert.equal(modelFor('C1:5.5#side-job-j1', '', other, none), undefined)
+  assert.equal(modelFor('C1:5.5', 'haiku', other, none), 'other:C1:5.5')
 })
 
 test('a job lane runs on its own schedule\'s model first, then harness.jobModel', () => {

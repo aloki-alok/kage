@@ -26,7 +26,7 @@ export function slackConversation(m: { channel: string; ts: string; thread_ts?: 
 export const jobLane = (key: string, id: string) => key.includes('#') ? key : `${key}#side-job-${id}`
 export const isJobLane = (key: string) => key.includes('#side-job-')
 export const threadOfJobLane = (key: string) => key.replace(/#side-job-[^#]*$/, '')
-export const modelFor = (key: string, jobModel: string | null | undefined, other: (key: string) => string | undefined, ofJob: (id: string) => string | undefined = () => undefined) =>
+export const modelFor = (key: string, jobModel: string | null | undefined, other: (key: string) => string | undefined, ofJob: (id: string) => string | undefined) =>
   isJobLane(key) ? ofJob(key.split('#side-job-')[1]!) || jobModel || undefined : other(key)
 
 export function sessionKey(c: Conversation, o: { agent?: string; lane?: Lane } = {}): string {

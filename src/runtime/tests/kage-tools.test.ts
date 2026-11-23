@@ -214,6 +214,14 @@ describe("a session's Kage tools", () => {
     await s.call('schedule', { cron: '*/30 * * * *', prompt: 'plain' })
     assert.equal('model' in s.jobs[1], false)
   })
+  test('a teammate\'s task may only move a job to haiku', async () => {
+    const s = setup()
+    s.t.onTask(s.task({ fromOwner: false }))
+    assert.match((await s.call('schedule', { cron: '*/15 * * * *', prompt: 'p', model: 'opus' })).text, /only move to haiku/)
+    assert.equal(s.jobs.length, 0)
+    assert.equal((await s.call('schedule', { cron: '*/15 * * * *', prompt: 'p', model: 'haiku' })).isError, undefined)
+    assert.equal(s.jobs[0].model, 'haiku')
+  })
   test('a schedule has exactly one trigger, a probe only on a clock, and a twin with both of its prompts', async () => {
     const s = setup()
     s.t.onTask(s.task())

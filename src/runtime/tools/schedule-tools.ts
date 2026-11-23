@@ -106,6 +106,7 @@ function scheduleRefusal(c: ToolContext, a: ScheduleArgs, args: Record<string, u
   if (a.shadow_of && !c.ownerOnly(args)) return 'only the owner\'s own task may make a twin: it removes the job it shadows by itself once proven'
   if (+!!a.cron + +!!a.on_channel + +!!a.hook > 1) return 'a job has one trigger: cron, on_channel or hook'
   if (a.probe && !a.cron) return 'a probe needs a clock cron'
+  if (a.model && a.model !== 'haiku' && !c.ownerOnly(args)) return 'a teammate\'s job may only move to haiku, a cheaper model. Another model needs the owner\'s own task'
   return undefined
 }
 
