@@ -11,13 +11,13 @@ const exe = (path: string, text: string) => { writeFileSync(path, text); chmodSy
 function world() {
   const root = mkdtempSync(join(tmpdir(), 'kage-setup-'))
   const dir = join(root, 'code'), conf = join(root, 'conf'), bin = join(root, 'bin'), home = join(root, 'home')
-  for (const d of [dir, conf, bin, home, join(dir, 'cli'), join(dir, 'core')]) mkdirSync(d, { recursive: true })
+  for (const d of [dir, conf, bin, home, join(dir, 'src', 'cli'), join(dir, 'src', 'core')]) mkdirSync(d, { recursive: true })
   copyFileSync(join(REPO, 'setup.sh'), join(dir, 'setup.sh'))
-  for (const f of ['manifest.ts', 'config.ts', 'home.ts', 'setup-flow.ts']) copyFileSync(join(REPO, 'cli', f), join(dir, 'cli', f))
-  mkdirSync(join(dir, 'runtime'))
-  for (const f of ['config-files.ts', 'hub-client.ts']) copyFileSync(join(REPO, 'runtime', f), join(dir, 'runtime', f))
+  for (const f of ['manifest.ts', 'config.ts', 'home.ts', 'setup-flow.ts']) copyFileSync(join(REPO, 'src', 'cli', f), join(dir, 'src', 'cli', f))
+  mkdirSync(join(dir, 'src', 'runtime'), { recursive: true })
+  for (const f of ['config-files.ts', 'hub-client.ts']) copyFileSync(join(REPO, 'src', 'runtime', f), join(dir, 'src', 'runtime', f))
   symlinkSync(join(REPO, 'node_modules'), join(dir, 'node_modules'))
-  for (const f of readdirSync(join(REPO, 'core')).filter(f => f.endsWith('.ts'))) cpSync(join(REPO, 'core', f), join(dir, 'core', f))
+  for (const f of readdirSync(join(REPO, 'src', 'core')).filter(f => f.endsWith('.ts'))) cpSync(join(REPO, 'src', 'core', f), join(dir, 'src', 'core', f))
   const env = join(conf, 'env')
   exe(join(dir, 'service.sh'), `#!/usr/bin/env bash
 case "$1" in
@@ -90,7 +90,7 @@ describe('kage save writes the tokens to secrets.json, private, and keeps the ot
 async function updateWorld(lockChanges: boolean, hubUp = true) {
   const w = world()
   const ops = join(w.root, 'ops')
-  writeFileSync(join(w.dir, 'cli', 'quiet.ts'), `import { appendFileSync } from 'node:fs'\nappendFileSync(${JSON.stringify(ops)}, 'drain\\n')\n`)
+  writeFileSync(join(w.dir, 'src', 'cli', 'quiet.ts'), `import { appendFileSync } from 'node:fs'\nappendFileSync(${JSON.stringify(ops)}, 'drain\\n')\n`)
   exe(join(w.dir, 'service.sh'), `#!/usr/bin/env bash
 case "$1" in
   installed) true ;;

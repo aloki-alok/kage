@@ -96,7 +96,7 @@ Only a listed agent's post goes to Jev, at most its first 4,000 characters, with
 
 With `harness.sandbox` on, a session's shell runs in an OS sandbox. `aws ssm start-session` makes its API call through the sandbox's proxy, then starts `session-manager-plugin`, which opens its own websocket and ignores that proxy. So it hangs inside a session. Kage fixes this for every host, account and region with no setup: whatever `ssh` does in your terminal also works in an owner thread, and `~/.ssh/config` needs nothing from Kage.
 
-Only an owner-only Slack thread gets a relay token (`KAGE_SSM_TOKEN`), the socket path (`KAGE_SSM_SOCK`) and a PATH that starts with Kage's own folder `cli/ssm-plugin-shim`. That folder holds a stand-in `session-manager-plugin`. The aws CLI runs it, and it sends aws's arguments to the hub over a unix socket (`ssm.sock` in the config folder, mode 600). Teammate, agent, email, WhatsApp, voice and kagelet sessions get none, and the hub refuses them.
+Only an owner-only Slack thread gets a relay token (`KAGE_SSM_TOKEN`), the socket path (`KAGE_SSM_SOCK`) and a PATH that starts with Kage's own folder `src/cli/ssm-plugin-shim`. That folder holds a stand-in `session-manager-plugin`. The aws CLI runs it, and it sends aws's arguments to the hub over a unix socket (`ssm.sock` in the config folder, mode 600). Teammate, agent, email, WhatsApp, voice and kagelet sessions get none, and the hub refuses them.
 
 The hub then runs the real `session-manager-plugin` outside the sandbox with exactly those arguments, and passes the bytes both ways. It runs only a `StartSession` call whose stream URL is `wss://ssmmessages.<region>.amazonaws.com` (or the `.com.cn` host) and whose endpoint is `https://ssm.<region>.amazonaws.com`. It allows 8 relays at once. It logs the region, the instance id and the exit of each, never the token, the stream URL or the traffic. The hub finds the real plugin once at start in its own PATH, so install it where the hub's PATH sees it. `kage doctor` notes when it is missing. The stand-in needs `node` on the session's PATH.
 
@@ -328,6 +328,15 @@ US carriers block texts from a number that has no registered 10DLC brand and cam
 | `connectors.sms.telnyxPublicKey` | none | Telnyx only: the public key that signs its webhooks (Telnyx console, Keys and Credentials). |
 | `twilioAuthToken` | none | secrets.json. Twilio only: the auth token. It sends texts and checks Twilio's webhook signature. |
 | `telnyxApiKey` | none | secrets.json. Telnyx only: the API key that sends texts. |
+
+### Twilio Event Streams: texts to a number whose webhook points elsewhere
+
+A Twilio number in a Messaging Service sends its incoming texts to the service's webhook, not to Kage. Twilio Event Streams sends a copy of each incoming text to a second address, and the service's own webhook keeps working.
+
+1. In the Twilio console, under Event Streams, create a Webhook sink with the destination `<publicUrl>/events` and the method POST.
+2. Subscribe that sink to `com.twilio.messaging.inbound-message.received`, schema version 1.
+
+Kage checks the signature and the body hash of each post and refuses one that fails. The sink receives the texts to every number on the account, and Kage drops each one not sent to `connectors.sms.from`. A text that reaches Kage through both the webhook and Event Streams starts one task.
 
 ## Slash commands
 

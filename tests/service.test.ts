@@ -19,13 +19,13 @@ function kageCopy() {
   const dir = join(root, 'code'), conf = join(root, 'conf'), work = join(root, 'work')
   for (const d of [dir, conf, work, join(dir, 'node_modules')]) mkdirSync(d, { recursive: true })
   for (const f of ['hub.ts', 'service.sh']) copyFileSync(join(REPO, f), join(dir, f))
-  mkdirSync(join(dir, 'runtime'))
-  mkdirSync(join(dir, 'cli'))
-  for (const f of ['hub-log.ts', 'config-files.ts', 'hold-keys.ts', 'key-proxy.ts', 'hub-client.ts']) copyFileSync(join(REPO, 'runtime', f), join(dir, 'runtime', f))
-  for (const f of ['config.ts', 'home.ts']) copyFileSync(join(REPO, 'cli', f), join(dir, 'cli', f))
-  cpSync(join(REPO, 'core'), join(dir, 'core'), { recursive: true })
+  mkdirSync(join(dir, 'src', 'runtime'), { recursive: true })
+  mkdirSync(join(dir, 'src', 'cli'), { recursive: true })
+  for (const f of ['hub-log.ts', 'config-files.ts', 'hold-keys.ts', 'key-proxy.ts', 'hub-client.ts']) copyFileSync(join(REPO, 'src', 'runtime', f), join(dir, 'src', 'runtime', f))
+  for (const f of ['config.ts', 'home.ts']) copyFileSync(join(REPO, 'src', 'cli', f), join(dir, 'src', 'cli', f))
+  cpSync(join(REPO, 'src', 'core'), join(dir, 'src', 'core'), { recursive: true })
   symlinkSync(join(REPO, 'node_modules/zod'), join(dir, 'node_modules/zod'))
-  mkdirSync(join(dir, 'hub'), { recursive: true }); writeFileSync(join(dir, 'hub', 'router.ts'), FAKE_HUB)
+  mkdirSync(join(dir, 'src', 'hub'), { recursive: true }); writeFileSync(join(dir, 'src', 'hub', 'router.ts'), FAKE_HUB)
   writeFileSync(join(dir, 'package-lock.json'), '{}')
   utimesSync(join(dir, 'package-lock.json'), new Date(0), new Date(0))
   writeFileSync(join(dir, 'node_modules', '.package-lock.json'), '{}')
@@ -88,7 +88,7 @@ describe('hub.ts: one hub run, with its log, its boot count and a crash-loop DM'
 
   test('a hub that cannot even load (a bad pull) exits 1, and the DM quotes the error, not its stack frames', async () => {
     const k = kageCopy()
-    writeFileSync(join(k.dir, 'hub', 'router.ts'), 'this is not ( typescript')
+    writeFileSync(join(k.dir, 'src', 'hub', 'router.ts'), 'this is not ( typescript')
     calls.length = 0
     for (let i = 0; i < 3; i++) assert.equal(await hub(k), 1)
     const text = new URLSearchParams(calls.find(c => c.path === '/chat.postMessage')!.body).get('text')!
@@ -99,7 +99,7 @@ describe('hub.ts: one hub run, with its log, its boot count and a crash-loop DM'
 
   test('a hub whose packages are behind the lock runs npm ci once and exits 75, and the next start loads', async () => {
     const k = kageCopy()
-    writeFileSync(join(k.dir, 'hub', 'router.ts'), `import 'fakepkg'; console.log('loaded after npm ci')`)
+    writeFileSync(join(k.dir, 'src', 'hub', 'router.ts'), `import 'fakepkg'; console.log('loaded after npm ci')`)
     const later = new Date(Date.now() + 5000)
     utimesSync(join(k.dir, 'package-lock.json'), later, later)
     const bin = join(k.root, 'bin')
@@ -134,7 +134,7 @@ describe('hub.ts: one hub run, with its log, its boot count and a crash-loop DM'
 
   test('session.env reaches the hub only when the file is private (600)', async () => {
     const k = kageCopy()
-    writeFileSync(join(k.dir, 'hub', 'router.ts'), `console.log('secret=' + (process.env.TEST_SECRET ?? 'none'))`)
+    writeFileSync(join(k.dir, 'src', 'hub', 'router.ts'), `console.log('secret=' + (process.env.TEST_SECRET ?? 'none'))`)
     writeFileSync(join(k.conf, 'session.env'), 'TEST_SECRET=s3\n', { mode: 0o644 })
     await hub(k)
     chmodSync(join(k.conf, 'session.env'), 0o600)
@@ -145,7 +145,7 @@ describe('hub.ts: one hub run, with its log, its boot count and a crash-loop DM'
 
   test('a Claude token in secrets.json reaches sessions as their login, and an API key cannot override it', async () => {
     const k = kageCopy()
-    writeFileSync(join(k.dir, 'hub', 'router.ts'), `console.log('oauth=' + (process.env.CLAUDE_CODE_OAUTH_TOKEN ?? 'none') + ' api=' + (process.env.ANTHROPIC_API_KEY ?? 'none'))`)
+    writeFileSync(join(k.dir, 'src', 'hub', 'router.ts'), `console.log('oauth=' + (process.env.CLAUDE_CODE_OAUTH_TOKEN ?? 'none') + ' api=' + (process.env.ANTHROPIC_API_KEY ?? 'none'))`)
     await hub(k, { ANTHROPIC_API_KEY: 'sk-fake' })
     const secrets = join(k.conf, 'secrets.json')
     writeFileSync(secrets, JSON.stringify({ ...JSON.parse(readFileSync(secrets, 'utf8')), claudeToken: 'oat-fake' }))
@@ -156,7 +156,7 @@ describe('hub.ts: one hub run, with its log, its boot count and a crash-loop DM'
 
   test('the hub gets the Claude command and the env file path; sessions inherit both', async () => {
     const k = kageCopy()
-    writeFileSync(join(k.dir, 'hub', 'router.ts'), `console.log('claude=' + process.env.KAGE_CLAUDE + ' env=' + process.env.KAGE_ENV)`)
+    writeFileSync(join(k.dir, 'src', 'hub', 'router.ts'), `console.log('claude=' + process.env.KAGE_CLAUDE + ' env=' + process.env.KAGE_ENV)`)
     await hub(k)
     assert.match(logOf(k), /claude=claude --mcp-config .*server\.ts.* --dangerously-load-development-channels server:kage env=.*conf\/env/)
     rmSync(k.root, { recursive: true })
@@ -268,7 +268,7 @@ describe('the hub: one per machine', () => {
     const sock = join(k.conf, 'router.sock')
     const live = net(s => s.on('data', () => s.write('{"type":"board","live":[]}\n'))).listen(sock)
     await new Promise(r => live.once('listening', r))
-    const r = await new Promise<Run>(res => execFile(process.execPath, [join(REPO, 'hub', 'router.ts')], { env: { PATH: process.env.PATH!, HOME: k.root, KAGE_ENV: k.envFile } },
+    const r = await new Promise<Run>(res => execFile(process.execPath, [join(REPO, 'src', 'hub', 'router.ts')], { env: { PATH: process.env.PATH!, HOME: k.root, KAGE_ENV: k.envFile } },
       (e, so, se) => res({ code: e ? (e.code as number) : 0, out: so + se })))
     live.close()
     assert.equal(r.code, 0)
@@ -282,7 +282,7 @@ describe('the hub: one per machine', () => {
     const hung = net(() => {}).listen(join(k.conf, 'router.sock'))
     await new Promise(r => hung.once('listening', r))
     const t0 = Date.now()
-    const r = await new Promise<Run>(res => execFile(process.execPath, [join(REPO, 'hub', 'router.ts')], { env: { PATH: process.env.PATH!, HOME: k.root, KAGE_ENV: k.envFile } },
+    const r = await new Promise<Run>(res => execFile(process.execPath, [join(REPO, 'src', 'hub', 'router.ts')], { env: { PATH: process.env.PATH!, HOME: k.root, KAGE_ENV: k.envFile } },
       (e, so, se) => res({ code: e ? (e.code as number) : 0, out: so + se })))
     hung.close()
     assert.match(r.out, /KAGE_CLAUDE is not set/)
@@ -294,7 +294,7 @@ describe('the hub: one per machine', () => {
 
 describe('the hub lock: one hub even when two start at the same moment', () => {
   const race = (lock: string, n: number) => Promise.all(Array.from({ length: n }, () => new Promise<string>(res =>
-    execFile(process.execPath, ['-e', `import('${join(REPO, 'runtime/hub-lock.ts')}').then(async m => { console.log(await m.hubLock(process.argv[1]) ? 'got' : 'busy'); setTimeout(() => process.exit(0), 1500) })`, lock],
+    execFile(process.execPath, ['-e', `import('${join(REPO, 'src/runtime/hub-lock.ts')}').then(async m => { console.log(await m.hubLock(process.argv[1]) ? 'got' : 'busy'); setTimeout(() => process.exit(0), 1500) })`, lock],
       (_e, so, se) => res(so.trim() || `error: ${se.trim().split('\n')[0]}`)))))
   test('of four started together, exactly one gets it', async () => {
     const k = kageCopy()

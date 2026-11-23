@@ -3,8 +3,8 @@
 # Run it again after you change connectors.whatsapp.wahaUrl or connectors.whatsapp.hookPort. Steps: docs/settings.md, "WhatsApp".
 set -eu
 ROOT=$(cd "$(dirname "$0")/.." && pwd)
-get() { (cd "$ROOT" && node cli/config.ts get "$1" 2>/dev/null) || true; }
-# The defaults match connectors/whatsapp.ts: wahaUrl http://127.0.0.1:3198, hookPort 3199.
+get() { (cd "$ROOT" && node src/cli/config.ts get "$1" 2>/dev/null) || true; }
+# The defaults match src/connectors/whatsapp.ts: wahaUrl http://127.0.0.1:3198, hookPort 3199.
 URL=$(get connectors.whatsapp.wahaUrl)
 WAHA_PORT=$(node -e 'const u=new URL(process.argv[1]);process.stdout.write(u.port||(u.protocol==="https:"?"443":"80"))' "${URL:-http://127.0.0.1:3198}")
 WAHA_HOOK_PORT=$(get connectors.whatsapp.hookPort)

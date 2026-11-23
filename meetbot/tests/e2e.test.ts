@@ -3,7 +3,7 @@ import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import { chromium } from 'playwright-core'
 import { attend, callId, hub, PAGE_JS, type Seg } from '../bot.ts'
-import { connectMeeting } from '../../connectors/meeting.ts'
+import { connectMeeting } from '../../src/connectors/meeting.ts'
 
 const TOKEN = 'test-meeting-token'
 const LINK = 'https://meet.google.com/abc-defg-hij'

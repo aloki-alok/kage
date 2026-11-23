@@ -1,4 +1,4 @@
-import { chatText, checkDream, DREAM_LIMITS, type DreamLesson } from '../../core/dream.ts'
+import { chatText, checkDream, DREAM_LIMITS, type DreamLesson } from '../../src/core/dream.ts'
 
 export type DreamCase = { name: string; threads: Record<string, [string, string][]>; proposals: DreamLesson[]; learned: string[]; never: string[] }
 

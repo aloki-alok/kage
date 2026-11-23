@@ -29,23 +29,23 @@ Every number is a setting with a default (`tripwires.*`, `harness.jobModel`, doc
 
 ## How it is checked
 
-- `core/tests/tripwire.test.ts`: normalize, fingerprint, the wake decision, and the failure ping.
-- `runtime/tests/probes.test.ts`: an edited pinned script is refused, a timeout kills the probe, output is capped, and only the listed environment names reach it.
-- `runtime/tests/channel-watch.test.ts`: matching (bots, regex), attachment text, the catch-up after a gap, and dedupe by ts.
-- `runtime/tests/scheduler.test.ts`: a clock run lands on its job lane, and a watch stays in its thread.
+- `src/core/tests/tripwire.test.ts`: normalize, fingerprint, the wake decision, and the failure ping.
+- `src/runtime/tests/probes.test.ts`: an edited pinned script is refused, a timeout kills the probe, output is capped, and only the listed environment names reach it.
+- `src/runtime/tests/channel-watch.test.ts`: matching (bots, regex), attachment text, the catch-up after a gap, and dedupe by ts.
+- `src/runtime/tests/scheduler.test.ts`: a clock run lands on its job lane, and a watch stays in its thread.
 
 ## More mechanics, fixed in code
 
-- A probe fingerprints stdout only, so a stderr warning cannot wake the job. The first good run records a baseline and wakes nothing. (`core/tripwire.ts`)
-- A last stdout line of `{"wake": true|false, "context": {...}}` decides the wake in place of the fingerprint, and the session gets only the context, quoted as data. Any other last line, a non-boolean wake or a non-object context leaves the fingerprint rule in charge. (#516, `core/tripwire.ts`)
-- Each probe runs with `KAGE_JOB_ID` and `KAGE_JOB_STATE_DIR`, a 0700 folder in the config folder that only the hub's probe run writes (sessions cannot reach it). The scheduler removes a folder once its job is gone. (#516, `runtime/probe-jobs.ts`)
-- A line longer than `lineMax` is never dropped by an ignore regex, because a regex that sees part of it proves nothing. (`core/tripwire.ts`)
-- An ignore pattern that is invalid, too long or nested-repeating never runs. Upgrade path: RE2. (`core/tripwire.ts`)
-- A probe refusal (changed script, unsafe pattern) pings at once, once per distinct refusal. (`core/tripwire.ts`)
-- A pinned script is fixed only if the user cannot swap it. A writable script or folder is never trusted. (`runtime/probes.ts`, `runtime/kagelets/measures.ts`)
-- A watch's cursor moves only on a finished catch-up while a gap is open, because a live post can land before older missed ones. (`runtime/channel-watch.ts`)
-- A capped catch-up keeps the oldest posts and delays the newest, so none are dropped. Slack `ts` compares as decimal parts, not floats. (`runtime/channel-watch.ts`)
-- Posts taken for a job wait until its run has them. A probe run is marked before handing over, so a crash costs one run, never two. (`runtime/job-events.ts`, `runtime/scheduler.ts`)
-- A probe job's note is saved in state first, then posted, so a crash repeats it and never loses it. (`runtime/probe-jobs.ts`)
-- A job taken to another thread keeps owner trust only if the new thread has it. (`runtime/scheduler.ts`)
-- A clock that steps back must not silence a job for hours, so a large step re-runs on catch-up. (`core/cron.ts`)
+- A probe fingerprints stdout only, so a stderr warning cannot wake the job. The first good run records a baseline and wakes nothing. (`src/core/tripwire.ts`)
+- A last stdout line of `{"wake": true|false, "context": {...}}` decides the wake in place of the fingerprint, and the session gets only the context, quoted as data. Any other last line, a non-boolean wake or a non-object context leaves the fingerprint rule in charge. (#516, `src/core/tripwire.ts`)
+- Each probe runs with `KAGE_JOB_ID` and `KAGE_JOB_STATE_DIR`, a 0700 folder in the config folder that only the hub's probe run writes (sessions cannot reach it). The scheduler removes a folder once its job is gone. (#516, `src/runtime/probe-jobs.ts`)
+- A line longer than `lineMax` is never dropped by an ignore regex, because a regex that sees part of it proves nothing. (`src/core/tripwire.ts`)
+- An ignore pattern that is invalid, too long or nested-repeating never runs. Upgrade path: RE2. (`src/core/tripwire.ts`)
+- A probe refusal (changed script, unsafe pattern) pings at once, once per distinct refusal. (`src/core/tripwire.ts`)
+- A pinned script is fixed only if the user cannot swap it. A writable script or folder is never trusted. (`src/runtime/probes.ts`, `src/runtime/kagelets/measures.ts`)
+- A watch's cursor moves only on a finished catch-up while a gap is open, because a live post can land before older missed ones. (`src/runtime/channel-watch.ts`)
+- A capped catch-up keeps the oldest posts and delays the newest, so none are dropped. Slack `ts` compares as decimal parts, not floats. (`src/runtime/channel-watch.ts`)
+- Posts taken for a job wait until its run has them. A probe run is marked before handing over, so a crash costs one run, never two. (`src/runtime/job-events.ts`, `src/runtime/scheduler.ts`)
+- A probe job's note is saved in state first, then posted, so a crash repeats it and never loses it. (`src/runtime/probe-jobs.ts`)
+- A job taken to another thread keeps owner trust only if the new thread has it. (`src/runtime/scheduler.ts`)
+- A clock that steps back must not silence a job for hours, so a large step re-runs on catch-up. (`src/core/cron.ts`)

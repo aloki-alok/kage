@@ -1,4 +1,3 @@
-export type Channel = 'messenger' | 'instagram' | 'facebook_comment'
 export type MetaEvent =
   | { kind: 'message'; channel: 'messenger' | 'instagram'; pageId: string; user: string; id: string; text: string; at: number; adId?: string }
   | { kind: 'echo'; channel: 'messenger' | 'instagram'; pageId: string; user: string; id: string; appId?: string; at: number }

@@ -29,11 +29,11 @@ A scheduled run's asker is its manager, Kage.
 ### Rules
 
 0. **Kage is for the owner and the teammates the owner added. Everyone else talks to kagelets.** Kage holds the owner's write access and prod data, so only the owner and the teammates added with `kage add` reach Kage. Kage opens a kagelet to more people by naming them in its `people:` line. A person named there talks to that kagelet only, inside that kagelet's access, and never reaches Kage through it.
-1. **One instruction text.** Kage and every kagelet read `core/instructions.ts`, with the role named. There is no separate kagelet prompt.
+1. **One instruction text.** Kage and every kagelet read `src/core/instructions.ts`, with the role named. There is no separate kagelet prompt.
 2. **`tools: all`** gives a kagelet Kage's tools behind the hub's action check. Without it, a kagelet keeps its tool list. The tokens file, Kage's code and the kagelet's own `job.md` stay closed by path either way.
-Built so far for a held step no rule or reviewer covers: the owner's card (`runtime/deferred-approvals.ts`), keyed on the command alone, and a yes spent by the kagelet's one retry of it. The owner's `always` also writes an exact `allow:` line for that command (`core/kagelets/kagelet.ts` addAllow), never for an owner-only kind. The owner's no holds that exact step on that thread for `kagelets.denyHoldDays`: a retry is refused with the date and asks nobody, and `kage top` `h` lifts a kagelet's holds (#542).
+Built so far for a held step no rule or reviewer covers: the owner's card (`src/runtime/deferred-approvals.ts`), keyed on the command alone, and a yes spent by the kagelet's one retry of it. The owner's `always` also writes an exact `allow:` line for that command (`src/core/kagelets/kagelet.ts` addAllow), never for an owner-only kind. The owner's no holds that exact step on that thread for `kagelets.denyHoldDays`: a retry is refused with the date and asks nobody, and `kage top` `h` lifts a kagelet's holds (#542).
 
-3. **Always allow.** Any yes can be "always allow", which adds one plain rule line to `job.md`. Built so far: the owner's `allow:` lines, matched by code with no model (`core/held-rules.ts`). Kage's saves keep them and never write one, and a short list of kinds (root, disk erase, recursive permissions, cron, system folders, shutdown, a push to a protected branch) is never covered by a rule. At `kagelets.release` review, a cheap model may also let a low-stakes held kind run (`core/held-review.ts`); prod, customer, money and access kinds never reach it. Known gap, older than the reviewer: a kagelet can write a script, a git hook or a git config line that is not held, and a later reviewed step runs it inside the sandbox. The sandbox, not the hold, bounds that.
+3. **Always allow.** Any yes can be "always allow", which adds one plain rule line to `job.md`. Built so far: the owner's `allow:` lines, matched by code with no model (`src/core/held-rules.ts`). Kage's saves keep them and never write one, and a short list of kinds (root, disk erase, recursive permissions, cron, system folders, shutdown, a push to a protected branch) is never covered by a rule. At `kagelets.release` review, a cheap model may also let a low-stakes held kind run (`src/core/held-review.ts`); prod, customer, money and access kinds never reach it. Known gap, older than the reviewer: a kagelet can write a script, a git hook or a git config line that is not held, and a later reviewed step runs it inside the sandbox. The sandbox, not the hold, bounds that.
 4. **A review names the failure.** When Kage reviews a stalled kagelet, it fixes the kagelet's memory or rules, or it brings the owner one question about the goal.
 
 Every number is a setting with a default. Every held action, answer, expiry and review writes one event row with ids and the state only (ADR 0010).
@@ -54,22 +54,22 @@ Each slice ships with its tests, red first, and a local stress run before it rea
 
 ## Grants and files
 
-- A kagelet's grant is its approval and only shrinks. A tool outside it is denied, and no card goes to the owner. (`runtime/sdk-sessions.ts`, `core/kagelets/kagelet.ts`)
-- A kagelet gets only Kage's thread tools and `message_kagelet`. The rest act as the owner or outlive the run. (`core/kagelets/kagelet.ts`)
-- `tools: all` always runs in the OS sandbox and drops the owner's own settings, whose allow rules would widen it. (`core/kagelets/kagelet.ts`)
-- A lane whose file is gone keeps no tools. It never falls back to approval cards. (`hub/router.ts`, `hub/kagelets.ts`)
-- A kagelet name has no dots or slashes, so it never leaves the kagelets folder. A model name that is not an alias is held. (`core/kagelets/kagelet.ts`, `runtime/sdk-sessions.ts`)
-- A kagelet's `people` and `owners` are one line each. A second line is refused, because the front matter keeps only the last. (`core/kagelets/people.ts`)
-- Only the owner adds a person to a people line, because that person can steer every tool the kagelet holds. (`runtime/kagelets/manager.ts`)
-- Every save by Kage's tool is checked as if approved first. A model steers every save, so no save widens a grant. (`runtime/kagelets/manager.ts`)
-- The kagelet's memory folder must be a real directory at exactly `<kagelets>/<name>/memory`. No link or hard link may reach Kage's or the owner's memory. (`runtime/kagelets/memory.ts`)
-- The dream only proposes. A proposal file under `.proposals/` is never read by a prompt. A note lands only through Kage's `decide`. (`runtime/kagelets/memory.ts`)
-- A need reaches Kage as one task and goes to the owner's list only if Kage cannot finish it. A repeat folds before the cap. (`runtime/kagelets/needs.ts`)
-- A kagelet message waits in the store until its target is idle. Only a normal turn end acknowledges it. Any other end queues it again. (`runtime/kagelets/routes.ts`)
-- A held-step rule `*` never matches whitespace, quotes, shell syntax, a refspec colon or `..`. A rule starts with a literal command word. (`core/held-rules.ts`)
-- The reviewer reads a whole plain command only. A chained, nested or widened step is never reviewed, and a process stop is never low-stakes. (`core/held-review.ts`)
-- A yes is spent by the one retry of the same call, and an open card keeps the step the owner's. The reviewer slot is taken before the call. (`runtime/deferred-approvals.ts`, `runtime/sdk-sessions.ts`, `runtime/kagelets/review.ts`)
-- A card for a lane is capped (`OPEN_PER_KEY`), so a looping kagelet cannot flood the owner's DM. (`runtime/deferred-approvals.ts`)
-- A measure Kage wrote runs only after the owner's yes on that exact command. A changed script stops it. A new command starts a new trend. (`runtime/kagelets/measures.ts`)
-- `db_read` passes the query as `$1`, never in the command line. Its statement check is the second wall, and fails closed on anything read two ways. (`runtime/tools/kagelet-tools.ts`, `core/db-read.ts`)
-- A cost-capped kagelet stays paused past midnight. Only a person resumes it. (`runtime/kagelets/cost-cap.ts`)
+- A kagelet's grant is its approval and only shrinks. A tool outside it is denied, and no card goes to the owner. (`src/runtime/sdk-sessions.ts`, `src/core/kagelets/kagelet.ts`)
+- A kagelet gets only Kage's thread tools and `message_kagelet`. The rest act as the owner or outlive the run. (`src/core/kagelets/kagelet.ts`)
+- `tools: all` always runs in the OS sandbox and drops the owner's own settings, whose allow rules would widen it. (`src/core/kagelets/kagelet.ts`)
+- A lane whose file is gone keeps no tools. It never falls back to approval cards. (`src/hub/router.ts`, `src/hub/kagelets.ts`)
+- A kagelet name has no dots or slashes, so it never leaves the kagelets folder. A model name that is not an alias is held. (`src/core/kagelets/kagelet.ts`, `src/runtime/sdk-sessions.ts`)
+- A kagelet's `people` and `owners` are one line each. A second line is refused, because the front matter keeps only the last. (`src/core/kagelets/people.ts`)
+- Only the owner adds a person to a people line, because that person can steer every tool the kagelet holds. (`src/runtime/kagelets/manager.ts`)
+- Every save by Kage's tool is checked as if approved first. A model steers every save, so no save widens a grant. (`src/runtime/kagelets/manager.ts`)
+- The kagelet's memory folder must be a real directory at exactly `<kagelets>/<name>/memory`. No link or hard link may reach Kage's or the owner's memory. (`src/runtime/kagelets/memory.ts`)
+- The dream only proposes. A proposal file under `.proposals/` is never read by a prompt. A note lands only through Kage's `decide`. (`src/runtime/kagelets/memory.ts`)
+- A need reaches Kage as one task and goes to the owner's list only if Kage cannot finish it. A repeat folds before the cap. (`src/runtime/kagelets/needs.ts`)
+- A kagelet message waits in the store until its target is idle. Only a normal turn end acknowledges it. Any other end queues it again. (`src/runtime/kagelets/routes.ts`)
+- A held-step rule `*` never matches whitespace, quotes, shell syntax, a refspec colon or `..`. A rule starts with a literal command word. (`src/core/held-rules.ts`)
+- The reviewer reads a whole plain command only. A chained, nested or widened step is never reviewed, and a process stop is never low-stakes. (`src/core/held-review.ts`)
+- A yes is spent by the one retry of the same call, and an open card keeps the step the owner's. The reviewer slot is taken before the call. (`src/runtime/deferred-approvals.ts`, `src/runtime/sdk-sessions.ts`, `src/runtime/kagelets/review.ts`)
+- A card for a lane is capped (`OPEN_PER_KEY`), so a looping kagelet cannot flood the owner's DM. (`src/runtime/deferred-approvals.ts`)
+- A measure Kage wrote runs only after the owner's yes on that exact command. A changed script stops it. A new command starts a new trend. (`src/runtime/kagelets/measures.ts`)
+- `db_read` passes the query as `$1`, never in the command line. Its statement check is the second wall, and fails closed on anything read two ways. (`src/runtime/tools/kagelet-tools.ts`, `src/core/db-read.ts`)
+- A cost-capped kagelet stays paused past midnight. Only a person resumes it. (`src/runtime/kagelets/cost-cap.ts`)

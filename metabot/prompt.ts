@@ -1,6 +1,6 @@
-import { findSecret, guardVerdict } from '../core/outbound.ts'
+import { findSecret, guardVerdict } from '../src/core/outbound.ts'
 
-export const LABELS = ['qualified', 'self_serve', 'needs_info', 'not_a_fit', 'hand_off'] as const
+const LABELS = ['qualified', 'self_serve', 'needs_info', 'not_a_fit', 'hand_off'] as const
 export type Label = typeof LABELS[number]
 export type Lead = { company?: string; email?: string; phone?: string; need?: string; volume?: string }
 export type Answer = { reply: string; label: Label; lead: Lead; missed?: string }

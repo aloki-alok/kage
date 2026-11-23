@@ -8,4 +8,4 @@ The hub moves its checkout only to origin's `stable` tag, with a fast-forward me
 
 ## How it is checked
 
-`core/tests/auto-update.test.ts` tests the skip rules and `soakGate` (`core/auto-update.ts`).
+`src/core/tests/auto-update.test.ts` tests the skip rules and `soakGate` (`src/core/auto-update.ts`).
