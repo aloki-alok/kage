@@ -59,7 +59,7 @@ import { startConnectors } from './connectors.ts'
 import { hubUpdates } from './updates.ts'
 import { ownerDigests } from './owner-digests.ts'
 import { dreams } from './dreams.ts'
-import { DREAM_KEY, DREAM_LIMITS, type DreamLesson } from '../core/dream.ts'
+import { DREAM_KEY, DREAM_LIMITS, flagRow, type Dismissal, type DreamLesson } from '../core/dream.ts'
 import { closedThreads } from '../runtime/closed-threads.ts'
 import { threadRotator } from '../runtime/thread-rotate.ts'
 import { startTelemetry } from './telemetry.ts'
@@ -237,7 +237,7 @@ const sdk = sdkLib ? sdkSessions({
     schedules: { add: j => jobs.add(key, j, Date.now()), remove: id => jobs.remove(key, id), list: () => schedules.list(key), hookUrl: id => jobs.hookUrl(id), tune: (id, t) => schedules.tune(key, id, t, Date.now()), restore: id => jobs.swaps.restore(key, id, Date.now()), move: (id, to) => schedules.move(key, id, to, Date.now()) },
     afk: slack.afk?.command,
     settings: { set: (key, value) => setKey(ENV_FILE, key, value) },
-    kagelet: key.split('#side-kagelet-')[1], dreaming: key.split('#side-kdream-')[1], kageletMemory: kag.kmem, ...key === DREAM_KEY && { dreamLessons: (l: DreamLesson[]) => dreaming.lessons(l) },
+    kagelet: key.split('#side-kagelet-')[1], dreaming: key.split('#side-kdream-')[1], kageletMemory: kag.kmem, ...key === DREAM_KEY ? { dreamLessons: (l: DreamLesson[], dismiss?: Dismissal[]) => dreaming.lessons(l, dismiss) } : { flagKnowledge: f => ledgers.add('flags', flagRow(randomUUID().slice(0, 8), key, f)) },
     browser: browser && { call: browser.call, block: BROWSER_BLOCK },
     foreignAgents: () => config.askOtherAgents ? [] : foreignAgentTags(slack.ids.apps ?? [], slack.ids.owner),
     meetbot: meeting && { join: meeting.join }, sms: sms?.campaigns, screen: SCREEN,

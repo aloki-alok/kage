@@ -1,5 +1,5 @@
 import { z } from 'zod'
-import type { DreamLesson } from '../../core/dream.ts'
+import type { Dismissal, DreamLesson } from '../../core/dream.ts'
 import type { KageTool, ToolContext } from '../kage-tools.ts'
 
 export function dreamTools(c: ToolContext): KageTool[] {
@@ -15,10 +15,13 @@ export function dreamTools(c: ToolContext): KageTool[] {
         text: z.string().describe('the lesson and its why, or why the note is now wrong'),
         evidence: z.array(z.object({ key: z.string().describe('a thread key from the task'), quote: z.string().describe('exact words from that thread') })),
         confidence: z.number().min(0).max(1),
+        flag: z.string().optional().describe('the id of the open knowledge flag this lesson answers'),
       })),
+      dismiss: z.array(z.object({ flag: z.string(), reason: z.string() })).optional().describe('open knowledge flags that do not hold, each with the reason'),
     },
     async run(args) {
-      return { text: apply((args as { lessons: DreamLesson[] }).lessons) }
+      const a = args as { lessons: DreamLesson[]; dismiss?: Dismissal[] }
+      return { text: apply(a.lessons, a.dismiss) }
     },
   }]
 }

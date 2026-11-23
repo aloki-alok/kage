@@ -12,6 +12,7 @@ import { shadowSwaps } from '../shadow-swap.ts'
 import { openStore } from '../store.ts'
 import type { Task } from '../../core/task.ts'
 import type { ScreenRecorder } from '../screen.ts'
+import type { Dismissal, DreamLesson, NewFlag } from '../../core/dream.ts'
 
 function fakeSlack() {
   const calls: string[] = []
@@ -72,7 +73,7 @@ function fakeSlack() {
   return { calls, posts, bot: client('bot'), user: client('owner') }
 }
 
-function setup(o: { noHook?: boolean; settings?: { set(key: string, value: unknown): void }; hubDown?: boolean; dir?: string; kagelet?: string; dreaming?: string; dbRead?: { command: () => string | undefined; maxRows: number; timeoutMs?: number }; approve?: (tool: string, description: string, input: Record<string, unknown>) => Promise<boolean>; browser?: { call(op: string, args: Record<string, unknown>): Promise<unknown>; block: string[] }; meetbot?: { join(link: string): string }; screen?: ScreenRecorder; foreignAgents?: () => readonly string[] } = {}) {
+function setup(o: { noHook?: boolean; settings?: { set(key: string, value: unknown): void }; hubDown?: boolean; dir?: string; kagelet?: string; dreaming?: string; dbRead?: { command: () => string | undefined; maxRows: number; timeoutMs?: number }; approve?: (tool: string, description: string, input: Record<string, unknown>) => Promise<boolean>; browser?: { call(op: string, args: Record<string, unknown>): Promise<unknown>; block: string[] }; meetbot?: { join(link: string): string }; screen?: ScreenRecorder; foreignAgents?: () => readonly string[]; flagKnowledge?: (f: NewFlag) => void; dreamLessons?: (l: DreamLesson[], d?: Dismissal[]) => string } = {}) {
   const slack = fakeSlack()
   const dir = o.dir ?? mkdtempSync(join(tmpdir(), 'kage-tools-'))
   const ledgers = openLedgers(dir)
@@ -92,7 +93,7 @@ function setup(o: { noHook?: boolean; settings?: { set(key: string, value: unkno
       move: (id, to) => { if (!jobs.some(j => j.id === id)) return `no job ${id} in this thread`; jobs.find(j => j.id === id).key = to },
     },
     afk: async c => { out.push(`afk ${JSON.stringify(c)}`); return 'AFK on' }, foreignAgents: o.foreignAgents,
-    kagelet: o.kagelet, dreaming: o.dreaming, settings: o.settings, kageletMemory: { propose: (name: string, a: unknown, thread: string) => { out.push(`propose ${name} ${thread} ${JSON.stringify(a)}`); return 'proposed' }, decide: (d: unknown) => { out.push(`decide ${JSON.stringify(d)}`); return 'decided' }, open: () => 'open ones', notes: () => [] } as any, dbRead: o.dbRead, approve: o.approve, browser: o.browser, meetbot: o.meetbot, screen: o.screen, event: (kind, detail) => { events.push(`${kind} ${detail}`) },
+    kagelet: o.kagelet, dreaming: o.dreaming, settings: o.settings, flagKnowledge: o.flagKnowledge, dreamLessons: o.dreamLessons, kageletMemory: { propose: (name: string, a: unknown, thread: string) => { out.push(`propose ${name} ${thread} ${JSON.stringify(a)}`); return 'proposed' }, decide: (d: unknown) => { out.push(`decide ${JSON.stringify(d)}`); return 'decided' }, open: () => 'open ones', notes: () => [] } as any, dbRead: o.dbRead, approve: o.approve, browser: o.browser, meetbot: o.meetbot, screen: o.screen, event: (kind, detail) => { events.push(`${kind} ${detail}`) },
     onReport: r => { routed.push(`report ${JSON.stringify(r)}`) }, toManager: text => { routed.push(`manager ${text}`); return 'sent' },
     tellKagelet: (name, text, run) => { routed.push(`tell ${name}${run ? ' now' : ''}: ${text}`); return `told ${name}` }, message: (to, text) => { routed.push(`message ${to} ${text}`); return `sent to ${to}` },
     kagelets: { list: () => 'the list', manage: async (a, ask) => { out.push(`manage ${JSON.stringify(a)}`); return ask ? `asked: ${await ask({ kagelet: a.name, tools: 'mcp__gmail__send', job: 'j' })}` : 'managed' } },
@@ -1975,4 +1976,35 @@ describe("owner-only tools that act: a voice call or an agent's task never gets 
       assert.doesNotMatch((await at('C1', '5.5')).text, refused)
     })
   }
+})
+
+describe('flag_knowledge: a working session flags a missing or wrong note for the nightly dream (#541)', () => {
+  const flag = { kind: 'wrong', note: 'deploy.md', found: 'the deploy script moved to bin/ship', fix: 'point it at bin/ship' }
+  test("the owner's own task files a flag, and the session hears the dream will look at it", async () => {
+    const got: NewFlag[] = []
+    const s = setup({ flagKnowledge: f => { got.push(f) } })
+    s.t.onTask(s.task())
+    const r = await s.call('flag_knowledge', { channel: 'C1', thread_ts: '5.5', ...flag })
+    assert.equal(r.isError, undefined)
+    assert.match(r.text, /dream/)
+    assert.deepEqual(got, [flag])
+  })
+  test("a teammate's, an agent's or a voice call's task files nothing, and a kagelet, its dream or a hub with no flag route gets no tool", async () => {
+    const got: NewFlag[] = []
+    const s = setup({ flagKnowledge: f => { got.push(f) } })
+    s.t.onTask(s.task({ fromOwner: false }))
+    assert.equal((await s.call('flag_knowledge', { channel: 'C1', thread_ts: '5.5', ...flag })).isError, true)
+    s.t.onTask({ ...s.task({ thread_ts: '7.7' }), agent: { app: 'ATEST1' } })
+    assert.equal((await s.call('flag_knowledge', { channel: 'C1', thread_ts: '7.7', ...flag })).isError, true)
+    s.t.onTask(s.task({ channel: 'voice', thread_ts: 'voice:c1' }))
+    assert.equal((await s.call('flag_knowledge', { channel: 'voice', thread_ts: 'voice:c1', ...flag })).isError, true)
+    assert.deepEqual(got, [])
+    for (const o of [{ kagelet: 'watch' }, { dreaming: 'watch' }, {}]) assert.equal(setup({ ...o, ...'kagelet' in o || 'dreaming' in o ? { flagKnowledge: () => {} } : {} }).t.tools.some(x => x.name === 'flag_knowledge'), false, JSON.stringify(o))
+  })
+  test('dream_lessons passes each flag id and the dismissals to the hub', async () => {
+    const seen: unknown[] = []
+    const s = setup({ dreamLessons: (l, d) => { seen.push(l.map(x => x.flag), d); return 'kept 0' } })
+    await s.call('dream_lessons', { lessons: [{ kind: 'outdated', file: 'deploy.md', text: 't', evidence: [], confidence: 0.9, flag: 'f1' }], dismiss: [{ flag: 'f2', reason: 'keys.md covers it' }] })
+    assert.deepEqual(seen, [['f1'], [{ flag: 'f2', reason: 'keys.md covers it' }]])
+  })
 })

@@ -5,7 +5,7 @@ import { lastTotals, trailEvent, trailLine, tsvRow, turnCost, type Tokens } from
 import { eventRow, whoOf, type EventKind, type KageEvent } from '../core/events.ts'
 import { COST_FLAG } from '../core/kagelets/kagelet.ts'
 
-type LedgerName = 'waiting' | 'posted' | 'prod-actions' | 'costs' | 'runs' | 'commands' | 'reports' | 'db-reads' | 'grants' | 'verdicts' | 'card-verdicts' | 'boots'
+type LedgerName = 'flags' | 'waiting' | 'posted' | 'prod-actions' | 'costs' | 'runs' | 'commands' | 'reports' | 'db-reads' | 'grants' | 'verdicts' | 'card-verdicts' | 'boots'
 const NAMES: LedgerName[] = ['waiting', 'posted', 'prod-actions', 'costs', 'runs', 'commands', 'reports', 'db-reads', 'grants', 'verdicts']
 export type Ledgers = ReturnType<typeof openLedgers>
 
