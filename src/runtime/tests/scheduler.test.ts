@@ -662,3 +662,18 @@ describe('runs missed while the hub was off (#486)', () => {
     assert.equal(t.sent.length, 2)
   })
 })
+
+test('a schedule keeps its own model, checked when it is saved, and only for a run in its own lane (#283)', () => {
+  const t = setup()
+  const now = at('2026-11-03T10:01:00')
+  assert.equal(t.s.add('C1:5.5', { ...job, model: 'haiku' }, now), undefined)
+  assert.equal(t.store.schedules().find(x => x.id === 'j1')?.model, 'haiku')
+  assert.match(t.s.add('C1:5.5', { ...job, id: 'j2', model: 'gpt-5' }, now) ?? '', /model must be/)
+  assert.match(t.s.add('C1:5.5', { ...job, id: 'j4', model: 'haiku', cron: '@reply' }, now) ?? '', /own lane/)
+  t.fresh.lanes = false
+  assert.match(t.s.add('C1:5.5', { ...job, id: 'j5', model: 'haiku' }, now) ?? '', /own lane/)
+  assert.deepEqual(t.store.schedules().map(x => x.id), ['j1'])
+  assert.equal(t.store.schedules().find(x => x.id === 'j1')?.model, 'haiku')
+  t.s.add('C1:5.5', { ...job, id: 'j6' }, now)
+  assert.equal('model' in t.store.schedules().find(x => x.id === 'j6')!, false)
+})

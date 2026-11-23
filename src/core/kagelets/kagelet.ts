@@ -1,4 +1,4 @@
-import { DEFAULT_MODEL, MODELS } from '../config.ts'
+import { DEFAULT_MODEL, modelRefusal } from '../config.ts'
 import { nextRun, parseCron } from '../cron.ts'
 import { slackLinkKey } from '../conversations.ts'
 import { clockTime, whenLabel } from '../board.ts'
@@ -17,7 +17,6 @@ export const NAME = /^(?!memory$)[a-z][a-z0-9-]{0,30}$/
 type Maker = 'owner' | 'kage'
 export type Kagelet = { name: string; key: string; link: string; cron: string; after?: string; tools: string[]; job: string; paused: boolean; by: Maker; why: string; model: string; modelWhy: string; resumed?: number; standing?: string[]; objective?: Objective; allow?: string[]; people?: string[]; owners?: string[] }
 
-const MODEL = new RegExp(`^(${MODELS.join('|')}|claude-[a-z0-9.-]+(\\[1m\\])?)$`)
 
 export function parseKagelet(name: string, text: string): Kagelet | { error: string } {
   if (!NAME.test(name)) return { error: `the file name "${name}" must be a short lowercase name: letters, digits, dashes` }
@@ -32,7 +31,8 @@ export function parseKagelet(name: string, text: string): Kagelet | { error: str
   if (after && !NAME.test(after)) return { error: `after must name a kagelet, not "${after}"` }
   if (cron || !after) try { parseCron(cron) } catch { return { error: `schedule must be a cron line like "0 9 * * 1-5", not "${cron}"` } }
   const model = head.get('model') || DEFAULT_MODEL
-  if (!MODEL.test(model)) return { error: `model must be sonnet, opus, haiku, fable or a claude-... id, not "${model}"` }
+  const badModel = modelRefusal(model)
+  if (badModel) return { error: badModel }
   const job = m[2]!.trim()
   if (!job) return { error: 'the job, below the front matter, is empty' }
   const tools = (head.get('tools') ?? '').split(',').map(t => t.trim()).filter(Boolean)

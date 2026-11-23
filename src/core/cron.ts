@@ -80,6 +80,7 @@ export type Schedule = {
   trigger?: Trigger
   ends?: number
   needs?: string[]
+  model?: string
 }
 
 const LATE = 10 * MINUTE

@@ -64,7 +64,7 @@ export type Inbox = { take(source: string, connector: string, payload: string | 
 const toSchedule = (r: Record<string, any>): Schedule => ({
   id: r.id, key: r.key, cron: r.cron, prompt: r.prompt, recurring: r.recurring === 1, fromOwner: r.from_owner === 1,
   created: Number(r.created), lastFired: Number(r.last_fired), ...(r.ends != null && { ends: Number(r.ends) }), ...(r.lane === 1 && { lane: true as const }),
-  ...(r.trigger != null && { trigger: JSON.parse(r.trigger) }), ...(r.needs != null && { needs: JSON.parse(r.needs) }),
+  ...(r.trigger != null && { trigger: JSON.parse(r.trigger) }), ...(r.needs != null && { needs: JSON.parse(r.needs) }), ...(r.model != null && { model: r.model }),
 })
 
 export function schedulesIn(path: string, key?: string): Schedule[] {
@@ -99,6 +99,7 @@ function migrate(db: DatabaseSync) {
   if (!scheduleCols.has('trigger')) db.exec('alter table schedules add column trigger text')
   if (!scheduleCols.has('job_state')) db.exec('alter table schedules add column job_state text')
   if (!scheduleCols.has('needs')) db.exec('alter table schedules add column needs text')
+  if (!scheduleCols.has('model')) db.exec('alter table schedules add column model text')
   if (!inboxCols.has('delivered')) db.exec('alter table inbox add column delivered integer not null default 0')
   if (!inboxCols.has('held_until')) db.exec('alter table inbox add column held_until integer')
 }
@@ -159,8 +160,8 @@ function conversationsOf(db: DatabaseSync) {
 function schedulesOf(db: DatabaseSync) {
   return {
   addSchedule(s: Schedule) {
-    db.prepare('insert into schedules (id, key, cron, prompt, recurring, from_owner, created, last_fired, ends, lane, trigger, needs) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) on conflict (id) do nothing')
-      .run(s.id, s.key, s.cron, s.prompt, s.recurring ? 1 : 0, s.fromOwner ? 1 : 0, s.created, s.lastFired, s.ends ?? null, s.lane ? 1 : null, s.trigger ? JSON.stringify(s.trigger) : null, s.needs?.length ? JSON.stringify(s.needs) : null)
+    db.prepare('insert into schedules (id, key, cron, prompt, recurring, from_owner, created, last_fired, ends, lane, trigger, needs, model) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) on conflict (id) do nothing')
+      .run(s.id, s.key, s.cron, s.prompt, s.recurring ? 1 : 0, s.fromOwner ? 1 : 0, s.created, s.lastFired, s.ends ?? null, s.lane ? 1 : null, s.trigger ? JSON.stringify(s.trigger) : null, s.needs?.length ? JSON.stringify(s.needs) : null, s.model ?? null)
   },
   schedules: (): Schedule[] => (db.prepare('select * from schedules order by created').all() as Record<string, any>[]).map(toSchedule),
   tuneSchedule(id: string, cron: string, trigger: Trigger, resetBaseline: boolean) {
