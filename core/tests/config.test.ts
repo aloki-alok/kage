@@ -279,6 +279,10 @@ describe('people and the registry', () => {
     const c = Config.parse({ version: 1, people: { teammates: ['UTEST0001', 'UTEST0002'], trusted: ['UTEST0001', 'UTEST0009'] }, connectors: { email: { on: true, teammateEmails: ['a@example.test'] } } })
     assert.deepEqual(c.people, { teammates: [{ user: 'UTEST0001', trusted: true }, { user: 'UTEST0002' }, { email: 'a@example.test' }] })
     assert.deepEqual(c.connectors, { email: { on: true } })
+    const mixed = Config.parse({ version: 1, people: { teammates: [{ user: 'UTEST0001' }, 'UTEST0002'], trusted: ['UTEST0001'] } })
+    assert.deepEqual(mixed.people?.teammates, [{ user: 'UTEST0001', trusted: true }, { user: 'UTEST0002' }])
+    const messy = Config.parse({ version: 1, connectors: { email: { on: true, teammateEmails: [' a@example.test ', 'bob'] } } })
+    assert.deepEqual(messy.people?.teammates, [{ email: 'a@example.test' }])
   })
   test('the fold of the three old teammate lists is deleted from core/config.ts by 2027-01-31', () => {
     assert.ok(Date.now() < Date.parse('2027-01-31'), 'delete foldOldPeople and this test')

@@ -28,8 +28,10 @@ const foldOldPeople = (raw: any) => {
   if (!(arrayOr(people?.teammates).some(t => typeof t === 'string') || people?.trusted !== undefined || mail?.teammateEmails !== undefined)) return raw
   const { trusted, ...keptPeople } = people ?? {}
   const { teammateEmails, ...keptMail } = mail ?? {}
-  const listed = arrayOr(people?.teammates)
-  const teammates = [...listed.filter(t => typeof t !== 'string'), ...(teammatesFrom({ user: listed.filter(t => typeof t === 'string'), trusted: arrayOr(trusted), email: arrayOr(teammateEmails) }) ?? [])]
+  const listed = arrayOr(people?.teammates), trustedIds = arrayOr(trusted)
+  const emails = arrayOr(teammateEmails).map(e => String(e).trim()).filter(isAddress)
+  const objects = listed.filter(t => typeof t !== 'string').map(t => (trustedIds.includes(t?.user) ? { ...t, trusted: true } : t))
+  const teammates = [...objects, ...(teammatesFrom({ user: listed.filter(t => typeof t === 'string'), trusted: trustedIds, email: emails }) ?? [])]
   return { ...raw, people: { ...keptPeople, ...(teammates.length && { teammates }) }, ...(mail && { connectors: { ...raw.connectors, email: keptMail } }) }
 }
 
