@@ -159,11 +159,12 @@ Each night, while every session is quiet, Kage reads the day's threads for lesso
 
 ## Screen
 
-How Kage sees and acts on your Mac (the `computer` tool, macOS only).
+How Kage sees and acts on your Mac (the `computer_look`, `computer_act` and `computer_record` tools, macOS only).
 
 | Setting | Default | Effect |
 |---|---|---|
-| `screen.shotLongSide` | `1280` | The longest side, in pixels, of a screenshot the `computer` tool takes of your Mac. The model sees a larger picture shrunk, and aims worse on it, so Kage keeps pictures this size and maps each `screen_act` point back to the screen. |
+| `screen.lookElements` | `60` | The most elements one `computer_look` lists. Text fields come first, then controls, then text. A look with `find` keeps only matching elements, so a big window still fits. |
+| `screen.shotLongSide` | `1280` | The longest side, in pixels, of a picture `computer_look` takes of your Mac. The model sees a larger picture shrunk, and aims worse on it, so Kage keeps pictures this size and maps each `computer_act` point back to the screen. |
 
 ## Kage top
 
