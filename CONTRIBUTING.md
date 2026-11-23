@@ -159,6 +159,7 @@ Write logs to stderr only. In a tmux pane, stdout carries the channel protocol, 
 | `db-read.ts` | The check a `db_read` query passes: one read statement, capped. |
 | `browser.ts` | What a session may see of the owner's Chrome (#114): the block list, tabs shown by id, and a page's text quoted as data. |
 | `desktop-act.ts` | Acting on the owner's Mac (the `computer` tool): which acts and keys are allowed, and what each needs. Everyday steps run. A click, Enter or Space on a control that cannot be undone, or a one-way command sent in a terminal, asks the owner. Turning the Mac off, logging out, locking or erasing it is refused. A terminal takes one typed line at a time, and Return on a line Kage did not type asks. |
+| `look.ts` | A look at the owner's front window (`computer_look`, #509): the answer Kage Screen gives, checked where it enters, and the text a session reads, one `[r12] button "Send"` line per element, with labels and values quoted as data. |
 | `browser-act.ts` | Acting in the owner's Chrome: a page's controls as refs (labels quoted as data), which actions and keys are allowed, and the approval card's line, named from the page. |
 | `meetbot.ts` | Kage's meeting bot (#63): which Meet links it may open, and the caption lines it posts, kept as data. |
 | `browser-pair.ts` | Pairing the Chrome extension with no paste: its fixed id, the helper's folder in each Chromium browser, and Chrome's message framing. `src/cli/browser-pair.ts` is the helper Chrome starts. |
