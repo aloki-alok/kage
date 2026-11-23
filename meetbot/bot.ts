@@ -196,7 +196,7 @@ async function main() {
 }
 
 async function runCall(s: Settings, h: ReturnType<typeof hub>, link: string, call: { call: string; said: string[] }) {
-  const ua = s.window ? undefined : `Mozilla/5.0 (${process.platform === 'darwin' ? 'Macintosh; Intel Mac OS X 10_15_7' : 'X11; Linux x86_64'}) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/${chromium.version?.() ?? '140.0.0.0'} Safari/537.36`
+  const ua = s.window ? undefined : `Mozilla/5.0 (${process.platform === 'darwin' ? 'Macintosh; Intel Mac OS X 10_15_7' : 'X11; Linux x86_64'}) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Safari/537.36`
   const ctx = await chromium.launchPersistentContext(s.profile, {
     headless: !s.window, executablePath: s.chrome, viewport: { width: 1280, height: 800 }, ...(ua && { userAgent: ua }),
     args: ['--use-fake-ui-for-media-stream', '--use-fake-device-for-media-stream', '--autoplay-policy=no-user-gesture-required', '--disable-blink-features=AutomationControlled', ...(s.window ? [] : ['--headless=new'])],
