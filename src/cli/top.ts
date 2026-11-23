@@ -2,16 +2,13 @@
 import { spawnSync } from 'node:child_process'
 import { existsSync, readFileSync, statSync } from 'node:fs'
 import { topicReader } from './top-topics.ts'
-import { connect, type Socket } from 'node:net'
 import { askHub, CWD, DIR, settings } from './home.ts'
 import { DatabaseSync } from 'node:sqlite'
-import { boardRows, FOLDED, liveThreadLines, nextRuns, limitLine, pauseLine, watchingNext, type Live, type Row, type State } from '../core/board.ts'
-import { transcriptLine } from '../core/transcript.ts'
+import { boardRows, FOLDED, liveThreadLines, nextRuns, limitLine, pauseLine, type Live, type Row, type State } from '../core/board.ts'
 import { costRows, openWaiting } from '../core/ledgers.ts'
 import { channels, filterRows, nextFilter, rowAt, spentToday, WIDE, type Filter } from '../core/top-layout.ts'
-import { newLines } from '../runtime/transcript-tail.ts'
 import { BG, resize, toText, W } from './top-screen.ts'
-import { drawFrame, TABS, type Hits, type Step, type Tab, type View } from './top-draw.ts'
+import { drawFrame, TABS, type Hits, type Tab, type View } from './top-draw.ts'
 import { schedulesIn } from '../runtime/store.ts'
 import { actionLine, dailyCap, kageletRuns, PANEL_KEYS, type PanelAction } from '../core/kagelets/view.ts'
 import { kageletRows, type KageletRow } from '../core/kagelets/kagelet.ts'
@@ -19,6 +16,8 @@ import { kageletTier } from '../core/access.ts'
 import { kageletsDir, readKagelets } from '../runtime/kagelets/files.ts'
 import { ledgerText } from '../runtime/ledger.ts'
 import { leftoverCount } from './top-leftovers.ts'
+import { transcriptFeeds } from './top-feeds.ts'
+import { hubAsker } from './top-hub.ts'
 
 const HOME = process.env.HOME!
 const PROJECT = `${HOME}/.claude/projects/${CWD.replace(/[^A-Za-z0-9]/g, '-')}`, topicFor = topicReader(PROJECT)
@@ -59,40 +58,7 @@ const mtime = (id: string) => { try { return statSync(`${PROJECT}/${id}.jsonl`).
 const idOf = (key: string) => known.find(k => k.key === key)?.id
 const placeOf = (key: string) => known.find(k => k.key === key)?.place ?? kagelets.find(k => k.key === key)?.name ?? key
 
-const watchCache = new Map<string, { at: number; next: number | undefined }>()
-function watchNext(key: string, now: number): number | undefined {
-  const c = watchCache.get(key)
-  if (c && now - c.at < 30_000) return c.next
-  let value: number | undefined
-  try { value = watchingNext(readFileSync(`${PROJECT}/${idOf(key)}.jsonl`, 'utf8').split('\n'), now) } catch {}
-  watchCache.set(key, { at: now, next: value })
-  return value
-}
-
-type Feed = { file: string; offset: number; steps: Step[]; changed: number }
-const feeds = new Map<string, Feed>()
-function follow(key: string) {
-  const id = idOf(key)
-  if (!id) return
-  const file = `${PROJECT}/${id}.jsonl`
-  const prev = feeds.get(key)
-  const first = !prev || prev.file !== file
-  let size = 0
-  if (first) try { size = statSync(file).size } catch {}
-  const f = first ? { file, offset: Math.max(0, size - 64_000), steps: [], changed: 0 } : prev
-  if (first) feeds.set(key, f)
-  const r = newLines(file, f.offset)
-  f.offset = r.offset
-  for (const raw of r.lines) {
-    const text = transcriptLine(raw)
-    if (!text) continue
-    let at = Date.now()
-    try { at = Date.parse(JSON.parse(raw).timestamp) || at } catch {}
-    for (const t of text.split('\n')) f.steps.push({ at, text: t })
-    if (!first) f.changed = Date.now()
-  }
-  if (f.steps.length > 300) f.steps = f.steps.slice(-300)
-}
+const { feeds, follow, watchNext } = transcriptFeeds(PROJECT, idOf)
 
 function refresh(now: number) {
   try { known = threadsQuery.all() as Thread[] } catch {}
@@ -136,35 +102,7 @@ function readKageletRows(now: number) {
   readRuns(now)
 }
 
-let sock: Socket | undefined
-let waiters: ((m: any) => void)[] = []
-function hub(): Socket | undefined {
-  if (sock && !sock.destroyed) return sock
-  if (!existsSync(SOCK)) return undefined
-  const s = connect(SOCK)
-  let buf = ''
-  s.on('data', b => {
-    buf += b
-    for (let i; (i = buf.indexOf('\n')) >= 0;) {
-      let m: any
-      try { m = JSON.parse(buf.slice(0, i)) } catch {}
-      buf = buf.slice(i + 1)
-      if (m) waiters.shift()?.(m)
-    }
-  })
-  s.on('error', () => {})
-  s.on('close', () => { if (sock === s) sock = undefined; waiters = [] })
-  sock = s
-  return s
-}
-const ask = (m: object) => new Promise<any>(resolve => {
-  const s = hub()
-  if (!s) return resolve(undefined)
-  const w = (r: any) => { clearTimeout(t); resolve(r) }
-  const t = setTimeout(() => { waiters = waiters.filter(x => x !== w); resolve(undefined) }, 3000)
-  waiters.push(w)
-  s.write(JSON.stringify(m) + '\n')
-})
+const ask = hubAsker(SOCK)
 async function pollHub() {
   const r = await ask({ type: 'board' })
   if (r?.type === 'board') { live = r; liveAt = Date.now() }
