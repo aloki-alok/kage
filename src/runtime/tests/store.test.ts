@@ -252,6 +252,18 @@ test('the relay allow list is kept by key, and a thread passes when trusted or l
   assert.deepEqual(s.relayAllowed(), [])
 })
 
+test('a listed teammate thread lets its job lanes use the relay, never its kagelets or other side sessions', () => {
+  const s = openStore(':memory:')
+  s.setTrust('C1:5.5', false)
+  s.setRelayAllow('C1:5.5', true)
+  assert.equal(s.relayOk('C1:5.5#side-job-j1'), true)
+  assert.equal(s.relayOk('C1:5.5#side-kagelet-mon'), false)
+  assert.equal(s.relayOk('C1:5.5#side-x'), false)
+  assert.equal(s.relayOk('C2:5.5#side-job-j1'), false)
+  s.setRelayAllow('C1:5.5', false)
+  assert.equal(s.relayOk('C1:5.5#side-job-j1'), false)
+})
+
 test('a lane has its thread\'s trust: a thread that loses it takes its lanes\' with it, and a run adds nothing of its own', () => {
   const s = openStore(':memory:')
   const lane = 'C1:5.5#side-job-j1'
