@@ -22,9 +22,7 @@ const DEBT = {
   commented: [] as string[],
   impureCore: [] as string[],
   rootImports: [] as string[],
-  longFiles: {
-    'src/hub/router.ts': 347,
-  } as Record<string, number>,
+  longFiles: {} as Record<string, number>,
   unmapped: [] as string[],
   unusedExports: [] as string[],
 }
@@ -110,7 +108,7 @@ test('code marked "compat: remove after <date>" is gone by that date', () => {
   assert.deepEqual(due, [], 'past their removal date: delete the compat code')
 })
 
-const FULL_ENV_CHILDREN = ['src/hub/router.ts', 'src/cli/call.ts', 'src/cli/doctor/context.ts', 'src/runtime/release.ts']
+const FULL_ENV_CHILDREN = ['src/hub/phone-owner.ts', 'src/cli/call.ts', 'src/cli/doctor/context.ts', 'src/runtime/release.ts']
 test('only a trusted child process gets ...process.env', () => {
   const spread = files.filter(f => /\.\.\.process\.env\b/.test(code(f)))
   assert.deepEqual(spread.filter(f => !FULL_ENV_CHILDREN.includes(f)), [], 'give this child an env allowlist, or add it to FULL_ENV_CHILDREN with the reason')
