@@ -2,7 +2,7 @@ import { execFile } from 'node:child_process'
 import { readFileSync, statSync, writeFileSync } from 'node:fs'
 import { log } from '../runtime/log.ts'
 import { selfReview } from '../core/ledgers.ts'
-import { chatText, dreamDue, dreamTask, threadsSince, type DreamLesson, type DreamLimits } from '../core/dream.ts'
+import { chatText, dreamDue, dreamTask, openFlags, threadsSince, type Dismissal, type DreamLesson, type DreamLimits } from '../core/dream.ts'
 import { applyLessons } from '../runtime/dream-lessons.ts'
 import { dreamInput, dreamsDue, kageletDreamTask } from '../core/kagelets/memory.ts'
 import { kageletRows } from '../core/kagelets/kagelet.ts'
@@ -50,7 +50,7 @@ async function dream(d: Dreams, now: number) {
   const mistakes = selfReview(o.ledgers.text('waiting', iso), lastDay(o, now), iso, o.placeOf)
   const c: Conversation = { connector: 'slack', chat: o.botDm, kind: 'dm', agentDm: true }
   const task = taskAsOwner({
-    content: dreamTask(o.mem, threads, iso, { dir: `${o.code}/skills`, pr: await d.ownsRepo }, mistakes, o.hasSdk, { own: listMemory(o.mem.own, true), owner: listMemory(o.mem.owner, false) }),
+    content: dreamTask(o.mem, threads, iso, { dir: `${o.code}/skills`, pr: await d.ownsRepo }, mistakes, o.hasSdk, { own: listMemory(o.mem.own, true), owner: listMemory(o.mem.owner, false) }, openFlags(o.ledgers.text('flags'))),
     meta: { channel: o.botDm, thread_ts: '', place: `DM with ${o.title} (dream)`, permalink: '' },
     origin: { channel: o.botDm, ts: '' },
     scheduled: true,
@@ -59,15 +59,27 @@ async function dream(d: Dreams, now: number) {
   if (o.deliver(c, task, task.meta.place, 'side-dream') !== 'failed') writeFileSync(d.dreamt, String(now), { mode: 0o600 })
 }
 
-function lessons(o: Options, lessons: DreamLesson[]) {
-  const sessions = o.store.sessions()
-  const keys = (o.store.load(THREADS) ?? []) as string[]
+function lessons(o: Options, lessons: DreamLesson[], dismiss: Dismissal[] = []) {
+  const sessions = o.store.sessions(), flags = openFlags(o.ledgers.text('flags'))
+  const keys = [...new Set([...(o.store.load(THREADS) ?? []) as string[], ...flags.map(f => f.key)])]
   const chats = Object.fromEntries(keys.flatMap(k => sessions[k] ? [[k, chatText(readFile(`${o.project}/${sessions[k]}.jsonl`).split('\n'))]] : []))
   const lim = o.limits(), spent = (o.store.load(SPENT) ?? { new: 0, outdated: 0 }) as { new: number; outdated: number }
-  const r = applyLessons({ dir: o.mem.own, chats, lessons, limits: { ...lim, maxNew: Math.max(0, lim.maxNew - spent.new), maxOutdated: Math.max(0, lim.maxOutdated - spent.outdated) }, now: Date.now() })
+  const r = applyLessons({ dir: o.mem.own, chats, lessons, limits: { ...lim, maxNew: Math.max(0, lim.maxNew - spent.new), maxOutdated: Math.max(0, lim.maxOutdated - spent.outdated) }, now: Date.now(), flags })
   o.store.save(SPENT, { new: spent.new + r.kept.new, outdated: spent.outdated + r.kept.outdated })
-  log('dream lessons', r.said.replace(/\n/g, '; '))
-  return r.said
+  const closed = new Set<string>()
+  for (const l of r.done) {
+    const f = flags.find(x => x.id === l.flag)
+    if (f) { o.ledgers.add('flags', [f.id, l.file === f.note ? 'fixed' : 'merged', l.file]); closed.add(f.id) }
+  }
+  const stale: Dismissal[] = []
+  for (const d of dismiss) {
+    if (closed.has(d.flag) || !flags.some(f => f.id === d.flag)) { stale.push(d); continue }
+    o.ledgers.add('flags', [d.flag, 'dismissed', d.reason])
+    closed.add(d.flag)
+  }
+  const said = [r.said, ...stale.length ? [`not dismissed: ${stale.map(d => `${d.flag} is not open`).join('; ')}`] : []].join('\n')
+  log('dream lessons', said.replace(/\n/g, '; '))
+  return said
 }
 
 function kageletDreams(o: Options, now: number) {
@@ -95,7 +107,7 @@ export function dreams(o: Options) {
   const d: Dreams = { o, dreamt: `${o.dir}/dream-sent`, ownsRepo: canPushToKage(args => new Promise((ok, no) => execFile('gh', args, { timeout: 15_000 }, (e, out) => e ? no(e) : ok(out)))) }
   return {
     dream: (now: number) => dream(d, now),
-    lessons: (l: DreamLesson[]) => lessons(o, l),
+    lessons: (l: DreamLesson[], dismiss?: Dismissal[]) => lessons(o, l, dismiss),
     kageletDreams: (now: number) => kageletDreams(o, now),
   }
 }

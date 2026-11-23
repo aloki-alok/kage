@@ -1,19 +1,19 @@
 import { appendFileSync, lstatSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
-import { checkDream, type DreamLesson, type DreamLimits } from '../core/dream.ts'
+import { checkDream, type DreamLesson, type DreamLimits, type KnowledgeFlag } from '../core/dream.ts'
 import { oneLine } from '../core/text.ts'
 
 const read = (f: string) => { try { return readFileSync(f, 'utf8') } catch { return '' } }
 const isLink = (f: string) => { try { return lstatSync(f).isSymbolicLink() } catch { return false } }
 
-export function applyLessons(o: { dir: string; chats: Record<string, string>; lessons: DreamLesson[]; limits: DreamLimits; now: number }): { said: string; kept: { new: number; outdated: number } } {
+export function applyLessons(o: { dir: string; chats: Record<string, string>; lessons: DreamLesson[]; limits: DreamLimits; now: number; flags?: KnowledgeFlag[] }): { said: string; kept: { new: number; outdated: number }; done: DreamLesson[] } {
   const { dir } = o
   const iso = new Date(o.now).toISOString()
   const note = (row: string[]) => appendFileSync(join(dir, '.dream-ledger.tsv'), `${[iso, ...row.map(oneLine)].join('\t')}\n`)
   const index = join(dir, 'MEMORY.md')
   const notes = new Set(readdirSync(dir).filter(n => n.endsWith('.md') && read(join(dir, n)).trim()))
-  const { kept, dropped } = checkDream(o.lessons, o.chats, o.limits, notes)
-  const done: string[] = [], count = { new: 0, outdated: 0 }
+  const { kept, dropped } = checkDream(o.lessons, o.chats, o.limits, notes, o.flags)
+  const done: DreamLesson[] = [], count = { new: 0, outdated: 0 }
   for (const l of kept) {
     const file = join(dir, l.file)
     const sources = [...new Set(l.evidence.map(e => e.key))].join(', ')
@@ -32,9 +32,9 @@ export function applyLessons(o: { dir: string; chats: Record<string, string>; le
       if (!read(index).split('\n').some(listed)) appendFileSync(index, `${read(index) && !read(index).endsWith('\n') ? '\n' : ''}- [${l.file.replace(/\.md$/, '')}](${l.file}): ${oneLine(text).slice(0, 150)}\n`)
       note(['new', l.file, `from ${sources}`])
     }
-    done.push(l.file)
+    done.push(l)
     count[l.kind]++
   }
   for (const d of dropped) note(['dropped', d.lesson.file, d.why])
-  return { kept: count, said: [`kept ${done.length}${done.length ? `: ${done.join(', ')}` : ''}`, `dropped ${dropped.length}${dropped.length ? `: ${dropped.map(d => `${d.lesson.file} (${d.why})`).join('; ')}` : ''}`].join('\n') }
+  return { kept: count, done, said: [`kept ${done.length}${done.length ? `: ${done.map(l => l.file).join(', ')}` : ''}`, `dropped ${dropped.length}${dropped.length ? `: ${dropped.map(d => `${d.lesson.file} (${d.why})`).join('; ')}` : ''}`].join('\n') }
 }

@@ -1,5 +1,6 @@
 import { z } from 'zod'
 import { settingTier } from '../../core/config.ts'
+import type { NewFlag } from '../../core/dream.ts'
 import type { KageTool, ToolContext } from '../kage-tools.ts'
 
 export function ownerTools(c: ToolContext): KageTool[] {
@@ -17,6 +18,8 @@ export function ownerTools(c: ToolContext): KageTool[] {
       return why ? { isError: true, text: `meeting bot: ${why}` } : { text: 'The meeting bot is joining. Tell the owner the host may need to admit it.' }
     },
   })
+  const flag = flagTool(c)
+  if (flag) tools.push(flag)
   if (!name && o.settings) tools.push({
     name: 'set_setting',
     description: `Change one ${Title} setting when the owner's own task asks for it: key is the dotted path in config.json (kagelets.dailyUsd, afk.model, connectors.voice.port) and value is JSON. Limits, models, AFK, Jev thresholds, ports and the browser block list apply at once. Anything that grants power (people, a command, a connector on, harness) puts a card in front of the owner first, and nothing changes without their yes. Tokens are never settable.`,
@@ -42,4 +45,28 @@ export function ownerTools(c: ToolContext): KageTool[] {
     },
   })
   return tools
+}
+
+function flagTool(c: ToolContext): KageTool | undefined {
+  const flag = c.o.flagKnowledge
+  if (!flag || c.name || c.o.dreaming || c.o.dreamLessons) return
+  return {
+    name: 'flag_knowledge',
+    description: 'Flag knowledge you needed and found missing, wrong or stale: a memory note or a skill. The nightly dream checks the flag and fixes the note. Owner tasks only.',
+    shape: {
+      channel: c.s.describe('channel attribute from the task tag'),
+      thread_ts: c.s.describe('thread_ts attribute from the task tag'),
+      kind: z.enum(['missing', 'wrong', 'stale']),
+      note: c.s.describe('the note file or skill name, or the topic when none exists'),
+      found: c.s.describe('what is true instead, in one or two lines'),
+      fix: c.s.optional().describe('the change you suggest'),
+    },
+    async run(args) {
+      if (!c.ownerActs(args)) return { isError: true, text: "refused: only the owner's own task flags knowledge" }
+      const { kind, note, found, fix } = args as NewFlag
+      flag({ kind, note, found, ...fix !== undefined && { fix } })
+      c.o.event?.('tool', `flag_knowledge ${kind}`)
+      return { text: 'Flagged. The nightly dream checks it and fixes the note.' }
+    },
+  }
 }

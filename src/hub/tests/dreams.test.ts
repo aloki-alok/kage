@@ -107,3 +107,30 @@ test('a kagelet with no conversation yet is skipped, and the next one due dreams
   n.d().kageletDreams(NIGHT)
   assert.deepEqual(n.sent, ['CTEST1:1700000000.654321#side-kdream-b'])
 })
+
+test('a flagged lesson closes its flag as fixed or merged, a dismissal closes it with the reason, and an unknown id changes nothing (#541)', () => {
+  const root = mkdtempSync(join(tmpdir(), 'kage-dreams-')), project = join(root, 'proj'), own = join(root, 'own')
+  mkdirSync(project); mkdirSync(own)
+  writeFileSync(join(own, 'deploy.md'), 'Deploy with scripts/deploy.sh.\n')
+  writeFileSync(join(project, 's1.jsonl'), `${JSON.stringify({ type: 'user', message: { content: 'ship the hotfix please' } })}\n`)
+  const store = openStore(':memory:')
+  store.saveSessions({ 'CTEST1:1.1': 's1' })
+  const rows = [['f1', 'open', 'CTEST1:1.1', 'wrong', 'deploy.md', 'the deploy script moved to bin/ship', ''], ['f2', 'open', 'CTEST1:1.1', 'missing', 'key rotation', 'no note says how to rotate the key', ''], ['f3', 'open', 'CTEST1:1.1', 'stale', 'ports.md', 'the hub port is 3199 now', '']]
+  const added: string[][] = []
+  const ledgers = { events: () => [], text: (name: string) => name === 'flags' ? rows.map(r => ['2026-11-24T00:00:00.000Z', ...r].join('\t')).join('\n') : '', add: (name: string, cells: string[]) => { added.push([name, ...cells]) } }
+  const d = dreams({ dir: root, code: root, title: 'Kage', botDm: 'DTEST', mem: { own, owner: join(root, 'owner') }, project, kagelets: join(root, 'k'), kmem: {} as never, hasSdk: true,
+    store, ledgers: ledgers as never, placeOf: k => k, paused: () => false, quiet: () => true, deliver: () => 'sent', toSession: () => 'sent', limits: () => DREAM_LIMITS })
+  const said = d.lessons([
+    { kind: 'outdated', file: 'deploy.md', text: 'The deploy script is bin/ship now.', confidence: 0.9, flag: 'f1', evidence: [{ key: 'CTEST1:1.1', quote: 'ship the hotfix please' }] },
+    { kind: 'new', file: 'hub-port.md', text: 'The hub listens on 3199.', confidence: 0.9, flag: 'f3', evidence: [{ key: 'CTEST1:1.1', quote: 'ship the hotfix please' }, { key: 'CTEST1:1.1', quote: 'the hub port is 3199 now' }] },
+  ], [{ flag: 'f2', reason: 'the key rotation note exists as keys.md' }, { flag: 'f9', reason: 'x' }])
+  assert.match(said, /^kept 2/)
+  assert.match(said, /f9 is not open/)
+  assert.deepEqual(added, [['flags', 'f1', 'fixed', 'deploy.md'], ['flags', 'f3', 'merged', 'hub-port.md'], ['flags', 'f2', 'dismissed', 'the key rotation note exists as keys.md']])
+})
+
+test("the dream's task lists the open flags from the ledger (#541)", async () => {
+  const n = night({ ledgers: { events: () => [], text: (name: string) => name === 'flags' ? '2026-11-24T00:00:00.000Z\tf1\topen\tCTEST1:1.1\twrong\tdeploy.md\tthe deploy script moved\t' : '' } as never })
+  await n.d().dream(NIGHT)
+  assert.match(n.sent[0]!, /f1 wrong deploy\.md \(key CTEST1:1\.1\)/)
+})

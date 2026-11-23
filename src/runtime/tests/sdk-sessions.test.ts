@@ -1504,6 +1504,7 @@ describe('Kage sessions on the Agent SDK', () => {
     t.d.task('C1:5.5', t.task(), 0)
     await tick()
     assert.equal((await t.sdk.runs[0]!.options.canUseTool('mcp__kage__set_model', {}, { signal: signal() })).behavior, 'allow')
+    for (const tool of ['flag_knowledge', 'dream_lessons']) assert.equal((await t.sdk.runs[0]!.options.canUseTool(`mcp__kage__${tool}`, {}, { signal: signal() })).behavior, 'allow', tool)
     const r = await t.call('set_model', { model: 'opus', effort: 'max' })
     assert.deepEqual(t.sdk.runs[0]!.set, [{ model: 'opus' }, { effortLevel: 'max' }])
     assert.match(r.content[0].text, /opus.*max/)
