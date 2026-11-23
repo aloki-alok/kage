@@ -377,11 +377,6 @@ func asElement(_ v: CFTypeRef?) -> AXUIElement? {
   guard let v, CFGetTypeID(v) == AXUIElementGetTypeID() else { return nil }
   return (v as! AXUIElement)
 }
-func appElement(_ pid: pid_t) -> AXUIElement {
-  let el = AXUIElementCreateApplication(pid)
-  AXUIElementSetMessagingTimeout(el, 0.5)
-  return el
-}
 func ax(_ el: AXUIElement, _ name: String) -> CFTypeRef? {
   var v: CFTypeRef?
   return AXUIElementCopyAttributeValue(el, name as CFString, &v) == .success ? v : nil
@@ -408,7 +403,7 @@ extension Hands {
   }
   func look(_ c: Command) -> [String: Any] {
     guard let app = target(c.app) else { return ["error": "no running app named \(c.app ?? "")"] }
-    let pid = app.processIdentifier, appEl = appElement(pid), name = app.localizedName ?? ""
+    let pid = app.processIdentifier, appEl = AXUIElementCreateApplication(pid), name = app.localizedName ?? ""
     AXUIElementSetAttributeValue(appEl, "AXManualAccessibility" as CFString, kCFBooleanTrue)
     guard let win = asElement(ax(appEl, kAXFocusedWindowAttribute as String)) ?? asElement(ax(appEl, kAXMainWindowAttribute as String)) else { return ["error": "\(name) has no window open"] }
     let title = axText(win, kAXTitleAttribute as String), most = max(1, min(c.max ?? 60, 500))
@@ -434,7 +429,7 @@ extension Hands {
     return ["snapshot": looks, "app": name, "pid": Int(pid), "window": title, "focused": ["role": focus["role"] ?? "", "label": focus["label"] ?? ""], "elements": rows, "total": total, "complete": stack.isEmpty]
   }
   func scene(_ pid: pid_t) -> [String: String] {
-    let front = NSWorkspace.shared.frontmostApplication, appEl = appElement(pid)
+    let front = NSWorkspace.shared.frontmostApplication, appEl = AXUIElementCreateApplication(pid)
     let win = asElement(ax(appEl, kAXFocusedWindowAttribute as String))
     let focus = asElement(ax(appEl, kAXFocusedUIElementAttribute as String))
     let count = (ax(appEl, kAXWindowsAttribute as String) as? [AXUIElement])?.count ?? 0
@@ -453,7 +448,7 @@ extension Hands {
     guard let s = snapshot, let id = c.snapshot, let r = c.ref, let how = c.how else { return ["error": "a ref act needs snapshot, ref and how"] }
     guard id == s.id else { return ["error": "r\(r) is from an older look, so nothing was done. Look again and use a ref from that look"] }
     guard r >= 1, r <= s.refs.count else { return ["error": "the last look has no r\(r)"] }
-    let appEl = appElement(s.pid)
+    let appEl = AXUIElementCreateApplication(s.pid)
     guard NSWorkspace.shared.frontmostApplication?.processIdentifier == s.pid || how == "set",
           let now = asElement(ax(appEl, kAXFocusedWindowAttribute as String)), CFEqual(now, s.window), axText(now, kAXTitleAttribute as String) == s.title
     else { return ["error": "the window changed since the look, so nothing was done. Look again"] }
@@ -489,6 +484,7 @@ func startActing(_ job: Job) { DispatchQueue.main.async { startActingOnMain(job)
 func startActingOnMain(_ job: Job) {
   guard let fifo = job.fifo else { fail("no fifo") }
   if !AXIsProcessTrustedWithOptions([kAXTrustedCheckOptionPrompt.takeUnretainedValue() as String: true] as CFDictionary) { fail("accessibility", 3) }
+  AXUIElementSetMessagingTimeout(AXUIElementCreateSystemWide(), 0.5)
   let a = Hands()
   hands = a
   emit(["state": "acting", "pid": Int(getpid())])
