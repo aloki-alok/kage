@@ -2,7 +2,7 @@ import type { ServerResponse } from 'node:http'
 import { log } from '../runtime/log.ts'
 import type { Conversation } from '../core/conversations.ts'
 import { campaignReport, inSendWindow, smsKeyword, smsSegments, smsTaskLine } from '../core/sms.ts'
-import { telnyxEvent, telnyxSigned, twilioEvent, twilioSigned, type SmsEvent } from '../core/sms-providers.ts'
+import { telnyxEvent, telnyxSigned, twilioBodySigned, twilioEvent, twilioSigned, twilioStreamEvents, type SmsEvent } from '../core/sms-providers.ts'
 import { startFailedNote, type Delivery } from '../core/sessions.ts'
 import type { Task } from '../core/task.ts'
 import { taskAsOther } from '../core/gate.ts'
@@ -68,14 +68,26 @@ function textHearer(o: SmsOptions) {
   }
 }
 
-function signedEvent(o: SmsOptions, raw: Buffer, headers: Record<string, string | string[] | undefined>): SmsEvent | undefined | false {
-  const header = (name: string) => (typeof headers[name] === 'string' ? headers[name] as string : undefined)
+type Headers = Record<string, string | string[] | undefined>
+const headerOf = (headers: Headers, name: string) => (typeof headers[name] === 'string' ? headers[name] as string : undefined)
+const parsedJson = (raw: Buffer): unknown => { try { return JSON.parse(raw.toString('utf8')) } catch { return undefined } }
+
+function signedEvents(o: SmsOptions, raw: Buffer, headers: Headers): SmsEvent[] | false {
   if (o.provider === 'twilio') {
     const params = Object.fromEntries(new URLSearchParams(raw.toString('utf8')))
-    return twilioSigned(o.twilioAuthToken ?? '', o.publicUrl, params, header('x-twilio-signature')) && twilioEvent(params)
+    if (!twilioSigned(o.twilioAuthToken ?? '', o.publicUrl, params, headerOf(headers, 'x-twilio-signature'))) return false
+    const e = twilioEvent(params)
+    return e ? [e] : []
   }
-  if (!telnyxSigned(o.telnyxPublicKey ?? '', header('telnyx-timestamp'), raw, header('telnyx-signature-ed25519'), Date.now() / 1000)) return false
-  try { return telnyxEvent(JSON.parse(raw.toString('utf8'))) } catch { return undefined }
+  if (!telnyxSigned(o.telnyxPublicKey ?? '', headerOf(headers, 'telnyx-timestamp'), raw, headerOf(headers, 'telnyx-signature-ed25519'), Date.now() / 1000)) return false
+  const e = telnyxEvent(parsedJson(raw))
+  return e ? [e] : []
+}
+
+function signedStreamEvents(o: SmsOptions, path: string, raw: Buffer, headers: Headers): SmsEvent[] | false {
+  const signedUrl = o.publicUrl + path.slice('/sms'.length)
+  if (!twilioBodySigned(o.twilioAuthToken ?? '', signedUrl, raw, headerOf(headers, 'x-twilio-signature'))) return false
+  return twilioStreamEvents(parsedJson(raw))
 }
 
 function webhook(o: SmsOptions, run: (e: SmsEvent, source?: string) => void) {
@@ -84,16 +96,22 @@ function webhook(o: SmsOptions, run: (e: SmsEvent, source?: string) => void) {
     else res.writeHead(200).end()
   }
   return listen((req, res) => {
-    if (req.method !== 'POST' || req.url !== '/sms') { res.writeHead(404).end(); return }
+    const path = req.url ?? ''
+    const stream = o.provider === 'twilio' && path.split('?')[0] === '/sms/events'
+    if (req.method !== 'POST' || (path !== '/sms' && !stream)) { res.writeHead(404).end(); return }
     void (async () => {
       const raw = await readBody(req, MAX_BODY)
       if (!raw) { res.writeHead(413).end(); req.destroy(); return }
-      const e = signedEvent(o, raw, req.headers)
-      if (e === false) { res.writeHead(401).end(); return }
-      if (!e) { ok(res); return }
-      const source = e.kind === 'inbound' ? `sms:${e.id}` : undefined
-      if (source && !o.inbox.take(source, 'sms', JSON.stringify(e))) { ok(res); return }
-      try { run(e, source); ok(res) } catch (err) { log('sms event failed', err); res.writeHead(500).end() }
+      const events = stream ? signedStreamEvents(o, path, raw, req.headers) : signedEvents(o, raw, req.headers)
+      if (events === false) { res.writeHead(401).end(); return }
+      try {
+        for (const e of events) {
+          const source = e.kind === 'inbound' ? `sms:${e.id}` : undefined
+          if (source && !o.inbox.take(source, 'sms', JSON.stringify(e))) continue
+          run(e, source)
+        }
+        ok(res)
+      } catch (err) { log('sms event failed', err); res.writeHead(500).end() }
     })()
   }, o.port)
 }

@@ -331,6 +331,15 @@ US carriers block texts from a number that has no registered 10DLC brand and cam
 | `twilioAuthToken` | none | secrets.json. Twilio only: the auth token. It sends texts and checks Twilio's webhook signature. |
 | `telnyxApiKey` | none | secrets.json. Telnyx only: the API key that sends texts. |
 
+### Twilio Event Streams: texts to a number whose webhook points elsewhere
+
+A Twilio number in a Messaging Service sends its incoming texts to the service's webhook, not to Kage. Twilio Event Streams sends a copy of each incoming text to a second address, and the service's own webhook keeps working.
+
+1. In the Twilio console, under Event Streams, create a Webhook sink with the destination `<publicUrl>/events` and the method POST.
+2. Subscribe that sink to `com.twilio.messaging.inbound-message.received`, schema version 1.
+
+Kage checks the signature and the body hash of each post and refuses one that fails. The sink receives the texts to every number on the account, and Kage drops each one not sent to `connectors.sms.from`. A text that reaches Kage through both the webhook and Event Streams starts one task.
+
 ## Slash commands
 
 | Setting | Default | Effect |
