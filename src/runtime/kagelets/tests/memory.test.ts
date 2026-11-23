@@ -153,3 +153,22 @@ test('review finding: the caps hold: five open proposals, 20 notes, 4000 charact
   assert.equal(notes.length, 20)
   assert.ok(notes.every(n => n.text.length === 4000))
 })
+
+test('isolation: when the owner\'s memory is a link to a kagelet\'s memory folder, that kagelet reads none of it', () => {
+  const { base, dir, m } = setup()
+  assert.match(m.propose('deploys', P, 'C1:5.5'), /^proposed/)
+  assert.match(m.decide({ kagelet: 'deploys', id: 'p1', action: 'approve' }), /^approved/)
+  symlinkSync(`${dir}/deploys/memory`, `${base}/linked-owner`)
+  const linked = kageletMemory({ dir, forbid: () => [`${base}/linked-owner`], event: () => {}, waiting: () => {} })
+  assert.deepEqual(linked.notes('deploys'), [])
+  assert.match(linked.decide({ kagelet: 'deploys', id: 'p9', action: 'approve' }), /no proposal p9/)
+})
+
+test('a decision names only a proposal id of letters and digits, and a rejection reason is one line of 200 characters or fewer', () => {
+  const { m } = setup()
+  m.propose('deploys', P, 'C1:5.5')
+  assert.equal(m.decide({ kagelet: 'deploys', id: '../p1', action: 'approve' }), 'no proposal "../p1"')
+  assert.equal(m.decide({ kagelet: 'deploys', id: 'p1', action: 'reject', reason: 'x'.repeat(201) }), 'A rejection needs a one-line reason.')
+  assert.equal(m.decide({ kagelet: 'deploys', id: 'p1', action: 'reject', reason: 'two\nlines' }), 'A rejection needs a one-line reason.')
+  assert.equal(m.decide({ kagelet: 'deploys', id: 'p1', action: 'reject', reason: 'x'.repeat(200) }), 'rejected status.md for deploys.')
+})
