@@ -73,7 +73,7 @@ const { harness = {}, kagelets: kl = {}, afk = {}, connectors: conn = {} } = con
 const health = connectorHealth(Date.now())
 tapLog(a => health.see(a, Date.now()))
 const DIR = dirname(ENV_FILE)
-const CODE = dirname(dirname(fileURLToPath(import.meta.url)))
+const CODE = dirname(dirname(dirname(fileURLToPath(import.meta.url))))
 if (await askSocket(`${DIR}/router.sock`, { type: 'board' }, 2000).then(() => true, () => false)) {
   log('another hub is running and answers on its socket, so this one exits')
   process.exit(0)

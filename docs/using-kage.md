@@ -71,7 +71,7 @@ A kagelet can own an objective: three lines in its file, `objective:` (the outco
 
 Each kagelet has its own memory folder, `~/.config/kage/kagelets/<name>/memory/`, and its approved notes ride in every run. A kagelet's memory never reads or writes Kage's or your memory. Each night, a kagelet that ran gets a dream that reads its own events and reports and proposes edits to its notes. A proposal never applies on its own: Kage reviews each one (approve, edit, or reject with a reason), and every decision is a row in the event log (`memory-decision`).
 
-Kagelets are Kage's teammates, so Kage approves their tools for you, by tier. The tier of each tool comes from code (`core/access.ts`), never from the model:
+Kagelets are Kage's teammates, so Kage approves their tools for you, by tier. The tier of each tool comes from code (`src/core/access.ts`), never from the model:
 
 | Tier | Tools | Who approves |
 |---|---|---|
@@ -186,7 +186,7 @@ You get 🥷 on your message when Kage picks it up. Then 🗡️ means a quick a
 <p align="center"><img src="how-it-works.svg" alt="Slack sends your message over Socket Mode to the Kage hub on your machine, which checks it is from you and hands it to your Claude Code session; Claude replies in the same thread" width="880"></p>
 
 1. **Slack to your machine.** Kage opens an outbound websocket to Slack ([Socket Mode](https://api.slack.com/apis/socket-mode)), so Slack never needs to reach your laptop. No public URL, no open port.
-2. **The gate.** The hub (`hub/router.ts`) hears every message in conversations you're in (through your user token, in `connectors/slack/connect.ts`). The gate (`core/gate.ts`) drops everything except messages you typed that tag `@kage`, or your DMs to the bot.
+2. **The gate.** The hub (`src/hub/router.ts`) hears every message in conversations you're in (through your user token, in `src/connectors/slack/connect.ts`). The gate (`src/core/gate.ts`) drops everything except messages you typed that tag `@kage`, or your DMs to the bot.
 3. **Into Claude Code.** The hub hands the task to that thread's own session (starting it if needed) through the Agent SDK, or through Claude Code's [channels](https://code.claude.com/docs/en/channels-reference.md) feature for tmux panes. Other people's messages arrive quoted and labelled by Slack ID, as background, never as instructions.
 4. **Back to Slack.** Claude answers with Kage's `reply` tool, in the thread the task came from.
 

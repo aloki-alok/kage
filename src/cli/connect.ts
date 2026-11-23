@@ -52,7 +52,7 @@ function pairBrowser(): never {
   if (!plan.newToken && !args.includes('--show-token')) { console.log(addBrowserAgainLines().join('\n')); process.exit(0) }
   const token = plan.newToken ? randomBytes(24).toString('hex') : readSettings(ENV_FILE).secrets.browserToken!
   if (plan.newToken) change(() => updateSecrets(ENV_FILE, s => ({ ...s, browserToken: token })))
-  const ext = fileURLToPath(new URL('../extension', import.meta.url))
+  const ext = fileURLToPath(new URL('../../extension', import.meta.url))
   const id = extensionId(JSON.parse(readFileSync(`${ext}/manifest.json`, 'utf8')).key)
   const helper = `${DIR}/browser-pair.sh`
   const pairer = fileURLToPath(new URL('./browser-pair.ts', import.meta.url))

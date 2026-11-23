@@ -6,8 +6,8 @@
 set -euo pipefail
 DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ENV_FILE="${KAGE_ENV:-$HOME/.config/kage/env}"
-# Settings come from config.json (cli/config.ts); nothing prints when one is unset or the file is not there yet.
-cfg() { KAGE_ENV="$ENV_FILE" node "$DIR/cli/config.ts" get "$1" 2>/dev/null || true; }
+# Settings come from config.json (src/cli/config.ts); nothing prints when one is unset or the file is not there yet.
+cfg() { KAGE_ENV="$ENV_FILE" node "$DIR/src/cli/config.ts" get "$1" 2>/dev/null || true; }
 NAME="$(cfg name)"; NAME="${NAME:-kage}"
 # The folder the hub starts in. hub.ts reads harness.cwd itself, so the unit no longer carries it: a different folder would forget every thread.
 WORK="$(cfg harness.cwd)"; WORK="${WORK:-${KAGE_CWD:-$HOME}}"

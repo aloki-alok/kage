@@ -3,7 +3,7 @@ import { readFileSync } from 'node:fs'
 import { DIR, ENV_FILE, settings } from '../home.ts'
 import type { Line } from '../../core/doctor.ts'
 
-export const ROOT = new URL('../../', import.meta.url).pathname.replace(/\/$/, '')
+export const ROOT = new URL('../../../', import.meta.url).pathname.replace(/\/$/, '')
 export const config = settings().config
 export const name = config.name || 'kage'
 export const dir = DIR

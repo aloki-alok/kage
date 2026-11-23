@@ -1,6 +1,6 @@
 name: upgrade
 # The upgrade a teammate makes (#312): the previous release, an old env file, kage update --stable to this commit, then
-# kage doctor (tests/upgrade-drill.sh). kage release refuses a commit whose run here did not pass (core/release.ts).
+# kage doctor (tests/upgrade-drill.sh). kage release refuses a commit whose run here did not pass (src/core/release.ts).
 on:
   push:
     branches: [main]

@@ -4,7 +4,7 @@ import { readFileSync } from 'node:fs'
 import { suggest } from '../cli-help.ts'
 
 describe('every command kage lists is one it runs, and the other way', () => {
-  const sh = readFileSync(new URL('../../setup.sh', import.meta.url), 'utf8')
+  const sh = readFileSync(new URL('../../../setup.sh', import.meta.url), 'utf8')
   const table = /COMMANDS='([\s\S]*?)'/.exec(sh)![1]!.split('\n').map(l => l.split('|')[1]!)
   const cases = [...sh.slice(sh.lastIndexOf('case "${1:-}" in')).matchAll(/^  ([a-z-]+)\)/gm)].map(m => m[1]!)
   const notListed = new Set(['help', 'export-crons'])

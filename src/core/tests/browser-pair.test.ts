@@ -43,7 +43,7 @@ test("a message survives Chrome's framing both ways, and a short read is not a m
 })
 
 test('the key in the manifest gives the id real Chromium gave the extension', () => {
-  const manifest = JSON.parse(readFileSync(new URL('../../extension/manifest.json', import.meta.url), 'utf8'))
+  const manifest = JSON.parse(readFileSync(new URL('../../../extension/manifest.json', import.meta.url), 'utf8'))
   assert.equal(extensionId(manifest.key), 'mbmhceabkblejmogdbncbcpmamkldiek')
 })
 

@@ -4,7 +4,7 @@
 set -eu
 ROOT=$(cd "$(dirname "$0")/.." && pwd)
 CONF=$(dirname "${KAGE_ENV:-$HOME/.config/kage/env}")
-URL=$(cd "$ROOT" && node cli/config.ts get connectors.whatsapp.wahaUrl 2>/dev/null || true)
+URL=$(cd "$ROOT" && node src/cli/config.ts get connectors.whatsapp.wahaUrl 2>/dev/null || true)
 URL=${URL:-http://127.0.0.1:3198}
 KEY=$(sed -n 's/^WAHA_API_KEY=//p' "$CONF/waha/.env" 2>/dev/null || true)
 die() { echo "kage: $*" >&2; exit 1; }

@@ -12,7 +12,7 @@ import { objectiveOf } from '../../../core/objective.ts'
 const which = (c: string) => { try { return execFileSync('which', [c], { encoding: 'utf8' }).trim() } catch { return '' } }
 const claude = which('claude')
 const skip = process.env.KAGE_LIVE_TESTS !== '1' ? 'set KAGE_LIVE_TESTS=1 to run: it calls a real model' : !claude ? 'no claude command' : false
-const SKILLS = new URL('../../../skills', import.meta.url).pathname
+const SKILLS = new URL('../../../../skills', import.meta.url).pathname
 
 test("the owner's 'keep watching' ask becomes a kagelet with an objective, measure and target, and Kage says the goal it picked (#427)", { skip, timeout: 900_000 }, async () => {
   const work = realpathSync(mkdtempSync(join(tmpdir(), 'kage-watch-')))
