@@ -42,6 +42,17 @@ describe('decisions', () => {
       'ok:SLACK_BOT_TOKEN accepted by Slack',
     ])
   })
+  test('tokens: a secret whose command failed names the secret and the command, in place of the Slack line', () => {
+    const ls = tokenLines({ hasSettings: true, dir: '/c', file: '/c/secrets.json', mode: '600', slack: { app: true, user: true, bot: false },
+      failed: [{ path: 'slack.bot', command: 'op read op://kage/bot' }, { path: 'jevKey', command: 'pass show kage/jev' }] })
+    assert.deepEqual(text(ls), [
+      'ok:token file is private (600)',
+      'ok:SLACK_APP_TOKEN accepted by Slack',
+      'ok:SLACK_USER_TOKEN accepted by Slack',
+      'fail:secrets.json slack.bot: its command failed or printed nothing. Run it in a terminal to see why: op read op://kage/bot',
+      'fail:secrets.json jevKey: its command failed or printed nothing. Run it in a terminal to see why: pass show kage/jev',
+    ])
+  })
   test('jev: silent when off, its line when it works, a fail when it exits non-zero', () => {
     assert.equal(jevLine({ status: 0, out: '' }), undefined)
     assert.deepEqual(jevLine({ status: 0, out: 'jevKey accepted' }), { kind: 'ok', text: 'jevKey accepted' })
