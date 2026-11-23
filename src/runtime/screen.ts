@@ -90,7 +90,7 @@ const openApp: Launch = (app, log) => {
 }
 
 type Options = { folder: string; code: string; longSide?: number; lookElements?: number; build?: (app: string) => Promise<string | undefined>; launch?: Launch; kill?: (pid: number, signal: NodeJS.Signals) => void; pollMs?: number; waitMs?: number }
-type Job = { action: 'record' | 'shot'; out: string; seconds?: number; app?: string; longSide?: number } | { action: 'act'; fifo: string }
+type Job = { action: 'record' | 'shot'; out: string; seconds?: number; app?: string; longSide?: number; region?: number[] } | { action: 'act'; fifo: string }
 type Rec = {
   o: Options; app: string; build: (app: string) => Promise<string | undefined>; launch: Launch; kill: (pid: number, signal: NodeJS.Signals) => void
   pollMs: number; waitMs: number; current?: Running; acting?: Acting; busy: Promise<void>
@@ -121,7 +121,7 @@ export function screenRecorder(o: Options) {
   return {
     act: (command: { op: string } & Record<string, unknown>) => serial(r, () => act(r, command)),
     look: (app?: string, find?: string) => serial(r, () => act(r, { op: 'look', max: o.lookElements ?? 60, ...app && { app }, ...find && { text: find } })),
-    shot: (out: string, appName?: string) => serial(r, () => shot(r, out, appName)),
+    shot: (out: string, appName?: string, region?: number[]) => serial(r, () => shot(r, out, appName, region)),
     start: (out: string, seconds: number, appName?: string) => serial(r, () => start(r, out, seconds, appName)),
     stop: () => serial(r, () => stop(r)),
   }
@@ -198,8 +198,8 @@ async function act(r: Rec, command: { op: string } & Record<string, unknown>): P
   return again === 'left idle' ? { error: NO_ANSWER } : again
 }
 
-async function shot(r: Rec, out: string, appName?: string): Promise<string | Picture> {
-  const j = await launchJob(r, { action: 'shot', out, ...appName && { app: appName }, ...r.o.longSide && { longSide: r.o.longSide } })
+async function shot(r: Rec, out: string, appName?: string, region?: number[]): Promise<string | Picture> {
+  const j = await launchJob(r, { action: 'shot', out, ...appName && { app: appName }, ...r.o.longSide && { longSide: r.o.longSide }, ...region && { region } })
   if ('err' in j) return j.err!
   const ended = await exitsWithin(j.exited, r.waitMs)
   const last = lines(j.log).at(-1)

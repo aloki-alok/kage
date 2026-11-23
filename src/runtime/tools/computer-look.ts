@@ -18,6 +18,7 @@ export function lookTool(desk: Desk, shot: (args: Record<string, unknown>) => Pr
       ...desk.where, app: desk.app,
       find: c.s.optional().describe('keep only elements whose role, label or value contains this, such as "message" or "send"'),
       picture: z.boolean().optional().describe('also take a picture, for layout, images or a canvas that has no elements'),
+      zoom: z.tuple([z.number(), z.number(), z.number(), z.number()]).optional().describe('[x, y, width, height] pixels on the latest picture: a full-size picture of that region, to read small text'),
     },
     async run(args) {
       if (!c.ownerActs(args)) return fail("refused: only the owner's own task sees their screen")
@@ -27,7 +28,7 @@ export function lookTool(desk: Desk, shot: (args: Record<string, unknown>) => Pr
       if ('error' in look) return fail(look.error)
       desk.look = { snapshot: look.snapshot, app: look.app, byRef: new Map(look.elements.map(e => [e.ref, e])) }
       const text = lookText(look)
-      if (args.picture !== true) return { text }
+      if (args.picture !== true && args.zoom === undefined) return { text }
       const picture = await shot(args)
       return picture.isError ? { text: `${text}\nThe picture failed: ${picture.text}`, isError: true } : { text: `${text}\n${picture.text}` }
     },

@@ -11,7 +11,7 @@ import QuartzCore
 import ScreenCaptureKit
 import UniformTypeIdentifiers
 
-struct Job: Decodable { let action: String; let out: String?; let seconds: Double?; let app: String?; let fifo: String?; let longSide: Double? }
+struct Job: Decodable { let action: String; let out: String?; let seconds: Double?; let app: String?; let fifo: String?; let longSide: Double?; let region: [Double]? }
 
 func emit(_ d: [String: Any]) {
   var data = try! JSONSerialization.data(withJSONObject: d)
@@ -62,10 +62,13 @@ func run() async {
     filter = SCContentFilter(display: display, excludingApplications: [], exceptingWindows: [])
   }
   let config = SCStreamConfiguration()
-  let px = CGSize(width: filter.contentRect.width * CGFloat(filter.pointPixelScale), height: filter.contentRect.height * CGFloat(filter.pointPixelScale))
+  let zoom = job.region.flatMap { r in r.count == 4 && r[2] > 0 && r[3] > 0 ? CGRect(x: r[0], y: r[1], width: r[2], height: r[3]) : nil }
+  if let z = zoom { config.sourceRect = z }
+  let seen = zoom?.size ?? filter.contentRect.size
+  let px = CGSize(width: seen.width * CGFloat(filter.pointPixelScale), height: seen.height * CGFloat(filter.pointPixelScale))
   // A video fits in 1920 by 1080: full Retina size is about 19 Mbit/s, too big to send. A picture fits the hub's long
   // side, since the model sees a large picture shrunk and would aim on a smaller one than screen_act maps from.
-  let fit = job.action == "record" ? min(1, 1920 / px.width, 1080 / px.height) : min(1, (job.longSide ?? .infinity) / max(px.width, px.height))
+  let fit = job.action == "record" ? min(1, 1920 / px.width, 1080 / px.height) : zoom != nil ? 1 : min(1, (job.longSide ?? .infinity) / max(px.width, px.height))
   config.width = Int(px.width * fit) / 2 * 2
   config.height = Int(px.height * fit) / 2 * 2
   config.showsCursor = true

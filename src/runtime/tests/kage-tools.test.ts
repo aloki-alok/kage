@@ -1270,6 +1270,19 @@ describe("the owner's screen", () => {
     assert.deepEqual(cards, ['it clicks "Move to Trash" in Finder, on your Mac'])
     assert.deepEqual(sent, [])
   })
+  test('zoom takes a full-size picture of a region given in pixels on the latest picture, and keeps that picture for points (#509)', async () => {
+    const regions: unknown[] = [], asked: string[] = []
+    const screen = { ...fakeScreen(asked), shot: async (_o: string, _a?: string, region?: number[]) => { regions.push(region); return { width: 1280, height: 800, pointsWide: 1440, pointsHigh: 900 } } }
+    const s = setup({ screen, approve: async () => true })
+    s.t.onTask(s.task())
+    assert.match((await s.call('computer_look', { channel: 'C1', thread_ts: '5.5', zoom: [100, 100, 200, 100] })).text, /zoom needs a picture first/)
+    await s.call('computer_look', { channel: 'C1', thread_ts: '5.5', picture: true })
+    assert.match((await s.call('computer_look', { channel: 'C1', thread_ts: '5.5', zoom: [100, 100, 200, 100] })).text, /at full size, of that region/)
+    assert.deepEqual(regions, [undefined, [112.5, 112.5, 225, 112.5]])
+    asked.length = 0
+    await s.call('computer_act', { channel: 'C1', thread_ts: '5.5', action: 'left_click', coordinate: [640, 400] })
+    assert.deepEqual(asked, ['under 720,450', 'click 720,450'])
+  })
   test("a refusal from Kage Screen, such as a stale ref, reaches the session as an error (#509)", async () => {
     const sent: Record<string, unknown>[] = []
     const s = setup({ screen: refScreen(sent, { error: 'r1 is from an older look, so nothing was done. Look again and use a ref from that look' }) })

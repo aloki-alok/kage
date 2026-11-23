@@ -175,11 +175,15 @@ async function actOnce(desk: Desk, args: Record<string, unknown>): Promise<Resul
 }
 
 async function screenshot(desk: Desk, args: Record<string, unknown>): Promise<Result> {
-  const { c, screen } = desk
+  const { c, screen, picture } = desk
+  const zoom = Array.isArray(args.zoom) ? args.zoom.map(Number) : undefined
+  if (zoom && !picture) return { isError: true, text: 'zoom needs a picture first: look with picture true, then zoom into a region of it' }
+  const region = zoom && picture ? [zoom[0]! * picture.pointsWide / picture.width, zoom[1]! * picture.pointsHigh / picture.height, zoom[2]! * picture.pointsWide / picture.width, zoom[3]! * picture.pointsHigh / picture.height] : undefined
   const file = fileFor(c, args, 'png')
-  const r = await screen.shot(file, args.app as string | undefined)
-  seen(c, 'computer_look', typeof r === 'string' ? 'picture failed' : 'picture ok')
+  const r = await screen.shot(file, args.app as string | undefined, region)
+  seen(c, 'computer_look', typeof r === 'string' ? 'picture failed' : region ? 'zoom ok' : 'picture ok')
   if (typeof r === 'string') return { isError: true, text: r }
+  if (region) return { text: `saved ${file}, ${r.width} by ${r.height} pixels at full size, of that region. coordinate still means pixels on the whole picture.` }
   desk.picture = r
   return { text: `saved ${file}, ${r.width} by ${r.height} pixels. coordinate is [x, y] pixels on this picture.` }
 }
