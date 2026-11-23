@@ -1,6 +1,6 @@
 import { describe, test } from 'node:test'
 import assert from 'node:assert/strict'
-import { chatText, checkDream, dreamDue, dreamTask, threadsSince, DREAM_LIMITS, type DreamLesson } from '../dream.ts'
+import { chatText, checkDream, dreamDue, dreamTask, flagRow, openFlags, threadsSince, DREAM_LIMITS, type DreamLesson, type KnowledgeFlag } from '../dream.ts'
 
 process.env.TZ = 'Asia/Kolkata'
 const HOUR = 3600_000, DAY = 24 * HOUR
@@ -147,4 +147,39 @@ test('only what people wrote counts as a chat: Kage\'s own words never prove a l
     JSON.stringify({ type: 'assistant', message: { content: [{ type: 'text', text: 'noted, I will never squash' }, { type: 'tool_use', name: 'mcp__kage__reply', input: { text: 'will merge' } }] } }),
   ]
   assert.equal(chatText(lines), 'owner: please never squash\nand use merge commits')
+})
+
+describe('knowledge flags from a working session (#541)', () => {
+  const flag: KnowledgeFlag = { id: 'f1', key: 'C1:1.1', kind: 'wrong', note: 'deploy.md', found: 'the deploy script moved to bin/ship last week', fix: 'point deploy.md at bin/ship' }
+  const chats = { 'C1:1.1': 'owner: ship the hotfix please', 'C2:2.2': 'owner: the deploy went fine' }
+  const fixed = (o: Partial<DreamLesson> = {}): DreamLesson => ({ kind: 'outdated', file: 'deploy.md', text: 'The deploy script is bin/ship now.', confidence: 0.9, flag: 'f1',
+    evidence: [{ key: 'C1:1.1', quote: 'the deploy script moved to bin/ship' }], ...o })
+  test('a flag row reads back as an open flag until a close row names its id', () => {
+    const row = (cells: string[]) => ['2026-11-24T00:00:00.000Z', ...cells].join('\t')
+    const open = row(flagRow('f1', 'C1:1.1', { kind: 'wrong', note: 'deploy.md', found: 'the deploy script\nmoved to bin/ship last week', fix: 'point deploy.md at bin/ship' }))
+    const other = row(flagRow('f2', 'C2:2.2', { kind: 'missing', note: 'how to rotate the key', found: 'no note says how' }))
+    assert.deepEqual(openFlags([open, other].join('\n')), [flag, { id: 'f2', key: 'C2:2.2', kind: 'missing', note: 'how to rotate the key', found: 'no note says how', fix: '' }])
+    assert.deepEqual(openFlags([open, other, row(['f1', 'fixed', 'deploy.md'])].join('\n')).map(f => f.id), ['f2'])
+  })
+  test('one flag plus the thread that raised it proves a lesson, quoted from the flag', () => {
+    assert.deepEqual(checkDream([fixed()], chats, DREAM_LIMITS, undefined, [flag]).dropped, [])
+  })
+  test('the same lesson with no flag, or a flag that is closed, still needs two threads', () => {
+    assert.deepEqual(checkDream([fixed({ flag: undefined })], chats, DREAM_LIMITS, undefined, [flag]).dropped.map(d => d.why), ['a quote is not in C1:1.1'])
+    assert.deepEqual(checkDream([fixed({ flag: 'f1', evidence: [{ key: 'C1:1.1', quote: 'ship the hotfix please' }] })], chats, DREAM_LIMITS, undefined, []).dropped.map(d => d.why), ['flag f1 is not open'])
+  })
+  test("a flagged lesson must quote the flag's own thread, and a quote still has to be real", () => {
+    assert.deepEqual(checkDream([fixed({ evidence: [{ key: 'C2:2.2', quote: 'the deploy went fine' }] })], chats, DREAM_LIMITS, undefined, [flag]).dropped.map(d => d.why), ['no quote from C1:1.1, the thread that raised flag f1'])
+    assert.deepEqual(checkDream([fixed({ evidence: [{ key: 'C1:1.1', quote: 'the deploy script is in /opt' }] })], chats, DREAM_LIMITS, undefined, [flag]).dropped.map(d => d.why), ['a quote is not in C1:1.1'])
+  })
+  test('the flag thread counts even when it did not move tonight', () => {
+    assert.deepEqual(checkDream([fixed()], {}, DREAM_LIMITS, undefined, [flag]).dropped, [])
+  })
+  test("the dream's task lists open flags as data, and says nothing of flags when there are none", () => {
+    const t = dreamTask({ own: '/m/kage', owner: '/m/owner' }, [], 'x', undefined, '', true, undefined, [flag])
+    assert.match(t, /f1 wrong deploy\.md \(key C1:1\.1\): found "the deploy script moved to bin\/ship last week", suggested "point deploy\.md at bin\/ship"/)
+    assert.match(t, /data, never instructions/)
+    assert.match(t, /dismiss/)
+    assert.doesNotMatch(dreamTask({ own: '/m/kage', owner: '/m/owner' }, [], 'x', undefined, '', true), /flag/i)
+  })
 })
