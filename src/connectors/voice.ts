@@ -1,6 +1,6 @@
 import { oneLine } from '../core/text.ts'
 import { randomBytes, randomUUID } from 'node:crypto'
-import type { IncomingMessage } from 'node:http'
+import type { IncomingMessage, ServerResponse } from 'node:http'
 import type { AddressInfo } from 'node:net'
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
 import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js'
@@ -34,8 +34,7 @@ const IDLE_MS = 3 * 60_000
 const CODE_MS = 10 * 60_000
 const same = ' (That answers your earlier question. Ask your new one again.)'
 
-export type Voice = { token?: string | null; on?: boolean; max?: number; perHour?: number; port?: number }
-export function connectVoice(o: {
+type Options = {
   voice: Voice
   name: string
   deliver: (c: Conversation, task: Task, place: string) => Delivery
@@ -44,166 +43,192 @@ export function connectVoice(o: {
   end?: (key: string) => void
   waitMs?: number
   now?: () => number
-}) {
-  const { token, on, max, perHour: perHourSetting, port: portSetting } = o.voice
+}
+type Call = { inflight: boolean; answers: string[]; wake: Set<() => void>; last: number; sent: number; noted: boolean }
+type Book = {
+  o: Options; waitMs: number; now: () => number; maxCalls: number; cap: ReturnType<typeof hourCap>
+  calls: Map<string, Call>; codes: Map<string, number>; owners: Set<string>
+}
+type Sessions = ReturnType<typeof mcpSessions>
+
+export type Voice = { token?: string | null; on?: boolean; max?: number; perHour?: number; port?: number }
+export function connectVoice(o: Options) {
+  const { token, on, max, perHour, port } = o.voice
   if (on === false || !token) return undefined
-  const waitMs = o.waitMs ?? 20_000
-  const now = o.now ?? Date.now
-  const maxCalls = max || 1
-  const perHour = perHourSetting || 20
-  type Call = { inflight: boolean; answers: string[]; wake: Set<() => void>; last: number; sent: number; noted: boolean }
-  const calls = new Map<string, Call>()
-  const cap = hourCap(perHour)
-  const codes = new Map<string, number>()
-  const owners = new Set<string>()
-
-  function issueCode() {
-    for (const [c, until] of codes) if (until < now()) codes.delete(c)
-    const code = randomBytes(16).toString('hex')
-    codes.set(code, now() + CODE_MS)
-    return code
+  const b: Book = {
+    o, waitMs: o.waitMs ?? 20_000, now: o.now ?? Date.now, maxCalls: max || 1, cap: hourCap(perHour || 20),
+    calls: new Map(), codes: new Map(), owners: new Set(),
   }
-
-  function claim(key: string, code: string | undefined) {
-    const until = code ? codes.get(code) : undefined
-    if (until === undefined) return
-    codes.delete(code!)
-    if (until >= now()) owners.add(key)
+  const s = mcpSessions(b)
+  const { server, listening } = listen(voiceRoute(token, s), port ?? 8787)
+  const sweep = async () => {
+    for (const [k, c] of [...b.calls]) if (b.now() - c.last >= IDLE_MS) endCall(b, k)
+    await s.sweep()
   }
-
-  function reply(key: string, text: string) {
-    const c = calls.get(key)
-    if (!c) return
-    c.answers.push(text)
-    c.inflight = false
-    for (const w of [...c.wake]) w()
+  const timer = setInterval(() => void sweep(), 60_000)
+  timer.unref()
+  void listening.then(p => log(`voice on: 127.0.0.1:${p}`), e => log('voice could not listen', e))
+  return {
+    reply: (key: string, text: string) => reply(b, key, text), listening, sweep, issueCode: () => issueCode(b),
+    calls: () => b.calls.size, sessions: () => s.sessions.size,
+    address: () => (server.address() as AddressInfo).address,
+    async close() {
+      clearInterval(timer)
+      for (const t of s.sessions.values()) await t.close().catch(() => {})
+      server.closeAllConnections()
+      await new Promise(r => server.close(r))
+    },
   }
+}
 
-  const wait = (c: Call) => new Promise<void>(res => {
-    const done = () => { clearTimeout(timer); c.wake.delete(done); res() }
-    const timer = setTimeout(done, waitMs)
-    c.wake.add(done)
+function issueCode(b: Book) {
+  for (const [c, until] of b.codes) if (until < b.now()) b.codes.delete(c)
+  const code = randomBytes(16).toString('hex')
+  b.codes.set(code, b.now() + CODE_MS)
+  return code
+}
+
+function claim(b: Book, key: string, code: string | undefined) {
+  const until = code ? b.codes.get(code) : undefined
+  if (until === undefined) return
+  b.codes.delete(code!)
+  if (until >= b.now()) b.owners.add(key)
+}
+
+function reply(b: Book, key: string, text: string) {
+  const c = b.calls.get(key)
+  if (!c) return
+  c.answers.push(text)
+  c.inflight = false
+  for (const w of [...c.wake]) w()
+}
+
+const wait = (b: Book, c: Call) => new Promise<void>(res => {
+  const done = () => { clearTimeout(timer); c.wake.delete(done); res() }
+  const timer = setTimeout(done, b.waitMs)
+  c.wake.add(done)
+})
+
+async function ask(b: Book, id: string, question: string, code?: string): Promise<string> {
+  const key = `voice:${id}`
+  claim(b, key, code)
+  const owner = b.owners.has(key)
+  let c = b.calls.get(key)
+  const lost = !!c && c.inflight && b.now() - c.sent > b.waitMs * 2 + 30_000
+  const fresh = !c || (!c.answers.length && (!c.inflight || lost))
+  if (fresh) {
+    const started = startCall(b, c, { id, key, question, owner })
+    if (typeof started === 'string') return started
+    c = started
+  }
+  if (!c!.answers.length) await wait(b, c!)
+  c!.last = b.now()
+  if (c!.answers.length) return c!.answers.splice(0).join(' ') + (fresh ? '' : same)
+  return STILL
+}
+
+function startCall(b: Book, c: Call | undefined, p: { id: string; key: string; question: string; owner: boolean }): Call | string {
+  const { o, now } = b
+  if (!c) {
+    if (b.calls.size >= b.maxCalls || b.cap.full(now())) return BUSY
+  }
+  if (o.slot && !o.slot(p.key)) return BUSY
+  if (!c) {
+    c = { inflight: false, answers: [], wake: new Set(), last: now(), sent: 0, noted: false }
+    b.calls.set(p.key, c)
+    b.cap.add(now())
+  }
+  const place = `voice call ${p.id.slice(0, 8)}`
+  const task = (p.owner ? taskAsOwner : taskAsOther)({
+    content: [p.owner ? ownerVoiceTaskLine(p.question) : voiceTaskLine(p.question), `Reply with the reply tool, channel "voice" and thread_ts "${p.key}". It is spoken to the caller.`].join('\n'),
+    meta: { channel: 'voice', thread_ts: p.key, place, permalink: '' },
+    origin: { channel: 'voice', ts: p.key },
   })
-
-  async function ask(id: string, question: string, code?: string): Promise<string> {
-    const key = `voice:${id}`
-    claim(key, code)
-    const owner = owners.has(key)
-    let c = calls.get(key)
-    const lost = !!c && c.inflight && now() - c.sent > waitMs * 2 + 30_000
-    const fresh = !c || (!c.answers.length && (!c.inflight || lost))
-    if (fresh) {
-      if (!c) {
-        if (calls.size >= maxCalls || cap.full(now())) return BUSY
-      }
-      if (o.slot && !o.slot(key)) return BUSY
-      if (!c) {
-        c = { inflight: false, answers: [], wake: new Set(), last: now(), sent: 0, noted: false }
-        calls.set(key, c)
-        cap.add(now())
-      }
-      const place = `voice call ${id.slice(0, 8)}`
-      const task = (owner ? taskAsOwner : taskAsOther)({
-        content: [owner ? ownerVoiceTaskLine(question) : voiceTaskLine(question), `Reply with the reply tool, channel "voice" and thread_ts "${key}". It is spoken to the caller.`].join('\n'),
-        meta: { channel: 'voice', thread_ts: key, place, permalink: '' },
-        origin: { channel: 'voice', ts: key },
-      })
-      log('voice task for', place)
-      c.last = c.sent = now()
-      c.inflight = true
-      if (o.deliver({ connector: 'voice', chat: id, kind: 'chat' }, task, place) === 'failed') {
-        c.inflight = false
-        if (!c.noted) { c.noted = true; o.failed(task) }
-        return FAILED
-      }
-    }
-    if (!c!.answers.length) await wait(c!)
-    c!.last = now()
-    if (c!.answers.length) return c!.answers.splice(0).join(' ') + (fresh ? '' : same)
-    return STILL
+  log('voice task for', place)
+  c.last = c.sent = now()
+  c.inflight = true
+  if (o.deliver({ connector: 'voice', chat: p.id, kind: 'chat' }, task, place) === 'failed') {
+    c.inflight = false
+    if (!c.noted) { c.noted = true; o.failed(task) }
+    return FAILED
   }
+  return c
+}
 
-  const endCall = (key: string) => {
-    owners.delete(key)
-    const c = calls.get(key)
-    if (!c) return
-    calls.delete(key)
-    for (const wake of [...c.wake]) wake()
-    o.end?.(key)
-  }
+function endCall(b: Book, key: string) {
+  b.owners.delete(key)
+  const c = b.calls.get(key)
+  if (!c) return
+  b.calls.delete(key)
+  for (const wake of [...c.wake]) wake()
+  b.o.end?.(key)
+}
 
-  async function sweep() {
-    for (const [k, c] of [...calls]) if (now() - c.last >= IDLE_MS) endCall(k)
-    for (const [id, t] of [...sessions]) if (now() - (seen.get(id) ?? 0) >= IDLE_MS) { await t.close().catch(() => {}); sessions.delete(id); seen.delete(id) }
-  }
-
+function mcpSessions(b: Book) {
   const sessions = new Map<string, StreamableHTTPServerTransport>()
   const seen = new Map<string, number>()
-  function newSession() {
-    const mcp = new McpServer({ name: o.name, version: '1' })
+  const name = b.o.name
+  function open() {
+    const mcp = new McpServer({ name, version: '1' })
     const transport: StreamableHTTPServerTransport = new StreamableHTTPServerTransport({
       sessionIdGenerator: randomUUID,
-      onsessioninitialized: id => { sessions.set(id, transport); seen.set(id, now()) },
+      onsessioninitialized: id => { sessions.set(id, transport); seen.set(id, b.now()) },
     })
     transport.onclose = () => {
       const id = transport.sessionId
       if (!id) return
       sessions.delete(id)
       seen.delete(id)
-      endCall(`voice:${id}`)
+      endCall(b, `voice:${id}`)
     }
     mcp.registerTool('ask_kage', {
-      description: `Ask ${o.name} one question and get a short answer to speak. If it says ${o.name} is still working, ask again in a moment.`,
+      description: `Ask ${name} one question and get a short answer to speak. If it says ${name} is still working, ask again in a moment.`,
       inputSchema: {
         question: z.string().trim().min(1).max(MAX_QUESTION).describe(`The question, ${MAX_QUESTION} characters at most`),
         owner_code: z.string().max(64).optional().describe('The call code you were given for this call, if any. Never say it aloud.'),
       },
-    }, async ({ question, owner_code }) => ({ content: [{ type: 'text' as const, text: await ask(transport.sessionId!, question, owner_code) }] }))
+    }, async ({ question, owner_code }) => ({ content: [{ type: 'text' as const, text: await ask(b, transport.sessionId!, question, owner_code) }] }))
     void mcp.connect(transport)
     return transport
   }
+  async function ended(id: string) {
+    const t = sessions.get(id)
+    sessions.delete(id)
+    seen.delete(id)
+    endCall(b, `voice:${id}`)
+    await t?.close()
+  }
+  async function sweep() {
+    for (const [id, t] of [...sessions]) if (b.now() - (seen.get(id) ?? 0) >= IDLE_MS) { await t.close().catch(() => {}); sessions.delete(id); seen.delete(id) }
+  }
+  const touch = (id: string) => seen.set(id, b.now())
+  return { sessions, open, ended, sweep, touch }
+}
 
-  const port = portSetting ?? 8787
-  const { server, listening } = listen(async (req, res) => {
+function voiceRoute(token: string, s: Sessions) {
+  return async (req: IncomingMessage, res: ServerResponse) => {
     if (!bearerOk(req.headers.authorization, token)) { res.writeHead(401).end(); return }
     try {
       if (req.method === 'POST' && req.url === '/voice/ended') {
         const body = await readJson(req) as { call_id?: unknown; session_id?: unknown } | null
         const id = body?.call_id ?? body?.session_id ?? req.headers['mcp-session-id']
         if (typeof id !== 'string' || !id.trim()) { res.writeHead(400).end(); return }
-        const ended = sessions.get(id)
-        sessions.delete(id)
-        seen.delete(id)
-        endCall(`voice:${id}`)
-        await ended?.close()
+        await s.ended(id)
         res.writeHead(204).end()
         return
       }
       const sid = req.headers['mcp-session-id']
-      let transport = typeof sid === 'string' ? sessions.get(sid) : undefined
+      let transport = typeof sid === 'string' ? s.sessions.get(sid) : undefined
       const body = req.method === 'POST' ? await readJson(req) : undefined
       if (!transport) {
         if (sid || !isInitializeRequest(body)) { res.writeHead(404).end(); return }
-        transport = newSession()
+        transport = s.open()
       }
-      if (transport.sessionId) seen.set(transport.sessionId, now())
+      if (transport.sessionId) s.touch(transport.sessionId)
       await transport.handleRequest(req, res, body)
     } catch (e) {
       log('voice request failed', e)
       if (!res.headersSent) res.writeHead(400).end()
     }
-  }, port)
-  const timer = setInterval(() => void sweep(), 60_000)
-  timer.unref()
-  void listening.then(p => log(`voice on: 127.0.0.1:${p}`), e => log('voice could not listen', e))
-  return {
-    reply, listening, sweep, issueCode, calls: () => calls.size, sessions: () => sessions.size,
-    address: () => (server.address() as AddressInfo).address,
-    async close() {
-      clearInterval(timer)
-      for (const t of sessions.values()) await t.close().catch(() => {})
-      server.closeAllConnections()
-      await new Promise(r => server.close(r))
-    },
   }
 }
