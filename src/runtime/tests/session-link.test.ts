@@ -100,18 +100,19 @@ test("a session's schedule always lands in its own thread, whatever key the mess
   const sock = join(mkdtempSync(join(tmpdir(), 'kage-link-')), 's.sock')
   const server = listenForSessions(sock, d, {
     mail: () => {}, wa: () => {}, voice: () => {}, sms: () => {}, failed: () => {},
-    schedules: { add: (key, j) => { added.push(`${key} ${j.id} ${j.cron}`); return undefined }, remove: (key, id) => { removed.push(`${key} ${id}`) } },
+    schedules: { add: (key, j) => { added.push(`${key} ${j.id} ${j.cron} lane=${j.lane} model=${j.model}`); return undefined }, remove: (key, id) => { removed.push(`${key} ${id}`) } },
   })
   await until(() => server.listening)
   const c = connect(sock)
   c.write(JSON.stringify({ type: 'hello', key: 'A' }) + '\n')
   c.write(JSON.stringify({ type: 'schedule', key: 'B', id: 'j1', cron: '*/15 * * * *', prompt: 'p', recurring: true, fromOwner: true }) + '\n')
+  c.write(JSON.stringify({ type: 'schedule', key: 'B', id: 'j2', cron: '*/30 * * * *', prompt: 'p', lane: false, model: 'haiku' }) + '\n')
   c.write(JSON.stringify({ type: 'unschedule', key: 'B', id: 'j1' }) + '\n')
-  await until(() => removed.length > 0)
-  assert.deepEqual(added, ['A j1 */15 * * * *'])
-  assert.deepEqual(removed, ['A j1'])
-  c.end()
-  server.close()
+  try {
+    await until(() => removed.length > 0)
+    assert.deepEqual(added, ['A j1 */15 * * * * lane=undefined model=undefined', 'A j2 */30 * * * * lane=false model=haiku'])
+    assert.deepEqual(removed, ['A j1'])
+  } finally { c.end(); server.close() }
 })
 
 test("a job lane's session cannot unschedule over the socket", async () => {

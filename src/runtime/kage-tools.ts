@@ -6,7 +6,8 @@ import { z } from 'zod'
 import { log } from './log.ts'
 import type { AfkCommand } from '../core/afk.ts'
 import type { Schedule } from '../core/cron.ts'
-import type { ProbeArg, TuneArg } from './probe-jobs.ts'
+import type { TuneArg } from './probe-jobs.ts'
+import type { NewJob } from './schedule-edits.ts'
 import type { ChannelReply } from './protocol.ts'
 import { addressed, foreignAgentRefusal, mentionedIds } from '../core/agents.ts'
 import { filesFolderName } from '../core/conversations.ts'
@@ -94,7 +95,7 @@ type SessionOptions = {
   ledgers: Ledgers
   send: (m: ChannelReply) => boolean | void
   memory: { own: string; owner: string }
-  schedules?: { add(j: Pick<Schedule, 'id' | 'cron' | 'prompt' | 'recurring' | 'lane' | 'trigger' | 'needs'> & { probe?: ProbeArg; shadow?: { of: string; live: string } }): string | void | Promise<string | void>; remove(id: string): void; list(): Schedule[]; tune?(id: string, t: TuneArg): string | void; hookUrl?(id: string): string | undefined; restore?(id: string): string | undefined; move?(id: string, to: string): string | undefined }
+  schedules?: { add(j: NewJob): string | void | Promise<string | void>; remove(id: string): void; list(): Schedule[]; tune?(id: string, t: TuneArg): string | void; hookUrl?(id: string): string | undefined; restore?(id: string): string | undefined; move?(id: string, to: string): string | undefined }
   afk?: (c: AfkCommand) => Promise<string>
   turnSender?: () => Sender | undefined
   kagelet?: string

@@ -22,6 +22,6 @@ export type FromSession =
   | { type: 'hello'; key: string }
   | { type: 'permission'; id: string }
   | ChannelReply
-  | { type: 'schedule'; id: string; cron: string; prompt: string; recurring: boolean; probe?: ProbeArg; shadow?: { of: string; live: string } }
+  | { type: 'schedule'; id: string; cron: string; prompt: string; recurring: boolean; lane?: boolean; model?: string; probe?: ProbeArg; shadow?: { of: string; live: string } }
   | { type: 'unschedule'; id: string }
 
