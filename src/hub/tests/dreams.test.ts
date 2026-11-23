@@ -121,8 +121,8 @@ test('a flagged lesson closes its flag as fixed or merged, a dismissal closes it
   const d = dreams({ dir: root, code: root, title: 'Kage', botDm: 'DTEST', mem: { own, owner: join(root, 'owner') }, project, kagelets: join(root, 'k'), kmem: {} as never, hasSdk: true,
     store, ledgers: ledgers as never, placeOf: k => k, paused: () => false, quiet: () => true, deliver: () => 'sent', toSession: () => 'sent', limits: () => DREAM_LIMITS })
   const said = d.lessons([
-    { kind: 'outdated', file: 'deploy.md', text: 'The deploy script is bin/ship now.', confidence: 0.9, flag: 'f1', evidence: [{ key: 'CTEST1:1.1', quote: 'the deploy script moved to bin/ship' }] },
-    { kind: 'new', file: 'hub-port.md', text: 'The hub listens on 3199.', confidence: 0.9, flag: 'f3', evidence: [{ key: 'CTEST1:1.1', quote: 'the hub port is 3199 now' }] },
+    { kind: 'outdated', file: 'deploy.md', text: 'The deploy script is bin/ship now.', confidence: 0.9, flag: 'f1', evidence: [{ key: 'CTEST1:1.1', quote: 'ship the hotfix please' }] },
+    { kind: 'new', file: 'hub-port.md', text: 'The hub listens on 3199.', confidence: 0.9, flag: 'f3', evidence: [{ key: 'CTEST1:1.1', quote: 'ship the hotfix please' }, { key: 'CTEST1:1.1', quote: 'the hub port is 3199 now' }] },
   ], [{ flag: 'f2', reason: 'the key rotation note exists as keys.md' }, { flag: 'f9', reason: 'x' }])
   assert.match(said, /^kept 2/)
   assert.match(said, /f9 is not open/)

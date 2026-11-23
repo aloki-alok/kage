@@ -1999,7 +1999,8 @@ describe('flag_knowledge: a working session flags a missing or wrong note for th
     s.t.onTask(s.task({ channel: 'voice', thread_ts: 'voice:c1' }))
     assert.equal((await s.call('flag_knowledge', { channel: 'voice', thread_ts: 'voice:c1', ...flag })).isError, true)
     assert.deepEqual(got, [])
-    for (const o of [{ kagelet: 'watch' }, { dreaming: 'watch' }, {}]) assert.equal(setup({ ...o, ...'kagelet' in o || 'dreaming' in o ? { flagKnowledge: () => {} } : {} }).t.tools.some(x => x.name === 'flag_knowledge'), false, JSON.stringify(o))
+    for (const o of [{ kagelet: 'watch' }, { dreaming: 'watch' }, { dreamLessons: () => '' }]) assert.equal(setup({ ...o, flagKnowledge: () => {} }).t.tools.some(x => x.name === 'flag_knowledge'), false, JSON.stringify(o))
+    assert.equal(setup().t.tools.some(x => x.name === 'flag_knowledge'), false)
   })
   test('dream_lessons passes each flag id and the dismissals to the hub', async () => {
     const seen: unknown[] = []

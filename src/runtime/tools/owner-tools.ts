@@ -49,7 +49,7 @@ export function ownerTools(c: ToolContext): KageTool[] {
 
 function flagTool(c: ToolContext): KageTool | undefined {
   const flag = c.o.flagKnowledge
-  if (!flag || c.name || c.o.dreaming) return
+  if (!flag || c.name || c.o.dreaming || c.o.dreamLessons) return
   return {
     name: 'flag_knowledge',
     description: 'Flag knowledge you needed and found missing, wrong or stale: a memory note or a skill. The nightly dream checks the flag and fixes the note. Owner tasks only.',
