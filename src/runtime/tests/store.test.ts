@@ -15,6 +15,8 @@ describe('the store', () => {
     s.seen('C1:5.5', c, '#general', 100)
     s.seen('C1:5.5', c, '#general-renamed', 200)
     assert.deepEqual(s.conversation('C1:5.5'), { key: 'C1:5.5', conversation: c, place: '#general-renamed', firstSeen: 100, lastSeen: 200 })
+    s.seen('C1:5.5', c, '#general-renamed', 150)
+    assert.equal(s.conversation('C1:5.5')!.lastSeen, 200)
   })
   test('each conversation keeps its session id for good, and a restart reads them all back', () => {
     const path = `${process.env.TMPDIR ?? '/tmp'}/kage-store-${process.pid}-${Date.now()}.db`
