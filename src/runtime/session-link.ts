@@ -1,5 +1,5 @@
 import { chmodSync, mkdirSync, readdirSync, readFileSync, rmSync, unlinkSync, writeFileSync } from 'node:fs'
-import { createServer } from 'node:net'
+import { createServer, type Socket } from 'node:net'
 import type { ProbeArg } from './probe-jobs.ts'
 import { dirname, join } from 'node:path'
 import type { LimitCounts } from '../core/board.ts'
@@ -34,7 +34,7 @@ export function restoreHolds(dir: string, d: Dispatcher<ToSession>) {
   }
 }
 
-export function listenForSessions(path: string, d: Dispatcher<ToSession>, o: Replies & {
+type Options = Replies & {
   failed: (m: ToSession) => void
   schedules: Pick<ReturnType<typeof scheduler>, 'add' | 'remove'>
   callCode?: () => string
@@ -48,102 +48,119 @@ export function listenForSessions(path: string, d: Dispatcher<ToSession>, o: Rep
   health?: () => string[]
   end?: (key: string, cut: boolean) => string
   kagelet?: (action: PanelAction, name: string) => Promise<string>
-}) {
+}
+type Link = { d: Dispatcher<ToSession>; o: Options; dir: string; owned: Set<string> }
+type Conn = { sock: Socket; key: string; held: string; send: (m: ToSession) => void }
+type Msg = Partial<FromSession> & { key?: unknown; id?: unknown; text?: unknown; pid?: unknown; name?: unknown; action?: unknown }
+
+export function listenForSessions(path: string, d: Dispatcher<ToSession>, o: Options) {
   try { unlinkSync(path) } catch {}
-  const dir = dirname(path)
-  const owned = new Set<string>()
-  const free = (key: string) => {
-    rmSync(holdFile(dir, key), { force: true })
-    d.release(key, Date.now()).forEach(o.failed)
-  }
+  const l: Link = { d, o, dir: dirname(path), owned: new Set() }
   setInterval(() => {
-    for (const key of heldKeys(dir)) if (!owned.has(key) && !alive(holderOf(dir, key))) free(key)
+    for (const key of heldKeys(l.dir)) if (!l.owned.has(key) && !alive(holderOf(l.dir, key))) free(l, key)
   }, 5000).unref()
   const server = createServer(sock => {
-    let key = ''
-    let held = ''
+    const c: Conn = { sock, key: '', held: '', send: m => sock.write(JSON.stringify(m) + '\n') }
     let buf = ''
-    const send = (m: ToSession) => sock.write(JSON.stringify(m) + '\n')
     sock.on('data', chunk => {
       buf += chunk
       for (let i; (i = buf.indexOf('\n')) >= 0;) {
         const line = buf.slice(0, i)
         buf = buf.slice(i + 1)
-        let m: Partial<FromSession> & { key?: unknown; id?: unknown; text?: unknown; pid?: unknown; name?: unknown }
+        let m: Msg
         try { m = JSON.parse(line) } catch { continue }
         if (!m || typeof m !== 'object') continue
-        if (m.type === 'hold' && !key && !held && typeof m.key === 'string') {
-          const pid = typeof m.pid === 'number' ? m.pid : 0
-          let r = d.hold(m.key)
-          if ('refused' in r && r.refused === 'held' && !owned.has(m.key) && alive(pid) && holderOf(dir, m.key) === pid) r = { id: d.saved()[m.key]! }
-          if ('id' in r) {
-            held = m.key
-            owned.add(held)
-            mkdirSync(join(dir, 'held'), { recursive: true, mode: 0o700 })
-            writeFileSync(holdFile(dir, held), String(pid), { mode: 0o600 })
-          }
-          sock.write(JSON.stringify({ type: 'hold', ...r }) + '\n')
-        } else if (m.type === 'board' && !key && !held) {
-          const paused = o.paused?.()
-          const limitCounts = o.limitCounts?.()
-          sock.write(JSON.stringify({ type: 'board', ...d.status(Date.now()), ...(paused && { paused }), ...(limitCounts && { limitCounts }) }) + '\n')
-        } else if (m.type === 'health' && !key && !held) {
-          sock.write(JSON.stringify({ type: 'health', lines: o.health?.() ?? [] }) + '\n')
-        } else if (m.type === 'end' && !key && !held && o.end && typeof m.key === 'string') {
-          sock.write(JSON.stringify({ type: 'end', text: o.end(m.key, (m as { cut?: unknown }).cut === true) }) + '\n')
-        } else if (m.type === 'quiesce' && !key && !held && o.quiesce) {
-          sock.write(JSON.stringify({ type: 'quiesce', waiting: o.quiesce() }) + '\n')
-        } else if (m.type === 'reload' && !key && !held) {
-          sock.write(JSON.stringify({ type: 'reload', ...(o.reload?.() ?? { refused: 'this hub cannot reload' }) }) + '\n')
-        } else if (m.type === 'callcode' && !key && !held) {
-          const code = o.callCode?.()
-          sock.write(JSON.stringify({ type: 'callcode', ...(code ? { code } : { refused: 'voice is off' }) }) + '\n')
-        } else if (m.type === 'tell' && !key && !held && typeof m.key === 'string' && typeof m.text === 'string') {
-          const r = !m.text.trim() ? { refused: 'empty message' } : o.tell?.(m.key, m.text.trim()) ?? { refused: 'this hub cannot take messages' }
-          sock.write(JSON.stringify({ type: 'tell', ...r }) + '\n')
-        } else if (m.type === 'say' && !key && !held && typeof m.text === 'string') {
-          const at = m as { channel?: unknown; thread_ts?: unknown }
-          const answer = (r: object) => sock.write(JSON.stringify({ type: 'say', ...r }) + '\n')
-          const text = m.text.trim()
-          if (!text) answer({ refused: 'empty message' })
-          else if (typeof at.channel === 'string' !== (typeof at.thread_ts === 'string')) answer({ refused: 'a reply needs both channel and thread_ts' })
-          else if (!o.say) answer({ refused: 'this hub cannot post' })
-          else void o.say(text, typeof at.channel === 'string' ? { channel: at.channel, thread_ts: at.thread_ts as string } : undefined).then(answer)
-        } else if (m.type === 'relay' && !key && !held) {
-          const r = typeof m.action === 'string' && ['allow', 'deny', 'list'].includes(m.action) ? o.relay?.(m.action, typeof m.key === 'string' ? m.key : undefined) ?? { refused: 'this hub has no relay' } : { refused: 'use allow, deny or list' }
-          sock.write(JSON.stringify({ type: 'relay', ...r }) + '\n')
-        } else if (m.type === 'kagelet' && !key && !held && typeof m.name === 'string') {
-          const action = (m as { action?: unknown }).action as PanelAction
-          const answer = (r: { text: string } | { refused: string }) => sock.write(JSON.stringify({ type: 'kagelet', ...r }) + '\n')
-          if (!Object.values(PANEL_KEYS).includes(action)) answer({ refused: `kage top runs, pauses, resumes or removes a kagelet, revokes the standing approval, or lifts deny holds, not ${String(action)}` })
-          else if (!o.kagelet) answer({ refused: 'this hub cannot act on kagelets' })
-          else void o.kagelet(action, m.name).then(text => answer({ text }), (e: Error) => answer({ refused: e.message }))
-        } else if (m.type === 'stop' && !key && !held && typeof m.key === 'string') {
-          sock.write(JSON.stringify({ type: 'stop', ...d.stop(m.key, Date.now()) }) + '\n')
-        } else if (m.type === 'hello' && !key && !held && typeof m.key === 'string') {
-          if (d.connect(m.key, send)) key = m.key
-          else sock.destroy()
-        } else if (m.type === 'permission' && key && typeof m.id === 'string') {
-          d.permission(key, m.id)
-        } else if (isReplyType(m.type) && key && typeof m.text === 'string') {
-          routeReply(key, { type: m.type, text: m.text }, o)
-        } else if (m.type === 'schedule' && key) {
-          const j = m as Partial<{ id: string; cron: string; prompt: string; recurring: boolean; lane: boolean; probe: ProbeArg; shadow: { of: string; live: string } }>
-          if (typeof j.id === 'string' && typeof j.cron === 'string' && typeof j.prompt === 'string') {
-            const no = o.schedules.add(key, { id: j.id, cron: j.cron, prompt: j.prompt, recurring: j.recurring !== false, ...(typeof j.lane === 'boolean' && { lane: j.lane ? true as const : undefined }), ...(j.probe && { probe: j.probe }), ...(typeof j.shadow?.of === 'string' && typeof j.shadow.live === 'string' && { shadow: { of: j.shadow.of, live: j.shadow.live } }) }, Date.now())
-            if (no) log('schedule refused', key, no)
-          }
-        } else if (m.type === 'unschedule' && key && typeof m.id === 'string') {
-          if (isJobLane(key)) log('unschedule refused in a job lane', key); else o.schedules.remove(key, m.id)
-        }
+        if (!c.key && !c.held && Object.hasOwn(COMMANDS, String(m.type))) COMMANDS[String(m.type)]!(l, c, m)
+        else if (c.key) fromSession(l, c, m)
       }
     })
     sock.on('close', () => {
-      if (key) d.disconnect(key, send)
-      if (held) { owned.delete(held); free(held) }
+      if (c.key) d.disconnect(c.key, c.send)
+      if (c.held) { l.owned.delete(c.held); free(l, c.held) }
     })
     sock.on('error', () => {})
   })
   server.listen(path, () => chmodSync(path, 0o600))
   return server
+}
+
+function free({ d, o, dir }: Link, key: string) {
+  rmSync(holdFile(dir, key), { force: true })
+  d.release(key, Date.now()).forEach(o.failed)
+}
+
+const answer = (c: Conn, type: string, r: object) => c.sock.write(JSON.stringify({ type, ...r }) + '\n')
+
+const COMMANDS: Record<string, (l: Link, c: Conn, m: Msg) => void> = {
+  hold: (l, c, m) => { if (typeof m.key === 'string') hold(l, c, m.key, typeof m.pid === 'number' ? m.pid : 0) },
+  board: ({ d, o }, c) => {
+    const paused = o.paused?.()
+    const limitCounts = o.limitCounts?.()
+    answer(c, 'board', { ...d.status(Date.now()), ...(paused && { paused }), ...(limitCounts && { limitCounts }) })
+  },
+  health: ({ o }, c) => answer(c, 'health', { lines: o.health?.() ?? [] }),
+  end: ({ o }, c, m) => { if (o.end && typeof m.key === 'string') answer(c, 'end', { text: o.end(m.key, (m as { cut?: unknown }).cut === true) }) },
+  quiesce: ({ o }, c) => { if (o.quiesce) answer(c, 'quiesce', { waiting: o.quiesce() }) },
+  reload: ({ o }, c) => answer(c, 'reload', o.reload?.() ?? { refused: 'this hub cannot reload' }),
+  callcode: ({ o }, c) => {
+    const code = o.callCode?.()
+    answer(c, 'callcode', code ? { code } : { refused: 'voice is off' })
+  },
+  tell: ({ o }, c, m) => {
+    if (typeof m.key !== 'string' || typeof m.text !== 'string') return
+    answer(c, 'tell', !m.text.trim() ? { refused: 'empty message' } : o.tell?.(m.key, m.text.trim()) ?? { refused: 'this hub cannot take messages' })
+  },
+  say: (l, c, m) => { if (typeof m.text === 'string') say(l, c, m.text, m as { channel?: unknown; thread_ts?: unknown }) },
+  relay: ({ o }, c, m) => answer(c, 'relay', typeof m.action === 'string' && ['allow', 'deny', 'list'].includes(m.action) ? o.relay?.(m.action, typeof m.key === 'string' ? m.key : undefined) ?? { refused: 'this hub has no relay' } : { refused: 'use allow, deny or list' }),
+  kagelet: (l, c, m) => { if (typeof m.name === 'string') kagelet(l, c, m.name, m.action as PanelAction) },
+  stop: ({ d }, c, m) => { if (typeof m.key === 'string') answer(c, 'stop', d.stop(m.key, Date.now())) },
+  hello: ({ d }, c, m) => {
+    if (typeof m.key !== 'string') return
+    if (d.connect(m.key, c.send)) c.key = m.key
+    else c.sock.destroy()
+  },
+}
+
+function hold({ d, dir, owned }: Link, c: Conn, key: string, pid: number) {
+  let r = d.hold(key)
+  if ('refused' in r && r.refused === 'held' && !owned.has(key) && alive(pid) && holderOf(dir, key) === pid) r = { id: d.saved()[key]! }
+  if ('id' in r) {
+    c.held = key
+    owned.add(key)
+    mkdirSync(join(dir, 'held'), { recursive: true, mode: 0o700 })
+    writeFileSync(holdFile(dir, key), String(pid), { mode: 0o600 })
+  }
+  answer(c, 'hold', r)
+}
+
+function say({ o }: Link, c: Conn, said: string, at: { channel?: unknown; thread_ts?: unknown }) {
+  const reply = (r: object) => answer(c, 'say', r)
+  const text = said.trim()
+  if (!text) reply({ refused: 'empty message' })
+  else if (typeof at.channel === 'string' !== (typeof at.thread_ts === 'string')) reply({ refused: 'a reply needs both channel and thread_ts' })
+  else if (!o.say) reply({ refused: 'this hub cannot post' })
+  else void o.say(text, typeof at.channel === 'string' ? { channel: at.channel, thread_ts: at.thread_ts as string } : undefined).then(reply)
+}
+
+function kagelet({ o }: Link, c: Conn, name: string, action: PanelAction) {
+  const reply = (r: { text: string } | { refused: string }) => answer(c, 'kagelet', r)
+  if (!Object.values(PANEL_KEYS).includes(action)) reply({ refused: `kage top runs, pauses, resumes or removes a kagelet, revokes the standing approval, or lifts deny holds, not ${String(action)}` })
+  else if (!o.kagelet) reply({ refused: 'this hub cannot act on kagelets' })
+  else void o.kagelet(action, name).then(text => reply({ text }), (e: Error) => reply({ refused: e.message }))
+}
+
+function fromSession({ d, o }: Link, { key }: Conn, m: Msg) {
+  if (m.type === 'permission' && typeof m.id === 'string') {
+    d.permission(key, m.id)
+  } else if (isReplyType(m.type) && typeof m.text === 'string') {
+    routeReply(key, { type: m.type, text: m.text }, o)
+  } else if (m.type === 'schedule') {
+    const j = m as Partial<{ id: string; cron: string; prompt: string; recurring: boolean; lane: boolean; probe: ProbeArg; shadow: { of: string; live: string } }>
+    if (typeof j.id === 'string' && typeof j.cron === 'string' && typeof j.prompt === 'string') {
+      const no = o.schedules.add(key, { id: j.id, cron: j.cron, prompt: j.prompt, recurring: j.recurring !== false, ...(typeof j.lane === 'boolean' && { lane: j.lane ? true as const : undefined }), ...(j.probe && { probe: j.probe }), ...(typeof j.shadow?.of === 'string' && typeof j.shadow.live === 'string' && { shadow: { of: j.shadow.of, live: j.shadow.live } }) }, Date.now())
+      if (no) log('schedule refused', key, no)
+    }
+  } else if (m.type === 'unschedule' && typeof m.id === 'string') {
+    if (isJobLane(key)) log('unschedule refused in a job lane', key); else o.schedules.remove(key, m.id)
+  }
 }
