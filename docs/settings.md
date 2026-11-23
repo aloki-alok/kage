@@ -119,6 +119,20 @@ curl --unix-socket "$KAGE_KEYS_SOCK" "http://kage/$KAGE_KEYS_TOKEN/api.example.c
 
 The hub fetches `https://api.example.com/v1/things` and adds the key in the header. A request for any other host gets a 403 and no key. The hub does not follow redirects, so a key never leaves its host. Who gets a token follows the SSM relay: owner-only Slack threads, and a thread run with `kage relay allow`. `kage doctor` lists each key by name, host and header, never its value. A tool that reads the key from an environment variable no longer finds it, and a tmux pane has no proxy token, so panes lose these keys too.
 
+## Tokens from a password manager
+
+Any token in `secrets.json` may name a command instead of holding the value, the way Claude Code's `apiKeyHelper` does. Kage runs the command and uses what it prints, so the token can stay in 1Password, pass or the macOS Keychain:
+
+```json
+{ "slack": { "bot": { "command": "op read op://kage/slack-bot" } }, "jevKey": { "command": "security find-generic-password -w -s kage-jev" } }
+```
+
+- Kage runs a command with `/bin/sh` only when it needs that token, at most once per process, and keeps the output in memory only. The hub runs them at start. `kage doctor` runs them to check them, the Slack tokens and `jevKey` twice, so a password manager may ask more than once. It never writes the output to disk, a log or a session's environment. `claudeToken` is the one exception: it reaches every session as its Claude login, as a plain value does.
+- If a command fails, times out after 30 seconds or prints nothing, the token is unset until the next start. The hub log and `kage doctor` name the token and the command, never what the command printed. Run the command in a terminal to see why, fix it, then run `kage restart`.
+- A command that writes one token, such as `kage connect browser`, keeps every other token as it is, commands included. `kage save` writes all three Slack tokens, so it replaces their commands with the values you paste.
+- While any token names a command, no session may run that command or a secret helper: `op read`, `op inject`, `op run`, `op item`, `op document`, `security find-*-password`, `security dump-keychain`, `pass show`, `pass otp`, `pass <name>/...`, `gopass`, `lpass show`, `secret-tool lookup` and `bw get`. This includes your own threads. Kage looks only where a command starts (a new line, after `;`, `|`, `&` or `$(`, or inside `sh -c` and `eval`), so a commit message or a search that mentions `op read` still runs. It is a word check behind the sandbox, so `secrets.json` (mode 600) stays the safer default: the sandbox closes that file to every session.
+- `waha` keys stay plain values, because Kage writes them into `waha/.env` for the WhatsApp container.
+
 ## The nightly dream
 
 Each night, while every session is quiet, Kage reads the day's threads for lessons. It sends each lesson to the hub with quotes from the threads that show it. The hub keeps a lesson only when it passes the checks below, writes it into Kage's memory, and logs each lesson it drops, with the reason, in `.dream-ledger.tsv` in that folder. Threads run as tmux panes skip the check, and the dream writes its own notes.

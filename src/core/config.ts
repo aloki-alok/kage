@@ -92,8 +92,7 @@ export const Config = z.preprocess(foldOldPeople, z.strictObject({
 export type Config = z.infer<typeof Config>
 export type KeyRoute = NonNullable<Config['sessionKeys']>[string]
 
-const sec = z.string().nullable().optional()
-export const Secrets = z.strictObject({
+const secretsOf = <L extends z.ZodType>(sec: L) => z.strictObject({
   slack: z.strictObject({ app: sec, user: sec, bot: sec }).optional(),
   aws: z.strictObject({ accessKeyId: sec, secretAccessKey: sec }).optional(),
   voiceToken: sec, githubSecret: sec, githubAppKey: sec, githubToken: sec, meetingToken: sec, browserToken: sec, jevKey: sec, voiceAgentKey: sec, claudeToken: sec, twilioAuthToken: sec, telnyxApiKey: sec,
@@ -101,7 +100,10 @@ export const Secrets = z.strictObject({
   cartesiaKey: sec,   // compat: remove after 2026-12-15 (Cartesia speech is gone; an old secrets.json still holds it, and the schema is strict)
   unknown: z.record(z.string(), z.string()).optional(),
 })
+export const Secrets = secretsOf(z.string().nullable().optional())
 export type Secrets = z.infer<typeof Secrets>
+export const SecretsFile = secretsOf(z.union([z.string(), z.strictObject({ command: z.string().min(1) })]).nullable().optional())
+export type SecretsFile = z.infer<typeof SecretsFile>
 
 type Agent = { app: string; owner?: string; tag?: string }
 const agentLine = (a: Agent) => [a.app, a.owner, a.tag].filter(x => x !== undefined).join(':')

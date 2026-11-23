@@ -150,7 +150,9 @@ describe('hub.ts: one hub run, with its log, its boot count and a crash-loop DM'
     const secrets = join(k.conf, 'secrets.json')
     writeFileSync(secrets, JSON.stringify({ ...JSON.parse(readFileSync(secrets, 'utf8')), claudeToken: 'oat-fake' }))
     await hub(k, { ANTHROPIC_API_KEY: 'sk-fake' })
-    assert.match(logOf(k), /oauth=none api=sk-fake[\s\S]*oauth=oat-fake api=none/)
+    writeFileSync(secrets, JSON.stringify({ ...JSON.parse(readFileSync(secrets, 'utf8')), claudeToken: { command: "printf 'oat-%s\\n' from-command" } }))
+    await hub(k, { ANTHROPIC_API_KEY: 'sk-fake' })
+    assert.match(logOf(k), /oauth=none api=sk-fake[\s\S]*oauth=oat-fake api=none[\s\S]*oauth=oat-from-command api=none/)
     rmSync(k.root, { recursive: true })
   })
 

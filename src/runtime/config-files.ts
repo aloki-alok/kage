@@ -1,6 +1,8 @@
+import { execFileSync } from 'node:child_process'
 import { existsSync, mkdirSync, readdirSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
-import { badValue, Config, fromEnv, mergeTeammateEmails, oldPeopleShape, Secrets, settingTier } from '../core/config.ts'
+import { badValue, Config, fromEnv, mergeTeammateEmails, oldPeopleShape, Secrets, SecretsFile, settingTier } from '../core/config.ts'
+import { failedSecrets, lazySecrets, type SecretCommand } from '../core/secret-commands.ts'
 import { parseEnv } from '../core/settings.ts'
 
 export const envFilePath = () => process.env.KAGE_ENV || `${process.env.HOME}/.config/kage/env`
@@ -82,10 +84,10 @@ export async function tidyPeople(envFile: string, userOfEmail: (email: string) =
 
 export function syncWaha(envFile: string): boolean {
   const f = files(envFile), file = join(f.dir, 'waha', '.env')
-  const s = existsSync(f.secrets) ? parse(Secrets, f.secrets) : {}
+  const s = existsSync(f.secrets) ? parse(SecretsFile, f.secrets) : {}
   const onDisk = existsSync(file) ? parseEnv(readFileSync(file, 'utf8')) : undefined
   if (!s.waha) {
-    if (onDisk) write(f.secrets, checked(Secrets, 'secrets.json', { ...s, waha: onDisk }))
+    if (onDisk) write(f.secrets, checked(SecretsFile, 'secrets.json', { ...s, waha: onDisk }))
     return false
   }
   if (JSON.stringify(onDisk) === JSON.stringify(s.waha)) return false
@@ -107,13 +109,24 @@ export function sweepKeptCopies(envFile: string, now = new Date()): string[] {
   return gone
 }
 
-export function readSettings(envFile: string): { config: Config; secrets: Secrets } {
+const secretOutputs = new Map<string, string | undefined>()
+export function secretOutput(command: string): string | undefined {
+  if (!secretOutputs.has(command)) {
+    let out: string | undefined
+    try { out = execFileSync('/bin/sh', ['-c', command], { encoding: 'utf8', timeout: 30_000, stdio: ['ignore', 'pipe', 'ignore'] }).replace(/\r?\n$/, '') || undefined } catch {}
+    secretOutputs.set(command, out)
+  }
+  return secretOutputs.get(command)
+}
+
+export function readSettings(envFile: string): { config: Config; secrets: Secrets; failed: () => SecretCommand[] } {
   const f = files(envFile)
   if (!existsSync(f.config)) {
     if (!existsSync(f.legacy)) throw new Error(`No settings at ${f.dir}. Run kage setup first.`)
-    return fromEnv(parseEnv(readFileSync(f.legacy, 'utf8')))
+    return { ...fromEnv(parseEnv(readFileSync(f.legacy, 'utf8'))), failed: () => [] }
   }
-  return { config: parse(Config, f.config), secrets: existsSync(f.secrets) ? parse(Secrets, f.secrets) : {} }
+  const file = existsSync(f.secrets) ? parse(SecretsFile, f.secrets) : {}
+  return { config: parse(Config, f.config), secrets: lazySecrets(file, secretOutput), failed: () => failedSecrets(file, secretOutput) }
 }
 
 const sessionRefusal = () => { if (process.env.KAGE_SESSION || process.env.KAGE_THREAD) throw new Error("not changed: settings change only from the owner's own terminal. Say what you want changed, and the owner runs kage set.") }
@@ -123,11 +136,11 @@ export function updateConfig(envFile: string, change: (c: Config) => Config) {
   const f = files(envFile)
   write(f.config, checked(Config, 'config.json', change(existsSync(f.config) ? parse(Config, f.config) : { version: 1 })))
 }
-export function updateSecrets(envFile: string, change: (s: Secrets) => Secrets) {
+export function updateSecrets(envFile: string, change: (s: SecretsFile) => SecretsFile) {
   sessionRefusal()
   importLegacy(envFile)
   const f = files(envFile)
-  write(f.secrets, checked(Secrets, 'secrets.json', change(existsSync(f.secrets) ? parse(Secrets, f.secrets) : {})))
+  write(f.secrets, checked(SecretsFile, 'secrets.json', change(existsSync(f.secrets) ? parse(SecretsFile, f.secrets) : {})))
 }
 
 export function setKey(envFile: string, key: string, value: unknown) {
