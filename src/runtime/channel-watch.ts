@@ -46,78 +46,83 @@ export function channelHistory(history: History, max: number, toPosts: (m: unkno
 type Seen = { ts: string[]; cursor?: string }
 type CatchUpResult = { channel: string; truncated: boolean; error?: unknown }
 
+type Watches = {
+  saved: Saved; maxPosts: () => number; seenMax: () => number
+  patterns: Map<string, { source: string; re: RegExp }>; closed: Set<string>; gap: number; posts: Map<string, string[]>
+}
+
+const seen = (w: Watches): Record<string, Seen> => (w.saved.load('channel-seen') as Record<string, Seen> | undefined) ?? {}
+const change = (w: Watches, channel: string, f: (s: Seen) => Seen) => w.saved.save('channel-seen', { ...seen(w), [channel]: f(seen(w)[channel] ?? { ts: [] }) })
+const watches = (w: Watches): Record<string, ChannelWatch> => (w.saved.load('channel-watches') as Record<string, ChannelWatch> | undefined) ?? {}
+
+function compile(w: Watches, id: string, source: string) {
+  const hit = w.patterns.get(id)
+  if (hit?.source === source) return hit.re
+  let re: RegExp
+  try { re = new RegExp(source) } catch { throw new Error(`match is not a valid regex: ${source}`) }
+  w.patterns.set(id, { source, re })
+  return re
+}
+
+function heard(w: Watches, post: ChannelPost): string[] {
+  const mark = seen(w)[post.channel]
+  if (!mark || mark.ts.includes(post.ts)) return []
+  change(w, post.channel, s => ({ ...s, ts: [...s.ts, post.ts].slice(-Math.max(1, w.seenMax())),
+    ...(w.closed.has(post.channel) && s.cursor !== undefined && after(post.ts, s.cursor) > 0 && { cursor: post.ts }) }))
+  const hit = Object.entries(watches(w)).filter(([id, x]) =>
+    x.channel === post.channel && (x.bots || !(post.bot || post.app_id)) && (x.match === undefined || compile(w, id, x.match).test(post.text))).map(([id]) => id)
+  for (const id of hit) w.posts.set(id, [...(w.posts.get(id) ?? []), post.quoted].slice(-Math.max(1, w.maxPosts())))
+  return hit
+}
+
+async function catchUpChannel(w: Watches, history: ChannelHistory, channel: string, started: number): Promise<CatchUpResult> {
+  const cursor = seen(w)[channel]!.cursor
+  if (cursor === undefined) {
+    const newest = await history.newest(channel)
+    change(w, channel, s => ({ ...s, cursor: newest ?? '0' }))
+    if (w.gap === started) w.closed.add(channel)
+    return { channel, truncated: false }
+  }
+  const { posts: got, truncated } = await history.fetch(channel, cursor)
+  const ordered = got.sort((a, b) => after(a.ts, b.ts))
+  for (const p of ordered) heard(w, p)
+  const top = ordered.at(-1)?.ts
+  if (top && after(top, cursor) > 0) change(w, channel, s => ({ ...s, cursor: top }))
+  if (!truncated && w.gap === started) w.closed.add(channel)
+  return { channel, truncated }
+}
+
+async function catchUp(w: Watches, history: ChannelHistory): Promise<CatchUpResult[]> {
+  const out: CatchUpResult[] = []
+  const started = w.gap
+  for (const channel of Object.keys(seen(w))) {
+    if (!Object.values(watches(w)).some(x => x.channel === channel)) continue
+    try { out.push(await catchUpChannel(w, history, channel, started)) } catch (error) { out.push({ channel, truncated: false, error }) }
+  }
+  return out
+}
+
 export function channelWatches(saved: Saved, o: { maxPosts?: () => number; seenMax?: () => number } = {}) {
-  const maxPosts = o.maxPosts ?? (() => DEFAULT_MAX_POSTS)
-  const seenMax = o.seenMax ?? (() => DEFAULT_SEEN_MAX)
-  const seen = (): Record<string, Seen> => (saved.load('channel-seen') as Record<string, Seen> | undefined) ?? {}
-  const change = (channel: string, f: (s: Seen) => Seen) => saved.save('channel-seen', { ...seen(), [channel]: f(seen()[channel] ?? { ts: [] }) })
-  const watches = (): Record<string, ChannelWatch> => (saved.load('channel-watches') as Record<string, ChannelWatch> | undefined) ?? {}
-  const patterns = new Map<string, { source: string; re: RegExp }>()
-  const compile = (id: string, source: string) => {
-    const hit = patterns.get(id)
-    if (hit?.source === source) return hit.re
-    let re: RegExp
-    try { re = new RegExp(source) } catch { throw new Error(`match is not a valid regex: ${source}`) }
-    patterns.set(id, { source, re })
-    return re
-  }
-  const closed = new Set<string>()
-  let gap = 0
-  const posts = new Map<string, string[]>()
-  const heard = (post: ChannelPost): string[] => {
-    const mark = seen()[post.channel]
-    if (!mark || mark.ts.includes(post.ts)) return []
-    change(post.channel, s => ({ ...s, ts: [...s.ts, post.ts].slice(-Math.max(1, seenMax())),
-      ...(closed.has(post.channel) && s.cursor !== undefined && after(post.ts, s.cursor) > 0 && { cursor: post.ts }) }))
-    const hit = Object.entries(watches()).filter(([id, w]) =>
-      w.channel === post.channel && (w.bots || !(post.bot || post.app_id)) && (w.match === undefined || compile(id, w.match).test(post.text))).map(([id]) => id)
-    for (const id of hit) posts.set(id, [...(posts.get(id) ?? []), post.quoted].slice(-Math.max(1, maxPosts())))
-    return hit
-  }
-  const catchUp = async (history: ChannelHistory): Promise<CatchUpResult[]> => {
-    const out: CatchUpResult[] = []
-    const started = gap
-    for (const channel of Object.keys(seen())) {
-      if (!Object.values(watches()).some(w => w.channel === channel)) continue
-      try {
-        const cursor = seen()[channel]!.cursor
-        if (cursor === undefined) {
-          const newest = await history.newest(channel)
-          change(channel, s => ({ ...s, cursor: newest ?? '0' }))
-          if (gap === started) closed.add(channel)
-          out.push({ channel, truncated: false })
-          continue
-        }
-        const { posts: got, truncated } = await history.fetch(channel, cursor)
-        const ordered = got.sort((a, b) => after(a.ts, b.ts))
-        for (const p of ordered) heard(p)
-        const top = ordered.at(-1)?.ts
-        if (top && after(top, cursor) > 0) change(channel, s => ({ ...s, cursor: top }))
-        if (!truncated && gap === started) closed.add(channel)
-        out.push({ channel, truncated })
-      } catch (error) { out.push({ channel, truncated: false, error }) }
-    }
-    return out
-  }
+  const w: Watches = { saved, maxPosts: o.maxPosts ?? (() => DEFAULT_MAX_POSTS), seenMax: o.seenMax ?? (() => DEFAULT_SEEN_MAX), patterns: new Map(), closed: new Set(), gap: 0, posts: new Map() }
   return {
     set: (jobId: string, watch: ChannelWatch) => {
-      if (watch.match !== undefined) compile(jobId, watch.match)
-      saved.save('channel-watches', { ...watches(), [jobId]: watch })
-      if (!seen()[watch.channel]) change(watch.channel, s => s)
+      if (watch.match !== undefined) compile(w, jobId, watch.match)
+      saved.save('channel-watches', { ...watches(w), [jobId]: watch })
+      if (!seen(w)[watch.channel]) change(w, watch.channel, s => s)
     },
     remove: (jobId: string) => {
-      const { [jobId]: _, ...rest } = watches()
+      const { [jobId]: _, ...rest } = watches(w)
       saved.save('channel-watches', rest)
-      patterns.delete(jobId)
-      posts.delete(jobId)
+      w.patterns.delete(jobId)
+      w.posts.delete(jobId)
     },
-    list: watches,
-    gapOpened: () => { gap++; closed.clear() },
-    heard,
-    catchUp,
+    list: () => watches(w),
+    gapOpened: () => { w.gap++; w.closed.clear() },
+    heard: (post: ChannelPost) => heard(w, post),
+    catchUp: (history: ChannelHistory) => catchUp(w, history),
     take: (jobId: string): string[] => {
-      const got = posts.get(jobId) ?? []
-      posts.delete(jobId)
+      const got = w.posts.get(jobId) ?? []
+      w.posts.delete(jobId)
       return got
     },
   }

@@ -316,3 +316,32 @@ test('heard, catchUp and take work when passed on detached', async () => {
   assert.deepEqual(heard(post({ ts: '3.1' })), ['a'])
   assert.equal(take('a').length, 2)
 })
+
+test('a gap that opens during the first baseline is not closed by it, so a live post leaves the cursor', async () => {
+  const w = channelWatches(memory())
+  w.set('a', { channel: 'CTEST1', bots: true })
+  await w.catchUp(history({ newest: async () => { w.gapOpened(); return '1.1' } }))
+  w.heard(post({ ts: '9.1', quoted: 'live' }))
+  const asked: string[] = []
+  await w.catchUp(history({ fetch: async (channel, oldest) => (asked.push(`${channel}@${oldest}`), { posts: [], truncated: false }) }))
+  assert.deepEqual(asked, ['CTEST1@1.1'])
+})
+
+test('a catch-up that returns only posts older than the cursor leaves the cursor where it was', async () => {
+  const w = await baselined()
+  w.gapOpened()
+  await w.catchUp(history({ fetch: async () => ({ posts: [post({ ts: '9.1', quoted: 'old' })], truncated: false }) }))
+  const asked: string[] = []
+  await w.catchUp(history({ fetch: async (_c, oldest) => (asked.push(oldest), { posts: [], truncated: false }) }))
+  assert.deepEqual(asked, ['10.1'])
+})
+
+test('a channel no job watches any more is not read, and remove drops the posts its job had waiting', async () => {
+  const w = await baselined()
+  w.heard(post({ ts: '11.1', quoted: 'waiting' }))
+  w.remove('a')
+  assert.deepEqual(w.take('a'), [])
+  const asked: string[] = []
+  await w.catchUp(history({ fetch: async (channel, oldest) => (asked.push(`${channel}@${oldest}`), { posts: [], truncated: false }) }))
+  assert.deepEqual(asked, [])
+})
