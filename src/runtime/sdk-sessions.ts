@@ -1,20 +1,18 @@
-import { threadKind, type Tokens } from '../core/ledgers.ts'
-import { SLACK_READS, VOICE_READS_LINE, voiceToolOptions } from './slack-read-tools.ts'
-import type { createSdkMcpServer, EffortLevel, Options, Query, SDKMessage, SDKUserMessage, tool } from '@anthropic-ai/claude-agent-sdk'
+import type { Tokens } from '../core/ledgers.ts'
+import { VOICE_READS_LINE, voiceToolOptions } from './slack-read-tools.ts'
+import type { createSdkMcpServer, EffortLevel, Options, Query, SDKUserMessage, tool } from '@anthropic-ai/claude-agent-sdk'
 import { randomUUID } from 'node:crypto'
 import { z } from 'zod'
 import { log, logKey } from './log.ts'
-import { channelTag, makeInbox, userMessage, type Inbox } from './sdk-inbox.ts'
+import { makeInbox, userMessage, type Inbox } from './sdk-inbox.ts'
 import { ownerOnlyTool } from '../core/guards.ts'
-import { lowest, lowestSender, OWNER_AGAIN, OWNER_MID_TURN, senderOf, type Sender } from '../core/gate.ts'
-import { DREAM_KEY } from '../core/dream.ts'
-import { certFileEnv, dreamNoteRefusal, protectConfig, toolRefusal } from './path-guards.ts'
-import { grantRefusal, grantServers, laneOptions, shellGrant } from '../core/kagelets/kagelet.ts'
-import { heldCommand } from '../core/held.ts'
-import { approvalPreview } from '../core/preview.ts'
+import { lowest, lowestSender, OWNER_MID_TURN, senderOf, type Sender } from '../core/gate.ts'
+import { certFileEnv, protectConfig } from './path-guards.ts'
+import { grantServers, laneOptions, shellGrant } from '../core/kagelets/kagelet.ts'
+import { ask, canUse, denyAll, preToolUse } from './sdk-permissions.ts'
+import { follow, type Live } from './sdk-stream.ts'
 import type { Dispatcher, Runner } from '../core/sessions.ts'
 import type { sessionTools } from './kage-tools.ts'
-import { eventNeedsCard } from '../core/tripwire.ts'
 import type { deferredApprovals } from './deferred-approvals.ts'
 import type { Review } from './kagelets/review.ts'
 import type { Limit } from './limit-pause.ts'
@@ -30,7 +28,7 @@ export type Sdk = {
 }
 type Pick = { model?: string; effort?: EffortLevel }
 export type Lean = { model?: string; effort?: string; mcp: Record<string, unknown>; permissions?: Record<string, unknown> }
-type Session = {
+export type Session = {
   id: string
   kage: Kage
   sender?: Sender
@@ -43,7 +41,7 @@ type Session = {
   ownerTools: boolean; ownerThread: boolean; connectors?: true; carry: SDKUserMessage[]; again: Task[]
 }
 
-export function sdkSessions(o: {
+export type SdkOptions = {
   sdk: Sdk
   hub: () => Dispatcher<ToSession>
   tools: (key: string, send: (m: ChannelReply) => void, approve: (tool: string, description: string, input: Record<string, unknown>) => Promise<boolean>, turnSender: () => Sender | undefined) => Kage
@@ -68,210 +66,111 @@ export function sdkSessions(o: {
   keys?: { sock: string; issue: (key: string) => string | undefined; drop: (key: string) => void }
   restartMs?: number
   lean?: () => Lean | undefined
-}) {
-  const senderNow = (s: { sender?: Sender; turn: { task: Task }[] }): Sender | undefined =>
-    s.sender !== 'trusted' ? s.sender : s.turn.some(x => x.task.trusted) && s.turn.every(x => !x.task.trusted || (o.trustedNow?.(x.task.trusted) ?? true)) ? 'trusted' : 'teammate'
-  const sessions = new Map<string, Session>()
-  const picks = new Map<string, Pick>()
-  const ALLOWED = ['reply', 'edit_message', 'delete_message', 'send_file', 'make_canvas', 'edit_canvas', 'message_people', 'schedule', 'unschedule', 'schedules', 'set_model', 'kagelets', 'review_kagelet_memory', 'browser_tabs', 'browser_read', 'browser_take_screenshot', 'browser_snapshot', 'browser_click', 'browser_type', 'browser_press_key', 'browser_navigate', 'computer', 'screen_record', 'set_setting', 'meeting_join'].map(t => `mcp__kage__${t}`)
+}
+export type Hub = { o: SdkOptions; sessions: Map<string, Session>; picks: Map<string, Pick> }
 
-  function open(key: string, s: Session, carried: SDKUserMessage[] = []) {
-    const carries = carried.length > 0
-    const inbox = makeInbox(carried)
-    const full = s.ownerTools
-    const voice = key.startsWith('voice:')
-    const server = o.sdk.createSdkMcpServer({
-      name: 'kage', instructions: s.kage.instructions + (voice ? VOICE_READS_LINE : ''),
-      tools: [...s.kage.tools.filter(t => full || !ownerOnlyTool(`mcp__kage__${t.name}`)).map(t => o.sdk.tool(t.name, t.description, t.shape, async args => {
-        const r = await t.run(args)
-        return { isError: r.isError, content: [{ type: 'text' as const, text: r.text }] }
-      }, voiceToolOptions(voice, t.name))), o.sdk.tool('set_model', SET_MODEL, {
-        model: z.enum([...MODELS, 'default']).optional(),
-        effort: z.enum(['low', 'medium', 'high', 'xhigh', 'max', 'default']).optional().describe('reasoning effort; maximum or ultra means max'),
-      }, async a => {
-        const pick: Pick = { ...picks.get(key) }
-        if (a.model) {
-          await q.setModel(a.model === 'default' ? undefined : a.model)
-          if (a.model === 'default') delete pick.model; else pick.model = a.model
-        }
-        if (a.effort) {
-          await q.applyFlagSettings({ effortLevel: a.effort === 'default' ? null : a.effort })
-          if (a.effort === 'default') delete pick.effort; else pick.effort = a.effort
-        }
-        picks.set(key, { ...pick })
-        log('set_model', logKey(key), s.sender, pick.model ?? 'default', pick.effort ?? 'default')
-        return { content: [{ type: 'text' as const, text: `This thread now runs on ${pick.model ?? 'the default model'} at ${pick.effort ?? 'default'} effort.` }] }
-      })],
-    })
-    const { KAGE_THREAD: _, ...env } = process.env
-    const resumed = o.hasTranscript(s.id)
-    const budget = o.budgetOf?.(key)
-    const grant = o.grantOf?.(key)
-    const owners = !full && !s.connectors ? o.lean?.() : undefined
-    const walled = protectConfig(o.envFile, o.codeDir, undefined, shellGrant(grant) ? 'kagelet' : o.sandbox?.(s.ownerThread) === true)
-    const ssmToken = grant ? undefined : o.ssm?.issue(key)
-    const keysToken = grant ? undefined : o.keys?.issue(key)
-    const q = o.sdk.query({
-      prompt: inbox,
-      options: {
-        ...o.options,
-        ...owners && { settingSources: (o.options.settingSources ?? []).filter(x => x !== 'user'), ...owners.model && { model: owners.model }, ...owners.effort && { effort: owners.effort as EffortLevel } },
-        settings: { ...(o.options.settings as object), ...walled, ...owners?.permissions && !grant && { permissions: { ...owners.permissions, deny: [...Array.isArray(owners.permissions.deny) ? owners.permissions.deny : [], ...walled.permissions.deny] } }, ...!full && !s.connectors && { disableClaudeAiConnectors: true } },
-        ...(resumed ? { resume: s.id } : { sessionId: s.id }),
-        ...(o.modelOf?.(key) && { model: o.modelOf(key) }),
-        ...picks.get(key),
-        ...budget !== undefined && { maxBudgetUsd: budget },
-        ...grant && laneOptions(grant),
-        systemPrompt: { type: 'preset', preset: 'claude_code' },
-        mcpServers: { ...o.options.mcpServers, ...owners && grantServers(owners.mcp, grant), kage: server },
-        disallowedTools: [...o.options.disallowedTools ?? [], 'CronCreate', 'CronDelete', 'CronList'],
-        env: { ...env, ...certFileEnv(), CLAUDE_CODE_EMIT_SESSION_STATE_EVENTS: '1', KAGE_SESSION: '1', ...ssmToken && { KAGE_SSM_TOKEN: ssmToken, KAGE_SSM_SOCK: o.ssm!.sock, PATH: `${o.ssm!.shim}:${env.PATH}` }, ...keysToken && { KAGE_KEYS_TOKEN: keysToken, KAGE_KEYS_SOCK: o.keys!.sock } },
-        canUseTool: (name, input, x) => o.grantOf?.(key)
-          ? Promise.resolve(grantRefusal(name, o.grantOf(key)!, input, o.allowOf?.(key)) ? { behavior: 'deny' as const, message: 'A kagelet approves nothing. Say in the thread what you needed and why: your manager decides.' }
-            : { behavior: 'allow' as const, updatedInput: input })
-          : (ALLOWED.includes(name) && !eventNeedsCard(name, input, senderNow(s))) || SLACK_READS.includes(name) || (name === 'mcp__kage__manage_kagelet' && (input.action === 'save' || input.action === 'revoke')) ? Promise.resolve({ behavior: 'allow' as const, updatedInput: input })
-          : s.turn.some(x => senderOf(x.task) === 'agent') ? Promise.resolve({ behavior: 'deny' as const, message: "An agent's task may only read and answer: no card goes to the owner." }) : o.deferred?.take(key, name, input, Date.now()) ? Promise.resolve({ behavior: 'allow' as const, updatedInput: input })
-          : o.deferred && s.turn.length ? defer(key, s, name, x.title ?? x.description ?? '', input)
-          : ask(key, s, name, x.title ?? x.description ?? '', input, x.signal),
-        hooks: {
-          PreToolUse: [{
-            onFailure: 'block',
-            hooks: [async input => {
-              const i = input as { tool_name: string; tool_input?: Record<string, string> }
-              const grant = o.grantOf?.(key)
-              const path = toolRefusal(i.tool_name, i.tool_input ?? {}, s.turn.some(x => senderOf(x.task) === 'agent') ? 'agent' : senderNow(s), { ...o, side: key.includes('#side-') }) ?? (key === DREAM_KEY && o.ownMemory ? dreamNoteRefusal(i.tool_name, i.tool_input ?? {}, o.ownMemory) : undefined), held = grant && grantRefusal(i.tool_name, grant, i.tool_input ?? {}, o.allowOf?.(key))
-              const step = !!held && !path && i.tool_name === 'Bash' && shellGrant(grant!), command = { command: String(i.tool_input?.command ?? '') }
-              const taken = step && !!o.deferred?.take(key, 'Bash', command, Date.now()), deniedAt = step && !taken ? o.deferred?.deniedAt(key, 'Bash', command, Date.now()) : undefined, wait = step && !taken && !deniedAt ? o.deferred?.waiting(key, 'Bash', command, Date.now()) : undefined
-              const review = step && !taken && !deniedAt && wait !== 'same' ? await o.reviewHeld?.(key, command.command) : undefined, released = taken || !!review?.release, card = step && !released && !deniedAt && !wait && o.deferred && s.turn.length ? await defer(key, s, 'Bash', `A kagelet's one-way step: ${heldCommand(command.command)}. Reply \`always\` to run it and let this exact command run with no ask from now on.`, command, review?.said) : undefined
-              const reason = released ? undefined : deniedAt ? `Held back: the owner said no to this exact step on ${new Date(deniedAt).toLocaleDateString('en-CA')}. Do not run it or ask again. Tell the thread you stopped.` : card?.interrupt || wait === 'same' ? `Held: ${heldCommand(command.command)} is a one-way step. The owner's card is posted, so it is not in your needs. Go on with the rest of the job; when they answer, a new task says so.` : held || path
-              if (grant) o.onTool?.(key, i.tool_name, reason || undefined)
-              return reason ? { hookSpecificOutput: { hookEventName: 'PreToolUse', permissionDecision: 'deny', permissionDecisionReason: reason } } : released ? { hookSpecificOutput: { hookEventName: 'PreToolUse', permissionDecision: 'allow' } } : {}
-            }],
-          }],
-        },
-      },
-    })
-    let sawState = false, unseen = false
-    const send = (m: ToSession) => {
-      if (m.type === 'verdict') { s.asks.get(m.request_id)?.(m.behavior); return }
-      const from = senderOf(m), answered = sawState && s.state === 'idle' && !unseen
-      s.ownerTools ||= from === 'owner'; s.ownerThread ||= from === 'owner'; s.sender = answered || !s.turn.length ? from : lowest([lowestSender(s.turn.map(x => x.task)), from])
-      const shown = from === 'owner' && s.sender !== 'owner' ? { ...m, content: `${OWNER_MID_TURN}\n${m.content}` } : m
-      const reopen = s.ownerTools && !full && s.state === 'idle' && (sawState ? !unseen : !s.turn.length)
-      if (reopen && s.turn.length) o.onTurn?.(key, s.turn.splice(0).map(x => x.task), undefined, true)
-      const uuid = randomUUID(); s.turn.push({ task: m, mid: s.state !== 'idle', uuid })
-      s.kage.onTask(m)
-      s.state = 'running'; s.last = Date.now()
-      if (reopen || s.carry.length) { s.carry.push(userMessage(shown, uuid)); q.close() } else { inbox.push(userMessage(shown, uuid)); unseen = true }
-    }
-    const sendAgain = () => { if (unseen && s.turn.length) return; unseen = false; for (const t of s.again.splice(0)) send(ownerAgain(t)) }
-    s.run = { q, inbox, send, started: Date.now() }
-    let connected = false
-    const connect = () => { if (connected || s.stopped) return; connected = o.hub().connect(key, send); if (carries) s.state = 'running' }
-    q.initializationResult().then(() => { connect(); if (full && !grant) o.onMcp?.(q) }, () => {})
-    void (async () => {
-      let blocked = false
-      let started: string | undefined
-      let limit: Limit['kind'] | undefined
-      let resetsAt: number | undefined, window: string | undefined
-      try {
-        for await (const m of q as AsyncIterable<SDKMessage>) {
-          s.last = Date.now()
-          connect()
-          if (m.type === 'system' && m.subtype === 'session_state_changed') { sawState = true; s.state = m.state; if (m.state === 'running') unseen = false; if (m.state === 'idle') sendAgain() }
-          const life = m as { type: string; command_uuid?: string; state?: string }; if (life.type === 'command_lifecycle' && life.state === 'completed') for (const x of s.turn) if (x.uuid === life.command_uuid) x.read = true
-          if (life.type === 'command_lifecycle') started = life.state === 'started' ? life.command_uuid : life.command_uuid === started ? undefined : started
-          const refused = (m.type === 'system' && m.subtype === 'model_refusal_no_fallback') || (m.type === 'assistant' && !m.parent_tool_use_id && m.message.stop_reason === 'refusal')
-          if (refused && !blocked) {
-            blocked = true
-            o.onBlocked?.(key, s.turn.map(x => x.task), (m.type === 'system' && m.subtype === 'model_refusal_no_fallback' && m.api_refusal_category) || null)
-          }
-          const ended = m.type === 'system' && (m as { prompt_submit_outcome?: { kind: string; reason?: string; prompt_kept?: boolean } }).prompt_submit_outcome
-          if (ended && HOOK_ENDINGS.includes(ended.kind) && !ended.prompt_kept) {
-            const hit = s.turn.filter(x => x.uuid === started)
-            o.onDropped?.(key, (hit.length ? hit : s.turn).map(x => x.task), ended.reason ?? '', ended.kind)
-            started = undefined
-            if (hit.length) {
-              s.turn = s.turn.filter(x => !hit.includes(x))
-              if (s.turn.length) s.sender = lowestSender(s.turn.map(x => x.task))
-              o.onTurn?.(key, hit.map(x => x.task), undefined, true)
-            }
-          }
-          if (m.type === 'rate_limit_event' && m.rate_limit_info.status === 'rejected') ({ rateLimitType: window } = m.rate_limit_info, resetsAt = m.rate_limit_info.resetsAt && (m.rate_limit_info.resetsAt < 1e12 ? m.rate_limit_info.resetsAt * 1000 : m.rate_limit_info.resetsAt))
-          if (m.type === 'assistant' && !m.parent_tool_use_id) limit = m.error === 'rate_limit' || m.error === 'overloaded' ? m.error : undefined
-          if (m.type === 'result' && m.is_error && !limit) {
-            const status = 'api_error_status' in m ? m.api_error_status : undefined
-            limit = status === 429 ? 'rate_limit' : status === 529 ? 'overloaded' : undefined
-          }
-          if (m.type === 'result') o.onResult?.(key, m.total_cost_usd, resumed, !!limit, m.is_error ? m.subtype : undefined, m.usage && { input: m.usage.input_tokens, cacheWrite: m.usage.cache_creation_input_tokens ?? 0, cacheRead: m.usage.cache_read_input_tokens ?? 0, output: m.usage.output_tokens, who: threadKind(key, senderNow(s)) })
-          if (m.type === 'result' && limit) {
-            const tasks = s.turn.map(x => x.task)
-            s.turn = []
-            blocked = false
-            o.onTurn?.(key, tasks, { kind: limit, ...(limit === 'rate_limit' && resetsAt && { until: resetsAt }), ...(limit === 'rate_limit' && window && { window }) })
-            limit = window = resetsAt = undefined
-          } else if (m.type === 'result') {
-            blocked = false
-            const again = s.sender === 'owner' ? [] : s.turn.filter(x => (!x.mid || x.read) && senderOf(x.task) === 'owner').map(x => x.task)
-            s.again.push(...again)
-            const done = s.turn.filter(x => (!x.mid || x.read) && !again.includes(x.task)).map(x => x.task)
-            s.turn = s.turn.filter(x => x.mid && !x.read).map(x => ({ ...x, mid: false })); if (s.turn.length) s.sender = lowestSender(s.turn.map(x => x.task))
-            if (done.length) o.onTurn?.(key, done, undefined, true)
-          }
-          if (m.type === 'result' && !sawState) { s.state = 'idle'; sendAgain() }
-        }
-      } catch (e) { log('session ended', logKey(key), e) }
-      if (limit && s.turn.length) o.onTurn?.(key, s.turn.splice(0).map(x => x.task), { kind: limit, ...(limit === 'rate_limit' && resetsAt && { until: resetsAt }), ...(limit === 'rate_limit' && window && { window }) })
-      denyAll(s)
-      s.state = 'idle'
-      if (s.stopped) return
-      const lost = s.turn.filter(x => x.task.handoff)
-      if (lost.length) { s.turn = s.turn.filter(x => !x.task.handoff); o.onTurn?.(key, lost.map(x => x.task)) }
-      o.hub().disconnect(key, send)
-      const gone = new Set(lost.map(x => channelTag(x.task)))
-      const unread = [...inbox.drain(), ...s.carry.splice(0)].filter(u => !gone.has(u.message.content as string))
-      setTimeout(() => { if (s.stopped) return; open(key, s, unread); if (s.turn.every(x => senderOf(x.task) === 'owner')) for (const t of s.again.splice(0)) s.run!.send(ownerAgain(t)) }, s.ownerTools && !full ? 0 : o.restartMs ?? 3000)
-    })()
-  }
-
-  function ask(key: string, s: Session, tool: string, description: string, input: Record<string, unknown>, signal: AbortSignal) {
-    const id = requestId()
-    return new Promise<{ behavior: 'allow'; updatedInput: Record<string, unknown> } | { behavior: 'deny'; message: string }>(resolve => {
-      const done = (b: 'allow' | 'deny') => {
-        s.asks.delete(id)
-        resolve(b === 'allow' ? { behavior: 'allow', updatedInput: input } : { behavior: 'deny', message: 'The owner did not approve this.' })
+function kageServer({ o, picks }: Hub, key: string, s: Session, full: boolean, voice: boolean, q: () => Query) {
+  return o.sdk.createSdkMcpServer({
+    name: 'kage', instructions: s.kage.instructions + (voice ? VOICE_READS_LINE : ''),
+    tools: [...s.kage.tools.filter(t => full || !ownerOnlyTool(`mcp__kage__${t.name}`)).map(t => o.sdk.tool(t.name, t.description, t.shape, async args => {
+      const r = await t.run(args)
+      return { isError: r.isError, content: [{ type: 'text' as const, text: r.text }] }
+    }, voiceToolOptions(voice, t.name))), o.sdk.tool('set_model', SET_MODEL, {
+      model: z.enum([...MODELS, 'default']).optional(),
+      effort: z.enum(['low', 'medium', 'high', 'xhigh', 'max', 'default']).optional().describe('reasoning effort; maximum or ultra means max'),
+    }, async a => {
+      const pick: Pick = { ...picks.get(key) }
+      if (a.model) {
+        await q().setModel(a.model === 'default' ? undefined : a.model)
+        if (a.model === 'default') delete pick.model; else pick.model = a.model
       }
-      if (signal.aborted) return done('deny')
-      s.asks.set(id, done)
-      signal.addEventListener('abort', () => done('deny'), { once: true })
-      s.kage.askOwner({ id, tool, description, preview: approvalPreview(tool, input) }).then(
-        () => { if (s.asks.has(id)) o.hub().permission(key, id) },
-        e => { log('permission prompt failed', e?.data?.error ?? e); done('deny') },
-      )
-    })
+      if (a.effort) {
+        await q().applyFlagSettings({ effortLevel: a.effort === 'default' ? null : a.effort })
+        if (a.effort === 'default') delete pick.effort; else pick.effort = a.effort
+      }
+      picks.set(key, { ...pick })
+      log('set_model', logKey(key), s.sender, pick.model ?? 'default', pick.effort ?? 'default')
+      return { content: [{ type: 'text' as const, text: `This thread now runs on ${pick.model ?? 'the default model'} at ${pick.effort ?? 'default'} effort.` }] }
+    })],
+  })
+}
+
+function queryOptions(h: Hub, key: string, s: Session, full: boolean, resumed: boolean, server: ReturnType<Sdk['createSdkMcpServer']>): Options {
+  const { o, picks } = h
+  const { KAGE_THREAD: _, ...env } = process.env
+  const budget = o.budgetOf?.(key)
+  const grant = o.grantOf?.(key)
+  const owners = !full && !s.connectors ? o.lean?.() : undefined
+  const walled = protectConfig(o.envFile, o.codeDir, undefined, shellGrant(grant) ? 'kagelet' : o.sandbox?.(s.ownerThread) === true)
+  const ssmToken = grant ? undefined : o.ssm?.issue(key)
+  const keysToken = grant ? undefined : o.keys?.issue(key)
+  return {
+    ...o.options,
+    ...owners && { settingSources: (o.options.settingSources ?? []).filter(x => x !== 'user'), ...owners.model && { model: owners.model }, ...owners.effort && { effort: owners.effort as EffortLevel } },
+    settings: { ...(o.options.settings as object), ...walled, ...owners?.permissions && !grant && { permissions: { ...owners.permissions, deny: [...Array.isArray(owners.permissions.deny) ? owners.permissions.deny : [], ...walled.permissions.deny] } }, ...!full && !s.connectors && { disableClaudeAiConnectors: true } },
+    ...(resumed ? { resume: s.id } : { sessionId: s.id }),
+    ...(o.modelOf?.(key) && { model: o.modelOf(key) }),
+    ...picks.get(key),
+    ...budget !== undefined && { maxBudgetUsd: budget },
+    ...grant && laneOptions(grant),
+    systemPrompt: { type: 'preset', preset: 'claude_code' },
+    mcpServers: { ...o.options.mcpServers, ...owners && grantServers(owners.mcp, grant), kage: server },
+    disallowedTools: [...o.options.disallowedTools ?? [], 'CronCreate', 'CronDelete', 'CronList'],
+    env: { ...env, ...certFileEnv(), CLAUDE_CODE_EMIT_SESSION_STATE_EVENTS: '1', KAGE_SESSION: '1', ...ssmToken && { KAGE_SSM_TOKEN: ssmToken, KAGE_SSM_SOCK: o.ssm!.sock, PATH: `${o.ssm!.shim}:${env.PATH}` }, ...keysToken && { KAGE_KEYS_TOKEN: keysToken, KAGE_KEYS_SOCK: o.keys!.sock } },
+    canUseTool: canUse(h, key, s),
+    hooks: { PreToolUse: [{ onFailure: 'block', hooks: [preToolUse(h, key, s)] }] },
   }
+}
 
-  async function defer(key: string, s: Session, tool: string, description: string, input: Record<string, unknown>, review?: Review['said']) {
-    const store = o.deferred!
-    const id = requestId()
-    try { await s.kage.askOwner({ id, tool, description, preview: approvalPreview(tool, input) }) } catch (e: any) {
-      log('permission prompt failed', e?.data?.error ?? e)
-      return { behavior: 'deny' as const, message: 'The owner did not approve this.' }
-    }
-    store.add({ id, key, tool, input, task: s.turn.at(-1)!.task, ...review && { review } }, Date.now())
-    return { behavior: 'deny' as const, interrupt: true, message: "The owner's card is posted. This turn ends here. When they answer, a new task says so." }
+function sendTo({ o }: Hub, live: Live) {
+  return (m: ToSession) => {
+    const { key, s, full } = live
+    if (m.type === 'verdict') { s.asks.get(m.request_id)?.(m.behavior); return }
+    const from = senderOf(m), answered = live.sawState && s.state === 'idle' && !live.unseen
+    s.ownerTools ||= from === 'owner'; s.ownerThread ||= from === 'owner'; s.sender = answered || !s.turn.length ? from : lowest([lowestSender(s.turn.map(x => x.task)), from])
+    const shown = from === 'owner' && s.sender !== 'owner' ? { ...m, content: `${OWNER_MID_TURN}\n${m.content}` } : m
+    const reopen = s.ownerTools && !full && s.state === 'idle' && (live.sawState ? !live.unseen : !s.turn.length)
+    if (reopen && s.turn.length) o.onTurn?.(key, s.turn.splice(0).map(x => x.task), undefined, true)
+    const uuid = randomUUID(); s.turn.push({ task: m, mid: s.state !== 'idle', uuid })
+    s.kage.onTask(m)
+    s.state = 'running'; s.last = Date.now()
+    if (reopen || s.carry.length) { s.carry.push(userMessage(shown, uuid)); live.q.close() } else { live.inbox.push(userMessage(shown, uuid)); live.unseen = true }
   }
+}
 
-  const denyAll = (s: Session) => { for (const done of [...s.asks.values()]) done('deny') }
+function open(h: Hub, key: string, s: Session, carried: SDKUserMessage[] = []) {
+  const { o } = h
+  const carries = carried.length > 0
+  const inbox = makeInbox(carried)
+  const full = s.ownerTools
+  const resumed = o.hasTranscript(s.id)
+  const grant = o.grantOf?.(key)
+  let q: Query
+  const server = kageServer(h, key, s, full, key.startsWith('voice:'), () => q)
+  q = o.sdk.query({ prompt: inbox, options: queryOptions(h, key, s, full, resumed, server) })
+  let connected = false
+  const live: Live = {
+    key, s, q, inbox, full, resumed, sawState: false, unseen: false, send: () => {},
+    connect: () => { if (connected || s.stopped) return; connected = o.hub().connect(key, live.send); if (carries) s.state = 'running' },
+    reopen: unread => open(h, key, s, unread),
+  }
+  live.send = sendTo(h, live)
+  s.run = { q, inbox, send: live.send, started: Date.now() }
+  q.initializationResult().then(() => { live.connect(); if (full && !grant) o.onMcp?.(q) }, () => {})
+  void follow(h, live)
+}
 
+export function sdkSessions(o: SdkOptions) {
+  const sessions = new Map<string, Session>()
+  const h: Hub = { o, sessions, picks: new Map() }
   const runner: Runner<ToSession> = {
     start(key, id, first) {
       const s: Session = sessions.get(key) ?? {
         id, state: 'idle', last: 0, stopped: false, asks: new Map(), turn: [], carry: [], again: [], ownerTools: key.startsWith('voice:') || (first?.type === 'task' && senderOf(first) === 'owner'), ownerThread: first?.type === 'task' && senderOf(first) === 'owner', ...first?.type === 'task' && senderOf(first) === 'trusted' && { connectors: true as const },
-        kage: o.tools(key, m => o.toHub(key, m), (tool, description, input) => ask(key, s, tool, description, input, new AbortController().signal).then(r => r.behavior === 'allow'), () => s.sender),
+        kage: o.tools(key, m => o.toHub(key, m), (tool, description, input) => ask(h, key, s, tool, description, input, new AbortController().signal).then(r => r.behavior === 'allow'), () => s.sender),
       }
       Object.assign(s, { id, stopped: false })
-      try { open(key, s) } catch (e) { sessions.delete(key); throw e }
+      try { open(h, key, s) } catch (e) { sessions.delete(key); throw e }
       sessions.set(key, s)
       o.onStart?.()
     },
@@ -297,12 +196,5 @@ export function sdkSessions(o: {
   return { runner, running: () => new Set([...sessions.values()].map(s => s.id)), usage: () => [...sessions.values()].find(s => s.run && !s.stopped)?.run!.q.usage_EXPERIMENTAL_MAY_CHANGE_DO_NOT_RELY_ON_THIS_API_YET({ skipBehaviors: true }) }
 }
 
-export const HOOK_ENDINGS = ['blocked_by_hook', 'stopped_by_hook', 'dropped_by_hook', 'not_passed_on', 'no_verdict']
-const ownerAgain = (t: Task): Task => ({ ...t, content: `${OWNER_AGAIN}\n${t.content}` })
 
 const SET_MODEL = 'Switch the model or reasoning effort of this thread, when the owner or a teammate asks for it in plain words ("use opus max", "go back to the default"). It applies from the next step and stays for the thread. Leave out what they did not ask to change.'
-
-function requestId() {
-  const abc = 'abcdefghijkmnopqrstuvwxyz'
-  return Array.from({ length: 5 }, () => abc[Math.floor(Math.random() * abc.length)]).join('')
-}

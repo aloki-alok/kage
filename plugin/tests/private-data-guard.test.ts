@@ -43,6 +43,6 @@ test("the owner's pane may edit an existing note in the owner's memory, and a si
 })
 
 test('both runners call the one refusal chain, so a rule added there reaches both', () => {
-  for (const f of ['../private-data-guard.ts', '../../src/runtime/sdk-sessions.ts'])
+  for (const f of ['../private-data-guard.ts', '../../src/runtime/sdk-permissions.ts'])
     assert.match(readFileSync(new URL(f, import.meta.url), 'utf8'), /\btoolRefusal\(/, f)
 })
