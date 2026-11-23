@@ -211,6 +211,8 @@ Write logs to stderr only. In a tmux pane, stdout carries the channel protocol, 
 | File | Holds |
 |---|---|
 | `sdk-sessions.ts` | The default runner: an Agent SDK session per key, inside the hub. `src/runtime/tests/fake-sdk.ts` is the fake SDK its tests drive. |
+| `sdk-permissions.ts` | What a session on the Agent SDK may run: the tools that need no card, the owner's card (live in the turn, or deferred), a kagelet's grant, and the PreToolUse hook that runs the refusal chain in `src/runtime/path-guards.ts` and holds a kagelet's one-way shell step. |
+| `sdk-stream.ts` | Reading one Agent SDK session's messages: the turn's state, a refusal or a hook that drops a prompt, a usage limit, each result and who the turn was for, and the restart that carries unread tasks into the next process. |
 | `owner-claude.ts` | The owner's own Claude Code setup as a lean session needs it (#506): the model and effort in `~/.claude/settings.json` and the user MCP servers in `~/.claude.json`, read when each session opens. |
 | `sdk-inbox.ts` | A session's input on the Agent SDK: the tasks waiting for its process, read as one stream. |
 | `tmux-panes.ts` | The other runner: a Claude Code pane per key. |

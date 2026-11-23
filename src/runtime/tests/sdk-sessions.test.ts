@@ -1132,6 +1132,15 @@ describe('Kage sessions on the Agent SDK', () => {
     const r = await Promise.race([t.sdk.runs[0]!.options.canUseTool('Bash', { command: 'ls' }, { signal: signal() }), tick(30).then(() => ({ behavior: 'held on the owner' }))])
     assert.equal(r.behavior, 'allow')
   })
+  test('a card still open when the session process ends is a no, so the tool never runs after the crash', async () => {
+    const t = setup()
+    t.d.task('C1:5.5', t.task(), 0)
+    await tick()
+    const ask = t.sdk.runs[0]!.options.canUseTool('Bash', { command: 'ls' }, { signal: signal() })
+    await tick()
+    t.sdk.runs[0]!.end()
+    assert.deepEqual(await Promise.race([ask, tick(50).then(() => 'still open')]), { behavior: 'deny', message: 'The owner did not approve this.' })
+  })
   test("an approval goes to the owner's DM and their yes or no reaches only the session that asked", async () => {
     const t = setup()
     t.d.task('C1:5.5', t.task(), 0)

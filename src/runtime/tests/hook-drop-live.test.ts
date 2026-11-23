@@ -5,7 +5,7 @@ import { mkdirSync, mkdtempSync, realpathSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { query } from '@anthropic-ai/claude-agent-sdk'
-import { HOOK_ENDINGS } from '../sdk-sessions.ts'
+import { HOOK_ENDINGS } from '../sdk-stream.ts'
 
 const which = (c: string) => { try { return execFileSync('which', [c], { encoding: 'utf8' }).trim() } catch { return '' } }
 const claude = which('claude')
