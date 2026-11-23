@@ -276,6 +276,13 @@ describe('Kage acting on the Mac, from the hub', () => {
     newRecorder(dir)
     assert.deepEqual(pipesAndLogs(dir), [])
   })
+  test('a new recorder removes pipes and logs named before they carried their process, and nothing else in the folder', () => {
+    const dir = mkdtempSync(`${tmpdir()}/kage-act-`)
+    for (const name of ['act-1795333632861.fifo', 'out-1795333632867-6xdidr.log', 'job.json', 'signing-pass', 'source-hash']) writeFileSync(`${dir}/${name}`, '')
+    mkdirSync(`${dir}/Kage.app`)
+    newRecorder(dir)
+    assert.deepEqual(readdirSync(dir).sort(), ['Kage.app', 'job.json', 'signing-pass', 'source-hash'])
+  })
   test('a new recorder keeps the pipe and log of an app another live process still drives', async () => {
     const dir = mkdtempSync(`${tmpdir()}/kage-act-`)
     const child = spawn(process.execPath, [opener(dir), dir, 'stays'], { stdio: ['ignore', 'pipe', 'ignore'] })
