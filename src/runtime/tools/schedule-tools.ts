@@ -88,7 +88,7 @@ async function runSchedule(c: ToolContext, jobs: Jobs, args: Record<string, unkn
     const why = await probeCard(c, `Run the command ${a.probe.command} on a clock (${cron}), as you, with no model, and wake a session when its output changes. Scripts it names are pinned.`, { cron, probe: a.probe })
     if (why) return { isError: true, text: why }
   }
-  const no = await jobs.add({ id, cron, prompt: a.prompt, recurring, ...(trigger && { trigger }), ...(a.lane !== undefined && { lane: a.lane ? true as const : undefined }), ...(a.needs?.length && { needs: a.needs }), ...(a.model && { model: a.model }), ...(a.probe && { probe: a.probe }), ...(a.shadow_of && { shadow: { of: a.shadow_of, live: a.live_prompt! } }) })
+  const no = await jobs.add({ id, cron, prompt: a.prompt, recurring, ...(trigger && { trigger }), ...(a.lane !== undefined && { lane: a.lane }), ...(a.needs?.length && { needs: a.needs }), ...(a.model && { model: a.model }), ...(a.probe && { probe: a.probe }), ...(a.shadow_of && { shadow: { of: a.shadow_of, live: a.live_prompt! } }) })
   if (no) return { isError: true, text: no }
   if (trigger?.kind === 'channel') return { text: `Kage schedule ${id} set, wakes on a post in channel ${trigger.channel}${trigger.match !== undefined ? ` matching ${trigger.match}` : ''}${trigger.bots ? ', bots included' : ''}. No model runs between posts. Kept by Kage: it survives restarts and runs until unschedule.` }
   if (token) return { text: `Kage schedule ${id} set, wakes on a call to its webhook. Shown once, give both to whoever sends the calls:\nURL: ${jobs.hookUrl!(id)}\nToken: ${token}\nSend: POST with the header "Authorization: Bearer <token>". The body reaches the job as data. Kept by Kage: it survives restarts and runs until unschedule.` }

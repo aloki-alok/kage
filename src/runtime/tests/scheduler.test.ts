@@ -663,6 +663,14 @@ describe('runs missed while the hub was off (#486)', () => {
   })
 })
 
+test('lane false keeps a job in its thread even when the install puts jobs in their own lane', () => {
+  const t = setup()
+  t.s.add('C1:5.5', { ...job, lane: false }, at('2026-11-03T10:01:00'))
+  t.s.add('C1:5.5', { ...job, id: 'j2' }, at('2026-11-03T10:01:00'))
+  assert.deepEqual(t.store.schedules().map(x => [x.id, x.lane]), [['j1', undefined], ['j2', true]])
+  assert.match(t.s.add('C1:5.5', { ...job, id: 'j3', model: 'haiku', lane: false }, at('2026-11-03T10:01:00')) ?? '', /own lane/)
+})
+
 test('a schedule keeps its own model, checked when it is saved, and only for a run in its own lane (#283)', () => {
   const t = setup()
   const now = at('2026-11-03T10:01:00')

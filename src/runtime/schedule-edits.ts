@@ -13,7 +13,7 @@ const RUNS_WITHIN = 4 * 366 * DAY
 export const WATCH_DAYS = 7
 
 type Host = { store: Store; trusted: (key: string) => boolean; tripwires?: () => TripwireSettings; job: { laneDefault: () => boolean } }
-export type NewJob = Pick<Schedule, 'id' | 'cron' | 'prompt' | 'recurring' | 'lane' | 'trigger' | 'needs' | 'model'> & { probe?: ProbeArg; shadow?: { of: string; live: string } }
+export type NewJob = Pick<Schedule, 'id' | 'cron' | 'prompt' | 'recurring' | 'trigger' | 'needs' | 'model'> & { lane?: boolean; probe?: ProbeArg; shadow?: { of: string; live: string } }
 
 export const listOf = (store: Store, key: string) => store.schedules().filter(s => s.key === threadOfJobLane(key))
 const patternMaxOf = (o: Host) => tripwireCfg(o.tripwires?.() ?? {}).patternMax

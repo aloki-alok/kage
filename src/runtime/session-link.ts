@@ -155,9 +155,9 @@ function fromSession({ d, o }: Link, { key }: Conn, m: Msg) {
   } else if (isReplyType(m.type) && typeof m.text === 'string') {
     routeReply(key, { type: m.type, text: m.text }, o)
   } else if (m.type === 'schedule') {
-    const j = m as Partial<{ id: string; cron: string; prompt: string; recurring: boolean; lane: boolean; probe: ProbeArg; shadow: { of: string; live: string } }>
+    const j = m as Partial<{ id: string; cron: string; prompt: string; recurring: boolean; lane: boolean; model: string; probe: ProbeArg; shadow: { of: string; live: string } }>
     if (typeof j.id === 'string' && typeof j.cron === 'string' && typeof j.prompt === 'string') {
-      const no = o.schedules.add(key, { id: j.id, cron: j.cron, prompt: j.prompt, recurring: j.recurring !== false, ...(typeof j.lane === 'boolean' && { lane: j.lane ? true as const : undefined }), ...(j.probe && { probe: j.probe }), ...(typeof j.shadow?.of === 'string' && typeof j.shadow.live === 'string' && { shadow: { of: j.shadow.of, live: j.shadow.live } }) }, Date.now())
+      const no = o.schedules.add(key, { id: j.id, cron: j.cron, prompt: j.prompt, recurring: j.recurring !== false, ...(typeof j.lane === 'boolean' && { lane: j.lane }), ...(typeof j.model === 'string' && { model: j.model }), ...(j.probe && { probe: j.probe }), ...(typeof j.shadow?.of === 'string' && typeof j.shadow.live === 'string' && { shadow: { of: j.shadow.of, live: j.shadow.live } }) }, Date.now())
       if (no) log('schedule refused', key, no)
     }
   } else if (m.type === 'unschedule' && typeof m.id === 'string') {
