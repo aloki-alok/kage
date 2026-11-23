@@ -273,7 +273,7 @@ const sdk = sdkLib ? sdkSessions({
   onMcp: q => { if (needs.watching()) void mcpStatus(q).then(needs.seen).catch(e => log('mcp status failed', e)) },
   ownerMemory: MEM.owner, ownMemory: MEM.own, sharedTools: config.sharedTools,
   envFile: ENV_FILE,
-  codeDir: CODE, sandbox: owner => sandboxed(config.harness?.sandbox, owner),
+  codeDir: CODE, sandbox: owner => sandboxed(config.harness?.sandbox, owner), commandOutput: () => config.harness?.commandOutputChars,
   ssm: { sock: SSM_SOCK, shim: SSM_SHIM, issue: key => ssm.issue(key), drop: key => ssm.drop(key) },
   keys: { sock: KEYS_SOCK, issue: key => keys.issue(key), drop: key => keys.drop(key) },
   onStart: () => store.saveSessions(d.saved()), lean: () => harness.leanSessions === false ? undefined : ownerClaude(),

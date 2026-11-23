@@ -50,7 +50,7 @@ export type SdkOptions = {
   toHub: (key: string, m: ChannelReply) => void
   options: Options
   ownerMemory: string; ownMemory?: string; sharedTools?: readonly string[]
-  codeDir: string; sandbox?: (ownerThread: boolean) => boolean
+  codeDir: string; sandbox?: (ownerThread: boolean) => boolean; commandOutput?: () => number | undefined
   envFile: string
   onStart?: () => void; onMcp?: (q: Query) => void
   onResult?: (key: string, totalUsd: number, resumed: boolean, limited: boolean, error?: string, tokens?: Tokens) => void
@@ -98,6 +98,8 @@ function kageServer({ o, picks }: Hub, key: string, s: Session, full: boolean, v
 function queryOptions(h: Hub, key: string, s: Session, full: boolean, resumed: boolean, server: ReturnType<Sdk['createSdkMcpServer']>): Options {
   const { o, picks } = h
   const { KAGE_THREAD: _, ...env } = process.env
+  const outputChars = String(o.commandOutput?.() ?? 3000)
+  const longOutput = outputChars !== '0' && !env.CLAUDE_CODE_SHELL_PREFIX && { CLAUDE_CODE_SHELL_PREFIX: `${o.codeDir}/src/runtime/long-output.sh`, KAGE_OUTPUT_CHARS: outputChars }
   const budget = o.budgetOf?.(key)
   const grant = o.grantOf?.(key)
   const owners = !full && !s.connectors ? o.lean?.() : undefined
@@ -116,7 +118,7 @@ function queryOptions(h: Hub, key: string, s: Session, full: boolean, resumed: b
     systemPrompt: { type: 'preset', preset: 'claude_code' },
     mcpServers: { ...o.options.mcpServers, ...owners && grantServers(owners.mcp, grant), kage: server },
     disallowedTools: [...o.options.disallowedTools ?? [], 'CronCreate', 'CronDelete', 'CronList'],
-    env: { ...env, ...certFileEnv(), CLAUDE_CODE_EMIT_SESSION_STATE_EVENTS: '1', KAGE_SESSION: '1', ...ssmToken && { KAGE_SSM_TOKEN: ssmToken, KAGE_SSM_SOCK: o.ssm!.sock, PATH: `${o.ssm!.shim}:${env.PATH}` }, ...keysToken && { KAGE_KEYS_TOKEN: keysToken, KAGE_KEYS_SOCK: o.keys!.sock } },
+    env: { ...env, ...certFileEnv(), ...longOutput, CLAUDE_CODE_EMIT_SESSION_STATE_EVENTS: '1', KAGE_SESSION: '1', ...ssmToken && { KAGE_SSM_TOKEN: ssmToken, KAGE_SSM_SOCK: o.ssm!.sock, PATH: `${o.ssm!.shim}:${env.PATH}` }, ...keysToken && { KAGE_KEYS_TOKEN: keysToken, KAGE_KEYS_SOCK: o.keys!.sock } },
     canUseTool: canUse(h, key, s),
     hooks: { PreToolUse: [{ onFailure: 'block', hooks: [preToolUse(h, key, s)] }] },
   }
