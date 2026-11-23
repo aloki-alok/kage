@@ -1,6 +1,6 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { chmodSync, mkdirSync, mkdtempSync, rmSync, utimesSync, writeFileSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, rmSync, utimesSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { listMemory } from '../memory-listing.ts'
@@ -26,11 +26,13 @@ test('a missing folder lists as empty', () => {
   assert.deepEqual(listMemory('/nonexistent-kage-mem', true), [])
 })
 
-test('a folder that exists but cannot be read lists as not readable, not as empty', () => {
+test('a memory path that exists but cannot be read as a folder lists as not readable, not as empty', () => {
   const dir = mkdtempSync(join(tmpdir(), 'mem-'))
   try {
-    writeFileSync(join(dir, 'a.md'), 'x')
-    chmodSync(dir, 0o000)
-    assert.equal(listMemory(dir, false), undefined)
-  } finally { chmodSync(dir, 0o700); rmSync(dir, { recursive: true, force: true }) }
+    writeFileSync(join(dir, 'memory'), 'a file where the folder should be')
+    assert.equal(listMemory(join(dir, 'memory'), false), undefined)
+    mkdirSync(join(dir, 'own'))
+    writeFileSync(join(dir, 'own', '.archive'), 'not a folder')
+    assert.equal(listMemory(join(dir, 'own'), true), undefined)
+  } finally { rmSync(dir, { recursive: true, force: true }) }
 })
