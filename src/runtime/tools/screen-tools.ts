@@ -135,7 +135,7 @@ function computerTool(desk: Desk): KageTool {
     shape: { ...desk.where, ...step, ...refShape(desk), action: step.action.optional().describe('one step; leave it out when you send ref or steps'), steps: z.array(z.object({ ...step, text: refShape(desk).text })).optional().describe('a list of 1 to 100 steps by coordinate or keys, each shaped like one step, run in order in this one call') },
     async run(args) {
       const no = refused(desk.c, args); if (no) return no
-      if (args.steps !== undefined) return actSteps(desk, args)
+      if (args.steps !== undefined) return args.ref === undefined ? actSteps(desk, args) : fail('give ref and how, or steps, not both')
       if (args.ref !== undefined) return args.action === undefined ? actOnRef(desk, args) : fail('give ref and how, or action, not both')
       return actOnce(desk, args)
     },

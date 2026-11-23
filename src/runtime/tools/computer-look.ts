@@ -1,6 +1,7 @@
 import { z } from 'zod'
 import { desktopVerdict, type DesktopAct, type Under } from '../../core/desktop-act.ts'
 import { lookText, parseLook } from '../../core/look.ts'
+import { quotedLine } from '../../core/text.ts'
 import type { KageTool, Result } from '../kage-tools.ts'
 import type { Desk } from './screen-tools.ts'
 
@@ -59,9 +60,8 @@ export async function actOnRef(desk: Desk, args: Record<string, unknown>): Promi
     if (!c.o.approve) return fail(`refused: ${v.ask}, which needs the owner's yes, and this session cannot ask them`)
     if (!await c.o.approve('computer_act', `${v.ask}, on your Mac`, { ref, how, ...how !== 'press' && { text } })) { seen(desk, `${how} owner said no`); return fail('the owner said no, so nothing was done. Ask them what to do instead.') }
   }
-  const line = desk.typed.get(under.app)
-  desk.typed.set(under.app, how === 'type' && line !== undefined ? line + text : undefined)
+  desk.typed.clear()
   const r = await desk.screen.act({ op: 'ref', snapshot: desk.look.snapshot, ref, how, ...how !== 'press' && { text }, expect: under })
   seen(desk, 'error' in r ? `${how} failed` : `${how} ok`)
-  return 'error' in r ? fail(String(r.error)) : { text: `done. ${String(r.changed ?? '')}`.trim() }
+  return 'error' in r ? fail(quotedLine(String(r.error))) : { text: `done. ${quotedLine(String(r.changed ?? ''))}`.trim() }
 }
