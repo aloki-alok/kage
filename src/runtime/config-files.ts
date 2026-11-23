@@ -67,8 +67,9 @@ export async function tidyPeople(envFile: string, userOfEmail: (email: string) =
   if (!oldPeopleShape(json(before))) return undefined
   const config = parse(Config, f.config)
   const found: Record<string, string> = {}
+  let unchecked = 0
   for (const t of config.people?.teammates ?? []) {
-    const user = t.email && !t.user ? await userOfEmail(t.email).catch(() => undefined) : undefined
+    const user = t.email && !t.user ? await userOfEmail(t.email).catch(() => { unchecked++; return undefined }) : undefined
     if (user) found[t.email!] = user
   }
   if (readFileSync(f.config, 'utf8') !== before) return undefined
@@ -76,7 +77,7 @@ export async function tidyPeople(envFile: string, userOfEmail: (email: string) =
   const backup = `config.json.before-tidy-${stamp(now)}`
   writeFileSync(join(f.dir, backup), before, { mode: 0o600 })
   write(f.config, checked(Config, 'config.json', { ...config, people: { ...config.people, ...(teammates.length && { teammates }) } }))
-  return { backup, moved }
+  return { backup, moved, unchecked }
 }
 
 export function syncWaha(envFile: string): boolean {

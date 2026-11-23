@@ -70,7 +70,7 @@ describe('a config.json in the old teammate shape is rewritten once', () => {
   test('it writes the one list, keeps the old file beside it at mode 600, and moves an email onto its Slack user', async () => {
     const w = oldWorld()
     const done = await tidyPeople(w.env, async e => (e === 'a@example.test' ? 'UTEST0002' : undefined), NOW)
-    assert.deepEqual(done, { backup: 'config.json.before-tidy-20261123T080000Z', moved: [{ email: 'a@example.test', user: 'UTEST0002' }] })
+    assert.deepEqual(done, { backup: 'config.json.before-tidy-20261123T080000Z', moved: [{ email: 'a@example.test', user: 'UTEST0002' }], unchecked: 0 })
     assert.equal(readFileSync(join(w.dir, done!.backup), 'utf8'), w.before)
     assert.equal(mode(join(w.dir, done!.backup)), 0o600)
     assert.deepEqual(JSON.parse(readFileSync(w.file, 'utf8')), { version: 1, people: { teammates: [{ user: 'UTEST0001', trusted: true }, { user: 'UTEST0002', email: 'a@example.test' }, { email: 'b@example.test' }] }, connectors: { email: { on: true } } })
@@ -84,10 +84,11 @@ describe('a config.json in the old teammate shape is rewritten once', () => {
     assert.equal(readFileSync(w.file, 'utf8'), after)
     assert.deepEqual(readdirSync(w.dir).sort(), files)
   })
-  test('a failed Slack lookup still tidies the file and moves nothing', async () => {
+  test('a failed Slack lookup still tidies the file, moves nothing, and counts the emails it could not check', async () => {
     const w = oldWorld()
     const done = await tidyPeople(w.env, async () => { throw new Error('missing_scope') }, NOW)
     assert.deepEqual(done?.moved, [])
+    assert.equal(done?.unchecked, 2)
     assert.equal(JSON.parse(readFileSync(w.file, 'utf8')).people.teammates.length, 4)
   })
   test('a file the owner changed during the lookups is left alone until the next start', async () => {

@@ -285,7 +285,7 @@ describe('people and the registry', () => {
     assert.deepEqual(messy.people?.teammates, [{ email: 'a@example.test' }])
   })
   test('the fold of the three old teammate lists is deleted from core/config.ts by 2027-01-31', () => {
-    assert.ok(Date.now() < Date.parse('2027-01-31'), 'delete foldOldPeople, oldPeopleShape, tidyPeople and this test')
+    assert.ok(Date.now() < Date.parse('2027-01-31'), 'delete foldOldPeople, oldPeopleShape, mergeTeammateEmails, tidyPeople, ownerLines.peopleTidied, the config.json.before-tidy- sweep prefix, their tests and this test')
   })
   test('only a file with an old teammate list counts as the old shape', () => {
     assert.equal(oldPeopleShape({ version: 1, people: { teammates: ['UTEST0001'] } }), true)
