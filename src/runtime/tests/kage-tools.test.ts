@@ -1283,6 +1283,25 @@ describe("the owner's screen", () => {
     await s.call('computer_act', { channel: 'C1', thread_ts: '5.5', action: 'left_click', coordinate: [640, 400] })
     assert.deepEqual(asked, ['under 720,450', 'click 720,450'])
   })
+  test('after a ref act in a terminal, Return asks the owner, because focus may now be on a line Kage did not type (#509)', async () => {
+    const sent: Record<string, unknown>[] = [], cards: string[] = []
+    const terminal = { app: 'Terminal', role: 'AXTextArea', label: '' }
+    const screen = {
+      ...fakeScreen([], () => terminal),
+      async look() { return { snapshot: 7, app: 'Terminal', window: 'shell', total: 1, complete: true, focused: { role: 'AXTextArea', label: '' }, elements: [{ ref: 1, role: 'AXTextArea', label: 'pane two', enabled: true, actions: [] }] } },
+      async act(c: { op: string } & Record<string, unknown>) { sent.push(c); return c.op === 'focused' || c.op === 'under' ? terminal : { done: true } },
+    }
+    const s = setup({ screen, approve: async (_tool: string, why: string) => { cards.push(why); return false } })
+    s.t.onTask(s.task())
+    const act = (a: Record<string, unknown>) => s.call('computer_act', { channel: 'C1', thread_ts: '5.5', ...a })
+    await act({ action: 'key', text: 'ctrl+c' })
+    await act({ action: 'type', text: 'ls' })
+    await s.call('computer_look', { channel: 'C1', thread_ts: '5.5' })
+    await act({ ref: 1, how: 'type', text: ' ' })
+    const r = await act({ action: 'key', text: 'return' })
+    assert.match(r.text, /owner said no/)
+    assert.deepEqual(cards, ['it presses Return in Terminal on a line it did not type itself, on your Mac'])
+  })
   test("a refusal from Kage Screen, such as a stale ref, reaches the session as an error (#509)", async () => {
     const sent: Record<string, unknown>[] = []
     const s = setup({ screen: refScreen(sent, { error: 'r1 is from an older look, so nothing was done. Look again and use a ref from that look' }) })
