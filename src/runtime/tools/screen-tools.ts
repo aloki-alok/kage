@@ -27,9 +27,19 @@ const seen = (c: ToolContext, tool: string, outcome: string) => c.o.event?.('too
 const fileFor = (c: ToolContext, args: Record<string, unknown>, ext: string) => `${c.filesOf(String(args.channel), String(args.thread_ts))}/screen-${Date.now()}.${ext}`
 const pair = (v: unknown) => Array.isArray(v) ? { x: v[0], y: v[1] } : {}
 
+function shapeError(a: Record<string, unknown>): string | undefined {
+  if (!ACTIONS.includes(a.action as typeof ACTIONS[number]) || a.action === 'screenshot') return `action is one of ${ACTIONS.filter(x => x !== 'screenshot').join(', ')}`
+  const drag = a.action === 'left_click_drag'
+  if (drag && !Array.isArray(a.start_coordinate)) return 'left_click_drag needs start_coordinate, [x, y] where the drag starts'
+  if (drag && a.path !== undefined && a.coordinate !== undefined) return 'left_click_drag takes coordinate or path, not both'
+  if (AIMED.has(a.action as string) && !Array.isArray(a.coordinate) && !(drag && a.path !== undefined)) return `${a.action} needs coordinate, [x, y] on the screenshot`
+  if (a.action === 'scroll' && !['up', 'down', 'left', 'right'].includes(a.scroll_direction as string)) return 'scroll needs scroll_direction: up, down, left or right'
+  if ((a.action === 'type' || a.action === 'key') && typeof a.text !== 'string') return `${a.action} needs text`
+}
+
 function fromComputer(a: Record<string, unknown>): Record<string, unknown> | { error: string } {
-  if (!ACTIONS.includes(a.action as typeof ACTIONS[number]) || a.action === 'screenshot') return { error: `action is one of ${ACTIONS.filter(x => x !== 'screenshot').join(', ')}` }
-  if (AIMED.has(a.action as string) && !Array.isArray(a.coordinate) && !(a.action === 'left_click_drag' && a.path !== undefined)) return { error: `${a.action} needs coordinate, [x, y] on the screenshot` }
+  const error = shapeError(a)
+  if (error) return { error }
   const at = pair(a.coordinate)
   switch (a.action) {
     case 'left_click': return { action: 'click', ...at, button: 'left', count: 1 }
@@ -43,6 +53,7 @@ function fromComputer(a: Record<string, unknown>): Record<string, unknown> | { e
     }
     case 'scroll': {
       const n = Number(a.scroll_amount ?? 3), d = a.scroll_direction
+      if (!Number.isInteger(n) || n < 1) return { error: 'scroll_amount is a whole number of lines, 1 or more' }
       return { action: 'scroll', ...at, dy: d === 'up' ? n : d === 'down' ? -n : 0, dx: d === 'left' ? n : d === 'right' ? -n : 0 }
     }
     case 'type': return { action: 'type', text: a.text }

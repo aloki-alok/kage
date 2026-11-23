@@ -1379,6 +1379,12 @@ describe("the owner's screen", () => {
     ])
     assert.match((await act({ action: 'left_click' })).text, /^left_click needs coordinate, \[x, y\] on the screenshot$/)
     assert.match((await act({ action: 'click', coordinate: [1, 1] })).text, /^action is one of left_click, right_click, double_click, mouse_move, left_click_drag, scroll, type, key$/)
+    assert.match((await act({ action: 'left_click_drag', coordinate: [9, 9] })).text, /^left_click_drag needs start_coordinate/)
+    assert.match((await act({ action: 'left_click_drag', start_coordinate: [1, 1], coordinate: [9, 9], path: [[3, 4]] })).text, /^left_click_drag takes coordinate or path, not both$/)
+    assert.match((await act({ action: 'scroll', coordinate: [5, 6] })).text, /^scroll needs scroll_direction/)
+    assert.match((await act({ action: 'scroll', coordinate: [5, 6], scroll_direction: 'up', scroll_amount: 1.5 })).text, /^scroll_amount is a whole number/)
+    assert.match((await act({ action: 'key', keys: 'return' })).text, /^key needs text$/)
+    assert.equal(sent.filter(c => c.op !== 'under' && c.op !== 'focused').length, 4)
   })
   test('each act carries what its check saw, so Kage Screen refuses it when the screen changed in between', async () => {
     const sent: Record<string, unknown>[] = []
