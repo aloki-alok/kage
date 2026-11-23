@@ -78,6 +78,9 @@ test('a hold outlives a hub restart: the new hub holds the thread before any tas
   const other = await ask('A', 12345)
   assert.equal(other.reply.refused, 'held')
   other.c.end()
+  const live = await ask('A', process.ppid)
+  assert.equal(live.reply.refused, 'held')
+  live.c.end()
   const again = await ask('A', process.pid)
   assert.equal(again.reply.id, 'id1')
   again.c.end()
@@ -415,4 +418,63 @@ test('a health question gets the connector lines the hub keeps in memory (#256)'
   await until(() => reply.includes('\n'))
   c.destroy()
   assert.deepEqual(JSON.parse(reply), { type: 'health', lines: ['email     on · last heard 2m ago'] })
+})
+
+test('only a connected session acts as one: a holder or a socket with no hello gets no answer and changes nothing, a refused hello is cut, and a session asks for permission', async t => {
+  const stopped: string[] = [], removed: string[] = [], added: string[] = []
+  const d = new Dispatcher<ToSession>(
+    { start: () => {}, stop: k => stopped.push(k), lastActivity: () => 0, busy: () => false },
+    { max: 3, idleMs: 9e9, connectMs: 9e9, evictMs: 0, newId: () => 'id1', saved: { H: 'idH' } },
+  )
+  d.task('A', task('a'), 0)
+  d.task('B', task('b'), 0)
+  const sock = join(mkdtempSync(join(tmpdir(), 'kage-link-')), 's.sock')
+  const server = listenForSessions(sock, d, {
+    mail: () => {}, wa: () => {}, voice: () => {}, sms: () => {}, failed: () => {},
+    schedules: { add: (key, j) => { added.push(`${key} ${j.id}`); return undefined }, remove: (key, id) => { removed.push(`${key} ${id}`) } },
+  })
+  await until(() => server.listening)
+  const sockets: ReturnType<typeof connect>[] = []
+  t.after(() => { for (const c of sockets) c.destroy(); server.close() })
+  const open = () => {
+    const c = connect(sock), got: string[] = []
+    sockets.push(c)
+    let closed = false
+    c.on('data', b => got.push(...String(b).split('\n').filter(Boolean)))
+    c.on('close', () => { closed = true })
+    const say = (m: object) => c.write(JSON.stringify(m) + '\n')
+    return { c, got, say, closed: () => closed }
+  }
+
+  const holder = open()
+  holder.say({ type: 'hold', key: 'H' })
+  await until(() => holder.got.length > 0)
+  holder.say({ type: 'stop', key: 'B' })
+  holder.say({ type: 'board' })
+  holder.say({ type: 'callcode' })
+  const stranger = open()
+  stranger.say({ type: 'permission', id: 'p0' })
+  stranger.say({ type: 'unschedule', id: 'j1' })
+  stranger.say({ type: 'schedule', id: 'j2', cron: '* * * * *', prompt: 'x' })
+  await new Promise(r => setTimeout(r, 100))
+  assert.deepEqual(holder.got.map(l => JSON.parse(l).type), ['hold'])
+  assert.deepEqual([stopped, removed, added], [[], [], []])
+  assert.equal(d.verdict('p0', { type: 'task' } as unknown as ToSession), false)
+
+  const nobody = open()
+  nobody.say({ type: 'hello', key: 'nobody' })
+  await until(() => nobody.closed())
+  assert.ok(nobody.closed())
+
+  const session = open()
+  session.say({ type: 'hello', key: 'A' })
+  session.say({ type: 'permission', id: 'p1' })
+  await until(() => d.verdict('p1', { type: 'verdict' } as unknown as ToSession))
+  await until(() => session.got.length > 1)
+  assert.deepEqual(session.got.map(l => JSON.parse(l).type), ['task', 'verdict'])
+
+  const code = open()
+  code.say({ type: 'callcode' })
+  await until(() => code.got.length > 0)
+  assert.deepEqual(JSON.parse(code.got[0]!), { type: 'callcode', refused: 'voice is off' })
 })
