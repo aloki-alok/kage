@@ -5,6 +5,7 @@ import { Dispatcher, mixRunners, startFailedNote, type Runner } from '../session
 describe('one Claude session per thread', () => {
   function setup(o: { max?: number; saved?: Record<string, string>; busyThrows?: boolean } = {}) {
     const started: [string, string][] = []
+    const reached: [string, string][] = []
     const stopped: string[] = []
     const activity = new Map<string, number>()
     const busy = new Set<string>()
@@ -20,11 +21,24 @@ describe('one Claude session per thread', () => {
         busy: k => { if (o.busyThrows) throw new Error('tmux capture failed'); return busy.has(k) || (watching.has(k) ? 'watching' : false) },
         outlivesHub: k => panes.has(k),
       },
-      { max: o.max ?? 2, idleMs: 1000, connectMs: 100, evictMs: 300, newId: () => `id${++n}`, saved: o.saved },
+      { max: o.max ?? 2, idleMs: 1000, connectMs: 100, evictMs: 300, newId: () => `id${++n}`, saved: o.saved, onSent: (k, m) => reached.push([k, m]) },
     )
     const inbox = (k: string) => { const got: string[] = []; d.connect(k, m => got.push(m)); return got }
-    return { d, started, stopped, activity, busy, watching, broken, panes, inbox }
+    return { d, started, stopped, activity, busy, watching, broken, panes, inbox, reached }
   }
+
+  test('onSent names each message that reached a session, sent at once or on connect, and never one a stop dropped', () => {
+    const { d, inbox, reached } = setup()
+    d.task('A', 'first', 0)
+    assert.deepEqual(reached, [], 'still starting')
+    inbox('A')
+    d.task('A', 'second', 1)
+    assert.deepEqual(reached, [['A', 'first'], ['A', 'second']])
+    d.task('B', 'dropped', 2)
+    d.endThread('B', true)
+    inbox('B')
+    assert.deepEqual(reached, [['A', 'first'], ['A', 'second']])
+  })
 
   test('a session that fails to start keeps its cause, and a later good start clears it (#240)', () => {
     const t = setup()

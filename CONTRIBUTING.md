@@ -140,7 +140,7 @@ Write logs to stderr only. In a tmux pane, stdout carries the channel protocol, 
 | `outbound.ts` | What may go out: no crowd pings, no secrets in a thread, Slack-sized parts, code blocks narrow enough for the thread panel, and a guard's SEND or HOLD on a message leaving as the owner. |
 | `guards.ts` | Hook rules that need only the tool name and the sender: private sources, voice calls, agents' tasks (read and answer only), Slack posts only through Kage's tools. Where the two memory folders are. |
 | `ledgers.ts` | Reading the ledgers: questions waiting on the owner, what Kage posted, what turns cost, the daily note. |
-| `thread-delta.ts` | Which thread replies a task carries: only those after the last task when the same session resumes, the whole thread for a new or reset session, and how Slack `ts` values compare. |
+| `thread-delta.ts` | Which thread replies a task carries: only those after the last task when the same session resumes, the whole thread for a new or reset session, and how Slack `ts` values compare. A task names its thread's mark, and the mark moves only when the dispatcher hands that task to the thread's own session (`markDelivered`), so a task a stop drops is never counted as seen. |
 | `thread-rotate.ts` | When a long thread starts a new session: the context its last turn read, the limit that makes it due, and the note the new session gets. |
 | `events.ts` | The event log's row (what happened, never what was said), its 30 days, and a chain read back as `a > b > c` and where it stopped. |
 | `kagelets/people.ts` | Who may ask a kagelet for work: its people and owners lines (one line of Slack ids each, at most 3 owners) and the check of an ask in its thread. |

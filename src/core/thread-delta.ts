@@ -17,3 +17,6 @@ export function markSeen(marks: Record<string, ThreadMark>, key: string, mark: T
   const kept = Object.entries(marks).filter(([k, m]) => k !== key && !(tsParts(m.ts)[0] < oldest))
   return Object.fromEntries([...kept, [key, mark]])
 }
+
+export const markDelivered = (marks: Record<string, ThreadMark>, key: string, task: { threadMark?: string; origin: { ts: string } }, id: string | undefined) =>
+  task.threadMark === key && id ? markSeen(marks, key, { id, ts: task.origin.ts }) : undefined

@@ -19,7 +19,7 @@ import { emptyRoom } from '../../runtime/claude-once.ts'
 import type { Inbox, Saved } from '../../runtime/store.ts'
 import { channelHistory, type ChannelHistory, type ChannelPost } from '../../runtime/channel-watch.ts'
 import { ownerLines } from '../../core/messages.ts'
-import { markSeen, seenUpTo, type SessionNow, type ThreadMark } from '../../core/thread-delta.ts'
+import { seenUpTo, type SessionNow, type ThreadMark } from '../../core/thread-delta.ts'
 import { slackDirectory, type Directory } from './directory.ts'
 import { agentOf, taskText } from './task-text.ts'
 
@@ -241,9 +241,8 @@ async function deliverTask(k: Slack, m: SlackMessage, t: TaskTrigger, pickedUp?:
   const asked = askedKey ? parseSessionKey(askedKey, ids.botDm)?.conversation : undefined
   const conv = slackConversation(m, ids.botDm, k.kagePosted)
   const markKey = !asked && !t.side && conv.thread ? sessionKey(conv) : undefined
-  const marks = () => (o.saved?.load('threadMarks') ?? {}) as Record<string, ThreadMark>
   const session = markKey ? o.hub.sessionOf?.(conv, 'main') : undefined
-  const since = markKey ? seenUpTo(marks()[markKey], session) : undefined
+  const since = markKey ? seenUpTo(((o.saved?.load('threadMarks') ?? {}) as Record<string, ThreadMark>)[markKey], session) : undefined
   const [place, ctx, link] = await Promise.all([
     dir.placeOf(asked?.chat ?? m.channel),
     m.channel === ids.botDm && !m.thread_ts ? Promise.resolve({ text: '', files: [] as SlackFile[] }) : dir.contextOf(m, false, since),
@@ -264,12 +263,11 @@ async function deliverTask(k: Slack, m: SlackMessage, t: TaskTrigger, pickedUp?:
     ...(agent && { agent: { app: agent.app, ...(agent.tag && { tag: agent.tag }), ...(agent.person && { person: agent.person }) } }),
     ...(trusted && { trusted: person }),
     ...(since && session && { deltaOf: session.id }),
+    ...(markKey && { threadMark: markKey }),
   })
   const r = asked
     ? o.hub.deliver(asked, task, place)
     : o.hub.deliver(conv, task, t.side ? `${place} (side)` : place, t.side ? `side-${m.ts}` : 'main', m.user)
-  const now = markKey && r === 'sent' ? o.hub.sessionOf?.(conv, 'main') : undefined
-  if (markKey && now) o.saved?.save('threadMarks', markSeen(marks(), markKey, { id: now.id, ts: m.ts }))
   if (r === 'queued' || r === 'held') k.react(m.channel, m.ts, WAITING)
   else if (r === 'sent' && k.replaying.has(m.ts)) k.unreact(m.channel, m.ts, WAITING)
   return r === 'failed' ? task : undefined
