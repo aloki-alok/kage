@@ -179,7 +179,7 @@ function grantPlan(o: Options, a: Manage, tools: string[], had: Had, fresh: stri
   const writes = tools.filter(t => kageletTier(t) === 'write')
   const kept = writes.filter(t => had?.tools.includes(t) && !had.standing?.includes(t) && (t !== ALL || had.job.trim() === (a.job ?? '').trim()))
   const standing = writes.filter(t => t !== ALL && !kept.includes(t) && yes[t] !== undefined)
-  const card = writes.filter(t => !kept.includes(t) && yes[t] === undefined), stands = card.filter(t => t !== ALL)
+  const card = writes.filter(t => !kept.includes(t) && (t === ALL || yes[t] === undefined)), stands = card.filter(t => t !== ALL)
   const people = a.people ?? had?.people ?? [], moved = !!had && (a.thread ?? '') !== had.link
   const newPeople = people.filter(p => moved || !had?.people?.includes(p)).join(', ')
   const owners = a.owners ?? had?.owners ?? [], newOwners = owners.filter(p => moved || !had?.owners?.includes(p)).join(', ')
