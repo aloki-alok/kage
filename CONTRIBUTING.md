@@ -217,7 +217,10 @@ Write logs to stderr only. In a tmux pane, stdout carries the channel protocol, 
 | `job-needs.ts` | The MCP tools jobs need, on the hub's clock: a session with no prompt reads the SDK's MCP server status with no model turn (every 10 minutes, only while a job names `needs`), each owner session adds its own status at start, and the owner gets one DM per miss and one when it is back. The miss shows in `kage schedules` as `blocked:`. |
 | `pane-turn.ts` | Who a tmux pane's turn runs for: the sender file the plugin hook reads, and Kage's owner-only tools in that pane. |
 | `kage-tools.ts` | A session's tools (about 28): the state they share about its tasks (where each came from, who sent it, what Kage posted), and the approval card. The instructions every session reads are `src/core/instructions.ts`. |
-| `src/runtime/tools/slack-tools.ts` | Replies, edits and deletes of Kage's own posts, telling people, attaching a file, a canvas the bot makes in the task's channel and keeps current, the waiting list, the prod log, and a post as Kage where no task came from. |
+| `src/runtime/tools/slack-tools.ts` | The Slack tools every session gets, in order: edits and deletes of Kage's own posts, attaching a file, the waiting list, the prod log, and a post as Kage where no task came from. |
+| `src/runtime/tools/slack-reply.ts` | The `reply` tool: its refusals (secrets, other agents, unseen mentions, a private DM link), one table for each connector that answers outside Slack (voice, SMS, WhatsApp, email), and the Slack post with its waiting line and reaction. |
+| `src/runtime/tools/slack-people.ts` | `message_people`: a group DM from the owner's account with Kage's footer, and the owner's card when the ask came from WhatsApp. |
+| `src/runtime/tools/slack-canvas.ts` | A canvas the bot makes in the task's channel and keeps current. |
 | `src/runtime/tools/schedule-tools.ts` | A thread's schedules in the hub, and AFK mode on and off. |
 | `src/runtime/tools/kagelet-tools.ts` | A kagelet's tools (report, message another, db_read), its dream's (propose_memory), and the manager's. |
 | `src/runtime/tools/browser-tools.ts` | The owner's Chrome: list, read, capture, snapshot and act, a major step on the owner's yes. |
@@ -286,6 +289,6 @@ Build its `Task` with `taskAsOther()` from `src/core/gate.ts`. Use `taskAsOwner(
 1. Its key prefix and kind in `OFF_SLACK` in `src/core/conversations.ts`. The connector type, session keys both ways, `answersInThread` and the `kage top` counts follow from it.
 2. `senderOf` in `src/core/gate.ts`, if its sender is not plainly the owner or a teammate.
 3. The reply type in `src/runtime/protocol.ts`, `routeReply` in `src/runtime/session-link.ts`, and the `reply` tool in `src/runtime/kage-tools.ts`.
-4. `replies` in `src/hub/connectors.ts`, and how the reply tool in `src/runtime/tools/slack-tools.ts` sends to it.
+4. `replies` in `src/hub/connectors.ts`, and its row in `OFF_SLACK_REPLIES` in `src/runtime/tools/slack-reply.ts`.
 5. If it listens on a port, use `listen()` in `src/connectors/webhook.ts`: a taken port then turns off this connector, not the hub.
 6. The inbox (`Inbox` in `src/runtime/store.ts`): `take` each message with a unique source id before you acknowledge it, and `handled` after. If the source does not resend by itself, add its `replay` to `replayOf` in `src/hub/connectors.ts`.
