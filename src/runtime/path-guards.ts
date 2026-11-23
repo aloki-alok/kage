@@ -1,5 +1,7 @@
-import { existsSync, readdirSync, realpathSync } from 'node:fs'
+import { existsSync, readdirSync, readFileSync, realpathSync } from 'node:fs'
 import { basename, dirname, join, posix, resolve } from 'node:path'
+import { SecretsFile } from '../core/config.ts'
+import { secretCommands } from '../core/secret-commands.ts'
 import { agentToolRefusal, mcpToolRefusal, SECRET_DIRS, SECRET_FILE, SECRET_GLOB, privateToolRefusal, slackSendRefusal, voiceToolRefusal } from '../core/guards.ts'
 
 const CONFIG_TOOLS = new Set(['Read', 'Grep', 'Glob', 'Edit', 'MultiEdit', 'Write', 'NotebookEdit', 'Bash'])
@@ -25,6 +27,16 @@ export function configRefusal(tool: string, input: Record<string, unknown>, send
   }
   if (!at.some(r => !/^(?:files|memory)(?:\/|$)/.test(r))) return
   return `Kage's config folder holds its tokens, and this task did not come from the owner. Reply that this needs the owner, and stop.`
+}
+const SECRET_HELPERS = /\b(?:security\s+find-(?:generic|internet)-password|op\s+(?:read|item\s+get)|pass\s+show)\b/
+const squash = (s: string) => s.replace(/\s+/g, ' ').trim()
+function secretCommandRefusal(tool: string, input: Record<string, unknown>, envFile: string): string | undefined {
+  if (tool !== 'Bash' || typeof input.command !== 'string') return
+  let commands: string[]
+  try { commands = secretCommands(SecretsFile.parse(JSON.parse(readFileSync(join(dirname(envFile), 'secrets.json'), 'utf8')))).map(c => squash(c.command)) } catch { return }
+  const asked = squash(input.command)
+  if (!commands.length || !(SECRET_HELPERS.test(asked) || commands.some(c => asked.includes(c)))) return
+  return `Kage's tokens come from commands in secrets.json, so no session may run one, or another secret helper (op read, security find-*, pass show). Kage's own tools post as Kage, so no session needs a token.`
 }
 const CONFIG_NAMES = ['session.env', 'telemetry-id', 'kagelets', 'job-state', 'config.json*', 'crons-import.json*', 'waha', 'screen', 'threads.json*', 'afk.json*', 'github-threads.json*', 'mail-threads.json*',
   'kage.db*', 'hub.lock', 'hub.log*', 'router.sock', 'ssm.sock', 'keys.sock', '.archive', 'updated-from', 'browser-seen', 'wa-notes', 'retro-sent', 'dream-sent', 'daily-sent', 'crash-dm-at',
@@ -117,5 +129,5 @@ export function agentReadRefusal(tool: string, input: { file_path?: string; path
 }
 export function toolRefusal(tool: string, input: Record<string, unknown>, sender: string | undefined, o: { ownerMemory: string; envFile: string; sharedTools?: readonly string[]; side?: boolean }): string | undefined {
   return agentToolRefusal(tool, sender) ?? agentReadRefusal(tool, input as { file_path?: string }, sender) ?? privateToolRefusal(tool, sender) ?? voiceToolRefusal(tool, sender) ?? mcpToolRefusal(tool, sender, o.sharedTools) ?? slackSendRefusal(tool)
-    ?? ownerMemoryRefusal(tool, input as { file_path?: string }, o.ownerMemory, sender, undefined, undefined, o.side) ?? configRefusal(tool, input, sender, o.envFile)
+    ?? ownerMemoryRefusal(tool, input as { file_path?: string }, o.ownerMemory, sender, undefined, undefined, o.side) ?? secretCommandRefusal(tool, input, o.envFile) ?? configRefusal(tool, input, sender, o.envFile)
 }

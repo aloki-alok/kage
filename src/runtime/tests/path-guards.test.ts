@@ -336,3 +336,26 @@ describe("the owner's own task may fix the owner's memory", () => {
     assert.match(as('owner', 'Write', 'feedback_x.md', true) ?? '', /people notes/)
   })
 })
+
+describe('a session may not run the command a secret names (#158)', () => {
+  const folder = (secrets: object) => {
+    const dir = mkdtempSync(join(tmpdir(), 'kage-secret-cmd-'))
+    writeFileSync(join(dir, 'secrets.json'), JSON.stringify(secrets))
+    return { ownerMemory: join(dir, 'memory'), envFile: join(dir, 'env') }
+  }
+  const bash = (o: { ownerMemory: string; envFile: string }, command: string, sender = 'owner') => toolRefusal('Bash', { command }, sender, o)
+
+  test('with a command-backed secret, its command and the secret helpers are refused, for the owner too', () => {
+    const o = folder({ slack: { bot: { command: 'op read op://kage/slack-bot' } }, jevKey: { command: '/usr/local/bin/kage-token jev' } })
+    for (const c of ['op read op://kage/slack-bot', 'echo $(op  read   op://kage/slack-bot)', 'op read op://other/item', 'op item get kage', 'security find-generic-password -w -s kage', 'security find-internet-password -s x', 'pass show kage/bot', 'X=1 /usr/local/bin/kage-token   jev | cat'])
+      assert.match(bash(o, c) ?? '', /secret/, c)
+    assert.match(bash(o, 'op read op://kage/slack-bot', 'teammate') ?? '', /secret/)
+    for (const c of ['ls -la', 'git status', 'echo operator read', 'security list-keychains']) assert.equal(bash(o, c), undefined, c)
+    assert.equal(toolRefusal('Read', { file_path: '/tmp/op read' }, 'owner', o), undefined)
+  })
+
+  test('with no command-backed secret, the helpers run as before', () => {
+    const o = folder({ slack: { bot: 'xoxb-fake' } })
+    for (const c of ['op read op://kage/slack-bot', 'security find-generic-password -w -s kage', 'pass show x']) assert.equal(bash(o, c), undefined, c)
+  })
+})
