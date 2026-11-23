@@ -17,7 +17,7 @@ describe('private sources on a teammate task', () => {
     }
   })
   test("only the owner's task reaches the owner's screen", () => {
-    for (const t of ['mcp__kage__computer', 'mcp__plugin_kage_kage__computer', 'mcp__plugin_kage_kage__screen_record']) {
+    for (const t of ['mcp__kage__computer_look', 'mcp__kage__computer_act', 'mcp__plugin_kage_kage__computer_act', 'mcp__plugin_kage_kage__computer_record']) {
       assert.equal(privateToolRefusal(t, 'owner'), undefined, t)
       assert.match(privateToolRefusal(t, 'teammate') ?? '', /owner/, t)
     }
