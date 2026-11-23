@@ -44,7 +44,7 @@ test('a job with no needs is never checked', () => {
 })
 
 test("a job saved missing only Kage's own tools is cleared with no DM; a real tool still counts", () => {
-  const own = 'mcp__kage__browser_act'
+  const own = 'mcp__kage__browser_click'
   assert.deepEqual(needsChanges([{ ...job([own]), needs: [DIAL, own] }], live([DIAL])), [{ id: 'a1b2', missing: [] }])
   const [c] = needsChanges([{ ...job([own]), needs: [DIAL, own] }], live([]))
   assert.deepEqual(c!.missing, [DIAL])

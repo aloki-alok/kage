@@ -27,9 +27,9 @@ export type Act =
 export function parseAct(a: Record<string, unknown>): Act | { error: string } {
   const ref = typeof a.ref === 'number' && Number.isInteger(a.ref) && a.ref > 0 ? a.ref : undefined
   switch (a.action) {
-    case 'click': return ref ? { action: 'click', ref } : { error: 'click needs ref, from browser_snapshot' }
+    case 'click': return ref ? { action: 'click', ref } : { error: 'browser_click needs target, from browser_snapshot' }
     case 'type':
-      if (!ref) return { error: 'type needs ref, from browser_snapshot' }
+      if (!ref) return { error: 'browser_type needs target, from browser_snapshot' }
       if (typeof a.text !== 'string' || !a.text) return { error: 'type needs text' }
       if (a.text.length > 5000) return { error: 'type takes at most 5000 characters at a time' }
       return { action: 'type', ref, text: a.text }

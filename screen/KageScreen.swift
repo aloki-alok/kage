@@ -323,7 +323,7 @@ final class Hands {
     for (name, want) in [("app", e.app as String?), ("role", e.role), ("label", e.label)] {
       guard let want else { continue }
       let now = seen[name] as? String ?? ""
-      if now != want { return "the screen changed after the check (\(name) is now \"\(now)\", not \"\(want)\"), so nothing was done. Take a screen_shot and send the step again" }
+      if now != want { return "the screen changed after the check (\(name) is now \"\(now)\", not \"\(want)\"), so nothing was done. Take a screenshot and send the step again" }
     }
     return nil
   }

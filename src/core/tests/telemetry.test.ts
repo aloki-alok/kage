@@ -17,7 +17,7 @@ test('priority zero: no planted name, id, email, path or text leaves, for any ki
 })
 
 test('every string value that leaves is a fixed word, every other value a finite number', () => {
-  for (const kind of KINDS) for (const d of ['$0.12, no report', 'tick job=a1 outcome=changed ms=40', 'task from x', 'browser_act open refused: no', 'needs approval', 'deadbeefcafe']) {
+  for (const kind of KINDS) for (const d of ['$0.12, no report', 'tick job=a1 outcome=changed ms=40', 'task from x', 'browser_tabs new refused: no', 'needs approval', 'deadbeefcafe']) {
     const r = toTelemetry(ev(kind, d))
     if (!r) continue
     for (const [k, v] of Object.entries(r.attrs)) {
@@ -44,7 +44,7 @@ test('the known shapes give their counts and codes', () => {
   assert.deepEqual(toTelemetry(ev('limit', 'overloaded wait_s=300 held=0'))?.attrs, { kind: 'overloaded', window: 'other', wait_s: 300, held: 0 })
   assert.deepEqual(toTelemetry(ev('plan', 'type=team five_hour=60 seven_day=9 seven_day_opus=3 extra=off'))?.attrs, { type: 'team', five_hour: 60, seven_day: 9, seven_day_opus: 3, extra: 'off' })
   assert.deepEqual(toTelemetry(ev('tripwire', 'tick job=93af72f6 outcome=changed ms=812 kb=3'))?.attrs, { action: 'tick', outcome: 'changed', ms: 812 })
-  assert.deepEqual(toTelemetry(ev('tool', 'browser_act open refused: the owner said no'))?.attrs, { outcome: 'refused' })
+  assert.deepEqual(toTelemetry(ev('tool', 'browser_tabs new refused: the owner said no'))?.attrs, { outcome: 'refused' })
   assert.deepEqual(toTelemetry(ev('report', 'needs approval'))?.attrs, { outcome: 'needs' })
   assert.deepEqual(toTelemetry(ev('crash', 'a1b2c3d4e5f6'))?.attrs, { fp: 'a1b2c3d4e5f6' })
   assert.deepEqual(toTelemetry(ev('crash', 'not a fingerprint'))?.attrs, {})
