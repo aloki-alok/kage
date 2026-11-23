@@ -6,66 +6,85 @@ const SYSTEM_DIR = /^\/+(etc|usr|bin|sbin|System|Library|root|opt|boot|lib|lib64
 const DEPTH = 4
 const REDIRECTS = new Set(['>', '<', '<<'])
 
+type Lex = { line: string; subs: string[]; out: Cmd[]; argv: string[]; w: string | undefined; piped: boolean; heredoc: string | undefined; delims: { word: string; strip: boolean }[] }
+
+const word = (x: Lex) => { if (x.w !== undefined) x.argv.push(x.w); x.w = undefined }
+const end = (x: Lex, pipe: boolean) => { word(x); if (x.argv.length) x.out.push({ argv: x.argv, piped: x.piped, ...x.heredoc !== undefined && { heredoc: x.heredoc } }); x.argv = []; x.piped = pipe; x.heredoc = undefined }
+function sub(x: Lex, open: number): number {
+  const { line } = x
+  let depth = 0
+  for (let j = open; j < line.length; j++) { if (line[j] === '(') depth++; else if (line[j] === ')' && --depth === 0) { x.subs.push(line.slice(open + 1, j)); return j } }
+  x.subs.push(line.slice(open + 1))
+  return line.length
+}
+
+function doubleQuoted(x: Lex, i: number): number {
+  const { line } = x
+  let s = ''
+  for (i++; i < line.length && line[i] !== '"'; i++) {
+    if (line[i] === '\\' && i + 1 < line.length) s += line[++i]
+    else if (line[i] === '$' && line[i + 1] === '(') { const j = sub(x, i + 1); s += line.slice(i, j + 1); i = j }
+    else if (line[i] === '`') { const j = line.indexOf('`', i + 1); x.subs.push(line.slice(i + 1, j < 0 ? undefined : j)); i = j < 0 ? line.length : j }
+    else s += line[i]
+  }
+  x.w = (x.w ?? '') + s
+  return i
+}
+
+function newline(x: Lex, i: number): number {
+  const { line } = x
+  let at = i + 1
+  const bodies = x.delims.map(d => {
+    const lines: string[] = []
+    while (at < line.length) {
+      const nl = line.indexOf('\n', at), l = line.slice(at, nl < 0 ? undefined : nl)
+      at = nl < 0 ? line.length : nl + 1
+      if ((d.strip ? l.replace(/^\t+/, '') : l) === d.word) break
+      lines.push(l)
+    }
+    return lines.join('\n')
+  })
+  if (x.delims.length) { x.heredoc = bodies.join('\n'); x.delims.length = 0; i = at - 1 }
+  end(x, false)
+  return i
+}
+
+function heredocStart(x: Lex, i: number): number {
+  const { line } = x
+  word(x); i += 2
+  const strip = line[i] === '-'
+  if (strip) i++
+  while (line[i] === ' ') i++
+  let d = ''
+  for (; i < line.length && !/[\s;&|<>()]/.test(line[i]!); i++) if (!`'"\\`.includes(line[i]!)) d += line[i]
+  i--
+  x.delims.push({ word: d, strip }); x.argv.push('<<')
+  return i
+}
+
 function commands(line: string, subs: string[]): Cmd[] {
-  const out: Cmd[] = []
-  let argv: string[] = [], w: string | undefined, piped = false, heredoc: string | undefined
-  const delims: { word: string; strip: boolean }[] = []
-  const word = () => { if (w !== undefined) argv.push(w); w = undefined }
-  const end = (pipe: boolean) => { word(); if (argv.length) out.push({ argv, piped, ...heredoc !== undefined && { heredoc } }); argv = []; piped = pipe; heredoc = undefined }
-  const sub = (open: number) => { let depth = 0; for (let j = open; j < line.length; j++) { if (line[j] === '(') depth++; else if (line[j] === ')' && --depth === 0) { subs.push(line.slice(open + 1, j)); return j } } subs.push(line.slice(open + 1)); return line.length }
+  const x: Lex = { line, subs, out: [], argv: [], w: undefined, piped: false, heredoc: undefined, delims: [] }
   for (let i = 0; i < line.length; i++) {
     const c = line[i]!
-    if (c === "'") { const j = line.indexOf("'", i + 1); w = (w ?? '') + line.slice(i + 1, j < 0 ? undefined : j); i = j < 0 ? line.length : j }
-    else if (c === '"') {
-      let s = ''
-      for (i++; i < line.length && line[i] !== '"'; i++) {
-        if (line[i] === '\\' && i + 1 < line.length) s += line[++i]
-        else if (line[i] === '$' && line[i + 1] === '(') { const j = sub(i + 1); s += line.slice(i, j + 1); i = j }
-        else if (line[i] === '`') { const j = line.indexOf('`', i + 1); subs.push(line.slice(i + 1, j < 0 ? undefined : j)); i = j < 0 ? line.length : j }
-        else s += line[i]
-      }
-      w = (w ?? '') + s
-    }
-    else if (c === '\\') { if (line[i + 1] === '\n') i++; else w = (w ?? '') + (line[++i] ?? '') }
-    else if (c === '#' && w === undefined) { const j = line.indexOf('\n', i); i = j < 0 ? line.length : j - 1 }
-    else if (c === '\n') {
-      let at = i + 1
-      const bodies = delims.map(d => {
-        const lines: string[] = []
-        while (at < line.length) {
-          const nl = line.indexOf('\n', at), l = line.slice(at, nl < 0 ? undefined : nl)
-          at = nl < 0 ? line.length : nl + 1
-          if ((d.strip ? l.replace(/^\t+/, '') : l) === d.word) break
-          lines.push(l)
-        }
-        return lines.join('\n')
-      })
-      if (delims.length) { heredoc = bodies.join('\n'); delims.length = 0; i = at - 1 }
-      end(false)
-    }
-    else if (c === ' ' || c === '\t') word()
-    else if (c === '|' && line[i + 1] !== '|') end(true)
-    else if (';&|()`'.includes(c) || (c === '$' && line[i + 1] === '(')) { if (c === '$' || ((c === '&' || c === '|') && line[i + 1] === c)) i++; end(false) }
-    else if (c === '<' && line[i + 1] === '<' && line[i + 2] !== '<') {
-      word(); i += 2
-      const strip = line[i] === '-'
-      if (strip) i++
-      while (line[i] === ' ') i++
-      let d = ''
-      for (; i < line.length && !/[\s;&|<>()]/.test(line[i]!); i++) if (!`'"\\`.includes(line[i]!)) d += line[i]
-      i--
-      delims.push({ word: d, strip }); argv.push('<<')
-    }
+    if (c === "'") { const j = line.indexOf("'", i + 1); x.w = (x.w ?? '') + line.slice(i + 1, j < 0 ? undefined : j); i = j < 0 ? line.length : j }
+    else if (c === '"') i = doubleQuoted(x, i)
+    else if (c === '\\') { if (line[i + 1] === '\n') i++; else x.w = (x.w ?? '') + (line[++i] ?? '') }
+    else if (c === '#' && x.w === undefined) { const j = line.indexOf('\n', i); i = j < 0 ? line.length : j - 1 }
+    else if (c === '\n') i = newline(x, i)
+    else if (c === ' ' || c === '\t') word(x)
+    else if (c === '|' && line[i + 1] !== '|') end(x, true)
+    else if (';&|()`'.includes(c) || (c === '$' && line[i + 1] === '(')) { if (c === '$' || ((c === '&' || c === '|') && line[i + 1] === c)) i++; end(x, false) }
+    else if (c === '<' && line[i + 1] === '<' && line[i + 2] !== '<') i = heredocStart(x, i)
     else if (c === '>' || c === '<') {
-      if (/^\d$/.test(w ?? '')) w = undefined
-      word()
+      if (/^\d$/.test(x.w ?? '')) x.w = undefined
+      word(x)
       if (line[i + 1] === c || (c === '>' && line[i + 1] === '|')) i += c === '<' ? 2 : 1
-      argv.push(c)
+      x.argv.push(c)
     }
-    else w = (w ?? '') + c
+    else x.w = (x.w ?? '') + c
   }
-  end(false)
-  return out
+  end(x, false)
+  return x.out
 }
 
 const base = (word: string) => word.slice(word.lastIndexOf('/') + 1)
@@ -181,9 +200,9 @@ function dbStep(tool: string, rest: string[], argv: string[], piped: boolean, he
   return sqlWrites(sql.join(';')) || piped || argv.includes('<') || rest.some(a => /^(-f|--file)$/.test(a) || a.startsWith('--file=')) ? WRITE : undefined
 }
 
-function step({ argv, piped, heredoc }: Cmd, depth: number): string | undefined {
-  const sys = (f: string) => SYSTEM_DIR.test(f)
-  if (argv.some((_, i) => argv[i - 1] === '>' && sys(argv[i]!))) return 'a write to a system folder'
+const sys = (f: string) => SYSTEM_DIR.test(f)
+
+function unwrap(argv: string[]): { tool: string; rest: string[] } {
   const args = argv.filter((a, i) => !REDIRECTS.has(a) && argv[i - 1] !== '>' && argv[i - 1] !== '<')
   let at = 0
   while (at < args.length && /^\w+=/.test(args[at]!)) at++
@@ -192,7 +211,21 @@ function step({ argv, piped, heredoc }: Cmd, depth: number): string | undefined 
     if (t === 'env') while (at < args.length && /^\w+=/.test(args[at]!)) at++
     if (t === 'timeout') at++
   }
-  const tool = base(args[at] ?? ''), rest = args.slice(at + 1)
+  return { tool: base(args[at] ?? ''), rest: args.slice(at + 1) }
+}
+
+function dockerStep(tool: string, rest: string[], inner: (x: string[]) => string | undefined): string | undefined {
+  const [sub = '', ...more] = tool === 'docker-compose' ? ['compose', ...rest] : after(rest, ['-H', '--host', '--context', '-c', '--config', '-l', '--log-level'])
+  const [cs = '', ...cm] = sub === 'compose' ? after(more, ['-f', '--file', '-p', '--project-name', '--env-file', '--profile', '--project-directory']) : []
+  if (sub === 'exec' || cs === 'exec' || cs === 'run') { const x = after(sub === 'exec' ? more : cm, EXEC_VALUED); return x.length > 1 ? inner(x.slice(1)) : undefined }
+  const changes = /^(rm|rmi|stop|kill|restart|push|prune)$/.test(sub) || /^(down|up|restart|rm|stop|kill|push)$/.test(cs)
+    || (/^(system|volume|image|container|network)$/.test(sub) && /^(rm|prune)$/.test(more[0] ?? '')) || (/^(stack|service)$/.test(sub) && /^(deploy|rm|update|scale|rollback)$/.test(more[0] ?? ''))
+  return changes ? 'a container change' : undefined
+}
+
+function step({ argv, piped, heredoc }: Cmd, depth: number): string | undefined {
+  if (argv.some((_, i) => argv[i - 1] === '>' && sys(argv[i]!))) return 'a write to a system folder'
+  const { tool, rest } = unwrap(argv)
   const inner = (x: string | string[]) => depth >= DEPTH ? 'a command nested too deep to read' : typeof x === 'string' ? check(x, depth + 1) : step({ argv: x, piped: false }, depth + 1)
   if (tool === 'sudo' || tool === 'doas') return 'a command as root'
   if (/^(cp|mv|install|ln|rsync)$/.test(tool) && positional(rest).length > 1 && sys(positional(rest).at(-1)!)) return 'a write to a system folder'
@@ -220,14 +253,7 @@ function step({ argv, piped, heredoc }: Cmd, depth: number): string | undefined 
   if (tool === 'git') return gitStep(rest)
   if (tool === 'gh') return ghStep(rest)
   if ((tool === 'kubectl' || tool === 'k') && positional(rest)[0] === 'exec') { const i = rest.indexOf('--'); return i >= 0 ? inner(rest.slice(i + 1)) : undefined }
-  if (tool === 'docker' || tool === 'podman' || tool === 'docker-compose') {
-    const [sub = '', ...more] = tool === 'docker-compose' ? ['compose', ...rest] : after(rest, ['-H', '--host', '--context', '-c', '--config', '-l', '--log-level'])
-    const [cs = '', ...cm] = sub === 'compose' ? after(more, ['-f', '--file', '-p', '--project-name', '--env-file', '--profile', '--project-directory']) : []
-    if (sub === 'exec' || cs === 'exec' || cs === 'run') { const x = after(sub === 'exec' ? more : cm, EXEC_VALUED); return x.length > 1 ? inner(x.slice(1)) : undefined }
-    const changes = /^(rm|rmi|stop|kill|restart|push|prune)$/.test(sub) || /^(down|up|restart|rm|stop|kill|push)$/.test(cs)
-      || (/^(system|volume|image|container|network)$/.test(sub) && /^(rm|prune)$/.test(more[0] ?? '')) || (/^(stack|service)$/.test(sub) && /^(deploy|rm|update|scale|rollback)$/.test(more[0] ?? ''))
-    return changes ? 'a container change' : undefined
-  }
+  if (tool === 'docker' || tool === 'podman' || tool === 'docker-compose') return dockerStep(tool, rest, inner)
   const rule = BY_TOOL.get(tool)
   if (rule) return rule.held.test(positional(after(rest, rule.valued), rule.valued).join(' ')) || (tool === 'vercel' && (rest.includes('--prod') || !positional(rest).length)) ? rule.kind : undefined
   if (tool === 'aws') {
