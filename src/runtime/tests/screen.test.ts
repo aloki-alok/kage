@@ -1,7 +1,7 @@
 import { describe, test } from 'node:test'
 import assert from 'node:assert/strict'
 import { appendFileSync, copyFileSync, createReadStream, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs'
-import { execFile, execFileSync } from 'node:child_process'
+import { execFile, execFileSync, spawn, spawnSync } from 'node:child_process'
 import { promisify } from 'node:util'
 import { createInterface } from 'node:readline'
 import { tmpdir } from 'node:os'
@@ -248,6 +248,42 @@ describe('Kage acting on the Mac, from the hub', () => {
     assert.deepEqual(await screen.act({ op: 'move', x: 3, y: 3 }), { done: true })
     assert.equal(launches, 2)
     for (const exit of exits) exit()
+  })
+  const opener = (dir: string) => {
+    const script = `${dir}/opener.ts`
+    writeFileSync(script, `
+      import { appendFileSync, createReadStream, readFileSync } from 'node:fs'
+      import { createInterface } from 'node:readline'
+      import { screenRecorder } from ${JSON.stringify(`${import.meta.dirname}/../screen.ts`)}
+      const launch = (app, log) => {
+        const job = JSON.parse(readFileSync(process.argv[2] + '/job.json', 'utf8'))
+        appendFileSync(log, JSON.stringify({ state: 'acting', pid: 1 }) + '\\n')
+        createInterface({ input: createReadStream(job.fifo) }).on('line', l => appendFileSync(log, JSON.stringify({ id: JSON.parse(l).id, done: true }) + '\\n'))
+        return { exited: new Promise(() => {}) }
+      }
+      const screen = screenRecorder({ folder: process.argv[2], code: '/code', build: async () => undefined, launch, kill: () => {}, pollMs: 5, waitMs: 2000 })
+      console.log(JSON.stringify(await screen.act({ op: 'move', x: 1, y: 1 })))
+      if (process.argv[3] === 'dies') process.kill(process.pid, 'SIGKILL')
+    `)
+    return script
+  }
+  const pipesAndLogs = (dir: string) => readdirSync(dir).filter(f => /^(act-.*\.fifo|out-.*\.log)$/.test(f))
+  const newRecorder = (dir: string) => screenRecorder({ folder: dir, code: '/code', build: async () => undefined, launch: actingHelper().launch, kill: () => {} })
+  test('when the process that opened the app exits first, the next recorder in that folder removes its pipe and log', () => {
+    const dir = mkdtempSync(`${tmpdir()}/kage-act-`)
+    assert.equal(spawnSync(process.execPath, [opener(dir), dir, 'dies'], { encoding: 'utf8', timeout: 20_000 }).stdout.trim(), '{"done":true}')
+    assert.equal(pipesAndLogs(dir).length, 2, 'the opener left its pipe and log, as a hub cut by a restart does')
+    newRecorder(dir)
+    assert.deepEqual(pipesAndLogs(dir), [])
+  })
+  test('a new recorder keeps the pipe and log of an app another live process still drives', async () => {
+    const dir = mkdtempSync(`${tmpdir()}/kage-act-`)
+    const child = spawn(process.execPath, [opener(dir), dir, 'stays'], { stdio: ['ignore', 'pipe', 'ignore'] })
+    try {
+      await new Promise(done => child.stdout.once('data', done))
+      newRecorder(dir)
+      assert.equal(pipesAndLogs(dir).length, 2)
+    } finally { child.kill('SIGKILL') }
   })
   test("with Accessibility off, the act says the owner must turn it on, and where", async () => {
     const t = setup({ accessibility: false })
