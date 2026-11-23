@@ -6,6 +6,7 @@ import { join } from 'node:path'
 import { dreams } from '../dreams.ts'
 import { openStore } from '../../runtime/store.ts'
 import { DREAM_LIMITS } from '../../core/dream.ts'
+import { writeJob } from '../../runtime/kagelets/files.ts'
 
 test("the dream's lessons are read from tonight's thread transcripts, and the nightly cap holds across calls (#488)", () => {
   const root = mkdtempSync(join(tmpdir(), 'kage-dreams-')), project = join(root, 'proj'), own = join(root, 'own')
@@ -39,4 +40,70 @@ test("the dream's task lists the files in both memory folders, read by the hub a
   assert.equal(sent.length, 1)
   assert.match(sent[0]!, /kage-note\.md 1 KB/)
   assert.match(sent[0]!, /owner-note\.md 1 KB/)
+})
+
+const NIGHT = new Date(2026, 10, 4, 3, 0).getTime()
+type Opts = Parameters<typeof dreams>[0]
+function night(o: Partial<Opts> = {}) {
+  const root = mkdtempSync(join(tmpdir(), 'kage-dreams-')), own = join(root, 'own'), owner = join(root, 'owner'), kagelets = join(root, 'k')
+  mkdirSync(own); mkdirSync(owner)
+  const store = openStore(':memory:')
+  const sent: string[] = []
+  let result = 'sent'
+  const base: Opts = { dir: root, code: root, title: 'Kage', botDm: 'DTEST', mem: { own, owner }, project: join(root, 'proj'), kagelets, kmem: { notes: () => [] } as never, hasSdk: true,
+    store, ledgers: { events: () => [], text: () => '' } as never, placeOf: k => k, paused: () => false, quiet: () => true,
+    deliver: (_c, task) => { sent.push(task.content); return result }, toSession: (key, _t) => { sent.push(key); return result }, limits: () => DREAM_LIMITS }
+  return { root, store, sent, kagelets, d: (x: Partial<Opts> = {}) => dreams({ ...base, ...o, ...x }), fail: (r: string) => { result = r } }
+}
+
+test('a dream runs only when not paused, and the night counts as dreamt only once the task was delivered', async () => {
+  const n = night()
+  await n.d({ paused: () => true }).dream(NIGHT)
+  assert.deepEqual(n.sent, [])
+  n.store.save('dream-kept', { new: 3, outdated: 1 })
+  mkdirSync(join(n.root, 'proj'))
+  writeFileSync(join(n.root, 'proj', 's1.jsonl'), 'x\n')
+  n.store.saveSessions({ 'CTEST1:1.1': 's1' })
+  n.fail('failed')
+  await n.d().dream(NIGHT)
+  assert.equal(n.sent.length, 1)
+  assert.deepEqual(n.store.load('dream-kept'), { new: 0, outdated: 0 })
+  assert.deepEqual(n.store.load('dream-threads'), ['CTEST1:1.1'])
+  n.fail('sent')
+  await n.d().dream(NIGHT + 60_000)
+  assert.equal(n.sent.length, 2)
+  await n.d().dream(NIGHT + 120_000)
+  assert.equal(n.sent.length, 2)
+})
+
+test('kagelet dreams start one at a time in their dream lane, need the Agent SDK, and count only once delivered', () => {
+  const job = (ts: string) => `---\nthread: https://test.slack.com/archives/CTEST1/p${ts}\nschedule: 0 9 * * *\ntools: WebSearch\nby: owner\n---\nWork.\n`
+  const runs = `${new Date(NIGHT - 3600_000).toISOString()}\tkagelet-a\n${new Date(NIGHT - 3600_000).toISOString()}\tkagelet-b\n`
+  const n = night({ ledgers: { events: () => [], text: (name: string) => name === 'runs' ? runs : '' } as never })
+  for (const [name, ts] of [['a', '1700000000123456'], ['b', '1700000000654321']] as const) {
+    writeJob(n.kagelets, name, job(ts))
+    n.store.seen(`CTEST1:${ts.slice(0, 10)}.${ts.slice(10)}#side-kagelet-${name}`, { connector: 'slack', chat: 'CTEST1', thread: `${ts.slice(0, 10)}.${ts.slice(10)}`, kind: 'channel' }, name, 0)
+  }
+  n.d({ hasSdk: false }).kageletDreams(NIGHT)
+  n.d({ paused: () => true }).kageletDreams(NIGHT)
+  assert.deepEqual(n.sent, [])
+  n.fail('failed')
+  n.d().kageletDreams(NIGHT)
+  assert.deepEqual(n.sent, ['CTEST1:1700000000.123456#side-kdream-a'])
+  n.fail('sent')
+  n.d().kageletDreams(NIGHT)
+  n.d().kageletDreams(NIGHT)
+  assert.deepEqual(n.sent, ['CTEST1:1700000000.123456#side-kdream-a', 'CTEST1:1700000000.123456#side-kdream-a', 'CTEST1:1700000000.654321#side-kdream-b'])
+  n.d().kageletDreams(NIGHT)
+  assert.equal(n.sent.length, 3)
+})
+
+test('a kagelet with no conversation yet is skipped, and the next one due dreams', () => {
+  const runs = `${new Date(NIGHT - 3600_000).toISOString()}\tkagelet-a\n${new Date(NIGHT - 3600_000).toISOString()}\tkagelet-b\n`
+  const n = night({ ledgers: { events: () => [], text: (name: string) => name === 'runs' ? runs : '' } as never })
+  writeJob(n.kagelets, 'a', `---\nthread: https://test.slack.com/archives/CTEST1/p1700000000123456\nschedule: 0 9 * * *\ntools: WebSearch\nby: owner\n---\nWork.\n`)
+  writeJob(n.kagelets, 'b', `---\nthread: https://test.slack.com/archives/CTEST1/p1700000000654321\nschedule: 0 9 * * *\ntools: WebSearch\nby: owner\n---\nWork.\n`)
+  n.store.seen('CTEST1:1700000000.654321#side-kagelet-b', { connector: 'slack', chat: 'CTEST1', thread: '1700000000.654321', kind: 'channel' }, 'b', 0)
+  n.d().kageletDreams(NIGHT)
+  assert.deepEqual(n.sent, ['CTEST1:1700000000.654321#side-kdream-b'])
 })
