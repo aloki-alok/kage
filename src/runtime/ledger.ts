@@ -1,5 +1,5 @@
 import { existsSync, readdirSync, readFileSync, renameSync } from 'node:fs'
-import { DatabaseSync } from 'node:sqlite'
+import { DatabaseSync, type StatementSync } from 'node:sqlite'
 import { log } from './log.ts'
 import { lastTotals, trailEvent, trailLine, tsvRow, turnCost, type Tokens } from '../core/ledgers.ts'
 import { eventRow, whoOf, type EventKind, type KageEvent } from '../core/events.ts'
@@ -9,43 +9,73 @@ type LedgerName = 'waiting' | 'posted' | 'prod-actions' | 'costs' | 'runs' | 'co
 const NAMES: LedgerName[] = ['waiting', 'posted', 'prod-actions', 'costs', 'runs', 'commands', 'reports', 'db-reads', 'grants', 'verdicts']
 export type Ledgers = ReturnType<typeof openLedgers>
 
-export function openLedgers(dir: string, now = () => new Date().toISOString(), trail?: (line: string) => void, added?: (name: LedgerName, cells: string[]) => void) {
-  const db = new DatabaseSync(`${dir}/kage.db`, { timeout: 5000 })
+function schema(db: DatabaseSync) {
   db.exec('pragma journal_mode = wal')
   db.exec(`create table if not exists ledger (
     id integer primary key autoincrement,   -- the order rows were written in
     name text not null, at text not null,
     cells text not null                     -- JSON array: the columns after the time
   ); create index if not exists ledger_name on ledger (name, id)`)
-  const insert = db.prepare('insert into ledger (name, at, cells) values (?, ?, ?)')
   db.exec(`create table if not exists events (
     id integer primary key autoincrement,
     at text not null, kind text not null, who text not null, trace text not null, chain text not null,
     detail text not null, transcript text not null
   ); create index if not exists events_at on events (at)`)
-  const insertEvent = db.prepare('insert into events (at, kind, who, trace, chain, detail, transcript) values (?, ?, ?, ?, ?, ?, ?)')
-
   db.exec('create table if not exists ledger_imported (file text primary key)')
+}
+
+function importFile(db: DatabaseSync, dir: string, name: LedgerName, f: string, insert: StatementSync) {
+  db.exec('begin immediate')
+  try {
+    if (!db.prepare('select 1 from ledger_imported where file = ?').get(f)) {
+      for (const line of readFileSync(`${dir}/${f}`, 'utf8').split('\n').filter(Boolean)) {
+        const [at = '', ...cells] = line.split('\t')
+        insert.run(name, at, JSON.stringify(cells))
+      }
+      db.prepare('insert into ledger_imported (file) values (?)').run(f)
+    }
+    db.exec('commit')
+  } catch (e) { try { db.exec('rollback') } catch {} throw e }
+  renameSync(`${dir}/${f}`, `${dir}/${f.replace('.importing-', '.imported-')}`)
+}
+
+function importTsv(db: DatabaseSync, dir: string, insert: StatementSync) {
   for (const name of NAMES) {
     const file = `${dir}/${name}.tsv`
     try { if (existsSync(file)) renameSync(file, `${file}.importing-${process.pid}-${Date.now()}`) } catch {}
     for (const f of readdirSync(dir).filter(f => f.startsWith(`${name}.tsv.importing-`))) {
-      try {
-        db.exec('begin immediate')
-        try {
-          if (!db.prepare('select 1 from ledger_imported where file = ?').get(f)) {
-            for (const line of readFileSync(`${dir}/${f}`, 'utf8').split('\n').filter(Boolean)) {
-              const [at = '', ...cells] = line.split('\t')
-              insert.run(name, at, JSON.stringify(cells))
-            }
-            db.prepare('insert into ledger_imported (file) values (?)').run(f)
-          }
-          db.exec('commit')
-        } catch (e) { try { db.exec('rollback') } catch {} throw e }
-        renameSync(`${dir}/${f}`, `${dir}/${f.replace('.importing-', '.imported-')}`)
-      } catch (e) { log('ledger import failed', f, e) }
+      try { importFile(db, dir, name, f, insert) } catch (e) { log('ledger import failed', f, e) }
     }
   }
+}
+
+function rowEvent(name: LedgerName, cells: string[], event: (e: Parameters<typeof eventRow>[0]) => void) {
+  if (name === 'grants') {
+    const [who = '', status = '', why = '', tools = 'db_read'] = cells
+    event({ kind: ['read', 'granted', 'standing'].includes(status) ? 'grant' : status === 'revoked' ? 'revoke' : 'refusal', who, trace: '', detail: `${tools}${['read', 'standing', 'revoked'].includes(status) ? ` ${status}` : ''}: ${why}` })
+  }
+  if (name === 'reports' && cells[0]?.startsWith(COST_FLAG)) event({ kind: 'cost-flag', who: cells[0].slice(COST_FLAG.length), trace: '', detail: cells[1] ?? '' })
+}
+
+function pruneEvents(db: DatabaseSync, cutoff: string) {
+  const before = cutoff.slice(0, 10)
+  db.exec('begin immediate')
+  try {
+    db.prepare(`insert into events (at, kind, who, trace, chain, detail, transcript)
+      select day || 'T00:00:00.000Z', 'day-summary', '', '', '', group_concat(kind || ' ' || n, ', '), ''
+      from (select substr(at, 1, 10) day, kind, count(*) n from events where at < ? and kind != 'day-summary' group by day, kind)
+      group by day`).run(before)
+    db.prepare("delete from events where at < ? and kind != 'day-summary'").run(before)
+    db.exec('commit')
+  } catch (e) { db.exec('rollback'); throw e }
+}
+
+export function openLedgers(dir: string, now = () => new Date().toISOString(), trail?: (line: string) => void, added?: (name: LedgerName, cells: string[]) => void) {
+  const db = new DatabaseSync(`${dir}/kage.db`, { timeout: 5000 })
+  schema(db)
+  const insert = db.prepare('insert into ledger (name, at, cells) values (?, ?, ?)')
+  const insertEvent = db.prepare('insert into events (at, kind, who, trace, chain, detail, transcript) values (?, ?, ?, ?, ?, ?, ?)')
+  importTsv(db, dir, insert)
 
   const event = (e: Parameters<typeof eventRow>[0]) => {
     const r = eventRow(e)
@@ -57,11 +87,7 @@ export function openLedgers(dir: string, now = () => new Date().toISOString(), t
       try { insert.run(name, now(), JSON.stringify(cells.map(c => c.replace(/[\t\r\n]+/g, ' ')))) } catch (e) { log('ledger write failed', name, e) }
       trail?.(trailLine(name, cells.map(c => c.replace(/[\t\r\n]+/g, ' '))))
       added?.(name, cells)
-      if (name === 'grants') {
-        const [who = '', status = '', why = '', tools = 'db_read'] = cells
-        event({ kind: ['read', 'granted', 'standing'].includes(status) ? 'grant' : status === 'revoked' ? 'revoke' : 'refusal', who, trace: '', detail: `${tools}${['read', 'standing', 'revoked'].includes(status) ? ` ${status}` : ''}: ${why}` })
-      }
-      if (name === 'reports' && cells[0]?.startsWith(COST_FLAG)) event({ kind: 'cost-flag', who: cells[0].slice(COST_FLAG.length), trace: '', detail: cells[1] ?? '' })
+      rowEvent(name, cells, event)
     },
     text(name: LedgerName, since?: string): string {
       try { return ledgerText(db, name, since) } catch (e) { log('ledger read failed', name, e); return '' }
@@ -71,18 +97,7 @@ export function openLedgers(dir: string, now = () => new Date().toISOString(), t
     eventsAfter: (id: number, limit: number) => db.prepare("select id, at, kind, who, trace, chain, detail, transcript from events where id > ? and kind != 'day-summary' order by id limit ?")
       .all(id, limit).map(r => ({ ...r }) as KageEvent & { id: number }),
     maxEventId: () => Number((db.prepare('select coalesce(max(id), 0) n from events').get() as { n: number }).n),
-    pruneEvents(cutoff: string) {
-      const before = cutoff.slice(0, 10)
-      db.exec('begin immediate')
-      try {
-        db.prepare(`insert into events (at, kind, who, trace, chain, detail, transcript)
-          select day || 'T00:00:00.000Z', 'day-summary', '', '', '', group_concat(kind || ' ' || n, ', '), ''
-          from (select substr(at, 1, 10) day, kind, count(*) n from events where at < ? and kind != 'day-summary' group by day, kind)
-          group by day`).run(before)
-        db.prepare("delete from events where at < ? and kind != 'day-summary'").run(before)
-        db.exec('commit')
-      } catch (e) { db.exec('rollback'); throw e }
-    },
+    pruneEvents: (cutoff: string) => pruneEvents(db, cutoff),
     close: () => db.close(),
   }
 }
