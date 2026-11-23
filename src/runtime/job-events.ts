@@ -13,22 +13,16 @@ type Options = {
   ping: (key: string, text: string) => void
   cfg: () => { patternMax: number; maxPosts: number; seenMax: number }
 }
-type Jobs = { o: Options; watches: ReturnType<typeof channelWatches>; queue: Promise<unknown>; failing: Set<string> }
+type Jobs = { o: Options; watches: ReturnType<typeof channelWatches>; queue: Promise<unknown>; failing: Set<string>; ran: (s: Schedule, n: number) => void; failed: (s: Schedule) => void }
 
-function wake(o: Options, id: string, quotes: string[], done?: () => void) {
-  o.wake(id, quotes, {
-    ran: (s, n) => o.track(s.key, `wake job=${s.id} reason=${s.trigger?.kind ?? 'event'} n=${n}`),
-    failed: s => o.track(s.key, `wake job=${s.id} failed=1`),
-    ...(done && { done }),
-  })
-}
+const wake = (j: Jobs, id: string, quotes: string[], done?: () => void) => j.o.wake(id, quotes, { ran: j.ran, failed: j.failed, ...(done && { done }) })
 const held = (o: Options) => (o.saved.load('job-held') as Record<string, string[]> | undefined) ?? {}
 const setHeld = (o: Options, id: string, quotes: string[]) => { const { [id]: _, ...rest } = held(o); o.saved.save('job-held', quotes.length ? { ...rest, [id]: quotes } : rest) }
 const release = (o: Options, id: string, quotes: string[]) => () => { const left = [...held(o)[id] ?? []]; for (const q of quotes) { const i = left.indexOf(q); if (i >= 0) left.splice(i, 1) } setHeld(o, id, left) }
-function holdAndWake(o: Options, id: string, quotes: string[]) {
+function holdAndWake(j: Jobs, id: string, quotes: string[]) {
   if (!quotes.length) return
-  setHeld(o, id, [...held(o)[id] ?? [], ...quotes].slice(-Math.max(1, o.cfg().maxPosts)))
-  wake(o, id, quotes, release(o, id, quotes))
+  setHeld(j.o, id, [...held(j.o)[id] ?? [], ...quotes].slice(-Math.max(1, j.o.cfg().maxPosts)))
+  wake(j, id, quotes, release(j.o, id, quotes))
 }
 
 function refuse(o: Options, t?: Trigger): string | undefined {
@@ -42,7 +36,7 @@ function rebuild(j: Jobs) {
   const { o, watches } = j, all = o.schedules()
   for (const id of Object.keys(watches.list())) if (!all.some(s => s.id === id)) watches.remove(id)
   for (const s of all) started(j, s.id, s.trigger)
-  for (const [id, quotes] of Object.entries(held(o))) { if (all.some(s => s.id === id)) wake(o, id, quotes, release(o, id, quotes)); else setHeld(o, id, []) }
+  for (const [id, quotes] of Object.entries(held(o))) { if (all.some(s => s.id === id)) wake(j, id, quotes, release(o, id, quotes)); else setHeld(o, id, []) }
   watches.gapOpened()
 }
 
@@ -51,7 +45,7 @@ function channelPost(j: Jobs, post: ChannelPost) {
     const s = j.o.schedules().find(x => x.id === id)
     if (!s) { j.watches.remove(id); continue }
     j.o.track(s.key, `match job=${id} channel=${post.channel} ts=${post.ts}`)
-    holdAndWake(j.o, id, j.watches.take(id))
+    holdAndWake(j, id, j.watches.take(id))
   }
 }
 
@@ -89,7 +83,9 @@ function channelCatchUp(j: Jobs, history: ChannelHistory): Promise<void> {
 
 export function jobEvents(o: Options) {
   const watches = channelWatches(o.saved, { maxPosts: () => o.cfg().maxPosts, seenMax: () => o.cfg().seenMax })
-  const j: Jobs = { o, watches, queue: Promise.resolve(), failing: new Set() }
+  const j: Jobs = { o, watches, queue: Promise.resolve(), failing: new Set(),
+    ran: (s, n) => o.track(s.key, `wake job=${s.id} reason=${s.trigger?.kind ?? 'event'} n=${n}`),
+    failed: s => o.track(s.key, `wake job=${s.id} failed=1`) }
   return {
     refuse: (t?: Trigger) => refuse(o, t),
     started: (id: string, t?: Trigger) => started(j, id, t),
@@ -98,7 +94,7 @@ export function jobEvents(o: Options) {
     channelPost: (post: ChannelPost) => channelPost(j, post),
     channelCatchUp: (history: ChannelHistory) => channelCatchUp(j, history),
     channelGap: watches.gapOpened,
-    wake: (id: string, quotes: string[], done?: () => void) => wake(o, id, quotes, done),
+    wake: (id: string, quotes: string[], done?: () => void) => wake(j, id, quotes, done),
     watching: () => Object.keys(watches.list()),
   }
 }
