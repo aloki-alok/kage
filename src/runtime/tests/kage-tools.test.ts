@@ -205,6 +205,17 @@ describe("a session's Kage tools", () => {
     assert.equal((await s.call('unschedule', { channel: 'C1', thread_ts: '5.5', id: s.jobs[0].id })).isError, undefined)
     assert.deepEqual(s.jobs, [])
   })
+  test('a schedule has exactly one trigger, a probe only on a clock, and a twin with both of its prompts', async () => {
+    const s = setup()
+    s.t.onTask(s.task())
+    const at = { channel: 'C1', thread_ts: '5.5', prompt: 'check the queue' }
+    const refused = async (a: Record<string, unknown>) => (await s.call('schedule', { ...at, ...a })).text
+    assert.equal(await refused({}), 'give one of cron, on_channel or hook')
+    assert.equal(await refused({ cron: '0 10 * * *', hook: true }), 'a job has one trigger: cron, on_channel or hook')
+    assert.equal(await refused({ on_channel: { channel: 'C2' }, probe: { command: 'date' } }), 'a probe needs a clock cron')
+    assert.equal(await refused({ cron: '0 10 * * *', shadow_of: 'j1' }), 'a twin needs both shadow_of and live_prompt')
+    assert.deepEqual(s.jobs, [])
+  })
   test('a job that names a file in a temp folder is refused and pointed at the thread\'s files folder (#461)', async () => {
     const s = setup()
     s.t.onTask(s.task())
