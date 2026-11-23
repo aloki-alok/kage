@@ -23,9 +23,21 @@ const teammatesFrom = (p: Parts): Teammate[] | undefined => {
   return all.length ? all : undefined
 }
 const arrayOr = (v: unknown): any[] => (Array.isArray(v) ? v : [])
+export const oldPeopleShape = (raw: any) => arrayOr(raw?.people?.teammates).some(t => typeof t === 'string') || raw?.people?.trusted !== undefined || raw?.connectors?.email?.teammateEmails !== undefined
+export function mergeTeammateEmails(listed: Teammate[], userOfEmail: Record<string, string>) {
+  const teammates = listed.map(t => ({ ...t })), moved: { email: string; user: string }[] = []
+  for (const entry of listed) {
+    const owner = entry.email && !entry.user ? teammates.find(t => t.user === userOfEmail[entry.email!] && !t.email) : undefined
+    if (!owner) continue
+    owner.email = entry.email
+    teammates.splice(teammates.findIndex(t => !t.user && t.email === entry.email), 1)
+    moved.push({ email: entry.email!, user: owner.user! })
+  }
+  return { teammates, moved }
+}
 const foldOldPeople = (raw: any) => {
   const people = raw?.people, mail = raw?.connectors?.email
-  if (!(arrayOr(people?.teammates).some(t => typeof t === 'string') || people?.trusted !== undefined || mail?.teammateEmails !== undefined)) return raw
+  if (!oldPeopleShape(raw)) return raw
   const { trusted, ...keptPeople } = people ?? {}
   const { teammateEmails, ...keptMail } = mail ?? {}
   const listed = arrayOr(people?.teammates), trustedIds = arrayOr(trusted)
