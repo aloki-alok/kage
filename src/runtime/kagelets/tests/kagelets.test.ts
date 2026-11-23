@@ -412,6 +412,7 @@ test('a kagelet never gets a read command the install does not already have', as
   assert.equal(readKagelets(t.dir).length, 0)
   t.store.save('db-read-commands', { old: '~/bin/read-sql --ro', other: '~/bin/other-sql' })
   assert.match(await t.m.manage({ action: 'save', name: 'calls', ...calls }, 2, o.ask), /not saved: .*read_command/)
+  assert.match(await t.m.manage({ action: 'save', name: 'calls', ...calls, read_command: '~/bin/new-sql' }, 2, o.ask), /not saved: a kagelet never gets a read command the install does not already have/)
   assert.match(await t.m.manage({ action: 'save', name: 'calls', ...calls, read_command: '~/bin/other-sql' }, 2, o.ask), /saved calls/)
   assert.equal(readCommand(undefined, t.store, 'calls'), '~/bin/other-sql')
   assert.match(await t.m.manage({ action: 'save', name: 'calls', ...calls, schedule: '0 10 * * *' }, 3, o.ask), /saved calls/)
