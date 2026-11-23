@@ -31,4 +31,6 @@ test('a task moves its thread\'s mark only when it reaches that thread\'s own se
   assert.equal(markDelivered({}, 'DBOT:1.1', task, 'S3'), undefined, 'the session that asked the owner')
   assert.equal(markDelivered({}, 'C1:5.5', { origin: { ts: '7.0' } }, 'S1'), undefined, 'a task with no thread mark, such as a scheduled run')
   assert.equal(markDelivered({}, 'C1:5.5', task, undefined), undefined, 'no session id')
+  assert.equal(markDelivered({}, 'C1:5.5', { ...task, deltaOf: 'S1' }, 'S2'), undefined, 'a delta built for an older session that a rotation replaced')
+  assert.deepEqual(markDelivered({}, 'C1:5.5', { ...task, deltaOf: 'S1' }, 'S1'), { 'C1:5.5': { id: 'S1', ts: '7.0' } })
 })

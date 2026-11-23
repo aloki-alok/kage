@@ -18,5 +18,5 @@ export function markSeen(marks: Record<string, ThreadMark>, key: string, mark: T
   return Object.fromEntries([...kept, [key, mark]])
 }
 
-export const markDelivered = (marks: Record<string, ThreadMark>, key: string, task: { threadMark?: string; origin: { ts: string } }, id: string | undefined) =>
-  task.threadMark === key && id ? markSeen(marks, key, { id, ts: task.origin.ts }) : undefined
+export const markDelivered = (marks: Record<string, ThreadMark>, key: string, task: { threadMark?: string; deltaOf?: string; origin: { ts: string } }, id: string | undefined) =>
+  task.threadMark === key && id && (!task.deltaOf || task.deltaOf === id) ? markSeen(marks, key, { id, ts: task.origin.ts }) : undefined
