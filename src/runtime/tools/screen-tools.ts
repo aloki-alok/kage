@@ -11,7 +11,9 @@ type Desk = {
 }
 
 const MAX_SECONDS = 600
-const NO_PICTURE = 'take a screen_shot first: x and y are pixels on its picture'
+const NO_PICTURE = 'take a screenshot first: coordinate is pixels on its picture'
+const ACTIONS = ['screenshot', 'left_click', 'right_click', 'double_click', 'mouse_move', 'left_click_drag', 'scroll', 'type', 'key'] as const
+const AIMED = new Set(['left_click', 'right_click', 'double_click', 'mouse_move', 'left_click_drag', 'scroll'])
 
 const command = ({ action, ...rest }: DesktopAct) => ({ op: action, ...rest })
 const asUnder = (r: ActAnswer): Under => ({ app: String(r.app ?? ''), role: String(r.role ?? ''), label: String(r.label ?? '') })
@@ -23,6 +25,41 @@ const fail = (text: string) => ({ isError: true as const, text })
 const refused = (c: ToolContext, args: Record<string, unknown>) => c.ownerActs(args) ? undefined : { isError: true as const, text: "refused: only the owner's own task sees their screen" }
 const seen = (c: ToolContext, tool: string, outcome: string) => c.o.event?.('tool', `${tool} ${outcome}`)
 const fileFor = (c: ToolContext, args: Record<string, unknown>, ext: string) => `${c.filesOf(String(args.channel), String(args.thread_ts))}/screen-${Date.now()}.${ext}`
+const pair = (v: unknown) => Array.isArray(v) ? { x: v[0], y: v[1] } : {}
+
+function shapeError(a: Record<string, unknown>): string | undefined {
+  if (!ACTIONS.includes(a.action as typeof ACTIONS[number]) || a.action === 'screenshot') return `action is one of ${ACTIONS.filter(x => x !== 'screenshot').join(', ')}`
+  const drag = a.action === 'left_click_drag'
+  if (drag && !Array.isArray(a.start_coordinate)) return 'left_click_drag needs start_coordinate, [x, y] where the drag starts'
+  if (drag && a.path !== undefined && a.coordinate !== undefined) return 'left_click_drag takes coordinate or path, not both'
+  if (AIMED.has(a.action as string) && !Array.isArray(a.coordinate) && !(drag && a.path !== undefined)) return `${a.action} needs coordinate, [x, y] on the screenshot`
+  if (a.action === 'scroll' && !['up', 'down', 'left', 'right'].includes(a.scroll_direction as string)) return 'scroll needs scroll_direction: up, down, left or right'
+  if ((a.action === 'type' || a.action === 'key') && typeof a.text !== 'string') return `${a.action} needs text`
+}
+
+function fromComputer(a: Record<string, unknown>): Record<string, unknown> | { error: string } {
+  const error = shapeError(a)
+  if (error) return { error }
+  const at = pair(a.coordinate)
+  switch (a.action) {
+    case 'left_click': return { action: 'click', ...at, button: 'left', count: 1 }
+    case 'right_click': return { action: 'click', ...at, button: 'right', count: 1 }
+    case 'double_click': return { action: 'click', ...at, button: 'left', count: 2 }
+    case 'mouse_move': return { action: 'move', ...at }
+    case 'left_click_drag': {
+      const from = pair(a.start_coordinate)
+      if (a.path === undefined) return { action: 'drag', ...from, to_x: at.x, to_y: at.y }
+      return { action: 'drag', ...from, path: Array.isArray(a.path) ? a.path.map(pair) : a.path }
+    }
+    case 'scroll': {
+      const n = Number(a.scroll_amount ?? 3), d = a.scroll_direction
+      if (!Number.isInteger(n) || n < 1) return { error: 'scroll_amount is a whole number of lines, 1 or more' }
+      return { action: 'scroll', ...at, dy: d === 'up' ? n : d === 'down' ? -n : 0, dx: d === 'left' ? n : d === 'right' ? -n : 0 }
+    }
+    case 'type': return { action: 'type', text: a.text }
+    default: return { action: 'key', keys: a.text }
+  }
+}
 
 export function screenTools(c: ToolContext): KageTool[] {
   const { o, s, name } = c
@@ -31,9 +68,9 @@ export function screenTools(c: ToolContext): KageTool[] {
   const desk: Desk = {
     c, screen, typed: new Map(),
     where: { channel: s.describe('channel attribute from the task tag'), thread_ts: s.describe('thread_ts attribute from the task tag') },
-    app: s.optional().describe('only this app\'s windows, by name ("Google Chrome") or bundle id; leave it out for the whole main display'),
+    app: s.optional().describe('screenshot: only this app\'s windows, by name ("Google Chrome") or bundle id; leave it out for the whole main display'),
   }
-  return [actTool(desk), shotTool(desk), recordTool(desk)]
+  return [computerTool(desk), recordTool(desk)]
 }
 
 async function lookUnder({ screen }: Desk, act: DesktopAct, focus?: Under): Promise<Under | { error: string }> {
@@ -43,7 +80,7 @@ async function lookUnder({ screen }: Desk, act: DesktopAct, focus?: Under): Prom
 
 function verdictOf({ c, typed }: Desk, act: DesktopAct, under: Under) {
   const v = desktopVerdict(act, under, typed.get(under.app))
-  if ('blocked' in v) seen(c, 'screen_act', `${act.action} refused`)
+  if ('blocked' in v) seen(c, 'computer', `${act.action} refused`)
   return 'blocked' in v ? { blocked: `refused: ${v.blocked}. This is never done on the owner's Mac.` } : v
 }
 
@@ -52,7 +89,7 @@ async function perform({ c, screen, typed }: Desk, act: DesktopAct, under: Under
   if (act.action !== 'type' && act.action !== 'key') typed.clear()
   else typed.set(under.app, act.action === 'type' ? line === undefined ? undefined : line + act.text : sendsLine(act.keys) || act.keys === 'ctrl+c' ? '' : undefined)
   const r = await screen.act({ ...command(act), ...expectOf(act, under) })
-  seen(c, 'screen_act', 'error' in r ? `${act.action} failed` : `${act.action} ok`)
+  seen(c, 'computer', 'error' in r ? `${act.action} failed` : `${act.action} ok`)
   return 'error' in r ? String(r.error) : undefined
 }
 
@@ -64,45 +101,50 @@ async function runSteps(desk: Desk, acts: DesktopAct[]): Promise<Result> {
     if ('error' in looked) return fail(`${at}: ${String(looked.error)}. ${ran(i)}`)
     const focus = asUnder(looked)
     front ??= focus.app
-    if (focus.app !== front) return fail(`${at} did not run: the front app changed from ${front} to ${focus.app}, so the owner may be using the Mac. ${ran(i)} Take a screen_shot before you go on.`)
+    if (focus.app !== front) return fail(`${at} did not run: the front app changed from ${front} to ${focus.app}, so the owner may be using the Mac. ${ran(i)} Take a screenshot before you go on.`)
     const under = await lookUnder(desk, act, focus)
     if ('error' in under) return fail(`${at}: ${under.error}. ${ran(i)}`)
     const v = verdictOf(desk, act, under)
     if ('blocked' in v) return fail(`${at}: ${v.blocked} ${ran(i)}`)
-    if ('ask' in v) return fail(`${at} needs the owner's yes (${v.ask}), so it did not run. ${ran(i)} Send that step alone as its own screen_act call, so the owner gets a card for it.`)
+    if ('ask' in v) return fail(`${at} needs the owner's yes (${v.ask}), so it did not run. ${ran(i)} Send that step alone as its own computer call, so the owner gets a card for it.`)
     const err = await perform(desk, act, under)
     if (err) return fail(`${at} failed: ${err}. ${ran(i)}`)
   }
-  return { text: `done, ${acts.length} steps. Take a screen_shot to see the result.` }
+  return { text: `done, ${acts.length} steps. Take a screenshot to see the result.` }
 }
 
 function stepShape(s: z.ZodString) {
+  const point = z.tuple([z.number(), z.number()])
   return {
-    action: z.enum(['click', 'move', 'drag', 'scroll', 'type', 'key']),
-    x: z.number().optional(), y: z.number().optional(), to_x: z.number().optional().describe('drag: where it ends'), to_y: z.number().optional(),
-    path: z.array(z.object({ x: z.number(), y: z.number() })).optional().describe('drag: instead of to_x and to_y, the points it passes through in order, up to 200, for a curve in one stroke'),
-    button: z.enum(['left', 'right']).optional(), count: z.number().optional().describe('click: 2 for a double click'),
-    dy: z.number().optional().describe('scroll: lines, negative is down'), dx: z.number().optional(),
-    text: s.optional().describe('type: the text'), keys: s.optional().describe('key: one key and its modifiers, such as cmd+shift+g'),
+    action: z.enum(ACTIONS),
+    coordinate: point.optional().describe('[x, y] pixels on the latest screenshot: where to click, move, scroll, or where a drag ends'),
+    start_coordinate: point.optional().describe('left_click_drag: where the drag starts'),
+    path: z.array(point).optional().describe('left_click_drag: instead of coordinate, the points it passes through in order, up to 200, for a curve in one stroke'),
+    scroll_direction: z.enum(['up', 'down', 'left', 'right']).optional(), scroll_amount: z.number().optional().describe('scroll: lines, 3 unless set'),
+    text: s.optional().describe('type: the text. key: one key and its modifiers, such as cmd+shift+g or return'),
   }
 }
 
-function actTool(desk: Desk): KageTool {
+function computerTool(desk: Desk): KageTool {
   const step = stepShape(desk.c.s)
   return {
-    name: 'screen_act',
-    description: "Act on the owner's Mac as a person would: click (count 2 for a double click, button right for a menu), move, drag (along a path for a curve), scroll, type text, or press keys (cmd+shift+g, return, down). x and y are pixels on the latest screen_shot picture (its answer names the size), so take one first, and again after each step that changes the screen in a way you cannot predict. For several steps you can plan from one picture (strokes of a drawing, a form), send them as steps, one list in one call: each step is still checked, and the list stops at the first step that fails, is refused, needs the owner's yes, or finds a different app in front (the owner may have taken over). Keep a list in one app. The owner sees Kage's own cursor make each step. Everyday steps run at once. A step that cannot be undone (Delete, Move to Trash, a one-way command in a terminal) waits for the owner's yes, and turning the Mac off, logging out, locking it or erasing it is refused. In a terminal, press ctrl+c first for a clean line, type one line, then press return. Any other key or a click there makes the line unknown, so its Return waits for the owner. Owner tasks only.",
-    shape: { ...desk.where, ...step, action: step.action.optional().describe('one step; leave it out when you send steps'), steps: z.array(z.object(step)).optional().describe('a list of 1 to 100 steps, each shaped like one step, run in order in this one call') },
+    name: 'computer',
+    description: "Use the owner's Mac as a person would. screenshot takes a picture of the screen (or of one app's windows) as a PNG in this thread's files folder: read it to see the screen, or send it with send_file. Then left_click, right_click, double_click, mouse_move, left_click_drag (along a path for a curve), scroll, type text, or key (cmd+shift+g, return, down). coordinate is [x, y] pixels on the latest screenshot (its answer names the size), so take one first, and again after each step that changes the screen in a way you cannot predict. For several steps you can plan from one picture (strokes of a drawing, a form), send them as steps, one list in one call: each step is still checked, and the list stops at the first step that fails, is refused, needs the owner's yes, or finds a different app in front (the owner may have taken over). Keep a list in one app. The owner sees Kage's own cursor make each step. Everyday steps run at once. A step that cannot be undone (Delete, Move to Trash, a one-way command in a terminal) waits for the owner's yes, and turning the Mac off, logging out, locking it or erasing it is refused. In a terminal, press ctrl+c first for a clean line, type one line, then press return. Any other key or a click there makes the line unknown, so its Return waits for the owner. Owner tasks only.",
+    shape: { ...desk.where, ...step, app: desk.app, action: step.action.optional().describe('one step; leave it out when you send steps'), steps: z.array(z.object(step)).optional().describe('a list of 1 to 100 steps (not screenshot), each shaped like one step, run in order in this one call') },
     async run(args) {
       const no = refused(desk.c, args); if (no) return no
-      return args.steps !== undefined ? actSteps(desk, args) : actOnce(desk, args)
+      if (args.steps !== undefined) return actSteps(desk, args)
+      return args.action === 'screenshot' ? screenshot(desk, args) : actOnce(desk, args)
     },
   }
 }
 
 function actSteps(desk: Desk, args: Record<string, unknown>) {
   if (args.action !== undefined) return fail('give action for one step, or steps for a list, not both')
-  const acts = parseDesktopSteps(args.steps)
+  const raw = Array.isArray(args.steps) ? args.steps.map(st => st && typeof st === 'object' ? fromComputer(st as Record<string, unknown>) : st) : args.steps
+  const bad = Array.isArray(raw) ? raw.findIndex(r => r && typeof r === 'object' && 'error' in r) : -1
+  if (bad >= 0) return fail(`step ${bad + 1}: ${(raw as { error: string }[])[bad]!.error}. No step ran.`)
+  const acts = parseDesktopSteps(raw)
   if ('error' in acts) return fail(acts.error)
   const picture = desk.picture
   if (!picture && acts.some(a => 'x' in a)) return fail(NO_PICTURE)
@@ -111,7 +153,9 @@ function actSteps(desk: Desk, args: Record<string, unknown>) {
 
 async function actOnce(desk: Desk, args: Record<string, unknown>): Promise<Result> {
   const { c, picture } = desk
-  const parsed = parseDesktopAct(args)
+  const raw = fromComputer(args)
+  if ('error' in raw) return fail(String(raw.error))
+  const parsed = parseDesktopAct(raw)
   if ('error' in parsed) return fail(parsed.error)
   if (!picture && 'x' in parsed) return fail(NO_PICTURE)
   const act = picture ? onScreen(parsed, picture) : parsed
@@ -121,34 +165,26 @@ async function actOnce(desk: Desk, args: Record<string, unknown>): Promise<Resul
   if ('blocked' in v) return fail(v.blocked)
   if ('ask' in v) {
     if (!c.o.approve) return fail(`refused: ${v.ask}, which needs the owner's yes, and this session cannot ask them`)
-    if (!await c.o.approve('screen_act', `${v.ask}, on your Mac`, { ...act })) { seen(c, 'screen_act', `${act.action} owner said no`); return fail('the owner said no, so nothing was done. Ask them what to do instead.') }
+    if (!await c.o.approve('computer', `${v.ask}, on your Mac`, { ...act })) { seen(c, 'computer', `${act.action} owner said no`); return fail('the owner said no, so nothing was done. Ask them what to do instead.') }
   }
   const err = await perform(desk, act, under)
-  return err ? fail(err) : { text: 'done. Take a screen_shot to see the result.' }
+  return err ? fail(err) : { text: 'done. Take a screenshot to see the result.' }
 }
 
-function shotTool(desk: Desk): KageTool {
-  const { c, screen, where, app } = desk
-  return {
-    name: 'screen_shot',
-    description: "Take a picture of the owner's Mac screen, or of one app's windows, as a PNG in this thread's files folder. Read it to see the screen, or send it with send_file. Owner tasks only.",
-    shape: { ...where, app },
-    async run(args) {
-      const no = refused(c, args); if (no) return no
-      const file = fileFor(c, args, 'png')
-      const r = await screen.shot(file, args.app as string | undefined)
-      seen(c, 'screen_shot', typeof r === 'string' ? 'failed' : 'ok')
-      if (typeof r === 'string') return { isError: true, text: r }
-      desk.picture = r
-      return { text: `saved ${file}, ${r.width} by ${r.height} pixels. screen_act x and y are pixels on this picture.` }
-    },
-  }
+async function screenshot(desk: Desk, args: Record<string, unknown>): Promise<Result> {
+  const { c, screen } = desk
+  const file = fileFor(c, args, 'png')
+  const r = await screen.shot(file, args.app as string | undefined)
+  seen(c, 'computer', typeof r === 'string' ? 'screenshot failed' : 'screenshot ok')
+  if (typeof r === 'string') return { isError: true, text: r }
+  desk.picture = r
+  return { text: `saved ${file}, ${r.width} by ${r.height} pixels. coordinate is [x, y] pixels on this picture.` }
 }
 
 function recordTool({ c, screen, where, app }: Desk): KageTool {
   return {
     name: 'screen_record',
-    description: `Record the owner's Mac screen as an MP4, or only one app's windows. start begins it and returns at once, so you can work while it records (for example with browser_act); stop ends it and gives the file for send_file. It stops by itself after seconds (300 unless set, at most ${MAX_SECONDS}). One recording at a time. Owner tasks only.`,
+    description: `Record the owner's Mac screen as an MP4, or only one app's windows. start begins it and returns at once, so you can work while it records (for example with browser_click); stop ends it and gives the file for send_file. It stops by itself after seconds (300 unless set, at most ${MAX_SECONDS}). One recording at a time. Owner tasks only.`,
     shape: { ...where, action: z.enum(['start', 'stop']), app, seconds: z.number().optional().describe(`start: the longest it may run, at most ${MAX_SECONDS}`) },
     async run(args) {
       const no = refused(c, args); if (no) return no

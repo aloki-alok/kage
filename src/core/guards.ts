@@ -1,6 +1,6 @@
 import { dirname } from 'node:path'
 
-export const ownerOnlyTool = (tool: string) => /^mcp__.*(gmail|google_drive|google_calendar|granola|fireflies|kage_?_(browser|screen)_|kage_?_slack_(search|read)$)/i.test(tool)
+export const ownerOnlyTool = (tool: string) => /^mcp__.*(gmail|google_drive|google_calendar|granola|fireflies|kage_?_(browser|screen)_|kage_?_computer$|kage_?_slack_(search|read)$)/i.test(tool)
 export function privateToolRefusal(tool: string, sender: string | undefined): string | undefined {
   if (!ownerOnlyTool(tool) || sender === 'owner' || sender === 'trusted') return undefined
   return `${tool} reads the owner's private data, and this task did not come from the owner. Reply that this needs the owner, and stop.`

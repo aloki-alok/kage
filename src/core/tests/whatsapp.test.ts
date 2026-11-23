@@ -232,8 +232,8 @@ describe("an approval card answered on WhatsApp (#423)", () => {
     assert.match(long, /Slack/)
   })
   test('the card note names the step and the code to answer with, and carries no secret', () => {
-    const note = waCardNote({ tool: 'mcp__kage__browser_act', place: '#ops', description: 'mail.example.com: click button "Send"', preview: '', code: '4821' }, 'kage')!
-    assert.match(note, /browser act/)
+    const note = waCardNote({ tool: 'mcp__kage__browser_click', place: '#ops', description: 'mail.example.com: click button "Send"', preview: '', code: '4821' }, 'kage')!
+    assert.match(note, /browser click/)
     assert.match(note, /#ops/)
     assert.match(note, /yes 4821/)
     assert.match(note, /no 4821/)
