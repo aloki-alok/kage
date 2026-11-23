@@ -472,6 +472,15 @@ test('a twin made with shadow_of keeps its link, live prompt and start in its jo
   assert.match(t.s.add('C2:1.1', { ...job, id: 'x3', shadow: { of: 'j1', live: 'l' } }, now) ?? '', /no job j1 in this thread/)
 })
 
+test('a job never moves into a thread that already holds 50 schedules', () => {
+  const t = setup()
+  t.store.seen('C1:9.9', { connector: 'slack', chat: 'C1', thread: '9.9', kind: 'channel' }, '#ops', 0)
+  t.s.add('C1:5.5', job, 0)
+  for (let i = 0; i < 50; i++) assert.equal(t.s.add('C1:9.9', { ...job, id: `f${i}` }, 0), undefined)
+  assert.equal(t.s.move('C1:5.5', 'j1', 'C1:9.9', 1), 'that thread already has 50 schedules')
+  assert.equal(t.s.list('C1:5.5').length, 1)
+})
+
 test('a job moves to another Slack thread with its id and state; trust never rises; twins and odd targets are refused', () => {
   const t = setup()
   t.owner.add('C1:5.5')
