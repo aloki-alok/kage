@@ -1,6 +1,6 @@
 import { execFile, spawn } from 'node:child_process'
 import { createHash, randomBytes } from 'node:crypto'
-import { copyFileSync, createWriteStream, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync, type WriteStream } from 'node:fs'
+import { copyFileSync, createWriteStream, existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync, type WriteStream } from 'node:fs'
 import { release } from 'node:os'
 import { dirname } from 'node:path'
 import { promisify } from 'node:util'
@@ -97,8 +97,23 @@ type Rec = {
 }
 const NO_ANSWER = 'Kage Screen did not answer in time. Try again.'
 
+const OWNED = /^(?:act|out)-(?:p(\d+)-)?[\w-]+\.(?:fifo|log)$/
+const ownerAlive = (pid: number) => {
+  try { process.kill(pid, 0); return true } catch (e) { return (e as NodeJS.ErrnoException).code === 'EPERM' }
+}
+
+function removeOrphans(folder: string) {
+  let names: string[] = []
+  try { names = readdirSync(folder) } catch { return }
+  for (const name of names) {
+    const owned = OWNED.exec(name)
+    if (owned && !(owned[1] && ownerAlive(Number(owned[1])))) rmSync(`${folder}/${name}`, { force: true })
+  }
+}
+
 export function screenRecorder(o: Options) {
   const app = `${o.folder}/Kage.app`
+  removeOrphans(o.folder)
   const r: Rec = {
     o, app, build: o.build ?? (a => buildApp(o.code, a)), launch: o.launch ?? openApp, kill: o.kill ?? ((pid, signal) => { try { process.kill(pid, signal) } catch {} }),
     pollMs: o.pollMs ?? 100, waitMs: o.waitMs ?? 30_000, busy: Promise.resolve(),
@@ -131,7 +146,7 @@ async function launchJob(r: Rec, job: Job) {
   const err = await r.build(r.app)
   if (err) return { err }
   mkdirSync(o.folder, { recursive: true, mode: 0o700 })
-  const log = `${o.folder}/out-${Date.now()}-${Math.random().toString(36).slice(2, 8)}.log`
+  const log = `${o.folder}/out-p${process.pid}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}.log`
   writeFileSync(log, '', { mode: 0o600 })
   writeFileSync(`${o.folder}/job.json`, JSON.stringify(job), { mode: 0o600 })
   return { log, exited: r.launch(r.app, log).exited }
@@ -150,7 +165,7 @@ async function firstLine(r: Rec, log: string, exited: Promise<unknown>) {
 
 async function startActing(r: Rec): Promise<Acting | string> {
   mkdirSync(r.o.folder, { recursive: true, mode: 0o700 })
-  const fifo = `${r.o.folder}/act-${Date.now()}.fifo`
+  const fifo = `${r.o.folder}/act-p${process.pid}-${Date.now()}.fifo`
   try { await run('mkfifo', ['-m', '600', fifo], { timeout: 10_000 }) } catch (e) { return `could not make the command pipe: ${String(e)}` }
   const j = await launchJob(r, { action: 'act', fifo })
   if ('err' in j) { rmSync(fifo, { force: true }); return j.err! }
