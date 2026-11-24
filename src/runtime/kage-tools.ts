@@ -13,6 +13,7 @@ import { addressed, foreignAgentRefusal, mentionedIds } from '../core/agents.ts'
 import { filesFolderName } from '../core/conversations.ts'
 import { lowestSender, plainName, teammateOf, type Sender } from '../core/gate.ts'
 import { openWaiting, postedBy } from '../core/ledgers.ts'
+import { postEvent } from '../core/post-kinds.ts'
 import type { Ledgers } from './ledger.ts'
 import { layoutRefusal, ownerPost, safeReply, secretRefusal, splitForSlack, type Signer } from '../core/outbound.ts'
 import type { Task } from '../core/task.ts'
@@ -197,7 +198,7 @@ async function post(t: Thread, key: string, channel: string, thread_ts: string |
   let via = Title, sent: string[] = []
   for (const part of parts) {
     const r = ack ? await postAsKage(o, channel, thread_ts, part, signer, false) : await postAsKage(o, channel, thread_ts, part, signer)
-    if (!r) return { via: 'nobody: not posted, because the pickup reaction already says it from the owner\'s account', where: `channel ${channel}` }
+    if (!r) { o.ledgers.event(postEvent('ack-skipped', 'none', channel)); return { via: 'nobody: not posted, because the pickup reaction already says it from the owner\'s account', where: `channel ${channel}` } }
     append('posted', [channel, r.ts, r.by, key, ...t.job && key === t.jobThread && key.startsWith(`${channel}:`) ? [t.job] : []])
     if (r.by === 'owner') footers.set(`${channel}:${r.ts}`, signer)
     sent.push(r.ts)
@@ -220,6 +221,7 @@ async function change(t: Thread, a: { channel: string; ts: string; text?: string
   if (a.text === undefined) {
     await client.chat.delete({ channel: a.channel, ts: a.ts })
     append('posted', [a.channel, a.ts, 'deleted'])
+    o.ledgers.event(postEvent('deleted', by, a.channel))
     return { text: 'deleted' }
   }
   const refusal = secretRefusal(a.text, { fromOwner: ping })
@@ -228,19 +230,22 @@ async function change(t: Thread, a: { channel: string; ts: string; text?: string
   if (layout) return { isError: true, text: layout }
   const text = safeReply(a.text).trim()
   await client.chat.update({ channel: a.channel, ts: a.ts, ...by === 'owner' ? ownerPost(Title, text, footers.get(`${a.channel}:${a.ts}`)) : { text } })
+  o.ledgers.event(postEvent('edited', by, a.channel))
   return { text: 'edited' }
 }
 
-async function changeForPeople({ Title, user, append, sentForPeople }: Thread, a: { channel: string; ts: string; text?: string }, tag: Signer): Promise<Result> {
+async function changeForPeople({ o, Title, user, append, sentForPeople }: Thread, a: { channel: string; ts: string; text?: string }, tag: Signer): Promise<Result> {
   if (a.text === undefined) {
     await user.chat.delete({ channel: a.channel, ts: a.ts })
     append('posted', [a.channel, a.ts, 'deleted'])
+    o.ledgers.event(postEvent('deleted', 'owner', a.channel))
     sentForPeople.delete(`${a.channel}:${a.ts}`)
     return { text: 'deleted' }
   }
   const no = secretRefusal(a.text, { fromOwner: !tag.asked && !tag.from }) ?? layoutRefusal(a.text)
   if (no) return { isError: true, text: no }
   await user.chat.update({ channel: a.channel, ts: a.ts, ...ownerPost(Title, safeReply(a.text).trim(), tag) })
+  o.ledgers.event(postEvent('edited', 'owner', a.channel))
   return { text: 'edited' }
 }
 
