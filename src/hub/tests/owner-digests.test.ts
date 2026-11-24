@@ -46,3 +46,22 @@ describe('the daily note drops a question nobody answered in time', () => {
     assert.equal(openWaiting(s.ledgers.text('waiting')).length, 2)
   })
 })
+
+describe('each daily note leaves one line in kage logs (#433)', () => {
+  test('a note that went out says what it held, and a day with nothing to say says so', async () => {
+    const s = setup(true)
+    await s.d.dailyNote(now)
+    const quiet = setup(true)
+    quiet.ledgers.add('waiting', ['answered', 'C1:1.1', '', ''])
+    quiet.ledgers.add('waiting', ['answered', 'C2:2.2', '', ''])
+    await quiet.d.dailyNote(now)
+    const note = (l: typeof s.ledgers) => l.events('2026-11-08').filter(e => e.kind === 'daily-note').map(e => e.detail)
+    assert.deepEqual(note(s.ledgers), ['2026-11-10 sent: 1 waiting, 1 dropped'])
+    assert.deepEqual(note(quiet.ledgers), ['2026-11-10 nothing to say'])
+  })
+  test('a note that did not go out leaves no line, so the next run tries again', async () => {
+    const s = setup(false)
+    await s.d.dailyNote(now)
+    assert.deepEqual(s.ledgers.events('2026-11-08').filter(e => e.kind === 'daily-note'), [])
+  })
+})
