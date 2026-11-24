@@ -166,6 +166,14 @@ If an open issue already has the same fingerprint, the card offers one `seen aga
 |---|---|---|
 | `waiting.expireHours` | `72` | A question that waited this long with no answer is dropped. The next daily note names it once under "Dropped", and a reply in its thread opens it again. |
 
+## Trust record
+
+Kage keeps each yes you give a teammate, so it stops asking the same thing again. A line holds one teammate, one kind of step and one reach (a host, a site, a repo or a route). Only your own typed words write a line. `kage trust list` shows the lines, and `kage trust revoke <id>` takes one back. Money, deletes, sends to people outside the team, production deploys and writes, a production shell, secrets, product calls and the owner-only shell kinds always ask, and one yes covers the whole job.
+
+| Setting | Default | Effect |
+|---|---|---|
+| `trust.mode` | `shadow` | `shadow` changes nothing Kage does. It writes your lines, and for each typed ask it logs what Kage would have done next to your real answer. `on` skips an ask that a line covers and folds the same open ask into one. A no line stops the step. `off` does nothing. |
+
 ## AFK mode
 
 | Setting | Default | Effect |
