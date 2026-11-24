@@ -156,3 +156,19 @@ test('undo brings the old job back with the state it had, such as its failure co
   assert.equal(t.sw.restore('C1:5.5', 'old', T0 + 6 * 60 * M), undefined)
   assert.equal(t.store.jobState('old').fails, 2)
 })
+
+test("a twin that can never load the owner's tools the old job needs is held, with one DM, and never swaps in (#641)", () => {
+  const t = setup()
+  t.store.removeSchedule('old'); t.store.removeSchedule('tw')
+  t.store.addSchedule({ ...job('old', 'the old prompt'), needs: ['mcp__pager__call'] })
+  t.store.addSchedule({ ...job('tw', 'SHADOW prompt'), cron: '@event', trigger: { kind: 'channel', channel: 'C9', bots: false } })
+  t.store.setJobState('tw', { fails: 0, shadow: { of: 'old', live: 'the live prompt', since: T0 } })
+  t.store.setTrust('C1:5.5', true)
+  for (const h of [1, 2, 3]) { t.acted(T0 + h * 60 * M); t.said(T0 + h * 60 * M + 2 * M) }
+  t.sw.tick(T0 + 5 * 60 * M)
+  t.sw.tick(T0 + 6 * 60 * M)
+  assert.deepEqual(t.store.schedules().map(s => s.id).sort(), ['old', 'tw'])
+  assert.equal(t.dms.length, 1)
+  assert.match(t.dms[0]!, /^Twin tw can never swap in for job old: old needs mcp__pager__call/)
+  assert.deepEqual(t.removed, [])
+})

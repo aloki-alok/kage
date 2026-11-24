@@ -4,6 +4,7 @@ import { EVENT, nextRun, parseCron, REPLY, type Schedule } from '../core/cron.ts
 import { modelRefusal } from '../core/config.ts'
 import { buildProbe, tripwireCfg, type ProbeArg, type TripwireSettings, type TuneArg } from './probe-jobs.ts'
 import { safePattern, type Trigger } from '../core/tripwire.ts'
+import { twinLacks } from '../core/job-needs.ts'
 import { pin } from './probes.ts'
 import type { Store } from './store.ts'
 
@@ -49,6 +50,9 @@ export function add(o: Host, from: string, j: NewJob, now: number): string | und
     if (store.jobState(of).shadow) return `${of} is itself a twin: shadow the job it shadows`
   }
   const { probe: _, shadow, ...plain } = j
+  const made: Schedule = { ...plain, lane: undefined, ...(trigger && { trigger }), key, fromOwner: o.trusted(key), created: now, lastFired: 0 }
+  const lacks = shadow ? twinLacks(listOf(store, key).find(s => s.id === shadow.of)!, made, { ownerThread: o.trusted(key), probesOn: tripwireCfg(o.tripwires?.() ?? {}).on }) : []
+  if (lacks.length) return `job ${shadow!.of} needs ${lacks.join(', ')}, and a twin woken by a post, a hook or a probe runs with a teammate's trust, which loads none of your MCP tools, so it could never do that step. Keep ${shadow!.of} on its clock, or shadow it with a clock twin.`
   store.addSchedule({ ...plain, ...(trigger && { trigger }), key, fromOwner: o.trusted(key), created: now, lastFired: 0, ...(lane ? { lane: true } : { lane: undefined }), ...(watch && { recurring: true, ends: now + WATCH_DAYS * DAY }), ...(event && { recurring: true }) })
   if (shadow) store.setJobState(j.id, { ...store.jobState(j.id), shadow: { of: shadow.of, live: shadow.live, since: now } })
   log('scheduled', j.id, j.cron, 'for', key)

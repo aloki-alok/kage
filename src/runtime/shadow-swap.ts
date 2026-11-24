@@ -3,15 +3,16 @@ import type { Schedule } from '../core/cron.ts'
 import type { JobState } from '../core/tripwire.ts'
 import type { Store } from './store.ts'
 import { threadOfJobLane } from '../core/conversations.ts'
+import { twinLacks } from '../core/job-needs.ts'
 
-type ShadowSettings = { swapAfter?: number; shadowWindowMin?: number; swapUndoDays?: number }
+type ShadowSettings = { on?: boolean; swapAfter?: number; shadowWindowMin?: number; swapUndoDays?: number }
 type Saved = { job: Schedule; state: JobState; twin: string; twinPrompt: string; shadow: Shadow; at: number }
 const DAY = 86_400_000
 
 const rowsOf = (tsv: string, col: number) => tsv.split('\n').filter(Boolean).map(l => l.split('\t')).map(c => ({ at: Date.parse(c[0]!), c, job: c[col] ?? '' }))
 
 type Options = {
-  store: Pick<Store, 'schedules' | 'jobState' | 'setJobState' | 'setPrompt' | 'load' | 'save'>
+  store: Pick<Store, 'schedules' | 'jobState' | 'setJobState' | 'setPrompt' | 'load' | 'save' | 'trust'>
   ledgers: { text(name: 'posted' | 'prod-actions' | 'verdicts', since?: string): string }
   settings: () => ShadowSettings
   ping: (key: string, text: string) => void
@@ -56,6 +57,11 @@ function judge(o: Options, tw: Schedule, all: Schedule[], seen: Seen, c: Cfg, no
   const old = all.find(s => s.id === sh.of)
   if (!old) {
     if (!sh.gone) { o.owner(`Twin ${tw.id} shadows job ${sh.of}, which is gone, so it can never swap in. Remove the twin, or make it a live job.`); o.store.setJobState(tw.id, { ...state, shadow: { ...sh, gone: true } }) }
+    return
+  }
+  const lacks = twinLacks(old, tw, { ownerThread: o.store.trust(old.key) === true, probesOn: o.settings().on !== false })
+  if (lacks.length) {
+    if (!sh.held) { o.owner(`Twin ${tw.id} can never swap in for job ${old.id}: ${old.id} needs ${lacks.join(', ')}, and a twin woken by a post, a hook or a probe runs with a teammate's trust, which loads none of your MCP tools. Both jobs keep running. Remove the twin, or make it a clock job.`); o.store.setJobState(tw.id, { ...state, shadow: { ...sh, held: true } }) }
     return
   }
   const g = grade({ twin: tw.id, of: sh.of, since: sh.since, acts: seen.acts, verdicts: seen.verdicts, now, windowMs: c.windowMs })
