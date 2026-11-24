@@ -23,6 +23,13 @@ test('a case passes only when every reply, file, tool, card, setting, job and co
   assert.match(grade(evidence({ commands: { 'node test.js': 1 } }), expect).join(), /node test\.js exited 1/)
 })
 
+test('a filing check counts what reached the repo and forbids text in it (#543)', () => {
+  const filed = ['Reply posted twice\n### What happened\nKage posted the same reply twice in [channel]']
+  assert.deepEqual(grade(evidence({ filed }), { filed: 1, filedNot: ['Alex', 'acme'] }), [])
+  assert.match(grade(evidence({ filed: [] }), { filed: 1 }).join(), /filed: 0 seen, 1 expected/)
+  assert.match(grade(evidence({ filed: ['Alex saw it at Acme'] }), { filedNot: ['acme'] }).join(), /a filing matched \/acme\//)
+})
+
 test('a file check can require text, forbid text, or require the fixture unchanged', () => {
   assert.deepEqual(grade(evidence({ files: { 'a.js': 'fetchUser()' } }), { files: [{ path: 'a.js', match: 'fetchUser', absent: 'getUser' }] }), [])
   assert.match(grade(evidence({ files: { 'a.js': 'getUser()' } }), { files: [{ path: 'a.js', absent: 'getUser' }] }).join(), /a\.js still has \/getUser\//)
