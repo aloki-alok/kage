@@ -3,7 +3,7 @@ import { mkdtempSync, readFileSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { promisify } from 'node:util'
-import { compareUrl, inertChange, soakGate, type Boot } from '../core/auto-update.ts'
+import { compareUrl, inertChange, soakGate, type Boot, type ErrorSeen } from '../core/auto-update.ts'
 import { checkProblems, RELEASE_CHECKS, releasePlan } from '../core/release.ts'
 
 const sh = async (root: string, cmd: string, ...args: string[]) =>
@@ -107,7 +107,7 @@ async function readBoots(root: string, text: string, now: number): Promise<Boot[
   return boots
 }
 
-export async function releaseIfSoaked(root: string, dir: string, boots: string, now: number): Promise<Release | { skip: string; candidate?: true }> {
+export async function releaseIfSoaked(root: string, dir: string, boots: string, now: number, errors: ErrorSeen[]): Promise<Release | { skip: string; candidate?: true; held?: { sha: string } }> {
   if (!await isOwnerHub(root)) return { skip: 'this hub is not the repo admin' }
   await fetchRefs(root)
   const rows = await readBoots(root, boots, now)
@@ -116,10 +116,10 @@ export async function releaseIfSoaked(root: string, dir: string, boots: string, 
   for (const sha of shas) if (await tryOut(root, 'git', 'rev-parse', '-q', '--verify', `${sha}^{commit}`) && await aheadOfStable(root, sha)) ahead.add(sha)
   let crashDm: number[] = []
   try { crashDm = readFileSync(join(dir, 'crash-dm-at'), 'utf8').split('\n').map(Number).filter(Boolean).map(t => t * 1000) } catch {  }
-  const gate = { boots: rows, crashes: crashDm, now, ahead: (sha: string) => ahead.has(sha) }
+  const gate = { boots: rows, crashes: crashDm, now, ahead: (sha: string) => ahead.has(sha), errors }
   let g = soakGate({ ...gate, doctorOk: true })
   if ('ok' in g) g = soakGate({ ...gate, doctorOk: (await tryOut(root, './setup.sh', 'doctor') ?? '').includes('All good') })
-  if ('fail' in g) return { skip: g.fail, candidate: g.sha ? true : undefined }
+  if ('fail' in g) return { skip: g.fail, candidate: g.sha ? true : undefined, ...g.held && g.sha && { held: { sha: g.sha } } }
   const r = await release(root, false, g.sha)
-  return r.problems.length ? { skip: r.problems.join('; ') } : r
+  return r.problems.length ? { skip: r.problems.join('; '), held: { sha: g.sha } } : r
 }

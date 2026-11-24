@@ -33,3 +33,4 @@ Status, Decision, How it is checked. The Decision states the architecture as it 
 | [0023](0023-slack-reaches-kage-by-socket-or-http.md) | Slack reaches Kage by Socket Mode or by HTTP, and both feed one intake | Accepted |
 | [0024](0024-a-yes-is-kept-per-teammate.md) | A yes from the owner is kept per teammate, kind and reach | Accepted |
 | [0025](0025-a-read-route-is-a-database-login-not-a-filter.md) | A read route is safe because of its database login, and a teammate's yes covers it | Accepted |
+| [0026](0026-a-held-release-tells-the-owner.md) | A soaked commit that fails a release check tells the owner once | Accepted |

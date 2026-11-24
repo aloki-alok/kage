@@ -1,13 +1,20 @@
 
 export type Bump = 'minor' | 'patch'
-type Kind = 'new' | 'fixed' | 'other' | 'internal'
+type Kind = 'new' | 'safety' | 'faster' | 'fixed' | 'internal'
+
+const SECTIONS: [string, Kind][] = [['New features', 'new'], ['Access and safety', 'safety'], ['Optimizations', 'faster'], ['Bug fixes', 'fixed'], ['Under the hood', 'internal']]
+const UPGRADING = '## Upgrading\nRun kage update --stable, or wait: a git install on main moves to this release within 6 hours.'
 
 function kind(title: string): Kind {
-  if (/^(merge|bump|release|docs?|ci|tests?|refactor|chore)\b|\badrs?\b/i.test(title)) return 'internal'
-  if (/^(add|adds|new|let|allow|support)\b/i.test(title)) return 'new'
-  if (/^(fix|fixes|fixed|stop)\b|\b(fix|fixes|fixed|refuse|refuses)\b/i.test(title)) return 'fixed'
-  return 'other'
+  if (/^(merge|bump|release|docs?|ci|tests?|refactor|chore|build)\b|\badrs?\b/i.test(title)) return 'internal'
+  if (/\b(refuses?|refused|trust|approvals?|permissions?|sandbox|secrets?|guard|access)\b/i.test(title)) return 'safety'
+  if (/^perf\b|\b(faster|cheaper)\b/i.test(title)) return 'faster'
+  if (/^(fix|fixes|fixed|stop)\b|\b(fix|fixes|fixed)\b/i.test(title)) return 'fixed'
+  return 'new'
 }
+
+const isFeature = (title: string) => kind(title) !== 'internal' && (/^(feat|add|adds|new|let|allow|support)\b/i.test(title) || !/^\w+(\([^)]*\))?!?:/.test(title) && kind(title) === 'new')
+const plainTitle = (title: string) => title.replace(/^(feat|fix|perf|refactor|chore|ci|docs?|tests?|build)(\([^)]*\))?!?:\s*/i, '')
 
 export function bumpVersion(version: string, bump: Bump): string {
   const m = /^(\d+)\.(\d+)\.(\d+)$/.exec(version)
@@ -18,12 +25,10 @@ export function bumpVersion(version: string, bump: Bump): string {
 
 export function releasePlan(current: string, titles: string[]): { version: string; bump: Bump; notes: string } | undefined {
   if (!titles.length) return
-  const by = (k: Kind) => titles.filter(t => kind(t) === k)
-  const bump: Bump = by('new').length ? 'minor' : 'patch'
-  const sections = ([['New', 'new'], ['Fixed', 'fixed'], ['Other', 'other']] as const)
-    .filter(([, k]) => by(k).length)
-    .map(([head, k]) => `## ${head}\n${by(k).map(t => `- ${t}`).join('\n')}`)
-  return { version: bumpVersion(current, bump), bump, notes: sections.join('\n\n') || 'Internal changes only.' }
+  const bump: Bump = titles.some(isFeature) ? 'minor' : 'patch'
+  const sections = SECTIONS.map(([head, k]) => [head, titles.filter(t => kind(t) === k)] as const).filter(([, ts]) => ts.length)
+    .map(([head, ts]) => `## ${head}\n${ts.map(t => `- ${plainTitle(t)}`).join('\n')}`)
+  return { version: bumpVersion(current, bump), bump, notes: [...sections, UPGRADING].join('\n\n') }
 }
 
 export const RELEASE_CHECKS = ['ci.yml', 'upgrade.yml'] as const

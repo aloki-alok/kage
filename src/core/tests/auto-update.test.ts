@@ -64,8 +64,8 @@ describe('soakGate: release the newest commit that completed an unbroken 24 hour
   const t0 = Date.parse('2026-11-15T00:00:00Z')
   const at = (h: number) => t0 + h * H
   const boot = (h: number, sha: string, inert = false): Boot => ({ at: at(h), sha, inert })
-  const gate = (boots: Boot[], h: number, o: { crashes?: number[]; doctorOk?: boolean; ahead?: (sha: string) => boolean } = {}) =>
-    soakGate({ boots, crashes: o.crashes ?? [], now: at(h), doctorOk: o.doctorOk ?? true, ahead: o.ahead ?? (() => true) })
+  const gate = (boots: Boot[], h: number, o: { crashes?: number[]; doctorOk?: boolean; ahead?: (sha: string) => boolean; errors?: { at: number; code: string }[] } = {}) =>
+    soakGate({ boots, crashes: o.crashes ?? [], now: at(h), doctorOk: o.doctorOk ?? true, ahead: o.ahead ?? (() => true), errors: o.errors ?? [] })
   const A = 'aaa1111', B = 'bbb2222'
 
   test('boot on A, restart on A at 10 hours: the gate passes at 24 hours', () => {
@@ -95,14 +95,25 @@ describe('soakGate: release the newest commit that completed an unbroken 24 hour
   test('three boots inside ten minutes count as a crash loop with no DM record', () => {
     const m = 60_000
     const boots = [{ at: at(0), sha: A, inert: false }, { at: at(0) + 2 * m, sha: A, inert: false }, { at: at(0) + 4 * m, sha: A, inert: false }]
-    assert.ok('fail' in soakGate({ boots, crashes: [], now: at(24), doctorOk: true, ahead: () => true }))
-    assert.deepEqual(soakGate({ boots, crashes: [], now: at(0) + 4 * m + 24 * H, doctorOk: true, ahead: () => true }), { ok: true, sha: A })
+    assert.ok('fail' in soakGate({ boots, crashes: [], now: at(24), doctorOk: true, ahead: () => true, errors: [] }))
+    assert.deepEqual(soakGate({ boots, crashes: [], now: at(0) + 4 * m + 24 * H, doctorOk: true, ahead: () => true, errors: [] }), { ok: true, sha: A })
   })
   test('a crash after a completed run does not take that run back', () => {
     assert.deepEqual(gate([boot(0, A), boot(30, B)], 40, { crashes: [at(35)] }), { ok: true, sha: A })
   })
+  test('an error kind first seen during the soak holds the release, and names the kind', () => {
+    const errors = [{ at: at(-48), code: 'post_failed' }, { at: at(5), code: 'post_failed' }, { at: at(6), code: 'hub_job' }, { at: at(7), code: 'hub_job' }]
+    assert.deepEqual(gate([boot(0, A)], 25, { errors }), { fail: `an error kind is new since ${A} started: hub_job`, sha: A, held: true })
+  })
+  test('an error kind the hub already had in the week before the run does not hold it', () => {
+    assert.deepEqual(gate([boot(0, A)], 25, { errors: [{ at: at(-100), code: 'hub_job' }, { at: at(5), code: 'hub_job' }] }), { ok: true, sha: A })
+    assert.ok('fail' in gate([boot(0, A)], 25, { errors: [{ at: at(-200), code: 'hub_job' }, { at: at(5), code: 'hub_job' }] }))
+  })
+  test('an error after the soaked run ended does not hold that run', () => {
+    assert.deepEqual(gate([boot(0, A), boot(30, B)], 31, { errors: [{ at: at(30.5), code: 'hub_job' }] }), { ok: true, sha: A })
+  })
   test('kage doctor not all good, and no boots at all, both wait', () => {
-    assert.deepEqual(gate([boot(0, A)], 25, { doctorOk: false }), { fail: 'kage doctor is not "All good"', sha: A })
+    assert.deepEqual(gate([boot(0, A)], 25, { doctorOk: false }), { fail: 'kage doctor is not "All good"', sha: A, held: true })
     assert.deepEqual(gate([], 25), { fail: 'no hub start is recorded yet' })
   })
 })

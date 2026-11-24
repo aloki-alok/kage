@@ -14,36 +14,34 @@ describe('bumpVersion', () => {
 })
 
 describe('releasePlan', () => {
-  test('a new feature makes a minor release, grouped with fixes and other work', () => {
-    const p = releasePlan('0.3.0', ['Add kage release (#150)', 'Fix a stuck thread (#151)', 'One webhook helper (#145)'])!
+  const UPGRADING = '## Upgrading\nRun kage update --stable, or wait: a git install on main moves to this release within 6 hours.'
+  test('a new feature makes a minor release, with each title in its section and its type and scope taken off', () => {
+    const p = releasePlan('0.3.0', ['feat(src/hub/self-check): a failure that repeats reaches the owner (#680)', 'fix(src/core/quiet): kage restart cuts nothing when the hub is slow (#679)', 'ci: run kage-screen only for screen changes (#678)'])!
     assert.equal(p.version, '0.4.0')
-    assert.equal(p.notes, '## New\n- Add kage release (#150)\n\n## Fixed\n- Fix a stuck thread (#151)\n\n## Other\n- One webhook helper (#145)')
+    assert.equal(p.notes, `## New features\n- a failure that repeats reaches the owner (#680)\n\n## Bug fixes\n- kage restart cuts nothing when the hub is slow (#679)\n\n## Under the hood\n- run kage-screen only for screen changes (#678)\n\n${UPGRADING}`)
+  })
+  test('the six sections come in a fixed order, and a title with no type reads as a feature', () => {
+    const p = releasePlan('0.3.0', ['refactor: one webhook helper (#5)', 'Fix a stuck thread (#4)', 'perf: kage top draws faster (#3)', 'Trust record: Kage remembers each yes per teammate (#2)', 'Each daily note leaves one line in kage logs (#1)'])!
+    assert.equal(p.version, '0.4.0')
+    assert.equal(p.notes, `## New features\n- Each daily note leaves one line in kage logs (#1)\n\n## Access and safety\n- Trust record: Kage remembers each yes per teammate (#2)\n\n## Optimizations\n- kage top draws faster (#3)\n\n## Bug fixes\n- Fix a stuck thread (#4)\n\n## Under the hood\n- one webhook helper (#5)\n\n${UPGRADING}`)
   })
   test('with no new feature it is a patch', () => {
     assert.equal(releasePlan('0.3.0', ['Fix a stuck thread (#151)'])!.version, '0.3.1')
+    assert.equal(releasePlan('0.3.0', ['fix(src/a): a stuck thread (#151)', 'docs: settings table (#139)'])!.version, '0.3.1')
   })
-  test('internal-only changes are left out of the notes but still make a patch', () => {
-    const p = releasePlan('0.3.0', ['Add ADRs and a kage-change-code skill (#138)', 'Docs: settings table (#139)', 'Fix a stuck thread (#151)'])!
-    assert.equal(p.notes, '## Fixed\n- Fix a stuck thread (#151)')
-    const only = releasePlan('0.3.0', ['Add ADRs and a skill (#138)'])!
-    assert.equal(only.version, '0.3.1')
-    assert.equal(only.notes, 'Internal changes only.')
-  })
-  test('a refusal or a stop counts as a fix, not a new feature', () => {
+  test('a refusal is a safety change and a patch', () => {
     const p = releasePlan('0.3.0', ['WhatsApp webhook: refuse unsigned callers before reading the body (#141)'])!
     assert.equal(p.version, '0.3.1')
-    assert.match(p.notes, /## Fixed/)
+    assert.match(p.notes, /^## Access and safety\n- WhatsApp webhook: refuse unsigned callers/)
   })
-  test('merge commits and dependency bumps are internal', () => {
-    const p = releasePlan('0.3.0', ['Merge pull request #131 from acme/kage-x', 'Bump the all group with 7 updates (#61)', 'Fix a stuck thread (#151)'])!
-    assert.equal(p.notes, '## Fixed\n- Fix a stuck thread (#151)')
+  test('merge commits, dependency bumps, docs and release commits sit under the hood and make a patch', () => {
+    const p = releasePlan('0.3.0', ['Merge pull request #131 from acme/kage-x', 'Bump the all group with 7 updates (#61)', 'Add ADRs and a skill (#138)', 'Release v0.3.0'])!
+    assert.equal(p.version, '0.3.1')
+    assert.match(p.notes, /^## Under the hood\n- Merge pull request #131 from acme\/kage-x\n- Bump the all group with 7 updates \(#61\)\n- Add ADRs and a skill \(#138\)\n- Release v0\.3\.0\n\n## Upgrading/)
   })
   test('a new feature that mentions skills, docs or bugs is still new', () => {
     assert.equal(releasePlan('0.3.0', ['Add skills to kagelets (#1)'])!.version, '0.4.0')
     assert.equal(releasePlan('0.3.0', ['Add a bug report command (#2)'])!.version, '0.4.0')
-  })
-  test('a release commit is internal', () => {
-    assert.equal(releasePlan('0.3.0', ['Release v0.3.0'])!.notes, 'Internal changes only.')
   })
   test('no merges gives no release', () => {
     assert.equal(releasePlan('0.3.0', []), undefined)
