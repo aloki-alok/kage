@@ -79,7 +79,7 @@ export function reportTools(c: ToolContext): KageTool[] {
       what: c.s.describe('a bug: what happened. An idea: the job done by hand today'),
       expected: c.s.describe('a bug: what should have happened. An idea: how you would know it works'),
       steps: c.s.optional().describe('a bug: the steps to see it again'),
-      fingerprint: c.s.optional().describe('a crash: the 12 character fingerprint from kage logs, so repeats land on one issue'),
+      fingerprint: c.s.optional().describe('a crash: its 12 character fingerprint when you have one, so repeats land on one issue'),
     },
     run: args => report(c, r, args as Args),
   }]
