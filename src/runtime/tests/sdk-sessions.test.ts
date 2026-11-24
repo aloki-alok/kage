@@ -131,6 +131,15 @@ describe('Kage sessions on the Agent SDK', () => {
     assert.deepEqual(t.posts, [])
     t.s.runner.stop('C1:5.5')
   })
+  test("a teammate's db_read runs with no card to the owner, because the hub's own route checks decide it", async () => {
+    const t = setup()
+    t.d.task('C1:5.5', t.task({ fromOwner: false }), 0)
+    await tick()
+    const r = await Promise.race([t.sdk.runs[0]!.options.canUseTool('mcp__kage__db_read', { db: 'prod', sql: 'select 1' }, { signal: signal() }), tick(30).then(() => ({ behavior: 'held on a card' }))])
+    assert.equal(r.behavior, 'allow')
+    assert.deepEqual(t.posts, [])
+    t.s.runner.stop('C1:5.5')
+  })
   test("a teammate's, an agent's or an email's session loads none of the owner's tools; the owner's message reopens it with them on the same conversation (#317)", async () => {
     for (const other of [{ fromOwner: false }, { channel: 'email' }]) {
       const t = setup({ browser: true, transcript: true })
