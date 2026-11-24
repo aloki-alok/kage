@@ -10,6 +10,7 @@ import { isJobLane } from '../core/conversations.ts'
 import { log } from './log.ts'
 import { linkToken, readToken, sameSecret } from './owner-key.ts'
 import type { ChannelReply, FromSession, ToSession } from './protocol.ts'
+import { awayCommand, type AfkCommand } from '../core/afk.ts'
 import type { scheduler } from './scheduler.ts'
 
 const REPLY_PREFIX: Record<ChannelReply['type'], string> = { mail: 'mail:', wa: 'wa:', voice: 'voice:', sms: 'sms:' }
@@ -51,6 +52,7 @@ type Options = Replies & {
   health?: () => string[]
   end?: (key: string, cut: boolean) => string
   kagelet?: (action: PanelAction, name: string) => Promise<string>
+  away?: (c: AfkCommand) => Promise<string>
 }
 type Link = { d: Dispatcher<ToSession>; o: Options; dir: string; owned: Set<string> }
 type Conn = { sock: Socket; key: string; held: string; send: (m: ToSession) => void }
@@ -132,6 +134,7 @@ const COMMANDS: Record<string, Command> = {
     if (typeof m.key !== 'string' || typeof m.text !== 'string') return
     answer(c, 'tell', !m.text.trim() ? { refused: 'empty message' } : o.tell?.(m.key, m.text.trim()) ?? { refused: 'this hub cannot take messages' })
   }),
+  away: owner((l, c, m) => away(l, c, m as { back?: unknown; until?: unknown; minutes?: unknown; note?: unknown })),
   say: owner((l, c, m) => { if (typeof m.text === 'string') say(l, c, m.text, m as { channel?: unknown; thread_ts?: unknown }) }),
   relay: owner(({ o }, c, m) => answer(c, 'relay', typeof m.action === 'string' && ['allow', 'deny', 'list'].includes(m.action) ? o.relay?.(m.action, typeof m.key === 'string' ? m.key : undefined) ?? { refused: 'this hub has no relay' } : { refused: 'use allow, deny or list' })),
   trust: owner(({ o }, c, m) => answer(c, 'trust', typeof m.action === 'string' && typeof m.id === 'string' ? o.trust?.(m.action, m.id) ?? { refused: 'this hub has no trust record' } : { refused: 'use revoke with an id' })),
@@ -163,6 +166,17 @@ function say({ o }: Link, c: Conn, said: string, at: { channel?: unknown; thread
   else if (typeof at.channel === 'string' !== (typeof at.thread_ts === 'string')) reply({ refused: 'a reply needs both channel and thread_ts' })
   else if (!o.say) reply({ refused: 'this hub cannot post' })
   else void o.say(text, typeof at.channel === 'string' ? { channel: at.channel, thread_ts: at.thread_ts as string } : undefined).then(reply)
+}
+
+function away({ o }: Link, c: Conn, m: { back?: unknown; until?: unknown; minutes?: unknown; note?: unknown }) {
+  const reply = (r: { text: string } | { refused: string }) => answer(c, 'away', r)
+  if (!o.away) return reply({ refused: 'AFK mode is off here (afk.on is false)' })
+  if (m.back !== undefined && m.back !== true) return reply({ refused: 'back is true or left out' })
+  const command = m.back === true ? { kind: 'back' as const } : awayCommand({
+    ...typeof m.until === 'string' && { until: m.until }, ...typeof m.minutes === 'number' && { minutes: m.minutes }, ...typeof m.note === 'string' && { note: m.note },
+  })
+  if (typeof command === 'string') return reply({ refused: command })
+  void o.away(command).then(text => reply({ text }), (e: Error) => reply({ refused: e.message }))
 }
 
 function kagelet({ o }: Link, c: Conn, name: string, action: PanelAction) {

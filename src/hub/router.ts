@@ -359,7 +359,7 @@ const watcher = configWatcher({
   restartWanted: yes => updates.restartWanted(yes),
 })
 const reload = watcher.check
-listenForSessions(`${DIR}/router.sock`, d, { ownerKey: OWNER_KEY, ...replies, failed, health: () => health.lines(Date.now()), schedules: jobs, tell: commands.tell, say: commands.say, relay: commands.relay, trust: trust.command, reload, paused: () => limits.paused(), limitCounts: () => limits.counts,
+listenForSessions(`${DIR}/router.sock`, d, { ownerKey: OWNER_KEY, ...replies, failed, health: () => health.lines(Date.now()), schedules: jobs, tell: commands.tell, say: commands.say, away: slack.afk?.command, relay: commands.relay, trust: trust.command, reload, paused: () => limits.paused(), limitCounts: () => limits.counts,
   end: (key, cut) => stopThread(key, cut), kagelet: (action, name) => action === 'unhold' ? Promise.resolve(ownerLines.holdsLifted(name, deferred.unhold(name, Date.now()))) : kag.manager.manage({ action, name }, Date.now()),
   quiesce: () => { const now = Date.now(); limits.drain(now); return d.unquiet(now).filter(u => u.why !== 'just active' && u.why !== 'open in a terminal') }, callCode: voice?.issueCode })
 
