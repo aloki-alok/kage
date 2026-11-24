@@ -12,7 +12,7 @@ Read the ADRs in `docs/adr/` that match what you touch. Do not copy their text i
 | If you touch | Read |
 |---|---|
 | a file in `src/core/` | 0001 |
-| a connector, or who may start a task | 0002, 0004 |
+| a connector, or who may start a task | 0002, 0004 (0023 for how Slack reaches Kage) |
 | `src/runtime/store.ts` or a new table | 0003 |
 | who counts as the owner, `senderOf`, a guard | 0004, 0005 |
 | tool limits for a kind of sender | 0005 |

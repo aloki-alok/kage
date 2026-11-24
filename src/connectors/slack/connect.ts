@@ -12,7 +12,8 @@ import type { Delivery } from '../../core/sessions.ts'
 import type { Task } from '../../core/task.ts'
 import { startAfk } from './afk.ts'
 import { sayAsOwner } from './say.ts'
-import { keepSocketUp } from './socket.ts'
+import { keepSocketUp, writeSlackStatus } from './socket.ts'
+import { slackHttp, type SlackIntake } from './http.ts'
 import type { JevAfk, JevCheck, Triage } from '../jev.ts'
 import { heardLine, writeHeard } from './heard.ts'
 import { emptyRoom } from '../../runtime/claude-once.ts'
@@ -45,7 +46,7 @@ export type Hub = {
 } & Inbox
 
 type Options = {
-  askOtherAgents?: boolean; saved?: Saved; dir: string; appToken: string; userToken: string; bot: WebClient; user: WebClient
+  askOtherAgents?: boolean; saved?: Saved; dir: string; appToken?: string; http?: { secret: string; port: number }; userToken: string; bot: WebClient; user: WebClient
   name: string; title: string; teammates: string[]; trusted?: string[]; apps: string[]; hub: Hub; catchUpMax?: () => number
   afk?: { memory: string; model: string; saved: Saved; call?: (reason: string) => Promise<string>; jev?: JevAfk }
   jev?: JevCheck
@@ -95,7 +96,7 @@ export async function connectSlack(o: Options) {
   k.afk = o.afk && startAfk({ dir: o.dir, title: o.title, ownerName, ids, bot, user, ...o.afk, notify: k.notifyOwner, contextOf: async m => (await dir.contextOf(m)).text, placeOf: dir.placeOf, nameOf: dir.nameOf })
   const failed = (task: Task) => k.react(task.origin.channel, task.origin.ts, FAILED)
   const seen = (task: Task) => { k.unreact(task.origin.channel, task.origin.ts, PICKED_UP); void k.react(task.origin.channel, task.origin.ts, SEEN) }
-  const { socket, hear } = slackSocket(k, failed)
+  const { transport, hear } = slackIntake(k, failed)
   const replay = async (source: string, payload: string) => {
     const m = JSON.parse(payload) as SlackMessage
     k.replaying.add(m.ts)
@@ -103,7 +104,7 @@ export async function connectSlack(o: Options) {
   }
   const allow = (l: { teammates: string[]; trusted: string[]; apps: string[] }) => { ids.teammates = l.teammates; ids.trusted = l.trusted; ids.apps = l.apps }
   const { placeOf, nameOf, knownNames } = dir
-  return { ids, ownerName, botUser, socket, failed, seen, notifyOwner: k.notifyOwner, placeOf, nameOf, knownNames, afk: k.afk, replay, allow, say: sayAsOwner({ user, ids, hub: o.hub, hear }), start: () => socket.start() }
+  return { ids, ownerName, botUser, transport, failed, seen, notifyOwner: k.notifyOwner, placeOf, nameOf, knownNames, afk: k.afk, replay, allow, say: sayAsOwner({ user, ids, hub: o.hub, hear }), start: () => transport.start() }
 }
 
 async function slackIds(o: Options) {
@@ -118,11 +119,12 @@ async function slackIds(o: Options) {
   return { ids, botUser: botAuth.user }
 }
 
-function slackSocket(k: Slack, failed: (task: Task) => Promise<boolean>) {
+function slackIntake(k: Slack, failed: (task: Task) => Promise<boolean>) {
   const { o, ids } = k
   const queue = new Map<string, Promise<void>>()
-  const socket = new SocketModeClient({ appToken: o.appToken, logger, logLevel: LogLevel.WARN })
-  socket.on('app_mention', async ({ ack }) => { await ack() })
+  const socket = o.http ? undefined : new SocketModeClient({ appToken: o.appToken ?? '', logger, logLevel: LogLevel.WARN })
+  const transport: SlackIntake = socket ?? slackHttp(o.http!)
+  transport.on('app_mention', async ({ ack }: { ack: () => Promise<void> }) => { await ack() })
   async function hear(m: SlackMessage, source: string) {
     const key = m.channel ? sessionKey(slackConversation(m, ids.botDm, k.kagePosted)) : ''
     const next = (queue.get(key) ?? Promise.resolve()).then(() => onMessage(k, m, failed)).catch(e => log('message handling failed', e))
@@ -131,11 +133,12 @@ function slackSocket(k: Slack, failed: (task: Task) => Promise<boolean>) {
     if (source) o.hub.handled(source)
     if (queue.get(key) === next) queue.delete(key)
   }
-  socket.on('message', ({ event, ack }) => intake(event as SlackMessage, ack, o.hub, hear))
-  keepSocketUp(socket, { dir: o.dir, name: o.name, gap: () => o.hub.channelGap?.(), notifyOwner: k.notifyOwner })
-  socket.on('connected', () => o.hub.channelCatchUp?.(channelHistory(a => o.user.conversations.history(a), o.catchUpMax?.() ?? 1000,
+  transport.on('message', ({ event, ack }: { event: SlackMessage; ack: () => Promise<void> }) => intake(event, ack, o.hub, hear))
+  if (socket) keepSocketUp(socket, { dir: o.dir, name: o.name, gap: () => o.hub.channelGap?.(), notifyOwner: k.notifyOwner })
+  else transport.on('connected', () => writeSlackStatus(o, 'connected'))
+  transport.on('connected', () => o.hub.channelCatchUp?.(channelHistory(a => o.user.conversations.history(a), o.catchUpMax?.() ?? 1000,
     (m, channel) => { const x = { ...(m as object), channel } as SlackMessage; return isChannelPost(k, x) ? [postOf(k, x)] : [] })))
-  return { socket, hear }
+  return { transport, hear }
 }
 
 const quoted = (k: Slack, m: SlackMessage, text?: string) =>

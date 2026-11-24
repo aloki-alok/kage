@@ -1,5 +1,6 @@
 import { WebClient } from '@slack/web-api'
 import { checkSettings } from '../core/config.ts'
+import { SLACK_PORT, slackTransport } from '../core/slack-transport.ts'
 import { envFilePath, readSettings } from '../runtime/config-files.ts'
 import { log, logger } from '../runtime/log.ts'
 import { noteExit } from '../runtime/hub-log.ts'
@@ -27,6 +28,7 @@ export function load() {
     TRUSTED_PEOPLE,
     TEAMMATE_EMAILS,
     TRUSTED_APPS,
+    slackHttp: slackTransport(settings) === 'http' ? { secret: settings.secrets.slack!.signing!, port: SLACK_PORT } : undefined,
     bot: new WebClient(settings.secrets.slack!.bot!, { logger }),
     user: new WebClient(settings.secrets.slack!.user!, { logger }),
   }

@@ -30,3 +30,4 @@ Status, Decision, How it is checked. The Decision states the architecture as it 
 | [0020](0020-a-meta-bot-only-writes-text.md) | A Meta bot only writes text, and strangers never reach Kage | Accepted |
 | [0021](0021-session-lifecycle-follows-claude-code.md) | A session's process lifecycle follows what Claude Code does (measured) | Accepted |
 | [0022](0022-owner-stand-ins-are-read-only.md) | A stand-in that speaks as the owner is read-only and fails closed | Accepted |
+| [0023](0023-slack-reaches-kage-by-socket-or-http.md) | Slack reaches Kage by Socket Mode or by HTTP, and both feed one intake | Accepted |
