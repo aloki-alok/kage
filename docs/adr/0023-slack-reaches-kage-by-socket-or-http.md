@@ -11,6 +11,7 @@ Status: Accepted. Replaces the Socket Mode line in ADR 0002.
 - Over HTTP, the 200 goes out at the ack, and the work runs after it, so Slack never waits 3 seconds. A listener that fails before its ack gets 500, so Slack sends the event again. (`src/connectors/slack/http.ts`)
 - A message Slack sends twice, by a retry or by both transports, makes one task: the inbox row keyed on its channel and `ts` is written before the ack, and the second write finds it. (`src/connectors/slack/connect.ts`, `src/runtime/store.ts`)
 - The catch-up read of watched channels runs each time the transport says it is connected: at each socket connect, and once at hub start over HTTP. (`src/connectors/slack/connect.ts`)
+- The HTTP route listens on 127.0.0.1:8796 only. Unlike other connectors, a taken port stops the hub at start, the same as a Socket Mode start that cannot reach Slack, because Slack is the hub's way in. (`src/hub/router.ts`)
 
 ## How it is checked
 
