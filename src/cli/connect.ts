@@ -5,6 +5,8 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { addBrowserAgainLines, addBrowserLines, addBrowserPlan, extensionId, HOST, hostBrowsers, hostManifest } from '../core/browser-pair.ts'
 import { choiceAsk, connectAsks, connectLines, connectorStates, connectorStep, OFF_NOTES, type Ask, type ConnectorName } from '../core/connect.ts'
 import { typeLines } from '../core/secret-prompt.ts'
+import { smsCheck } from '../connectors/sms-send.ts'
+import { smsProvider } from '../core/sms.ts'
 import { createInterface } from 'node:readline/promises'
 import { readSettings, setKey, updateConfig, updateSecrets } from '../runtime/config-files.ts'
 import type { Config } from '../core/config.ts'
@@ -45,6 +47,7 @@ const turned = (c: Config): Config => {
 }
 if (off) { change(() => updateConfig(ENV_FILE, turned)); quit(`${n} is off. ${OFF_NOTES[n] ?? ''}`.trim()) }
 let filled = false
+let checked: Awaited<ReturnType<typeof smsCheck>> = 'ok'
 const settle = () => {
   const now = readSettings(ENV_FILE)
   const after = switched ? connectorStates({ ...now, config: turned(now.config) })[n] : state()[n]
@@ -79,8 +82,31 @@ async function ask(asks: Ask[]) {
       if (!value) quit(`Stopped. ${n} ${connectorStep(n, settle())}`)
       const problem = a.check?.(value)
       if (problem) { console.log(problem); continue }
+      const verdict = a.key === 'twilioAuthToken' || a.key === 'telnyxApiKey' ? await checkSms(value) : 'ok'
+      if (verdict === 'auth') { console.log('The provider refused that key. Paste it again.'); continue }
       try { if (a.kind === 'secret') updateSecrets(ENV_FILE, s => secretAt(s, a.key, value)); else setKey(ENV_FILE, a.key, value); break } catch (e) { console.log((e as Error).message.replace(/^config\.json: /, '')) }
     }
+    if (a.key === 'twilioAuthToken' || a.key === 'telnyxApiKey') await fixNumber()
+  }
+}
+
+async function checkSms(token: string) {
+  const sms = readSettings(ENV_FILE).config.connectors?.sms ?? {}
+  checked = await smsCheck({ provider: smsProvider(sms), accountSid: sms.accountSid ?? undefined, token, from: sms.from ?? '' })
+  if (checked === 'offline') console.log('Kage could not reach the provider to check the key, so it saved it unchecked.')
+  return checked
+}
+
+async function fixNumber() {
+  while (checked === 'number') {
+    const from = readSettings(ENV_FILE).config.connectors?.sms?.from
+    const again = await line(`${from} is not a number on this account, so Kage cannot text from it. The number Kage texts from: `)
+    if (!again) quit(`Stopped. Run kage connect sms again once the number is on the account.`)
+    const problem = connectAsks(['connectors.sms.from'])[0]!.check!(again)
+    if (problem) { console.log(problem); continue }
+    change(() => setKey(ENV_FILE, 'connectors.sms.from', again))
+    const s = readSettings(ENV_FILE)
+    await checkSms((smsProvider(s.config.connectors?.sms) === 'twilio' ? s.secrets.twilioAuthToken : s.secrets.telnyxApiKey) ?? '')
   }
 }
 
