@@ -101,7 +101,17 @@ Only an owner-only Slack thread gets a relay token (`KAGE_SSM_TOKEN`), the socke
 
 The hub then runs the real `session-manager-plugin` outside the sandbox with exactly those arguments, and passes the bytes both ways. It runs only a `StartSession` call whose stream URL is `wss://ssmmessages.<region>.amazonaws.com` (or the `.com.cn` host) and whose endpoint is `https://ssm.<region>.amazonaws.com`. It allows 8 relays at once. It logs the region, the instance id and the exit of each, never the token, the stream URL or the traffic. The hub finds the real plugin once at start in its own PATH, so install it where the hub's PATH sees it. `kage doctor` notes when it is missing. The stand-in needs `node` on the session's PATH.
 
-A thread that a teammate asked for work (a schedule a teammate set up, for example) is not owner-only, so it gets no token. To let one such thread use the relay, run `kage relay allow <place or key>` in your own terminal. `kage relay deny <same>` removes it and cuts its live token, and `kage relay list` shows the keys. The list holds thread keys. A listed thread's scheduled jobs, which run in their own job lanes, use the relay too. A kagelet, any other lane of the thread and every non-Slack session stay refused. The hub checks the list again on every connection. A session that is already running keeps its old env: it gets the token at its next start.
+A database read needs no relay: name the database in `dbRead.routes` and every session reads it through the hub. A thread that a teammate asked for work (a schedule a teammate set up, for example) is not owner-only, so it gets no token. To let one such thread use the relay, run `kage relay allow <place or key>` in your own terminal. `kage relay deny <same>` removes it and cuts its live token, and `kage relay list` shows the keys. The list holds thread keys. A listed thread's scheduled jobs, which run in their own job lanes, use the relay too. A kagelet, any other lane of the thread and every non-Slack session stay refused. The hub checks the list again on every connection. A session that is already running keeps its old env: it gets the token at its next start.
+
+## Database reads for every session
+
+To let every session read a database, name it in `config.json` under `dbRead.routes`, with your read command as its value:
+
+```json
+{ "dbRead": { "routes": { "prod": "/path/to/prod-read" }, "maxRows": 200 } }
+```
+
+Each command is like `kagelets.dbRead.command`: a script that runs one query in a read-only transaction and prints the rows, with the query as its last argument. With a route set, every Slack task gets `db_read` with a `db` argument, a teammate's included, with no card and no ask. The hub runs the command itself, so a sandboxed teammate thread reads with no SSM relay. The checks are the same as for a kagelet: one read statement, at most `dbRead.maxRows` rows (default 200), and 30 s. Each read writes one `db-reads` line with the route and the thread, never the query or the rows. A task from a listed agent reads only when that agent has an owner in `people.agents`. Only you set the routes: a session's change needs your yes on a card. A route reads everything its command can, so name only databases every teammate may see.
 
 ## Keys that stay out of sessions
 

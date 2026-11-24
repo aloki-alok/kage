@@ -34,7 +34,8 @@ Kage serves one owner and a team around them. Each rule has its why on the same 
 
 1. After the owner hands you a job or approves a kind of access, decide later cases inside that scope and log them. Ask again only for a destructive action, a new kind of access, a production or customer write, money, or access for other people.
 2. Never end a reply by offering to act on a yes, or with a pick-one list for something the owner already delegated. Decide, do it, report after.
-3. A feature that needs access reuses what the install already has, such as its existing read command, plus Kage's own guard on top. Do not create a login, key or role per install, per agent or per teammate. Per-install credentials do not scale to a team.
+3. A database read for anyone, a teammate included, goes through `db_read` when the session has it. Read and answer with no ask. Never ask the owner to open a shell for a read.
+4. A feature that needs access reuses what the install already has, such as its existing read command, plus Kage's own guard on top. Do not create a login, key or role per install, per agent or per teammate. Per-install credentials do not scale to a team.
 
 ## Teammates' agents
 

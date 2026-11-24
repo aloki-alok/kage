@@ -68,6 +68,7 @@ export const Config = z.preprocess(foldOldPeople, z.strictObject({
   sessionKeys: z.record(z.string().regex(/^[A-Z][A-Z0-9_]*$/), z.strictObject({
     host: z.string().regex(/^[a-z0-9]([a-z0-9.-]*[a-z0-9])?$/), header: z.string().regex(/^[A-Za-z][A-Za-z0-9-]*$/).optional(), prefix: z.string().optional(),
   })).optional(),
+  dbRead: z.strictObject({ routes: z.record(z.string().regex(/^[a-z][a-z0-9-]{0,30}$/), z.string().min(1)).optional(), maxRows: count }).optional(),
   autoUpdate: yes,
   askOtherAgents: yes,
   sharedTools: strings,

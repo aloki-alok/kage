@@ -23,6 +23,7 @@ import { slackPlain } from '../core/outbound.ts'
 import { slackTools } from './tools/slack-tools.ts'
 import { scheduleTools } from './tools/schedule-tools.ts'
 import { kageletTools } from './tools/kagelet-tools.ts'
+import { dbReadTools } from './tools/db-read-tools.ts'
 import { ownerTools } from './tools/owner-tools.ts'
 import { dreamTools } from './tools/dream-tools.ts'
 import { reportTools, type SessionReport } from './tools/report-tools.ts'
@@ -106,6 +107,7 @@ type SessionOptions = {
   report?: SessionReport
   kageletMemory?: ReturnType<typeof kageletMemory>
   dbRead?: { command: () => string | undefined; maxRows: number; timeoutMs?: number }
+  dbRoutes?: { routes: () => Record<string, string>; maxRows: number }
   kagelets?: { list(): string; manage(a: Manage, ask?: AskOwner): Promise<string> }
   settings?: { set(key: string, value: unknown): void }
   approve?: (tool: string, description: string, input: Record<string, unknown>) => Promise<boolean>
@@ -151,7 +153,7 @@ export function sessionTools(o: SessionOptions) {
   }
   const ownerRead = (a: Record<string, unknown>) => ownerOnly(a) && !agents.get(`${a.channel}:${a.thread_ts}`)
   const reads = o.kagelet || o.dreaming ? [] : slackReadTools(user, ownerRead)
-  const tools = [...slackTools(c), ...scheduleTools(c), ...kageletTools(c), ...ownerTools(c), ...smsTools(c), ...browserTools(c), ...screenTools(c), ...dreamTools(c), ...reportTools(c), ...reads]
+  const tools = [...slackTools(c), ...scheduleTools(c), ...kageletTools(c), ...dbReadTools(c), ...ownerTools(c), ...smsTools(c), ...browserTools(c), ...screenTools(c), ...dreamTools(c), ...reportTools(c), ...reads]
   return {
     tools,
     instructions: instructions(Title, o.memory, !!o.browser, o.kagelet ? { kagelet: o.kagelet } : o.dreaming ? { dreaming: o.dreaming } : undefined),

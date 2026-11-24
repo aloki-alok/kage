@@ -71,5 +71,5 @@ Each slice ships with its tests, red first, and a local stress run before it rea
 - A yes is spent by the one retry of the same call, and an open card keeps the step the owner's. The reviewer slot is taken before the call. (`src/runtime/deferred-approvals.ts`, `src/runtime/sdk-sessions.ts`, `src/runtime/kagelets/review.ts`)
 - A card for a lane is capped (`OPEN_PER_KEY`), so a looping kagelet cannot flood the owner's DM. (`src/runtime/deferred-approvals.ts`)
 - A measure Kage wrote runs only after the owner's yes on that exact command. A changed script stops it. A new command starts a new trend. (`src/runtime/kagelets/measures.ts`)
-- `db_read` passes the query as `$1`, never in the command line. Its statement check is the second wall, and fails closed on anything read two ways. (`src/runtime/tools/kagelet-tools.ts`, `src/core/db-read.ts`)
+- `db_read` passes the query as `$1`, never in the command line. Its statement check is the second wall, and fails closed on anything read two ways. (`src/runtime/tools/db-read-tools.ts`, `src/core/db-read.ts`)
 - A cost-capped kagelet stays paused past midnight. Only a person resumes it. (`src/runtime/kagelets/cost-cap.ts`)
