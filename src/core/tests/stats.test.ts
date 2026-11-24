@@ -54,8 +54,8 @@ test('tokens per turn: the total, the share read from cache, and each kind of th
 test('spend by model over turns that named one, and no line when none did (#283)', () => {
   const t = (model?: string) => ({ input: 1, cacheWrite: 0, cacheRead: 0, output: 1, who: 'kagelet', ...model && { model } })
   const costs = [
-    { at: now - 1000, key: 'C0TEST1:1.1', usd: 1.5, tokens: t('claude-opus-x') },
     { at: now - 2000, key: 'C0TEST1:1.1', usd: 0.25, tokens: t('claude-haiku-x') },
+    { at: now - 1000, key: 'C0TEST1:1.1', usd: 1.5, tokens: t('claude-opus-x') },
     { at: now - 3000, key: 'C0TEST1:1.1', usd: 0.25, tokens: t('claude-haiku-x') },
     { at: now - 4000, key: 'C0TEST1:1.1', usd: 9, tokens: t() },
   ]

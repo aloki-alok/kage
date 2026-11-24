@@ -10,7 +10,7 @@ import { denyAll, senderNow } from './sdk-permissions.ts'
 import type { Hub, Session } from './sdk-sessions.ts'
 
 export type Live = {
-  key: string; s: Session; q: Query; inbox: Inbox; full: boolean; resumed: boolean
+  key: string; s: Session; q: Query; inbox: Inbox; full: boolean; resumed: boolean; spent?: Record<string, number>
   sawState: boolean; unseen: boolean
   send: (m: ToSession) => void; connect: () => void; reopen: (carried: SDKUserMessage[]) => void
 }
@@ -76,14 +76,18 @@ function onLimit(t: Turn, m: SDKMessage) {
   }
 }
 
-const mainModel = (used: Record<string, { costUSD: number }> | undefined) => {
-  const [top] = Object.entries(used ?? {}).sort((a, b) => b[1].costUSD - a[1].costUSD)
+function turnModel(live: Live, used: Record<string, { costUSD: number }> | undefined) {
+  if (!used) return {}
+  const before = live.spent
+  live.spent = Object.fromEntries(Object.entries(used).map(([m, u]) => [m, u.costUSD]))
+  if (!before && live.resumed) return {}
+  const [top] = Object.entries(live.spent).map(([m, usd]) => [m, usd - (before?.[m] ?? 0)] as const).filter(([, grew]) => grew > 0).sort((a, b) => b[1] - a[1])
   return top ? { model: top[0] } : {}
 }
 
 function onResult({ o }: Hub, live: Live, t: Turn, m: Extract<SDKMessage, { type: 'result' }>) {
   const { key, s } = live
-  o.onResult?.(key, m.total_cost_usd, live.resumed, !!t.limit, m.is_error ? m.subtype : undefined, m.usage && { input: m.usage.input_tokens, cacheWrite: m.usage.cache_creation_input_tokens ?? 0, cacheRead: m.usage.cache_read_input_tokens ?? 0, output: m.usage.output_tokens, who: threadKind(key, senderNow(o, s)), ...mainModel(m.modelUsage) })
+  o.onResult?.(key, m.total_cost_usd, live.resumed, !!t.limit, m.is_error ? m.subtype : undefined, m.usage && { input: m.usage.input_tokens, cacheWrite: m.usage.cache_creation_input_tokens ?? 0, cacheRead: m.usage.cache_read_input_tokens ?? 0, output: m.usage.output_tokens, who: threadKind(key, senderNow(o, s)), ...turnModel(live, m.modelUsage) })
   if (t.limit) {
     const tasks = s.turn.map(x => x.task)
     s.turn = []
