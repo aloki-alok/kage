@@ -13,11 +13,12 @@ import { whatsapp } from './whatsapp.ts'
 import { leftovers } from './leftovers.ts'
 import { tunnel } from './tunnel.ts'
 import { connect } from './connect.ts'
+import { runners } from './runners.ts'
 
 const skip = process.argv.find(a => a.startsWith('--skip='))?.slice(7).split(',') ?? []
 const check = async () => {
   const lines: Line[] = []
-  for (const [group, run] of Object.entries({ setup, session, service, slack, update, connect, browser, whatsapp, tunnel, path, scopes, leftovers }).filter(([g]) => !skip.includes(g))) {
+  for (const [group, run] of Object.entries({ setup, session, service, slack, update, connect, browser, whatsapp, tunnel, path, scopes, runners, leftovers }).filter(([g]) => !skip.includes(g))) {
     try { lines.push(...await run()) } catch (e) { lines.push({ kind: 'fail', text: `${group}: the check did not run (${(e as Error).message})` }) }
   }
   return lines

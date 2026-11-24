@@ -152,3 +152,17 @@ export function doctorBug(line: string): IssueReport | undefined {
     : undefined
   return r && scrubReport(r, [])
 }
+
+const byModel = (jobs: { model?: string }[]) => {
+  const n = new Map<string, number>()
+  for (const j of jobs) n.set(j.model ?? 'default', (n.get(j.model ?? 'default') ?? 0) + 1)
+  return [...n].sort((a, b) => b[1] - a[1]).map(([m, c]) => `${m} ${c}`).join(', ')
+}
+
+export function runnerLines(f: { opencode: boolean; jobs: { model?: string }[]; kagelets: { model?: string }[] }): Line[] {
+  return [
+    ok(`runners: claude (every job runs on it). opencode ${f.opencode ? 'is installed, and no job uses it yet' : 'is not installed'}`),
+    ...f.jobs.length ? [ok(`scheduled jobs by model: ${byModel(f.jobs)}`)] : [],
+    ...f.kagelets.length ? [ok(`kagelets by model: ${byModel(f.kagelets)}`)] : [],
+  ]
+}
