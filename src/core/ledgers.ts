@@ -90,15 +90,16 @@ export const costRows = (tsv: string) => tsv.split('\n').filter(Boolean).map(l =
   return { at: Date.parse(when), key, usd: Number(usd), total: Number(total), tokens }
 }).filter(r => r.key && Number.isFinite(r.usd))
 export const lastTotals = (tsv: string) => new Map(costRows(tsv).map(r => [r.key, r.total]))
-export function spendSince(tsv: string, since: number): { key: string; usd: number; turns: number }[] {
-  const by = new Map<string, { key: string; usd: number; turns: number }>()
+export function spendSince(tsv: string, since: number): { key: string; usd: number; turns: number; models: string[] }[] {
+  const by = new Map<string, { key: string; usd: number; turns: number; spent: Map<string, number> }>()
   for (const r of costRows(tsv)) {
     if (!(r.at >= since)) continue
-    const k = by.get(r.key) ?? by.set(r.key, { key: r.key, usd: 0, turns: 0 }).get(r.key)!
+    const k = by.get(r.key) ?? by.set(r.key, { key: r.key, usd: 0, turns: 0, spent: new Map() }).get(r.key)!
     k.usd = Math.round((k.usd + r.usd) * 1e6) / 1e6
     k.turns++
+    if (r.tokens?.model) k.spent.set(r.tokens.model, (k.spent.get(r.tokens.model) ?? 0) + r.usd)
   }
-  return [...by.values()].sort((a, b) => b.usd - a.usd)
+  return [...by.values()].sort((a, b) => b.usd - a.usd).map(({ spent, ...k }) => ({ ...k, models: [...spent].sort((a, b) => b[1] - a[1]).map(([m]) => m) }))
 }
 
 export function dailyAverage(tsv: string, midnight: number, days = 7): number | undefined {
