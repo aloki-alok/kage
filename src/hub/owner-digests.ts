@@ -24,6 +24,8 @@ export function ownerDigests(o: { dir: string; ledgers: Ledgers; store: Store; p
       const parts = [...list('Still waiting on you', stale), ...list(`Dropped after ${hours} h. Reply in its thread if one still matters`, expired), ...noCard ? [noCard] : [], ...released ? [released] : []]
       const sent = !parts.length || await o.notify(parts.join('\n\n'))
       if (!sent) return
+      const held = [stale.length && `${stale.length} waiting`, expired.length && `${expired.length} dropped`, noCard && 'grants', released && 'held releases'].filter(Boolean).join(', ')
+      o.ledgers.event({ kind: 'daily-note', who: 'hub', trace: '', detail: `${today} ${parts.length ? `sent: ${held}` : 'nothing to say'}` })
       const still = new Set(expiredWaiting(o.ledgers.text('waiting'), now, hours * 3600_000).map(i => i.thread))
       for (const thread of gone) if (still.has(thread)) o.ledgers.add('waiting', ['expired', thread, '', ''])
       writeFileSync(DAILY, today, { mode: 0o600 })
