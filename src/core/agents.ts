@@ -27,7 +27,7 @@ export const mentionedIds = (text: string) => [...text.matchAll(/<@([UW][A-Z0-9]
 export const foreignAgentRefusal = (text: string, foreign: readonly string[], answering: readonly (string | undefined)[] = []) => {
   const ids = mentionedIds(text)
   const asked = foreign.filter(tag => !answering.includes(tag) && ids.includes(tag))
-  return asked.length ? `not sent: ${asked.map(t => `<@${t}>`).join(', ')} is another person's agent, and asking it for work is off (kage set askOtherAgents true turns it on). If you cannot do the task, tell your owner instead.` : undefined
+  return asked.length ? `not sent: ${asked.map(t => `<@${t}>`).join(', ')} is another person's agent, and asking it for work is off (kage config set askOtherAgents true turns it on). If you cannot do the task, tell your owner instead.` : undefined
 }
 
 export function agentRoster(apps: string[], foreign: readonly string[] = []): string | undefined {

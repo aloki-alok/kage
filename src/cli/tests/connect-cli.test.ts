@@ -25,8 +25,8 @@ test('kage connect lists every connector with its state and the one step left', 
   const r = w.run([])
   assert.equal(r.code, 0)
   assert.match(r.out, /^on {5}browser\s*$/m)
-  assert.match(r.out, /^off {4}voice {5}run kage connect voice to turn it back on$/m)
-  assert.match(r.out, /^unset {2}github {4}run kage connect github$/m)
+  assert.match(r.out, /^off {4}voice {5}run kage connector on voice to turn it back on$/m)
+  assert.match(r.out, /^unset {2}github {4}run kage connector on github$/m)
 })
 
 test('off turns a connector off and names what stays outside Kage, and connect turns it back on', () => {
@@ -46,7 +46,7 @@ test('a connector that still needs settings says which, and changes nothing', ()
   const w = world({ connectors: { email: { address: 'k@x.io' } } })
   const r = w.run(['email'])
   assert.equal(r.code, 1)
-  assert.match(r.out, /email needs connectors\.email\.queue and connectors\.email\.ownerEmail: run kage connect email in a terminal to be asked/)
+  assert.match(r.out, /email needs connectors\.email\.queue and connectors\.email\.ownerEmail: run kage connector on email in a terminal to be asked/)
   assert.deepEqual(w.read('config').connectors.email, { address: 'k@x.io' })
 })
 

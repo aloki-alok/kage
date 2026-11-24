@@ -22,7 +22,7 @@ function setup(o: { notifyFails?: boolean; probesOn?: boolean } = {}) {
   return { store, dms, looks, w, tick, set: (s: string) => { seen = dialer(s) }, fails: (f: boolean) => { fails = f }, breakPlace: (b: boolean) => { broken = b } }
 }
 
-test('present, missing, then back: one DM on the miss, one when it is back, and kage schedules sees the miss', async () => {
+test('present, missing, then back: one DM on the miss, one when it is back, and kage schedule list sees the miss', async () => {
   const t = setup()
   await t.tick(60_000)
   assert.deepEqual(t.dms, [])

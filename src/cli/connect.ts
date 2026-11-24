@@ -25,7 +25,7 @@ const state = () => connectorStates(readSettings(ENV_FILE))
 const change = (write: () => void) => { try { write() } catch (e) { die((e as Error).message) } }
 
 if (!name) { console.log(connectLines(state()).join('\n')); process.exit(0) }
-if (!NAMES.includes(name as ConnectorName)) die(`kage connect takes github, browser, email, voice, whatsapp, meeting or sms, not ${name}.`)
+if (!NAMES.includes(name as ConnectorName)) die(`kage connector on takes github, browser, email, voice, whatsapp, meeting or sms, not ${name}.`)
 const n = name as ConnectorName
 const off = args[0] === 'off'
 
@@ -109,7 +109,7 @@ async function fixNumber() {
   while (checked === 'number') {
     const from = readSettings(ENV_FILE).config.connectors?.sms?.from
     const again = await line(`${from} is not a number on this account, so Kage cannot text from it. The number Kage texts from: `)
-    if (!again) quit(`Stopped. Run kage connect sms again once the number is on the account.`)
+    if (!again) quit(`Stopped. Run kage connector on sms again once the number is on the account.`)
     const problem = connectAsks(['connectors.sms.from'])[0]!.check!(again)
     if (problem) { console.log(problem); continue }
     change(() => setKey(ENV_FILE, 'connectors.sms.from', again))
@@ -171,7 +171,7 @@ function pairBrowser(): never {
 async function connectGithub(): Promise<never> {
   const s = readSettings(ENV_FILE), gh = s.config.connectors?.github ?? {}
   const at = args.indexOf('--org'), org = at >= 0 ? args[at + 1] : undefined
-  if (at >= 0 && !/^[\w-]+$/.test(org ?? '')) die('Usage: kage connect github --org <org name>')
+  if (at >= 0 && !/^[\w-]+$/.test(org ?? '')) die('Usage: kage connector on github --org <org name>')
   const github = (g: NonNullable<NonNullable<Config['connectors']>['github']>) => change(() => updateConfig(ENV_FILE, c => ({ ...c, connectors: { ...c.connectors, github: g } })))
   const install = (slug: string) => `https://github.com/apps/${slug}/installations/new`
   if (off) {
@@ -193,7 +193,7 @@ async function connectGithub(): Promise<never> {
     quit(`github is on as @${gh.app.slug} for ${accounts.join(', ')}. Install it where people should tag it: ${install(gh.app.slug)}`)
   }
   const bin = tailscaleBin(), ts = bin ? tailscaleState(bin) : undefined, host = ts?.dns?.replace(/\.$/, '')
-  if (!ts?.running || !ts.funnel || !host) die('GitHub needs a public address for the app. Run kage tunnel on, allow Funnel when it asks, then run kage connect github again.')
+  if (!ts?.running || !ts.funnel || !host) die('GitHub needs a public address for the app. Run kage tunnel on, allow Funnel when it asks, then run kage connector on github again.')
   const { login, userId: known } = owner(!!org)
   console.log('Opening GitHub. Click Create GitHub App there, and Kage takes it from here.')
   const app = await createApp({ login, org, hook: `https://${host}:8443/github`, open: browse }).catch((e: Error) => die(e.message))

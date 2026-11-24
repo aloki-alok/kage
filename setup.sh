@@ -58,10 +58,11 @@ Watch|thread attach|[place or link]|Take a thread into this terminal, by its pla
 Watch|thread send|<place> <message>|Tell a thread something as you; its session takes it after the current turn|kage thread send support use the staging db
 Watch|thread stop|<thread> [--now]|End one thread session (link, place or key) once its turn ends, or now with --now|kage thread stop support
 Watch|kagelet list||Every kagelet Kage manages: schedule, last and next run, cost today|kage kagelet list
+Watch|kagelet add|<name>|Write a paused starter file for a new kagelet, to fill in and start|kage kagelet add triage
 Watch|kagelet logs|<kagelet>|Its last runs, newest first, with cost, ok or failed, and its report|kage kagelet logs triage
 Watch|kagelet start|<kagelet>|Run a kagelet again after kage kagelet stop|kage kagelet start triage
 Watch|kagelet stop|<kagelet>|Pause a kagelet and keep its file|kage kagelet stop triage
-People|person add|<person>, <app id> <owner> or kagelet <name>|Let a person tag Kage (a mention, member id, email, name or @handle), or an agent with the person or agent it answers to. kagelet <name> writes a paused starter file for a kagelet|kage person add priya
+People|person add|<person> or <app id> <owner>|Let a person tag Kage (a mention, member id, email, name or @handle), or an agent with the person or agent it answers to|kage person add priya
 People|person rm|<person or app id>|Take a person or an agent off the list; whoever answers to them goes too|kage person rm priya
 People|person list||Who may tag Kage besides you: each person, with their agents under them|kage person list
 People|relay|allow <place or key>, deny <same> or list|Let one thread use the SSM relay (ssh to hosts behind AWS SSM) though a teammate asked for its work. list shows who may|kage relay allow prod-monitor
@@ -409,6 +410,7 @@ case "${1:-}" in
     esac ;;
   kagelet) case "${2:-}" in
       list) node src/cli/registry.ts list --kagelets ;;
+      add) [[ $# -eq 3 ]] || usage "kage kagelet add takes one kagelet name."; node src/cli/registry.ts add kagelet "$3" ;;
       logs) [[ $# -eq 3 ]] || usage "kage kagelet logs takes one kagelet name."; node src/cli/kagelet-logs.ts "$3" ;;
       start) [[ $# -eq 3 ]] || usage "kage kagelet start takes one kagelet name."; node src/cli/stop.ts --resume "$3" ;;
       stop) [[ $# -eq 3 ]] || usage "kage kagelet stop takes one kagelet name."; node src/cli/stop.ts --kagelet "$3" ;;

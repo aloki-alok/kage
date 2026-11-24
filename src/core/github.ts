@@ -40,9 +40,9 @@ export function installedOn(installations: { id: number; account?: { login?: str
 
 export function githubOwner(o: { login?: string; userId?: number; me?: { login: string; id: number }; needId: boolean }): { login: string; userId?: number } | { error: string } {
   const login = o.login ?? o.me?.login
-  if (!login) return { error: 'Run gh auth login, or kage set connectors.github.login <your GitHub username>, then run kage connect github again.' }
+  if (!login) return { error: 'Run gh auth login, or kage config set connectors.github.login <your GitHub username>, then run kage connector on github again.' }
   const userId = o.userId ?? (o.me?.login.toLowerCase() === login.toLowerCase() ? o.me.id : undefined)
-  if (o.needId && userId === undefined) return { error: `Run gh auth login as ${login}, so Kage can save your GitHub user id, then run kage connect github again.` }
+  if (o.needId && userId === undefined) return { error: `Run gh auth login as ${login}, so Kage can save your GitHub user id, then run kage connector on github again.` }
   return { login, ...(userId !== undefined && { userId }) }
 }
 

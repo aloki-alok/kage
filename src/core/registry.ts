@@ -41,7 +41,7 @@ export function add(entries: Entry[], e: Entry): { entries: Entry[]; added: Entr
   const ownerIsPerson = kindOf(owner) === 'person'
   const newOwner: Entry[] = ownerIsPerson && !entries.some(x => x.id === owner) ? [{ kind: 'person', id: owner }] : []
   if (!ownerIsPerson && !entries.some(x => x.id === owner)) return { error: `the owner ${owner} is not listed. Add it first.` }
-  if (!ownerIsPerson && owner !== had?.id && !ownerPerson(entries, owner)) return { error: `the owner ${owner} has no owner itself. Tie it to its owner first: kage add ${owner} <its owner>` }
+  if (!ownerIsPerson && owner !== had?.id && !ownerPerson(entries, owner)) return { error: `the owner ${owner} has no owner itself. Tie it to its owner first: kage person add ${owner} <its owner>` }
   const people = [...entries.filter(x => x.kind === 'person'), ...newOwner]
   const agents = had ? entries.filter(x => x.kind === 'agent').map(x => (x.id === e.id ? agent : x)) : [...entries.filter(x => x.kind === 'agent'), agent]
   const next = [...people, ...agents]

@@ -78,7 +78,7 @@ test('a callback with the wrong state is refused and trades nothing, and the rea
 })
 
 test('no click within the wait ends with an error that says what to do', async () => {
-  await assert.rejects(createApp({ login: 'ryu-dev', hook: 'https://h/github', open: () => {}, fetch: github().fetch, waitMs: 50 }), /Run kage connect github again/)
+  await assert.rejects(createApp({ login: 'ryu-dev', hook: 'https://h/github', open: () => {}, fetch: github().fetch, waitMs: 50 }), /Run kage connector on github again/)
 })
 
 test('the one-time code is traded once, so a second click while the first is in flight cannot throw the new app away', async () => {

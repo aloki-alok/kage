@@ -42,7 +42,7 @@ export function startJobEvents(o: {
   void hooks?.listening.then(port => log(`job webhooks on: ${host}:${port}/hook/<job id>`), e => log('job webhooks could not listen', e))
   const facade = {
     add(key: string, j: Parameters<typeof o.schedules.add>[1], now: number): string | undefined {
-      const no = off && j.trigger ? 'tripwires are off: run `kage set tripwires.on true` first' : ev.refuse(j.trigger)
+      const no = off && j.trigger ? 'tripwires are off: run `kage config set tripwires.on true` first' : ev.refuse(j.trigger)
       if (no) return no
       const refused = o.schedules.add(key, j, now)
       if (!refused) ev.started(j.id, j.trigger)

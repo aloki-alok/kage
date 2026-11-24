@@ -46,15 +46,15 @@ export function createApp(o: { login: string; hook: string; org?: string; open: 
       taken = true
       void fetchFn(`https://api.github.com/app-manifests/${encodeURIComponent(code)}/conversions`, { method: 'POST', headers: { Accept: 'application/vnd.github+json' } })
         .then(async r => {
-          if (!r.ok) throw new Error(`GitHub refused to hand over the new app (${r.status}). Run kage connect github again.`)
+          if (!r.ok) throw new Error(`GitHub refused to hand over the new app (${r.status}). Run kage connector on github again.`)
           const a = await r.json() as { id: number; slug: string; pem: string; webhook_secret: string; owner?: { login?: string; id?: number }; html_url: string }
-          if (a.owner?.login?.toLowerCase() !== account.toLowerCase() || !a.owner.id) throw new Error(`GitHub made the app on ${a.owner?.login ?? 'no account'}, not ${account}. Delete it at ${a.html_url}, then run kage connect github again.`)
+          if (a.owner?.login?.toLowerCase() !== account.toLowerCase() || !a.owner.id) throw new Error(`GitHub made the app on ${a.owner?.login ?? 'no account'}, not ${account}. Delete it at ${a.html_url}, then run kage connector on github again.`)
           html(res, 200, donePage({ slug: a.slug, url: a.html_url, hook: o.hook, account }))
           finish(undefined, { id: a.id, slug: a.slug, key: a.pem, secret: a.webhook_secret, ownerId: a.owner.id, url: a.html_url })
         })
-        .catch(e => { html(res, 502, failPage({ title: 'GitHub said no', why: (e as Error).message.replace(/ Run kage connect github again\.$/, '') })); finish(e as Error) })
+        .catch(e => { html(res, 502, failPage({ title: 'GitHub said no', why: (e as Error).message.replace(/ Run kage connector on github again\.$/, '') })); finish(e as Error) })
     })
-    const timer = setTimeout(() => finish(new Error('No app was created on GitHub in time. Run kage connect github again.')), o.waitMs ?? 600_000)
+    const timer = setTimeout(() => finish(new Error('No app was created on GitHub in time. Run kage connector on github again.')), o.waitMs ?? 600_000)
     function finish(e: Error | undefined, app?: App) {
       clearTimeout(timer)
       server.close()

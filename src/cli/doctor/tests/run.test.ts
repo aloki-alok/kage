@@ -19,7 +19,7 @@ test('a fresh install with no boots file runs every check and fails with its fix
   const { dir, status, lines } = doctor()
   assert.equal(status, 1)
   assert.ok(lines.every(l => /^(ok {4}|FAIL {2}|note {2})/.test(l)), lines.join('\n'))
-  assert.ok(lines.includes(`FAIL  tokens: no settings in ${dir}. Run kage app, then kage save`))
+  assert.ok(lines.includes(`FAIL  tokens: no settings in ${dir}. Run kage slack app, then kage slack save`))
   assert.ok(lines.includes('FAIL  not running: kage start'))
   assert.ok(lines.at(-1)!.startsWith('FAIL  not connected to Slack yet') || lines.some(l => l.startsWith('FAIL  not connected to Slack yet')), 'the last checks ran')
   assert.ok(!lines.some(l => l.startsWith('All good')))

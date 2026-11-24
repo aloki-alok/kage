@@ -27,7 +27,7 @@ function print(at: number, place: string, step: Step) {
   console.log(`  ${voice.dim(time(at))}  ${tone === 'work' ? voice.work(text) : tone === 'you' ? voice.needsYou(text) : tone === 'quiet' ? voice.dim(text) : text}`)
 }
 
-if (!existsSync(PROJECT)) console.error(`No transcripts in ${PROJECT}. If the hub runs in another folder, set harness.cwd to it (kage set harness.cwd <folder>).`)
+if (!existsSync(PROJECT)) console.error(`No transcripts in ${PROJECT}. If the hub runs in another folder, set harness.cwd to it (kage config set harness.cwd <folder>).`)
 
 function hubLines(first: boolean) {
   if (!HUB_LOG) return

@@ -6,7 +6,7 @@ import { errVoice } from './voice.ts'
 const { config } = settings()
 const command = config.connectors?.call?.command
 if (!command) {
-  console.error(`Run kage set connectors.call.command '<command that places the call>'. It gets the code in $KAGE_CALL_CODE.`)
+  console.error(`Run kage config set connectors.call.command '<command that places the call>'. It gets the code in $KAGE_CALL_CODE.`)
   process.exit(1)
 }
 const r = await askHub<{ code?: string; refused?: string }>({ type: 'callcode' })

@@ -190,7 +190,7 @@ describe('webhook jobs', () => {
   })
 })
 
-describe('a job trigger in one line, for kage schedules', () => {
+describe('a job trigger in one line, for kage schedule list', () => {
   test('each kind names what wakes the job', () => {
     const probe: Probe = { command: 'check.sh | grep TOTAL=', pins: {}, ignore: [], reads: [], writes: [] }
     assert.equal(triggerLine({ kind: 'probe', probe }), 'probe: check.sh | grep TOTAL=')

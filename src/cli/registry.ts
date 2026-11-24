@@ -18,7 +18,7 @@ if (!['add', 'remove', 'list'].includes(cmd)) die(USAGE)
 if (cmd !== 'list' && process.env.KAGE_CLAUDE) die(`This shell runs inside Kage, and a session cannot change who reaches Kage. The owner runs kage ${cmd} in their own terminal.`)
 if (cmd === 'add' && args[0] === 'kagelet') {
   const name = args[1] ?? ''
-  if (args.length !== 2 || !NAME.test(name)) die('Usage: kage add kagelet <name>, a short lowercase name: letters, digits, dashes')
+  if (args.length !== 2 || !NAME.test(name)) die('Usage: kage kagelet add <name>, a short lowercase name: letters, digits, dashes')
   const file = jobPath(KAGELETS, name)
   if (existsSync(`${KAGELETS}/${name}`)) die(`${KAGELETS}/${name} already exists. Edit its job.md, or pick another name.`)
   try { writeJob(KAGELETS, name, starterFile()) } catch (e) { die((e as Error).message) }
@@ -31,7 +31,7 @@ const now = registryOf(config)
 
 async function slack(method: string, params: Record<string, string>) {
   const token = secrets.slack?.user
-  if (!token) die(`No Slack user token saved in ${DIR}. Run kage save first.`)
+  if (!token) die(`No Slack user token saved in ${DIR}. Run kage slack save first.`)
   const r = await fetch(`https://slack.com/api/${method}?${new URLSearchParams(params)}`, { headers: { Authorization: `Bearer ${token}` } })
   return await r.json() as { ok: boolean; error?: string } & Record<string, any>
 }
@@ -119,7 +119,7 @@ if (cmd === 'list') {
   if (first.name) names.set(first.id, first.name)
   let entry: Entry
   if (first.kind === 'agent') {
-    if (args.length < 2) die(`${label(first)} is an agent, and an agent answers to one owner. Run: kage add ${first.id} <its owner: a person, or a listed agent's app id>`)
+    if (args.length < 2) die(`${label(first)} is an agent, and an agent answers to one owner. Run: kage person add ${first.id} <its owner: a person, or a listed agent's app id>`)
     const owner = await who(args.slice(1).join(' '))
     if (owner.name) names.set(owner.id, owner.name)
     entry = { kind: 'agent', id: first.id, owner: owner.id, ...(first.tag && { tag: first.tag }) }

@@ -6,7 +6,7 @@ The bot joins a Google Meet in its own Chromium. It posts one chat line saying i
 
 ## Run it
 
-1. On the hub's machine, set the meeting token: `kage set` does not take tokens, so add `"meetingToken": "<a long random string>"` to `~/.config/kage/secrets.json`, then run `kage restart`.
+1. On the hub's machine, set the meeting token: `kage config set` does not take tokens, so add `"meetingToken": "<a long random string>"` to `~/.config/kage/secrets.json`, then run `kage restart`.
 2. Let the bot's machine reach the hub's meeting port. The hub listens on 127.0.0.1 only. With Tailscale on both machines, run this on the hub's machine:
    ```sh
    kage tunnel on

@@ -20,7 +20,7 @@ export const ownerLines = {
   afkReplied: (urgency: string, who: string, where: string, note: string, reply: string) => `${urgency === 'p0' || urgency === 'high' ? ':exclamation: ' : ''}Replied to ${who} in ${where}: ${note}\n> ${reply.replace(/\n/g, '\n> ')}`,
   agentLoopStopped: (agent: string, place: string, loop: string) => `I stopped answering agent \`${agent}\` in ${place}: ${loop}. Its posts are dropped while it is over the limit. A thread over the limit opens again when a person writes in it.`,
   slackDown: () => 'Slack has not reconnected for 6 minutes, so I may miss tags. I keep retrying. If it lasts, run `kage logs` on the Mac.',
-  eventJobsPaused: (n: number) => `${n} event job${n === 1 ? ' is' : 's are'} paused because tripwires are off. Run \`kage set tripwires.on true\` to turn ${n === 1 ? 'it' : 'them'} back on.`,
+  eventJobsPaused: (n: number) => `${n} event job${n === 1 ? ' is' : 's are'} paused because tripwires are off. Run \`kage config set tripwires.on true\` to turn ${n === 1 ? 'it' : 'them'} back on.`,
   jobHookOff: (job: string) => `A webhook call for job ${job} could not run: job webhooks are off (tripwires.hookPort is 0, or tripwires.on is false). The call was dropped.`,
   cronImportBad: () => 'Could not read the cron jobs exported from the panes (crons-import.json.bad). Watchers may need setting up again.',
   settingsUnplaced: (unplaced: string) => `Kage moved its settings into config.json. It could not place these old lines, so they sit under "unknown": ${unplaced}. Tell me what each one is for, and I will help place it.`,

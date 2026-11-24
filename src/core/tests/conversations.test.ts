@@ -96,7 +96,7 @@ describe('the session key a pasted Slack link points at', () => {
   })
 })
 
-describe('finding a thread by what you typed, for kage attach, tell and stop', () => {
+describe('finding a thread by what you typed, for kage thread attach, tell and stop', () => {
   const rows = [
     { key: 'CTEST1:1700000000.123456', place: '#support', chat: 'CTEST1', agent_dm: null },
     { key: 'CTEST1:1700000000.123456#side-1', place: '#support (side)', chat: 'CTEST1', agent_dm: null },

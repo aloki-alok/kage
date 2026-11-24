@@ -75,7 +75,7 @@ export function certFileEnv(platform = process.platform, env: NodeJS.ProcessEnv 
   const file = '/etc/ssl/cert.pem'
   return platform === 'darwin' && !env.SSL_CERT_FILE && exists(file) ? { SSL_CERT_FILE: file } : {}
 }
-const CLOSED_WRITE = `Settings and token files are closed to every session: only the owner's own terminal changes them (kage set). Say what you wanted changed, and the owner runs it.`
+const CLOSED_WRITE = `Settings and token files are closed to every session: only the owner's own terminal changes them (kage config set). Say what you wanted changed, and the owner runs it.`
 const WRITE_TOOLS = new Set(['Write', 'Edit', 'MultiEdit', 'NotebookEdit'])
 const READ_TOOLS = new Set(['Read', 'Grep', 'Glob'])
 export function ownerMemoryRefusal(

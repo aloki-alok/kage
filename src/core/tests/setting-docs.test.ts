@@ -29,7 +29,7 @@ test('each documented key with its section, default and effect; secrets are left
   assert.equal(docs[1]!.effect, 'A thread you did not start skips your own Claude Code setup: your ~/.claude/CLAUDE.md. It keeps your model.')
 })
 
-test('kage set alone lists every key by section with its value when set, and its first sentence', () => {
+test('kage config set alone lists every key by section with its value when set, and its first sentence', () => {
   const lines = settingsOverview(settingDocs(MD), k => k === 'harness.maxSessions' ? 6 : undefined)
   assert.deepEqual(lines, [
     'Sessions',
@@ -40,20 +40,20 @@ test('kage set alone lists every key by section with its value when set, and its
     '  kagelets.turnStallMinutes  20, 5  A stalled run is cut.',
     '  kagelets.incidentsPerHour  20, 5  A stalled run is cut.',
     '',
-    'kage set <key> shows one in full. Every setting: docs/settings.md',
+    'kage config get <key> shows one in full. Every setting: docs/settings.md',
   ])
 })
 
-test('kage set <key> explains it; a typo gets the closest key', () => {
+test('kage config set <key> explains it; a typo gets the closest key', () => {
   const docs = settingDocs(MD)
   assert.deepEqual(keyHelp(docs, 'harness.leanSessions', false), [
     'harness.leanSessions = false (default on)',
     'A thread you did not start skips your own Claude Code setup: your ~/.claude/CLAUDE.md. It keeps your model.',
-    'Change it: kage set harness.leanSessions <value>',
+    'Change it: kage config set harness.leanSessions <value>',
   ])
   assert.deepEqual(keyHelp(docs, 'harness.maxSessions', undefined)[0], 'harness.maxSessions is not set, so it is 4')
   assert.deepEqual(keyHelp(docs, 'harness.leanSesions', undefined), ['No setting harness.leanSesions. Did you mean harness.leanSessions?'])
-  assert.deepEqual(keyHelp(docs, 'nothing.like.it', undefined), ['No setting nothing.like.it. kage set lists them all.'])
+  assert.deepEqual(keyHelp(docs, 'nothing.like.it', undefined), ['No setting nothing.like.it. kage config list lists them all.'])
 })
 
 test('the real docs give every key a default and an effect', () => {

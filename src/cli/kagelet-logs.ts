@@ -11,7 +11,7 @@ import { kageletMessages } from '../runtime/store.ts'
 
 const name = process.argv[2] ?? ''
 const file = readKagelets(kageletsDir(DIR)).find(f => f.name === name)
-if (!file) { console.error(`There is no kagelet named "${name}". kage list shows them.`); process.exit(1) }
+if (!file) { console.error(`There is no kagelet named "${name}". kage kagelet list shows them.`); process.exit(1) }
 const sp = parseKagelet(name, file.text)
 if ('error' in sp) console.log(`${name} does not run: ${sp.error}`)
 else console.log(modelLine(sp))

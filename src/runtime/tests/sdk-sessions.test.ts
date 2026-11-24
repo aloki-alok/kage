@@ -1207,7 +1207,7 @@ describe('Kage sessions on the Agent SDK', () => {
     assert.equal(o.settings.permissions.deny.some((r: string) => r.startsWith('Write(')), false, 'Edit rules cover Write, and a Write rule warns on every start')
     assert.ok(o.settings.sandbox.filesystem.denyWrite.includes('/code/kage'), 'the hub code folder')
     assert.equal(o.settings.sandbox.failIfUnavailable, true)
-    assert.equal(o.env.KAGE_SESSION, '1', 'the marker kage set refuses on, kept when KAGE_THREAD is stripped')
+    assert.equal(o.env.KAGE_SESSION, '1', 'the marker kage config set refuses on, kept when KAGE_THREAD is stripped')
     assert.ok(o.settings.sandbox.filesystem.denyRead.includes('/cfg/secrets.json*'))
     assert.ok(o.settings.sandbox.filesystem.denyWrite.includes('/cfg/config.json*'))
   })

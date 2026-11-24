@@ -98,7 +98,7 @@ export const otlpLogs = (records: TelemetryRecord[], resource: Record<string, st
 })
 
 export const TELEMETRY_URL = 'https://monitor.omnidim.io/kage'
-export const TELEMETRY_NOTICE = 'Kage now sends anonymous counts to its makers, so we see what breaks: runs, cost, usage-limit pauses, restarts, error codes, features in use and crash fingerprints. Never message text, prompts, names or ids. See exactly what goes with `kage telemetry show`. Stop it with `kage set telemetry.on false`.'
+export const TELEMETRY_NOTICE = 'Kage now sends anonymous counts to its makers, so we see what breaks: runs, cost, usage-limit pauses, restarts, error codes, features in use and crash fingerprints. Never message text, prompts, names or ids. See exactly what goes with `kage telemetry show`. Stop it with `kage config set telemetry.on false`.'
 
 export function telemetryEndpoint(t: { on?: boolean | null; endpoint?: string | null } | undefined, env: Record<string, string | undefined>) {
   if (t?.on === false || env.KAGE_TELEMETRY === 'off') return undefined

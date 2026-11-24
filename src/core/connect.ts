@@ -33,9 +33,9 @@ const and = (names: string[]) => names.length < 2 ? names.join('') : `${names.sl
 
 export function connectorStep(name: ConnectorName, s: ConnectorState): string {
   if (s.state === 'on') return ''
-  if (s.state === 'off') return `run kage connect ${name} to turn it back on`
-  if (WALKED.includes(name)) return `run kage connect ${name}`
-  return `needs ${and(s.missing)}: run kage connect ${name} in a terminal to be asked (docs/settings.md, "${DOCS[name]}")`
+  if (s.state === 'off') return `run kage connector on ${name} to turn it back on`
+  if (WALKED.includes(name)) return `run kage connector on ${name}`
+  return `needs ${and(s.missing)}: run kage connector on ${name} in a terminal to be asked (docs/settings.md, "${DOCS[name]}")`
 }
 
 export const connectLines = (states: Record<ConnectorName, ConnectorState>) =>

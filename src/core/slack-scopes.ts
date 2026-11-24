@@ -58,7 +58,7 @@ export function withScopes(manifest: unknown, m: Missing): Manifest | undefined 
 
 const reinstall = (n: number, where: string) => [
   `${n}. Click "Reinstall to Workspace"${where}, then click Allow.`,
-  `${n + 1}. If Slack shows new tokens under Install App, run kage save to enter them.`,
+  `${n + 1}. If Slack shows new tokens under Install App, run kage slack save to enter them.`,
 ]
 
 export const upgradeSteps = (install: string) => [`1. Open ${install} if it did not open.`, ...reinstall(2, '')]

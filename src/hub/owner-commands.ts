@@ -32,7 +32,7 @@ function status(o: Options): string {
     `*${s.live.length} of ${MAX} sessions*${s.waiting.length ? `, ${s.waiting.length} waiting for a slot` : ''}`,
     ...lines,
     ...s.waiting.map(k => `• ${placeOf(k)}: waiting for a slot`),
-    ...s.held.map(k => `• ${placeOf(k)}: open in your terminal (kage attach), tasks wait`),
+    ...s.held.map(k => `• ${placeOf(k)}: open in your terminal (kage thread attach), tasks wait`),
     `${open} question${open === 1 ? '' : 's'} waiting on you`,
   ].join('\n')
 }
