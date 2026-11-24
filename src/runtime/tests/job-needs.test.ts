@@ -97,3 +97,13 @@ test("Kage's own tools never read as missing: the clock's probe has no kage serv
   assert.deepEqual(t.dms, [])
   assert.equal(t.store.jobState('a1b2').missing, undefined)
 })
+
+test("a teammate's job is told missing the owner's tools on the first look, though the owner's sessions have them", async () => {
+  const t = setup()
+  t.store.addSchedule({ id: 'e5f6', key: 'C2:6.6', cron: '*/10 * * * *', prompt: 'phone on-call', recurring: true, fromOwner: false, created: 0, lastFired: 0, needs: [DIAL] })
+  await t.tick(60_000)
+  assert.equal(t.dms.length, 1)
+  assert.match(t.dms[0]!, /e5f6 in #alerts needs mcp__claude_ai_Dialer__place_call/)
+  assert.deepEqual(t.store.jobState('e5f6').missing, [DIAL])
+  assert.equal(t.store.jobState('a1b2').missing, undefined, "the owner's job still has its tool")
+})

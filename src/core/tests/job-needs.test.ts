@@ -54,3 +54,12 @@ test("a job saved missing only Kage's own tools is cleared with no DM; a real to
 test("Kage's own tools on the tmux route are never watched either", () => {
   assert.deepEqual(needsChanges([{ ...job(), needs: [DIAL, 'mcp__plugin_kage_kage__reply'] }], live([DIAL])), [])
 })
+
+test("a job whose runs get a teammate's trust misses every owner tool, even when the owner's sessions have it", () => {
+  const slackRead = 'mcp__kage__slack_read', reply = 'mcp__kage__reply'
+  const [c] = needsChanges([{ ...job(), owner: false, needs: [DIAL, slackRead, reply] }], live([DIAL]))
+  assert.deepEqual(c!.missing, [DIAL, slackRead])
+  assert.match(c!.dm!, /a1b2 in #alerts/)
+  assert.match(c!.dm!, /teammate's trust/)
+  assert.deepEqual(needsChanges([{ ...job([DIAL, slackRead]), owner: false, needs: [DIAL, slackRead, reply] }], live([DIAL])), [], 'a second look says nothing')
+})
