@@ -1,6 +1,7 @@
 import { describe, test } from 'node:test'
 import assert from 'node:assert/strict'
-import { readOnlyQuery } from '../db-read.ts'
+import { readGate, readOnlyQuery, turnAskers } from '../db-read.ts'
+import type { TrustLine } from '../trust.ts'
 
 const ok = (sql: string) => {
   const r = readOnlyQuery(sql, 200)
@@ -78,5 +79,52 @@ describe('anything else is refused', () => {
     no("select 'open", /unclosed/)
     no('select /* open', /unclosed/)
     no('select "open', /unclosed/)
+  })
+})
+
+describe('who may read a named route', () => {
+  const line = (o: Partial<TrustLine> = {}): TrustLine => ({ id: 'T1', who: 'U0TEST1', kind: 'prod-read', reach: 'prod', answer: 'yes', once: false, link: 'l', at: '2026-11-25T00:00:00.000Z', state: 'live', ...o })
+  const mate = (teammate = 'U0TEST1') => ({ reader: true, owner: false, teammate })
+  const gate = (o: Partial<Parameters<typeof readGate>[0]> = {}) => readGate({ turn: [mate()], owner: false, route: 'prod', mode: 'on', lines: [line()], ...o })
+  test('the owner reads in every mode, a covered teammate only in on mode', () => {
+    for (const mode of ['off', 'shadow', 'on'] as const) assert.equal(gate({ owner: true, turn: [{ reader: true, owner: true }], mode, lines: [] }).read, true, mode)
+    assert.deepEqual(gate(), { read: true, steps: [{ who: 'U0TEST1', line: 'T1' }], would: 'go' })
+    assert.equal(gate({ mode: 'shadow' }).read, false)
+    assert.equal(gate({ mode: 'off' }).read, false)
+  })
+  test('a line covers one teammate and one route, and a no wins', () => {
+    assert.equal(gate({ route: 'reports' }).read, false)
+    assert.equal(gate({ turn: [mate('U0TEST2')] }).read, false)
+    assert.match((gate({ lines: [line(), line({ id: 'T2', answer: 'no' })] }) as { why: string }).why, /said no/)
+    assert.equal(gate({ lines: [line({ once: true })] }).read, false)
+  })
+  test('every teammate in the turn needs a line, in any order, and an owner task in the turn adds none', () => {
+    const lines = [line(), line({ id: 'T2', who: 'U0TEST2' })]
+    assert.equal(gate({ turn: [mate(), mate('U0TEST2')], lines }).read, true)
+    assert.equal(gate({ turn: [mate('U0TEST3'), mate()], lines }).read, false)
+    assert.equal(gate({ turn: [mate(), mate('U0TEST3')], lines }).read, false)
+    assert.equal(gate({ turn: [mate(), { reader: true, owner: true }] }).read, true)
+    assert.equal(gate({ turn: [mate(), { reader: false, owner: false, teammate: 'U0TEST1' }] }).read, false)
+  })
+  test('a kind that never learns covers nothing', () => {
+    assert.equal(gate({ lines: [line({ kind: 'ssm-relay' })] }).read, false)
+    assert.equal(gate({ lines: [line({ kind: 'prod-shell' })] }).read, false)
+  })
+  test('a turn with a non-reader, an empty turn and an unknown asker read nothing', () => {
+    assert.equal(gate({ turn: [{ reader: false, owner: true }], owner: true }).read, false)
+    assert.equal(gate({ turn: [] }).read, false)
+    assert.equal(gate({ turn: [{ reader: true, owner: false }] }).read, false)
+  })
+  test('a meeting, an outsider, any bot, a text and the owner\'s DM job read nothing', () => {
+    const t = { fromOwner: false, content: 'Teammate task (U0TEST1, Sam, not the owner): x', meta: { channel: 'C0TEST1' } }
+    const readers = (x: object, dm = '') => turnAskers([{ ...t, ...x }], dm)[0]!
+    assert.deepEqual(readers({}), { reader: true, owner: false, teammate: 'U0TEST1' })
+    assert.equal(readers({ source: 'meeting:x' }).reader, false)
+    assert.equal(readers({ outsider: 'x' }).reader, false)
+    assert.equal(readers({ agent: { app: 'A0TEST1' } }).reader, false)
+    assert.equal(readers({ agent: { app: 'A0TEST1', person: 'U0TEST1' } }).reader, false)
+    assert.equal(readers({ meta: { channel: 'sms' } }).reader, false)
+    assert.equal(readers({ meta: { channel: 'D0TEST1' } }, 'D0TEST1').reader, false)
+    assert.equal(readers({ fromOwner: true, content: 'Task from Sam: x', meta: { channel: 'D0TEST1' } }, 'D0TEST1').reader, true)
   })
 })

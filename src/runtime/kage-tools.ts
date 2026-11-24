@@ -11,7 +11,7 @@ import type { NewJob } from './schedule-edits.ts'
 import type { ChannelReply } from './protocol.ts'
 import { addressed, foreignAgentRefusal, mentionedIds } from '../core/agents.ts'
 import { filesFolderName } from '../core/conversations.ts'
-import { plainName, teammateOf, type Sender } from '../core/gate.ts'
+import { lowestSender, plainName, teammateOf, type Sender } from '../core/gate.ts'
 import { openWaiting, postedBy } from '../core/ledgers.ts'
 import type { Ledgers } from './ledger.ts'
 import { layoutRefusal, ownerPost, safeReply, secretRefusal, splitForSlack, type Signer } from '../core/outbound.ts'
@@ -23,6 +23,7 @@ import { slackPlain } from '../core/outbound.ts'
 import { slackTools } from './tools/slack-tools.ts'
 import { scheduleTools } from './tools/schedule-tools.ts'
 import { kageletTools } from './tools/kagelet-tools.ts'
+import { dbReadTools } from './tools/db-read-tools.ts'
 import { ownerTools } from './tools/owner-tools.ts'
 import { dreamTools } from './tools/dream-tools.ts'
 import { reportTools, type SessionReport } from './tools/report-tools.ts'
@@ -100,6 +101,7 @@ type SessionOptions = {
   schedules?: { add(j: NewJob): string | void | Promise<string | void>; remove(id: string): void; list(): Schedule[]; tune?(id: string, t: TuneArg): string | void; hookUrl?(id: string): string | undefined; restore?(id: string): string | undefined; move?(id: string, to: string): string | undefined }
   afk?: (c: AfkCommand) => Promise<string>
   turnSender?: () => Sender | undefined
+  turn?: () => Task[]
   kagelet?: string
   dreaming?: string
   dreamLessons?: (lessons: DreamLesson[], dismiss?: Dismissal[]) => string
@@ -107,6 +109,7 @@ type SessionOptions = {
   report?: SessionReport
   kageletMemory?: ReturnType<typeof kageletMemory>
   dbRead?: { command: () => string | undefined; maxRows: number; timeoutMs?: number }
+  dbRoutes?: { routes: () => Record<string, string>; maxRows: number }
   kagelets?: { list(): string; manage(a: Manage, ask?: AskOwner): Promise<string> }
   settings?: { set(key: string, value: unknown): void }
   trust?: { mode: () => TrustMode; lines: () => TrustLine[] }
@@ -142,7 +145,8 @@ export function sessionTools(o: SessionOptions) {
     names: {}, seenIds: new Set(), heldOnce: new Set(), jobThread: '', where: 'a thread',
   }
   const { Title, bot, user, taskChannels, ownerTask, unanswered, askers, agents, sentForPeople, dmThread, links, names, append, ledger, filesOf } = t
-  const ownerNow = (key: string) => ownerTask.get(key) === true && (o.turnSender?.() ?? 'owner') === 'owner'
+  const turnSender = () => o.turn ? (o.turn().length ? lowestSender(o.turn()) : undefined) : o.turnSender?.()
+  const ownerNow = (key: string) => ownerTask.get(key) === true && (turnSender() ?? 'owner') === 'owner'
   const ownerOnly = (a: Record<string, unknown>) => ownerNow(`${String(a.channel)}:${String(a.thread_ts)}`)
   const ownerActs = (a: Record<string, unknown>) => ownerOnly(a) && a.channel !== 'voice' && !agents.get(`${a.channel}:${a.thread_ts}`)
   const pingIn = (channel: string) => [...ownerTask.keys()].some(k => k.startsWith(`${channel}:`) && ownerNow(k))
@@ -153,7 +157,7 @@ export function sessionTools(o: SessionOptions) {
   }
   const ownerRead = (a: Record<string, unknown>) => ownerOnly(a) && !agents.get(`${a.channel}:${a.thread_ts}`)
   const reads = o.kagelet || o.dreaming ? [] : slackReadTools(user, ownerRead)
-  const tools = [...slackTools(c), ...scheduleTools(c), ...kageletTools(c), ...ownerTools(c), ...smsTools(c), ...browserTools(c), ...screenTools(c), ...dreamTools(c), ...reportTools(c), ...reads]
+  const tools = [...slackTools(c), ...scheduleTools(c), ...kageletTools(c), ...dbReadTools(c), ...ownerTools(c), ...smsTools(c), ...browserTools(c), ...screenTools(c), ...dreamTools(c), ...reportTools(c), ...reads]
   return {
     tools,
     instructions: instructions(Title, o.memory, !!o.browser, o.kagelet ? { kagelet: o.kagelet } : o.dreaming ? { dreaming: o.dreaming } : undefined),

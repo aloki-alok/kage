@@ -1,3 +1,7 @@
+import { isOffSlack } from './conversations.ts'
+import { senderOf, teammateOf } from './gate.ts'
+import { decide, type TrustLine, type TrustMode } from './trust.ts'
+
 
 const FORBIDDEN = ['INSERT', 'UPDATE', 'DELETE', 'MERGE', 'ALTER', 'DROP', 'CREATE', 'GRANT', 'REVOKE', 'TRUNCATE', 'COPY', 'CALL', 'DO', 'INTO']
 
@@ -45,4 +49,29 @@ export function readOnlyQuery(sql: string, maxRows: number): { sql: string } | {
   if (bad) return { refused: `${bad} is not allowed: db_read runs reads only` }
   if (/\bfor\s+(key\s+)?share\b/i.test(code)) return { refused: 'a row lock (FOR SHARE) is not allowed: db_read runs reads only' }
   return { sql: `select * from (\n${run.trim()}\n) as kage_db_read limit ${maxRows}` }
+}
+
+type Asker = { fromOwner: boolean; content: string; meta: { channel: string }; source?: string; agent?: { app: string; person?: string }; outsider?: string }
+const mayRead = (t: Asker, ownerDm: string) => !(ownerDm && t.meta.channel === ownerDm && !t.fromOwner) && !t.outsider && !isOffSlack(t.meta.channel) && !t.source?.startsWith('meeting:') && !t.agent
+
+type TurnAsker = { reader: boolean; owner: boolean; teammate?: string }
+export const turnAskers = (tasks: Asker[], ownerDm: string): TurnAsker[] =>
+  tasks.map(t => ({ reader: mayRead(t, ownerDm), owner: senderOf(t) === 'owner', teammate: teammateOf(t.content)?.id }))
+
+type ReadAsk = { turn: TurnAsker[]; owner: boolean; route: string; mode: TrustMode; lines: TrustLine[] }
+type ReadVerdict = { read: true; steps?: { who: string; line: string }[]; would?: string } | { read: false; why: string; would?: string }
+
+const askFor = (route: string) => `Post an ask with the reply tool: waiting_on owner, kind prod-read, reach ${route}. The owner's plain yes saves it for the teammate, and the next read of ${route} goes through.`
+
+export function readGate(a: ReadAsk): ReadVerdict {
+  if (a.turn.some(t => !t.reader)) return { read: false, why: 'a meeting, an outsider, another bot, a text, a call and an email read no database, and a turn that holds one of their tasks reads none' }
+  if (a.owner) return { read: true }
+  const teammates = [...new Set(a.turn.filter(t => !t.owner).map(t => t.teammate))]
+  if (!a.turn.length || teammates.some(t => !t)) return { read: false, why: 'only the owner or a listed teammate reads a database' }
+  const ds = teammates.map(who => decide(a.lines, { who: who!, kind: 'prod-read', reach: a.route }))
+  const would = a.mode === 'off' ? undefined : ds.some(d => d.do === 'no') ? 'no' : ds.every(d => d.do === 'go') ? 'go' : 'ask'
+  const no = ds.find(d => d.do === 'no')
+  if (a.mode === 'on' && no && no.do === 'no') return { read: false, why: `the owner said no to ${a.route} for a teammate in this turn (line ${no.line.id}). Do not read it and do not ask again.`, would }
+  if (a.mode === 'on' && ds.length && ds.every(d => d.do === 'go')) return { read: true, steps: ds.flatMap((d, i) => d.do === 'go' ? [{ who: teammates[i]!, line: d.line.id }] : []), would }
+  return { read: false, why: `a teammate reads ${a.route} only with the owner's yes, and every teammate in this turn needs one. ${askFor(a.route)}${a.mode === 'on' ? '' : ' Trust is not on, so a yes lets you read only in the turn where the owner answers.'}`, would }
 }

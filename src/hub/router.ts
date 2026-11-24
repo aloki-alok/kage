@@ -25,6 +25,7 @@ import { stopLine } from '../core/board.ts'
 import { modelFor, placeFor, sessionKey, type Conversation, type Lane } from '../core/conversations.ts'
 import { markDelivered, type ThreadMark } from '../core/thread-delta.ts'
 import { mayStop, senderOf } from '../core/gate.ts'
+import { readRoutesFor } from './read-routes.ts'
 import { foreignAgentTags } from '../core/agents.ts'
 import { Dispatcher, mixRunners, startFailedNote } from '../core/sessions.ts'
 import { setKey, sweepKeptCopies, tidyPeople } from '../runtime/config-files.ts'
@@ -240,8 +241,8 @@ const sdk = sdkLib ? sdkSessions({
   sdk: sdkLib.lib,
   deferred,
   hub: () => d,
-  tools: (key, send, approve, turnSender) => sessionTools({
-    title: Title, bot, user, botDm: () => slack.ids.botDm, dir: DIR, ledgers, send, memory: MEM, turnSender, cardOut: waCardsOut.send,
+  tools: (key, send, approve, turn) => sessionTools({
+    title: Title, bot, user, botDm: () => slack.ids.botDm, dir: DIR, ledgers, send, memory: MEM, turn, cardOut: waCardsOut.send,
     schedules: { add: j => jobs.add(key, j, Date.now()), remove: id => jobs.remove(key, id), list: () => schedules.list(key), hookUrl: id => jobs.hookUrl(id), tune: (id, t) => schedules.tune(key, id, t, Date.now()), restore: id => jobs.swaps.restore(key, id, Date.now()), move: (id, to) => schedules.move(key, id, to, Date.now()) },
     afk: slack.afk?.command,
     settings: { set: (key, value) => setKey(ENV_FILE, key, value) },
@@ -250,7 +251,7 @@ const sdk = sdkLib ? sdkSessions({
     ...reporter && { report: reporter },
     foreignAgents: () => config.askOtherAgents ? [] : foreignAgentTags(slack.ids.apps ?? [], slack.ids.owner),
     meetbot: meeting && { join: meeting.join }, sms: sms?.campaigns, screen: SCREEN,
-    dbRead: { command: () => readCommand(kl.dbRead?.command ?? undefined, store, key.split('#side-kagelet-')[1] ?? ''), maxRows: kl.dbRead?.maxRows || 200 },
+    dbRead: { command: () => readCommand(kl.dbRead?.command ?? undefined, store, key.split('#side-kagelet-')[1] ?? ''), maxRows: kl.dbRead?.maxRows || 200 }, ...readRoutesFor(key, config),
     kagelets: { list: () => kag.manager.list(Date.now()), manage: (a, ask) => kag.manager.manage(a, Date.now(), ask) }, approve,
     event: (kind, detail) => runs.emit(key, kind, detail), trust: trust.session,
     onReport: r => kag.routes.reported(key, r), message: (to, text) => kag.routes.message(key, to, text), toManager: needs => kag.needs.add(key, key.split('#side-kagelet-')[1] ?? '', needs, Date.now()), tellKagelet: (name, text, now) => kag.tell(name, text, now),

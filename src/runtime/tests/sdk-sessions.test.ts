@@ -58,7 +58,7 @@ function setup(o: { saved?: Record<string, string>; transcript?: boolean; silent
   const s = sdkSessions({
     sdk: { query: sdk.query as any, createSdkMcpServer: (c => { servers.push(c); return createSdkMcpServer(c) }) as typeof createSdkMcpServer, tool },
     hub: () => d,
-    tools: (_key, send, approve, turnSender) => sessionTools({ title: 'Kage', bot: slack as any, user: slack as any, botDm: () => 'DBOT', dir, ledgers: openLedgers(dir), send, memory: { own: '/own', owner: '/owner' }, approve, turnSender, ...o.browser && { browser: { call: async () => [], block: [] } },
+    tools: (_key, send, approve, turn) => sessionTools({ title: 'Kage', bot: slack as any, user: slack as any, botDm: () => 'DBOT', dir, ledgers: openLedgers(dir), send, memory: { own: '/own', owner: '/owner' }, approve, turn, ...o.browser && { browser: { call: async () => [], block: [] } },
       ...o.manager && { kagelets: { list: () => '', manage: async (a, ask) => `yes: ${await ask!({ kagelet: a.name, tools: 'mcp__gmail__send', job: 'Mail the count.' })}` } } }),
     hasTranscript: () => o.transcript ?? false,
     ...o.trustedPeople && { trustedNow: (id: string) => o.trustedPeople!.ids.includes(id) },

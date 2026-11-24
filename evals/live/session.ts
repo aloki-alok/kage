@@ -95,8 +95,8 @@ async function runIn(c: Case, o: { code: string; claude: string; timeoutMs: numb
       if (m.type === 'result') ev.turns.push({ tokensIn: m.usage.input_tokens + (m.usage.cache_creation_input_tokens ?? 0) + (m.usage.cache_read_input_tokens ?? 0), steps: m.num_turns })
     }), createSdkMcpServer, tool },
     hub: () => d,
-    tools: (_key, send, approve, turnSender) => sessionTools({
-      title: 'Kage', bot: slack, user: slack, botDm: () => BOT_DM, dir: config, ledgers, send, approve, turnSender,
+    tools: (_key, send, approve, turn) => sessionTools({
+      title: 'Kage', bot: slack, user: slack, botDm: () => BOT_DM, dir: config, ledgers, send, approve, turn,
       memory: { own: join(config, 'own'), owner: join(config, 'owner') },
       settings: { set: (key, value) => { ev.settings.push({ key, value }) } },
       report: standInReport(ev),

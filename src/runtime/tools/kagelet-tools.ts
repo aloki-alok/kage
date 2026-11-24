@@ -1,13 +1,10 @@
-import { execFile } from 'node:child_process'
 import { z } from 'zod'
 import { log } from '../log.ts'
-import { readOnlyQuery } from '../../core/db-read.ts'
 import { type Manage } from '../kagelets/manager.ts'
 import { DEFAULT_MODEL, MODELS } from '../../core/config.ts'
 import type { KageTool, ToolContext } from '../kage-tools.ts'
 
 type Options = ToolContext['o']
-type DbRead = NonNullable<Options['dbRead']>
 type KageletMemory = NonNullable<Options['kageletMemory']>
 type Team = NonNullable<Options['kagelets']>
 import { ALL } from '../../core/access.ts'
@@ -30,7 +27,6 @@ export function kageletTools(c: ToolContext): KageTool[] {
     ...name ? [reportTool(c, name)] : [],
     ...manager && o.tellKagelet ? [tellKageletTool(c, o.tellKagelet)] : [],
     ...name && o.message ? [messageKageletTool(c, o.message)] : [],
-    ...name && o.dbRead ? [dbReadTool(c, name, o.dbRead)] : [],
     ...o.dreaming && memory ? [proposeMemoryTool(c, memory)] : [],
     ...manager && memory ? [reviewMemoryTool(c, memory)] : [],
     ...manager && team ? [kageletsTool(c, team), manageKageletTool(c, team)] : [],
@@ -104,34 +100,6 @@ function messageKageletTool(c: ToolContext, message: NonNullable<Options['messag
       const a = args as { channel: string; thread_ts: string; to: string; text: string }
       if (!c.ownerTask.has(`${a.channel}:${a.thread_ts}`)) return { isError: true, text: 'refused: message from your own thread only' }
       return { text: message(a.to, a.text) }
-    },
-  }
-}
-
-function dbReadTool(c: ToolContext, name: string, db: DbRead): KageTool {
-  const { s } = c
-  return {
-    name: 'db_read',
-    description: 'Run one read-only SQL query (SELECT or WITH ... SELECT, PostgreSQL) and get the rows back. One statement, no writes, no row locks, no backslashes or dollar quotes. Rows are capped, so aggregate in SQL instead of reading raw rows.',
-    shape: { sql: s.describe('one SELECT or WITH ... SELECT statement') },
-    async run(args) {
-      const started = Date.now()
-      const done = (lines: number, outcome: string) => c.append('db-reads', [name, String(lines), `${Date.now() - started}ms`, outcome])
-      const command = db.command()
-      if (!command) { done(0, 'refused: no read command is set'); return { isError: true, text: 'refused: no read command is set. Say so in the thread: your manager asks the owner.' } }
-      const q = readOnlyQuery(String(args.sql ?? ''), db.maxRows)
-      if ('refused' in q) { done(0, `refused: ${q.refused}`); return { isError: true, text: `refused: ${q.refused}` } }
-      const timeout = db.timeoutMs ?? 30_000
-      const r = await new Promise<{ out: string; err?: string }>(res => execFile('/bin/sh', ['-c', `${command} "$1"`, 'db_read', q.sql],
-        { timeout, maxBuffer: 4 << 20, encoding: 'utf8' },
-        (e, out, stderr) => res(e ? { out, err: (e as { killed?: boolean }).killed ? `the query took longer than ${timeout / 1000} s`
-          : (stderr.trim() || `the read command exited with ${(e as { code?: unknown }).code}`).slice(0, 500) } : { out })))
-      if (r.err) { done(0, `failed: ${r.err.split('\n')[0]}`); return { isError: true, text: `db_read failed: ${r.err}` } }
-      const lines = r.out.split('\n').filter(l => l.trim()).length
-      done(lines, 'ok')
-      const LIMIT = 20_000
-      const text = r.out.length > LIMIT ? `${r.out.slice(0, LIMIT)}\n(cut at ${LIMIT} characters: aggregate in SQL to see it all)` : r.out
-      return { text: `${text || '(no rows)'}${lines >= db.maxRows ? `\n(may be capped at ${db.maxRows} rows)` : ''}` }
     },
   }
 }

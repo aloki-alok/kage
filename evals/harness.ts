@@ -67,7 +67,7 @@ function world(dir: string, clock: Clock) {
   }
   const s = sdkSessions({
     sdk: { query: sdk.query as any, createSdkMcpServer, tool }, hub: () => d,
-    tools: (_key, send, approve, turnSender) => sessionTools({ title: 'Kage', bot: slack as any, user: slack as any, botDm: () => 'DBOT', dir, ledgers, send, memory: { own: join(dir, 'own'), owner: join(dir, 'owner') }, approve, turnSender, settings: { set: () => {} } }),
+    tools: (_key, send, approve, turn) => sessionTools({ title: 'Kage', bot: slack as any, user: slack as any, botDm: () => 'DBOT', dir, ledgers, send, memory: { own: join(dir, 'own'), owner: join(dir, 'owner') }, approve, turn, settings: { set: () => {} } }),
     hasTranscript: () => false, toHub: () => {}, options: { cwd: dir, settingSources: [] }, ownerMemory: join(dir, 'owner'), envFile: join(dir, 'env'), codeDir: dir, restartMs: 10,
     grantOf: key => grants.get(key),
     onResult: (key, _total, _resumed, limited, error) => { last.set(key, clock.now); routes.ended(key, 0, '', clock.now, limited, error) },

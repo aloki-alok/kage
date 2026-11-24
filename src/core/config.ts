@@ -66,6 +66,7 @@ export const Config = z.preprocess(foldOldPeople, z.strictObject({
     release: z.enum(['rules', 'shadow', 'review']).optional(), reviewsPerDay: count, reviewModel: text, reviewMinVerdicts: count, reviewMinAgreement: z.number().min(0).max(1).optional(), reviewEvidenceDays: count, denyHoldDays: count,
     dbRead: z.strictObject({ command: text, maxRows: count }).optional(),
   }).optional(),
+  dbRead: z.strictObject({ routes: z.record(z.string().regex(/^[a-z][a-z0-9-]{0,30}$/), z.string().min(1)).optional(), maxRows: count }).optional(),
   sessionKeys: z.record(z.string().regex(/^[A-Z][A-Z0-9_]*$/), z.strictObject({
     host: z.string().regex(/^[a-z0-9]([a-z0-9.-]*[a-z0-9])?$/), header: z.string().regex(/^[A-Za-z][A-Za-z0-9-]*$/).optional(), prefix: z.string().optional(),
   })).optional(),
