@@ -12,6 +12,7 @@ import { sessionKey, type Conversation } from '../../../core/conversations.ts'
 import { senderOf } from '../../../core/gate.ts'
 import type { Task } from '../../../core/task.ts'
 import { markDelivered, type ThreadMark } from '../../../core/thread-delta.ts'
+import { ownerLines } from '../../../core/messages.ts'
 
 const msg = { type: 'message', channel: 'CTEST1', ts: '5.5', user: 'UTEST1', text: 'hi' } as SlackMessage
 
@@ -139,6 +140,34 @@ test('a listed agent\'s post that Jev says needs no reply gets one fresh line th
     assert.equal(posts[0]!.thread_ts, '5.5')
     assert.equal(posts[0]!.text, 'Dropped :ninja:')
     assert.ok(!posts[0]!.text.includes('<@'), 'no tag, so the agent is not woken')
+  } finally {
+    rmSync(dir, { recursive: true, force: true })
+  }
+})
+
+test('a line to the owner and a heard line each tell the hub their kind and channel, so they count as posts (#242)', async () => {
+  const dir = mkdtempSync(join(tmpdir(), 'kage-sent-'))
+  const sent: string[] = []
+  try {
+    const client = {
+      auth: { test: async () => ({ team_id: 'TTEST', user_id: 'UTEST1' }) },
+      conversations: { open: async () => ({ channel: { id: 'DTEST' } }), history: async () => ({ messages: [] }) },
+      users: { info: async () => ({ user: { real_name: 'Sam Test' } }) },
+      reactions: { add: async () => ({ ok: true }) },
+      chat: { postMessage: async () => ({ ok: true }) },
+    }
+    const slack = await connectSlack({
+      dir, appToken: 'test', userToken: 'test', bot: client as never, user: client as never,
+      name: 'kage', title: 'Kage', teammates: ['UMATE0002'], apps: ['ATEST0001'],
+      hub: { posted: () => '', handled: () => {}, sent: (kind: string, channel: string) => sent.push(`${kind} ${channel}`) } as never,
+      jev: async () => ({ reply: false, why: 'jev needs_reply 0.10 (threshold 0.5)' }),
+      heard: async () => 'Noted',
+    })
+    await slack.notifyOwner(ownerLines.slackDown())
+    await slack.notifyOwner('a line from no catalog entry')
+    await slack.replay('test-source', JSON.stringify({ ...msg, user: 'UMATE0002', app_id: 'ATEST0001', bot_id: 'BTEST0001', text: '<@UTEST1> done' }))
+    await new Promise(r => setImmediate(r))
+    assert.deepEqual(sent, ['notice:slackDown DTEST', 'notice:other DTEST', 'heard CTEST1'])
   } finally {
     rmSync(dir, { recursive: true, force: true })
   }

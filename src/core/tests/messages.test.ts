@@ -2,7 +2,7 @@ import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
-import { ownerLines as L } from '../messages.ts'
+import { noticeOf, ownerLines as L } from '../messages.ts'
 
 const cases: [string, string][] = [
   [L.emailHeld(['a@x.test', 'b@x.test'], 'outside domain', 'hi\nthere'), 'Held an email reply to a@x.test, b@x.test (outside domain). Send it yourself if it is fine:\nhi\nthere'],
@@ -58,6 +58,12 @@ const cases: [string, string][] = [
 
 test('each owner line reads exactly as the line it replaced', () => {
   for (const [got, want] of cases) assert.equal(got, want)
+})
+
+test('a line the catalog wrote is known by its id, so a post of it counts under that id; any other text is other (#242)', () => {
+  assert.equal(noticeOf(L.slackDown()), 'slackDown')
+  assert.equal(noticeOf(L.eventJobsPaused(4)), 'eventJobsPaused')
+  assert.equal(noticeOf('a line no catalog entry wrote'), 'other')
 })
 
 test('every owner line has a case above', () => {

@@ -19,7 +19,7 @@ import { heardLine, writeHeard } from './heard.ts'
 import { emptyRoom } from '../../runtime/claude-once.ts'
 import type { Inbox, Saved } from '../../runtime/store.ts'
 import { channelHistory, type ChannelHistory, type ChannelPost } from '../../runtime/channel-watch.ts'
-import { ownerLines } from '../../core/messages.ts'
+import { noticeOf, ownerLines } from '../../core/messages.ts'
 import { seenUpTo, type SessionNow, type ThreadMark } from '../../core/thread-delta.ts'
 import { slackDirectory, type Directory } from './directory.ts'
 import { agentOf, taskText } from './task-text.ts'
@@ -36,6 +36,7 @@ export type Hub = {
   verdict(requestId: string, behavior: 'allow' | 'deny', always?: true): boolean
   status(): string
   heard(m: { chat: string; thread?: string; quoted: string }): void
+  sent?(kind: string, channel: string): void
   ownerWrote?(chat: string, thread: string, text: string): void
   kageletsIn?(chat: string, thread: string): { name: string; people: string[] }[]; kageletAsk?(chat: string, thread: string, name: string, from: string, text: string): string
   channelPost?(post: ChannelPost): void
@@ -90,7 +91,7 @@ export async function connectSlack(o: Options) {
     o, ids, bot, user, dir, ownerName, replaying: new Set(), loops: loopGuard({ perWindow: 20, windowMs: 60_000, hops: 4 }),
     react: (channel, ts, name) => (channel === ids.botDm ? bot : user).reactions.add({ channel, timestamp: ts, name }).then(() => true, () => false),
     unreact: (channel, ts, name) => void (channel === ids.botDm ? bot : user).reactions.remove({ channel, timestamp: ts, name }).catch(() => {}),
-    notifyOwner: text => bot.chat.postMessage({ channel: ids.botDm, text }).then(() => true, e => (log('owner DM failed', e?.data?.error ?? e), false)),
+    notifyOwner: text => bot.chat.postMessage({ channel: ids.botDm, text }).then(() => { o.hub.sent?.(`notice:${noticeOf(text)}`, ids.botDm); return true }, e => (log('owner DM failed', e?.data?.error ?? e), false)),
     kagePosted: ts => { const tsv = o.hub.posted(); return postedBy(tsv, ids.botDm, ts) !== undefined || cardAt(tsv, ids.botDm, ts) !== undefined },
   }
   k.afk = o.afk && startAfk({ dir: o.dir, title: o.title, ownerName, ids, bot, user, ...o.afk, notify: k.notifyOwner, contextOf: async m => (await dir.contextOf(m)).text, placeOf: dir.placeOf, nameOf: dir.nameOf })
@@ -158,7 +159,7 @@ function cardOf({ o, ids }: Slack, m: SlackMessage): string | undefined {
 }
 
 const postHeard = (k: Slack, m: SlackMessage, said: string) =>
-  void heardLine(said, k.o.heard ?? writeHeard(emptyRoom(k.o.dir))).then(text => k.bot.chat.postMessage({ channel: m.channel, thread_ts: m.thread_ts ?? m.ts, text })).catch(e => log('could not post the heard line', e?.data?.error ?? e))
+  void heardLine(said, k.o.heard ?? writeHeard(emptyRoom(k.o.dir))).then(text => k.bot.chat.postMessage({ channel: m.channel, thread_ts: m.thread_ts ?? m.ts, text })).then(() => k.o.hub.sent?.('heard', m.channel)).catch(e => log('could not post the heard line', e?.data?.error ?? e))
 
 async function onMessage(k: Slack, m: SlackMessage, failed: (task: Task) => Promise<boolean>) {
   const { o, ids } = k
@@ -166,7 +167,7 @@ async function onMessage(k: Slack, m: SlackMessage, failed: (task: Task) => Prom
   k.afk?.heard(m)
   const thread = `${m.channel}:${m.thread_ts ?? m.ts}`
   const t = classify(m, ids, cardOf(k, m), m.thread_ts ? o.hub.kageletsIn?.(m.channel, m.thread_ts) ?? [] : [])
-  if (t.kind === 'kagelet-ask') { const said = o.hub.kageletAsk?.(m.channel, m.thread_ts!, t.name, m.user!, t.text); if (said) await k.bot.chat.postMessage({ channel: m.channel, thread_ts: m.thread_ts!, text: said }).catch(() => {}); return }
+  if (t.kind === 'kagelet-ask') { const said = o.hub.kageletAsk?.(m.channel, m.thread_ts!, t.name, m.user!, t.text); if (said) await k.bot.chat.postMessage({ channel: m.channel, thread_ts: m.thread_ts!, text: said }).then(() => o.hub.sent?.('notice:kagelet-ask', m.channel), () => {}); return }
   if (t.kind === 'drop') return dropped(k, m, t.reason)
   if (typedByPerson(m)) k.loops.person(thread)
   if (t.kind !== 'task') return control(k, m, t)
@@ -188,7 +189,7 @@ function dropped(k: Slack, m: SlackMessage, reason: keyof typeof DROPS) {
 
 function control(k: Slack, m: SlackMessage, t: Control) {
   const { o, bot } = k
-  const underCard = (text: string) => bot.chat.postMessage({ channel: m.channel, thread_ts: m.thread_ts ?? m.ts, text }).catch(() => {})
+  const underCard = (text: string) => bot.chat.postMessage({ channel: m.channel, thread_ts: m.thread_ts ?? m.ts, text }).then(() => o.hub.sent?.('notice:card-help', m.channel), () => {})
   if (t.kind === 'verdict') {
     if (o.hub.verdict(t.request_id, t.behavior, t.always)) return void k.react(m.channel, m.ts, t.behavior === 'allow' ? 'white_check_mark' : 'x')
     log('no running session asked for', t.request_id)
@@ -201,7 +202,7 @@ function control(k: Slack, m: SlackMessage, t: Control) {
   }
   k.react(m.channel, m.ts, PICKED_UP)
   const text = o.hub.stop(slackConversation(m, k.ids.botDm, k.kagePosted), t.now, m.user!)
-  return void bot.chat.postMessage({ channel: m.channel, thread_ts: m.thread_ts ?? m.ts, text }).catch(e => log('could not answer a stop', e?.data?.error ?? e))
+  return void bot.chat.postMessage({ channel: m.channel, thread_ts: m.thread_ts ?? m.ts, text }).then(() => o.hub.sent?.('notice:stop', m.channel)).catch(e => log('could not answer a stop', e?.data?.error ?? e))
 }
 
 async function agentSkipped(k: Slack, m: SlackMessage, t: TaskTrigger, thread: string): Promise<boolean> {

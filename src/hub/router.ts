@@ -68,7 +68,8 @@ import { DREAM_KEY, DREAM_LIMITS, flagRow, type Dismissal, type DreamLesson } fr
 import { closedThreads } from '../runtime/closed-threads.ts'
 import { threadRotator } from '../runtime/thread-rotate.ts'
 import { startTelemetry } from './telemetry.ts'
-import { ownerLines } from '../core/messages.ts'
+import { noticeOf, ownerLines } from '../core/messages.ts'
+import { postEvent } from '../core/post-kinds.ts'
 import { answersInThread, blockedTask, planDrop } from '../core/blocks.ts'
 import { unanswered } from '../core/ledgers.ts'
 import { issueReporter } from '../runtime/issue-report.ts'
@@ -152,7 +153,7 @@ const toSession = (key: string, task: Task) => {
   return r
 }
 const sayInThread = (key: string, t: Task, text: string) => void postAsKage({ title: Title, bot, user }, t.meta.channel, t.meta.thread_ts || undefined, text).then(
-  r => ledgers.add('posted', [t.meta.channel, r.ts, r.by, key]),
+  r => ledgers.add('posted', [t.meta.channel, r.ts, r.by, key], 'notice:blocked'),
   e => log('could not post in the thread', logKey(key), e?.data?.error ?? e))
 const { blocked, closedTo, isClosed } = closedThreads({ store, reset: key => d.reset(key), say: sayInThread, tellOwner: text => void owner.say(text) })
 const dropToldOwner = new Set<string>()
@@ -174,7 +175,7 @@ const slack = await connectSlack({
   hub: { deliver, stop: (c, cut, by) => {
       const key = sessionKey(c, { lane: 'main' })
       return mayStop(by, slack.ids.owner, starters, key) ? stopThread(key, cut) : 'Only the owner, or the teammate whose task started this thread, can stop it.'
-    }, verdict: (id, behavior, always) => ownerVerdict(id, behavior, always), status: () => commands.status(), heard: m => schedules.heard(m), channelPost: p => jobs.channelPost(p), channelCatchUp: h => jobs.channelCatchUp(h), channelGap: () => jobs.channelGap(),
+    }, verdict: (id, behavior, always) => ownerVerdict(id, behavior, always), status: () => commands.status(), heard: m => schedules.heard(m), sent: (kind, channel) => ledgers.event(postEvent(kind, 'bot', channel)), channelPost: p => jobs.channelPost(p), channelCatchUp: h => jobs.channelCatchUp(h), channelGap: () => jobs.channelGap(),
     posted: () => ledgers.text('posted'), sessionOf: (c, lane) => rotator.sessionOf(sessionKey(c, { lane })), kageletsIn: (chat, thread) => kag.peopleIn(chat, thread), kageletAsk: (chat, thread, name, from, text) => kag.ask(chat, thread, name, from, text), ownerWrote: (chat, thread, text) => { for (const k of kag.notes.wrote(kag.lanes(), chat, thread, text)) runs.emit(k, 'owner-note', `${text.length} characters`) }, ...inbox },
   jev: jev && !('error' in jev) ? jevCheck(jev) : undefined, ackWords: config.jev?.ackWords !== false,
   triage: jev && !('error' in jev) ? jevTriage(jev, (who, detail) => runs.emit(who, 'triage', detail)) : undefined,
@@ -182,7 +183,7 @@ const slack = await connectSlack({
 })
 const waOn = config.connectors?.whatsapp?.on !== false && !!secrets.waha?.WAHA_API_KEY
 const waSay = waOn ? wahaToOwner(wahaUrl(config.connectors?.whatsapp?.wahaUrl), secrets.waha!.WAHA_API_KEY!, Title, NAME) : undefined
-const owner = ownerChannel({ pick: () => config.owner?.channel, slack: slack.notifyOwner, ...waSay && { whatsapp: waSay } })
+const owner = ownerChannel({ pick: () => config.owner?.channel, slack: slack.notifyOwner, ...waSay && { whatsapp: waSay }, onWhatsapp: text => ledgers.event(postEvent(`notice:${noticeOf(text)}`, 'owner', 'whatsapp')) })
 function ownerVerdict(id: string, behavior: 'allow' | 'deny', always?: true): boolean {
   return d.verdict(id, { type: 'verdict', request_id: id, behavior }) || answerCard(id, behavior, always)
 }
@@ -297,7 +298,7 @@ const limits = limitPause({
   end: key => d.end(key).filter(m => m.type === 'task'),
   defers: key => !!sdk && !onPane.has(key),
   notice: (t, text) => void postAsKage({ title: Title, bot, user }, t.meta.channel, t.meta.thread_ts || undefined, text).then(
-    r => ledgers.add('posted', [t.meta.channel, r.ts, r.by, `${t.meta.channel}:${t.meta.thread_ts}`]),
+    r => ledgers.add('posted', [t.meta.channel, r.ts, r.by, `${t.meta.channel}:${t.meta.thread_ts}`], 'notice:limit'),
     e => log('could not post the pause notice', t.meta.place, e?.data?.error ?? e)),
   replay: r => replayOf(r.connector)?.(r.source, r.payload) ?? Promise.reject(new Error(`no ${r.connector} connector to replay through`)),
   redeliver: (key, task) => { if (toSession(key, task) === 'failed') failed(task) },
@@ -305,7 +306,7 @@ const limits = limitPause({
 limits.restore()
 d.adopt(Object.keys(saved).filter(k => runningAtStart.has(saved[k]!)), Date.now())
 restoreHolds(DIR, d)
-const pingThread = threadPing({ title: Title, bot, user, thread: key => store.conversation(key)?.conversation, posted: cells => ledgers.add('posted', cells) })
+const pingThread = threadPing({ title: Title, bot, user, thread: key => store.conversation(key)?.conversation, posted: cells => ledgers.add('posted', cells, 'notice:ping') })
 const schedules = scheduler({ store, failed, jobStateDir: `${DIR}/job-state`,
   soon: (fn, ms) => { setTimeout(() => { const now = Date.now(); if (!limits.draining(now)) fn(now) }, ms).unref() },
   deliver: kageletDeliver(kag.notes, toSession, kag.board),
