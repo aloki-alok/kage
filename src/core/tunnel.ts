@@ -1,8 +1,9 @@
 import type { Config, Secrets } from './config.ts'
 import type { Line } from './doctor.ts'
 import { connectorStates } from './connect.ts'
+import { SLACK_PATH, SLACK_PORT, slackHttpUsable } from './slack-transport.ts'
 
-type TunnelRoute = { name: 'github' | 'voice' | 'hooks' | 'meeting' | 'sms'; port: number; paths: string[]; reach: 'internet' | 'tailnet' }
+type TunnelRoute = { name: 'github' | 'voice' | 'hooks' | 'meeting' | 'sms' | 'slack'; port: number; paths: string[]; reach: 'internet' | 'tailnet' }
 type RouteState = 'internet' | 'tailnet' | 'closed'
 type ServeStatus = {
   TCP?: Record<string, { TCPForward?: string }>
@@ -25,6 +26,7 @@ export function tunnelRoutes({ config, secrets }: { config: Config; secrets: Sec
     !!t?.hookPort && t.on !== false && { name: 'hooks', port: t.hookPort, paths: ['/hook'], reach: 'internet' },
     on.meeting.state === 'on' && { name: 'meeting', port: c?.meeting?.port || 8790, paths: [], reach: 'tailnet' },
     on.sms.state === 'on' && { name: 'sms', port: c?.sms?.port || 8793, paths: ['/sms'], reach: 'internet' },
+    slackHttpUsable({ config, secrets }) && { name: 'slack', port: SLACK_PORT, paths: [SLACK_PATH], reach: 'internet' },
   ]
   return routes.filter(r => r !== false)
 }

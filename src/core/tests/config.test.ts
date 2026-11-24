@@ -89,6 +89,8 @@ KAGE_SCREEN_LOOK_ELEMENTS=60
 KAGE_TOP_THREAD_COST_BAR=5
 KAGE_TUNNEL_PROVIDER=tailscale
 KAGE_TUNNEL_TARGETS=http://127.0.0.1:8789/github
+KAGE_SLACK_TRANSPORT=auto
+KAGE_SLACK_PUBLIC_URL=https://kage.example.test/slack
 KAGE_TRIPWIRES_TIMEOUT_SEC=30
 KAGE_TRIPWIRES_MAX_KB=32
 KAGE_TRIPWIRES_FAIL_PING=5
@@ -140,6 +142,7 @@ KAGE_COMMANDS=/lookup=/work/lookup.mjs,/other=/work/other.mjs
 SLACK_APP_TOKEN=xapp-test-fake
 SLACK_USER_TOKEN=xoxp-test-fake
 SLACK_BOT_TOKEN=xoxb-test-fake
+SLACK_SIGNING_SECRET=signing-test-fake
 KAGE_AWS_ACCESS_KEY_ID=AKIATESTFAKE
 KAGE_AWS_SECRET_ACCESS_KEY=fake-secret-value
 KAGE_VOICE_TOKEN=voice-fake
@@ -332,6 +335,12 @@ describe('what the hub needs to run', () => {
   test('a missing token is refused by its path, and a bad name by itself', () => {
     assert.match((checkSettings({ version: 1 }, { slack: { app: 'a', bot: 'b' } }) as { error: string }).error, /slack\.user/)
     assert.match((checkSettings({ version: 1, name: 'Not A Name' }, secrets) as { error: string }).error, /name/)
+  })
+  test('Slack over HTTP needs the signing secret and no app token, and Socket Mode the reverse', () => {
+    const http = { version: 1, slack: { transport: 'http' } } as Config, webOnly = { slack: { user: 'u', bot: 'b', signing: 's' } }
+    assert.equal((checkSettings(http, secrets) as { error: string }).error, 'slack.signing is missing in secrets.json')
+    assert.ok(!('error' in checkSettings(http, webOnly)))
+    assert.equal((checkSettings({ version: 1 }, webOnly) as { error: string }).error, 'slack.app is missing in secrets.json')
   })
   test('a value the hub would exit or crash on is refused: a quote in a path, a port out of range', () => {
     const bad = (c: object) => (checkSettings({ version: 1, ...c } as Config, secrets) as { error: string }).error

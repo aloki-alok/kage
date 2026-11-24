@@ -20,7 +20,10 @@ Only your own terminal runs `kage set`: it refuses inside a Kage session. No ses
 
 | Setting | Default | Effect |
 |---|---|---|
-| `slack.app` | required | secrets.json. The `xapp-` token for Socket Mode. `kage save` writes it. |
+| `slack.app` | required in Socket Mode | secrets.json. The `xapp-` token for Socket Mode. `kage save` writes it. |
+| `slack.signing` | required over HTTP | secrets.json. The app's signing secret (Basic Information > App Credentials). Over HTTP, Kage refuses every request it did not sign, and every request whose timestamp is more than 5 minutes from now. |
+| `slack.transport` | `auto` | How Slack reaches Kage: `socket` (Socket Mode, a connection Kage opens, so it needs no public address), `http` (Slack calls Kage's `/slack` route on port 8796), or `auto`: HTTP when `slack.signing` is set and the hub has a public HTTPS route (`slack.publicUrl`, or the Slack route `kage tunnel on` opened), otherwise Socket Mode. Over HTTP, a delivery Slack retries makes one task, and Kage reads the channels it watches again at each start. |
+| `slack.publicUrl` | none | The public HTTPS URL that reaches Kage's `/slack` route, when something other than `kage tunnel` serves it (a reverse proxy on a server). With `slack.signing` set, it makes `auto` take HTTP. |
 | `slack.user` | required | secrets.json. The `xoxp-` token. Its owner is Kage's owner: the only person with full access. Others drive Kage only with the limits below (`people`, email, voice). |
 | `slack.bot` | required | secrets.json. The `xoxb-` token Kage posts with. |
 | `name` | `kage` | The word you tag (`@kage`), the tmux session name, and the label on posts. |
@@ -206,6 +209,7 @@ One tunnel serves every Kage port another machine needs (#492). Public routes us
 | voice | the voice agent, when `voiceToken` is set | public at `/mcp` and `/voice` |
 | hooks | job webhooks, when `tripwires.hookPort` is set | public at `/hook/<job>` |
 | meeting | the meeting bot, when `meetingToken` is set | your tailnet only, at `<machine>.<tailnet>.ts.net:<port>` |
+| slack | Slack, when `slack.signing` is set and `slack.transport` is not `socket` | public at `/slack` |
 
 Each public route still checks its own secret or token, so the URL alone lets nobody in.
 

@@ -1,6 +1,7 @@
 import { z } from 'zod'
 import { validName } from './gate.ts'
 import { appEntry, validUserId, type Entry } from './registry.ts'
+import { slackTransport } from './slack-transport.ts'
 
 export const MODELS = ['fable', 'opus', 'sonnet', 'haiku'] as const
 export const DEFAULT_MODEL = 'sonnet'
@@ -76,6 +77,7 @@ export const Config = z.preprocess(foldOldPeople, z.strictObject({
   telemetry: z.strictObject({ on: yes, endpoint: text }).optional(),
   screen: z.strictObject({ shotLongSide: count, lookElements: count }).optional(),
   top: z.strictObject({ threadCostBar: money }).optional(),
+  slack: z.strictObject({ transport: z.enum(['auto', 'socket', 'http']).optional(), publicUrl: z.string().regex(/^https:\/\/\S+$/).nullable().optional() }).optional(),
   tunnel: z.strictObject({ provider: z.enum(['tailscale', 'off']).optional(), targets: strings }).optional(),
   tripwires: z.strictObject({ on: yes, timeoutSec: count, maxKb: count, failPing: count, patternMax: count, lineMax: count, maxPosts: count, catchUpMax: count, seenMax: count, hookPort: count, hookHost: text, hookPerHour: count, env: strings, swapAfter: count, shadowWindowMin: count, swapUndoDays: count }).optional(),
   connectors: z.strictObject({
@@ -95,7 +97,7 @@ export type Config = z.infer<typeof Config>
 export type KeyRoute = NonNullable<Config['sessionKeys']>[string]
 
 const secretsOf = <L extends z.ZodType>(sec: L) => z.strictObject({
-  slack: z.strictObject({ app: sec, user: sec, bot: sec }).optional(),
+  slack: z.strictObject({ app: sec, user: sec, bot: sec, signing: sec }).optional(),
   aws: z.strictObject({ accessKeyId: sec, secretAccessKey: sec }).optional(),
   voiceToken: sec, githubSecret: sec, githubAppKey: sec, githubToken: sec, meetingToken: sec, browserToken: sec, jevKey: sec, voiceAgentKey: sec, claudeToken: sec, twilioAuthToken: sec, telnyxApiKey: sec,
   waha: z.record(z.string().regex(/^[A-Z][A-Z0-9_]*$/), z.string()).optional(),
@@ -162,7 +164,7 @@ export const KEYS: Row[] = [
   R('KAGE_TRIPWIRES', 'tripwires.on', onoff), R('KAGE_TRIPWIRES_TIMEOUT_SEC', 'tripwires.timeoutSec', int), R('KAGE_TRIPWIRES_MAX_KB', 'tripwires.maxKb', int),
   R('KAGE_TRIPWIRES_FAIL_PING', 'tripwires.failPing', int), R('KAGE_TRIPWIRES_PATTERN_MAX', 'tripwires.patternMax', int), R('KAGE_TRIPWIRES_LINE_MAX', 'tripwires.lineMax', int),
   R('KAGE_TRIPWIRES_ENV', 'tripwires.env', list),
-  R('KAGE_TELEMETRY', 'telemetry.on', onoff), R('KAGE_TELEMETRY_ENDPOINT', 'telemetry.endpoint'), R('KAGE_SCREEN_SHOT_LONG_SIDE', 'screen.shotLongSide', int), R('KAGE_SCREEN_LOOK_ELEMENTS', 'screen.lookElements', int), R('KAGE_TOP_THREAD_COST_BAR', 'top.threadCostBar', num), R('KAGE_TUNNEL_PROVIDER', 'tunnel.provider'), R('KAGE_TUNNEL_TARGETS', 'tunnel.targets', list),
+  R('KAGE_TELEMETRY', 'telemetry.on', onoff), R('KAGE_TELEMETRY_ENDPOINT', 'telemetry.endpoint'), R('KAGE_SCREEN_SHOT_LONG_SIDE', 'screen.shotLongSide', int), R('KAGE_SCREEN_LOOK_ELEMENTS', 'screen.lookElements', int), R('KAGE_TOP_THREAD_COST_BAR', 'top.threadCostBar', num), R('KAGE_TUNNEL_PROVIDER', 'tunnel.provider'), R('KAGE_TUNNEL_TARGETS', 'tunnel.targets', list), R('KAGE_SLACK_TRANSPORT', 'slack.transport'), R('KAGE_SLACK_PUBLIC_URL', 'slack.publicUrl'),
   R('KAGE_EMAIL', 'connectors.email.on', onoff), R('KAGE_MAIL_ADDRESS', 'connectors.email.address'), R('KAGE_MAIL_QUEUE', 'connectors.email.queue'),
   R('KAGE_OWNER_EMAIL', 'connectors.email.ownerEmail'), R('KAGE_AWS_REGION', 'connectors.email.region'),
   R('KAGE_VOICE', 'connectors.voice.on', onoff), R('KAGE_VOICE_PORT', 'connectors.voice.port', int), R('KAGE_VOICE_MAX', 'connectors.voice.max', int),
@@ -177,7 +179,7 @@ export const KEYS: Row[] = [
   R('KAGE_SMS_PER_HOUR', 'connectors.sms.perHour', int), R('KAGE_SMS_PER_MINUTE', 'connectors.sms.perMinute', int), R('KAGE_SMS_PUBLIC_URL', 'connectors.sms.publicUrl'),
   R('KAGE_SMS_ACCOUNT_SID', 'connectors.sms.accountSid'), R('KAGE_SMS_TELNYX_PUBLIC_KEY', 'connectors.sms.telnyxPublicKey'),
   R('KAGE_COMMANDS', 'connectors.commands', commands),
-  R('SLACK_APP_TOKEN', 'slack.app', str, true), R('SLACK_USER_TOKEN', 'slack.user', str, true), R('SLACK_BOT_TOKEN', 'slack.bot', str, true),
+  R('SLACK_APP_TOKEN', 'slack.app', str, true), R('SLACK_USER_TOKEN', 'slack.user', str, true), R('SLACK_BOT_TOKEN', 'slack.bot', str, true), R('SLACK_SIGNING_SECRET', 'slack.signing', str, true),
   R('KAGE_AWS_ACCESS_KEY_ID', 'aws.accessKeyId', str, true), R('KAGE_AWS_SECRET_ACCESS_KEY', 'aws.secretAccessKey', str, true),
   R('KAGE_VOICE_TOKEN', 'voiceToken', str, true), R('KAGE_GITHUB_SECRET', 'githubSecret', str, true), R('KAGE_GITHUB_APP_KEY', 'githubAppKey', lines, true), R('KAGE_MEETING_TOKEN', 'meetingToken', str, true),
   R('KAGE_BROWSER_TOKEN', 'browserToken', str, true), R('JEV_API_KEY', 'jevKey', str, true), R('KAGE_VOICE_AGENT_KEY', 'voiceAgentKey', str, true), R('KAGE_CLAUDE_TOKEN', 'claudeToken', str, true),
@@ -281,7 +283,7 @@ export function badValue(c: Config): string | undefined {
   if (hook && !(Number.isInteger(hook) && hook >= 1024 && hook <= 65535)) return 'tripwires.hookPort must be 0 (off) or a port from 1024 to 65535'
 }
 export function checkSettings(c: Config, s: Secrets): { name: string; teammates: string[]; trusted: string[]; emails: string[]; apps: string[] } | { error: string } {
-  for (const [path, v] of [['slack.app', s.slack?.app], ['slack.user', s.slack?.user], ['slack.bot', s.slack?.bot]] as const) if (!v) return { error: `${path} is missing in secrets.json` }
+  for (const k of ['user', 'bot', slackTransport({ config: c, secrets: s }) === 'http' ? 'signing' : 'app'] as const) if (!s.slack?.[k]) return { error: `slack.${k} is missing in secrets.json` }
   const bad = badValue(c)
   if (bad) return { error: bad }
   const name = (c.name || 'kage').toLowerCase()
