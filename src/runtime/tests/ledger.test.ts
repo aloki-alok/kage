@@ -127,6 +127,24 @@ describe('the event log lives in kage.db beside the ledgers', () => {
       ['cost-flag', 'other', 'other: spent $0.90 today, over 3x its 7-day average of $0.10'],
     ])
   })
+  test('every posted row is also a post event with its kind, token and channel type, never its channel, thread or text (#242)', () => {
+    const l = openLedgers(dir(), () => '2026-11-14T09:00:00.000Z')
+    l.add('posted', ['C0TEST1', '1.1', 'bot', 'C0TEST1:0.5'])
+    l.add('posted', ['G0TEST2', '1.2', 'owner', 'G0TEST2:0.5', 'deploys'])
+    l.add('posted', ['D0TEST3', '1.3', 'card', 'card-9'])
+    l.add('posted', ['G0TEST2', '1.4', 'people'])
+    l.add('posted', ['C0TEST1', '1.5', 'canvas', 'C0TEST1:0.5'])
+    l.add('posted', ['C0TEST1', '1.6', 'bot', 'C0TEST1:0.5'], 'notice:limit')
+    l.add('posted', ['C0TEST1', '1.1', 'deleted'])
+    assert.deepEqual(l.events('2026-11-14').map(e => [e.kind, e.who, e.detail]), [
+      ['post', 'hub', 'reply bot channel'],
+      ['post', 'hub', 'reply owner group'],
+      ['post', 'hub', 'card bot dm'],
+      ['post', 'hub', 'people owner group'],
+      ['post', 'hub', 'canvas bot channel'],
+      ['post', 'hub', 'notice:limit bot channel'],
+    ])
+  })
   test('pruning folds each day older than the cutoff into one summary row, keeps newer days, and keeps summaries', () => {
     let at = '2026-10-01T09:00:00.000Z'
     const l = openLedgers(dir(), () => at)
