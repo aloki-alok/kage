@@ -18,7 +18,7 @@ A connector turns a message into a `Task` (`src/core/task.ts`) with `taskAsOwner
 - A replay after a restart or a usage-limit pause runs the task but never arms the WhatsApp stand-in. (`src/connectors/whatsapp.ts`)
 - A webhook handler checks method, path and signature before it reads one byte of body. The HMAC is the only gate when the port faces a container. (`src/connectors/whatsapp.ts`)
 - A connector reads the body as bytes and decodes once, so a split character cannot break a signature. (`src/connectors/webhook.ts`)
-- The Slack connector keeps one Socket Mode connection, because Slack splits events across connections. A second start() while one opens leaves two. (`src/connectors/slack/connect.ts`, `src/connectors/slack/socket.ts`)
+- Slack reaches the connector by Socket Mode or by HTTP, and both feed the same intake: ADR 0023.
 - The hub allows one process per machine. The lock is a listening socket, because binding is atomic. (`src/hub/router.ts`, `src/runtime/hub-lock.ts`)
 - The GitHub and meeting connectors run their tasks at teammate trust, because the event text comes from other people. (`src/connectors/github.ts`, `src/connectors/meeting.ts`)
 - A Meet has no owner code. Everyone in the room hears the answers, so a meeting task is never the owner's. (`src/connectors/meeting.ts`)
