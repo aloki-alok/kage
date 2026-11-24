@@ -13,7 +13,7 @@ import { reload, said } from './reload.ts'
 const KAGELETS = kageletsDir(DIR)
 const die = (msg: string): never => { console.error(msg); process.exit(1) }
 const [cmd = '', ...args] = process.argv.slice(2).map(pastedId)
-const USAGE = 'Usage: kage add <person> [--trusted | --not-trusted] | kage add <app id> <owner> | kage remove <person or app id> | kage list'
+const USAGE = 'Usage: kage person add <person> [--trusted | --not-trusted] | kage person add <app id> <owner> | kage person rm <person or app id> | kage person list'
 if (!['add', 'remove', 'list'].includes(cmd)) die(USAGE)
 if (cmd !== 'list' && process.env.KAGE_CLAUDE) die(`This shell runs inside Kage, and a session cannot change who reaches Kage. The owner runs kage ${cmd} in their own terminal.`)
 if (cmd === 'add' && args[0] === 'kagelet') {
@@ -22,7 +22,7 @@ if (cmd === 'add' && args[0] === 'kagelet') {
   const file = jobPath(KAGELETS, name)
   if (existsSync(`${KAGELETS}/${name}`)) die(`${KAGELETS}/${name} already exists. Edit its job.md, or pick another name.`)
   try { writeJob(KAGELETS, name, starterFile()) } catch (e) { die((e as Error).message) }
-  console.log(`Wrote ${file}, paused.\nFill in its thread, schedule, tools and job, then run kage start ${name}. It runs within a minute.`)
+  console.log(`Wrote ${file}, paused.\nFill in its thread, schedule, tools and job, then run kage kagelet start ${name}. It runs within a minute.`)
   process.exit(0)
 }
 if (!settingsExist()) die(`No settings in ${DIR}. Run kage setup first.`)
@@ -85,15 +85,16 @@ async function save(next: Entry[]) {
 if (cmd === 'list') {
   const board = await askHub<Live>({ type: 'board' }).catch(() => undefined)
   if (board?.paused) console.log(pauseLine(board.paused))
-  if (!now.length) console.log('No one is listed: only you can tag Kage. Add someone: kage add <person>')
-  if (args[0] !== '--ids') for (const e of now) if (e.kind === 'person') { const n = await nameOf(e.id); if (n) names.set(e.id, n) }
+  const people = !args.includes('--kagelets'), kagelets = !args.includes('--people')
+  if (people && !now.length) console.log('No one is listed: only you can tag Kage. Add someone: kage person add <person>')
+  if (people && !args.includes('--ids')) for (const e of now) if (e.kind === 'person') { const n = await nameOf(e.id); if (n) names.set(e.id, n) }
   const under = (owner: string, depth: number): void => {
     for (const a of now) if (a.kind === 'agent' && a.owner === owner) { console.log(`${'  '.repeat(depth)}agent ${a.id}${depth === 1 ? `  gets this person's ${now.some(p => p.kind === 'person' && p.id === owner && p.trusted) ? 'trusted' : 'teammate'} access` : ''}${a.tag ? '' : '  (no tag saved, so Kage cannot address it: add it again by a mention of it)'}`); under(a.id, depth + 1) }
   }
-  for (const e of now) if (e.kind === 'person') { console.log(`${label({ id: e.id, name: names.get(e.id) })}${e.trusted ? '  trusted: may use your connectors' : ''}`); under(e.id, 1) }
+  if (people) for (const e of now) if (e.kind === 'person') { console.log(`${label({ id: e.id, name: names.get(e.id) })}${e.trusted ? '  trusted: may use your connectors' : ''}`); under(e.id, 1) }
   const loose = now.filter(e => e.kind === 'agent' && !ownerPerson(now, e.id))
-  if (loose.length) console.log(`Agents not tied to a listed person: ${loose.map(e => e.id).join(', ')}\n  They may only read and answer. One with no owner counts with any listed person's token. Tie one to its owner: kage add <app id> <owner>`)
-  const files = readKagelets(KAGELETS)
+  if (people && loose.length) console.log(`Agents not tied to a listed person: ${loose.map(e => e.id).join(', ')}\n  They may only read and answer. One with no owner counts with any listed person's token. Tie one to its owner: kage person add <app id> <owner>`)
+  const files = kagelets ? readKagelets(KAGELETS) : []
   if (files.length) {
     const ledgers = openLedgers(DIR)
     const t = Date.now()
