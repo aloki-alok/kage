@@ -105,6 +105,16 @@ describe('a reach has one form, so a reworded ask still matches its line', () =>
       }
     }
     assert.equal(decide([line('repo-read', 'acme/app')], { who: 'UTEAM0001', kind: 'repo-read', reach: 'acme/other' }).do, 'ask')
+    assert.equal(reachForm('repo-read', 'acme/app'), 'github.com/acme/app')
+  })
+  test('a repo keeps its host, so a yes for one host never covers the same owner/name on another', () => {
+    for (const other of ['evil.com/acme/app', 'https://evil.com/acme/app', 'git@evil.com:acme/app.git', 'https://gitlab.com/acme/app']) {
+      assert.equal(decide([line('repo-read', 'github.com/acme/app')], { who: 'UTEAM0001', kind: 'repo-read', reach: reachForm('repo-read', other)! }).do, 'ask', other)
+    }
+  })
+  test('a reach that hides its target has no form: a user@ part, a .. step, or a bare path with no host and extra parts', () => {
+    for (const r of ['https://github.com@evil.com/acme/app', 'acme/app/../other', 'https://github.com/acme/../other', 'localhost/acme/app']) assert.equal(reachForm('repo-read', r), undefined, r)
+    assert.equal(reachForm('site-read', 'https://docs.example.com@evil.com/x'), undefined)
   })
   test('a site is its lowercase host', () => {
     assert.equal(reachForm('site-read', 'https://Docs.Example.com/guide?x=1'), 'docs.example.com')

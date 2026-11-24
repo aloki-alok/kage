@@ -12,7 +12,7 @@ export function typedAsk(c: ToolContext, key: string, kind: string | undefined, 
   if (!ASK_KINDS.includes(kind)) return { isError: true, text: `not sent: kind must be one of ${ASK_KINDS.join(', ')}` }
   if (oneLine(reach).length > MAX_REACH) return { isError: true, text: `not sent: reach is longer than ${MAX_REACH} characters` }
   const form = (c.o.trust?.mode() ?? 'off') === 'off' ? oneLine(reach) : kind === 'prod-read' ? routeName(c, reach) : reachForm(kind, reach)
-  if (typeof form !== 'string') return { isError: true, text: form?.refused ?? `not sent: reach must be ${kind === 'site-read' ? "a site's host, such as docs.example.com" : 'a repo as owner/name, such as acme/app'}` }
+  if (typeof form !== 'string') return { isError: true, text: form?.refused ?? `not sent: reach must be ${kind === 'site-read' ? "a site's host, such as docs.example.com" : 'a repo as owner/name or its link, such as acme/app'}` }
   const who = c.askers.get(key)?.id
   return who ? { who, kind, reach: form } : undefined
 }

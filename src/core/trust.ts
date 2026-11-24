@@ -13,19 +13,28 @@ export type TrustLine = { id: string; who: string; kind: string; reach: string; 
 export type AskRef = { who: string; kind: string; reach: string }
 const URLISH = /^[a-z][a-z+.-]*:\/\//i
 
+function parsedUrl(text: string): URL | undefined {
+  try { const u = new URL(URLISH.test(text) ? text : `https://${text}`); return u.username || u.password ? undefined : u } catch { return undefined }
+}
+
 function siteForm(reach: string): string | undefined {
   const text = reach.trim()
   if (/\s/.test(text)) return undefined
-  try { const host = new URL(URLISH.test(text) ? text : `https://${text}`).hostname.toLowerCase(); return host.includes('.') ? host : undefined } catch { return undefined }
+  const host = parsedUrl(text)?.hostname.toLowerCase()
+  return host?.includes('.') ? host : undefined
 }
 
+const SEGMENT = /^[\w.-]+$/
+
 function repoForm(reach: string): string | undefined {
-  const text = reach.trim().replace(/^git@([^:]+):/, 'https://$1/')
-  let path: string
-  try { path = URLISH.test(text) ? new URL(text).pathname : text.split('/')[0]!.includes('.') ? text.slice(text.indexOf('/')) : text } catch { return undefined }
-  const [owner, name] = path.split('/').filter(Boolean)
+  const text = reach.trim().replace(/^git@([^:/@]+):/, 'https://$1/')
+  if (/\s/.test(text) || text.split(/[/?#]/).includes('..')) return undefined
+  const bare = !URLISH.test(text) && !text.split('/')[0]!.includes('.')
+  if (bare && text.split('/').filter(Boolean).length !== 2) return undefined
+  const url = parsedUrl(bare ? `github.com/${text}` : text)
+  const [owner, name] = url?.pathname.split('/').filter(Boolean) ?? []
   const repo = name?.replace(/\.git$/, '')
-  return owner && repo && /^[\w.-]+$/.test(owner) && /^[\w.-]+$/.test(repo) ? `${owner}/${repo}`.toLowerCase() : undefined
+  return url && owner && repo && SEGMENT.test(owner) && SEGMENT.test(repo) && repo !== '..' ? `${url.hostname}/${owner}/${repo}`.toLowerCase() : undefined
 }
 
 export const reachForm = (kind: string, reach: string): string | undefined =>

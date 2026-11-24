@@ -996,13 +996,13 @@ describe("a session's Kage tools", () => {
       assert.match(long.text, /200/)
       assert.equal(s.posts.length, 1)
     })
-    test('a repo ask in another spelling meets the line its first spelling saved, and is stored as owner/name', async () => {
+    test('a repo ask in another spelling meets the line its first spelling saved, and is stored as host/owner/name', async () => {
       const s = setup({ trust: { mode: 'on', lines: [line({ kind: 'repo-read', reach: 'github.com/acme/app' })] } })
       teammate(s)
       const r = await s.call('reply', prodRead('6.6', { kind: 'repo-read', reach: 'https://github.com/Acme/app/pull/3' }))
       assert.match(r.text, /line T1/)
       assert.deepEqual(s.posts, [])
-      assert.match(s.ledgers.text('trust-steps'), /\trepo-read\tacme\/app\tT1/)
+      assert.match(s.ledgers.text('trust-steps'), /\trepo-read\tgithub\.com\/acme\/app\tT1/)
       const vague = await s.call('reply', prodRead('7.7', { kind: 'repo-read', reach: 'the app repo' }))
       assert.equal(vague.isError, true)
       assert.match(vague.text, /owner\/name/)

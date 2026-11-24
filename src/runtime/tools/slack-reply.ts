@@ -29,7 +29,7 @@ export function replyTool(c: ToolContext): KageTool {
       wide: z.boolean().optional().describe('true only for a log or code where wrapped lines are fine. Never for a table.'),
       tag_agent: z.boolean().optional().describe('On a task another agent posted: true only when that agent must read this post (the answer to its ask, or a question to it). An agent hears only posts that tag it, so acks, progress and thanks stay untagged.'),
       kind: s.optional().describe('With waiting and waiting_on owner, when a teammate\'s task needs the owner\'s yes: what kind of step it is (prod-read, site-read, repo-read, or one that always asks: ssm-relay, money, delete, send-outside, prod-deploy, prod-write, prod-shell, secret, product, owner-shell). With reach. Once the owner said yes to this kind and reach for that teammate, Kage does not ask again.'),
-      reach: s.optional().describe('With kind: what the step touches. prod-read: a read route name from the settings. site-read: the site, kept as its host. repo-read: the repo, kept as owner/name. Other kinds: a few words.'),
+      reach: s.optional().describe('With kind: what the step touches. prod-read: a read route name from the settings. site-read: the site, kept as its host. repo-read: the repo, kept as host/owner/name (a bare owner/name means GitHub). Other kinds: a few words.'),
       mark: z.enum(['ack', 'question', 'answer', 'done']).optional().describe('What this reply is, shown as a reaction on the task message: ack ("On it", no reaction), question (you need their answer to go on), answer (a quick question answered), done (the task is finished). Leave it out only on the reply that finishes the task.'),
     },
     async run(args) {
