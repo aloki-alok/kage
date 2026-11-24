@@ -15,7 +15,7 @@ import type { ToSession } from '../../src/runtime/protocol.ts'
 import { refuseLiveConfig } from '../harness.ts'
 import { fixtureText, type Evidence, type Expect, type Generated } from './grade.ts'
 
-export type Case = { name: string; why: string; files?: Record<string, string | Generated>; tasks: { from: 'owner' | 'teammate'; text: string }[]; expect: Expect }
+export type Case = { name: string; why: string; files?: Record<string, string | Generated>; memory?: Record<string, string>; tasks: { from: 'owner' | 'teammate'; text: string }[]; expect: Expect }
 
 const CHANNEL = 'CTEST1', THREAD = '1700000000.000100', KEY = `${CHANNEL}:${THREAD}`, BOT_DM = 'DTESTBOT1'
 
@@ -80,6 +80,7 @@ const standInReport = (ev: Evidence): SessionReport => ({
 
 async function runIn(c: Case, o: { code: string; claude: string; timeoutMs: number; trace?: string }, work: string, config: string): Promise<Evidence> {
   const fixture = writeFixture(work, c.files)
+  writeFixture(join(config, 'owner'), c.memory)
   const ev: Evidence = { replies: [], tools: [], cards: [], settings: [], jobs: [], files: {}, commands: {}, turns: [], fixture, filed: [] }
   const store = openStore(join(config, 'kage.db'))
   const ledgers = openLedgers(config, () => new Date().toISOString())
@@ -133,7 +134,13 @@ async function runIn(c: Case, o: { code: string; claude: string; timeoutMs: numb
     s.runner.stop(KEY)
     store.close()
   }
+  collectAfter(ev, c, work, ledgers)
+  return ev
+}
+
+function collectAfter(ev: Evidence, c: Case, work: string, ledgers: ReturnType<typeof openLedgers>) {
+  ev.waits = ledgers.text('waiting').split('\n').filter(l => l.split('\t')[1] === 'open')
+  for (const p of c.expect.guarded ?? []) ev.files[p] = readOrNull(join(work, p))
   for (const f of c.expect.files ?? []) ev.files[f.path] = readOrNull(join(work, f.path))
   for (const command of c.expect.commands ?? []) ev.commands[command] = spawnSync('/bin/sh', ['-c', command], { cwd: work, timeout: 60_000 }).status ?? -1
-  return ev
 }
