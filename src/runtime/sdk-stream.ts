@@ -43,7 +43,7 @@ export async function follow(h: Hub, live: Live) {
 
 function onState(live: Live, t: Turn, m: SDKMessage) {
   const { s } = live
-  if (m.type === 'system' && m.subtype === 'session_state_changed') { live.sawState = true; s.state = m.state; if (m.state === 'running') live.unseen = false; if (m.state === 'idle') sendAgain(live) }
+  if (m.type === 'system' && m.subtype === 'session_state_changed') { live.sawState = true; if (m.state === 'idle') for (const x of s.turn) x.mid = false; s.state = m.state; if (m.state === 'running') live.unseen = false; if (m.state === 'idle') sendAgain(live) }
   const life = m as { type: string; command_uuid?: string; state?: string }; if (life.type === 'command_lifecycle' && life.state === 'completed') for (const x of s.turn) if (x.uuid === life.command_uuid) x.read = true
   if (life.type === 'command_lifecycle') t.started = life.state === 'started' ? life.command_uuid : life.command_uuid === t.started ? undefined : t.started
 }
