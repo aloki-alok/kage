@@ -27,7 +27,7 @@ export function decide(lines: TrustLine[], ask: AskRef): Decision {
 export type OpenAsk = AskRef & { thread: string; would: string }
 
 export const openTypedAsks = (waitingTsv: string, thread: string): OpenAsk[] =>
-  openWaiting(waitingTsv).filter(i => i.thread === thread && i.kind && i.reach && i.who).map(i => ({ thread, who: i.who, kind: i.kind, reach: i.reach, would: i.would }))
+  openWaiting(waitingTsv).filter(i => i.thread === thread && i.kind && i.reach && i.who).map(i => ({ thread, who: i.who!, kind: i.kind!, reach: i.reach, would: i.would ?? '' }))
 
 const OWNER_LINE = /^(?:Task from [^:\n]*|From the owner, typed in the terminal): ([^\n]*)/
 
