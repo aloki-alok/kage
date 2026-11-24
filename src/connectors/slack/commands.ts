@@ -1,14 +1,14 @@
-import type { SocketModeClient } from '@slack/socket-mode'
 import type { WebClient } from '@slack/web-api'
 import { execFile } from 'node:child_process'
 import { log } from '../../runtime/log.ts'
 import { commandRequest, type CommandRequest } from '../../core/commands.ts'
 import { splitForSlack } from '../../core/outbound.ts'
 import type { Ledgers } from '../../runtime/ledger.ts'
+import type { SlackIntake } from './http.ts'
 
-export function listenForCommands(socket: SocketModeClient, o: { user: WebClient; team: string; commands: Map<string, string>; ledgers: Ledgers }) {
+export function listenForCommands(transport: SlackIntake, o: { user: WebClient; team: string; commands: Map<string, string>; ledgers: Ledgers }) {
   let chain = Promise.resolve()
-  socket.on('slash_commands', async ({ body, ack }) => {
+  transport.on('slash_commands', async ({ body, ack }: { body: unknown; ack: (response: object) => Promise<void> }) => {
     const r = body as CommandRequest & { response_url?: string }
     const v = commandRequest(r, { team: o.team, commands: o.commands })
     if (!v.ok) return ack({ response_type: 'ephemeral', text: v.reply })

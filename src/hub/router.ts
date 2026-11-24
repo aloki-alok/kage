@@ -70,7 +70,7 @@ import { unanswered } from '../core/ledgers.ts'
 import { issueReporter } from '../runtime/issue-report.ts'
 import { selfCheck } from './self-check.ts'
 
-const { ENV_FILE, NAME, Title, TEAMMATES, TRUSTED_PEOPLE, TEAMMATE_EMAILS, TRUSTED_APPS, config, secrets, bot, user } = load()
+const { ENV_FILE, NAME, Title, TEAMMATES, TRUSTED_PEOPLE, TEAMMATE_EMAILS, TRUSTED_APPS, config, secrets, bot, user, slackHttp } = load()
 const { harness = {}, kagelets: kl = {}, afk = {}, connectors: conn = {} } = config
 const health = connectorHealth(Date.now())
 tapLog(a => health.see(a, Date.now()))
@@ -166,7 +166,7 @@ if (jev && 'error' in jev) log(`jev is off: ${jev.error}`)
 else if (jev) log(`jev checks ${jev.agents === 'all' ? 'every listed agent' : jev.agents.join(', ')} at threshold ${jev.threshold}`)
 
 const slack = await connectSlack({
-  saved: store, catchUpMax: () => config.tripwires?.catchUpMax || 1000, dir: DIR, appToken: secrets.slack!.app!, userToken: secrets.slack!.user!, bot, user, name: NAME, title: Title, askOtherAgents: config.askOtherAgents, teammates: TEAMMATES, trusted: TRUSTED_PEOPLE, apps: TRUSTED_APPS,
+  saved: store, catchUpMax: () => config.tripwires?.catchUpMax || 1000, dir: DIR, appToken: secrets.slack?.app ?? undefined, http: slackHttp, userToken: secrets.slack!.user!, bot, user, name: NAME, title: Title, askOtherAgents: config.askOtherAgents, teammates: TEAMMATES, trusted: TRUSTED_PEOPLE, apps: TRUSTED_APPS,
   hub: { deliver, stop: (c, cut, by) => {
       const key = sessionKey(c, { lane: 'main' })
       return mayStop(by, slack.ids.owner, starters, key) ? stopThread(key, cut) : 'Only the owner, or the teammate whose task started this thread, can stop it.'
@@ -311,7 +311,7 @@ const schedules = scheduler({ store, failed, jobStateDir: `${DIR}/job-state`,
 importCrons(DIR, runningAtStart.size, schedules, t => void owner.say(t))
 
 const { meeting, email, voice, sms, replies, replayOf, jobs, clock } = startConnectors({ secrets, conn, store, slack, bot, ping: pingThread, say: owner.say, ownerAnswer: waCardsOut.answer, NAME, CODE, DIR, d, inbox, deliver, placeOf, failed, emails: TEAMMATE_EMAILS, schedules, event: ledgers.event, ledgers, tripwires: config.tripwires })
-listenForCommands(slack.socket, { user, team: slack.ids.team!, commands: COMMANDS, ledgers })
+listenForCommands(slack.transport, { user, team: slack.ids.team!, commands: COMMANDS, ledgers })
 
 function failed(m: ToSession) {
   if (m.type !== 'task') return
@@ -365,4 +365,4 @@ startupNotes({ dir: DIR, code: CODE, version: VERSION, envFile: ENV_FILE, store,
 store.prune(Date.now() - 7 * 86_400_000)
 kag.routes.replay(Date.now()); kag.needs.replay(Date.now())
 replayMissed(store, replayOf, Date.now())
-log(`listening as ${slack.botUser} (@${NAME}) for ${slack.ownerName} ${slack.ids.owner}; up to ${MAX} sessions; teammates ${TEAMMATES.join(',') || 'none'}`)
+log(`listening as ${slack.botUser} (@${NAME}) over ${slackHttp ? 'HTTP' : 'Socket Mode'} for ${slack.ownerName} ${slack.ids.owner}; up to ${MAX} sessions; teammates ${TEAMMATES.join(',') || 'none'}`)

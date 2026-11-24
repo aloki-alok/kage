@@ -1,8 +1,38 @@
 import { describe, test } from 'node:test'
 import assert from 'node:assert/strict'
 import type { Config, Secrets } from '../config.ts'
-import { slackTransport } from '../slack-transport.ts'
+import { slackRequest, slackTransport } from '../slack-transport.ts'
 import { tunnelPlan, tunnelRecord, tunnelRoutes } from '../tunnel.ts'
+
+const JSON_TYPE = 'application/json'
+const FORM = 'application/x-www-form-urlencoded'
+
+describe('what a request to the Slack route means', () => {
+  test('a url_verification is a challenge to answer', () => {
+    assert.deepEqual(slackRequest(JSON_TYPE, JSON.stringify({ type: 'url_verification', token: 'x', challenge: 'c-test' })), { kind: 'challenge', challenge: 'c-test' })
+  })
+
+  test('an event_callback is handed on under its inner event type, as Socket Mode names it', () => {
+    const body = { type: 'event_callback', event_id: 'Ev0TEST1', event: { type: 'message', channel: 'C0TEST1', ts: '1.1' } }
+    assert.deepEqual(slackRequest(`${JSON_TYPE}; charset=utf-8`, JSON.stringify(body)), { kind: 'dispatch', name: 'message', body, event: body.event })
+  })
+
+  test('a slash command form is handed on as slash_commands with its fields', () => {
+    const form = new URLSearchParams({ command: '/truecaller', text: '9876543210', user_id: 'U0TEST1', team_id: 'T0TEST1', response_url: 'https://hooks.slack.test/r' })
+    assert.deepEqual(slackRequest(FORM, form.toString()), { kind: 'dispatch', name: 'slash_commands', body: Object.fromEntries(form) })
+  })
+
+  test('a button press form is handed on as interactive with its payload parsed', () => {
+    const payload = { type: 'block_actions', user: { id: 'U0TEST1' }, actions: [{ action_id: 'approve' }] }
+    assert.deepEqual(slackRequest(FORM, new URLSearchParams({ payload: JSON.stringify(payload) }).toString()), { kind: 'dispatch', name: 'interactive', body: payload })
+  })
+
+  test('anything else means nothing: bad JSON, a bare value, an event with no type, an unknown form or content type', () => {
+    for (const [type, body] of [[JSON_TYPE, '{'], [JSON_TYPE, 'null'], [JSON_TYPE, '7'], [JSON_TYPE, '{"type":"event_callback","event":{}}'], [JSON_TYPE, '{"type":"app_rate_limited"}'],
+      [FORM, 'payload=%7B'], [FORM, 'payload=null'], [FORM, 'text=hi'], ['text/plain', '{"type":"url_verification","challenge":"c"}']] as const)
+      assert.equal(slackRequest(type, body), undefined, `${type} ${body}`)
+  })
+})
 
 const settings = (slack: Config['slack'], signing?: string, tunnel?: Config['tunnel']) =>
   ({ config: { version: 1, ...(slack && { slack }), ...(tunnel && { tunnel }) } as Config, secrets: { slack: { bot: 'b', user: 'u', app: 'a', ...(signing && { signing }) } } as Secrets })
