@@ -1,3 +1,4 @@
+import { findSecret } from './outbound.ts'
 import { startsSince } from './boots.ts'
 import { bridgeProblem, type BridgeSeen } from './whatsapp.ts'
 import type { SecretCommand } from './secret-commands.ts'
@@ -113,10 +114,12 @@ export function whatsappLine(s: BridgeSeen, at: { url: string; qr: string }): Li
   return p ? fail(p) : ok('WhatsApp bridge up, session WORKING')
 }
 
-export function doctorNews(out: string, told: string[]): { failing: string[]; dm?: string } {
-  const failing = out.trim() ? out.split('\n').filter(l => l.startsWith('FAIL')).map(l => l.slice(4).trim()) : ['the doctor printed nothing, so it did not run']
-  const same = failing.length === told.length && failing.every(f => told.includes(f))
-  if (same) return { failing }
-  if (!failing.length) return { failing, dm: "Kage's hourly check is all good again." }
-  return { failing, dm: [`Kage's hourly check found ${failing.length === 1 ? '1 problem' : `${failing.length} problems`}. Each line names its fix, and kage doctor checks again:`, ...failing.map(f => `• ${f}`)].join('\n') }
+const shown = (l: string) => { const kind = findSecret(l); return kind ? `${l.split(':')[0]}: its line holds a ${kind}, so run kage doctor in a terminal to see it` : l }
+
+export function doctorNews(out: string, told: string[], last: string[]): { failing: string[]; stable: string[]; dm?: string } {
+  const failing = out.trim() ? out.split('\n').filter(l => l.startsWith('FAIL')).map(l => shown(l.slice(4).trim())) : ['the doctor printed nothing, so it did not run']
+  const stable = failing.filter(f => last.includes(f))
+  if (stable.length === told.length && stable.every(f => told.includes(f))) return { failing, stable }
+  if (!stable.length) return { failing, stable, dm: "Kage's hourly check is all good again." }
+  return { failing, stable, dm: [`Kage's hourly check found ${stable.length === 1 ? '1 problem' : `${stable.length} problems`}, each on two checks in a row. Each line names its fix, and kage doctor checks again:`, ...stable.map(f => `• ${f}`)].join('\n') }
 }
