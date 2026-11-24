@@ -36,6 +36,7 @@ const task = (text: string, isOwner: boolean, files: string, agent?: string): Tr
 
 const CARD_YES = /^(y|yes|ok|okay|sure|approve|approved|go)\b(?!.*\b(no|not|don'?t|never|wait|but|stop|cancel|hold|later|after|first|away|until)\b)/i
 const CARD_NO = /^(n|no|deny|stop|cancel)\b/i
+export const cardAnswer = (plain: string): 'yes' | 'no' | undefined => CARD_YES.test(plain) ? 'yes' : CARD_NO.test(plain) ? 'no' : undefined
 const CARD_ALWAYS = /^always(,? (allow|allow it|fine|ok))?[.!]?$/i
 export function classify(m: SlackMessage, ids: Ids, card?: string, kagelets: { name: string; people: string[] }[] = []): Trigger {
   const isOwner = m.user === ids.owner

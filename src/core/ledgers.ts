@@ -5,12 +5,14 @@ import { tsAfter } from './thread-delta.ts'
 
 export const tsvRow = (cells: (string | undefined)[]) => cells.map(c => (c ?? '').replace(/[\t\r\n]+/g, ' ')).join('\t') + '\n'
 
-export function openWaiting(tsv: string): { when: string; thread: string; link: string; what: string }[] {
-  const open = new Map<string, { when: string; thread: string; link: string; what: string }[]>()
+type Waiting = { when: string; thread: string; link: string; what: string; kind: string; reach: string; who: string; would: string }
+
+export function openWaiting(tsv: string): Waiting[] {
+  const open = new Map<string, Waiting[]>()
   for (const line of tsv.split('\n')) {
-    const [when = '', status, thread = '', link = '', what = ''] = line.split('\t')
+    const [when = '', status, thread = '', link = '', what = '', kind = '', reach = '', who = '', would = ''] = line.split('\t')
     if (status === 'answered' || status === 'expired') open.delete(thread)
-    else if (status === 'open') open.set(thread, [...(open.get(thread) ?? []), { when, thread, link, what }])
+    else if (status === 'open') open.set(thread, [...(open.get(thread) ?? []), { when, thread, link, what, kind, reach, who, would }])
   }
   return [...open.values()].flat()
 }
