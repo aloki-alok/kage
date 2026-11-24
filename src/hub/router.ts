@@ -35,6 +35,7 @@ import type { ToSession } from '../runtime/protocol.ts'
 import { homeThread, postAsKage, sessionTools, threadPing } from '../runtime/kage-tools.ts'
 import { scheduler } from '../runtime/scheduler.ts'
 import { runJobs } from '../runtime/jobs.ts'
+import { doctorWatch, runDoctor } from '../runtime/doctor-watch.ts'
 import { mcpStatus, needsWatch, sdkLook } from '../runtime/job-needs.ts'
 import { tripwireCfg } from '../runtime/probe-jobs.ts'
 import { sdkSessions } from '../runtime/sdk-sessions.ts'
@@ -326,7 +327,10 @@ const dreaming = dreams({ dir: DIR, code: CODE, title: Title, botDm: slack.ids.b
 const updates = hubUpdates({ code: CODE, dir: DIR, ledgers, quiet: now => d.quietEverywhere(now) && !limits.paused(now), notify: t => owner.say(t) })
 const VERSION = updates.VERSION
 
+const doctor = doctorWatch({ run: runDoctor(CODE), store, say: t => owner.say(t), event: detail => ledgers.event({ kind: 'doctor', who: 'hub', trace: '', detail }) })
+setTimeout(() => void doctor().catch(e => log('doctor check failed', e)), 5 * 60_000).unref()
 runJobs([
+  { name: 'doctor', every: 3_600_000, run: doctor },
   { name: 'schedules', every: 20_000, run: now => { if (!limits.draining(now)) schedules.tick(now); jobs.swaps.tick(now) } },
   { name: 'sweep', every: 60_000, run: now => d.sweep(now).forEach(failed) },
   { name: 'limit pause', every: 20_000, run: now => limits.tick(now) },

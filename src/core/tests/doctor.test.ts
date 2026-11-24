@@ -1,6 +1,6 @@
 import { test, describe } from 'node:test'
 import assert from 'node:assert/strict'
-import { ownerChannelLine, autoUpdateNote, bootNotes, chromeLine, jevLine, keyLines, lingerLine, nodeOk, pathNote, render, report, serviceLines, sessionLines, slackLines, pluginLine, sandboxLine, tokenLines, toolsLine, whatsappLine } from '../doctor.ts'
+import { doctorNews, ownerChannelLine, autoUpdateNote, bootNotes, chromeLine, jevLine, keyLines, lingerLine, nodeOk, pathNote, render, report, serviceLines, sessionLines, slackLines, pluginLine, sandboxLine, tokenLines, toolsLine, whatsappLine } from '../doctor.ts'
 
 const text = (ls: { kind: string; text: string }[]) => ls.map(l => `${l.kind}:${l.text}`)
 
@@ -160,5 +160,27 @@ describe('decisions', () => {
     const off = ownerChannelLine('whatsapp', false)!
     assert.equal(off.kind, 'fail')
     assert.match(off.text, /kage set owner.channel slack/)
+  })
+})
+
+describe('the hourly doctor in the hub (#153)', () => {
+  const out = (...fails: string[]) => ['ok    tools: node 22.18+, claude', ...fails.map(f => `FAIL  ${f}`), 'note  dev route'].join('\n')
+  test('a new failure tells the owner once, with each failing line', () => {
+    const n = doctorNews(out('token file: run chmod 600 x', 'plugin: run claude plugin install'), [])
+    assert.deepEqual(n.failing, ['token file: run chmod 600 x', 'plugin: run claude plugin install'])
+    assert.match(n.dm!, /2 problems/)
+    assert.match(n.dm!, /token file: run chmod 600 x/)
+    assert.match(n.dm!, /plugin: run claude plugin install/)
+  })
+  test('the same failures again say nothing, in any order; a change says it again', () => {
+    assert.equal(doctorNews(out('b', 'a'), ['a', 'b']).dm, undefined)
+    assert.match(doctorNews(out('a', 'c'), ['a', 'b']).dm!, /2 problems[\s\S]*c/)
+  })
+  test('all good after a failure says so once, and all good after all good says nothing', () => {
+    assert.deepEqual(doctorNews(out(), ['a']), { failing: [], dm: "Kage's hourly check is all good again." })
+    assert.deepEqual(doctorNews(out(), []), { failing: [] })
+  })
+  test('a doctor that printed nothing is itself a failure', () => {
+    assert.deepEqual(doctorNews('', []).failing, ['the doctor printed nothing, so it did not run'])
   })
 })

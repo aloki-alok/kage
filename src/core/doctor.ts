@@ -112,3 +112,11 @@ export function whatsappLine(s: BridgeSeen, at: { url: string; qr: string }): Li
   const p = bridgeProblem(s, at)
   return p ? fail(p) : ok('WhatsApp bridge up, session WORKING')
 }
+
+export function doctorNews(out: string, told: string[]): { failing: string[]; dm?: string } {
+  const failing = out.trim() ? out.split('\n').filter(l => l.startsWith('FAIL')).map(l => l.slice(4).trim()) : ['the doctor printed nothing, so it did not run']
+  const same = failing.length === told.length && failing.every(f => told.includes(f))
+  if (same) return { failing }
+  if (!failing.length) return { failing, dm: "Kage's hourly check is all good again." }
+  return { failing, dm: [`Kage's hourly check found ${failing.length === 1 ? '1 problem' : `${failing.length} problems`}. Each line names its fix, and kage doctor checks again:`, ...failing.map(f => `• ${f}`)].join('\n') }
+}

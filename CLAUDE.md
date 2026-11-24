@@ -35,7 +35,7 @@ Each step ends with a check. Go to the next step only when the check passes.
 
 ## Run it
 
-The install line puts `kage` on your PATH (in a git checkout, run `./setup.sh link` once). Then `kage help` lists every command and `kage help <command>` shows one with an example. `kage doctor` prints the command that fixes each problem: run it, run the printed fix, and repeat until `All good`.
+The install line puts `kage` on your PATH (in a git checkout, run `./setup.sh link` once). Then `kage help` lists every command and `kage help <command>` shows one with an example. `kage doctor` prints the command that fixes each problem: run it, run the printed fix, and repeat until `All good`. The hub also runs it every hour and DMs you when what fails changes.
 
 | Task | Command |
 |---|---|
