@@ -35,7 +35,6 @@ import type { ToSession } from '../runtime/protocol.ts'
 import { homeThread, postAsKage, sessionTools, threadPing } from '../runtime/kage-tools.ts'
 import { scheduler } from '../runtime/scheduler.ts'
 import { runJobs } from '../runtime/jobs.ts'
-import { doctorWatch, runDoctor } from '../runtime/doctor-watch.ts'
 import { mcpStatus, needsWatch, sdkLook } from '../runtime/job-needs.ts'
 import { tripwireCfg } from '../runtime/probe-jobs.ts'
 import { sdkSessions } from '../runtime/sdk-sessions.ts'
@@ -69,6 +68,7 @@ import { ownerLines } from '../core/messages.ts'
 import { answersInThread, blockedTask, planDrop } from '../core/blocks.ts'
 import { unanswered } from '../core/ledgers.ts'
 import { issueReporter } from '../runtime/issue-report.ts'
+import { selfCheck } from './self-check.ts'
 
 const { ENV_FILE, NAME, Title, TEAMMATES, TRUSTED_PEOPLE, TEAMMATE_EMAILS, TRUSTED_APPS, config, secrets, bot, user } = load()
 const { harness = {}, kagelets: kl = {}, afk = {}, connectors: conn = {} } = config
@@ -231,6 +231,7 @@ const sessionOptions = (claude: string) => ({
   pathToClaudeCodeExecutable: claude,
 })
 const needs = needsWatch({ store, placeOf, notify: t => owner.say(t), probesOn: () => tripwireCfg(config.tripwires ?? {}).on, ...sdkLib && { look: sdkLook(sdkLib.lib.query as Parameters<typeof sdkLook>[0], sessionOptions(sdkLib.claude)) } })
+const reporter = config.report?.enabled !== false ? issueReporter({ code: CODE, repo: config.report?.repo ?? undefined, version: () => VERSION, perDay: config.report?.perDay ?? 3, names: slack.knownNames, redact: config.report?.redact }) : undefined
 const sdk = sdkLib ? sdkSessions({
   sdk: sdkLib.lib,
   deferred,
@@ -242,7 +243,7 @@ const sdk = sdkLib ? sdkSessions({
     settings: { set: (key, value) => setKey(ENV_FILE, key, value) },
     kagelet: key.split('#side-kagelet-')[1], dreaming: key.split('#side-kdream-')[1], kageletMemory: kag.kmem, ...key === DREAM_KEY ? { dreamLessons: (l: DreamLesson[], dismiss?: Dismissal[]) => dreaming.lessons(l, dismiss) } : !key.includes('#side-') && { flagKnowledge: f => ledgers.add('flags', flagRow(randomUUID().slice(0, 8), key, f)) },
     browser: browser && { call: browser.call, block: BROWSER_BLOCK },
-    ...config.report?.enabled !== false && { report: issueReporter({ code: CODE, repo: config.report?.repo ?? undefined, version: () => VERSION, perDay: config.report?.perDay ?? 3, names: slack.knownNames, redact: config.report?.redact }) },
+    ...reporter && { report: reporter },
     foreignAgents: () => config.askOtherAgents ? [] : foreignAgentTags(slack.ids.apps ?? [], slack.ids.owner),
     meetbot: meeting && { join: meeting.join }, sms: sms?.campaigns, screen: SCREEN,
     dbRead: { command: () => readCommand(kl.dbRead?.command ?? undefined, store, key.split('#side-kagelet-')[1] ?? ''), maxRows: kl.dbRead?.maxRows || 200 },
@@ -327,8 +328,7 @@ const dreaming = dreams({ dir: DIR, code: CODE, title: Title, botDm: slack.ids.b
 const updates = hubUpdates({ code: CODE, dir: DIR, ledgers, quiet: now => d.quietEverywhere(now) && !limits.paused(now), notify: t => owner.say(t) })
 const VERSION = updates.VERSION
 
-const doctor = doctorWatch({ run: runDoctor(CODE), store, say: t => owner.say(t), event: detail => ledgers.event({ kind: 'doctor', who: 'hub', trace: '', detail }) })
-setTimeout(() => void doctor().catch(e => log('doctor check failed', e)), 5 * 60_000).unref()
+const doctor = selfCheck({ code: CODE, store, ledgers, say: t => owner.say(t), reporter })
 runJobs([
   { name: 'doctor', every: 3_600_000, run: doctor },
   { name: 'schedules', every: 20_000, run: now => { if (!limits.draining(now)) schedules.tick(now); jobs.swaps.tick(now) } },

@@ -1,5 +1,5 @@
 import { execFile } from 'node:child_process'
-import { repoFromRemote } from '../core/issue-report.ts'
+import { issueBody, reportFingerprint, repoFromRemote, type IssueReport } from '../core/issue-report.ts'
 import type { SessionReport } from './tools/report-tools.ts'
 
 type Run = (cmd: string, args: string[], input?: string) => Promise<string>
@@ -23,4 +23,16 @@ export function issueReporter(o: { code: string; repo?: string; version: () => s
     names: o.names,
     redact: () => o.redact ?? [],
   }
+}
+
+export async function fileFound(r: Omit<SessionReport, 'names'>, report: IssueReport): Promise<{ outcome: string; repo: string; url: string }> {
+  const repo = await r.repo()
+  if (!repo) return { outcome: 'no repo', repo: '', url: '' }
+  const fingerprint = reportFingerprint(report), hit = await r.find(repo, fingerprint)
+  if (hit) {
+    await r.comment(repo, hit.number, `seen again on ${r.system.version} ${r.system.system}`)
+    return { outcome: 'commented', repo, url: hit.url }
+  }
+  const { labels, body } = issueBody(report, r.system, fingerprint)
+  return { outcome: 'filed', repo, url: await r.file(repo, report.title, body, labels) }
 }

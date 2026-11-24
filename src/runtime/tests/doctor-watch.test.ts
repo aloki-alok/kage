@@ -6,14 +6,15 @@ import { join } from 'node:path'
 import { doctorWatch, runDoctor } from '../doctor-watch.ts'
 
 function setup(outs: string[], sent = true) {
-  const saved = new Map<string, unknown>(), dms: string[] = [], events: string[] = []
+  const saved = new Map<string, unknown>(), dms: string[] = [], events: string[] = [], filed: string[] = []
   const check = doctorWatch({
+    file: async r => { filed.push(r.title) },
     run: async () => outs.shift() ?? '',
     store: { load: k => saved.get(k), save: (k, v) => { saved.set(k, v) } },
     say: async t => { dms.push(t); return sent },
     event: d => { events.push(d) },
   })
-  return { check, saved, dms, events }
+  return { check, saved, dms, events, filed }
 }
 
 test('the hourly doctor DMs a failure seen twice once, stays quiet while it lasts, and says when it clears, one event per run (#153)', async () => {
@@ -40,4 +41,11 @@ test('a doctor that runs past its time limit is a failure, not an all good', asy
   const out = await runDoctor(dir, 300)()
   assert.match(out, /^ok    tools$/m)
   assert.match(out, /^FAIL  the doctor took over 0\.3 s, so some checks did not finish$/m)
+})
+
+test('a check that keeps failing to run is filed once as a bug, and a known fix line never is (#153)', async () => {
+  const out = 'FAIL  slack: the check did not run (boom)\nFAIL  token file: run chmod 600 x'
+  const t = setup([out, out, out])
+  await t.check(); await t.check(); await t.check()
+  assert.deepEqual(t.filed, ['kage doctor: the slack check did not run'])
 })

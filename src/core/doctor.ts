@@ -1,4 +1,5 @@
 import { findSecret } from './outbound.ts'
+import { scrubReport, type IssueReport } from './issue-report.ts'
 import { startsSince } from './boots.ts'
 import { bridgeProblem, type BridgeSeen } from './whatsapp.ts'
 import type { SecretCommand } from './secret-commands.ts'
@@ -122,4 +123,15 @@ export function doctorNews(out: string, told: string[], last: string[]): { faili
   if (stable.length === told.length && stable.every(f => told.includes(f))) return { failing, stable }
   if (!stable.length) return { failing, stable, dm: "Kage's hourly check is all good again." }
   return { failing, stable, dm: [`Kage's hourly check found ${stable.length === 1 ? '1 problem' : `${stable.length} problems`}, each on two checks in a row. Each line names its fix, and kage doctor checks again:`, ...stable.map(f => `• ${f}`)].join('\n') }
+}
+
+const EXPECTED = 'Each doctor check runs and reports ok, FAIL or note, within its time limit.'
+
+export function doctorBug(line: string): IssueReport | undefined {
+  const threw = /^(\w+): the check did not run \((.*)\)$/.exec(line)
+  const r: IssueReport | undefined = threw ? { kind: 'bug', title: `kage doctor: the ${threw[1]} check did not run`, what: `The hub's hourly doctor run: the ${threw[1]} check threw ${threw[2]}`, expected: EXPECTED }
+    : line.startsWith('the doctor took over') ? { kind: 'bug', title: 'kage doctor: a run took over its time limit', what: `The hub's hourly doctor run: ${line}`, expected: EXPECTED }
+    : line.startsWith('the doctor printed nothing') ? { kind: 'bug', title: 'kage doctor: a run printed nothing', what: `The hub's hourly doctor run: ${line}`, expected: EXPECTED }
+    : undefined
+  return r && scrubReport(r, [])
 }
