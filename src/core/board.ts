@@ -9,6 +9,13 @@ export type Live = {
   paused?: Pause
   limitCounts?: LimitCounts
 }
+export const refusedLine = (refused: string, terminal = false) => `Kage refused this: ${refused}.${terminal ? ' In your own terminal, that means owner.key is missing or changed since the hub started: run kage restart --cut-running.' : ''}`
+export function boardAnswer(r: unknown): { live: Live } | { refused: string } | undefined {
+  if (!r || typeof r !== 'object' || (r as { type?: unknown }).type !== 'board') return
+  const { refused, live } = r as { refused?: unknown; live?: unknown }
+  if (typeof refused === 'string') return { refused }
+  return Array.isArray(live) ? { live: r as Live } : undefined
+}
 export type LimitCounts = { limitHits: number; held: number; replays: number; replayFailures: number }
 export const limitLine = (c?: LimitCounts) =>
   c?.limitHits ? `Usage limit since the hub started: ${c.limitHits} hit${c.limitHits === 1 ? '' : 's'}, ${c.held} held, ${c.replays} replayed, ${c.replayFailures} replay${c.replayFailures === 1 ? '' : 's'} failed.` : undefined

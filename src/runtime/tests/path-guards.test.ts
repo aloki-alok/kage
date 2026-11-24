@@ -363,3 +363,48 @@ describe('a session may not run the command a secret names (#158)', () => {
     for (const c of ['op read op://kage/slack-bot', 'security find-generic-password -w -s kage', 'pass show x']) assert.equal(bash(o, c), undefined, c)
   })
 })
+
+describe('the owner key is closed like secrets.json', () => {
+  const ENV = '/home/o/.config/kage/env', HOME = '/home/o'
+  const dir = mkdtempSync(join(tmpdir(), 'kage-okey-guard-'))
+  const code = mkdtempSync(join(tmpdir(), 'kage-code-'))
+  const real = realpathSync(dir)
+  test('no session reads, searches or writes owner.key by a file tool or a named shell path, the owner included', () => {
+    for (const s of ['owner', 'teammate', undefined]) {
+      for (const t of ['Read', 'Write', 'Edit']) assert.match(configRefusal(t, { file_path: '/home/o/.config/kage/owner.key' }, s, ENV, HOME) ?? '', /owner|closed/, `${t} ${s}`)
+      assert.match(configRefusal('Bash', { command: 'cat ~/.config/kage/owner.key' }, s, ENV, HOME) ?? '', /owner|closed/, `Bash ${s}`)
+      assert.match(configRefusal('Grep', { pattern: '.', path: '/home/o/.config/kage/owner.key' }, s, ENV, HOME) ?? '', /owner|closed/, `Grep ${s}`)
+    }
+  })
+  test('the file rules and the sandbox deny owner.key, with the sandbox on and off', () => {
+    for (const w of [protectConfig(`${dir}/env`, code, HOME), protectConfig(`${dir}/env`, code, HOME, true), protectConfig(`${dir}/env`, code, HOME, 'kagelet')]) {
+      assert.ok(w.permissions.deny.includes(`Read(/${real}/owner.key)`))
+      assert.ok(w.permissions.deny.includes(`Edit(/${real}/owner.key)`))
+    }
+    for (const w of [protectConfig(`${dir}/env`, code, HOME, true), protectConfig(`${dir}/env`, code, HOME, 'kagelet')]) {
+      assert.ok(w.sandbox!.filesystem.denyRead.includes(`${real}/owner.key*`))
+      assert.ok(w.sandbox!.filesystem.denyWrite.includes(`${real}/owner.key*`))
+    }
+  })
+})
+
+describe("a session's shell cannot run a kage command that acts as the owner", () => {
+  const g = { ownerMemory: '/home/o/.claude/projects/-home-o/memory', envFile: '/home/o/.config/kage/env' }
+  const no = (command: string) => assert.match(toolRefusal('Bash', { command }, 'owner', g) ?? '', /owner's own terminal/, command)
+  const yes = (command: string) => assert.equal(toolRefusal('Bash', { command }, 'owner', g), undefined, command)
+  test('tell, relay, stop, attach, call, reload, restart, add and remove are refused, plain, with env -u and with an empty KAGE_CLAUDE', () => {
+    for (const sub of ['tell dm "deploy prod"', 'relay allow C1:5.5', 'stop C1:5.5', 'attach C1:5.5', 'call', 'reload', 'restart', 'add UTEST1', 'remove UTEST1']) {
+      no(`kage ${sub}`)
+      no(`env -u KAGE_CLAUDE kage ${sub}`)
+      no(`KAGE_CLAUDE= kage ${sub}`)
+    }
+    no('unset KAGE_CLAUDE; kage tell dm hi')
+    no('cd /tmp && ~/kage/setup.sh tell dm hi')
+    no("'kage' tell dm hi")
+    no('node ~/kage/src/cli/tell.ts dm hi')
+    no('sh -c "kage relay allow C1:5.5"')
+  })
+  test('the read commands and words that only mention them still run', () => {
+    for (const c of ['kage status', 'kage list', 'kage schedules', 'kage logs 200', 'kage stats 7', 'kage cost', 'kage doctor', 'kage help tell', 'git commit -m "kage tell is owner only"', 'grep -rn "kage stop" docs']) yes(c)
+  })
+})

@@ -8,6 +8,7 @@ import type { Dispatcher } from '../core/sessions.ts'
 import type { Reloaded } from '../core/settings.ts'
 import { isJobLane } from '../core/conversations.ts'
 import { log } from './log.ts'
+import { linkToken, readToken, sameSecret } from './owner-key.ts'
 import type { ChannelReply, FromSession, ToSession } from './protocol.ts'
 import type { scheduler } from './scheduler.ts'
 
@@ -35,6 +36,7 @@ export function restoreHolds(dir: string, d: Dispatcher<ToSession>) {
 }
 
 type Options = Replies & {
+  ownerKey: string
   failed: (m: ToSession) => void
   schedules: Pick<ReturnType<typeof scheduler>, 'add' | 'remove'>
   callCode?: () => string
@@ -51,7 +53,7 @@ type Options = Replies & {
 }
 type Link = { d: Dispatcher<ToSession>; o: Options; dir: string; owned: Set<string> }
 type Conn = { sock: Socket; key: string; held: string; send: (m: ToSession) => void }
-type Msg = Partial<FromSession> & { key?: unknown; id?: unknown; text?: unknown; pid?: unknown; name?: unknown; action?: unknown }
+type Msg = Partial<FromSession> & { key?: unknown; id?: unknown; text?: unknown; pid?: unknown; name?: unknown; action?: unknown; ownerKey?: unknown; readToken?: unknown; linkToken?: unknown }
 
 export function listenForSessions(path: string, d: Dispatcher<ToSession>, o: Options) {
   try { unlinkSync(path) } catch {}
@@ -70,7 +72,7 @@ export function listenForSessions(path: string, d: Dispatcher<ToSession>, o: Opt
         let m: Msg
         try { m = JSON.parse(line) } catch { continue }
         if (!m || typeof m !== 'object') continue
-        if (!c.key && !c.held && Object.hasOwn(COMMANDS, String(m.type))) COMMANDS[String(m.type)]!(l, c, m)
+        if (!c.key && !c.held && Object.hasOwn(COMMANDS, String(m.type))) command(l, c, m)
         else if (c.key) fromSession(l, c, m)
       }
     })
@@ -91,34 +93,53 @@ function free({ d, o, dir }: Link, key: string) {
 
 const answer = (c: Conn, type: string, r: object) => c.sock.write(JSON.stringify({ type, ...r }) + '\n')
 
-const COMMANDS: Record<string, (l: Link, c: Conn, m: Msg) => void> = {
-  hold: (l, c, m) => { if (typeof m.key === 'string') hold(l, c, m.key, typeof m.pid === 'number' ? m.pid : 0) },
-  board: ({ d, o }, c) => {
+type Command = { from: 'owner' | 'read' | 'session'; run: (l: Link, c: Conn, m: Msg) => void }
+const owner = (run: Command['run']): Command => ({ from: 'owner', run })
+const read = (run: Command['run']): Command => ({ from: 'read', run })
+const session = (run: Command['run']): Command => ({ from: 'session', run })
+const OWNER_ONLY = "this needs the owner key, which only the kage command in the owner's own terminal sends"
+const OWNER_THREADS = "kage status works in the owner's threads and terminal"
+const GATES: Record<Command['from'], { admits: (l: Link, m: Msg) => boolean; refuse: (c: Conn, type: string) => void }> = {
+  owner: { admits: ({ o }, m) => sameSecret(m.ownerKey, o.ownerKey), refuse: (c, type) => answer(c, type, { refused: OWNER_ONLY }) },
+  read: { admits: ({ o }, m) => sameSecret(m.ownerKey, o.ownerKey) || sameSecret(m.readToken, readToken(o.ownerKey)), refuse: (c, type) => answer(c, type, { refused: OWNER_THREADS }) },
+  session: { admits: ({ o }, m) => typeof m.key === 'string' && sameSecret(m.linkToken, linkToken(o.ownerKey, m.key)), refuse: c => c.sock.destroy() },
+}
+
+function command(l: Link, c: Conn, m: Msg) {
+  const type = String(m.type), { from, run } = COMMANDS[type]!
+  if (GATES[from].admits(l, m)) return run(l, c, m)
+  log('socket refused', from, type)
+  GATES[from].refuse(c, type)
+}
+
+const COMMANDS: Record<string, Command> = {
+  hold: owner((l, c, m) => { if (typeof m.key === 'string') hold(l, c, m.key, typeof m.pid === 'number' ? m.pid : 0) }),
+  board: read(({ d, o }, c) => {
     const paused = o.paused?.()
     const limitCounts = o.limitCounts?.()
     answer(c, 'board', { ...d.status(Date.now()), ...(paused && { paused }), ...(limitCounts && { limitCounts }) })
-  },
-  health: ({ o }, c) => answer(c, 'health', { lines: o.health?.() ?? [] }),
-  end: ({ o }, c, m) => { if (o.end && typeof m.key === 'string') answer(c, 'end', { text: o.end(m.key, (m as { cut?: unknown }).cut === true) }) },
-  quiesce: ({ o }, c) => { if (o.quiesce) answer(c, 'quiesce', { waiting: o.quiesce() }) },
-  reload: ({ o }, c) => answer(c, 'reload', o.reload?.() ?? { refused: 'this hub cannot reload' }),
-  callcode: ({ o }, c) => {
+  }),
+  health: read(({ o }, c) => answer(c, 'health', { lines: o.health?.() ?? [] })),
+  end: owner(({ o }, c, m) => { if (o.end && typeof m.key === 'string') answer(c, 'end', { text: o.end(m.key, (m as { cut?: unknown }).cut === true) }) }),
+  quiesce: owner(({ o }, c) => { if (o.quiesce) answer(c, 'quiesce', { waiting: o.quiesce() }) }),
+  reload: owner(({ o }, c) => answer(c, 'reload', o.reload?.() ?? { refused: 'this hub cannot reload' })),
+  callcode: owner(({ o }, c) => {
     const code = o.callCode?.()
     answer(c, 'callcode', code ? { code } : { refused: 'voice is off' })
-  },
-  tell: ({ o }, c, m) => {
+  }),
+  tell: owner(({ o }, c, m) => {
     if (typeof m.key !== 'string' || typeof m.text !== 'string') return
     answer(c, 'tell', !m.text.trim() ? { refused: 'empty message' } : o.tell?.(m.key, m.text.trim()) ?? { refused: 'this hub cannot take messages' })
-  },
-  say: (l, c, m) => { if (typeof m.text === 'string') say(l, c, m.text, m as { channel?: unknown; thread_ts?: unknown }) },
-  relay: ({ o }, c, m) => answer(c, 'relay', typeof m.action === 'string' && ['allow', 'deny', 'list'].includes(m.action) ? o.relay?.(m.action, typeof m.key === 'string' ? m.key : undefined) ?? { refused: 'this hub has no relay' } : { refused: 'use allow, deny or list' }),
-  kagelet: (l, c, m) => { if (typeof m.name === 'string') kagelet(l, c, m.name, m.action as PanelAction) },
-  stop: ({ d }, c, m) => { if (typeof m.key === 'string') answer(c, 'stop', d.stop(m.key, Date.now())) },
-  hello: ({ d }, c, m) => {
+  }),
+  say: owner((l, c, m) => { if (typeof m.text === 'string') say(l, c, m.text, m as { channel?: unknown; thread_ts?: unknown }) }),
+  relay: owner(({ o }, c, m) => answer(c, 'relay', typeof m.action === 'string' && ['allow', 'deny', 'list'].includes(m.action) ? o.relay?.(m.action, typeof m.key === 'string' ? m.key : undefined) ?? { refused: 'this hub has no relay' } : { refused: 'use allow, deny or list' })),
+  kagelet: owner((l, c, m) => { if (typeof m.name === 'string') kagelet(l, c, m.name, m.action as PanelAction) }),
+  stop: owner(({ d }, c, m) => { if (typeof m.key === 'string') answer(c, 'stop', d.stop(m.key, Date.now())) }),
+  hello: session(({ d }, c, m) => {
     if (typeof m.key !== 'string') return
     if (d.connect(m.key, c.send)) c.key = m.key
     else c.sock.destroy()
-  },
+  }),
 }
 
 function hold({ d, dir, owned }: Link, c: Conn, key: string, pid: number) {

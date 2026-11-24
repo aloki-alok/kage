@@ -15,6 +15,7 @@ import { openLedgers } from '../src/runtime/ledger.ts'
 import { paneTurn } from '../src/runtime/pane-turn.ts'
 import { schedulesIn } from '../src/runtime/store.ts'
 import { foreignAgentTags } from '../src/core/agents.ts'
+import { paneHello } from '../src/runtime/owner-key.ts'
 
 const THREAD = process.env.KAGE_THREAD
 if (!THREAD) {
@@ -104,7 +105,7 @@ function link() {
   let buf = ''
   s.on('connect', () => {
     router = s
-    s.write(JSON.stringify({ type: 'hello', key: THREAD }) + '\n')
+    s.write(JSON.stringify(paneHello(THREAD!)) + '\n')
     for (const id of unsentAsks.splice(0)) s.write(JSON.stringify({ type: 'permission', id }) + '\n')
   })
   s.on('data', chunk => {

@@ -50,6 +50,7 @@ export type SdkOptions = {
   toHub: (key: string, m: ChannelReply) => void
   options: Options
   ownerMemory: string; ownMemory?: string; sharedTools?: readonly string[]
+  readToken?: string
   codeDir: string; sandbox?: (ownerThread: boolean) => boolean; commandOutput?: () => number | undefined
   envFile: string
   onStart?: () => void; onMcp?: (q: Query) => void
@@ -106,6 +107,7 @@ function queryOptions(h: Hub, key: string, s: Session, full: boolean, resumed: b
   const walled = protectConfig(o.envFile, o.codeDir, undefined, shellGrant(grant) ? 'kagelet' : o.sandbox?.(s.ownerThread) === true)
   const ssmToken = grant ? undefined : o.ssm?.issue(key)
   const keysToken = grant ? undefined : o.keys?.issue(key)
+  const read = s.ownerThread && !grant && o.readToken ? { KAGE_READ_TOKEN: o.readToken } : {}
   return {
     ...o.options,
     ...owners && { settingSources: (o.options.settingSources ?? []).filter(x => x !== 'user'), ...owners.model && { model: owners.model }, ...owners.effort && { effort: owners.effort as EffortLevel } },
@@ -118,7 +120,7 @@ function queryOptions(h: Hub, key: string, s: Session, full: boolean, resumed: b
     systemPrompt: { type: 'preset', preset: 'claude_code' },
     mcpServers: { ...o.options.mcpServers, ...owners && grantServers(owners.mcp, grant), kage: server },
     disallowedTools: [...o.options.disallowedTools ?? [], 'CronCreate', 'CronDelete', 'CronList'],
-    env: { ...env, ...certFileEnv(), ...longOutput, CLAUDE_CODE_EMIT_SESSION_STATE_EVENTS: '1', KAGE_SESSION: '1', ...ssmToken && { KAGE_SSM_TOKEN: ssmToken, KAGE_SSM_SOCK: o.ssm!.sock, PATH: `${o.ssm!.shim}:${env.PATH}` }, ...keysToken && { KAGE_KEYS_TOKEN: keysToken, KAGE_KEYS_SOCK: o.keys!.sock } },
+    env: { ...env, ...certFileEnv(), ...longOutput, CLAUDE_CODE_EMIT_SESSION_STATE_EVENTS: '1', KAGE_SESSION: '1', ...read, ...ssmToken && { KAGE_SSM_TOKEN: ssmToken, KAGE_SSM_SOCK: o.ssm!.sock, PATH: `${o.ssm!.shim}:${env.PATH}` }, ...keysToken && { KAGE_KEYS_TOKEN: keysToken, KAGE_KEYS_SOCK: o.keys!.sock } },
     canUseTool: canUse(h, key, s),
     hooks: { PreToolUse: [{ onFailure: 'block', hooks: [preToolUse(h, key, s)] }] },
   }

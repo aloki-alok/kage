@@ -19,7 +19,7 @@ export type FromSession =
   | { type: 'say'; text: string; channel?: string; thread_ts?: string }
   | { type: 'relay'; action: 'allow' | 'deny' | 'list'; key?: string }
   | { type: 'hold'; key: string; pid: number }
-  | { type: 'hello'; key: string }
+  | { type: 'hello'; key: string; linkToken: string }
   | { type: 'permission'; id: string }
   | ChannelReply
   | { type: 'schedule'; id: string; cron: string; prompt: string; recurring: boolean; lane?: boolean; model?: string; probe?: ProbeArg; shadow?: { of: string; live: string } }

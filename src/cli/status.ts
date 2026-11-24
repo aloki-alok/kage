@@ -1,8 +1,8 @@
 #!/usr/bin/env node
 import { execFileSync, spawnSync } from 'node:child_process'
 import { readFileSync } from 'node:fs'
-import { askHub, DIR } from './home.ts'
-import { statusSummary } from '../core/board.ts'
+import { askHub, DIR, inTerminal } from './home.ts'
+import { refusedLine, statusSummary } from '../core/board.ts'
 import { startsSince } from '../core/boots.ts'
 import { dailyAverage, spendSince } from '../core/ledgers.ts'
 import { openLedgers } from '../runtime/ledger.ts'
@@ -32,14 +32,18 @@ const summary = statusSummary({
 })
 console.log(voice.says(summary.says))
 if (summary.warn) console.log(`  ${voice.needsYou(summary.warn)} ${voice.dim('Ask')} ${voice.command('kage doctor')} ${voice.dim('why.')}`)
-const health = await askHub<{ lines?: string[] }>({ type: 'health' }).then(a => a.lines ?? [], () => [])
+const answer: { lines?: string[]; refused?: string } = await askHub<{ lines?: string[]; refused?: string }>({ type: 'health' }).catch(() => ({}))
+if (typeof answer.refused === 'string') console.log(`\n${refusedLine(answer.refused, inTerminal)}`)
+const health = answer.lines ?? []
 if (health.length) {
   console.log(`\nConnectors`)
   for (const l of health) console.log(`  ${/ off$/.test(l) ? voice.dim(l) : / failed \d+x /.test(l) ? voice.needsYou(l) : l}`)
 }
-const threads = spawnSync(process.execPath, [new URL('./top.ts', import.meta.url).pathname, '--once'], { stdio: ['ignore', 'pipe', 'inherit'], encoding: 'utf8' }).stdout.split('\n').filter(Boolean)
-console.log(`\nThreads ${voice.dim(threads.length ? '' : 'none busy')}`)
-for (const l of threads) console.log(`  ${/^asks you/.test(l) ? voice.needsYou(l) : l}`)
+if (typeof answer.refused !== 'string') {
+  const threads = spawnSync(process.execPath, [new URL('./top.ts', import.meta.url).pathname, '--once'], { stdio: ['ignore', 'pipe', 'inherit'], encoding: 'utf8' }).stdout.split('\n').filter(Boolean)
+  console.log(`\nThreads ${voice.dim(threads.length ? '' : 'none busy')}`)
+  for (const l of threads) console.log(`  ${/^asks you/.test(l) ? voice.needsYou(l) : l}`)
+}
 const kagelets = kageletRows(readKagelets(kageletsDir(DIR)), { runs: ledgers.text('runs'), costs: ledgers.text('costs'), now })
 if (kagelets.length) {
   console.log(`\nKagelets ${voice.dim(`${kagelets.filter(k => k.state === 'runs').length} of ${kagelets.length} on`)}`)

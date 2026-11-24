@@ -22,6 +22,7 @@ Code imports the old `env` file once (`src/runtime/config-files.ts`). It never p
 - `hub.ts` and `src/runtime/hold-keys.ts` import only Node modules, so they load even when the packages are broken. (`hub.ts`, `src/runtime/hold-keys.ts`)
 - Keys in `sessionKeys` leave the environment before any session copies it. If the proxy fails to load, they are still removed. (`hub.ts`, `src/runtime/hold-keys.ts`)
 - The key proxy does not follow redirects, so a key never goes elsewhere. The SSM relay and proxy sockets are created mode 600. (`src/runtime/key-proxy.ts`, `src/runtime/ssm-relay.ts`)
+- `owner.key` gets the same closing as `secrets.json`: the Read and Edit deny rules, the sandbox `denyRead` and `denyWrite`, and `configRefusal`. The `kage` commands read it, so a session that could read it could speak as the owner (ADR 0004). (`src/runtime/owner-key.ts`, `src/runtime/path-guards.ts`)
 - The SSM relay re-checks owner-only trust on every connection and never logs the token, stream URL or bytes. (`src/runtime/ssm-relay.ts`, `src/core/ssm.ts`)
 - A path match cannot stop a shell. Only the OS sandbox is a wall. It covers the threads `harness.sandbox` walls (by default, every thread the owner did not start), and in any other thread a reworded command gets past `configRefusal`. (`src/runtime/path-guards.ts`)
 - A shell sandbox passes one `--settings` flag, because a second flag would replace the first. (`src/runtime/tmux-panes.ts`)

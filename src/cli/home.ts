@@ -4,6 +4,7 @@ import { placeFor } from '../core/conversations.ts'
 import { tilde } from '../core/config.ts'
 import { envFilePath, hasSettings, readSettings } from '../runtime/config-files.ts'
 import { askSocket } from '../runtime/hub-client.ts'
+import { readOwnerKey } from '../runtime/owner-key.ts'
 
 export const ENV_FILE = envFilePath()
 export const DIR = dirname(ENV_FILE)
@@ -22,4 +23,7 @@ export function placeNamer(): (key: string) => string {
   }
 }
 
-export const askHub = <T>(question: object, timeoutMs = 5000) => askSocket<T>(`${DIR}/router.sock`, question, timeoutMs)
+const READ_TOKEN = process.env.KAGE_READ_TOKEN
+export const inTerminal = !process.env.KAGE_SESSION && !process.env.KAGE_THREAD
+export const asOwner = (question: object) => ({ ...question, ownerKey: readOwnerKey(DIR), ...READ_TOKEN && { readToken: READ_TOKEN } })
+export const askHub = <T>(question: object, timeoutMs = 5000) => askSocket<T>(`${DIR}/router.sock`, asOwner(question), timeoutMs)

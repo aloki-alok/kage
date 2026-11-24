@@ -7,7 +7,12 @@ import { join } from 'node:path'
 import { Dispatcher } from '../../core/sessions.ts'
 import type { Task } from '../../core/task.ts'
 import type { ToSession } from '../protocol.ts'
+import { linkToken } from '../owner-key.ts'
 import { listenForSessions, restoreHolds, routeReply } from '../session-link.ts'
+
+const KEY = 'a1'.repeat(32)
+const owned = (m: object) => JSON.stringify({ ...m, ownerKey: KEY })
+const linked = (key: string) => JSON.stringify({ type: 'hello', key, linkToken: linkToken(KEY, key) })
 
 const task = (content: string): Task => ({ type: 'task', content, fromOwner: true, meta: { channel: 'C1', thread_ts: '5.5', place: '#g', permalink: '' }, origin: { channel: 'C1', ts: '5.5' } })
 const until = async (ok: () => boolean) => { for (let i = 0; i < 100 && !ok(); i++) await new Promise(r => setTimeout(r, 10)) }
@@ -19,13 +24,13 @@ test('a terminal holds a thread for as long as it stays connected, then hands it
     { max: 2, idleMs: 9e9, connectMs: 9e9, evictMs: 0, newId: () => 'id1', saved: { A: 'id1' } },
   )
   const sock = join(mkdtempSync(join(tmpdir(), 'kage-link-')), 's.sock')
-  const server = listenForSessions(sock, d, { mail: () => {}, wa: () => {}, voice: () => {}, sms: () => {}, failed: () => {}, schedules: { add: () => undefined, remove: () => {} } })
+  const server = listenForSessions(sock, d, { ownerKey: KEY, mail: () => {}, wa: () => {}, voice: () => {}, sms: () => {}, failed: () => {}, schedules: { add: () => undefined, remove: () => {} } })
   await until(() => server.listening)
 
   const c = connect(sock)
   let reply = ''
   c.on('data', b => { reply += b })
-  c.write(JSON.stringify({ type: 'hold', key: 'A' }) + '\n')
+  c.write(owned({ type: 'hold', key: 'A' }) + '\n')
   await until(() => reply.includes('\n'))
   assert.deepEqual(JSON.parse(reply), { type: 'hold', id: 'id1' })
 
@@ -38,7 +43,7 @@ test('a terminal holds a thread for as long as it stays connected, then hands it
   const c2 = connect(sock)
   let r2 = ''
   c2.on('data', b => { r2 += b })
-  c2.write(JSON.stringify({ type: 'hold', key: 'Z' }) + '\n')
+  c2.write(owned({ type: 'hold', key: 'Z' }) + '\n')
   await until(() => r2.includes('\n'))
   assert.deepEqual(JSON.parse(r2), { type: 'hold', refused: 'unknown' })
   c2.end()
@@ -60,7 +65,7 @@ test('a hold outlives a hub restart: the new hub holds the thread before any tas
     const c = connect(sock)
     let r = ''
     c.on('data', b => { r += b })
-    c.write(JSON.stringify({ type: 'hold', key, pid }) + '\n')
+    c.write(owned({ type: 'hold', key, pid }) + '\n')
     await until(() => r.includes('\n'))
     return { c, reply: JSON.parse(r) }
   }
@@ -73,7 +78,7 @@ test('a hold outlives a hub restart: the new hub holds the thread before any tas
   restoreHolds(dir, two.d)
   assert.equal(two.d.task('A', task('during restart'), 0), 'held')
   assert.equal(two.d.task('B', task('b'), 0), 'starting')
-  const s2 = listenForSessions(sock, two.d, { mail: () => {}, wa: () => {}, voice: () => {}, sms: () => {}, failed: () => {}, schedules: { add: () => undefined, remove: () => {} } })
+  const s2 = listenForSessions(sock, two.d, { ownerKey: KEY, mail: () => {}, wa: () => {}, voice: () => {}, sms: () => {}, failed: () => {}, schedules: { add: () => undefined, remove: () => {} } })
   await until(() => s2.listening)
   const other = await ask('A', 12345)
   assert.equal(other.reply.refused, 'held')
@@ -98,13 +103,13 @@ test("a session's schedule always lands in its own thread, whatever key the mess
   const added: string[] = []
   const removed: string[] = []
   const sock = join(mkdtempSync(join(tmpdir(), 'kage-link-')), 's.sock')
-  const server = listenForSessions(sock, d, {
+  const server = listenForSessions(sock, d, { ownerKey: KEY,
     mail: () => {}, wa: () => {}, voice: () => {}, sms: () => {}, failed: () => {},
     schedules: { add: (key, j) => { added.push(`${key} ${j.id} ${j.cron} lane=${j.lane} model=${j.model}`); return undefined }, remove: (key, id) => { removed.push(`${key} ${id}`) } },
   })
   await until(() => server.listening)
   const c = connect(sock)
-  c.write(JSON.stringify({ type: 'hello', key: 'A' }) + '\n')
+  c.write(linked('A') + '\n')
   c.write(JSON.stringify({ type: 'schedule', key: 'B', id: 'j1', cron: '*/15 * * * *', prompt: 'p', recurring: true, fromOwner: true }) + '\n')
   c.write(JSON.stringify({ type: 'schedule', key: 'B', id: 'j2', cron: '*/30 * * * *', prompt: 'p', lane: false, model: 'haiku' }) + '\n')
   c.write(JSON.stringify({ type: 'unschedule', key: 'B', id: 'j1' }) + '\n')
@@ -123,13 +128,13 @@ test("a job lane's session cannot unschedule over the socket", async () => {
   d.task('C1:5.5#side-job-j1', task('a'), 0)
   const removed: string[] = []
   const sock = join(mkdtempSync(join(tmpdir(), 'kage-link-')), 's.sock')
-  const server = listenForSessions(sock, d, {
+  const server = listenForSessions(sock, d, { ownerKey: KEY,
     mail: () => {}, wa: () => {}, voice: () => {}, sms: () => {}, failed: () => {},
     schedules: { add: () => undefined, remove: (key, id) => { removed.push(`${key} ${id}`) } },
   })
   await until(() => server.listening)
   const c = connect(sock)
-  c.write(JSON.stringify({ type: 'hello', key: 'C1:5.5#side-job-j1' }) + '\n')
+  c.write(linked('C1:5.5#side-job-j1') + '\n')
   c.write(JSON.stringify({ type: 'unschedule', key: 'x', id: 'j1' }) + '\n')
   await new Promise(r => setTimeout(r, 100))
   assert.deepEqual(removed, [])
@@ -148,14 +153,14 @@ test('the console reads the live board and stops a quiet session over the socket
   d.task('B', task('b'), 0)
   d.connect('B', () => {})
   const sock = join(mkdtempSync(join(tmpdir(), 'kage-link-')), 's.sock')
-  const server = listenForSessions(sock, d, { mail: () => {}, wa: () => {}, voice: () => {}, sms: () => {}, failed: () => {}, schedules: { add: () => undefined, remove: () => {} } })
+  const server = listenForSessions(sock, d, { ownerKey: KEY, mail: () => {}, wa: () => {}, voice: () => {}, sms: () => {}, failed: () => {}, schedules: { add: () => undefined, remove: () => {} } })
   await until(() => server.listening)
   const ask = async (m: object, hello?: string) => {
     const c = connect(sock)
     let r = ''
     c.on('data', b => { r += b })
-    if (hello) c.write(JSON.stringify({ type: 'hello', key: hello }) + '\n')
-    c.write(JSON.stringify(m) + '\n')
+    if (hello) c.write(linked(hello) + '\n')
+    c.write(owned(m) + '\n')
     await until(() => r.includes('\n'))
     c.end()
     return r ? JSON.parse(r) : undefined
@@ -183,14 +188,14 @@ test('the console tells a thread something as the owner, and a session cannot', 
   const told: [string, string][] = []
   const tell = (key: string, text: string) => key === 'A' ? (told.push([key, text]), { ok: true as const }) : { refused: 'no thread with that key' }
   const sock = join(mkdtempSync(join(tmpdir(), 'kage-link-')), 's.sock')
-  const server = listenForSessions(sock, d, { mail: () => {}, wa: () => {}, voice: () => {}, sms: () => {}, failed: () => {}, schedules: { add: () => undefined, remove: () => {} }, tell })
+  const server = listenForSessions(sock, d, { ownerKey: KEY, mail: () => {}, wa: () => {}, voice: () => {}, sms: () => {}, failed: () => {}, schedules: { add: () => undefined, remove: () => {} }, tell })
   await until(() => server.listening)
   const ask = async (m: object, hello?: string) => {
     const c = connect(sock)
     let r = ''
     c.on('data', b => { r += b })
-    if (hello) c.write(JSON.stringify({ type: 'hello', key: hello }) + '\n')
-    c.write(JSON.stringify(m) + '\n')
+    if (hello) c.write(linked(hello) + '\n')
+    c.write(owned(m) + '\n')
     await until(() => r.includes('\n'))
     c.end()
     return r ? JSON.parse(r) : undefined
@@ -213,14 +218,14 @@ test("kage say: an app on this Mac posts the owner's words, and a session cannot
   const said: unknown[] = []
   const say = async (text: string, at?: object) => (said.push([text, at]), { ok: true as const, channel: 'DTEST', ts: '9.9' })
   const sock = join(mkdtempSync(join(tmpdir(), 'kage-link-')), 's.sock')
-  const server = listenForSessions(sock, d, { mail: () => {}, wa: () => {}, voice: () => {}, sms: () => {}, failed: () => {}, schedules: { add: () => undefined, remove: () => {} }, say })
+  const server = listenForSessions(sock, d, { ownerKey: KEY, mail: () => {}, wa: () => {}, voice: () => {}, sms: () => {}, failed: () => {}, schedules: { add: () => undefined, remove: () => {} }, say })
   await until(() => server.listening)
   const ask = async (m: object, hello?: string) => {
     const c = connect(sock)
     let r = ''
     c.on('data', b => { r += b })
-    if (hello) c.write(JSON.stringify({ type: 'hello', key: hello }) + '\n')
-    c.write(JSON.stringify(m) + '\n')
+    if (hello) c.write(linked(hello) + '\n')
+    c.write(owned(m) + '\n')
     await until(() => r.includes('\n'))
     c.end()
     return r ? JSON.parse(r) : undefined
@@ -243,14 +248,14 @@ test('kage top runs, pauses, resumes and removes a kagelet through the manager; 
   const done: string[] = []
   const kagelet = async (action: string, name: string) => { done.push(`${action} ${name}`); return `${name}: ${action} done` }
   const sock = join(mkdtempSync(join(tmpdir(), 'kage-link-')), 's.sock')
-  const server = listenForSessions(sock, d, { mail: () => {}, wa: () => {}, voice: () => {}, sms: () => {}, failed: () => {}, schedules: { add: () => undefined, remove: () => {} }, kagelet })
+  const server = listenForSessions(sock, d, { ownerKey: KEY, mail: () => {}, wa: () => {}, voice: () => {}, sms: () => {}, failed: () => {}, schedules: { add: () => undefined, remove: () => {} }, kagelet })
   await until(() => server.listening)
   const ask = async (m: object, hello?: string) => {
     const c = connect(sock)
     let r = ''
     c.on('data', b => { r += b })
-    if (hello) c.write(JSON.stringify({ type: 'hello', key: hello }) + '\n')
-    c.write(JSON.stringify(m) + '\n')
+    if (hello) c.write(linked(hello) + '\n')
+    c.write(owned(m) + '\n')
     await until(() => r.includes('\n'))
     c.end()
     return r ? JSON.parse(r) : undefined
@@ -284,14 +289,14 @@ test('kage reload: the socket answers with what the hub did with the settings fi
   const sock = join(mkdtempSync(join(tmpdir(), 'kage-link-')), 's.sock')
   const answers = [{ changed: ['KAGE_TEAMMATES: added UTEST0002'], restart: ['KAGE_NAME'], count: 1 }, { refused: 'KAGE_TEAMMATES has "priya"' }]
   let asked = 0
-  const server = listenForSessions(sock, d, { mail: () => {}, wa: () => {}, voice: () => {}, sms: () => {}, failed: () => {}, schedules: { add: () => undefined, remove: () => {} }, reload: () => answers[asked++]! })
+  const server = listenForSessions(sock, d, { ownerKey: KEY, mail: () => {}, wa: () => {}, voice: () => {}, sms: () => {}, failed: () => {}, schedules: { add: () => undefined, remove: () => {} }, reload: () => answers[asked++]! })
   t.after(() => server.close())
   await until(() => server.listening)
   const ask = async () => {
     const c = connect(sock)
     let reply = ''
     c.on('data', b => { reply += b })
-    c.write(JSON.stringify({ type: 'reload' }) + '\n')
+    c.write(owned({ type: 'reload' }) + '\n')
     await until(() => reply.includes('\n'))
     c.destroy()
     return JSON.parse(reply || 'null')
@@ -309,14 +314,14 @@ test('the board says when the usage limit paused Kage, and carries the limit cou
   const sock = join(mkdtempSync(join(tmpdir(), 'kage-link-')), 's.sock')
   let paused: { until: number; held: number } | undefined = { until: 5000, held: 2 }
   const counts = { limitHits: 1, held: 2, replays: 0, replayFailures: 0 }
-  const server = listenForSessions(sock, d, { mail: () => {}, wa: () => {}, voice: () => {}, sms: () => {}, failed: () => {}, schedules: { add: () => undefined, remove: () => {} }, paused: () => paused, limitCounts: () => counts })
+  const server = listenForSessions(sock, d, { ownerKey: KEY, mail: () => {}, wa: () => {}, voice: () => {}, sms: () => {}, failed: () => {}, schedules: { add: () => undefined, remove: () => {} }, paused: () => paused, limitCounts: () => counts })
   t.after(() => server.close())
   await until(() => server.listening)
   const ask = async () => {
     const c = connect(sock)
     let reply = ''
     c.on('data', b => { reply += b })
-    c.write(JSON.stringify({ type: 'board' }) + '\n')
+    c.write(owned({ type: 'board' }) + '\n')
     await until(() => reply.includes('\n'))
     c.destroy()
     return JSON.parse(reply || 'null')
@@ -334,14 +339,14 @@ test('kage restart and stop ask the hub to drain, and hear which threads they wa
   const sock = join(mkdtempSync(join(tmpdir(), 'kage-link-')), 's.sock')
   const waits = [[{ key: 'C1:5.5', why: 'busy' }], []]
   let asked = 0
-  const server = listenForSessions(sock, d, { mail: () => {}, wa: () => {}, voice: () => {}, sms: () => {}, failed: () => {}, schedules: { add: () => undefined, remove: () => {} }, quiesce: () => waits[asked++]! })
+  const server = listenForSessions(sock, d, { ownerKey: KEY, mail: () => {}, wa: () => {}, voice: () => {}, sms: () => {}, failed: () => {}, schedules: { add: () => undefined, remove: () => {} }, quiesce: () => waits[asked++]! })
   t.after(() => server.close())
   await until(() => server.listening)
   const ask = async () => {
     const c = connect(sock)
     let reply = ''
     c.on('data', b => { reply += b })
-    c.write(JSON.stringify({ type: 'quiesce' }) + '\n')
+    c.write(owned({ type: 'quiesce' }) + '\n')
     await until(() => reply.includes('\n'))
     c.destroy()
     return JSON.parse(reply || 'null')
@@ -357,14 +362,14 @@ test('kage stop <thread> asks the hub to end one session, after its turn or now'
     { max: 2, idleMs: 9e9, connectMs: 9e9, evictMs: 0, newId: () => 'id1' },
   )
   const sock = join(mkdtempSync(join(tmpdir(), 'kage-link-')), 's.sock')
-  const server = listenForSessions(sock, d, { mail: () => {}, wa: () => {}, voice: () => {}, sms: () => {}, failed: () => {}, schedules: { add: () => undefined, remove: () => {} }, end: (key, cut) => `${key} cut=${cut}` })
+  const server = listenForSessions(sock, d, { ownerKey: KEY, mail: () => {}, wa: () => {}, voice: () => {}, sms: () => {}, failed: () => {}, schedules: { add: () => undefined, remove: () => {} }, end: (key, cut) => `${key} cut=${cut}` })
   t.after(() => server.close())
   await until(() => server.listening)
   const ask = async (m: object) => {
     const c = connect(sock)
     let reply = ''
     c.on('data', b => { reply += b })
-    c.write(JSON.stringify(m) + '\n')
+    c.write(owned(m) + '\n')
     await until(() => reply.includes('\n'))
     c.destroy()
     return JSON.parse(reply || 'null')
@@ -383,14 +388,14 @@ test('the console lists, allows and denies relay threads, and a session cannot',
   const calls: string[] = []
   const relay = (action: string, key?: string) => (calls.push(`${action} ${key ?? ''}`), { ok: true as const, keys: ['A'] })
   const sock = join(mkdtempSync(join(tmpdir(), 'kage-link-')), 's.sock')
-  const server = listenForSessions(sock, d, { mail: () => {}, wa: () => {}, voice: () => {}, sms: () => {}, failed: () => {}, schedules: { add: () => undefined, remove: () => {} }, relay })
+  const server = listenForSessions(sock, d, { ownerKey: KEY, mail: () => {}, wa: () => {}, voice: () => {}, sms: () => {}, failed: () => {}, schedules: { add: () => undefined, remove: () => {} }, relay })
   await until(() => server.listening)
   const ask = async (m: object, hello?: string) => {
     const c = connect(sock)
     let r = ''
     c.on('data', b => { r += b })
-    if (hello) c.write(JSON.stringify({ type: 'hello', key: hello }) + '\n')
-    c.write(JSON.stringify(m) + '\n')
+    if (hello) c.write(linked(hello) + '\n')
+    c.write(owned(m) + '\n')
     await until(() => r.includes('\n'))
     c.end()
     return r ? JSON.parse(r) : undefined
@@ -409,13 +414,13 @@ test('a health question gets the connector lines the hub keeps in memory (#256)'
     { max: 2, idleMs: 9e9, connectMs: 9e9, evictMs: 0, newId: () => 'id1' },
   )
   const sock = join(mkdtempSync(join(tmpdir(), 'kage-link-')), 's.sock')
-  const server = listenForSessions(sock, d, { mail: () => {}, wa: () => {}, voice: () => {}, sms: () => {}, failed: () => {}, schedules: { add: () => undefined, remove: () => {} }, health: () => ['email     on · last heard 2m ago'] })
+  const server = listenForSessions(sock, d, { ownerKey: KEY, mail: () => {}, wa: () => {}, voice: () => {}, sms: () => {}, failed: () => {}, schedules: { add: () => undefined, remove: () => {} }, health: () => ['email     on · last heard 2m ago'] })
   t.after(() => server.close())
   await until(() => server.listening)
   const c = connect(sock)
   let reply = ''
   c.on('data', b => { reply += b })
-  c.write(JSON.stringify({ type: 'health' }) + '\n')
+  c.write(owned({ type: 'health' }) + '\n')
   await until(() => reply.includes('\n'))
   c.destroy()
   assert.deepEqual(JSON.parse(reply), { type: 'health', lines: ['email     on · last heard 2m ago'] })
@@ -430,7 +435,7 @@ test('only a connected session acts as one: a holder or a socket with no hello g
   d.task('A', task('a'), 0)
   d.task('B', task('b'), 0)
   const sock = join(mkdtempSync(join(tmpdir(), 'kage-link-')), 's.sock')
-  const server = listenForSessions(sock, d, {
+  const server = listenForSessions(sock, d, { ownerKey: KEY,
     mail: () => {}, wa: () => {}, voice: () => {}, sms: () => {}, failed: () => {},
     schedules: { add: (key, j) => { added.push(`${key} ${j.id}`); return undefined }, remove: (key, id) => { removed.push(`${key} ${id}`) } },
   })
@@ -443,16 +448,16 @@ test('only a connected session acts as one: a holder or a socket with no hello g
     let closed = false
     c.on('data', b => got.push(...String(b).split('\n').filter(Boolean)))
     c.on('close', () => { closed = true })
-    const say = (m: object) => c.write(JSON.stringify(m) + '\n')
+    const say = (m: object) => c.write(owned(m) + '\n')
     return { c, got, say, closed: () => closed }
   }
 
   const holder = open()
-  holder.say({ type: 'hold', key: 'H' })
+  holder.say({ type: 'hold', key: 'H', ownerKey: KEY })
   await until(() => holder.got.length > 0)
-  holder.say({ type: 'stop', key: 'B' })
-  holder.say({ type: 'board' })
-  holder.say({ type: 'callcode' })
+  holder.say({ type: 'stop', key: 'B', ownerKey: KEY })
+  holder.say({ type: 'board', ownerKey: KEY })
+  holder.say({ type: 'callcode', ownerKey: KEY })
   const stranger = open()
   stranger.say({ type: 'permission', id: 'p0' })
   stranger.say({ type: 'unschedule', id: 'j1' })
@@ -463,19 +468,19 @@ test('only a connected session acts as one: a holder or a socket with no hello g
   assert.equal(d.verdict('p0', { type: 'task' } as unknown as ToSession), false)
 
   const nobody = open()
-  nobody.say({ type: 'hello', key: 'nobody' })
+  nobody.say({ type: 'hello', key: 'nobody', linkToken: linkToken(KEY, 'nobody') })
   await until(() => nobody.closed())
   assert.ok(nobody.closed())
 
   const session = open()
-  session.say({ type: 'hello', key: 'A' })
+  session.say({ type: 'hello', key: 'A', linkToken: linkToken(KEY, 'A') })
   session.say({ type: 'permission', id: 'p1' })
   await until(() => d.verdict('p1', { type: 'verdict' } as unknown as ToSession))
   await until(() => session.got.length > 1)
   assert.deepEqual(session.got.map(l => JSON.parse(l).type), ['task', 'verdict'])
 
   const code = open()
-  code.say({ type: 'callcode' })
+  code.say({ type: 'callcode', ownerKey: KEY })
   await until(() => code.got.length > 0)
   assert.deepEqual(JSON.parse(code.got[0]!), { type: 'callcode', refused: 'voice is off' })
 })

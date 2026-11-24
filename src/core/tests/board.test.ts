@@ -1,6 +1,6 @@
 import { describe, test } from 'node:test'
 import assert from 'node:assert/strict'
-import { ago, boardRows, FOLDED, liveThreadLines, topicOf, statusSummary, type Row, nextRuns, watchingNext, whenLabel, type Live, clockTime, limitLine, pauseLine, stopLine } from '../board.ts'
+import { ago, boardAnswer, boardRows, refusedLine, FOLDED, liveThreadLines, topicOf, statusSummary, type Row, nextRuns, watchingNext, whenLabel, type Live, clockTime, limitLine, pauseLine, stopLine } from '../board.ts'
 import type { Schedule } from '../cron.ts'
 import { startsSince } from '../boots.ts'
 
@@ -219,4 +219,13 @@ describe('kage status lists what each busy thread is doing (#258)', () => {
     assert.equal(lines.length, 9)
     assert.equal(lines.at(-1), '+3 more in kage top')
   })
+})
+
+test("the board answer: a refusal is said in plain words and never read as a board, a board needs its live list", () => {
+  assert.deepEqual(boardAnswer({ type: 'board', refused: 'this needs the owner key' }), { refused: 'this needs the owner key' })
+  assert.equal(refusedLine('this needs the owner key'), 'Kage refused this: this needs the owner key.')
+  assert.equal(refusedLine('this needs the owner key', true), 'Kage refused this: this needs the owner key. In your own terminal, that means owner.key is missing or changed since the hub started: run kage restart --cut-running.')
+  const board = { type: 'board', live: [], waiting: [], held: [], max: 4 }
+  assert.deepEqual(boardAnswer(board), { live: board })
+  for (const r of [undefined, null, 7, { type: 'health', lines: [] }, { type: 'board' }, { type: 'board', live: 'x' }]) assert.equal(boardAnswer(r), undefined, JSON.stringify(r))
 })

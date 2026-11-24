@@ -1,6 +1,7 @@
 import { execFileSync } from 'node:child_process'
 import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs'
 import { log } from './log.ts'
+import { linkToken } from './owner-key.ts'
 import { liveCronJobs } from '../core/cron.ts'
 import type { Runner } from '../core/sessions.ts'
 
@@ -16,10 +17,10 @@ export const claudeProject = (cwd: string) => `${process.env.HOME}/.claude/proje
 
 export function paneArgs(a: {
   key: string; id: string; project: string; cwd: string; envFile: string; claude: string
-  settings: object; ssm?: { token: string; sock: string; shim: string }
+  settings: object; linkToken: string; ssm?: { token: string; sock: string; shim: string }
 }): string[] {
   const run = `while true; do if [ -f '${a.project}/${a.id}.jsonl' ]; then eval "$KAGE_CLAUDE --settings \"\$KAGE_PANE_SETTINGS\" --resume ${a.id}"; else eval "$KAGE_CLAUDE --settings \"\$KAGE_PANE_SETTINGS\" --session-id ${a.id}"; fi; echo 'restarting in 3s'; sleep 3; done`
-  const env = [`KAGE_THREAD=${a.key}`, 'KAGE_SESSION=1', `KAGE_ENV=${a.envFile}`, `KAGE_CLAUDE=${a.claude}`, `KAGE_PANE_SETTINGS=${JSON.stringify(a.settings)}`,
+  const env = [`KAGE_THREAD=${a.key}`, `KAGE_LINK_TOKEN=${a.linkToken}`, 'KAGE_SESSION=1', `KAGE_ENV=${a.envFile}`, `KAGE_CLAUDE=${a.claude}`, `KAGE_PANE_SETTINGS=${JSON.stringify(a.settings)}`,
     ...a.ssm ? [`KAGE_SSM_TOKEN=${a.ssm.token}`, `KAGE_SSM_SOCK=${a.ssm.sock}`, `PATH=${a.ssm.shim}:${process.env.PATH}`] : []]
   return ['-P', '-F', '#{pane_id}', '-c', a.cwd, ...env.flatMap(e => ['-e', e]), run]
 }
@@ -30,6 +31,7 @@ type Options = {
   claude: string
   settings: () => object
   ssm?: { sock: string; shim: string; issue: (key: string) => string | undefined; drop: (key: string) => void }
+  ownerKey: string
   idOf: (key: string) => string | undefined
   placeOf: (key: string) => string
   onStart: () => void
@@ -72,7 +74,7 @@ function start(p: Panes, key: string, id: string) {
     : hasSession(p) ? ['new-window', '-d', '-t', `=${o.name}:`, '-n', 'threads']
     : ['new-session', '-d', '-s', o.name, '-n', 'threads']
   const token = o.ssm?.issue(key)
-  const pane = tmux(...where, ...paneArgs({ key, id, project: p.project, cwd: process.cwd(), envFile: o.envFile, claude: o.claude, settings: o.settings(),
+  const pane = tmux(...where, ...paneArgs({ key, id, project: p.project, cwd: process.cwd(), envFile: o.envFile, claude: o.claude, settings: o.settings(), linkToken: linkToken(o.ownerKey, key),
     ...token && { ssm: { token, sock: o.ssm!.sock, shim: o.ssm!.shim } } })).trim()
   tmux('set-option', '-p', '-t', pane, '@kage', id)
   tmux('set-option', '-p', '-t', pane, '@kage_place', ` ${o.placeOf(key)} `)
@@ -106,6 +108,13 @@ function busy(p: Panes, key: string) {
   return liveCronJobs(cronResults(p.project, p.o.idOf(key)!), paneProcessStart(pane), Date.now()).length > 0 ? 'watching' : false
 }
 
+function closeOwnPanes(p: Panes): Set<string> {
+  const own = [...panes(p).values()].filter(pane => pane !== process.env.TMUX_PANE)
+  for (const pane of own) try { tmux('kill-pane', '-t', pane) } catch {}
+  if (own.length) log(`a new owner key: closed ${own.length} pane(s) from before it, which have no link token`)
+  return new Set()
+}
+
 export function tmuxPanes(o: Options) {
   const p: Panes = { o, project: claudeProject(process.cwd()), board: `=${o.name}:threads` }
   const runner: Runner = {
@@ -118,6 +127,7 @@ export function tmuxPanes(o: Options) {
   return {
     runner,
     running: () => new Set(panes(p).keys()),
+    adoptable: (keyIsNew: boolean) => keyIsNew ? closeOwnPanes(p) : new Set(panes(p).keys()),
     hasTranscript: (id: string) => existsSync(`${p.project}/${id}.jsonl`),
   }
 }

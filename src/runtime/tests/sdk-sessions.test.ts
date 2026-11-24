@@ -72,6 +72,7 @@ function setup(o: { saved?: Record<string, string>; transcript?: boolean; silent
     envFile: '/cfg/env',
     codeDir: '/code/kage', sandbox: owner => sandboxed(o.sandbox ?? true, owner), ...o.commandOutput !== undefined && { commandOutput: () => o.commandOutput! },
     ssm: { sock: '/cfg/ssm.sock', shim: '/code/kage/cli/ssm-plugin-shim', issue: key => o.trusted?.includes(key) ? `tok-${key}` : undefined, drop: key => { dropped.push(key) } },
+    readToken: 'read-test',
     keys: { sock: '/cfg/keys.sock', issue: key => o.trusted?.includes(key) ? `key-${key}` : undefined, drop: key => { keysDropped.push(key) } },
     restartMs: o.restartMs ?? 10,
     ...o.deferred && { deferred: approvals },
@@ -1267,6 +1268,15 @@ describe('Kage sessions on the Agent SDK', () => {
     assert.equal(other.env.KAGE_SSM_TOKEN, undefined)
     assert.equal(other.env.KAGE_SSM_SOCK, undefined)
     assert.equal(other.env.PATH, process.env.PATH, 'no token, no stand-in on PATH')
+  })
+  test("an owner thread's session gets the read token for kage status, a teammate's does not, and the owner key never enters a session", async () => {
+    const t = setup()
+    t.d.task('C1:5.5', t.task(), 0)
+    t.d.task('C2:5.5', t.task({ channel: 'C2', fromOwner: false }), 0)
+    await tick()
+    assert.equal(t.sdk.runs[0]!.options.env.KAGE_READ_TOKEN, 'read-test')
+    assert.equal(t.sdk.runs[1]!.options.env.KAGE_READ_TOKEN, undefined)
+    for (const r of t.sdk.runs) assert.ok(!Object.keys(r.options.env).some(k => /OWNER_KEY/.test(k)))
   })
   test('a trusted thread gets the key proxy token and socket, any other thread gets neither, and it is dropped with the session (#182)', async () => {
     const t = setup({ trusted: ['C1:5.5'] })

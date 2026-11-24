@@ -45,6 +45,7 @@ import { findPlugin, ssmRelay } from '../runtime/ssm-relay.ts'
 import { keyProxy } from '../runtime/key-proxy.ts'
 import { askSocket } from '../runtime/hub-client.ts'
 import { listenForSessions, restoreHolds, routeReply } from '../runtime/session-link.ts'
+import { ownerKey, readToken } from '../runtime/owner-key.ts'
 import { openStore, type Inbox } from '../runtime/store.ts'
 import { costRecorder, openLedgers, runEvents } from '../runtime/ledger.ts'
 import { ownerClaude } from '../runtime/owner-claude.ts'
@@ -196,10 +197,12 @@ void (async () => {
   }
 })()
 
+const { key: OWNER_KEY, made: OWNER_KEY_IS_NEW } = ownerKey(DIR)
 const tmux = tmuxPanes({
   name: NAME, envFile: ENV_FILE, claude: CLAUDE,
   settings: () => ({ autoMemoryDirectory: MEM.own, ...protectConfig(ENV_FILE, CODE, undefined, config.harness?.sandbox === true) }),
   ssm: { sock: SSM_SOCK, shim: SSM_SHIM, issue: key => ssm.issue(key), drop: key => ssm.drop(key) },
+  ownerKey: OWNER_KEY,
   idOf: key => d.saved()[key],
   placeOf,
   onStart: () => store.saveSessions(d.saved()),
@@ -257,7 +260,7 @@ const sdk = sdkLib ? sdkSessions({
   onMcp: q => { if (needs.watching()) void mcpStatus(q).then(needs.seen).catch(e => log('mcp status failed', e)) },
   ownerMemory: MEM.owner, ownMemory: MEM.own, sharedTools: config.sharedTools,
   envFile: ENV_FILE,
-  codeDir: CODE, sandbox: owner => sandboxed(config.harness?.sandbox, owner), commandOutput: () => config.harness?.commandOutputChars,
+  codeDir: CODE, readToken: readToken(OWNER_KEY), sandbox: owner => sandboxed(config.harness?.sandbox, owner), commandOutput: () => config.harness?.commandOutputChars,
   ssm: { sock: SSM_SOCK, shim: SSM_SHIM, issue: key => ssm.issue(key), drop: key => ssm.drop(key) },
   keys: { sock: KEYS_SOCK, issue: key => keys.issue(key), drop: key => keys.drop(key) },
   onStart: () => store.saveSessions(d.saved()), lean: () => harness.leanSessions === false ? undefined : ownerClaude(),
@@ -276,7 +279,7 @@ if (sdk) mkdirSync(MEM.own, { recursive: true })
 kag.sync(Date.now())
 
 const saved = store.sessions()
-const runningAtStart = tmux.running()
+const runningAtStart = tmux.adoptable(OWNER_KEY_IS_NEW)
 for (const [k, id] of Object.entries(saved)) if (!tmux.hasTranscript(id) && !runningAtStart.has(id)) { delete saved[k]; store.forget(k) }
 
 const onPane = new Set(Object.keys(saved).filter(k => runningAtStart.has(saved[k]!)))
@@ -354,7 +357,7 @@ const watcher = configWatcher({
   restartWanted: yes => updates.restartWanted(yes),
 })
 const reload = watcher.check
-listenForSessions(`${DIR}/router.sock`, d, { ...replies, failed, health: () => health.lines(Date.now()), schedules: jobs, tell: commands.tell, say: commands.say, relay: commands.relay, reload, paused: () => limits.paused(), limitCounts: () => limits.counts,
+listenForSessions(`${DIR}/router.sock`, d, { ownerKey: OWNER_KEY, ...replies, failed, health: () => health.lines(Date.now()), schedules: jobs, tell: commands.tell, say: commands.say, relay: commands.relay, reload, paused: () => limits.paused(), limitCounts: () => limits.counts,
   end: (key, cut) => stopThread(key, cut), kagelet: (action, name) => action === 'unhold' ? Promise.resolve(ownerLines.holdsLifted(name, deferred.unhold(name, Date.now()))) : kag.manager.manage({ action, name }, Date.now()),
   quiesce: () => { const now = Date.now(); limits.drain(now); return d.unquiet(now).filter(u => u.why !== 'just active' && u.why !== 'open in a terminal') }, callCode: voice?.issueCode })
 

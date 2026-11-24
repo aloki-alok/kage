@@ -26,6 +26,11 @@ export function stillFixed(fixed: Line[], again: Line[]): Line[] {
   return [...again, ...fixed.filter(l => l.kind === 'fixed' && !failing.has(l.text))]
 }
 
+export function hubKeyLine(answer: { refused?: unknown } | 'down' | 'silent'): Line | undefined {
+  if (answer === 'down' || answer === 'silent') return
+  return typeof answer.refused === 'string' ? fail("the hub refused this terminal: owner.key is missing or changed since the hub started. Run kage restart --cut-running")
+    : ok("the hub takes this terminal's owner key")
+}
 export function report(lines: Line[], name: string): { text: string; ok: boolean } {
   const good = !lines.some(l => l.kind === 'fail')
   return { ok: good, text: [...lines.map(render), ...(good ? [`All good. Tag @${name} in Slack to try it.`] : [])].join('\n') }

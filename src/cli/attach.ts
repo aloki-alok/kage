@@ -2,7 +2,7 @@
 import { spawn, spawnSync } from 'node:child_process'
 import { existsSync, readFileSync, rmSync } from 'node:fs'
 import { connect, type Socket } from 'node:net'
-import { CWD, DIR } from './home.ts'
+import { asOwner, CWD, DIR } from './home.ts'
 import { pickThread } from './pick-thread.ts'
 import { errVoice } from './voice.ts'
 
@@ -27,7 +27,7 @@ function hold(): Promise<{ id: string; cut?: keyof typeof CUT }> {
   return new Promise((resolve, reject: (e: Error) => void) => {
     const s: Socket = connect(SOCK)
     let buf = ''
-    s.on('connect', () => s.write(JSON.stringify({ type: 'hold', key, pid: process.pid }) + '\n'))
+    s.on('connect', () => s.write(JSON.stringify(asOwner({ type: 'hold', key, pid: process.pid })) + '\n'))
     s.on('data', b => {
       buf += b
       const i = buf.indexOf('\n')

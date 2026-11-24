@@ -2,9 +2,9 @@
 import { spawnSync } from 'node:child_process'
 import { existsSync, readFileSync, statSync } from 'node:fs'
 import { topicReader } from './top-topics.ts'
-import { askHub, CWD, DIR, settings } from './home.ts'
+import { askHub, asOwner, CWD, DIR, inTerminal, settings } from './home.ts'
 import { DatabaseSync } from 'node:sqlite'
-import { boardRows, FOLDED, liveThreadLines, nextRuns, limitLine, pauseLine, type Live, type Row, type State } from '../core/board.ts'
+import { boardAnswer, boardRows, refusedLine, FOLDED, liveThreadLines, nextRuns, limitLine, pauseLine, type Live, type Row, type State } from '../core/board.ts'
 import { costRows, openWaiting } from '../core/ledgers.ts'
 import { channels, filterRows, nextFilter, rowAt, spentToday, WIDE, type Filter } from '../core/top-layout.ts'
 import { BG, resize, toText, W } from './top-screen.ts'
@@ -43,7 +43,7 @@ const boot = Date.now()
 let tab: Tab = 'threads', focus: 'list' | 'feed' = 'list'
 let selKey = '', open: string | undefined, openAt = 0, mode: 'steps' | 'schedules' = 'steps'
 let searching = false, query = '', filter: Filter = 'all'
-let message = '', messageAt = 0
+let message = '', messageAt = 0, hubRefused = ''
 let confirm: { kind: 'cut' | 'remove'; target: string } | undefined
 let suspended = false, pick = 0
 let hits: Hits | undefined
@@ -104,8 +104,9 @@ function readKageletRows(now: number) {
 
 const ask = hubAsker(SOCK)
 async function pollHub() {
-  const r = await ask({ type: 'board' })
-  if (r?.type === 'board') { live = r; liveAt = Date.now() }
+  const r = boardAnswer(await ask(asOwner({ type: 'board' })))
+  hubRefused = r && 'refused' in r ? refusedLine(r.refused, inTerminal) : ''
+  if (r && 'live' in r) { live = r.live; liveAt = Date.now() }
 }
 
 function view(now: number, t: number): View {
@@ -132,7 +133,7 @@ function view(now: number, t: number): View {
     ...(confirm && { confirm: confirm.kind === 'cut'
       ? { title: 'cut this session?', body: [`${placeOf(confirm.target)} is ${board.find(r => r.key === confirm!.target)?.label ?? 'open'}.`, 'Cutting stops its turn now. The next tag starts it again,', 'and it picks up the same conversation.'], yes: 'cut now' }
       : { title: `remove ${confirm.target}?`, body: [`Its file and its schedule go.`, 'This cannot be undone from here.'], yes: 'remove' } }),
-    ...(message && now - messageAt < 5000 && { message }),
+    ...(message && now - messageAt < 5000 ? { message } : hubRefused && { message: hubRefused }),
     ...(live?.paused && { paused: pauseLine(live.paused) }),
   }
 }
@@ -155,6 +156,7 @@ if (ONCE) {
   refresh(Date.now())
   if (process.stdout.isTTY) { drawFrame(view(Date.now(), 1e9)); console.log(toText().join('\n')) }
   else for (const l of liveThreadLines(board, key => { follow(key); return feeds.get(key)?.steps.at(-1)?.text })) console.log(l)
+  if (hubRefused) console.log(hubRefused)
   if (live?.paused) console.log(pauseLine(live.paused))
   const cost = limitLine(live?.limitCounts)
   if (cost) console.log(cost)
@@ -178,7 +180,7 @@ const CUT_WHY = { closed: 'it is not running', starting: 'it is still starting',
 const ATTACH_WHY: Partial<Record<State, string>> = { held: 'it is already open in a terminal' }
 
 async function cut(key: string) {
-  const r = await ask({ type: 'stop', key })
+  const r = await ask(asOwner({ type: 'stop', key }))
   if (r?.type !== 'stop') say(`Cannot cut ${placeOf(key)}: the hub does not answer.`)
   else if (r.ok) say(`Cut ${placeOf(key)}. It spins up again on its next task.`)
   else say(`Cannot cut ${placeOf(key)}: ${r.refused === 'busy' && live?.live.find(l => l.key === key)?.state === 'watching' ? 'a timed check is running in it' : CUT_WHY[r.refused as keyof typeof CUT_WHY] ?? r.refused}.`)

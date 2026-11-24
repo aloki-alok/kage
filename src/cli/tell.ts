@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 import { existsSync } from 'node:fs'
 import { connect } from 'node:net'
-import { DIR } from './home.ts'
+import { asOwner, DIR } from './home.ts'
 import { pickThread } from './pick-thread.ts'
 import { errVoice } from './voice.ts'
 
@@ -16,7 +16,7 @@ const { key, place } = await pickThread(arg)
 
 const s = connect(SOCK)
 let buf = ''
-s.on('connect', () => s.write(JSON.stringify({ type: 'tell', key, text }) + '\n'))
+s.on('connect', () => s.write(JSON.stringify(asOwner({ type: 'tell', key, text })) + '\n'))
 s.on('data', b => {
   buf += b
   const i = buf.indexOf('\n')

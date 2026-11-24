@@ -1,5 +1,6 @@
 import { existsSync } from 'node:fs'
-import { askHub, DIR } from './home.ts'
+import { askHub, DIR, inTerminal } from './home.ts'
+import { refusedLine } from '../core/board.ts'
 import { pickThread } from './pick-thread.ts'
 import { hasKagelet, kageletsDir, pauseKagelet } from '../runtime/kagelets/files.ts'
 import { errVoice } from './voice.ts'
@@ -16,9 +17,10 @@ const cut = args.includes('--now')
 const other = args.find(a => a.startsWith('--') && a !== '--now')
 if (other) { console.error(`kage stop <thread> takes --now, not ${other}. Bare kage stop ${other} stops the whole hub.`); process.exit(1) }
 const { key, place } = await pickThread(args.filter(a => a !== '--now').join(' '), false)
-const r = await askHub<{ text?: string }>({ type: 'end', key, cut }).catch((e: Error) => {
+const r = await askHub<{ text?: string; refused?: string }>({ type: 'end', key, cut }).catch((e: Error) => {
   console.error(errVoice.says(e.message === 'down' ? "I'm not running." : "I'm not answering. If I run older code, kage restart picks up kage stop <thread>."))
   return process.exit(1)
 })
+if (typeof r.refused === 'string') { console.error(refusedLine(r.refused, inTerminal)); process.exit(1) }
 if (!r.text) { console.error('The hub runs older code: kage restart picks up kage stop <thread>.'); process.exit(1) }
 console.log(`${place}: ${r.text}`)

@@ -7,7 +7,7 @@ import { agentToolRefusal, mcpToolRefusal, SECRET_DIRS, SECRET_FILE, SECRET_GLOB
 const CONFIG_TOOLS = new Set(['Read', 'Grep', 'Glob', 'Edit', 'MultiEdit', 'Write', 'NotebookEdit', 'Bash'])
 const CONFIG_WRITES = new Set(['Edit', 'MultiEdit', 'Write', 'NotebookEdit'])
 const NOT_PATHS = new Set(['content', 'old_string', 'new_string', 'new_source', 'description', 'edits'])
-const TOKEN_FILE = /^(?:secrets\.json|env[\w.-]*|session\.env[\w.-]*|waha)$/
+const TOKEN_FILE = /^(?:secrets\.json|owner\.key[\w.-]*|env[\w.-]*|session\.env[\w.-]*|waha)$/
 const SIGNING_FILE = /^screen(?:\/signing|\/?$)/ 
 export function configRefusal(tool: string, input: Record<string, unknown>, sender: string | undefined, envFile: string, home = process.env.HOME ?? ''): string | undefined {
   if (!CONFIG_TOOLS.has(tool)) return
@@ -33,6 +33,9 @@ const SECRET_HELPER = new RegExp(AT_COMMAND + String.raw`(?:security\s+(?:-\S+\s
 const plainShell = (s: string) => s.replace(/\\\n/g, ' ').replace(/['"]/g, '').replace(/\s+/g, ' ').trim()
 const escaped = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
 const asCommand = (c: string) => new RegExp(String.raw`(?:^|[\s;&|(\x60])${escaped(c)}(?=$|[\s;&|)\x60])`)
+const OWNER_WRITE_COMMAND = new RegExp(AT_COMMAND + String.raw`(?:(?:-u|--unset)\s+\S+\s+|\w+=\S*\s+|-\S+\s+)*(?:(?:\S*\/)?(?:kage|setup\.sh)\s+(?:tell|relay|stop|attach|call|reload|restart|add|remove)|(?:\S*\/)?node\s+(?:-\S+\s+)*\S*src\/cli\/(?:tell|relay|stop|attach|call|reload|quiet|registry)\.ts)(?=$|[\s;&|)\x60])`)
+const kageWriteRefusal = (tool: string, input: Record<string, unknown>) => tool === 'Bash' && typeof input.command === 'string' && OWNER_WRITE_COMMAND.test(plainShell(input.command))
+  ? "The kage commands that act as the owner (tell, relay, stop, attach, call, reload, restart, add, remove) run only in the owner's own terminal. Say what you wanted done, and the owner runs it." : undefined
 function secretCommandRefusal(tool: string, input: Record<string, unknown>, envFile: string): string | undefined {
   if (tool !== 'Bash' || typeof input.command !== 'string') return
   let commands: string[]
@@ -46,13 +49,13 @@ const CONFIG_NAMES = ['session.env', 'telemetry-id', 'kagelets', 'job-state', 'c
   'config-unknown-told', 'boots', 'held', 'sender', 'ledgers', 'last-seen']
 export function protectConfig(envFile: string, codeDir: string, home = process.env.HOME ?? '', sandbox: boolean | 'kagelet' = false) {
   const dirs = [...new Set([dirname(envFile), realish(dirname(envFile))])]
-  const tokens = dirs.flatMap(d => [`${d}/secrets.json*`, `${d}/env*`, `${d}/session.env*`, `${d}/waha/.env*`])
+  const tokens = dirs.flatMap(d => [`${d}/secrets.json*`, `${d}/owner.key*`, `${d}/env*`, `${d}/session.env*`, `${d}/waha/.env*`])
   const kept = new Set(['files', 'memory'])
   const folder = dirs.flatMap(d => [...new Set([...CONFIG_NAMES,
     ...(() => { try { return readdirSync(d) } catch { return [] } })().filter(n => !kept.has(n))])].map(n => `${d}/${n}`))
   const deny = (f: string) => [`Edit(/${f})`]
   const logins = [`${home}/Library/LaunchAgents`, `${home}/.config/systemd`]
-  const permissions = { deny: [...dirs.flatMap(d => [`Read(/${d}/secrets.json)`, `Read(/${d}/env*)`, `Read(/${d}/session.env)`, `Read(/${d}/waha/.env)`, ...['secrets.json', 'env*', 'config.json', 'session.env', 'waha/.env'].flatMap(f => deny(`${d}/${f}`))]),
+  const permissions = { deny: [...dirs.flatMap(d => [`Read(/${d}/secrets.json)`, `Read(/${d}/owner.key)`, `Read(/${d}/env*)`, `Read(/${d}/session.env)`, `Read(/${d}/waha/.env)`, ...['secrets.json', 'owner.key', 'env*', 'config.json', 'session.env', 'waha/.env'].flatMap(f => deny(`${d}/${f}`))]),
     ...sandbox === 'kagelet' ? [...new Set([codeDir, realish(codeDir), ...logins])].flatMap(d => deny(`${d}/**`)) : []] }
   if (!sandbox) return { permissions }
   return {
@@ -132,5 +135,5 @@ export function agentReadRefusal(tool: string, input: { file_path?: string; path
 }
 export function toolRefusal(tool: string, input: Record<string, unknown>, sender: string | undefined, o: { ownerMemory: string; envFile: string; sharedTools?: readonly string[]; side?: boolean }): string | undefined {
   return agentToolRefusal(tool, sender) ?? agentReadRefusal(tool, input as { file_path?: string }, sender) ?? privateToolRefusal(tool, sender) ?? voiceToolRefusal(tool, sender) ?? mcpToolRefusal(tool, sender, o.sharedTools) ?? slackSendRefusal(tool)
-    ?? ownerMemoryRefusal(tool, input as { file_path?: string }, o.ownerMemory, sender, undefined, undefined, o.side) ?? secretCommandRefusal(tool, input, o.envFile) ?? configRefusal(tool, input, sender, o.envFile)
+    ?? ownerMemoryRefusal(tool, input as { file_path?: string }, o.ownerMemory, sender, undefined, undefined, o.side) ?? kageWriteRefusal(tool, input) ?? secretCommandRefusal(tool, input, o.envFile) ?? configRefusal(tool, input, sender, o.envFile)
 }

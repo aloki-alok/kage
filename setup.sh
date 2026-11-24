@@ -82,17 +82,14 @@ unknown() {
 }
 
 # Before kage stop or restart: the hub takes no new turns and this waits until every running turn ends,
-# naming each thread (src/cli/quiet.ts). --cut-running cuts them instead. Inside Kage, --force is needed, and it cuts:
-# waiting would wait on this very session.
+# naming each thread (src/cli/quiet.ts). --cut-running cuts them instead. Inside Kage it refuses: it would end this
+# very session, and only the person's own terminal acts as the owner.
 quiet_first() {
-  local cmd=$1 force="" cut="" a; shift
-  for a in "$@"; do case $a in --force) force=1 ;; --cut-running) cut=--cut-running ;; *) die "kage $cmd takes --cut-running, or --force inside Kage." ;; esac; done
-  if [[ -n "${KAGE_CLAUDE:-}" ]]; then
-    [[ -n $force ]] || die "This shell runs inside Kage, so kage $cmd would end this session too. Run kage $cmd --force to do it anyway."
-    cut=--cut-running
-  fi
+  local cmd=$1 cut="" a; shift
+  for a in "$@"; do case $a in --cut-running) cut=--cut-running ;; *) die "kage $cmd takes --cut-running." ;; esac; done
+  [[ -z "${KAGE_CLAUDE:-}" ]] || die "This shell runs inside Kage, so kage $cmd would end this session too. The person runs kage $cmd in their own terminal."
   running || return 0
-  node src/cli/quiet.ts $cut
+  node src/cli/quiet.ts "$cmd" $cut
 }
 
 kage_name() { NAME="$(cfg_get name)"; NAME="${NAME:-kage}"; }
