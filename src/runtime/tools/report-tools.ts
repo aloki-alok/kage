@@ -10,13 +10,14 @@ export type SessionReport = {
   system: IssueSystem
   perDay: number
   names?: () => string[]
+  redact?: () => string[]
 }
 
 const MAX_BODY = 2000
 
 const namesOf = (c: ToolContext, r: SessionReport) => {
   const known = [...Object.values(c.names), ...[...c.askers.values()].flatMap(a => a ? [a.name] : []), ...r.names?.() ?? []]
-  return [...new Set(known.flatMap(n => [n, ...n.split(/\s+/)]))]
+  return [...new Set([...r.redact?.() ?? [], ...known.flatMap(n => [n, ...n.split(/\s+/)])])]
 }
 
 type Args = IssueReport & { channel: string; thread_ts: string; fingerprint?: string }

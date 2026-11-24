@@ -2092,7 +2092,7 @@ describe('flag_knowledge: a working session flags a missing or wrong note for th
 
 describe("report_issue: a session files a bug or an idea to the Kage repo, on the owner's yes (#543)", () => {
   const issue = { kind: 'bug', title: 'Reply failed for Sam', what: 'Sending to sam@example.com from /Users/sam/kage failed', expected: 'It sends' }
-  const run = (o: { yes?: boolean; fails?: boolean; commentFails?: boolean; repo?: string; perDay?: number; noCard?: boolean } = {}) => {
+  const run = (o: { yes?: boolean; fails?: boolean; commentFails?: boolean; repo?: string; perDay?: number; noCard?: boolean; redact?: string[] } = {}) => {
     const cards: { description: string; input: Record<string, unknown> }[] = [], filed: { repo: string; title: string; body: string; labels: string[] }[] = [], comments: { repo: string; number: number; body: string }[] = []
     const url = (n: number) => `https://github.com/some-fork/kage/issues/${n}`
     const report: SessionReport = {
@@ -2104,7 +2104,7 @@ describe("report_issue: a session files a bug or an idea to the Kage repo, on th
         return at < 0 ? undefined : { number: 9 + at, url: url(9 + at) }
       },
       comment: async (repo, number, body) => { if (o.commentFails) throw new Error('gh: 502'); comments.push({ repo, number, body }) },
-      system: { version: '0.4.6 abc1234', system: 'linux x64' }, perDay: o.perDay ?? 3, names: () => ['Sam Lee'],
+      system: { version: '0.4.6 abc1234', system: 'linux x64' }, perDay: o.perDay ?? 3, names: () => ['Sam Lee'], redact: () => o.redact ?? [],
     }
     const s = setup({ report, approve: o.noCard ? undefined : async (_t, description, input) => { cards.push({ description, input }); return o.yes ?? true } })
     s.t.onTask(s.task())
@@ -2198,6 +2198,14 @@ describe("report_issue: a session files a bug or an idea to the Kage repo, on th
     assert.equal((await no.call('5.5', { title: 'a different title', fingerprint: '0123456789ab' })).isError, true)
     assert.match(no.cards[0]!.description, /#9/)
     assert.deepEqual([no.comments, no.filed.length], [[], 1])
+  })
+  test('report.redact phrases come out whole, so a customer name never reaches the card, and their single words stay', async () => {
+    const t = run({ redact: ['Acme Corp', 'Bank of America'] })
+    await t.call('5.5', { title: 'Invoice for acme corp failed', what: 'The Bank of America export, one of many, broke' })
+    const sent = t.filed[0]!.title + t.filed[0]!.body
+    for (const leak of ['acme', 'Acme', 'Bank of America']) assert.equal(sent.includes(leak), false, leak)
+    assert.match(sent, /The \[name\] export, one of many, broke/)
+    assert.match(sent, /Invoice for \[name\] failed/)
   })
   test('a body too long for the card is refused before the card, so the owner never approves a cut preview', async () => {
     const t = run()
