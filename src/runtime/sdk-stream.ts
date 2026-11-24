@@ -23,6 +23,7 @@ const limitNote = (t: Turn): Limit => ({ kind: t.limit!, ...(t.limit === 'rate_l
 function sendAgain(live: Live) {
   if (live.unseen && live.s.turn.length) return
   live.unseen = false
+  for (const t of live.s.held.splice(0)) live.send(t)
   for (const t of live.s.again.splice(0)) live.send(ownerAgain(t))
 }
 
@@ -116,5 +117,5 @@ function afterEnd({ o }: Hub, live: Live, t: Turn) {
   o.hub().disconnect(key, live.send)
   const gone = new Set(lost.map(x => channelTag(x.task)))
   const unread = [...live.inbox.drain(), ...s.carry.splice(0)].filter(u => !gone.has(u.message.content as string))
-  setTimeout(() => { if (s.stopped) return; live.reopen(unread); if (s.turn.every(x => senderOf(x.task) === 'owner')) for (const a of s.again.splice(0)) s.run!.send(ownerAgain(a)) }, s.ownerTools && !live.full ? 0 : o.restartMs ?? 3000)
+  setTimeout(() => { if (s.stopped) return; live.reopen(unread); for (const m of s.held.splice(0)) s.run!.send(m); if (s.turn.every(x => senderOf(x.task) === 'owner')) for (const a of s.again.splice(0)) s.run!.send(ownerAgain(a)) }, s.ownerTools && !live.full ? 0 : o.restartMs ?? 3000)
 }
