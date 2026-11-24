@@ -1077,6 +1077,23 @@ describe("a session's Kage tools", () => {
     const owned = routed({ agent: { app: 'ATEST0001', person: 'U0TESTMATE1' } })
     assert.equal((await owned.read('select 1')).isError, undefined)
   })
+  test('a meeting transcript, a GitHub outsider and a thread no task came from read nothing', async () => {
+    for (const extra of [{ source: 'meeting:abc' }, { outsider: 'someone' }]) {
+      const dir = mkdtempSync(join(tmpdir(), 'kage-db-'))
+      const s = setup({ dir, dbRoutes: { routes: () => ({ prod: reader(dir).command() }), maxRows: 200 } })
+      s.t.onTask({ ...s.task({ fromOwner: false }), ...extra })
+      assert.equal((await s.call('db_read', { channel: 'C1', thread_ts: '5.5', db: 'prod', sql: 'select 1' })).isError, true, JSON.stringify(extra))
+      assert.equal(existsSync(join(dir, 'query')), false)
+    }
+    const t = routed()
+    assert.equal((await t.s.call('db_read', { channel: 'COTHER', thread_ts: '1.1', db: 'prod', sql: 'select 1' })).isError, true)
+    assert.equal(existsSync(join(t.dir, 'query')), false)
+  })
+  test("a dream gets no routed db_read, and a kagelet gets only its own", () => {
+    const routes = { routes: () => ({ prod: 'true' }), maxRows: 200 }
+    assert.equal(setup({ dreaming: 'kage', dbRoutes: routes }).t.tools.some(x => x.name === 'db_read'), false)
+    assert.equal(setup({ kagelet: 'calls', dbRoutes: routes }).t.tools.some(x => x.name === 'db_read'), false)
+  })
   test('a text, a call or an email reads nothing, because a stranger can send one', async () => {
     for (const channel of ['sms', 'voice', 'email', 'whatsapp']) {
       const dir = mkdtempSync(join(tmpdir(), 'kage-db-'))

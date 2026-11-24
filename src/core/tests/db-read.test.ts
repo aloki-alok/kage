@@ -1,6 +1,6 @@
 import { describe, test } from 'node:test'
 import assert from 'node:assert/strict'
-import { readOnlyQuery } from '../db-read.ts'
+import { mayReadDb, readOnlyQuery } from '../db-read.ts'
 
 const ok = (sql: string) => {
   const r = readOnlyQuery(sql, 200)
@@ -78,5 +78,35 @@ describe('anything else is refused', () => {
     no("select 'open", /unclosed/)
     no('select /* open', /unclosed/)
     no('select "open', /unclosed/)
+  })
+})
+
+describe('a function that acts outside the read-only transaction is refused', () => {
+  test('another connection, another session, the server\'s files, its config and a long sleep', () => {
+    for (const sql of ["select dblink_exec('dbname=x', 'delete from t')", "select * from dblink('dbname=x', 'select 1') as t(a int)",
+      'select pg_terminate_backend(pid) from pg_stat_activity', 'select pg_cancel_backend(1)', "select pg_read_file('/etc/passwd')",
+      "select pg_ls_dir('.')", "select lo_export(1, '/tmp/x')", 'select pg_reload_conf()', 'select pg_sleep(25)', "select set_config('a.b', 'c', false)",
+      'select PG_TERMINATE_BACKEND (1)']) no(sql, /not allowed/)
+  })
+  test('a name that only contains one, or one inside a string, is fine', () => {
+    ok("select 'pg_sleep(5)' as note")
+    ok('select my_dblink_count from stats')
+    ok('select pg_size_pretty(pg_total_relation_size(1))')
+  })
+})
+
+describe('mayReadDb: which tasks may read the owner\'s named databases', () => {
+  const task = (o: Record<string, unknown> = {}) => ({ fromOwner: false, meta: { channel: 'C1' }, ...o })
+  test("the owner's and a teammate's Slack task, and an agent with an owner person", () => {
+    assert.equal(mayReadDb(task({ fromOwner: true })), true)
+    assert.equal(mayReadDb(task()), true)
+    assert.equal(mayReadDb(task({ agent: { app: 'ATEST0001', person: 'U0TESTMATE1' } })), true)
+    assert.equal(mayReadDb(task({ scheduled: true })), true)
+  })
+  test('a meeting transcript, a text, a call, an email, a WhatsApp chat, an agent with no person and a GitHub outsider read nothing', () => {
+    assert.equal(mayReadDb(task({ source: 'meeting:abc' })), false)
+    for (const channel of ['sms', 'voice', 'email', 'whatsapp']) assert.equal(mayReadDb(task({ meta: { channel } })), false, channel)
+    assert.equal(mayReadDb(task({ agent: { app: 'ATEST0001' } })), false)
+    assert.equal(mayReadDb(task({ outsider: 'someone' })), false)
   })
 })

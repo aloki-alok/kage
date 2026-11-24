@@ -221,6 +221,14 @@ describe('protectConfig: what the sandbox and the file rules close', () => {
       assert.ok(!w.permissions.deny.some(p => p.includes(code)))
     } finally { process.env.GNUPGHOME = was.gnupg; process.env.SSH_AUTH_SOCK = was.ssh; if (was.gnupg === undefined) delete process.env.GNUPGHOME; if (was.ssh === undefined) delete process.env.SSH_AUTH_SOCK }
   })
+  test("a sandboxed session cannot change a read route's folder or the files the owner's shell and ssh run, so the hub never runs code a teammate wrote", () => {
+    const r = protectConfig(`${dir}/env`, code, '/home/o', true, ['/home/o/scripts'])
+    const deny = r.sandbox!.filesystem.denyWrite
+    for (const p of ['/home/o/scripts', '/home/o/.ssh', '/home/o/.aws', '/home/o/.zshenv', '/home/o/.zshrc', '/home/o/.zprofile', '/home/o/.profile', '/home/o/.bashrc', '/home/o/.bash_profile']) assert.ok(deny.includes(p), p)
+    for (const p of ['Edit(//home/o/scripts/**)', 'Edit(//home/o/.ssh/**)', 'Edit(//home/o/.zshenv)']) assert.ok(r.permissions.deny.includes(p), p)
+    const owner = protectConfig(`${dir}/env`, code, '/home/o', false, ['/home/o/scripts'])
+    assert.ok(!owner.permissions.deny.some(p => p.includes('/home/o/scripts') || p.includes('.zshenv')))
+  })
   test('no session reads session.env or the waha key file, though only secrets.json and env* were named before', () => {
     const read = w.sandbox!.filesystem.denyRead
     for (const n of ['secrets.json*', 'env*', 'session.env*', 'waha/.env*']) assert.ok(read.includes(`${real(dir)}/${n}`), n)
