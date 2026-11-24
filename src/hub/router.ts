@@ -241,8 +241,8 @@ const sdk = sdkLib ? sdkSessions({
   sdk: sdkLib.lib,
   deferred,
   hub: () => d,
-  tools: (key, send, approve, turnSender) => sessionTools({
-    title: Title, bot, user, botDm: () => slack.ids.botDm, dir: DIR, ledgers, send, memory: MEM, turnSender, cardOut: waCardsOut.send,
+  tools: (key, send, approve, turn) => sessionTools({
+    title: Title, bot, user, botDm: () => slack.ids.botDm, dir: DIR, ledgers, send, memory: MEM, turn, cardOut: waCardsOut.send,
     schedules: { add: j => jobs.add(key, j, Date.now()), remove: id => jobs.remove(key, id), list: () => schedules.list(key), hookUrl: id => jobs.hookUrl(id), tune: (id, t) => schedules.tune(key, id, t, Date.now()), restore: id => jobs.swaps.restore(key, id, Date.now()), move: (id, to) => schedules.move(key, id, to, Date.now()) },
     afk: slack.afk?.command,
     settings: { set: (key, value) => setKey(ENV_FILE, key, value) },

@@ -11,7 +11,7 @@ import type { NewJob } from './schedule-edits.ts'
 import type { ChannelReply } from './protocol.ts'
 import { addressed, foreignAgentRefusal, mentionedIds } from '../core/agents.ts'
 import { filesFolderName } from '../core/conversations.ts'
-import { plainName, teammateOf, type Sender } from '../core/gate.ts'
+import { lowestSender, plainName, teammateOf, type Sender } from '../core/gate.ts'
 import { openWaiting, postedBy } from '../core/ledgers.ts'
 import type { Ledgers } from './ledger.ts'
 import { layoutRefusal, ownerPost, safeReply, secretRefusal, splitForSlack, type Signer } from '../core/outbound.ts'
@@ -24,7 +24,6 @@ import { slackTools } from './tools/slack-tools.ts'
 import { scheduleTools } from './tools/schedule-tools.ts'
 import { kageletTools } from './tools/kagelet-tools.ts'
 import { dbReadTools } from './tools/db-read-tools.ts'
-import { mayReadDb } from '../core/db-read.ts'
 import { ownerTools } from './tools/owner-tools.ts'
 import { dreamTools } from './tools/dream-tools.ts'
 import { reportTools, type SessionReport } from './tools/report-tools.ts'
@@ -41,7 +40,7 @@ export type KageTool = { name: string; description: string; shape: z.ZodRawShape
 export type ToolContext = {
   o: SessionOptions; Title: string; bot: WebClient; user: WebClient; s: z.ZodString
   taskChannels: Set<string>; ownerTask: Map<string, boolean>; unanswered: Map<string, { channel: string; ts: string }[]>
-  askers: Map<string, { id: string; name: string } | undefined>; agents: Map<string, Task['agent']>; sentForPeople: Map<string, Signer>; dbReaders: Set<string>
+  askers: Map<string, { id: string; name: string } | undefined>; agents: Map<string, Task['agent']>; sentForPeople: Map<string, Signer>
   dmThread: Map<string, string>; links: Map<string, string>; names: Record<string, string>
   react: (channel: string, ts: string, name: string) => void
   post: (key: string, channel: string, thread_ts: string | undefined, text: string, to?: { tag?: string }, ack?: boolean) => Promise<{ via: string; where: string }>
@@ -102,6 +101,7 @@ type SessionOptions = {
   schedules?: { add(j: NewJob): string | void | Promise<string | void>; remove(id: string): void; list(): Schedule[]; tune?(id: string, t: TuneArg): string | void; hookUrl?(id: string): string | undefined; restore?(id: string): string | undefined; move?(id: string, to: string): string | undefined }
   afk?: (c: AfkCommand) => Promise<string>
   turnSender?: () => Sender | undefined
+  turn?: () => Task[]
   kagelet?: string
   dreaming?: string
   dreamLessons?: (lessons: DreamLesson[], dismiss?: Dismissal[]) => string
@@ -129,7 +129,7 @@ type Thread = {
   o: SessionOptions; Title: string; bot: WebClient; user: WebClient
   append: Ledgers['add']; ledger: Ledgers['text']; filesOf: (channel: string, thread_ts: string) => string
   taskChannels: Set<string>; ownerTask: Map<string, boolean>; unanswered: Map<string, { channel: string; ts: string }[]>
-  askers: Map<string, { id: string; name: string } | undefined>; agents: Map<string, Task['agent']>; dbReaders: Set<string>
+  askers: Map<string, { id: string; name: string } | undefined>; agents: Map<string, Task['agent']>
   sentForPeople: Map<string, Signer>; footers: Map<string, Signer>; scheduledRun: Map<string, boolean>
   dmThread: Map<string, string>; links: Map<string, string>; asked: Set<string>
   names: Record<string, string>; seenIds: Set<string>; heldOnce: Set<string>
@@ -140,17 +140,18 @@ export function sessionTools(o: SessionOptions) {
   const t: Thread = {
     o, Title: o.title, bot: o.bot, user: o.user, append: o.ledgers.add, ledger: o.ledgers.text,
     filesOf: (channel: string, thread_ts: string) => `${o.dir}/files/${filesFolderName(channel, thread_ts)}`,
-    taskChannels: new Set(), ownerTask: new Map(), unanswered: new Map(), askers: new Map(), agents: new Map(), dbReaders: new Set(),
+    taskChannels: new Set(), ownerTask: new Map(), unanswered: new Map(), askers: new Map(), agents: new Map(),
     sentForPeople: new Map(), footers: new Map(), scheduledRun: new Map(), dmThread: new Map(), links: new Map(), asked: new Set(),
     names: {}, seenIds: new Set(), heldOnce: new Set(), jobThread: '', where: 'a thread',
   }
-  const { Title, bot, user, taskChannels, ownerTask, unanswered, askers, agents, dbReaders, sentForPeople, dmThread, links, names, append, ledger, filesOf } = t
-  const ownerNow = (key: string) => ownerTask.get(key) === true && (o.turnSender?.() ?? 'owner') === 'owner'
+  const { Title, bot, user, taskChannels, ownerTask, unanswered, askers, agents, sentForPeople, dmThread, links, names, append, ledger, filesOf } = t
+  const turnSender = () => o.turn ? (o.turn().length ? lowestSender(o.turn()) : undefined) : o.turnSender?.()
+  const ownerNow = (key: string) => ownerTask.get(key) === true && (turnSender() ?? 'owner') === 'owner'
   const ownerOnly = (a: Record<string, unknown>) => ownerNow(`${String(a.channel)}:${String(a.thread_ts)}`)
   const ownerActs = (a: Record<string, unknown>) => ownerOnly(a) && a.channel !== 'voice' && !agents.get(`${a.channel}:${a.thread_ts}`)
   const pingIn = (channel: string) => [...ownerTask.keys()].some(k => k.startsWith(`${channel}:`) && ownerNow(k))
   const c: ToolContext = {
-    o, Title, bot, user, s: z.string(), taskChannels, ownerTask, unanswered, askers, agents, dbReaders, sentForPeople, dmThread, links,
+    o, Title, bot, user, s: z.string(), taskChannels, ownerTask, unanswered, askers, agents, sentForPeople, dmThread, links,
     react: (channel, ts, name) => react(t, channel, ts, name), post: (...a) => post(t, ...a), change: (a, ping) => change(t, a, ping), nameMentions: text => nameMentions(t, text),
     names, append, ledger, filesOf, jobRun: () => t.job !== undefined || t.need !== undefined, job: () => t.job, need: () => t.need, ownerNow, ownerOnly, ownerActs, pingIn, name: o.kagelet, unseenMention: (text, also) => unseenMention(t, text, also),
   }
@@ -244,7 +245,7 @@ async function changeForPeople({ Title, user, append, sentForPeople }: Thread, a
 }
 
 function onTask(t: Thread, m: Task) {
-  const { o, filesOf, taskChannels, ownerTask, seenIds, askers, scheduledRun, agents, dbReaders, dmThread, unanswered, links, append, ledger } = t
+  const { o, filesOf, taskChannels, ownerTask, seenIds, askers, scheduledRun, agents, dmThread, unanswered, links, append, ledger } = t
   const key = `${m.meta.channel}:${m.meta.thread_ts}`
   try { mkdirSync(filesOf(m.meta.channel, m.meta.thread_ts), { recursive: true, mode: 0o700 }) } catch (e) { log('files folder', e) }
   taskChannels.add(m.meta.channel)
@@ -256,8 +257,6 @@ function onTask(t: Thread, m: Task) {
   askers.set(key, teammateOf(m.content))
   scheduledRun.set(key, m.scheduled === true)
   agents.set(key, m.agent)
-  if (mayReadDb(m, o.botDm())) dbReaders.add(key)
-  else dbReaders.delete(key)
   if (m.origin.channel === o.botDm() && m.origin.thread) dmThread.set(key, m.origin.thread)
   else if (m.origin.ts) dmThread.delete(key)
   if (answersInThread(m)) unanswered.set(key, [...unanswered.get(key) ?? [], m.origin])

@@ -44,7 +44,7 @@ export type Session = {
 export type SdkOptions = {
   sdk: Sdk
   hub: () => Dispatcher<ToSession>
-  tools: (key: string, send: (m: ChannelReply) => void, approve: (tool: string, description: string, input: Record<string, unknown>) => Promise<boolean>, turnSender: () => Sender | undefined) => Kage
+  tools: (key: string, send: (m: ChannelReply) => void, approve: (tool: string, description: string, input: Record<string, unknown>) => Promise<boolean>, turn: () => Task[]) => Kage
   hasTranscript: (id: string) => boolean
   trustedNow?: (person: string) => boolean
   toHub: (key: string, m: ChannelReply) => void
@@ -172,7 +172,7 @@ export function sdkSessions(o: SdkOptions) {
     start(key, id, first) {
       const s: Session = sessions.get(key) ?? {
         id, state: 'idle', last: 0, stopped: false, asks: new Map(), turn: [], carry: [], again: [], held: [], ownerTools: key.startsWith('voice:') || (first?.type === 'task' && senderOf(first) === 'owner'), ownerThread: first?.type === 'task' && senderOf(first) === 'owner', ...first?.type === 'task' && senderOf(first) === 'trusted' && { connectors: true as const },
-        kage: o.tools(key, m => o.toHub(key, m), (tool, description, input) => ask(h, key, s, tool, description, input, new AbortController().signal).then(r => r.behavior === 'allow'), () => s.sender),
+        kage: o.tools(key, m => o.toHub(key, m), (tool, description, input) => ask(h, key, s, tool, description, input, new AbortController().signal).then(r => r.behavior === 'allow'), () => s.turn.map(x => x.task)),
       }
       Object.assign(s, { id, stopped: false })
       try { open(h, key, s) } catch (e) { sessions.delete(key); throw e }

@@ -1,6 +1,6 @@
 import { execFile } from 'node:child_process'
 import { createHash } from 'node:crypto'
-import { readGate, readOnlyQuery } from '../../core/db-read.ts'
+import { readGate, readOnlyQuery, turnAskers } from '../../core/db-read.ts'
 import type { KageTool, Result, ToolContext } from '../kage-tools.ts'
 
 type Options = ToolContext['o']
@@ -51,18 +51,19 @@ function routedRead(c: ToolContext, db: Routes): KageTool {
     },
     async run(args) {
       const key = `${String(args.channel)}:${String(args.thread_ts)}`, route = String(args.db ?? ''), sql = String(args.sql ?? '')
-      const owner = c.ownerNow(key), teammate = c.askers.get(key)?.id
+      const owner = c.ownerNow(key), turn = turnAskers(c.o.turn?.() ?? [], c.o.botDm())
+      const who = owner ? 'owner' : [...new Set(turn.map(t => t.teammate ?? 'owner'))].join(',') || 'unknown'
       const note = (rows: number, ms: number, outcome: string) => {
-        c.append('db-reads', [owner ? 'owner' : teammate ?? 'unknown', route, createHash('sha256').update(sql.trim()).digest('hex').slice(0, 16), String(rows), `${ms}ms`, outcome])
+        c.append('db-reads', [who, route, createHash('sha256').update(sql.trim()).digest('hex').slice(0, 16), String(rows), `${ms}ms`, outcome])
         c.o.event?.('tool', `db_read ${outcome.split(':')[0]} rows=${rows}`)
       }
       const routes = db.routes(), command = Object.hasOwn(routes, route) ? routes[route] : undefined
       if (!command) { note(0, 0, 'refused'); return refusal(`no read route ${route}. The owner named these: ${names()}`) }
       const mode = c.o.trust?.mode() ?? 'off'
-      const verdict = readGate({ reader: c.dbReaders.has(key), owner, teammate, route, mode, lines: c.o.trust?.lines() ?? [] })
+      const verdict = readGate({ turn, owner, route, mode, lines: c.o.trust?.lines() ?? [] })
       if (verdict.would) c.o.event?.('trust', `${mode} ${verdict.would}`)
       if (!verdict.read) { note(0, 0, 'refused'); return refusal(verdict.why) }
-      if (verdict.line && teammate) c.append('trust-steps', [key, teammate, 'prod-read', route, verdict.line])
+      for (const [i, line] of (verdict.lines ?? []).entries()) c.append('trust-steps', [key, who.split(',')[i] ?? who, 'prod-read', route, line])
       const started = Date.now()
       const ran = await runRead(command, sql, db.maxRows, undefined, queryError)
       note(ran.rows, Date.now() - started, ran.outcome.startsWith('refused') ? 'refused' : ran.outcome.startsWith('failed') ? 'failed' : 'ok')
