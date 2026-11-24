@@ -145,6 +145,25 @@ export function doctorNews(out: string, told: string[], last: string[]): { faili
   return { failing, stable, dm: [`Kage's hourly check found ${stable.length === 1 ? '1 problem' : `${stable.length} problems`}, each on two checks in a row. Each line names its fix, and kage doctor checks again:`, ...stable.map(f => `• ${f}`)].join('\n') }
 }
 
+type Failure = { kind: string; count: number }
+export type FailuresTold = { day: string; told: string[] }
+
+const failureKind = (e: { kind: string; detail: string }) => e.kind === 'error' ? e.detail : e.kind === 'tool' && e.detail.endsWith(' failed') ? e.detail : undefined
+
+export function repeatedFailures(events: { kind: string; detail: string }[], atLeast: number): Failure[] {
+  const counts = new Map<string, number>()
+  for (const e of events) { const k = failureKind(e); if (k) counts.set(k, (counts.get(k) ?? 0) + 1) }
+  return [...counts].filter(([, n]) => n >= atLeast).sort((a, b) => b[1] - a[1]).map(([kind, count]) => ({ kind, count }))
+}
+
+export function failureNews(found: Failure[], before: FailuresTold, day: string): { told: FailuresTold; dm?: string } {
+  const already = before.day === day ? before.told : []
+  const fresh = found.filter(f => !already.includes(f.kind))
+  const told = { day, told: [...already, ...fresh.map(f => f.kind)] }
+  if (!fresh.length) return { told }
+  return { told, dm: ['Kage hit the same failure again and again today. kage logs shows each one:', ...fresh.map(f => `• ${f.kind}: ${f.count} times`)].join('\n') }
+}
+
 const ERROR_CODES = ['ENOENT', 'EACCES', 'EPERM', 'EEXIST', 'EISDIR', 'ENOTDIR', 'EMFILE', 'EPIPE', 'ECONNREFUSED', 'ECONNRESET', 'ETIMEDOUT', 'ENOTFOUND', 'EAI_AGAIN', 'ERR_MODULE_NOT_FOUND']
 const EXPECTED = 'Each doctor check runs and reports ok, FAIL or note, within its time limit.'
 

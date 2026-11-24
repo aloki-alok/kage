@@ -1,6 +1,6 @@
 import { test, describe } from 'node:test'
 import assert from 'node:assert/strict'
-import { runnerLines, applyFixes, stillFixed, doctorBug, doctorNews, ownerChannelLine, autoUpdateNote, bootNotes, chromeLine, jevLine, keyLines, lingerLine, nodeOk, pathNote, render, report, serviceLines, sessionLines, slackLines, pluginLine, sandboxLine, tokenLines, toolsLine, whatsappLine , type Line } from '../doctor.ts'
+import { runnerLines, applyFixes, stillFixed, doctorBug, doctorNews, failureNews, repeatedFailures, ownerChannelLine, autoUpdateNote, bootNotes, chromeLine, jevLine, keyLines, lingerLine, nodeOk, pathNote, render, report, serviceLines, sessionLines, slackLines, pluginLine, sandboxLine, tokenLines, toolsLine, whatsappLine , type Line } from '../doctor.ts'
 
 const text = (ls: { kind: string; text: string }[]) => ls.map(l => `${l.kind}:${l.text}`)
 
@@ -270,4 +270,24 @@ describe('which runner and model each job uses (#283)', () => {
   test('says when opencode is installed, and leaves out a kind with no jobs', () => {
     assert.deepEqual(runnerLines({ opencode: true, jobs: [], kagelets: [] }).map(render), ['ok    runners: claude (every job runs on it). opencode is installed, and no job uses it yet'])
   })
+})
+
+test('repeatedFailures counts error codes and failed tool steps for the day, and keeps each kind at or past the limit, most first', () => {
+  const ev = (kind: string, detail: string) => ({ kind, detail })
+  const day = [
+    ev('error', 'meetbot_unreachable'), ev('tool', 'computer_act press failed'), ev('error', 'meetbot_unreachable'), ev('tool', 'computer_act press ok'),
+    ev('error', 'hub_job'), ev('error', 'meetbot_unreachable'), ev('tool', 'computer_act press failed'), ev('error', 'meetbot_unreachable'), ev('doctor', 'doctor failing=0 told=0'),
+  ]
+  assert.deepEqual(repeatedFailures(day, 2), [{ kind: 'meetbot_unreachable', count: 4 }, { kind: 'computer_act press failed', count: 2 }])
+  assert.deepEqual(repeatedFailures(day, 5), [])
+})
+
+test('failureNews tells each repeated kind once a day with its count, and starts over the next day', () => {
+  const first = failureNews([{ kind: 'meetbot_unreachable', count: 3 }], { day: '2026-11-24', told: [] }, '2026-11-24')
+  assert.equal(first.dm, "Kage hit the same failure again and again today. kage logs shows each one:\n• meetbot_unreachable: 3 times")
+  assert.deepEqual(first.told, { day: '2026-11-24', told: ['meetbot_unreachable'] })
+  const again = failureNews([{ kind: 'meetbot_unreachable', count: 5 }, { kind: 'hub_job', count: 3 }], first.told, '2026-11-24')
+  assert.equal(again.dm, "Kage hit the same failure again and again today. kage logs shows each one:\n• hub_job: 3 times")
+  assert.equal(failureNews([{ kind: 'meetbot_unreachable', count: 5 }, { kind: 'hub_job', count: 3 }], again.told, '2026-11-24').dm, undefined)
+  assert.match(failureNews([{ kind: 'meetbot_unreachable', count: 3 }], again.told, '2026-11-25').dm!, /meetbot_unreachable: 3 times/)
 })

@@ -332,7 +332,7 @@ const dreaming = dreams({ dir: DIR, code: CODE, title: Title, botDm: slack.ids.b
 const updates = hubUpdates({ code: CODE, dir: DIR, ledgers, quiet: now => d.quietEverywhere(now) && !limits.paused(now), notify: t => owner.say(t) })
 const VERSION = updates.VERSION
 
-const doctor = selfCheck({ code: CODE, store, ledgers, say: t => owner.say(t), reporter })
+const doctor = selfCheck({ code: CODE, store, ledgers, say: t => owner.say(t), reporter, failureRepeats: config.report?.failureRepeats ?? 3 })
 runJobs([
   { name: 'doctor', every: 3_600_000, run: doctor },
   { name: 'schedules', every: 20_000, run: now => { if (!limits.draining(now)) schedules.tick(now); jobs.swaps.tick(now) } },

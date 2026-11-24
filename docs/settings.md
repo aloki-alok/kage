@@ -158,6 +158,7 @@ If an open issue already has the same fingerprint, the card offers one `seen aga
 | `report.enabled` | `true` | `false` removes the tool from every session. |
 | `report.perDay` | `3` | The most filings and seen again comments a day. One you said no to does not count. |
 | `report.repo` | origin of the checkout | The repo to file to, as `owner/name`. |
+| `report.failureRepeats` | `3` | When one kind of failure happens this many times in a day (a failed hub job, the meeting bot losing the hub, a failed probe, a failed tool step), the hourly check DMs you once that day with the count. |
 | `report.redact` | none | Words and phrases to take out of every report, such as customer and company names, which Kage cannot tell apart from other words. Each phrase comes out whole and becomes `[name]`. Set it as a JSON list: `kage set report.redact '["Acme Corp","Bank of America"]'`. |
 
 ## Questions waiting on you

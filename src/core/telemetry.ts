@@ -31,6 +31,7 @@ const ERRORS: [RegExp, string][] = [
   [/^(mail handling|mail poll) failed/, 'email'], [/^whatsapp (event|stand-in) failed/, 'whatsapp'], [/^voice request failed/, 'voice'],
   [/^meeting transcript failed/, 'meeting'], [/^github event failed/, 'github'], [/^afk \w+( \w+)? failed/, 'afk'],
   [/^channel catch-up failed/, 'catchup'], [/^kagelet measure failed/, 'kagelet'], [/^unhandled$/, 'unhandled'],
+  [/^meetbot: hub unreachable/, 'meetbot_unreachable'], [/^job .+ failed$/, 'hub_job'], [/^tripwire (probe|check) failed/, 'probe_failed'],
 ]
 export const errorCode = (first: unknown) => typeof first === 'string' ? ERRORS.find(([re]) => re.test(first))?.[1] : undefined
 
