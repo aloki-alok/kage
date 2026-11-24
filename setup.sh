@@ -320,7 +320,7 @@ case "${1:-}" in
   connect) node src/cli/connect.ts "${@:2}" ;;
   tunnel) node src/cli/tunnel.ts "${2:-on}" ;;
   claude-login) cmd_claude_login ;;
-  doctor) node src/cli/doctor/run.ts ;;
+  doctor) node src/cli/doctor/run.ts "${@:2}" ;;
   slack) node src/cli/slack.ts "${2:-}" ;;
   link) mkdir -p ~/.local/bin && ln -sf "$PWD/setup.sh" ~/.local/bin/kage && says "Done. You can type kage from anywhere (it needs ~/.local/bin on your PATH)." ;;
   service) ./service.sh "${2:-}" ;;

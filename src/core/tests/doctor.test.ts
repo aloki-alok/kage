@@ -1,6 +1,6 @@
 import { test, describe } from 'node:test'
 import assert from 'node:assert/strict'
-import { ownerChannelLine, autoUpdateNote, bootNotes, chromeLine, jevLine, keyLines, lingerLine, nodeOk, pathNote, render, report, serviceLines, sessionLines, slackLines, pluginLine, sandboxLine, tokenLines, toolsLine, whatsappLine } from '../doctor.ts'
+import { doctorNews, ownerChannelLine, autoUpdateNote, bootNotes, chromeLine, jevLine, keyLines, lingerLine, nodeOk, pathNote, render, report, serviceLines, sessionLines, slackLines, pluginLine, sandboxLine, tokenLines, toolsLine, whatsappLine } from '../doctor.ts'
 
 const text = (ls: { kind: string; text: string }[]) => ls.map(l => `${l.kind}:${l.text}`)
 
@@ -160,5 +160,39 @@ describe('decisions', () => {
     const off = ownerChannelLine('whatsapp', false)!
     assert.equal(off.kind, 'fail')
     assert.match(off.text, /kage set owner.channel slack/)
+  })
+})
+
+describe('the hourly doctor in the hub (#153)', () => {
+  const out = (...fails: string[]) => ['ok    tools: node 22.18+, claude', ...fails.map(f => `FAIL  ${f}`), 'note  dev route'].join('\n')
+  test('a failure is told only once it failed on two checks in a row, with each line', () => {
+    const first = doctorNews(out('token file: run chmod 600 x', 'plugin: run claude plugin install'), [], [])
+    assert.equal(first.dm, undefined)
+    const second = doctorNews(out('token file: run chmod 600 x', 'plugin: run claude plugin install'), [], first.failing)
+    assert.deepEqual(second.stable, ['token file: run chmod 600 x', 'plugin: run claude plugin install'])
+    assert.match(second.dm!, /2 problems/)
+    assert.match(second.dm!, /token file: run chmod 600 x/)
+    assert.match(second.dm!, /plugin: run claude plugin install/)
+  })
+  test('a line that flips between checks is never told', () => {
+    assert.equal(doctorNews(out('slack: not connected'), [], []).dm, undefined)
+    assert.equal(doctorNews(out(), [], ['slack: not connected']).dm, undefined)
+  })
+  test('the same failures again say nothing, in any order; a change says it again', () => {
+    assert.equal(doctorNews(out('b', 'a'), ['a', 'b'], ['a', 'b']).dm, undefined)
+    assert.match(doctorNews(out('a', 'c'), ['a', 'b'], ['a', 'c']).dm!, /2 problems[\s\S]*c/)
+  })
+  test('all good after a told failure says so once, and all good after all good says nothing', () => {
+    assert.equal(doctorNews(out(), ['a'], []).dm, "Kage's hourly check is all good again.")
+    assert.equal(doctorNews(out(), [], []).dm, undefined)
+  })
+  test('a doctor that printed nothing is itself a failure', () => {
+    assert.deepEqual(doctorNews('', [], []).failing, ['the doctor printed nothing, so it did not run'])
+  })
+  test('a failing line that holds a secret is told without it', () => {
+    const line = 'secrets.json slack.bot: its command failed or printed nothing. Run it in a terminal to see why: echo xoxb-1234567890-abcdefghij'
+    const n = doctorNews(out(line), [], [doctorNews(out(line), [], []).failing[0]!])
+    assert.equal(n.dm!.includes('xoxb'), false)
+    assert.match(n.dm!, /secrets\.json slack\.bot: its line holds a Slack token, so run kage doctor in a terminal to see it/)
   })
 })
