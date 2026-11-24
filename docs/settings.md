@@ -172,7 +172,7 @@ Kage keeps each yes you give a teammate, so it stops asking the same thing again
 
 | Setting | Default | Effect |
 |---|---|---|
-| `trust.mode` | `shadow` | `shadow` changes nothing Kage does. It writes your lines, and for each typed ask it logs what Kage would have done next to your real answer. `on` skips an ask that a line covers and folds the same open ask into one. A no line stops the step. `off` does nothing. |
+| `trust.mode` | `shadow` | `shadow` skips no ask. It writes your lines, shows each typed ask with the line a yes will save, and logs what Kage would have done next to your real answer. `on` skips an ask that a line covers and folds the same open ask into one. A no line stops the step. `off` does nothing. |
 
 ## AFK mode
 

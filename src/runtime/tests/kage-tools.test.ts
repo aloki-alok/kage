@@ -964,6 +964,35 @@ describe("a session's Kage tools", () => {
       await never.call('reply', prodRead('6.6', { kind: 'ssm-relay', reach: 'ssm' }))
       assert.doesNotMatch(never.posts[0]!.text, /A yes saves/)
     })
+    test('the line about what a yes saves is posted in shadow and on, and not when the mode is off', async () => {
+      for (const mode of ['shadow', 'on'] as const) {
+        const s = setup({ trust: { mode, lines: [] } })
+        teammate(s)
+        await s.call('reply', prodRead())
+        assert.match(s.posts[0]!.text, /A yes saves this/, mode)
+      }
+      const off = setup({ trust: { mode: 'off', lines: [] } })
+      teammate(off)
+      await off.call('reply', prodRead())
+      assert.equal(off.posts.length, 1)
+      assert.doesNotMatch(off.posts[0]!.text, /A yes saves/)
+      const none = setup()
+      teammate(none)
+      await none.call('reply', prodRead())
+      assert.doesNotMatch(none.posts[0]!.text, /A yes saves/)
+    })
+    test('the reach that is posted is the reach that is stored, and a reach over 200 characters is refused', async () => {
+      const s = setup({ trust: { mode: 'on', lines: [] } })
+      teammate(s)
+      const reach = `${'h'.repeat(95)}.example.test`
+      await s.call('reply', prodRead('6.6', { reach }))
+      assert.ok(s.posts[0]!.text.includes(`on ${reach},`))
+      assert.match(s.ledgers.text('waiting'), new RegExp(`prod-read\\t${reach}\\tUTEAM0001`))
+      const long = await s.call('reply', prodRead('6.6', { reach: 'h'.repeat(201), waiting: 'Another read?' }))
+      assert.equal(long.isError, true)
+      assert.match(long.text, /200/)
+      assert.equal(s.posts.length, 1)
+    })
     test('a teammate with no line still asks the owner', async () => {
       const s = setup({ trust: { mode: 'on', lines: [line()] } })
       teammate(s, 'UTEAM0002')

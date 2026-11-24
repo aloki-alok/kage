@@ -88,7 +88,7 @@ async function slackReply(c: ToolContext, a: ReplyArgs, key: string): Promise<Re
   if (typed && 'text' in typed) return typed
   const verdict = ask && on === 'owner' ? trustVerdict(c, key, ask, typed) : { would: '' }
   if ('result' in verdict) return verdict.result
-  if (typed && isLearnable(typed.kind)) a.text = `${a.text}\n_${savedLine(typed)}_`
+  if (typed && isLearnable(typed.kind) && (c.o.trust?.mode() ?? 'off') !== 'off') a.text = `${a.text}\n_${savedLine(typed)}_`
   const layout = layoutRefusal(a.text, a)
   if (layout) return { isError: true, text: layout }
   const { via, where: at } = a.private ? await c.post(key, c.o.botDm(), c.dmThread.get(key), a.text) : await c.post(key, a.channel, a.thread_ts, a.text, a.tag_agent ? { tag: c.agents.get(key)?.tag } : {}, a.mark === 'ack')

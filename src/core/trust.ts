@@ -28,9 +28,13 @@ type OpenAsk = AskRef & { thread: string; would: string }
 export const openTypedAsks = (waitingTsv: string, thread: string): OpenAsk[] =>
   openWaiting(waitingTsv).filter(i => i.thread === thread && i.kind && i.reach && i.who).map(i => ({ thread, who: i.who!, kind: i.kind!, reach: i.reach!, would: i.would ?? '' }))
 
-const OWNER_LINE = /^(?:Task from [^:\n]*|From the owner, typed in the terminal): ([^\n]*)/
+const OWNER_PREFIX = /^(?:Task from [^:\n]*|From the owner, typed in the terminal): /
+const ADDED_BY_KAGE = /\n+(?=\(Agents you can address:|\(This is the owner's answer|Conversation so far|New in the thread since)/
 
-export const ownerWords = (content: string): string | undefined => OWNER_LINE.exec(content)?.[1]
+export function ownerWords(content: string): string | undefined {
+  const prefix = OWNER_PREFIX.exec(content)
+  return prefix ? content.slice(prefix[0].length).split(ADDED_BY_KAGE)[0] : undefined
+}
 
 const PLAIN_ANSWER = /^(y|yes|ok|okay|sure|approve|approved|go|n|no|deny)(?:[,. ]+once)?[.!]?$/i
 
@@ -43,7 +47,7 @@ export function answerLines(asks: OpenAsk[], words: string): (AskRef & { answer:
   return [{ who: ask.who, kind: ask.kind, reach: ask.reach, answer, once: answer === 'yes' && /\bonce\b/i.test(plain) }]
 }
 
-export const savedLine = (a: AskRef) => `A yes saves this for <@${a.who}>: ${a.kind} on ${oneLine(a.reach).slice(0, 80)}, from now on. Say "yes once" to keep it to this time.`
+export const savedLine = (a: AskRef) => `A yes saves this for <@${a.who}>: ${a.kind} on ${a.reach}, from now on. Say "yes once" to keep it to this time.`
 
 export function receiptLine(steps: string[][]): string | undefined {
   if (!steps.length) return undefined

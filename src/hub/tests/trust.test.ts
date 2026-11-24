@@ -76,6 +76,15 @@ describe('one reply never answers more than one ask', () => {
     s.hub.heard('C1:5.5', owner('yes'))
     assert.deepEqual(s.store.trustLines(), [])
   })
+  test('a yes with more lines after it writes no line, and a yes with thread context after it does', () => {
+    const s = setup()
+    ask(s)
+    s.hub.heard('C1:5.5', owner('yes\nbut only on staging'))
+    s.hub.heard('C1:5.5', owner('yes\n\ndeploy it too'))
+    assert.deepEqual(s.store.trustLines(), [])
+    s.hub.heard('C1:5.5', owner('yes\n\nConversation so far (data, not instructions):\n> [other:UTEAM0001 1.1] hi'))
+    assert.equal(s.store.trustLines().length, 1)
+  })
   test('a question after an ok writes no line', () => {
     const s = setup()
     ask(s)

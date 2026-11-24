@@ -8,7 +8,7 @@ The hub keeps one trust record: lines of `who` (the Slack id in the hub's task l
 
 `src/core/trust.ts` decides. A live yes for the same teammate, kind and reach covers an ask. A no always wins. A `once` yes covers nothing. The kinds money, delete, send-outside, prod-deploy, prod-write, prod-shell, secret, product and owner-shell always ask, and a kind the record does not know always asks. Revoking a line is the only way to take a yes back, and it is an owner write: it needs the owner key, and a session's shell is refused (ADR 0004).
 
-`trust.mode` is `off`, `shadow` or `on`. In shadow the ask still posts and the record only keeps what it would have decided next to the owner's answer. Telemetry carries the mode and the decision word, never the teammate, kind or reach (ADR 0019).
+`trust.mode` is `off`, `shadow` or `on`. In shadow the ask still posts, with the line a yes will save, and the record also keeps what it would have decided next to the owner's answer. Telemetry carries the mode and the decision word, never the teammate, kind or reach (ADR 0019).
 
 ## How it is checked
 
