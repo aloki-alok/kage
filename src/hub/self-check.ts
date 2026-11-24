@@ -23,5 +23,5 @@ export function selfCheck(o: { code: string; store: Store; ledgers: Ledgers; say
   setTimeout(() => void doctor().catch(e => log('doctor check failed', e)), 5 * 60_000).unref()
   const today = () => new Date().toISOString().slice(0, 10)
   const failures = failureWatch({ store: o.store, say: o.say, events: () => o.ledgers.events(today()), day: today, atLeast: () => o.failureRepeats })
-  return async () => { await failures(); await doctor() }
+  return async () => { await failures().catch(e => log('failure count failed', e)); await doctor() }
 }
