@@ -22,7 +22,7 @@ function kageCopy() {
   mkdirSync(join(dir, 'src', 'runtime'), { recursive: true })
   mkdirSync(join(dir, 'src', 'cli'), { recursive: true })
   for (const f of ['hub-log.ts', 'config-files.ts', 'hold-keys.ts', 'key-proxy.ts', 'hub-client.ts', 'owner-key.ts']) copyFileSync(join(REPO, 'src', 'runtime', f), join(dir, 'src', 'runtime', f))
-  for (const f of ['config.ts', 'home.ts', 'voice.ts']) copyFileSync(join(REPO, 'src', 'cli', f), join(dir, 'src', 'cli', f))
+  for (const f of ['config.ts', 'home.ts', 'voice.ts', 'output.ts']) copyFileSync(join(REPO, 'src', 'cli', f), join(dir, 'src', 'cli', f))
   cpSync(join(REPO, 'src', 'core'), join(dir, 'src', 'core'), { recursive: true })
   symlinkSync(join(REPO, 'node_modules/zod'), join(dir, 'node_modules/zod'))
   mkdirSync(join(dir, 'src', 'hub'), { recursive: true }); writeFileSync(join(dir, 'src', 'hub', 'router.ts'), FAKE_HUB)
