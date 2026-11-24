@@ -1,3 +1,4 @@
+import type { WebClient } from '@slack/web-api'
 import { senderOf, teammateOf } from '../core/gate.ts'
 import { threadOfJobLane } from '../core/conversations.ts'
 import type { Task } from '../core/task.ts'
@@ -64,4 +65,16 @@ export function trustHub(o: Options) {
       return { refused: 'use confirm or revoke' }
     },
   }
+}
+
+export function trustFor(o: { store: Store; ledgers: Ledgers; user: WebClient; teammates: string[]; mode: () => TrustMode; log: (...a: unknown[]) => void }) {
+  const hub = trustHub({
+    store: o.store, ledgers: o.ledgers, mode: o.mode, teammates: () => o.teammates, event: detail => o.ledgers.event({ kind: 'trust', who: 'hub', trace: '', detail }),
+    threadStarter: async key => {
+      const [channel, ts] = key.split(':')
+      return (await o.user.conversations.replies({ channel: channel!, ts: ts!, limit: 1 })).messages?.[0]?.user
+    },
+  })
+  void hub.backfill().catch(e => o.log('trust backfill failed', e))
+  return { ...hub, session: { mode: o.mode, lines: () => o.store.trustLines() } }
 }

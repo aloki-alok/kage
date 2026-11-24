@@ -44,7 +44,7 @@ import { limitPause } from '../runtime/limit-pause.ts'
 import { findPlugin, ssmRelay } from '../runtime/ssm-relay.ts'
 import { keyProxy } from '../runtime/key-proxy.ts'
 import { askSocket } from '../runtime/hub-client.ts'
-import { trustHub } from './trust.ts'
+import { trustFor } from './trust.ts'
 import { listenForSessions, restoreHolds, routeReply } from '../runtime/session-link.ts'
 import { ownerKey, readToken } from '../runtime/owner-key.ts'
 import { openStore, type Inbox } from '../runtime/store.ts'
@@ -106,11 +106,7 @@ const keys = keyProxy({ path: KEYS_SOCK, routes: config.sessionKeys ?? {}, trust
 store.importState({ afk: `${DIR}/afk.json`, 'github-threads': `${DIR}/github-threads.json`, 'mail-threads': `${DIR}/mail-threads.json` })
 const ledgers = openLedgers(DIR, undefined, line => log(line), (name, cells) => { if (name === 'posted' && cells[3]) runs.posted(cells[3]) })
 const runs = runEvents(ledgers, randomUUID)
-const trustMode = () => config.trust?.mode ?? 'shadow'
-const trust = trustHub({
-  store, ledgers, mode: trustMode, teammates: () => TEAMMATES, event: detail => ledgers.event({ kind: 'trust', who: 'hub', trace: '', detail }),
-  threadStarter: async key => (await user.conversations.replies({ channel: key.split(':')[0]!, ts: key.split(':')[1]!, limit: 1 })).messages?.[0]?.user,
-})
+const trust = trustFor({ store, ledgers, user, teammates: TEAMMATES, mode: () => config.trust?.mode ?? 'shadow', log })
 const placeOf = (key: string) => placeFor(k => store.conversation(k)?.place, key)
 const inbox: Inbox = { take: (source, connector, payload) => store.take(source, connector, payload, Date.now()), handled: source => limits.handled(source), has: source => store.has(source) }
 
@@ -165,10 +161,7 @@ function dropped(key: string, turn: Task[], reason: string, kind: string) {
   if (p.reply && t) sayInThread(key, t, p.reply)
   if (p.dm && !dropToldOwner.has(key)) { dropToldOwner.add(key); void owner.say(p.dm) }
 }
-const noteTrust = (key: string, t: Task) => {
-  trust.heard(key, t)
-  if (!t.need) store.noteTask(key, senderOf(t) === 'owner', key in d.saved())
-}
+const noteTrust = (key: string, t: Task) => (trust.heard(key, t), t.need || store.noteTask(key, senderOf(t) === 'owner', key in d.saved()))
 const phoneOwner = (reason: string) => callOwner(conn.call?.command, voice, reason)
 const jev = jevConfig(config.jev, secrets.jevKey)
 if (jev && 'error' in jev) log(`jev is off: ${jev.error}`)
@@ -259,7 +252,7 @@ const sdk = sdkLib ? sdkSessions({
     meetbot: meeting && { join: meeting.join }, sms: sms?.campaigns, screen: SCREEN,
     dbRead: { command: () => readCommand(kl.dbRead?.command ?? undefined, store, key.split('#side-kagelet-')[1] ?? ''), maxRows: kl.dbRead?.maxRows || 200 },
     kagelets: { list: () => kag.manager.list(Date.now()), manage: (a, ask) => kag.manager.manage(a, Date.now(), ask) }, approve,
-    event: (kind, detail) => runs.emit(key, kind, detail), trust: { mode: trustMode, lines: () => store.trustLines() },
+    event: (kind, detail) => runs.emit(key, kind, detail), trust: trust.session,
     onReport: r => kag.routes.reported(key, r), message: (to, text) => kag.routes.message(key, to, text), toManager: needs => kag.needs.add(key, key.split('#side-kagelet-')[1] ?? '', needs, Date.now()), tellKagelet: (name, text, now) => kag.tell(name, text, now),
   }),
   hasTranscript: tmux.hasTranscript, trustedNow: person => (slack.ids.trusted ?? []).includes(person),
@@ -370,7 +363,6 @@ listenForSessions(`${DIR}/router.sock`, d, { ownerKey: OWNER_KEY, ...replies, fa
   quiesce: () => { const now = Date.now(); limits.drain(now); return d.unquiet(now).filter(u => u.why !== 'just active' && u.why !== 'open in a terminal') }, callCode: voice?.issueCode })
 
 await slack.start()
-void trust.backfill().catch(e => log('trust backfill failed', e))
 try { for (const f of sweepKeptCopies(ENV_FILE)) log(`deleted ${f}, 7 days after it was kept`) } catch (e) { log(`could not sweep old settings files: ${e}`) }
 void tidyPeople(ENV_FILE, email => user.users.lookupByEmail({ email }).then(r => r.user?.id)).then(done => { if (done) { log(`config.json now lists teammates in one list, ${done.moved.length} email(s) moved onto Slack users; old file kept as ${done.backup}`); void owner.say(ownerLines.peopleTidied(done.backup, done.moved, done.unchecked)) } }).catch(e => log(`could not tidy config.json: ${e}`))
 startupNotes({ dir: DIR, code: CODE, version: VERSION, envFile: ENV_FILE, store, say: owner.say, tokens: { user: secrets.slack?.user, bot: secrets.slack?.bot } })

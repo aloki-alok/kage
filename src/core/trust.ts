@@ -2,8 +2,7 @@ import { cardAnswer } from './gate.ts'
 import { openWaiting } from './ledgers.ts'
 import { oneLine } from './text.ts'
 
-export const TRUST_MODES = ['off', 'shadow', 'on'] as const
-export type TrustMode = typeof TRUST_MODES[number]
+export type TrustMode = 'off' | 'shadow' | 'on'
 
 const LEARNABLE = ['prod-read', 'ssm-relay', 'site-read', 'repo-read']
 const NEVER_LEARN = ['money', 'delete', 'send-outside', 'prod-deploy', 'prod-write', 'prod-shell', 'secret', 'product', 'owner-shell']
@@ -24,7 +23,7 @@ export function decide(lines: TrustLine[], ask: AskRef): Decision {
   return yes ? { do: 'go', line: yes } : { do: 'ask', why: 'no-line' }
 }
 
-export type OpenAsk = AskRef & { thread: string; would: string }
+type OpenAsk = AskRef & { thread: string; would: string }
 
 export const openTypedAsks = (waitingTsv: string, thread: string): OpenAsk[] =>
   openWaiting(waitingTsv).filter(i => i.thread === thread && i.kind && i.reach && i.who).map(i => ({ thread, who: i.who!, kind: i.kind!, reach: i.reach!, would: i.would ?? '' }))
