@@ -4,6 +4,7 @@ import { ENV_FILE } from './home.ts'
 import { readSettings, setKey, updateConfig, updateSecrets } from '../runtime/config-files.ts'
 import { readFileSync } from 'node:fs'
 import { keyHelp, settingDocs, settingsOverview } from '../core/setting-docs.ts'
+import { outputFlags, printJson } from './output.ts'
 
 const die = (msg: string): never => { console.error(msg); process.exit(1) }
 const [cmd = '', key = '', ...rest] = process.argv.slice(2)
@@ -42,6 +43,24 @@ if (cmd === 'has') {
     setKey(ENV_FILE, key, parsed)
   } catch (e) { die([`Not changed: ${(e as Error).message.replace(/^config\.json: /, '')}`, ...docs.some(d => d.key === key) ? [] : keyHelp(docs, key, undefined)].join('\n')) }
   console.log(`Set ${key}. The people lists apply at once. Any other key applies by itself once every session is quiet (or run kage restart).`)
+} else if (cmd === 'show') {
+  const out = outputFlags([key, ...rest].filter(Boolean)), [one] = out.args
+  const docs = settingDocs(readFileSync(new URL('../../docs/settings.md', import.meta.url), 'utf8'))
+  let config: unknown = {}
+  try { config = readSettings(ENV_FILE).config } catch {}
+  if (!out.json) {
+    const help = one ? keyHelp(docs, one, walk(config, one)) : settingsOverview(docs, k => walk(config, k))
+    console.log(help.join('\n'))
+    process.exit(!one || help.length > 1 ? 0 : 1)
+  }
+  const rows = docs.map(d => ({ key: d.key, section: d.section, value: walk(config, d.key) ?? null, default: d.default, text: d.effect }))
+  if (!one) printJson(rows, out.jq)
+  else {
+    const row = rows.find(r => r.key === one)
+    if (!row) die(keyHelp(docs, one, undefined).join('\n'))
+    const { section: _, ...shown } = row!
+    printJson(shown, out.jq)
+  }
 } else if (cmd === 'save') {
   const words = (await new Promise<string>(res => { let t = ''; process.stdin.on('data', d => t += d).on('end', () => res(t)) })).split(/\s+/).filter(Boolean)
   const [app, user, bot] = ['xapp-', 'xoxp-', 'xoxb-'].map(p => words.find(w => w.startsWith(p)))

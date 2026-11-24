@@ -104,7 +104,7 @@ cmd_help() {
     [[ $g == "$group" ]] || { printf "\n${B}%s${R}\n" "$g"; group=$g; }
     printf '  %-28s %s\n' "$n${a:+ $a}" "$d"
   done <<<"$COMMANDS"
-  printf '\nkage help <command> shows one command with an example, and kage help <group> each command in it. Settings: docs/settings.md\n'
+  printf '\nkage help <command> shows one command with an example, and kage help <group> each command in it. Every list, logs and get takes --json, and --jq <filter>. Settings: docs/settings.md\n'
 }
 
 # Bare kage: the few commands used every day. kage help has the rest.
@@ -382,8 +382,8 @@ case "${1:-}" in
   restart) cmd_restart "${@:2}" ;;
   update) cmd_update "${@:2}" ;;
   config) case "${2:-}" in
-      list) node src/cli/config.ts set ;;
-      get) [[ $# -eq 3 ]] || usage "kage config get takes one key."; node src/cli/config.ts set "$3" ;;
+      list) node src/cli/config.ts show "${@:3}" ;;
+      get) [[ $# -ge 3 && ${3:0:1} != - ]] || usage "kage config get takes one key."; node src/cli/config.ts show "${@:3}" ;;
       set) node src/cli/config.ts set "${@:3}" ;;
       reload) node src/cli/reload.ts ;;
       *) verbs config ;;
@@ -395,7 +395,7 @@ case "${1:-}" in
   stats) node src/cli/stats.ts "${@:2}" ;;
   telemetry) node src/cli/telemetry.ts "${@:2}" ;;
   schedule) case "${2:-}" in
-      list) node src/cli/schedules.ts ;;
+      list) node src/cli/schedules.ts "${@:3}" ;;
       *) verbs schedule ;;
     esac ;;
   release) node src/cli/release.ts "${@:2}" ;;
@@ -409,9 +409,9 @@ case "${1:-}" in
       *) verbs thread ;;
     esac ;;
   kagelet) case "${2:-}" in
-      list) node src/cli/registry.ts list --kagelets ;;
+      list) node src/cli/registry.ts list --kagelets "${@:3}" ;;
       add) [[ $# -eq 3 ]] || usage "kage kagelet add takes one kagelet name."; node src/cli/registry.ts add kagelet "$3" ;;
-      logs) [[ $# -eq 3 ]] || usage "kage kagelet logs takes one kagelet name."; node src/cli/kagelet-logs.ts "$3" ;;
+      logs) [[ $# -ge 3 && ${3:0:1} != - ]] || usage "kage kagelet logs takes one kagelet name."; node src/cli/kagelet-logs.ts "${@:3}" ;;
       start) [[ $# -eq 3 ]] || usage "kage kagelet start takes one kagelet name."; node src/cli/stop.ts --resume "$3" ;;
       stop) [[ $# -eq 3 ]] || usage "kage kagelet stop takes one kagelet name."; node src/cli/stop.ts --kagelet "$3" ;;
       *) verbs kagelet ;;

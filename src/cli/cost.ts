@@ -2,17 +2,20 @@
 import { DIR, placeNamer, settings } from './home.ts'
 import { spendSince } from '../core/ledgers.ts'
 import { openLedgers } from '../runtime/ledger.ts'
+import { outputFlags, printJson } from './output.ts'
 
-if (settings().config.harness?.runtime === 'tmux') {
+if (settings().config.harness?.runtime === 'tmux' && !process.argv.includes('--json') && !process.argv.includes('--jq')) {
   console.log('Threads run as tmux panes (harness.runtime is tmux), whose turns are not costed. Only Agent SDK turns are below.\n')
 }
 
-const days = Number(process.argv[2] ?? 1)
+const out = outputFlags(process.argv.slice(2))
+const days = Number(out.args[0] ?? 1)
 if (!(days > 0)) { console.error('kage cost takes a number of days, like kage cost 7'); process.exit(1) }
 const tsv = openLedgers(DIR).text('costs')
 const rows = spendSince(tsv, Date.now() - days * 24 * 3600_000)
-if (!rows.length) { console.log(`No turns in the last ${days} day${days === 1 ? '' : 's'}. The hub records each SDK turn's cost in ${DIR}/kage.db.`); process.exit(0) }
 const place = placeNamer()
+if (out.json) { printJson(rows.map(r => ({ place: place(r.key), ...r })), out.jq); process.exit(0) }
+if (!rows.length) { console.log(`No turns in the last ${days} day${days === 1 ? '' : 's'}. The hub records each SDK turn's cost in ${DIR}/kage.db.`); process.exit(0) }
 const total = rows.reduce((a, r) => a + r.usd, 0)
 const turns = rows.reduce((a, r) => a + r.turns, 0)
 console.log(`$${total.toFixed(2)} over ${turns} turns in the last ${days} day${days === 1 ? '' : 's'} (an estimate from the Agent SDK, not a bill)\n`)
