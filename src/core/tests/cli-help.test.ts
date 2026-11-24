@@ -67,7 +67,9 @@ describe('kage <noun> <verb> runs, and an old name says its new one', () => {
   test('check and link are no longer listed: doctor names a missing tool, and setup puts kage on the PATH', () => {
     const help = kage('help').stdout
     assert.doesNotMatch(help, /^  check\b|^  link\b/m)
-    assert.equal(kage('check').status, 0)
+    const check = kage('check')
+    assert.doesNotMatch(check.stderr, /No command/)
+    assert.ok(check.status === 0 || /Node|Claude Code/.test(check.stderr), check.stderr)
   })
   test('kagelet stop never falls through to a thread', () => {
     const r = kage('kagelet', 'stop', 'nosuch')
