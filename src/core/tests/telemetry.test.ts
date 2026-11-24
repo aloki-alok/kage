@@ -3,7 +3,7 @@ import assert from 'node:assert/strict'
 import type { EventKind, KageEvent } from '../events.ts'
 import { bootWhy, crashFingerprint, errorCode, planDetail, sessionTelemetryEnv, TELEMETRY_URL, telemetryEndpoint, toTelemetry } from '../telemetry.ts'
 
-const KINDS: EventKind[] = ['run.start', 'run.end', 'tool', 'handoff', 'grant', 'refusal', 'revoke', 'owner-note', 'report', 'cap-pause', 'cost-flag', 'config.live', 'config.restart', 'config.refused', 'memory-proposal', 'memory-decision', 'day-summary', 'triage', 'tripwire', 'crash', 'limit', 'plan', 'objective', 'boot', 'error', 'shape']
+const KINDS: EventKind[] = ['run.start', 'run.end', 'tool', 'handoff', 'grant', 'refusal', 'revoke', 'owner-note', 'report', 'cap-pause', 'cost-flag', 'config.live', 'config.restart', 'config.refused', 'memory-proposal', 'memory-decision', 'day-summary', 'triage', 'tripwire', 'crash', 'limit', 'plan', 'objective', 'boot', 'error', 'shape', 'trust']
 const PLANTED = ['Priya', 'U0TESTUSER1', 'C0TESTCHAN1', 'priya@acme.com', '/Users/priya', 'refund the customer', 'sk-live-123', 'acme']
 const ev = (kind: EventKind, detail: string): KageEvent =>
   ({ at: '2026-11-16T10:00:00.000Z', kind, who: 'C0TESTCHAN1:1700000000.000100', trace: 'U0TESTUSER1-t1', chain: 'acme-chain', detail, transcript: '/Users/priya/t.jsonl' })
