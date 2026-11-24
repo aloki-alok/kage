@@ -147,7 +147,17 @@ describe('the cost ledger', () => {
       tsvRow(['2026-11-06T02:00:00Z', 'C1:1.1', '0.35', '0.75']),
       tsvRow(['2026-11-06T02:00:00Z', 'dm', '0.2', '9.2']),
     ].join('')
-    assert.deepEqual(spendSince(tsv, Date.parse('2026-11-05T00:00:00Z')), [{ key: 'C1:1.1', usd: 0.75, turns: 2 }, { key: 'dm', usd: 0.2, turns: 1 }])
+    assert.deepEqual(spendSince(tsv, Date.parse('2026-11-05T00:00:00Z')), [{ key: 'C1:1.1', usd: 0.75, turns: 2, models: [] }, { key: 'dm', usd: 0.2, turns: 1, models: [] }])
+  })
+  test('spend per thread names each model its turns ran on, most spend first (#283)', () => {
+    const t = (model: string) => ['1', '0', '0', '1', 'kagelet', model]
+    const tsv = [
+      tsvRow(['2026-11-06T01:00:00Z', 'C1:1.1', '0.1', '0.1', ...t('claude-haiku-x')]),
+      tsvRow(['2026-11-06T02:00:00Z', 'C1:1.1', '0.5', '0.6', ...t('claude-opus-x')]),
+      tsvRow(['2026-11-06T03:00:00Z', 'C1:1.1', '0.1', '0.7', ...t('claude-haiku-x')]),
+      tsvRow(['2026-11-06T04:00:00Z', 'C1:1.1', '0.2', '0.9']),
+    ].join('')
+    assert.deepEqual(spendSince(tsv, 0)[0]!.models, ['claude-opus-x', 'claude-haiku-x'])
   })
 })
 
