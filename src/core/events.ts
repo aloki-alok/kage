@@ -1,5 +1,5 @@
 import { oneLine } from './text.ts'
-export type EventKind = 'run.start' | 'run.end' | 'tool' | 'handoff' | 'grant' | 'refusal' | 'revoke' | 'owner-note' | 'report' | 'cap-pause' | 'cost-flag' | 'config.live' | 'config.restart' | 'config.refused' | 'memory-proposal' | 'memory-decision' | 'day-summary' | 'triage' | 'tripwire' | 'objective' | 'crash' | 'limit' | 'plan' | 'boot' | 'error' | 'shape' | 'held' | 'people-ask' | 'doctor' | 'daily-note' | 'trust'
+export type EventKind = 'run.start' | 'run.end' | 'tool' | 'handoff' | 'grant' | 'refusal' | 'revoke' | 'owner-note' | 'report' | 'cap-pause' | 'cost-flag' | 'config.live' | 'config.restart' | 'config.refused' | 'memory-proposal' | 'memory-decision' | 'day-summary' | 'triage' | 'tripwire' | 'objective' | 'crash' | 'limit' | 'plan' | 'boot' | 'error' | 'shape' | 'held' | 'people-ask' | 'doctor' | 'daily-note' | 'trust' | 'post'
 export type KageEvent = { at: string; kind: EventKind; who: string; trace: string; chain: string; detail: string; transcript: string }
 
 export const EVENT_DAYS = 30
