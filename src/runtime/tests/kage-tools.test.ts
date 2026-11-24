@@ -1077,6 +1077,16 @@ describe("a session's Kage tools", () => {
     const owned = routed({ agent: { app: 'ATEST0001', person: 'U0TESTMATE1' } })
     assert.equal((await owned.read('select 1')).isError, undefined)
   })
+  test('a text, a call or an email reads nothing, because a stranger can send one', async () => {
+    for (const channel of ['sms', 'voice', 'email', 'whatsapp']) {
+      const dir = mkdtempSync(join(tmpdir(), 'kage-db-'))
+      const s = setup({ dir, dbRoutes: { routes: () => ({ prod: reader(dir).command() }), maxRows: 200 } })
+      s.t.onTask(s.task({ channel, thread_ts: `${channel}:x`, fromOwner: false }))
+      const r = await s.call('db_read', { channel, thread_ts: `${channel}:x`, db: 'prod', sql: 'select 1' })
+      assert.equal(r.isError, true, channel)
+      assert.equal(existsSync(join(dir, 'query')), false, channel)
+    }
+  })
   test('db_read reads the command on each call, so a newly approved one applies at once; none set is refused', async () => {
     const dir = mkdtempSync(join(tmpdir(), 'kage-db-'))
     let command: string | undefined
