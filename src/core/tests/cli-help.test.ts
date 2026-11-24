@@ -73,7 +73,7 @@ describe('kage <noun> <verb> runs, and an old name says its new one', () => {
   })
   test('kage completion bash completes groups and their verbs from the help table', () => {
     const script = kage('completion', 'bash').stdout
-    const complete = (...words: string[]) => spawnSync('bash', ['-c', `${script}\nCOMP_WORDS=(${words.map(w => `'${w}'`).join(' ')}); COMP_CWORD=${words.length - 1}; _kage; printf '%s\\n' "\${COMPREPLY[@]}"`], { encoding: 'utf8' }).stdout.trim().split('\n')
+    const complete = (...words: string[]) => spawnSync('bash', ['-uc', `${script}\nCOMP_WORDS=(${words.map(w => `'${w}'`).join(' ')}); COMP_CWORD=${words.length - 1}; _kage; printf '%s\\n' "\${COMPREPLY[@]}"`], { encoding: 'utf8' }).stdout.trim().split('\n')
     assert.deepEqual(complete('kage', 'thr'), ['thread'])
     assert.deepEqual(complete('kage', 'thread', '').sort(), ['attach', 'follow', 'send', 'stop'])
     assert.ok(complete('kage', '').includes('doctor'))
