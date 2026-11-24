@@ -953,6 +953,17 @@ describe("a session's Kage tools", () => {
       assert.equal((await s.call('waiting', {})).text, 'nothing is waiting')
       assert.match(s.ledgers.text('trust-steps'), /C1:6\.6\tUTEAM0001\tprod-read\tdb\.example\.test\tT1/)
     })
+    test('the posted ask says what a yes will save: the teammate, the kind and the reach', async () => {
+      const s = setup({ trust: { mode: 'on', lines: [] } })
+      teammate(s)
+      await s.call('reply', prodRead())
+      assert.match(s.posts[0]!.text, /<@UTEAM0001>: prod-read on db\.example\.test/)
+      assert.match(s.posts[0]!.text, /yes once/)
+      const never = setup({ trust: { mode: 'on', lines: [] } })
+      teammate(never)
+      await never.call('reply', prodRead('6.6', { kind: 'ssm-relay', reach: 'ssm' }))
+      assert.doesNotMatch(never.posts[0]!.text, /A yes saves/)
+    })
     test('a teammate with no line still asks the owner', async () => {
       const s = setup({ trust: { mode: 'on', lines: [line()] } })
       teammate(s, 'UTEAM0002')

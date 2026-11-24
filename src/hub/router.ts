@@ -100,13 +100,13 @@ const store = openStore(`${DIR}/kage.db`)
 const deferred = deferredApprovals(store, v => ledgers.add('card-verdicts', cardVerdictCells(v)), () => kl.denyHoldDays ?? 7)
 const answerCard = (id: string, behavior: 'allow' | 'deny', always?: true) => answerDeferred(deferred, (key, task) => { if (toSession(key, task) === 'failed') failed(task) }, id, behavior, Date.now(), always && (c => kag.alwaysAllow(c.key, c.tool, c.input)))
 const SSM_SOCK = `${DIR}/ssm.sock`, SSM_SHIM = `${CODE}/src/cli/ssm-plugin-shim`
-const ssm = ssmRelay({ path: SSM_SOCK, plugin: findPlugin(undefined, [SSM_SHIM]), trusted: key => trust.relayOk(key), log })
+const ssm = ssmRelay({ path: SSM_SOCK, plugin: findPlugin(undefined, [SSM_SHIM]), trusted: key => store.relayOk(key), log })
 const KEYS_SOCK = `${DIR}/keys.sock`
-const keys = keyProxy({ path: KEYS_SOCK, routes: config.sessionKeys ?? {}, trusted: key => trust.relayOk(key), log })
+const keys = keyProxy({ path: KEYS_SOCK, routes: config.sessionKeys ?? {}, trusted: key => store.relayOk(key), log })
 store.importState({ afk: `${DIR}/afk.json`, 'github-threads': `${DIR}/github-threads.json`, 'mail-threads': `${DIR}/mail-threads.json` })
 const ledgers = openLedgers(DIR, undefined, line => log(line), (name, cells) => { if (name === 'posted' && cells[3]) runs.posted(cells[3]) })
 const runs = runEvents(ledgers, randomUUID)
-const trust = trustFor({ store, ledgers, user, teammates: TEAMMATES, mode: () => config.trust?.mode ?? 'shadow', log })
+const trust = trustFor({ store, ledgers, mode: () => config.trust?.mode ?? 'shadow' })
 const placeOf = (key: string) => placeFor(k => store.conversation(k)?.place, key)
 const inbox: Inbox = { take: (source, connector, payload) => store.take(source, connector, payload, Date.now()), handled: source => limits.handled(source), has: source => store.has(source) }
 

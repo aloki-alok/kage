@@ -1,28 +1,17 @@
-import type { WebClient } from '@slack/web-api'
-import { senderOf, teammateOf } from '../core/gate.ts'
-import { threadOfJobLane } from '../core/conversations.ts'
+import { senderOf } from '../core/gate.ts'
 import type { Task } from '../core/task.ts'
-import { answerLines, decide, openTypedAsks, ownerWords, type TrustMode } from '../core/trust.ts'
+import { answerLines, openTypedAsks, ownerWords, type TrustMode } from '../core/trust.ts'
 import type { Ledgers } from '../runtime/ledger.ts'
 import type { Store } from '../runtime/store.ts'
 
 type Options = {
-  store: Store; ledgers: Ledgers; mode: () => TrustMode; teammates: () => string[]
-  threadStarter: (key: string) => Promise<string | undefined>; event: (detail: string) => void; now?: () => number
+  store: Store; ledgers: Ledgers; mode: () => TrustMode; event: (detail: string) => void; now?: () => number
 }
-
-const RELAY = { kind: 'ssm-relay', reach: 'ssm' }
-const UNKNOWN_SENDER = '?'
 
 const typedByOwner = (t: Task) => senderOf(t) === 'owner' && !t.scheduled && !t.job && !t.need && !t.handoff && t.meta.channel !== 'voice'
 
 export function trustHub(o: Options) {
   const now = () => o.now?.() ?? Date.now()
-  const whoInThread = new Map<string, Set<string>>()
-  const noteWho = (key: string, t: Task) => {
-    const thread = threadOfJobLane(key)
-    whoInThread.set(thread, (whoInThread.get(thread) ?? new Set()).add(teammateOf(t.content)?.id ?? UNKNOWN_SENDER))
-  }
   function learn(key: string, t: Task) {
     const words = ownerWords(t.content)
     const asks = words === undefined ? [] : openTypedAsks(o.ledgers.text('waiting'), key)
@@ -39,22 +28,6 @@ export function trustHub(o: Options) {
     heard(key: string, t: Task) {
       if (o.mode() === 'off') return
       if (typedByOwner(t)) learn(key, t)
-      else if (senderOf(t) !== 'owner') noteWho(key, t)
-    },
-    relayOk(key: string): boolean {
-      if (o.store.relayOk(key)) return true
-      const who = whoInThread.get(threadOfJobLane(key))
-      if (o.mode() !== 'on' || !who?.size) return false
-      const lines = o.store.trustLines()
-      return [...who].every(w => decide(lines, { who: w, ...RELAY }).do === 'go')
-    },
-    async backfill() {
-      if (o.mode() === 'off') return
-      const known = new Set(o.teammates())
-      for (const key of o.store.relayAllowed()) {
-        const who = await o.threadStarter(key).catch(() => undefined)
-        if (who && known.has(who)) o.store.proposeTrust({ who, ...RELAY, answer: 'yes', once: false, link: key, source: `relay_allow:${key}` }, now())
-      }
     },
     command(action: string, id: string): { ok: true; text: string } | { refused: string } {
       if (action === 'confirm') {
@@ -67,14 +40,7 @@ export function trustHub(o: Options) {
   }
 }
 
-export function trustFor(o: { store: Store; ledgers: Ledgers; user: WebClient; teammates: string[]; mode: () => TrustMode; log: (...a: unknown[]) => void }) {
-  const hub = trustHub({
-    store: o.store, ledgers: o.ledgers, mode: o.mode, teammates: () => o.teammates, event: detail => o.ledgers.event({ kind: 'trust', who: 'hub', trace: '', detail }),
-    threadStarter: async key => {
-      const [channel, ts] = key.split(':')
-      return (await o.user.conversations.replies({ channel: channel!, ts: ts!, limit: 1 })).messages?.[0]?.user
-    },
-  })
-  void hub.backfill().catch(e => o.log('trust backfill failed', e))
+export function trustFor(o: { store: Store; ledgers: Ledgers; mode: () => TrustMode }) {
+  const hub = trustHub({ store: o.store, ledgers: o.ledgers, mode: o.mode, event: detail => o.ledgers.event({ kind: 'trust', who: 'hub', trace: '', detail }) })
   return { ...hub, session: { mode: o.mode, lines: () => o.store.trustLines() } }
 }

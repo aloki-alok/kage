@@ -100,7 +100,7 @@ Write logs to stderr only. In a tmux pane, stdout carries the channel protocol, 
 | `src/hub/kagelets.ts` | Kagelets in the hub: the minute sync of their files into schedules and grants, the cost flags and caps, their memory, the manager's side, the owner's notes to one, and the chains between them. |
 | `src/hub/telemetry.ts` | Telemetry in the hub (ADR 0019): the install id, the minute export job, Claude Code's telemetry env for every session, and the crash code written before exit. |
 | `src/hub/owner-commands.ts` | What the owner asks from their terminal or DM: the status line, `kage tell`, `kage relay`, and `say` (an app on this Mac posts as the owner). |
-| `src/hub/trust.ts` | The trust record in the hub: learns a line from the owner's typed answer to an open typed ask, lets a thread of teammates who each hold a relay line use the relay, proposes lines from the `kage relay allow` history, and answers `kage trust confirm` and `revoke`. |
+| `src/hub/trust.ts` | The trust record in the hub: learns a line from the owner's typed answer to the one open typed ask in a thread, answers `kage trust confirm` and `revoke`. |
 | `src/hub/whatsapp-cards.ts` | An approval card sent to the owner on WhatsApp when they picked that channel, with a four-digit code, and their `yes` or `no` reply answering that card once. |
 | `src/hub/phone-owner.ts` | Calling the owner: runs `connectors.call.command` with a one-time voice code and the reason, and says why when it cannot. |
 | `src/hub/self-check.ts` | The hourly doctor run (`src/runtime/doctor-watch.ts`) wired to the owner DM, the event ledger and, on a hub whose gh login can push to the Kage repo (checked at each filing), `fileFound` for a check that did not run, inside `report.perDay`. |

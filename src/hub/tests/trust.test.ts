@@ -9,11 +9,11 @@ import type { Task } from '../../core/task.ts'
 import type { TrustMode } from '../../core/trust.ts'
 import { trustHub } from '../trust.ts'
 
-function setup(mode: TrustMode = 'on', starters: Record<string, string> = {}) {
+function setup(mode: TrustMode = 'on') {
   const dir = mkdtempSync(join(tmpdir(), 'kage-trust-hub-'))
   const store = openStore(join(dir, 'kage.db')), ledgers = openLedgers(dir)
   const events: string[] = []
-  const hub = trustHub({ store, ledgers, mode: () => mode, teammates: () => ['UTEAM0001', 'UTEAM0002'], threadStarter: async key => starters[key], event: (d: string) => events.push(d), now: () => 1_000 })
+  const hub = trustHub({ store, ledgers, mode: () => mode, event: (d: string) => events.push(d), now: () => 1_000 })
   return { store, ledgers, hub, events }
 }
 const owner = (text: string, o: Partial<Task> = {}): Task => ({ type: 'task', content: `Task from Sam: ${text}`, fromOwner: true, meta: { channel: 'C1', thread_ts: '5.5', place: '#general', permalink: 'https://x/p' }, origin: { channel: 'C1', ts: '6.6' }, ...o })
@@ -68,50 +68,19 @@ describe('the hub learns from what the owner types', () => {
   })
 })
 
-describe('a thread of known teammates may use the relay', () => {
-  const known = (s: ReturnType<typeof setup>) => s.store.addTrustLine({ who: 'UTEAM0001', kind: 'ssm-relay', reach: 'ssm', answer: 'yes', once: false, link: 'l' }, 1)
-  test('in on mode, a thread where every teammate has a relay line gets it, with no kage relay allow', () => {
+describe('one reply never answers more than one ask', () => {
+  test('two open typed asks and one yes write no line', () => {
     const s = setup()
-    known(s)
-    s.hub.heard('C1:5.5', teammate('UTEAM0001'))
-    assert.equal(s.hub.relayOk('C1:5.5'), true)
+    ask(s)
+    s.ledgers.add('waiting', ['open', 'C1:5.5', 'l', 'Read the logs?', 'prod-read', 'logs.example.test', 'UTEAM0001', 'ask'])
+    s.hub.heard('C1:5.5', owner('yes'))
+    assert.deepEqual(s.store.trustLines(), [])
   })
-  test('one teammate with no line, an unknown sender, shadow mode and an unseen thread all keep it closed', () => {
+  test('a question after an ok writes no line', () => {
     const s = setup()
-    known(s)
-    s.hub.heard('C1:5.5', teammate('UTEAM0001'))
-    s.hub.heard('C1:5.5', teammate('UTEAM0002'))
-    assert.equal(s.hub.relayOk('C1:5.5'), false)
-    assert.equal(s.hub.relayOk('C1:9.9'), false)
-    const shadow = setup('shadow')
-    known(shadow)
-    shadow.hub.heard('C1:5.5', teammate('UTEAM0001'))
-    assert.equal(shadow.hub.relayOk('C1:5.5'), false)
-  })
-  test('the old per-thread allow still works, and a revoked line closes the thread', () => {
-    const s = setup()
-    s.store.setRelayAllow('C1:7.7', true)
-    assert.equal(s.hub.relayOk('C1:7.7'), true)
-    const id = known(s)
-    s.hub.heard('C1:5.5', teammate('UTEAM0001'))
-    assert.equal(s.hub.relayOk('C1:5.5'), true)
-    s.store.revokeTrust(id)
-    assert.equal(s.hub.relayOk('C1:5.5'), false)
-  })
-})
-
-describe('history only proposes', () => {
-  test('a relay thread becomes a proposed line for the teammate who started it, and grants nothing until confirmed', async () => {
-    const s = setup('on', { 'C1:5.5': 'UTEAM0001', 'C1:6.6': 'UOWNER001', 'C1:7.7': undefined as never })
-    for (const k of ['C1:5.5', 'C1:6.6', 'C1:7.7']) s.store.setRelayAllow(k, true)
-    await s.hub.backfill()
-    await s.hub.backfill()
-    assert.deepEqual(s.store.trustLines().map(l => [l.who, l.kind, l.reach, l.state]), [['UTEAM0001', 'ssm-relay', 'ssm', 'proposed']])
-    s.hub.heard('C1:8.8', teammate('UTEAM0001'))
-    assert.equal(s.hub.relayOk('C1:8.8'), false)
-    assert.deepEqual(s.hub.command('confirm', 'all'), { ok: true, text: 'confirmed 1' })
-    s.hub.heard('C1:8.8', teammate('UTEAM0001'))
-    assert.equal(s.hub.relayOk('C1:8.8'), true)
+    ask(s)
+    s.hub.heard('C1:5.5', owner('ok so what is the host name'))
+    assert.deepEqual(s.store.trustLines(), [])
   })
 })
 

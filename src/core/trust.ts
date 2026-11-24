@@ -4,8 +4,8 @@ import { oneLine } from './text.ts'
 
 export type TrustMode = 'off' | 'shadow' | 'on'
 
-const LEARNABLE = ['prod-read', 'ssm-relay', 'site-read', 'repo-read']
-const NEVER_LEARN = ['money', 'delete', 'send-outside', 'prod-deploy', 'prod-write', 'prod-shell', 'secret', 'product', 'owner-shell']
+const LEARNABLE = ['prod-read', 'site-read', 'repo-read']
+const NEVER_LEARN = ['ssm-relay', 'money', 'delete', 'send-outside', 'prod-deploy', 'prod-write', 'prod-shell', 'secret', 'product', 'owner-shell']
 export const ASK_KINDS = [...LEARNABLE, ...NEVER_LEARN]
 export const isLearnable = (kind: string) => LEARNABLE.includes(kind)
 
@@ -32,13 +32,18 @@ const OWNER_LINE = /^(?:Task from [^:\n]*|From the owner, typed in the terminal)
 
 export const ownerWords = (content: string): string | undefined => OWNER_LINE.exec(content)?.[1]
 
+const PLAIN_ANSWER = /^(y|yes|ok|okay|sure|approve|approved|go|n|no|deny)(?:[,. ]+once)?[.!]?$/i
+
 export function answerLines(asks: OpenAsk[], words: string): (AskRef & { answer: 'yes' | 'no'; once: boolean })[] {
   const plain = words.replaceAll('`', '').trim()
+  const [ask] = asks
+  if (asks.length !== 1 || !ask || !isLearnable(ask.kind) || !PLAIN_ANSWER.test(plain)) return []
   const answer = cardAnswer(plain)
   if (!answer) return []
-  const once = answer === 'yes' && /\bonce\b/i.test(plain)
-  return asks.filter(a => isLearnable(a.kind)).map(a => ({ who: a.who, kind: a.kind, reach: a.reach, answer, once }))
+  return [{ who: ask.who, kind: ask.kind, reach: ask.reach, answer, once: answer === 'yes' && /\bonce\b/i.test(plain) }]
 }
+
+export const savedLine = (a: AskRef) => `A yes saves this for <@${a.who}>: ${a.kind} on ${oneLine(a.reach).slice(0, 80)}, from now on. Say "yes once" to keep it to this time.`
 
 export function receiptLine(steps: string[][]): string | undefined {
   if (!steps.length) return undefined

@@ -1,6 +1,6 @@
 import { describe, test } from 'node:test'
 import assert from 'node:assert/strict'
-import { answerLines, decide, isLearnable, openTypedAsks, ownerWords, receiptLine, trustTable, type TrustLine } from '../trust.ts'
+import { answerLines, decide, isLearnable, openTypedAsks, ownerWords, receiptLine, savedLine, trustTable, type TrustLine } from '../trust.ts'
 
 const line = (o: Partial<TrustLine> = {}): TrustLine => ({ id: 'T1', who: 'UTEAM0001', kind: 'prod-read', reach: 'db.example.test', answer: 'yes', once: false, link: 'https://x/p', at: '2026-11-25T00:00:00.000Z', state: 'live', ...o })
 const ask = { who: 'UTEAM0001', kind: 'prod-read', reach: 'db.example.test' }
@@ -26,7 +26,7 @@ describe('the trust record decides from lines', () => {
     assert.equal(decide([line(), line({ id: 'T2', answer: 'no', state: 'revoked' })], ask).do, 'go')
   })
   test('a never-learn kind asks even with a matching yes line, and so does an unknown kind', () => {
-    for (const kind of ['money', 'delete', 'send-outside', 'prod-deploy', 'prod-write', 'prod-shell', 'secret', 'product', 'owner-shell'])
+    for (const kind of ['ssm-relay', 'money', 'delete', 'send-outside', 'prod-deploy', 'prod-write', 'prod-shell', 'secret', 'product', 'owner-shell'])
       assert.deepEqual(decide([line({ kind })], { ...ask, kind }), { do: 'ask', why: 'never-learn' }, kind)
     assert.deepEqual(decide([line({ kind: 'made-up' })], { ...ask, kind: 'made-up' }), { do: 'ask', why: 'unknown-kind' })
     assert.equal(isLearnable('prod-read'), true)
@@ -43,8 +43,19 @@ describe('the owner answer becomes lines', () => {
   })
   test('yes makes a standing line, yes once makes a once line, no makes a no line', () => {
     assert.deepEqual(answerLines(open, 'yes'), [{ who: 'UTEAM0001', kind: 'prod-read', reach: 'db.example.test', answer: 'yes', once: false }])
-    assert.equal(answerLines(open, 'Yes, once please')[0]!.once, true)
+    assert.equal(answerLines(open, 'Yes, once')[0]!.once, true)
     assert.equal(answerLines(open, 'no')[0]!.answer, 'no')
+  })
+  test('only a short, explicit answer counts: a question or a further request is neither yes nor no', () => {
+    for (const words of ['ok so what is the host name', 'yes?', 'yes and also run the migration', 'no wait', 'yes, once please', 'sure, but only on staging']) assert.deepEqual(answerLines(open, words), [], words)
+  })
+  test('two open asks and one yes write zero lines, and one open ask and one yes write one', () => {
+    assert.deepEqual(answerLines([...open, { ...open[0]!, reach: 'other.example.test' }], 'yes'), [])
+    assert.equal(answerLines(open, 'yes').length, 1)
+  })
+  test('the posted line says what a yes saves: the teammate, the kind and the reach', () => {
+    const text = savedLine(open[0]!)
+    for (const part of ['<@UTEAM0001>', 'prod-read', 'db.example.test', 'yes once']) assert.ok(text.includes(part), part)
   })
   test('an unclear answer, and an answer to a never-learn ask, write nothing', () => {
     assert.deepEqual(answerLines(open, 'what does that do?'), [])
