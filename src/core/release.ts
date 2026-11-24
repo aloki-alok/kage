@@ -5,15 +5,20 @@ type Kind = 'new' | 'safety' | 'faster' | 'fixed' | 'internal'
 const SECTIONS: [string, Kind][] = [['New features', 'new'], ['Access and safety', 'safety'], ['Optimizations', 'faster'], ['Bug fixes', 'fixed'], ['Under the hood', 'internal']]
 const UPGRADING = '## Upgrading\nRun kage update --stable, or wait: a git install on main moves to this release within 6 hours.'
 
+const SAFETY = /\b(refuses?|refused|trust|approvals?|permissions?|sandbox|secrets?|guard|access)\b/i
+const INTERNAL = /^(merge|bump|release|docs?|ci|tests?|refactor|chore|build|move|split|drop|extract|rename|remove)\b|\badrs?\b/i
+
 function kind(title: string): Kind {
-  if (/^(merge|bump|release|docs?|ci|tests?|refactor|chore|build)\b|\badrs?\b/i.test(title)) return 'internal'
-  if (/\b(refuses?|refused|trust|approvals?|permissions?|sandbox|secrets?|guard|access)\b/i.test(title)) return 'safety'
-  if (/^perf\b|\b(faster|cheaper)\b/i.test(title)) return 'faster'
-  if (/^(fix|fixes|fixed|stop)\b|\b(fix|fixes|fixed)\b/i.test(title)) return 'fixed'
+  const type = /^(\w+)(\([^)]*\))?!?:/.exec(title)?.[1]?.toLowerCase()
+  if (type === 'feat' || type === 'fix') return SAFETY.test(title) ? 'safety' : type === 'feat' ? 'new' : 'fixed'
+  if (type === 'perf') return 'faster'
+  if (type || INTERNAL.test(title)) return 'internal'
+  if (SAFETY.test(title)) return 'safety'
+  if (/\b(faster|cheaper)\b/i.test(title)) return 'faster'
+  if (/^(fix|fixes|fixed|stop)\b/i.test(title)) return 'fixed'
   return 'new'
 }
 
-const isFeature = (title: string) => kind(title) !== 'internal' && (/^(feat|add|adds|new|let|allow|support)\b/i.test(title) || !/^\w+(\([^)]*\))?!?:/.test(title) && kind(title) === 'new')
 const plainTitle = (title: string) => title.replace(/^(feat|fix|perf|refactor|chore|ci|docs?|tests?|build)(\([^)]*\))?!?:\s*/i, '')
 
 export function bumpVersion(version: string, bump: Bump): string {
@@ -25,7 +30,7 @@ export function bumpVersion(version: string, bump: Bump): string {
 
 export function releasePlan(current: string, titles: string[]): { version: string; bump: Bump; notes: string } | undefined {
   if (!titles.length) return
-  const bump: Bump = titles.some(isFeature) ? 'minor' : 'patch'
+  const bump: Bump = titles.some(t => kind(t) === 'new') ? 'minor' : 'patch'
   const sections = SECTIONS.map(([head, k]) => [head, titles.filter(t => kind(t) === k)] as const).filter(([, ts]) => ts.length)
     .map(([head, ts]) => `## ${head}\n${ts.map(t => `- ${plainTitle(t)}`).join('\n')}`)
   return { version: bumpVersion(current, bump), bump, notes: [...sections, UPGRADING].join('\n\n') }

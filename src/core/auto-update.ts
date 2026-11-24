@@ -67,7 +67,7 @@ export function soakGate(s: { boots: Boot[]; crashes: number[]; now: number; doc
   if (!runs.length) return { fail: 'no hub start is recorded yet' }
   const done = runs.filter(r => !r.crashed && (r.end ?? s.now) - r.start >= DAY && s.ahead(r.sha)).at(-1)
   if (done) {
-    const fresh = newErrorKinds(s.errors, { start: done.start, end: done.end ?? s.now })
+    const fresh = newErrorKinds(s.errors, { start: done.start, end: done.start + DAY })
     if (fresh.length) return { fail: `an error kind is new since ${done.sha} started: ${fresh.join(', ')}`, sha: done.sha, held: true }
     return s.doctorOk ? { ok: true, sha: done.sha } : { fail: 'kage doctor is not "All good"', sha: done.sha, held: true }
   }

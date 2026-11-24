@@ -21,9 +21,16 @@ describe('releasePlan', () => {
     assert.equal(p.notes, `## New features\n- a failure that repeats reaches the owner (#680)\n\n## Bug fixes\n- kage restart cuts nothing when the hub is slow (#679)\n\n## Under the hood\n- run kage-screen only for screen changes (#678)\n\n${UPGRADING}`)
   })
   test('the six sections come in a fixed order, and a title with no type reads as a feature', () => {
-    const p = releasePlan('0.3.0', ['refactor: one webhook helper (#5)', 'Fix a stuck thread (#4)', 'perf: kage top draws faster (#3)', 'Trust record: Kage remembers each yes per teammate (#2)', 'Each daily note leaves one line in kage logs (#1)'])!
+    const p = releasePlan('0.3.0', ['refactor: one webhook helper (#5)', 'Fix a stuck thread (#4)', 'perf: kage top draws faster (#3)', 'Trust record: Kage remembers each yes per teammate (#2)', 'Add kage cost (#1)', 'Each daily note leaves one line in kage logs (#6)'])!
     assert.equal(p.version, '0.4.0')
-    assert.equal(p.notes, `## New features\n- Each daily note leaves one line in kage logs (#1)\n\n## Access and safety\n- Trust record: Kage remembers each yes per teammate (#2)\n\n## Optimizations\n- kage top draws faster (#3)\n\n## Bug fixes\n- Fix a stuck thread (#4)\n\n## Under the hood\n- one webhook helper (#5)\n\n${UPGRADING}`)
+    assert.equal(p.notes, `## New features\n- Add kage cost (#1)\n- Each daily note leaves one line in kage logs (#6)\n\n## Access and safety\n- Trust record: Kage remembers each yes per teammate (#2)\n\n## Optimizations\n- kage top draws faster (#3)\n\n## Bug fixes\n- Fix a stuck thread (#4)\n\n## Under the hood\n- one webhook helper (#5)\n\n${UPGRADING}`)
+  })
+  test('the type wins over the words: a feat that says --fix is a feature, and moves and splits are internal and a patch', () => {
+    const p = releasePlan('0.3.0', ['feat(src/cli/doctor): kage doctor --fix heals what touches only Kage files (#650)', 'Move four start-up blocks out of the hub router (#9)'])!
+    assert.equal(p.version, '0.4.0')
+    assert.match(p.notes, /^## New features\n- kage doctor --fix heals what touches only Kage files \(#650\)\n\n## Under the hood\n- Move four start-up blocks/)
+    assert.equal(releasePlan('0.3.0', ['Split the meetbot attend loop (#8)', 'Drop a call that did nothing (#7)'])!.version, '0.3.1')
+    assert.match(releasePlan('0.3.0', ['kage doctor --fix runs hourly (#7)'])!.notes, /^## New features/)
   })
   test('with no new feature it is a patch', () => {
     assert.equal(releasePlan('0.3.0', ['Fix a stuck thread (#151)'])!.version, '0.3.1')

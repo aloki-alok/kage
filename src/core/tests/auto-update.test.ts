@@ -109,8 +109,9 @@ describe('soakGate: release the newest commit that completed an unbroken 24 hour
     assert.deepEqual(gate([boot(0, A)], 25, { errors: [{ at: at(-100), code: 'hub_job' }, { at: at(5), code: 'hub_job' }] }), { ok: true, sha: A })
     assert.ok('fail' in gate([boot(0, A)], 25, { errors: [{ at: at(-200), code: 'hub_job' }, { at: at(5), code: 'hub_job' }] }))
   })
-  test('an error after the soaked run ended does not hold that run', () => {
+  test('only errors inside the soak day count, so a hub that stays on one commit is never held for good', () => {
     assert.deepEqual(gate([boot(0, A), boot(30, B)], 31, { errors: [{ at: at(30.5), code: 'hub_job' }] }), { ok: true, sha: A })
+    assert.deepEqual(gate([boot(0, A)], 24 * 21, { errors: [{ at: at(240), code: 'hub_job' }] }), { ok: true, sha: A })
   })
   test('kage doctor not all good, and no boots at all, both wait', () => {
     assert.deepEqual(gate([boot(0, A)], 25, { doctorOk: false }), { fail: 'kage doctor is not "All good"', sha: A, held: true })

@@ -121,5 +121,6 @@ export async function releaseIfSoaked(root: string, dir: string, boots: string, 
   if ('ok' in g) g = soakGate({ ...gate, doctorOk: (await tryOut(root, './setup.sh', 'doctor') ?? '').includes('All good') })
   if ('fail' in g) return { skip: g.fail, candidate: g.sha ? true : undefined, ...g.held && g.sha && { held: { sha: g.sha } } }
   const r = await release(root, false, g.sha)
-  return r.problems.length ? { skip: r.problems.join('; '), held: { sha: g.sha } } : r
+  const stillRunning = r.problems.every(p => /\((in_progress|queued|waiting|pending|requested) \)$/.test(p))
+  return r.problems.length ? { skip: r.problems.join('; '), ...!stillRunning && { held: { sha: g.sha } } } : r
 }
