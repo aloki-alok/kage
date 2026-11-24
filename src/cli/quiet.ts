@@ -15,4 +15,4 @@ const r = await waitForQuiet({
   cut: process.argv.includes('--cut-running'),
   command,
 })
-if (r === 'refused') process.exit(1)
+if (r === 'refused' || r === 'silent') process.exit(1)
