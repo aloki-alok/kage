@@ -16,12 +16,11 @@ export function outputFlags(argv: string[]): Output {
   return { json, ...jq !== undefined && { jq }, args }
 }
 
-const JQ_BAD_FILTER = 3
-
 export function printJson(value: unknown, jq?: string) {
   const text = `${JSON.stringify(value, null, 2)}\n`
   if (jq === undefined) { process.stdout.write(text); return }
-  const r = spawnSync('jq', [jq], { input: text, stdio: ['pipe', 'inherit', 'inherit'] })
+  const r = spawnSync('jq', [jq], { input: text, stdio: ['pipe', 'inherit', 'pipe'], encoding: 'utf8' })
   if (r.error) { console.error('--jq needs jq on your PATH (macOS: brew install jq). --json alone prints the same rows.'); process.exit(1) }
-  if (r.status) process.exit(r.status === JQ_BAD_FILTER ? 2 : 1)
+  process.stderr.write(r.stderr ?? '')
+  if (r.status) process.exit(/compile error/.test(r.stderr ?? '') ? 2 : 1)
 }
