@@ -1,6 +1,6 @@
-import { test } from 'node:test'
+import { describe, test } from 'node:test'
 import assert from 'node:assert/strict'
-import { smsSender } from '../sms-send.ts'
+import { smsCheck, smsSender } from '../sms-send.ts'
 
 const fake = (status: number, body: unknown, seen: { url: string; init: RequestInit }[] = []) =>
   (async (url: string, init: RequestInit) => { seen.push({ url, init }); return new Response(JSON.stringify(body), { status }) }) as unknown as typeof fetch
@@ -35,4 +35,30 @@ test('Telnyx: a JSON post with a bearer key, the id back, and the first error co
   assert.equal(seen[0]!.url, 'https://api.telnyx.com/v2/messages')
   assert.deepEqual(JSON.parse(String(seen[0]!.init.body)), { from: '+14155550199', to: '+14155550101', text: 'hi', webhook_url: 'https://kage.example.test/sms' })
   assert.deepEqual(await smsSender({ ...base, fetch: fake(403, { errors: [{ code: '10009', title: 'Auth' }] }) })('+1', '+1', 'x'), { error: '10009', auth: true, again: true })
+})
+
+describe('kage connect checks SMS keys and the number at once (#570)', () => {
+  const answer = (status: number, json: unknown) => { const urls: string[] = [], auth: string[] = []; return { urls, auth, fetch: (async (u: string, init: RequestInit) => { urls.push(String(u)); auth.push((init.headers as Record<string, string>).authorization!); return new Response(JSON.stringify(json), { status }) }) as unknown as typeof fetch } }
+  test('Twilio: good keys and an owned number is ok, and it asks for that number only', async () => {
+    const f = answer(200, { incoming_phone_numbers: [{ phone_number: '+14155550100' }] })
+    assert.equal(await smsCheck({ provider: 'twilio', accountSid: 'AC1', token: 't', from: '+14155550100', fetch: f.fetch }), 'ok')
+    assert.match(f.urls[0]!, /\/Accounts\/AC1\/IncomingPhoneNumbers\.json\?PhoneNumber=%2B14155550100$/)
+    assert.deepEqual(f.auth, [`Basic ${Buffer.from('AC1:t').toString('base64')}`])
+  })
+  test('Telnyx: good keys and an owned number is ok', async () => {
+    const f = answer(200, { data: [{ phone_number: '+14155550100' }] })
+    assert.equal(await smsCheck({ provider: 'telnyx', token: 't', from: '+14155550100', fetch: f.fetch }), 'ok')
+    assert.match(f.urls[0]!, /api\.telnyx\.com\/v2\/phone_numbers\?filter%5Bphone_number%5D=14155550100$/)
+    assert.deepEqual(f.auth, ['Bearer t'])
+  })
+  test('rejected keys are auth, a number not on the account is number, and no answer is offline', async () => {
+    assert.equal(await smsCheck({ provider: 'twilio', accountSid: 'AC1', token: 't', from: '+1', fetch: answer(401, {}).fetch }), 'auth')
+    assert.equal(await smsCheck({ provider: 'telnyx', token: 't', from: '+1', fetch: answer(403, {}).fetch }), 'auth')
+    assert.equal(await smsCheck({ provider: 'twilio', accountSid: 'AC1', token: 't', from: '+1', fetch: answer(200, { incoming_phone_numbers: [] }).fetch }), 'number')
+    assert.equal(await smsCheck({ provider: 'telnyx', token: 't', from: '+1', fetch: answer(200, { data: [] }).fetch }), 'number')
+    assert.equal(await smsCheck({ provider: 'telnyx', token: 't', from: '+1', fetch: (async () => { throw new Error('down') }) as unknown as typeof fetch }), 'offline')
+    assert.equal(await smsCheck({ provider: 'telnyx', token: 't', from: '+1', fetch: answer(500, {}).fetch }), 'offline')
+    assert.equal(await smsCheck({ provider: 'twilio', accountSid: 'ACwrong', token: 't', from: '+1', fetch: answer(404, {}).fetch }), 'auth')
+    assert.equal(await smsCheck({ provider: 'telnyx', token: 't', from: '+14155550100', fetch: answer(200, { data: [{ phone_number: '+141555501009' }] }).fetch }), 'number')
+  })
 })
