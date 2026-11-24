@@ -21,3 +21,18 @@ test('the report.repo setting wins over the origin, and no origin with no settin
   assert.equal(await issueReporter({ code: '/k', repo: 'other/kage', version: () => '', perDay: 3, names: () => [] }, none).repo(), 'other/kage')
   assert.equal(await issueReporter({ code: '/k', version: () => '', perDay: 3, names: () => [] }, none).repo(), undefined)
 })
+
+test('the reporter finds an open issue by its fingerprint, and comments with the body on stdin', async () => {
+  const calls: [string, string[], string | undefined][] = []
+  const answers = ['[{"number":12,"url":"https://github.com/a/kage/issues/12"}]', '[]', 'https://github.com/a/kage/issues/12#issuecomment-1\n']
+  const r = issueReporter({ code: '/k', version: () => '', perDay: 3, names: () => [] }, async (cmd, args, input) => { calls.push([cmd, args, input]); return answers.shift()! })
+  assert.deepEqual(await r.find('a/kage', 'abc123def456'), { number: 12, url: 'https://github.com/a/kage/issues/12' })
+  assert.equal(await r.find('a/kage', 'abc123def456'), undefined)
+  await r.comment('a/kage', 12, 'seen again on 0.4.7 linux x64')
+  const search = ['issue', 'list', '--repo', 'a/kage', '--state', 'open', '--search', '"abc123def456" in:body', '--json', 'number,url', '--limit', '1']
+  assert.deepEqual(calls, [
+    ['gh', search, undefined],
+    ['gh', search, undefined],
+    ['gh', ['issue', 'comment', '12', '--repo', 'a/kage', '--body-file', '-'], 'seen again on 0.4.7 linux x64'],
+  ])
+})

@@ -13,6 +13,11 @@ export function issueReporter(o: { code: string; repo?: string; version: () => s
   return {
     repo: async () => repoFromRemote(await sh('git', ['-C', o.code, 'remote', 'get-url', 'origin']).catch(() => ''), o.repo),
     file: async (repo, title, body, labels) => (await sh('gh', ['issue', 'create', '--repo', repo, '--title', title, '--body-file', '-', ...labels.flatMap(l => ['--label', l])], body)).trim(),
+    find: async (repo, fingerprint) => {
+      const [hit] = JSON.parse(await sh('gh', ['issue', 'list', '--repo', repo, '--state', 'open', '--search', `"${fingerprint}" in:body`, '--json', 'number,url', '--limit', '1'])) as { number: number; url: string }[]
+      return hit && { number: hit.number, url: hit.url }
+    },
+    comment: async (repo, number, body) => { await sh('gh', ['issue', 'comment', String(number), '--repo', repo, '--body-file', '-'], body) },
     get system() { return { version: o.version(), system: `${process.platform} ${process.arch}` } },
     perDay: o.perDay,
     names: o.names,

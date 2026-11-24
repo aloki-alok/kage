@@ -2092,18 +2092,25 @@ describe('flag_knowledge: a working session flags a missing or wrong note for th
 
 describe("report_issue: a session files a bug or an idea to the Kage repo, on the owner's yes (#543)", () => {
   const issue = { kind: 'bug', title: 'Reply failed for Sam', what: 'Sending to sam@example.com from /Users/sam/kage failed', expected: 'It sends' }
-  const run = (o: { yes?: boolean; fails?: boolean; repo?: string; perDay?: number; noCard?: boolean } = {}) => {
-    const cards: { description: string; input: Record<string, unknown> }[] = [], filed: { repo: string; title: string; body: string; labels: string[] }[] = []
+  const run = (o: { yes?: boolean; fails?: boolean; commentFails?: boolean; repo?: string; perDay?: number; noCard?: boolean } = {}) => {
+    const cards: { description: string; input: Record<string, unknown> }[] = [], filed: { repo: string; title: string; body: string; labels: string[] }[] = [], comments: { repo: string; number: number; body: string }[] = []
+    const url = (n: number) => `https://github.com/some-fork/kage/issues/${n}`
     const report: SessionReport = {
       repo: async () => 'repo' in o ? o.repo : 'some-fork/kage',
-      file: async (repo, title, body, labels) => { if (o.fails) throw new Error('gh: not logged in'); filed.push({ repo, title, body, labels }); return 'https://github.com/some-fork/kage/issues/9' },
+      file: async (repo, title, body, labels) => { if (o.fails) throw new Error('gh: not logged in'); filed.push({ repo, title, body, labels }); return url(8 + filed.length) },
+      find: async (repo, fingerprint) => {
+        if (o.fails) throw new Error('gh: not logged in')
+        const at = filed.findIndex(f => f.repo === repo && f.body.includes(fingerprint))
+        return at < 0 ? undefined : { number: 9 + at, url: url(9 + at) }
+      },
+      comment: async (repo, number, body) => { if (o.commentFails) throw new Error('gh: 502'); comments.push({ repo, number, body }) },
       system: { version: '0.4.6 abc1234', system: 'linux x64' }, perDay: o.perDay ?? 3, names: () => ['Sam Lee'],
     }
     const s = setup({ report, approve: o.noCard ? undefined : async (_t, description, input) => { cards.push({ description, input }); return o.yes ?? true } })
     s.t.onTask(s.task())
     s.t.onTask({ ...s.task({ thread_ts: '7.7' }), agent: { app: 'ATEST1' } })
     s.t.onTask(s.task({ fromOwner: false, thread_ts: '8.8' }))
-    return { s, cards, filed, call: (thread_ts = '5.5') => s.call('report_issue', { channel: 'C1', thread_ts, ...issue }) }
+    return { s, cards, filed, comments, call: (thread_ts = '5.5', more = {}) => s.call('report_issue', { channel: 'C1', thread_ts, ...issue, ...more }) }
   }
   test('on a yes it files the scrubbed body with gh, and the card showed that exact body', async () => {
     const t = run()
@@ -2153,7 +2160,7 @@ describe("report_issue: a session files a bug or an idea to the Kage repo, on th
   })
   test('a hub with reporting off, a kagelet or a dream gives no tool', () => {
     assert.equal(setup().t.tools.some(x => x.name === 'report_issue'), false)
-    const report = { repo: async () => 'a/b', file: async () => 'u', system: { version: 'v', system: 's' }, perDay: 3 }
+    const report = { repo: async () => 'a/b', file: async () => 'u', find: async () => undefined, comment: async () => {}, system: { version: 'v', system: 's' }, perDay: 3 }
     for (const o of [{ kagelet: 'watch' }, { dreaming: 'watch' }, { dreamLessons: () => '' }]) assert.equal(setup({ ...o, report }).t.tools.some(x => x.name === 'report_issue'), false, JSON.stringify(o))
   })
   test('a voice call never files, and the ledger keeps the outcome and the repo, never the text', async () => {
@@ -2166,6 +2173,31 @@ describe("report_issue: a session files a bug or an idea to the Kage repo, on th
     const rows = (l: string) => l.split('\n').filter(Boolean).map(r => r.split('\t').slice(1))
     assert.deepEqual(rows(t.s.ledgers.text('issue-reports')), [['C1:5.5', 'bug', 'filed', 'some-fork/kage', 'https://github.com/some-fork/kage/issues/9']])
     assert.deepEqual(rows(out.s.ledgers.text('issue-reports')), [['C1:5.5', 'bug', 'link', 'some-fork/kage', '']])
+  })
+  test('the same report twice makes one issue and one seen again comment, shown on the card first', async () => {
+    const t = run()
+    await t.call()
+    const r = await t.call('5.5', { title: 'reply failed for sam.', what: 'other words this time' })
+    assert.equal(r.isError, undefined)
+    assert.match(r.text, /issues\/9/)
+    assert.equal(t.filed.length, 1)
+    assert.deepEqual(t.comments, [{ repo: 'some-fork/kage', number: 9, body: 'seen again on 0.4.6 abc1234 linux x64' }])
+    assert.match(t.cards[1]!.description, /#9/)
+    assert.equal(t.cards[1]!.input.body, 'seen again on 0.4.6 abc1234 linux x64')
+    const rows = t.s.ledgers.text('issue-reports').split('\n').filter(Boolean).map(r => r.split('\t').slice(1))
+    assert.deepEqual(rows[1], ['C1:5.5', 'bug', 'commented', 'some-fork/kage', 'https://github.com/some-fork/kage/issues/9'])
+    await t.call('5.5', { title: 'Reply failed in a channel' })
+    assert.deepEqual([t.filed.length, t.comments.length], [2, 1])
+  })
+  test('a no on the seen again card comments nothing, and a crash fingerprint from the session is the one used', async () => {
+    const t = run()
+    await t.call('5.5', { fingerprint: '0123456789ab' })
+    assert.match(t.filed[0]!.body, /### Fingerprint\n\n0123456789ab/)
+    const no = run({ yes: false })
+    no.filed.push({ repo: 'some-fork/kage', title: 'x', body: t.filed[0]!.body, labels: [] })
+    assert.equal((await no.call('5.5', { title: 'a different title', fingerprint: '0123456789ab' })).isError, true)
+    assert.match(no.cards[0]!.description, /#9/)
+    assert.deepEqual([no.comments, no.filed.length], [[], 1])
   })
   test('a body too long for the card is refused before the card, so the owner never approves a cut preview', async () => {
     const t = run()
