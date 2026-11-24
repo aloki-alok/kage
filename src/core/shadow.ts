@@ -1,5 +1,5 @@
 
-export type Shadow = { of: string; live: string; since: number; told?: string[]; gone?: true }
+export type Shadow = { of: string; live: string; since: number; told?: string[]; gone?: true; held?: true }
 export type Act = { job: string; at: number }
 export type Verdict = { job: string; at: number; act: boolean }
 type Miss = { at: number; kind: 'missed' | 'false-alarm' }

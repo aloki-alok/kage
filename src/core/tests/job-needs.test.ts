@@ -1,6 +1,7 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { liveTools, needsChanges } from '../job-needs.ts'
+import { liveTools, needsChanges, twinLacks } from '../job-needs.ts'
+import { EVENT, type Schedule } from '../cron.ts'
 
 const server = (name: string, status: string, tools: string[] = []) => ({ name, status, tools: tools.map(t => ({ name: t })) })
 const DIAL = 'mcp__claude_ai_Dialer__place_call'
@@ -76,4 +77,16 @@ test("a wake's DM says to make it a clock job, because setting it up again keeps
 test("a teammate's job is still missing an owner tool while that server connects", () => {
   const [c] = needsChanges([{ ...job(), runs: 'teammate' }], { tools: new Set(), pending: ['mcp__claude_ai_Dialer__'] })
   assert.deepEqual(c!.missing, [DIAL])
+})
+
+test("a twin woken by events lacks each of the old job's tools a teammate's trust never loads; a clock twin or a Kage-only need lacks none (#641)", () => {
+  const job = (o: Partial<Schedule>): Schedule => ({ id: 'j', key: 'C1:5.5', cron: '*/10 * * * *', prompt: 'p', recurring: true, fromOwner: true, created: 0, lastFired: 0, ...o })
+  const old = job({ needs: ['mcp__pager__call', 'mcp__kage__reply'] })
+  const owner = { ownerThread: true, probesOn: true }
+  assert.deepEqual(twinLacks(old, job({ cron: EVENT, trigger: { kind: 'channel', channel: 'C9', bots: false } }), owner), ['mcp__pager__call'])
+  assert.deepEqual(twinLacks(old, job({ trigger: { kind: 'probe', probe: { command: 'x' } } as Schedule['trigger'] }), owner), ['mcp__pager__call'])
+  assert.deepEqual(twinLacks(old, job({ trigger: { kind: 'probe', probe: { command: 'x' } } as Schedule['trigger'] }), { ...owner, probesOn: false }), [])
+  assert.deepEqual(twinLacks(old, job({}), owner), [])
+  assert.deepEqual(twinLacks(job({ needs: ['mcp__kage__reply'] }), job({ cron: EVENT }), owner), [])
+  assert.deepEqual(twinLacks(old, job({ cron: EVENT }), { ...owner, ownerThread: false }), [])
 })

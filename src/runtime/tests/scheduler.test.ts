@@ -472,6 +472,18 @@ test('a twin made with shadow_of keeps its link, live prompt and start in its jo
   assert.match(t.s.add('C2:1.1', { ...job, id: 'x3', shadow: { of: 'j1', live: 'l' } }, now) ?? '', /no job j1 in this thread/)
 })
 
+test("a twin woken by events is refused when the job it shadows needs the owner's MCP tools, and a clock twin is not (#641)", () => {
+  const t = setup()
+  t.owner.add('C1:5.5')
+  const now = at('2026-11-16T10:00:00')
+  assert.equal(t.s.add('C1:5.5', { ...job, needs: ['mcp__pager__call'] }, now), undefined)
+  const r = t.s.add('C1:5.5', { ...job, id: 'tw', cron: '@event', trigger: { kind: 'channel', channel: 'C9', bots: false }, shadow: { of: 'j1', live: 'l' } }, now) ?? ''
+  assert.match(r, /mcp__pager__call/)
+  assert.match(r, /teammate's trust/)
+  assert.equal(t.store.schedules().some(s => s.id === 'tw'), false)
+  assert.equal(t.s.add('C1:5.5', { ...job, id: 'tw2', shadow: { of: 'j1', live: 'l' } }, now), undefined)
+})
+
 test('a job never moves into a thread that already holds 50 schedules', () => {
   const t = setup()
   t.store.seen('C1:9.9', { connector: 'slack', chat: 'C1', thread: '9.9', kind: 'channel' }, '#ops', 0)

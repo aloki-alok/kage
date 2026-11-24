@@ -1,4 +1,4 @@
-import type { RunTrust } from './cron.ts'
+import { runTrust, type RunTrust, type Schedule } from './cron.ts'
 import { OWN_TOOLS, ownerOnlyTool } from './guards.ts'
 
 type ServerStatus = { name: string; status: string; tools?: { name: string }[] }
@@ -35,4 +35,9 @@ export function needsChanges(jobs: NeedsJob[], live: Live): { id: string; missin
       : !missing.length && was.length ? `Job ${j.id} in ${j.place} has ${was.join(', ')} again.` : undefined
     return [{ id: j.id, missing, ...dm && { dm } }]
   })
+}
+
+export function twinLacks(old: Schedule, twin: Schedule, o: { ownerThread: boolean; probesOn: boolean }): string[] {
+  if (runTrust(old, o) !== 'owner' || runTrust(twin, o) === 'owner') return []
+  return (old.needs ?? []).filter(t => !teammateHas(t))
 }
