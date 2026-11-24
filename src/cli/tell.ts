@@ -1,13 +1,12 @@
 #!/usr/bin/env node
 import { existsSync } from 'node:fs'
 import { connect } from 'node:net'
-import { asOwner, DIR } from './home.ts'
+import { asOwner, DIR, notRunning } from './home.ts'
 import { pickThread } from './pick-thread.ts'
-import { errVoice } from './voice.ts'
 
 const SOCK = `${DIR}/router.sock`
 if (process.env.KAGE_CLAUDE) { console.error('This shell runs inside Kage: a session cannot speak as the owner.'); process.exit(1) }
-if (!existsSync(`${DIR}/kage.db`) || !existsSync(SOCK)) { console.error(errVoice.says("I'm not running. Start me with kage start.")); process.exit(1) }
+if (!existsSync(`${DIR}/kage.db`) || !existsSync(SOCK)) notRunning()
 const [arg = '', ...words] = process.argv.slice(2)
 const text = words.join(' ').trim()
 if (!arg || !text) { console.error('Usage: kage thread send <place> <message>'); process.exit(1) }

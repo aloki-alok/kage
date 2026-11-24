@@ -133,7 +133,7 @@ To change the limits, run `kage config set harness.maxSessions 6` or `kage confi
 
 ### Schedules and watches
 
-Ask in a thread: `@kage check the deploy every 30 minutes`, or `@kage thread send me when Priya replies here`. Kage keeps the schedule itself, so it survives restarts, and a watch wakes only when someone writes in the thread. It waits until the thread has been quiet for about 4 seconds, so a few quick messages reach it together, and it never waits more than about 15 seconds. A watch ends by itself after 7 days.
+Ask in a thread: `@kage check the deploy every 30 minutes`, or `@kage tell me when Priya replies here`. Kage keeps the schedule itself, so it survives restarts, and a watch wakes only when someone writes in the thread. It waits until the thread has been quiet for about 4 seconds, so a few quick messages reach it together, and it never waits more than about 15 seconds. A watch ends by itself after 7 days.
 
 ### What Kage does on its own
 

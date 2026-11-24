@@ -30,6 +30,10 @@ describe('decisions', () => {
     assert.equal(toolsLine({ ...f, claude: false }).kind, 'fail')
     assert.equal(toolsLine({ ...f, tmuxNeeded: true }).kind, 'fail')
   })
+  test('tools: a FAIL names each missing tool and how to get it', () => {
+    assert.equal(toolsLine({ nodeVersion: '20.1.0', claude: false, tmuxNeeded: false, tmux: false }).text,
+      'tools: Node 20.1.0 is too old, Kage needs 22.18+ (macOS: brew upgrade node); Claude Code is missing (https://code.claude.com/docs/en/quickstart)')
+  })
   test('no settings is one FAIL that names the folder', () => {
     assert.deepEqual(text(tokenLines({ hasSettings: false, dir: '/c', mode: undefined, slack: {} })), ['fail:tokens: no settings in /c. Run kage slack app, then kage slack save'])
   })

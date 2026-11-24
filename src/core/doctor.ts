@@ -41,8 +41,14 @@ export function nodeOk(version: string): boolean {
   return a > 22 || (a === 22 && b >= 18)
 }
 
-export const toolsLine = (f: { nodeVersion: string; claude: boolean; tmuxNeeded: boolean; tmux: boolean }): Line =>
-  nodeOk(f.nodeVersion) && f.claude && (!f.tmuxNeeded || f.tmux) ? ok('tools: node 22.18+, claude') : fail('tools: run kage check for the missing one')
+export function toolsLine(f: { nodeVersion: string; claude: boolean; tmuxNeeded: boolean; tmux: boolean }): Line {
+  const missing = [
+    ...nodeOk(f.nodeVersion) ? [] : [`Node ${f.nodeVersion} is too old, Kage needs 22.18+ (macOS: brew upgrade node)`],
+    ...f.claude ? [] : ['Claude Code is missing (https://code.claude.com/docs/en/quickstart)'],
+    ...!f.tmuxNeeded || f.tmux ? [] : ['tmux is missing, and harness.runtime is tmux (macOS: brew install tmux)'],
+  ]
+  return missing.length ? fail(`tools: ${missing.join('; ')}`) : ok('tools: node 22.18+, claude')
+}
 
 export function tokenLines(f: { hasSettings: boolean; dir: string; file?: string; mode?: string; link?: boolean; slack: { app?: boolean; user?: boolean; bot?: boolean }; failed?: SecretCommand[] }): Line[] {
   if (!f.hasSettings) return [fail(`tokens: no settings in ${f.dir}. Run kage slack app, then kage slack save`)]

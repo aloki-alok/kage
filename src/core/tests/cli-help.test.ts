@@ -13,7 +13,7 @@ describe('every command kage lists is one it runs, and the other way', () => {
   const main = sh.slice(sh.lastIndexOf('case "${1:-}" in'))
   const blocks = new Map([...main.matchAll(/^  ([a-z-]+)\)([\s\S]*?)(?=^  [a-z-]+\)|^esac)/gm)].map(m => [m[1]!, m[2]!]))
   const verbsOf = (noun: string) => [...(blocks.get(noun) ?? '').matchAll(/^ {6}([a-z|-]+)\)/gm)].flatMap(m => m[1]!.split('|'))
-  const notListed = new Set(['help', 'export-crons'])
+  const notListed = new Set(['help', 'export-crons', 'check', 'link'])
   test('each top-level command in the help table has a case, and each case is in the table', () => {
     assert.deepEqual([...new Set(table.map(n => n.split(' ')[0]!))].sort(), [...blocks.keys()].filter(c => !notListed.has(c)).sort())
   })
@@ -50,6 +50,24 @@ describe('kage <noun> <verb> runs, and an old name says its new one', () => {
   test('help on an old name shows the new command', () => {
     assert.match(kage('attach', '--help').stdout, /^kage thread attach /m)
     assert.match(kage('help', 'tell').stdout, /^kage thread send /m)
+  })
+  test('a command that needs the hub exits 3 when Kage is not running, with the line on stderr', () => {
+    for (const args of [['thread', 'send', 'dm', 'hi'], ['thread', 'stop', 'dm'], ['relay', 'list'], ['trust', 'list']]) {
+      const r = kage(...args)
+      assert.equal(r.status, 3, `${args.join(' ')}: ${r.stderr}`)
+      assert.match(r.stderr, /I'm not running\. Start me with kage start\./)
+      assert.equal(r.stdout, '')
+    }
+  })
+  test('the old one-word forms for a thread or kagelet say their new name', () => {
+    assert.match(kage('logs', 'triage').stderr, /kage logs <kagelet> is now kage kagelet logs <kagelet>\./)
+    assert.match(kage('start', 'triage').stderr, /kage start <kagelet> is now kage kagelet start <kagelet>\./)
+    assert.match(kage('stop', 'triage').stderr, /kage stop <thread or kagelet> is now kage thread stop or kage kagelet stop\./)
+  })
+  test('check and link are no longer listed: doctor names a missing tool, and setup puts kage on the PATH', () => {
+    const help = kage('help').stdout
+    assert.doesNotMatch(help, /^  check\b|^  link\b/m)
+    assert.equal(kage('check').status, 0)
   })
   test('kagelet stop never falls through to a thread', () => {
     const r = kage('kagelet', 'stop', 'nosuch')

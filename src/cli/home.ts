@@ -5,7 +5,9 @@ import { tilde } from '../core/config.ts'
 import { envFilePath, hasSettings, readSettings } from '../runtime/config-files.ts'
 import { askSocket } from '../runtime/hub-client.ts'
 import { readOwnerKey } from '../runtime/owner-key.ts'
+import { errVoice } from './voice.ts'
 
+export const notRunning = (): never => { console.error(errVoice.says("I'm not running. Start me with kage start.")); process.exit(3) }
 export const ENV_FILE = envFilePath()
 export const DIR = dirname(ENV_FILE)
 export const settingsExist = () => hasSettings(ENV_FILE)

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# The kage command. `./setup.sh link` puts it on PATH as `kage`; `kage help` lists every command.
+# The kage command. `./setup.sh setup` puts it on PATH as `kage`; `kage help` lists every command.
 # Commands live in the COMMANDS table below and in the case at the bottom; src/core/tests/cli-help.test.ts
 # checks that the two list the same names.
 set -euo pipefail
@@ -19,11 +19,12 @@ next() { printf '%s%s%s %s%s%s\n' "$DIM" "$1" "$OFF" "$FIRE" "$2" "$OFF"; }
 tells() { if [[ -t 2 && -z ${NO_COLOR:-} ]]; then printf '\033[38;2;230;145;40m◆ %s\033[0m\n' "$*"; else printf '◆ %s\n' "$*"; fi >&2; }
 die() { tells "$*"; exit 1; }
 usage() { tells "$*"; exit 2; }
+old_form() { tells "kage $1 is now kage $2. The old form stops working after the next release."; }
+link_kage() { mkdir -p ~/.local/bin && ln -sf "$PWD/setup.sh" ~/.local/bin/kage && says "kage is on your PATH now (~/.local/bin/kage; new terminals need ~/.local/bin on PATH)."; }
 verbs() { usage "kage $1 takes $(printf '%s\n' "$COMMANDS" | awk -F'|' -v n="$1" 'index($2, n" ")==1 {sub(n" ", "", $2); printf "%s%s", s, $2; s=", "}')."; }
 
 # group|name|arguments|what it does|example. `kage help` prints it grouped; `kage help <name>` prints one.
-COMMANDS='Set up|setup||Walk through the first setup, one step at a time|kage setup
-Set up|check||Check that node 22.18+ and claude are installed (and tmux, for KAGE_RUNTIME=tmux)|kage check
+COMMANDS='Set up|setup||Walk through the first setup, one step at a time. It puts kage on your PATH first if it is not there|kage setup
 Set up|slack app|[name]|Write the Slack app for the name you tag, and open the link that creates it|kage slack app kage
 Set up|slack save|[name]|Paste the three Slack tokens into hidden prompts; each is checked with Slack|kage slack save
 Set up|tunnel|[on or off]|Open a route for each connector another machine calls (GitHub, voice, job hooks on the internet; the meeting bot on your tailnet) through Tailscale, or close them all|kage tunnel on
@@ -33,7 +34,6 @@ Set up|connector off|<name>|Turn one connector off, and name what stays outside 
 Set up|login||Save the Claude login Kage runs on, so its sessions use their own seat. Get the token with claude setup-token, signed in as Kage|kage login
 Set up|doctor|[--fix]|Check every part, and print the command that fixes each problem. With --fix, run the fixes that touch only Kage files|kage doctor --fix
 Set up|slack upgrade||Add the Slack scopes Kage needs and the app lacks: adds them to the app manifest with one Slack configuration token (or prints the lines to paste), then opens Reinstall and waits|kage slack upgrade
-Set up|link||Put the kage command on your PATH (~/.local/bin/kage)|./setup.sh link
 Set up|service|on or off|Let macOS or Linux keep Kage running: back after a crash, a reboot or a login|kage service on
 Run|start|[kagelet]|Start Kage in the background (turns the service on the first time). With a kagelet: run it again after kage stop|kage start
 Run|stop|[thread or kagelet] [--now or --cut-running]|Stop Kage once every running turn ends, or now with --cut-running. With a thread (link, place or key): end only its session, after its turn or --now. With a kagelet: pause it and keep its file|kage stop support
@@ -355,7 +355,7 @@ for a in "$@"; do [[ $a == -h || $a == --help ]] && { [[ $1 == "$a" || $1 == hel
 case "${1:-}" in
   "") if has_settings; then node src/cli/home-screen.ts "$(running && echo up || echo down)"; else node src/cli/setup-flow.ts; fi ;;
   help) cmd_help "${*:2}" ;;
-  setup) node src/cli/setup-flow.ts ;;
+  setup) command -v kage >/dev/null || link_kage; node src/cli/setup-flow.ts ;;
   check) cmd_check ;;
   connector) case "${2:-}" in
       list) node src/cli/connect.ts "${@:3}" ;;
@@ -372,13 +372,13 @@ case "${1:-}" in
       upgrade) node src/cli/slack.ts upgrade ;;
       *) verbs slack ;;
     esac ;;
-  link) mkdir -p ~/.local/bin && ln -sf "$PWD/setup.sh" ~/.local/bin/kage && says "Done. You can type kage from anywhere (it needs ~/.local/bin on your PATH)." ;;
+  link) link_kage ;;
   service) ./service.sh "${2:-}" ;;
   run) NODE_OPTIONS="$HUB_NODE_OPTIONS" exec node hub.ts ;;
   # A kagelet's name: resume it (src/cli/stop.ts). Otherwise the hub.
-  start) if [[ $# -gt 1 ]]; then node src/cli/stop.ts --resume "${@:2}"; else cmd_start; fi ;;
+  start) if [[ $# -gt 1 ]]; then old_form "start <kagelet>" "kagelet start <kagelet>"; node src/cli/stop.ts --resume "${@:2}"; else cmd_start; fi ;;
   # A thread (any word that is not a flag) or --now: one session (src/cli/stop.ts). Otherwise the whole hub.
-  stop) if [[ " ${*:2} " == *" --now "* ]] || { [[ $# -gt 1 ]] && printf '%s\n' "${@:2}" | grep -qv '^--'; }; then node src/cli/stop.ts "${@:2}"; else cmd_stop "${@:2}"; fi ;;
+  stop) if [[ " ${*:2} " == *" --now "* ]] || { [[ $# -gt 1 ]] && printf '%s\n' "${@:2}" | grep -qv '^--'; }; then old_form "stop <thread or kagelet>" "thread stop or kage kagelet stop"; node src/cli/stop.ts "${@:2}"; else cmd_stop "${@:2}"; fi ;;
   restart) cmd_restart "${@:2}" ;;
   update) cmd_update "${@:2}" ;;
   config) case "${2:-}" in
@@ -390,7 +390,7 @@ case "${1:-}" in
     esac ;;
   status) cmd_status ;;
   # A kagelet's name (it starts with a letter): its runs (src/cli/kagelet-logs.ts). Otherwise the hub log.
-  logs) if [[ ${2:-} =~ ^[a-z] ]]; then node src/cli/kagelet-logs.ts "$2"; else cmd_logs "${2:-}"; fi ;;
+  logs) if [[ ${2:-} =~ ^[a-z] ]]; then old_form "logs <kagelet>" "kagelet logs <kagelet>"; node src/cli/kagelet-logs.ts "$2"; else cmd_logs "${2:-}"; fi ;;
   cost) node src/cli/cost.ts "${@:2}" ;;
   stats) node src/cli/stats.ts "${@:2}" ;;
   telemetry) node src/cli/telemetry.ts "${@:2}" ;;
