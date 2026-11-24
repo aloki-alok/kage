@@ -1,6 +1,7 @@
 import { describe, test } from 'node:test'
 import assert from 'node:assert/strict'
 import { createHmac } from 'node:crypto'
+import { request } from 'node:http'
 import { slackHttp } from '../http.ts'
 
 const SECRET = 'signing-test-secret'
@@ -113,6 +114,55 @@ describe('the Slack HTTP route', () => {
       assert.equal(r.status, 200)
       assert.equal(r.headers.get('content-type'), 'application/json')
       assert.deepEqual(await r.json(), { response_type: 'ephemeral', text: 'not set up' })
+    } finally { receiver.close() }
+  })
+
+  test('the signature covers the raw bytes Slack sent, spaces and escaped slashes included', async () => {
+    const { receiver, url } = await startReceiver()
+    const heard: unknown[] = []
+    receiver.on('message', async ({ event, ack }) => { heard.push(event); await ack() })
+    const raw = '{ "type": "event_callback", "event_id": "Ev0TEST2", "event": { "type": "message", "text": "a\\/b é" } }'
+    try {
+      assert.equal((await signedPost(url, raw)).status, 200)
+      assert.deepEqual(heard, [{ type: 'message', text: 'a/b é' }])
+    } finally { receiver.close() }
+  })
+
+  test('a body over 1 MB is cut before its signature is checked and reaches no listener', async () => {
+    const { receiver, url } = await startReceiver()
+    let heard = 0
+    receiver.on('message', async ({ ack }) => { heard++; await ack() })
+    const huge = JSON.stringify({ ...EVENT, event: { ...EVENT.event, text: 'x'.repeat(1_000_001) } })
+    try {
+      const status = await signedPost(url, huge).then(r => r.status, () => 'cut')
+      assert.ok(status === 413 || status === 'cut', `got ${status}`)
+      assert.equal(heard, 0)
+    } finally { receiver.close() }
+  })
+
+  test('a stale timestamp is refused before the body is read, so a slow body cannot hold the route', async () => {
+    const { receiver, url } = await startReceiver()
+    const stale = String(Math.floor(Date.now() / 1000) - 301)
+    try {
+      const status = await new Promise<number>((done, fail) => {
+        const req = request(url, { method: 'POST', headers: { 'content-type': 'application/json', 'content-length': '100', 'x-slack-request-timestamp': stale, 'x-slack-signature': 'v0=00' } })
+        const timer = setTimeout(() => { req.destroy(); fail(new Error('no answer while the body was still open')) }, 1_500)
+        req.on('response', r => { clearTimeout(timer); req.destroy(); done(r.statusCode ?? 0) })
+        req.on('error', () => {})
+        req.write('{')
+      })
+      assert.equal(status, 401)
+    } finally { receiver.close() }
+  })
+
+  test('a signed ssl_check and an app_rate_limited notice get 200 and reach no listener, so Slack does not count a failure', async () => {
+    const { receiver, url } = await startReceiver()
+    let heard = 0
+    receiver.on('slash_commands', async ({ ack }) => { heard++; await ack() })
+    try {
+      assert.equal((await signedPost(url, new URLSearchParams({ ssl_check: '1', token: 'x' }).toString(), { type: 'application/x-www-form-urlencoded' })).status, 200)
+      assert.equal((await signedPost(url, JSON.stringify({ type: 'app_rate_limited', team_id: 'T0TEST1', minute_rate_limited: 1 }))).status, 200)
+      assert.equal(heard, 0)
     } finally { receiver.close() }
   })
 

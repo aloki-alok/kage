@@ -27,8 +27,13 @@ describe('what a request to the Slack route means', () => {
     assert.deepEqual(slackRequest(FORM, new URLSearchParams({ payload: JSON.stringify(payload) }).toString()), { kind: 'dispatch', name: 'interactive', body: payload })
   })
 
+  test('a rate-limit notice and an ssl_check are notices Slack wants a 200 for, never a dispatch', () => {
+    assert.deepEqual(slackRequest(JSON_TYPE, '{"type":"app_rate_limited","minute_rate_limited":1}'), { kind: 'notice', name: 'app_rate_limited' })
+    assert.deepEqual(slackRequest(FORM, 'ssl_check=1&token=x'), { kind: 'notice', name: 'ssl_check' })
+  })
+
   test('anything else means nothing: bad JSON, a bare value, an event with no type, an unknown form or content type', () => {
-    for (const [type, body] of [[JSON_TYPE, '{'], [JSON_TYPE, 'null'], [JSON_TYPE, '7'], [JSON_TYPE, '{"type":"event_callback","event":{}}'], [JSON_TYPE, '{"type":"app_rate_limited"}'],
+    for (const [type, body] of [[JSON_TYPE, '{'], [JSON_TYPE, 'null'], [JSON_TYPE, '7'], [JSON_TYPE, '{"type":"event_callback","event":{}}'],
       [FORM, 'payload=%7B'], [FORM, 'payload=null'], [FORM, 'text=hi'], ['text/plain', '{"type":"url_verification","challenge":"c"}']] as const)
       assert.equal(slackRequest(type, body), undefined, `${type} ${body}`)
   })
