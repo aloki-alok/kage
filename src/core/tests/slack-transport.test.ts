@@ -27,9 +27,9 @@ describe('what a request to the Slack route means', () => {
     assert.deepEqual(slackRequest(FORM, new URLSearchParams({ payload: JSON.stringify(payload) }).toString()), { kind: 'dispatch', name: 'interactive', body: payload })
   })
 
-  test('a rate-limit notice and an ssl_check are notices Slack wants a 200 for, never a dispatch', () => {
-    assert.deepEqual(slackRequest(JSON_TYPE, '{"type":"app_rate_limited","minute_rate_limited":1}'), { kind: 'notice', name: 'app_rate_limited' })
-    assert.deepEqual(slackRequest(FORM, 'ssl_check=1&token=x'), { kind: 'notice', name: 'ssl_check' })
+  test('a rate-limit notice and an ssl_check are handed on under their own names, so no message or command listener takes them', () => {
+    assert.deepEqual(slackRequest(JSON_TYPE, '{"type":"app_rate_limited","minute_rate_limited":1}'), { kind: 'dispatch', name: 'app_rate_limited', body: { type: 'app_rate_limited', minute_rate_limited: 1 } })
+    assert.deepEqual(slackRequest(FORM, 'ssl_check=1&token=x'), { kind: 'dispatch', name: 'ssl_check', body: { ssl_check: '1', token: 'x' } })
   })
 
   test('anything else means nothing: bad JSON, a bare value, an event with no type, an unknown form or content type', () => {

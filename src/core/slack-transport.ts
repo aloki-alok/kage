@@ -2,7 +2,7 @@ import type { Config, Secrets } from './config.ts'
 
 type SlackTransportName = 'socket' | 'http'
 type Settings = { config: Config; secrets: Secrets }
-type SlackRequest = { kind: 'challenge'; challenge: string } | { kind: 'notice'; name: string } | { kind: 'dispatch'; name: string; body: object; event?: object }
+type SlackRequest = { kind: 'challenge'; challenge: string } | { kind: 'dispatch'; name: string; body: object; event?: object }
 
 export const SLACK_PORT = 8796
 export const SLACK_PATH = '/slack'
@@ -27,13 +27,13 @@ export function slackRequest(contentType: string, body: string): SlackRequest | 
   if (type === 'application/json') {
     const p = objectOf(body)
     if (p?.type === 'url_verification' && typeof p.challenge === 'string') return { kind: 'challenge', challenge: p.challenge }
-    if (p?.type === 'app_rate_limited') return { kind: 'notice', name: 'app_rate_limited' }
+    if (p?.type === 'app_rate_limited') return { kind: 'dispatch', name: 'app_rate_limited', body: p }
     const event = p?.type === 'event_callback' && p.event !== null && typeof p.event === 'object' ? p.event : undefined
     return p && typeof event?.type === 'string' && event.type ? { kind: 'dispatch', name: event.type, body: p, event } : undefined
   }
   if (type !== 'application/x-www-form-urlencoded') return undefined
   const form = new URLSearchParams(body)
-  if (form.get('ssl_check')) return { kind: 'notice', name: 'ssl_check' }
+  if (form.get('ssl_check')) return { kind: 'dispatch', name: 'ssl_check', body: Object.fromEntries(form) }
   const payload = form.get('payload')
   if (payload !== null) { const p = objectOf(payload); return p && { kind: 'dispatch', name: 'interactive', body: p } }
   return form.get('command') ? { kind: 'dispatch', name: 'slash_commands', body: Object.fromEntries(form) } : undefined

@@ -39,7 +39,6 @@ function answer(secret: string, listenersOf: (name: string) => Listener[], req: 
     const r = slackRequest(String(req.headers['content-type'] ?? ''), raw.toString('utf8'))
     if (!r) { res.writeHead(400).end(); return }
     if (r.kind === 'challenge') { res.writeHead(200, { 'content-type': 'text/plain' }).end(r.challenge); return }
-    if (r.kind === 'notice') { log(`slack http ${r.name}`); res.writeHead(200).end(); return }
     const retry = Number(req.headers['x-slack-retry-num']) || undefined
     if (retry) log(`slack http retry ${retry} of ${r.name}`)
     await dispatch(res, listenersOf(r.name), { body: r.body, ...(r.event && { event: r.event }), ...(retry && { retry_num: retry }) })
