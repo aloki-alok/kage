@@ -38,7 +38,7 @@ export type Session = {
   stopped: boolean
   run?: { q: Query; inbox: Inbox; send: (m: ToSession) => void; started: number }
   asks: Map<string, (b: 'allow' | 'deny') => void>
-  ownerTools: boolean; ownerThread: boolean; connectors?: true; carry: SDKUserMessage[]; again: Task[]
+  ownerTools: boolean; ownerThread: boolean; connectors?: true; carry: SDKUserMessage[]; again: Task[]; held: Task[]
 }
 
 export type SdkOptions = {
@@ -129,6 +129,7 @@ function sendTo({ o }: Hub, live: Live) {
     const { key, s, full } = live
     if (m.type === 'verdict') { s.asks.get(m.request_id)?.(m.behavior); return }
     const from = senderOf(m), answered = live.sawState && s.state === 'idle' && !live.unseen
+    if (from === 'owner' && !full && live.sawState && s.state !== 'idle' && !s.turn.length) { s.ownerTools = s.ownerThread = true; s.held.push(m); return }
     s.ownerTools ||= from === 'owner'; s.ownerThread ||= from === 'owner'; s.sender = answered || !s.turn.length ? from : lowest([lowestSender(s.turn.map(x => x.task)), from])
     const shown = from === 'owner' && s.sender !== 'owner' ? { ...m, content: `${OWNER_MID_TURN}\n${m.content}` } : m
     const reopen = s.ownerTools && !full && s.state === 'idle' && (live.sawState ? !live.unseen : !s.turn.length)
@@ -168,7 +169,7 @@ export function sdkSessions(o: SdkOptions) {
   const runner: Runner<ToSession> = {
     start(key, id, first) {
       const s: Session = sessions.get(key) ?? {
-        id, state: 'idle', last: 0, stopped: false, asks: new Map(), turn: [], carry: [], again: [], ownerTools: key.startsWith('voice:') || (first?.type === 'task' && senderOf(first) === 'owner'), ownerThread: first?.type === 'task' && senderOf(first) === 'owner', ...first?.type === 'task' && senderOf(first) === 'trusted' && { connectors: true as const },
+        id, state: 'idle', last: 0, stopped: false, asks: new Map(), turn: [], carry: [], again: [], held: [], ownerTools: key.startsWith('voice:') || (first?.type === 'task' && senderOf(first) === 'owner'), ownerThread: first?.type === 'task' && senderOf(first) === 'owner', ...first?.type === 'task' && senderOf(first) === 'trusted' && { connectors: true as const },
         kage: o.tools(key, m => o.toHub(key, m), (tool, description, input) => ask(h, key, s, tool, description, input, new AbortController().signal).then(r => r.behavior === 'allow'), () => s.sender),
       }
       Object.assign(s, { id, stopped: false })
@@ -180,7 +181,8 @@ export function sdkSessions(o: SdkOptions) {
       const s = sessions.get(key)
       if (!s) return
       s.stopped = true
-      if (s.turn.length) o.onTurn?.(key, s.turn.splice(0).map(x => x.task))
+      const open = [...s.turn.splice(0).map(x => x.task), ...s.held.splice(0)]
+      if (open.length) o.onTurn?.(key, open)
       denyAll(s)
       o.ssm?.drop(key)
       o.keys?.drop(key)
