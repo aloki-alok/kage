@@ -15,7 +15,7 @@ async function startReceiver() {
 function signedPost(url: string, body: string, o: { type?: string; secret?: string; stamp?: number; retry?: number } = {}) {
   const stamp = String(o.stamp ?? Math.floor(Date.now() / 1000))
   const signature = `v0=${createHmac('sha256', o.secret ?? SECRET).update(`v0:${stamp}:${body}`).digest('hex')}`
-  return fetch(url, { method: 'POST', body, headers: {
+  return fetch(url, { method: 'POST', body, signal: AbortSignal.timeout(2_500), headers: {
     'content-type': o.type ?? 'application/json', 'x-slack-request-timestamp': stamp, 'x-slack-signature': signature, ...(o.retry && { 'x-slack-retry-num': String(o.retry) }),
   } })
 }

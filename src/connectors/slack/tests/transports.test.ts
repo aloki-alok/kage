@@ -16,7 +16,7 @@ const tagged = { type: 'message', channel: 'C0TEST1', ts: '6.6', thread_ts: '6.0
 
 function signedPost(port: number, body: string, o: { type?: string; retry?: number } = {}) {
   const stamp = String(Math.floor(Date.now() / 1000))
-  return fetch(`http://127.0.0.1:${port}/slack`, { method: 'POST', body, headers: {
+  return fetch(`http://127.0.0.1:${port}/slack`, { method: 'POST', body, signal: AbortSignal.timeout(2_500), headers: {
     'content-type': o.type ?? 'application/json', 'x-slack-request-timestamp': stamp,
     'x-slack-signature': `v0=${createHmac('sha256', SECRET).update(`v0:${stamp}:${body}`).digest('hex')}`, ...(o.retry && { 'x-slack-retry-num': String(o.retry) }),
   } })
