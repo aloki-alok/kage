@@ -15,7 +15,7 @@ import type { ToSession } from '../../src/runtime/protocol.ts'
 import { refuseLiveConfig } from '../harness.ts'
 import { fixtureText, type Evidence, type Expect, type Generated } from './grade.ts'
 
-export type Case = { name: string; why: string; files?: Record<string, string | Generated>; memory?: Record<string, string>; tasks: { from: 'owner' | 'teammate'; text: string }[]; expect: Expect }
+export type Case = { name: string; why: string; files?: Record<string, string | Generated>; memory?: Record<string, string>; grants?: string[][]; tasks: { from: 'owner' | 'teammate'; text: string }[]; expect: Expect }
 
 const CHANNEL = 'CTEST1', THREAD = '1700000000.000100', KEY = `${CHANNEL}:${THREAD}`, BOT_DM = 'DTESTBOT1'
 
@@ -84,6 +84,7 @@ async function runIn(c: Case, o: { code: string; claude: string; timeoutMs: numb
   const ev: Evidence = { replies: [], tools: [], cards: [], settings: [], jobs: [], files: {}, commands: {}, turns: [], fixture, filed: [] }
   const store = openStore(join(config, 'kage.db'))
   const ledgers = openLedgers(config, () => new Date().toISOString())
+  for (const row of c.grants ?? []) ledgers.add('grants', row)
   let lastCard = ''
   const slack = fakeSlack(a => { if (a.channel === BOT_DM) lastCard = /\*Approve\?\* (.+?) ·/.exec(a.text ?? '')?.[1] ?? 'unknown'; else ev.replies.push(a.text ?? '') })
   const jobs: { id: string; cron: string; prompt: string; recurring: boolean }[] = []

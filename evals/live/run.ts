@@ -31,7 +31,7 @@ const liveFiles = ['config.json', 'secrets.json'].map(f => join(LIVE_ENV_FILE, '
 const fingerprint = () => liveFiles.map(f => { try { return createHash('sha256').update(readFileSync(f)).digest('hex') } catch { return 'none' } }).join()
 const liveBefore = fingerprint()
 const claude = execFileSync('/bin/sh', ['-c', 'command -v claude'], { encoding: 'utf8' }).trim()
-const cases = (JSON.parse(readFileSync(join(import.meta.dirname, 'cases.json'), 'utf8')) as Case[]).filter(c => !positionals[0] || c.name.includes(positionals[0]))
+const cases = (JSON.parse(readFileSync(join(import.meta.dirname, 'cases.json'), 'utf8')) as Case[]).filter(c => !positionals.length || positionals.some(p => c.name.includes(p)))
 const runs = Number(values.runs), timeoutMs = Number(values.timeout) * 1000
 const work = cases.flatMap(c => Array.from({ length: runs }, () => c))
 const results = new Map<string, Evidence[]>()
