@@ -1,6 +1,6 @@
 import { describe, test } from 'node:test'
 import assert from 'node:assert/strict'
-import { routeStates, tunnelLines, tunnelPlan, tunnelRecord, tunnelRoutes } from '../tunnel.ts'
+import { publicUrl, routeStates, tunnelLines, tunnelPlan, tunnelRecord, tunnelRoutes } from '../tunnel.ts'
 import type { Config, Secrets } from '../config.ts'
 
 const HOST = 'box.tail1.ts.net'
@@ -167,4 +167,15 @@ test('SMS that is on gets a public route to its webhook at /sms', () => {
   const sms = { config: { connectors: { sms: { from: '+14155550100', publicUrl: 'https://kage.example.test/sms', telnyxPublicKey: 'p', port: 8794 } } } as Config, secrets: { telnyxApiKey: 'k' } as Secrets }
   assert.deepEqual(tunnelRoutes(sms), [{ name: 'sms', port: 8794, paths: ['/sms'], reach: 'internet' }])
   assert.deepEqual(tunnelRoutes({ ...sms, config: { connectors: { sms: { ...sms.config.connectors!.sms, on: false } } } as Config }), [])
+})
+
+describe('kage connect fills a public URL from the tunnel (#570)', () => {
+  test('a Tailscale name gives the URL the tunnel serves the route at', () => {
+    assert.equal(publicUrl('mac.tail1234.ts.net.', '/sms'), 'https://mac.tail1234.ts.net:8443/sms')
+    assert.equal(publicUrl('mac.tail1234.ts.net', '/sms'), 'https://mac.tail1234.ts.net:8443/sms')
+  })
+  test('no Tailscale name gives nothing, so the question is asked', () => {
+    assert.equal(publicUrl(undefined, '/sms'), undefined)
+    assert.equal(publicUrl('', '/sms'), undefined)
+  })
 })
