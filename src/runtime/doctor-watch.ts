@@ -1,11 +1,15 @@
 import { execFile } from 'node:child_process'
-import { doctorNews } from '../core/doctor.ts'
+import { doctorBug, doctorNews } from '../core/doctor.ts'
+import type { IssueReport } from '../core/issue-report.ts'
 
 type Options = {
   run: () => Promise<string>
   store: { load(key: string): unknown; save(key: string, value: unknown): void }
   say: (text: string) => Promise<boolean>
   event: (detail: string) => void
+  file?: (r: IssueReport) => Promise<void>
+  canFile?: () => Promise<boolean>
+  now?: () => number
 }
 
 export const runDoctor = (code: string, timeout = 120_000) => () => new Promise<string>(ok => {
@@ -15,10 +19,16 @@ export const runDoctor = (code: string, timeout = 120_000) => () => new Promise<
 
 export function doctorWatch(o: Options) {
   return async () => {
-    const n = doctorNews(await o.run().catch(() => ''), (o.store.load('doctor-told') ?? []) as string[], (o.store.load('doctor-last') ?? []) as string[])
+    const told = (o.store.load('doctor-told') ?? []) as string[]
+    const n = doctorNews(await o.run().catch(() => ''), told, (o.store.load('doctor-last') ?? []) as string[])
     o.store.save('doctor-last', n.failing)
     o.event(`doctor failing=${n.failing.length} told=${n.stable.length}`)
     if (n.dm && !await o.say(n.dm)) return
     o.store.save('doctor-told', n.stable)
+    const now = (o.now ?? Date.now)(), filed = (o.store.load('doctor-filed') ?? {}) as Record<string, number>
+    const due = n.stable.filter(f => filed[f] === undefined || now - filed[f] >= 86_400_000).flatMap(f => { const r = doctorBug(f); return r ? [[f, r] as const] : [] })
+    if (!o.file || !due.length || !await (o.canFile?.() ?? Promise.resolve(true))) return
+    for (const [f, r] of due) await o.file(r).then(() => { filed[f] = now }, () => o.event('doctor file failed'))
+    o.store.save('doctor-filed', filed)
   }
 }

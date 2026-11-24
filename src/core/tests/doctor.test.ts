@@ -1,6 +1,6 @@
 import { test, describe } from 'node:test'
 import assert from 'node:assert/strict'
-import { doctorNews, ownerChannelLine, autoUpdateNote, bootNotes, chromeLine, jevLine, keyLines, lingerLine, nodeOk, pathNote, render, report, serviceLines, sessionLines, slackLines, pluginLine, sandboxLine, tokenLines, toolsLine, whatsappLine } from '../doctor.ts'
+import { doctorBug, doctorNews, ownerChannelLine, autoUpdateNote, bootNotes, chromeLine, jevLine, keyLines, lingerLine, nodeOk, pathNote, render, report, serviceLines, sessionLines, slackLines, pluginLine, sandboxLine, tokenLines, toolsLine, whatsappLine } from '../doctor.ts'
 
 const text = (ls: { kind: string; text: string }[]) => ls.map(l => `${l.kind}:${l.text}`)
 
@@ -194,5 +194,31 @@ describe('the hourly doctor in the hub (#153)', () => {
     const n = doctorNews(out(line), [], [doctorNews(out(line), [], []).failing[0]!])
     assert.equal(n.dm!.includes('xoxb'), false)
     assert.match(n.dm!, /secrets\.json slack\.bot: its line holds a Slack token, so run kage doctor in a terminal to see it/)
+  })
+})
+
+describe('an unknown doctor failure becomes a bug report (#153)', () => {
+  test('a check that threw names its group and its error, scrubbed of paths and names', () => {
+    const r = doctorBug('slack: the check did not run (ENOENT: no such file, open /Users/sam/.config/kage/slack-status)')!
+    assert.equal(r.kind, 'bug')
+    assert.equal(r.title, 'kage doctor: the slack check did not run')
+    assert.match(r.what, /ENOENT/)
+    assert.equal(r.what.includes('/Users/sam'), false)
+  })
+  test('the public bug body never carries the error message, only its code', () => {
+    const r = doctorBug('browser: the check did not run (fetch https://x.io/?token=abc123secret failed for Acme Corp at /root/kage/src/x.ts:12)')!
+    assert.equal(/abc123secret|Acme|\/root|x\.io/.test(JSON.stringify(r)), false)
+    assert.match(r.what, /threw an error\./)
+  })
+  test('a word in capitals that is not a known error code is not posted', () => {
+    assert.match(doctorBug('slack: the check did not run (ACME_CORP unreachable)')!.what, /threw an error\./)
+    assert.match(doctorBug('slack: the check did not run (ECONNREFUSED 10.0.0.1:443)')!.what, /threw an ECONNREFUSED error\./)
+  })
+  test('a doctor that timed out or printed nothing is a bug too, and a known fix line is not', () => {
+    assert.equal(doctorBug('the doctor took over 120 s, so some checks did not finish')!.title, 'kage doctor: a run took over its time limit')
+    assert.equal(doctorBug('the doctor printed nothing, so it did not run')!.title, 'kage doctor: a run printed nothing')
+    assert.equal(doctorBug('token file: run chmod 600 /x'), undefined)
+    assert.equal(doctorBug('not running: kage start'), undefined)
+    assert.equal(doctorBug('plugin: run claude plugin install kage@kage'), undefined)
   })
 })

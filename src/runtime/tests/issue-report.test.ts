@@ -1,6 +1,6 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { issueReporter } from '../issue-report.ts'
+import { fileFound, issueReporter } from '../issue-report.ts'
 
 test('the reporter reads the repo from the checkout origin, and files with gh, the body on stdin', async () => {
   const calls: [string, string[], string | undefined][] = []
@@ -35,4 +35,19 @@ test('the reporter finds an open issue by its fingerprint, and comments with the
     ['gh', search, undefined],
     ['gh', ['issue', 'comment', '12', '--repo', 'a/kage', '--body-file', '-'], 'seen again on 0.4.7 linux x64'],
   ])
+})
+
+test('a bug the hub found itself is filed once, and a repeat with the same fingerprint gets a seen again comment (#153)', async () => {
+  const filed: string[] = [], comments: number[] = []
+  const rep = {
+    repo: async () => 'a/kage', system: { version: '0.4.7', system: 'darwin arm64' }, perDay: 3,
+    file: async (_r: string, _t: string, body: string) => { filed.push(body); return 'https://github.com/a/kage/issues/7' },
+    find: async (_r: string, fp: string) => filed.some(b => b.includes(fp)) ? { number: 7, url: 'https://github.com/a/kage/issues/7' } : undefined,
+    comment: async (_r: string, n: number) => { comments.push(n) },
+  }
+  const r = { kind: 'bug' as const, title: 'kage doctor: the slack check did not run', what: 'w', expected: 'e' }
+  assert.deepEqual(await fileFound(rep, r), { outcome: 'filed', repo: 'a/kage', url: 'https://github.com/a/kage/issues/7' })
+  assert.deepEqual(await fileFound(rep, r), { outcome: 'commented', repo: 'a/kage', url: 'https://github.com/a/kage/issues/7' })
+  assert.deepEqual([filed.length, comments], [1, [7]])
+  assert.deepEqual(await fileFound({ ...rep, repo: async () => undefined }, r), { outcome: 'no repo', repo: '', url: '' })
 })
