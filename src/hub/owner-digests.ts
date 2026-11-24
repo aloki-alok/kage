@@ -1,5 +1,6 @@
 import { readFileSync, writeFileSync } from 'node:fs'
 import { dailyDue, expiredWaiting, grantsLine, heldLine, staleWaiting } from '../core/ledgers.ts'
+import { receiptLine } from '../core/trust.ts'
 import { retro, retroDue } from '../core/retro.ts'
 import type { Ledgers } from '../runtime/ledger.ts'
 import type { Store } from '../runtime/store.ts'
@@ -21,10 +22,12 @@ export function ownerDigests(o: { dir: string; ledgers: Ledgers; store: Store; p
       const released = heldLine([...o.ledgers.events(new Date(at - 24 * 3600_000).toISOString().slice(0, 10)), ...o.ledgers.events(today)], at - 24 * 3600_000, at)
       const list = (title: string, items: typeof stale) => items.length ? [[`*${title} (${items.length})*`,
         ...items.map(i => `• ${i.link ? `<${i.link}|${i.what}>` : i.what} (since ${i.when.slice(0, 10)})`)].join('\n')] : []
-      const parts = [...list('Still waiting on you', stale), ...list(`Dropped after ${hours} h. Reply in its thread if one still matters`, expired), ...noCard ? [noCard] : [], ...released ? [released] : []]
+      const took = o.ledgers.text('trust-steps').split('\n').filter(Boolean).map(l => l.split('\t')).filter(([when = '']) => Date.parse(when) >= at - 24 * 3600_000 && Date.parse(when) < at).map(c => c.slice(1))
+      const steps = receiptLine(took)
+      const parts = [...list('Still waiting on you', stale), ...list(`Dropped after ${hours} h. Reply in its thread if one still matters`, expired), ...noCard ? [noCard] : [], ...released ? [released] : [], ...steps ? [steps] : []]
       const sent = !parts.length || await o.notify(parts.join('\n\n'))
       if (!sent) return
-      const held = [stale.length && `${stale.length} waiting`, expired.length && `${expired.length} dropped`, noCard && 'grants', released && 'held releases'].filter(Boolean).join(', ')
+      const held = [stale.length && `${stale.length} waiting`, expired.length && `${expired.length} dropped`, noCard && 'grants', released && 'held releases', steps && `${took.length} steps`].filter(Boolean).join(', ')
       o.ledgers.event({ kind: 'daily-note', who: 'hub', trace: '', detail: `${today} ${parts.length ? `sent: ${held}` : 'nothing to say'}` })
       const still = new Set(expiredWaiting(o.ledgers.text('waiting'), now, hours * 3600_000).map(i => i.thread))
       for (const thread of gone) if (still.has(thread)) o.ledgers.add('waiting', ['expired', thread, '', ''])

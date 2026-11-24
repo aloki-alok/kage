@@ -65,3 +65,20 @@ describe('each daily note leaves one line in kage logs (#433)', () => {
     assert.deepEqual(s.ledgers.events('2026-11-08').filter(e => e.kind === 'daily-note'), [])
   })
 })
+
+describe('the daily note lists each step Kage took alone (#667)', () => {
+  test('a step in the last day is named with the line that allowed it, and an older one is not', async () => {
+    const dir = mkdtempSync(`${tmpdir()}/digests-`)
+    let clock = '2026-11-07T10:00:00Z'
+    const ledgers = openLedgers(dir, () => clock)
+    ledgers.add('trust-steps', ['C1:1.1', 'UTEAM0001', 'prod-read', 'old.example.test', 'T1'])
+    clock = '2026-11-09T20:00:00Z'
+    ledgers.add('trust-steps', ['C1:2.2', 'UTEAM0001', 'prod-read', 'db.example.test', 'T2'])
+    const notes: string[] = []
+    const d = ownerDigests({ dir, ledgers, store: {} as Store, placeOf: k => k, costTracked: false, expireHours: () => 72, notify: async t => { notes.push(t); return true } })
+    await d.dailyNote(now)
+    assert.match(notes[0]!, /Steps Kage took on its own \(1\)[\s\S]*db\.example\.test \(line T2\)/)
+    assert.doesNotMatch(notes[0]!, /old\.example\.test/)
+    assert.match(ledgers.events('2026-11-09').filter(e => e.kind === 'daily-note').map(e => e.detail).join(), /1 steps/)
+  })
+})
