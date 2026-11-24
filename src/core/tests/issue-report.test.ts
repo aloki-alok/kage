@@ -108,3 +108,8 @@ test('a host with two labels, and phone numbers in their usual shapes, are scrub
   const out = scrubReport({ kind: 'bug', title: 't', what: 'sent from example.com and www.acme.io/path, call (415) 555-0134 or +44 20 7946 0958', expected: 'e' }, []).what
   for (const leak of ['example.com', 'acme.io', '555-0134', '7946']) assert.equal(out.includes(leak), false, `${leak} in ${out}`)
 })
+
+test('a longer phrase wins over a shorter one inside it, and any spacing or line break between its words still matches', () => {
+  const out = scrubReport({ kind: 'bug', title: 't', what: 'Bank of America and Acme  Corp and Acme\nCorp broke', expected: 'e' }, ['Bank', 'Acme', 'Bank of America', 'Acme Corp']).what
+  assert.equal(out, '[name] and [name] and [name] broke')
+})

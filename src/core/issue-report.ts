@@ -35,7 +35,8 @@ const escaped = (n: string) => n.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
 
 function scrub(text: string, names: string[]): string {
   let out = SCRUBS.reduce((t, [re, to]) => t.replace(re, to), text)
-  for (const n of names.filter(n => n.trim().length > 1)) out = out.replace(new RegExp(`(?<![\\p{L}\\p{N}_])${escaped(n.trim())}(?![\\p{L}\\p{N}_])`, 'giu'), '[name]')
+  const phrases = names.map(n => n.trim()).filter(n => n.length > 1).sort((a, b) => b.length - a.length)
+  for (const n of phrases) out = out.replace(new RegExp(`(?<![\\p{L}\\p{N}_])${n.split(/\s+/).map(escaped).join('\\s+')}(?![\\p{L}\\p{N}_])`, 'giu'), '[name]')
   return out.trim()
 }
 

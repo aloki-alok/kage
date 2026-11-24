@@ -241,7 +241,7 @@ const sdk = sdkLib ? sdkSessions({
     settings: { set: (key, value) => setKey(ENV_FILE, key, value) },
     kagelet: key.split('#side-kagelet-')[1], dreaming: key.split('#side-kdream-')[1], kageletMemory: kag.kmem, ...key === DREAM_KEY ? { dreamLessons: (l: DreamLesson[], dismiss?: Dismissal[]) => dreaming.lessons(l, dismiss) } : !key.includes('#side-') && { flagKnowledge: f => ledgers.add('flags', flagRow(randomUUID().slice(0, 8), key, f)) },
     browser: browser && { call: browser.call, block: BROWSER_BLOCK },
-    ...config.report?.enabled !== false && { report: issueReporter({ code: CODE, repo: config.report?.repo ?? undefined, version: () => VERSION, perDay: config.report?.perDay ?? 3, names: slack.knownNames }) },
+    ...config.report?.enabled !== false && { report: issueReporter({ code: CODE, repo: config.report?.repo ?? undefined, version: () => VERSION, perDay: config.report?.perDay ?? 3, names: slack.knownNames, redact: config.report?.redact }) },
     foreignAgents: () => config.askOtherAgents ? [] : foreignAgentTags(slack.ids.apps ?? [], slack.ids.owner),
     meetbot: meeting && { join: meeting.join }, sms: sms?.campaigns, screen: SCREEN,
     dbRead: { command: () => readCommand(kl.dbRead?.command ?? undefined, store, key.split('#side-kagelet-')[1] ?? ''), maxRows: kl.dbRead?.maxRows || 200 },

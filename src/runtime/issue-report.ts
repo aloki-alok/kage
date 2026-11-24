@@ -9,7 +9,7 @@ const run: Run = (cmd, args, input) => new Promise((ok, no) => {
   if (input !== undefined) p.stdin?.end(input)
 })
 
-export function issueReporter(o: { code: string; repo?: string; version: () => string; perDay: number; names: () => string[] }, sh: Run = run): SessionReport {
+export function issueReporter(o: { code: string; repo?: string; version: () => string; perDay: number; names: () => string[]; redact?: string[] }, sh: Run = run): SessionReport {
   return {
     repo: async () => repoFromRemote(await sh('git', ['-C', o.code, 'remote', 'get-url', 'origin']).catch(() => ''), o.repo),
     file: async (repo, title, body, labels) => (await sh('gh', ['issue', 'create', '--repo', repo, '--title', title, '--body-file', '-', ...labels.flatMap(l => ['--label', l])], body)).trim(),
@@ -21,5 +21,6 @@ export function issueReporter(o: { code: string; repo?: string; version: () => s
     get system() { return { version: o.version(), system: `${process.platform} ${process.arch}` } },
     perDay: o.perDay,
     names: o.names,
+    redact: () => o.redact ?? [],
   }
 }
