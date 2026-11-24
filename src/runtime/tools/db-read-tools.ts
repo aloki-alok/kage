@@ -63,7 +63,7 @@ function routedRead(c: ToolContext, db: Routes): KageTool {
       const verdict = readGate({ turn, owner, route, mode, lines: c.o.trust?.lines() ?? [] })
       if (verdict.would) c.o.event?.('trust', `${mode} ${verdict.would}`)
       if (!verdict.read) { note(0, 0, 'refused'); return refusal(verdict.why) }
-      for (const [i, line] of (verdict.lines ?? []).entries()) c.append('trust-steps', [key, who.split(',')[i] ?? who, 'prod-read', route, line])
+      for (const step of verdict.steps ?? []) c.append('trust-steps', [key, step.who, 'prod-read', route, step.line])
       const started = Date.now()
       const ran = await runRead(command, sql, db.maxRows, undefined, queryError)
       note(ran.rows, Date.now() - started, ran.outcome.startsWith('refused') ? 'refused' : ran.outcome.startsWith('failed') ? 'failed' : 'ok')

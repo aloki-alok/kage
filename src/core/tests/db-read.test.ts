@@ -88,7 +88,7 @@ describe('who may read a named route', () => {
   const gate = (o: Partial<Parameters<typeof readGate>[0]> = {}) => readGate({ turn: [mate()], owner: false, route: 'prod', mode: 'on', lines: [line()], ...o })
   test('the owner reads in every mode, a covered teammate only in on mode', () => {
     for (const mode of ['off', 'shadow', 'on'] as const) assert.equal(gate({ owner: true, turn: [{ reader: true, owner: true }], mode, lines: [] }).read, true, mode)
-    assert.deepEqual(gate(), { read: true, lines: ['T1'], would: 'go' })
+    assert.deepEqual(gate(), { read: true, steps: [{ who: 'U0TEST1', line: 'T1' }], would: 'go' })
     assert.equal(gate({ mode: 'shadow' }).read, false)
     assert.equal(gate({ mode: 'off' }).read, false)
   })

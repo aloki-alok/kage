@@ -2447,6 +2447,13 @@ describe("report_issue: a session files a bug or an idea to the Kage repo, on th
       s.deliver(mate('UTEAM0003'))
       assert.equal((await read(s)).isError, true)
     })
+    test('each step names the teammate whose line allowed it, even when the owner spoke first in the turn', async () => {
+      const { s } = fresh('on', [line()])
+      s.deliver(s.task({ fromOwner: true })); s.deliver(mate('UTEAM0001'))
+      assert.equal((await read(s)).isError, undefined)
+      assert.match(s.ledgers.text('trust-steps'), /\tUTEAM0001\tprod-read\t[^\t]+\tT1/)
+      assert.doesNotMatch(s.ledgers.text('trust-steps'), /\towner\t/)
+    })
     test('the owner\'s read inside a turn that a teammate task lowered is refused', async () => {
       const { dir, s } = fresh('on', [])
       s.deliver(mate('UNOLINE001'))
