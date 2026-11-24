@@ -125,11 +125,12 @@ export function doctorNews(out: string, told: string[], last: string[]): { faili
   return { failing, stable, dm: [`Kage's hourly check found ${stable.length === 1 ? '1 problem' : `${stable.length} problems`}, each on two checks in a row. Each line names its fix, and kage doctor checks again:`, ...stable.map(f => `• ${f}`)].join('\n') }
 }
 
+const ERROR_CODES = ['ENOENT', 'EACCES', 'EPERM', 'EEXIST', 'EISDIR', 'ENOTDIR', 'EMFILE', 'EPIPE', 'ECONNREFUSED', 'ECONNRESET', 'ETIMEDOUT', 'ENOTFOUND', 'EAI_AGAIN', 'ERR_MODULE_NOT_FOUND']
 const EXPECTED = 'Each doctor check runs and reports ok, FAIL or note, within its time limit.'
 
 export function doctorBug(line: string): IssueReport | undefined {
   const threw = /^(\w+): the check did not run \((.*)\)$/.exec(line)
-  const code = threw && /^[A-Z][A-Z_]{2,}\b/.exec(threw[2]!)?.[0]
+  const code = threw && ERROR_CODES.find(c => threw[2]!.startsWith(c))
   const r: IssueReport | undefined = threw ? { kind: 'bug', title: `kage doctor: the ${threw[1]} check did not run`, what: `The hub's hourly doctor run: the ${threw[1]} check threw ${code ? `an ${code} error` : 'an error'}. The message stays on the hub, since it can hold paths and names.`, expected: EXPECTED }
     : line.startsWith('the doctor took over') ? { kind: 'bug', title: 'kage doctor: a run took over its time limit', what: `The hub's hourly doctor run: ${line}`, expected: EXPECTED }
     : line.startsWith('the doctor printed nothing') ? { kind: 'bug', title: 'kage doctor: a run printed nothing', what: `The hub's hourly doctor run: ${line}`, expected: EXPECTED }

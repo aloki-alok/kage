@@ -15,9 +15,10 @@ export function selfCheck(o: { code: string; store: Store; ledgers: Ledgers; say
   const doctor = doctorWatch({ run: runDoctor(o.code), store: o.store, say: o.say, event: detail => o.ledgers.event({ kind: 'doctor', who: 'hub', trace: '', detail }),
     canFile: () => canPushToKage(gh),
     ...reporter && { file: async r => {
-      if (reportsToday(o.ledgers.text('issue-reports'), new Date().toISOString().slice(0, 10)) >= reporter.perDay) { o.ledgers.add('issue-reports', ['doctor', r.kind, 'capped', '', '']); return }
+      if (reportsToday(o.ledgers.text('issue-reports'), new Date().toISOString().slice(0, 10)) >= reporter.perDay) { o.ledgers.add('issue-reports', ['doctor', r.kind, 'capped', '', '']); throw new Error('capped') }
       const f = await fileFound(reporter, r)
       o.ledgers.add('issue-reports', ['doctor', r.kind, f.outcome, f.repo, f.url])
+      if (f.outcome === 'no repo') throw new Error('no repo')
     } } })
   setTimeout(() => void doctor().catch(e => log('doctor check failed', e)), 5 * 60_000).unref()
   return doctor
