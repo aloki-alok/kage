@@ -3,7 +3,7 @@ import assert from 'node:assert/strict'
 import { mkdtempSync, writeFileSync, chmodSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { doctorWatch, runDoctor } from '../doctor-watch.ts'
+import { doctorWatch, failureWatch, runDoctor } from '../doctor-watch.ts'
 
 function setup(outs: string[], sent = true, o: { fileOk?: () => boolean; canFile?: boolean; clock?: { t: number } } = {}) {
   const saved = new Map<string, unknown>(), dms: string[] = [], events: string[] = [], filed: string[] = []
@@ -86,4 +86,20 @@ test('each fix the doctor applied is one event (#153)', async () => {
   const t = setup(['fixed token file: run chmod 600 /k/s\nok    tools', 'ok    tools'])
   await t.check(); await t.check()
   assert.deepEqual(t.events, ['doctor fixed: token file: run chmod 600 /k/s', 'doctor failing=0 told=0', 'doctor failing=0 told=0'])
+})
+
+test('failureWatch DMs a failure that repeated past report.failureRepeats once, and tries again when the DM did not go out', async () => {
+  const saved = new Map<string, unknown>(), dms: string[] = []
+  let sent = false
+  const today = Array.from({ length: 3 }, () => ({ kind: 'error', detail: 'meetbot_unreachable' }))
+  const watch = failureWatch({
+    events: () => today, day: () => '2026-11-24', atLeast: () => 3,
+    store: { load: k => saved.get(k), save: (k, v) => { saved.set(k, v) } },
+    say: async t => { dms.push(t); return sent },
+  })
+  await watch()
+  sent = true
+  await watch(); await watch()
+  assert.equal(dms.length, 2)
+  assert.match(dms[1]!, /meetbot_unreachable: 3 times/)
 })

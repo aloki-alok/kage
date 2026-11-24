@@ -1,5 +1,5 @@
 import { execFile } from 'node:child_process'
-import { doctorBug, doctorNews } from '../core/doctor.ts'
+import { doctorBug, doctorNews, failureNews, repeatedFailures, type FailuresTold } from '../core/doctor.ts'
 import type { IssueReport } from '../core/issue-report.ts'
 
 type Options = {
@@ -31,5 +31,14 @@ export function doctorWatch(o: Options) {
     if (!o.file || !due.length || !await (o.canFile?.() ?? Promise.resolve(true))) return
     for (const [f, r] of due) await o.file(r).then(() => { filed[f] = now }, () => o.event('doctor file failed'))
     o.store.save('doctor-filed', filed)
+  }
+}
+
+export function failureWatch(o: Pick<Options, 'store' | 'say'> & { events: () => { kind: string; detail: string }[]; day: () => string; atLeast: () => number }) {
+  return async () => {
+    const before = (o.store.load('failures-told') ?? { day: '', told: [] }) as FailuresTold
+    const n = failureNews(repeatedFailures(o.events(), o.atLeast()), before, o.day())
+    if (n.dm && !await o.say(n.dm)) return
+    o.store.save('failures-told', n.told)
   }
 }
