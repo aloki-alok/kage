@@ -17,7 +17,7 @@ The owner's hub releases by itself, checked every hour (`autoRelease` in `src/hu
 - It releases the newest commit ahead of `stable` that completed an unbroken 24-hour run on this hub, even if the hub has moved on since (`soakGate` in `src/core/auto-update.ts`).
 - A run is the hub's boots on one commit, kept in the `boots` ledger. A boot on a commit that changes only files the hub never runs (the `INERT` table: docs, tests, skill text, licenses, version-only changes) continues the run. Any other boot starts a new one.
 - A crash loop (three starts in 10 minutes, or a crash-loop DM) voids the run, and `kage doctor` must say `All good`.
-- Every hour it logs the next candidate and when its gate opens. A failing gate DMs nothing.
+- Every hour it logs the next candidate and when its gate opens. A candidate still inside its 24 hours DMs nothing. A soaked commit that fails a check is held and DMed once (ADR 0026).
 - The hub's checkout sits on `main`, level with `origin/main`.
 
 Only the repo admin's hub releases. The hub asks `gh repo view --json viewerPermission` and acts on `ADMIN` only, so the rule follows what GitHub allows.

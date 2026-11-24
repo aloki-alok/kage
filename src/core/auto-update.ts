@@ -53,12 +53,24 @@ function soakRuns(boots: Boot[], crashes: number[]): Run[] {
   return runs
 }
 
-type Gate = { ok: true; sha: string } | { fail: string; sha?: string; opensAt?: number }
-export function soakGate(s: { boots: Boot[]; crashes: number[]; now: number; doctorOk: boolean; ahead: (sha: string) => boolean }): Gate {
+type Gate = { ok: true; sha: string } | { fail: string; sha?: string; opensAt?: number; held?: true }
+export type ErrorSeen = { at: number; code: string }
+const WEEK = 7 * DAY
+
+function newErrorKinds(errors: ErrorSeen[], run: { start: number; end: number }): string[] {
+  const before = new Set(errors.filter(e => e.at >= run.start - WEEK && e.at < run.start).map(e => e.code))
+  return [...new Set(errors.filter(e => e.at >= run.start && e.at <= run.end && !before.has(e.code)).map(e => e.code))]
+}
+
+export function soakGate(s: { boots: Boot[]; crashes: number[]; now: number; doctorOk: boolean; ahead: (sha: string) => boolean; errors: ErrorSeen[] }): Gate {
   const runs = soakRuns(s.boots, s.crashes)
   if (!runs.length) return { fail: 'no hub start is recorded yet' }
   const done = runs.filter(r => !r.crashed && (r.end ?? s.now) - r.start >= DAY && s.ahead(r.sha)).at(-1)
-  if (done) return s.doctorOk ? { ok: true, sha: done.sha } : { fail: 'kage doctor is not "All good"', sha: done.sha }
+  if (done) {
+    const fresh = newErrorKinds(s.errors, { start: done.start, end: done.start + DAY })
+    if (fresh.length) return { fail: `an error kind is new since ${done.sha} started: ${fresh.join(', ')}`, sha: done.sha, held: true }
+    return s.doctorOk ? { ok: true, sha: done.sha } : { fail: 'kage doctor is not "All good"', sha: done.sha, held: true }
+  }
   const next = runs.at(-1)!
   if (!s.ahead(next.sha)) return { fail: 'nothing newer than the stable tag has run on this hub yet' }
   const opensAt = next.start + DAY

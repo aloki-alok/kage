@@ -36,6 +36,7 @@ const cases: [string, string][] = [
   [L.peopleTidied('b', [{ email: 'a@x.test', user: 'UTEST1' }, { email: 'c@x.test', user: 'UTEST2' }], 0), 'Kage rewrote config.json in its new shape: teammates, trusted people and teammate emails now sit in one list under people.teammates. Nothing about who may tag Kage changed. The old file is kept for 7 days as b.\nMatched by email in Slack: a@x.test is <@UTEST1>, c@x.test is <@UTEST2>.'],
   [L.settingsRejected('people.trusted: bad id'), 'Kage did not apply your last settings change and keeps the last good ones: people.trusted: bad id'],
   [L.updateNpmFailed('/opt/kage'), 'Kage pulled new code, but `npm ci` failed, so it stays on the code it runs. Run `npm ci` in /opt/kage, then `kage restart`.'],
+  [L.releaseHeld('abcdef1234', 'ci.yml on abcdef1 is not green (completed failure)'), 'Kage did not release abcdef1, which ran 24 hours on this hub: ci.yml on abcdef1 is not green (completed failure). It checks again every hour.'],
   [L.releaseStopped('tag exists'), "Kage's release stopped part way: tag exists."],
   [L.released('0.4.4', 'https://x.test/r'), 'Released Kage v0.4.4. <https://x.test/r|Release notes>'],
   [L.limitLost(['#a']), 'After the usage limit, 1 held message could not be resumed: #a. Ask again in its thread.'],

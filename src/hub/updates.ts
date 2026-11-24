@@ -1,8 +1,9 @@
-import { writeFileSync } from 'node:fs'
+import { readFileSync, writeFileSync } from 'node:fs'
 import { log } from '../runtime/log.ts'
 import { codeStamp } from '../runtime/code-stamp.ts'
 import { markUpdatedFrom, pullMain, version } from '../runtime/auto-update.ts'
 import { releaseIfSoaked } from '../runtime/release.ts'
+import type { ErrorSeen } from '../core/auto-update.ts'
 import { noteExit, npmCi, packagesStale } from '../runtime/hub-log.ts'
 import type { Ledgers } from '../runtime/ledger.ts'
 import { ownerLines } from '../core/messages.ts'
@@ -10,7 +11,7 @@ import { ownerLines } from '../core/messages.ts'
 export function hubUpdates(o: {
   code: string; dir: string; ledgers: Ledgers
   quiet: (now: number) => boolean
-  notify: (text: string) => unknown
+  notify: (text: string) => Promise<boolean>
 }) {
   const BOOT_CODE = codeStamp(o.code)
   const VERSION = version(o.code)
@@ -46,11 +47,25 @@ export function hubUpdates(o: {
       else if (r !== 'current') log(`auto-update did nothing: ${r.skip}`)
     },
     async autoRelease(now: number) {
-      const r = await releaseIfSoaked(o.code, o.dir, o.ledgers.text('boots'), now).catch(e => ({ skip: `failed: ${e}`, broke: true, candidate: undefined }))
+      const r = await releaseIfSoaked(o.code, o.dir, o.ledgers.text('boots'), now, errorsSeen(o.ledgers, now)).catch(e => ({ skip: `failed: ${e}`, broke: true, candidate: undefined }))
       if ('broke' in r) void o.notify(ownerLines.releaseStopped(r.skip))
+      if ('held' in r && r.held) await tellHeldOnce(o, r.held.sha, r.skip)
       if ('skip' in r) { if (r.candidate || r.skip !== lastSkip) log(`auto-release did nothing: ${r.skip}`); lastSkip = r.skip; return }
       log(`auto-release made v${r.version}`)
       void o.notify(ownerLines.released(r.version, r.url))
     },
   }
+}
+
+const RELEASE_HELD = 'release-held'
+
+function errorsSeen(ledgers: Ledgers, now: number): ErrorSeen[] {
+  const days = Array.from({ length: 31 }, (_, i) => new Date(now - i * 86_400_000).toISOString().slice(0, 10))
+  return days.flatMap(day => ledgers.events(day)).filter(e => e.kind === 'error').map(e => ({ at: Date.parse(e.at), code: e.detail }))
+}
+
+export async function tellHeldOnce(o: { dir: string; notify: (text: string) => Promise<boolean> }, sha: string, why: string) {
+  const told = `${sha} ${why}`
+  try { if (readFileSync(`${o.dir}/${RELEASE_HELD}`, 'utf8') === told) return } catch {}
+  if (await o.notify(ownerLines.releaseHeld(sha, why))) writeFileSync(`${o.dir}/${RELEASE_HELD}`, told, { mode: 0o600 })
 }

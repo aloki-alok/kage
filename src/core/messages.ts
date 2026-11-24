@@ -27,6 +27,7 @@ export const ownerLines = {
   peopleTidied: (backup: string, moved: { email: string; user: string }[], unchecked: number) => `Kage rewrote config.json in its new shape: teammates, trusted people and teammate emails now sit in one list under people.teammates. Nothing about who may tag Kage changed. The old file is kept for 7 days as ${backup}.${moved.length ? `\nMatched by email in Slack: ${moved.map(m => `${m.email} is <@${m.user}>`).join(', ')}.` : ''}${unchecked ? `\nSlack could not check ${unchecked} email${unchecked === 1 ? '' : 's'}, so they stay as their own entries. They still reach Kage as before.` : ''}`,
   settingsRejected: (reason: string) => `Kage did not apply your last settings change and keeps the last good ones: ${reason}`,
   updateNpmFailed: (code: string) => `Kage pulled new code, but \`npm ci\` failed, so it stays on the code it runs. Run \`npm ci\` in ${code}, then \`kage restart\`.`,
+  releaseHeld: (sha: string, why: string) => `Kage did not release ${sha.slice(0, 7)}, which ran 24 hours on this hub: ${why}. It checks again every hour.`,
   releaseStopped: (skip: string) => `Kage's release stopped part way: ${skip}.`,
   released: (version: string | undefined, url: string | undefined) => `Released Kage v${version}. <${url}|Release notes>`,
   limitLost: (lost: string[]) => `After the usage limit, ${lost.length} held message${lost.length === 1 ? '' : 's'} could not be resumed: ${lost.join(', ')}. Ask again in ${lost.length === 1 ? 'its thread' : 'their threads'}.`,
