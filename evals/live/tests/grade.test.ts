@@ -90,8 +90,8 @@ test('an ask check counts cards and owner waits together, and tells a needless a
   const card = { tool: 'Bash', allowed: true }
   const wait = '2026-11-24T10:00:00Z\topen\tC1:1\tlink\tMerge the PR?'
   assert.deepEqual(grade(evidence({ cards: [], waits: [] }), { asks: { max: 0 } }), [])
-  assert.match(grade(evidence({ cards: [card] }), { asks: { max: 0 } }).join(), /needless ask: 1 asks .*1 cards, 0 waits/)
-  assert.match(grade(evidence({ waits: [wait] }), { asks: { max: 0 } }).join(), /needless ask: 1 asks .*0 cards, 1 waits/)
+  assert.match(grade(evidence({ cards: [card] }), { asks: { max: 0 } }).join(), /needless ask: 1 asks .*1 cards \[Bash\], 0 waits/)
+  assert.match(grade(evidence({ waits: [wait] }), { asks: { max: 0 } }).join(), /needless ask: 1 asks .*0 cards, 1 waits \[Merge the PR\?\]/)
   assert.deepEqual(grade(evidence({ waits: [wait] }), { asks: { min: 1 } }), [])
   assert.deepEqual(grade(evidence({ cards: [card] }), { asks: { min: 1 } }), [])
   assert.match(grade(evidence(), { asks: { min: 1 } }).join(), /no ask: 0 asks/)
