@@ -63,6 +63,14 @@ test('connect and off write only when the connector really changes state', () =>
   assert.match(noBrowser.run(['browser', 'off']).out, /browser is not set up, so it is off already/)
 })
 
+test('off on a half set up connector turns it off and keeps what was set, so the doctor stops failing on it', () => {
+  const w = world({ connectors: { sms: { provider: 'twilio', from: '+15550100', publicUrl: 'https://k.example/sms', accountSid: 'AC1' } } })
+  const r = w.run(['sms', 'off'])
+  assert.equal(r.code, 0)
+  assert.match(r.out, /sms is off\./)
+  assert.deepEqual(w.read('config').connectors.sms, { provider: 'twilio', from: '+15550100', publicUrl: 'https://k.example/sms', accountSid: 'AC1', on: false })
+})
+
 test('browser off deletes the token the extension pairs with, and says the extension stays in Chrome', () => {
   const w = world({}, { browserToken: 'b', voiceToken: 'v' })
   const r = w.run(['browser', 'off'])
