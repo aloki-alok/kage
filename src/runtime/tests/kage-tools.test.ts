@@ -74,7 +74,7 @@ function fakeSlack() {
   return { calls, posts, bot: client('bot'), user: client('owner') }
 }
 
-function setup(o: { noHook?: boolean; settings?: { set(key: string, value: unknown): void }; hubDown?: boolean; dir?: string; kagelet?: string; dreaming?: string; dbRead?: { command: () => string | undefined; maxRows: number; timeoutMs?: number }; approve?: (tool: string, description: string, input: Record<string, unknown>) => Promise<boolean>; browser?: { call(op: string, args: Record<string, unknown>): Promise<unknown>; block: string[] }; meetbot?: { join(link: string): string }; screen?: ScreenRecorder; foreignAgents?: () => readonly string[]; flagKnowledge?: (f: NewFlag) => void; dreamLessons?: (l: DreamLesson[], d?: Dismissal[]) => string; report?: SessionReport } = {}) {
+function setup(o: { noHook?: boolean; settings?: { set(key: string, value: unknown): void }; hubDown?: boolean; dir?: string; kagelet?: string; dreaming?: string; dbRead?: { command: () => string | undefined; maxRows: number; timeoutMs?: number }; approve?: (tool: string, description: string, input: Record<string, unknown>) => Promise<boolean>; browser?: { call(op: string, args: Record<string, unknown>): Promise<unknown>; block: string[] }; meetbot?: { join(link: string): string }; screen?: ScreenRecorder; foreignAgents?: () => readonly string[]; flagKnowledge?: (f: NewFlag) => void; dreamLessons?: (l: DreamLesson[], d?: Dismissal[]) => string; report?: SessionReport; dbRoutes?: { routes: () => Record<string, string>; maxRows: number } } = {}) {
   const slack = fakeSlack()
   const dir = o.dir ?? mkdtempSync(join(tmpdir(), 'kage-tools-'))
   const ledgers = openLedgers(dir)
@@ -94,7 +94,7 @@ function setup(o: { noHook?: boolean; settings?: { set(key: string, value: unkno
       move: (id, to) => { if (!jobs.some(j => j.id === id)) return `no job ${id} in this thread`; jobs.find(j => j.id === id).key = to },
     },
     afk: async c => { out.push(`afk ${JSON.stringify(c)}`); return 'AFK on' }, foreignAgents: o.foreignAgents,
-    kagelet: o.kagelet, dreaming: o.dreaming, settings: o.settings, flagKnowledge: o.flagKnowledge, dreamLessons: o.dreamLessons, report: o.report, kageletMemory: { propose: (name: string, a: unknown, thread: string) => { out.push(`propose ${name} ${thread} ${JSON.stringify(a)}`); return 'proposed' }, decide: (d: unknown) => { out.push(`decide ${JSON.stringify(d)}`); return 'decided' }, open: () => 'open ones', notes: () => [] } as any, dbRead: o.dbRead, approve: o.approve, browser: o.browser, meetbot: o.meetbot, screen: o.screen, event: (kind, detail) => { events.push(`${kind} ${detail}`) },
+    kagelet: o.kagelet, dreaming: o.dreaming, settings: o.settings, dbRoutes: o.dbRoutes, flagKnowledge: o.flagKnowledge, dreamLessons: o.dreamLessons, report: o.report, kageletMemory: { propose: (name: string, a: unknown, thread: string) => { out.push(`propose ${name} ${thread} ${JSON.stringify(a)}`); return 'proposed' }, decide: (d: unknown) => { out.push(`decide ${JSON.stringify(d)}`); return 'decided' }, open: () => 'open ones', notes: () => [] } as any, dbRead: o.dbRead, approve: o.approve, browser: o.browser, meetbot: o.meetbot, screen: o.screen, event: (kind, detail) => { events.push(`${kind} ${detail}`) },
     onReport: r => { routed.push(`report ${JSON.stringify(r)}`) }, toManager: text => { routed.push(`manager ${text}`); return 'sent' },
     tellKagelet: (name, text, run) => { routed.push(`tell ${name}${run ? ' now' : ''}: ${text}`); return `told ${name}` }, message: (to, text) => { routed.push(`message ${to} ${text}`); return `sent to ${to}` },
     kagelets: { list: () => 'the list', manage: async (a, ask) => { out.push(`manage ${JSON.stringify(a)}`); return ask ? `asked: ${await ask({ kagelet: a.name, tools: 'mcp__gmail__send', job: 'j' })}` : 'managed' } },
@@ -1040,11 +1040,42 @@ describe("a session's Kage tools", () => {
     writeFileSync(join(dir, 'read.sh'), `printf '${out}'; for a; do q=$a; done; printf '%s' "$q" > ${join(dir, 'query')}`)
     return { command: () => `sh ${join(dir, 'read.sh')} --read-only`, maxRows: 200 }
   }
-  test('db_read exists only in a kagelet lane', () => {
+  test('db_read exists in a kagelet lane with a read command, and in every session once the owner names read routes', () => {
     const dir = mkdtempSync(join(tmpdir(), 'kage-db-'))
     assert.equal(setup({ kagelet: 'calls', dbRead: reader(dir) }).t.tools.some(x => x.name === 'db_read'), true)
     assert.equal(setup({ kagelet: 'calls' }).t.tools.some(x => x.name === 'db_read'), false)
     assert.equal(setup({ dbRead: reader(dir) }).t.tools.some(x => x.name === 'db_read'), false)
+    assert.equal(setup({ dbRoutes: { routes: () => ({}), maxRows: 200 } }).t.tools.some(x => x.name === 'db_read'), false)
+    assert.equal(setup({ dbRoutes: { routes: () => ({ prod: reader(dir).command() }), maxRows: 200 } }).t.tools.some(x => x.name === 'db_read'), true)
+  })
+  const routed = (o: { fromOwner?: boolean; agent?: { app: string; person?: string } } = {}) => {
+    const dir = mkdtempSync(join(tmpdir(), 'kage-db-'))
+    const s = setup({ dir, dbRoutes: { routes: () => ({ prod: reader(dir).command() }), maxRows: 200 } })
+    const base = s.task({ fromOwner: o.fromOwner ?? false })
+    s.t.onTask(o.agent ? { ...base, agent: o.agent } : base)
+    return { s, dir, read: (sql: string, db = 'prod') => s.call('db_read', { channel: 'C1', thread_ts: '5.5', db, sql }) }
+  }
+  test("a teammate's task reads prod through the owner's route, with no card and no ask, and the hub logs the read", async () => {
+    const t = routed()
+    const r = await t.read('select count(*) from signups')
+    assert.equal(r.isError, undefined, r.text)
+    assert.match(r.text, /^id\tcalls/)
+    assert.match(readFileSync(join(t.dir, 'query'), 'utf8'), /select count\(\*\) from signups/)
+    assert.match(t.s.ledgers.text('db-reads'), /\tprod C1:5\.5\t3\t\d+ms\tok/)
+  })
+  test('a route the owner never named, a write, and a task from an agent with no owner person read nothing', async () => {
+    const unknown = routed()
+    const u = await unknown.read('select 1', 'billing')
+    assert.equal(u.isError, true)
+    assert.match(u.text, /no read route billing.*prod/)
+    const write = routed()
+    assert.equal((await write.read('delete from t')).isError, true)
+    assert.equal(existsSync(join(write.dir, 'query')), false)
+    const stray = routed({ agent: { app: 'ATEST0001' } })
+    assert.equal((await stray.read('select 1')).isError, true)
+    assert.equal(existsSync(join(stray.dir, 'query')), false)
+    const owned = routed({ agent: { app: 'ATEST0001', person: 'U0TESTMATE1' } })
+    assert.equal((await owned.read('select 1')).isError, undefined)
   })
   test('db_read reads the command on each call, so a newly approved one applies at once; none set is refused', async () => {
     const dir = mkdtempSync(join(tmpdir(), 'kage-db-'))
