@@ -4,6 +4,7 @@ import { isJobLane, parseSessionKey, threadOfJobLane, type Conversation } from '
 import type { Schedule } from '../core/cron.ts'
 import type { JobState, Trigger } from '../core/tripwire.ts'
 import type { KageletMessage, MessageState } from '../core/kagelets/message.ts'
+import { ensureTrustTable, trustLinesOf } from './trust-store.ts'
 
 const SCHEMA = `
 create table if not exists conversations (
@@ -89,7 +90,8 @@ export function openStore(path: string) {
   db.exec('pragma journal_mode = wal')
   db.exec(SCHEMA)
   migrate(db)
-  return { ...conversationsOf(db), ...schedulesOf(db), ...trustOf(db), ...inboxOf(db), ...messagesOf(db), ...stateOf(db), close: () => db.close() }
+  ensureTrustTable(db)
+  return { ...conversationsOf(db), ...schedulesOf(db), ...trustOf(db), ...trustLinesOf(db), ...inboxOf(db), ...messagesOf(db), ...stateOf(db), close: () => db.close() }
 }
 
 function migrate(db: DatabaseSync) {
