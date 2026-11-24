@@ -840,6 +840,15 @@ describe('Kage sessions on the Agent SDK', () => {
     r.sdk.runs[0]!.emit({ type: 'result', total_cost_usd: 5.03, usage, modelUsage: { 'claude-opus-x': { costUSD: 5 }, 'claude-haiku-x': { costUSD: 0.03 } } })
     await tick()
     assert.deepEqual(r.tokens.map(x => x?.model), [undefined, 'claude-haiku-x'])
+    r.sdk.runs[0]!.end()
+    await tick(); await tick()
+    r.d.task('C1:5.5', r.task(), 1)
+    await tick()
+    const reopened = r.sdk.runs.at(-1)!
+    assert.notEqual(reopened, r.sdk.runs[0])
+    reopened.emit({ type: 'result', total_cost_usd: 5.05, usage, modelUsage: { 'claude-opus-x': { costUSD: 5 }, 'claude-haiku-x': { costUSD: 0.05 } } })
+    await tick()
+    assert.equal(r.tokens.at(-1)?.model, 'claude-haiku-x')
   })
   test('a kagelet lane runs on its own model, and a thread with none keeps the default', async () => {
     const LANE = 'C1:5.5#side-kagelet-deploys'

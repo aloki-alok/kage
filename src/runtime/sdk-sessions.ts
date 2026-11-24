@@ -67,7 +67,7 @@ export type SdkOptions = {
   restartMs?: number
   lean?: () => Lean | undefined
 }
-export type Hub = { o: SdkOptions; sessions: Map<string, Session>; picks: Map<string, Pick> }
+export type Hub = { o: SdkOptions; sessions: Map<string, Session>; picks: Map<string, Pick>; spent: Map<string, Record<string, number>> }
 
 function kageServer({ o, picks }: Hub, key: string, s: Session, full: boolean, voice: boolean, q: () => Query) {
   return o.sdk.createSdkMcpServer({
@@ -164,7 +164,7 @@ function open(h: Hub, key: string, s: Session, carried: SDKUserMessage[] = []) {
 
 export function sdkSessions(o: SdkOptions) {
   const sessions = new Map<string, Session>()
-  const h: Hub = { o, sessions, picks: new Map() }
+  const h: Hub = { o, sessions, picks: new Map(), spent: new Map() }
   const runner: Runner<ToSession> = {
     start(key, id, first) {
       const s: Session = sessions.get(key) ?? {
