@@ -7,6 +7,7 @@ import { Dispatcher } from '../../src/core/sessions.ts'
 import { taskAsOther, taskAsOwner, taskLine } from '../../src/core/gate.ts'
 import { sandboxed } from '../../src/core/guards.ts'
 import { sessionTools } from '../../src/runtime/kage-tools.ts'
+import type { SessionReport } from '../../src/runtime/tools/report-tools.ts'
 import { sdkSessions, type Sdk } from '../../src/runtime/sdk-sessions.ts'
 import { openStore } from '../../src/runtime/store.ts'
 import { openLedgers } from '../../src/runtime/ledger.ts'
@@ -71,6 +72,12 @@ export async function runCase(c: Case, o: { code: string; claude: string; timeou
   }
 }
 
+const standInReport = (ev: Evidence): SessionReport => ({
+  repo: async () => 'eval-fork/kage', perDay: 3, names: () => ['Alex', 'Sam Test'], system: { version: '0.0.0 eval', system: 'eval' },
+  file: async (_repo, title, body) => { ev.filed!.push(`${title}\n${body}`); return `https://github.com/eval-fork/kage/issues/${ev.filed!.length}` },
+  find: async () => undefined, comment: async () => {},
+})
+
 async function runIn(c: Case, o: { code: string; claude: string; timeoutMs: number; trace?: string }, work: string, config: string): Promise<Evidence> {
   const fixture = writeFixture(work, c.files)
   const ev: Evidence = { replies: [], tools: [], cards: [], settings: [], jobs: [], files: {}, commands: {}, turns: [], fixture, filed: [] }
@@ -92,11 +99,7 @@ async function runIn(c: Case, o: { code: string; claude: string; timeoutMs: numb
       title: 'Kage', bot: slack, user: slack, botDm: () => BOT_DM, dir: config, ledgers, send, approve, turnSender,
       memory: { own: join(config, 'own'), owner: join(config, 'owner') },
       settings: { set: (key, value) => { ev.settings.push({ key, value }) } },
-      report: {
-        repo: async () => 'eval-fork/kage', perDay: 3, names: () => ['Alex', 'Sam Test'], system: { version: '0.0.0 eval', system: 'eval' },
-        file: async (_repo, title, body) => { ev.filed!.push(`${title}\n${body}`); return `https://github.com/eval-fork/kage/issues/${ev.filed!.length}` },
-        find: async () => undefined, comment: async () => {},
-      },
+      report: standInReport(ev),
       schedules: { add: j => { jobs.push({ id: j.id, cron: j.cron ?? '', prompt: j.prompt, recurring: j.recurring }); ev.jobs.push({ cron: j.cron ?? '', prompt: j.prompt }) }, remove: id => { jobs.splice(jobs.findIndex(j => j.id === id), 1) }, list: () => jobs as never },
     }),
     hasTranscript: () => false, toHub: () => {},
