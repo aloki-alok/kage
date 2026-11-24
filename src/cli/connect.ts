@@ -12,6 +12,7 @@ import { DIR, ENV_FILE, settingsExist } from './home.ts'
 import { createApp } from './github-app.ts'
 import { githubOwner } from '../core/github.ts'
 import { tailscaleBin, tailscaleState } from './tailscale.ts'
+import { publicUrl } from '../core/tunnel.ts'
 
 const die = (msg: string): never => { console.error(msg); process.exit(1) }
 const [name, ...args] = process.argv.slice(2)
@@ -47,6 +48,7 @@ const settle = () => {
   const now = readSettings(ENV_FILE)
   const after = switched ? connectorStates({ ...now, config: turned(now.config) })[n] : state()[n]
   if (switched && after.state === 'on' && state()[n].state !== 'on') change(() => updateConfig(ENV_FILE, turned))
+  if (after.state === 'on' && n === 'sms' && tunnelUrl('/sms')) openTunnel()
   if (after.state === 'on') quit(`${n} is on. Kage picks it up once it is not in the middle of anything.`)
   return after
 }
@@ -63,6 +65,8 @@ die(`${n} ${connectorStep(n, settle())}`)
 
 async function ask(asks: Ask[]) {
   for (const a of asks) {
+    const found = a.key === 'connectors.sms.publicUrl' ? tunnelUrl('/sms') : undefined
+    if (found) { change(() => setKey(ENV_FILE, a.key, found)); console.log(`Filled ${a.key} from your tunnel: ${found}`); continue }
     if (a.kind === 'made') {
       const token = randomBytes(24).toString('hex')
       change(() => updateSecrets(ENV_FILE, s => secretAt(s, a.key, token)))
@@ -162,6 +166,16 @@ async function connectGithub(): Promise<never> {
   github({ ...gh, login, userId: known ?? app.ownerId, app: { id: app.id, slug: app.slug }, accounts: [...new Set([login, ...(org ? [org] : []), ...(gh.accounts ?? [])])] })
   spawnSync(process.execPath, [fileURLToPath(new URL('./tunnel.ts', import.meta.url)), 'on'], { stdio: 'inherit', env: process.env })
   quit(`github is on as @${app.slug}. Install it from the tab Kage opened, or at ${app.url}/installations/new, then tag @${app.slug} in an issue to try it.`)
+}
+
+function tunnelUrl(path: string) {
+  if (readSettings(ENV_FILE).config.tunnel?.provider === 'off') return undefined
+  const bin = tailscaleBin(), ts = bin ? tailscaleState(bin) : undefined
+  return ts?.running ? publicUrl(ts.dns, path) : undefined
+}
+
+function openTunnel() {
+  spawnSync(process.execPath, [fileURLToPath(new URL('./tunnel.ts', import.meta.url)), 'on'], { stdio: 'inherit', env: process.env })
 }
 
 function ghUser(): { login: string; id: number } | undefined {

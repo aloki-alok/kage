@@ -12,6 +12,7 @@ type ServeStatus = {
 
 const PUBLIC_PORT = 8443
 const local = (port: number) => `127.0.0.1:${port}`
+export const publicUrl = (dns: string | undefined, path: string) => dns ? `https://${dns.replace(/\.$/, '')}:${PUBLIC_PORT}${path}` : undefined
 const target = (port: number, path: string) => `http://${local(port)}${path}`
 const kageWeb = (s: ServeStatus) => Object.entries(s.Web ?? {}).find(([host]) => host.endsWith(`:${PUBLIC_PORT}`))
 const funnelled = (s: ServeStatus) => { const web = kageWeb(s); return !!web && s.AllowFunnel?.[web[0]] === true }
