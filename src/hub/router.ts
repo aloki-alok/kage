@@ -44,6 +44,7 @@ import { limitPause } from '../runtime/limit-pause.ts'
 import { findPlugin, ssmRelay } from '../runtime/ssm-relay.ts'
 import { keyProxy } from '../runtime/key-proxy.ts'
 import { askSocket } from '../runtime/hub-client.ts'
+import { trustHub } from './trust.ts'
 import { listenForSessions, restoreHolds, routeReply } from '../runtime/session-link.ts'
 import { ownerKey, readToken } from '../runtime/owner-key.ts'
 import { openStore, type Inbox } from '../runtime/store.ts'
@@ -99,12 +100,17 @@ const store = openStore(`${DIR}/kage.db`)
 const deferred = deferredApprovals(store, v => ledgers.add('card-verdicts', cardVerdictCells(v)), () => kl.denyHoldDays ?? 7)
 const answerCard = (id: string, behavior: 'allow' | 'deny', always?: true) => answerDeferred(deferred, (key, task) => { if (toSession(key, task) === 'failed') failed(task) }, id, behavior, Date.now(), always && (c => kag.alwaysAllow(c.key, c.tool, c.input)))
 const SSM_SOCK = `${DIR}/ssm.sock`, SSM_SHIM = `${CODE}/src/cli/ssm-plugin-shim`
-const ssm = ssmRelay({ path: SSM_SOCK, plugin: findPlugin(undefined, [SSM_SHIM]), trusted: key => store.relayOk(key), log })
+const ssm = ssmRelay({ path: SSM_SOCK, plugin: findPlugin(undefined, [SSM_SHIM]), trusted: key => trust.relayOk(key), log })
 const KEYS_SOCK = `${DIR}/keys.sock`
-const keys = keyProxy({ path: KEYS_SOCK, routes: config.sessionKeys ?? {}, trusted: key => store.relayOk(key), log })
+const keys = keyProxy({ path: KEYS_SOCK, routes: config.sessionKeys ?? {}, trusted: key => trust.relayOk(key), log })
 store.importState({ afk: `${DIR}/afk.json`, 'github-threads': `${DIR}/github-threads.json`, 'mail-threads': `${DIR}/mail-threads.json` })
 const ledgers = openLedgers(DIR, undefined, line => log(line), (name, cells) => { if (name === 'posted' && cells[3]) runs.posted(cells[3]) })
 const runs = runEvents(ledgers, randomUUID)
+const trustMode = () => config.trust?.mode ?? 'shadow'
+const trust = trustHub({
+  store, ledgers, mode: trustMode, teammates: () => TEAMMATES, event: detail => ledgers.event({ kind: 'trust', who: 'hub', trace: '', detail }),
+  threadStarter: async key => (await user.conversations.replies({ channel: key.split(':')[0]!, ts: key.split(':')[1]!, limit: 1 })).messages?.[0]?.user,
+})
 const placeOf = (key: string) => placeFor(k => store.conversation(k)?.place, key)
 const inbox: Inbox = { take: (source, connector, payload) => store.take(source, connector, payload, Date.now()), handled: source => limits.handled(source), has: source => store.has(source) }
 
@@ -159,8 +165,10 @@ function dropped(key: string, turn: Task[], reason: string, kind: string) {
   if (p.reply && t) sayInThread(key, t, p.reply)
   if (p.dm && !dropToldOwner.has(key)) { dropToldOwner.add(key); void owner.say(p.dm) }
 }
-const noteTrust = (key: string, t: Task) =>
-  t.need || store.noteTask(key, senderOf(t) === 'owner', key in d.saved())
+const noteTrust = (key: string, t: Task) => {
+  trust.heard(key, t)
+  if (!t.need) store.noteTask(key, senderOf(t) === 'owner', key in d.saved())
+}
 const phoneOwner = (reason: string) => callOwner(conn.call?.command, voice, reason)
 const jev = jevConfig(config.jev, secrets.jevKey)
 if (jev && 'error' in jev) log(`jev is off: ${jev.error}`)
@@ -251,7 +259,7 @@ const sdk = sdkLib ? sdkSessions({
     meetbot: meeting && { join: meeting.join }, sms: sms?.campaigns, screen: SCREEN,
     dbRead: { command: () => readCommand(kl.dbRead?.command ?? undefined, store, key.split('#side-kagelet-')[1] ?? ''), maxRows: kl.dbRead?.maxRows || 200 },
     kagelets: { list: () => kag.manager.list(Date.now()), manage: (a, ask) => kag.manager.manage(a, Date.now(), ask) }, approve,
-    event: (kind, detail) => runs.emit(key, kind, detail),
+    event: (kind, detail) => runs.emit(key, kind, detail), trust: { mode: trustMode, lines: () => store.trustLines() },
     onReport: r => kag.routes.reported(key, r), message: (to, text) => kag.routes.message(key, to, text), toManager: needs => kag.needs.add(key, key.split('#side-kagelet-')[1] ?? '', needs, Date.now()), tellKagelet: (name, text, now) => kag.tell(name, text, now),
   }),
   hasTranscript: tmux.hasTranscript, trustedNow: person => (slack.ids.trusted ?? []).includes(person),
@@ -357,11 +365,12 @@ const watcher = configWatcher({
   restartWanted: yes => updates.restartWanted(yes),
 })
 const reload = watcher.check
-listenForSessions(`${DIR}/router.sock`, d, { ownerKey: OWNER_KEY, ...replies, failed, health: () => health.lines(Date.now()), schedules: jobs, tell: commands.tell, say: commands.say, relay: commands.relay, reload, paused: () => limits.paused(), limitCounts: () => limits.counts,
+listenForSessions(`${DIR}/router.sock`, d, { ownerKey: OWNER_KEY, ...replies, failed, health: () => health.lines(Date.now()), schedules: jobs, tell: commands.tell, say: commands.say, relay: commands.relay, trust: trust.command, reload, paused: () => limits.paused(), limitCounts: () => limits.counts,
   end: (key, cut) => stopThread(key, cut), kagelet: (action, name) => action === 'unhold' ? Promise.resolve(ownerLines.holdsLifted(name, deferred.unhold(name, Date.now()))) : kag.manager.manage({ action, name }, Date.now()),
   quiesce: () => { const now = Date.now(); limits.drain(now); return d.unquiet(now).filter(u => u.why !== 'just active' && u.why !== 'open in a terminal') }, callCode: voice?.issueCode })
 
 await slack.start()
+void trust.backfill().catch(e => log('trust backfill failed', e))
 try { for (const f of sweepKeptCopies(ENV_FILE)) log(`deleted ${f}, 7 days after it was kept`) } catch (e) { log(`could not sweep old settings files: ${e}`) }
 void tidyPeople(ENV_FILE, email => user.users.lookupByEmail({ email }).then(r => r.user?.id)).then(done => { if (done) { log(`config.json now lists teammates in one list, ${done.moved.length} email(s) moved onto Slack users; old file kept as ${done.backup}`); void owner.say(ownerLines.peopleTidied(done.backup, done.moved, done.unchecked)) } }).catch(e => log(`could not tidy config.json: ${e}`))
 startupNotes({ dir: DIR, code: CODE, version: VERSION, envFile: ENV_FILE, store, say: owner.say, tokens: { user: secrets.slack?.user, bot: secrets.slack?.bot } })

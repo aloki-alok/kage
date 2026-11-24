@@ -46,3 +46,9 @@ export function receiptLine(steps: string[][]): string | undefined {
   const rows = steps.map(([, who = '', kind = '', reach = '', line = '']) => `• <@${who}> ${oneLine(kind)} ${oneLine(reach).slice(0, 80)} (line ${oneLine(line)})`)
   return [`*Steps Kage took on its own (${steps.length})*`, ...rows, 'Each went ahead because of the line named. `kage trust revoke <id>` takes one back.'].join('\n')
 }
+
+export function trustTable(lines: TrustLine[], proposedOnly: boolean): string {
+  const shown = lines.filter(l => proposedOnly ? l.state === 'proposed' : l.state !== 'revoked')
+  if (!shown.length) return proposedOnly ? '(no proposed lines)' : '(no lines)'
+  return shown.map(l => [l.id, l.who, l.kind, l.reach, l.once ? `${l.answer} once` : l.answer, l.state, l.at.slice(0, 10)].map((c, i) => c.padEnd([5, 12, 12, 24, 9, 9, 0][i]!)).join(' ').trimEnd()).join('\n')
+}

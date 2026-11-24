@@ -1,6 +1,6 @@
 import { describe, test } from 'node:test'
 import assert from 'node:assert/strict'
-import { answerLines, decide, isLearnable, openTypedAsks, ownerWords, receiptLine, type TrustLine } from '../trust.ts'
+import { answerLines, decide, isLearnable, openTypedAsks, ownerWords, receiptLine, trustTable, type TrustLine } from '../trust.ts'
 
 const line = (o: Partial<TrustLine> = {}): TrustLine => ({ id: 'T1', who: 'UTEAM0001', kind: 'prod-read', reach: 'db.example.test', answer: 'yes', once: false, link: 'https://x/p', at: '2026-11-25T00:00:00.000Z', state: 'live', ...o })
 const ask = { who: 'UTEAM0001', kind: 'prod-read', reach: 'db.example.test' }
@@ -69,5 +69,18 @@ describe('the daily receipt', () => {
     const text = receiptLine([['C1:5.5', 'UTEAM0001', 'prod-read', 'db.example.test', 'T1']])!
     assert.match(text, /Steps Kage took on its own \(1\)/)
     assert.match(text, /<@UTEAM0001>.*prod-read.*db\.example\.test.*T1/)
+  })
+})
+
+describe('kage trust list', () => {
+  test('prints one row per line, hides revoked ones, and --proposed keeps only proposals', () => {
+    const lines = [line(), line({ id: 'T2', state: 'proposed', who: 'UTEAM0002' }), line({ id: 'T3', state: 'revoked' }), line({ id: 'T4', answer: 'no', once: true })]
+    const all = trustTable(lines, false).split('\n')
+    assert.equal(all.length, 3)
+    assert.match(all[0]!, /^T1\s+UTEAM0001\s+prod-read\s+db\.example\.test\s+yes\s+live\s+2026-11-25/)
+    assert.match(all[2]!, /^T4\s.*\sno once\s+live/)
+    assert.deepEqual(trustTable(lines, true).split('\n').map(r => r.split(/\s+/)[0]), ['T2'])
+    assert.equal(trustTable([], false), '(no lines)')
+    assert.equal(trustTable([line()], true), '(no proposed lines)')
   })
 })
