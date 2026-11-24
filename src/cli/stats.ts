@@ -13,4 +13,4 @@ const l = openLedgers(DIR)
 const events = Array.from({ length: days + 1 }, (_, i) => new Date(now - i * 86_400_000).toISOString().slice(0, 10)).flatMap(d => l.events(d))
 let boots: number[] = []
 try { boots = readFileSync(`${DIR}/boots`, 'utf8').split('\n').map(x => Number(x.split(/\s/)[0]) * 1000).filter(t => t > 0) } catch {}
-for (const line of statsLines({ costs: costRows(l.text('costs')), events, boots, days, now })) console.log(line)
+for (const line of statsLines({ costs: costRows(l.text('costs')), events, boots, days, now, reports: l.text('issue-reports') })) console.log(line)
