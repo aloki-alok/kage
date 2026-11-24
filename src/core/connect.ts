@@ -35,8 +35,7 @@ export function connectorStep(name: ConnectorName, s: ConnectorState): string {
   if (s.state === 'on') return ''
   if (s.state === 'off') return `run kage connect ${name} to turn it back on`
   if (WALKED.includes(name)) return `run kage connect ${name}`
-  const secret = s.missing.every(k => !k.startsWith('connectors.'))
-  return `needs ${and(s.missing)}${secret ? ' in secrets.json' : ': kage set <key> <value>'} (docs/settings.md, "${DOCS[name]}")`
+  return `needs ${and(s.missing)}: run kage connect ${name} in a terminal to be asked (docs/settings.md, "${DOCS[name]}")`
 }
 
 export const connectLines = (states: Record<ConnectorName, ConnectorState>) =>
@@ -52,3 +51,34 @@ export const OFF_NOTES: Partial<Record<ConnectorName, string>> = {
 
 export const halfSetLines = (states: Record<ConnectorName, ConnectorState>): Line[] =>
   Object.entries(states).flatMap(([name, s]) => s.state === 'unset' && s.partial ? [{ kind: 'fail' as const, text: `${name} is half set up: ${connectorStep(name as ConnectorName, s)}` }] : [])
+
+export type Ask = { key: string; question: string; kind: 'plain' | 'secret' | 'made'; show?: boolean; choices?: string[]; check?: (value: string) => string | undefined }
+
+const e164 = (v: string) => /^\+[1-9]\d{6,14}$/.test(v) ? undefined : 'Type the number in E.164: a plus, the country code and the number, like +14155550100.'
+const ASKS: Record<string, Omit<Ask, 'key'>[]> = {
+  'connectors.email.address': [{ kind: 'plain', question: 'Which address do people write to, to reach Kage?' }],
+  'connectors.email.queue': [{ kind: 'plain', question: "The SQS queue URL that receives that address's mail:" }],
+  'connectors.email.ownerEmail': [{ kind: 'plain', question: 'Your own email address (Kage replies only to its domain):' }],
+  voiceToken: [{ kind: 'made', show: true, question: 'the voice agent sends it as Authorization: Bearer <token>' }],
+  meetingToken: [{ kind: 'made', show: true, question: 'post each transcript with Authorization: Bearer <token>' }],
+  'waha.WAHA_API_KEY': [{ kind: 'made', question: 'the WhatsApp bridge API key, written to its container at each start' }],
+  'waha.WHATSAPP_HOOK_HMAC_KEY': [{ kind: 'made', question: 'the key that signs what the WhatsApp bridge posts to Kage' }],
+  'connectors.sms.from': [{ kind: 'plain', question: 'The number Kage texts from, like +14155550100:', check: e164 }],
+  'connectors.sms.publicUrl': [{ kind: 'plain', question: 'The public URL that reaches Kage for texts, ending in /sms:', check: v => /^https:\/\/\S+\/sms$/.test(v) ? undefined : 'Type an https URL that ends in /sms.' }],
+  'connectors.sms.accountSid': [{ kind: 'plain', question: 'Your Twilio account SID (it starts with AC):' }],
+  twilioAuthToken: [{ kind: 'secret', question: 'Your Twilio auth token:' }],
+  'connectors.sms.telnyxPublicKey': [{ kind: 'plain', question: 'The Telnyx public key that signs its webhooks (Keys and Credentials):' }],
+  telnyxApiKey: [{ kind: 'secret', question: 'Your Telnyx API key:' }],
+}
+const TOGETHER: Record<string, string[]> = { 'waha.WAHA_API_KEY': ['waha.WHATSAPP_HOOK_HMAC_KEY'] }
+
+export const connectAsks = (missing: string[]): Ask[] =>
+  [...new Set(missing.flatMap(k => [k, ...TOGETHER[k] ?? []]))].flatMap(key => (ASKS[key] ?? []).map(a => ({ key, ...a })))
+
+const oneOf = (choices: string[]) => (v: string) => choices.includes(v) ? undefined : `Type ${choices.join(' or ')}.`
+
+export function choiceAsk(name: ConnectorName, config: Config): Ask | undefined {
+  if (name !== 'sms' || config.connectors?.sms?.provider) return undefined
+  const choices = ['telnyx', 'twilio']
+  return { key: 'connectors.sms.provider', kind: 'plain', choices, question: `Which SMS provider sends Kage's texts (${choices.join(' or ')})?`, check: oneOf(choices) }
+}
