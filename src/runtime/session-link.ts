@@ -171,6 +171,7 @@ function say({ o }: Link, c: Conn, said: string, at: { channel?: unknown; thread
 function away({ o }: Link, c: Conn, m: { back?: unknown; until?: unknown; minutes?: unknown; note?: unknown }) {
   const reply = (r: { text: string } | { refused: string }) => answer(c, 'away', r)
   if (!o.away) return reply({ refused: 'AFK mode is off here (afk.on is false)' })
+  if (m.back !== undefined && m.back !== true) return reply({ refused: 'back is true or left out' })
   const command = m.back === true ? { kind: 'back' as const } : awayCommand({
     ...typeof m.until === 'string' && { until: m.until }, ...typeof m.minutes === 'number' && { minutes: m.minutes }, ...typeof m.note === 'string' && { note: m.note },
   })

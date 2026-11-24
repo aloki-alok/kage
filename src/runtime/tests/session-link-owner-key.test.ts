@@ -108,3 +108,11 @@ test("an owner thread's read token answers kage status and the board, and is ref
   assert.deepEqual([...h.acted].sort(), ['board', 'health'])
   assert.match((await h.ask({ type: 'board', readToken: linkToken(KEY, 'A') })).refused ?? '', /owner's threads/)
 })
+
+test('away from the owner refuses a back that is not true, and a bad time, before AFK changes', async t => {
+  const h = hub(t)
+  await h.listening()
+  assert.deepEqual(await h.ask({ type: 'away', back: 'yes', ownerKey: KEY }), { type: 'away', refused: 'back is true or left out' })
+  assert.deepEqual(await h.ask({ type: 'away', until: '25:00', ownerKey: KEY }), { type: 'away', refused: 'until must be a 24-hour time like 18:30' })
+  assert.ok(!h.acted.includes('away'))
+})
