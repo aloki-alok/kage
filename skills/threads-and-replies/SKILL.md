@@ -24,6 +24,7 @@ Rules that hold for any owner's Kage. Each rule has its why on the same line.
 4. When the work waits on a teammate, set `waiting_on` to their Slack id and ask them in the thread. The owner does not need to relay it, and their waiting list stays theirs.
 5. If you cannot name who must answer, set `waiting_on` to the owner. A lost ask costs more than one extra line on their list.
 6. Ask for a one-way yes once, and only after every other gate on it has passed, such as review and checks. An early ask gets skipped, the next task closes it, and it comes back as a repeat. If the owner's next task skips an open ask, do not ask again. Name it once in the final report.
+7. To read a database for a teammate, call `db_read` with a route name from its description. Never ask the owner to open a relay for a read. If `db_read` refuses and says to ask, post one `reply` with `waiting_on` set to owner, `kind` set to `prod-read` and `reach` set to that route name. The owner's plain yes saves it for that teammate, and the next read goes through. The route names come from the owner's settings, so use only the ones the tool lists. A write, a shell or a deploy is a different kind and always asks.
 
 ## Who a reply is signed as
 

@@ -106,6 +106,30 @@ The hub then runs the real `session-manager-plugin` outside the sandbox with exa
 
 A thread that a teammate asked for work (a schedule a teammate set up, for example) is not owner-only, so it gets no token. To let one such thread use the relay, run `kage relay allow <place or key>` in your own terminal. `kage relay deny <same>` removes it and cuts its live token, and `kage relay list` shows the keys. The list holds thread keys. A listed thread's scheduled jobs, which run in their own job lanes, use the relay too. A kagelet, any other lane of the thread and every non-Slack session stay refused. The hub checks the list again on every connection. A session that is already running keeps its old env: it gets the token at its next start.
 
+## Database reads by named route
+
+A read of your database needs no SSM relay. Name each database in `config.json` under `dbRead.routes`, with your read command as its value:
+
+```json
+{ "dbRead": { "routes": { "prod": "/path/to/prod-read" }, "maxRows": 200 } }
+```
+
+`dbRead.routes` names each route (lowercase letters, digits and `-`, up to 31 characters) and the command that reads that database. Each command is like `kagelets.dbRead.command`: it runs one query and prints the rows, with the query as its last argument. With a route named, every Slack session gets `db_read` with a `db` argument. The session sees the route names and never the commands. Only you set routes: a session's change needs your yes on a card. `dbRead.maxRows` (default `200`) is the most rows one routed read returns.
+
+Name only a command that connects as a read-only database role. The role is the wall: Kage refuses anything but one `SELECT` or `WITH ... SELECT` statement, caps the rows and stops a read after 30 s, but it does not read functions, so a role that can write can still write.
+
+Who reads a route:
+
+| Asker | Reads |
+|---|---|
+| You, in any thread | Every route. |
+| A teammate, with `trust.mode` set to `on` | A route only when you said yes to it for that teammate (a live `prod-read` line whose reach is the route name). With no line, `db_read` refuses and tells the session to post an ask. Your plain yes saves the line, and the next read goes through. `kage trust revoke <id>` takes it back. |
+| A teammate, with `trust.mode` at `shadow` or `off` | Nothing, unless you answer in the thread: a read runs only in a turn that you started. Shadow logs what `on` would have done. |
+| A meeting, a GitHub tag from outside the repo, any listed agent, a text, a call, an email, a WhatsApp chat | Nothing. |
+| A kagelet | Nothing here. It reads through `kagelets.dbRead.command` and its own grant. |
+
+Each read writes one `db-reads` row: who (your own thread shows `owner`), the route, a hash of the query, the row count, the time and the outcome. It never holds the query or the rows. A read that a line covered also writes a `trust-steps` row, which the daily receipt lists. A failed read shows the session only the database's own `ERROR`, `DETAIL`, `HINT` and `LINE` lines, so a connection error never leaks a host.
+
 ## Keys that stay out of sessions
 
 A key in `session.env` reaches every session as a plain environment variable, so a session can print it. To keep a key out, name it in `config.json` under `sessionKeys` and keep its value in `session.env`, then run `kage restart`. The hub holds the value in memory and removes it from the environment before any session starts.
