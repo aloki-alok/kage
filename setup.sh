@@ -46,6 +46,7 @@ Run|config set|<key> <value>|Change one setting in config.json|kage config set h
 Run|config reload||Read the settings files again with no restart: who may tag Kage changes at once|kage config reload
 Run|status||One look at the hub (version, uptime, spend, starts by cause), every session and every kagelet|kage status
 Run|logs|[lines, -f or kagelet]|Follow the hub log live, with the steps of every session (tools, replies), like tail -f. A number prints that many lines and exits. With a kagelet: its last runs, newest first, with cost, ok or failed, and its report|kage logs 200
+Set up|completion|<bash, zsh or fish>|Print the tab completion script for your shell. Add eval "$(kage completion zsh)" to ~/.zshrc, or the same for bash; for fish, kage completion fish > ~/.config/fish/completions/kage.fish|kage completion zsh
 Run|run||Run the hub in the foreground for a supervisor other than launchd or systemd (Docker: --init); output goes to kage logs|kage run
 Run|cost|[days]|What each thread spent, most first, and the models it ran on (1 day unless you say)|kage cost 7
 Run|telemetry|[show]|What this Kage sends and where: on or off, the endpoint, and the next batch with show|kage telemetry show
@@ -87,6 +88,30 @@ list|person list'
 
 help_for() {
   if [[ -n ${2:-} && $2 != -* ]] && printf '%s\n' "$COMMANDS" | awk -F'|' -v n="$1 $2" '$2==n {f=1} END {exit !f}'; then cmd_help "$1 $2"; else cmd_help "$1"; fi
+}
+
+cmd_completion() {
+  local top nouns n
+  top="help $(printf '%s\n' "$COMMANDS" | awk -F'|' '{split($2, w, " "); print w[1]}' | awk '!seen[$0]++' | tr '\n' ' ' | sed 's/ $//')"
+  nouns="$(printf '%s\n' "$COMMANDS" | awk -F'|' '{split($2, w, " "); if (w[2] != "") print w[1]}' | awk '!seen[$0]++')"
+  verbs_of() { printf '%s\n' "$COMMANDS" | awk -F'|' -v n="$1" '{split($2, w, " "); if (w[1] == n && w[2] != "") { printf "%s%s", s, w[2]; s = " " }}'; }
+  case "${1:-}" in
+    bash|zsh)
+      [[ $1 == zsh ]] && echo 'autoload -U +X bashcompinit && bashcompinit'
+      echo '_kage() {'
+      echo '  local cur=${COMP_WORDS[COMP_CWORD]}'
+      printf '  if ((COMP_CWORD == 1)); then COMPREPLY=($(compgen -W "%s" -- "$cur")); return; fi\n' "$top"
+      echo '  ((COMP_CWORD == 2)) || return'
+      echo '  case ${COMP_WORDS[1]} in'
+      for n in $nouns; do printf '    %s) COMPREPLY=($(compgen -W "%s" -- "$cur")) ;;\n' "$n" "$(verbs_of "$n")"; done
+      echo '  esac'
+      echo '}'
+      echo 'complete -F _kage kage' ;;
+    fish)
+      printf 'complete -c kage -f -n __fish_use_subcommand -a "%s"\n' "$top"
+      for n in $nouns; do printf 'complete -c kage -f -n "__fish_seen_subcommand_from %s" -a "%s"\n' "$n" "$(verbs_of "$n")"; done ;;
+    *) usage "kage completion takes bash, zsh or fish." ;;
+  esac
 }
 
 cmd_help() {
@@ -366,6 +391,7 @@ case "${1:-}" in
     esac ;;
   tunnel) node src/cli/tunnel.ts "${2:-on}" ;;
   login) cmd_claude_login ;;
+  completion) cmd_completion "${2:-}" ;;
   doctor) node src/cli/doctor/run.ts "${@:2}" ;;
   slack) case "${2:-}" in
       app) cmd_app "${3:-}" ;;
