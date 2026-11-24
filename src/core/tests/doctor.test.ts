@@ -1,6 +1,6 @@
 import { test, describe } from 'node:test'
 import assert from 'node:assert/strict'
-import { applyFixes, stillFixed, doctorBug, doctorNews, ownerChannelLine, autoUpdateNote, bootNotes, chromeLine, jevLine, keyLines, lingerLine, nodeOk, pathNote, render, report, serviceLines, sessionLines, slackLines, pluginLine, sandboxLine, tokenLines, toolsLine, whatsappLine , type Line } from '../doctor.ts'
+import { runnerLines, applyFixes, stillFixed, doctorBug, doctorNews, ownerChannelLine, autoUpdateNote, bootNotes, chromeLine, jevLine, keyLines, lingerLine, nodeOk, pathNote, render, report, serviceLines, sessionLines, slackLines, pluginLine, sandboxLine, tokenLines, toolsLine, whatsappLine , type Line } from '../doctor.ts'
 
 const text = (ls: { kind: string; text: string }[]) => ls.map(l => `${l.kind}:${l.text}`)
 
@@ -255,5 +255,19 @@ describe('fixes the hub applies by itself (#153)', () => {
   })
   test('a fixed line does not fail the report', () => {
     assert.equal(report([{ kind: 'fixed', text: 'x' }], 'kage').ok, true)
+  })
+})
+
+describe('which runner and model each job uses (#283)', () => {
+  test('counts jobs and kagelets per model, most first, with the default named', () => {
+    const lines = runnerLines({ opencode: false, jobs: [{ model: 'haiku' }, {}, { model: 'haiku' }, {}, {}], kagelets: [{ model: 'sonnet' }] })
+    assert.deepEqual(lines.map(render), [
+      'ok    runners: claude (every job runs on it). opencode is not installed',
+      'ok    scheduled jobs by model: default 3, haiku 2',
+      'ok    kagelets by model: sonnet 1',
+    ])
+  })
+  test('says when opencode is installed, and leaves out a kind with no jobs', () => {
+    assert.deepEqual(runnerLines({ opencode: true, jobs: [], kagelets: [] }).map(render), ['ok    runners: claude (every job runs on it). opencode is installed, and no job uses it yet'])
   })
 })
