@@ -31,14 +31,14 @@ describe('decisions', () => {
     assert.equal(toolsLine({ ...f, tmuxNeeded: true }).kind, 'fail')
   })
   test('no settings is one FAIL that names the folder', () => {
-    assert.deepEqual(text(tokenLines({ hasSettings: false, dir: '/c', mode: undefined, slack: {} })), ['fail:tokens: no settings in /c. Run kage app, then kage save'])
+    assert.deepEqual(text(tokenLines({ hasSettings: false, dir: '/c', mode: undefined, slack: {} })), ['fail:tokens: no settings in /c. Run kage slack app, then kage slack save'])
   })
   test('tokens: a loose file mode and a rejected token each fail', () => {
     const ls = tokenLines({ hasSettings: true, dir: '/c', file: '/c/secrets.json', mode: '644', slack: { app: true, user: false, bot: true } })
     assert.deepEqual(text(ls), [
       'fail:token file: run chmod 600 /c/secrets.json',
       'ok:SLACK_APP_TOKEN accepted by Slack',
-      'fail:SLACK_USER_TOKEN: missing or rejected. Run kage save again',
+      'fail:SLACK_USER_TOKEN: missing or rejected. Run kage slack save again',
       'ok:SLACK_BOT_TOKEN accepted by Slack',
     ])
   })
@@ -159,7 +159,7 @@ describe('decisions', () => {
     assert.match(on.text, /approval cards go to your WhatsApp/)
     const off = ownerChannelLine('whatsapp', false)!
     assert.equal(off.kind, 'fail')
-    assert.match(off.text, /kage set owner.channel slack/)
+    assert.match(off.text, /kage config set owner.channel slack/)
   })
 })
 

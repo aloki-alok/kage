@@ -8,7 +8,7 @@ export const reload = () => askHub<Reloaded>({ type: 'reload' }).catch((e: Error
 })
 
 export function said(r: Reloaded): string[] {
-  if ('refused' in r) return [`Not reloaded: ${r.refused}. Kage keeps the settings it had. Fix the line, then run kage reload again.`]
+  if ('refused' in r) return [`Not reloaded: ${r.refused}. Kage keeps the settings it had. Fix the line, then run kage config reload again.`]
   return [
     ...(r.changed.length ? r.changed.map(c => `Reloaded ${c}`) : ['Checked. No people list changed.']),
     ...(r.restart.length ? [`Kage restarts by itself once every session is quiet, to apply: ${r.restart.join(', ')}`] : []),

@@ -129,7 +129,7 @@ export function readSettings(envFile: string): { config: Config; secrets: Secret
   return { config: parse(Config, f.config), secrets: lazySecrets(file, secretOutput), failed: () => failedSecrets(file, secretOutput) }
 }
 
-const sessionRefusal = () => { if (process.env.KAGE_SESSION || process.env.KAGE_THREAD) throw new Error("not changed: settings change only from the owner's own terminal. Say what you want changed, and the owner runs kage set.") }
+const sessionRefusal = () => { if (process.env.KAGE_SESSION || process.env.KAGE_THREAD) throw new Error("not changed: settings change only from the owner's own terminal. Say what you want changed, and the owner runs kage config set.") }
 export function updateConfig(envFile: string, change: (c: Config) => Config) {
   sessionRefusal()
   importLegacy(envFile)

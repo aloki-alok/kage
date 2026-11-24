@@ -30,18 +30,18 @@ export function settingsOverview(docs: SettingDoc[], current: (key: string) => u
     const k = Math.max(...rows.map(r => r.key.length)), w = Math.max(...rows.map(r => r.value.length))
     lines.push(section, ...rows.map(r => `  ${r.key.padEnd(k)}  ${r.value.padEnd(w)}  ${r.what}`), '')
   }
-  return [...lines, 'kage set <key> shows one in full. Every setting: docs/settings.md']
+  return [...lines, 'kage config get <key> shows one in full. Every setting: docs/settings.md']
 }
 
 export function keyHelp(docs: SettingDoc[], key: string, current: unknown): string[] {
   const doc = docs.find(d => d.key === key)
   if (!doc) {
     const near = suggest(key, docs.map(d => d.key))
-    return [`No setting ${key}. ${near ? `Did you mean ${near}?` : 'kage set lists them all.'}`]
+    return [`No setting ${key}. ${near ? `Did you mean ${near}?` : 'kage config list lists them all.'}`]
   }
   return [
     current === undefined ? `${key} is not set, so it is ${doc.default}` : `${key} = ${shown(current)} (default ${doc.default})`,
     doc.effect,
-    `Change it: kage set ${key} <value>`,
+    `Change it: kage config set ${key} <value>`,
   ]
 }

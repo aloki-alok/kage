@@ -19,9 +19,9 @@ const other = args.find(a => a.startsWith('--') && a !== '--now' && !TARGET_FLAG
 if (other) { console.error(`kage stop <thread> takes --now, not ${other}. Bare kage stop ${other} stops the whole hub.`); process.exit(1) }
 const { key, place } = await pickThread(name, false)
 const r = await askHub<{ text?: string; refused?: string }>({ type: 'end', key, cut }).catch((e: Error) => {
-  console.error(errVoice.says(e.message === 'down' ? "I'm not running." : "I'm not answering. If I run older code, kage restart picks up kage stop <thread>."))
+  console.error(errVoice.says(e.message === 'down' ? "I'm not running." : "I'm not answering. If I run older code, kage restart picks up kage thread stop <thread>."))
   return process.exit(1)
 })
 if (typeof r.refused === 'string') { console.error(refusedLine(r.refused, inTerminal)); process.exit(1) }
-if (!r.text) { console.error('The hub runs older code: kage restart picks up kage stop <thread>.'); process.exit(1) }
+if (!r.text) { console.error('The hub runs older code: kage restart picks up kage thread stop <thread>.'); process.exit(1) }
 console.log(`${place}: ${r.text}`)

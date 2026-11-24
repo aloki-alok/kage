@@ -45,12 +45,12 @@ export const toolsLine = (f: { nodeVersion: string; claude: boolean; tmuxNeeded:
   nodeOk(f.nodeVersion) && f.claude && (!f.tmuxNeeded || f.tmux) ? ok('tools: node 22.18+, claude') : fail('tools: run kage check for the missing one')
 
 export function tokenLines(f: { hasSettings: boolean; dir: string; file?: string; mode?: string; link?: boolean; slack: { app?: boolean; user?: boolean; bot?: boolean }; failed?: SecretCommand[] }): Line[] {
-  if (!f.hasSettings) return [fail(`tokens: no settings in ${f.dir}. Run kage app, then kage save`)]
+  if (!f.hasSettings) return [fail(`tokens: no settings in ${f.dir}. Run kage slack app, then kage slack save`)]
   const failed = f.failed ?? []
   const names = [['app', 'SLACK_APP_TOKEN'], ['user', 'SLACK_USER_TOKEN'], ['bot', 'SLACK_BOT_TOKEN']] as const
   return [
     f.mode === '600' ? ok('token file is private (600)') : fail(`token file: run chmod 600 ${f.file}`, f.link ? undefined : [['chmod', '600', f.file!]]),
-    ...names.filter(([k]) => !failed.some(c => c.path === `slack.${k}`)).map(([k, n]) => f.slack[k] ? ok(`${n} accepted by Slack`) : fail(`${n}: missing or rejected. Run kage save again`)),
+    ...names.filter(([k]) => !failed.some(c => c.path === `slack.${k}`)).map(([k, n]) => f.slack[k] ? ok(`${n} accepted by Slack`) : fail(`${n}: missing or rejected. Run kage slack save again`)),
     ...failed.map(c => fail(`secrets.json ${c.path}: its command failed or printed nothing. Run it in a terminal to see why: ${c.command}`)),
   ]
 }
@@ -62,8 +62,8 @@ export function jevLine(r: { status: number; out: string }): Line | undefined {
 
 export function sandboxLine(f: { on: boolean; platform: string; sandboxExec: boolean; bwrap: boolean; socat: boolean }): Line {
   if (!f.on) return ok('shell sandbox off (harness.sandbox)')
-  if (f.platform === 'darwin') return f.sandboxExec ? ok('shell sandbox available') : fail("shell sandbox: /usr/bin/sandbox-exec is missing, so a teammate's thread cannot start. Restore macOS's sandbox-exec, or run: kage set harness.sandbox false")
-  return f.bwrap && f.socat ? ok('shell sandbox available') : fail("shell sandbox: a teammate's thread cannot start without bubblewrap and socat. Run: sudo apt install bubblewrap socat, or: kage set harness.sandbox false")
+  if (f.platform === 'darwin') return f.sandboxExec ? ok('shell sandbox available') : fail("shell sandbox: /usr/bin/sandbox-exec is missing, so a teammate's thread cannot start. Restore macOS's sandbox-exec, or run: kage config set harness.sandbox false")
+  return f.bwrap && f.socat ? ok('shell sandbox available') : fail("shell sandbox: a teammate's thread cannot start without bubblewrap and socat. Run: sudo apt install bubblewrap socat, or: kage config set harness.sandbox false")
 }
 
 export const pluginLine = (onPath: boolean): Line => onPath ? ok('session-manager-plugin found: ssh to SSM hosts works in owner threads')
@@ -118,7 +118,7 @@ export function autoUpdateNote(f: { off: boolean; git: boolean; branch?: string;
 }
 
 export const chromeLine = (seenMs: number, nowSec: number, staleMs: number, runs?: string, disk?: string): Line =>
-  nowSec * 1000 - seenMs >= staleMs ? fail('Chrome extension not connected: run kage connect browser for the steps to load the extension folder in chrome://extensions')
+  nowSec * 1000 - seenMs >= staleMs ? fail('Chrome extension not connected: run kage connector on browser for the steps to load the extension folder in chrome://extensions')
     : disk && runs !== disk ? fail(`Chrome extension runs ${runs ? `v${runs}` : 'an older version'} but its folder has v${disk}: click reload on Kage in chrome://extensions`)
     : ok(`Chrome extension connected${runs ? ` (v${runs})` : ''}`)
 
@@ -128,7 +128,7 @@ export function ownerChannelLine(channel: 'slack' | 'whatsapp' | undefined, what
   if (channel !== 'whatsapp') return undefined
   return whatsappOn
     ? note("Kage's messages and approval cards go to your WhatsApp too: answer a card there with yes or no and its code. Your commands stay in the Slack DM.")
-    : fail('owner.channel is whatsapp, but the WhatsApp connector is off, so every message goes to Slack. Turn WhatsApp on (docs/settings.md, "WhatsApp"), or run: kage set owner.channel slack')
+    : fail('owner.channel is whatsapp, but the WhatsApp connector is off, so every message goes to Slack. Turn WhatsApp on (docs/settings.md, "WhatsApp"), or run: kage config set owner.channel slack')
 }
 export function whatsappLine(s: BridgeSeen, at: { url: string; qr: string }): Line {
   const p = bridgeProblem(s, at)

@@ -36,7 +36,7 @@ export function ownerTools(c: ToolContext): KageTool[] {
       const tier = settingTier(a.key)
       if (tier === 'never') return { isError: true, text: `refused: ${a.key} is not a setting a session may change` }
       if (tier === 'power') {
-        if (!o.approve) return { isError: true, text: `refused: ${a.key} needs the owner's yes on a card, and this session cannot show one. The owner runs kage set in their own terminal.` }
+        if (!o.approve) return { isError: true, text: `refused: ${a.key} needs the owner's yes on a card, and this session cannot show one. The owner runs kage config set in their own terminal.` }
         if (!await o.approve('set_setting', `Change ${a.key} to ${JSON.stringify(a.value)}. This setting grants reach or runs code, so it needs your yes.`, { key: a.key, value: a.value })) return { isError: true, text: `The owner said no. ${a.key} is unchanged.` }
       }
       try { o.settings!.set(a.key, a.value) } catch (e) { return { isError: true, text: `not changed: ${(e as Error).message}` } }

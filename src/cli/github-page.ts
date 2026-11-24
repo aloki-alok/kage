@@ -57,7 +57,7 @@ function frame(o: { title: string; say: string; shadow: string; lines: Line[]; c
 <header><div class="wrap"><span class="cast mark" aria-label="kage">kage<span class="shadow" aria-hidden="true">kage</span></span><span class="where">GitHub setup, on this machine</span></div></header>
 <main><div class="wrap"><p class="say"><span class="cast">${o.say}<span class="shadow" id="sh" aria-hidden="true">${esc(o.shadow)}</span></span></p>
 <ul class="work" aria-live="polite">${lines}</ul>${o.cta ?? ''}</div></main>
-<footer><div class="wrap"><span>kage connect github</span><span>${esc(o.foot)}</span></div></footer>
+<footer><div class="wrap"><span>kage connector on github</span><span>${esc(o.foot)}</span></div></footer>
 <script>${FIT}${o.script ?? ''}</script></body></html>`
 }
 
@@ -116,6 +116,6 @@ export function donePage(o: { slug: string; url: string; hook: string; account: 
 export function failPage(o: { title: string; why: string }): string {
   return frame({
     title: o.title, say: esc(o.title), shadow: o.title, foot: 'This page runs on your machine.',
-    lines: [{ text: o.why, needs: true }, { text: 'Run kage connect github again in your terminal.' }],
+    lines: [{ text: o.why, needs: true }, { text: 'Run kage connector on github again in your terminal.' }],
   })
 }

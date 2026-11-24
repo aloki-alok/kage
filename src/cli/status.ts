@@ -52,4 +52,4 @@ if (kagelets.length) {
     console.log(`  ${tone === 'you' ? voice.needsYou(text) : tone === 'quiet' ? voice.dim(`${MARK.quiet} ${text}`) : `${voice.work(MARK.working)} ${text}`}`)
   }
 }
-console.log(`\n${voice.dim('Watch me live:')} ${voice.command('kage top')}  ${voice.dim('Spend:')} ${voice.command('kage cost 7')}  ${voice.dim('Problems:')} ${voice.command('kage doctor')}  ${voice.dim('Connectors:')} ${voice.command('kage connect')}`)
+console.log(`\n${voice.dim('Watch me live:')} ${voice.command('kage top')}  ${voice.dim('Spend:')} ${voice.command('kage cost 7')}  ${voice.dim('Problems:')} ${voice.command('kage doctor')}  ${voice.dim('Connectors:')} ${voice.command('kage connector list')}`)

@@ -23,7 +23,7 @@ export function addBrowserLines(f: { names: string[]; ext: string; token: string
     f.opened ? '1. On the Extensions page that just opened, turn on Developer mode.' : '1. In Chrome, open chrome://extensions and turn on Developer mode.',
     f.revealed ? '2. Drag the highlighted extension folder from the Finder window onto the Extensions page.' : `2. Click Load unpacked, go to ${f.ext.replace(/\/[^/]+\/?$/, '')}, click the extension folder once, then click Select.`,
     ...(f.showToken || !paired ? ['', `Token: ${f.token}`] : []),
-    `Sites Kage must never read: run kage set connectors.browser.block '["bank.example.com","1password.com"]'`,
+    `Sites Kage must never read: run kage config set connectors.browser.block '["bank.example.com","1password.com"]'`,
   ]
 }
 
@@ -33,7 +33,7 @@ export const addBrowserPlan = (f: { hasToken: boolean; reinstall: boolean }) =>
 export const addBrowserAgainLines = () => [
   'Kage in Chrome is already set up, so nothing changed. Run kage doctor to see whether it is connected.',
   'If it is not: in chrome://extensions, turn Kage on if it is off, then click its reload arrow.',
-  'If Kage is not listed there at all, run kage connect browser --reinstall.',
+  'If Kage is not listed there at all, run kage connector on browser --reinstall.',
 ]
 
 export const hostManifest = (path: string, id: string) => ({

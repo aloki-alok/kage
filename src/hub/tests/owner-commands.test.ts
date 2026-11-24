@@ -60,12 +60,12 @@ function owner(o: { result?: string; paused?: Pause; threads?: Record<string, { 
 test('kage status lists live, waiting and held sessions, the open questions, and a pause first', () => {
   const t = owner()
   assert.equal(t.c.status(), ['*2 of 4 sessions*, 1 waiting for a slot', '• #CTEST1:1.1: quiet for 5 min', '• #CTEST2:2.2: busy', '• #CTEST3:3.3: waiting for a slot',
-    '• #CTEST4:4.4: open in your terminal (kage attach), tasks wait', '1 question waiting on you'].join('\n'))
+    '• #CTEST4:4.4: open in your terminal (kage thread attach), tasks wait', '1 question waiting on you'].join('\n'))
   t.pause({ until: 0, held: 0, draining: true })
   assert.match(t.c.status(), /^\*Stopping for a restart or a stop/)
 })
 
-test('kage tell reaches only a known Slack thread, never while paused, and says when the thread is held or the session fails', () => {
+test('kage thread send reaches only a known Slack thread, never while paused, and says when the thread is held or the session fails', () => {
   assert.deepEqual(owner().c.tell('CTEST9:9.9', 'x'), { refused: 'no thread with that key' })
   assert.deepEqual(owner().c.tell('wa:1', 'x'), { refused: 'tell works on Slack threads only for now' })
   assert.match((owner({ paused: { until: 0, held: 0, draining: true } }).c.tell('CTEST1:1.1', 'x') as { refused: string }).refused, /^Kage is stopping for a restart or a stop, so it would be lost/)

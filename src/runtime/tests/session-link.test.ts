@@ -281,7 +281,7 @@ test('a reply goes only to a conversation of its own channel: a text never reach
   assert.deepEqual(got, ['voice voice:abc hi', 'sms sms:7 open at 9'])
 })
 
-test('kage reload: the socket answers with what the hub did with the settings file', async t => {
+test('kage config reload: the socket answers with what the hub did with the settings file', async t => {
   const d = new Dispatcher<ToSession>(
     { start: () => {}, stop: () => {}, lastActivity: () => 0, busy: () => false },
     { max: 2, idleMs: 9e9, connectMs: 9e9, evictMs: 0, newId: () => 'id1' },

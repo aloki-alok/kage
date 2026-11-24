@@ -51,7 +51,7 @@ console.error(`Attached to ${place}. New tasks for it wait for you. Quit Claude 
 for (const sig of ['SIGINT', 'SIGQUIT', 'SIGHUP'] as const) process.on(sig, () => {})
 const running = () => spawnSync('pgrep', ['-f', id]).status === 0
 for (let waited = 0; running() && waited < 15_000; waited += 250) await new Promise(r => setTimeout(r, 250))
-if (running()) { console.error(`Kage's copy of ${place} is still running. Try kage attach again in a minute.`); process.exit(1) }
+if (running()) { console.error(`Kage's copy of ${place} is still running. Try kage thread attach again in a minute.`); process.exit(1) }
 claude = spawn('claude', ['--resume', id], { stdio: 'inherit', cwd: CWD })
 claude.on('exit', code => {
   const file = `${DIR}/held/${encodeURIComponent(key)}`

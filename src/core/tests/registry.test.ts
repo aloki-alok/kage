@@ -52,7 +52,7 @@ describe('the registry: people and agents', () => {
   })
 })
 
-describe('kage add', () => {
+describe('kage person add', () => {
   test('a person is added once', () => {
     assert.deepEqual(add([], person('UTEST0001')), { entries: [person('UTEST0001')], added: [person('UTEST0001')] })
     assert.deepEqual(add([person('UTEST0001')], person('UTEST0001')), { entries: [person('UTEST0001')], added: [] })
@@ -86,7 +86,7 @@ describe('kage add', () => {
   })
 })
 
-describe('kage remove', () => {
+describe('kage person rm', () => {
   const all = [person('UTEST0001'), person('UTEST0002'), agent('ATEST0001', 'UTEST0001'), agent('ATEST0002', 'ATEST0001'), agent('ATEST0003', 'UTEST0002'), agent('ATEST0009')]
   test('removing a person removes their agents, and the agents those own', () => {
     assert.deepEqual(remove(all, 'UTEST0001'), {
@@ -103,7 +103,7 @@ describe('kage remove', () => {
   })
 })
 
-describe('kage add and kage remove inside a Kage session', () => {
+describe('kage person add and kage person rm inside a Kage session', () => {
   const cli = fileURLToPath(new URL('../../cli/registry.ts', import.meta.url))
   const FILE = 'KAGE_NAME=kage\nKAGE_TEAMMATES=UTEST0001\n'
   const run = (args: string[], inKage: boolean) => {

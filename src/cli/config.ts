@@ -34,7 +34,7 @@ if (cmd === 'has') {
   try { config = readSettings(ENV_FILE).config } catch {}
   if (!key) { console.log(settingsOverview(docs, k => walk(config, k)).join('\n')); process.exit(0) }
   if (!rest.length) { const help = keyHelp(docs, key, walk(config, key)); console.log(help.join('\n')); process.exit(help.length > 1 ? 0 : 1) }
-  if (rest.length !== 1) die(`Usage: kage set ${key} <value>. A value with spaces goes in quotes, and a list is JSON.`)
+  if (rest.length !== 1) die(`Usage: kage config set ${key} <value>. A value with spaces goes in quotes, and a list is JSON.`)
   const value = rest[0]!
   let parsed: unknown = value
   try { parsed = JSON.parse(value) } catch {}

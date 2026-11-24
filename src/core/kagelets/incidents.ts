@@ -13,7 +13,7 @@ type IncidentStep =
 const FIXES: [RegExp, string][] = [
   [/max_budget|cost cap|over (its|the) cap/i, 'it hit a cost cap: raise kagelets.dailyUsd, or give it a smaller job'],
   [/sign.?in|log.?in|unauthori[sz]ed|\b401\b|expired token|oauth/i, 'a tool needs a fresh sign-in on this machine'],
-  [/missing tool|no such tool|tool .* (is )?not (available|connected)|needs? .* not connected/i, 'a tool it needs is missing: check kage schedules for a blocked: line'],
+  [/missing tool|no such tool|tool .* (is )?not (available|connected)|needs? .* not connected/i, 'a tool it needs is missing: check kage schedule list for a blocked: line'],
 ]
 export const knownFix = (words: string) => FIXES.find(([re]) => re.test(words))?.[1]
 

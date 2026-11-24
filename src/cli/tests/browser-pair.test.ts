@@ -19,7 +19,7 @@ test('the helper answers with the token and hub address from the settings file',
 })
 
 test('with Kage in Chrome off, the helper says how to turn it on', () => {
-  assert.deepEqual(ask('KAGE_NAME=kage\n'), { error: 'Kage in Chrome is off: run kage connect browser' })
+  assert.deepEqual(ask('KAGE_NAME=kage\n'), { error: 'Kage in Chrome is off: run kage connector on browser' })
 })
 
 test('a message that is not JSON gets an answer at once, not a hang', () => {

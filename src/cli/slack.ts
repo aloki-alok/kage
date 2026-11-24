@@ -23,7 +23,7 @@ const CONFIG_TOKEN_HELP = [
 ]
 
 if (cmd === 'upgrade') {
-  if (!tokens.user || !tokens.bot) die('I have no Slack tokens yet. Run kage save first.')
+  if (!tokens.user || !tokens.bot) die('I have no Slack tokens yet. Run kage slack save first.')
   const missing = await checkScopes(tokens)
   if (!missing.bot.length && !missing.user.length) { console.log(voice.says('Your Slack app already has every permission I need.')); process.exit(0) }
   const auth = await authTest(tokens.bot!)
@@ -54,5 +54,5 @@ if (cmd === 'upgrade') {
     if (!now.bot.length && !now.user.length) { stopFlicker(); console.log(voice.says('All set. I have every permission I need.')); process.exit(0) }
   }
   stopFlicker()
-  die("I still don't see them. If you reinstalled, run kage save with the new tokens, then kage doctor.")
+  die("I still don't see them. If you reinstalled, run kage slack save with the new tokens, then kage doctor.")
 } else die('Try: kage slack upgrade')

@@ -9,7 +9,7 @@ A problem with Kage itself helps every install only when it reaches the Kage rep
 
 1. Offer to file when a Kage tool or connector still fails after one retry and one other route. A failure a retry fixed is noise, not a report.
 2. Offer to file when a person says Kage got something wrong, and the cause is Kage, not the task. Wrong facts about the team or the work go to the notes, not the repo.
-3. Offer to file when a person wishes Kage could do something it cannot. Check the settings first (`kage set` with no value lists every one), because an existing setting answers the wish at once.
+3. Offer to file when a person wishes Kage could do something it cannot. Check the settings first (`kage config set` with no value lists every one), because an existing setting answers the wish at once.
 4. Never offer for an outside service that is down, a permission the owner has not granted, a setting the owner chose, or the team's own code (a failing test, a broken deploy). The repo tracks Kage, not those.
 5. Never offer on a job that runs without a person, or on a task from another agent. The tool refuses both, and the offer would reach no one who can say yes.
 6. Offer in one line, at the end of your reply, at most once per thread. If the thread already holds an offer, a yes, a no or a filing, do not offer again. A repeated offer reads as nagging.

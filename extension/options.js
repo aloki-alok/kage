@@ -4,8 +4,8 @@ const DEFAULT_HUB = 'http://127.0.0.1:8791'
 // Each state says what is wrong and the one thing that fixes it.
 const STATES = {
   connected: ['Connected', at => `Last heard from your Kage at ${new Date(at).toLocaleTimeString()}.`],
-  'no-token': ['Not connected', () => 'Run kage connect browser in a terminal. It connects this browser by itself; if it does not, run kage connect browser --show-token and paste the token.'],
-  refused: ['Wrong token', () => 'Your Kage refused this token. Run kage connect browser again. If it does not pair by itself, add --show-token and paste the new token.'],
+  'no-token': ['Not connected', () => 'Run kage connector on browser in a terminal. It connects this browser by itself; if it does not, run kage connector on browser --show-token and paste the token.'],
+  refused: ['Wrong token', () => 'Your Kage refused this token. Run kage connector on browser again. If it does not pair by itself, add --show-token and paste the new token.'],
   unreachable: ['Kage is not reachable', () => 'Start it with kage start, and check the hub address below.'],
 }
 
@@ -28,7 +28,7 @@ $('form').onsubmit = async e => {
   try { const u = new URL(hub); ok = u.protocol === 'http:' && ['127.0.0.1', 'localhost'].includes(u.hostname) } catch { ok = false }
   // The hub listens on this machine only, so any other address is a typo, or a page trying to collect the token.
   if (!ok) { $('error').textContent = 'The hub address must be on this machine: http://127.0.0.1:<port>'; return }
-  if (!/^\S{24,}$/.test(token)) { $('error').textContent = 'Paste the token from kage connect browser --show-token: 48 characters, no spaces.'; return }
+  if (!/^\S{24,}$/.test(token)) { $('error').textContent = 'Paste the token from kage connector on browser --show-token: 48 characters, no spaces.'; return }
   $('error').textContent = ''
   $('save').disabled = true
   await chrome.storage.local.set({ hub, token, status: null })

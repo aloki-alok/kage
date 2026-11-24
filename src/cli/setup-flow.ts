@@ -166,7 +166,7 @@ header()
 out(`  ${v.faint('╭')}  ${v.dim('kage setup')}`)
 if (connected(dirname(envFilePath()))) {
   done('Kage is set up and connected to Slack.')
-  out(`     ${v.command('kage save'.padEnd(13))}${v.dim('change the Slack tokens')}`)
+  out(`     ${v.command('kage slack save'.padEnd(13))}${v.dim('change the Slack tokens')}`)
   out(`     ${v.command('kage doctor'.padEnd(13))}${v.dim('check on me')}`)
   out(`     ${v.dim('To set it up again from scratch, run kage stop first.')}`)
   out()
