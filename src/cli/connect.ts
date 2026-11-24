@@ -44,11 +44,12 @@ const turned = (c: Config): Config => {
   return { ...c, connectors: { ...c.connectors, [switched!]: off ? { ...rest, on: false } : rest } }
 }
 if (off) { change(() => updateConfig(ENV_FILE, turned)); quit(`${n} is off. ${OFF_NOTES[n] ?? ''}`.trim()) }
+let filled = false
 const settle = () => {
   const now = readSettings(ENV_FILE)
   const after = switched ? connectorStates({ ...now, config: turned(now.config) })[n] : state()[n]
   if (switched && after.state === 'on' && state()[n].state !== 'on') change(() => updateConfig(ENV_FILE, turned))
-  if (after.state === 'on' && n === 'sms' && tunnelUrl('/sms')) openTunnel()
+  if (after.state === 'on' && filled && !openTunnel()) die(`${n} is on, but the tunnel did not open its route, so texts cannot reach Kage yet. Run kage tunnel on and read what it says.`)
   if (after.state === 'on') quit(`${n} is on. Kage picks it up once it is not in the middle of anything.`)
   return after
 }
@@ -66,7 +67,7 @@ die(`${n} ${connectorStep(n, settle())}`)
 async function ask(asks: Ask[]) {
   for (const a of asks) {
     const found = a.key === 'connectors.sms.publicUrl' ? tunnelUrl('/sms') : undefined
-    if (found) { change(() => setKey(ENV_FILE, a.key, found)); console.log(`Filled ${a.key} from your tunnel: ${found}`); continue }
+    if (found) { change(() => setKey(ENV_FILE, a.key, found)); console.log(`Filled ${a.key} from your tunnel: ${found}`); filled = true; continue }
     if (a.kind === 'made') {
       const token = randomBytes(24).toString('hex')
       change(() => updateSecrets(ENV_FILE, s => secretAt(s, a.key, token)))
@@ -171,11 +172,11 @@ async function connectGithub(): Promise<never> {
 function tunnelUrl(path: string) {
   if (readSettings(ENV_FILE).config.tunnel?.provider === 'off') return undefined
   const bin = tailscaleBin(), ts = bin ? tailscaleState(bin) : undefined
-  return ts?.running ? publicUrl(ts.dns, path) : undefined
+  return ts?.running && ts.funnel ? publicUrl(ts.dns, path) : undefined
 }
 
 function openTunnel() {
-  spawnSync(process.execPath, [fileURLToPath(new URL('./tunnel.ts', import.meta.url)), 'on'], { stdio: 'inherit', env: process.env })
+  return spawnSync(process.execPath, [fileURLToPath(new URL('./tunnel.ts', import.meta.url)), 'on'], { stdio: 'inherit', env: process.env }).status === 0
 }
 
 function ghUser(): { login: string; id: number } | undefined {

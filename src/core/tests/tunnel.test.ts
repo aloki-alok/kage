@@ -172,6 +172,7 @@ test('SMS that is on gets a public route to its webhook at /sms', () => {
 describe('kage connect fills a public URL from the tunnel (#570)', () => {
   test('a Tailscale name gives the URL the tunnel serves the route at', () => {
     assert.equal(publicUrl('mac.tail1234.ts.net.', '/sms'), 'https://mac.tail1234.ts.net:8443/sms')
+    assert.equal(publicUrl('mac.tail1234.ts.net', '/sms'), 'https://mac.tail1234.ts.net:8443/sms')
   })
   test('no Tailscale name gives nothing, so the question is asked', () => {
     assert.equal(publicUrl(undefined, '/sms'), undefined)
