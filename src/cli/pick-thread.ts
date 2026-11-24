@@ -17,7 +17,7 @@ export async function pickThread(arg: string, lanes = true): Promise<{ key: stri
     const list = (found.length ? found : rows).slice(0, 20)
     console.error(arg ? `${found.length} threads match "${arg}". Pick one (newest first):` : 'Pick a thread (newest first):')
     list.forEach((r, i) => console.error(`  ${String(i + 1).padStart(2)}. ${r.place}   (${r.key})`))
-    if (!process.stdin.isTTY) process.exit(1)
+    if (!process.stdin.isTTY) process.exit(2)
     process.stderr.write('Number: ')
     const n = Number(await new Promise<string>(r => process.stdin.once('data', b => r(String(b).trim()))))
     process.stdin.pause()

@@ -2,18 +2,17 @@
 import { existsSync } from 'node:fs'
 import { trustTable } from '../core/trust.ts'
 import { trustLinesIn } from '../runtime/trust-store.ts'
-import { askHub, DIR } from './home.ts'
-import { errVoice } from './voice.ts'
+import { askHub, DIR, notRunning } from './home.ts'
 
 const USAGE = 'Usage: kage trust list | revoke <id>'
 const [action = '', arg = ''] = process.argv.slice(2)
 
 if (action === 'list') {
-  if (!existsSync(`${DIR}/kage.db`)) { console.error(errVoice.says("I'm not running. Start me with kage start.")); process.exit(1) }
+  if (!existsSync(`${DIR}/kage.db`)) notRunning()
   console.log(trustTable(trustLinesIn(`${DIR}/kage.db`)))
 } else if (action === 'revoke' && arg) {
   if (process.env.KAGE_CLAUDE) { console.error('This shell runs inside Kage: a session cannot change the trust record.'); process.exit(1) }
-  if (!existsSync(`${DIR}/router.sock`)) { console.error(errVoice.says("I'm not running. Start me with kage start.")); process.exit(1) }
+  if (!existsSync(`${DIR}/router.sock`)) notRunning()
   try {
     const r = await askHub<{ ok?: true; text?: string; refused?: string }>({ type: 'trust', action, id: arg })
     if (r.ok) console.error(`${r.text}.`)

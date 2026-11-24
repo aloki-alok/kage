@@ -13,7 +13,7 @@ function world() {
   const dir = join(root, 'code'), conf = join(root, 'conf'), bin = join(root, 'bin'), home = join(root, 'home')
   for (const d of [dir, conf, bin, home, join(dir, 'src', 'cli'), join(dir, 'src', 'core')]) mkdirSync(d, { recursive: true })
   copyFileSync(join(REPO, 'setup.sh'), join(dir, 'setup.sh'))
-  for (const f of ['manifest.ts', 'config.ts', 'home.ts', 'setup-flow.ts']) copyFileSync(join(REPO, 'src', 'cli', f), join(dir, 'src', 'cli', f))
+  for (const f of ['manifest.ts', 'config.ts', 'home.ts', 'voice.ts', 'setup-flow.ts']) copyFileSync(join(REPO, 'src', 'cli', f), join(dir, 'src', 'cli', f))
   mkdirSync(join(dir, 'src', 'runtime'), { recursive: true })
   for (const f of ['config-files.ts', 'hub-client.ts', 'owner-key.ts']) copyFileSync(join(REPO, 'src', 'runtime', f), join(dir, 'src', 'runtime', f))
   symlinkSync(join(REPO, 'node_modules'), join(dir, 'node_modules'))
