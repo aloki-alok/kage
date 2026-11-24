@@ -100,6 +100,7 @@ Write logs to stderr only. In a tmux pane, stdout carries the channel protocol, 
 | `src/hub/kagelets.ts` | Kagelets in the hub: the minute sync of their files into schedules and grants, the cost flags and caps, their memory, the manager's side, the owner's notes to one, and the chains between them. |
 | `src/hub/telemetry.ts` | Telemetry in the hub (ADR 0019): the install id, the minute export job, Claude Code's telemetry env for every session, and the crash code written before exit. |
 | `src/hub/owner-commands.ts` | What the owner asks from their terminal or DM: the status line, `kage tell`, `kage relay`, and `say` (an app on this Mac posts as the owner). |
+| `src/hub/read-routes.ts` | The named read routes in `dbRead.routes`, handed to a Slack session only, so `db_read` reads a database through the hub. |
 | `src/hub/trust.ts` | The trust record in the hub: learns a line from the owner's typed answer to the one open typed ask in a thread, answers `kage trust revoke`. |
 | `src/hub/whatsapp-cards.ts` | An approval card sent to the owner on WhatsApp when they picked that channel, with a four-digit code, and their `yes` or `no` reply answering that card once. |
 | `src/hub/phone-owner.ts` | Calling the owner: runs `connectors.call.command` with a one-time voice code and the reason, and says why when it cannot. |
@@ -159,7 +160,7 @@ Write logs to stderr only. In a tmux pane, stdout carries the channel protocol, 
 | `held-rules.ts` | The owner's `allow:` lines in a kagelet's `job.md`: which held step each releases, word by word with no model, and the kinds no rule ever releases. |
 | `objective.ts` | A kagelet's objective (ADR 0016): the three lines in its file, the one `value: <n>` line a measure prints, the target check, and the scoreboard every run reads. |
 | `access.ts` | The access tiers: whether a kagelet's tool is read, write or act, from its name. |
-| `db-read.ts` | The check a `db_read` query passes: one read statement, capped. |
+| `db-read.ts` | The check a `db_read` query passes (one read statement, capped), who may read a named route (the owner, or a teammate with a live `prod-read` line), and which tasks read nothing (meetings, outsiders, bots, texts and calls). |
 | `browser.ts` | What a session may see of the owner's Chrome (#114): the block list, tabs shown by id, and a page's text quoted as data. |
 | `desktop-act.ts` | Acting on the owner's Mac (`computer_act`, by ref or by point): which acts and keys are allowed, and what each needs. Everyday steps run. A click, Enter or Space on a control that cannot be undone, or a one-way command sent in a terminal, asks the owner. Turning the Mac off, logging out, locking or erasing it is refused. A terminal takes one typed line at a time, and Return on a line Kage did not type asks. |
 | `look.ts` | A look at the owner's front window (`computer_look`, #509): the answer Kage Screen gives, checked where it enters, and the text a session reads, one `[r12] button "Send"` line per element, with labels and values quoted as data. |
@@ -232,6 +233,7 @@ Write logs to stderr only. In a tmux pane, stdout carries the channel protocol, 
 | `kage-tools.ts` | A session's tools (about 28): the state they share about its tasks (where each came from, who sent it, what Kage posted), and the approval card. The instructions every session reads are `src/core/instructions.ts`. |
 | `src/runtime/tools/slack-tools.ts` | The Slack tools every session gets, in order: edits and deletes of Kage's own posts, attaching a file, the waiting list, the prod log, and a post as Kage where no task came from. |
 | `src/runtime/tools/slack-reply.ts` | The `reply` tool: its refusals (secrets, other agents, unseen mentions, a private DM link), one table for each connector that answers outside Slack (voice, SMS, WhatsApp, email), and the Slack post with its waiting line and reaction. |
+| `src/runtime/tools/db-read-tools.ts` | `db_read`: a kagelet's read through the install's read command, and a Slack session's read through a named route. The route's command stays in the hub, the owner reads freely, a teammate needs a live `prod-read` line for that route when `trust.mode` is `on`, and each read leaves one `db-reads` row (who, route, a hash of the query, rows) and a counts-only event. |
 | `src/runtime/tools/trust-ask.ts` | A typed ask in the `reply` tool: its kind and reach, and the record's verdict on it (go ahead, no, fold into the open ask, or ask) by `trust.mode`. |
 | `src/runtime/tools/slack-people.ts` | `message_people`: a group DM from the owner's account with Kage's footer, and the owner's card when the ask came from WhatsApp. |
 | `src/runtime/tools/slack-canvas.ts` | A canvas the bot makes in the task's channel and keeps current. |

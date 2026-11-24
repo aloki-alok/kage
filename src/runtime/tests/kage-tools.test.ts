@@ -75,7 +75,7 @@ function fakeSlack() {
   return { calls, posts, bot: client('bot'), user: client('owner') }
 }
 
-function setup(o: { noHook?: boolean; settings?: { set(key: string, value: unknown): void }; hubDown?: boolean; dir?: string; kagelet?: string; dreaming?: string; dbRead?: { command: () => string | undefined; maxRows: number; timeoutMs?: number }; approve?: (tool: string, description: string, input: Record<string, unknown>) => Promise<boolean>; browser?: { call(op: string, args: Record<string, unknown>): Promise<unknown>; block: string[] }; meetbot?: { join(link: string): string }; screen?: ScreenRecorder; foreignAgents?: () => readonly string[]; flagKnowledge?: (f: NewFlag) => void; dreamLessons?: (l: DreamLesson[], d?: Dismissal[]) => string; report?: SessionReport; trust?: { mode: TrustMode; lines: TrustLine[] } } = {}) {
+function setup(o: { noHook?: boolean; settings?: { set(key: string, value: unknown): void }; hubDown?: boolean; dir?: string; kagelet?: string; dreaming?: string; dbRead?: { command: () => string | undefined; maxRows: number; timeoutMs?: number }; approve?: (tool: string, description: string, input: Record<string, unknown>) => Promise<boolean>; browser?: { call(op: string, args: Record<string, unknown>): Promise<unknown>; block: string[] }; meetbot?: { join(link: string): string }; screen?: ScreenRecorder; foreignAgents?: () => readonly string[]; flagKnowledge?: (f: NewFlag) => void; dreamLessons?: (l: DreamLesson[], d?: Dismissal[]) => string; report?: SessionReport; trust?: { mode: TrustMode; lines: TrustLine[] }; dbRoutes?: { routes: Record<string, string>; maxRows: number } } = {}) {
   const slack = fakeSlack()
   const dir = o.dir ?? mkdtempSync(join(tmpdir(), 'kage-tools-'))
   const ledgers = openLedgers(dir)
@@ -95,7 +95,7 @@ function setup(o: { noHook?: boolean; settings?: { set(key: string, value: unkno
       move: (id, to) => { if (!jobs.some(j => j.id === id)) return `no job ${id} in this thread`; jobs.find(j => j.id === id).key = to },
     },
     afk: async c => { out.push(`afk ${JSON.stringify(c)}`); return 'AFK on' }, foreignAgents: o.foreignAgents,
-    kagelet: o.kagelet, dreaming: o.dreaming, settings: o.settings, flagKnowledge: o.flagKnowledge, dreamLessons: o.dreamLessons, report: o.report, kageletMemory: { propose: (name: string, a: unknown, thread: string) => { out.push(`propose ${name} ${thread} ${JSON.stringify(a)}`); return 'proposed' }, decide: (d: unknown) => { out.push(`decide ${JSON.stringify(d)}`); return 'decided' }, open: () => 'open ones', notes: () => [] } as any, dbRead: o.dbRead, approve: o.approve, trust: o.trust && { mode: () => o.trust!.mode, lines: () => o.trust!.lines }, browser: o.browser, meetbot: o.meetbot, screen: o.screen, event: (kind, detail) => { events.push(`${kind} ${detail}`) },
+    kagelet: o.kagelet, dreaming: o.dreaming, settings: o.settings, flagKnowledge: o.flagKnowledge, dreamLessons: o.dreamLessons, report: o.report, kageletMemory: { propose: (name: string, a: unknown, thread: string) => { out.push(`propose ${name} ${thread} ${JSON.stringify(a)}`); return 'proposed' }, decide: (d: unknown) => { out.push(`decide ${JSON.stringify(d)}`); return 'decided' }, open: () => 'open ones', notes: () => [] } as any, dbRead: o.dbRead, dbRoutes: o.dbRoutes && { routes: () => o.dbRoutes!.routes, maxRows: o.dbRoutes.maxRows }, approve: o.approve, trust: o.trust && { mode: () => o.trust!.mode, lines: () => o.trust!.lines }, browser: o.browser, meetbot: o.meetbot, screen: o.screen, event: (kind, detail) => { events.push(`${kind} ${detail}`) },
     onReport: r => { routed.push(`report ${JSON.stringify(r)}`) }, toManager: text => { routed.push(`manager ${text}`); return 'sent' },
     tellKagelet: (name, text, run) => { routed.push(`tell ${name}${run ? ' now' : ''}: ${text}`); return `told ${name}` }, message: (to, text) => { routed.push(`message ${to} ${text}`); return `sent to ${to}` },
     kagelets: { list: () => 'the list', manage: async (a, ask) => { out.push(`manage ${JSON.stringify(a)}`); return ask ? `asked: ${await ask({ kagelet: a.name, tools: 'mcp__gmail__send', job: 'j' })}` : 'managed' } },
@@ -2337,5 +2337,141 @@ describe("report_issue: a session files a bug or an idea to the Kage repo, on th
     assert.equal(r.isError, true)
     assert.match(r.text, /shorten/i)
     assert.equal(t.cards.length, 0)
+  })
+  describe('named read routes', () => {
+    const HOST = 'db.example.test'
+    const routes = (dir: string) => {
+      writeFileSync(join(dir, 'read.sh'), `printf 'id\\tcalls\\n1\\t40\\n2\\t12\\n'; for a; do q=$a; done; printf '%s' "$q" > ${join(dir, 'query')}`)
+      return { prod: `sh ${join(dir, 'read.sh')} --host ${HOST}`, reports: `sh ${join(dir, 'read.sh')} --host reports.example.test` }
+    }
+    const line = (o: Partial<TrustLine> = {}): TrustLine => ({ id: 'T1', who: 'UTEAM0001', kind: 'prod-read', reach: 'prod', answer: 'yes', once: false, link: 'https://x/p', at: '2026-11-25T00:00:00.000Z', state: 'live', ...o })
+    const fresh = (mode: TrustMode, lines: TrustLine[]) => {
+      const dir = mkdtempSync(join(tmpdir(), 'kage-routes-'))
+      return { dir, s: setup({ dir, dbRoutes: { routes: routes(dir), maxRows: 200 }, trust: { mode, lines } }) }
+    }
+    const asTeammate = (s: ReturnType<typeof setup>, who = 'UTEAM0001') => s.t.onTask({ ...s.task({ fromOwner: false }), content: `Teammate task (${who}, Sam, not the owner): read the prod db` })
+    const read = (s: ReturnType<typeof setup>, route = 'prod', sql = 'select id, calls from t') => s.call('db_read', { channel: 'C1', thread_ts: '5.5', db: route, sql })
+
+    test('a teammate with a prod-read line on a route reads it in on mode, with no ask', async () => {
+      const { dir, s } = fresh('on', [line()])
+      asTeammate(s)
+      const r = await read(s)
+      assert.equal(r.isError, undefined, r.text)
+      assert.match(r.text, /^id\tcalls\n1\t40/)
+      assert.match(readFileSync(join(dir, 'query'), 'utf8'), /limit 200$/)
+      assert.deepEqual(s.posts, [])
+      assert.ok(s.events.includes('trust on go'))
+    })
+    test('the same teammate on a route with no line is refused and told to ask for that route', async () => {
+      const { dir, s } = fresh('on', [line()])
+      asTeammate(s)
+      const r = await read(s, 'reports')
+      assert.equal(r.isError, true)
+      assert.match(r.text, /kind prod-read/)
+      assert.match(r.text, /reach reports/)
+      assert.equal(existsSync(join(dir, 'query')), false)
+    })
+    test('a teammate with no line, or only another teammate\'s line, is refused', async () => {
+      for (const lines of [[], [line({ who: 'UOTHER0001' })], [line({ state: 'revoked' })], [line({ once: true })]]) {
+        const { dir, s } = fresh('on', lines)
+        asTeammate(s)
+        const r = await read(s)
+        assert.equal(r.isError, true, JSON.stringify(lines))
+        assert.match(r.text, /kind prod-read/)
+        assert.equal(existsSync(join(dir, 'query')), false)
+      }
+    })
+    test('a no line stops the read and says not to ask again', async () => {
+      const { s } = fresh('on', [line({ answer: 'no' })])
+      asTeammate(s)
+      const r = await read(s)
+      assert.equal(r.isError, true)
+      assert.match(r.text, /said no/)
+    })
+    test('shadow keeps today\'s rule: a teammate with a line still needs the owner, and the would-be call is logged', async () => {
+      const { dir, s } = fresh('shadow', [line()])
+      asTeammate(s)
+      const r = await read(s)
+      assert.equal(r.isError, true)
+      assert.match(r.text, /owner/)
+      assert.equal(existsSync(join(dir, 'query')), false)
+      assert.ok(s.events.includes('trust shadow go'))
+      s.t.onTask(s.task({ fromOwner: true }))
+      assert.equal((await read(s)).isError, undefined)
+    })
+    test('the owner\'s own thread reads any route in every mode, with no line', async () => {
+      for (const mode of ['off', 'shadow', 'on'] as const) {
+        const { s } = fresh(mode, [])
+        s.t.onTask(s.task({ fromOwner: true }))
+        assert.match((await read(s, 'reports')).text, /^id\tcalls/, mode)
+      }
+    })
+    test('a meeting, an outsider, another bot, and a text or call get no read, even with a line', async () => {
+      const bases = [{ source: 'meeting:abc' }, { outsider: 'someone' }, { agent: { app: 'A0TEST1', person: 'UTEAM0001' } }, { agent: { app: 'A0TEST1' } }]
+      for (const extra of bases) {
+        const { dir, s } = fresh('on', [line()])
+        s.t.onTask({ ...s.task({ fromOwner: false }), content: 'Teammate task (UTEAM0001, Sam, not the owner): x', ...extra })
+        const r = await read(s)
+        assert.equal(r.isError, true, JSON.stringify(extra))
+        assert.equal(existsSync(join(dir, 'query')), false, JSON.stringify(extra))
+      }
+      const { s } = fresh('on', [line()])
+      s.t.onTask({ ...s.task({ fromOwner: false, channel: 'voice' }), content: 'Teammate task (UTEAM0001, Sam, not the owner): x' })
+      assert.equal((await s.call('db_read', { channel: 'voice', thread_ts: '5.5', db: 'prod', sql: 'select 1' })).isError, true)
+    })
+    test('a meeting task that follows a teammate\'s task in the same thread ends the read', async () => {
+      const { s } = fresh('on', [line()])
+      asTeammate(s)
+      assert.equal((await read(s)).isError, undefined)
+      s.t.onTask({ ...s.task({ fromOwner: false }), content: 'Teammate task (UTEAM0001, Sam, not the owner): x', source: 'meeting:abc' })
+      assert.equal((await read(s)).isError, true)
+    })
+    test('the session never sees a route\'s command: not in the tool, an answer, a failure or the ledger', async () => {
+      const dir = mkdtempSync(join(tmpdir(), 'kage-routes-'))
+      const s = setup({ dir, dbRoutes: { routes: { prod: `echo ${HOST} >&2; exit 3`, ok: routes(dir).prod }, maxRows: 200 }, trust: { mode: 'on', lines: [line(), line({ id: 'T2', reach: 'ok' })] } })
+      asTeammate(s)
+      const tool = s.t.tools.find(x => x.name === 'db_read')!
+      const failed = await read(s)
+      const worked = await read(s, 'ok')
+      const refused = await read(s, 'nope')
+      const all = [tool.description, JSON.stringify(Object.keys(tool.shape)), failed.text, worked.text, refused.text, s.ledgers.text('db-reads'), s.events.join('\n')].join('\n')
+      assert.doesNotMatch(all, new RegExp(HOST))
+      assert.doesNotMatch(all, /read\.sh/)
+      assert.match(refused.text, /prod, ok/)
+      assert.equal(failed.isError, true)
+    })
+    test('each read writes a ledger row of who, route, a hash of the query and the row count, and a counts-only event', async () => {
+      const { s } = fresh('on', [line()])
+      asTeammate(s)
+      await read(s, 'prod', 'select id, calls from t')
+      const row = s.ledgers.text('db-reads').trim().split('\t')
+      assert.deepEqual([row[1], row[2], row[4], row[6]], ['UTEAM0001', 'prod', '3', 'ok'])
+      assert.equal(row[3], createHash('sha256').update('select id, calls from t').digest('hex').slice(0, 16))
+      assert.doesNotMatch(row.slice(1).join('\t'), /select|40/)
+      assert.ok(s.events.includes('tool db_read ok rows=3'), s.events.join('|'))
+    })
+    test('rows are capped by maxRows and the answer says when it may be capped', async () => {
+      const dir = mkdtempSync(join(tmpdir(), 'kage-routes-'))
+      const s = setup({ dir, dbRoutes: { routes: routes(dir), maxRows: 2 }, trust: { mode: 'on', lines: [line()] } })
+      asTeammate(s)
+      const r = await read(s)
+      assert.match(readFileSync(join(dir, 'query'), 'utf8'), /limit 2$/)
+      assert.match(r.text, /may be capped at 2 rows/)
+    })
+    test('a never-learn ssm-relay line for the route never lets a read through', async () => {
+      const { dir, s } = fresh('on', [line({ kind: 'ssm-relay' })])
+      asTeammate(s)
+      assert.equal((await read(s)).isError, true)
+      assert.equal(existsSync(join(dir, 'query')), false)
+    })
+    test('db_read exists in a Slack session only when routes are named, and never in a dream or kagelet lane', () => {
+      const dir = mkdtempSync(join(tmpdir(), 'kage-routes-'))
+      const has = (s: ReturnType<typeof setup>) => s.t.tools.some(x => x.name === 'db_read')
+      assert.equal(has(setup({ dbRoutes: { routes: routes(dir), maxRows: 200 } })), true)
+      assert.equal(has(setup({ dbRoutes: { routes: {}, maxRows: 200 } })), false)
+      assert.equal(has(setup()), false)
+      assert.equal(has(setup({ dreaming: 'd', dbRoutes: { routes: routes(dir), maxRows: 200 } })), false)
+      assert.equal(has(setup({ kagelet: 'calls', dbRoutes: { routes: routes(dir), maxRows: 200 } })), false)
+    })
   })
 })
