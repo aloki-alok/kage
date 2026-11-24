@@ -67,6 +67,9 @@ Watch|kagelet stop|<kagelet>|Pause a kagelet and keep its file|kage kagelet stop
 People|person add|<person> or <app id> <owner>|Let a person tag Kage (a mention, member id, email, name or @handle), or an agent with the person or agent it answers to|kage person add priya
 People|person rm|<person or app id>|Take a person or an agent off the list; whoever answers to them goes too|kage person rm priya
 People|person list||Who may tag Kage besides you: each person, with their agents under them|kage person list
+People|post|<dm or thread> <text>|Post as Kage in the DM with Kage or in a Slack thread Kage has. A token-shaped text goes only to the DM|kage post dm standup moved to 10
+People|waiting list||What Kage waits on you for, newest first, with a link to each|kage waiting list
+People|away|on [--until HH:MM] [note], or off|Set AFK mode: Kage watches threads that mention you and phones you for a P0. off ends it and says who wanted what|kage away on --until 18:30 at the dentist
 People|relay|allow <place or key>, deny <same> or list|Let one thread use the SSM relay (ssh to hosts behind AWS SSM) though a teammate asked for its work. list shows who may|kage relay allow prod-monitor
 People|trust|list or revoke <id>|Show what Kage learned from your yeses, one line per teammate, kind and reach. revoke takes one back. Money, deletes, outside sends, production writes and secrets always ask|kage trust list
 People|call||Kage phones you, and the call can do anything you can (needs KAGE_CALL_COMMAND)|kage call'
@@ -392,6 +395,12 @@ case "${1:-}" in
   tunnel) node src/cli/tunnel.ts "${2:-on}" ;;
   login) cmd_claude_login ;;
   completion) cmd_completion "${2:-}" ;;
+  post) node src/cli/post.ts "${@:2}" ;;
+  away) node src/cli/away.ts "${@:2}" ;;
+  waiting) case "${2:-}" in
+      list) node src/cli/waiting.ts "${@:3}" ;;
+      *) verbs waiting ;;
+    esac ;;
   doctor) node src/cli/doctor/run.ts "${@:2}" ;;
   slack) case "${2:-}" in
       app) cmd_app "${3:-}" ;;

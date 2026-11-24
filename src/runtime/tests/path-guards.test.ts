@@ -399,7 +399,7 @@ describe("a session's shell cannot run a kage command that acts as the owner", (
       no(`KAGE_CLAUDE= kage ${sub}`)
     }
     no('unset KAGE_CLAUDE; kage tell dm hi')
-    for (const sub of ['thread send dm hi', 'thread attach C1:5.5', 'thread stop C1:5.5', 'kagelet stop triage', 'kagelet start triage', 'kagelet add triage', 'config reload', 'person add UTEST1', 'person rm UTEST1']) {
+    for (const sub of ['thread send dm hi', 'thread attach C1:5.5', 'thread stop C1:5.5', 'kagelet stop triage', 'kagelet start triage', 'kagelet add triage', 'config reload', 'person add UTEST1', 'person rm UTEST1', 'post dm hi', 'away on', 'away off']) {
       no(`kage ${sub}`)
       no(`KAGE_CLAUDE= kage ${sub}`)
       no(`~/kage/setup.sh ${sub}`)
@@ -411,6 +411,6 @@ describe("a session's shell cannot run a kage command that acts as the owner", (
     no('node ~/kage/src/cli/trust.ts revoke T1')
   })
   test('the read commands and words that only mention them still run', () => {
-    for (const c of ['kage status', 'kage list', 'kage person list', 'kage kagelet list', 'kage kagelet logs triage', 'kage thread follow', 'kage schedules', 'kage logs 200', 'kage stats 7', 'kage cost', 'kage doctor', 'kage help tell', 'kage trust list', 'node ~/kage/src/cli/trust.ts list', 'git commit -m "kage tell is owner only"', 'grep -rn "kage stop" docs']) yes(c)
+    for (const c of ['kage status', 'kage list', 'kage person list', 'kage kagelet list', 'kage kagelet logs triage', 'kage thread follow', 'kage waiting list', 'kage schedules', 'kage logs 200', 'kage stats 7', 'kage cost', 'kage doctor', 'kage help tell', 'kage trust list', 'node ~/kage/src/cli/trust.ts list', 'git commit -m "kage tell is owner only"', 'grep -rn "kage stop" docs']) yes(c)
   })
 })
