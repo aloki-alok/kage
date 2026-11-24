@@ -81,3 +81,10 @@ test('a hub that cannot push to the Kage repo files nothing', async () => {
   await t.check(); await t.check()
   assert.deepEqual(t.filed, [])
 })
+
+test('each fix the doctor applied is one event, and a fixed line is never told as a problem (#153)', async () => {
+  const t = setup(['fixed token file: run chmod 600 /k/s\nok    tools', 'ok    tools'])
+  await t.check(); await t.check()
+  assert.deepEqual(t.events, ['doctor fixed: token file: run chmod 600 /k/s', 'doctor failing=0 told=0', 'doctor failing=0 told=0'])
+  assert.deepEqual(t.dms, [])
+})

@@ -1,4 +1,5 @@
-import { report, type Line } from '../../core/doctor.ts'
+import { execFile } from 'node:child_process'
+import { applyFixes, report, type Line } from '../../core/doctor.ts'
 import { name } from './context.ts'
 import { setup } from './setup.ts'
 import { session } from './session.ts'
@@ -18,6 +19,7 @@ const skip = process.argv.find(a => a.startsWith('--skip='))?.slice(7).split(','
 for (const [group, run] of Object.entries({ setup, session, service, slack, update, connect, browser, whatsapp, tunnel, path, scopes, leftovers }).filter(([g]) => !skip.includes(g))) {
   try { lines.push(...await run()) } catch (e) { lines.push({ kind: 'fail', text: `${group}: the check did not run (${(e as Error).message})` }) }
 }
-const r = report(lines, name)
+const fixed = process.argv.includes('--fix') ? await applyFixes(lines, argv => new Promise(ok => execFile(argv[0]!, argv.slice(1), { timeout: 60_000 }, e => ok(!e)))) : lines
+const r = report(fixed, name)
 console.log(r.text)
 process.exit(r.ok ? 0 : 1)

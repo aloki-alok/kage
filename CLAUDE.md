@@ -35,11 +35,11 @@ Each step ends with a check. Go to the next step only when the check passes.
 
 ## Run it
 
-The install line puts `kage` on your PATH (in a git checkout, run `./setup.sh link` once). Then `kage help` lists every command and `kage help <command>` shows one with an example. `kage doctor` prints the command that fixes each problem: run it, run the printed fix, and repeat until `All good`. The hub also runs it every hour and DMs you when a problem shows on two checks in a row, and when it clears.
+The install line puts `kage` on your PATH (in a git checkout, run `./setup.sh link` once). Then `kage help` lists every command and `kage help <command>` shows one with an example. `kage doctor` prints the command that fixes each problem: run it, run the printed fix, and repeat until `All good`. `kage doctor --fix` runs the fixes that touch only Kage's files (the token file's mode, the plugin). The hub also runs it every hour with `--fix`, and DMs you when a problem shows on two checks in a row, and when it clears.
 
 | Task | Command |
 |---|---|
-| Health check | `kage doctor` |
+| Health check | `kage doctor`, or `kage doctor --fix` |
 | What happened while you were away | `kage` with no command: what Kage did since you last looked (replies, kagelet runs, lessons kept, spend), each question still waiting on you, and how many kagelets are on. |
 | One look at the hub and every session | `kage status`: one line with the version the hub runs, how long it has run, today's spend and its schedules and its starts in the last 24 h by cause (updates, restarts, settings changes, crashes), with a warning only for a crash or a stop it cannot explain, then one line per connector (on or off, when it last heard something, and its failures in the past hour; Jev's calls and failures today), then each session, then each kagelet (when it last ran, when it runs next, its spend today), then where to look next |
 | The live console (mouse or keys: `1` `2` `3` threads, kagelets and schedules tabs, `↑↓` or `j` `k` pick, `tab` switch pane, `⏎` open a thread's steps, `s` its schedules, `a` attach, `x` cut after you confirm, `/` search, `f` filter: every thread, running ones, or one connector or kagelets, named in the footer, `q` quit). Each thread row shows what it cost today, in the warning color at `top.threadCostBar` dollars or more. A bar on top names whatever waits on you, and charts at the bottom show turns in the last hour and spend by hour | `kage top` |

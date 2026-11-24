@@ -4,12 +4,22 @@ import { startsSince } from './boots.ts'
 import { bridgeProblem, type BridgeSeen } from './whatsapp.ts'
 import type { SecretCommand } from './secret-commands.ts'
 
-export type Line = { kind: 'ok' | 'fail' | 'note'; text: string }
+export type Line = { kind: 'ok' | 'fail' | 'note' | 'fixed'; text: string; fix?: string[][] }
 const ok = (text: string): Line => ({ kind: 'ok', text })
-const fail = (text: string): Line => ({ kind: 'fail', text })
+const fail = (text: string, fix?: string[][]): Line => ({ kind: 'fail', text, ...fix && { fix } })
 const note = (text: string): Line => ({ kind: 'note', text })
 
 export const render = (l: Line) => `${(l.kind === 'fail' ? 'FAIL' : l.kind).padEnd(6)}${l.text}`
+
+export async function applyFixes(lines: Line[], run: (argv: string[]) => Promise<boolean>): Promise<Line[]> {
+  const out: Line[] = []
+  for (const l of lines) {
+    let done = l.kind === 'fail' && !!l.fix
+    for (const argv of l.kind === 'fail' ? l.fix ?? [] : []) if (done) done = await run(argv)
+    out.push(done ? { kind: 'fixed', text: l.text } : l)
+  }
+  return out
+}
 
 export function report(lines: Line[], name: string): { text: string; ok: boolean } {
   const good = !lines.some(l => l.kind === 'fail')
@@ -29,7 +39,7 @@ export function tokenLines(f: { hasSettings: boolean; dir: string; file?: string
   const failed = f.failed ?? []
   const names = [['app', 'SLACK_APP_TOKEN'], ['user', 'SLACK_USER_TOKEN'], ['bot', 'SLACK_BOT_TOKEN']] as const
   return [
-    f.mode === '600' ? ok('token file is private (600)') : fail(`token file: run chmod 600 ${f.file}`),
+    f.mode === '600' ? ok('token file is private (600)') : fail(`token file: run chmod 600 ${f.file}`, [['chmod', '600', f.file!]]),
     ...names.filter(([k]) => !failed.some(c => c.path === `slack.${k}`)).map(([k, n]) => f.slack[k] ? ok(`${n} accepted by Slack`) : fail(`${n}: missing or rejected. Run kage save again`)),
     ...failed.map(c => fail(`secrets.json ${c.path}: its command failed or printed nothing. Run it in a terminal to see why: ${c.command}`)),
   ]
@@ -56,7 +66,7 @@ export function sessionLines(f: { root?: string; runtime?: string; route?: strin
   if (f.runtime !== 'tmux') return [f.sdkLoads ? ok('threads run on the Agent SDK, no prompts') : fail('Agent SDK does not load: run npm ci, then restart (until then threads open as tmux panes)')]
   if (f.route !== 'plugin') return [note('dev route: Claude Code shows a warning screen on each start, and a person confirms it')]
   return [
-    f.plugin ? ok('plugin kage@kage installed and enabled') : fail(`plugin: run claude plugin marketplace add "${f.root}" && claude plugin install kage@kage`),
+    f.plugin ? ok('plugin kage@kage installed and enabled') : fail(`plugin: run claude plugin marketplace add "${f.root}" && claude plugin install kage@kage`, [['claude', 'plugin', 'marketplace', 'add', f.root!], ['claude', 'plugin', 'install', 'kage@kage']]),
     f.orgApproved ? ok('your Claude org approves the kage channel') : fail("org approval missing: an org Owner adds kage to allowedChannelPlugins (README, 'Run threads as tmux panes instead')"),
   ]
 }
