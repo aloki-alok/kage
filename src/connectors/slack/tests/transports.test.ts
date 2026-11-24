@@ -67,7 +67,7 @@ describe('Slack over HTTP feeds the same intake as Socket Mode', () => {
   })
 })
 
-const commandForm = { command: '/truecaller', text: '9876543210', user_id: 'U0TEST1', team_id: 'T0OTHER', response_url: 'https://hooks.slack.test/r' }
+const commandForm = { command: '/nothing', text: '9876543210', user_id: 'U0TEST1', team_id: TEAM, response_url: 'https://hooks.slack.test/r' }
 
 function socketTransport() {
   const socket = new SocketModeClient({ appToken: 'xapp-test' })
@@ -88,7 +88,7 @@ describe('a slash command and a button press reach the same handlers in both mod
       const r = await signedPost(await http.start(), new URLSearchParams(commandForm).toString(), { type: 'application/x-www-form-urlencoded' })
       assert.equal(r.status, 200)
       assert.deepEqual(await r.json(), overSocket)
-      assert.deepEqual(overSocket, { response_type: 'ephemeral', text: 'This command works only for people in this workspace.' })
+      assert.deepEqual(overSocket, { response_type: 'ephemeral', text: '/nothing is not set up here.' })
     } finally { http.close() }
   })
 
