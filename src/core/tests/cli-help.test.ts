@@ -1,6 +1,9 @@
 import { describe, test } from 'node:test'
 import assert from 'node:assert/strict'
-import { readFileSync } from 'node:fs'
+import { mkdtempSync, readFileSync, writeFileSync } from 'node:fs'
+import { spawnSync } from 'node:child_process'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 import { suggest } from '../cli-help.ts'
 
 describe('every command kage lists is one it runs, and the other way', () => {
@@ -24,6 +27,34 @@ describe('every command kage lists is one it runs, and the other way', () => {
       assert.ok(!blocks.has(old), `${old} still has its own case`)
       assert.ok(table.includes(now), `${old} points at ${now}, which the table does not list`)
     }
+  })
+})
+
+describe('kage <noun> <verb> runs, and an old name says its new one', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'kage-cli-'))
+  writeFileSync(join(dir, 'config.json'), '{"version":1}')
+  const kage = (...args: string[]) => spawnSync('bash', [new URL('../../../setup.sh', import.meta.url).pathname, ...args], { encoding: 'utf8', env: { ...process.env, KAGE_ENV: join(dir, 'env'), NO_COLOR: '1', KAGE_CLAUDE: '' } })
+  test('a group with no verb, or a verb with no target, is bad usage: exit 2 and the verbs it takes', () => {
+    const bare = kage('thread')
+    assert.equal(bare.status, 2)
+    assert.match(bare.stderr, /kage thread takes follow, attach, send, stop\./)
+    assert.equal(kage('thread', 'stop').status, 2)
+    assert.equal(kage('kagelet', 'logs').status, 2)
+  })
+  test('an old name runs the new command and says the new name on stderr only', () => {
+    const r = kage('schedules')
+    assert.equal(r.status, 0, r.stderr)
+    assert.match(r.stderr, /kage schedules is now kage schedule list\./)
+    assert.doesNotMatch(r.stdout, /is now/)
+  })
+  test('help on an old name shows the new command', () => {
+    assert.match(kage('attach', '--help').stdout, /^kage thread attach /m)
+    assert.match(kage('help', 'tell').stdout, /^kage thread send /m)
+  })
+  test('kagelet stop never falls through to a thread', () => {
+    const r = kage('kagelet', 'stop', 'nosuch')
+    assert.equal(r.status, 1)
+    assert.match(r.stderr, /There is no kagelet named "nosuch"/)
   })
 })
 

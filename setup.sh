@@ -83,9 +83,15 @@ add|person add
 remove|person rm
 list|person list'
 
+help_for() {
+  if [[ -n ${2:-} && $2 != -* ]] && printf '%s\n' "$COMMANDS" | awk -F'|' -v n="$1 $2" '$2==n {f=1} END {exit !f}'; then cmd_help "$1 $2"; else cmd_help "$1"; fi
+}
+
 cmd_help() {
   local B= R=; [[ -t 1 ]] && B=$'\033[1m' R=$'\033[0m'
   if [[ -n "${1:-}" ]]; then
+    local now; now="$(printf '%s\n' "$RENAMED" | awk -F'|' -v n="$1" '$1==n {print $2}')"
+    [[ -z $now ]] || set -- "$now"
     local rows; rows="$(printf '%s\n' "$COMMANDS" | awk -F'|' -v n="$1" '$2==n || index($2, n" ")==1')"
     [[ -n $rows ]] || unknown "${1%% *}"
     while IFS='|' read -r _ n a d e; do printf "${B}kage %s${R} %s\n  %s\n  Example: %s\n" "$n" "$a" "$d" "$e"; done <<<"$rows"
@@ -329,10 +335,7 @@ cmd_claude_login() {
 }
 
 
-# Help comes first, so "kage add --help" never reaches a command that would act on it.
 [[ "${1:-}" == --version ]] && { cmd_version; exit 0; }
-for a in "$@"; do [[ $a == -h || $a == --help ]] && { [[ $1 == "$a" || $1 == help ]] && cmd_help || cmd_help "$1"; exit 0; }; done
-
 renamed_to="$(printf '%s\n' "$RENAMED" | awk -F'|' -v n="${1:-}" '$1==n {print $2}')"
 if [[ -n $renamed_to ]]; then
   tells "kage $1 is now kage $renamed_to. The old name stops working after the next release."
@@ -343,6 +346,10 @@ if [[ -n $renamed_to ]]; then
     *) set -- $renamed_to "${@:2}" ;;
   esac
 fi
+
+# Help comes first, so "kage person add --help" never reaches a command that would act on it.
+for a in "$@"; do [[ $a == -h || $a == --help ]] && { [[ $1 == "$a" || $1 == help ]] && cmd_help || help_for "$@"; exit 0; }; done
+
 
 case "${1:-}" in
   "") if has_settings; then node src/cli/home-screen.ts "$(running && echo up || echo down)"; else node src/cli/setup-flow.ts; fi ;;
@@ -397,14 +404,14 @@ case "${1:-}" in
       follow) node src/cli/watch.ts "${@:3}" ;;
       attach) node src/cli/attach.ts "${@:3}" ;;
       send) node src/cli/tell.ts "${@:3}" ;;
-      stop) [[ $# -gt 2 ]] || usage "kage thread stop takes a thread: its Slack link in quotes, its place or its key."; node src/cli/stop.ts "${@:3}" ;;
+      stop) [[ $# -gt 2 ]] || usage "kage thread stop takes a thread: its Slack link in quotes, its place or its key."; node src/cli/stop.ts --thread "${@:3}" ;;
       *) verbs thread ;;
     esac ;;
   kagelet) case "${2:-}" in
       list) node src/cli/registry.ts list --kagelets ;;
       logs) [[ $# -eq 3 ]] || usage "kage kagelet logs takes one kagelet name."; node src/cli/kagelet-logs.ts "$3" ;;
       start) [[ $# -eq 3 ]] || usage "kage kagelet start takes one kagelet name."; node src/cli/stop.ts --resume "$3" ;;
-      stop) [[ $# -eq 3 ]] || usage "kage kagelet stop takes one kagelet name."; node src/cli/stop.ts "$3" ;;
+      stop) [[ $# -eq 3 ]] || usage "kage kagelet stop takes one kagelet name."; node src/cli/stop.ts --kagelet "$3" ;;
       *) verbs kagelet ;;
     esac ;;
   relay) node src/cli/relay.ts "${@:2}" ;;
