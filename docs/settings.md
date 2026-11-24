@@ -148,10 +148,12 @@ Each night, while every session is quiet, Kage reads the day's threads for lesso
 
 A session can file a bug, an idea or feedback about Kage itself to the GitHub repo of this Kage checkout, the `origin` remote, so a fork files to the fork. Kage removes names it knows, Slack ids, mentions, channel names, links, emails, phone numbers, home paths, tokens, addresses, hostnames and quotes first, and refuses a body over 2,000 characters so the card shows all of it. Then you get a card with the exact title and body, and nothing is sent without your yes. A teammate's task asks you the same way, and an agent's task never files. If `gh` is signed in, Kage files the issue and posts its link. If not, it posts a prefilled link that you open and submit.
 
+If an open issue already has the same fingerprint, the card offers one `seen again on <version> <system>` comment on that issue instead of a new one. The fingerprint is a crash's fingerprint when the session has one, or else a hash of the kind and the title's words. Only the fingerprint goes to GitHub for that search, before the card. The match is best effort: GitHub search takes a moment to see a new issue, so two reports a few seconds apart can still open two.
+
 | Setting | Default | Effect |
 |---|---|---|
 | `report.enabled` | `true` | `false` removes the tool from every session. |
-| `report.perDay` | `3` | The most filings a day. A filing you said no to does not count. |
+| `report.perDay` | `3` | The most filings and seen again comments a day. One you said no to does not count. |
 | `report.repo` | origin of the checkout | The repo to file to, as `owner/name`. |
 
 ## Questions waiting on you

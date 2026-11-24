@@ -1,10 +1,12 @@
 import { z } from 'zod'
-import { issueBody, issueLink, reportsToday, scrubReport, type IssueReport, type IssueSystem } from '../../core/issue-report.ts'
+import { issueBody, issueLink, reportFingerprint, reportsToday, scrubReport, type IssueReport, type IssueSystem } from '../../core/issue-report.ts'
 import type { KageTool, Result, ToolContext } from '../kage-tools.ts'
 
 export type SessionReport = {
   repo(): Promise<string | undefined>
   file(repo: string, title: string, body: string, labels: string[]): Promise<string>
+  find(repo: string, fingerprint: string): Promise<{ number: number; url: string } | undefined>
+  comment(repo: string, number: number, body: string): Promise<void>
   system: IssueSystem
   perDay: number
   names?: () => string[]
@@ -17,15 +19,35 @@ const namesOf = (c: ToolContext, r: SessionReport) => {
   return [...new Set(known.flatMap(n => [n, ...n.split(/\s+/)]))]
 }
 
-async function report(c: ToolContext, r: SessionReport, a: IssueReport & { channel: string; thread_ts: string }): Promise<Result> {
-  const key = `${a.channel}:${a.thread_ts}`, log = (outcome: string, repo = '', url = '') => c.append('issue-reports', [key, a.kind, outcome, repo, url])
+type Args = IssueReport & { channel: string; thread_ts: string; fingerprint?: string }
+type Log = (outcome: string, repo?: string, url?: string) => void
+
+async function seenAgain(c: ToolContext, r: SessionReport, log: Log, repo: string, kind: string, hit: { number: number; url: string }): Promise<Result> {
+  const text = `seen again on ${r.system.version} ${r.system.system}`
+  if (!await c.o.approve!('report_issue', `This matches #${hit.number} on ${repo}, still open: ${hit.url}\nAdd one comment to it instead of a new issue:\n${text}`, { repo, issue: hit.number, body: text })) {
+    log('denied', repo)
+    return { isError: true, text: 'The owner said no. Nothing was sent.' }
+  }
+  try { await r.comment(repo, hit.number, text) } catch {
+    log('failed', repo, hit.url)
+    return { isError: true, text: `gh could not add the comment, so nothing was sent. It is already filed: ${hit.url}. Post that link in the thread in one line.` }
+  }
+  log('commented', repo, hit.url)
+  c.o.event?.('tool', `report_issue ${kind} seen again`)
+  return { text: `Already filed as ${hit.url}, so it got a seen again comment instead. Post this link in the thread in one line.` }
+}
+
+async function report(c: ToolContext, r: SessionReport, a: Args): Promise<Result> {
+  const key = `${a.channel}:${a.thread_ts}`, log: Log = (outcome, repo = '', url = '') => c.append('issue-reports', [key, a.kind, outcome, repo, url])
   if (!c.ownerTask.has(key) || c.agents.get(key) || a.channel === 'voice') return { isError: true, text: "refused: an agent's task or a voice call never files an issue" }
   if (!c.o.approve) return { isError: true, text: 'refused: filing needs the owner\'s yes on a card, and this session cannot show one' }
   if (reportsToday(c.ledger('issue-reports'), new Date().toISOString().slice(0, 10)) >= r.perDay) { log('capped'); return { isError: true, text: `refused: this install files at most ${r.perDay} a day (report.perDay)` } }
   const repo = await r.repo()
   if (!repo) return { isError: true, text: 'refused: no GitHub repo found for this Kage checkout. Set report.repo.' }
-  const clean = scrubReport(a, namesOf(c, r)), { labels, body } = issueBody(clean, r.system)
+  const clean = scrubReport(a, namesOf(c, r)), fingerprint = reportFingerprint(clean, a.fingerprint), { labels, body } = issueBody(clean, r.system, fingerprint)
   if (body.length > MAX_BODY) return { isError: true, text: `refused: the body is ${body.length} characters. Shorten it to under ${MAX_BODY}, so the owner's card shows all of it.` }
+  const hit = await r.find(repo, fingerprint).catch(() => undefined)
+  if (hit) return seenAgain(c, r, log, repo, clean.kind, hit)
   if (!await c.o.approve('report_issue', `File this ${clean.kind} to ${repo}. It holds only what you see here.\n*${clean.title}*\n${body}`, { repo, title: clean.title, body })) {
     log('denied', repo)
     return { isError: true, text: 'The owner said no. Nothing was sent.' }
@@ -36,7 +58,7 @@ async function report(c: ToolContext, r: SessionReport, a: IssueReport & { chann
     c.o.event?.('tool', `report_issue ${clean.kind} filed`)
     return { text: `Filed: ${url}. Post this link in the thread in one line.` }
   } catch {
-    const link = issueLink(repo, clean, r.system)
+    const link = issueLink(repo, clean, r.system, fingerprint)
     log('link', repo)
     c.o.event?.('tool', `report_issue ${clean.kind} link`)
     return { text: `gh could not file it here. Post this link in the thread in one line, for the owner to open and submit: ${link}` }
@@ -57,7 +79,8 @@ export function reportTools(c: ToolContext): KageTool[] {
       what: c.s.describe('a bug: what happened. An idea: the job done by hand today'),
       expected: c.s.describe('a bug: what should have happened. An idea: how you would know it works'),
       steps: c.s.optional().describe('a bug: the steps to see it again'),
+      fingerprint: c.s.optional().describe('a crash: its 12 character fingerprint when you have one, so repeats land on one issue'),
     },
-    run: args => report(c, r, args as IssueReport & { channel: string; thread_ts: string }),
+    run: args => report(c, r, args as Args),
   }]
 }
