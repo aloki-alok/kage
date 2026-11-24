@@ -1,6 +1,6 @@
 import { test, describe } from 'node:test'
 import assert from 'node:assert/strict'
-import { doctorBug, doctorNews, ownerChannelLine, autoUpdateNote, bootNotes, chromeLine, jevLine, keyLines, lingerLine, nodeOk, pathNote, render, report, serviceLines, sessionLines, slackLines, pluginLine, sandboxLine, tokenLines, toolsLine, whatsappLine } from '../doctor.ts'
+import { applyFixes, stillFixed, doctorBug, doctorNews, ownerChannelLine, autoUpdateNote, bootNotes, chromeLine, jevLine, keyLines, lingerLine, nodeOk, pathNote, render, report, serviceLines, sessionLines, slackLines, pluginLine, sandboxLine, tokenLines, toolsLine, whatsappLine , type Line } from '../doctor.ts'
 
 const text = (ls: { kind: string; text: string }[]) => ls.map(l => `${l.kind}:${l.text}`)
 
@@ -220,5 +220,40 @@ describe('an unknown doctor failure becomes a bug report (#153)', () => {
     assert.equal(doctorBug('token file: run chmod 600 /x'), undefined)
     assert.equal(doctorBug('not running: kage start'), undefined)
     assert.equal(doctorBug('plugin: run claude plugin install kage@kage'), undefined)
+  })
+})
+
+describe('fixes the hub applies by itself (#153)', () => {
+  test('a token file anyone can read carries its own chmod fix', () => {
+    const [l] = tokenLines({ hasSettings: true, dir: '/k', file: '/k/secrets.json', mode: '644', slack: { app: true, user: true, bot: true } })
+    assert.deepEqual(l!.fix, [['chmod', '600', '/k/secrets.json']])
+  })
+  test('a token file that is a symlink carries no fix, so the hub never changes the file it points to', () => {
+    const [l] = tokenLines({ hasSettings: true, dir: '/k', file: '/k/secrets.json', mode: '644', link: true, slack: { app: true, user: true, bot: true } })
+    assert.equal(l!.kind, 'fail')
+    assert.equal(l!.fix, undefined)
+  })
+  test('a missing plugin is a fix for the person, not the hub', () => {
+    const [plugin] = sessionLines({ root: '/r', runtime: 'tmux', route: 'plugin', plugin: false, orgApproved: false })
+    assert.equal(plugin!.fix, undefined)
+  })
+  test('a fix that runs becomes a fixed line, a fix that fails stays FAIL, and lines without a fix are untouched', async () => {
+    const ran: string[] = []
+    const out = await applyFixes([
+      { kind: 'fail', text: 'token file: run chmod 600 /k/s', fix: [['chmod', '600', '/k/s']] },
+      { kind: 'fail', text: 'plugin: run x', fix: [['a'], ['b'], ['c']] },
+      { kind: 'fail', text: 'org approval missing' },
+      { kind: 'ok', text: 'tools' },
+    ], async argv => { ran.push(argv.join(' ')); return argv[0] !== 'b' })
+    assert.deepEqual(out.map(render), ['fixed token file: run chmod 600 /k/s', 'FAIL  plugin: run x', 'FAIL  org approval missing', 'ok    tools'])
+    assert.deepEqual(ran, ['chmod 600 /k/s', 'a', 'b'], 'a step after a failed one never runs')
+  })
+  test('a fix that did not stick shows as FAIL on the check that follows, so the owner hears of it', () => {
+    const fixed: Line[] = [{ kind: 'fixed', text: 'token file: run chmod 600 /k/s' }, { kind: 'fixed', text: 'other: run y' }, { kind: 'ok', text: 'tools' }]
+    const again: Line[] = [{ kind: 'fail', text: 'token file: run chmod 600 /k/s' }, { kind: 'ok', text: 'tools' }]
+    assert.deepEqual(stillFixed(fixed, again).map(render), ['FAIL  token file: run chmod 600 /k/s', 'ok    tools', 'fixed other: run y'])
+  })
+  test('a fixed line does not fail the report', () => {
+    assert.equal(report([{ kind: 'fixed', text: 'x' }], 'kage').ok, true)
   })
 })

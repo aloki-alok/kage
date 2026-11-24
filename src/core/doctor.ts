@@ -4,12 +4,27 @@ import { startsSince } from './boots.ts'
 import { bridgeProblem, type BridgeSeen } from './whatsapp.ts'
 import type { SecretCommand } from './secret-commands.ts'
 
-export type Line = { kind: 'ok' | 'fail' | 'note'; text: string }
+export type Line = { kind: 'ok' | 'fail' | 'note' | 'fixed'; text: string; fix?: string[][] }
 const ok = (text: string): Line => ({ kind: 'ok', text })
-const fail = (text: string): Line => ({ kind: 'fail', text })
+const fail = (text: string, fix?: string[][]): Line => ({ kind: 'fail', text, ...fix && { fix } })
 const note = (text: string): Line => ({ kind: 'note', text })
 
 export const render = (l: Line) => `${(l.kind === 'fail' ? 'FAIL' : l.kind).padEnd(6)}${l.text}`
+
+export async function applyFixes(lines: Line[], run: (argv: string[]) => Promise<boolean>): Promise<Line[]> {
+  const out: Line[] = []
+  for (const l of lines) {
+    let done = l.kind === 'fail' && !!l.fix
+    for (const argv of l.kind === 'fail' ? l.fix ?? [] : []) if (done) done = await run(argv)
+    out.push(done ? { kind: 'fixed', text: l.text } : l)
+  }
+  return out
+}
+
+export function stillFixed(fixed: Line[], again: Line[]): Line[] {
+  const failing = new Set(again.filter(l => l.kind === 'fail').map(l => l.text))
+  return [...again, ...fixed.filter(l => l.kind === 'fixed' && !failing.has(l.text))]
+}
 
 export function report(lines: Line[], name: string): { text: string; ok: boolean } {
   const good = !lines.some(l => l.kind === 'fail')
@@ -24,12 +39,12 @@ export function nodeOk(version: string): boolean {
 export const toolsLine = (f: { nodeVersion: string; claude: boolean; tmuxNeeded: boolean; tmux: boolean }): Line =>
   nodeOk(f.nodeVersion) && f.claude && (!f.tmuxNeeded || f.tmux) ? ok('tools: node 22.18+, claude') : fail('tools: run kage check for the missing one')
 
-export function tokenLines(f: { hasSettings: boolean; dir: string; file?: string; mode?: string; slack: { app?: boolean; user?: boolean; bot?: boolean }; failed?: SecretCommand[] }): Line[] {
+export function tokenLines(f: { hasSettings: boolean; dir: string; file?: string; mode?: string; link?: boolean; slack: { app?: boolean; user?: boolean; bot?: boolean }; failed?: SecretCommand[] }): Line[] {
   if (!f.hasSettings) return [fail(`tokens: no settings in ${f.dir}. Run kage app, then kage save`)]
   const failed = f.failed ?? []
   const names = [['app', 'SLACK_APP_TOKEN'], ['user', 'SLACK_USER_TOKEN'], ['bot', 'SLACK_BOT_TOKEN']] as const
   return [
-    f.mode === '600' ? ok('token file is private (600)') : fail(`token file: run chmod 600 ${f.file}`),
+    f.mode === '600' ? ok('token file is private (600)') : fail(`token file: run chmod 600 ${f.file}`, f.link ? undefined : [['chmod', '600', f.file!]]),
     ...names.filter(([k]) => !failed.some(c => c.path === `slack.${k}`)).map(([k, n]) => f.slack[k] ? ok(`${n} accepted by Slack`) : fail(`${n}: missing or rejected. Run kage save again`)),
     ...failed.map(c => fail(`secrets.json ${c.path}: its command failed or printed nothing. Run it in a terminal to see why: ${c.command}`)),
   ]

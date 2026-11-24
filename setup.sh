@@ -27,7 +27,7 @@ Set up|save|[name]|Paste the three Slack tokens into hidden prompts; each is che
 Set up|tunnel|[on or off]|Open a route for each connector another machine calls (GitHub, voice, job hooks on the internet; the meeting bot on your tailnet) through Tailscale, or close them all|kage tunnel on
 Set up|connect|[name] [off]|List every connector, on or off, with the one step left. With a name it turns that one on, or off with off: github (makes the Kage app, so people tag it on GitHub; --org adds an org), browser (pairs the Kage extension in Chrome), email, voice, whatsapp, meeting|kage connect github
 Set up|claude-login||Save the Claude login Kage runs on, so its sessions use their own seat. Get the token with claude setup-token, signed in as Kage|kage claude-login
-Set up|doctor||Check every part, and print the command that fixes each problem|kage doctor
+Set up|doctor|[--fix]|Check every part, and print the command that fixes each problem. With --fix, run the fixes that touch only Kage files|kage doctor --fix
 Set up|slack|upgrade|Add the Slack scopes Kage needs and the app lacks: adds them to the app manifest with one Slack configuration token (or prints the lines to paste), then opens Reinstall and waits|kage slack upgrade
 Set up|link||Put the kage command on your PATH (~/.local/bin/kage)|./setup.sh link
 Set up|service|on or off|Let macOS or Linux keep Kage running: back after a crash, a reboot or a login|kage service on
