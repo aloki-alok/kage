@@ -134,7 +134,7 @@ const COMMANDS: Record<string, Command> = {
   }),
   say: owner((l, c, m) => { if (typeof m.text === 'string') say(l, c, m.text, m as { channel?: unknown; thread_ts?: unknown }) }),
   relay: owner(({ o }, c, m) => answer(c, 'relay', typeof m.action === 'string' && ['allow', 'deny', 'list'].includes(m.action) ? o.relay?.(m.action, typeof m.key === 'string' ? m.key : undefined) ?? { refused: 'this hub has no relay' } : { refused: 'use allow, deny or list' })),
-  trust: owner(({ o }, c, m) => answer(c, 'trust', typeof m.action === 'string' && typeof m.id === 'string' ? o.trust?.(m.action, m.id) ?? { refused: 'this hub has no trust record' } : { refused: 'use confirm or revoke with an id' })),
+  trust: owner(({ o }, c, m) => answer(c, 'trust', typeof m.action === 'string' && typeof m.id === 'string' ? o.trust?.(m.action, m.id) ?? { refused: 'this hub has no trust record' } : { refused: 'use revoke with an id' })),
   kagelet: owner((l, c, m) => { if (typeof m.name === 'string') kagelet(l, c, m.name, m.action as PanelAction) }),
   stop: owner(({ d }, c, m) => { if (typeof m.key === 'string') answer(c, 'stop', d.stop(m.key, Date.now())) }),
   hello: session(({ d }, c, m) => {

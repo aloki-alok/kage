@@ -85,13 +85,11 @@ describe('one reply never answers more than one ask', () => {
 })
 
 describe('the owner commands', () => {
-  test('confirm and revoke name what they changed, and refuse what they cannot find', () => {
+  test('revoke names what it changed, and refuses what it cannot find', () => {
     const s = setup()
     const id = s.store.addTrustLine({ who: 'UTEAM0001', kind: 'prod-read', reach: 'h', answer: 'yes', once: false, link: 'l' }, 1)
     assert.deepEqual(s.hub.command('revoke', id), { ok: true, text: `revoked ${id}` })
     assert.deepEqual(s.hub.command('revoke', id), { refused: `no line ${id} to revoke` })
-    assert.deepEqual(s.hub.command('confirm', 'T99'), { refused: 'no proposed line T99' })
-    assert.deepEqual(s.hub.command('confirm', 'all'), { refused: 'no proposed lines' })
-    assert.deepEqual(s.hub.command('nope', 'all'), { refused: 'use confirm or revoke' })
+    assert.deepEqual(s.hub.command('nope', 'all'), { refused: 'use revoke' })
   })
 })

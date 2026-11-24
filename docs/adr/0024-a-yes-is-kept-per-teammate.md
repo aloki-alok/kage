@@ -12,4 +12,4 @@ The hub keeps one trust record: lines of `who` (the Slack id in the hub's task l
 
 ## How it is checked
 
-`src/core/tests/trust.test.ts` (the decision and the lines the owner's words make), `src/runtime/tests/kage-tools.test.ts` (a covered ask posts nothing, a teammate with no line asks, a never-learn kind asks, the same ask posts once), `src/hub/tests/trust.test.ts` (only the owner's typed words write a line, history only proposes), `src/runtime/tests/session-link-owner-key.test.ts` and `src/runtime/tests/path-guards.test.ts` (confirm and revoke need the owner).
+`src/core/tests/trust.test.ts` (the decision and the lines the owner's words make), `src/runtime/tests/kage-tools.test.ts` (a covered ask posts nothing, a teammate with no line asks, a never-learn kind asks, the same ask posts once), `src/hub/tests/trust.test.ts` (only the owner's typed words write a line), `src/runtime/tests/session-link-owner-key.test.ts` and `src/runtime/tests/path-guards.test.ts` (revoke needs the owner).

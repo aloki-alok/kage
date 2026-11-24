@@ -30,12 +30,8 @@ export function trustHub(o: Options) {
       if (typedByOwner(t)) learn(key, t)
     },
     command(action: string, id: string): { ok: true; text: string } | { refused: string } {
-      if (action === 'confirm') {
-        const n = o.store.confirmTrust(id)
-        return n ? { ok: true, text: `confirmed ${n}` } : { refused: id === 'all' ? 'no proposed lines' : `no proposed line ${id}` }
-      }
       if (action === 'revoke') return o.store.revokeTrust(id) ? { ok: true, text: `revoked ${id}` } : { refused: `no line ${id} to revoke` }
-      return { refused: 'use confirm or revoke' }
+      return { refused: 'use revoke' }
     },
   }
 }

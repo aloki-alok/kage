@@ -392,8 +392,8 @@ describe("a session's shell cannot run a kage command that acts as the owner", (
   const g = { ownerMemory: '/home/o/.claude/projects/-home-o/memory', envFile: '/home/o/.config/kage/env' }
   const no = (command: string) => assert.match(toolRefusal('Bash', { command }, 'owner', g) ?? '', /owner's own terminal/, command)
   const yes = (command: string) => assert.equal(toolRefusal('Bash', { command }, 'owner', g), undefined, command)
-  test('tell, relay, stop, attach, call, reload, restart, add, remove, trust confirm and trust revoke are refused, plain, with env -u and with an empty KAGE_CLAUDE', () => {
-    for (const sub of ['tell dm "deploy prod"', 'relay allow C1:5.5', 'stop C1:5.5', 'attach C1:5.5', 'call', 'reload', 'restart', 'add UTEST1', 'remove UTEST1', 'trust confirm all', 'trust revoke T1']) {
+  test('tell, relay, stop, attach, call, reload, restart, add, remove, trust revoke are refused, plain, with env -u and with an empty KAGE_CLAUDE', () => {
+    for (const sub of ['tell dm "deploy prod"', 'relay allow C1:5.5', 'stop C1:5.5', 'attach C1:5.5', 'call', 'reload', 'restart', 'add UTEST1', 'remove UTEST1', 'trust revoke T1']) {
       no(`kage ${sub}`)
       no(`env -u KAGE_CLAUDE kage ${sub}`)
       no(`KAGE_CLAUDE= kage ${sub}`)
@@ -403,9 +403,9 @@ describe("a session's shell cannot run a kage command that acts as the owner", (
     no("'kage' tell dm hi")
     no('node ~/kage/src/cli/tell.ts dm hi')
     no('sh -c "kage relay allow C1:5.5"')
-    no('node ~/kage/src/cli/trust.ts confirm all')
+    no('node ~/kage/src/cli/trust.ts revoke T1')
   })
   test('the read commands and words that only mention them still run', () => {
-    for (const c of ['kage status', 'kage list', 'kage schedules', 'kage logs 200', 'kage stats 7', 'kage cost', 'kage doctor', 'kage help tell', 'kage trust list', 'kage trust list --proposed', 'node ~/kage/src/cli/trust.ts list', 'git commit -m "kage tell is owner only"', 'grep -rn "kage stop" docs']) yes(c)
+    for (const c of ['kage status', 'kage list', 'kage schedules', 'kage logs 200', 'kage stats 7', 'kage cost', 'kage doctor', 'kage help tell', 'kage trust list', 'node ~/kage/src/cli/trust.ts list', 'git commit -m "kage tell is owner only"', 'grep -rn "kage stop" docs']) yes(c)
   })
 })

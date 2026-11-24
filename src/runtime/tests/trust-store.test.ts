@@ -21,26 +21,13 @@ describe('the trust lines in the store', () => {
     const again = openStore(path).trustLines()
     assert.deepEqual(again.map(l => [l.id, l.who, l.kind, l.reach, l.answer, l.once, l.state]), [[id, 'UTEAM0001', 'prod-read', 'db.example.test', 'yes', false, 'live']])
   })
-  test('a proposal is not live, and the same source never proposes twice', () => {
+  test('revoke ends a line, and an id that is not there changes nothing', () => {
     const { store } = fresh()
-    assert.equal(store.proposeTrust({ ...yes, source: 'relay_allow:C1:5.5' }, 1_000), true)
-    assert.equal(store.proposeTrust({ ...yes, source: 'relay_allow:C1:5.5' }, 2_000), false)
-    assert.deepEqual(store.trustLines().map(l => l.state), ['proposed'])
-  })
-  test('confirm makes a proposal live, and a confirmed line is not proposed again after a revoke', () => {
-    const { store } = fresh()
-    store.proposeTrust({ ...yes, source: 's1' }, 1_000)
-    assert.equal(store.confirmTrust('all'), 1)
-    assert.deepEqual(store.trustLines().map(l => l.state), ['live'])
-    const [line] = store.trustLines()
-    assert.equal(store.revokeTrust(line!.id), true)
-    assert.equal(store.proposeTrust({ ...yes, source: 's1' }, 3_000), false)
-    assert.deepEqual(store.trustLines().map(l => l.state), ['revoked'])
-  })
-  test('confirm and revoke of an id that is not there change nothing', () => {
-    const { store } = fresh()
-    assert.equal(store.confirmTrust('T99'), 0)
+    const id = store.addTrustLine(yes, 1_000)
     assert.equal(store.revokeTrust('T99'), false)
+    assert.equal(store.revokeTrust(id), true)
+    assert.equal(store.revokeTrust(id), false)
+    assert.deepEqual(store.trustLines().map(l => l.state), ['revoked'])
   })
   test('a terminal can read the lines without writing', () => {
     const { path, store } = fresh()

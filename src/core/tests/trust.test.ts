@@ -19,8 +19,8 @@ describe('the trust record decides from lines', () => {
     assert.equal(decide([line(), no], ask).do, 'no')
     assert.equal(decide([no, line()], ask).do, 'no')
   })
-  test('a once yes, a proposed line and a revoked line never cover an ask', () => {
-    for (const l of [line({ once: true }), line({ state: 'proposed' }), line({ state: 'revoked' })]) assert.deepEqual(decide([l], ask), { do: 'ask', why: 'no-line' })
+  test('a once yes and a revoked line never cover an ask', () => {
+    for (const l of [line({ once: true }), line({ state: 'revoked' })]) assert.deepEqual(decide([l], ask), { do: 'ask', why: 'no-line' })
   })
   test('a revoked no no longer blocks', () => {
     assert.equal(decide([line(), line({ id: 'T2', answer: 'no', state: 'revoked' })], ask).do, 'go')
@@ -84,14 +84,12 @@ describe('the daily receipt', () => {
 })
 
 describe('kage trust list', () => {
-  test('prints one row per line, hides revoked ones, and --proposed keeps only proposals', () => {
-    const lines = [line(), line({ id: 'T2', state: 'proposed', who: 'UTEAM0002' }), line({ id: 'T3', state: 'revoked' }), line({ id: 'T4', answer: 'no', once: true })]
-    const all = trustTable(lines, false).split('\n')
-    assert.equal(all.length, 3)
+  test('prints one row per line and hides revoked ones', () => {
+    const lines = [line(), line({ id: 'T3', state: 'revoked' }), line({ id: 'T4', answer: 'no', once: true })]
+    const all = trustTable(lines).split('\n')
+    assert.equal(all.length, 2)
     assert.match(all[0]!, /^T1\s+UTEAM0001\s+prod-read\s+db\.example\.test\s+yes\s+live\s+2026-11-25/)
-    assert.match(all[2]!, /^T4\s.*\sno once\s+live/)
-    assert.deepEqual(trustTable(lines, true).split('\n').map(r => r.split(/\s+/)[0]), ['T2'])
-    assert.equal(trustTable([], false), '(no lines)')
-    assert.equal(trustTable([line()], true), '(no proposed lines)')
+    assert.match(all[1]!, /^T4\s.*\sno once\s+live/)
+    assert.equal(trustTable([]), '(no lines)')
   })
 })

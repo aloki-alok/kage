@@ -11,14 +11,14 @@ const run = (args: string[], env: NodeJS.ProcessEnv) => new Promise<{ code: numb
   execFile(process.execPath, [new URL('../trust.ts', import.meta.url).pathname, ...args], { env, encoding: 'utf8', timeout: 30_000 },
     (e, stdout, stderr) => res({ code: e ? Number(e.code ?? 1) : 0, out: stdout + stderr })))
 
-test('kage trust lists the lines, and confirm and revoke ask the hub with an owner key', async t => {
+test('kage trust lists the lines, and revoke asks the hub with an owner key', async t => {
   const dir = mkdtempSync(join(tmpdir(), 'kage-trust-cli-'))
   writeFileSync(join(dir, 'config.json'), '{"version":1}')
   writeFileSync(join(dir, 'owner.key'), 'ab'.repeat(32))
   const store = openStore(join(dir, 'kage.db'))
   const base = { who: 'UTEAM0001', kind: 'prod-read', reach: 'db.example.test', answer: 'yes' as const, once: false, link: 'l' }
   store.addTrustLine(base, 1_000)
-  store.proposeTrust({ ...base, who: 'UTEAM0002', source: 's' }, 2_000)
+  store.addTrustLine({ ...base, who: 'UTEAM0002' }, 2_000)
   store.close()
   const asked: Record<string, unknown>[] = []
   const hub = createServer(s => s.on('data', b => {
@@ -34,20 +34,17 @@ test('kage trust lists the lines, and confirm and revoke ask the hub with an own
   const all = await run(['list'], env)
   assert.equal(all.code, 0, all.out)
   assert.match(all.out, /UTEAM0001.*live/)
-  assert.match(all.out, /UTEAM0002.*proposed/)
-  const proposed = await run(['list', '--proposed'], env)
-  assert.doesNotMatch(proposed.out, /UTEAM0001/)
-  assert.match(proposed.out, /UTEAM0002/)
+  assert.match(all.out, /UTEAM0002.*live/)
 
-  const confirm = await run(['confirm', 'all'], env)
-  assert.equal(confirm.code, 0, confirm.out)
-  assert.match(confirm.out, /done all/)
+  const ok = await run(['revoke', 'T1'], env)
+  assert.equal(ok.code, 0, ok.out)
+  assert.match(ok.out, /done T1/)
   const revoke = await run(['revoke', 'T9'], env)
   assert.equal(revoke.code, 1)
   assert.match(revoke.out, /Refused: no line T9 to revoke/)
-  assert.deepEqual(asked.map(m => [m.type, m.action, m.id, m.ownerKey]), [['trust', 'confirm', 'all', 'ab'.repeat(32)], ['trust', 'revoke', 'T9', 'ab'.repeat(32)]])
+  assert.deepEqual(asked.map(m => [m.type, m.action, m.id, m.ownerKey]), [['trust', 'revoke', 'T1', 'ab'.repeat(32)], ['trust', 'revoke', 'T9', 'ab'.repeat(32)]])
 
-  const inSession = await run(['confirm', 'all'], { ...env, KAGE_CLAUDE: '1' })
+  const inSession = await run(['revoke', 'T1'], { ...env, KAGE_CLAUDE: '1' })
   assert.equal(inSession.code, 1)
   assert.equal(asked.length, 2)
   assert.equal((await run([], env)).code, 1)
