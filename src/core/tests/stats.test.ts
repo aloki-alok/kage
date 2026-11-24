@@ -54,3 +54,16 @@ test('tokens per turn: the total, the share read from cache, and each kind of th
 test('nothing recorded says so', () => {
   assert.deepEqual(statsLines({ days: 7, now, costs: [], events: [], boots: [] }), ['Last 7 days: nothing spent, no runs, no hub starts.'])
 })
+
+test('reports to the Kage repo: each outcome counted over the window, and no line when there were none (#543)', () => {
+  const row = (at: number, outcome: string) => [new Date(at).toISOString(), 'C0TEST1:1.1', 'bug', outcome, 'a/kage', ''].join('\t')
+  const reports = [
+    row(now - 1000, 'filed'), row(now - 2000, 'filed'), row(now - 3000, 'commented'), row(now - 4000, 'link'),
+    row(now - 5000, 'denied'), row(now - 6000, 'capped'), row(now - 7000, 'failed'), row(now - 5 * DAY, 'filed'),
+  ].join('\n')
+  const text = statsLines({ days: 2, now, costs: [], events: [], boots: [], reports }).join('\n')
+  assert.match(text, /^reports to the Kage repo: 2 filed, 1 seen again, 1 by link, 1 denied, 1 capped, 1 failed$/m)
+  const one = statsLines({ days: 2, now, costs: [], events: [], boots: [], reports: row(now - 1000, 'denied') }).join('\n')
+  assert.match(one, /^reports to the Kage repo: 1 denied$/m)
+  assert.doesNotMatch(statsLines({ days: 2, now, costs: [{ at: now - 1, key: 'C0TEST1:1.1', usd: 1 }], events: [], boots: [], reports: row(now - 5 * DAY, 'filed') }).join('\n'), /reports/)
+})

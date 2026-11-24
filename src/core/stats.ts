@@ -11,13 +11,14 @@ const dayLabel = (t: number) => { const d = new Date(t); return `${String(d.getM
 const percentile = (sorted: number[], p: number) => sorted[Math.max(0, Math.ceil(p * sorted.length) - 1)]!
 const connectorOf = (key: string) => key.includes('#side-kagelet-') ? 'kagelets' : parseSessionKey(key)?.conversation.connector ?? 'other'
 
-export function statsLines(f: { costs: Cost[]; events: KageEvent[]; boots: number[]; days: number; now: number }): string[] {
+export function statsLines(f: { costs: Cost[]; events: KageEvent[]; boots: number[]; days: number; now: number; reports?: string }): string[] {
   const from = new Date(f.now).setHours(0, 0, 0, 0) - (f.days - 1) * DAY
   const costs = f.costs.filter(c => c.at >= from && c.at <= f.now)
   const events = f.events.filter(e => { const t = Date.parse(e.at); return t >= from && t <= f.now })
   const boots = f.boots.filter(t => t > f.now - DAY && t <= f.now)
+  const reported = reportLine(f.reports ?? '', from, f.now)
   const span = `Last ${plural(f.days, 'day')}`
-  if (!costs.length && !events.length && !boots.length) return [`${span}: nothing spent, no runs, no hub starts.`]
+  if (!costs.length && !events.length && !boots.length && !reported.length) return [`${span}: nothing spent, no runs, no hub starts.`]
   const total = costs.reduce((a, c) => a + c.usd, 0)
   const lines = [`${span}: ${money(total)} over ${plural(costs.length, 'turn')}`, '']
   for (let start = new Date(f.now).setHours(0, 0, 0, 0); start >= from; start -= DAY) {
@@ -37,7 +38,18 @@ export function statsLines(f: { costs: Cost[]; events: KageEvent[]; boots: numbe
   lines.push(`runs: ${starts.size} started, ${ends.length} ended, ${plural(refusals, 'refusal')}`)
   const took = ends.flatMap(e => starts.has(e.trace) ? [Date.parse(e.at) - starts.get(e.trace)!] : []).sort((a, b) => a - b)
   if (took.length) lines.push(`turn time: p50 ${ago(percentile(took, 0.5))}, p90 ${ago(percentile(took, 0.9))}`)
-  return lines
+  return [...lines, ...reported]
+}
+
+const OUTCOMES: [string, string][] = [['filed', 'filed'], ['commented', 'seen again'], ['link', 'by link'], ['denied', 'denied'], ['capped', 'capped'], ['failed', 'failed']]
+
+function reportLine(tsv: string, from: number, now: number): string[] {
+  const outcomes = tsv.split('\n').flatMap(line => {
+    const [at = '', , , outcome = ''] = line.split('\t'), t = Date.parse(at)
+    return t >= from && t <= now ? [outcome] : []
+  })
+  const counts = OUTCOMES.flatMap(([o, label]) => { const n = outcomes.filter(x => x === o).length; return n ? [`${n} ${label}`] : [] })
+  return counts.length ? [`reports to the Kage repo: ${counts.join(', ')}`] : []
 }
 
 const kilo = (n: number) => n >= 1e6 ? `${(n / 1e6).toFixed(1)}M` : n >= 1000 ? `${Math.round(n / 1000)}k` : String(n)
