@@ -55,8 +55,6 @@ function writeFixture(work: string, files: Case['files']): Record<string, string
 
 const readOrNull = (path: string) => { try { return readFileSync(path, 'utf8') } catch { return null } }
 
-const ROUTINE_ALLOW = ['Edit', 'Write', 'Bash(ls:*)', 'Bash(find:*)', 'Bash(awk:*)', 'Bash(node test.js)', 'Bash(python3 -I -m json.tool:*)']
-
 export const LIVE_ENV_FILE = join(homedir(), '.config', 'kage', 'env')
 
 export async function runCase(c: Case, o: { code: string; claude: string; timeoutMs: number; trace?: string }): Promise<Evidence> {
@@ -107,7 +105,7 @@ async function runIn(c: Case, o: { code: string; claude: string; timeoutMs: numb
       schedules: { add: j => { jobs.push({ id: j.id, cron: j.cron ?? '', prompt: j.prompt, recurring: j.recurring }); ev.jobs.push({ cron: j.cron ?? '', prompt: j.prompt }) }, remove: id => { jobs.splice(jobs.findIndex(j => j.id === id), 1) }, list: () => jobs as never },
     }),
     hasTranscript: () => false, toHub: () => {},
-    options: { cwd: work, settingSources: [], plugins: [{ type: 'local', path: o.code }], settings: { autoMemoryDirectory: join(config, 'own'), permissions: { allow: ROUTINE_ALLOW } }, pathToClaudeCodeExecutable: o.claude, persistSession: false },
+    options: { cwd: work, settingSources: [], plugins: [{ type: 'local', path: o.code }], settings: { autoMemoryDirectory: join(config, 'own') }, pathToClaudeCodeExecutable: o.claude, persistSession: false },
     ownerMemory: join(config, 'owner'), envFile: LIVE_ENV_FILE, codeDir: o.code, lean: () => ({ mcp: {} }), sandbox: owner => sandboxed(undefined, owner),
     onTurn: (_key, _tasks, limit, done) => { if (limit) ev.infra = limit.kind; if (done || limit) ended?.() },
   })
