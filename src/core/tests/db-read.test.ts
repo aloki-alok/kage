@@ -86,7 +86,8 @@ describe('a function that acts outside the read-only transaction is refused', ()
     for (const sql of ["select dblink_exec('dbname=x', 'delete from t')", "select * from dblink('dbname=x', 'select 1') as t(a int)",
       'select pg_terminate_backend(pid) from pg_stat_activity', 'select pg_cancel_backend(1)', "select pg_read_file('/etc/passwd')",
       "select pg_ls_dir('.')", "select lo_export(1, '/tmp/x')", 'select pg_reload_conf()', 'select pg_sleep(25)', "select set_config('a.b', 'c', false)",
-      'select PG_TERMINATE_BACKEND (1)']) no(sql, /not allowed/)
+      'select PG_TERMINATE_BACKEND (1)', "select query_to_xml('select pg_terminate_backend(1)', true, false, '')", "select * from ts_stat('select 1')",
+      "select ts_rewrite('a'::tsquery, 'select 1')", 'select pg_try_advisory_lock(1)', 'select "dblink_exec"(1)']) no(sql, /not allowed/)
   })
   test('a name that only contains one, or one inside a string, is fine', () => {
     ok("select 'pg_sleep(5)' as note")
@@ -105,6 +106,8 @@ describe('mayReadDb: which tasks may read the owner\'s named databases', () => {
   })
   test('a meeting transcript, a text, a call, an email, a WhatsApp chat, an agent with no person and a GitHub outsider read nothing', () => {
     assert.equal(mayReadDb(task({ source: 'meeting:abc' })), false)
+    assert.equal(mayReadDb(task({ meta: { channel: 'DOWNER' }, scheduled: true }), 'DOWNER'), false)
+    assert.equal(mayReadDb(task({ meta: { channel: 'DOWNER' }, fromOwner: true }), 'DOWNER'), true)
     for (const channel of ['sms', 'voice', 'email', 'whatsapp']) assert.equal(mayReadDb(task({ meta: { channel } })), false, channel)
     assert.equal(mayReadDb(task({ agent: { app: 'ATEST0001' } })), false)
     assert.equal(mayReadDb(task({ outsider: 'someone' })), false)
@@ -115,5 +118,6 @@ describe('routeFolders: the folders a read route runs code from', () => {
   test('every path the command names, with ~ as home, once each', () => {
     assert.deepEqual(routeFolders({ prod: '/opt/reads/prod-read --fast', crm: 'sh ~/reads/crm-read', again: '/opt/reads/other' }, '/home/o'), ['/opt/reads', '/home/o/reads'])
     assert.deepEqual(routeFolders({}, '/home/o'), [])
+    assert.deepEqual(routeFolders({ a: '/opt/read --out /tmp/x', b: '~/prod-read' }, '/home/o'), ['/opt', '/tmp/x', '/home/o/prod-read'])
   })
 })

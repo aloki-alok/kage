@@ -1085,6 +1085,10 @@ describe("a session's Kage tools", () => {
       assert.equal((await s.call('db_read', { channel: 'C1', thread_ts: '5.5', db: 'prod', sql: 'select 1' })).isError, true, JSON.stringify(extra))
       assert.equal(existsSync(join(dir, 'query')), false)
     }
+    const later = routed()
+    later.s.t.onTask({ ...later.s.task({ fromOwner: false }), outsider: 'someone' })
+    assert.equal((await later.read('select 1')).isError, true)
+    assert.equal(existsSync(join(later.dir, 'query')), false)
     const t = routed()
     assert.equal((await t.s.call('db_read', { channel: 'COTHER', thread_ts: '1.1', db: 'prod', sql: 'select 1' })).isError, true)
     assert.equal(existsSync(join(t.dir, 'query')), false)
