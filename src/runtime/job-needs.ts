@@ -1,3 +1,4 @@
+import { wakesAsOwner } from '../core/cron.ts'
 import { liveTools, needsChanges } from '../core/job-needs.ts'
 import type { Job } from './jobs.ts'
 import { log } from './log.ts'
@@ -29,7 +30,7 @@ export const sdkLook = (query: (a: { prompt: AsyncIterable<never>; options: obje
 }
 
 export function needsWatch(o: {
-  store: Pick<Store, 'schedules' | 'jobState' | 'setJobState'>
+  store: Pick<Store, 'schedules' | 'jobState' | 'setJobState' | 'trust'>
   placeOf: (key: string) => string
   notify: (text: string) => Promise<boolean>
   look?: () => Promise<Servers>
@@ -38,7 +39,7 @@ export function needsWatch(o: {
   const needing = () => o.store.schedules().filter(s => s.needs?.length)
   const check = async (servers: Servers) => {
     const live = liveTools(servers)
-    const jobs = needing().map(s => ({ id: s.id, place: o.placeOf(s.key), needs: s.needs!, missing: o.store.jobState(s.id).missing }))
+    const jobs = needing().map(s => ({ id: s.id, place: o.placeOf(s.key), needs: s.needs!, missing: o.store.jobState(s.id).missing, owner: wakesAsOwner(s, o.store.trust(s.key) === true) }))
     for (const c of needsChanges(jobs, live)) {
       if (c.dm && !(await o.notify(c.dm))) continue
       const { missing: _, ...rest } = o.store.jobState(c.id)

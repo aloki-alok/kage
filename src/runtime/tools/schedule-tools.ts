@@ -60,7 +60,7 @@ function scheduleTool(c: ToolContext, jobs: Jobs): KageTool {
       shadow_of: s.optional().describe('make this job a twin of that job id in this thread: it runs beside it and acts on nothing. Each run ends with shadow_verdict. The hub swaps it in by itself after enough real events where both agree, and stops for the owner on any miss (ADR 0017)'),
       live_prompt: s.optional().describe('with shadow_of: the prompt this twin runs once it swaps in and acts for real'),
       model: s.optional().describe('the model this job\'s runs use, e.g. haiku for a job that only checks and reports. Default: harness.jobModel, else the sessions\' model. Needs the job\'s own lane'),
-      needs: z.array(z.string()).optional().describe('the MCP tools the job\'s action needs, by their full name (mcp__server__tool). Kage checks them on its clock with no model and tells the owner once when one is gone, before a run needs it'),
+      needs: z.array(z.string()).optional().describe('the MCP tools the job\'s action needs, by their full name (mcp__server__tool). Kage checks them on its clock with no model and tells the owner once when one is gone, before a run needs it. It loads nothing: a job a teammate asked for, and every event or watch wake, runs with a teammate\'s trust and gets none of the owner\'s MCP tools'),
       channel: s.optional().describe('with probe: channel attribute from the task tag'),
       thread_ts: s.optional().describe('with probe: thread_ts attribute from the task tag'),
     },

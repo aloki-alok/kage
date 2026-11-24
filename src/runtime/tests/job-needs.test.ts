@@ -10,7 +10,8 @@ const dialer = (status: string) => [{ name: 'claude.ai Dialer', status, tools: s
 function setup(o: { notifyFails?: boolean } = {}) {
   let fails = !!o.notifyFails, broken = false
   const store = openStore(':memory:')
-  store.addSchedule({ id: 'a1b2', key: 'C1:5.5', cron: '@event', prompt: 'phone on-call', recurring: true, fromOwner: true, created: 0, lastFired: 0, needs: [DIAL] })
+  store.setTrust('C1:5.5', true)
+  store.addSchedule({ id: 'a1b2', key: 'C1:5.5', cron: '*/10 * * * *', prompt: 'phone on-call', recurring: true, fromOwner: true, created: 0, lastFired: 0, needs: [DIAL] })
   store.addSchedule({ id: 'c3d4', key: 'C1:5.5', cron: '0 9 * * *', prompt: 'summary', recurring: true, fromOwner: true, created: 0, lastFired: 0 })
   const dms: string[] = []
   let seen = dialer('connected')
@@ -106,4 +107,13 @@ test("a teammate's job is told missing the owner's tools on the first look, thou
   assert.match(t.dms[0]!, /e5f6 in #alerts needs mcp__claude_ai_Dialer__place_call/)
   assert.deepEqual(t.store.jobState('e5f6').missing, [DIAL])
   assert.equal(t.store.jobState('a1b2').missing, undefined, "the owner's job still has its tool")
+})
+
+test("the owner's event job is told missing too, because a wake runs with a teammate's trust", async () => {
+  const t = setup()
+  t.store.addSchedule({ id: 'g7h8', key: 'C1:5.5', cron: '@event', prompt: 'phone on-call', recurring: true, fromOwner: true, created: 0, lastFired: 0, trigger: { kind: 'hook', tokenHash: 'x' }, needs: [DIAL] })
+  await t.tick(60_000)
+  assert.equal(t.dms.length, 1)
+  assert.match(t.dms[0]!, /g7h8 in #alerts .*teammate's trust/)
+  assert.equal(t.store.jobState('a1b2').missing, undefined)
 })

@@ -83,6 +83,8 @@ export type Schedule = {
   model?: string
 }
 
+export const wakesAsOwner = (s: Schedule, ownerThread: boolean) => ownerThread && s.fromOwner && !s.trigger && s.cron !== REPLY && s.cron !== EVENT
+
 const LATE = 10 * MINUTE
 export const CATCH_UP = 12 * 3600_000
 
