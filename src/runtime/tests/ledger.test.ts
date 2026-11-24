@@ -237,3 +237,11 @@ test("a turn's cost row keeps its tokens, and a turn with none still records its
   record('C1:1.1', 0.75, false)
   assert.deepEqual(costRows(l.text('costs')).map(r => [r.usd, r.tokens?.cacheRead]), [[0.5, 8966], [0.25, undefined]])
 })
+
+test("a turn's cost row keeps its model when the turn named one, and an older row reads with none (#283)", () => {
+  const l = openLedgers(dir())
+  const record = costRecorder(l)
+  record('C1:1.1', 0.5, false, { input: 2, cacheWrite: 0, cacheRead: 0, output: 1, who: 'owner', model: 'claude-haiku-x' })
+  record('C1:2.2', 0.25, false, { input: 2, cacheWrite: 0, cacheRead: 0, output: 1, who: 'owner' })
+  assert.deepEqual(costRows(l.text('costs')).map(r => [r.key, r.tokens?.model, r.tokens?.who]), [['C1:1.1', 'claude-haiku-x', 'owner'], ['C1:2.2', undefined, 'owner']])
+})

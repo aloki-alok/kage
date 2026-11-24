@@ -144,7 +144,7 @@ export function costRecorder(l: Pick<Ledgers, 'add' | 'text'>) {
     const usd = turnCost(totals.get(key), total, resumed)
     if (usd === undefined) return undefined
     totals.set(key, total)
-    l.add('costs', [key, String(usd), String(total), ...tokens ? [tokens.input, tokens.cacheWrite, tokens.cacheRead, tokens.output, tokens.who].map(String) : []])
+    l.add('costs', [key, String(usd), String(total), ...tokens ? [tokens.input, tokens.cacheWrite, tokens.cacheRead, tokens.output, tokens.who, ...tokens.model ? [tokens.model] : []].map(String) : []])
     return usd
   }
 }

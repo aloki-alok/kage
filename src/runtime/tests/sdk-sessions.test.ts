@@ -814,6 +814,16 @@ describe('Kage sessions on the Agent SDK', () => {
     await tick()
     assert.deepEqual(t.tokens, [{ input: 2, cacheWrite: 4550, cacheRead: 8966, output: 71, who: 'teammate' }, undefined])
   })
+  test('each result names the model that cost the most so far, and a result with no model usage names none (#283)', async () => {
+    const t = setup()
+    t.d.task('C1:5.5', t.task(), 0)
+    await tick()
+    const usage = { input_tokens: 1, cache_creation_input_tokens: 0, cache_read_input_tokens: 0, output_tokens: 1 }
+    t.sdk.runs[0]!.emit({ type: 'result', total_cost_usd: 0.1, usage, modelUsage: { 'claude-opus-x': { costUSD: 0.01 }, 'claude-haiku-x': { costUSD: 0.09 } } })
+    t.sdk.runs[0]!.emit({ type: 'result', total_cost_usd: 0.2, usage })
+    await tick()
+    assert.deepEqual(t.tokens.map(x => x?.model), ['claude-haiku-x', undefined])
+  })
   test('a kagelet lane runs on its own model, and a thread with none keeps the default', async () => {
     const LANE = 'C1:5.5#side-kagelet-deploys'
     const t = setup({ grants: { [LANE]: ['WebSearch'] }, models: { [LANE]: 'opus' } })

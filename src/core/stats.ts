@@ -30,7 +30,7 @@ export function statsLines(f: { costs: Cost[]; events: KageEvent[]; boots: numbe
   const by = new Map<string, number>()
   for (const c of costs) by.set(connectorOf(c.key), (by.get(connectorOf(c.key)) ?? 0) + c.usd)
   if (by.size) lines.push('', `by connector: ${[...by].map(([k, usd]) => `${k} ${money(usd)}`).join(' · ')}`)
-  lines.push(...tokenLines(costs))
+  lines.push(...tokenLines(costs), ...modelLine(costs))
   const starts = new Map(events.filter(e => e.kind === 'run.start').map(e => [e.trace, Date.parse(e.at)]))
   const ends = events.filter(e => e.kind === 'run.end')
   const refusals = events.filter(e => e.kind === 'refusal').length
@@ -53,6 +53,12 @@ function reportLine(tsv: string, from: number, now: number): string[] {
 }
 
 const kilo = (n: number) => n >= 1e6 ? `${(n / 1e6).toFixed(1)}M` : n >= 1000 ? `${Math.round(n / 1000)}k` : String(n)
+
+function modelLine(costs: Cost[]): string[] {
+  const by = new Map<string, { usd: number; turns: number }>()
+  for (const c of costs) if (c.tokens?.model) { const m = by.get(c.tokens.model) ?? { usd: 0, turns: 0 }; by.set(c.tokens.model, { usd: m.usd + c.usd, turns: m.turns + 1 }) }
+  return by.size ? [`by model: ${[...by].sort((a, b) => b[1].usd - a[1].usd).map(([m, x]) => `${m} ${money(x.usd)} over ${plural(x.turns, 'turn')}`).join(' · ')}`] : []
+}
 
 function tokenLines(costs: Cost[]): string[] {
   const kept = costs.flatMap(c => c.tokens ? [c.tokens] : [])
