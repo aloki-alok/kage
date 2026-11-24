@@ -1,6 +1,6 @@
 import { describe, test } from 'node:test'
 import assert from 'node:assert/strict'
-import { connectLines, connectorStates, halfSetLines } from '../connect.ts'
+import { choiceAsk, connectAsks, connectLines, connectorStates, halfSetLines, type ConnectorName } from '../connect.ts'
 import type { Config, Secrets } from '../config.ts'
 
 const settings = (config: Partial<Config>, secrets: Partial<Secrets> = {}) => ({ config: { version: 1, ...config } as Config, secrets: secrets as Secrets })
@@ -9,7 +9,7 @@ describe('one table says whether each connector is on', () => {
   test('a connector with every setting it needs is on, and GitHub counts a token or a webhook secret', () => {
     const s = connectorStates(settings(
       { connectors: { github: { login: 'me', userId: 1, app: { id: 1, slug: 'kage-me' } }, email: { address: 'k@x.io', queue: 'q', ownerEmail: 'o@x.io' }, sms: { from: '+14155550100', publicUrl: 'https://kage.example.test/sms', telnyxPublicKey: 'p' } } },
-      { githubSecret: 's', githubAppKey: 'k', browserToken: 'b', voiceToken: 'v', waha: { WAHA_API_KEY: 'w' }, meetingToken: 'm', telnyxApiKey: 'k' }))
+      { githubSecret: 's', githubAppKey: 'k', browserToken: 'b', voiceToken: 'v', waha: { WAHA_API_KEY: 'w', WHATSAPP_HOOK_HMAC_KEY: 'h' }, meetingToken: 'm', telnyxApiKey: 'k' }))
     assert.deepEqual(Object.values(s).map(c => c.state), ['on', 'on', 'on', 'on', 'on', 'on', 'on'])
     assert.equal(connectorStates(settings({ connectors: { github: { login: 'me' } } }, { githubSecret: 's' })).github.state, 'unset')
   })
@@ -33,11 +33,11 @@ describe('kage connect lists every connector with the one step left', () => {
     assert.deepEqual(connectLines(connectorStates(s)), [
       'on     github    ',
       'unset  browser   run kage connect browser',
-      'unset  email     needs connectors.email.queue and connectors.email.ownerEmail: kage set <key> <value> (docs/settings.md, "Email")',
+      'unset  email     needs connectors.email.queue and connectors.email.ownerEmail: run kage connect email in a terminal to be asked (docs/settings.md, "Email")',
       'off    voice     run kage connect voice to turn it back on',
-      'unset  whatsapp  needs waha.WAHA_API_KEY in secrets.json (docs/settings.md, "WhatsApp")',
-      'unset  meeting   needs meetingToken in secrets.json (docs/settings.md, "Voice and calls")',
-      'unset  sms       needs connectors.sms.from, connectors.sms.publicUrl, connectors.sms.telnyxPublicKey and telnyxApiKey: kage set <key> <value> (docs/settings.md, "SMS")',
+      'unset  whatsapp  needs waha.WAHA_API_KEY and waha.WHATSAPP_HOOK_HMAC_KEY: run kage connect whatsapp in a terminal to be asked (docs/settings.md, "WhatsApp")',
+      'unset  meeting   needs meetingToken: run kage connect meeting in a terminal to be asked (docs/settings.md, "Voice and calls")',
+      'unset  sms       needs connectors.sms.from, connectors.sms.publicUrl, connectors.sms.telnyxPublicKey and telnyxApiKey: run kage connect sms in a terminal to be asked (docs/settings.md, "SMS")',
     ].map(l => l.trimEnd()))
   })
 })
@@ -47,7 +47,7 @@ describe('kage doctor names a connector left half set up', () => {
     const s = settings({ connectors: { github: { login: 'me' }, email: { address: 'k@x.io' }, whatsapp: { on: false } } }, { voiceToken: 'v' })
     assert.deepEqual(halfSetLines(connectorStates(s)), [
       { kind: 'fail', text: 'github is half set up: run kage connect github' },
-      { kind: 'fail', text: 'email is half set up: needs connectors.email.queue and connectors.email.ownerEmail: kage set <key> <value> (docs/settings.md, "Email")' },
+      { kind: 'fail', text: 'email is half set up: needs connectors.email.queue and connectors.email.ownerEmail: run kage connect email in a terminal to be asked (docs/settings.md, "Email")' },
     ])
     assert.deepEqual(halfSetLines(connectorStates(settings({}))), [])
   })
@@ -65,6 +65,59 @@ describe('SMS needs the keys of the provider it uses', () => {
   })
   test('SMS the owner turned off is off, and its row points at the SMS settings', () => {
     assert.deepEqual(connectorStates(settings({ connectors: { sms: { ...sms, on: false, telnyxPublicKey: 'p' } } }, { telnyxApiKey: 'k' })).sms, { state: 'off' })
-    assert.equal(connectLines(connectorStates(settings({ connectors: { sms } }))).at(-1), 'unset  sms       needs connectors.sms.telnyxPublicKey and telnyxApiKey: kage set <key> <value> (docs/settings.md, "SMS")')
+    assert.equal(connectLines(connectorStates(settings({ connectors: { sms } }))).at(-1), 'unset  sms       needs connectors.sms.telnyxPublicKey and telnyxApiKey: run kage connect sms in a terminal to be asked (docs/settings.md, "SMS")')
+  })
+})
+
+describe('kage connect asks for what is missing (#570)', () => {
+  const empty = connectorStates({ config: {} as Config, secrets: {} as Secrets })
+  const asked: ConnectorName[] = ['email', 'voice', 'whatsapp', 'meeting', 'sms']
+  test('every missing setting of every asked connector has a question, so none falls back to a key name', () => {
+    for (const n of asked) {
+      const s = empty[n]
+      assert.equal(s.state, 'unset')
+      const asks = connectAsks(s.state === 'unset' ? s.missing : [])
+      assert.deepEqual(asks.map(a => a.key).filter(k => s.state === 'unset' && s.missing.includes(k)), s.state === 'unset' ? s.missing : [])
+      for (const a of asks) assert.ok(a.question.length > 10 && !a.question.includes('connectors.'), `${n} ${a.key}: ${a.question}`)
+    }
+  })
+  test('a provider token is asked hidden, a plain value is asked in the open, and a token only Kage uses is made, not asked', () => {
+    const kind = (k: string) => connectAsks([k]).find(a => a.key === k)!.kind
+    assert.equal(kind('twilioAuthToken'), 'secret')
+    assert.equal(kind('telnyxApiKey'), 'secret')
+    assert.equal(kind('connectors.sms.from'), 'plain')
+    assert.equal(kind('connectors.email.queue'), 'plain')
+    assert.equal(kind('voiceToken'), 'made')
+    assert.equal(kind('meetingToken'), 'made')
+  })
+  test('WhatsApp needs both bridge keys, since the hub refuses to start it without the signing key, and only the missing one is made', () => {
+    const only = connectorStates({ config: {} as Config, secrets: { waha: { WAHA_API_KEY: 'k' } } as Secrets }).whatsapp
+    assert.deepEqual(only, { state: 'unset', missing: ['waha.WHATSAPP_HOOK_HMAC_KEY'], partial: true })
+    assert.deepEqual(connectAsks(['waha.WHATSAPP_HOOK_HMAC_KEY']).map(a => [a.key, a.kind]), [['waha.WHATSAPP_HOOK_HMAC_KEY', 'made']])
+  })
+  test('a made token another service must be given is shown once, and the bridge keys never are', () => {
+    const shown = (k: string) => !!connectAsks([k])[0]!.show
+    assert.deepEqual(['voiceToken', 'meetingToken', 'waha.WAHA_API_KEY', 'waha.WHATSAPP_HOOK_HMAC_KEY'].map(shown), [true, true, false, false])
+  })
+  test('an SMS number must be in E.164, and a public URL must end in /sms', () => {
+    const check = (k: string, v: string) => connectAsks([k])[0]!.check?.(v)
+    assert.equal(check('connectors.sms.from', '+14155550100'), undefined)
+    assert.match(check('connectors.sms.from', '415 555 0100')!, /\+14155550100/)
+    assert.equal(check('connectors.sms.publicUrl', 'https://x.ts.net/sms'), undefined)
+    assert.match(check('connectors.sms.publicUrl', 'https://x.ts.net')!, /\/sms/)
+  })
+})
+
+describe('a connector with a choice asks it first (#570)', () => {
+  test('SMS with no provider asks which one, and takes only twilio or telnyx', () => {
+    const a = choiceAsk('sms', {} as Config)!
+    assert.equal(a.key, 'connectors.sms.provider')
+    assert.deepEqual(a.choices, ['telnyx', 'twilio'])
+    assert.equal(a.check!('twilio'), undefined)
+    assert.match(a.check!('vonage')!, /telnyx or twilio/)
+  })
+  test('a provider already set, or another connector, asks nothing', () => {
+    assert.equal(choiceAsk('sms', { connectors: { sms: { provider: 'twilio' } } } as Config), undefined)
+    assert.equal(choiceAsk('email', {} as Config), undefined)
   })
 })

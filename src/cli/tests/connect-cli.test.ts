@@ -46,7 +46,7 @@ test('a connector that still needs settings says which, and changes nothing', ()
   const w = world({ connectors: { email: { address: 'k@x.io' } } })
   const r = w.run(['email'])
   assert.equal(r.code, 1)
-  assert.match(r.out, /email needs connectors\.email\.queue and connectors\.email\.ownerEmail: kage set <key> <value>/)
+  assert.match(r.out, /email needs connectors\.email\.queue and connectors\.email\.ownerEmail: run kage connect email in a terminal to be asked/)
   assert.deepEqual(w.read('config').connectors.email, { address: 'k@x.io' })
 })
 

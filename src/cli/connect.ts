@@ -3,8 +3,10 @@ import { execFileSync, spawn, spawnSync } from 'node:child_process'
 import { fileURLToPath } from 'node:url'
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { addBrowserAgainLines, addBrowserLines, addBrowserPlan, extensionId, HOST, hostBrowsers, hostManifest } from '../core/browser-pair.ts'
-import { connectLines, connectorStates, connectorStep, OFF_NOTES, type ConnectorName } from '../core/connect.ts'
-import { readSettings, updateConfig, updateSecrets } from '../runtime/config-files.ts'
+import { choiceAsk, connectAsks, connectLines, connectorStates, connectorStep, OFF_NOTES, type Ask, type ConnectorName } from '../core/connect.ts'
+import { typeLines } from '../core/secret-prompt.ts'
+import { createInterface } from 'node:readline/promises'
+import { readSettings, setKey, updateConfig, updateSecrets } from '../runtime/config-files.ts'
 import type { Config } from '../core/config.ts'
 import { DIR, ENV_FILE, settingsExist } from './home.ts'
 import { createApp } from './github-app.ts'
@@ -40,12 +42,67 @@ const turned = (c: Config): Config => {
   const { on: _, ...rest } = c.connectors?.[switched!] ?? {}
   return { ...c, connectors: { ...c.connectors, [switched!]: off ? { ...rest, on: false } : rest } }
 }
-const now = readSettings(ENV_FILE)
-const after = switched ? connectorStates({ ...now, config: turned(now.config) })[n] : before
-if (switched && after.state !== before.state && (off || after.state === 'on')) change(() => updateConfig(ENV_FILE, turned))
-if (off) quit(`${n} is off. ${OFF_NOTES[n] ?? ''}`.trim())
-if (after.state === 'on') quit(`${n} is on. Kage picks it up once it is not in the middle of anything.`)
-die(`${n} ${connectorStep(n, after)}`)
+if (off) { change(() => updateConfig(ENV_FILE, turned)); quit(`${n} is off. ${OFF_NOTES[n] ?? ''}`.trim()) }
+const settle = () => {
+  const now = readSettings(ENV_FILE)
+  const after = switched ? connectorStates({ ...now, config: turned(now.config) })[n] : state()[n]
+  if (switched && after.state === 'on' && state()[n].state !== 'on') change(() => updateConfig(ENV_FILE, turned))
+  if (after.state === 'on') quit(`${n} is on. Kage picks it up once it is not in the middle of anything.`)
+  return after
+}
+const left = settle()
+if (left.state === 'unset' && process.stdin.isTTY && !args.includes('--no-ask')) console.log(`${n} needs a few settings. Kage makes what it can and asks for the rest. Each answer is saved as you go, and an empty one stops.`)
+if (left.state === 'unset' && process.stdin.isTTY && !args.includes('--no-ask')) {
+  const choice = choiceAsk(n, readSettings(ENV_FILE).config)
+  if (choice) await ask([choice])
+  const now = settle()
+  if (now.state === 'unset') await ask(connectAsks(now.missing))
+  settle()
+}
+die(`${n} ${connectorStep(n, settle())}`)
+
+async function ask(asks: Ask[]) {
+  for (const a of asks) {
+    if (a.kind === 'made') {
+      const token = randomBytes(24).toString('hex')
+      change(() => updateSecrets(ENV_FILE, s => secretAt(s, a.key, token)))
+      console.log(a.show ? `Made ${a.key}: ${a.question}. Token: ${token}` : `Made ${a.key}: ${a.question}.`)
+      continue
+    }
+    for (;;) {
+      const value = a.kind === 'secret' ? await hidden(`${a.question} `) : await line(`${a.question} `)
+      if (!value) quit(`Stopped. ${n} ${connectorStep(n, settle())}`)
+      const problem = a.check?.(value)
+      if (problem) { console.log(problem); continue }
+      try { if (a.kind === 'secret') updateSecrets(ENV_FILE, s => secretAt(s, a.key, value)); else setKey(ENV_FILE, a.key, value); break } catch (e) { console.log((e as Error).message.replace(/^config\.json: /, '')) }
+    }
+  }
+}
+
+function secretAt<T extends Record<string, unknown>>(s: T, key: string, value: string): T {
+  const [head, sub] = key.split('.') as [string, string | undefined]
+  return sub ? { ...s, [head]: { ...s[head] as object, [sub]: value } } : { ...s, [head]: value }
+}
+
+async function line(prompt: string) {
+  const rl = createInterface({ input: process.stdin, output: process.stdout })
+  try { return (await rl.question(prompt)).trim() } catch { console.log(); return '' } finally { rl.close() }
+}
+
+function hidden(prompt: string): Promise<string> {
+  process.stdout.write(prompt)
+  return new Promise(resolve => {
+    let typed = ''
+    const onKey = (chunk: Buffer) => {
+      const r = typeLines(typed, chunk.toString('utf8'))
+      if (r.cancel) { process.stdin.setRawMode(false); console.log(); process.exit(130) }
+      typed = r.typed
+      const done = r.lines.find(l => l.trim())
+      if (done !== undefined || r.lines.length) { process.stdin.off('data', onKey); process.stdin.setRawMode(false); process.stdin.pause(); console.log(); resolve((done ?? '').trim()) }
+    }
+    process.stdin.setRawMode(true); process.stdin.on('data', onKey); process.stdin.resume()
+  })
+}
 
 function pairBrowser(): never {
   const plan = addBrowserPlan({ hasToken: !!readSettings(ENV_FILE).secrets.browserToken, reinstall: args.includes('--reinstall') })
