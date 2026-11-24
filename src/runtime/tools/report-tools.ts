@@ -70,7 +70,7 @@ export function reportTools(c: ToolContext): KageTool[] {
   if (!r || c.name || c.o.dreaming || c.o.dreamLessons) return []
   return [{
     name: 'report_issue',
-    description: "File a bug, an idea or feedback about Kage itself to Kage's GitHub repo. The hub removes names, ids, emails, paths and quotes, and the owner sees the exact text on a card before anything is sent.",
+    description: "File a bug, an idea or feedback about Kage itself to Kage's GitHub repo, only after a person said yes to your offer (skill kage-bugs-and-ideas). The hub removes names, ids, emails, paths and quotes, and the owner sees the exact text on a card before anything is sent.",
     shape: {
       channel: c.s.describe('channel attribute from the task tag'),
       thread_ts: c.s.describe('thread_ts attribute from the task tag'),
