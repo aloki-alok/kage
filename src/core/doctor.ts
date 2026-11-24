@@ -21,6 +21,11 @@ export async function applyFixes(lines: Line[], run: (argv: string[]) => Promise
   return out
 }
 
+export function stillFixed(fixed: Line[], again: Line[]): Line[] {
+  const failing = new Set(again.filter(l => l.kind === 'fail').map(l => l.text))
+  return [...again, ...fixed.filter(l => l.kind === 'fixed' && !failing.has(l.text))]
+}
+
 export function report(lines: Line[], name: string): { text: string; ok: boolean } {
   const good = !lines.some(l => l.kind === 'fail')
   return { ok: good, text: [...lines.map(render), ...(good ? [`All good. Tag @${name} in Slack to try it.`] : [])].join('\n') }
@@ -34,12 +39,12 @@ export function nodeOk(version: string): boolean {
 export const toolsLine = (f: { nodeVersion: string; claude: boolean; tmuxNeeded: boolean; tmux: boolean }): Line =>
   nodeOk(f.nodeVersion) && f.claude && (!f.tmuxNeeded || f.tmux) ? ok('tools: node 22.18+, claude') : fail('tools: run kage check for the missing one')
 
-export function tokenLines(f: { hasSettings: boolean; dir: string; file?: string; mode?: string; slack: { app?: boolean; user?: boolean; bot?: boolean }; failed?: SecretCommand[] }): Line[] {
+export function tokenLines(f: { hasSettings: boolean; dir: string; file?: string; mode?: string; link?: boolean; slack: { app?: boolean; user?: boolean; bot?: boolean }; failed?: SecretCommand[] }): Line[] {
   if (!f.hasSettings) return [fail(`tokens: no settings in ${f.dir}. Run kage app, then kage save`)]
   const failed = f.failed ?? []
   const names = [['app', 'SLACK_APP_TOKEN'], ['user', 'SLACK_USER_TOKEN'], ['bot', 'SLACK_BOT_TOKEN']] as const
   return [
-    f.mode === '600' ? ok('token file is private (600)') : fail(`token file: run chmod 600 ${f.file}`, [['chmod', '600', f.file!]]),
+    f.mode === '600' ? ok('token file is private (600)') : fail(`token file: run chmod 600 ${f.file}`, f.link ? undefined : [['chmod', '600', f.file!]]),
     ...names.filter(([k]) => !failed.some(c => c.path === `slack.${k}`)).map(([k, n]) => f.slack[k] ? ok(`${n} accepted by Slack`) : fail(`${n}: missing or rejected. Run kage save again`)),
     ...failed.map(c => fail(`secrets.json ${c.path}: its command failed or printed nothing. Run it in a terminal to see why: ${c.command}`)),
   ]
@@ -66,7 +71,7 @@ export function sessionLines(f: { root?: string; runtime?: string; route?: strin
   if (f.runtime !== 'tmux') return [f.sdkLoads ? ok('threads run on the Agent SDK, no prompts') : fail('Agent SDK does not load: run npm ci, then restart (until then threads open as tmux panes)')]
   if (f.route !== 'plugin') return [note('dev route: Claude Code shows a warning screen on each start, and a person confirms it')]
   return [
-    f.plugin ? ok('plugin kage@kage installed and enabled') : fail(`plugin: run claude plugin marketplace add "${f.root}" && claude plugin install kage@kage`, [['claude', 'plugin', 'marketplace', 'add', f.root!], ['claude', 'plugin', 'install', 'kage@kage']]),
+    f.plugin ? ok('plugin kage@kage installed and enabled') : fail(`plugin: run claude plugin marketplace add "${f.root}" && claude plugin install kage@kage`),
     f.orgApproved ? ok('your Claude org approves the kage channel') : fail("org approval missing: an org Owner adds kage to allowedChannelPlugins (README, 'Run threads as tmux panes instead')"),
   ]
 }
