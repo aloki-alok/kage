@@ -56,7 +56,7 @@ export function protectConfig(envFile: string, codeDir: string, home = process.e
   const ownerDirs = [...new Set([...readRoutes, ...RUNS_AS_OWNER.dirs.map(d => `${home}/${d}`)].flatMap(d => [d, realish(d)]))], ownerFiles = RUNS_AS_OWNER.files.map(f => `${home}/${f}`)
   const permissions = { deny: [...dirs.flatMap(d => [`Read(/${d}/secrets.json)`, `Read(/${d}/env*)`, `Read(/${d}/session.env)`, `Read(/${d}/waha/.env)`, ...['secrets.json', 'env*', 'config.json', 'session.env', 'waha/.env'].flatMap(f => deny(`${d}/${f}`))]),
     ...sandbox === 'kagelet' ? [...new Set([codeDir, realish(codeDir), ...logins])].flatMap(d => deny(`${d}/**`)) : [],
-    ...sandbox ? [...ownerDirs.flatMap(d => deny(`${d}/**`)), ...ownerFiles.flatMap(deny)] : []] }
+    ...sandbox ? [...ownerDirs.flatMap(d => [...deny(d), ...deny(`${d}/**`)]), ...ownerFiles.flatMap(deny)] : []] }
   if (!sandbox) return { permissions }
   return {
     permissions,

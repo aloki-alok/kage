@@ -254,7 +254,7 @@ function onTask(t: Thread, m: Task) {
   askers.set(key, teammateOf(m.content))
   scheduledRun.set(key, m.scheduled === true)
   agents.set(key, m.agent)
-  if (mayReadDb(m)) dbReaders.add(key)
+  if (mayReadDb(m, o.botDm())) dbReaders.add(key)
   else dbReaders.delete(key)
   if (m.origin.channel === o.botDm() && m.origin.thread) dmThread.set(key, m.origin.thread)
   else if (m.origin.ts) dmThread.delete(key)

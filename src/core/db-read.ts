@@ -1,6 +1,6 @@
 import { isOffSlack } from './conversations.ts'
 
-const OUTSIDE_THE_TRANSACTION = /(?:^|[^\w$])(dblink\w*|lo_\w+|pg_(?:terminate|cancel)_backend|pg_read_(?:binary_)?file|pg_ls_\w+|pg_stat_file|pg_file_\w+|pg_reload_conf|pg_rotate_logfile|pg_promote|pg_switch_wal|pg_create_\w+|pg_drop_\w+|pg_replication_origin_\w+|pg_logical_emit_message|pg_advisory\w*|pg_notify|pg_sleep\w*|set_config)\s*\(/i
+const OUTSIDE_THE_TRANSACTION = /(?:^|[^\w$])(dblink\w*|lo_\w+|pg_(?:terminate|cancel)_backend|pg_read_(?:binary_)?file|pg_ls_\w+|pg_stat_file|pg_file_\w+|pg_reload_conf|pg_rotate_logfile|pg_promote|pg_switch_wal|pg_create_\w+|pg_drop_\w+|pg_replication_origin_\w+|pg_logical_emit_message|pg_\w*advisory\w*|query_to_xml\w*|cursor_to_xml\w*|ts_stat|ts_rewrite|pg_notify|pg_sleep\w*|set_config)\s*\(/i
 const FORBIDDEN = ['INSERT', 'UPDATE', 'DELETE', 'MERGE', 'ALTER', 'DROP', 'CREATE', 'GRANT', 'REVOKE', 'TRUNCATE', 'COPY', 'CALL', 'DO', 'INTO']
 
 function scan(sql: string): { code: string; run: string } | { refused: string } {
@@ -53,8 +53,9 @@ export function readOnlyQuery(sql: string, maxRows: number): { sql: string } | {
 }
 
 export const routeFolders = (routes: Record<string, string>, home: string) =>
-  [...new Set(Object.values(routes).flatMap(c => c.split(/\s+/)).filter(w => /^(\/|~\/)/.test(w)).map(w => dirOf(w.replace(/^~(?=\/)/, home))))]
+  [...new Set(Object.values(routes).flatMap(c => c.split(/\s+/)).filter(w => /^(\/|~\/)/.test(w)).map(w => w.replace(/^~(?=\/)/, home)).map(p => BROAD.has(dirOf(p)) || dirOf(p) === home ? p : dirOf(p)))]
+const BROAD = new Set(['/', '/tmp', '/private/tmp', '/var/tmp', '/Users', '/home'])
 const dirOf = (p: string) => p.slice(0, Math.max(1, p.lastIndexOf('/')))
 
-type Asker = { meta: { channel: string }; source?: string; agent?: { person?: string }; outsider?: string }
-export const mayReadDb = (t: Asker) => !t.outsider && !isOffSlack(t.meta.channel) && !t.source?.startsWith('meeting:') && !(t.agent && !t.agent.person)
+type Asker = { fromOwner: boolean; meta: { channel: string }; source?: string; agent?: { person?: string }; outsider?: string }
+export const mayReadDb = (t: Asker, ownerDm = '') => !(ownerDm && t.meta.channel === ownerDm && !t.fromOwner) && !t.outsider && !isOffSlack(t.meta.channel) && !t.source?.startsWith('meeting:') && !(t.agent && !t.agent.person)
