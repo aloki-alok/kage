@@ -1,3 +1,5 @@
+import { createHash } from 'node:crypto'
+
 type IssueKind = 'bug' | 'idea' | 'feedback'
 export type IssueReport = { kind: IssueKind; title: string; what: string; expected: string; steps?: string }
 export type IssueSystem = { version: string; system: string }
@@ -41,24 +43,32 @@ export function scrubReport(r: IssueReport, names: string[]): IssueReport {
   return { kind: r.kind, title: scrub(r.title, names), what: scrub(r.what, names), expected: scrub(r.expected, names), ...r.steps !== undefined && { steps: scrub(r.steps, names) } }
 }
 
+const FINGERPRINT = /^[0-9a-f]{12}$/
+
+export function reportFingerprint(r: IssueReport, crash?: string): string {
+  if (crash && FINGERPRINT.test(crash)) return crash
+  const words = r.title.toLowerCase().match(/[\p{L}\p{N}]+/gu) ?? []
+  return createHash('sha256').update(`${r.kind === 'idea' ? 'idea' : 'bug'}\n${words.join(' ')}`).digest('hex').slice(0, 12)
+}
+
 const section = (head: string, text: string) => `### ${head}\n\n${text || '_No response_'}`
 
-export function issueBody(r: IssueReport, sys: IssueSystem): { labels: string[]; body: string } {
-  if (r.kind === 'idea') return { labels: ['idea', 'from-agent'], body: [section('The job', r.what), section('How you would know it works', r.expected)].join('\n\n') }
+export function issueBody(r: IssueReport, sys: IssueSystem, fingerprint: string): { labels: string[]; body: string } {
+  if (r.kind === 'idea') return { labels: ['idea', 'from-agent'], body: [section('The job', r.what), section('How you would know it works', r.expected), section('Fingerprint', fingerprint)].join('\n\n') }
   return {
     labels: ['bug', 'from-agent'],
-    body: [section('Fingerprint', 'none'), section('What happened', r.what), section('What should have happened', r.expected), section('Steps to see it again', r.steps ?? ''), section('Version and system', `${sys.version} ${sys.system}`)].join('\n\n'),
+    body: [section('Fingerprint', fingerprint), section('What happened', r.what), section('What should have happened', r.expected), section('Steps to see it again', r.steps ?? ''), section('Version and system', `${sys.version} ${sys.system}`)].join('\n\n'),
   }
 }
 
-export function issueLink(repo: string, r: IssueReport, sys: IssueSystem): string {
+export function issueLink(repo: string, r: IssueReport, sys: IssueSystem, fingerprint: string): string {
   const fields: Record<string, string> = r.kind === 'idea'
     ? { template: 'feature.yml', title: r.title, job: r.what, done: r.expected }
-    : { template: 'agent-report.yml', title: r.title, fingerprint: 'none', what: r.what, expected: r.expected, ...r.steps && { steps: r.steps }, version: `${sys.version} ${sys.system}` }
+    : { template: 'agent-report.yml', title: r.title, fingerprint, what: r.what, expected: r.expected, ...r.steps && { steps: r.steps }, version: `${sys.version} ${sys.system}` }
   return `https://github.com/${repo}/issues/new?${new URLSearchParams(fields)}`
 }
 
-const SENT = ['filed', 'link']
+const SENT = ['filed', 'link', 'commented']
 
 export function reportsToday(tsv: string, day: string): number {
   return tsv.split('\n').filter(line => {

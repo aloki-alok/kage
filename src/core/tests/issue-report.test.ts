@@ -1,6 +1,6 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { issueBody, issueLink, repoFromRemote, reportsToday, scrubReport, type IssueReport } from '../issue-report.ts'
+import { issueBody, issueLink, reportFingerprint, repoFromRemote, reportsToday, scrubReport, type IssueReport } from '../issue-report.ts'
 import { wordingProblems } from '../skill-lessons.ts'
 
 test("the repo is the checkout's origin, a fork files to the fork, and the setting overrides both", () => {
@@ -36,21 +36,21 @@ test('the scrub keeps the words that describe the bug', () => {
 
 test('a bug fills the Report from Kage form, and an idea fills the Idea form', () => {
   const sys = { version: '0.4.6 abc1234', system: 'darwin arm64' }
-  const bug = issueBody({ kind: 'bug', title: 't', what: 'w', expected: 'e', steps: 's' }, sys)
+  const bug = issueBody({ kind: 'bug', title: 't', what: 'w', expected: 'e', steps: 's' }, sys, 'abc123def456')
   assert.deepEqual(bug.labels, ['bug', 'from-agent'])
-  assert.match(bug.body, /### Fingerprint\n\nnone\n\n### What happened\n\nw\n\n### What should have happened\n\ne\n\n### Steps to see it again\n\ns\n\n### Version and system\n\n0\.4\.6 abc1234 darwin arm64/)
-  assert.deepEqual(issueBody({ kind: 'feedback', title: 't', what: 'w', expected: 'e' }, sys).labels, ['bug', 'from-agent'])
-  const idea = issueBody({ kind: 'idea', title: 't', what: 'w', expected: 'e' }, sys)
+  assert.match(bug.body, /### Fingerprint\n\nabc123def456\n\n### What happened\n\nw\n\n### What should have happened\n\ne\n\n### Steps to see it again\n\ns\n\n### Version and system\n\n0\.4\.6 abc1234 darwin arm64/)
+  assert.deepEqual(issueBody({ kind: 'feedback', title: 't', what: 'w', expected: 'e' }, sys, 'f').labels, ['bug', 'from-agent'])
+  const idea = issueBody({ kind: 'idea', title: 't', what: 'w', expected: 'e' }, sys, 'abc123def456')
   assert.deepEqual(idea.labels, ['idea', 'from-agent'])
-  assert.match(idea.body, /^### The job\n\nw\n\n### How you would know it works\n\ne/)
+  assert.equal(idea.body, '### The job\n\nw\n\n### How you would know it works\n\ne\n\n### Fingerprint\n\nabc123def456')
 })
 
 test('the prefilled link opens the matching form with each field filled', () => {
   const sys = { version: '0.4.6', system: 'linux x64' }
-  const bug = new URL(issueLink('a/kage', { kind: 'bug', title: 'Tab & space', what: 'w', expected: 'e' }, sys))
+  const bug = new URL(issueLink('a/kage', { kind: 'bug', title: 'Tab & space', what: 'w', expected: 'e' }, sys, 'abc123def456'))
   assert.equal(bug.origin + bug.pathname, 'https://github.com/a/kage/issues/new')
-  assert.deepEqual(Object.fromEntries(bug.searchParams), { template: 'agent-report.yml', title: 'Tab & space', fingerprint: 'none', what: 'w', expected: 'e', version: '0.4.6 linux x64' })
-  const idea = new URL(issueLink('a/kage', { kind: 'idea', title: 't', what: 'w', expected: 'e' }, sys))
+  assert.deepEqual(Object.fromEntries(bug.searchParams), { template: 'agent-report.yml', title: 'Tab & space', fingerprint: 'abc123def456', what: 'w', expected: 'e', version: '0.4.6 linux x64' })
+  const idea = new URL(issueLink('a/kage', { kind: 'idea', title: 't', what: 'w', expected: 'e' }, sys, 'abc123def456'))
   assert.deepEqual(Object.fromEntries(idea.searchParams), { template: 'feature.yml', title: 't', job: 'w', done: 'e' })
 })
 
@@ -61,8 +61,20 @@ test("today's filings count toward the daily cap, and a denied or capped one doe
     ['2026-11-24T02:00:00.000Z', 'C1:1.1', 'idea', 'link', 'u'],
     ['2026-11-24T03:00:00.000Z', 'C1:1.1', 'bug', 'denied', ''],
     ['2026-11-24T04:00:00.000Z', 'C1:1.1', 'bug', 'capped', ''],
+    ['2026-11-24T05:00:00.000Z', 'C1:1.1', 'bug', 'commented', 'u'],
   ].map(r => r.join('\t')).join('\n')
-  assert.equal(reportsToday(rows, '2026-11-24'), 2)
+  assert.equal(reportsToday(rows, '2026-11-24'), 3)
+})
+
+test('the fingerprint is a crash fingerprint when the session has one, else the kind and the title, so a reworded case or stop still matches', () => {
+  const bug = (title: string, kind: IssueReport['kind'] = 'bug') => ({ kind, title, what: 'w', expected: 'e' })
+  const fp = reportFingerprint(bug('Reply failed in a thread'))
+  assert.match(fp, /^[0-9a-f]{12}$/)
+  assert.equal(reportFingerprint({ ...bug('  reply FAILED, in a thread. '), what: 'other words' }), fp)
+  assert.notEqual(reportFingerprint(bug('Reply failed in a channel')), fp)
+  assert.notEqual(reportFingerprint(bug('Reply failed in a thread', 'idea')), fp)
+  assert.equal(reportFingerprint(bug('anything'), '0123456789ab'), '0123456789ab')
+  assert.equal(reportFingerprint(bug('Reply failed in a thread'), 'not a fingerprint'), fp)
 })
 
 test('the scrub also takes app tokens, bearer tokens, channel names, links, phone numbers, single quotes, Windows paths and names with accents', () => {
