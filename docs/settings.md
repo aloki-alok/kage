@@ -193,7 +193,7 @@ If an open issue already has the same fingerprint, the card offers one `seen aga
 
 ## Trust record
 
-Kage keeps each yes you give a teammate, so it stops asking the same thing again. A line holds one teammate, one kind of step and one reach (a host, a site, a repo or a route). Only your own typed words write a line. `kage trust list` shows the lines, and `kage trust revoke <id>` takes one back. Money, deletes, sends to people outside the team, production deploys and writes, a production shell, the SSM relay, secrets, product calls and the owner-only shell kinds always ask, and one yes covers the whole job.
+Kage keeps each yes you give a teammate, so it stops asking the same thing again. A line holds one teammate, one kind of step and one reach. A reach has one form, so a reworded ask still meets its line: a site is its host in lowercase, a repo is `host/owner/name` in lowercase (a bare `owner/name` means GitHub), and a database read is a route name from `dbRead.routes`. An ask for a route that is not set is refused. Only your own typed words write a line. `kage trust list` shows the lines, and `kage trust revoke <id>` takes one back. Money, deletes, sends to people outside the team, production deploys and writes, a production shell, the SSM relay, secrets, product calls and the owner-only shell kinds always ask, and one yes covers the whole job.
 
 | Setting | Default | Effect |
 |---|---|---|

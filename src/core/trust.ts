@@ -11,12 +11,41 @@ export const isLearnable = (kind: string) => LEARNABLE.includes(kind)
 
 export type TrustLine = { id: string; who: string; kind: string; reach: string; answer: 'yes' | 'no'; once: boolean; link: string; at: string; state: 'live' | 'revoked' }
 export type AskRef = { who: string; kind: string; reach: string }
+const URLISH = /^[a-z][a-z+.-]*:\/\//i
+
+function parsedUrl(text: string): URL | undefined {
+  try { const u = new URL(URLISH.test(text) ? text : `https://${text}`); return u.username || u.password ? undefined : u } catch { return undefined }
+}
+
+function siteForm(reach: string): string | undefined {
+  const text = reach.trim()
+  if (/\s/.test(text)) return undefined
+  const host = parsedUrl(text)?.hostname.toLowerCase()
+  return host?.includes('.') ? host : undefined
+}
+
+const SEGMENT = /^[\w.-]+$/
+
+function repoForm(reach: string): string | undefined {
+  const text = reach.trim().replace(/^git@([^:/@]+):/, 'https://$1/')
+  if (/\s/.test(text) || text.split(/[/?#]/).includes('..')) return undefined
+  const bare = !URLISH.test(text) && !text.split('/')[0]!.includes('.')
+  if (bare && text.split('/').filter(Boolean).length !== 2) return undefined
+  const url = parsedUrl(bare ? `github.com/${text}` : text)
+  const [owner, name] = url?.pathname.split('/').filter(Boolean) ?? []
+  const repo = name?.replace(/\.git$/, '')
+  return url && owner && repo && SEGMENT.test(owner) && SEGMENT.test(repo) && repo !== '..' ? `${url.hostname}/${owner}/${repo}`.toLowerCase() : undefined
+}
+
+export const reachForm = (kind: string, reach: string): string | undefined =>
+  kind === 'site-read' ? siteForm(reach) : kind === 'repo-read' ? repoForm(reach) : oneLine(reach)
+
 export type Decision = { do: 'go' | 'no'; line: TrustLine } | { do: 'ask'; why: 'never-learn' | 'unknown-kind' | 'no-line' }
 
 export function decide(lines: TrustLine[], ask: AskRef): Decision {
   if (NEVER_LEARN.includes(ask.kind)) return { do: 'ask', why: 'never-learn' }
   if (!isLearnable(ask.kind)) return { do: 'ask', why: 'unknown-kind' }
-  const mine = lines.filter(l => l.state === 'live' && l.who === ask.who && l.kind === ask.kind && l.reach === ask.reach)
+  const mine = lines.filter(l => l.state === 'live' && l.who === ask.who && l.kind === ask.kind && (reachForm(l.kind, l.reach) ?? l.reach) === ask.reach)
   const no = mine.find(l => l.answer === 'no')
   if (no) return { do: 'no', line: no }
   const yes = mine.find(l => l.answer === 'yes' && !l.once)

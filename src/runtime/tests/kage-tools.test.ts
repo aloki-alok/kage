@@ -943,10 +943,11 @@ describe("a session's Kage tools", () => {
   describe('the trust record (#667)', () => {
     const line = (o: Partial<TrustLine> = {}): TrustLine => ({ id: 'T1', who: 'UTEAM0001', kind: 'prod-read', reach: 'db.example.test', answer: 'yes', once: false, link: 'https://x/p', at: '2026-11-25T00:00:00.000Z', state: 'live', ...o })
     const teammate = (s: ReturnType<typeof setup>, who = 'UTEAM0001', thread_ts = '6.6') => s.t.onTask({ ...s.task({ fromOwner: false, thread_ts }), content: `Teammate task (${who}, Sam, not the owner): read the prod db` })
+    const DB_ROUTES = { routes: { 'db.example.test': 'psql -c' }, maxRows: 200 }
     const prodRead = (thread_ts = '6.6', extra: Record<string, unknown> = {}) => ({ channel: 'C1', thread_ts, text: 'May I read the prod db?', waiting: 'Read the prod db?', waiting_on: 'owner', kind: 'prod-read', reach: 'db.example.test', ...extra })
 
     test('a known teammate\'s second prod read, in a new thread, posts no ask', async () => {
-      const s = setup({ trust: { mode: 'on', lines: [line()] } })
+      const s = setup({ trust: { mode: 'on', lines: [line()] }, dbRoutes: DB_ROUTES })
       teammate(s)
       const r = await s.call('reply', prodRead())
       assert.equal(r.isError, undefined, r.text)
@@ -956,24 +957,24 @@ describe("a session's Kage tools", () => {
       assert.match(s.ledgers.text('trust-steps'), /C1:6\.6\tUTEAM0001\tprod-read\tdb\.example\.test\tT1/)
     })
     test('the posted ask says what a yes will save: the teammate, the kind and the reach', async () => {
-      const s = setup({ trust: { mode: 'on', lines: [] } })
+      const s = setup({ trust: { mode: 'on', lines: [] }, dbRoutes: DB_ROUTES })
       teammate(s)
       await s.call('reply', prodRead())
       assert.match(s.posts[0]!.text, /<@UTEAM0001>: prod-read on db\.example\.test/)
       assert.match(s.posts[0]!.text, /yes once/)
-      const never = setup({ trust: { mode: 'on', lines: [] } })
+      const never = setup({ trust: { mode: 'on', lines: [] }, dbRoutes: DB_ROUTES })
       teammate(never)
       await never.call('reply', prodRead('6.6', { kind: 'ssm-relay', reach: 'ssm' }))
       assert.doesNotMatch(never.posts[0]!.text, /A yes saves/)
     })
     test('the line about what a yes saves is posted in shadow and on, and not when the mode is off', async () => {
       for (const mode of ['shadow', 'on'] as const) {
-        const s = setup({ trust: { mode, lines: [] } })
+        const s = setup({ trust: { mode, lines: [] }, dbRoutes: DB_ROUTES })
         teammate(s)
         await s.call('reply', prodRead())
         assert.match(s.posts[0]!.text, /A yes saves this/, mode)
       }
-      const off = setup({ trust: { mode: 'off', lines: [] } })
+      const off = setup({ trust: { mode: 'off', lines: [] }, dbRoutes: DB_ROUTES })
       teammate(off)
       await off.call('reply', prodRead())
       assert.equal(off.posts.length, 1)
@@ -984,9 +985,9 @@ describe("a session's Kage tools", () => {
       assert.doesNotMatch(none.posts[0]!.text, /A yes saves/)
     })
     test('the reach that is posted is the reach that is stored, and a reach over 200 characters is refused', async () => {
-      const s = setup({ trust: { mode: 'on', lines: [] } })
-      teammate(s)
       const reach = `${'h'.repeat(95)}.example.test`
+      const s = setup({ trust: { mode: 'on', lines: [] }, dbRoutes: { routes: { [reach]: 'psql -c' }, maxRows: 200 } })
+      teammate(s)
       await s.call('reply', prodRead('6.6', { reach }))
       assert.ok(s.posts[0]!.text.includes(`on ${reach},`))
       assert.match(s.ledgers.text('waiting'), new RegExp(`prod-read\\t${reach}\\tUTEAM0001`))
@@ -995,8 +996,27 @@ describe("a session's Kage tools", () => {
       assert.match(long.text, /200/)
       assert.equal(s.posts.length, 1)
     })
+    test('a repo ask in another spelling meets the line its first spelling saved, and is stored as host/owner/name', async () => {
+      const s = setup({ trust: { mode: 'on', lines: [line({ kind: 'repo-read', reach: 'github.com/acme/app' })] } })
+      teammate(s)
+      const r = await s.call('reply', prodRead('6.6', { kind: 'repo-read', reach: 'https://github.com/Acme/app/pull/3' }))
+      assert.match(r.text, /line T1/)
+      assert.deepEqual(s.posts, [])
+      assert.match(s.ledgers.text('trust-steps'), /\trepo-read\tgithub\.com\/acme\/app\tT1/)
+      const vague = await s.call('reply', prodRead('7.7', { kind: 'repo-read', reach: 'the app repo' }))
+      assert.equal(vague.isError, true)
+      assert.match(vague.text, /owner\/name/)
+    })
+    test('a prod-read ask names a route from the settings, and any other reach is refused before it posts', async () => {
+      const s = setup({ trust: { mode: 'on', lines: [] }, dbRoutes: { routes: { 'db.example.test': 'psql -c' }, maxRows: 200 } })
+      teammate(s)
+      const r = await s.call('reply', prodRead('6.6', { reach: 'some-other-db' }))
+      assert.equal(r.isError, true)
+      assert.match(r.text, /reach must be one of the read routes: db\.example\.test/)
+      assert.equal(s.posts.length, 0)
+    })
     test('a teammate with no line still asks the owner', async () => {
-      const s = setup({ trust: { mode: 'on', lines: [line()] } })
+      const s = setup({ trust: { mode: 'on', lines: [line()] }, dbRoutes: DB_ROUTES })
       teammate(s, 'UTEAM0002')
       const r = await s.call('reply', prodRead())
       assert.equal(r.isError, undefined, r.text)
@@ -1005,14 +1025,14 @@ describe("a session's Kage tools", () => {
       assert.equal(s.ledgers.text('trust-steps'), '')
     })
     test('a never-learn kind asks even with a matching yes line', async () => {
-      const s = setup({ trust: { mode: 'on', lines: [line({ kind: 'prod-write' })] } })
+      const s = setup({ trust: { mode: 'on', lines: [line({ kind: 'prod-write' })] }, dbRoutes: DB_ROUTES })
       teammate(s)
       const r = await s.call('reply', prodRead('6.6', { kind: 'prod-write' }))
       assert.equal(r.isError, undefined, r.text)
       assert.equal(s.posts.length, 1)
     })
     test('the same ask twice in one thread posts once', async () => {
-      const s = setup({ trust: { mode: 'on', lines: [] } })
+      const s = setup({ trust: { mode: 'on', lines: [] }, dbRoutes: DB_ROUTES })
       teammate(s)
       await s.call('reply', prodRead())
       const again = await s.call('reply', prodRead('6.6', { text: 'Reading the prod db is the next step. May I?', waiting: 'Prod db read please' }))
@@ -1025,7 +1045,7 @@ describe("a session's Kage tools", () => {
       assert.equal(s.posts.length, 2)
     })
     test('a no line stops the step and posts nothing', async () => {
-      const s = setup({ trust: { mode: 'on', lines: [line({ answer: 'no' })] } })
+      const s = setup({ trust: { mode: 'on', lines: [line({ answer: 'no' })] }, dbRoutes: DB_ROUTES })
       teammate(s)
       const r = await s.call('reply', prodRead())
       assert.equal(r.isError, true)
@@ -1033,7 +1053,7 @@ describe("a session's Kage tools", () => {
       assert.deepEqual(s.posts, [])
     })
     test('shadow mode changes nothing: the ask posts, and the would-decide is kept beside it', async () => {
-      const s = setup({ trust: { mode: 'shadow', lines: [line()] } })
+      const s = setup({ trust: { mode: 'shadow', lines: [line()] }, dbRoutes: DB_ROUTES })
       teammate(s)
       await s.call('reply', prodRead())
       await s.call('reply', prodRead('6.6', { waiting: 'Read the prod db again?' }))
@@ -1043,12 +1063,12 @@ describe("a session's Kage tools", () => {
       assert.equal(s.ledgers.text('trust-steps'), '')
     })
     test('mode off ignores the record, and an unknown kind is refused with the kinds listed', async () => {
-      const off = setup({ trust: { mode: 'off', lines: [line()] } })
+      const off = setup({ trust: { mode: 'off', lines: [line()] }, dbRoutes: DB_ROUTES })
       teammate(off)
       await off.call('reply', prodRead())
       assert.equal(off.posts.length, 1)
       assert.deepEqual(off.events.filter(e => e.startsWith('trust')), [])
-      const on = setup({ trust: { mode: 'on', lines: [] } })
+      const on = setup({ trust: { mode: 'on', lines: [] }, dbRoutes: DB_ROUTES })
       teammate(on)
       const r = await on.call('reply', prodRead('6.6', { kind: 'made-up' }))
       assert.equal(r.isError, true)
@@ -1056,7 +1076,7 @@ describe("a session's Kage tools", () => {
       assert.deepEqual(on.posts, [])
     })
     test('an ask in the owner\'s own thread is a plain ask: the record knows no teammate there', async () => {
-      const s = setup({ trust: { mode: 'on', lines: [line()] } })
+      const s = setup({ trust: { mode: 'on', lines: [line()] }, dbRoutes: DB_ROUTES })
       s.t.onTask(s.task())
       await s.call('reply', prodRead('5.5'))
       assert.equal(s.posts.length, 1)

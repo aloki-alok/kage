@@ -1,6 +1,6 @@
 import { describe, test } from 'node:test'
 import assert from 'node:assert/strict'
-import { answerLines, decide, isLearnable, openTypedAsks, ownerWords, receiptLine, savedLine, trustTable, type TrustLine } from '../trust.ts'
+import { answerLines, decide, isLearnable, reachForm, openTypedAsks, ownerWords, receiptLine, savedLine, trustTable, type TrustLine } from '../trust.ts'
 
 const line = (o: Partial<TrustLine> = {}): TrustLine => ({ id: 'T1', who: 'UTEAM0001', kind: 'prod-read', reach: 'db.example.test', answer: 'yes', once: false, link: 'https://x/p', at: '2026-11-25T00:00:00.000Z', state: 'live', ...o })
 const ask = { who: 'UTEAM0001', kind: 'prod-read', reach: 'db.example.test' }
@@ -93,5 +93,37 @@ describe('kage trust list', () => {
     assert.match(all[0]!, /^T1\s+UTEAM0001\s+prod-read\s+db\.example\.test\s+yes\s+live\s+2026-11-25/)
     assert.match(all[1]!, /^T4\s.*\sno once\s+live/)
     assert.equal(trustTable([]), '(no lines)')
+  })
+})
+
+describe('a reach has one form, so a reworded ask still matches its line', () => {
+  const line = (kind: string, reach: string): TrustLine => ({ id: 'T1', who: 'UTEAM0001', kind, reach, answer: 'yes', once: false, link: 'https://x/p', at: '2026-11-25T00:00:00.000Z', state: 'live' })
+  test('three spellings of one repo hit one line, stored in any of them', () => {
+    for (const stored of ['github.com/acme/app', 'acme/app', 'https://github.com/Acme/App']) {
+      for (const asked of ['acme/app', 'github.com/acme/app', 'https://github.com/acme/app', 'git@github.com:acme/app.git', 'https://github.com/acme/app/pull/3']) {
+        assert.equal(decide([line('repo-read', stored)], { who: 'UTEAM0001', kind: 'repo-read', reach: reachForm('repo-read', asked)! }).do, 'go', `${stored} vs ${asked}`)
+      }
+    }
+    assert.equal(decide([line('repo-read', 'acme/app')], { who: 'UTEAM0001', kind: 'repo-read', reach: 'acme/other' }).do, 'ask')
+    assert.equal(reachForm('repo-read', 'acme/app'), 'github.com/acme/app')
+  })
+  test('a repo keeps its host, so a yes for one host never covers the same owner/name on another', () => {
+    for (const other of ['evil.com/acme/app', 'https://evil.com/acme/app', 'git@evil.com:acme/app.git', 'https://gitlab.com/acme/app']) {
+      assert.equal(decide([line('repo-read', 'github.com/acme/app')], { who: 'UTEAM0001', kind: 'repo-read', reach: reachForm('repo-read', other)! }).do, 'ask', other)
+    }
+  })
+  test('a reach that hides its target has no form: a user@ part, a .. step, or a bare path with no host and extra parts', () => {
+    for (const r of ['https://github.com@evil.com/acme/app', 'acme/app/../other', 'https://github.com/acme/../other', 'localhost/acme/app']) assert.equal(reachForm('repo-read', r), undefined, r)
+    assert.equal(reachForm('site-read', 'https://docs.example.com@evil.com/x'), undefined)
+  })
+  test('a site is its lowercase host', () => {
+    assert.equal(reachForm('site-read', 'https://Docs.Example.com/guide?x=1'), 'docs.example.com')
+    assert.equal(reachForm('site-read', 'docs.example.com/guide'), 'docs.example.com')
+    assert.equal(decide([line('site-read', 'https://docs.example.com/a')], { who: 'UTEAM0001', kind: 'site-read', reach: 'docs.example.com' }).do, 'go')
+  })
+  test('a reach with no repo or host in it has no form, and a kind that always asks keeps its words', () => {
+    assert.equal(reachForm('repo-read', 'the app repo'), undefined)
+    assert.equal(reachForm('site-read', 'not a site at all'), undefined)
+    assert.equal(reachForm('money', 'Pay the invoice'), 'Pay the invoice')
   })
 })
