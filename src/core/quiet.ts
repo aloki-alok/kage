@@ -9,17 +9,15 @@ export async function waitForQuiet(o: {
   placeOf: (key: string) => string
   cut: boolean
   command: 'restart' | 'stop'
-}): Promise<'quiet' | 'cut' | 'down' | 'refused'> {
+}): Promise<'quiet' | 'cut' | 'down' | 'refused' | 'silent'> {
   const seen = new Set<string>()
   let missed = 0
-  for (let first = true; ; first = false) {
+  for (;;) {
     let waits: Wait[] | { refused: string }
     try { waits = await o.ask(); missed = 0 } catch (e) {
       if ((e as Error).message === 'down') return 'down'
-      if (!first && ++missed < 5) { await o.sleep(2000); continue }
-      if (!first) { o.say('The hub does not answer, so its turns are cut.'); return 'cut' }
-      o.say('This hub is older and cannot wait for running turns, so they are cut.')
-      return 'cut'
+      if (!o.cut && ++missed < SILENT_ASKS) { await o.sleep(2000); continue }
+      return silent(o)
     }
     if (!Array.isArray(waits)) return refused(o, waits.refused)
     if (o.cut) { for (const w of waits) o.say(`Cutting ${o.placeOf(w.key)} (${w.why}).`); return 'cut' }
@@ -27,6 +25,14 @@ export async function waitForQuiet(o: {
     for (const w of waits) if (!seen.has(w.key)) { seen.add(w.key); o.say(`Waiting for ${o.placeOf(w.key)} (${w.why}) to finish its turn.`) }
     await o.sleep(2000)
   }
+}
+
+const SILENT_ASKS = 5
+
+function silent(o: { say: (line: string) => void; cut: boolean; command: 'restart' | 'stop' }): 'cut' | 'silent' {
+  if (o.cut) { o.say('The hub did not answer. Cutting every running turn, as --cut-running asked.'); return 'cut' }
+  o.say(`The hub did not answer. Nothing was cut. To ${o.command} anyway and cut every running turn: kage ${o.command} --cut-running`)
+  return 'silent'
 }
 
 function refused(o: { say: (line: string) => void; cut: boolean; command: 'restart' | 'stop' }, why: string): 'cut' | 'refused' {

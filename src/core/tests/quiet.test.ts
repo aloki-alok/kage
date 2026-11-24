@@ -25,22 +25,31 @@ test('--cut-running asks once and names each thread it cuts', async () => {
   assert.equal(asks, 1)
   assert.deepEqual(said, ['Cutting #general (busy).'])
 })
-test('no hub running means nothing to wait for; an older hub that cannot drain is cut, and says so', async () => {
+test('no hub running means nothing to wait for', async () => {
   assert.equal((await run([new Error('down')])).r, 'down')
-  const old = await run([new Error('silent')])
-  assert.equal(old.r, 'cut')
-  assert.match(old.said[0]!, /cannot wait/)
 })
-test('a missed answer after a good one is a slow hub, not an old one: it asks again instead of cutting', async () => {
+test('a hub that never answers is not read as an older hub: it asks 5 times, cuts nothing, and names the command that cuts', async () => {
+  const { r, said, asks } = await run([new Error('silent')])
+  assert.equal(r, 'silent')
+  assert.equal(asks, 5)
+  assert.deepEqual(said, ['The hub did not answer. Nothing was cut. To restart anyway and cut every running turn: kage restart --cut-running'])
+})
+test('a missed answer after a good one is a slow hub: it asks again instead of cutting', async () => {
   const { r, said } = await run([[{ key: 'C1:5.5', why: 'busy' }], new Error('silent'), []])
   assert.equal(r, 'quiet')
-  assert.ok(!said.some(l => /cannot wait/.test(l)))
+  assert.deepEqual(said, ['Waiting for #general (busy) to finish its turn.', 'Every thread is quiet.'])
 })
-test('a hub that stops answering for 5 asks in a row is cut, so kage stop never hangs', async () => {
+test('a hub that stops answering for 5 asks in a row cuts nothing, so kage stop never hangs and never cuts by surprise', async () => {
   const { r, said, asks } = await run([[{ key: 'C1:5.5', why: 'busy' }], new Error('silent')])
-  assert.equal(r, 'cut')
+  assert.equal(r, 'silent')
   assert.equal(asks, 6)
-  assert.match(said.at(-1)!, /does not answer/)
+  assert.match(said.at(-1)!, /^The hub did not answer\. Nothing was cut\./)
+})
+test('--cut-running cuts at once when the hub does not answer, as asked', async () => {
+  const { r, said, asks } = await run([new Error('silent')], true)
+  assert.equal(r, 'cut')
+  assert.equal(asks, 1)
+  assert.deepEqual(said, ['The hub did not answer. Cutting every running turn, as --cut-running asked.'])
 })
 test('a hub that refuses the drain is never read as an older hub: nothing is cut, and the line names the command that cuts', async () => {
   const refused = { refused: "this needs the owner key, which only the kage command in the owner's own terminal sends" }
