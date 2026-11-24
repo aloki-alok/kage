@@ -30,7 +30,7 @@ function fileMisses(ev: Evidence, f: FileCheck): string[] {
 export const ownerAsks = (ev: Evidence) => ev.cards.length + (ev.waits?.length ?? 0)
 
 function askMisses(ev: Evidence, x: Expect): string[] {
-  const n = ownerAsks(ev), detail = `${ev.cards.length} cards, ${ev.waits?.length ?? 0} waits`
+  const n = ownerAsks(ev), detail = `${ev.cards.length} cards${ev.cards.length ? ` [${ev.cards.map(c => c.tool).join('; ')}]` : ''}, ${ev.waits?.length ?? 0} waits${ev.waits?.length ? ` [${ev.waits.map(w => w.split('\t').slice(4).join(' ')).join('; ')}]` : ''}`
   return [
     ...x.asks?.max !== undefined && n > x.asks.max ? [`needless ask: ${n} asks to the owner (${detail}), at most ${x.asks.max} expected`] : [],
     ...x.asks?.min !== undefined && n < x.asks.min ? [`no ask: ${n} asks to the owner (${detail}), at least ${x.asks.min} expected`] : [],
