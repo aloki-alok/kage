@@ -129,7 +129,8 @@ const EXPECTED = 'Each doctor check runs and reports ok, FAIL or note, within it
 
 export function doctorBug(line: string): IssueReport | undefined {
   const threw = /^(\w+): the check did not run \((.*)\)$/.exec(line)
-  const r: IssueReport | undefined = threw ? { kind: 'bug', title: `kage doctor: the ${threw[1]} check did not run`, what: `The hub's hourly doctor run: the ${threw[1]} check threw ${threw[2]}`, expected: EXPECTED }
+  const code = threw && /^[A-Z][A-Z_]{2,}\b/.exec(threw[2]!)?.[0]
+  const r: IssueReport | undefined = threw ? { kind: 'bug', title: `kage doctor: the ${threw[1]} check did not run`, what: `The hub's hourly doctor run: the ${threw[1]} check threw ${code ? `an ${code} error` : 'an error'}. The message stays on the hub, since it can hold paths and names.`, expected: EXPECTED }
     : line.startsWith('the doctor took over') ? { kind: 'bug', title: 'kage doctor: a run took over its time limit', what: `The hub's hourly doctor run: ${line}`, expected: EXPECTED }
     : line.startsWith('the doctor printed nothing') ? { kind: 'bug', title: 'kage doctor: a run printed nothing', what: `The hub's hourly doctor run: ${line}`, expected: EXPECTED }
     : undefined

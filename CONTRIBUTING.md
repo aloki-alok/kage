@@ -102,7 +102,7 @@ Write logs to stderr only. In a tmux pane, stdout carries the channel protocol, 
 | `src/hub/owner-commands.ts` | What the owner asks from their terminal or DM: the status line, `kage tell`, `kage relay`, and `say` (an app on this Mac posts as the owner). |
 | `src/hub/whatsapp-cards.ts` | An approval card sent to the owner on WhatsApp when they picked that channel, with a four-digit code, and their `yes` or `no` reply answering that card once. |
 | `src/hub/phone-owner.ts` | Calling the owner: runs `connectors.call.command` with a one-time voice code and the reason, and says why when it cannot. |
-| `src/hub/self-check.ts` | The hourly doctor run (`src/runtime/doctor-watch.ts`) wired to the owner DM, the event ledger and, on the repo owner's hub only, `fileFound` for a check that did not run. |
+| `src/hub/self-check.ts` | The hourly doctor run (`src/runtime/doctor-watch.ts`) wired to the owner DM, the event ledger and, on a hub whose gh login can push to the Kage repo (checked at each filing), `fileFound` for a check that did not run, inside `report.perDay`. |
 | `src/hub/startup.ts` | What the hub does once at start after it connects: adopts cron jobs exported from tmux panes, tells the owner about an update, unplaced settings or missing Slack scopes, and replays messages the last run heard but never handled. |
 | `plugin/server.ts` | For tmux panes only: serves Kage's tools over MCP inside each pane and relays approvals. |
 | `plugin/private-data-guard.ts` | The plugin hook (`hooks/hooks.json`) that runs the rules in `src/core/guards.ts` and `src/runtime/path-guards.ts` inside tmux panes. The SDK runner applies the same rules in process. |

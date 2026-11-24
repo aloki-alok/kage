@@ -205,6 +205,11 @@ describe('an unknown doctor failure becomes a bug report (#153)', () => {
     assert.match(r.what, /ENOENT/)
     assert.equal(r.what.includes('/Users/sam'), false)
   })
+  test('the public bug body never carries the error message, only its code', () => {
+    const r = doctorBug('browser: the check did not run (fetch https://x.io/?token=abc123secret failed for Acme Corp at /root/kage/src/x.ts:12)')!
+    assert.equal(/abc123secret|Acme|\/root|x\.io/.test(JSON.stringify(r)), false)
+    assert.match(r.what, /threw an error\./)
+  })
   test('a doctor that timed out or printed nothing is a bug too, and a known fix line is not', () => {
     assert.equal(doctorBug('the doctor took over 120 s, so some checks did not finish')!.title, 'kage doctor: a run took over its time limit')
     assert.equal(doctorBug('the doctor printed nothing, so it did not run')!.title, 'kage doctor: a run printed nothing')

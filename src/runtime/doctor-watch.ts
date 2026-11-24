@@ -8,6 +8,8 @@ type Options = {
   say: (text: string) => Promise<boolean>
   event: (detail: string) => void
   file?: (r: IssueReport) => Promise<void>
+  canFile?: () => Promise<boolean>
+  now?: () => number
 }
 
 export const runDoctor = (code: string, timeout = 120_000) => () => new Promise<string>(ok => {
@@ -23,6 +25,10 @@ export function doctorWatch(o: Options) {
     o.event(`doctor failing=${n.failing.length} told=${n.stable.length}`)
     if (n.dm && !await o.say(n.dm)) return
     o.store.save('doctor-told', n.stable)
-    for (const r of n.stable.filter(f => !told.includes(f)).flatMap(f => doctorBug(f) ?? [])) await o.file?.(r).catch(() => o.event('doctor file failed'))
+    const now = (o.now ?? Date.now)(), filed = (o.store.load('doctor-filed') ?? {}) as Record<string, number>
+    const due = n.stable.filter(f => filed[f] === undefined || now - filed[f] >= 86_400_000).flatMap(f => { const r = doctorBug(f); return r ? [[f, r] as const] : [] })
+    if (!o.file || !due.length || !await (o.canFile?.() ?? Promise.resolve(true))) return
+    for (const [f, r] of due) await o.file(r).then(() => { filed[f] = now }, () => o.event('doctor file failed'))
+    o.store.save('doctor-filed', filed)
   }
 }
