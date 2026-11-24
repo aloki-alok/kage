@@ -1,3 +1,6 @@
+import { isOffSlack } from './conversations.ts'
+import { decide, type TrustLine, type TrustMode } from './trust.ts'
+
 
 const FORBIDDEN = ['INSERT', 'UPDATE', 'DELETE', 'MERGE', 'ALTER', 'DROP', 'CREATE', 'GRANT', 'REVOKE', 'TRUNCATE', 'COPY', 'CALL', 'DO', 'INTO']
 
@@ -45,4 +48,23 @@ export function readOnlyQuery(sql: string, maxRows: number): { sql: string } | {
   if (bad) return { refused: `${bad} is not allowed: db_read runs reads only` }
   if (/\bfor\s+(key\s+)?share\b/i.test(code)) return { refused: 'a row lock (FOR SHARE) is not allowed: db_read runs reads only' }
   return { sql: `select * from (\n${run.trim()}\n) as kage_db_read limit ${maxRows}` }
+}
+
+type Asker = { fromOwner: boolean; meta: { channel: string }; source?: string; agent?: { person?: string }; outsider?: string }
+export const mayReadDb = (t: Asker, ownerDm = '') => !(ownerDm && t.meta.channel === ownerDm && !t.fromOwner) && !t.outsider && !isOffSlack(t.meta.channel) && !t.source?.startsWith('meeting:') && !t.agent
+
+type ReadAsk = { reader: boolean; owner: boolean; teammate?: string; route: string; mode: TrustMode; lines: TrustLine[] }
+type ReadVerdict = { read: true; line?: string; would?: string } | { read: false; why: string; would?: string }
+
+const askFor = (route: string) => `Post an ask with the reply tool: waiting_on owner, kind prod-read, reach ${route}. The owner's plain yes saves it for you, and the next read of ${route} goes through.`
+
+export function readGate(a: ReadAsk): ReadVerdict {
+  if (!a.reader) return { read: false, why: 'a meeting, an outsider, another bot, a text, a call and an email read no database' }
+  if (a.owner) return { read: true }
+  if (!a.teammate) return { read: false, why: 'only the owner or a listed teammate reads a database' }
+  const d = decide(a.lines, { who: a.teammate, kind: 'prod-read', reach: a.route })
+  const would = a.mode === 'off' ? undefined : d.do === 'ask' ? 'ask' : d.do
+  if (a.mode === 'on' && d.do === 'go') return { read: true, line: d.line.id, would }
+  if (a.mode === 'on' && d.do === 'no') return { read: false, why: `the owner said no to ${a.route} for this teammate (line ${d.line.id}). Do not read it and do not ask again.`, would }
+  return { read: false, why: `a teammate reads ${a.route} only with the owner's yes. ${askFor(a.route)}${a.mode === 'on' ? '' : ' Trust is not on, so a yes lets you read only in the turn where the owner answers.'}`, would }
 }

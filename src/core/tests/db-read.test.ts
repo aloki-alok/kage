@@ -1,6 +1,7 @@
 import { describe, test } from 'node:test'
 import assert from 'node:assert/strict'
-import { readOnlyQuery } from '../db-read.ts'
+import { mayReadDb, readGate, readOnlyQuery } from '../db-read.ts'
+import type { TrustLine } from '../trust.ts'
 
 const ok = (sql: string) => {
   const r = readOnlyQuery(sql, 200)
@@ -78,5 +79,41 @@ describe('anything else is refused', () => {
     no("select 'open", /unclosed/)
     no('select /* open', /unclosed/)
     no('select "open', /unclosed/)
+  })
+})
+
+describe('who may read a named route', () => {
+  const line = (o: Partial<TrustLine> = {}): TrustLine => ({ id: 'T1', who: 'U0TEST1', kind: 'prod-read', reach: 'prod', answer: 'yes', once: false, link: 'l', at: '2026-11-25T00:00:00.000Z', state: 'live', ...o })
+  const gate = (o: Partial<Parameters<typeof readGate>[0]> = {}) => readGate({ reader: true, owner: false, teammate: 'U0TEST1', route: 'prod', mode: 'on', lines: [line()], ...o })
+  test('the owner reads in every mode, a covered teammate only in on mode', () => {
+    for (const mode of ['off', 'shadow', 'on'] as const) assert.equal(gate({ owner: true, teammate: undefined, mode, lines: [] }).read, true, mode)
+    assert.deepEqual(gate(), { read: true, line: 'T1', would: 'go' })
+    assert.equal(gate({ mode: 'shadow' }).read, false)
+    assert.equal(gate({ mode: 'off' }).read, false)
+  })
+  test('a line covers one teammate and one route, and a no wins', () => {
+    assert.equal(gate({ route: 'reports' }).read, false)
+    assert.equal(gate({ teammate: 'U0TEST2' }).read, false)
+    assert.match((gate({ lines: [line(), line({ id: 'T2', answer: 'no' })] }) as { why: string }).why, /said no/)
+    assert.equal(gate({ lines: [line({ once: true })] }).read, false)
+  })
+  test('a kind that never learns covers nothing', () => {
+    assert.equal(gate({ lines: [line({ kind: 'ssm-relay' })] }).read, false)
+    assert.equal(gate({ lines: [line({ kind: 'prod-shell' })] }).read, false)
+  })
+  test('a non-reader and an unknown asker read nothing', () => {
+    assert.equal(gate({ reader: false, owner: true }).read, false)
+    assert.equal(gate({ teammate: undefined }).read, false)
+  })
+  test('a meeting, an outsider, any bot, a text and the owner\'s DM job read nothing', () => {
+    const t = { fromOwner: false, meta: { channel: 'C0TEST1' } }
+    assert.equal(mayReadDb(t), true)
+    assert.equal(mayReadDb({ ...t, source: 'meeting:x' }), false)
+    assert.equal(mayReadDb({ ...t, outsider: 'x' }), false)
+    assert.equal(mayReadDb({ ...t, agent: {} }), false)
+    assert.equal(mayReadDb({ ...t, agent: { person: 'U0TEST1' } }), false)
+    assert.equal(mayReadDb({ ...t, meta: { channel: 'sms' } }), false)
+    assert.equal(mayReadDb({ ...t, meta: { channel: 'D0TEST1' } }, 'D0TEST1'), false)
+    assert.equal(mayReadDb({ fromOwner: true, meta: { channel: 'D0TEST1' } }, 'D0TEST1'), true)
   })
 })
