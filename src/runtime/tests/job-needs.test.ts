@@ -7,15 +7,16 @@ import { jobRunner } from '../jobs.ts'
 const DIAL = 'mcp__claude_ai_Dialer__place_call'
 const dialer = (status: string) => [{ name: 'claude.ai Dialer', status, tools: status === 'connected' ? [{ name: 'place_call' }] : [] }]
 
-function setup(o: { notifyFails?: boolean } = {}) {
+function setup(o: { notifyFails?: boolean; probesOn?: boolean } = {}) {
   let fails = !!o.notifyFails, broken = false
   const store = openStore(':memory:')
-  store.addSchedule({ id: 'a1b2', key: 'C1:5.5', cron: '@event', prompt: 'phone on-call', recurring: true, fromOwner: true, created: 0, lastFired: 0, needs: [DIAL] })
+  store.setTrust('C1:5.5', true)
+  store.addSchedule({ id: 'a1b2', key: 'C1:5.5', cron: '*/10 * * * *', prompt: 'phone on-call', recurring: true, fromOwner: true, created: 0, lastFired: 0, needs: [DIAL] })
   store.addSchedule({ id: 'c3d4', key: 'C1:5.5', cron: '0 9 * * *', prompt: 'summary', recurring: true, fromOwner: true, created: 0, lastFired: 0 })
   const dms: string[] = []
   let seen = dialer('connected')
   const looks: number[] = []
-  const w = needsWatch({ store, placeOf: () => { if (broken) throw new Error('db busy'); return '#alerts' }, notify: async t => { if (fails) return false; dms.push(t); return true }, look: async () => { looks.push(1); return seen }, minutes: 1 })
+  const w = needsWatch({ store, placeOf: () => { if (broken) throw new Error('db busy'); return '#alerts' }, notify: async t => { if (fails) return false; dms.push(t); return true }, look: async () => { looks.push(1); return seen }, minutes: 1, probesOn: () => o.probesOn ?? true })
   const runner = jobRunner(w.jobs, 0)
   const tick = async (now: number) => { runner.tick(now); await new Promise(r => setTimeout(r, 5)) }
   return { store, dms, looks, w, tick, set: (s: string) => { seen = dialer(s) }, fails: (f: boolean) => { fails = f }, breakPlace: (b: boolean) => { broken = b } }
@@ -96,4 +97,35 @@ test("Kage's own tools never read as missing: the clock's probe has no kage serv
   await t.tick(120_000)
   assert.deepEqual(t.dms, [])
   assert.equal(t.store.jobState('a1b2').missing, undefined)
+})
+
+test("a teammate's job is told missing the owner's tools on the first look, though the owner's sessions have them", async () => {
+  const t = setup()
+  t.store.addSchedule({ id: 'e5f6', key: 'C2:6.6', cron: '*/10 * * * *', prompt: 'phone on-call', recurring: true, fromOwner: false, created: 0, lastFired: 0, needs: [DIAL] })
+  await t.tick(60_000)
+  assert.equal(t.dms.length, 1)
+  assert.match(t.dms[0]!, /e5f6 in #alerts needs mcp__claude_ai_Dialer__place_call/)
+  assert.deepEqual(t.store.jobState('e5f6').missing, [DIAL])
+  assert.equal(t.store.jobState('a1b2').missing, undefined, "the owner's job still has its tool")
+})
+
+test("the owner's event job is told missing too, because a wake runs with a teammate's trust", async () => {
+  const t = setup()
+  t.store.addSchedule({ id: 'g7h8', key: 'C1:5.5', cron: '@event', prompt: 'phone on-call', recurring: true, fromOwner: true, created: 0, lastFired: 0, trigger: { kind: 'hook', tokenHash: 'x' }, needs: [DIAL] })
+  await t.tick(60_000)
+  assert.equal(t.dms.length, 1)
+  assert.match(t.dms[0]!, /g7h8 in #alerts .*teammate's trust/)
+  assert.equal(t.store.jobState('a1b2').missing, undefined)
+})
+
+test("with tripwires off, the owner's probe job runs on its clock as the owner, so its tool counts as present", async () => {
+  const add = (t: ReturnType<typeof setup>) => t.store.addSchedule({ id: 'p9q0', key: 'C1:5.5', cron: '*/5 * * * *', prompt: 'check', recurring: true, fromOwner: true, created: 0, lastFired: 0, trigger: { kind: 'probe', probe: { command: 'true', ignore: [], reads: [], writes: [], pins: {} } as never }, needs: [DIAL] })
+  const off = setup({ probesOn: false })
+  add(off)
+  await off.tick(60_000)
+  assert.deepEqual(off.dms, [])
+  const on = setup()
+  add(on)
+  await on.tick(60_000)
+  assert.match(on.dms[0]!, /p9q0 .*teammate's trust/)
 })

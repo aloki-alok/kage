@@ -54,3 +54,26 @@ test("a job saved missing only Kage's own tools is cleared with no DM; a real to
 test("Kage's own tools on the tmux route are never watched either", () => {
   assert.deepEqual(needsChanges([{ ...job(), needs: [DIAL, 'mcp__plugin_kage_kage__reply'] }], live([DIAL])), [])
 })
+
+test("a job whose runs get a teammate's trust misses every owner tool, even when the owner's sessions have it", () => {
+  const slackRead = 'mcp__kage__slack_read', reply = 'mcp__kage__reply'
+  const [c] = needsChanges([{ ...job(), runs: 'teammate' as const, needs: [DIAL, slackRead, reply] }], live([DIAL]))
+  assert.deepEqual(c!.missing, [DIAL, slackRead])
+  assert.match(c!.dm!, /a1b2 in #alerts/)
+  assert.match(c!.dm!, /teammate's trust/)
+  assert.match(c!.dm!, /set the job up again from your own DM/)
+  assert.deepEqual(needsChanges([{ ...job([DIAL, slackRead]), runs: 'teammate' as const, needs: [DIAL, slackRead, reply] }], live([DIAL])), [], 'a second look says nothing')
+})
+
+test("a wake's DM says to make it a clock job, because setting it up again keeps the teammate's trust", () => {
+  const [c] = needsChanges([{ ...job(), runs: 'wake' }], live([DIAL]))
+  assert.deepEqual(c!.missing, [DIAL])
+  assert.match(c!.dm!, /teammate's trust/)
+  assert.match(c!.dm!, /clock job/)
+  assert.doesNotMatch(c!.dm!, /set the job up again/)
+})
+
+test("a teammate's job is still missing an owner tool while that server connects", () => {
+  const [c] = needsChanges([{ ...job(), runs: 'teammate' }], { tools: new Set(), pending: ['mcp__claude_ai_Dialer__'] })
+  assert.deepEqual(c!.missing, [DIAL])
+})

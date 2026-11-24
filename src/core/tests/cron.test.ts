@@ -1,6 +1,6 @@
 import { describe, test } from 'node:test'
 import assert from 'node:assert/strict'
-import { cadence, promptPreview, cronJobsFromTranscript, cronMatches, liveCronJobs, dueSchedules, nextRun, parseCron, EVENT, REPLY, type Schedule } from '../cron.ts'
+import { cadence, promptPreview, cronJobsFromTranscript, cronMatches, liveCronJobs, dueSchedules, nextRun, parseCron, runTrust, EVENT, REPLY, type Schedule } from '../cron.ts'
 
 const at = (s: string) => new Date(s)
 
@@ -174,4 +174,21 @@ test('a schedule prompt reads without the Slack ids the hub needs', () => {
 test('an event job never fires on the clock', () => {
   const e: Schedule = { id: 'e', key: 'C1:1.1', cron: EVENT, prompt: 'p', recurring: true, fromOwner: false, created: 0, lastFired: 0 }
   assert.deepEqual(dueSchedules([e], 3_600_000), { fire: [], drop: [], late: {}, skipped: {} })
+})
+
+describe("runTrust: whose trust a job's woken runs get", () => {
+  const job = (o: Partial<Schedule> = {}): Schedule => ({ id: 'a1', key: 'C1:1.1', cron: '*/10 * * * *', prompt: 'p', recurring: true, fromOwner: true, created: 0, lastFired: 0, ...o })
+  const on = { ownerThread: true, probesOn: true }
+  test("the owner's clock job in the owner's thread runs as the owner", () => assert.equal(runTrust(job(), on), 'owner'))
+  test("the owner's clock job in a thread a teammate wrote in runs as a teammate", () => assert.equal(runTrust(job(), { ...on, ownerThread: false }), 'teammate'))
+  test("a teammate's clock job runs as a teammate", () => assert.equal(runTrust(job({ fromOwner: false }), on), 'teammate'))
+  test('an event, hook or watch job is woken as a teammate', () => {
+    assert.equal(runTrust(job({ cron: EVENT, trigger: { kind: 'hook', tokenHash: 'x' } }), on), 'wake')
+    assert.equal(runTrust(job({ cron: REPLY }), on), 'wake')
+  })
+  test('a probe job is woken as a teammate while tripwires are on, and runs on its clock as the owner when off', () => {
+    const probe = job({ trigger: { kind: 'probe', probe: {} as never } })
+    assert.equal(runTrust(probe, on), 'wake')
+    assert.equal(runTrust(probe, { ...on, probesOn: false }), 'owner')
+  })
 })

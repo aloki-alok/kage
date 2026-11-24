@@ -36,6 +36,7 @@ import { homeThread, postAsKage, sessionTools, threadPing } from '../runtime/kag
 import { scheduler } from '../runtime/scheduler.ts'
 import { runJobs } from '../runtime/jobs.ts'
 import { mcpStatus, needsWatch, sdkLook } from '../runtime/job-needs.ts'
+import { tripwireCfg } from '../runtime/probe-jobs.ts'
 import { sdkSessions } from '../runtime/sdk-sessions.ts'
 import { answerDeferred, deferredApprovals } from '../runtime/deferred-approvals.ts'
 import { cardVerdictCells } from '../core/held-review.ts'
@@ -228,7 +229,7 @@ const sessionOptions = (claude: string) => ({
   settings: { autoMemoryDirectory: MEM.own, ...harness.pluginsOff?.length && { enabledPlugins: Object.fromEntries(harness.pluginsOff.map(p => [p, false])) } },
   pathToClaudeCodeExecutable: claude,
 })
-const needs = needsWatch({ store, placeOf, notify: t => owner.say(t), ...sdkLib && { look: sdkLook(sdkLib.lib.query as Parameters<typeof sdkLook>[0], sessionOptions(sdkLib.claude)) } })
+const needs = needsWatch({ store, placeOf, notify: t => owner.say(t), probesOn: () => tripwireCfg(config.tripwires ?? {}).on, ...sdkLib && { look: sdkLook(sdkLib.lib.query as Parameters<typeof sdkLook>[0], sessionOptions(sdkLib.claude)) } })
 const sdk = sdkLib ? sdkSessions({
   sdk: sdkLib.lib,
   deferred,

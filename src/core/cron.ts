@@ -83,6 +83,13 @@ export type Schedule = {
   model?: string
 }
 
+export type RunTrust = 'owner' | 'teammate' | 'wake'
+
+export function runTrust(s: Schedule, o: { ownerThread: boolean; probesOn: boolean }): RunTrust {
+  const clock = s.cron !== REPLY && s.cron !== EVENT && (!s.trigger || (s.trigger.kind === 'probe' && !o.probesOn))
+  return !clock ? 'wake' : o.ownerThread && s.fromOwner ? 'owner' : 'teammate'
+}
+
 const LATE = 10 * MINUTE
 export const CATCH_UP = 12 * 3600_000
 
