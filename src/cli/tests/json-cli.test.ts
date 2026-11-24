@@ -44,6 +44,13 @@ test('config list --json gives every setting, and config get --json one', () => 
   assert.ok(all.some(s => s.key === 'harness.maxSessions'))
   assert.deepEqual(Object.keys(json('config', 'get', 'harness.maxSessions') as object).sort(), ['default', 'key', 'text', 'value'])
 })
+test('--json may come before the key or name', () => {
+  for (const args of [['config', 'get', '--json', 'harness.maxSessions'], ['config', 'get', 'harness.maxSessions', '--jq', '.key'], ['cost', '--json', '7']]) {
+    const r = kage(...args)
+    assert.equal(r.status, 0, `${args.join(' ')}: ${r.stderr}`)
+  }
+  assert.equal(kage('config', 'get', '--json').status, 2)
+})
 test('--jq filters the rows', () => {
   assert.equal(kage('schedule', 'list', '--jq', '.[].id').stdout, '"j1"\n')
 })
@@ -52,4 +59,5 @@ test('kagelet logs --json gives the kagelet and its runs', () => {
   const logs = json('kagelet', 'logs', 'jsontest') as { name: string; runs: unknown[] }
   assert.equal(logs.name, 'jsontest')
   assert.deepEqual(logs.runs, [])
+  assert.equal(kage('kagelet', 'logs', '--json', 'jsontest').status, 0)
 })

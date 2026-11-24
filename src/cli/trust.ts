@@ -12,7 +12,7 @@ const [action = '', arg = ''] = out.args
 if (action === 'list') {
   if (!existsSync(`${DIR}/kage.db`)) notRunning()
   const lines = trustLinesIn(`${DIR}/kage.db`)
-  if (out.json) printJson(lines, out.jq)
+  if (out.json) printJson(lines.filter(l => l.state !== 'revoked'), out.jq)
   else console.log(trustTable(lines))
 } else if (action === 'revoke' && arg) {
   if (process.env.KAGE_CLAUDE) { console.error('This shell runs inside Kage: a session cannot change the trust record.'); process.exit(1) }

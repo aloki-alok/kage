@@ -18,7 +18,7 @@ const sp = parseKagelet(name, file.text)
 if (out.json && !existsSync(`${DIR}/kage.db`)) { printJson({ name, runs: [] }, out.jq); process.exit(0) }
 if (out.json) {
   const db = new DatabaseSync(`${DIR}/kage.db`, { readOnly: true })
-  printJson({ name, ...'error' in sp && { error: sp.error }, runs: kageletRuns(name, 'error' in sp ? '' : sp.key, { runs: ledgerText(db, 'runs'), costs: ledgerText(db, 'costs'), reports: ledgerText(db, 'reports') }, Date.now()) }, out.jq)
+  printJson({ name, ...'error' in sp && { error: sp.error }, runs: kageletRuns(name, 'error' in sp ? '' : sp.key, { runs: ledgerText(db, 'runs'), costs: ledgerText(db, 'costs'), reports: ledgerText(db, 'reports') }, Date.now()).slice(0, 20) }, out.jq)
   process.exit(0)
 }
 if ('error' in sp) console.log(`${name} does not run: ${sp.error}`)
