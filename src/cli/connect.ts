@@ -86,7 +86,7 @@ function secretAt<T extends Record<string, unknown>>(s: T, key: string, value: s
 
 async function line(prompt: string) {
   const rl = createInterface({ input: process.stdin, output: process.stdout })
-  try { return (await rl.question(prompt)).trim() } finally { rl.close() }
+  try { return (await rl.question(prompt)).trim() } catch { console.log(); return '' } finally { rl.close() }
 }
 
 function hidden(prompt: string): Promise<string> {

@@ -17,7 +17,7 @@ export function connectorStates({ config, secrets }: { config: Config; secrets: 
     browser: need([['browserToken', secrets.browserToken]]),
     email: need([['connectors.email.address', c.email?.address], ['connectors.email.queue', c.email?.queue], ['connectors.email.ownerEmail', c.email?.ownerEmail]], c.email?.on === false),
     voice: need([['voiceToken', secrets.voiceToken]], c.voice?.on === false),
-    whatsapp: need([['waha.WAHA_API_KEY', secrets.waha?.WAHA_API_KEY]], c.whatsapp?.on === false),
+    whatsapp: need([['waha.WAHA_API_KEY', secrets.waha?.WAHA_API_KEY], ['waha.WHATSAPP_HOOK_HMAC_KEY', secrets.waha?.WHATSAPP_HOOK_HMAC_KEY]], c.whatsapp?.on === false),
     meeting: need([['meetingToken', secrets.meetingToken]]),
     sms: need([['connectors.sms.from', c.sms?.from], ['connectors.sms.publicUrl', c.sms?.publicUrl], ...smsKeys(c.sms, secrets)], c.sms?.on === false),
   }
@@ -70,10 +70,9 @@ const ASKS: Record<string, Omit<Ask, 'key'>[]> = {
   'connectors.sms.telnyxPublicKey': [{ kind: 'plain', question: 'The Telnyx public key that signs its webhooks (Keys and Credentials):' }],
   telnyxApiKey: [{ kind: 'secret', question: 'Your Telnyx API key:' }],
 }
-const TOGETHER: Record<string, string[]> = { 'waha.WAHA_API_KEY': ['waha.WHATSAPP_HOOK_HMAC_KEY'] }
 
 export const connectAsks = (missing: string[]): Ask[] =>
-  [...new Set(missing.flatMap(k => [k, ...TOGETHER[k] ?? []]))].flatMap(key => (ASKS[key] ?? []).map(a => ({ key, ...a })))
+  missing.flatMap(key => (ASKS[key] ?? []).map(a => ({ key, ...a })))
 
 const oneOf = (choices: string[]) => (v: string) => choices.includes(v) ? undefined : `Type ${choices.join(' or ')}.`
 
