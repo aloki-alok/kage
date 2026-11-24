@@ -76,9 +76,18 @@ function onLimit(t: Turn, m: SDKMessage) {
   }
 }
 
-function onResult({ o }: Hub, live: Live, t: Turn, m: Extract<SDKMessage, { type: 'result' }>) {
-  const { key, s } = live
-  o.onResult?.(key, m.total_cost_usd, live.resumed, !!t.limit, m.is_error ? m.subtype : undefined, m.usage && { input: m.usage.input_tokens, cacheWrite: m.usage.cache_creation_input_tokens ?? 0, cacheRead: m.usage.cache_read_input_tokens ?? 0, output: m.usage.output_tokens, who: threadKind(key, senderNow(o, s)) })
+function turnModel({ spent }: Hub, live: Live, used: Record<string, { costUSD: number }> | undefined) {
+  if (!used) return {}
+  const before = spent.get(live.s.id), now = Object.fromEntries(Object.entries(used).map(([m, u]) => [m, u.costUSD]))
+  spent.set(live.s.id, now)
+  if (!before && live.resumed) return {}
+  const [top] = Object.entries(now).map(([m, usd]) => [m, usd - (before?.[m] ?? 0)] as const).filter(([, grew]) => grew > 0).sort((a, b) => b[1] - a[1])
+  return top ? { model: top[0] } : {}
+}
+
+function onResult(h: Hub, live: Live, t: Turn, m: Extract<SDKMessage, { type: 'result' }>) {
+  const { key, s } = live, { o } = h
+  o.onResult?.(key, m.total_cost_usd, live.resumed, !!t.limit, m.is_error ? m.subtype : undefined, m.usage && { input: m.usage.input_tokens, cacheWrite: m.usage.cache_creation_input_tokens ?? 0, cacheRead: m.usage.cache_read_input_tokens ?? 0, output: m.usage.output_tokens, who: threadKind(key, senderNow(o, s)), ...turnModel(h, live, m.modelUsage) })
   if (t.limit) {
     const tasks = s.turn.map(x => x.task)
     s.turn = []

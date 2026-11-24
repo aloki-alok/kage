@@ -814,6 +814,42 @@ describe('Kage sessions on the Agent SDK', () => {
     await tick()
     assert.deepEqual(t.tokens, [{ input: 2, cacheWrite: 4550, cacheRead: 8966, output: 71, who: 'teammate' }, undefined])
   })
+  test('each result names the model that cost the most so far, and a result with no model usage names none (#283)', async () => {
+    const t = setup()
+    t.d.task('C1:5.5', t.task(), 0)
+    await tick()
+    const usage = { input_tokens: 1, cache_creation_input_tokens: 0, cache_read_input_tokens: 0, output_tokens: 1 }
+    t.sdk.runs[0]!.emit({ type: 'result', total_cost_usd: 0.1, usage, modelUsage: { 'claude-opus-x': { costUSD: 0.01 }, 'claude-haiku-x': { costUSD: 0.09 } } })
+    t.sdk.runs[0]!.emit({ type: 'result', total_cost_usd: 0.2, usage })
+    await tick()
+    assert.deepEqual(t.tokens.map(x => x?.model), ['claude-haiku-x', undefined])
+  })
+  test('after a switch, a turn names the model whose cost grew in it, and the first turn of a resumed session names none (#283)', async () => {
+    const usage = { input_tokens: 1, cache_creation_input_tokens: 0, cache_read_input_tokens: 0, output_tokens: 1 }
+    const t = setup()
+    t.d.task('C1:5.5', t.task(), 0)
+    await tick()
+    t.sdk.runs[0]!.emit({ type: 'result', total_cost_usd: 5, usage, modelUsage: { 'claude-opus-x': { costUSD: 5 } } })
+    t.sdk.runs[0]!.emit({ type: 'result', total_cost_usd: 5.02, usage, modelUsage: { 'claude-opus-x': { costUSD: 5 }, 'claude-haiku-x': { costUSD: 0.02 } } })
+    await tick()
+    assert.deepEqual(t.tokens.map(x => x?.model), ['claude-opus-x', 'claude-haiku-x'])
+    const r = setup({ transcript: true })
+    r.d.task('C1:5.5', r.task(), 0)
+    await tick()
+    r.sdk.runs[0]!.emit({ type: 'result', total_cost_usd: 5.02, usage, modelUsage: { 'claude-opus-x': { costUSD: 5 }, 'claude-haiku-x': { costUSD: 0.02 } } })
+    r.sdk.runs[0]!.emit({ type: 'result', total_cost_usd: 5.03, usage, modelUsage: { 'claude-opus-x': { costUSD: 5 }, 'claude-haiku-x': { costUSD: 0.03 } } })
+    await tick()
+    assert.deepEqual(r.tokens.map(x => x?.model), [undefined, 'claude-haiku-x'])
+    r.sdk.runs[0]!.end()
+    await tick(); await tick()
+    r.d.task('C1:5.5', r.task(), 1)
+    await tick()
+    const reopened = r.sdk.runs.at(-1)!
+    assert.notEqual(reopened, r.sdk.runs[0])
+    reopened.emit({ type: 'result', total_cost_usd: 5.05, usage, modelUsage: { 'claude-opus-x': { costUSD: 5 }, 'claude-haiku-x': { costUSD: 0.05 } } })
+    await tick()
+    assert.equal(r.tokens.at(-1)?.model, 'claude-haiku-x')
+  })
   test('a kagelet lane runs on its own model, and a thread with none keeps the default', async () => {
     const LANE = 'C1:5.5#side-kagelet-deploys'
     const t = setup({ grants: { [LANE]: ['WebSearch'] }, models: { [LANE]: 'opus' } })

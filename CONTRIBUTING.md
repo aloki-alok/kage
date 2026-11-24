@@ -182,7 +182,7 @@ Write logs to stderr only. In a tmux pane, stdout carries the channel protocol, 
 | `preview.ts` | How an approval shows the call it asks about. |
 | `transcript.ts` | Turning a Claude Code transcript line into a line a person can follow. `src/runtime/transcript-tail.ts` reads the new lines from disk. |
 | `telemetry.ts` | What an event row may tell the world (ADR 0019): fixed words and numbers per kind, the crash fingerprint, the OTLP body, whether telemetry is on, and the session env that never sends content. |
-| `stats.ts` | What `kage stats` shows: spend per day and per connector, tokens per turn by kind of thread, runs, refusals, turn time, hub starts and the outcomes of reports to the Kage repo, from rows Kage already keeps (no content). `src/cli/stats.ts` reads them. |
+| `stats.ts` | What `kage stats` shows: spend per day, per connector and per model, tokens per turn by kind of thread, runs, refusals, turn time, hub starts and the outcomes of reports to the Kage repo, from rows Kage already keeps (no content). `src/cli/stats.ts` reads them. |
 | `task.ts` | `Task`: what a connector turns a message into, and what a runner takes (ADR 0002). |
 | `instructions.ts` | What every session reads first: who it is (Kage, a kagelet, or a kagelet's nightly dream), whom it serves, how it answers, and each kind of task's limits. A kagelet reads Kage's door rules word for word. |
 | `secret-commands.ts` | A token in secrets.json that names a command (#158): which tokens do, by dotted path, the settings where reading such a token runs its command, and each failed command named. `src/runtime/config-files.ts` runs each command at most once per process, only when its token is read, and `src/runtime/path-guards.ts` refuses them inside sessions. |
