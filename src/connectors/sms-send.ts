@@ -43,14 +43,14 @@ export async function smsCheck(o: { provider: SmsProvider; accountSid?: string; 
   const twilio = o.provider === 'twilio'
   const url = twilio
     ? `${TWILIO_API}/Accounts/${encodeURIComponent(o.accountSid ?? '')}/IncomingPhoneNumbers.json?${new URLSearchParams({ PhoneNumber: o.from })}`
-    : `https://api.telnyx.com/v2/phone_numbers?${new URLSearchParams({ 'filter[phone_number]': o.from })}`
+    : `https://api.telnyx.com/v2/phone_numbers?${new URLSearchParams({ 'filter[phone_number]': o.from.replace(/\D/g, '') })}`
   const authorization = twilio ? `Basic ${Buffer.from(`${o.accountSid}:${o.token}`).toString('base64')}` : `Bearer ${o.token}`
   try {
     const res = await (o.fetch ?? fetch)(url, { headers: { authorization }, signal: AbortSignal.timeout(15_000) })
-    if (res.status === 401 || res.status === 403) return 'auth'
+    if (res.status === 401 || res.status === 403 || (twilio && res.status === 404)) return 'auth'
     if (!res.ok) return 'offline'
     const json = await res.json() as Record<string, any>
     const found = twilio ? json.incoming_phone_numbers : json.data
-    return Array.isArray(found) && found.length ? 'ok' : 'number'
+    return Array.isArray(found) && found.some((n: { phone_number?: string }) => n.phone_number === o.from) ? 'ok' : 'number'
   } catch { return 'offline' }
 }

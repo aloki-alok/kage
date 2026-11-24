@@ -83,6 +83,7 @@ async function ask(asks: Ask[]) {
       const problem = a.check?.(value)
       if (problem) { console.log(problem); continue }
       const verdict = a.key === 'twilioAuthToken' || a.key === 'telnyxApiKey' ? await checkSms(value) : 'ok'
+      if (verdict === 'auth' && a.key === 'twilioAuthToken') { await askSid(); continue }
       if (verdict === 'auth') { console.log('The provider refused that key. Paste it again.'); continue }
       try { if (a.kind === 'secret') updateSecrets(ENV_FILE, s => secretAt(s, a.key, value)); else setKey(ENV_FILE, a.key, value); break } catch (e) { console.log((e as Error).message.replace(/^config\.json: /, '')) }
     }
@@ -95,6 +96,13 @@ async function checkSms(token: string) {
   checked = await smsCheck({ provider: smsProvider(sms), accountSid: sms.accountSid ?? undefined, token, from: sms.from ?? '' })
   if (checked === 'offline') console.log('Kage could not reach the provider to check the key, so it saved it unchecked.')
   return checked
+}
+
+async function askSid() {
+  const sid = readSettings(ENV_FILE).config.connectors?.sms?.accountSid
+  const again = await line(`Twilio refused the account SID ${sid} with that token. Press Enter to keep the SID, or type the right one: `)
+  if (again) change(() => setKey(ENV_FILE, 'connectors.sms.accountSid', again))
+  console.log('Paste the auth token again.')
 }
 
 async function fixNumber() {
