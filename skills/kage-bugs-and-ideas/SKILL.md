@@ -18,5 +18,5 @@ A problem with Kage itself helps every install only when it reaches the Kage rep
 1. File only after a person says yes to the offer. The owner still approves the exact text on a card, so a teammate's yes is a suggestion, not a filing.
 2. Write the title as one line a stranger understands: what goes wrong, or what Kage should do. Leave out who asked, where it happened and the customer.
 3. For a bug, say what happened, what should have happened and the steps, in general words. For an idea, say the job done by hand today and how you would know it works.
-4. When `kage logs` shows a crash fingerprint for the failure, pass it as `fingerprint`. Repeats of one crash then land on one issue.
+4. When the failure came with a crash fingerprint (12 hex characters), pass it as `fingerprint`. Repeats of one crash then land on one issue.
 5. Post the link the tool returns in the thread in one line. If the owner said no, say nothing more about it.
