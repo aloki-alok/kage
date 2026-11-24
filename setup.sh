@@ -18,25 +18,31 @@ quietly() { printf '  %s%s%s\n' "$DIM" "$*" "$OFF"; }
 next() { printf '%s%s%s %s%s%s\n' "$DIM" "$1" "$OFF" "$FIRE" "$2" "$OFF"; }
 tells() { if [[ -t 2 && -z ${NO_COLOR:-} ]]; then printf '\033[38;2;230;145;40m◆ %s\033[0m\n' "$*"; else printf '◆ %s\n' "$*"; fi >&2; }
 die() { tells "$*"; exit 1; }
+usage() { tells "$*"; exit 2; }
+verbs() { usage "kage $1 takes $(printf '%s\n' "$COMMANDS" | awk -F'|' -v n="$1" 'index($2, n" ")==1 {sub(n" ", "", $2); printf "%s%s", s, $2; s=", "}')."; }
 
 # group|name|arguments|what it does|example. `kage help` prints it grouped; `kage help <name>` prints one.
 COMMANDS='Set up|setup||Walk through the first setup, one step at a time|kage setup
 Set up|check||Check that node 22.18+ and claude are installed (and tmux, for KAGE_RUNTIME=tmux)|kage check
-Set up|app|[name]|Write the Slack app for the name you tag, and open the link that creates it|kage app kage
-Set up|save|[name]|Paste the three Slack tokens into hidden prompts; each is checked with Slack|kage save
+Set up|slack app|[name]|Write the Slack app for the name you tag, and open the link that creates it|kage slack app kage
+Set up|slack save|[name]|Paste the three Slack tokens into hidden prompts; each is checked with Slack|kage slack save
 Set up|tunnel|[on or off]|Open a route for each connector another machine calls (GitHub, voice, job hooks on the internet; the meeting bot on your tailnet) through Tailscale, or close them all|kage tunnel on
-Set up|connect|[name] [off]|List every connector, on or off, with the one step left. With a name it turns that one on, or off with off. In a terminal it asks for each missing setting, and --no-ask only prints them: github (makes the Kage app, so people tag it on GitHub; --org adds an org), browser (pairs the Kage extension in Chrome), email, voice, whatsapp, meeting|kage connect github
-Set up|claude-login||Save the Claude login Kage runs on, so its sessions use their own seat. Get the token with claude setup-token, signed in as Kage|kage claude-login
+Set up|connector list||List every connector, on or off, with the one step left|kage connector list
+Set up|connector on|<name>|Turn one connector on. In a terminal it asks for each missing setting, and --no-ask only prints them: github (makes the Kage app, so people tag it on GitHub; --org adds an org), browser (pairs the Kage extension in Chrome), email, voice, whatsapp, meeting|kage connector on github
+Set up|connector off|<name>|Turn one connector off, and name what stays outside Kage|kage connector off email
+Set up|login||Save the Claude login Kage runs on, so its sessions use their own seat. Get the token with claude setup-token, signed in as Kage|kage login
 Set up|doctor|[--fix]|Check every part, and print the command that fixes each problem. With --fix, run the fixes that touch only Kage files|kage doctor --fix
-Set up|slack|upgrade|Add the Slack scopes Kage needs and the app lacks: adds them to the app manifest with one Slack configuration token (or prints the lines to paste), then opens Reinstall and waits|kage slack upgrade
+Set up|slack upgrade||Add the Slack scopes Kage needs and the app lacks: adds them to the app manifest with one Slack configuration token (or prints the lines to paste), then opens Reinstall and waits|kage slack upgrade
 Set up|link||Put the kage command on your PATH (~/.local/bin/kage)|./setup.sh link
 Set up|service|on or off|Let macOS or Linux keep Kage running: back after a crash, a reboot or a login|kage service on
 Run|start|[kagelet]|Start Kage in the background (turns the service on the first time). With a kagelet: run it again after kage stop|kage start
 Run|stop|[thread or kagelet] [--now or --cut-running]|Stop Kage once every running turn ends, or now with --cut-running. With a thread (link, place or key): end only its session, after its turn or --now. With a kagelet: pause it and keep its file|kage stop support
 Run|restart|[--cut-running]|Restart the hub once every running turn ends; new messages wait and run after it|kage restart
 Run|update|[--stable]|Pull the newest Kage now (or the latest release with --stable) and restart into it at the next quiet moment; local changes are left as they are|kage update
-Run|reload||Read the settings files again with no restart: who may tag Kage changes at once|kage reload
-Run|set|[key] [value]|Change one setting in config.json. With no key: every setting, its value and what it does. With only a key: that one in full|kage set harness.maxSessions 6
+Run|config list||Every setting, its value and what it does|kage config list
+Run|config get|<key>|One setting in full: its value, its default and what it does|kage config get harness.maxSessions
+Run|config set|<key> <value>|Change one setting in config.json|kage config set harness.maxSessions 6
+Run|config reload||Read the settings files again with no restart: who may tag Kage changes at once|kage config reload
 Run|status||One look at the hub (version, uptime, spend, starts by cause), every session and every kagelet|kage status
 Run|logs|[lines, -f or kagelet]|Follow the hub log live, with the steps of every session (tools, replies), like tail -f. A number prints that many lines and exits. With a kagelet: its last runs, newest first, with cost, ok or failed, and its report|kage logs 200
 Run|run||Run the hub in the foreground for a supervisor other than launchd or systemd (Docker: --init); output goes to kage logs|kage run
@@ -45,25 +51,50 @@ Run|telemetry|[show]|What this Kage sends and where: on or off, the endpoint, an
 Run|stats|[days]|Spend and tokens per day, per connector, per kind of thread and per model, the share read from cache, runs, refusals, turn time, hub starts and reports to the Kage repo (7 days unless you say)|kage stats 30
 Run|release|[--dry-run]|Tag the next version on main, publish its notes and move the stable tag that installs follow (repo admin only). --dry-run prints the version and notes and changes nothing|kage release --dry-run
 Run|dream|undo|Put the memory back to how it was before the last weekly dream|kage dream undo
-Watch|schedules||Every schedule and reply watch, in every thread|kage schedules
+Watch|schedule list||Every schedule and reply watch, in every thread|kage schedule list
 Watch|top||The live console: every thread, its feed, attach and stop, by mouse or keys|kage top
-Watch|watch|[place]|Follow every step every session takes, as it happens|kage watch support
-Watch|attach|[place or link]|Take a thread into this terminal, by its place or its Slack link in quotes; Kage gets it back when you quit|kage attach "https://example.slack.com/archives/C0123ABC/p1700000000123456"
-People|add|<person>, <app id> <owner> or kagelet <name>|Let a person tag Kage (a mention, member id, email, name or @handle), or an agent with the person or agent it answers to. kagelet <name> writes a paused starter file for a kagelet|kage add priya
-People|remove|<person or app id>|Take a person or an agent off the list; whoever answers to them goes too|kage remove priya
-People|list||Who may tag Kage besides you: each person, with their agents under them. Then the kagelets Kage manages: schedule, last and next run, cost today|kage list
-People|tell|<place> <message>|Tell a thread something as you; its session takes it after the current turn|kage tell support use the staging db
+Watch|thread follow|[place]|Follow every step every session takes, as it happens|kage thread follow support
+Watch|thread attach|[place or link]|Take a thread into this terminal, by its place or its Slack link in quotes; Kage gets it back when you quit|kage thread attach "https://example.slack.com/archives/C0123ABC/p1700000000123456"
+Watch|thread send|<place> <message>|Tell a thread something as you; its session takes it after the current turn|kage thread send support use the staging db
+Watch|thread stop|<thread> [--now]|End one thread session (link, place or key) once its turn ends, or now with --now|kage thread stop support
+Watch|kagelet list||Every kagelet Kage manages: schedule, last and next run, cost today|kage kagelet list
+Watch|kagelet logs|<kagelet>|Its last runs, newest first, with cost, ok or failed, and its report|kage kagelet logs triage
+Watch|kagelet start|<kagelet>|Run a kagelet again after kage kagelet stop|kage kagelet start triage
+Watch|kagelet stop|<kagelet>|Pause a kagelet and keep its file|kage kagelet stop triage
+People|person add|<person>, <app id> <owner> or kagelet <name>|Let a person tag Kage (a mention, member id, email, name or @handle), or an agent with the person or agent it answers to. kagelet <name> writes a paused starter file for a kagelet|kage person add priya
+People|person rm|<person or app id>|Take a person or an agent off the list; whoever answers to them goes too|kage person rm priya
+People|person list||Who may tag Kage besides you: each person, with their agents under them|kage person list
 People|relay|allow <place or key>, deny <same> or list|Let one thread use the SSM relay (ssh to hosts behind AWS SSM) though a teammate asked for its work. list shows who may|kage relay allow prod-monitor
 People|trust|list or revoke <id>|Show what Kage learned from your yeses, one line per teammate, kind and reach. revoke takes one back. Money, deletes, outside sends, production writes and secrets always ask|kage trust list
 People|call||Kage phones you, and the call can do anything you can (needs KAGE_CALL_COMMAND)|kage call'
 
+# old name|new name. An old name still runs for one release and says its new name on stderr. compat: remove after 2026-12-31
+RENAMED='app|slack app
+save|slack save
+connect|connector list
+claude-login|login
+reload|config reload
+set|config set
+schedules|schedule list
+watch|thread follow
+attach|thread attach
+tell|thread send
+add|person add
+remove|person rm
+list|person list'
+
+help_for() {
+  if [[ -n ${2:-} && $2 != -* ]] && printf '%s\n' "$COMMANDS" | awk -F'|' -v n="$1 $2" '$2==n {f=1} END {exit !f}'; then cmd_help "$1 $2"; else cmd_help "$1"; fi
+}
+
 cmd_help() {
   local B= R=; [[ -t 1 ]] && B=$'\033[1m' R=$'\033[0m'
   if [[ -n "${1:-}" ]]; then
-    local row; row="$(printf '%s\n' "$COMMANDS" | awk -F'|' -v n="$1" '$2==n')"
-    [[ -n $row ]] || unknown "$1"
-    IFS='|' read -r _ n a d e <<<"$row"
-    printf "${B}kage %s${R} %s\n  %s\n  Example: %s\n" "$n" "$a" "$d" "$e"
+    local now; now="$(printf '%s\n' "$RENAMED" | awk -F'|' -v n="$1" '$1==n {print $2}')"
+    [[ -z $now ]] || set -- "$now"
+    local rows; rows="$(printf '%s\n' "$COMMANDS" | awk -F'|' -v n="$1" '$2==n || index($2, n" ")==1')"
+    [[ -n $rows ]] || unknown "${1%% *}"
+    while IFS='|' read -r _ n a d e; do printf "${B}kage %s${R} %s\n  %s\n  Example: %s\n" "$n" "$a" "$d" "$e"; done <<<"$rows"
     return
   fi
   printf "${B}kage${R}  tag @kage in Slack, and your own Claude Code does the work on this machine.\n"
@@ -72,7 +103,7 @@ cmd_help() {
     [[ $g == "$group" ]] || { printf "\n${B}%s${R}\n" "$g"; group=$g; }
     printf '  %-28s %s\n' "$n${a:+ $a}" "$d"
   done <<<"$COMMANDS"
-  printf '\nkage help <command> shows one command with an example. Settings: docs/settings.md\n'
+  printf '\nkage help <command> shows one command with an example, and kage help <group> each command in it. Settings: docs/settings.md\n'
 }
 
 # Bare kage: the few commands used every day. kage help has the rest.
@@ -304,22 +335,42 @@ cmd_claude_login() {
 }
 
 
-# Help comes first, so "kage add --help" never reaches a command that would act on it.
 [[ "${1:-}" == --version ]] && { cmd_version; exit 0; }
-for a in "$@"; do [[ $a == -h || $a == --help ]] && { [[ $1 == "$a" || $1 == help ]] && cmd_help || cmd_help "$1"; exit 0; }; done
+renamed_to="$(printf '%s\n' "$RENAMED" | awk -F'|' -v n="${1:-}" '$1==n {print $2}')"
+if [[ -n $renamed_to ]]; then
+  tells "kage $1 is now kage $renamed_to. The old name stops working after the next release."
+  case "$1 ${2:-} ${3:-}" in
+    "connect  "*|"connect --"*) set -- connector list "${@:2}" ;;
+    "connect "*" off") set -- connector off "$2" "${@:4}" ;;
+    connect*) set -- connector on "${@:2}" ;;
+    *) set -- $renamed_to "${@:2}" ;;
+  esac
+fi
+
+# Help comes first, so "kage person add --help" never reaches a command that would act on it.
+for a in "$@"; do [[ $a == -h || $a == --help ]] && { [[ $1 == "$a" || $1 == help ]] && cmd_help || help_for "$@"; exit 0; }; done
+
 
 case "${1:-}" in
   "") if has_settings; then node src/cli/home-screen.ts "$(running && echo up || echo down)"; else node src/cli/setup-flow.ts; fi ;;
-  help) cmd_help "${2:-}" ;;
+  help) cmd_help "${*:2}" ;;
   setup) node src/cli/setup-flow.ts ;;
   check) cmd_check ;;
-  app) cmd_app "${2:-}" ;;
-  save) cmd_save "${2:-}" ;;
-  connect) node src/cli/connect.ts "${@:2}" ;;
+  connector) case "${2:-}" in
+      list) node src/cli/connect.ts "${@:3}" ;;
+      on) [[ $# -gt 2 ]] || usage "kage connector on takes a connector name."; node src/cli/connect.ts "${@:3}" ;;
+      off) [[ $# -gt 2 ]] || usage "kage connector off takes a connector name."; node src/cli/connect.ts "$3" off "${@:4}" ;;
+      *) verbs connector ;;
+    esac ;;
   tunnel) node src/cli/tunnel.ts "${2:-on}" ;;
-  claude-login) cmd_claude_login ;;
+  login) cmd_claude_login ;;
   doctor) node src/cli/doctor/run.ts "${@:2}" ;;
-  slack) node src/cli/slack.ts "${2:-}" ;;
+  slack) case "${2:-}" in
+      app) cmd_app "${3:-}" ;;
+      save) cmd_save "${3:-}" ;;
+      upgrade) node src/cli/slack.ts upgrade ;;
+      *) verbs slack ;;
+    esac ;;
   link) mkdir -p ~/.local/bin && ln -sf "$PWD/setup.sh" ~/.local/bin/kage && says "Done. You can type kage from anywhere (it needs ~/.local/bin on your PATH)." ;;
   service) ./service.sh "${2:-}" ;;
   run) NODE_OPTIONS="$HUB_NODE_OPTIONS" exec node hub.ts ;;
@@ -329,26 +380,48 @@ case "${1:-}" in
   stop) if [[ " ${*:2} " == *" --now "* ]] || { [[ $# -gt 1 ]] && printf '%s\n' "${@:2}" | grep -qv '^--'; }; then node src/cli/stop.ts "${@:2}"; else cmd_stop "${@:2}"; fi ;;
   restart) cmd_restart "${@:2}" ;;
   update) cmd_update "${@:2}" ;;
-  reload) node src/cli/reload.ts ;;
-  set) node src/cli/config.ts set "${@:2}" ;;
+  config) case "${2:-}" in
+      list) node src/cli/config.ts set ;;
+      get) [[ $# -eq 3 ]] || usage "kage config get takes one key."; node src/cli/config.ts set "$3" ;;
+      set) node src/cli/config.ts set "${@:3}" ;;
+      reload) node src/cli/reload.ts ;;
+      *) verbs config ;;
+    esac ;;
   status) cmd_status ;;
   # A kagelet's name (it starts with a letter): its runs (src/cli/kagelet-logs.ts). Otherwise the hub log.
   logs) if [[ ${2:-} =~ ^[a-z] ]]; then node src/cli/kagelet-logs.ts "$2"; else cmd_logs "${2:-}"; fi ;;
   cost) node src/cli/cost.ts "${@:2}" ;;
   stats) node src/cli/stats.ts "${@:2}" ;;
   telemetry) node src/cli/telemetry.ts "${@:2}" ;;
-  schedules) node src/cli/schedules.ts ;;
+  schedule) case "${2:-}" in
+      list) node src/cli/schedules.ts ;;
+      *) verbs schedule ;;
+    esac ;;
   release) node src/cli/release.ts "${@:2}" ;;
   dream) node src/cli/dream.ts "${@:2}" ;;
   top) node src/cli/top.ts "${@:2}" ;;
-  watch) node src/cli/watch.ts "${@:2}" ;;
-  attach) node src/cli/attach.ts "${@:2}" ;;
-  tell) node src/cli/tell.ts "${@:2}" ;;
+  thread) case "${2:-}" in
+      follow) node src/cli/watch.ts "${@:3}" ;;
+      attach) node src/cli/attach.ts "${@:3}" ;;
+      send) node src/cli/tell.ts "${@:3}" ;;
+      stop) [[ $# -gt 2 ]] || usage "kage thread stop takes a thread: its Slack link in quotes, its place or its key."; node src/cli/stop.ts --thread "${@:3}" ;;
+      *) verbs thread ;;
+    esac ;;
+  kagelet) case "${2:-}" in
+      list) node src/cli/registry.ts list --kagelets ;;
+      logs) [[ $# -eq 3 ]] || usage "kage kagelet logs takes one kagelet name."; node src/cli/kagelet-logs.ts "$3" ;;
+      start) [[ $# -eq 3 ]] || usage "kage kagelet start takes one kagelet name."; node src/cli/stop.ts --resume "$3" ;;
+      stop) [[ $# -eq 3 ]] || usage "kage kagelet stop takes one kagelet name."; node src/cli/stop.ts --kagelet "$3" ;;
+      *) verbs kagelet ;;
+    esac ;;
   relay) node src/cli/relay.ts "${@:2}" ;;
   trust) node src/cli/trust.ts "${@:2}" ;;
-  add) node src/cli/registry.ts "$@" ;;
-  remove) node src/cli/registry.ts "$@" ;;
-  list) node src/cli/registry.ts "$@" ;;
+  person) case "${2:-}" in
+      add) node src/cli/registry.ts add "${@:3}" ;;
+      rm) node src/cli/registry.ts remove "${@:3}" ;;
+      list) node src/cli/registry.ts list --people "${@:3}" ;;
+      *) verbs person ;;
+    esac ;;
   call) node src/cli/call.ts ;;
   export-crons) node src/cli/export-crons.ts "${@:2}" ;;   # one-time move of CronCreate jobs out of tmux panes; not in help
   *) unknown "$1" ;;

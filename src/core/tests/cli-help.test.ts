@@ -1,15 +1,60 @@
 import { describe, test } from 'node:test'
 import assert from 'node:assert/strict'
-import { readFileSync } from 'node:fs'
+import { mkdtempSync, readFileSync, writeFileSync } from 'node:fs'
+import { spawnSync } from 'node:child_process'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 import { suggest } from '../cli-help.ts'
 
 describe('every command kage lists is one it runs, and the other way', () => {
   const sh = readFileSync(new URL('../../../setup.sh', import.meta.url), 'utf8')
   const table = /COMMANDS='([\s\S]*?)'/.exec(sh)![1]!.split('\n').map(l => l.split('|')[1]!)
-  const cases = [...sh.slice(sh.lastIndexOf('case "${1:-}" in')).matchAll(/^  ([a-z-]+)\)/gm)].map(m => m[1]!)
+  const renamed = new Map(/RENAMED='([\s\S]*?)'/.exec(sh)![1]!.split('\n').map(l => l.split('|') as [string, string]))
+  const main = sh.slice(sh.lastIndexOf('case "${1:-}" in'))
+  const blocks = new Map([...main.matchAll(/^  ([a-z-]+)\)([\s\S]*?)(?=^  [a-z-]+\)|^esac)/gm)].map(m => [m[1]!, m[2]!]))
+  const verbsOf = (noun: string) => [...(blocks.get(noun) ?? '').matchAll(/^ {6}([a-z|-]+)\)/gm)].flatMap(m => m[1]!.split('|'))
   const notListed = new Set(['help', 'export-crons'])
-  test('the help table and the case list match', () => {
-    assert.deepEqual([...table].sort(), cases.filter(c => !notListed.has(c)).sort())
+  test('each top-level command in the help table has a case, and each case is in the table', () => {
+    assert.deepEqual([...new Set(table.map(n => n.split(' ')[0]!))].sort(), [...blocks.keys()].filter(c => !notListed.has(c)).sort())
+  })
+  test('each noun verb in the help table is a verb its noun runs, and each verb a noun runs is in the table', () => {
+    for (const noun of new Set(table.filter(n => n.includes(' ')).map(n => n.split(' ')[0]!))) {
+      assert.deepEqual(table.filter(n => n.startsWith(`${noun} `)).map(n => n.split(' ')[1]!).sort(), verbsOf(noun).sort(), noun)
+    }
+  })
+  test('an old name is never a command of its own, and points at a command the table lists', () => {
+    for (const [old, now] of renamed) {
+      assert.ok(!blocks.has(old), `${old} still has its own case`)
+      assert.ok(table.includes(now), `${old} points at ${now}, which the table does not list`)
+    }
+  })
+})
+
+describe('kage <noun> <verb> runs, and an old name says its new one', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'kage-cli-'))
+  writeFileSync(join(dir, 'config.json'), '{"version":1}')
+  const kage = (...args: string[]) => spawnSync('bash', [new URL('../../../setup.sh', import.meta.url).pathname, ...args], { encoding: 'utf8', env: { ...process.env, KAGE_ENV: join(dir, 'env'), NO_COLOR: '1', KAGE_CLAUDE: '' } })
+  test('a group with no verb, or a verb with no target, is bad usage: exit 2 and the verbs it takes', () => {
+    const bare = kage('thread')
+    assert.equal(bare.status, 2)
+    assert.match(bare.stderr, /kage thread takes follow, attach, send, stop\./)
+    assert.equal(kage('thread', 'stop').status, 2)
+    assert.equal(kage('kagelet', 'logs').status, 2)
+  })
+  test('an old name runs the new command and says the new name on stderr only', () => {
+    const r = kage('schedules')
+    assert.equal(r.status, 0, r.stderr)
+    assert.match(r.stderr, /kage schedules is now kage schedule list\./)
+    assert.doesNotMatch(r.stdout, /is now/)
+  })
+  test('help on an old name shows the new command', () => {
+    assert.match(kage('attach', '--help').stdout, /^kage thread attach /m)
+    assert.match(kage('help', 'tell').stdout, /^kage thread send /m)
+  })
+  test('kagelet stop never falls through to a thread', () => {
+    const r = kage('kagelet', 'stop', 'nosuch')
+    assert.equal(r.status, 1)
+    assert.match(r.stderr, /There is no kagelet named "nosuch"/)
   })
 })
 
