@@ -14,16 +14,19 @@ import { DIR, ENV_FILE, settingsExist } from './home.ts'
 import { createApp } from './github-app.ts'
 import { githubOwner } from '../core/github.ts'
 import { tailscaleBin, tailscaleState } from './tailscale.ts'
+import { outputFlags, printJson } from './output.ts'
 import { publicUrl } from '../core/tunnel.ts'
 
 const die = (msg: string): never => { console.error(msg); process.exit(1) }
-const [name, ...args] = process.argv.slice(2)
+const out = outputFlags(process.argv.slice(2))
+const [name, ...args] = out.args
 const NAMES: ConnectorName[] = ['github', 'browser', 'email', 'voice', 'whatsapp', 'meeting', 'sms']
 const SWITCHED = ['email', 'voice', 'whatsapp', 'sms'] as const
 if (!settingsExist()) die(`No settings in ${DIR}. Run kage setup first.`)
 const state = () => connectorStates(readSettings(ENV_FILE))
 const change = (write: () => void) => { try { write() } catch (e) { die((e as Error).message) } }
 
+if (!name && out.json) { printJson(Object.entries(state()).map(([connector, s]) => ({ name: connector, ...s })), out.jq); process.exit(0) }
 if (!name) { console.log(connectLines(state()).join('\n')); process.exit(0) }
 if (!NAMES.includes(name as ConnectorName)) die(`kage connector on takes github, browser, email, voice, whatsapp, meeting or sms, not ${name}.`)
 const n = name as ConnectorName

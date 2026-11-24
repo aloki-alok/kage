@@ -19,6 +19,7 @@ next() { printf '%s%s%s %s%s%s\n' "$DIM" "$1" "$OFF" "$FIRE" "$2" "$OFF"; }
 tells() { if [[ -t 2 && -z ${NO_COLOR:-} ]]; then printf '\033[38;2;230;145;40m◆ %s\033[0m\n' "$*"; else printf '◆ %s\n' "$*"; fi >&2; }
 die() { tells "$*"; exit 1; }
 usage() { tells "$*"; exit 2; }
+words() { local n=0 skip=""; for a in "$@"; do if [[ -n $skip ]]; then skip=""; elif [[ $a == --jq ]]; then skip=1; elif [[ $a != -* ]]; then n=$((n + 1)); fi; done; echo "$n"; }
 old_form() { tells "kage $1 is now kage $2. The old form stops working after the next release."; }
 link_kage() { mkdir -p ~/.local/bin && ln -sf "$PWD/setup.sh" ~/.local/bin/kage && says "kage is on your PATH now (~/.local/bin/kage; new terminals need ~/.local/bin on PATH)."; }
 verbs() { usage "kage $1 takes $(printf '%s\n' "$COMMANDS" | awk -F'|' -v n="$1" 'index($2, n" ")==1 {sub(n" ", "", $2); printf "%s%s", s, $2; s=", "}')."; }
@@ -104,7 +105,7 @@ cmd_help() {
     [[ $g == "$group" ]] || { printf "\n${B}%s${R}\n" "$g"; group=$g; }
     printf '  %-28s %s\n' "$n${a:+ $a}" "$d"
   done <<<"$COMMANDS"
-  printf '\nkage help <command> shows one command with an example, and kage help <group> each command in it. Settings: docs/settings.md\n'
+  printf '\nkage help <command> shows one command with an example, and kage help <group> each command in it. Every list, logs and get takes --json, and --jq <filter>. Settings: docs/settings.md\n'
 }
 
 # Bare kage: the few commands used every day. kage help has the rest.
@@ -382,8 +383,8 @@ case "${1:-}" in
   restart) cmd_restart "${@:2}" ;;
   update) cmd_update "${@:2}" ;;
   config) case "${2:-}" in
-      list) node src/cli/config.ts set ;;
-      get) [[ $# -eq 3 ]] || usage "kage config get takes one key."; node src/cli/config.ts set "$3" ;;
+      list) node src/cli/config.ts show "${@:3}" ;;
+      get) [[ $(words "${@:3}") -eq 1 ]] || usage "kage config get takes one key."; node src/cli/config.ts show "${@:3}" ;;
       set) node src/cli/config.ts set "${@:3}" ;;
       reload) node src/cli/reload.ts ;;
       *) verbs config ;;
@@ -395,7 +396,7 @@ case "${1:-}" in
   stats) node src/cli/stats.ts "${@:2}" ;;
   telemetry) node src/cli/telemetry.ts "${@:2}" ;;
   schedule) case "${2:-}" in
-      list) node src/cli/schedules.ts ;;
+      list) node src/cli/schedules.ts "${@:3}" ;;
       *) verbs schedule ;;
     esac ;;
   release) node src/cli/release.ts "${@:2}" ;;
@@ -409,9 +410,9 @@ case "${1:-}" in
       *) verbs thread ;;
     esac ;;
   kagelet) case "${2:-}" in
-      list) node src/cli/registry.ts list --kagelets ;;
+      list) node src/cli/registry.ts list --kagelets "${@:3}" ;;
       add) [[ $# -eq 3 ]] || usage "kage kagelet add takes one kagelet name."; node src/cli/registry.ts add kagelet "$3" ;;
-      logs) [[ $# -eq 3 ]] || usage "kage kagelet logs takes one kagelet name."; node src/cli/kagelet-logs.ts "$3" ;;
+      logs) [[ $(words "${@:3}") -eq 1 ]] || usage "kage kagelet logs takes one kagelet name."; node src/cli/kagelet-logs.ts "${@:3}" ;;
       start) [[ $# -eq 3 ]] || usage "kage kagelet start takes one kagelet name."; node src/cli/stop.ts --resume "$3" ;;
       stop) [[ $# -eq 3 ]] || usage "kage kagelet stop takes one kagelet name."; node src/cli/stop.ts --kagelet "$3" ;;
       *) verbs kagelet ;;

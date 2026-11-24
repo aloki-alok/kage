@@ -8,11 +8,19 @@ import { kageletsDir, readKagelets } from '../runtime/kagelets/files.ts'
 import { eventsOn, ledgerText } from '../runtime/ledger.ts'
 import { chainLine, chainViews } from '../core/events.ts'
 import { kageletMessages } from '../runtime/store.ts'
+import { outputFlags, printJson } from './output.ts'
 
-const name = process.argv[2] ?? ''
+const out = outputFlags(process.argv.slice(2))
+const name = out.args[0] ?? ''
 const file = readKagelets(kageletsDir(DIR)).find(f => f.name === name)
 if (!file) { console.error(`There is no kagelet named "${name}". kage kagelet list shows them.`); process.exit(1) }
 const sp = parseKagelet(name, file.text)
+if (out.json && !existsSync(`${DIR}/kage.db`)) { printJson({ name, runs: [] }, out.jq); process.exit(0) }
+if (out.json) {
+  const db = new DatabaseSync(`${DIR}/kage.db`, { readOnly: true })
+  printJson({ name, ...'error' in sp && { error: sp.error }, runs: kageletRuns(name, 'error' in sp ? '' : sp.key, { runs: ledgerText(db, 'runs'), costs: ledgerText(db, 'costs'), reports: ledgerText(db, 'reports') }, Date.now()).slice(0, 20) }, out.jq)
+  process.exit(0)
+}
 if ('error' in sp) console.log(`${name} does not run: ${sp.error}`)
 else console.log(modelLine(sp))
 if (!existsSync(`${DIR}/kage.db`)) { console.log('No runs yet.'); process.exit(0) }

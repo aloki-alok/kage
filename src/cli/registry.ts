@@ -9,10 +9,12 @@ import { NAME, resultLine, rowLine, kageletRows, starterFile } from '../core/kag
 import { openLedgers } from '../runtime/ledger.ts'
 import { jobPath, kageletsDir, readKagelets, writeJob } from '../runtime/kagelets/files.ts'
 import { reload, said } from './reload.ts'
+import { outputFlags, printJson } from './output.ts'
 
 const KAGELETS = kageletsDir(DIR)
 const die = (msg: string): never => { console.error(msg); process.exit(1) }
-const [cmd = '', ...args] = process.argv.slice(2).map(pastedId)
+const out = outputFlags(process.argv.slice(2))
+const [cmd = '', ...args] = out.args.map(pastedId)
 const USAGE = 'Usage: kage person add <person> [--trusted | --not-trusted] | kage person add <app id> <owner> | kage person rm <person or app id> | kage person list'
 if (!['add', 'remove', 'list'].includes(cmd)) die(USAGE)
 if (cmd !== 'list' && process.env.KAGE_CLAUDE) die(`This shell runs inside Kage, and a session cannot change who reaches Kage. The owner runs kage ${cmd} in their own terminal.`)
@@ -82,7 +84,16 @@ async function save(next: Entry[]) {
   try { for (const l of said(await reload())) console.log(l) } catch (e) { console.log((e as Error).message) }
 }
 
-if (cmd === 'list') {
+if (cmd === 'list' && out.json) {
+  if (args.includes('--kagelets')) {
+    const ledgers = openLedgers(DIR)
+    printJson(kageletRows(readKagelets(KAGELETS), { runs: ledgers.text('runs'), costs: ledgers.text('costs'), reports: ledgers.text('reports'), now: Date.now() }), out.jq)
+    ledgers.close()
+  } else {
+    for (const e of now) if (e.kind === 'person' && !args.includes('--ids')) { const n = await nameOf(e.id); if (n) names.set(e.id, n) }
+    printJson(now.map(e => e.kind === 'person' ? { ...e, name: names.get(e.id) ?? null } : e), out.jq)
+  }
+} else if (cmd === 'list') {
   const board = await askHub<Live>({ type: 'board' }).catch(() => undefined)
   if (board?.paused) console.log(pauseLine(board.paused))
   const people = !args.includes('--kagelets'), kagelets = !args.includes('--people')
