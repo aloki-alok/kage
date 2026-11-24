@@ -32,6 +32,7 @@ import { screenTools } from './tools/screen-tools.ts'
 import type { ScreenRecorder } from './screen.ts'
 import { smsTools, type SmsCampaigns } from './tools/sms-tools.ts'
 import { answersInThread } from '../core/blocks.ts'
+import type { TrustLine, TrustMode } from '../core/trust.ts'
 
 export type Result = { text: string; isError?: true }
 export type KageTool = { name: string; description: string; shape: z.ZodRawShape; run: (args: Record<string, unknown>) => Promise<Result> }
@@ -108,6 +109,7 @@ type SessionOptions = {
   dbRead?: { command: () => string | undefined; maxRows: number; timeoutMs?: number }
   kagelets?: { list(): string; manage(a: Manage, ask?: AskOwner): Promise<string> }
   settings?: { set(key: string, value: unknown): void }
+  trust?: { mode: () => TrustMode; lines: () => TrustLine[] }
   approve?: (tool: string, description: string, input: Record<string, unknown>) => Promise<boolean>
   event?: (kind: EventKind, detail: string) => void
   browser?: { call(op: string, args: Record<string, unknown>): Promise<unknown>; block: string[] }

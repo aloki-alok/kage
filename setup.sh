@@ -54,6 +54,7 @@ People|remove|<person or app id>|Take a person or an agent off the list; whoever
 People|list||Who may tag Kage besides you: each person, with their agents under them. Then the kagelets Kage manages: schedule, last and next run, cost today|kage list
 People|tell|<place> <message>|Tell a thread something as you; its session takes it after the current turn|kage tell support use the staging db
 People|relay|allow <place or key>, deny <same> or list|Let one thread use the SSM relay (ssh to hosts behind AWS SSM) though a teammate asked for its work. list shows who may|kage relay allow prod-monitor
+People|trust|list or revoke <id>|Show what Kage learned from your yeses, one line per teammate, kind and reach. revoke takes one back. Money, deletes, outside sends, production writes and secrets always ask|kage trust list
 People|call||Kage phones you, and the call can do anything you can (needs KAGE_CALL_COMMAND)|kage call'
 
 cmd_help() {
@@ -344,6 +345,7 @@ case "${1:-}" in
   attach) node src/cli/attach.ts "${@:2}" ;;
   tell) node src/cli/tell.ts "${@:2}" ;;
   relay) node src/cli/relay.ts "${@:2}" ;;
+  trust) node src/cli/trust.ts "${@:2}" ;;
   add) node src/cli/registry.ts "$@" ;;
   remove) node src/cli/registry.ts "$@" ;;
   list) node src/cli/registry.ts "$@" ;;

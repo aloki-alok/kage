@@ -44,6 +44,7 @@ import { limitPause } from '../runtime/limit-pause.ts'
 import { findPlugin, ssmRelay } from '../runtime/ssm-relay.ts'
 import { keyProxy } from '../runtime/key-proxy.ts'
 import { askSocket } from '../runtime/hub-client.ts'
+import { trustFor } from './trust.ts'
 import { listenForSessions, restoreHolds, routeReply } from '../runtime/session-link.ts'
 import { ownerKey, readToken } from '../runtime/owner-key.ts'
 import { openStore, type Inbox } from '../runtime/store.ts'
@@ -105,6 +106,7 @@ const keys = keyProxy({ path: KEYS_SOCK, routes: config.sessionKeys ?? {}, trust
 store.importState({ afk: `${DIR}/afk.json`, 'github-threads': `${DIR}/github-threads.json`, 'mail-threads': `${DIR}/mail-threads.json` })
 const ledgers = openLedgers(DIR, undefined, line => log(line), (name, cells) => { if (name === 'posted' && cells[3]) runs.posted(cells[3]) })
 const runs = runEvents(ledgers, randomUUID)
+const trust = trustFor({ store, ledgers, mode: () => config.trust?.mode ?? 'shadow' })
 const placeOf = (key: string) => placeFor(k => store.conversation(k)?.place, key)
 const inbox: Inbox = { take: (source, connector, payload) => store.take(source, connector, payload, Date.now()), handled: source => limits.handled(source), has: source => store.has(source) }
 
@@ -159,8 +161,7 @@ function dropped(key: string, turn: Task[], reason: string, kind: string) {
   if (p.reply && t) sayInThread(key, t, p.reply)
   if (p.dm && !dropToldOwner.has(key)) { dropToldOwner.add(key); void owner.say(p.dm) }
 }
-const noteTrust = (key: string, t: Task) =>
-  t.need || store.noteTask(key, senderOf(t) === 'owner', key in d.saved())
+const noteTrust = (key: string, t: Task) => (trust.heard(key, t), t.need || store.noteTask(key, senderOf(t) === 'owner', key in d.saved()))
 const phoneOwner = (reason: string) => callOwner(conn.call?.command, voice, reason)
 const jev = jevConfig(config.jev, secrets.jevKey)
 if (jev && 'error' in jev) log(`jev is off: ${jev.error}`)
@@ -251,7 +252,7 @@ const sdk = sdkLib ? sdkSessions({
     meetbot: meeting && { join: meeting.join }, sms: sms?.campaigns, screen: SCREEN,
     dbRead: { command: () => readCommand(kl.dbRead?.command ?? undefined, store, key.split('#side-kagelet-')[1] ?? ''), maxRows: kl.dbRead?.maxRows || 200 },
     kagelets: { list: () => kag.manager.list(Date.now()), manage: (a, ask) => kag.manager.manage(a, Date.now(), ask) }, approve,
-    event: (kind, detail) => runs.emit(key, kind, detail),
+    event: (kind, detail) => runs.emit(key, kind, detail), trust: trust.session,
     onReport: r => kag.routes.reported(key, r), message: (to, text) => kag.routes.message(key, to, text), toManager: needs => kag.needs.add(key, key.split('#side-kagelet-')[1] ?? '', needs, Date.now()), tellKagelet: (name, text, now) => kag.tell(name, text, now),
   }),
   hasTranscript: tmux.hasTranscript, trustedNow: person => (slack.ids.trusted ?? []).includes(person),
@@ -357,7 +358,7 @@ const watcher = configWatcher({
   restartWanted: yes => updates.restartWanted(yes),
 })
 const reload = watcher.check
-listenForSessions(`${DIR}/router.sock`, d, { ownerKey: OWNER_KEY, ...replies, failed, health: () => health.lines(Date.now()), schedules: jobs, tell: commands.tell, say: commands.say, relay: commands.relay, reload, paused: () => limits.paused(), limitCounts: () => limits.counts,
+listenForSessions(`${DIR}/router.sock`, d, { ownerKey: OWNER_KEY, ...replies, failed, health: () => health.lines(Date.now()), schedules: jobs, tell: commands.tell, say: commands.say, relay: commands.relay, trust: trust.command, reload, paused: () => limits.paused(), limitCounts: () => limits.counts,
   end: (key, cut) => stopThread(key, cut), kagelet: (action, name) => action === 'unhold' ? Promise.resolve(ownerLines.holdsLifted(name, deferred.unhold(name, Date.now()))) : kag.manager.manage({ action, name }, Date.now()),
   quiesce: () => { const now = Date.now(); limits.drain(now); return d.unquiet(now).filter(u => u.why !== 'just active' && u.why !== 'open in a terminal') }, callCode: voice?.issueCode })
 

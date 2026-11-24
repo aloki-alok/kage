@@ -33,9 +33,9 @@ const SECRET_HELPER = new RegExp(AT_COMMAND + String.raw`(?:security\s+(?:-\S+\s
 const plainShell = (s: string) => s.replace(/\\\n/g, ' ').replace(/['"]/g, '').replace(/\s+/g, ' ').trim()
 const escaped = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
 const asCommand = (c: string) => new RegExp(String.raw`(?:^|[\s;&|(\x60])${escaped(c)}(?=$|[\s;&|)\x60])`)
-const OWNER_WRITE_COMMAND = new RegExp(AT_COMMAND + String.raw`(?:(?:-u|--unset)\s+\S+\s+|\w+=\S*\s+|-\S+\s+)*(?:(?:\S*\/)?(?:kage|setup\.sh)\s+(?:tell|relay|stop|attach|call|reload|restart|add|remove)|(?:\S*\/)?node\s+(?:-\S+\s+)*\S*src\/cli\/(?:tell|relay|stop|attach|call|reload|quiet|registry)\.ts)(?=$|[\s;&|)\x60])`)
+const OWNER_WRITE_COMMAND = new RegExp(AT_COMMAND + String.raw`(?:(?:-u|--unset)\s+\S+\s+|\w+=\S*\s+|-\S+\s+)*(?:(?:\S*\/)?(?:kage|setup\.sh)\s+(?:tell|relay|stop|attach|call|reload|restart|add|remove|trust\s+revoke)|(?:\S*\/)?node\s+(?:-\S+\s+)*\S*src\/cli\/(?:(?:tell|relay|stop|attach|call|reload|quiet|registry)\.ts|trust\.ts\s+revoke))(?=$|[\s;&|)\x60])`)
 const kageWriteRefusal = (tool: string, input: Record<string, unknown>) => tool === 'Bash' && typeof input.command === 'string' && OWNER_WRITE_COMMAND.test(plainShell(input.command))
-  ? "The kage commands that act as the owner (tell, relay, stop, attach, call, reload, restart, add, remove) run only in the owner's own terminal. Say what you wanted done, and the owner runs it." : undefined
+  ? "The kage commands that act as the owner (tell, relay, stop, attach, call, reload, restart, add, remove, trust revoke) run only in the owner's own terminal. Say what you wanted done, and the owner runs it." : undefined
 function secretCommandRefusal(tool: string, input: Record<string, unknown>, envFile: string): string | undefined {
   if (tool !== 'Bash' || typeof input.command !== 'string') return
   let commands: string[]

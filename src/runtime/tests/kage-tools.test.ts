@@ -14,6 +14,7 @@ import type { Task } from '../../core/task.ts'
 import type { ScreenRecorder } from '../screen.ts'
 import type { SessionReport } from '../tools/report-tools.ts'
 import type { Dismissal, DreamLesson, NewFlag } from '../../core/dream.ts'
+import type { TrustLine, TrustMode } from '../../core/trust.ts'
 
 function fakeSlack() {
   const calls: string[] = []
@@ -74,7 +75,7 @@ function fakeSlack() {
   return { calls, posts, bot: client('bot'), user: client('owner') }
 }
 
-function setup(o: { noHook?: boolean; settings?: { set(key: string, value: unknown): void }; hubDown?: boolean; dir?: string; kagelet?: string; dreaming?: string; dbRead?: { command: () => string | undefined; maxRows: number; timeoutMs?: number }; approve?: (tool: string, description: string, input: Record<string, unknown>) => Promise<boolean>; browser?: { call(op: string, args: Record<string, unknown>): Promise<unknown>; block: string[] }; meetbot?: { join(link: string): string }; screen?: ScreenRecorder; foreignAgents?: () => readonly string[]; flagKnowledge?: (f: NewFlag) => void; dreamLessons?: (l: DreamLesson[], d?: Dismissal[]) => string; report?: SessionReport } = {}) {
+function setup(o: { noHook?: boolean; settings?: { set(key: string, value: unknown): void }; hubDown?: boolean; dir?: string; kagelet?: string; dreaming?: string; dbRead?: { command: () => string | undefined; maxRows: number; timeoutMs?: number }; approve?: (tool: string, description: string, input: Record<string, unknown>) => Promise<boolean>; browser?: { call(op: string, args: Record<string, unknown>): Promise<unknown>; block: string[] }; meetbot?: { join(link: string): string }; screen?: ScreenRecorder; foreignAgents?: () => readonly string[]; flagKnowledge?: (f: NewFlag) => void; dreamLessons?: (l: DreamLesson[], d?: Dismissal[]) => string; report?: SessionReport; trust?: { mode: TrustMode; lines: TrustLine[] } } = {}) {
   const slack = fakeSlack()
   const dir = o.dir ?? mkdtempSync(join(tmpdir(), 'kage-tools-'))
   const ledgers = openLedgers(dir)
@@ -94,7 +95,7 @@ function setup(o: { noHook?: boolean; settings?: { set(key: string, value: unkno
       move: (id, to) => { if (!jobs.some(j => j.id === id)) return `no job ${id} in this thread`; jobs.find(j => j.id === id).key = to },
     },
     afk: async c => { out.push(`afk ${JSON.stringify(c)}`); return 'AFK on' }, foreignAgents: o.foreignAgents,
-    kagelet: o.kagelet, dreaming: o.dreaming, settings: o.settings, flagKnowledge: o.flagKnowledge, dreamLessons: o.dreamLessons, report: o.report, kageletMemory: { propose: (name: string, a: unknown, thread: string) => { out.push(`propose ${name} ${thread} ${JSON.stringify(a)}`); return 'proposed' }, decide: (d: unknown) => { out.push(`decide ${JSON.stringify(d)}`); return 'decided' }, open: () => 'open ones', notes: () => [] } as any, dbRead: o.dbRead, approve: o.approve, browser: o.browser, meetbot: o.meetbot, screen: o.screen, event: (kind, detail) => { events.push(`${kind} ${detail}`) },
+    kagelet: o.kagelet, dreaming: o.dreaming, settings: o.settings, flagKnowledge: o.flagKnowledge, dreamLessons: o.dreamLessons, report: o.report, kageletMemory: { propose: (name: string, a: unknown, thread: string) => { out.push(`propose ${name} ${thread} ${JSON.stringify(a)}`); return 'proposed' }, decide: (d: unknown) => { out.push(`decide ${JSON.stringify(d)}`); return 'decided' }, open: () => 'open ones', notes: () => [] } as any, dbRead: o.dbRead, approve: o.approve, trust: o.trust && { mode: () => o.trust!.mode, lines: () => o.trust!.lines }, browser: o.browser, meetbot: o.meetbot, screen: o.screen, event: (kind, detail) => { events.push(`${kind} ${detail}`) },
     onReport: r => { routed.push(`report ${JSON.stringify(r)}`) }, toManager: text => { routed.push(`manager ${text}`); return 'sent' },
     tellKagelet: (name, text, run) => { routed.push(`tell ${name}${run ? ' now' : ''}: ${text}`); return `told ${name}` }, message: (to, text) => { routed.push(`message ${to} ${text}`); return `sent to ${to}` },
     kagelets: { list: () => 'the list', manage: async (a, ask) => { out.push(`manage ${JSON.stringify(a)}`); return ask ? `asked: ${await ask({ kagelet: a.name, tools: 'mcp__gmail__send', job: 'j' })}` : 'managed' } },
@@ -936,6 +937,129 @@ describe("a session's Kage tools", () => {
     assert.equal(s.ledgers.text('waiting').split('\n').filter(l => l.includes('\topen\t')).length, 1)
     await s.call('reply', { channel: 'C1', thread_ts: '5.5', text: 'And deploy?', waiting: 'Deploy it?', waiting_on: 'owner' })
     assert.equal(s.ledgers.text('waiting').split('\n').filter(l => l.includes('\topen\t')).length, 2)
+  })
+  describe('the trust record (#667)', () => {
+    const line = (o: Partial<TrustLine> = {}): TrustLine => ({ id: 'T1', who: 'UTEAM0001', kind: 'prod-read', reach: 'db.example.test', answer: 'yes', once: false, link: 'https://x/p', at: '2026-11-25T00:00:00.000Z', state: 'live', ...o })
+    const teammate = (s: ReturnType<typeof setup>, who = 'UTEAM0001', thread_ts = '6.6') => s.t.onTask({ ...s.task({ fromOwner: false, thread_ts }), content: `Teammate task (${who}, Sam, not the owner): read the prod db` })
+    const prodRead = (thread_ts = '6.6', extra: Record<string, unknown> = {}) => ({ channel: 'C1', thread_ts, text: 'May I read the prod db?', waiting: 'Read the prod db?', waiting_on: 'owner', kind: 'prod-read', reach: 'db.example.test', ...extra })
+
+    test('a known teammate\'s second prod read, in a new thread, posts no ask', async () => {
+      const s = setup({ trust: { mode: 'on', lines: [line()] } })
+      teammate(s)
+      const r = await s.call('reply', prodRead())
+      assert.equal(r.isError, undefined, r.text)
+      assert.match(r.text, /line T1/)
+      assert.deepEqual(s.posts, [])
+      assert.equal((await s.call('waiting', {})).text, 'nothing is waiting')
+      assert.match(s.ledgers.text('trust-steps'), /C1:6\.6\tUTEAM0001\tprod-read\tdb\.example\.test\tT1/)
+    })
+    test('the posted ask says what a yes will save: the teammate, the kind and the reach', async () => {
+      const s = setup({ trust: { mode: 'on', lines: [] } })
+      teammate(s)
+      await s.call('reply', prodRead())
+      assert.match(s.posts[0]!.text, /<@UTEAM0001>: prod-read on db\.example\.test/)
+      assert.match(s.posts[0]!.text, /yes once/)
+      const never = setup({ trust: { mode: 'on', lines: [] } })
+      teammate(never)
+      await never.call('reply', prodRead('6.6', { kind: 'ssm-relay', reach: 'ssm' }))
+      assert.doesNotMatch(never.posts[0]!.text, /A yes saves/)
+    })
+    test('the line about what a yes saves is posted in shadow and on, and not when the mode is off', async () => {
+      for (const mode of ['shadow', 'on'] as const) {
+        const s = setup({ trust: { mode, lines: [] } })
+        teammate(s)
+        await s.call('reply', prodRead())
+        assert.match(s.posts[0]!.text, /A yes saves this/, mode)
+      }
+      const off = setup({ trust: { mode: 'off', lines: [] } })
+      teammate(off)
+      await off.call('reply', prodRead())
+      assert.equal(off.posts.length, 1)
+      assert.doesNotMatch(off.posts[0]!.text, /A yes saves/)
+      const none = setup()
+      teammate(none)
+      await none.call('reply', prodRead())
+      assert.doesNotMatch(none.posts[0]!.text, /A yes saves/)
+    })
+    test('the reach that is posted is the reach that is stored, and a reach over 200 characters is refused', async () => {
+      const s = setup({ trust: { mode: 'on', lines: [] } })
+      teammate(s)
+      const reach = `${'h'.repeat(95)}.example.test`
+      await s.call('reply', prodRead('6.6', { reach }))
+      assert.ok(s.posts[0]!.text.includes(`on ${reach},`))
+      assert.match(s.ledgers.text('waiting'), new RegExp(`prod-read\\t${reach}\\tUTEAM0001`))
+      const long = await s.call('reply', prodRead('6.6', { reach: 'h'.repeat(201), waiting: 'Another read?' }))
+      assert.equal(long.isError, true)
+      assert.match(long.text, /200/)
+      assert.equal(s.posts.length, 1)
+    })
+    test('a teammate with no line still asks the owner', async () => {
+      const s = setup({ trust: { mode: 'on', lines: [line()] } })
+      teammate(s, 'UTEAM0002')
+      const r = await s.call('reply', prodRead())
+      assert.equal(r.isError, undefined, r.text)
+      assert.equal(s.posts.length, 1)
+      assert.match(s.ledgers.text('waiting'), /open\tC1:6\.6\t.*\tprod-read\tdb\.example\.test\tUTEAM0002\task/)
+      assert.equal(s.ledgers.text('trust-steps'), '')
+    })
+    test('a never-learn kind asks even with a matching yes line', async () => {
+      const s = setup({ trust: { mode: 'on', lines: [line({ kind: 'prod-write' })] } })
+      teammate(s)
+      const r = await s.call('reply', prodRead('6.6', { kind: 'prod-write' }))
+      assert.equal(r.isError, undefined, r.text)
+      assert.equal(s.posts.length, 1)
+    })
+    test('the same ask twice in one thread posts once', async () => {
+      const s = setup({ trust: { mode: 'on', lines: [] } })
+      teammate(s)
+      await s.call('reply', prodRead())
+      const again = await s.call('reply', prodRead('6.6', { text: 'Reading the prod db is the next step. May I?', waiting: 'Prod db read please' }))
+      assert.equal(again.isError, true)
+      assert.match(again.text, /already open/)
+      const plain = await s.call('reply', { channel: 'C1', thread_ts: '6.6', text: 'PR?', waiting: 'Open a PR?', waiting_on: 'owner' })
+      const plainAgain = await s.call('reply', { channel: 'C1', thread_ts: '6.6', text: 'PR? again', waiting: 'open a PR?', waiting_on: 'owner' })
+      assert.equal(plain.isError, undefined)
+      assert.match(plainAgain.text, /already open/)
+      assert.equal(s.posts.length, 2)
+    })
+    test('a no line stops the step and posts nothing', async () => {
+      const s = setup({ trust: { mode: 'on', lines: [line({ answer: 'no' })] } })
+      teammate(s)
+      const r = await s.call('reply', prodRead())
+      assert.equal(r.isError, true)
+      assert.match(r.text, /said no/)
+      assert.deepEqual(s.posts, [])
+    })
+    test('shadow mode changes nothing: the ask posts, and the would-decide is kept beside it', async () => {
+      const s = setup({ trust: { mode: 'shadow', lines: [line()] } })
+      teammate(s)
+      await s.call('reply', prodRead())
+      await s.call('reply', prodRead('6.6', { waiting: 'Read the prod db again?' }))
+      assert.equal(s.posts.length, 2)
+      assert.match(s.ledgers.text('waiting'), /prod-read\tdb\.example\.test\tUTEAM0001\tgo/)
+      assert.deepEqual(s.events.filter(e => e.startsWith('trust')), ['trust shadow go', 'trust shadow go'])
+      assert.equal(s.ledgers.text('trust-steps'), '')
+    })
+    test('mode off ignores the record, and an unknown kind is refused with the kinds listed', async () => {
+      const off = setup({ trust: { mode: 'off', lines: [line()] } })
+      teammate(off)
+      await off.call('reply', prodRead())
+      assert.equal(off.posts.length, 1)
+      assert.deepEqual(off.events.filter(e => e.startsWith('trust')), [])
+      const on = setup({ trust: { mode: 'on', lines: [] } })
+      teammate(on)
+      const r = await on.call('reply', prodRead('6.6', { kind: 'made-up' }))
+      assert.equal(r.isError, true)
+      assert.match(r.text, /prod-read/)
+      assert.deepEqual(on.posts, [])
+    })
+    test('an ask in the owner\'s own thread is a plain ask: the record knows no teammate there', async () => {
+      const s = setup({ trust: { mode: 'on', lines: [line()] } })
+      s.t.onTask(s.task())
+      await s.call('reply', prodRead('5.5'))
+      assert.equal(s.posts.length, 1)
+      assert.doesNotMatch(s.ledgers.text('waiting'), /prod-read/)
+    })
   })
   test('after the owner replied to an ask, a reworded owner ask in that thread is refused and posts nothing', async () => {
     const s = setup()

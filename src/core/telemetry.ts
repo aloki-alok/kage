@@ -61,6 +61,7 @@ const ATTRS: Partial<Record<KageEvent['kind'], (d: string) => Attrs>> = {
     const pct = Object.fromEntries(WINDOWS.flatMap(w => { const n = num(field(d, w)); return n != null ? [[w, n]] : [] }))
     return { type: oneOf(field(d, 'type'), ['pro', 'max', 'team', 'enterprise']), ...pct, extra: field(d, 'extra') === 'on' ? 'on' : 'off' }
   },
+  trust: d => ({ mode: oneOf(d.split(' ')[0], ['shadow', 'on']), decision: oneOf(d.split(' ')[1], ['go', 'no', 'ask']) }),
   objective: d => ({ state: oneOf(d.split(' ')[1], ['met', 'working', 'failed']) }),
   boot: d => ({ why: oneOf(d, BOOT_WHYS) }),
   error: d => ({ code: oneOf(d, ERRORS.map(e => e[1])) }),

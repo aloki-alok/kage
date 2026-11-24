@@ -3,8 +3,10 @@ import { foreignAgentRefusal } from '../../core/agents.ts'
 import { openWaiting, ownerMayBeAsked } from '../../core/ledgers.ts'
 import { layoutRefusal, secretRefusal } from '../../core/outbound.ts'
 import type { KageTool, Result, ToolContext } from '../kage-tools.ts'
+import { isLearnable, savedLine } from '../../core/trust.ts'
+import { trustVerdict, typedAsk } from './trust-ask.ts'
 
-type ReplyArgs = { channel: string; thread_ts: string; text: string; private?: boolean; owner_asked?: boolean; waiting?: string; waiting_on?: string; mark?: keyof typeof MARKS; wide?: boolean; tag_agent?: boolean }
+type ReplyArgs = { channel: string; thread_ts: string; text: string; private?: boolean; owner_asked?: boolean; waiting?: string; waiting_on?: string; kind?: string; reach?: string; mark?: keyof typeof MARKS; wide?: boolean; tag_agent?: boolean }
 
 const MARKS = { ack: '', question: 'scroll', answer: 'dagger_knife', done: 'crossed_swords' } as const
 const ASKED_OWNER_ALREADY = 'not sent: you already asked the owner once in this thread and they replied, so their messages since are the answer. Decide it yourself and report after. A one-way step goes through its approval card, not a new ask. Post the reply again without waiting.'
@@ -26,6 +28,8 @@ export function replyTool(c: ToolContext): KageTool {
       waiting_on: s.optional().describe('With waiting: whose answer the work waits on. "owner" only for a one-way step (a deploy, a prod or database write, a merge, money, a send, a delete), a product or business choice, or something only the owner knows. Inside a job the owner already approved, decide the step yourself. A teammate\'s own test, data or decision: their Slack id (U...), and the reply tags them; it stays off the owner\'s waiting list.'),
       wide: z.boolean().optional().describe('true only for a log or code where wrapped lines are fine. Never for a table.'),
       tag_agent: z.boolean().optional().describe('On a task another agent posted: true only when that agent must read this post (the answer to its ask, or a question to it). An agent hears only posts that tag it, so acks, progress and thanks stay untagged.'),
+      kind: s.optional().describe('With waiting and waiting_on owner, when a teammate\'s task needs the owner\'s yes: what kind of step it is (prod-read, site-read, repo-read, or one that always asks: ssm-relay, money, delete, send-outside, prod-deploy, prod-write, prod-shell, secret, product, owner-shell). With reach. Once the owner said yes to this kind and reach for that teammate, Kage does not ask again.'),
+      reach: s.optional().describe('With kind: the exact host, site, route or repo the step touches, such as db.example.com.'),
       mark: z.enum(['ack', 'question', 'answer', 'done']).optional().describe('What this reply is, shown as a reaction on the task message: ack ("On it", no reaction), question (you need their answer to go on), answer (a quick question answered), done (the task is finished). Leave it out only on the reply that finishes the task.'),
     },
     async run(args) {
@@ -80,11 +84,16 @@ async function slackReply(c: ToolContext, a: ReplyArgs, key: string): Promise<Re
   if (ask && on !== 'owner' && a.private) return { isError: true, text: 'not sent: a teammate cannot see the owner\'s DM. Ask them in the thread, or set waiting_on to "owner"' }
   if (ask && on !== 'owner' && !a.text.includes(`<@${on}>`)) a.text = `<@${on}>${/^(```|\|)/.test(a.text) ? '\n' : ' '}${a.text}`
   if (ask && on === 'owner' && !ownerMayBeAsked(c.ledger('waiting'), key, Date.now())) return { isError: true, text: ASKED_OWNER_ALREADY }
+  const typed = ask && on === 'owner' ? typedAsk(c, key, a.kind, a.reach) : undefined
+  if (typed && 'text' in typed) return typed
+  const verdict = ask && on === 'owner' ? trustVerdict(c, key, ask, typed) : { would: '' }
+  if ('result' in verdict) return verdict.result
+  if (typed && isLearnable(typed.kind) && (c.o.trust?.mode() ?? 'off') !== 'off') a.text = `${a.text}\n_${savedLine(typed)}_`
   const layout = layoutRefusal(a.text, a)
   if (layout) return { isError: true, text: layout }
   const { via, where: at } = a.private ? await c.post(key, c.o.botDm(), c.dmThread.get(key), a.text) : await c.post(key, a.channel, a.thread_ts, a.text, a.tag_agent ? { tag: c.agents.get(key)?.tag } : {}, a.mark === 'ack')
   markTask(c, key, a.mark)
-  if (ask && on === 'owner' && !openWaiting(c.ledger('waiting')).some(i => i.thread === key && i.what.trim().toLowerCase() === ask.toLowerCase())) c.append('waiting', ['open', key, c.links.get(key) ?? key, ask])
+  if (ask && on === 'owner' && !openWaiting(c.ledger('waiting')).some(i => i.thread === key && i.what.trim().toLowerCase() === ask.toLowerCase())) c.append('waiting', ['open', key, c.links.get(key) ?? key, ask, ...typed ? [typed.kind, typed.reach, typed.who, verdict.would] : []])
   return { text: `sent via ${via} (${at}; pass these to edit_message or delete_message)` }
 }
 
