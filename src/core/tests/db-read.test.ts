@@ -1,6 +1,6 @@
 import { describe, test } from 'node:test'
 import assert from 'node:assert/strict'
-import { mayReadDb, readOnlyQuery } from '../db-read.ts'
+import { mayReadDb, readOnlyQuery, routeFolders } from '../db-read.ts'
 
 const ok = (sql: string) => {
   const r = readOnlyQuery(sql, 200)
@@ -108,5 +108,12 @@ describe('mayReadDb: which tasks may read the owner\'s named databases', () => {
     for (const channel of ['sms', 'voice', 'email', 'whatsapp']) assert.equal(mayReadDb(task({ meta: { channel } })), false, channel)
     assert.equal(mayReadDb(task({ agent: { app: 'ATEST0001' } })), false)
     assert.equal(mayReadDb(task({ outsider: 'someone' })), false)
+  })
+})
+
+describe('routeFolders: the folders a read route runs code from', () => {
+  test('every path the command names, with ~ as home, once each', () => {
+    assert.deepEqual(routeFolders({ prod: '/opt/reads/prod-read --fast', crm: 'sh ~/reads/crm-read', again: '/opt/reads/other' }, '/home/o'), ['/opt/reads', '/home/o/reads'])
+    assert.deepEqual(routeFolders({}, '/home/o'), [])
   })
 })

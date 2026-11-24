@@ -50,7 +50,7 @@ export type SdkOptions = {
   toHub: (key: string, m: ChannelReply) => void
   options: Options
   ownerMemory: string; ownMemory?: string; sharedTools?: readonly string[]
-  codeDir: string; sandbox?: (ownerThread: boolean) => boolean; commandOutput?: () => number | undefined
+  codeDir: string; readRoutes?: () => string[]; sandbox?: (ownerThread: boolean) => boolean; commandOutput?: () => number | undefined
   envFile: string
   onStart?: () => void; onMcp?: (q: Query) => void
   onResult?: (key: string, totalUsd: number, resumed: boolean, limited: boolean, error?: string, tokens?: Tokens) => void
@@ -103,7 +103,7 @@ function queryOptions(h: Hub, key: string, s: Session, full: boolean, resumed: b
   const budget = o.budgetOf?.(key)
   const grant = o.grantOf?.(key)
   const owners = !full && !s.connectors ? o.lean?.() : undefined
-  const walled = protectConfig(o.envFile, o.codeDir, undefined, shellGrant(grant) ? 'kagelet' : o.sandbox?.(s.ownerThread) === true)
+  const walled = protectConfig(o.envFile, o.codeDir, undefined, shellGrant(grant) ? 'kagelet' : o.sandbox?.(s.ownerThread) === true, o.readRoutes?.())
   const ssmToken = grant ? undefined : o.ssm?.issue(key)
   const keysToken = grant ? undefined : o.keys?.issue(key)
   return {

@@ -1,4 +1,6 @@
+import { isOffSlack } from './conversations.ts'
 
+const OUTSIDE_THE_TRANSACTION = /(?:^|[^\w$])(dblink\w*|lo_\w+|pg_(?:terminate|cancel)_backend|pg_read_(?:binary_)?file|pg_ls_\w+|pg_stat_file|pg_file_\w+|pg_reload_conf|pg_rotate_logfile|pg_promote|pg_switch_wal|pg_create_\w+|pg_drop_\w+|pg_replication_origin_\w+|pg_logical_emit_message|pg_advisory\w*|pg_notify|pg_sleep\w*|set_config)\s*\(/i
 const FORBIDDEN = ['INSERT', 'UPDATE', 'DELETE', 'MERGE', 'ALTER', 'DROP', 'CREATE', 'GRANT', 'REVOKE', 'TRUNCATE', 'COPY', 'CALL', 'DO', 'INTO']
 
 function scan(sql: string): { code: string; run: string } | { refused: string } {
@@ -43,6 +45,16 @@ export function readOnlyQuery(sql: string, maxRows: number): { sql: string } | {
   if (!/^\s*(select|with)\b/i.test(code)) return { refused: 'only a read is allowed: the query must start with SELECT or WITH' }
   const bad = FORBIDDEN.find(w => new RegExp(`\\b${w}\\b`, 'i').test(code))
   if (bad) return { refused: `${bad} is not allowed: db_read runs reads only` }
+  const outside = OUTSIDE_THE_TRANSACTION.exec(code)?.[1]
+  if (outside) return { refused: `${outside} is not allowed: it acts outside the read-only transaction` }
+  if (/"\s*\(/.test(code)) return { refused: 'a quoted function name is not allowed: call functions by their plain name' }
   if (/\bfor\s+(key\s+)?share\b/i.test(code)) return { refused: 'a row lock (FOR SHARE) is not allowed: db_read runs reads only' }
   return { sql: `select * from (\n${run.trim()}\n) as kage_db_read limit ${maxRows}` }
 }
+
+export const routeFolders = (routes: Record<string, string>, home: string) =>
+  [...new Set(Object.values(routes).flatMap(c => c.split(/\s+/)).filter(w => /^(\/|~\/)/.test(w)).map(w => dirOf(w.replace(/^~(?=\/)/, home))))]
+const dirOf = (p: string) => p.slice(0, Math.max(1, p.lastIndexOf('/')))
+
+type Asker = { meta: { channel: string }; source?: string; agent?: { person?: string }; outsider?: string }
+export const mayReadDb = (t: Asker) => !t.outsider && !isOffSlack(t.meta.channel) && !t.source?.startsWith('meeting:') && !(t.agent && !t.agent.person)

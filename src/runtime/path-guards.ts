@@ -44,7 +44,8 @@ function secretCommandRefusal(tool: string, input: Record<string, unknown>, envF
 const CONFIG_NAMES = ['session.env', 'telemetry-id', 'kagelets', 'job-state', 'config.json*', 'crons-import.json*', 'waha', 'screen', 'threads.json*', 'afk.json*', 'github-threads.json*', 'mail-threads.json*',
   'kage.db*', 'hub.lock', 'hub.log*', 'router.sock', 'ssm.sock', 'keys.sock', '.archive', 'updated-from', 'browser-seen', 'wa-notes', 'retro-sent', 'dream-sent', 'daily-sent', 'crash-dm-at',
   'config-unknown-told', 'boots', 'held', 'sender', 'ledgers', 'last-seen']
-export function protectConfig(envFile: string, codeDir: string, home = process.env.HOME ?? '', sandbox: boolean | 'kagelet' = false) {
+const RUNS_AS_OWNER = { dirs: ['.ssh', '.aws'], files: ['.zshenv', '.zshrc', '.zprofile', '.profile', '.bashrc', '.bash_profile'] }
+export function protectConfig(envFile: string, codeDir: string, home = process.env.HOME ?? '', sandbox: boolean | 'kagelet' = false, readRoutes: string[] = []) {
   const dirs = [...new Set([dirname(envFile), realish(dirname(envFile))])]
   const tokens = dirs.flatMap(d => [`${d}/secrets.json*`, `${d}/env*`, `${d}/session.env*`, `${d}/waha/.env*`])
   const kept = new Set(['files', 'memory'])
@@ -52,8 +53,10 @@ export function protectConfig(envFile: string, codeDir: string, home = process.e
     ...(() => { try { return readdirSync(d) } catch { return [] } })().filter(n => !kept.has(n))])].map(n => `${d}/${n}`))
   const deny = (f: string) => [`Edit(/${f})`]
   const logins = [`${home}/Library/LaunchAgents`, `${home}/.config/systemd`]
+  const ownerDirs = [...new Set([...readRoutes, ...RUNS_AS_OWNER.dirs.map(d => `${home}/${d}`)].flatMap(d => [d, realish(d)]))], ownerFiles = RUNS_AS_OWNER.files.map(f => `${home}/${f}`)
   const permissions = { deny: [...dirs.flatMap(d => [`Read(/${d}/secrets.json)`, `Read(/${d}/env*)`, `Read(/${d}/session.env)`, `Read(/${d}/waha/.env)`, ...['secrets.json', 'env*', 'config.json', 'session.env', 'waha/.env'].flatMap(f => deny(`${d}/${f}`))]),
-    ...sandbox === 'kagelet' ? [...new Set([codeDir, realish(codeDir), ...logins])].flatMap(d => deny(`${d}/**`)) : []] }
+    ...sandbox === 'kagelet' ? [...new Set([codeDir, realish(codeDir), ...logins])].flatMap(d => deny(`${d}/**`)) : [],
+    ...sandbox ? [...ownerDirs.flatMap(d => deny(`${d}/**`)), ...ownerFiles.flatMap(deny)] : []] }
   if (!sandbox) return { permissions }
   return {
     permissions,
@@ -63,7 +66,7 @@ export function protectConfig(envFile: string, codeDir: string, home = process.e
         ...sandbox === 'kagelet' && { allowUnixSockets: [process.env.GNUPGHOME ?? `${home}/.gnupg`, process.env.SSH_AUTH_SOCK].filter((s): s is string => !!s) } },
       filesystem: {
         allowWrite: ['/'], denyRead: tokens,
-        denyWrite: [...new Set([...tokens, ...folder, ...[codeDir, realish(codeDir)], ...logins])],
+        denyWrite: [...new Set([...tokens, ...folder, ...[codeDir, realish(codeDir)], ...logins, ...ownerDirs, ...ownerFiles])],
       },
     },
   }

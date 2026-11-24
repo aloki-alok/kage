@@ -22,7 +22,8 @@ import { blockList, unreadableBlocks } from '../core/browser.ts'
 import { memoryDirs, sandboxed } from '../core/guards.ts'
 import { protectConfig } from '../runtime/path-guards.ts'
 import { stopLine } from '../core/board.ts'
-import { modelFor, placeFor, sessionKey, type Conversation, type Lane } from '../core/conversations.ts'
+import { modelFor, parseSessionKey, placeFor, sessionKey, type Conversation, type Lane } from '../core/conversations.ts'
+import { routeFolders } from '../core/db-read.ts'
 import { markDelivered, type ThreadMark } from '../core/thread-delta.ts'
 import { mayStop, senderOf } from '../core/gate.ts'
 import { foreignAgentTags } from '../core/agents.ts'
@@ -196,9 +197,10 @@ void (async () => {
   }
 })()
 
+const READ_ROUTES = routeFolders(config.dbRead?.routes ?? {}, process.env.HOME ?? '')
 const tmux = tmuxPanes({
   name: NAME, envFile: ENV_FILE, claude: CLAUDE,
-  settings: () => ({ autoMemoryDirectory: MEM.own, ...protectConfig(ENV_FILE, CODE, undefined, config.harness?.sandbox === true) }),
+  settings: () => ({ autoMemoryDirectory: MEM.own, ...protectConfig(ENV_FILE, CODE, undefined, config.harness?.sandbox === true, READ_ROUTES) }),
   ssm: { sock: SSM_SOCK, shim: SSM_SHIM, issue: key => ssm.issue(key), drop: key => ssm.drop(key) },
   idOf: key => d.saved()[key],
   placeOf,
@@ -247,7 +249,7 @@ const sdk = sdkLib ? sdkSessions({
     foreignAgents: () => config.askOtherAgents ? [] : foreignAgentTags(slack.ids.apps ?? [], slack.ids.owner),
     meetbot: meeting && { join: meeting.join }, sms: sms?.campaigns, screen: SCREEN,
     dbRead: { command: () => readCommand(kl.dbRead?.command ?? undefined, store, key.split('#side-kagelet-')[1] ?? ''), maxRows: kl.dbRead?.maxRows || 200 },
-    dbRoutes: { routes: () => config.dbRead?.routes ?? {}, maxRows: config.dbRead?.maxRows || 200 },
+    ...parseSessionKey(key)?.conversation.connector === 'slack' && { dbRoutes: { routes: () => config.dbRead?.routes ?? {}, maxRows: config.dbRead?.maxRows || 200 } },
     kagelets: { list: () => kag.manager.list(Date.now()), manage: (a, ask) => kag.manager.manage(a, Date.now(), ask) }, approve,
     event: (kind, detail) => runs.emit(key, kind, detail),
     onReport: r => kag.routes.reported(key, r), message: (to, text) => kag.routes.message(key, to, text), toManager: needs => kag.needs.add(key, key.split('#side-kagelet-')[1] ?? '', needs, Date.now()), tellKagelet: (name, text, now) => kag.tell(name, text, now),
@@ -258,7 +260,7 @@ const sdk = sdkLib ? sdkSessions({
   onMcp: q => { if (needs.watching()) void mcpStatus(q).then(needs.seen).catch(e => log('mcp status failed', e)) },
   ownerMemory: MEM.owner, ownMemory: MEM.own, sharedTools: config.sharedTools,
   envFile: ENV_FILE,
-  codeDir: CODE, sandbox: owner => sandboxed(config.harness?.sandbox, owner), commandOutput: () => config.harness?.commandOutputChars,
+  codeDir: CODE, readRoutes: () => READ_ROUTES, sandbox: owner => sandboxed(config.harness?.sandbox, owner), commandOutput: () => config.harness?.commandOutputChars,
   ssm: { sock: SSM_SOCK, shim: SSM_SHIM, issue: key => ssm.issue(key), drop: key => ssm.drop(key) },
   keys: { sock: KEYS_SOCK, issue: key => keys.issue(key), drop: key => keys.drop(key) },
   onStart: () => store.saveSessions(d.saved()), lean: () => harness.leanSessions === false ? undefined : ownerClaude(),

@@ -1,6 +1,5 @@
 import { execFile } from 'node:child_process'
 import { readOnlyQuery } from '../../core/db-read.ts'
-import { isOffSlack } from '../../core/conversations.ts'
 import type { KageTool, Result, ToolContext } from '../kage-tools.ts'
 
 type Options = ToolContext['o']
@@ -38,10 +37,7 @@ function routedRead(c: ToolContext, db: Routes): KageTool {
     async run(args) {
       const key = `${String(args.channel)}:${String(args.thread_ts)}`, route = String(args.db ?? '')
       const name = `${route} ${key}`
-      if (!c.ownerTask.has(key)) return refuse(c, name, 'read from a thread a task came from only')
-      if (isOffSlack(String(args.channel))) return refuse(c, name, 'a text, a call, an email or a WhatsApp chat reads no database')
-      const agent = c.agents.get(key)
-      if (agent && !agent.person) return refuse(c, name, 'an agent with no owner person in Kage\'s settings reads nothing')
+      if (!c.dbReaders.has(key)) return refuse(c, name, 'only a Slack task from the owner, a teammate or an agent with an owner person reads a database, from its own thread')
       const routes = db.routes(), command = Object.hasOwn(routes, route) ? routes[route] : undefined
       if (!command) return refuse(c, name, `no read route ${route}. The owner named these: ${Object.keys(routes).join(', ')}`)
       return runRead(c, name, command, String(args.sql ?? ''), db.maxRows, undefined, '')
