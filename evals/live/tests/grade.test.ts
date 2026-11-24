@@ -27,7 +27,7 @@ test('a filing check counts what reached the repo and forbids text in it (#543)'
   const filed = ['Reply posted twice\n### What happened\nKage posted the same reply twice in [channel]']
   assert.deepEqual(grade(evidence({ filed }), { filed: 1, filedNot: ['Alex', 'acme'] }), [])
   assert.match(grade(evidence({ filed: [] }), { filed: 1 }).join(), /filed: 0 seen, 1 expected/)
-  assert.match(grade(evidence({ filed: ['Alex saw it at Acme'] }), { filedNot: ['acme'] }).join(), /a filing matched \/acme\//)
+  assert.match(grade(evidence({ filed: ['Alex saw it at Acme'] }), { filedNot: ['acme'] }).join(), /a filing matched \/acme\/: \.\.\.Alex saw it at Acme\.\.\./)
 })
 
 test('a file check can require text, forbid text, or require the fixture unchanged', () => {

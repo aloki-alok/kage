@@ -42,7 +42,7 @@ export function grade(ev: Evidence, x: Expect): string[] {
     ...(x.files ?? []).flatMap(f => fileMisses(ev, f)),
     ...(x.commands ?? []).filter(c => ev.commands[c] !== 0).map(c => `${c} exited ${ev.commands[c] ?? 'never'}`),
     ...count('filed', ev.filed?.length ?? 0, x.filed),
-    ...(x.filedNot ?? []).filter(r => (ev.filed ?? []).some(f => re(r).test(f))).map(r => `a filing matched /${r}/`),
+    ...(x.filedNot ?? []).flatMap(r => (ev.filed ?? []).flatMap(f => { const m = re(r).exec(f); return m ? [`a filing matched /${r}/: ...${f.slice(Math.max(0, m.index - 30), m.index + m[0].length + 30).replace(/\s+/g, ' ')}...`] : [] })),
   ]
 }
 

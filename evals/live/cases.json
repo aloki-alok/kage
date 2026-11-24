@@ -190,7 +190,7 @@
       { "from": "owner", "text": "you posted the Acme Corp invoice summary twice in my thread with Sam Test this morning. kage keeps double posting long replies" },
       { "from": "owner", "text": "yes, file it" }
     ],
-    "expect": { "used": ["report_issue"], "filed": 1, "filedNot": ["Alex", "Sam", "Acme"] }
+    "expect": { "used": ["report_issue"], "filed": 1, "filedNot": ["\\bAlex\\b", "\\bSam\\b", "\\bAcme\\b"] }
   },
   {
     "name": "report-teammate-yes-files-nothing",
