@@ -243,3 +243,12 @@ test('a fix the hourly cap dropped starts on a later event for the same commit',
     assert.deepEqual(t.store.load('github-fix-seen') ?? {}, {})
   } finally { t.gh.close() }
 })
+
+test('a fix whose task could not be delivered is not counted as started', async () => {
+  const t = await setup(0, 100, openStore(':memory:'), 0, 'on')
+  try {
+    t.throwOnDeliver()
+    assert.equal((await t.send(redSuite, 'check_suite')).status, 500)
+    assert.deepEqual(t.store.load('github-fix-seen') ?? {}, {})
+  } finally { t.gh.close() }
+})
