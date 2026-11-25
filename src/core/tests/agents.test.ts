@@ -1,6 +1,12 @@
 import { describe, test } from 'node:test'
 import assert from 'node:assert/strict'
-import { addressed, agentNote, agentRoster, foreignAgentTags, loopGuard } from '../agents.ts'
+import { addressed, agentNote, agentRoster, asksOtherAgents, foreignAgentTags, loopGuard } from '../agents.ts'
+
+test("asking another person's listed agent for work is on unless the owner sets it off", () => {
+  assert.equal(asksOtherAgents({}), true)
+  assert.equal(asksOtherAgents({ askOtherAgents: true }), true)
+  assert.equal(asksOtherAgents({ askOtherAgents: false }), false)
+})
 
 describe('a post addressed to an agent', () => {
   test('every part of a split post carries the tag, not only the first', () => {

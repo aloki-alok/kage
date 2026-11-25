@@ -26,7 +26,7 @@ import { modelFor, placeFor, sessionKey, type Conversation, type Lane } from '..
 import { markDelivered, type ThreadMark } from '../core/thread-delta.ts'
 import { mayStop, senderOf } from '../core/gate.ts'
 import { readRoutesFor } from './read-routes.ts'
-import { foreignAgentTags } from '../core/agents.ts'
+import { asksOtherAgents, foreignAgentTags } from '../core/agents.ts'
 import { Dispatcher, mixRunners, startFailedNote } from '../core/sessions.ts'
 import { setKey, sweepKeptCopies, tidyPeople } from '../runtime/config-files.ts'
 import { configWatcher } from '../runtime/config-watch.ts'
@@ -170,7 +170,7 @@ if (jev && 'error' in jev) log(`jev is off: ${jev.error}`)
 else if (jev) log(`jev checks ${jev.agents === 'all' ? 'every listed agent' : jev.agents.join(', ')} at threshold ${jev.threshold}`)
 
 const slack = await connectSlack({
-  saved: store, catchUpMax: () => config.tripwires?.catchUpMax || 1000, dir: DIR, appToken: secrets.slack?.app ?? undefined, http: slackHttp, userToken: secrets.slack!.user!, bot, user, name: NAME, title: Title, askOtherAgents: config.askOtherAgents, teammates: TEAMMATES, trusted: TRUSTED_PEOPLE, apps: TRUSTED_APPS,
+  saved: store, catchUpMax: () => config.tripwires?.catchUpMax || 1000, dir: DIR, appToken: secrets.slack?.app ?? undefined, http: slackHttp, userToken: secrets.slack!.user!, bot, user, name: NAME, title: Title, askOtherAgents: asksOtherAgents(config), teammates: TEAMMATES, trusted: TRUSTED_PEOPLE, apps: TRUSTED_APPS,
   hub: { deliver, stop: (c, cut, by) => {
       const key = sessionKey(c, { lane: 'main' })
       return mayStop(by, slack.ids.owner, starters, key) ? stopThread(key, cut) : 'Only the owner, or the teammate whose task started this thread, can stop it.'
@@ -250,7 +250,7 @@ const sdk = sdkLib ? sdkSessions({
     kagelet: key.split('#side-kagelet-')[1], dreaming: key.split('#side-kdream-')[1], kageletMemory: kag.kmem, ...key === DREAM_KEY ? { dreamLessons: (l: DreamLesson[], dismiss?: Dismissal[]) => dreaming.lessons(l, dismiss) } : !key.includes('#side-') && { flagKnowledge: f => ledgers.add('flags', flagRow(randomUUID().slice(0, 8), key, f)) },
     browser: browser && { call: browser.call, block: BROWSER_BLOCK },
     ...reporter && { report: reporter },
-    foreignAgents: () => config.askOtherAgents ? [] : foreignAgentTags(slack.ids.apps ?? [], slack.ids.owner),
+    foreignAgents: () => asksOtherAgents(config) ? [] : foreignAgentTags(slack.ids.apps ?? [], slack.ids.owner),
     meetbot: meeting && { join: meeting.join }, sms: sms?.campaigns, screen: SCREEN,
     dbRead: { command: () => readCommand(kl.dbRead?.command ?? undefined, store, key.split('#side-kagelet-')[1] ?? ''), maxRows: kl.dbRead?.maxRows || 200 }, ...readRoutesFor(key, config),
     kagelets: { list: () => kag.manager.list(Date.now()), manage: (a, ask) => kag.manager.manage(a, Date.now(), ask) }, approve,
