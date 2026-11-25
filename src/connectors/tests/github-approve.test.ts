@@ -9,9 +9,10 @@ type Fake = {
   repoPolicy?: string; orgPolicy?: string | null; head?: string; movedTo?: string; statuses?: { context: string; state: string }[]; renamedFrom?: string
   files?: string[]; checks?: Run[]; reviews?: Review[]; author?: string; required?: string[]; draft?: boolean
   activity?: { activity_type: string; actor: { login: string } | null }[]; refuse?: (method: string, path: string) => number | undefined
-  open?: { number: number; user: { login: string }; head: { sha: string }; base: { ref: string } }[]
+  open?: { number: number; user: { login: string }; head: { sha: string }; base: { ref: string }; updated_at: string }[]
 }
 const POLICY = '{"people":["ana"],"rules":[{"name":"High-risk paths","anyFile":["**/payments/**"],"then":"person"},{"name":"Everything else","then":"approve"}]}'
+const NOW = Date.parse('2026-11-25T12:00:00Z'), TODAY = '2026-11-25T10:00:00Z', OLD = '2026-10-01T10:00:00Z'
 const created = [{ activity_type: 'push', actor: { login: 'ana' } }, { activity_type: 'branch_creation', actor: { login: 'ana' } }]
 
 function fakeGithub(o: Fake = {}) {
@@ -28,7 +29,7 @@ function fakeGithub(o: Fake = {}) {
     [`/repos/acme/app/commits/${head}/pulls`]: [{ number: 7 }],
     '/repos/acme/app/activity?ref=refs%2Fheads%2Ffix%2Fa&per_page=100': o.activity ?? created,
     '/installation/repositories?per_page=100&page=1': { repositories: [{ full_name: 'acme/app' }] },
-    '/repos/acme/app/pulls?state=open&per_page=100&page=1': o.open ?? [{ number: 7, user: pr.user, head: { sha: head }, base: { ref: 'main' } }],
+    '/repos/acme/app/pulls?state=open&per_page=100&page=1': o.open ?? [{ number: 7, user: pr.user, head: { sha: head }, base: { ref: 'main' }, updated_at: TODAY }],
   }
   const file = (text: string) => ({ content: Buffer.from(text).toString('base64') })
   const org = o.orgPolicy === undefined ? POLICY : o.orgPolicy
@@ -54,7 +55,7 @@ const pushed = { repository: { full_name: 'acme/app' }, installation: { id: 41 }
 function setup(gh: ReturnType<typeof fakeGithub>, call: GithubCall = gh.call) {
   const told: string[] = [], queued: (() => Promise<unknown>)[] = []
   let saved: Record<string, string> = {}
-  const a = approver({ policyRepo: 'policies', slug: 'kage-me', call: () => call, allowed: id => id === 41, notify: t => void told.push(t), queue: job => void queued.push(job), seen: { load: () => saved, save: s => { saved = { ...s } } } })
+  const a = approver({ policyRepo: 'policies', slug: 'kage-me', call: () => call, allowed: id => id === 41, notify: t => void told.push(t), queue: job => void queued.push(job), now: () => NOW, seen: { load: () => saved, save: s => { saved = { ...s } } } })
   return { a, told, queued }
 }
 
@@ -238,7 +239,7 @@ test('a sweep checks every open pull request once, and the next sweep reads noth
 
 test('a sweep drops an approval Kage gave a pull request whose author is no longer in people', async () => {
   const gh = fakeGithub({
-    open: [{ number: 7, user: { login: 'eve' }, head: { sha: 'bbb2222' }, base: { ref: 'main' } }],
+    open: [{ number: 7, user: { login: 'eve' }, head: { sha: 'bbb2222' }, base: { ref: 'main' }, updated_at: TODAY }],
     reviews: [{ id: 5, state: 'APPROVED', commit_id: 'bbb2222', user: { login: 'kage-me[bot]' } }],
   })
   await setup(gh).a.sweep(41)
@@ -255,4 +256,28 @@ test('a changed policy file queues a sweep of the installation, so open pull req
   policy = POLICY.replace('Everything else', 'All the rest')
   await a.handle('pull_request', pushed)
   assert.equal(queued.length, 1)
+})
+
+test('a sweep gives no new approval to a pull request untouched for two weeks, so old pull requests stay quiet', async () => {
+  const gh = fakeGithub({ open: [{ number: 7, user: { login: 'ana' }, head: { sha: 'bbb2222' }, base: { ref: 'main' }, updated_at: OLD }] })
+  await setup(gh).a.sweep(41)
+  assert.deepEqual(gh.writes, [])
+})
+
+test('a sweep still judges an old pull request Kage approved, and drops the approval when a push came from outside people', async () => {
+  const gh = fakeGithub({
+    open: [{ number: 7, user: { login: 'ana' }, head: { sha: 'bbb2222' }, base: { ref: 'main' }, updated_at: OLD }],
+    reviews: [{ id: 5, state: 'APPROVED', commit_id: 'bbb2222', user: { login: 'kage-me[bot]' } }],
+    activity: [{ activity_type: 'push', actor: { login: 'eve' } }, ...created],
+  })
+  await setup(gh).a.sweep(41)
+  assert.deepEqual(gh.dismissals().map(w => w.path), ['/repos/acme/app/pulls/7/reviews/5/dismissals'])
+})
+
+test('pull requests a sweep sends to a person reach the owner as one message, and a later event on the same commit adds none', async () => {
+  const gh = fakeGithub({ files: ['src/payments/x.ts'] }), { a, told } = setup(gh)
+  await a.sweep(41)
+  await a.handle('pull_request', pushed)
+  assert.equal(told.length, 1)
+  assert.match(told[0]!, /^Kage checked the open pull requests, and 1 need a person:\n• acme\/app#7: Rule "High-risk paths"/)
 })

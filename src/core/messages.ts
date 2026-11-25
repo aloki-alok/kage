@@ -8,6 +8,7 @@ export const ownerLines = {
   githubOverCap: (perHour: number, latest: string) => `GitHub sent more than ${perHour} events this hour, so I am skipping them until the hour is up. Latest: ${latest}.`,
   githubNoThread: (thread: string, url: string) => `A GitHub event for ${thread} could not open its thread here: ${url || 'no link'}`,
   githubNeedsPerson: (why: string, url: string) => `${why.replace(/\.$/, '')}. Kage did not approve it, so a person reviews it: ${url || 'no link'}`,
+  githubSweepNeedsPerson: (found: string[]) => `Kage checked the open pull requests, and ${found.length} need a person:\n${found.slice(0, 10).map(f => `• ${f}`).join('\n')}${found.length > 10 ? `\n• and ${found.length - 10} more, each with a Kage policy check that says why` : ''}`,
   githubChecksDenied: () => 'Kage approves pull requests, but GitHub refused its Kage policy check, so agents cannot read why a pull request waits. Give the GitHub App Checks: Read and write, then accept the new permission on each org.',
   githubBadPolicy: (error: string) => `Kage approves nothing under a broken policy file until it is fixed: ${error}`,
   githubFailed: (e: unknown) => `A GitHub event failed here (${cut(e)}). It runs again if Kage restarts within 10 minutes; otherwise redeliver it from the app's Advanced page on GitHub.`,
