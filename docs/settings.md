@@ -323,24 +323,52 @@ Email is on when `connectors.email.address`, `connectors.email.queue` and `conne
 Kage can approve your team's pull requests as its GitHub App, so a branch that requires a review unblocks without a second paid seat. People still merge. Turn it on with `"connectors": { "github": { "approve": {} } }` in `config.json`. Kage's own settings hold no rules. The rules live in a policy file, the way Palantir's policy-bot keeps them:
 
 ```json
-{ "authors": ["<login>", "<login>"], "needsPerson": ["**/migrations/**", "**/*payment*/**"] }
+{
+  "people": ["<login>", "<login>"],
+  "rules": [
+    { "name": "Releases", "targets": ["Production"], "then": "person" },
+    { "name": "High-risk paths", "anyFile": ["**/migrations/**", "**/*payment*/**"], "then": "person" },
+    { "name": "Big changes", "moreLinesThan": 2000, "then": "person" },
+    { "name": "Everything else", "then": "approve" }
+  ]
+}
 ```
 
-For each pull request, Kage reads `.github/kage-approve.json` from the repo at the pull request's target branch. With no such file, it reads `kage-approve.json` from the org's policy repo (`connectors.github.approve.policyRepo`, `.github` by default; keep it private if the names in it are). A pull request cannot change the rules it is judged by. With neither file, Kage approves nothing there. A broken file approves nothing and DMs you once.
+For each pull request, Kage reads `.github/kage-approve.json` from the repo at the pull request's target branch. With no such file, it reads `kage-approve.json` from the org's policy repo (`connectors.github.approve.policyRepo`, `.github` by default; keep it private if the names in it are). A pull request cannot change the rules it is judged by. With neither file, Kage approves nothing there. A broken file approves nothing and DMs you once. The first shape, `{ "authors": [...], "needsPerson": [...] }`, still reads as `people`, a high-risk rule and a catch-all.
 
-On each new pull request, push and finished check, Kage approves the head commit when all of these hold:
+Kage judges a pull request in this order:
 
-1. A login in `authors` opened it.
-2. It is open, not a draft, and not from a fork.
-3. Its base branch is protected.
-4. Every check that branch requires passed on that commit. Checks the branch does not require are ignored.
-5. No changed file, or the old name of a moved file, matches a `needsPerson` glob, and no policy file changed. Globs match case-sensitively, and a folder whose name starts with a dot counts like any other.
+1. Its author is in `people`. Otherwise Kage leaves it alone: no approval, no check, no message.
+2. It is open, not a draft, not from a fork, and its base branch is protected.
+3. Every push to its branch since the branch was made came from someone in `people`, read from GitHub's push history. Commit authors do not count, because a commit can name anyone.
+4. No policy file changed, and it has at most 3000 files.
+5. The first rule whose conditions all hold decides. `targets` matches the base branch, `anyFile` matches any changed file or the old name of a moved one, and `moreLinesThan` counts added plus deleted lines. A rule with no conditions always holds. `then` is `approve` or `person`. With no matching rule, Kage approves nothing.
+6. For `approve`, every check the base branch requires passed on the head commit. Checks the branch does not require are ignored.
 
-A matching file, or a pull request with more than 3000 files, gets you one DM per commit instead of an approval. The approval names the policy file and each gate, and holds for that commit only. When a newer commit is not approved, Kage dismisses its own older approval, so GitHub blocks the merge again.
+Globs match case-sensitively, and a folder whose name starts with a dot counts like any other. A `person` verdict gets you one DM per commit. The approval names the policy file and the rule, and holds for that commit only. When a verdict on the head is anything but approve or waiting, Kage dismisses its own approvals, so GitHub blocks the merge again. Converting the pull request to a draft is the way to stop it.
 
-The app needs more access than `kage connector on github` gives it: Contents set to Read and write (GitHub counts an approval only from an account that can write), Checks and Commit statuses set to Read, and the Check suite and Status events. Change them on the app's settings page, then accept them on each installation.
+### Read the verdict from an agent
 
-An event that arrives while Kage is down is missed. The pull request then waits for its next push or finished check.
+Every pull request Kage judges gets a `Kage policy` check on its head commit, and agents read it like any other check (`gh pr checks`, or `gh api repos/<owner>/<repo>/commits/<sha>/check-runs`). The check passes when Kage approved, runs while required checks run, and ends neutral otherwise, so it never blocks a merge by itself. Its text holds the verdict as JSON:
+
+```json
+{ "verdict": "person", "code": "rule", "rule": "High-risk paths", "commit": "<sha>", "why": "Rule \"High-risk paths\" asks for a person: it changes db/migrations/1.sql.", "fix": "A person other than the author approves it on GitHub.", "policy": "<org>/<repo> kage-approve.json" }
+```
+
+Each `verdict` comes with one of these `code` values:
+
+- `approve`: `approved`. Kage approved the head commit.
+- `wait`: `checks-pending`. A required check has not finished.
+- `stop`: `checks-failed`, `draft`, `fork`, `base-unprotected` or `no-rule`. Kage will not approve until the `fix` is done.
+- `person`: `rule`, `pusher-not-listed`, `pushes-unseen`, `policy-change` or `too-many-files`. A person reviews it.
+
+### Pull requests already open
+
+Kage checks every open pull request on each installation when the hub starts, every hour, and as soon as it reads a changed policy file. So an event missed while Kage was down, or a rule you just added, reaches the pull requests already open. A commit and policy Kage already judged are skipped, so a check after a restart only lists the pull requests. A pull request untouched for 14 days gets no new approval this way, only a dismissal of an approval that no longer holds. It waits for its next push. The pull requests one round finds that need a person come to you as one DM.
+
+### Permissions
+
+The app needs more access than `kage connector on github` gives it: Contents set to Read and write (GitHub counts an approval only from an account that can write, and the push history needs Contents), Checks set to Read and write (for the `Kage policy` check), Commit statuses set to Read, and the Check suite and Status events. Change them on the app's settings page, then accept them on each installation. Without Checks write, Kage still approves and DMs you once that the check is missing.
 
 ## WhatsApp
 
