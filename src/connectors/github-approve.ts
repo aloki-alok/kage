@@ -70,12 +70,27 @@ function context(o: Options) {
 async function act(ctx: Ctx, call: GithubCall, read: Awaited<ReturnType<typeof readPull>>, policy: ApprovePolicy, x: ApprovalVerdict, mayApprove: boolean) {
   const { facts: f, approvals, url } = read
   if (x.kind === 'approve' && mayApprove && !approvals.some(a => a.sha === f.sha)) await call('POST', `/repos/${f.repo}/pulls/${f.number}/reviews`, { commit_id: f.sha, event: 'APPROVE', body: x.body })
+  if (x.merge && (mayApprove || approvals.some(a => a.sha === f.sha))) await merge(ctx, call, f.repo, f.number, f.sha, url)
   if (x.kind !== 'skip') await ctx.writeCheck(call, f.repo, checkRun(policy, f, x), read.own)
   const once = x.kind === 'person' && ctx.once(`${f.repo}#${f.number}@${f.sha}`)
   if (once && ctx.found) ctx.found.push(`${f.repo}#${f.number}: ${x.why} ${url}`)
   else if (once) ctx.o.notify(ownerLines.githubNeedsPerson(`${f.repo}#${f.number}: ${x.why}`, url))
   const drop = x.kind === 'approve' ? [] : approvals.filter(a => x.kind !== 'wait' || a.sha !== f.sha)
   if (f.open) await ctx.dismiss(call, f.repo, f.number, drop.map(a => a.id), f.sha)
+}
+
+type MergeSettings = { allow_squash_merge?: boolean; allow_merge_commit?: boolean }
+
+async function merge(ctx: Ctx, call: GithubCall, repo: string, n: number, sha: string, url: string) {
+  const settings = await call('GET', `/repos/${repo}`) as MergeSettings
+  const method = settings.allow_squash_merge !== false ? 'squash' : settings.allow_merge_commit !== false ? 'merge' : 'rebase'
+  try { await call('PUT', `/repos/${repo}/pulls/${n}/merge`, { sha, merge_method: method }) } catch (e) {
+    if (!(e instanceof GithubRefused) || e.status >= 500) throw e
+    if ((await call('GET', `/repos/${repo}/pulls/${n}`) as { merged?: boolean }).merged) return
+    log(`github approve ${repo}#${n}@${sha.slice(0, 7)}: GitHub refused the merge (${e.status})`, e)
+    return ctx.tell(`merge ${repo}#${n}@${sha}`, ownerLines.githubMergeRefused(`${repo}#${n}`, e.message, url))
+  }
+  log(`github approve ${repo}#${n}@${sha.slice(0, 7)}: merged (${method})`)
 }
 
 async function checkOne(ctx: Ctx, installation: number, call: GithubCall, repo: string, n: number, mayApprove = true) {

@@ -5,6 +5,7 @@ import { GithubRefused, type GithubCall } from './github-app.ts'
 type Pull = {
   number: number; state: string; draft?: boolean; user: { login: string }; html_url: string; additions?: number; deletions?: number
   head: { sha: string; ref: string; repo: { full_name: string } | null }; base: { ref: string; repo: { full_name: string } }
+  labels?: { name: string }[]
 }
 type Branch = { protected?: boolean; protection?: { required_status_checks?: { contexts?: string[] } } }
 type Run = { id: number; name: string; status: string; conclusion: string | null; app?: { slug?: string }; output?: { title?: string | null } }
@@ -106,6 +107,7 @@ export async function readPull(call: GithubCall, repo: string, n: number, slug: 
     open: pull.state === 'open', draft: pull.draft === true, fromFork: pull.head.repo?.full_name !== pull.base.repo.full_name,
     baseProtected: required.protected, requiredChecks: required.names,
     checks: checks.checks, files: files.names, filesCut: files.cut, lines: (pull.additions ?? 0) + (pull.deletions ?? 0), ...pushes,
+    labels: (pull.labels ?? []).map(l => l.name),
   }
   return { facts, moved, url: pull.html_url, approvals, own: checks.own }
 }

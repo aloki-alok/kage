@@ -320,12 +320,14 @@ Email is on when `connectors.email.address`, `connectors.email.queue` and `conne
 
 ## Approve pull requests as the GitHub App
 
-Kage can approve your team's pull requests as its GitHub App, so a branch that requires a review unblocks without a second paid seat. People still merge. Turn it on with `"connectors": { "github": { "approve": {} } }` in `config.json`. Kage's own settings hold no rules. The rules live in a policy file, the way Palantir's policy-bot keeps them:
+Kage can approve your team's pull requests as its GitHub App, so a branch that requires a review unblocks without a second paid seat. People still merge, except a pull request a `merge` rule covers, such as a bot's release. Turn it on with `"connectors": { "github": { "approve": {} } }` in `config.json`. Kage's own settings hold no rules. The rules live in a policy file, the way Palantir's policy-bot keeps them:
 
 ```json
 {
   "people": ["<login>", "<login>"],
   "rules": [
+    { "name": "Release pull requests", "author": ["github-actions[bot]"], "branch": ["release-please--*"], "onlyFiles": ["CHANGELOG.md", ".release-please-manifest.json", "package.json"], "then": "merge" },
+    { "name": "Other bot pull requests", "author": ["github-actions[bot]"], "then": "person" },
     { "name": "Releases", "targets": ["Production"], "then": "person" },
     { "name": "High-risk paths", "anyFile": ["**/migrations/**", "**/*payment*/**"], "then": "person" },
     { "name": "Big changes", "moreLinesThan": 2000, "then": "person" },
@@ -339,13 +341,14 @@ For each pull request, Kage reads `.github/kage-approve.json` from the repo at t
 Kage judges a pull request in this order:
 
 1. Its author is in `people`. Otherwise Kage leaves it alone: no approval, no check, no message.
-2. It is open, not a draft, not from a fork, and its base branch is protected.
+2. It is open, not a draft, not from a fork, has no `hold` label, and its base branch is protected.
 3. Every push to its branch since the branch was made, a pull request merged into it included, came from someone in `people`, read from GitHub's push history. Commit authors do not count, because a commit can name anyone. When the history does not show the head commit yet, Kage waits.
 4. No policy file changed, and it has at most 3000 files.
-5. The first rule whose conditions all hold decides. `targets` matches the base branch, `anyFile` matches any changed file or the old name of a moved one, and `moreLinesThan` counts added plus deleted lines. A rule with no conditions always holds. `then` is `approve` or `person`. With no matching rule, Kage approves nothing.
-6. For `approve`, every check the base branch requires passed on the head commit, whether branch protection or a ruleset requires it. Checks the branch does not require are ignored.
+5. The first rule whose conditions all hold decides. `targets` matches the base branch, `anyFile` matches any changed file or the old name of a moved one, and `moreLinesThan` counts added plus deleted lines. `author` lists logins (any case), `branch` matches the pull request's own branch, and `onlyFiles` holds only when every changed file matches it. A rule with no conditions always holds. `then` is `approve`, `merge` or `person`. With no matching rule, Kage approves nothing.
+6. For `approve` and `merge`, every check the base branch requires passed on the head commit, whether branch protection or a ruleset requires it. Checks the branch does not require are ignored, so a branch with no required checks gets its approval, and its merge, before CI ends.
+7. For `merge`, Kage approves and then merges the head commit it judged, by squash when the repo allows it, else a merge commit, else rebase. The merge comes from the app, so workflows that run on a push to the base branch (a release tag, a deploy) still run. When GitHub refuses the merge, you get one DM with the reason and the link. The app needs Contents: Read and write, which approving already needs.
 
-Globs match case-sensitively, and a folder whose name starts with a dot counts like any other. A `person` verdict gets you one DM per commit. The approval names the policy file and the rule, and holds for that commit only. When a verdict on the head is anything but approve or waiting, Kage dismisses its own approvals, so GitHub blocks the merge again. Converting the pull request to a draft is the way to stop it.
+Globs match case-sensitively, and a folder whose name starts with a dot counts like any other. A `person` verdict gets you one DM per commit. The approval names the policy file and the rule, and holds for that commit only. When a verdict on the head is anything but approve or waiting, Kage dismisses its own approvals, so GitHub blocks the merge again. Converting the pull request to a draft, or adding the `hold` label, is the way to stop it.
 
 When GitHub answers a 5xx or cannot be reached, Kage tells you nothing and checks that pull request again after 1, 5 and 15 minutes. New events for it wait for that retry, so an outage costs GitHub no extra calls. If the last retry still fails, you get one DM for the whole outage, naming the pull requests not approved. A 4xx still reaches you at once, because a retry cannot fix it.
 
@@ -362,7 +365,7 @@ Each `verdict` comes with one of these `code` values:
 - `approve`: `approved`. Kage approved the head commit.
 - `wait`: `checks-pending` or `push-history-behind`. A required check has not finished, or GitHub has not logged the last push yet.
 - `stop`: `checks-failed`, `draft`, `fork`, `base-unprotected` or `no-rule`. Kage will not approve until the `fix` is done.
-- `person`: `rule`, `pusher-not-listed`, `pushes-unseen`, `policy-change` or `too-many-files`. A person reviews it.
+- `person`: `rule`, `hold`, `pusher-not-listed`, `pushes-unseen`, `policy-change` or `too-many-files`. A person reviews it.
 
 ### Pull requests already open
 
