@@ -14,9 +14,9 @@ test('a listed author with green required checks and no risky file gets an appro
   assert.equal(v.kind, 'approve')
   if (v.kind !== 'approve') return
   assert.match(v.body, /Commit: abc1234\b/)
-  assert.match(v.body, /Author: ana/)
+  assert.match(v.body, /^- Author: ana$/m)
   assert.match(v.body, /Required checks: build passed/)
-  assert.match(v.body, /High-risk paths: none touched/)
+  assert.match(v.body, /^- Files: 2, none high risk$/m)
 })
 
 test('the author list matches GitHub logins without case', () => {
@@ -95,7 +95,7 @@ test('a high-risk path inside a folder whose name starts with a dot still counts
 
 test('the approval names the policy it was judged under', () => {
   const v = approvalVerdict(policy, facts())
-  assert.match(v.kind === 'approve' ? v.body : '', /change policy in acme\/policies kage-approve\.json/)
+  assert.match(v.kind === 'approve' ? v.body : '', /under acme\/policies kage-approve\.json/)
 })
 
 test('approvals are off with no setting, and on they read the org policy from .github unless another repo is named', () => {
