@@ -386,7 +386,9 @@ Kage starts nothing for a draft, a fork, a closed pull request, one with the `ho
 
 The fix runs as your own task, in that pull request's thread in your DM. The session may push to the pull request's branch without asking. It never merges, never force-pushes and never pushes to another branch. A review's text reaches it as quoted data, cut to 2,000 characters, not as instructions. A fix that could not start, because the hourly cap was full or the session failed to start, uses up no try and starts on the next event for that commit.
 
-Start with `kage config set connectors.github.fix.mode shadow`. Kage then starts nothing and writes one line per fix it would have started: `kage logs | grep "github fix"`. Set `on` when those lines match what you would want fixed.
+Kage waits `connectors.github.fix.graceMinutes` (20 by default) before it starts a fix, so a session that is already working on the pull request gets there first. After the wait it starts the fix only if that commit is still the head and, for failed checks, a check suite on it is still red. A push, a green rerun or closing the pull request during the wait ends it. Set `0` to start at once.
+
+Start with `kage config set connectors.github.fix.mode shadow`. Kage then starts nothing and waits the same way and writes one line per fix it would have started: `kage logs | grep "github fix"`. Set `on` when those lines match what you would want fixed.
 
 The app needs the Check suite and Pull request review events, the same ones approving uses.
 
