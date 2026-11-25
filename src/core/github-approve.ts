@@ -33,7 +33,7 @@ export function parsePolicy(text: string, source: string): ApprovePolicy | { err
 
 const undotted = (file: string) => file.split('/').map(part => part.replace(/^\.+/, '')).join('/')
 const isRisky = (file: string, globs: string[]) =>
-  basename(file) === ORG_POLICY || globs.some(g => matchesGlob(file, g) || matchesGlob(undotted(file), g))
+  basename(file) === ORG_POLICY || globs.some(g => matchesGlob(file, g) || matchesGlob(undotted(file), undotted(g)))
 const PR_ACTIONS = new Set(['opened', 'synchronize', 'reopened', 'ready_for_review'])
 
 type Raw = {

@@ -90,6 +90,7 @@ test('a change to any policy file always goes to a person, so a pull request can
 
 test('a high-risk path inside a folder whose name starts with a dot still counts', () => {
   assert.equal(approvalVerdict(policy, facts({ files: ['.internal/migrations/1.sql'] })).kind, 'human')
+  assert.equal(approvalVerdict({ ...policy, riskyPaths: ['.github/**'] }, facts({ files: ['.github/.hidden/a.yml'] })).kind, 'human')
 })
 
 test('the approval names the policy it was judged under', () => {
