@@ -2,7 +2,9 @@ import { log } from '../runtime/log.ts'
 import type { Conversation } from '../core/conversations.ts'
 import { noChannelTag } from '../core/text.ts'
 import { githubMention, installedOn } from '../core/github.ts'
-import { appInstallations } from './github-app.ts'
+import { appInstallations, installationCall, type GithubCall } from './github-app.ts'
+import { approver } from './github-approve.ts'
+import type { ApprovePolicy } from '../core/github-approve.ts'
 import { signedSha256 } from '../core/signature.ts'
 import { slackPlain } from '../core/outbound.ts'
 import { hourCap, listen, readBody } from './webhook.ts'
@@ -24,14 +26,16 @@ type Options = {
   notify: (text: string) => void
   perHour: number
   inbox: Inbox
+  approve?: { policy: ApprovePolicy; call?: (installation: number) => GithubCall }
 }
 type Installed = { action?: string; installation?: { id: number; account?: { login?: string } } }
 type Mention = NonNullable<ReturnType<typeof githubMention>>
-type State = { inst: ReturnType<typeof installs>; threads: Record<string, string>; cap: ReturnType<typeof hourCap> }
+type State = { inst: ReturnType<typeof installs>; threads: Record<string, string>; cap: ReturnType<typeof hourCap>; approver?: ReturnType<typeof approver> }
 type Run = (type: string, body: string, source?: string) => Promise<boolean>
 
 export function connectGithub(o: Options) {
-  const st: State = { inst: installs(o), threads: (o.saved.load('github-threads') ?? {}) as Record<string, string>, cap: hourCap(o.perHour) }
+  const inst = installs(o)
+  const st: State = { inst, threads: (o.saved.load('github-threads') ?? {}) as Record<string, string>, cap: hourCap(o.perHour), ...(o.approve && { approver: approver({ policy: o.approve.policy, bot: `${o.app.slug}[bot]`, call: o.approve.call ?? installationCall(o.app), allowed: inst.has, notify: o.notify }) }) }
   let chain: Promise<unknown> = Promise.resolve()
   const handle = (type: string, body: string, source?: string) => {
     const next = chain.then(() => handleOne(o, st, type, body, source))
@@ -71,8 +75,9 @@ async function handleOne(o: Options, st: State, type: string, body: string, sour
   try { payload = JSON.parse(body) } catch { return false }
   await st.inst.retry()
   if (type === 'installation') { await st.inst.listed(); st.inst.changed(payload as Installed); return false }
+  const approved = await approveOne(o, st, type, payload)
   const e = githubMention(type, payload, { slug: o.app.slug, ownerId: o.ownerId })
-  if (!e) return false
+  if (!e) return approved
   await st.inst.listed()
   if (e.installation === undefined || !st.inst.has(e.installation)) { log(`github dropped ${e.thread}: installation ${e.installation ?? 'none'} is not on ${o.accounts.join(', ')}`); return false }
   const now = Date.now()
@@ -86,6 +91,12 @@ async function handleOne(o: Options, st: State, type: string, body: string, sour
   const task = githubTask(o, e, thread, source)
   if (o.deliver({ connector: 'slack', chat: o.botDm, thread, kind: 'dm' }, task, task.meta.place) === 'failed') o.notify(startFailedNote(`GitHub ${e.thread}`, o.startError?.()))
   return true
+}
+
+async function approveOne(o: Options, st: State, type: string, payload: unknown) {
+  if (!st.approver) return false
+  await st.inst.listed()
+  try { return await st.approver.handle(type, payload) } catch (e) { log('github approval check failed', e); o.notify(ownerLines.githubFailed(e)); return false }
 }
 
 async function threadFor(o: Options, threads: Record<string, string>, e: Mention) {

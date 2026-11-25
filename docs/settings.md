@@ -318,6 +318,28 @@ Email is on when `connectors.email.address`, `connectors.email.queue` and `conne
 | `connectors.voice.on` | on | `false` turns voice off. |
 | `connectors.call.command` | none | The command `kage call` and an AFK P0 run to phone you. It gets a one-time code in `$KAGE_CALL_CODE`, and for a P0 the reason in `$KAGE_CALL_REASON`. |
 
+## Approve pull requests as the GitHub App
+
+Kage can approve your team's pull requests as its GitHub App, so a branch that requires a review unblocks without a second paid seat. People still merge. Turn it on in `config.json`:
+
+```json
+{ "connectors": { "github": { "approve": { "authors": ["<login>", "<login>"], "riskyPaths": ["**/migrations/**", "**/*payment*/**"] } } } }
+```
+
+On each new pull request, push and finished check, Kage approves the head commit when all of these hold:
+
+1. A login in `authors` opened it.
+2. It is open, not a draft, and not from a fork.
+3. Its base branch is protected.
+4. Every check that branch requires passed on that commit. Checks the branch does not require are ignored.
+5. No changed file, or the old name of a moved file, matches a `riskyPaths` glob. Globs match case-sensitively.
+
+A matching file, or a pull request with more than 3000 files, gets you one DM per commit instead of an approval. The approval names each gate and holds for that commit only. When a newer commit is not approved, Kage dismisses its own older approval, so GitHub blocks the merge again.
+
+The app needs more access than `kage connector on github` gives it: Contents set to Read and write (GitHub counts an approval only from an account that can write), Checks and Commit statuses set to Read, and the Check suite and Status events. Change them on the app's settings page, then accept them on each installation.
+
+An event that arrives while Kage is down is missed. The pull request then waits for its next push or finished check.
+
 ## WhatsApp
 
 **Ban risk first:** WhatsApp's terms do not allow unofficial clients, so the number you link can be banned. Use it at your own risk, and link only a number you can afford to lose.

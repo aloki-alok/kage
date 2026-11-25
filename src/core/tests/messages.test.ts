@@ -11,6 +11,7 @@ const cases: [string, string][] = [
   [L.githubOverCap(30, 'repo#1'), 'GitHub sent more than 30 events this hour, so I am skipping them until the hour is up. Latest: repo#1.'],
   [L.githubNoThread('repo#2', ''), 'A GitHub event for repo#2 could not open its thread here: no link'],
   [L.githubNoThread('repo#2', 'https://x.test/2'), 'A GitHub event for repo#2 could not open its thread here: https://x.test/2'],
+  [L.githubNeedsPerson('acme/app#7 touches high-risk paths: a/payments/b.py', 'https://gh/pr'), 'acme/app#7 touches high-risk paths: a/payments/b.py. Kage did not approve it, so a person reviews it: https://gh/pr'],
   [L.githubFailed('x'.repeat(130)), `A GitHub event failed here (${'x'.repeat(120)}). It runs again if Kage restarts within 10 minutes; otherwise redeliver it from the app's Advanced page on GitHub.`],
   [L.meetingOverCap(5, 'Standup'), 'More than 5 meeting transcripts came in this hour, so I am skipping them. Send "Standup" again after the hour is up.'],
   [L.meetingNoThread('Standup'), 'Notes for the meeting "Standup" could not open a thread here. Send it again.'],

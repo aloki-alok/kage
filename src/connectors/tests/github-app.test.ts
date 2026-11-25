@@ -1,7 +1,7 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { createVerify, generateKeyPairSync } from 'node:crypto'
-import { appInstallations, appJwt } from '../github-app.ts'
+import { appInstallations, appJwt, installationCall } from '../github-app.ts'
 
 const { privateKey, publicKey } = generateKeyPairSync('rsa', { modulusLength: 2048, privateKeyEncoding: { type: 'pkcs1', format: 'pem' }, publicKeyEncoding: { type: 'spki', format: 'pem' } })
 const part = (jwt: string, i: number) => JSON.parse(Buffer.from(jwt.split('.')[i]!, 'base64url').toString())
@@ -35,4 +35,24 @@ test('the installations are read with the app token, page by page', async () => 
 test('a refused app token is an error that names the status, never a silent empty list', async () => {
   const fetch = async () => new Response('{"message":"Bad credentials"}', { status: 401 })
   await assert.rejects(appInstallations({ id: 1, key: privateKey }, fetch as typeof globalThis.fetch), /401/)
+})
+
+test('an installation call signs in with an installation token, reuses it until near its end, and names a refused call', async () => {
+  const asked: { url: string; method: string; auth: string }[] = []
+  let clock = Date.UTC(2026, 10, 25, 12)
+  const fetch = async (url: string, init: RequestInit) => {
+    asked.push({ url, method: init.method ?? 'GET', auth: (init.headers as Record<string, string>).Authorization! })
+    if (url.endsWith('/access_tokens')) return new Response(JSON.stringify({ token: `t${asked.length}`, expires_at: new Date(clock + 3_600_000).toISOString() }))
+    if (url.endsWith('/missing')) return new Response('{}', { status: 404 })
+    return new Response('{"ok":true}')
+  }
+  const call = installationCall({ id: 1, key: privateKey }, fetch as typeof globalThis.fetch, () => clock)(41)
+  assert.deepEqual(await call('GET', '/repos/acme/app/pulls/7'), { ok: true })
+  await call('POST', '/repos/acme/app/pulls/7/reviews', { event: 'APPROVE' })
+  assert.deepEqual(asked.map(a => a.url.replace('https://api.github.com', '')), ['/app/installations/41/access_tokens', '/repos/acme/app/pulls/7', '/repos/acme/app/pulls/7/reviews'])
+  assert.equal(asked[1]!.auth, 'Bearer t1')
+  clock += 3_400_000
+  await call('GET', '/repos/acme/app/pulls/7')
+  assert.equal(asked.at(-1)!.auth, 'Bearer t4')
+  await assert.rejects(call('GET', '/missing'), /404 to GET \/missing/)
 })

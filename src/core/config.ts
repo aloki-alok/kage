@@ -85,7 +85,7 @@ export const Config = z.preprocess(foldOldPeople, z.strictObject({
     email: z.strictObject({ on: yes, address: text, queue: text, ownerEmail: text, region: text }).optional(),
     voice: z.strictObject({ on: yes, port: count, max: count, perHour: count, model: text }).optional(),
     call: z.strictObject({ command: text }).optional(),
-    github: z.strictObject({ login: text, userId: z.number().int().positive().optional(), port: count, perHour: count, app: z.strictObject({ id: z.number().int().positive(), slug: z.string().regex(/^[a-z0-9][a-z0-9-]*$/) }).optional(), accounts: strings }).optional(),
+    github: z.strictObject({ login: text, userId: z.number().int().positive().optional(), port: count, perHour: count, app: z.strictObject({ id: z.number().int().positive(), slug: z.string().regex(/^[a-z0-9][a-z0-9-]*$/) }).optional(), accounts: strings, approve: z.strictObject({ authors: z.array(z.string().min(1)).min(1), riskyPaths: strings }).optional() }).optional(),
     meeting: z.strictObject({ port: count, perHour: count, agentApi: text, agentId: count }).optional(),
     browser: z.strictObject({ port: count, block: strings }).optional(),
     whatsapp: z.strictObject({ on: yes, memory: text, model: text, wahaUrl: text, hookHost: text, hookPort: count, checkMinutes: count }).optional(),
