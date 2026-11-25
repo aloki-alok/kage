@@ -414,7 +414,7 @@ test('a health question gets the connector lines the hub keeps in memory (#256)'
     { max: 2, idleMs: 9e9, connectMs: 9e9, evictMs: 0, newId: () => 'id1' },
   )
   const sock = join(mkdtempSync(join(tmpdir(), 'kage-link-')), 's.sock')
-  const server = listenForSessions(sock, d, { ownerKey: KEY, mail: () => {}, wa: () => {}, voice: () => {}, sms: () => {}, failed: () => {}, schedules: { add: () => undefined, remove: () => {} }, health: () => ['email     on · last heard 2m ago'] })
+  const server = listenForSessions(sock, d, { ownerKey: KEY, mail: () => {}, wa: () => {}, voice: () => {}, sms: () => {}, failed: () => {}, schedules: { add: () => undefined, remove: () => {} }, health: () => ['email     on · last heard 2m ago'], healthRows: () => [{ name: 'email', on: true }] })
   t.after(() => server.close())
   await until(() => server.listening)
   const c = connect(sock)
@@ -423,7 +423,7 @@ test('a health question gets the connector lines the hub keeps in memory (#256)'
   c.write(owned({ type: 'health' }) + '\n')
   await until(() => reply.includes('\n'))
   c.destroy()
-  assert.deepEqual(JSON.parse(reply), { type: 'health', lines: ['email     on · last heard 2m ago'] })
+  assert.deepEqual(JSON.parse(reply), { type: 'health', lines: ['email     on · last heard 2m ago'], rows: [{ name: 'email', on: true }] })
 })
 
 test('only a connected session acts as one: a holder or a socket with no hello gets no answer and changes nothing, a refused hello is cut, and a session asks for permission', async t => {

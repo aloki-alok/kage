@@ -75,3 +75,14 @@ test('SMS shows on from its start line, and a text in counts as heard', () => {
   h.see(['sms text in'], start + 2 * MIN)
   assert.equal(h.lines(start + 5 * MIN).find(l => l.startsWith('sms')), 'sms       on · last heard 3m ago')
 })
+
+test('rows give the same facts as the lines, as data for kage status --json', () => {
+  const h = started('email', 'jev')
+  for (const m of [10, 20]) h.see(['mail poll failed', new Error('ExpiredToken: the token expired')], start + m * MIN)
+  h.see(['triage C0TEST1:1.1: agent: jev failed timeout'], start + 21 * MIN)
+  const rows = h.rows(start + 35 * MIN)
+  assert.deepEqual(rows.find(r => r.name === 'email'), { name: 'email', on: true, bridgeDown: false, lastHeardAt: null, failedLastHour: 2, lastFailure: 'mail poll failed: ExpiredToken: the token expired' })
+  assert.deepEqual(rows.find(r => r.name === 'voice'), { name: 'voice', on: false, bridgeDown: false, lastHeardAt: null, failedLastHour: 0, lastFailure: null })
+  assert.deepEqual(rows.find(r => r.name === 'jev'), { name: 'jev', on: true, callsToday: 1, failedToday: 1 })
+  assert.equal(rows.length, h.lines(start + 35 * MIN).length)
+})

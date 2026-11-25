@@ -1,8 +1,9 @@
 #!/usr/bin/env node
 import { execFileSync, spawnSync } from 'node:child_process'
 import { readFileSync } from 'node:fs'
-import { askHub, DIR, inTerminal } from './home.ts'
-import { refusedLine, statusSummary } from '../core/board.ts'
+import { askHub, DIR, inTerminal, notRunning, placeNamer } from './home.ts'
+import { boardAnswer, refusedLine, statusSummary } from '../core/board.ts'
+import { outputFlags, printJson } from './output.ts'
 import { startsSince } from '../core/boots.ts'
 import { dailyAverage, spendSince } from '../core/ledgers.ts'
 import { openLedgers } from '../runtime/ledger.ts'
@@ -26,10 +27,13 @@ const starts = startsSince(read('boots'), now / 1000 - 86_400)
 const midnight = new Date(now).setHours(0, 0, 0, 0)
 const ledgers = openLedgers(DIR)
 const today = spendSince(ledgers.text('costs'), midnight)
-const summary = statusSummary({
+const facts = {
   version: /^[0-9a-f]{7}/.test(runningVersion) ? runningVersion : undefined, upSec, starts, schedules: schedulesIn(`${DIR}/kage.db`).length,
   spentToday: today.reduce((a, r) => a + r.usd, 0), turnsToday: today.reduce((a, r) => a + r.turns, 0), dailyAverage: dailyAverage(ledgers.text('costs'), midnight),
-})
+}
+const summary = statusSummary(facts)
+const out = outputFlags(process.argv.slice(2))
+if (out.json) await printStatusJson()
 console.log(voice.says(summary.says))
 if (summary.warn) console.log(`  ${voice.needsYou(summary.warn)} ${voice.dim('Ask')} ${voice.command('kage doctor')} ${voice.dim('why.')}`)
 const answer: { lines?: string[]; refused?: string } = await askHub<{ lines?: string[]; refused?: string }>({ type: 'health' }).catch(() => ({}))
@@ -53,3 +57,17 @@ if (kagelets.length) {
   }
 }
 console.log(`\n${voice.dim('Watch me live:')} ${voice.command('kage top')}  ${voice.dim('Spend:')} ${voice.command('kage cost 7')}  ${voice.dim('Problems:')} ${voice.command('kage doctor')}  ${voice.dim('Connectors:')} ${voice.command('kage connector list')}`)
+
+async function printStatusJson(): Promise<never> {
+  const board = boardAnswer(await askHub<unknown>({ type: 'board' }).catch(() => undefined))
+  if (!board) return notRunning()
+  if ('refused' in board) { console.error(refusedLine(board.refused, inTerminal)); process.exit(1) }
+  const health: { rows?: object[] } = await askHub<{ rows?: object[] }>({ type: 'health' }).catch(() => ({}))
+  const place = placeNamer()
+  printJson({
+    says: summary.says, warn: summary.warn ?? null, ...facts, version: facts.version ?? null, upSec: facts.upSec ?? null, dailyAverage: facts.dailyAverage ?? null,
+    paused: board.live.paused ?? null, connectors: health.rows ?? [], threads: board.live.live.map(t => ({ ...t, place: place(t.key) })),
+    kagelets: kageletRows(readKagelets(kageletsDir(DIR)), { runs: ledgers.text('runs'), costs: ledgers.text('costs'), now }),
+  }, out.jq)
+  process.exit(0)
+}

@@ -54,8 +54,15 @@ export function connectorHealth(startedAt: number) {
     return `${head} · ${down.has(name) ? 'bridge down · ' : ''}${last}${recent.length ? ` · failed ${recent.length}x in 1h: ${recent.at(-1)!.text}` : ''}`
   }
 
+  function row(name: ConnectorName, now: number) {
+    if (name === 'jev') { const today = jev.day === dayOf(now) ? jev : { calls: 0, failed: 0 }; return { name, on: on.has(name), callsToday: today.calls, failedToday: today.failed } }
+    const recent = (fails.get(name) ?? []).filter(f => now - f.at < HOUR), at = heard.get(name)
+    return { name, on: on.has(name), bridgeDown: down.has(name), lastHeardAt: at === undefined ? null : new Date(at).toISOString(), failedLastHour: recent.length, lastFailure: recent.at(-1)?.text ?? null }
+  }
+
   return {
     see,
     lines: (now: number) => NAMES.map(n => line(n, now)),
+    rows: (now: number) => NAMES.map(n => row(n, now)),
   }
 }
