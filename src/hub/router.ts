@@ -101,7 +101,7 @@ const store = openStore(`${DIR}/kage.db`)
 const deferred = deferredApprovals(store, v => ledgers.add('card-verdicts', cardVerdictCells(v)), () => kl.denyHoldDays ?? 7)
 const answerCard = (id: string, behavior: 'allow' | 'deny', always?: true) => answerDeferred(deferred, (key, task) => { if (toSession(key, task) === 'failed') failed(task) }, id, behavior, Date.now(), always && (c => kag.alwaysAllow(c.key, c.tool, c.input)))
 const SSM_SOCK = `${DIR}/ssm.sock`, SSM_SHIM = `${CODE}/src/cli/ssm-plugin-shim`, relayOk = (key: string) => store.relayOk(key) || sdk?.ownerTurn(key) === true
-const ssm = ssmRelay({ path: SSM_SOCK, plugin: findPlugin(undefined, [SSM_SHIM]), trusted: relayOk, log })
+const ssm = ssmRelay({ path: SSM_SOCK, plugin: findPlugin(undefined, [SSM_SHIM]), trusted: relayOk, turnOf: key => store.relayOk(key) ? undefined : sdk?.turnOf(key), log })
 const KEYS_SOCK = `${DIR}/keys.sock`
 const keys = keyProxy({ path: KEYS_SOCK, routes: config.sessionKeys ?? {}, trusted: relayOk, log })
 store.importState({ afk: `${DIR}/afk.json`, 'github-threads': `${DIR}/github-threads.json`, 'mail-threads': `${DIR}/mail-threads.json` })

@@ -18,13 +18,13 @@ const call = (region = 'us-west-1', op = 'StartSession') => [
   region, op, '', JSON.stringify({ Target: ID, DocumentName: 'AWS-StartSSHSession', Parameters: { portNumber: ['22'] } }), `https://ssm.${region}.amazonaws.com`]
 const header = (token: string, args = call()) => JSON.stringify({ token, args })
 
-function setup(o: { max?: number; trusted?: (k: string) => boolean; plugin?: string | undefined } = {}) {
+function setup(o: { max?: number; trusted?: (k: string) => boolean; plugin?: string | undefined; turnOf?: (k: string) => string | undefined } = {}) {
   const dir = mkdtempSync(join(tmpdir(), 'kage-ssm-'))
   const plugin = join(dir, 'session-manager-plugin')
   writeFileSync(plugin, `#!/usr/bin/env node\nrequire('node:fs').appendFileSync(${JSON.stringify(dir + '/args')}, JSON.stringify(process.argv.slice(2)) + '\\n')\nprocess.stdin.pipe(process.stdout)\n`)
   chmodSync(plugin, 0o755)
   const sock = join(dir, 'ssm.sock')
-  const relay = ssmRelay({ path: sock, plugin: 'plugin' in o ? o.plugin : plugin, max: o.max, trusted: o.trusted ?? (() => true), log: (...a) => logs.push(a.join(' ')) })
+  const relay = ssmRelay({ path: sock, plugin: 'plugin' in o ? o.plugin : plugin, max: o.max, trusted: o.trusted ?? (() => true), ...o.turnOf && { turnOf: o.turnOf, everyMs: 20 }, log: (...a) => logs.push(a.join(' ')) })
   open.push(relay)
   return { dir, sock, relay, args: () => existsSync(join(dir, 'args')) ? readFileSync(join(dir, 'args'), 'utf8').trim().split('\n').filter(Boolean).map(l => JSON.parse(l) as string[]) : [] }
 }
@@ -136,6 +136,20 @@ describe('the SSM relay', () => {
     const ok = await client(t.sock, header(token))
     assert.match(await ok.until(/^ok\n/), /^ok\n/)
     ok.s.end()
+  })
+  test('a relay held to a turn lives through that turn and is cut once the turn ends, so a later turn cannot reuse it', async () => {
+    let turn: string | undefined = 'turn-1'
+    const t = setup({ turnOf: () => turn })
+    const c = await client(t.sock, header(t.relay.issue('C9:1.1')!))
+    assert.match(await c.until(/^ok\n/), /^ok\n/)
+    await new Promise(r => setTimeout(r, 80))
+    c.s.write('still-1\n')
+    assert.match(await c.until(/still-1\n/), /still-1/)
+    turn = 'turn-2'
+    let closed = false
+    c.s.on('close', () => { closed = true })
+    for (let i = 0; i < 100 && !closed; i++) await new Promise(r => setTimeout(r, 20))
+    assert.ok(closed, 'the next turn finds the relay gone')
   })
   test('a dropped session token stops working', async () => {
     const t = setup()
