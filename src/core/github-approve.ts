@@ -87,14 +87,11 @@ export function approvalVerdict(policy: ApprovePolicy, f: PrFacts): ApprovalVerd
 function approvalBody(f: PrFacts, source: string) {
   const checks = f.requiredChecks.length ? `${f.requiredChecks.join(', ')} passed` : 'none set on this branch'
   return [
-    `Approved by Kage under the change policy in ${source}: a listed author, green required checks, no high-risk path.`,
+    `Approved by Kage under ${source}.`,
     '',
     `- Commit: ${short(f.sha)}`,
-    `- Author: ${f.author} (listed author)`,
+    `- Author: ${f.author}`,
     `- Required checks: ${checks}`,
-    `- Files: ${f.files.length}`,
-    '- High-risk paths: none touched',
-    '',
-    'A new push clears this approval, and Kage checks the new commit again.',
+    `- Files: ${f.files.length}, none high risk`,
   ].join('\n')
 }

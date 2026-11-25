@@ -156,7 +156,7 @@ test('a policy file in the repo, read from the target branch, wins over the org 
 test('the approval names the policy file it was judged under', async () => {
   const gh = fakeGithub(), { a } = setup(gh)
   await a.handle('pull_request', pushed)
-  assert.match(String(gh.writes[0]?.body?.body), /change policy in acme\/policies kage-approve\.json/)
+  assert.match(String(gh.writes[0]?.body?.body), /under acme\/policies kage-approve\.json/)
 })
 
 test('with no policy in the repo or the org, Kage approves nothing and tells no one', async () => {
