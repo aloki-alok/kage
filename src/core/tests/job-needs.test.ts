@@ -31,7 +31,13 @@ test('the first miss tells the owner once, with the job and the missing tool', (
   assert.deepEqual(c!.missing, [DIAL])
   assert.match(c!.dm!, /a1b2 in #alerts/)
   assert.match(c!.dm!, /mcp__claude_ai_Dialer__place_call/)
+  assert.match(c!.dm!, /runs no turn until one is back/)
   assert.deepEqual(needsChanges([job([DIAL])], live([])), [], 'a second look while still missing says nothing')
+})
+
+test('a job that still has one of its tools is told it runs without the missing one', () => {
+  const [c] = needsChanges([{ ...job(), needs: [DIAL, 'mcp__claude_ai_Slack__read'] }], live(['mcp__claude_ai_Slack__read']))
+  assert.doesNotMatch(c!.dm!, /runs no turn/)
 })
 
 test('the tool coming back tells the owner once more', () => {

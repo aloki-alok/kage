@@ -52,7 +52,7 @@ const ATTRS: Partial<Record<KageEvent['kind'], (d: string) => Attrs>> = {
   tripwire: d => {
     const ms = num(field(d, 'ms'))
     const outcome = field(d, 'outcome')
-    return { action: oneOf(d.split(' ')[0], ['tick', 'wake', 'ping', 'match', 'catchup', 'hook', 'decision']), ...outcome && { outcome: oneOf(outcome, ['same', 'changed', 'failed', 'refused']) }, ...ms != null && { ms } }
+    return { action: oneOf(d.split(' ')[0], ['tick', 'wake', 'ping', 'match', 'catchup', 'hook', 'decision', 'skip']), ...outcome && { outcome: oneOf(outcome, ['same', 'changed', 'failed', 'refused']) }, ...ms != null && { ms } }
   },
   limit: d => {
     const wait = num(field(d, 'wait_s')), held = num(field(d, 'held'))
