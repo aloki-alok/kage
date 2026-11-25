@@ -16,7 +16,7 @@ export function findPlugin(pathEnv = process.env.PATH ?? '', skip: string[] = []
   }
 }
 
-export function ssmRelay(o: { path: string; trusted: (key: string) => boolean; log: (...a: unknown[]) => void; plugin: string | undefined; max?: number }) {
+export function ssmRelay(o: { path: string; trusted: (key: string) => boolean; turnOf?: (key: string) => string | undefined; everyMs?: number; log: (...a: unknown[]) => void; plugin: string | undefined; max?: number }) {
   const tokens = new Map<string, string>()
   const keyOf = new Map<string, string>()
   let active = 0
@@ -42,8 +42,10 @@ export function ssmRelay(o: { path: string; trusted: (key: string) => boolean; l
       active++
       const p = spawn(o.plugin, c.args, { stdio: ['pipe', 'pipe', 'ignore'] })
       let done = false
-      const end = (why: string) => { if (done) return; done = true; active--; o.log('ssm relay', c.region, c.target, 'for', key, why); s.end() }
-      p.on('error', e => { if (!done) { done = true; active--; o.log('ssm relay', c.region, c.target, 'for', key, `failed ${(e as NodeJS.ErrnoException).code}`); refuse(s, 'the plugin did not start') } })
+      const turn = o.turnOf?.(key)
+      const held = turn === undefined ? undefined : setInterval(() => { if (o.turnOf!(key) !== turn) p.kill(p.killed ? 'SIGKILL' : 'SIGTERM') }, o.everyMs ?? 1000)
+      const end = (why: string) => { if (done) return; done = true; clearInterval(held); active--; o.log('ssm relay', c.region, c.target, 'for', key, why); s.end() }
+      p.on('error', e => { if (!done) { done = true; clearInterval(held); active--; o.log('ssm relay', c.region, c.target, 'for', key, `failed ${(e as NodeJS.ErrnoException).code}`); refuse(s, 'the plugin did not start') } })
       p.on('spawn', () => {
         s.write('ok\n')
         if (rest.length) p.stdin.write(rest)
@@ -63,8 +65,8 @@ export function ssmRelay(o: { path: string; trusted: (key: string) => boolean; l
   process.umask(mask)
   chmodSync(o.path, 0o600)
   return {
-    issue(key: string) {
-      if (!ssmEligible(key) || !o.trusted(key)) return
+    issue(key: string, ownerSession = false) {
+      if (!ssmEligible(key) || !(ownerSession || o.trusted(key))) return
       this.drop(key)
       const t = randomBytes(24).toString('hex')
       tokens.set(t, key); keyOf.set(key, t)
