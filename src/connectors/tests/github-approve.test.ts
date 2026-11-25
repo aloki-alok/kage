@@ -321,3 +321,9 @@ test('approvals a sweep drops for a person reach the owner as one message, and a
   assert.equal(told.length, 1)
   assert.match(told[0]!, /^Kage checked the open pull requests, and 1 need a person:\n• acme\/app#7: Rule "High-risk paths"/)
 })
+
+test('a sweep leaves a new head unapproved even when Kage approved an older commit, so only the push itself brings an approval', async () => {
+  const gh = fakeGithub({ reviews: [{ id: 5, state: 'APPROVED', commit_id: 'aaa1111', user: { login: 'kage-me[bot]' } }] })
+  await setup(gh).a.sweep(41)
+  assert.deepEqual(gh.reviews(), [])
+})
