@@ -31,6 +31,7 @@ function world(t: { after: (f: () => void) => void }, told: Told = () => ({ ok: 
   const project = join(home, '.claude', 'projects', cwd.replace(/[^A-Za-z0-9]/g, '-'))
   mkdirSync(project, { recursive: true })
   const store = openStore(join(dir, 'kage.db'))
+  openLedgers(dir).close()
   store.saveSessions({ 'C0TEST1:5.5': 'sess-a', 'C0TEST1:7.7': 'sess-b' })
   store.seen('C0TEST1:5.5', parseSessionKey('C0TEST1:5.5')!.conversation, '#general', 2_000)
   store.seen('C0TEST1:7.7', parseSessionKey('C0TEST1:7.7')!.conversation, '#general-ops', 1_000)
@@ -71,4 +72,42 @@ test('kage thread list shows each thread newest first, with its place, key, stat
   const rows = JSON.parse((await w.kage(['thread', 'list', '--json'])).stdout) as { key: string; place: string; state: string; lastSeen: string }[]
   assert.deepEqual(rows.map(r => [r.key, r.place, r.state]), [['C0TEST1:5.5', '#general', 'busy'], ['C0TEST1:7.7', '#general-ops', 'idle']])
   assert.equal(rows[0]!.lastSeen, new Date(2_000).toISOString())
+})
+
+const later = (ms: number, f: () => void) => { setTimeout(f, ms) }
+
+test('kage thread send --wait prints the replies of the turn it starts and exits 0 when the turn ends', async t => {
+  const w = world(t, (_k, _t, w) => { later(300, () => { w.transcript(replyLine('Deployed to staging.')); w.transcript(replyLine('All 12 checks pass.')) }); later(700, () => w.ended()); return { ok: true } })
+  await w.listening()
+  const r = await w.kage(['thread', 'send', '--wait', 'C0TEST1:5.5', 'deploy', 'it'])
+  assert.equal(r.status, 0, r.stderr)
+  assert.equal(r.stdout, 'Deployed to staging.\nAll 12 checks pass.\n')
+  assert.deepEqual(w.told, ['C0TEST1:5.5 deploy it'])
+})
+test('--wait returns as soon as the thread asks the owner something, and names the question', async t => {
+  const w = world(t, (_k, _t, w) => { later(300, () => w.transcript(replyLine('Staging is green. Ship to prod?', 'Ship to prod?'))); return { ok: true } })
+  await w.listening()
+  const r = await w.kage(['thread', 'send', '--wait', '--timeout', '20s', 'C0TEST1:5.5', 'go'])
+  assert.equal(r.status, 0, r.stderr)
+  assert.equal(r.stdout, 'Staging is green. Ship to prod?\n')
+  assert.match(r.stderr, /waits on your answer: Ship to prod\?/)
+})
+test('--wait gives up after --timeout with exit 1 and what came so far', async t => {
+  const w = world(t, (_k, _t, w) => { later(200, () => w.transcript(replyLine('Starting the build.'))); return { ok: true } })
+  await w.listening()
+  const r = await w.kage(['thread', 'send', '--wait', '--timeout', '2s', 'C0TEST1:5.5', 'build'])
+  assert.equal(r.status, 1)
+  assert.equal(r.stdout, 'Starting the build.\n')
+  assert.match(r.stderr, /No end of the turn within 2s/)
+})
+test('a refused send exits 1 and does not wait, and - reads the text from stdin', async t => {
+  const w = world(t, (_k, text) => text.startsWith('long') ? { ok: true } : { refused: 'Kage has no session there' })
+  await w.listening()
+  const no = await w.kage(['thread', 'send', '--wait', 'C0TEST1:5.5', 'hi'])
+  assert.equal(no.status, 1)
+  assert.match(no.stderr, /Kage has no session there/)
+  const piped = await w.kage(['thread', 'send', 'C0TEST1:5.5', '-'], 'long brief\nwith "quotes" and $vars\n')
+  assert.equal(piped.status, 0, piped.stderr)
+  assert.equal(w.told.at(-1), 'C0TEST1:5.5 long brief\nwith "quotes" and $vars')
+  assert.equal((await w.kage(['thread', 'send', '--timeout', 'soon', 'C0TEST1:5.5', 'x'])).status, 2)
 })

@@ -3,6 +3,7 @@ const short = (s: string) => {
   const first = s.trim().split('\n')[0]!.trim()
   return first.length > MAX ? `${first.slice(0, MAX - 1)}…` : first
 }
+const REPLY_TOOL = /^mcp__(plugin_kage_)?kage__reply$/
 const toolName = (name: string) => name.startsWith('mcp__') ? name.slice(name.lastIndexOf('__') + 2).replaceAll('_', ' ') : name
 
 export function stepTime(raw: string): number | undefined {
@@ -28,7 +29,7 @@ export function transcriptSteps(raw: string): Step[] {
     if (r.type === 'assistant' && b.type === 'text' && b.text?.trim()) out.push({ kind: 'says', text: short(b.text) })
     else if (r.type === 'assistant' && b.type === 'tool_use' && b.name) {
       const i = b.input ?? {}
-      if (/^mcp__(plugin_kage_)?kage__reply$/.test(b.name)) out.push({ kind: 'reply', text: short(String(i.text ?? '')) })
+      if (REPLY_TOOL.test(b.name)) out.push({ kind: 'reply', text: short(String(i.text ?? '')) })
       else out.push({ kind: toolName(b.name), text: short(String(i.description ?? i.command ?? i.file_path ?? i.pattern ?? i.prompt ?? i.url ?? '')) })
     } else if (r.type === 'user' && b.type === 'tool_result' && b.is_error) {
       const c = b.content
@@ -54,4 +55,16 @@ export function sentTexts(lines: string[]): string[] {
     }
   }
   return out
+}
+
+
+export function repliesIn(raw: string): { text: string; asksOwner?: string }[] {
+  let r: { type?: string; message?: { content?: unknown } }
+  try { r = JSON.parse(raw) } catch { return [] }
+  if (r.type !== 'assistant' || !Array.isArray(r.message?.content)) return []
+  return (r.message.content as { type?: string; name?: string; input?: { text?: unknown; waiting?: unknown; waiting_on?: unknown } }[]).flatMap(b => {
+    if (b.type !== 'tool_use' || !REPLY_TOOL.test(b.name ?? '') || typeof b.input?.text !== 'string') return []
+    const ask = typeof b.input.waiting === 'string' && b.input.waiting.trim() && b.input.waiting_on === 'owner' ? b.input.waiting.trim() : undefined
+    return [{ text: b.input.text, ...ask && { asksOwner: ask } }]
+  })
 }

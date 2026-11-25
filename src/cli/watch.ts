@@ -1,14 +1,12 @@
 #!/usr/bin/env node
 import { existsSync, statSync } from 'node:fs'
-import { CWD, DIR } from './home.ts'
+import { DIR, TRANSCRIPTS as PROJECT } from './home.ts'
 import { DatabaseSync } from 'node:sqlite'
 import { stepTime, transcriptSteps, type Step } from '../core/transcript.ts'
 import { spokenStep } from '../core/voice.ts'
 import { voice } from './voice.ts'
 import { newLines } from '../runtime/transcript-tail.ts'
 
-const HOME = process.env.HOME!
-const PROJECT = `${HOME}/.claude/projects/${CWD.replace(/[^A-Za-z0-9]/g, '-')}`
 const args = process.argv.slice(2)
 const only = args.find(a => !a.startsWith('--'))?.toLowerCase()
 const HUB_LOG = args.includes('--hub') ? `${DIR}/hub.log` : undefined
