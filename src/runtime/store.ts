@@ -69,6 +69,13 @@ const toSchedule = (r: Record<string, any>): Schedule => ({
   ...(r.trigger != null && { trigger: JSON.parse(r.trigger) }), ...(r.needs != null && { needs: JSON.parse(r.needs) }), ...(r.model != null && { model: r.model }),
 })
 
+export function pausedJobsIn(path: string): Schedule[] {
+  try {
+    const db = new DatabaseSync(path, { readOnly: true, timeout: 5000 })
+    try { const r = db.prepare("select value from state where name = 'paused-jobs'").get() as { value: string } | undefined; return r ? Object.values(JSON.parse(r.value) as Record<string, { job: Schedule }>).map(p => p.job) : [] } finally { db.close() }
+  } catch { return [] }
+}
+
 export function schedulesIn(path: string, key?: string): Schedule[] {
   try {
     const db = new DatabaseSync(path, { readOnly: true, timeout: 5000 })
