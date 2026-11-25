@@ -96,7 +96,11 @@ async function judge(ctx: Ctx, installation: number, call: GithubCall, repo: str
   const key = `${repo}#${n}`
   if (!tries && ctx.retrying.has(key)) return void log(`github approve ${key}: skip, a retry after a GitHub failure is already queued`)
   try { await checkOne(ctx, installation, call, repo, n) } catch (e) {
-    if (!githubDown(e)) throw e
+    if (!githubDown(e)) {
+      ctx.retrying.delete(key)
+      if (tries) return ctx.o.notify(ownerLines.githubFailed(e))
+      throw e
+    }
     log(`github approve ${key}: GitHub is failing, try ${tries + 1} of ${RETRY_MS.length + 1}`, e)
     if (tries === RETRY_MS.length) return gaveUp(ctx, key, e)
     ctx.retrying.add(key)
