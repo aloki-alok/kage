@@ -17,6 +17,9 @@ type ApprovalVerdict =
 type ApprovalEvent = { repo: string; installation: number } & ({ prs: number[] } | { sha: string })
 
 const short = (sha: string) => sha.slice(0, 7)
+
+export const approvePolicy = (set?: { authors: string[]; riskyPaths?: string[] }): ApprovePolicy | undefined =>
+  set && { authors: set.authors, riskyPaths: set.riskyPaths ?? [] }
 const PR_ACTIONS = new Set(['opened', 'synchronize', 'reopened', 'ready_for_review'])
 
 type Raw = {

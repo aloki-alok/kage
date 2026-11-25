@@ -1,6 +1,6 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { approvalEvent, approvalVerdict, type PrFacts } from '../github-approve.ts'
+import { approvalEvent, approvalVerdict, approvePolicy, type PrFacts } from '../github-approve.ts'
 
 const policy = { authors: ['ana', 'Ben'], riskyPaths: ['**/payments/**', '**/migrations/**'] }
 const facts = (o: Partial<PrFacts> = {}): PrFacts => ({
@@ -73,4 +73,10 @@ test('a closed pull request, a check suite still running, a pending status or a 
   assert.equal(approvalEvent('status', { ...at, sha: 'abc', state: 'pending' }), undefined)
   assert.equal(approvalEvent('issue_comment', { ...at, action: 'created' }), undefined)
   assert.equal(approvalEvent('pull_request', { action: 'opened', pull_request: { number: 7 } }), undefined)
+})
+
+test('approvals are off with no setting, and a setting with no globs approves with no high-risk paths', () => {
+  assert.equal(approvePolicy(undefined), undefined)
+  assert.deepEqual(approvePolicy({ authors: ['ana'] }), { authors: ['ana'], riskyPaths: [] })
+  assert.deepEqual(approvePolicy({ authors: ['ana'], riskyPaths: ['**/payments/**'] }), { authors: ['ana'], riskyPaths: ['**/payments/**'] })
 })
