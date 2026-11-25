@@ -1,10 +1,10 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { approver } from '../github-approve.ts'
-import type { GithubCall } from '../github-app.ts'
+import { GithubRefused, type GithubCall } from '../github-app.ts'
 
 type Review = { id: number; state: string; commit_id: string; user: { login: string } }
-function fakeGithub(o: { head?: string; movedTo?: string; statuses?: { context: string; state: string }[]; renamedFrom?: string; files?: string[]; checks?: { id: number; name: string; status: string; conclusion: string | null }[]; reviews?: Review[]; author?: string; required?: string[] } = {}) {
+function fakeGithub(o: { repoPolicy?: string; orgPolicy?: string | null; head?: string; movedTo?: string; statuses?: { context: string; state: string }[]; renamedFrom?: string; files?: string[]; checks?: { id: number; name: string; status: string; conclusion: string | null }[]; reviews?: Review[]; author?: string; required?: string[] } = {}) {
   const writes: { method: string; path: string; body?: Record<string, unknown> }[] = []
   const head = o.head ?? 'bbb2222'
   const pr = { number: 7, state: 'open', draft: false, user: { login: o.author ?? 'ana' }, html_url: 'https://gh/acme/app/pull/7', head: { sha: head, repo: { full_name: 'acme/app' } }, base: { ref: 'main', repo: { full_name: 'acme/app' } } }
@@ -17,22 +17,26 @@ function fakeGithub(o: { head?: string; movedTo?: string; statuses?: { context: 
     '/repos/acme/app/pulls/7/reviews?per_page=100&page=1': o.reviews ?? [],
     [`/repos/acme/app/commits/${head}/pulls`]: [{ number: 7 }],
   }
+  const file = (text: string) => ({ content: Buffer.from(text).toString('base64') })
+  const org = o.orgPolicy === undefined ? '{"authors":["ana"],"needsPerson":["**/payments/**"]}' : o.orgPolicy
+  if (org !== null) routes['/repos/acme/policies/contents/kage-approve.json'] = file(org)
+  if (o.repoPolicy) routes['/repos/acme/app/contents/.github/kage-approve.json?ref=main'] = file(o.repoPolicy)
   let pullReads = 0
   const call: GithubCall = async (method, path, body) => {
     if (method !== 'GET') { writes.push({ method, path, ...(body && { body }) }); return {} }
     if (path === '/repos/acme/app/pulls/7' && pullReads++ && o.movedTo) return { ...pr, head: { ...pr.head, sha: o.movedTo } }
     if (/\/files\?per_page=100&page=\d+$/.test(path) && o.files?.length === 100) return o.files.map(filename => ({ filename }))
+    if (path.includes('/contents/') && !(path in routes)) throw new GithubRefused(404, `404 ${path}`)
     if (!(path in routes)) throw new Error(`no route ${path}`)
     return routes[path]
   }
   return { call, writes }
 }
-const policy = { authors: ['ana'], riskyPaths: ['**/payments/**'] }
 const pushed = { repository: { full_name: 'acme/app' }, installation: { id: 41 }, action: 'synchronize', pull_request: { number: 7 } }
 
 function setup(gh: ReturnType<typeof fakeGithub>) {
   const told: string[] = []
-  const a = approver({ policy, bot: 'kage-me[bot]', call: () => gh.call, allowed: id => id === 41, notify: t => void told.push(t) })
+  const a = approver({ policyRepo: 'policies', bot: 'kage-me[bot]', call: () => gh.call, allowed: id => id === 41, notify: t => void told.push(t) })
   return { a, told }
 }
 
@@ -132,13 +136,40 @@ test('a required check and an approval of Kage on the second page are both seen'
     if (path.endsWith('/check-runs?per_page=100&page=2')) return { check_runs: [{ id: 1, name: 'build', status: 'completed', conclusion: 'success' }] }
     return late.call(method, path, body)
   }
-  await approver({ policy, bot: 'kage-me[bot]', call: () => page2, allowed: () => true, notify: () => {} }).handle('pull_request', pushed)
+  await approver({ policyRepo: 'policies', bot: 'kage-me[bot]', call: () => page2, allowed: () => true, notify: () => {} }).handle('pull_request', pushed)
   assert.equal(late.writes[0]?.body?.event, 'APPROVE')
   const seen = fakeGithub({ reviews: others })
   const reviews2 = async (method: 'GET' | 'POST' | 'PUT', path: string, body?: Record<string, unknown>) => {
     if (path.endsWith('/reviews?per_page=100&page=2')) return [{ id: 5, state: 'APPROVED', commit_id: 'bbb2222', user: { login: 'kage-me[bot]' } }]
     return seen.call(method, path, body)
   }
-  await approver({ policy, bot: 'kage-me[bot]', call: () => reviews2, allowed: () => true, notify: () => {} }).handle('pull_request', pushed)
+  await approver({ policyRepo: 'policies', bot: 'kage-me[bot]', call: () => reviews2, allowed: () => true, notify: () => {} }).handle('pull_request', pushed)
   assert.deepEqual(seen.writes, [])
+})
+
+test('a policy file in the repo, read from the target branch, wins over the org one', async () => {
+  const gh = fakeGithub({ repoPolicy: '{"authors":["kim"]}' }), { a } = setup(gh)
+  await a.handle('pull_request', pushed)
+  assert.deepEqual(gh.writes, [])
+})
+
+test('the approval names the policy file it was judged under', async () => {
+  const gh = fakeGithub(), { a } = setup(gh)
+  await a.handle('pull_request', pushed)
+  assert.match(String(gh.writes[0]?.body?.body), /change policy in acme\/policies kage-approve\.json/)
+})
+
+test('with no policy in the repo or the org, Kage approves nothing and tells no one', async () => {
+  const gh = fakeGithub({ orgPolicy: null }), { a, told } = setup(gh)
+  await a.handle('pull_request', pushed)
+  assert.deepEqual([gh.writes, told], [[], []])
+})
+
+test('a broken policy file approves nothing and tells the owner once', async () => {
+  const gh = fakeGithub({ orgPolicy: '{"authors":"ana"}' }), { a, told } = setup(gh)
+  await a.handle('pull_request', pushed)
+  await a.handle('pull_request', pushed)
+  assert.deepEqual(gh.writes, [])
+  assert.equal(told.length, 1)
+  assert.match(told[0]!, /acme\/policies kage-approve\.json/)
 })

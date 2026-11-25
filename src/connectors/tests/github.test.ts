@@ -198,7 +198,7 @@ test('with approve set, a signed push event reaches the approver through the web
     installations: async () => [{ id: 41, account: { login: 'me' } }], botDm: 'DB', perHour: 100, notify: () => {},
     inbox: { take: (s, c, p) => store.take(s, c, p, Date.now()), handled: s => store.handled(s), has: s => store.has(s) },
     post: async text => { posts.push(text); return '100' }, deliver: () => 'sent',
-    approve: { policy: { authors: ['me'], riskyPaths: [] }, call: () => async (method, path) => { asked.push(`${method} ${path}`); throw new Error('stop after the first read') } },
+    approve: { policyRepo: 'policies', call: () => async (method, path) => { asked.push(`${method} ${path}`); throw new Error('stop after the first read') } },
   })
   try {
     const port = await gh.listening!

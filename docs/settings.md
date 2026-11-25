@@ -320,11 +320,13 @@ Email is on when `connectors.email.address`, `connectors.email.queue` and `conne
 
 ## Approve pull requests as the GitHub App
 
-Kage can approve your team's pull requests as its GitHub App, so a branch that requires a review unblocks without a second paid seat. People still merge. Turn it on in `config.json`:
+Kage can approve your team's pull requests as its GitHub App, so a branch that requires a review unblocks without a second paid seat. People still merge. Turn it on with `"connectors": { "github": { "approve": {} } }` in `config.json`. Kage's own settings hold no rules. The rules live in a policy file, the way Palantir's policy-bot keeps them:
 
 ```json
-{ "connectors": { "github": { "approve": { "authors": ["<login>", "<login>"], "riskyPaths": ["**/migrations/**", "**/*payment*/**"] } } } }
+{ "authors": ["<login>", "<login>"], "needsPerson": ["**/migrations/**", "**/*payment*/**"] }
 ```
+
+For each pull request, Kage reads `.github/kage-approve.json` from the repo at the pull request's target branch. With no such file, it reads `kage-approve.json` from the org's policy repo (`connectors.github.approve.policyRepo`, `.github` by default; keep it private if the names in it are). A pull request cannot change the rules it is judged by. With neither file, Kage approves nothing there. A broken file approves nothing and DMs you once.
 
 On each new pull request, push and finished check, Kage approves the head commit when all of these hold:
 
@@ -332,9 +334,9 @@ On each new pull request, push and finished check, Kage approves the head commit
 2. It is open, not a draft, and not from a fork.
 3. Its base branch is protected.
 4. Every check that branch requires passed on that commit. Checks the branch does not require are ignored.
-5. No changed file, or the old name of a moved file, matches a `riskyPaths` glob. Globs match case-sensitively.
+5. No changed file, or the old name of a moved file, matches a `needsPerson` glob, and no policy file changed. Globs match case-sensitively, and a folder whose name starts with a dot counts like any other.
 
-A matching file, or a pull request with more than 3000 files, gets you one DM per commit instead of an approval. The approval names each gate and holds for that commit only. When a newer commit is not approved, Kage dismisses its own older approval, so GitHub blocks the merge again.
+A matching file, or a pull request with more than 3000 files, gets you one DM per commit instead of an approval. The approval names the policy file and each gate, and holds for that commit only. When a newer commit is not approved, Kage dismisses its own older approval, so GitHub blocks the merge again.
 
 The app needs more access than `kage connector on github` gives it: Contents set to Read and write (GitHub counts an approval only from an account that can write), Checks and Commit statuses set to Read, and the Check suite and Status events. Change them on the app's settings page, then accept them on each installation.
 

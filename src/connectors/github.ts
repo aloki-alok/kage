@@ -4,7 +4,6 @@ import { noChannelTag } from '../core/text.ts'
 import { githubMention, installedOn } from '../core/github.ts'
 import { appInstallations, installationCall, type GithubCall } from './github-app.ts'
 import { approver } from './github-approve.ts'
-import type { ApprovePolicy } from '../core/github-approve.ts'
 import { signedSha256 } from '../core/signature.ts'
 import { slackPlain } from '../core/outbound.ts'
 import { hourCap, listen, readBody } from './webhook.ts'
@@ -26,7 +25,7 @@ type Options = {
   notify: (text: string) => void
   perHour: number
   inbox: Inbox
-  approve?: { policy: ApprovePolicy; call?: (installation: number) => GithubCall }
+  approve?: { policyRepo: string; call?: (installation: number) => GithubCall }
 }
 type Installed = { action?: string; installation?: { id: number; account?: { login?: string } } }
 type Mention = NonNullable<ReturnType<typeof githubMention>>
@@ -35,7 +34,7 @@ type Run = (type: string, body: string, source?: string) => Promise<boolean>
 
 export function connectGithub(o: Options) {
   const inst = installs(o)
-  const st: State = { inst, threads: (o.saved.load('github-threads') ?? {}) as Record<string, string>, cap: hourCap(o.perHour), ...(o.approve && { approver: approver({ policy: o.approve.policy, bot: `${o.app.slug}[bot]`, call: o.approve.call ?? installationCall(o.app), allowed: inst.has, notify: o.notify }) }) }
+  const st: State = { inst, threads: (o.saved.load('github-threads') ?? {}) as Record<string, string>, cap: hourCap(o.perHour), ...(o.approve && { approver: approver({ policyRepo: o.approve.policyRepo, bot: `${o.app.slug}[bot]`, call: o.approve.call ?? installationCall(o.app), allowed: inst.has, notify: o.notify }) }) }
   let chain: Promise<unknown> = Promise.resolve()
   const handle = (type: string, body: string, source?: string) => {
     const next = chain.then(() => handleOne(o, st, type, body, source))

@@ -1,8 +1,8 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { approvalEvent, approvalVerdict, approvePolicy, type PrFacts } from '../github-approve.ts'
+import { approvalEvent, approvalVerdict, approveSetting, parsePolicy, type PrFacts } from '../github-approve.ts'
 
-const policy = { authors: ['ana', 'Ben'], riskyPaths: ['**/payments/**', '**/migrations/**'] }
+const policy = { authors: ['ana', 'Ben'], riskyPaths: ['**/payments/**', '**/migrations/**'], source: 'acme/policies kage-approve.json' }
 const facts = (o: Partial<PrFacts> = {}): PrFacts => ({
   repo: 'acme/app', number: 7, sha: 'abc1234def', author: 'ana', open: true, draft: false, fromFork: false,
   baseProtected: true, requiredChecks: ['build'], checks: [{ name: 'build', result: 'pass' }, { name: 'lint', result: 'fail' }],
@@ -75,8 +75,31 @@ test('a closed pull request, a check suite still running, a pending status or a 
   assert.equal(approvalEvent('pull_request', { action: 'opened', pull_request: { number: 7 } }), undefined)
 })
 
-test('approvals are off with no setting, and a setting with no globs approves with no high-risk paths', () => {
-  assert.equal(approvePolicy(undefined), undefined)
-  assert.deepEqual(approvePolicy({ authors: ['ana'] }), { authors: ['ana'], riskyPaths: [] })
-  assert.deepEqual(approvePolicy({ authors: ['ana'], riskyPaths: ['**/payments/**'] }), { authors: ['ana'], riskyPaths: ['**/payments/**'] })
+test('a policy file gives authors and the paths that need a person, and a bad file says what is wrong', () => {
+  assert.deepEqual(parsePolicy('{"authors":["ana"],"needsPerson":["**/payments/**"]}', 'acme/policies'), { authors: ['ana'], riskyPaths: ['**/payments/**'], source: 'acme/policies' })
+  assert.deepEqual(parsePolicy('{"authors":["ana"]}', 'x'), { authors: ['ana'], riskyPaths: [], source: 'x' })
+  assert.match((parsePolicy('{"authors":[]}', 'x') as { error: string }).error, /authors/)
+  assert.match((parsePolicy('{"authors":["ana"],"approveAll":true}', 'x') as { error: string }).error, /approveAll|Unrecognized/)
+  assert.match((parsePolicy('authors: [ana]', 'x') as { error: string }).error, /not valid JSON/)
+})
+
+test('a change to any policy file always goes to a person, so a pull request cannot loosen its own rules', () => {
+  for (const file of ['.github/kage-approve.json', 'kage-approve.json'])
+    assert.equal(approvalVerdict({ ...policy, riskyPaths: [] }, facts({ files: [file] })).kind, 'human', file)
+})
+
+test('a high-risk path inside a folder whose name starts with a dot still counts', () => {
+  assert.equal(approvalVerdict(policy, facts({ files: ['.internal/migrations/1.sql'] })).kind, 'human')
+  assert.equal(approvalVerdict({ ...policy, riskyPaths: ['.github/**'] }, facts({ files: ['.github/.hidden/a.yml'] })).kind, 'human')
+})
+
+test('the approval names the policy it was judged under', () => {
+  const v = approvalVerdict(policy, facts())
+  assert.match(v.kind === 'approve' ? v.body : '', /change policy in acme\/policies kage-approve\.json/)
+})
+
+test('approvals are off with no setting, and on they read the org policy from .github unless another repo is named', () => {
+  assert.equal(approveSetting(undefined), undefined)
+  assert.deepEqual(approveSetting({}), { policyRepo: '.github' })
+  assert.deepEqual(approveSetting({ policyRepo: 'policies' }), { policyRepo: 'policies' })
 })

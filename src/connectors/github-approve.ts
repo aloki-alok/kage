@@ -1,9 +1,9 @@
-import { approvalEvent, approvalVerdict, type ApprovePolicy, type CheckResult, type PrFacts } from '../core/github-approve.ts'
+import { approvalEvent, approvalVerdict, ORG_POLICY, parsePolicy, REPO_POLICY, type CheckResult, type PrFacts } from '../core/github-approve.ts'
 import { ownerLines } from '../core/messages.ts'
 import { log } from '../runtime/log.ts'
-import type { GithubCall } from './github-app.ts'
+import { GithubRefused, type GithubCall } from './github-app.ts'
 
-type Options = { policy: ApprovePolicy; bot: string; call: (installation: number) => GithubCall; allowed: (installation: number) => boolean; notify: (text: string) => void }
+type Options = { policyRepo: string; bot: string; call: (installation: number) => GithubCall; allowed: (installation: number) => boolean; notify: (text: string) => void }
 type Pull = { number: number; state: string; draft?: boolean; user: { login: string }; html_url: string; head: { sha: string; repo: { full_name: string } | null }; base: { ref: string; repo: { full_name: string } } }
 type Branch = { protected?: boolean; protection?: { required_status_checks?: { contexts?: string[] } } }
 type Run = { id: number; name: string; status: string; conclusion: string | null }
@@ -40,6 +40,24 @@ async function commitChecks(call: GithubCall, repo: string, sha: string) {
   return [...latest].map(([name, result]) => ({ name, result }))
 }
 
+async function fileText(call: GithubCall, repo: string, path: string, ref?: string) {
+  try {
+    const got = await call('GET', `/repos/${repo}/contents/${path}${ref ? `?ref=${encodeURIComponent(ref)}` : ''}`) as { content?: string }
+    return Buffer.from(got.content ?? '', 'base64').toString('utf8')
+  } catch (e) {
+    if (e instanceof GithubRefused && e.status === 404) return undefined
+    throw e
+  }
+}
+
+async function loadPolicy(call: GithubCall, repo: string, base: string, policyRepo: string) {
+  const own = await fileText(call, repo, REPO_POLICY, base)
+  if (own !== undefined) return parsePolicy(own, `${repo} ${REPO_POLICY}`)
+  const orgRepo = `${repo.split('/')[0]}/${policyRepo}`
+  const org = await fileText(call, orgRepo, ORG_POLICY)
+  return org === undefined ? undefined : parsePolicy(org, `${orgRepo} ${ORG_POLICY}`)
+}
+
 async function readPull(call: GithubCall, repo: string, n: number, bot: string) {
   const pull = await call('GET', `/repos/${repo}/pulls/${n}`) as Pull
   const sha = pull.head.sha
@@ -56,16 +74,23 @@ async function readPull(call: GithubCall, repo: string, n: number, bot: string) 
     fromFork: pull.head.repo?.full_name !== pull.base.repo.full_name, baseProtected: branch.protected === true,
     requiredChecks: branch.protection?.required_status_checks?.contexts ?? [], checks, files: files.names, filesCut: files.cut, approvedShas: mine.map(r => r.commit_id),
   }
-  return { facts, moved, url: pull.html_url, stale: mine.filter(r => r.commit_id !== sha).map(r => r.id) }
+  return { facts, moved, base: pull.base.ref, url: pull.html_url, stale: mine.filter(r => r.commit_id !== sha).map(r => r.id) }
 }
 
 export function approver(o: Options) {
   const told = new Set<string>()
+  const badPolicy = (error: string) => {
+    log(`github approve: bad policy, ${error}`)
+    if (!told.has(error)) { told.add(error); o.notify(ownerLines.githubBadPolicy(error)) }
+  }
   const checkOne = async (call: GithubCall, repo: string, n: number) => {
-    const { facts, moved, url, stale } = await readPull(call, repo, n, o.bot)
+    const { facts, moved, base, url, stale } = await readPull(call, repo, n, o.bot)
     const sha = facts.sha.slice(0, 7)
     if (moved) return void log(`github approve ${repo}#${n}@${sha}: skip (a newer commit landed while Kage read this one)`)
-    const v = approvalVerdict(o.policy, facts)
+    const policy = await loadPolicy(call, repo, base, o.policyRepo)
+    if (!policy) return void log(`github approve ${repo}#${n}@${sha}: skip (no ${REPO_POLICY} here and no org ${ORG_POLICY})`)
+    if ('error' in policy) return badPolicy(policy.error)
+    const v = approvalVerdict(policy, facts)
     log(`github approve ${repo}#${n}@${sha}: ${v.kind}${v.kind === 'approve' ? '' : ` (${v.why})`}`)
     if (v.kind === 'approve') return void await call('POST', `/repos/${repo}/pulls/${n}/reviews`, { commit_id: facts.sha, event: 'APPROVE', body: v.body })
     const key = `${repo}#${n}@${facts.sha}`
