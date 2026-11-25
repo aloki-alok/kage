@@ -100,6 +100,7 @@ Write logs to stderr only. In a tmux pane, stdout carries the channel protocol, 
 | `src/hub/kagelets.ts` | Kagelets in the hub: the minute sync of their files into schedules and grants, the cost flags and caps, their memory, the manager's side, the owner's notes to one, and the chains between them. |
 | `src/hub/telemetry.ts` | Telemetry in the hub (ADR 0019): the install id, the minute export job, Claude Code's telemetry env for every session, and the crash code written before exit. |
 | `src/hub/owner-commands.ts` | What the owner asks from their terminal or DM: the status line, `kage thread send`, `kage relay`, and `say` (an app on this Mac posts as the owner). |
+| `src/hub/owner-jobs.ts` | Jobs from the owner's terminal (`kage schedule add`, `rm`, `pause`, `resume`, `tune`), checked where they enter the socket: the same job the `schedule` tool makes, through the same hub calls. A paused job waits in the store with its state until resume. |
 | `src/hub/read-routes.ts` | The named read routes in `dbRead.routes`, handed to a Slack session only, so `db_read` reads a database through the hub. |
 | `src/hub/trust.ts` | The trust record in the hub: learns a line from the owner's typed answer to the one open typed ask in a thread, answers `kage trust revoke`. |
 | `src/hub/whatsapp-cards.ts` | An approval card sent to the owner on WhatsApp when they picked that channel, with a four-digit code, and their `yes` or `no` reply answering that card once. |

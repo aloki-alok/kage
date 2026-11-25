@@ -17,7 +17,7 @@ const until = async (ok: () => boolean) => { for (let i = 0; i < 100 && !ok(); i
 const READ_COMMANDS: Record<string, object> = { board: {}, health: {} }
 const OWNER_COMMANDS: Record<string, object> = {
   ...READ_COMMANDS, hold: { key: 'H', pid: process.pid }, end: { key: 'A' }, quiesce: {}, reload: {}, callcode: {},
-  tell: { key: 'A', text: 'deploy prod' }, say: { text: 'hi' }, relay: { action: 'allow', key: 'A' }, trust: { action: 'revoke', id: 'T1' }, kagelet: { action: 'run', name: 'deploys' }, stop: { key: 'A' }, away: { minutes: 30 },
+  tell: { key: 'A', text: 'deploy prod' }, say: { text: 'hi' }, relay: { action: 'allow', key: 'A' }, trust: { action: 'revoke', id: 'T1' }, kagelet: { action: 'run', name: 'deploys' }, stop: { key: 'A' }, away: { minutes: 30 }, job: { action: 'rm', id: 'j1' },
 }
 
 function hub(t: { after: (f: () => void) => void }) {
@@ -35,7 +35,7 @@ function hub(t: { after: (f: () => void) => void }) {
     ownerKey: KEY, mail: () => {}, wa: () => {}, voice: () => {}, sms: () => {}, gh: () => {}, failed: () => {}, schedules: { add: () => undefined, remove: () => {} },
     tell: did('tell', { ok: true as const }), say: did('say', Promise.resolve({ ok: true as const, channel: 'DTEST', ts: '1.1' })), relay: did('relay', { ok: true as const, keys: [] }), trust: did('trust', { ok: true as const, text: 'revoked T1' }),
     reload: did('reload', { changed: [], restart: [], count: 0 }), paused: did('board', undefined), health: did('health', []), end: did('end', 'ended'),
-    quiesce: did('quiesce', []), callCode: did('callcode', '1234'), kagelet: did('kagelet', Promise.resolve('done')), away: did('away', Promise.resolve('AFK on')),
+    quiesce: did('quiesce', []), callCode: did('callcode', '1234'), kagelet: did('kagelet', Promise.resolve('done')), away: did('away', Promise.resolve('AFK on')), jobs: did('job', { text: 'Removed j1.' }),
   })
   t.after(() => server.close())
   const open = () => {
@@ -73,7 +73,7 @@ test('a connection without the owner key is refused every owner command, and not
     assert.equal(r?.type, type, `${type} with the key: no answer`)
     assert.doesNotMatch(r.refused ?? '', /owner key/, `${type} with the key was refused`)
   }
-  assert.deepEqual([...h.acted].sort(), ['away', 'board', 'callcode', 'end', 'health', 'kagelet', 'quiesce', 'relay', 'reload', 'say', 'stop A', 'tell', 'trust'])
+  assert.deepEqual([...h.acted].sort(), ['away', 'board', 'callcode', 'end', 'health', 'job', 'kagelet', 'quiesce', 'relay', 'reload', 'say', 'stop A', 'tell', 'trust'])
   assert.deepEqual(h.d.status(0).held, ['H'])
 })
 
