@@ -13,6 +13,7 @@ export const DIR = dirname(ENV_FILE)
 export const settingsExist = () => hasSettings(ENV_FILE)
 export const settings = (): ReturnType<typeof readSettings> => { try { return readSettings(ENV_FILE) } catch { return { config: { version: 1 }, secrets: {}, failed: () => [] } } }
 export const CWD = tilde(settings().config.harness?.cwd || process.env.KAGE_CWD || process.env.HOME!, process.env.HOME!)
+export const TRANSCRIPTS = `${process.env.HOME}/.claude/projects/${CWD.replace(/[^A-Za-z0-9]/g, '-')}`
 
 export function placeNamer(): (key: string) => string {
   try {

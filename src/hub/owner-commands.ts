@@ -10,6 +10,7 @@ import type { Ledgers } from '../runtime/ledger.ts'
 import type { limitPause } from '../runtime/limit-pause.ts'
 import type { ToSession } from '../runtime/protocol.ts'
 import type { Store } from '../runtime/store.ts'
+import { typedInTerminal } from '../core/task.ts'
 import { taskAsOwner } from '../core/gate.ts'
 
 type Options = {
@@ -44,7 +45,7 @@ function tell(o: Options, key: string, text: string): { ok: true; held?: true } 
   const paused = limits.paused()
   if (paused) return { refused: `${paused.draining ? 'Kage is stopping for a restart or a stop' : 'Kage is paused by the usage limit'}, so it would be lost. ${pauseLine(paused)} Tell it again after that` }
   const task = taskAsOwner({
-    content: `From the owner, typed in the terminal: ${text}`,
+    content: typedInTerminal(text),
     meta: { channel: c.conversation.chat, thread_ts: c.conversation.thread ?? '', place: c.place, permalink: '' },
     origin: { channel: c.conversation.chat, ts: '' },
   })

@@ -1,3 +1,4 @@
+export const typedInTerminal = (text: string) => `From the owner, typed in the terminal: ${text}`
 export type Task = {
   type: 'task'
   content: string
