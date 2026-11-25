@@ -4,7 +4,7 @@ import type { WebClient } from '@slack/web-api'
 import { log, logRef } from '../runtime/log.ts'
 import { connectEmail } from '../connectors/email.ts'
 import { connectGithub } from '../connectors/github.ts'
-import { approvePolicy } from '../core/github-approve.ts'
+import { approveSetting } from '../core/github-approve.ts'
 import { connectMeeting } from '../connectors/meeting.ts'
 import { connectVoice } from '../connectors/voice.ts'
 import { connectSms } from '../connectors/sms.ts'
@@ -78,7 +78,7 @@ export function startConnectors(o: Options) {
 
 function startGithub(o: Options) {
   const { secrets, conn, store, slack, bot, d, inbox, deliver } = o
-  const gh = conn.github, app = gh?.app, approve = approvePolicy(gh?.approve)
+  const gh = conn.github, app = gh?.app, approve = approveSetting(gh?.approve)
   const github = app && gh?.login && gh.userId && secrets.githubSecret && secrets.githubAppKey ? connectGithub({ startError: () => d.lastStartError(),
     saved: store, botDm: slack.ids.botDm, ownerId: gh.userId, accounts: gh.accounts?.length ? gh.accounts : [gh.login],
     app: { id: app.id, slug: app.slug, key: secrets.githubAppKey }, secret: secrets.githubSecret, port: gh.port || 8789,
@@ -86,7 +86,7 @@ function startGithub(o: Options) {
     deliver: (c, task, place) => deliver(c, task, place),
     notify: text => void o.say(text),
     perHour: gh.perHour || 20, inbox,
-    ...(approve && { approve: { policy: approve } }),
+    ...(approve && { approve }),
   }) : undefined
   void github?.listening.then(port => log(`github listening: 127.0.0.1:${port}/github`), e => log('github could not listen', e))
   return github

@@ -1,6 +1,11 @@
-import { matchesGlob } from 'node:path'
+import { basename, matchesGlob } from 'node:path'
+import { z } from 'zod'
 
-export type ApprovePolicy = { authors: string[]; riskyPaths: string[] }
+type ApprovePolicy = { authors: string[]; riskyPaths: string[]; source: string }
+export const REPO_POLICY = '.github/kage-approve.json'
+export const ORG_POLICY = 'kage-approve.json'
+export const approveSetting = (set?: { policyRepo?: string }) => set && { policyRepo: set.policyRepo ?? '.github' }
+const PolicyFile = z.strictObject({ authors: z.array(z.string().min(1)).min(1), needsPerson: z.array(z.string().min(1)).optional() })
 export type CheckResult = 'pass' | 'fail' | 'pending'
 export type PrFacts = {
   repo: string; number: number; sha: string; author: string
@@ -18,8 +23,17 @@ type ApprovalEvent = { repo: string; installation: number } & ({ prs: number[] }
 
 const short = (sha: string) => sha.slice(0, 7)
 
-export const approvePolicy = (set?: { authors: string[]; riskyPaths?: string[] }): ApprovePolicy | undefined =>
-  set && { authors: set.authors, riskyPaths: set.riskyPaths ?? [] }
+export function parsePolicy(text: string, source: string): ApprovePolicy | { error: string } {
+  let raw: unknown
+  try { raw = JSON.parse(text) } catch { return { error: `${source} is not valid JSON` } }
+  const r = PolicyFile.safeParse(raw)
+  if (!r.success) return { error: `${source}: ${r.error.issues.map(i => `${i.path.join('.') || 'file'} ${i.message}`).join('; ')}` }
+  return { authors: r.data.authors, riskyPaths: r.data.needsPerson ?? [], source }
+}
+
+const undotted = (file: string) => file.split('/').map(part => part.replace(/^\.+/, '')).join('/')
+const isRisky = (file: string, globs: string[]) =>
+  basename(file) === ORG_POLICY || globs.some(g => matchesGlob(file, g) || matchesGlob(undotted(file), g))
 const PR_ACTIONS = new Set(['opened', 'synchronize', 'reopened', 'ready_for_review'])
 
 type Raw = {
@@ -62,18 +76,18 @@ export function approvalVerdict(policy: ApprovePolicy, f: PrFacts): ApprovalVerd
   const skip = notEligible(policy, f)
   if (skip) return { kind: 'skip', why: `${thread}: ${skip}` }
   if (f.filesCut) return { kind: 'human', why: `${thread} changes more files than Kage reads, so it cannot rule out a high-risk path` }
-  const risky = f.files.filter(file => policy.riskyPaths.some(p => matchesGlob(file, p)))
+  const risky = f.files.filter(file => isRisky(file, policy.riskyPaths))
   if (risky.length) return { kind: 'human', why: `${thread} touches high-risk paths: ${risky.slice(0, 5).join(', ')}${risky.length > 5 ? ` and ${risky.length - 5} more` : ''}` }
   const { failed, waiting } = requiredState(f)
   if (failed.length) return { kind: 'skip', why: `${thread}: required check failed: ${failed.join(', ')}` }
   if (waiting.length) return { kind: 'wait', why: `${thread}: waiting on ${waiting.join(', ')}` }
-  return { kind: 'approve', body: approvalBody(f) }
+  return { kind: 'approve', body: approvalBody(f, policy.source) }
 }
 
-function approvalBody(f: PrFacts) {
+function approvalBody(f: PrFacts, source: string) {
   const checks = f.requiredChecks.length ? `${f.requiredChecks.join(', ')} passed` : 'none set on this branch'
   return [
-    'Approved by Kage under the change policy: a listed author, green required checks, no high-risk path.',
+    `Approved by Kage under the change policy in ${source}: a listed author, green required checks, no high-risk path.`,
     '',
     `- Commit: ${short(f.sha)}`,
     `- Author: ${f.author} (listed author)`,
