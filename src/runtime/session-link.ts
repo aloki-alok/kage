@@ -50,6 +50,7 @@ type Options = Replies & {
   limitCounts?: () => LimitCounts
   quiesce?: () => { key: string; why: string }[]
   health?: () => string[]
+  healthRows?: () => object[]
   end?: (key: string, cut: boolean) => string
   kagelet?: (action: PanelAction, name: string) => Promise<string>
   away?: (c: AfkCommand) => Promise<string>
@@ -122,7 +123,7 @@ const COMMANDS: Record<string, Command> = {
     const limitCounts = o.limitCounts?.()
     answer(c, 'board', { ...d.status(Date.now()), ...(paused && { paused }), ...(limitCounts && { limitCounts }) })
   }),
-  health: read(({ o }, c) => answer(c, 'health', { lines: o.health?.() ?? [] })),
+  health: read(({ o }, c) => answer(c, 'health', { lines: o.health?.() ?? [], rows: o.healthRows?.() ?? [] })),
   end: owner(({ o }, c, m) => { if (o.end && typeof m.key === 'string') answer(c, 'end', { text: o.end(m.key, (m as { cut?: unknown }).cut === true) }) }),
   quiesce: owner(({ o }, c) => { if (o.quiesce) answer(c, 'quiesce', { waiting: o.quiesce() }) }),
   reload: owner(({ o }, c) => answer(c, 'reload', o.reload?.() ?? { refused: 'this hub cannot reload' })),

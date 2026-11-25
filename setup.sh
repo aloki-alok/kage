@@ -44,13 +44,13 @@ Run|config list||Every setting, its value and what it does|kage config list
 Run|config get|<key>|One setting in full: its value, its default and what it does|kage config get harness.maxSessions
 Run|config set|<key> <value>|Change one setting in config.json|kage config set harness.maxSessions 6
 Run|config reload||Read the settings files again with no restart: who may tag Kage changes at once|kage config reload
-Run|status||One look at the hub (version, uptime, spend, starts by cause), every session and every kagelet|kage status
+Run|status|[--json]|One look at the hub (version, uptime, spend, starts by cause), every session and every kagelet|kage status
 Run|logs|[lines, -f or kagelet]|Follow the hub log live, with the steps of every session (tools, replies), like tail -f. A number prints that many lines and exits. With a kagelet: its last runs, newest first, with cost, ok or failed, and its report|kage logs 200
 Set up|completion|<bash, zsh or fish>|Print the tab completion script for your shell. Add eval "$(kage completion zsh)" to ~/.zshrc, or the same for bash; for fish, kage completion fish > ~/.config/fish/completions/kage.fish|kage completion zsh
 Run|run||Run the hub in the foreground for a supervisor other than launchd or systemd (Docker: --init); output goes to kage logs|kage run
 Run|cost|[days]|What each thread spent, most first, and the models it ran on (1 day unless you say)|kage cost 7
 Run|telemetry|[show]|What this Kage sends and where: on or off, the endpoint, and the next batch with show|kage telemetry show
-Run|stats|[days]|Spend and tokens per day, per connector, per kind of thread and per model, the share read from cache, runs, refusals, turn time, hub starts and reports to the Kage repo (7 days unless you say)|kage stats 30
+Run|stats|[days] [--json]|Spend and tokens per day, per connector, per kind of thread and per model, the share read from cache, runs, refusals, turn time, hub starts and reports to the Kage repo (7 days unless you say)|kage stats 30
 Run|release|[--dry-run]|Tag the next version on main, publish its notes and move the stable tag that installs follow (repo admin only). --dry-run prints the version and notes and changes nothing|kage release --dry-run
 Run|dream|undo|Put the memory back to how it was before the last weekly dream|kage dream undo
 Watch|schedule list||Every schedule and reply watch, in every thread|kage schedule list
@@ -243,8 +243,8 @@ cmd_restart() {
 }
 
 cmd_status() {
-  running || { says "I'm not running."; next "Start me:" "kage start"; return 1; }
-  node src/cli/status.ts
+  running || { tells "I'm not running. Start me with kage start."; exit 3; }
+  node src/cli/status.ts "$@"
 }
 
 # The version the hub read at its start (src/hub/router.ts writes it), and the version of the code on disk.
@@ -424,7 +424,7 @@ case "${1:-}" in
       reload) node src/cli/reload.ts ;;
       *) verbs config ;;
     esac ;;
-  status) cmd_status ;;
+  status) cmd_status "${@:2}" ;;
   # A kagelet's name (it starts with a letter): its runs (src/cli/kagelet-logs.ts). Otherwise the hub log.
   logs) if [[ ${2:-} =~ ^[a-z] ]]; then old_form "logs <kagelet>" "kagelet logs <kagelet>"; node src/cli/kagelet-logs.ts "$2"; else cmd_logs "${2:-}"; fi ;;
   cost) node src/cli/cost.ts "${@:2}" ;;
