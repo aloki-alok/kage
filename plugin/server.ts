@@ -14,7 +14,7 @@ import { sessionTools } from '../src/runtime/kage-tools.ts'
 import { openLedgers } from '../src/runtime/ledger.ts'
 import { paneTurn } from '../src/runtime/pane-turn.ts'
 import { schedulesIn } from '../src/runtime/store.ts'
-import { foreignAgentTags } from '../src/core/agents.ts'
+import { asksOtherAgents, foreignAgentTags } from '../src/core/agents.ts'
 import { paneHello } from '../src/runtime/owner-key.ts'
 
 const THREAD = process.env.KAGE_THREAD
@@ -42,7 +42,7 @@ const kage = sessionTools({
   title: Title, bot, user, botDm: () => botDm, dir: dirname(ENV_FILE), ledgers: openLedgers(dirname(ENV_FILE)),
   memory: memoryDirs(process.env.HOME!, ENV_FILE, config.harness),
   turnSender: turn.sender,
-  foreignAgents: () => config.askOtherAgents ? [] : foreignAgentTags(TRUSTED_APPS, ownerId),
+  foreignAgents: () => asksOtherAgents(config) ? [] : foreignAgentTags(TRUSTED_APPS, ownerId),
   send: m => { if (!router?.writable) return false; router.write(JSON.stringify(m) + '\n') },
   schedules: {
     async add(j) {

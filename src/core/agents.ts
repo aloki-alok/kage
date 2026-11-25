@@ -60,3 +60,5 @@ export function loopGuard(o: { perWindow: number; windowMs: number; hops: number
     },
   }
 }
+
+export const asksOtherAgents = (c: { askOtherAgents?: boolean }) => c.askOtherAgents !== false
