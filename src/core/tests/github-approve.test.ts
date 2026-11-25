@@ -14,7 +14,7 @@ const policy = parsePolicy(JSON.stringify({
 const facts = (o: Partial<PrFacts> = {}): PrFacts => ({
   repo: 'acme/app', number: 7, sha: 'abc1234def', author: 'ana', base: 'main', branch: 'fix/a', open: true, draft: false, fromFork: false,
   baseProtected: true, requiredChecks: ['build'], checks: [{ name: 'build', result: 'pass' }, { name: 'lint', result: 'fail' }],
-  files: ['docs/a.md', 'src/x.ts'], filesCut: false, lines: 12, pushers: ['ana'], headPushed: true, ...o,
+  files: ['docs/a.md', 'src/x.ts'], filesCut: false, lines: 12, pushers: ['ana'], headPushed: true, labels: [], ...o,
 })
 const verdict = (o: Partial<PrFacts> = {}, p = policy) => approvalVerdict(p, facts(o))
 
@@ -131,4 +131,32 @@ test('approvals are off with no setting, and on they read the org policy from .g
   assert.equal(approveSetting(undefined), undefined)
   assert.deepEqual(approveSetting({}), { policyRepo: '.github' })
   assert.deepEqual(approveSetting({ policyRepo: 'policies' }), { policyRepo: 'policies' })
+})
+
+const releasePolicy = parsePolicy(JSON.stringify({
+  people: ['ana', 'github-actions[bot]'],
+  rules: [
+    { name: 'Releases', author: ['github-actions[bot]'], branch: ['release-please--*'], onlyFiles: ['CHANGELOG.md'], then: 'merge' },
+    { name: 'Everything else', then: 'approve' },
+  ],
+}), 's') as ApprovePolicy
+const releaseFacts = { author: 'github-actions[bot]', branch: 'release-please--branches--main', files: ['CHANGELOG.md'], pushers: ['github-actions[bot]'] }
+
+test('a release that passes its rule and its required checks is approved and marked to merge, and an ordinary approval is not', () => {
+  const v = verdict(releaseFacts, releasePolicy)
+  assert.deepEqual([v.kind, v.rule, v.merge], ['approve', 'Releases', true])
+  assert.match(v.body ?? '', /Kage merges it now\./)
+  assert.equal(verdict({}, releasePolicy).merge, undefined)
+})
+
+test('a release still waits on its required checks before Kage merges it', () => {
+  const v = verdict({ ...releaseFacts, checks: [{ name: 'build', result: 'pending' }] }, releasePolicy)
+  assert.deepEqual([v.kind, v.merge], ['wait', undefined])
+})
+
+test('the hold label sends any pull request to a person, so a release can be stopped by hand', () => {
+  for (const o of [releaseFacts, {}]) {
+    const v = verdict({ ...o, labels: ['Hold'] }, releasePolicy)
+    assert.deepEqual([v.kind, v.code], ['person', 'hold'])
+  }
 })

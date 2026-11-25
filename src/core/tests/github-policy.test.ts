@@ -12,7 +12,7 @@ const text = JSON.stringify({
   ],
 })
 const policy = parsePolicy(text, 'acme/policies kage-approve.json')
-const pr = (o: Partial<{ base: string; files: string[]; lines: number }> = {}) => ({ base: 'main', files: ['src/a.ts'], lines: 10, ...o })
+const pr = (o: Partial<{ base: string; files: string[]; lines: number; author: string; branch: string }> = {}) => ({ base: 'main', files: ['src/a.ts'], lines: 10, author: 'ana', branch: 'fix/a', ...o })
 
 test('the first rule whose conditions all hold decides', () => {
   if ('error' in policy) throw new Error(policy.error)
@@ -52,7 +52,7 @@ test('the first policy shape, authors and needsPerson, reads as people with a hi
 test('a broken file names its source and the bad field', () => {
   for (const [bad, field] of [
     ['{', 'not valid JSON'],
-    ['{"people":["ana"],"rules":[{"name":"x","then":"merge"}]}', 'rules.0.then'],
+    ['{"people":["ana"],"rules":[{"name":"x","then":"ship"}]}', 'rules.0.then'],
     ['{"people":["ana"],"rules":[]}', 'rules'],
     ['{"people":[],"rules":[{"name":"x","then":"approve"}]}', 'people'],
     ['{"people":["ana"],"rules":[{"name":"x","then":"approve","anyfile":["a"]}]}', 'anyfile'],
@@ -62,4 +62,23 @@ test('a broken file names its source and the bad field', () => {
     assert.match(r.error, /^acme\/policies kage-approve\.json/)
     assert.ok(r.error.includes(field), `${bad} -> ${r.error}`)
   }
+})
+
+const releases = parsePolicy(JSON.stringify({
+  people: ['ana', 'github-actions[bot]'],
+  rules: [
+    { name: 'Releases', author: ['github-actions[bot]'], branch: ['release-please--*'], onlyFiles: ['CHANGELOG.md', '.release-please-manifest.json', 'pyproject.toml'], then: 'merge' },
+    { name: 'Other bot pull requests', author: ['github-actions[bot]'], then: 'person' },
+    { name: 'Everything else', then: 'approve' },
+  ],
+}), 's')
+const release = (o: Partial<Parameters<typeof pr>[0]> = {}) => pr({ author: 'github-actions[bot]', branch: 'release-please--branches--main', files: ['CHANGELOG.md', '.release-please-manifest.json'], ...o })
+
+test('a release rule matches only its author, its branch, and a pull request whose every file it lists', () => {
+  if ('error' in releases) throw new Error(releases.error)
+  assert.equal(firstRule(releases, release())?.then, 'merge')
+  assert.equal(firstRule(releases, release({ author: 'GitHub-Actions[bot]' }))?.then, 'merge')
+  assert.equal(firstRule(releases, release({ files: ['CHANGELOG.md', 'app/main.py'] }))?.name, 'Other bot pull requests')
+  assert.equal(firstRule(releases, release({ branch: 'chore/sync' }))?.name, 'Other bot pull requests')
+  assert.equal(firstRule(releases, release({ author: 'ana' }))?.name, 'Everything else')
 })

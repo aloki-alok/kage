@@ -8,14 +8,17 @@ const Rule = z.strictObject({
   targets: globs.optional(),
   anyFile: globs.optional(),
   moreLinesThan: z.number().int().nonnegative().optional(),
-  then: z.enum(['approve', 'person']),
+  author: z.array(text).min(1).optional(),
+  branch: globs.optional(),
+  onlyFiles: globs.optional(),
+  then: z.enum(['approve', 'person', 'merge']),
 })
 const PolicyFile = z.strictObject({ people: z.array(text).min(1), rules: z.array(Rule).min(1) })
 const FirstPolicyFile = z.strictObject({ authors: z.array(text).min(1), needsPerson: z.array(text).optional() })
 
 export type PolicyRule = z.infer<typeof Rule>
 export type ApprovePolicy = { people: string[]; rules: PolicyRule[]; source: string }
-type RuleFacts = { base: string; files: string[]; lines: number }
+type RuleFacts = { base: string; files: string[]; lines: number; author: string; branch: string }
 
 const issues = (source: string, e: z.ZodError) => ({ error: `${source}: ${e.issues.map(i => `${i.path.join('.') || 'file'} ${i.message}`).join('; ')}` })
 
@@ -42,6 +45,9 @@ function holds(rule: PolicyRule, f: RuleFacts) {
   if (rule.targets && !matchesAny(f.base, rule.targets)) return false
   if (rule.anyFile && !f.files.some(file => matchesAny(file, rule.anyFile!))) return false
   if (rule.moreLinesThan !== undefined && f.lines <= rule.moreLinesThan) return false
+  if (rule.author && !rule.author.some(login => login.toLowerCase() === f.author.toLowerCase())) return false
+  if (rule.branch && !matchesAny(f.branch, rule.branch)) return false
+  if (rule.onlyFiles && !(f.files.length && f.files.every(file => matchesAny(file, rule.onlyFiles!)))) return false
   return true
 }
 
