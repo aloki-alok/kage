@@ -1,6 +1,6 @@
 {
   "name": "kage",
-  "version": "0.4.5",
+  "version": "0.5.0",
   "description": "Your own Claude Code, reachable from Slack, WhatsApp, email, phone calls, meetings and your browser. It works on your machine with your setup and answers where you asked.",
   "author": {
     "name": "Alok Ranjan",
