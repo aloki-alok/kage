@@ -1,8 +1,8 @@
-import { randomBytes } from 'node:crypto'
 import { z } from 'zod'
 import { awayCommand } from '../../core/afk.ts'
-import { EVENT, nextRun, parseCron, REPLY } from '../../core/cron.ts'
-import { hookTokenHash, tempPaths, type Trigger } from '../../core/tripwire.ts'
+import { REPLY } from '../../core/cron.ts'
+import { tempPaths } from '../../core/tripwire.ts'
+import { jobFromSpec, jobSetLine } from '../job-spec.ts'
 import type { KageTool, Result, ToolContext } from '../kage-tools.ts'
 import type { ProbeArg } from '../probe-jobs.ts'
 
@@ -31,11 +31,12 @@ async function probeCard(c: ToolContext, description: string, input: Record<stri
   return await o.approve('schedule', description, input) ? undefined : 'The owner said no. Nothing was scheduled.'
 }
 
+const folderOf = (c: ToolContext, a: Record<string, unknown>) => a.channel && a.thread_ts ? c.filesOf(String(a.channel), String(a.thread_ts)) : `${c.o.dir}/files/<this thread>`
+
 function tempRefusal(c: ToolContext, a: Record<string, unknown>, ...texts: (string | undefined)[]) {
-  const { o } = c
   const found = tempPaths(texts.filter(Boolean).join('\n'))
   if (!found.length) return undefined
-  const folder = a.channel && a.thread_ts ? c.filesOf(String(a.channel), String(a.thread_ts)) : `${o.dir}/files/<this thread>`
+  const folder = folderOf(c, a)
   return { isError: true as const, text: `refused: this job names ${found.join(', ')}, a temp folder the OS clears on its own, so the job fails once the file is gone. Copy the file into this thread's files folder, ${folder}/, and name that path instead.` }
 }
 
@@ -70,43 +71,28 @@ function scheduleTool(c: ToolContext, jobs: Jobs): KageTool {
 
 async function runSchedule(c: ToolContext, jobs: Jobs, args: Record<string, unknown>): Promise<Result> {
   const a = args as ScheduleArgs
-  const refusal = scheduleRefusal(c, a, args)
+  const refusal = scheduleRefusal(c, a)
   if (refusal) return { isError: true, text: refusal }
-  const token = a.hook ? randomBytes(24).toString('hex') : undefined
-  const url = a.hook ? jobs.hookUrl?.('<id>') : undefined
-  if (a.hook && !url) return { isError: true, text: 'webhook jobs are off: the owner sets tripwires.hookPort first' }
-  if ((a.hook || a.on_channel) && !c.o.approve) return { isError: true, text: 'webhook and channel jobs need the Agent SDK runner: this session cannot show the owner a card' }
-  const trigger: Trigger | undefined = a.on_channel ? { kind: 'channel', channel: a.on_channel.channel, bots: a.on_channel.bots !== false, ...(a.on_channel.match !== undefined && { match: a.on_channel.match }) } : token ? { kind: 'hook', tokenHash: hookTokenHash(token) } : undefined
-  const cron = trigger ? EVENT : a.cron!
-  if (cron !== REPLY && !trigger) try { parseCron(cron) } catch (e) { return { isError: true, text: (e as Error).message } }
-  if (!a.prompt.trim()) return { isError: true, text: 'the prompt is empty' }
-  const temp = tempRefusal(c, args, a.prompt, a.live_prompt, a.probe?.command)
-  if (temp) return temp
-  const id = randomBytes(4).toString('hex')
-  const recurring = a.recurring !== false
+  const built = jobFromSpec(a, jobs.hookUrl, folderOf(c, args), [a.live_prompt])
+  if (typeof built === 'string') return { isError: true, text: built }
+  if (built.job.trigger && !c.o.approve) return { isError: true, text: 'webhook and channel jobs need the Agent SDK runner: this session cannot show the owner a card' }
+  const { job, token } = built
   if (a.probe && !c.ownerOnly(args)) {
-    const why = await probeCard(c, `Run the command ${a.probe.command} on a clock (${cron}), as you, with no model, and wake a session when its output changes. Scripts it names are pinned.`, { cron, probe: a.probe })
+    const why = await probeCard(c, `Run the command ${a.probe.command} on a clock (${job.cron}), as you, with no model, and wake a session when its output changes. Scripts it names are pinned.`, { cron: job.cron, probe: a.probe })
     if (why) return { isError: true, text: why }
   }
-  const no = await jobs.add({ id, cron, prompt: a.prompt, recurring, ...(trigger && { trigger }), ...(a.lane !== undefined && { lane: a.lane }), ...(a.needs?.length && { needs: a.needs }), ...(a.model && { model: a.model }), ...(a.probe && { probe: a.probe }), ...(a.shadow_of && { shadow: { of: a.shadow_of, live: a.live_prompt! } }) })
+  const no = await jobs.add({ ...job, ...(a.shadow_of && { shadow: { of: a.shadow_of, live: a.live_prompt! } }) })
   if (no) return { isError: true, text: no }
-  if (trigger?.kind === 'channel') return { text: `Kage schedule ${id} set, wakes on a post in channel ${trigger.channel}${trigger.match !== undefined ? ` matching ${trigger.match}` : ''}${trigger.bots ? ', bots included' : ''}. No model runs between posts. Kept by Kage: it survives restarts and runs until unschedule.` }
-  if (token) return { text: `Kage schedule ${id} set, wakes on a call to its webhook. Shown once, give both to whoever sends the calls:\nURL: ${jobs.hookUrl!(id)}\nToken: ${token}\nSend: POST with the header "Authorization: Bearer <token>". The body reaches the job as data. Kept by Kage: it survives restarts and runs until unschedule.` }
-  if (a.cron === REPLY) return { text: `Watching: job ${id} runs each time someone writes in this thread, for 7 days. Kept by Kage: it survives restarts.` }
-  const next = nextRun(cron, new Date(), 366 * 24 * 3600_000)
-  const poll = recurring && !a.probe && c.ownerOnly(args) && !c.jobRun()
+  const poll = !job.trigger && job.cron !== REPLY && job.recurring && !a.probe && c.ownerOnly(args) && !c.jobRun()
     ? ' It runs a model on every run. If it only watches for a change, give it a probe. If each run does work (a draft, a review, research), make it a kagelet instead (kagelets skill) and unschedule this one.' : ''
-  return { text: `Kage schedule ${id} set, ${recurring ? 'recurring' : 'one-shot'} (${cron}). Next run: ${next?.toLocaleString() ?? 'none within a year'}. Kept by Kage: it survives restarts and runs until unschedule.${poll}` }
+  return { text: `${jobSetLine(job, token, jobs.hookUrl)}${poll}` }
 }
 
-function scheduleRefusal(c: ToolContext, a: ScheduleArgs, args: Record<string, unknown>) {
-  if (!a.cron && !a.on_channel && !a.hook) return 'give one of cron, on_channel or hook'
+function scheduleRefusal(c: ToolContext, a: ScheduleArgs) {
   if (!a.shadow_of !== !a.live_prompt?.trim()) return 'a twin needs both shadow_of and live_prompt'
   if (a.shadow_of && c.jobRun()) return 'refused: a job\'s own run may not make a twin. Suggest it in your report.'
-  if (a.shadow_of && !c.ownerOnly(args)) return 'only the owner\'s own task may make a twin: it removes the job it shadows by itself once proven'
-  if (+!!a.cron + +!!a.on_channel + +!!a.hook > 1) return 'a job has one trigger: cron, on_channel or hook'
-  if (a.probe && !a.cron) return 'a probe needs a clock cron'
-  if (a.model && a.model !== 'haiku' && !c.ownerOnly(args)) return 'a teammate\'s job may only move to haiku, a cheaper model. Another model needs the owner\'s own task'
+  if (a.shadow_of && !c.ownerOnly(a as Record<string, unknown>)) return 'only the owner\'s own task may make a twin: it removes the job it shadows by itself once proven'
+  if (a.model && a.model !== 'haiku' && !c.ownerOnly(a as Record<string, unknown>)) return 'a teammate\'s job may only move to haiku, a cheaper model. Another model needs the owner\'s own task'
   return undefined
 }
 
