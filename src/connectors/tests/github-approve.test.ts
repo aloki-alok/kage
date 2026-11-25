@@ -9,6 +9,7 @@ type Fake = {
   repoPolicy?: string; orgPolicy?: string | null; head?: string; movedTo?: string; statuses?: { context: string; state: string }[]; renamedFrom?: string
   files?: string[]; checks?: Run[]; reviews?: Review[]; author?: string; required?: string[]; draft?: boolean
   activity?: { activity_type: string; actor: { login: string } | null; after?: string }[]; rules?: unknown[]; refuse?: (method: string, path: string) => number | undefined
+  queueable?: boolean; queued?: boolean
   open?: { number: number; draft?: boolean; user: { login: string }; head: { sha: string }; base: { ref: string } }[]
 }
 const POLICY = '{"people":["ana"],"rules":[{"name":"High-risk paths","anyFile":["**/payments/**"],"then":"person"},{"name":"Everything else","then":"approve"}]}'
@@ -18,9 +19,10 @@ const created = [{ activity_type: 'push', actor: { login: 'ana' }, after: 'bbb22
 function fakeGithub(o: Fake = {}) {
   const writes: { method: string; path: string; body?: Record<string, unknown> }[] = [], reads: string[] = []
   const head = o.head ?? 'bbb2222'
-  const pr = { number: 7, state: 'open', draft: o.draft ?? false, user: { login: o.author ?? 'ana' }, html_url: 'https://gh/acme/app/pull/7', additions: 3, deletions: 1, head: { sha: head, ref: 'fix/a', repo: { full_name: 'acme/app' } }, base: { ref: 'main', repo: { full_name: 'acme/app' } } }
+  const pr = { number: 7, state: 'open', draft: o.draft ?? false, user: { login: o.author ?? 'ana' }, html_url: 'https://gh/acme/app/pull/7', additions: 3, deletions: 1, auto_merge: o.queued ? { merge_method: 'squash' } : null, head: { sha: head, ref: 'fix/a', repo: { full_name: 'acme/app' } }, base: { ref: 'main', repo: { full_name: 'acme/app' } } }
   const routes: Record<string, unknown> = {
     '/repos/acme/app/pulls/7': pr,
+    '/repos/acme/app': { allow_auto_merge: o.queueable ?? false },
     '/repos/acme/app/branches/main': { protected: true, protection: { required_status_checks: { contexts: o.required ?? ['build'] } } },
     '/repos/acme/app/pulls/7/files?per_page=100&page=1': (o.files ?? ['docs/a.md']).map(filename => ({ filename, ...(o.renamedFrom && { previous_filename: o.renamedFrom }) })),
     [`/repos/acme/app/commits/${head}/check-runs?per_page=100&page=1`]: { check_runs: o.checks ?? [{ id: 1, name: 'build', status: 'completed', conclusion: 'success' }] },
@@ -326,4 +328,20 @@ test('a sweep leaves a new head unapproved even when Kage approved an older comm
   const gh = fakeGithub({ reviews: [{ id: 5, state: 'APPROVED', commit_id: 'aaa1111', user: { login: 'kage-me[bot]' } }] })
   await setup(gh).a.sweep(41)
   assert.deepEqual(gh.reviews(), [])
+})
+
+test('in a repo with auto-merge, a green push posts no approval until the merge is queued, and keeps the approval it has', async () => {
+  const gh = fakeGithub({ queueable: true, reviews: [{ id: 5, state: 'APPROVED', commit_id: 'bbb2222', user: { login: 'kage-me[bot]' } }] })
+  await setup(gh).a.handle('pull_request', pushed)
+  assert.deepEqual([gh.reviews(), gh.dismissals()], [[], []])
+  assert.equal(gh.checks()[0]?.body?.conclusion, 'neutral')
+  const fresh = fakeGithub({ queueable: true })
+  await setup(fresh).a.handle('pull_request', pushed)
+  assert.deepEqual(fresh.reviews(), [])
+})
+
+test('queuing the merge brings one approval on the head commit', async () => {
+  const gh = fakeGithub({ queueable: true, queued: true })
+  await setup(gh).a.handle('pull_request', { ...pushed, action: 'auto_merge_enabled' })
+  assert.deepEqual(gh.reviews().map(w => [w.body?.event, w.body?.commit_id]), [['APPROVE', 'bbb2222']])
 })
