@@ -33,7 +33,7 @@ type Options = {
 type Installed = { action?: string; installation?: { id: number; account?: { login?: string } } }
 type Mention = NonNullable<ReturnType<typeof githubMention>>
 type Headed = Pick<Mention, 'thread' | 'headline' | 'url'>
-type State = { inst: ReturnType<typeof installs>; threads: Record<string, string>; cap: ReturnType<typeof hourCap>; approver?: ReturnType<typeof approver>; fixer?: ReturnType<typeof fixer> }
+type State = { inst: ReturnType<typeof installs>; threads: Record<string, string>; cap: ReturnType<typeof hourCap>; approver?: ReturnType<typeof approver>; fixer?: ReturnType<typeof fixer>; fixTold: Set<string> }
 type Run = (type: string, body: string, source?: string) => Promise<boolean>
 
 const SWEEP_MS = 3_600_000
@@ -47,7 +47,7 @@ export function connectGithub(o: Options) {
     chain = next.catch(() => {})
     return next
   }
-  const st: State = { inst, threads: (o.saved.load('github-threads') ?? {}) as Record<string, string>, cap: hourCap(o.perHour), ...(o.approve && { approver: approverFor(o, inst, queue) }), ...(o.fix && { fixer: fixerFor(o, inst) }) }
+  const st: State = { fixTold: new Set(), inst, threads: (o.saved.load('github-threads') ?? {}) as Record<string, string>, cap: hourCap(o.perHour), ...(o.approve && { approver: approverFor(o, inst, queue) }), ...(o.fix && { fixer: fixerFor(o, inst) }) }
   const handle = (type: string, body: string, source?: string) => queue(() => handleOne(o, st, type, body, source))
   const sweepAll = () => { if (st.approver) for (const id of inst.ids()) void queue(() => st.approver!.sweep(id)).catch(e => log('github approve sweep failed', e)) }
   void inst.listed().then(sweepAll)
@@ -146,15 +146,17 @@ async function fixWaited(o: Options, st: State) {
 
 async function startFixes(o: Options, st: State, found: FixStart[], source?: string) {
   const starts = found.filter(s => s.live)
+  const once = (s: FixStart, text: string) => { if (!st.fixTold.has(s.thread)) { st.fixTold.add(s.thread); o.notify(text) } }
   for (const s of starts) {
     const now = Date.now()
     if (st.cap.full(now)) { if (st.cap.tell()) o.notify(ownerLines.githubOverCap(o.perHour, s.thread)); continue }
-    st.cap.add(now)
     const thread = await threadFor(o, st.threads, s)
-    if (!thread) { o.notify(ownerLines.githubNoThread(s.thread, s.url)); continue }
+    if (!thread) { once(s, ownerLines.githubNoThread(s.thread, s.url)); continue }
     const place = `GitHub ${s.thread}`
     const task = taskAsOwner({ content: s.content, meta: { channel: o.botDm, thread_ts: thread, place, permalink: s.url }, origin: { channel: o.botDm, ts: thread }, ...(source && { source }) })
-    if (o.deliver({ connector: 'slack', chat: o.botDm, thread, kind: 'dm' }, task, place) === 'failed') { o.notify(startFailedNote(place, o.startError?.())); continue }
+    if (o.deliver({ connector: 'slack', chat: o.botDm, thread, kind: 'dm' }, task, place) === 'failed') { once(s, startFailedNote(place, o.startError?.())); continue }
+    st.cap.add(now)
+    st.fixTold.delete(s.thread)
     s.began()
   }
   return starts.length > 0

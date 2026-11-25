@@ -192,9 +192,13 @@ test('a reviewer who approved or was dismissed during the wait starts nothing, a
   await f.handle('pull_request_review', asked)
   now = 20 * MIN
   assert.deepEqual(await f.due(), [])
+  reviews = [{ state: 'CHANGES_REQUESTED', user: { login: 'kim' } }, { state: 'DISMISSED', user: { login: 'kim' } }]
+  await f.handle('pull_request_review', asked)
+  now = 30 * MIN
+  assert.deepEqual(await f.due(), [])
   reviews = [{ state: 'APPROVED', user: { login: 'ana' } }, { state: 'CHANGES_REQUESTED', user: { login: 'kim' } }, { state: 'COMMENTED', user: { login: 'kim' } }]
   await f.handle('pull_request_review', asked)
-  now = 40 * MIN
+  now = 60 * MIN
   assert.equal((await f.due()).length, 1)
 })
 

@@ -267,3 +267,18 @@ test('with a wait set, the failed check starts no task at once, and the next rou
     assert.equal(t.tasks.length, 1)
   } finally { t.gh.close() }
 })
+
+test('a waited fix whose thread cannot open tells the owner once, uses up no hourly slot, and starts when the thread opens', async () => {
+  const t = await setup(0, 2, openStore(':memory:'), 0, 'on', 0.0001)
+  try {
+    let down = true
+    t.failPosts(() => down)
+    await t.send(redSuite, 'check_suite')
+    await new Promise(r => setTimeout(r, 30))
+    for (let i = 0; i < 4; i++) await t.gh.fixDue()
+    assert.equal(t.told.length, 1)
+    down = false
+    await t.gh.fixDue()
+    assert.equal(t.tasks.length, 1)
+  } finally { t.gh.close() }
+})
