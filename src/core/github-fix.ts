@@ -3,7 +3,7 @@ import { noChannelTag } from './text.ts'
 export type FixMode = 'shadow' | 'on'
 export const fixSetting = (set?: { mode?: 'off' | FixMode; perPr?: number }) => set?.mode && set.mode !== 'off' ? { mode: set.mode, perPr: set.perPr || 3 } : undefined
 type Reason = 'red checks' | 'changes requested'
-export type StuckEvent = { repo: string; installation: number; reason: Reason; sha: string; prs: number[]; said: string; by?: string }
+type StuckEvent = { repo: string; installation: number; reason: Reason; sha: string; prs: number[]; said: string; by?: string }
 export type StuckPull = { number: number; title: string; url: string; open: boolean; draft: boolean; fromFork: boolean; authorId: number | undefined; sha: string; branch: string; labels: string[] }
 export type FixSeen = { keys: string[]; tries: number }
 type FixVerdict = { start: true; key: string } | { start: false; why: string; spent?: true }

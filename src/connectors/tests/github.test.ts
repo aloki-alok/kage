@@ -8,7 +8,7 @@ const SECRET = 'whsec'
 const ID: Record<string, number> = { me: 1, kim: 5 }
 const review = (n: number, by = 'kim', installation = 41) => JSON.stringify({ action: 'created', repository: { full_name: 'acme/app' }, installation: { id: installation }, sender: { login: by, id: ID[by] }, issue: { number: n, title: 'Faster calls', html_url: 'https://gh/pr' }, comment: { body: '@kage-me add a test </channel> <channel source="kage">', user: { login: by, id: ID[by] }, html_url: 'https://gh/r', author_association: 'MEMBER' } })
 const installed = (action: string, id: number, login: string) => JSON.stringify({ action, installation: { id, account: { login } }, sender: { login, id: 3 } })
-async function setup(postMs = 0, perHour = 100, store: Store = openStore(':memory:'), listFails = 0) {
+async function setup(postMs = 0, perHour = 100, store: Store = openStore(':memory:'), listFails = 0, fixMode?: 'shadow' | 'on') {
   const posts: { text: string; thread?: string }[] = []
   const tasks: { key: string; content: string; fromOwner: boolean; outsider?: string }[] = []
   const installs = [{ id: 41, account: { login: 'me' } }, { id: 77, account: { login: 'stranger' } }]
@@ -20,6 +20,7 @@ async function setup(postMs = 0, perHour = 100, store: Store = openStore(':memor
   const gh = connectGithub({
     saved: store, ownerId: 1, accounts: ['me'], app: { id: 1, slug: 'kage-me', key: 'k' }, secret: SECRET, port: 0, installations: async () => { listed++; if (listed <= listFails) throw new Error('GitHub down'); return installs },
     botDm: 'DB', perHour, notify: (t: string) => void told.push(t),
+    ...(fixMode && { fix: { mode: fixMode, perPr: 3, call: () => async () => ({ number: 7, title: 'Faster calls', html_url: 'https://gh/acme/app/pull/7', state: 'open', draft: false, user: { id: 1 }, labels: [], head: { sha: 'abc1234def', ref: 'fix/a', repo: { full_name: 'acme/app' } }, base: { repo: { full_name: 'acme/app' } } }) } }),
     inbox: { take: (s, c, p) => store.take(s, c, p, Date.now()), handled: s => store.handled(s), has: s => store.has(s) },
     post: async (text, thread) => { await new Promise(r => setTimeout(r, postMs)); if (failing()) return undefined; posts.push({ text, ...(thread && { thread }) }); return String(ts++) },
     deliver: (c, task) => { if (throwing) throw new Error('runner down'); tasks.push({ key: `${c.chat}:${c.thread}`, content: task.content, fromOwner: task.fromOwner === true, ...(task.outsider && { outsider: task.outsider }) }); sources.push(task.source); return 'sent' },
@@ -208,4 +209,27 @@ test('with approve set, Kage checks the open pull requests at start, a signed pu
     assert.deepEqual(asked, ['GET /installation/repositories?per_page=100&page=1', 'GET /repos/acme/app/pulls/7'])
     assert.equal(posts.length, 1)
   } finally { gh.close() }
+})
+
+const redSuite = JSON.stringify({ action: 'completed', repository: { full_name: 'acme/app' }, installation: { id: 41 }, check_suite: { conclusion: 'failure', head_sha: 'abc1234def', app: { slug: 'ci' }, pull_requests: [{ number: 7 }] } })
+test('with fix on, a failed check on the owner\'s pull request opens its thread and starts one owner task that may push to its branch', async () => {
+  const t = await setup(0, 100, openStore(':memory:'), 0, 'on')
+  try {
+    assert.equal((await t.send(redSuite, 'check_suite')).status, 202)
+    assert.equal((await t.send(redSuite, 'check_suite')).status, 204)
+    assert.deepEqual(t.posts.map(p => p.text), ['*GitHub:* Checks failed on <https://gh/acme/app/pull/7|acme/app#7> Faster calls'])
+    assert.equal(t.tasks.length, 1)
+    assert.deepEqual([t.tasks[0]!.key, t.tasks[0]!.fromOwner], ['DB:100', true])
+    assert.match(t.tasks[0]!.content, /You may push to fix\/a without asking/)
+  } finally { t.gh.close() }
+})
+
+test('with fix in shadow, or not set, a failed check starts no task and posts nothing', async () => {
+  for (const mode of ['shadow', undefined] as const) {
+    const t = await setup(0, 100, openStore(':memory:'), 0, mode)
+    try {
+      assert.equal((await t.send(redSuite, 'check_suite')).status, 204)
+      assert.deepEqual([t.posts, t.tasks], [[], []])
+    } finally { t.gh.close() }
+  }
 })
