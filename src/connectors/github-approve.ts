@@ -12,8 +12,7 @@ type Options = {
   notify: (text: string) => void; queue: (job: () => Promise<unknown>) => void
   seen?: { load: () => Seen; save: (s: Seen) => void }; now?: () => number
 }
-type Listed = { number: number; draft?: boolean; user: { login: string }; head: { sha: string }; base: { ref: string }; updated_at: string }
-const STALE_MS = 14 * 86_400_000
+type Listed = { number: number; draft?: boolean; user: { login: string }; head: { sha: string }; base: { ref: string } }
 const SETTLED = new Set(['person', 'stop', 'skip'])
 const SEEN_MS = 86_400_000
 const digest = (text: string) => createHash('sha256').update(text).digest('hex').slice(0, 12)
@@ -65,9 +64,9 @@ function context(o: Options) {
   return ctx
 }
 
-async function act(ctx: Ctx, call: GithubCall, read: Awaited<ReturnType<typeof readPull>>, policy: ApprovePolicy, x: ApprovalVerdict) {
+async function act(ctx: Ctx, call: GithubCall, read: Awaited<ReturnType<typeof readPull>>, policy: ApprovePolicy, x: ApprovalVerdict, mayApprove: boolean) {
   const { facts: f, approvals, url } = read
-  if (x.kind === 'approve' && !approvals.some(a => a.sha === f.sha)) await call('POST', `/repos/${f.repo}/pulls/${f.number}/reviews`, { commit_id: f.sha, event: 'APPROVE', body: x.body })
+  if (x.kind === 'approve' && mayApprove && !approvals.some(a => a.sha === f.sha)) await call('POST', `/repos/${f.repo}/pulls/${f.number}/reviews`, { commit_id: f.sha, event: 'APPROVE', body: x.body })
   if (x.kind !== 'skip') await ctx.writeCheck(call, f.repo, checkRun(policy, f, x), read.own)
   const once = x.kind === 'person' && ctx.once(`${f.repo}#${f.number}@${f.sha}`)
   if (once && ctx.found) ctx.found.push(`${f.repo}#${f.number}: ${x.why} ${url}`)
@@ -76,7 +75,7 @@ async function act(ctx: Ctx, call: GithubCall, read: Awaited<ReturnType<typeof r
   if (f.open) await ctx.dismiss(call, f.repo, f.number, drop.map(a => a.id), f.sha)
 }
 
-async function checkOne(ctx: Ctx, installation: number, call: GithubCall, repo: string, n: number) {
+async function checkOne(ctx: Ctx, installation: number, call: GithubCall, repo: string, n: number, mayApprove = true) {
   const read = await readPull(call, repo, n, ctx.o.slug)
   const { facts: f } = read, sha = f.sha.slice(0, 7)
   if (read.moved) return void log(`github approve ${repo}#${n}@${sha}: skip (a newer commit landed while Kage read this one)`)
@@ -86,7 +85,7 @@ async function checkOne(ctx: Ctx, installation: number, call: GithubCall, repo: 
   if ('error' in loaded.policy) { log(`github approve: bad policy, ${loaded.policy.error}`); return ctx.tell(loaded.policy.error, ownerLines.githubBadPolicy(loaded.policy.error)) }
   const x = approvalVerdict(loaded.policy, f)
   log(`github approve ${repo}#${n}@${sha}: ${x.kind} ${x.code}${x.kind === 'approve' ? '' : ` (${x.why})`}`)
-  await act(ctx, call, read, loaded.policy, x)
+  await act(ctx, call, read, loaded.policy, x, mayApprove)
   if (SETTLED.has(x.kind) && x.code !== 'checks-failed') ctx.remember(repo, n, seenKey(f.sha, loaded.text, f.draft, f.base))
 }
 
@@ -104,9 +103,8 @@ async function sweepRepo(ctx: Ctx, installation: number, call: GithubCall, repo:
     if (!loaded || 'error' in loaded.policy || ctx.judged(repo, pr.number, seenKey(pr.head.sha, loaded.text, pr.draft === true, pr.base.ref))) continue
     try {
       const listed = loaded.policy.people.includes(pr.user.login.toLowerCase())
-      const fresh = (ctx.o.now ?? Date.now)() - Date.parse(pr.updated_at) < STALE_MS
-      const approvals = listed && fresh ? [] : await kageApprovals(call, repo, pr.number, ctx.bot)
-      if (listed && (fresh || approvals.length)) await checkOne(ctx, installation, call, repo, pr.number)
+      const approvals = await kageApprovals(call, repo, pr.number, ctx.bot)
+      if (listed && approvals.length) await checkOne(ctx, installation, call, repo, pr.number, false)
       else await leftAlone(ctx, call, repo, pr, loaded.text, approvals)
     } catch (e) { log(`github approve sweep ${repo}#${pr.number} failed`, e) }
   }
