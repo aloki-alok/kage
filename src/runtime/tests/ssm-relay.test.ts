@@ -123,6 +123,20 @@ describe('the SSM relay', () => {
     const c = await client(t.sock, header(token))
     assert.match(await c.until(/\n/), /^error: /)
   })
+  test("the owner's session in a teammate's thread gets a token, and the check at connect still decides each relay", async () => {
+    let ownerTurn = false
+    const t = setup({ trusted: () => ownerTurn })
+    assert.equal(t.relay.issue('C9:1.1'), undefined)
+    assert.equal(t.relay.issue('mail:abc', true), undefined)
+    const token = t.relay.issue('C9:1.1', true)!
+    assert.ok(token)
+    const refused = await client(t.sock, header(token))
+    assert.match(await refused.until(/\n/), /^error: no relay/)
+    ownerTurn = true
+    const ok = await client(t.sock, header(token))
+    assert.match(await ok.until(/^ok\n/), /^ok\n/)
+    ok.s.end()
+  })
   test('a dropped session token stops working', async () => {
     const t = setup()
     const token = t.relay.issue('C1:5.5')!

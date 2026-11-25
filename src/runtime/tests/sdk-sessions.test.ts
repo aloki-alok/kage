@@ -71,9 +71,9 @@ function setup(o: { saved?: Record<string, string>; transcript?: boolean; silent
     ownerMemory: o.ownerMemory ?? '/owner', ownMemory: '/own-memory',
     envFile: '/cfg/env',
     codeDir: '/code/kage', sandbox: owner => sandboxed(o.sandbox ?? true, owner), ...o.commandOutput !== undefined && { commandOutput: () => o.commandOutput! },
-    ssm: { sock: '/cfg/ssm.sock', shim: '/code/kage/cli/ssm-plugin-shim', issue: key => o.trusted?.includes(key) ? `tok-${key}` : undefined, drop: key => { dropped.push(key) } },
+    ssm: { sock: '/cfg/ssm.sock', shim: '/code/kage/cli/ssm-plugin-shim', issue: (key, owner) => owner || o.trusted?.includes(key) ? `tok-${key}` : undefined, drop: key => { dropped.push(key) } },
     readToken: 'read-test',
-    keys: { sock: '/cfg/keys.sock', issue: key => o.trusted?.includes(key) ? `key-${key}` : undefined, drop: key => { keysDropped.push(key) } },
+    keys: { sock: '/cfg/keys.sock', issue: (key, owner) => owner || o.trusted?.includes(key) ? `key-${key}` : undefined, drop: key => { keysDropped.push(key) } },
     restartMs: o.restartMs ?? 10,
     ...o.deferred && { deferred: approvals },
     onResult: (key, total, resumed, _limited, _error, used) => { results.push([key, total, resumed]); tokens.push(used); o.onResult?.(key, total, resumed, used) },
@@ -1268,6 +1268,30 @@ describe('Kage sessions on the Agent SDK', () => {
     assert.equal(other.env.KAGE_SSM_TOKEN, undefined)
     assert.equal(other.env.KAGE_SSM_SOCK, undefined)
     assert.equal(other.env.PATH, process.env.PATH, 'no token, no stand-in on PATH')
+  })
+  test("the owner's message in a teammate's thread reopens it with the relay tokens, and the relay is open only while a turn is the owner's alone", async () => {
+    const t = setup({ transcript: true })
+    t.d.task('C1:5.5', t.task({ fromOwner: false, content: 'Task from Sam: hi' }), 0)
+    await tick()
+    assert.equal(t.sdk.runs[0]!.options.env.KAGE_SSM_TOKEN, undefined)
+    assert.equal(t.s.ownerTurn('C1:5.5'), false)
+    t.sdk.runs[0]!.emit({ type: 'result', total_cost_usd: 1 })
+    await tick()
+    t.d.task('C1:5.5', t.task({ content: 'Task from the owner: deploy it' }), 1)
+    await tick(30)
+    assert.equal(t.sdk.runs[1]!.options.env.KAGE_SSM_TOKEN, 'tok-C1:5.5')
+    assert.equal(t.sdk.runs[1]!.options.env.KAGE_KEYS_TOKEN, 'key-C1:5.5')
+    assert.equal(t.s.ownerTurn('C1:5.5'), true)
+    t.sdk.runs[1]!.emit({ type: 'result', total_cost_usd: 1 })
+    await tick()
+    assert.equal(t.s.ownerTurn('C1:5.5'), false, 'an ended turn holds no relay')
+    t.d.task('C1:5.5', t.task({ content: 'Task from the owner: now deploy' }), 2)
+    await tick(30)
+    assert.equal(t.s.ownerTurn('C1:5.5'), true)
+    t.d.task('C1:5.5', t.task({ fromOwner: false, content: 'Task from Sam: and this' }), 3)
+    await tick()
+    assert.equal(t.s.ownerTurn('C1:5.5'), false, "a teammate's message in the turn closes the relay")
+    t.s.runner.stop('C1:5.5')
   })
   test("an owner thread's session gets the read token for kage status, a teammate's does not, and the owner key never enters a session", async () => {
     const t = setup()

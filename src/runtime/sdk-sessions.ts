@@ -62,9 +62,9 @@ export type SdkOptions = {
   onTool?: (key: string, tool: string, refused?: string) => void
   budgetOf?: (key: string) => number | undefined
   modelOf?: (key: string) => string | undefined
-  ssm?: { sock: string; shim: string; issue: (key: string) => string | undefined; drop: (key: string) => void }
+  ssm?: { sock: string; shim: string; issue: (key: string, ownerSession: boolean) => string | undefined; drop: (key: string) => void }
   deferred?: ReturnType<typeof deferredApprovals>
-  keys?: { sock: string; issue: (key: string) => string | undefined; drop: (key: string) => void }
+  keys?: { sock: string; issue: (key: string, ownerSession: boolean) => string | undefined; drop: (key: string) => void }
   restartMs?: number
   lean?: () => Lean | undefined
 }
@@ -105,8 +105,8 @@ function queryOptions(h: Hub, key: string, s: Session, full: boolean, resumed: b
   const grant = o.grantOf?.(key)
   const owners = !full && !s.connectors ? o.lean?.() : undefined
   const walled = protectConfig(o.envFile, o.codeDir, undefined, shellGrant(grant) ? 'kagelet' : o.sandbox?.(s.ownerThread) === true)
-  const ssmToken = grant ? undefined : o.ssm?.issue(key)
-  const keysToken = grant ? undefined : o.keys?.issue(key)
+  const ssmToken = grant ? undefined : o.ssm?.issue(key, s.ownerThread)
+  const keysToken = grant ? undefined : o.keys?.issue(key, s.ownerThread)
   const read = s.ownerThread && !grant && o.readToken ? { KAGE_READ_TOKEN: o.readToken } : {}
   return {
     ...o.options,
@@ -199,7 +199,8 @@ export function sdkSessions(o: SdkOptions) {
       return s.state !== 'idle'
     },
   }
-  return { runner, running: () => new Set([...sessions.values()].map(s => s.id)), usage: () => [...sessions.values()].find(s => s.run && !s.stopped)?.run!.q.usage_EXPERIMENTAL_MAY_CHANGE_DO_NOT_RELY_ON_THIS_API_YET({ skipBehaviors: true }) }
+  const ownerTurn = (key: string) => { const s = sessions.get(key); return !!s && !s.stopped && s.state !== 'idle' && s.sender === 'owner' }
+  return { runner, ownerTurn, running: () => new Set([...sessions.values()].map(s => s.id)), usage: () => [...sessions.values()].find(s => s.run && !s.stopped)?.run!.q.usage_EXPERIMENTAL_MAY_CHANGE_DO_NOT_RELY_ON_THIS_API_YET({ skipBehaviors: true }) }
 }
 
 

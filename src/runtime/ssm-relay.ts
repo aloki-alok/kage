@@ -63,8 +63,8 @@ export function ssmRelay(o: { path: string; trusted: (key: string) => boolean; l
   process.umask(mask)
   chmodSync(o.path, 0o600)
   return {
-    issue(key: string) {
-      if (!ssmEligible(key) || !o.trusted(key)) return
+    issue(key: string, ownerSession = false) {
+      if (!ssmEligible(key) || !(ownerSession || o.trusted(key))) return
       this.drop(key)
       const t = randomBytes(24).toString('hex')
       tokens.set(t, key); keyOf.set(key, t)

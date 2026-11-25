@@ -100,10 +100,10 @@ const COMMANDS = new Map<string, string>(Object.entries(conn.commands ?? {}))
 const store = openStore(`${DIR}/kage.db`)
 const deferred = deferredApprovals(store, v => ledgers.add('card-verdicts', cardVerdictCells(v)), () => kl.denyHoldDays ?? 7)
 const answerCard = (id: string, behavior: 'allow' | 'deny', always?: true) => answerDeferred(deferred, (key, task) => { if (toSession(key, task) === 'failed') failed(task) }, id, behavior, Date.now(), always && (c => kag.alwaysAllow(c.key, c.tool, c.input)))
-const SSM_SOCK = `${DIR}/ssm.sock`, SSM_SHIM = `${CODE}/src/cli/ssm-plugin-shim`
-const ssm = ssmRelay({ path: SSM_SOCK, plugin: findPlugin(undefined, [SSM_SHIM]), trusted: key => store.relayOk(key), log })
+const SSM_SOCK = `${DIR}/ssm.sock`, SSM_SHIM = `${CODE}/src/cli/ssm-plugin-shim`, relayOk = (key: string) => store.relayOk(key) || sdk?.ownerTurn(key) === true
+const ssm = ssmRelay({ path: SSM_SOCK, plugin: findPlugin(undefined, [SSM_SHIM]), trusted: relayOk, log })
 const KEYS_SOCK = `${DIR}/keys.sock`
-const keys = keyProxy({ path: KEYS_SOCK, routes: config.sessionKeys ?? {}, trusted: key => store.relayOk(key), log })
+const keys = keyProxy({ path: KEYS_SOCK, routes: config.sessionKeys ?? {}, trusted: relayOk, log })
 store.importState({ afk: `${DIR}/afk.json`, 'github-threads': `${DIR}/github-threads.json`, 'mail-threads': `${DIR}/mail-threads.json` })
 const ledgers = openLedgers(DIR, undefined, line => log(line), (name, cells) => { if (name === 'posted' && cells[3]) runs.posted(cells[3]) })
 const runs = runEvents(ledgers, randomUUID)
@@ -263,8 +263,8 @@ const sdk = sdkLib ? sdkSessions({
   ownerMemory: MEM.owner, ownMemory: MEM.own, sharedTools: config.sharedTools,
   envFile: ENV_FILE,
   codeDir: CODE, readToken: readToken(OWNER_KEY), sandbox: owner => sandboxed(config.harness?.sandbox, owner), commandOutput: () => config.harness?.commandOutputChars,
-  ssm: { sock: SSM_SOCK, shim: SSM_SHIM, issue: key => ssm.issue(key), drop: key => ssm.drop(key) },
-  keys: { sock: KEYS_SOCK, issue: key => keys.issue(key), drop: key => keys.drop(key) },
+  ssm: { sock: SSM_SOCK, shim: SSM_SHIM, issue: (key, owner) => ssm.issue(key, owner), drop: key => ssm.drop(key) },
+  keys: { sock: KEYS_SOCK, issue: (key, owner) => keys.issue(key, owner), drop: key => keys.drop(key) },
   onStart: () => store.saveSessions(d.saved()), lean: () => harness.leanSessions === false ? undefined : ownerClaude(),
   onResult: (key, total, resumed, limited, error, tokens) => {
     const usd = recordCost(key, total, resumed, tokens)
