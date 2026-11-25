@@ -4,6 +4,8 @@ import { noChannelTag } from '../core/text.ts'
 import { githubMention, installedOn } from '../core/github.ts'
 import { appInstallations, installationCall, type GithubCall } from './github-app.ts'
 import { approver } from './github-approve.ts'
+import { fixer, type FixStart } from './github-fix.ts'
+import type { FixMode } from '../core/github-fix.ts'
 import { signedSha256 } from '../core/signature.ts'
 import { slackPlain } from '../core/outbound.ts'
 import { hourCap, listen, readBody } from './webhook.ts'
@@ -26,10 +28,12 @@ type Options = {
   perHour: number
   inbox: Inbox
   approve?: { policyRepo: string; call?: (installation: number) => GithubCall }
+  fix?: { mode: FixMode; perPr: number; call?: (installation: number) => GithubCall }
 }
 type Installed = { action?: string; installation?: { id: number; account?: { login?: string } } }
 type Mention = NonNullable<ReturnType<typeof githubMention>>
-type State = { inst: ReturnType<typeof installs>; threads: Record<string, string>; cap: ReturnType<typeof hourCap>; approver?: ReturnType<typeof approver> }
+type Headed = Pick<Mention, 'thread' | 'headline' | 'url'>
+type State = { inst: ReturnType<typeof installs>; threads: Record<string, string>; cap: ReturnType<typeof hourCap>; approver?: ReturnType<typeof approver>; fixer?: ReturnType<typeof fixer> }
 type Run = (type: string, body: string, source?: string) => Promise<boolean>
 
 const SWEEP_MS = 3_600_000
@@ -42,7 +46,7 @@ export function connectGithub(o: Options) {
     chain = next.catch(() => {})
     return next
   }
-  const st: State = { inst, threads: (o.saved.load('github-threads') ?? {}) as Record<string, string>, cap: hourCap(o.perHour), ...(o.approve && { approver: approverFor(o, inst, queue) }) }
+  const st: State = { inst, threads: (o.saved.load('github-threads') ?? {}) as Record<string, string>, cap: hourCap(o.perHour), ...(o.approve && { approver: approverFor(o, inst, queue) }), ...(o.fix && { fixer: fixerFor(o, inst) }) }
   const handle = (type: string, body: string, source?: string) => queue(() => handleOne(o, st, type, body, source))
   const sweepAll = () => { if (st.approver) for (const id of inst.ids()) void queue(() => st.approver!.sweep(id)).catch(e => log('github approve sweep failed', e)) }
   void inst.listed().then(sweepAll)
@@ -64,6 +68,14 @@ function approverFor(o: Options, inst: ReturnType<typeof installs>, queue: (job:
     policyRepo: set.policyRepo, slug: o.app.slug, call: set.call ?? installationCall(o.app), allowed: inst.has, notify: o.notify,
     queue: job => void Promise.resolve(queue(job)).catch(e => log('github approve sweep failed', e)),
     seen: { load: () => (o.saved.load('github-approve-seen') ?? {}) as Record<string, string>, save: s => o.saved.save('github-approve-seen', s) },
+  })
+}
+
+function fixerFor(o: Options, inst: ReturnType<typeof installs>) {
+  const set = o.fix!
+  return fixer({
+    mode: set.mode, perPr: set.perPr, ownerId: o.ownerId, slug: o.app.slug, call: set.call ?? installationCall(o.app), allowed: inst.has, notify: o.notify,
+    seen: { load: () => (o.saved.load('github-fix-seen') ?? {}) as ReturnType<Parameters<typeof fixer>[0]['seen']['load']>, save: s => o.saved.save('github-fix-seen', s) },
   })
 }
 
@@ -92,8 +104,9 @@ async function handleOne(o: Options, st: State, type: string, body: string, sour
   await st.inst.retry()
   if (type === 'installation') { await st.inst.listed(); st.inst.changed(payload as Installed); return false }
   const approved = await approveOne(o, st, type, payload)
+  const fixing = await fixOne(o, st, type, payload, source)
   const e = githubMention(type, payload, { slug: o.app.slug, ownerId: o.ownerId })
-  if (!e) return approved
+  if (!e) return approved || fixing
   await st.inst.listed()
   if (e.installation === undefined || !st.inst.has(e.installation)) { log(`github dropped ${e.thread}: installation ${e.installation ?? 'none'} is not on ${o.accounts.join(', ')}`); return false }
   const now = Date.now()
@@ -115,7 +128,26 @@ async function approveOne(o: Options, st: State, type: string, payload: unknown)
   try { return await st.approver.handle(type, payload) } catch (e) { log('github approval check failed', e); o.notify(ownerLines.githubFailed(e)); return false }
 }
 
-async function threadFor(o: Options, threads: Record<string, string>, e: Mention) {
+async function fixOne(o: Options, st: State, type: string, payload: unknown, source?: string) {
+  if (!st.fixer) return false
+  await st.inst.listed()
+  let starts: FixStart[]
+  try { starts = (await st.fixer.handle(type, payload)).filter(s => s.live) } catch (e) { log('github fix failed', e); o.notify(ownerLines.githubFailed(e)); return false }
+  for (const s of starts) {
+    const now = Date.now()
+    if (st.cap.full(now)) { if (st.cap.tell()) o.notify(ownerLines.githubOverCap(o.perHour, s.thread)); continue }
+    st.cap.add(now)
+    const thread = await threadFor(o, st.threads, s)
+    if (!thread) { o.notify(ownerLines.githubNoThread(s.thread, s.url)); continue }
+    const place = `GitHub ${s.thread}`
+    const task = taskAsOwner({ content: s.content, meta: { channel: o.botDm, thread_ts: thread, place, permalink: s.url }, origin: { channel: o.botDm, ts: thread }, ...(source && { source }) })
+    if (o.deliver({ connector: 'slack', chat: o.botDm, thread, kind: 'dm' }, task, place) === 'failed') { o.notify(startFailedNote(place, o.startError?.())); continue }
+    s.began()
+  }
+  return starts.length > 0
+}
+
+async function threadFor(o: Options, threads: Record<string, string>, e: Headed) {
   const headline = slackPlain(e.headline), name = slackPlain(e.thread)
   const line = `*GitHub:* ${/^https:\/\/[^\s<>|]+$/.test(e.url) ? headline.replace(name, `<${e.url}|${name}>`) : headline}`
   const known = threads[e.thread]

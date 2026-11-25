@@ -375,6 +375,21 @@ Kage checks every open pull request on each installation when the hub starts, ev
 
 The app needs more access than `kage connector on github` gives it: Contents set to Read and write (GitHub counts an approval only from an account that can write, and the push history needs Contents), Checks set to Read and write (for the `Kage policy` check), Commit statuses set to Read, and the Check suite and Status events. Change them on the app's settings page, then accept them on each installation. Without Checks write, Kage still approves and DMs you once that the check is missing.
 
+## Fix your stuck pull requests
+
+`connectors.github.fix.mode` is `off` by default. Set to `on`, Kage starts a fix when one of your own pull requests cannot move:
+
+- A check suite fails or times out on the pull request's head commit.
+- A person the repo lists as owner, member or collaborator asks for changes in a review. A review from anyone else starts nothing.
+
+Kage starts nothing for a draft, a fork, a closed pull request, one with the `hold` label, or one somebody else opened. A failure on a commit the branch has moved past is ignored. Each commit gets one fix per reason, and each pull request gets `connectors.github.fix.perPr` fixes in all (3 by default), and closing it clears the count. After that Kage tells you once and stops.
+
+The fix runs as your own task, in that pull request's thread in your DM. The session may push to the pull request's branch without asking. It never merges, never force-pushes and never pushes to another branch. A review's text reaches it as quoted data, cut to 2,000 characters, not as instructions. A fix that could not start, because the hourly cap was full or the session failed to start, uses up no try and starts on the next event for that commit.
+
+Start with `kage config set connectors.github.fix.mode shadow`. Kage then starts nothing and writes one line per fix it would have started: `kage logs | grep "github fix"`. Set `on` when those lines match what you would want fixed.
+
+The app needs the Check suite and Pull request review events, the same ones approving uses.
+
 ## WhatsApp
 
 **Ban risk first:** WhatsApp's terms do not allow unofficial clients, so the number you link can be banned. Use it at your own risk, and link only a number you can afford to lose.
