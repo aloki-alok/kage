@@ -21,3 +21,15 @@ test('a bad jq filter, or --jq with no filter, is bad usage: exit 2', () => {
   assert.equal(bare.status, 2)
   assert.match(bare.stderr, /--jq takes a filter/)
 })
+
+test('a bad filter on rows too large for the pipe is still bad usage, though jq quits before it reads them', () => {
+  const r = run('printJson(Array.from({ length: 200000 }, (_, i) => ({ id: i })), ".[")')
+  assert.equal(r.status, 2, r.stderr.slice(0, 300))
+  assert.doesNotMatch(r.stderr, /needs jq on your PATH/)
+})
+
+test('with no jq on the PATH, --jq says how to get it', () => {
+  const r = spawnSync(process.execPath, ['--input-type=module', '-e', `import { printJson } from ${JSON.stringify(new URL('../output.ts', import.meta.url).pathname)}; printJson([1], '.')`], { encoding: 'utf8', env: { ...process.env, PATH: '/nonexistent' } })
+  assert.equal(r.status, 1)
+  assert.match(r.stderr, /needs jq on your PATH/)
+})
