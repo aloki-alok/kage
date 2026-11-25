@@ -4,21 +4,24 @@ import { approver } from '../github-approve.ts'
 import type { GithubCall } from '../github-app.ts'
 
 type Review = { id: number; state: string; commit_id: string; user: { login: string } }
-function fakeGithub(o: { head?: string; files?: string[]; checks?: { id: number; name: string; status: string; conclusion: string | null }[]; reviews?: Review[]; author?: string; required?: string[] } = {}) {
+function fakeGithub(o: { head?: string; movedTo?: string; statuses?: { context: string; state: string }[]; renamedFrom?: string; files?: string[]; checks?: { id: number; name: string; status: string; conclusion: string | null }[]; reviews?: Review[]; author?: string; required?: string[] } = {}) {
   const writes: { method: string; path: string; body?: Record<string, unknown> }[] = []
   const head = o.head ?? 'bbb2222'
   const pr = { number: 7, state: 'open', draft: false, user: { login: o.author ?? 'ana' }, html_url: 'https://gh/acme/app/pull/7', head: { sha: head, repo: { full_name: 'acme/app' } }, base: { ref: 'main', repo: { full_name: 'acme/app' } } }
   const routes: Record<string, unknown> = {
     '/repos/acme/app/pulls/7': pr,
     '/repos/acme/app/branches/main': { protected: true, protection: { required_status_checks: { contexts: o.required ?? ['build'] } } },
-    '/repos/acme/app/pulls/7/files?per_page=100&page=1': (o.files ?? ['docs/a.md']).map(filename => ({ filename })),
-    [`/repos/acme/app/commits/${head}/check-runs?per_page=100`]: { check_runs: o.checks ?? [{ id: 1, name: 'build', status: 'completed', conclusion: 'success' }] },
-    [`/repos/acme/app/commits/${head}/status`]: { statuses: [] },
-    '/repos/acme/app/pulls/7/reviews?per_page=100': o.reviews ?? [],
+    '/repos/acme/app/pulls/7/files?per_page=100&page=1': (o.files ?? ['docs/a.md']).map(filename => ({ filename, ...(o.renamedFrom && { previous_filename: o.renamedFrom }) })),
+    [`/repos/acme/app/commits/${head}/check-runs?per_page=100&page=1`]: { check_runs: o.checks ?? [{ id: 1, name: 'build', status: 'completed', conclusion: 'success' }] },
+    [`/repos/acme/app/commits/${head}/status`]: { statuses: o.statuses ?? [] },
+    '/repos/acme/app/pulls/7/reviews?per_page=100&page=1': o.reviews ?? [],
     [`/repos/acme/app/commits/${head}/pulls`]: [{ number: 7 }],
   }
+  let pullReads = 0
   const call: GithubCall = async (method, path, body) => {
     if (method !== 'GET') { writes.push({ method, path, ...(body && { body }) }); return {} }
+    if (path === '/repos/acme/app/pulls/7' && pullReads++ && o.movedTo) return { ...pr, head: { ...pr.head, sha: o.movedTo } }
+    if (/\/files\?per_page=100&page=\d+$/.test(path) && o.files?.length === 100) return o.files.map(filename => ({ filename }))
     if (!(path in routes)) throw new Error(`no route ${path}`)
     return routes[path]
   }
@@ -90,4 +93,33 @@ test('an event from an installation outside the allowed accounts reads and write
   const gh = fakeGithub()
   assert.equal(await setup(gh).a.handle('pull_request', { ...pushed, installation: { id: 77 } }), false)
   assert.deepEqual(gh.writes, [])
+})
+
+test('a file moved out of a high-risk path still counts as touching it', async () => {
+  const gh = fakeGithub({ files: ['src/billing.py'], renamedFrom: 'src/payments/billing.py' }), { a, told } = setup(gh)
+  await a.handle('pull_request', pushed)
+  assert.deepEqual(gh.writes, [])
+  assert.equal(told.length, 1)
+})
+
+test('a required check reported as a commit status counts, and a failed one blocks', async () => {
+  const pass = fakeGithub({ checks: [], statuses: [{ context: 'build', state: 'success' }] })
+  await setup(pass).a.handle('pull_request', pushed)
+  assert.equal(pass.writes[0]?.body?.event, 'APPROVE')
+  const fail = fakeGithub({ checks: [], statuses: [{ context: 'build', state: 'failure' }] })
+  await setup(fail).a.handle('pull_request', pushed)
+  assert.deepEqual(fail.writes, [])
+})
+
+test('a push that lands while Kage reads the pull request approves nothing, so the files and checks always belong to one commit', async () => {
+  const gh = fakeGithub({ movedTo: 'ccc3333' })
+  await setup(gh).a.handle('pull_request', pushed)
+  assert.deepEqual(gh.writes, [])
+})
+
+test('a pull request whose file list fills every page Kage reads goes to the owner, never to an approval', async () => {
+  const gh = fakeGithub({ files: Array.from({ length: 100 }, (_, i) => `docs/${i}.md`) }), { a, told } = setup(gh)
+  await a.handle('pull_request', pushed)
+  assert.deepEqual(gh.writes, [])
+  assert.match(told[0] ?? '', /more files than Kage reads/)
 })

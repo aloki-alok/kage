@@ -6,7 +6,7 @@ const policy = { authors: ['ana', 'Ben'], riskyPaths: ['**/payments/**', '**/mig
 const facts = (o: Partial<PrFacts> = {}): PrFacts => ({
   repo: 'acme/app', number: 7, sha: 'abc1234def', author: 'ana', open: true, draft: false, fromFork: false,
   baseProtected: true, requiredChecks: ['build'], checks: [{ name: 'build', result: 'pass' }, { name: 'lint', result: 'fail' }],
-  files: ['docs/a.md', 'src/x.ts'], approvedShas: [], ...o,
+  files: ['docs/a.md', 'src/x.ts'], filesCut: false, approvedShas: [], ...o,
 })
 
 test('a listed author with green required checks and no risky file gets an approval that names each gate', () => {
@@ -17,10 +17,6 @@ test('a listed author with green required checks and no risky file gets an appro
   assert.match(v.body, /Author: ana/)
   assert.match(v.body, /Required checks: build passed/)
   assert.match(v.body, /High-risk paths: none touched/)
-})
-
-test('a failing check the repo does not require does not hold the approval back', () => {
-  assert.equal(approvalVerdict(policy, facts()).kind, 'approve')
 })
 
 test('the author list matches GitHub logins without case', () => {
@@ -54,6 +50,10 @@ test('a file on a high-risk path goes to a human and names that file', () => {
   const v = approvalVerdict(policy, facts({ files: ['docs/a.md', 'billing/payments/charge.py'] }))
   assert.equal(v.kind, 'human')
   assert.match(v.kind === 'human' ? v.why : '', /billing\/payments\/charge\.py/)
+})
+
+test('a pull request with more files than Kage read goes to a human', () => {
+  assert.equal(approvalVerdict(policy, facts({ filesCut: true })).kind, 'human')
 })
 
 test('a high-risk file wins over a pending check, so the human hears at once', () => {

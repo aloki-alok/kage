@@ -6,7 +6,7 @@ export type PrFacts = {
   repo: string; number: number; sha: string; author: string
   open: boolean; draft: boolean; fromFork: boolean; baseProtected: boolean
   requiredChecks: string[]; checks: { name: string; result: CheckResult }[]
-  files: string[]; approvedShas: string[]
+  files: string[]; filesCut: boolean; approvedShas: string[]
 }
 export type ApprovalVerdict =
   | { kind: 'approve'; body: string }
@@ -58,6 +58,7 @@ export function approvalVerdict(policy: ApprovePolicy, f: PrFacts): ApprovalVerd
   const thread = `${f.repo}#${f.number}`
   const skip = notEligible(policy, f)
   if (skip) return { kind: 'skip', why: `${thread}: ${skip}` }
+  if (f.filesCut) return { kind: 'human', why: `${thread} changes more files than Kage reads, so it cannot rule out a high-risk path` }
   const risky = f.files.filter(file => policy.riskyPaths.some(p => matchesGlob(file, p)))
   if (risky.length) return { kind: 'human', why: `${thread} touches high-risk paths: ${risky.slice(0, 5).join(', ')}${risky.length > 5 ? ` and ${risky.length - 5} more` : ''}` }
   const { failed, waiting } = requiredState(f)
