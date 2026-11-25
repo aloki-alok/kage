@@ -3,7 +3,7 @@ import { parsePolicy } from '../core/github-policy.ts'
 import { GithubRefused, type GithubCall } from './github-app.ts'
 
 type Pull = {
-  number: number; state: string; draft?: boolean; user: { login: string }; html_url: string; additions?: number; deletions?: number
+  number: number; state: string; draft?: boolean; user: { login: string }; html_url: string; additions?: number; deletions?: number; auto_merge?: object | null
   head: { sha: string; ref: string; repo: { full_name: string } | null }; base: { ref: string; repo: { full_name: string } }
 }
 type Branch = { protected?: boolean; protection?: { required_status_checks?: { contexts?: string[] } } }
@@ -93,12 +93,13 @@ export async function kageApprovals(call: GithubCall, repo: string, n: number, b
 export async function readPull(call: GithubCall, repo: string, n: number, slug: string) {
   const pull = await call('GET', `/repos/${repo}/pulls/${n}`) as Pull
   const sha = pull.head.sha
-  const [required, files, checks, approvals, pushes] = await Promise.all([
+  const [required, files, checks, approvals, pushes, repoInfo] = await Promise.all([
     requiredChecks(call, repo, pull.base.ref),
     changedFiles(call, repo, n),
     commitChecks(call, repo, sha, slug),
     kageApprovals(call, repo, n, `${slug}[bot]`),
     branchPushers(call, repo, pull.head.ref, sha),
+    call('GET', `/repos/${repo}`) as Promise<{ allow_auto_merge?: boolean }>,
   ])
   const moved = (await call('GET', `/repos/${repo}/pulls/${n}`) as Pull).head.sha !== sha
   const facts: PrFacts = {
@@ -106,6 +107,7 @@ export async function readPull(call: GithubCall, repo: string, n: number, slug: 
     open: pull.state === 'open', draft: pull.draft === true, fromFork: pull.head.repo?.full_name !== pull.base.repo.full_name,
     baseProtected: required.protected, requiredChecks: required.names,
     checks: checks.checks, files: files.names, filesCut: files.cut, lines: (pull.additions ?? 0) + (pull.deletions ?? 0), ...pushes,
+    mergeQueued: Boolean(pull.auto_merge), queueable: repoInfo.allow_auto_merge === true,
   }
   return { facts, moved, url: pull.html_url, approvals, own: checks.own }
 }

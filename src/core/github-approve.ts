@@ -11,15 +11,16 @@ export type PrFacts = {
   open: boolean; draft: boolean; fromFork: boolean; baseProtected: boolean
   requiredChecks: string[]; checks: { name: string; result: CheckResult }[]
   files: string[]; filesCut: boolean; lines: number; pushers: string[] | undefined; headPushed: boolean
+  mergeQueued: boolean; queueable: boolean
 }
-type Kind = 'skip' | 'stop' | 'person' | 'wait' | 'approve'
+type Kind = 'skip' | 'stop' | 'person' | 'wait' | 'ready' | 'approve'
 export type ApprovalVerdict = { kind: Kind; code: string; why: string; fix: string; rule?: string; body?: string }
 type ApprovalEvent = { repo: string; installation: number } & ({ prs: number[] } | { sha: string })
 
 const short = (sha: string) => sha.slice(0, 7)
 const listOf = (items: string[], max = 5) => `${items.slice(0, max).join(', ')}${items.length > max ? ` and ${items.length - max} more` : ''}`
 const PERSON_FIX = 'A person other than the author approves it on GitHub.'
-const PR_ACTIONS = new Set(['opened', 'synchronize', 'reopened', 'ready_for_review', 'converted_to_draft', 'edited'])
+const PR_ACTIONS = new Set(['opened', 'synchronize', 'reopened', 'ready_for_review', 'converted_to_draft', 'edited', 'auto_merge_enabled', 'auto_merge_disabled'])
 
 type Raw = {
   action?: string; repository?: { full_name?: string }; installation?: { id?: number }; sha?: string; state?: string
@@ -78,6 +79,7 @@ export function approvalVerdict(policy: ApprovePolicy, f: PrFacts): ApprovalVerd
   const { failed, waiting } = requiredState(f)
   if (failed.length) return v('stop', 'checks-failed', `Required check failed: ${failed.join(', ')}.`, `Fix ${failed.join(', ')}. Kage checks again when they pass.`, rule.name)
   if (waiting.length) return v('wait', 'checks-pending', `Waiting on ${waiting.join(', ')}.`, 'Kage approves once they pass.', rule.name)
+  if (f.queueable && !f.mergeQueued) return v('ready', 'merge-not-queued', 'It passes the policy, and its merge is not queued.', 'Queue the merge with gh pr merge --auto, and Kage approves this commit.', rule.name)
   return { ...v('approve', 'approved', `Approved under rule "${rule.name}".`, '', rule.name), body: approvalBody(f, policy.source, rule.name) }
 }
 
@@ -95,7 +97,8 @@ function approvalBody(f: PrFacts, source: string, rule: string) {
 }
 
 const TITLES: Record<Kind, (x: ApprovalVerdict) => string> = {
-  approve: x => x.why, wait: () => 'Waiting on required checks', person: x => `Needs a person: ${x.why}`, stop: x => `Not approved: ${x.why}`, skip: x => x.why,
+  approve: x => x.why, wait: () => 'Waiting on required checks', ready: () => 'Passes: queue the merge and Kage approves',
+  person: x => `Needs a person: ${x.why}`, stop: x => `Not approved: ${x.why}`, skip: x => x.why,
 }
 
 export type CheckRun = {

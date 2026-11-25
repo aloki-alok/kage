@@ -71,7 +71,7 @@ async function act(ctx: Ctx, call: GithubCall, read: Awaited<ReturnType<typeof r
   const once = x.kind === 'person' && ctx.once(`${f.repo}#${f.number}@${f.sha}`)
   if (once && ctx.found) ctx.found.push(`${f.repo}#${f.number}: ${x.why} ${url}`)
   else if (once) ctx.o.notify(ownerLines.githubNeedsPerson(`${f.repo}#${f.number}: ${x.why}`, url))
-  const drop = x.kind === 'approve' ? [] : approvals.filter(a => x.kind !== 'wait' || a.sha !== f.sha)
+  const drop = x.kind === 'approve' || x.kind === 'ready' ? [] : approvals.filter(a => x.kind !== 'wait' || a.sha !== f.sha)
   if (f.open) await ctx.dismiss(call, f.repo, f.number, drop.map(a => a.id), f.sha)
 }
 
