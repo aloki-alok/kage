@@ -167,7 +167,7 @@ test('a GitHub 5xx on the approval tells the owner nothing, and one retry approv
 })
 
 test('a pull request GitHub keeps failing for every retry reaches the owner as one message per outage, naming it', async () => {
-  const { gh } = reviewsDown(500), s = setup(gh)
+  const { down, gh } = reviewsDown(500), s = setup(gh)
   await s.a.handle('pull_request', pushed)
   await runWaits(s)
   await s.a.handle('pull_request', pushed)
@@ -175,6 +175,25 @@ test('a pull request GitHub keeps failing for every retry reaches the owner as o
   assert.equal(s.told.length, 1)
   assert.match(s.told[0]!, /acme\/app#7/)
   assert.match(s.told[0]!, /500/)
+  down.on = false
+  await s.a.handle('pull_request', pushed)
+  down.on = true
+  await s.a.handle('pull_request', pushed)
+  await runWaits(s)
+  assert.equal(s.told.length, 2)
+})
+
+test('a retry that GitHub refuses with a 4xx tells the owner, and the next event checks the pull request again', async () => {
+  const refusing = { status: 502 }
+  const gh = fakeGithub({ refuse: (method, path) => method === 'POST' && path.endsWith('/reviews') ? refusing.status : undefined }), s = setup(gh)
+  await s.a.handle('pull_request', pushed)
+  refusing.status = 403
+  await runWaits(s)
+  assert.equal(s.told.length, 1)
+  assert.match(s.told[0]!, /403/)
+  const before = pullReads(gh)
+  await assert.rejects(s.a.handle('pull_request', pushed), /403/)
+  assert.ok(pullReads(gh) > before)
 })
 
 test('a GitHub 4xx on the approval is not retried, so the owner hears at once', async () => {
