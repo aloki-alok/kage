@@ -1,4 +1,4 @@
-import { fixTask, fixVerdict, stillRed, stuckEvent, type FixMode, type FixSeen, type StuckEvent, type StuckPull } from '../core/github-fix.ts'
+import { fixTask, fixVerdict, stillAsked, stillRed, stuckEvent, type FixMode, type FixSeen, type StuckEvent, type StuckPull } from '../core/github-fix.ts'
 import { ownerLines } from '../core/messages.ts'
 import { log } from '../runtime/log.ts'
 import type { GithubCall } from './github-app.ts'
@@ -55,26 +55,36 @@ async function judged(c: Ctx, call: GithubCall, e: StuckEvent, n: number): Promi
   return undefined
 }
 
-function start(c: Ctx, e: StuckEvent, j: Judged): FixStart {
+function start(c: Ctx, e: StuckEvent, j: Judged, waited?: string): FixStart {
   const began = () => {
     const was = c.seen[j.at]
     c.seen[j.at] = { keys: [...(was?.keys ?? []), j.key], tries: (was?.tries ?? 0) + 1 }
     c.keep()
+    if (waited) { delete c.waiting[waited]; c.keepWaiting() }
     log(`github fix ${c.live ? 'starts' : 'would start (shadow)'} ${j.at}@${e.sha.slice(0, 7)}: ${e.reason}`)
   }
   if (!c.live) began()
   return { ...fixTask(e, j.pull), live: c.live, began }
 }
 
-async function afterWait(c: Ctx, k: string): Promise<FixStart | undefined> {
-  const { e, n } = c.waiting[k]!, call = c.o.call(e.installation)
-  const j = await judged(c, call, e, n)
-  if (!j) return undefined
+async function stillStuck(c: Ctx, call: GithubCall, e: StuckEvent, n: number) {
   if (e.reason === 'red checks') {
     const got = await call('GET', `/repos/${e.repo}/commits/${e.sha}/check-suites?per_page=100`) as { check_suites?: Parameters<typeof stillRed>[0] }
-    if (!stillRed(got.check_suites ?? [], c.o.slug)) { log(`github fix skipped ${j.at}: its checks are no longer red`); return undefined }
+    return stillRed(got.check_suites ?? [], c.o.slug) ? undefined : 'its checks are no longer red'
   }
-  return start(c, e, j)
+  const reviews = await call('GET', `/repos/${e.repo}/pulls/${n}/reviews?per_page=100`) as Parameters<typeof stillAsked>[0]
+  return stillAsked(reviews, e.by ?? '') ? undefined : `${e.by} no longer asks for changes`
+}
+
+async function afterWait(c: Ctx, k: string): Promise<FixStart | undefined> {
+  const { e, n } = c.waiting[k]!
+  if (!c.o.allowed(e.installation)) { log(`github fix dropped ${e.repo}: installation ${e.installation} is not allowed`); return undefined }
+  const call = c.o.call(e.installation)
+  const j = await judged(c, call, e, n)
+  if (!j) return undefined
+  const moved = await stillStuck(c, call, e, n)
+  if (moved) { log(`github fix skipped ${j.at}: ${moved}`); return undefined }
+  return start(c, e, j, k)
 }
 
 async function heard(c: Ctx, e: StuckEvent): Promise<FixStart[]> {
@@ -106,15 +116,16 @@ export function fixer(o: Options) {
     async due(): Promise<FixStart[]> {
       const starts: FixStart[] = []
       for (const k of Object.keys(c.waiting).filter(k => c.waiting[k]!.due <= c.now())) {
+        const fresh = c.now() <= c.waiting[k]!.due + GIVE_UP_MS
         try {
           const s = await afterWait(c, k)
           if (s) starts.push(s)
+          if (s && fresh) continue
         } catch (err) {
           log(`github fix could not check ${k.split('|')[0]} after its wait`, err)
-          if (c.now() <= c.waiting[k]!.due + GIVE_UP_MS) continue
+          if (fresh) continue
         }
-        delete c.waiting[k]
-        c.keepWaiting()
+        if (c.waiting[k]) { delete c.waiting[k]; c.keepWaiting() }
       }
       return starts
     },

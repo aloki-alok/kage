@@ -21,6 +21,10 @@ const SAID_MAX = 2000
 const PLAIN_BRANCH = /^[\w./-]{1,200}$/
 const short = (sha: string) => sha.slice(0, 7)
 export const stillRed = (suites: { conclusion?: string | null; app?: { slug?: string } }[], slug: string) => suites.some(x => RED.has(x.conclusion ?? '') && x.app?.slug !== slug)
+export function stillAsked(reviews: { state?: string; user?: { login?: string } }[], by: string) {
+  const theirs = reviews.filter(r => r.user?.login === by && r.state !== 'COMMENTED')
+  return theirs.at(-1)?.state === 'CHANGES_REQUESTED'
+}
 const numbers = (list: (number | undefined)[]) => list.filter((n): n is number => typeof n === 'number')
 
 export function stuckEvent(type: string, raw: unknown, slug: string): StuckEvent | undefined {
