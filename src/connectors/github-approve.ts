@@ -17,7 +17,7 @@ const statusResult = (state: string): CheckResult => state === 'success' ? 'pass
 async function pages<T>(call: GithubCall, path: string, pick: (body: unknown) => T[] = b => b as T[]) {
   const all: T[] = []
   for (let page = 1; page <= MAX_PAGES; page++) {
-    const batch = pick(await call('GET', `${path}${path.includes('?') ? '&' : '?'}per_page=100&page=${page}`))
+    const batch = pick(await call('GET', `${path}?per_page=100&page=${page}`))
     all.push(...batch)
     if (batch.length < 100) return { all, cut: false }
   }

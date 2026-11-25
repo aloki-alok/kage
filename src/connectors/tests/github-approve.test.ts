@@ -123,3 +123,22 @@ test('a pull request whose file list fills every page Kage reads goes to the own
   assert.deepEqual(gh.writes, [])
   assert.match(told[0] ?? '', /more files than Kage reads/)
 })
+
+test('a required check and an approval of Kage on the second page are both seen', async () => {
+  const filler = Array.from({ length: 100 }, (_, i) => ({ id: 1000 + i, name: `job-${i}`, status: 'completed', conclusion: 'success' }))
+  const others = Array.from({ length: 100 }, (_, i) => ({ id: 2000 + i, state: 'COMMENTED', commit_id: 'bbb2222', user: { login: `p${i}` } }))
+  const late = fakeGithub({ checks: filler })
+  const page2 = async (method: 'GET' | 'POST' | 'PUT', path: string, body?: Record<string, unknown>) => {
+    if (path.endsWith('/check-runs?per_page=100&page=2')) return { check_runs: [{ id: 1, name: 'build', status: 'completed', conclusion: 'success' }] }
+    return late.call(method, path, body)
+  }
+  await approver({ policy, bot: 'kage-me[bot]', call: () => page2, allowed: () => true, notify: () => {} }).handle('pull_request', pushed)
+  assert.equal(late.writes[0]?.body?.event, 'APPROVE')
+  const seen = fakeGithub({ reviews: others })
+  const reviews2 = async (method: 'GET' | 'POST' | 'PUT', path: string, body?: Record<string, unknown>) => {
+    if (path.endsWith('/reviews?per_page=100&page=2')) return [{ id: 5, state: 'APPROVED', commit_id: 'bbb2222', user: { login: 'kage-me[bot]' } }]
+    return seen.call(method, path, body)
+  }
+  await approver({ policy, bot: 'kage-me[bot]', call: () => reviews2, allowed: () => true, notify: () => {} }).handle('pull_request', pushed)
+  assert.deepEqual(seen.writes, [])
+})
