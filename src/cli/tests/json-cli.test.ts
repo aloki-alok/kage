@@ -44,6 +44,12 @@ test('config list --json gives every setting, and config get --json one', () => 
   assert.ok(all.some(s => s.key === 'harness.maxSessions'))
   assert.deepEqual(Object.keys(json('config', 'get', 'harness.maxSessions') as object).sort(), ['default', 'key', 'text', 'value'])
 })
+test('stats --json gives the numbers behind kage stats', () => {
+  const s = json('stats', '3') as { days: number; perDay: unknown[]; runs: object }
+  assert.equal(s.days, 3)
+  assert.equal(s.perDay.length, 3)
+  assert.deepEqual(s.runs, { started: 0, ended: 0, refusals: 0 })
+})
 test('--json may come before the key or name', () => {
   for (const args of [['config', 'get', '--json', 'harness.maxSessions'], ['config', 'get', 'harness.maxSessions', '--jq', '.key'], ['cost', '--json', '7']]) {
     const r = kage(...args)

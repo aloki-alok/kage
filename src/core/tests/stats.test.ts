@@ -1,6 +1,6 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { statsLines } from '../stats.ts'
+import { statsData, statsLines } from '../stats.ts'
 import type { KageEvent } from '../events.ts'
 
 const DAY = 86_400_000
@@ -79,4 +79,27 @@ test('reports to the Kage repo: each outcome counted over the window, and no lin
   const one = statsLines({ days: 2, now, costs: [], events: [], boots: [], reports: row(now - 1000, 'denied') }).join('\n')
   assert.match(one, /^reports to the Kage repo: 1 denied$/m)
   assert.doesNotMatch(statsLines({ days: 2, now, costs: [{ at: now - 1, key: 'C0TEST1:1.1', usd: 1 }], events: [], boots: [], reports: row(now - 5 * DAY, 'filed') }).join('\n'), /reports/)
+})
+
+test('statsData gives the numbers behind the lines, for --json', () => {
+  const d = statsData({
+    days: 2, now,
+    costs: [
+      { at: now - 1000, key: 'C0TEST1:1.1', usd: 1.5, tokens: { input: 100, cacheWrite: 0, cacheRead: 900, output: 40, who: 'owner', model: 'claude-opus-5-5' } },
+      { at: now - DAY, key: 'mail:<a@x>', usd: 0.5 },
+    ],
+    events: [ev(now - 60_000, 'run.start', 't1'), ev(now - 30_000, 'run.end', 't1'), ev(now - 5000, 'refusal', 't1')],
+    boots: [now - 3600_000],
+  })
+  assert.equal(d.days, 2)
+  assert.equal(d.usd, 2)
+  assert.equal(d.turns, 2)
+  assert.deepEqual(d.perDay.map(p => [p.day.slice(5), p.usd, p.turns]), [['11-15', 1.5, 1], ['11-14', 0.5, 1]])
+  assert.deepEqual(d.byConnector, { slack: 1.5, email: 0.5 })
+  assert.deepEqual(d.tokens, { in: 1000, cacheRead: 900, out: 40, turns: 1, turnsBefore: 1, byKind: { owner: 1000 } })
+  assert.deepEqual(d.byModel, [{ model: 'claude-opus-5-5', usd: 1.5, turns: 1 }])
+  assert.deepEqual(d.runs, { started: 1, ended: 1, refusals: 1 })
+  assert.deepEqual(d.turnTimeMs, { p50: 30_000, p90: 30_000 })
+  assert.equal(d.hubStarts24h, 1)
+  assert.deepEqual(d.reports, {})
 })
