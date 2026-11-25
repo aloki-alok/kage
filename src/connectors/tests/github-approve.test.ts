@@ -54,10 +54,10 @@ function fakeGithub(o: Fake = {}) {
 const pushed = { repository: { full_name: 'acme/app' }, installation: { id: 41 }, action: 'synchronize', pull_request: { number: 7 } }
 
 function setup(gh: ReturnType<typeof fakeGithub>, call: GithubCall = gh.call) {
-  const told: string[] = [], queued: (() => Promise<unknown>)[] = []
+  const told: string[] = [], queued: (() => Promise<unknown>)[] = [], waits: { ms: number; job: () => void }[] = []
   let saved: Record<string, string> = {}
-  const a = approver({ policyRepo: 'policies', slug: 'kage-me', call: () => call, allowed: id => id === 41, notify: t => void told.push(t), queue: job => void queued.push(job), now: () => NOW, seen: { load: () => saved, save: s => { saved = { ...s } } } })
-  return { a, told, queued }
+  const a = approver({ policyRepo: 'policies', slug: 'kage-me', call: () => call, allowed: id => id === 41, notify: t => void told.push(t), queue: job => void queued.push(job), later: (ms, job) => void waits.push({ ms, job }), now: () => NOW, seen: { load: () => saved, save: s => { saved = { ...s } } } })
+  return { a, told, queued, waits }
 }
 
 test('a listed author with green required checks gets one approval on the head commit and a passing Kage policy check', async () => {
@@ -149,6 +149,57 @@ test('when GitHub refuses the check, Kage still approves and tells the owner onc
   assert.equal(gh.reviews().length, 2)
   assert.equal(told.length, 1)
   assert.match(told[0]!, /Checks: Read and write/)
+})
+
+const reviewsDown = (status: number, down = { on: true }) => ({ down, gh: fakeGithub({ refuse: (method, path) => down.on && method === 'POST' && path.endsWith('/reviews') ? status : undefined }) })
+const runWaits = async (s: ReturnType<typeof setup>) => {
+  while (s.waits.length) { s.waits.shift()!.job(); await s.queued.shift()!() }
+}
+
+test('a GitHub 5xx on the approval tells the owner nothing, and one retry approves the pull request once GitHub is back', async () => {
+  const { down, gh } = reviewsDown(502), s = setup(gh)
+  for (let i = 0; i < 3; i++) await s.a.handle('check_suite', { ...pushed, action: 'completed', check_suite: { pull_requests: [{ number: 7 }] } })
+  assert.deepEqual([s.told, s.waits.length, pullReads(gh)], [[], 1, 2])
+  down.on = false
+  await runWaits(s)
+  assert.deepEqual(gh.reviews().map(w => w.body?.commit_id), ['bbb2222'])
+  assert.deepEqual(s.told, [])
+})
+
+test('a pull request GitHub keeps failing for every retry reaches the owner as one message per outage, naming it', async () => {
+  const { down, gh } = reviewsDown(500), s = setup(gh)
+  await s.a.handle('pull_request', pushed)
+  await runWaits(s)
+  await s.a.handle('pull_request', pushed)
+  await runWaits(s)
+  assert.equal(s.told.length, 1)
+  assert.match(s.told[0]!, /acme\/app#7/)
+  assert.match(s.told[0]!, /500/)
+  down.on = false
+  await s.a.handle('pull_request', pushed)
+  down.on = true
+  await s.a.handle('pull_request', pushed)
+  await runWaits(s)
+  assert.equal(s.told.length, 2)
+})
+
+test('a retry that GitHub refuses with a 4xx tells the owner, and the next event checks the pull request again', async () => {
+  const refusing = { status: 502 }
+  const gh = fakeGithub({ refuse: (method, path) => method === 'POST' && path.endsWith('/reviews') ? refusing.status : undefined }), s = setup(gh)
+  await s.a.handle('pull_request', pushed)
+  refusing.status = 403
+  await runWaits(s)
+  assert.equal(s.told.length, 1)
+  assert.match(s.told[0]!, /403/)
+  const before = pullReads(gh)
+  await assert.rejects(s.a.handle('pull_request', pushed), /403/)
+  assert.ok(pullReads(gh) > before)
+})
+
+test('a GitHub 4xx on the approval is not retried, so the owner hears at once', async () => {
+  const { gh } = reviewsDown(422), s = setup(gh)
+  await assert.rejects(s.a.handle('pull_request', pushed), /422/)
+  assert.equal(s.waits.length, 0)
 })
 
 test('a settled status finds its pull request by commit', async () => {

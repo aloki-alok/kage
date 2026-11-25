@@ -16,6 +16,7 @@ const cases: [string, string][] = [
   [L.githubSweepNeedsPerson(['acme/app#7: It is big. https://gh/7']), 'Kage checked the open pull requests, and 1 need a person:\n• acme/app#7: It is big. https://gh/7'],
   [L.githubChecksDenied(), 'Kage approves pull requests, but GitHub refused its Kage policy check, so agents cannot read why a pull request waits. Give the GitHub App Checks: Read and write, then accept the new permission on each org.'],
   [L.githubBadPolicy('acme/policies kage-approve.json is not valid JSON'), 'Kage approves nothing under a broken policy file until it is fixed: acme/policies kage-approve.json is not valid JSON'],
+  [L.githubStillFailing(['acme/app#7', 'acme/web#3'], 'Error: GitHub answered 502 to POST /repos/acme/app/pulls/7/reviews'), 'GitHub kept failing for 15 minutes (Error: GitHub answered 502 to POST /repos/acme/app/pulls/7/reviews), so Kage has not approved acme/app#7, acme/web#3. The next push or finished check tries again.'],
   [L.githubFailed('x'.repeat(130)), `A GitHub event failed here (${'x'.repeat(120)}). It runs again if Kage restarts within 10 minutes; otherwise redeliver it from the app's Advanced page on GitHub.`],
   [L.meetingOverCap(5, 'Standup'), 'More than 5 meeting transcripts came in this hour, so I am skipping them. Send "Standup" again after the hour is up.'],
   [L.meetingNoThread('Standup'), 'Notes for the meeting "Standup" could not open a thread here. Send it again.'],

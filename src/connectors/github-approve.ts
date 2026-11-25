@@ -9,12 +9,14 @@ import { kageApprovals, loadPolicy, pages, readPull, type OwnRun } from './githu
 type Seen = Record<string, string>
 type Options = {
   policyRepo: string; slug: string; call: (installation: number) => GithubCall; allowed: (installation: number) => boolean
-  notify: (text: string) => void; queue: (job: () => Promise<unknown>) => void
+  notify: (text: string) => void; queue: (job: () => Promise<unknown>) => void; later?: (ms: number, job: () => void) => void
   seen?: { load: () => Seen; save: (s: Seen) => void }; now?: () => number
 }
 type Listed = { number: number; draft?: boolean; user: { login: string }; head: { sha: string }; base: { ref: string } }
 const SETTLED = new Set(['person', 'stop', 'skip'])
 const SEEN_MS = 86_400_000
+const RETRY_MS = [60_000, 240_000, 600_000]
+const githubDown = (e: unknown) => (e instanceof GithubRefused && e.status >= 500) || (e instanceof TypeError && e.message === 'fetch failed')
 const digest = (text: string) => createHash('sha256').update(text).digest('hex').slice(0, 12)
 const seenKey = (sha: string, policyText: string, draft: boolean, base: string) => `${sha}:${digest(policyText)}:${draft ? 'draft' : 'ready'}:${base}`
 
@@ -41,6 +43,7 @@ function context(o: Options) {
   const told = new Set<string>(), policies = new Map<string, string>(), seen: Seen = o.seen?.load() ?? {}
   const ctx = {
     o, bot: `${o.slug}[bot]`, writeCheck: checkWriter(o), found: undefined as string[] | undefined,
+    retrying: new Set<string>(), outageTold: false,
     remember(repo: string, n: number, key: string) { seen[`${repo}#${n}`] = `${key}|${(o.now ?? Date.now)()}`; o.seen?.save(seen) },
     judged(repo: string, n: number, key: string) {
       const [was, at] = (seen[`${repo}#${n}`] ?? '').split('|')
@@ -87,6 +90,32 @@ async function checkOne(ctx: Ctx, installation: number, call: GithubCall, repo: 
   log(`github approve ${repo}#${n}@${sha}: ${x.kind} ${x.code}${x.kind === 'approve' ? '' : ` (${x.why})`}`)
   await act(ctx, call, read, loaded.policy, x, mayApprove)
   if (SETTLED.has(x.kind) && x.code !== 'checks-failed') ctx.remember(repo, n, seenKey(f.sha, loaded.text, f.draft, f.base))
+}
+
+async function judge(ctx: Ctx, installation: number, call: GithubCall, repo: string, n: number, tries = 0): Promise<void> {
+  const key = `${repo}#${n}`
+  if (!tries && ctx.retrying.has(key)) return void log(`github approve ${key}: skip, a retry after a GitHub failure is already queued`)
+  try { await checkOne(ctx, installation, call, repo, n) } catch (e) {
+    if (!githubDown(e)) {
+      ctx.retrying.delete(key)
+      if (tries) return ctx.o.notify(ownerLines.githubFailed(e))
+      throw e
+    }
+    log(`github approve ${key}: GitHub is failing, try ${tries + 1} of ${RETRY_MS.length + 1}`, e)
+    if (tries === RETRY_MS.length) return gaveUp(ctx, key, e)
+    ctx.retrying.add(key)
+    const later = ctx.o.later ?? ((ms, job) => void setTimeout(job, ms).unref())
+    return later(RETRY_MS[tries]!, () => ctx.o.queue(() => judge(ctx, installation, call, repo, n, tries + 1)))
+  }
+  ctx.retrying.delete(key)
+  ctx.outageTold = false
+}
+
+function gaveUp(ctx: Ctx, key: string, e: unknown) {
+  ctx.retrying.delete(key)
+  if (ctx.outageTold) return
+  ctx.outageTold = true
+  ctx.o.notify(ownerLines.githubStillFailing([key, ...ctx.retrying], e))
 }
 
 async function leftAlone(ctx: Ctx, call: GithubCall, repo: string, pr: Listed, policyText: string, approvals: { id: number }[]) {
@@ -139,7 +168,7 @@ export function approver(o: Options) {
       if (!o.allowed(e.installation)) { log(`github approve dropped ${e.repo}: installation ${e.installation} is not allowed`); return false }
       const call = o.call(e.installation)
       const prs = 'prs' in e ? e.prs : (await call('GET', `/repos/${e.repo}/commits/${e.sha}/pulls`) as { number: number }[]).map(p => p.number)
-      for (const n of prs) await checkOne(ctx, e.installation, call, e.repo, n)
+      for (const n of prs) await judge(ctx, e.installation, call, e.repo, n)
       return prs.length > 0
     },
   }
