@@ -37,7 +37,7 @@ describe('kage <noun> <verb> runs, and an old name says its new one', () => {
   test('a group with no verb, or a verb with no target, is bad usage: exit 2 and the verbs it takes', () => {
     const bare = kage('thread')
     assert.equal(bare.status, 2)
-    assert.match(bare.stderr, /kage thread takes follow, attach, send, stop\./)
+    assert.match(bare.stderr, /kage thread takes list, follow, attach, send, stop\./)
     assert.equal(kage('thread', 'stop').status, 2)
     assert.equal(kage('kagelet', 'logs').status, 2)
   })
@@ -75,12 +75,12 @@ describe('kage <noun> <verb> runs, and an old name says its new one', () => {
     const script = kage('completion', 'bash').stdout
     const complete = (...words: string[]) => spawnSync('bash', ['-uc', `${script}\nCOMP_WORDS=(${words.map(w => `'${w}'`).join(' ')}); COMP_CWORD=${words.length - 1}; _kage; printf '%s\\n' "\${COMPREPLY[@]}"`], { encoding: 'utf8' }).stdout.trim().split('\n')
     assert.deepEqual(complete('kage', 'thr'), ['thread'])
-    assert.deepEqual(complete('kage', 'thread', '').sort(), ['attach', 'follow', 'send', 'stop'])
+    assert.deepEqual(complete('kage', 'thread', '').sort(), ['attach', 'follow', 'list', 'send', 'stop'])
     assert.ok(complete('kage', '').includes('doctor'))
   })
   test('kage completion zsh and fish print their scripts, and anything else is bad usage', () => {
     assert.match(kage('completion', 'zsh').stdout, /bashcompinit/)
-    assert.match(kage('completion', 'fish').stdout, /complete -c kage -f -n "__fish_seen_subcommand_from thread" -a "follow attach send stop"/)
+    assert.match(kage('completion', 'fish').stdout, /complete -c kage -f -n "__fish_seen_subcommand_from thread" -a "list follow attach send stop"/)
     assert.equal(kage('completion', 'tcsh').status, 2)
   })
   test('kagelet stop never falls through to a thread', () => {
