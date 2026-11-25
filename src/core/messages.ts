@@ -9,6 +9,7 @@ export const ownerLines = {
   githubNoThread: (thread: string, url: string) => `A GitHub event for ${thread} could not open its thread here: ${url || 'no link'}`,
   githubNeedsPerson: (why: string, url: string) => `${why.replace(/\.$/, '')}. Kage did not approve it, so a person reviews it: ${url || 'no link'}`,
   githubSweepNeedsPerson: (found: string[]) => `Kage checked the open pull requests, and ${found.length} need a person:\n${found.slice(0, 10).map(f => `• ${f}`).join('\n')}${found.length > 10 ? `\n• and ${found.length - 10} more, each with a Kage policy check that says why` : ''}`,
+  githubMergeRefused: (pr: string, why: string, url: string) => `Kage approved release ${pr} but could not merge it: ${why}. Merge it by hand: ${url || 'no link'}`,
   githubChecksDenied: () => 'Kage approves pull requests, but GitHub refused its Kage policy check, so agents cannot read why a pull request waits. Give the GitHub App Checks: Read and write, then accept the new permission on each org.',
   githubBadPolicy: (error: string) => `Kage approves nothing under a broken policy file until it is fixed: ${error}`,
   githubStillFailing: (prs: string[], e: unknown) => `GitHub kept failing for 15 minutes (${cut(e)}), so Kage has not approved ${prs.join(', ')}. The next push or finished check tries again.`,

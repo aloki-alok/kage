@@ -10,6 +10,7 @@ type Fake = {
   files?: string[]; checks?: Run[]; reviews?: Review[]; author?: string; required?: string[]; draft?: boolean
   activity?: { activity_type: string; actor: { login: string } | null; after?: string }[]; rules?: unknown[]; refuse?: (method: string, path: string) => number | undefined
   open?: { number: number; draft?: boolean; user: { login: string }; head: { sha: string }; base: { ref: string } }[]
+  branch?: string; labels?: string[]; repoSettings?: Record<string, boolean>
 }
 const POLICY = '{"people":["ana"],"rules":[{"name":"High-risk paths","anyFile":["**/payments/**"],"then":"person"},{"name":"Everything else","then":"approve"}]}'
 const NOW = Date.parse('2026-11-25T12:00:00Z')
@@ -18,7 +19,7 @@ const created = [{ activity_type: 'push', actor: { login: 'ana' }, after: 'bbb22
 function fakeGithub(o: Fake = {}) {
   const writes: { method: string; path: string; body?: Record<string, unknown> }[] = [], reads: string[] = []
   const head = o.head ?? 'bbb2222'
-  const pr = { number: 7, state: 'open', draft: o.draft ?? false, user: { login: o.author ?? 'ana' }, html_url: 'https://gh/acme/app/pull/7', additions: 3, deletions: 1, head: { sha: head, ref: 'fix/a', repo: { full_name: 'acme/app' } }, base: { ref: 'main', repo: { full_name: 'acme/app' } } }
+  const pr = { number: 7, state: 'open', draft: o.draft ?? false, user: { login: o.author ?? 'ana' }, html_url: 'https://gh/acme/app/pull/7', additions: 3, deletions: 1, head: { sha: head, ref: o.branch ?? 'fix/a', repo: { full_name: 'acme/app' } }, base: { ref: 'main', repo: { full_name: 'acme/app' } }, labels: (o.labels ?? []).map(name => ({ name })) }
   const routes: Record<string, unknown> = {
     '/repos/acme/app/pulls/7': pr,
     '/repos/acme/app/branches/main': { protected: true, protection: { required_status_checks: { contexts: o.required ?? ['build'] } } },
@@ -27,7 +28,8 @@ function fakeGithub(o: Fake = {}) {
     [`/repos/acme/app/commits/${head}/status`]: { statuses: o.statuses ?? [] },
     '/repos/acme/app/pulls/7/reviews?per_page=100&page=1': o.reviews ?? [],
     [`/repos/acme/app/commits/${head}/pulls`]: [{ number: 7 }],
-    '/repos/acme/app/activity?ref=refs%2Fheads%2Ffix%2Fa&per_page=100': o.activity ?? created,
+    [`/repos/acme/app/activity?ref=${encodeURIComponent(`refs/heads/${o.branch ?? 'fix/a'}`)}&per_page=100`]: o.activity ?? created,
+    '/repos/acme/app': o.repoSettings ?? { allow_squash_merge: true, allow_merge_commit: true },
     '/repos/acme/app/rules/branches/main?per_page=100&page=1': o.rules ?? [],
     '/installation/repositories?per_page=100&page=1': { repositories: [{ full_name: 'acme/app' }] },
     '/repos/acme/app/pulls?state=open&per_page=100&page=1': o.open ?? [{ number: 7, user: pr.user, head: { sha: head }, base: { ref: 'main' } }],
@@ -49,7 +51,7 @@ function fakeGithub(o: Fake = {}) {
     return routes[path]
   }
   const to = (end: string) => writes.filter(w => w.path.endsWith(end))
-  return { call, writes, reads, reviews: () => to('/reviews'), checks: () => writes.filter(w => w.path.includes('/check-runs')), dismissals: () => to('/dismissals') }
+  return { call, writes, reads, merges: () => to('/merge'), reviews: () => to('/reviews'), checks: () => writes.filter(w => w.path.includes('/check-runs')), dismissals: () => to('/dismissals') }
 }
 const pushed = { repository: { full_name: 'acme/app' }, installation: { id: 41 }, action: 'synchronize', pull_request: { number: 7 } }
 
@@ -377,4 +379,45 @@ test('a sweep leaves a new head unapproved even when Kage approved an older comm
   const gh = fakeGithub({ reviews: [{ id: 5, state: 'APPROVED', commit_id: 'aaa1111', user: { login: 'kage-me[bot]' } }] })
   await setup(gh).a.sweep(41)
   assert.deepEqual(gh.reviews(), [])
+})
+
+const RELEASES = '{"people":["ana","github-actions[bot]"],"rules":[{"name":"Releases","author":["github-actions[bot]"],"branch":["release-please--*"],"onlyFiles":["CHANGELOG.md"],"then":"merge"},{"name":"Everything else","then":"approve"}]}'
+const bot = { login: 'github-actions[bot]' }
+const release = (o: Fake = {}) => fakeGithub({
+  orgPolicy: RELEASES, author: bot.login, branch: 'release-please--branches--main', files: ['CHANGELOG.md'],
+  activity: [{ activity_type: 'push', actor: bot, after: 'bbb2222' }, { activity_type: 'branch_creation', actor: bot, after: 'aaa1111' }], ...o,
+})
+
+test('a release that passes its rule is approved, then merged at the commit Kage judged with the repo\'s squash method', async () => {
+  const gh = release(), { a } = setup(gh)
+  await a.handle('pull_request', pushed)
+  assert.deepEqual(gh.writes.filter(w => w.path.endsWith('/reviews') || w.path.endsWith('/merge')).map(w => w.path.split('/').pop()), ['reviews', 'merge'])
+  assert.deepEqual(gh.merges()[0], { method: 'PUT', path: '/repos/acme/app/pulls/7/merge', body: { sha: 'bbb2222', merge_method: 'squash' } })
+})
+
+test('a release in a repo that refuses squash merges with a merge commit', async () => {
+  const gh = release({ repoSettings: { allow_squash_merge: false, allow_merge_commit: true } }), { a } = setup(gh)
+  await a.handle('pull_request', pushed)
+  assert.equal(gh.merges()[0]!.body!.merge_method, 'merge')
+})
+
+test('an ordinary approval never merges', async () => {
+  const gh = fakeGithub({ orgPolicy: RELEASES }), { a } = setup(gh)
+  await a.handle('pull_request', pushed)
+  assert.deepEqual([gh.reviews().length, gh.merges().length], [1, 0])
+})
+
+test('a release with the hold label is neither approved nor merged, and drops the approval Kage gave it', async () => {
+  const gh = release({ labels: ['hold'], reviews: [{ id: 5, state: 'APPROVED', commit_id: 'bbb2222', user: { login: 'kage-me[bot]' } }] }), { a, told } = setup(gh)
+  await a.handle('pull_request', { ...pushed, action: 'labeled' })
+  assert.deepEqual([gh.reviews().length, gh.merges().length, gh.dismissals().length], [0, 0, 1])
+  assert.match(told.join('\n'), /hold label/)
+})
+
+test('a release GitHub will not merge tells the owner once, with the reason', async () => {
+  const gh = release({ refuse: (m, p) => (m === 'PUT' && p.endsWith('/merge') ? 405 : undefined) }), { a, told } = setup(gh)
+  await a.handle('pull_request', pushed)
+  await a.handle('pull_request', pushed)
+  assert.equal(told.filter(t => /could not merge/.test(t)).length, 1)
+  assert.match(told.join('\n'), /acme\/app#7/)
 })
