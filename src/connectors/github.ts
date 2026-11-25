@@ -32,15 +32,22 @@ type Mention = NonNullable<ReturnType<typeof githubMention>>
 type State = { inst: ReturnType<typeof installs>; threads: Record<string, string>; cap: ReturnType<typeof hourCap>; approver?: ReturnType<typeof approver> }
 type Run = (type: string, body: string, source?: string) => Promise<boolean>
 
+const SWEEP_MS = 3_600_000
+
 export function connectGithub(o: Options) {
   const inst = installs(o)
-  const st: State = { inst, threads: (o.saved.load('github-threads') ?? {}) as Record<string, string>, cap: hourCap(o.perHour), ...(o.approve && { approver: approver({ policyRepo: o.approve.policyRepo, bot: `${o.app.slug}[bot]`, call: o.approve.call ?? installationCall(o.app), allowed: inst.has, notify: o.notify }) }) }
   let chain: Promise<unknown> = Promise.resolve()
-  const handle = (type: string, body: string, source?: string) => {
-    const next = chain.then(() => handleOne(o, st, type, body, source))
+  const queue = <T>(job: () => Promise<T>) => {
+    const next = chain.then(job)
     chain = next.catch(() => {})
     return next
   }
+  const st: State = { inst, threads: (o.saved.load('github-threads') ?? {}) as Record<string, string>, cap: hourCap(o.perHour), ...(o.approve && { approver: approverFor(o, inst, queue) }) }
+  const handle = (type: string, body: string, source?: string) => queue(() => handleOne(o, st, type, body, source))
+  const sweepAll = () => { if (st.approver) for (const id of inst.ids()) void queue(() => st.approver!.sweep(id)).catch(e => log('github approve sweep failed', e)) }
+  void inst.listed().then(sweepAll)
+  const sweeps = setInterval(() => void inst.retry().then(sweepAll), SWEEP_MS)
+  sweeps.unref()
   const run = async (type: string, body: string, source?: string) => {
     const took = await handle(type, body, source)
     if (source) o.inbox.handled(source)
@@ -48,7 +55,16 @@ export function connectGithub(o: Options) {
   }
   const server = listen(githubRoute(o, run), o.port)
   const replay = async (source: string, payload: string) => { const { type, body } = JSON.parse(payload); return run(type, body, source) }
-  return { listening: server.listening, replay, close: () => server.close() }
+  return { listening: server.listening, replay, close: () => { clearInterval(sweeps); server.close() } }
+}
+
+function approverFor(o: Options, inst: ReturnType<typeof installs>, queue: (job: () => Promise<unknown>) => void) {
+  const set = o.approve!
+  return approver({
+    policyRepo: set.policyRepo, slug: o.app.slug, call: set.call ?? installationCall(o.app), allowed: inst.has, notify: o.notify,
+    queue: job => void Promise.resolve(queue(job)).catch(e => log('github approve sweep failed', e)),
+    seen: { load: () => (o.saved.load('github-approve-seen') ?? {}) as Record<string, string>, save: s => o.saved.save('github-approve-seen', s) },
+  })
 }
 
 function installs(o: Options) {
@@ -61,6 +77,7 @@ function installs(o: Options) {
     async retry() { if (!await listed) listed = refresh() },
     listed: () => listed,
     has: (id: number) => allowed.has(id),
+    ids: () => [...allowed],
     changed(p: Installed) {
       if (!p.installation) return
       if (p.action === 'deleted' || p.action === 'suspend') allowed.delete(p.installation.id)

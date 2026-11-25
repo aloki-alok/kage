@@ -1,110 +1,147 @@
-import { approvalEvent, approvalVerdict, ORG_POLICY, parsePolicy, REPO_POLICY, type CheckResult, type PrFacts } from '../core/github-approve.ts'
+import { createHash } from 'node:crypto'
+import { approvalEvent, approvalVerdict, checkRun, type ApprovalVerdict, type CheckRun } from '../core/github-approve.ts'
+import type { ApprovePolicy } from '../core/github-policy.ts'
 import { ownerLines } from '../core/messages.ts'
 import { log } from '../runtime/log.ts'
 import { GithubRefused, type GithubCall } from './github-app.ts'
+import { kageApprovals, loadPolicy, pages, readPull, type OwnRun } from './github-approve-read.ts'
 
-type Options = { policyRepo: string; bot: string; call: (installation: number) => GithubCall; allowed: (installation: number) => boolean; notify: (text: string) => void }
-type Pull = { number: number; state: string; draft?: boolean; user: { login: string }; html_url: string; head: { sha: string; repo: { full_name: string } | null }; base: { ref: string; repo: { full_name: string } } }
-type Branch = { protected?: boolean; protection?: { required_status_checks?: { contexts?: string[] } } }
-type Run = { id: number; name: string; status: string; conclusion: string | null }
-type Review = { id: number; state: string; commit_id: string; user: { login: string } | null }
-
-const PASS = new Set(['success', 'neutral', 'skipped'])
-const MAX_PAGES = 30
-const runResult = (r: Run): CheckResult => r.status !== 'completed' ? 'pending' : PASS.has(r.conclusion ?? '') ? 'pass' : 'fail'
-const statusResult = (state: string): CheckResult => state === 'success' ? 'pass' : state === 'pending' ? 'pending' : 'fail'
-
-async function pages<T>(call: GithubCall, path: string, pick: (body: unknown) => T[] = b => b as T[]) {
-  const all: T[] = []
-  for (let page = 1; page <= MAX_PAGES; page++) {
-    const batch = pick(await call('GET', `${path}?per_page=100&page=${page}`))
-    all.push(...batch)
-    if (batch.length < 100) return { all, cut: false }
-  }
-  return { all, cut: true }
+type Seen = Record<string, string>
+type Options = {
+  policyRepo: string; slug: string; call: (installation: number) => GithubCall; allowed: (installation: number) => boolean
+  notify: (text: string) => void; queue: (job: () => Promise<unknown>) => void
+  seen?: { load: () => Seen; save: (s: Seen) => void }; now?: () => number
 }
+type Listed = { number: number; draft?: boolean; user: { login: string }; head: { sha: string }; base: { ref: string }; updated_at: string }
+const STALE_MS = 14 * 86_400_000
+const SETTLED = new Set(['person', 'stop', 'skip'])
+const SEEN_MS = 86_400_000
+const digest = (text: string) => createHash('sha256').update(text).digest('hex').slice(0, 12)
+const seenKey = (sha: string, policyText: string, draft: boolean, base: string) => `${sha}:${digest(policyText)}:${draft ? 'draft' : 'ready'}:${base}`
 
-async function changedFiles(call: GithubCall, repo: string, n: number) {
-  const { all, cut } = await pages<{ filename: string; previous_filename?: string }>(call, `/repos/${repo}/pulls/${n}/files`)
-  return { names: all.flatMap(f => [f.filename, ...(f.previous_filename ? [f.previous_filename] : [])]), cut }
-}
-
-async function commitChecks(call: GithubCall, repo: string, sha: string) {
-  const [runs, status] = await Promise.all([
-    pages<Run>(call, `/repos/${repo}/commits/${sha}/check-runs`, b => (b as { check_runs: Run[] }).check_runs),
-    call('GET', `/repos/${repo}/commits/${sha}/status`) as Promise<{ statuses: { context: string; state: string }[] }>,
-  ])
-  const latest = new Map<string, CheckResult>()
-  for (const r of [...runs.all].sort((a, b) => b.id - a.id)) if (!latest.has(r.name)) latest.set(r.name, runResult(r))
-  for (const s of status.statuses) if (!latest.has(s.context)) latest.set(s.context, statusResult(s.state))
-  return [...latest].map(([name, result]) => ({ name, result }))
-}
-
-async function fileText(call: GithubCall, repo: string, path: string, ref?: string) {
-  try {
-    const got = await call('GET', `/repos/${repo}/contents/${path}${ref ? `?ref=${encodeURIComponent(ref)}` : ''}`) as { content?: string }
-    return Buffer.from(got.content ?? '', 'base64').toString('utf8')
-  } catch (e) {
-    if (e instanceof GithubRefused && e.status === 404) return undefined
-    throw e
+function checkWriter(o: Options) {
+  let told = false
+  return async (call: GithubCall, repo: string, run: CheckRun, own: OwnRun | undefined) => {
+    if (own && own.status === run.status && own.conclusion === (run.conclusion ?? null) && own.title === run.output.title) return
+    const { name: _name, head_sha: _sha, ...change } = run
+    const reopens = own?.status === 'completed' && run.status !== 'completed'
+    try {
+      if (own && !reopens) await call('PATCH', `/repos/${repo}/check-runs/${own.id}`, change)
+      else await call('POST', `/repos/${repo}/check-runs`, run)
+    } catch (e) {
+      if (!(e instanceof GithubRefused && e.status === 403)) throw e
+      log(`github approve: GitHub refused the Kage policy check on ${repo} (403), so Kage approves without it`)
+      if (!told) { told = true; o.notify(ownerLines.githubChecksDenied()) }
+    }
   }
 }
 
-async function loadPolicy(call: GithubCall, repo: string, base: string, policyRepo: string) {
-  const own = await fileText(call, repo, REPO_POLICY, base)
-  if (own !== undefined) return parsePolicy(own, `${repo} ${REPO_POLICY}`)
-  const orgRepo = `${repo.split('/')[0]}/${policyRepo}`
-  const org = await fileText(call, orgRepo, ORG_POLICY)
-  return org === undefined ? undefined : parsePolicy(org, `${orgRepo} ${ORG_POLICY}`)
+type Ctx = ReturnType<typeof context>
+
+function context(o: Options) {
+  const told = new Set<string>(), policies = new Map<string, string>(), seen: Seen = o.seen?.load() ?? {}
+  const ctx = {
+    o, bot: `${o.slug}[bot]`, writeCheck: checkWriter(o), found: undefined as string[] | undefined,
+    remember(repo: string, n: number, key: string) { seen[`${repo}#${n}`] = `${key}|${(o.now ?? Date.now)()}`; o.seen?.save(seen) },
+    judged(repo: string, n: number, key: string) {
+      const [was, at] = (seen[`${repo}#${n}`] ?? '').split('|')
+      return was === key && (o.now ?? Date.now)() - Number(at) < SEEN_MS
+    },
+    forgetClosed(repo: string, open: Set<number>) {
+      for (const k of Object.keys(seen)) if (k.startsWith(`${repo}#`) && !open.has(Number(k.slice(repo.length + 1)))) delete seen[k]
+      o.seen?.save(seen)
+    },
+    once(key: string) { const first = !told.has(key); told.add(key); return first },
+    tell(key: string, text: string) { if (ctx.once(key)) o.notify(text) },
+    async dismiss(call: GithubCall, repo: string, n: number, ids: number[], sha: string) {
+      for (const id of ids) await call('PUT', `/repos/${repo}/pulls/${n}/reviews/${id}/dismissals`, { event: 'DISMISS', message: `Kage does not approve commit ${sha.slice(0, 7)}. The Kage policy check says why.` })
+    },
+    policyChanged(installation: number, source: string, text: string) {
+      const before = policies.get(source)
+      policies.set(source, text)
+      if (before !== undefined && before !== text) o.queue(() => sweep(ctx, installation))
+    },
+  }
+  return ctx
 }
 
-async function readPull(call: GithubCall, repo: string, n: number, bot: string) {
-  const pull = await call('GET', `/repos/${repo}/pulls/${n}`) as Pull
-  const sha = pull.head.sha
-  const [branch, files, checks, reviews] = await Promise.all([
-    call('GET', `/repos/${repo}/branches/${encodeURIComponent(pull.base.ref)}`) as Promise<Branch>,
-    changedFiles(call, repo, n),
-    commitChecks(call, repo, sha),
-    pages<Review>(call, `/repos/${repo}/pulls/${n}/reviews`),
-  ])
-  const moved = (await call('GET', `/repos/${repo}/pulls/${n}`) as Pull).head.sha !== sha
-  const mine = reviews.all.filter(r => r.user?.login === bot && r.state === 'APPROVED')
-  const facts: PrFacts = {
-    repo, number: n, sha, author: pull.user.login, open: pull.state === 'open', draft: pull.draft === true,
-    fromFork: pull.head.repo?.full_name !== pull.base.repo.full_name, baseProtected: branch.protected === true,
-    requiredChecks: branch.protection?.required_status_checks?.contexts ?? [], checks, files: files.names, filesCut: files.cut, approvedShas: mine.map(r => r.commit_id),
+async function act(ctx: Ctx, call: GithubCall, read: Awaited<ReturnType<typeof readPull>>, policy: ApprovePolicy, x: ApprovalVerdict) {
+  const { facts: f, approvals, url } = read
+  if (x.kind === 'approve' && !approvals.some(a => a.sha === f.sha)) await call('POST', `/repos/${f.repo}/pulls/${f.number}/reviews`, { commit_id: f.sha, event: 'APPROVE', body: x.body })
+  if (x.kind !== 'skip') await ctx.writeCheck(call, f.repo, checkRun(policy, f, x), read.own)
+  const once = x.kind === 'person' && ctx.once(`${f.repo}#${f.number}@${f.sha}`)
+  if (once && ctx.found) ctx.found.push(`${f.repo}#${f.number}: ${x.why} ${url}`)
+  else if (once) ctx.o.notify(ownerLines.githubNeedsPerson(`${f.repo}#${f.number}: ${x.why}`, url))
+  const drop = x.kind === 'approve' ? [] : approvals.filter(a => x.kind !== 'wait' || a.sha !== f.sha)
+  if (f.open) await ctx.dismiss(call, f.repo, f.number, drop.map(a => a.id), f.sha)
+}
+
+async function checkOne(ctx: Ctx, installation: number, call: GithubCall, repo: string, n: number) {
+  const read = await readPull(call, repo, n, ctx.o.slug)
+  const { facts: f } = read, sha = f.sha.slice(0, 7)
+  if (read.moved) return void log(`github approve ${repo}#${n}@${sha}: skip (a newer commit landed while Kage read this one)`)
+  const loaded = await loadPolicy(call, repo, f.base, ctx.o.policyRepo)
+  if (!loaded) return void log(`github approve ${repo}#${n}@${sha}: skip (no policy file)`)
+  ctx.policyChanged(installation, `${loaded.source}@${f.base}`, loaded.text)
+  if ('error' in loaded.policy) { log(`github approve: bad policy, ${loaded.policy.error}`); return ctx.tell(loaded.policy.error, ownerLines.githubBadPolicy(loaded.policy.error)) }
+  const x = approvalVerdict(loaded.policy, f)
+  log(`github approve ${repo}#${n}@${sha}: ${x.kind} ${x.code}${x.kind === 'approve' ? '' : ` (${x.why})`}`)
+  await act(ctx, call, read, loaded.policy, x)
+  if (SETTLED.has(x.kind) && x.code !== 'checks-failed') ctx.remember(repo, n, seenKey(f.sha, loaded.text, f.draft, f.base))
+}
+
+async function leftAlone(ctx: Ctx, call: GithubCall, repo: string, pr: Listed, policyText: string, approvals: { id: number }[]) {
+  await ctx.dismiss(call, repo, pr.number, approvals.map(a => a.id), pr.head.sha)
+  ctx.remember(repo, pr.number, seenKey(pr.head.sha, policyText, pr.draft === true, pr.base.ref))
+}
+
+async function sweepRepo(ctx: Ctx, installation: number, call: GithubCall, repo: string) {
+  const open = (await pages<Listed>(call, `/repos/${repo}/pulls?state=open`)).all
+  const policyAt = new Map<string, Awaited<ReturnType<typeof loadPolicy>>>()
+  for (const pr of open) {
+    if (!policyAt.has(pr.base.ref)) policyAt.set(pr.base.ref, await loadPolicy(call, repo, pr.base.ref, ctx.o.policyRepo))
+    const loaded = policyAt.get(pr.base.ref)
+    if (!loaded || 'error' in loaded.policy || ctx.judged(repo, pr.number, seenKey(pr.head.sha, loaded.text, pr.draft === true, pr.base.ref))) continue
+    try {
+      const listed = loaded.policy.people.includes(pr.user.login.toLowerCase())
+      const fresh = (ctx.o.now ?? Date.now)() - Date.parse(pr.updated_at) < STALE_MS
+      const approvals = listed && fresh ? [] : await kageApprovals(call, repo, pr.number, ctx.bot)
+      if (listed && (fresh || approvals.length)) await checkOne(ctx, installation, call, repo, pr.number)
+      else await leftAlone(ctx, call, repo, pr, loaded.text, approvals)
+    } catch (e) { log(`github approve sweep ${repo}#${pr.number} failed`, e) }
   }
-  return { facts, moved, base: pull.base.ref, url: pull.html_url, stale: mine.filter(r => r.commit_id !== sha).map(r => r.id) }
+  ctx.forgetClosed(repo, new Set(open.map(pr => pr.number)))
+}
+
+async function sweep(ctx: Ctx, installation: number) {
+  if (!ctx.o.allowed(installation)) return
+  const call = ctx.o.call(installation)
+  ctx.found = []
+  try { await sweepRepos(ctx, installation, call) } finally {
+    if (ctx.found.length) ctx.o.notify(ownerLines.githubSweepNeedsPerson(ctx.found))
+    ctx.found = undefined
+  }
+}
+
+async function sweepRepos(ctx: Ctx, installation: number, call: GithubCall) {
+  const repos = (await pages<{ full_name: string; archived?: boolean }>(call, '/installation/repositories', b => (b as { repositories: { full_name: string; archived?: boolean }[] }).repositories)).all
+  for (const r of repos.filter(r => !r.archived)) {
+    try { await sweepRepo(ctx, installation, call, r.full_name) } catch (e) { log(`github approve sweep ${r.full_name} failed`, e) }
+  }
+  log(`github approve: checked the open pull requests of ${repos.length} repos on installation ${installation}`)
 }
 
 export function approver(o: Options) {
-  const told = new Set<string>()
-  const badPolicy = (error: string) => {
-    log(`github approve: bad policy, ${error}`)
-    if (!told.has(error)) { told.add(error); o.notify(ownerLines.githubBadPolicy(error)) }
-  }
-  const checkOne = async (call: GithubCall, repo: string, n: number) => {
-    const { facts, moved, base, url, stale } = await readPull(call, repo, n, o.bot)
-    const sha = facts.sha.slice(0, 7)
-    if (moved) return void log(`github approve ${repo}#${n}@${sha}: skip (a newer commit landed while Kage read this one)`)
-    const policy = await loadPolicy(call, repo, base, o.policyRepo)
-    if (!policy) return void log(`github approve ${repo}#${n}@${sha}: skip (no ${REPO_POLICY} here and no org ${ORG_POLICY})`)
-    if ('error' in policy) return badPolicy(policy.error)
-    const v = approvalVerdict(policy, facts)
-    log(`github approve ${repo}#${n}@${sha}: ${v.kind}${v.kind === 'approve' ? '' : ` (${v.why})`}`)
-    if (v.kind === 'approve') return void await call('POST', `/repos/${repo}/pulls/${n}/reviews`, { commit_id: facts.sha, event: 'APPROVE', body: v.body })
-    const key = `${repo}#${n}@${facts.sha}`
-    if (v.kind === 'human' && !told.has(key)) { told.add(key); o.notify(ownerLines.githubNeedsPerson(v.why, url)) }
-    if (facts.open) for (const id of stale) await call('PUT', `/repos/${repo}/pulls/${n}/reviews/${id}/dismissals`, { event: 'DISMISS', message: `Kage has not approved the new commit ${sha} yet.` })
-  }
+  const ctx = context(o)
   return {
+    sweep: (installation: number) => sweep(ctx, installation),
     async handle(type: string, raw: unknown) {
-      const e = approvalEvent(type, raw)
+      const e = approvalEvent(type, raw, o.slug)
       if (!e) return false
       if (!o.allowed(e.installation)) { log(`github approve dropped ${e.repo}: installation ${e.installation} is not allowed`); return false }
       const call = o.call(e.installation)
       const prs = 'prs' in e ? e.prs : (await call('GET', `/repos/${e.repo}/commits/${e.sha}/pulls`) as { number: number }[]).map(p => p.number)
-      for (const n of prs) await checkOne(call, e.repo, n)
+      for (const n of prs) await checkOne(ctx, e.installation, call, e.repo, n)
       return prs.length > 0
     },
   }
