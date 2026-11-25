@@ -557,7 +557,7 @@ test('a job missing every tool it needs runs no turn, on the clock, on a wake or
   t.s.tick(at('2026-11-03T10:16:00'))
   assert.deepEqual(t.sent, [], 'no model turn for a job that has none of its tools')
   assert.deepEqual(done, ['e1'], 'the wake is used up, so the inbox does not replay it forever')
-  assert.match(t.s.runNow('j1', at('2026-11-03T10:17:00')) ?? '', /j1 has none of the tools it needs.*slack_read_channel/)
+  assert.match(t.s.runNow('j1', at('2026-11-03T10:17:00')) ?? '', /j1 runs at a teammate.s trust, which has none of the tools it needs.*slack_read_channel/)
   assert.equal(t.sent.length, 0)
   t.store.setJobState('j1', { ...t.store.jobState('j1'), missing: [dial, kageRead] })
   t.s.tick(at('2026-11-03T10:30:05'))
@@ -565,6 +565,18 @@ test('a job missing every tool it needs runs no turn, on the clock, on a wake or
   t.store.setJobState('j1', { fails: 0 })
   t.s.tick(at('2026-11-03T10:45:05'))
   assert.equal(t.sent.length, 2)
+})
+test("a job whose runs get the owner's trust still runs with every tool marked missing, because that mark may be stale", () => {
+  const t = setup()
+  t.owner.add('C1:5.5')
+  const read = 'mcp__slack__slack_read_channel'
+  t.s.add('C1:5.5', { ...job, needs: [read] }, at('2026-11-03T10:01:00'))
+  t.s.add('C1:5.5', { ...job, id: 'once', recurring: false, cron: '15 10 3 11 *', needs: [read] }, at('2026-11-03T10:01:00'))
+  t.store.setJobState('j1', { fails: 0, missing: [read] })
+  t.store.setJobState('once', { fails: 0, missing: [read] })
+  t.s.tick(at('2026-11-03T10:15:05'))
+  assert.deepEqual(t.sent.map(x => x[1].job).sort(), ['j1', 'once'])
+  assert.ok(t.sent.every(x => x[1].fromOwner))
 })
 
 describe('a watch wakes when the thread goes quiet, not on the tick (#428)', () => {

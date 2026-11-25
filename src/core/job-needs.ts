@@ -33,7 +33,7 @@ export function needsChanges(jobs: NeedsJob[], live: Live): { id: string; missin
           ? `Job ${j.id} in ${j.place} needs ${missing.join(', ')}, but an event, watch or probe wake always runs with a teammate's trust, which loads none of your MCP tools, so its runs cannot do that step. To give it your tools, make it a clock job from your own DM with Kage.`
           : `Job ${j.id} in ${j.place} needs ${missing.join(', ')}, but its runs get a teammate's trust (a teammate asked for it, or wrote in its thread), which loads none of your MCP tools, so they cannot do that step. To give it your tools, set the job up again from your own DM with Kage.`
       : !missing.length && was.length ? `Job ${j.id} in ${j.place} has ${was.join(', ')} again.` : undefined
-    const skipped = dm && missing.length && toolless(j.needs, missing).length ? ` It has none of the tools it needs, so it runs no turn until one is back.` : ''
+    const skipped = dm && !owner && toolless(j.needs, missing).length ? ' It has none of the tools it needs, so it runs no turn.' : ''
     return [{ id: j.id, missing, ...dm && { dm: dm + skipped } }]
   })
 }
