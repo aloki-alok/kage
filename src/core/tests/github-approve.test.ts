@@ -14,7 +14,7 @@ const policy = parsePolicy(JSON.stringify({
 const facts = (o: Partial<PrFacts> = {}): PrFacts => ({
   repo: 'acme/app', number: 7, sha: 'abc1234def', author: 'ana', base: 'main', branch: 'fix/a', open: true, draft: false, fromFork: false,
   baseProtected: true, requiredChecks: ['build'], checks: [{ name: 'build', result: 'pass' }, { name: 'lint', result: 'fail' }],
-  files: ['docs/a.md', 'src/x.ts'], filesCut: false, lines: 12, pushers: ['ana'], headPushed: true, mergeQueued: false, queueable: false, ...o,
+  files: ['docs/a.md', 'src/x.ts'], filesCut: false, lines: 12, pushers: ['ana'], headPushed: true, ...o,
 })
 const verdict = (o: Partial<PrFacts> = {}, p = policy) => approvalVerdict(p, facts(o))
 
@@ -28,22 +28,6 @@ test('a listed author whose pushes are all listed, with green required checks, i
   assert.match(v.body ?? '', /^- Pushed by: ana$/m)
   assert.match(v.body ?? '', /^- Required checks: build passed$/m)
   assert.match(v.body ?? '', /^- Files: 2$/m)
-})
-
-test('where the repo allows auto-merge, a green pull request waits for its merge to be queued, so pushes while work goes on post no approval', () => {
-  const ready = verdict({ queueable: true })
-  assert.deepEqual([ready.kind, ready.code], ['ready', 'merge-not-queued'])
-  assert.match(ready.fix, /gh pr merge --auto/)
-  assert.equal(verdict({ queueable: true, mergeQueued: true }).kind, 'approve')
-  assert.equal(verdict({ queueable: true, checks: [{ name: 'build', result: 'fail' }] }).code, 'checks-failed')
-  assert.equal(verdict({ queueable: true, files: ['src/payments/x.ts'] }).kind, 'person')
-})
-
-test('a ready pull request gets a neutral check that says to queue the merge', () => {
-  const f = facts({ queueable: true })
-  const run = checkRun(policy, f, approvalVerdict(policy, f))
-  assert.deepEqual([run.status, run.conclusion], ['completed', 'neutral'])
-  assert.match(run.output.title, /queue the merge/)
 })
 
 test('people match without case', () => {
@@ -128,7 +112,7 @@ test('the check run carries the verdict as data an agent can read', () => {
 
 const at = { repository: { full_name: 'acme/app' }, installation: { id: 41 } }
 test('pull request changes, a finished check suite and a settled status each name what to check again', () => {
-  for (const action of ['opened', 'synchronize', 'reopened', 'ready_for_review', 'converted_to_draft', 'edited', 'auto_merge_enabled', 'auto_merge_disabled'])
+  for (const action of ['opened', 'synchronize', 'reopened', 'ready_for_review', 'converted_to_draft', 'edited'])
     assert.deepEqual(approvalEvent('pull_request', { ...at, action, pull_request: { number: 7 } }, 'kage-me'), { repo: 'acme/app', installation: 41, prs: [7] }, action)
   assert.deepEqual(approvalEvent('check_suite', { ...at, action: 'completed', check_suite: { app: { slug: 'ci' }, pull_requests: [{ number: 7 }, { number: 9 }] } }, 'kage-me'), { repo: 'acme/app', installation: 41, prs: [7, 9] })
   assert.deepEqual(approvalEvent('status', { ...at, sha: 'abc', state: 'success' }, 'kage-me'), { repo: 'acme/app', installation: 41, sha: 'abc' })

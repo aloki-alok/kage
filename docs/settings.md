@@ -344,7 +344,6 @@ Kage judges a pull request in this order:
 4. No policy file changed, and it has at most 3000 files.
 5. The first rule whose conditions all hold decides. `targets` matches the base branch, `anyFile` matches any changed file or the old name of a moved one, and `moreLinesThan` counts added plus deleted lines. A rule with no conditions always holds. `then` is `approve` or `person`. With no matching rule, Kage approves nothing.
 6. For `approve`, every check the base branch requires passed on the head commit, whether branch protection or a ruleset requires it. Checks the branch does not require are ignored.
-7. In a repo that allows auto-merge, the pull request's merge is queued (`gh pr merge --auto`, or the Enable auto-merge button). Until then the pull request is ready but not approved, so pushes while work goes on post no approval and send no email. Queuing the merge brings one approval, and GitHub merges once the checks pass. In a repo without auto-merge, Kage approves on green as soon as step 6 holds.
 
 Globs match case-sensitively, and a folder whose name starts with a dot counts like any other. A `person` verdict gets you one DM per commit. The approval names the policy file and the rule, and holds for that commit only. When a verdict on the head is anything but approve or waiting, Kage dismisses its own approvals, so GitHub blocks the merge again. Converting the pull request to a draft is the way to stop it.
 
@@ -359,7 +358,6 @@ Every pull request Kage judges gets a `Kage policy` check on its head commit, an
 Each `verdict` comes with one of these `code` values:
 
 - `approve`: `approved`. Kage approved the head commit.
-- `ready`: `merge-not-queued`. It passes the policy, and Kage approves once its merge is queued.
 - `wait`: `checks-pending` or `push-history-behind`. A required check has not finished, or GitHub has not logged the last push yet.
 - `stop`: `checks-failed`, `draft`, `fork`, `base-unprotected` or `no-rule`. Kage will not approve until the `fix` is done.
 - `person`: `rule`, `pusher-not-listed`, `pushes-unseen`, `policy-change` or `too-many-files`. A person reviews it.
