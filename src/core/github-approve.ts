@@ -18,8 +18,10 @@ type ApprovalEvent = { repo: string; installation: number } & ({ prs: number[] }
 
 const short = (sha: string) => sha.slice(0, 7)
 
-export const approvePolicy = (set?: { authors: string[]; riskyPaths?: string[] }): ApprovePolicy | undefined =>
-  set && { authors: set.authors, riskyPaths: set.riskyPaths ?? [] }
+const QUIET_MINUTES = 3
+
+export const approvePolicy = (set?: { authors: string[]; riskyPaths?: string[]; quietMinutes?: number }): { policy: ApprovePolicy; quietMs: number } | undefined =>
+  set && { policy: { authors: set.authors, riskyPaths: set.riskyPaths ?? [] }, quietMs: (set.quietMinutes ?? QUIET_MINUTES) * 60_000 }
 const PR_ACTIONS = new Set(['opened', 'synchronize', 'reopened', 'ready_for_review'])
 
 type Raw = {

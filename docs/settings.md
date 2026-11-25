@@ -323,7 +323,7 @@ Email is on when `connectors.email.address`, `connectors.email.queue` and `conne
 Kage can approve your team's pull requests as its GitHub App, so a branch that requires a review unblocks without a second paid seat. People still merge. Turn it on in `config.json`:
 
 ```json
-{ "connectors": { "github": { "approve": { "authors": ["<login>", "<login>"], "riskyPaths": ["**/migrations/**", "**/*payment*/**"] } } } }
+{ "connectors": { "github": { "approve": { "authors": ["<login>", "<login>"], "riskyPaths": ["**/migrations/**", "**/*payment*/**"], "quietMinutes": 3 } } } }
 ```
 
 On each new pull request, push and finished check, Kage approves the head commit when all of these hold:
@@ -334,7 +334,7 @@ On each new pull request, push and finished check, Kage approves the head commit
 4. Every check that branch requires passed on that commit. Checks the branch does not require are ignored.
 5. No changed file, or the old name of a moved file, matches a `riskyPaths` glob. Globs match case-sensitively.
 
-A matching file, or a pull request with more than 3000 files, gets you one DM per commit instead of an approval. The approval names each gate and holds for that commit only. When a newer commit is not approved, Kage dismisses its own older approval, so GitHub blocks the merge again.
+Kage approves a commit only once the pull request has had no newer commit for `quietMinutes` (3 by default, `0` approves at once), so a run of quick pushes ends in one approval. A Kage restart inside that wait drops it, and the next push or finished check starts it again. A matching file, or a pull request with more than 3000 files, gets you one DM per commit instead of an approval. The approval names each gate and holds for that commit only. When a newer commit is not approved, Kage dismisses its own older approval, so GitHub blocks the merge again.
 
 The app needs more access than `kage connector on github` gives it: Contents set to Read and write (GitHub counts an approval only from an account that can write), Checks and Commit statuses set to Read, and the Check suite and Status events. Change them on the app's settings page, then accept them on each installation.
 

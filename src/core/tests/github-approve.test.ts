@@ -75,8 +75,8 @@ test('a closed pull request, a check suite still running, a pending status or a 
   assert.equal(approvalEvent('pull_request', { action: 'opened', pull_request: { number: 7 } }), undefined)
 })
 
-test('approvals are off with no setting, and a setting with no globs approves with no high-risk paths', () => {
+test('approvals are off with no setting, and a setting with no globs or quiet period gets the defaults', () => {
   assert.equal(approvePolicy(undefined), undefined)
-  assert.deepEqual(approvePolicy({ authors: ['ana'] }), { authors: ['ana'], riskyPaths: [] })
-  assert.deepEqual(approvePolicy({ authors: ['ana'], riskyPaths: ['**/payments/**'] }), { authors: ['ana'], riskyPaths: ['**/payments/**'] })
+  assert.deepEqual(approvePolicy({ authors: ['ana'] }), { policy: { authors: ['ana'], riskyPaths: [] }, quietMs: 180_000 })
+  assert.deepEqual(approvePolicy({ authors: ['ana'], riskyPaths: ['**/payments/**'], quietMinutes: 0 }), { policy: { authors: ['ana'], riskyPaths: ['**/payments/**'] }, quietMs: 0 })
 })

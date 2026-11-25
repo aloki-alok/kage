@@ -142,3 +142,45 @@ test('a required check and an approval of Kage on the second page are both seen'
   await approver({ policy, bot: 'kage-me[bot]', call: () => reviews2, allowed: () => true, notify: () => {} }).handle('pull_request', pushed)
   assert.deepEqual(seen.writes, [])
 })
+
+function quietSetup(first: ReturnType<typeof fakeGithub>) {
+  let clock = 1_000_000, gh = first
+  const timers: { ms: number; run: () => void; cancelled: boolean }[] = []
+  const a = approver({
+    policy, bot: 'kage-me[bot]', call: () => (m, p, b) => gh.call(m, p, b), allowed: () => true, notify: () => {},
+    settle: { ms: 180_000, now: () => clock, later: (ms, run) => { const t = { ms, run, cancelled: false }; timers.push(t); return () => { t.cancelled = true } } },
+  })
+  return { a, timers, tick: (ms: number) => { clock += ms }, use: (next: ReturnType<typeof fakeGithub>) => { gh = next }, live: () => timers.filter(t => !t.cancelled) }
+}
+
+test('a commit that just landed waits out the quiet period, then gets one approval', async () => {
+  const gh = fakeGithub(), q = quietSetup(gh)
+  await q.a.handle('pull_request', pushed)
+  assert.equal(gh.writes.length, 0)
+  assert.deepEqual(q.live().map(t => t.ms), [180_000])
+  q.tick(180_000)
+  q.live()[0]!.run()
+  await q.a.idle()
+  assert.equal(gh.writes.length, 1)
+  assert.equal(gh.writes[0]!.body!.event, 'APPROVE')
+})
+
+test('pushes inside the quiet period collapse into one approval, on the newest commit', async () => {
+  const first = fakeGithub({ head: 'aaa1111' }), second = fakeGithub({ head: 'ccc3333' }), q = quietSetup(first)
+  await q.a.handle('pull_request', pushed)
+  q.tick(60_000)
+  q.use(second)
+  await q.a.handle('pull_request', pushed)
+  assert.equal(q.live().length, 1)
+  assert.equal(q.live()[0]!.ms, 180_000)
+  q.tick(180_000)
+  q.live()[0]!.run()
+  await q.a.idle()
+  assert.deepEqual([...first.writes, ...second.writes].map(w => [w.body?.event, w.body?.commit_id]), [['APPROVE', 'ccc3333']])
+})
+
+test('while a new commit waits, the approval Kage gave an older commit is dismissed at once', async () => {
+  const gh = fakeGithub({ reviews: [{ id: 5, state: 'APPROVED', commit_id: 'aaa1111', user: { login: 'kage-me[bot]' } }] }), q = quietSetup(gh)
+  await q.a.handle('pull_request', pushed)
+  assert.deepEqual(gh.writes.map(w => w.path), ['/repos/acme/app/pulls/7/reviews/5/dismissals'])
+})
