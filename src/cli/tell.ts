@@ -1,7 +1,9 @@
 #!/usr/bin/env node
 import { existsSync, readFileSync, statSync } from 'node:fs'
 import { DatabaseSync } from 'node:sqlite'
-import { repliesIn } from '../core/transcript.ts'
+import { whoOf } from '../core/events.ts'
+import { typedInTerminal } from '../core/task.ts'
+import { repliesIn, stepTime, userLineWith } from '../core/transcript.ts'
 import { askHub, DIR, notRunning, TRANSCRIPTS } from './home.ts'
 import { pickThread } from './pick-thread.ts'
 
@@ -34,21 +36,26 @@ if (!r.ok) { console.error(`Could not tell ${place}: ${r.refused}.`); process.ex
 console.error(r.held ? `Told ${place}. It is open in kage thread attach, so it reads this when you quit there.` : `Told ${place}.`)
 if (!wait) process.exit(0)
 
-function newReplies(file: string) {
+function newLines(file: string) {
   if (!file) return []
   const from = read.get(file) ?? 0, size = sizeOf(file)
   if (size <= from) return []
   const chunk = readFileSync(file).subarray(from, size).toString('utf8')
   const done = chunk.lastIndexOf('\n') + 1
   read.set(file, from + Buffer.byteLength(chunk.slice(0, done)))
-  return chunk.slice(0, done).split('\n').flatMap(repliesIn)
+  return chunk.slice(0, done).split('\n').filter(Boolean)
 }
+const mine = typedInTerminal(text.split('\n')[0]!)
+let readAt: string | undefined
 function step(): boolean {
-  const ended = db.prepare("select transcript from events where id > ? and kind = 'run.end' and who = ? order by id limit 1").get(startId, key) as { transcript: string } | undefined
+  const ended = readAt ? db.prepare("select transcript from events where id > ? and kind = 'run.end' and who = ? and at >= ? order by id limit 1").get(startId, whoOf(key), readAt) as { transcript: string } | undefined : undefined
   for (const file of new Set([fileOf(), ...ended?.transcript ? [ended.transcript] : []])) {
-    for (const reply of newReplies(file)) {
+    for (const raw of newLines(file)) {
+      if (!readAt) { if (userLineWith(raw, mine)) readAt = new Date(stepTime(raw) ?? Date.now()).toISOString(); continue }
+      for (const reply of repliesIn(raw)) {
       console.log(reply.text)
-      if (reply.asksOwner) { console.error(`${place} waits on your answer: ${reply.asksOwner}\nAnswer with kage thread send ${key} <text>.`); return true }
+        if (reply.asksOwner) { console.error(`${place} waits on your answer: ${reply.asksOwner}\nAnswer with kage thread send ${key} <text>.`); return true }
+      }
     }
   }
   return Boolean(ended)

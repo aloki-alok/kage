@@ -68,3 +68,12 @@ export function repliesIn(raw: string): { text: string; asksOwner?: string }[] {
     return [{ text: b.input.text, ...ask && { asksOwner: ask } }]
   })
 }
+
+export function userLineWith(raw: string, words: string): boolean {
+  let r: { type?: string; message?: { content?: unknown } }
+  try { r = JSON.parse(raw) } catch { return false }
+  if (r.type !== 'user') return false
+  const c = r.message?.content
+  const text = typeof c === 'string' ? c : Array.isArray(c) ? c.map((b: { text?: unknown }) => typeof b?.text === 'string' ? b.text : '').join('\n') : ''
+  return text.includes(words)
+}
