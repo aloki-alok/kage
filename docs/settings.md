@@ -364,7 +364,7 @@ Each `verdict` comes with one of these `code` values:
 
 ### Pull requests already open
 
-Kage checks every open pull request on each installation when the hub starts, every hour, and as soon as it reads a changed policy file. So an event missed while Kage was down, or a rule you just added, reaches the pull requests already open. A pull request it already judged on the same commit, policy, draft state and base in the last day is skipped, so a check after a restart mostly lists the pull requests. One it approved is judged every time. A pull request untouched for 14 days gets no new approval this way, only a dismissal of an approval that no longer holds. It waits for its next push. The pull requests one round finds that need a person come to you as one DM.
+Kage checks every open pull request on each installation when the hub starts, every hour, and as soon as it reads a changed policy file. This round never approves anything. It judges again only the pull requests Kage approved, and drops an approval that no longer holds: an outside push, a check that failed while Kage was down, a draft, or a new rule that asks for a person. New approvals come only from a push or a finished check on the pull request itself. So a pull request whose events Kage missed waits for its next push or check. The pull requests one round sends to a person come to you as one DM.
 
 ### Permissions
 
