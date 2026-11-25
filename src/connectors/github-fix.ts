@@ -14,7 +14,7 @@ type RawPull = {
   head: { sha: string; ref: string; repo?: { full_name?: string } | null }; base: { repo?: { full_name?: string } }
 }
 type Closed = { action?: string; repository?: { full_name?: string }; pull_request?: { number?: number } }
-export type FixStart = ReturnType<typeof fixTask> & { live: boolean }
+export type FixStart = ReturnType<typeof fixTask> & { live: boolean; began: () => void }
 
 const stuckPull = (p: RawPull): StuckPull => ({
   number: p.number, title: p.title ?? '', url: p.html_url ?? '', open: p.state === 'open', draft: p.draft === true,
@@ -45,10 +45,14 @@ export function fixer(o: Options) {
           if (v.spent && was && !was.told) { was.told = true; keep(); o.notify(ownerLines.githubFixSpent(at, was.tries, pull.url)) }
           continue
         }
-        seen[at] = { keys: [...(was?.keys ?? []), v.key], tries: (was?.tries ?? 0) + 1 }
-        keep()
-        log(`github fix ${live ? 'starts' : 'would start (shadow)'} ${at}@${e.sha.slice(0, 7)}: ${e.reason}`)
-        starts.push({ ...fixTask(e, pull), live })
+        const began = () => {
+          const now = seen[at]
+          seen[at] = { keys: [...(now?.keys ?? []), v.key], tries: (now?.tries ?? 0) + 1 }
+          keep()
+          log(`github fix ${live ? 'starts' : 'would start (shadow)'} ${at}@${e.sha.slice(0, 7)}: ${e.reason}`)
+        }
+        if (!live) began()
+        starts.push({ ...fixTask(e, pull), live, began })
       }
       return starts
     },

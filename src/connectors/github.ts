@@ -141,7 +141,8 @@ async function fixOne(o: Options, st: State, type: string, payload: unknown, sou
     if (!thread) { o.notify(ownerLines.githubNoThread(s.thread, s.url)); continue }
     const place = `GitHub ${s.thread}`
     const task = taskAsOwner({ content: s.content, meta: { channel: o.botDm, thread_ts: thread, place, permalink: s.url }, origin: { channel: o.botDm, ts: thread }, ...(source && { source }) })
-    if (o.deliver({ connector: 'slack', chat: o.botDm, thread, kind: 'dm' }, task, place) === 'failed') o.notify(startFailedNote(place, o.startError?.()))
+    if (o.deliver({ connector: 'slack', chat: o.botDm, thread, kind: 'dm' }, task, place) === 'failed') { o.notify(startFailedNote(place, o.startError?.())); continue }
+    s.began()
   }
   return starts.length > 0
 }

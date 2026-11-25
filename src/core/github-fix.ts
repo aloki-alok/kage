@@ -11,11 +11,14 @@ type FixVerdict = { start: true; key: string } | { start: false; why: string; sp
 type Raw = {
   action?: string; repository?: { full_name?: string }; installation?: { id?: number }; pull_request?: { number?: number }
   check_suite?: { conclusion?: string | null; head_sha?: string; app?: { slug?: string }; pull_requests?: { number?: number }[] }
-  review?: { state?: string; commit_id?: string; body?: string | null; user?: { login?: string; type?: string } }
+  review?: { state?: string; commit_id?: string; body?: string | null; author_association?: string; user?: { login?: string; type?: string } }
 }
 
 const RED = new Set(['failure', 'timed_out'])
 const HOLD = 'hold'
+const TRUSTED = new Set(['OWNER', 'MEMBER', 'COLLABORATOR'])
+const SAID_MAX = 2000
+const PLAIN_BRANCH = /^[\w./-]{1,200}$/
 const short = (sha: string) => sha.slice(0, 7)
 const numbers = (list: (number | undefined)[]) => list.filter((n): n is number => typeof n === 'number')
 
@@ -26,8 +29,8 @@ export function stuckEvent(type: string, raw: unknown, slug: string): StuckEvent
   if (type === 'check_suite' && p.action === 'completed' && suite?.head_sha && RED.has(suite.conclusion ?? '') && suite.app?.slug !== slug) {
     return { repo, installation, reason: 'red checks', sha: suite.head_sha, prs: numbers((suite.pull_requests ?? []).map(x => x.number)), said: '' }
   }
-  if (type === 'pull_request_review' && p.action === 'submitted' && review?.state === 'changes_requested' && review.commit_id && review.user?.type !== 'Bot') {
-    return { repo, installation, reason: 'changes requested', sha: review.commit_id, prs: numbers([p.pull_request?.number]), said: (review.body ?? '').trim(), by: review.user?.login ?? 'someone' }
+  if (type === 'pull_request_review' && p.action === 'submitted' && review?.state === 'changes_requested' && review.commit_id && review.user?.type !== 'Bot' && TRUSTED.has(review.author_association ?? '')) {
+    return { repo, installation, reason: 'changes requested', sha: review.commit_id, prs: numbers([p.pull_request?.number]), said: (review.body ?? '').trim().slice(0, SAID_MAX), by: review.user?.login ?? 'someone' }
   }
   return undefined
 }
@@ -39,6 +42,7 @@ export function fixVerdict(e: StuckEvent, pull: StuckPull, o: { ownerId: number;
   if (pull.labels.some(l => l.toLowerCase() === HOLD)) return no('it has the hold label')
   if (pull.fromFork) return no('it comes from a fork')
   if (pull.authorId !== o.ownerId) return no('the owner did not open it')
+  if (!PLAIN_BRANCH.test(pull.branch)) return no('its branch name has characters Kage does not put in a task')
   if (pull.sha !== e.sha) return no(`commit ${short(e.sha)} is no longer its head`)
   const key = `${e.sha}:${e.reason}`
   if (seen?.keys.includes(key)) return no(`a fix already started for this on commit ${short(e.sha)}`)

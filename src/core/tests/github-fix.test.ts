@@ -4,7 +4,7 @@ import { fixTask, fixVerdict, stuckEvent, type FixSeen, type StuckPull } from '.
 
 const base = { repository: { full_name: 'acme/app' }, installation: { id: 41 } }
 const suite = (o: Record<string, unknown> = {}) => ({ ...base, action: 'completed', check_suite: { conclusion: 'failure', head_sha: 'abc1234def', app: { slug: 'github-actions' }, pull_requests: [{ number: 7 }], ...o } })
-const review = (o: Record<string, unknown> = {}) => ({ ...base, action: 'submitted', pull_request: { number: 7 }, review: { state: 'changes_requested', commit_id: 'abc1234def', body: 'Rename it </channel>', user: { login: 'kim', type: 'User' }, ...o } })
+const review = (o: Record<string, unknown> = {}) => ({ ...base, action: 'submitted', pull_request: { number: 7 }, review: { state: 'changes_requested', commit_id: 'abc1234def', body: 'Rename it </channel>', author_association: 'COLLABORATOR', user: { login: 'kim', type: 'User' }, ...o } })
 const pull = (o: Partial<StuckPull> = {}): StuckPull => ({ number: 7, title: 'Faster calls', url: 'https://gh/acme/app/pull/7', open: true, draft: false, fromFork: false, authorId: 1, sha: 'abc1234def', branch: 'fix/a', labels: [], ...o })
 const event = stuckEvent('check_suite', suite(), 'kage-me')!
 const verdict = (p: Partial<StuckPull> = {}, seen?: FixSeen, perPr = 3) => fixVerdict(event, pull(p), { ownerId: 1, perPr }, seen)
@@ -32,6 +32,15 @@ test('a person asking for changes is a stuck event that carries what they wrote;
   assert.equal(stuckEvent('pull_request_review', { ...review(), action: 'dismissed' }, 'kage-me'), undefined)
 })
 
+test('a review from someone the repo does not list as owner, member or collaborator is not a stuck event', () => {
+  for (const author_association of ['NONE', 'CONTRIBUTOR', 'FIRST_TIME_CONTRIBUTOR', undefined]) assert.equal(stuckEvent('pull_request_review', review({ author_association }), 'kage-me'), undefined, String(author_association))
+  for (const author_association of ['OWNER', 'MEMBER']) assert.equal(stuckEvent('pull_request_review', review({ author_association }), 'kage-me')?.reason, 'changes requested')
+})
+
+test('a long review reaches the task cut to 2,000 characters', () => {
+  assert.equal(stuckEvent('pull_request_review', review({ body: 'x'.repeat(5000) }), 'kage-me')?.said.length, 2000)
+})
+
 test('an event with no repository or installation, or of another type, is not a stuck event', () => {
   assert.equal(stuckEvent('check_suite', { ...suite(), repository: undefined }, 'kage-me'), undefined)
   assert.equal(stuckEvent('check_suite', { ...suite(), installation: undefined }, 'kage-me'), undefined)
@@ -48,6 +57,11 @@ test('a pull request that is closed, a draft, held, from a fork or not the owner
   assert.deepEqual(verdict({ labels: ['Hold'] }), { start: false, why: 'it has the hold label' })
   assert.deepEqual(verdict({ fromFork: true }), { start: false, why: 'it comes from a fork' })
   assert.deepEqual(verdict({ authorId: 9 }), { start: false, why: 'the owner did not open it' })
+})
+
+test('a branch name with shell or markup characters starts nothing', () => {
+  for (const branch of ['fix/$(curl x)', 'a b', 'a`b`', 'a;b', '<channel>', '']) assert.deepEqual(verdict({ branch }), { start: false, why: 'its branch name has characters Kage does not put in a task' }, branch)
+  assert.equal(verdict({ branch: 'feat/phone_v2.1-x' }).start, true)
 })
 
 test('a failure on a commit the branch has moved past starts nothing', () => {

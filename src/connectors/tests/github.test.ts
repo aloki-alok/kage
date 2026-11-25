@@ -233,3 +233,13 @@ test('with fix in shadow, or not set, a failed check starts no task and posts no
     } finally { t.gh.close() }
   }
 })
+
+test('a fix the hourly cap dropped starts on a later event for the same commit', async () => {
+  const t = await setup(0, 1, openStore(':memory:'), 0, 'on')
+  try {
+    await t.send(review(12, 'me'))
+    await t.send(redSuite, 'check_suite')
+    assert.equal(t.tasks.length, 1)
+    assert.deepEqual(t.store.load('github-fix-seen') ?? {}, {})
+  } finally { t.gh.close() }
+})
