@@ -340,10 +340,10 @@ Kage judges a pull request in this order:
 
 1. Its author is in `people`. Otherwise Kage leaves it alone: no approval, no check, no message.
 2. It is open, not a draft, not from a fork, and its base branch is protected.
-3. Every push to its branch since the branch was made came from someone in `people`, read from GitHub's push history. Commit authors do not count, because a commit can name anyone.
+3. Every push to its branch since the branch was made, a pull request merged into it included, came from someone in `people`, read from GitHub's push history. Commit authors do not count, because a commit can name anyone. When the history does not show the head commit yet, Kage waits.
 4. No policy file changed, and it has at most 3000 files.
 5. The first rule whose conditions all hold decides. `targets` matches the base branch, `anyFile` matches any changed file or the old name of a moved one, and `moreLinesThan` counts added plus deleted lines. A rule with no conditions always holds. `then` is `approve` or `person`. With no matching rule, Kage approves nothing.
-6. For `approve`, every check the base branch requires passed on the head commit. Checks the branch does not require are ignored.
+6. For `approve`, every check the base branch requires passed on the head commit, whether branch protection or a ruleset requires it. Checks the branch does not require are ignored.
 
 Globs match case-sensitively, and a folder whose name starts with a dot counts like any other. A `person` verdict gets you one DM per commit. The approval names the policy file and the rule, and holds for that commit only. When a verdict on the head is anything but approve or waiting, Kage dismisses its own approvals, so GitHub blocks the merge again. Converting the pull request to a draft is the way to stop it.
 
@@ -358,13 +358,13 @@ Every pull request Kage judges gets a `Kage policy` check on its head commit, an
 Each `verdict` comes with one of these `code` values:
 
 - `approve`: `approved`. Kage approved the head commit.
-- `wait`: `checks-pending`. A required check has not finished.
+- `wait`: `checks-pending` or `push-history-behind`. A required check has not finished, or GitHub has not logged the last push yet.
 - `stop`: `checks-failed`, `draft`, `fork`, `base-unprotected` or `no-rule`. Kage will not approve until the `fix` is done.
 - `person`: `rule`, `pusher-not-listed`, `pushes-unseen`, `policy-change` or `too-many-files`. A person reviews it.
 
 ### Pull requests already open
 
-Kage checks every open pull request on each installation when the hub starts, every hour, and as soon as it reads a changed policy file. So an event missed while Kage was down, or a rule you just added, reaches the pull requests already open. A commit and policy Kage already judged are skipped, so a check after a restart only lists the pull requests. A pull request untouched for 14 days gets no new approval this way, only a dismissal of an approval that no longer holds. It waits for its next push. The pull requests one round finds that need a person come to you as one DM.
+Kage checks every open pull request on each installation when the hub starts, every hour, and as soon as it reads a changed policy file. So an event missed while Kage was down, or a rule you just added, reaches the pull requests already open. A pull request it already judged on the same commit, policy, draft state and base in the last day is skipped, so a check after a restart mostly lists the pull requests. One it approved is judged every time. A pull request untouched for 14 days gets no new approval this way, only a dismissal of an approval that no longer holds. It waits for its next push. The pull requests one round finds that need a person come to you as one DM.
 
 ### Permissions
 
