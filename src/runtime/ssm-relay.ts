@@ -43,7 +43,7 @@ export function ssmRelay(o: { path: string; trusted: (key: string) => boolean; t
       const p = spawn(o.plugin, c.args, { stdio: ['pipe', 'pipe', 'ignore'] })
       let done = false
       const turn = o.turnOf?.(key)
-      const held = turn === undefined ? undefined : setInterval(() => { if (o.turnOf!(key) !== turn) p.kill() }, o.everyMs ?? 1000)
+      const held = turn === undefined ? undefined : setInterval(() => { if (o.turnOf!(key) !== turn) p.kill(p.killed ? 'SIGKILL' : 'SIGTERM') }, o.everyMs ?? 1000)
       const end = (why: string) => { if (done) return; done = true; clearInterval(held); active--; o.log('ssm relay', c.region, c.target, 'for', key, why); s.end() }
       p.on('error', e => { if (!done) { done = true; clearInterval(held); active--; o.log('ssm relay', c.region, c.target, 'for', key, `failed ${(e as NodeJS.ErrnoException).code}`); refuse(s, 'the plugin did not start') } })
       p.on('spawn', () => {

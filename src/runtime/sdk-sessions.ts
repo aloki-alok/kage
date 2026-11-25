@@ -199,8 +199,8 @@ export function sdkSessions(o: SdkOptions) {
       return s.state !== 'idle'
     },
   }
-  const ownerTurn = (key: string) => { const s = sessions.get(key); return !!s && !s.stopped && s.state !== 'idle' && s.sender === 'owner' }
   const turnOf = (key: string) => { const s = sessions.get(key); return s && !s.stopped && s.state !== 'idle' ? s.turn[0]?.uuid : undefined }
+  const ownerTurn = (key: string) => turnOf(key) !== undefined && sessions.get(key)!.sender === 'owner'
   return { runner, ownerTurn, turnOf, running: () => new Set([...sessions.values()].map(s => s.id)), usage: () => [...sessions.values()].find(s => s.run && !s.stopped)?.run!.q.usage_EXPERIMENTAL_MAY_CHANGE_DO_NOT_RELY_ON_THIS_API_YET({ skipBehaviors: true }) }
 }
 
