@@ -19,6 +19,7 @@ const s = connect({ path, allowHalfOpen: true })
 let head = ''
 s.on('connect', () => s.write(`${JSON.stringify({ token, args })}\n`))
 s.on('error', e => die(`cannot reach the hub: ${e.message}`))
+setTimeout(() => { if (!head.includes('\n')) die('the hub did not answer, so the SSM relay is not usable') }, Number(process.env.KAGE_SSM_WAIT_MS) || 10000).unref()
 s.on('data', function onData(chunk) {
   head += chunk.toString('binary')
   const i = head.indexOf('\n')

@@ -1269,6 +1269,14 @@ describe('Kage sessions on the Agent SDK', () => {
     assert.equal(other.env.KAGE_SSM_SOCK, undefined)
     assert.equal(other.env.PATH, process.env.PATH, 'no token, no stand-in on PATH')
   })
+  test('every session with a relay token also gets the stand-in folder in KAGE_SSM_SHIM, and a session with none does not', async () => {
+    const t = setup({ trusted: ['C1:5.5'] })
+    t.d.task('C1:5.5', t.task(), 0)
+    t.d.task('C2:5.5', t.task({ channel: 'C2', fromOwner: false }), 0)
+    await tick()
+    assert.equal(t.sdk.runs[0]!.options.env.KAGE_SSM_SHIM, '/code/kage/cli/ssm-plugin-shim')
+    assert.equal(t.sdk.runs[1]!.options.env.KAGE_SSM_SHIM, undefined)
+  })
   test("the owner's message in a teammate's thread reopens it with the relay tokens, and the relay is open only while a turn is the owner's alone", async () => {
     const t = setup({ transcript: true })
     t.d.task('C1:5.5', t.task({ fromOwner: false, content: 'Task from Sam: hi' }), 0)

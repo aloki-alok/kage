@@ -3,6 +3,12 @@ case "$1" in
   *'&& pwd -P >| '*) ;;
   *) exec /bin/sh -c "$1" ;;
 esac
+if [ -n "$KAGE_SSM_SHIM" ]; then
+  before=${1%%' && eval '*}
+  if [ "$before" != "$1" ]; then
+    set -- "$before && { PATH=\"\$KAGE_SSM_SHIM:\$PATH\"; export PATH; } && eval ${1#"$before && eval "}"
+  fi
+fi
 case "${1%%&&*}" in
   *snapshot-zsh-*) shell=zsh ;;
   *snapshot-bash-*) shell=bash ;;

@@ -1,7 +1,7 @@
 import { describe, test, afterEach } from 'node:test'
 import assert from 'node:assert/strict'
 import { chmodSync, mkdtempSync, readFileSync, statSync, writeFileSync, existsSync } from 'node:fs'
-import { connect } from 'node:net'
+import { connect, createServer } from 'node:net'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { execFile } from 'node:child_process'
@@ -212,5 +212,22 @@ describe('the stand-in session-manager-plugin', () => {
     assert.deepEqual([bad.out, bad.code], ['', 1])
     assert.match(bad.err, /kage ssm: no relay for this session/)
     assert.deepEqual(t.args(), [])
+  })
+  test('a missing hub socket fails at once with a message', async () => {
+    const gone = join(mkdtempSync(join(tmpdir(), 'kage-ssm-')), 'none.sock')
+    const r = await run(call(), { KAGE_SSM_SOCK: gone, KAGE_SSM_TOKEN: 'any' })
+    assert.deepEqual([r.out, r.code], ['', 1])
+    assert.match(r.err, /kage ssm: cannot reach the hub/)
+  })
+  test('a hub that accepts and never answers fails within the wait, with a message', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'kage-ssm-'))
+    const sock = join(dir, 'mute.sock')
+    const mute = createServer(() => {}).listen(sock)
+    open.push({ close: () => { mute.close() } })
+    const at = Date.now()
+    const r = await run(call(), { KAGE_SSM_SOCK: sock, KAGE_SSM_TOKEN: 'any', KAGE_SSM_WAIT_MS: '300' })
+    assert.deepEqual([r.out, r.code], ['', 1])
+    assert.match(r.err, /kage ssm: the hub did not answer/)
+    assert.ok(Date.now() - at < 5000)
   })
 })

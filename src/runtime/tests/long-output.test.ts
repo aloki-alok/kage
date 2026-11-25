@@ -1,7 +1,7 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { spawn, spawnSync } from 'node:child_process'
-import { existsSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs'
+import { chmodSync, existsSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
@@ -88,4 +88,15 @@ test('random output sizes keep the exact contract', () => {
     if (text.length <= 50) assert.equal(r.out, text)
     else assert.equal(r.out.slice(0, cut!.index) + r.out.slice(cut!.index + cut![0].length), text.slice(0, 25) + text.slice(-25))
   }
+})
+
+test('a snapshot that resets PATH cannot hide the relay stand-in: KAGE_SSM_SHIM goes back to the front before the command runs', () => {
+  const shim = mkdtempSync(join(tmpdir(), 'kage-shim-'))
+  writeFileSync(join(shim, 'session-manager-plugin'), '#!/bin/sh\n')
+  chmodSync(join(shim, 'session-manager-plugin'), 0o755)
+  const cmd = `source /dev/null && export PATH=/usr/bin:/bin && eval 'command -v session-manager-plugin; echo $PATH | cut -d: -f1' < /dev/null && pwd -P >| /dev/null`
+  const r = spawnSync(script, [cmd], { encoding: 'utf8', env: { ...process.env, TMPDIR: work, KAGE_SSM_SHIM: shim } })
+  assert.equal(r.stdout, `${shim}/session-manager-plugin\n${shim}\n`)
+  const plain = spawnSync(script, [cmd], { encoding: 'utf8', env: { ...process.env, TMPDIR: work } })
+  assert.equal(plain.stdout, '/usr/bin\n')
 })
