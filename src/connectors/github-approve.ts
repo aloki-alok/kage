@@ -12,25 +12,26 @@ type Options = {
   notify: (text: string) => void; queue: (job: () => Promise<unknown>) => void
   seen?: { load: () => Seen; save: (s: Seen) => void }; now?: () => number
 }
-type Listed = { number: number; user: { login: string }; head: { sha: string }; base: { ref: string }; updated_at: string }
+type Listed = { number: number; draft?: boolean; user: { login: string }; head: { sha: string }; base: { ref: string }; updated_at: string }
 const STALE_MS = 14 * 86_400_000
-const FINAL = new Set(['approve', 'person', 'stop', 'skip'])
+const SETTLED = new Set(['person', 'stop', 'skip'])
+const SEEN_MS = 86_400_000
 const digest = (text: string) => createHash('sha256').update(text).digest('hex').slice(0, 12)
-const seenKey = (sha: string, policyText: string) => `${sha}:${digest(policyText)}`
+const seenKey = (sha: string, policyText: string, draft: boolean, base: string) => `${sha}:${digest(policyText)}:${draft ? 'draft' : 'ready'}:${base}`
 
 function checkWriter(o: Options) {
-  let denied = false
+  let told = false
   return async (call: GithubCall, repo: string, run: CheckRun, own: OwnRun | undefined) => {
-    if (denied) return
     if (own && own.status === run.status && own.conclusion === (run.conclusion ?? null) && own.title === run.output.title) return
+    const { name: _name, head_sha: _sha, ...change } = run
+    const reopens = own?.status === 'completed' && run.status !== 'completed'
     try {
-      if (own) await call('PATCH', `/repos/${repo}/check-runs/${own.id}`, run)
+      if (own && !reopens) await call('PATCH', `/repos/${repo}/check-runs/${own.id}`, change)
       else await call('POST', `/repos/${repo}/check-runs`, run)
     } catch (e) {
       if (!(e instanceof GithubRefused && e.status === 403)) throw e
-      denied = true
-      log('github approve: the app may not write checks, so Kage approves without the Kage policy check')
-      o.notify(ownerLines.githubChecksDenied())
+      log(`github approve: GitHub refused the Kage policy check on ${repo} (403), so Kage approves without it`)
+      if (!told) { told = true; o.notify(ownerLines.githubChecksDenied()) }
     }
   }
 }
@@ -40,8 +41,16 @@ type Ctx = ReturnType<typeof context>
 function context(o: Options) {
   const told = new Set<string>(), policies = new Map<string, string>(), seen: Seen = o.seen?.load() ?? {}
   const ctx = {
-    o, bot: `${o.slug}[bot]`, seen, writeCheck: checkWriter(o), found: undefined as string[] | undefined,
-    remember(repo: string, n: number, key: string) { seen[`${repo}#${n}`] = key; o.seen?.save(seen) },
+    o, bot: `${o.slug}[bot]`, writeCheck: checkWriter(o), found: undefined as string[] | undefined,
+    remember(repo: string, n: number, key: string) { seen[`${repo}#${n}`] = `${key}|${(o.now ?? Date.now)()}`; o.seen?.save(seen) },
+    judged(repo: string, n: number, key: string) {
+      const [was, at] = (seen[`${repo}#${n}`] ?? '').split('|')
+      return was === key && (o.now ?? Date.now)() - Number(at) < SEEN_MS
+    },
+    forgetClosed(repo: string, open: Set<number>) {
+      for (const k of Object.keys(seen)) if (k.startsWith(`${repo}#`) && !open.has(Number(k.slice(repo.length + 1)))) delete seen[k]
+      o.seen?.save(seen)
+    },
     once(key: string) { const first = !told.has(key); told.add(key); return first },
     tell(key: string, text: string) { if (ctx.once(key)) o.notify(text) },
     async dismiss(call: GithubCall, repo: string, n: number, ids: number[], sha: string) {
@@ -73,17 +82,17 @@ async function checkOne(ctx: Ctx, installation: number, call: GithubCall, repo: 
   if (read.moved) return void log(`github approve ${repo}#${n}@${sha}: skip (a newer commit landed while Kage read this one)`)
   const loaded = await loadPolicy(call, repo, f.base, ctx.o.policyRepo)
   if (!loaded) return void log(`github approve ${repo}#${n}@${sha}: skip (no policy file)`)
-  ctx.policyChanged(installation, loaded.source, loaded.text)
+  ctx.policyChanged(installation, `${loaded.source}@${f.base}`, loaded.text)
   if ('error' in loaded.policy) { log(`github approve: bad policy, ${loaded.policy.error}`); return ctx.tell(loaded.policy.error, ownerLines.githubBadPolicy(loaded.policy.error)) }
   const x = approvalVerdict(loaded.policy, f)
   log(`github approve ${repo}#${n}@${sha}: ${x.kind} ${x.code}${x.kind === 'approve' ? '' : ` (${x.why})`}`)
   await act(ctx, call, read, loaded.policy, x)
-  if (FINAL.has(x.kind) && x.code !== 'checks-failed') ctx.remember(repo, n, seenKey(f.sha, loaded.text))
+  if (SETTLED.has(x.kind) && x.code !== 'checks-failed') ctx.remember(repo, n, seenKey(f.sha, loaded.text, f.draft, f.base))
 }
 
 async function leftAlone(ctx: Ctx, call: GithubCall, repo: string, pr: Listed, policyText: string, approvals: { id: number }[]) {
   await ctx.dismiss(call, repo, pr.number, approvals.map(a => a.id), pr.head.sha)
-  ctx.remember(repo, pr.number, seenKey(pr.head.sha, policyText))
+  ctx.remember(repo, pr.number, seenKey(pr.head.sha, policyText, pr.draft === true, pr.base.ref))
 }
 
 async function sweepRepo(ctx: Ctx, installation: number, call: GithubCall, repo: string) {
@@ -92,7 +101,7 @@ async function sweepRepo(ctx: Ctx, installation: number, call: GithubCall, repo:
   for (const pr of open) {
     if (!policyAt.has(pr.base.ref)) policyAt.set(pr.base.ref, await loadPolicy(call, repo, pr.base.ref, ctx.o.policyRepo))
     const loaded = policyAt.get(pr.base.ref)
-    if (!loaded || 'error' in loaded.policy || ctx.seen[`${repo}#${pr.number}`] === seenKey(pr.head.sha, loaded.text)) continue
+    if (!loaded || 'error' in loaded.policy || ctx.judged(repo, pr.number, seenKey(pr.head.sha, loaded.text, pr.draft === true, pr.base.ref))) continue
     try {
       const listed = loaded.policy.people.includes(pr.user.login.toLowerCase())
       const fresh = (ctx.o.now ?? Date.now)() - Date.parse(pr.updated_at) < STALE_MS
@@ -101,6 +110,7 @@ async function sweepRepo(ctx: Ctx, installation: number, call: GithubCall, repo:
       else await leftAlone(ctx, call, repo, pr, loaded.text, approvals)
     } catch (e) { log(`github approve sweep ${repo}#${pr.number} failed`, e) }
   }
+  ctx.forgetClosed(repo, new Set(open.map(pr => pr.number)))
 }
 
 async function sweep(ctx: Ctx, installation: number) {

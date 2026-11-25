@@ -10,7 +10,7 @@ export type PrFacts = {
   repo: string; number: number; sha: string; author: string; base: string; branch: string
   open: boolean; draft: boolean; fromFork: boolean; baseProtected: boolean
   requiredChecks: string[]; checks: { name: string; result: CheckResult }[]
-  files: string[]; filesCut: boolean; lines: number; pushers: string[] | undefined
+  files: string[]; filesCut: boolean; lines: number; pushers: string[] | undefined; headPushed: boolean
 }
 type Kind = 'skip' | 'stop' | 'person' | 'wait' | 'approve'
 export type ApprovalVerdict = { kind: Kind; code: string; why: string; fix: string; rule?: string; body?: string }
@@ -50,6 +50,7 @@ function gate(policy: ApprovePolicy, f: PrFacts): ApprovalVerdict | undefined {
   if (!f.pushers) return v('person', 'pushes-unseen', `Kage cannot see every push to ${f.branch}.`, PERSON_FIX)
   const outside = [...new Set(f.pushers.filter(p => !listed(p)))]
   if (outside.length) return v('person', 'pusher-not-listed', `${listOf(outside)} pushed to ${f.branch}, and is not in people.`, PERSON_FIX)
+  if (!f.headPushed) return v('wait', 'push-history-behind', `GitHub's push history does not show commit ${short(f.sha)} yet.`, 'Kage checks again on the next event, and within the hour.')
   return undefined
 }
 

@@ -14,7 +14,7 @@ const policy = parsePolicy(JSON.stringify({
 const facts = (o: Partial<PrFacts> = {}): PrFacts => ({
   repo: 'acme/app', number: 7, sha: 'abc1234def', author: 'ana', base: 'main', branch: 'fix/a', open: true, draft: false, fromFork: false,
   baseProtected: true, requiredChecks: ['build'], checks: [{ name: 'build', result: 'pass' }, { name: 'lint', result: 'fail' }],
-  files: ['docs/a.md', 'src/x.ts'], filesCut: false, lines: 12, pushers: ['ana'], ...o,
+  files: ['docs/a.md', 'src/x.ts'], filesCut: false, lines: 12, pushers: ['ana'], headPushed: true, ...o,
 })
 const verdict = (o: Partial<PrFacts> = {}, p = policy) => approvalVerdict(p, facts(o))
 
@@ -42,6 +42,11 @@ test('a push from someone outside people sends the pull request to a person, nam
 
 test('a branch whose pushes Kage cannot all see goes to a person', () => {
   assert.deepEqual([verdict({ pushers: undefined }).kind, verdict({ pushers: undefined }).code], ['person', 'pushes-unseen'])
+})
+
+test('a head commit the push history does not show yet waits, so a push GitHub has not logged cannot slip through', () => {
+  assert.deepEqual([verdict({ headPushed: false }).kind, verdict({ headPushed: false }).code], ['wait', 'push-history-behind'])
+  assert.equal(verdict({ headPushed: false, pushers: ['eve'] }).code, 'pusher-not-listed')
 })
 
 test('an author outside people, or a closed pull request, is skipped with nothing to show', () => {

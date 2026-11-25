@@ -8,12 +8,12 @@ type Run = { id: number; name: string; status: string; conclusion: string | null
 type Fake = {
   repoPolicy?: string; orgPolicy?: string | null; head?: string; movedTo?: string; statuses?: { context: string; state: string }[]; renamedFrom?: string
   files?: string[]; checks?: Run[]; reviews?: Review[]; author?: string; required?: string[]; draft?: boolean
-  activity?: { activity_type: string; actor: { login: string } | null }[]; refuse?: (method: string, path: string) => number | undefined
-  open?: { number: number; user: { login: string }; head: { sha: string }; base: { ref: string }; updated_at: string }[]
+  activity?: { activity_type: string; actor: { login: string } | null; after?: string }[]; rules?: unknown[]; refuse?: (method: string, path: string) => number | undefined
+  open?: { number: number; draft?: boolean; user: { login: string }; head: { sha: string }; base: { ref: string }; updated_at: string }[]
 }
 const POLICY = '{"people":["ana"],"rules":[{"name":"High-risk paths","anyFile":["**/payments/**"],"then":"person"},{"name":"Everything else","then":"approve"}]}'
 const NOW = Date.parse('2026-11-25T12:00:00Z'), TODAY = '2026-11-25T10:00:00Z', OLD = '2026-10-01T10:00:00Z'
-const created = [{ activity_type: 'push', actor: { login: 'ana' } }, { activity_type: 'branch_creation', actor: { login: 'ana' } }]
+const created = [{ activity_type: 'push', actor: { login: 'ana' }, after: 'bbb2222' }, { activity_type: 'branch_creation', actor: { login: 'ana' }, after: 'aaa1111' }]
 
 function fakeGithub(o: Fake = {}) {
   const writes: { method: string; path: string; body?: Record<string, unknown> }[] = [], reads: string[] = []
@@ -28,6 +28,7 @@ function fakeGithub(o: Fake = {}) {
     '/repos/acme/app/pulls/7/reviews?per_page=100&page=1': o.reviews ?? [],
     [`/repos/acme/app/commits/${head}/pulls`]: [{ number: 7 }],
     '/repos/acme/app/activity?ref=refs%2Fheads%2Ffix%2Fa&per_page=100': o.activity ?? created,
+    '/repos/acme/app/rules/branches/main?per_page=100&page=1': o.rules ?? [],
     '/installation/repositories?per_page=100&page=1': { repositories: [{ full_name: 'acme/app' }] },
     '/repos/acme/app/pulls?state=open&per_page=100&page=1': o.open ?? [{ number: 7, user: pr.user, head: { sha: head }, base: { ref: 'main' }, updated_at: TODAY }],
   }
@@ -99,7 +100,7 @@ test('a push still waiting on checks dismisses the approval Kage gave an older c
 })
 
 test('a push from someone outside people drops Kage\'s approval of that very commit and tells the owner', async () => {
-  const gh = fakeGithub({ activity: [{ activity_type: 'push', actor: { login: 'eve' } }, ...created], reviews: [{ id: 5, state: 'APPROVED', commit_id: 'bbb2222', user: { login: 'kage-me[bot]' } }] }), { a, told } = setup(gh)
+  const gh = fakeGithub({ activity: [{ activity_type: 'push', actor: { login: 'eve' }, after: 'bbb2222' }, ...created], reviews: [{ id: 5, state: 'APPROVED', commit_id: 'bbb2222', user: { login: 'kage-me[bot]' } }] }), { a, told } = setup(gh)
   await a.handle('pull_request', pushed)
   assert.deepEqual(gh.reviews(), [])
   assert.deepEqual(gh.dismissals().map(w => w.path), ['/repos/acme/app/pulls/7/reviews/5/dismissals'])
@@ -228,13 +229,61 @@ test('a broken policy file approves nothing and tells the owner once', async () 
   assert.match(told[0]!, /acme\/policies kage-approve\.json/)
 })
 
-test('a sweep checks every open pull request once, and the next sweep reads nothing for a commit and policy it already judged', async () => {
-  const gh = fakeGithub(), { a } = setup(gh)
-  await a.sweep(41)
-  assert.equal(gh.reviews().length, 1)
-  const before = gh.reads.length
-  await a.sweep(41)
-  assert.deepEqual(gh.reads.slice(before).filter(p => !p.startsWith('/installation/') && !p.includes('/pulls?state=open') && !p.includes('/contents/')), [])
+const pullReads = (gh: ReturnType<typeof fakeGithub>, from: number) => gh.reads.slice(from).filter(p => p === '/repos/acme/app/pulls/7').length
+
+test('a sweep skips a commit and policy it already judged, but re-judges one it approved, since a rerun check can fail while Kage is down', async () => {
+  const risky = fakeGithub({ files: ['src/payments/x.ts'] }), r = setup(risky)
+  await r.a.sweep(41)
+  const before = risky.reads.length
+  await r.a.sweep(41)
+  assert.equal(pullReads(risky, before), 0)
+  const fine = fakeGithub(), f = setup(fine)
+  await f.a.sweep(41)
+  assert.equal(fine.reviews().length, 1)
+  const then = fine.reads.length
+  await f.a.sweep(41)
+  assert.equal(pullReads(fine, then), 2)
+})
+
+test('a sweep judges again a pull request that left draft while Kage was down', async () => {
+  const draft = fakeGithub({ draft: true, open: [{ number: 7, draft: true, user: { login: 'ana' }, head: { sha: 'bbb2222' }, base: { ref: 'main' }, updated_at: TODAY }] })
+  let saved: Record<string, string> = {}
+  const keep = { load: () => saved, save: (s: Record<string, string>) => { saved = { ...s } } }
+  await approver({ policyRepo: 'policies', slug: 'kage-me', call: () => draft.call, allowed: () => true, notify: () => {}, queue: () => {}, now: () => NOW, seen: keep }).sweep(41)
+  const ready = fakeGithub()
+  await approver({ policyRepo: 'policies', slug: 'kage-me', call: () => ready.call, allowed: () => true, notify: () => {}, queue: () => {}, now: () => NOW, seen: keep }).sweep(41)
+  assert.equal(ready.reviews().length, 1)
+})
+
+test('a pull request merged into the branch by someone outside people counts as their push', async () => {
+  const gh = fakeGithub({ activity: [{ activity_type: 'pr_merge', actor: { login: 'eve' }, after: 'bbb2222' }, ...created] }), { a, told } = setup(gh)
+  await a.handle('pull_request', pushed)
+  assert.deepEqual(gh.reviews(), [])
+  assert.match(told[0] ?? '', /eve pushed to fix\/a/)
+})
+
+test('a head commit missing from the push history waits instead of approving', async () => {
+  const gh = fakeGithub({ activity: created.slice(1) })
+  await setup(gh).a.handle('pull_request', pushed)
+  assert.deepEqual(gh.reviews(), [])
+  assert.equal(gh.checks()[0]?.body?.status, 'in_progress')
+})
+
+test('a check that a ruleset requires is waited on like one branch protection requires', async () => {
+  const gh = fakeGithub({ required: [], rules: [{ type: 'required_status_checks', parameters: { required_status_checks: [{ context: 'e2e' }] } }] })
+  await setup(gh).a.handle('pull_request', pushed)
+  assert.deepEqual(gh.reviews(), [])
+  assert.match(String((gh.checks()[0]?.body?.output as { summary: string }).summary), /Waiting on e2e/)
+})
+
+test('an update sends only the fields GitHub lets a check run change, and a finished check that must wait again is posted anew', async () => {
+  const done = { id: 2, name: 'Kage policy', status: 'completed', conclusion: 'neutral', app: { slug: 'kage-me' }, output: { title: 'old' } }
+  const patch = fakeGithub({ checks: [{ id: 1, name: 'build', status: 'completed', conclusion: 'success' }, done] })
+  await setup(patch).a.handle('pull_request', pushed)
+  assert.deepEqual([patch.checks()[0]?.method, 'head_sha' in (patch.checks()[0]?.body ?? {}), 'name' in (patch.checks()[0]?.body ?? {})], ['PATCH', false, false])
+  const reopen = fakeGithub({ checks: [{ id: 1, name: 'build', status: 'in_progress', conclusion: null }, done] })
+  await setup(reopen).a.handle('pull_request', pushed)
+  assert.deepEqual(reopen.checks().map(w => w.method), ['POST'])
 })
 
 test('a sweep drops an approval Kage gave a pull request whose author is no longer in people', async () => {
@@ -268,7 +317,7 @@ test('a sweep still judges an old pull request Kage approved, and drops the appr
   const gh = fakeGithub({
     open: [{ number: 7, user: { login: 'ana' }, head: { sha: 'bbb2222' }, base: { ref: 'main' }, updated_at: OLD }],
     reviews: [{ id: 5, state: 'APPROVED', commit_id: 'bbb2222', user: { login: 'kage-me[bot]' } }],
-    activity: [{ activity_type: 'push', actor: { login: 'eve' } }, ...created],
+    activity: [{ activity_type: 'push', actor: { login: 'eve' }, after: 'bbb2222' }, ...created],
   })
   await setup(gh).a.sweep(41)
   assert.deepEqual(gh.dismissals().map(w => w.path), ['/repos/acme/app/pulls/7/reviews/5/dismissals'])

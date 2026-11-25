@@ -9,11 +9,11 @@ type Pull = {
 type Branch = { protected?: boolean; protection?: { required_status_checks?: { contexts?: string[] } } }
 type Run = { id: number; name: string; status: string; conclusion: string | null; app?: { slug?: string }; output?: { title?: string | null } }
 type Review = { id: number; state: string; commit_id: string; user: { login: string } | null }
-type Activity = { activity_type: string; actor: { login: string } | null }
+type Activity = { activity_type: string; actor: { login: string } | null; after?: string }
+type BranchRule = { type: string; parameters?: { required_status_checks?: { context: string }[] } }
 export type OwnRun = { id: number; status: string; conclusion: string | null; title: string }
 
 const PASS = new Set(['success', 'neutral', 'skipped'])
-const PUSHES = new Set(['push', 'force_push', 'branch_creation'])
 const MAX_PAGES = 30
 const runResult = (r: Run): CheckResult => r.status !== 'completed' ? 'pending' : PASS.has(r.conclusion ?? '') ? 'pass' : 'fail'
 const statusResult = (state: string): CheckResult => state === 'success' ? 'pass' : state === 'pending' ? 'pending' : 'fail'
@@ -50,12 +50,22 @@ async function commitChecks(call: GithubCall, repo: string, sha: string, slug: s
   }
 }
 
-async function branchPushers(call: GithubCall, repo: string, branch: string) {
+async function branchPushers(call: GithubCall, repo: string, branch: string, head: string) {
   const seen = await call('GET', `/repos/${repo}/activity?ref=${encodeURIComponent(`refs/heads/${branch}`)}&per_page=100`) as Activity[]
   const upTo = seen.findIndex(a => a.activity_type === 'branch_creation')
-  if (upTo < 0) return undefined
-  const pushes = seen.slice(0, upTo + 1).filter(a => PUSHES.has(a.activity_type))
-  return pushes.every(a => a.actor) ? pushes.map(a => a.actor!.login) : undefined
+  if (upTo < 0) return { pushers: undefined, headPushed: false }
+  const acts = seen.slice(0, upTo + 1)
+  return { pushers: acts.every(a => a.actor) ? acts.map(a => a.actor!.login) : undefined, headPushed: acts.some(a => a.after === head) }
+}
+
+async function requiredChecks(call: GithubCall, repo: string, base: string) {
+  const [branch, rules] = await Promise.all([
+    call('GET', `/repos/${repo}/branches/${encodeURIComponent(base)}`) as Promise<Branch>,
+    pages<BranchRule>(call, `/repos/${repo}/rules/branches/${encodeURIComponent(base)}`),
+  ])
+  const fromRules = rules.all.filter(r => r.type === 'required_status_checks').flatMap(r => r.parameters?.required_status_checks?.map(c => c.context) ?? [])
+  const names = [...new Set([...(branch.protection?.required_status_checks?.contexts ?? []), ...fromRules])]
+  return { protected: branch.protected === true, names: names.filter(name => name !== CHECK_NAME) }
 }
 
 async function fileText(call: GithubCall, repo: string, path: string, ref?: string) {
@@ -83,19 +93,19 @@ export async function kageApprovals(call: GithubCall, repo: string, n: number, b
 export async function readPull(call: GithubCall, repo: string, n: number, slug: string) {
   const pull = await call('GET', `/repos/${repo}/pulls/${n}`) as Pull
   const sha = pull.head.sha
-  const [branch, files, checks, approvals, pushers] = await Promise.all([
-    call('GET', `/repos/${repo}/branches/${encodeURIComponent(pull.base.ref)}`) as Promise<Branch>,
+  const [required, files, checks, approvals, pushes] = await Promise.all([
+    requiredChecks(call, repo, pull.base.ref),
     changedFiles(call, repo, n),
     commitChecks(call, repo, sha, slug),
     kageApprovals(call, repo, n, `${slug}[bot]`),
-    branchPushers(call, repo, pull.head.ref),
+    branchPushers(call, repo, pull.head.ref, sha),
   ])
   const moved = (await call('GET', `/repos/${repo}/pulls/${n}`) as Pull).head.sha !== sha
   const facts: PrFacts = {
     repo, number: n, sha, author: pull.user.login, base: pull.base.ref, branch: pull.head.ref,
     open: pull.state === 'open', draft: pull.draft === true, fromFork: pull.head.repo?.full_name !== pull.base.repo.full_name,
-    baseProtected: branch.protected === true, requiredChecks: (branch.protection?.required_status_checks?.contexts ?? []).filter(name => name !== CHECK_NAME),
-    checks: checks.checks, files: files.names, filesCut: files.cut, lines: (pull.additions ?? 0) + (pull.deletions ?? 0), pushers,
+    baseProtected: required.protected, requiredChecks: required.names,
+    checks: checks.checks, files: files.names, filesCut: files.cut, lines: (pull.additions ?? 0) + (pull.deletions ?? 0), ...pushes,
   }
   return { facts, moved, url: pull.html_url, approvals, own: checks.own }
 }

@@ -61,7 +61,8 @@ export function connectGithub(o: Options) {
 function approverFor(o: Options, inst: ReturnType<typeof installs>, queue: (job: () => Promise<unknown>) => void) {
   const set = o.approve!
   return approver({
-    policyRepo: set.policyRepo, slug: o.app.slug, call: set.call ?? installationCall(o.app), allowed: inst.has, notify: o.notify, queue,
+    policyRepo: set.policyRepo, slug: o.app.slug, call: set.call ?? installationCall(o.app), allowed: inst.has, notify: o.notify,
+    queue: job => void Promise.resolve(queue(job)).catch(e => log('github approve sweep failed', e)),
     seen: { load: () => (o.saved.load('github-approve-seen') ?? {}) as Record<string, string>, save: s => o.saved.save('github-approve-seen', s) },
   })
 }
