@@ -85,6 +85,7 @@ function startGithub(o: Options) {
     deliver: (c, task, place) => deliver(c, task, place),
     notify: text => void o.say(text),
     perHour: gh.perHour || 20, inbox,
+    ...(gh.approve && { approve: { policy: { authors: gh.approve.authors, riskyPaths: gh.approve.riskyPaths ?? [] } } }),
   }) : undefined
   void github?.listening.then(port => log(`github listening: 127.0.0.1:${port}/github`), e => log('github could not listen', e))
   return github

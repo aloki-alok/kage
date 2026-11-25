@@ -8,13 +8,13 @@ export type PrFacts = {
   requiredChecks: string[]; checks: { name: string; result: CheckResult }[]
   files: string[]; filesCut: boolean; approvedShas: string[]
 }
-export type ApprovalVerdict =
+type ApprovalVerdict =
   | { kind: 'approve'; body: string }
   | { kind: 'wait'; why: string }
   | { kind: 'skip'; why: string }
   | { kind: 'human'; why: string }
 
-export type ApprovalEvent = { repo: string; installation: number } & ({ prs: number[] } | { sha: string })
+type ApprovalEvent = { repo: string; installation: number } & ({ prs: number[] } | { sha: string })
 
 const short = (sha: string) => sha.slice(0, 7)
 const PR_ACTIONS = new Set(['opened', 'synchronize', 'reopened', 'ready_for_review'])
