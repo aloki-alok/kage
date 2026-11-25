@@ -14,7 +14,7 @@ const policy = parsePolicy(JSON.stringify({
 const facts = (o: Partial<PrFacts> = {}): PrFacts => ({
   repo: 'acme/app', number: 7, sha: 'abc1234def', author: 'ana', base: 'main', branch: 'fix/a', open: true, draft: false, fromFork: false,
   baseProtected: true, requiredChecks: ['build'], checks: [{ name: 'build', result: 'pass' }, { name: 'lint', result: 'fail' }],
-  files: ['docs/a.md', 'src/x.ts'], filesCut: false, lines: 12, pushers: ['ana'], headPushed: true, labels: [], ...o,
+  files: ['docs/a.md', 'src/x.ts'], filesCut: false, lines: 12, pushers: ['ana'], headPushed: true, labels: [], versionOnly: false, ...o,
 })
 const verdict = (o: Partial<PrFacts> = {}, p = policy) => approvalVerdict(p, facts(o))
 

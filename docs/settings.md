@@ -326,7 +326,7 @@ Kage can approve your team's pull requests as its GitHub App, so a branch that r
 {
   "people": ["<login>", "<login>"],
   "rules": [
-    { "name": "Release pull requests", "author": ["github-actions[bot]"], "branch": ["release-please--*"], "onlyFiles": ["CHANGELOG.md", ".release-please-manifest.json", "package.json"], "then": "merge" },
+    { "name": "Release pull requests", "author": ["github-actions[bot]"], "branch": ["release-please--*"], "onlyVersionChanges": true, "then": "merge" },
     { "name": "Other bot pull requests", "author": ["github-actions[bot]"], "then": "person" },
     { "name": "Releases", "targets": ["Production"], "then": "person" },
     { "name": "High-risk paths", "anyFile": ["**/migrations/**", "**/*payment*/**"], "then": "person" },
@@ -344,7 +344,7 @@ Kage judges a pull request in this order:
 2. It is open, not a draft, not from a fork, has no `hold` label, and its base branch is protected.
 3. Every push to its branch since the branch was made, a pull request merged into it included, came from someone in `people`, read from GitHub's push history. Commit authors do not count, because a commit can name anyone. When the history does not show the head commit yet, Kage waits.
 4. No policy file changed, and it has at most 3000 files.
-5. The first rule whose conditions all hold decides. `targets` matches the base branch, `anyFile` matches any changed file or the old name of a moved one, and `moreLinesThan` counts added plus deleted lines. `author` lists logins (any case), `branch` matches the pull request's own branch, and `onlyFiles` holds only when every changed file matches it. A rule with no conditions always holds. `then` is `approve`, `merge` or `person`. With no matching rule, Kage approves nothing.
+5. The first rule whose conditions all hold decides. `targets` matches the base branch, `anyFile` matches any changed file or the old name of a moved one, and `moreLinesThan` counts added plus deleted lines. `author` lists logins (any case), `branch` matches the pull request's own branch, `onlyFiles` holds only when every changed file matches it, and `onlyVersionChanges` holds only when every changed line is a version number (`"version": "1.2.3"`, `version = "1.2.3"`, a manifest entry, or a constant marked `x-release-please-version`) or text in a `CHANGELOG.md`. Any workflow token acts as `github-actions[bot]`, so a rule for that author needs `onlyVersionChanges`: then a forged pull request can only release what the base branch already holds, and a later rule for the same author sends the rest to a person. A rule with no conditions always holds. `then` is `approve`, `merge` or `person`. With no matching rule, Kage approves nothing.
 6. For `approve` and `merge`, every check the base branch requires passed on the head commit, whether branch protection or a ruleset requires it. Checks the branch does not require are ignored, so a branch with no required checks gets its approval, and its merge, before CI ends.
 7. For `merge`, Kage approves and then merges the head commit it judged, by squash when the repo allows it, else a merge commit, else rebase. The merge comes from the app, so workflows that run on a push to the base branch (a release tag, a deploy) still run. When GitHub refuses the merge, you get one DM with the reason and the link. The app needs Contents: Read and write, which approving already needs.
 

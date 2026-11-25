@@ -10,7 +10,7 @@ export type PrFacts = {
   repo: string; number: number; sha: string; author: string; base: string; branch: string
   open: boolean; draft: boolean; fromFork: boolean; baseProtected: boolean
   requiredChecks: string[]; checks: { name: string; result: CheckResult }[]
-  files: string[]; filesCut: boolean; lines: number; pushers: string[] | undefined; headPushed: boolean; labels: string[]
+  files: string[]; filesCut: boolean; lines: number; pushers: string[] | undefined; headPushed: boolean; labels: string[]; versionOnly: boolean
 }
 type Kind = 'skip' | 'stop' | 'person' | 'wait' | 'approve'
 export type ApprovalVerdict = { kind: Kind; code: string; why: string; fix: string; rule?: string; body?: string; merge?: true }
@@ -74,7 +74,7 @@ function requiredState(f: PrFacts) {
 export function approvalVerdict(policy: ApprovePolicy, f: PrFacts): ApprovalVerdict {
   const stopped = gate(policy, f)
   if (stopped) return stopped
-  const rule = firstRule(policy, { base: f.base, files: f.files, lines: f.lines, author: f.author, branch: f.branch })
+  const rule = firstRule(policy, { base: f.base, files: f.files, lines: f.lines, author: f.author, branch: f.branch, versionOnly: f.versionOnly })
   if (!rule) return v('stop', 'no-rule', `No rule in ${policy.source} covers it.`, `Add a rule that covers it to ${policy.source}, or ask a person to review.`)
   if (rule.then === 'person') return v('person', 'rule', `Rule "${rule.name}" asks for a person${matched(rule, f)}.`, PERSON_FIX, rule.name)
   const { failed, waiting } = requiredState(f)

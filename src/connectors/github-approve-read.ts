@@ -1,5 +1,5 @@
 import { CHECK_NAME, ORG_POLICY, REPO_POLICY, type CheckResult, type PrFacts } from '../core/github-approve.ts'
-import { parsePolicy } from '../core/github-policy.ts'
+import { onlyVersionChanges, parsePolicy, type ChangedFile } from '../core/github-policy.ts'
 import { GithubRefused, type GithubCall } from './github-app.ts'
 
 type Pull = {
@@ -31,8 +31,8 @@ export async function pages<T>(call: GithubCall, path: string, pick: (body: unkn
 }
 
 async function changedFiles(call: GithubCall, repo: string, n: number) {
-  const { all, cut } = await pages<{ filename: string; previous_filename?: string }>(call, `/repos/${repo}/pulls/${n}/files`)
-  return { names: all.flatMap(f => [f.filename, ...(f.previous_filename ? [f.previous_filename] : [])]), cut }
+  const { all, cut } = await pages<ChangedFile>(call, `/repos/${repo}/pulls/${n}/files`)
+  return { names: all.flatMap(f => [f.filename, ...(f.previous_filename ? [f.previous_filename] : [])]), cut, versionOnly: !cut && onlyVersionChanges(all) }
 }
 
 async function commitChecks(call: GithubCall, repo: string, sha: string, slug: string) {
@@ -106,7 +106,7 @@ export async function readPull(call: GithubCall, repo: string, n: number, slug: 
     repo, number: n, sha, author: pull.user.login, base: pull.base.ref, branch: pull.head.ref,
     open: pull.state === 'open', draft: pull.draft === true, fromFork: pull.head.repo?.full_name !== pull.base.repo.full_name,
     baseProtected: required.protected, requiredChecks: required.names,
-    checks: checks.checks, files: files.names, filesCut: files.cut, lines: (pull.additions ?? 0) + (pull.deletions ?? 0), ...pushes,
+    checks: checks.checks, files: files.names, filesCut: files.cut, versionOnly: files.versionOnly, lines: (pull.additions ?? 0) + (pull.deletions ?? 0), ...pushes,
     labels: (pull.labels ?? []).map(l => l.name),
   }
   return { facts, moved, url: pull.html_url, approvals, own: checks.own }
