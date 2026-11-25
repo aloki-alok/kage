@@ -111,3 +111,28 @@ test('a refused send exits 1 and does not wait, and - reads the text from stdin'
   assert.equal(w.told.at(-1), 'C0TEST1:5.5 long brief\nwith "quotes" and $vars')
   assert.equal((await w.kage(['thread', 'send', '--timeout', 'soon', 'C0TEST1:5.5', 'x'])).status, 2)
 })
+
+const follow = (w: World, args: string[]) => new Promise<Run>(res => {
+  const c = spawn(process.execPath, [new URL('../watch.ts', import.meta.url).pathname, ...args], { env: { ...process.env, HOME: w.home, KAGE_ENV: join(w.dir, 'env'), NO_COLOR: '1' } })
+  let stdout = '', stderr = ''
+  c.stdout.on('data', b => { stdout += b })
+  c.stderr.on('data', b => { stderr += b })
+  c.on('close', status => res({ status, stdout, stderr }))
+  setTimeout(() => c.kill(), 1500)
+})
+
+test('kage thread follow matches a place or key exactly, and --replies prints only replies', async t => {
+  const w = world(t)
+  writeFileSync(join(w.project, 'sess-b.jsonl'), replyLine('ops reply'))
+  w.transcript(line({ type: 'assistant', timestamp: new Date().toISOString(), message: { content: [{ type: 'text', text: 'thinking about it' }] } }))
+  const general = await follow(w, ['#General'])
+  assert.match(general.stdout, /an old reply/)
+  assert.match(general.stdout, /thinking about it/)
+  assert.doesNotMatch(general.stdout, /ops reply/)
+  const replies = await follow(w, ['C0TEST1:5.5', '--replies'])
+  assert.match(replies.stdout, /an old reply/)
+  assert.doesNotMatch(replies.stdout, /thinking about it/)
+  const none = await follow(w, ['#gen'])
+  assert.equal(none.status, 1)
+  assert.match(none.stderr, /No thread is "#gen"/)
+})

@@ -2,17 +2,22 @@
 import { existsSync, statSync } from 'node:fs'
 import { DIR, TRANSCRIPTS as PROJECT } from './home.ts'
 import { DatabaseSync } from 'node:sqlite'
+import { slackLinkKey } from '../core/conversations.ts'
 import { stepTime, transcriptSteps, type Step } from '../core/transcript.ts'
 import { spokenStep } from '../core/voice.ts'
 import { voice } from './voice.ts'
 import { newLines } from '../runtime/transcript-tail.ts'
 
 const args = process.argv.slice(2)
-const only = args.find(a => !a.startsWith('--'))?.toLowerCase()
+const only = args.find(a => !a.startsWith('--'))
+const onlyReplies = args.includes('--replies')
 const HUB_LOG = args.includes('--hub') ? `${DIR}/hub.log` : undefined
 if (!existsSync(`${DIR}/kage.db`)) { console.error(`No ${DIR}/kage.db yet: start Kage first.`); process.exit(1) }
 const db = new DatabaseSync(`${DIR}/kage.db`, { readOnly: true })
 const threads = db.prepare('select s.key, s.claude_id as id, coalesce(c.place, s.key) as place from sessions s left join conversations c using (key)')
+const linked = only && slackLinkKey(only)
+const followed = (t: { key: string; place: string }) => !only || t.key === only || t.key === linked || t.place.toLowerCase() === only.toLowerCase()
+if (only && !(threads.all() as { key: string; place: string }[]).some(followed)) { console.error(`No thread is "${only}". Give its full place or its key, as kage thread list shows them.`); process.exit(1) }
 
 const RECENT = 30 * 60_000
 const offsets = new Map<string, number>()
@@ -40,10 +45,10 @@ function hubLines(first: boolean) {
 
 function scan(first: boolean) {
   hubLines(first)
-  let all: { id: string; place: string }[]
+  let all: { key: string; id: string; place: string }[]
   try { all = threads.all() as typeof all } catch { return }
   for (const t of all) {
-    if (only && !t.place.toLowerCase().includes(only)) continue
+    if (!followed(t)) continue
     const file = `${PROJECT}/${t.id}.jsonl`
     if (!offsets.has(file)) {
       let size = 0, mtime = 0
@@ -54,13 +59,13 @@ function scan(first: boolean) {
     offsets.set(file, r.offset)
     let steps = r.lines.flatMap(raw => {
       const at = stepTime(raw) ?? Date.now()
-      return transcriptSteps(raw).map(step => ({ at, step }))
+      return transcriptSteps(raw).filter(step => !onlyReplies || step.kind === 'reply').map(step => ({ at, step }))
     })
     if (first) steps = steps.slice(-5)
     for (const { at, step } of steps) print(at, t.place, step)
   }
 }
 
-console.log(`\n${voice.says(`Here's what I'm doing${only ? ` in threads matching "${only}"` : ''}, live.`)} ${voice.dim('Ctrl-C to stop.')}`)
+console.log(`\n${voice.says(`Here's what I'm doing${only ? ` in ${only}` : ''}, live.`)} ${voice.dim('Ctrl-C to stop.')}`)
 scan(true)
 setInterval(() => scan(false), 1000)

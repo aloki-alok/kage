@@ -56,7 +56,7 @@ Run|dream|undo|Put the memory back to how it was before the last weekly dream|ka
 Watch|schedule list||Every schedule and reply watch, in every thread|kage schedule list
 Watch|top||The live console: every thread, its feed, attach and stop, by mouse or keys|kage top
 Watch|thread list|[--json]|Every thread Kage has, newest first: place, key, live state and last activity|kage thread list
-Watch|thread follow|[place]|Follow every step every session takes, as it happens|kage thread follow support
+Watch|thread follow|[place or key] [--replies]|Follow every step every session takes, as it happens: every thread, or only the threads with exactly that place or key. --replies prints only replies|kage thread follow dm --replies
 Watch|thread attach|[place or link]|Take a thread into this terminal, by its place or its Slack link in quotes; Kage gets it back when you quit|kage thread attach "https://example.slack.com/archives/C0123ABC/p1700000000123456"
 Watch|thread send|[--wait] [--timeout 30m] <place> <message or ->|Tell a thread something as you; its session takes it after the current turn. --wait prints its replies and returns when the turn ends or it asks you something. - reads the message from stdin|kage thread send support use the staging db
 Watch|thread stop|<thread> [--now]|End one thread session (link, place or key) once its turn ends, or now with --now|kage thread stop support
