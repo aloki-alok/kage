@@ -347,6 +347,8 @@ Kage judges a pull request in this order:
 
 Globs match case-sensitively, and a folder whose name starts with a dot counts like any other. A `person` verdict gets you one DM per commit. The approval names the policy file and the rule, and holds for that commit only. When a verdict on the head is anything but approve or waiting, Kage dismisses its own approvals, so GitHub blocks the merge again. Converting the pull request to a draft is the way to stop it.
 
+When GitHub answers a 5xx or cannot be reached, Kage tells you nothing and checks that pull request again after 1, 5 and 15 minutes. New events for it wait for that retry, so an outage costs GitHub no extra calls. If the last retry still fails, you get one DM for the whole outage, naming the pull requests not approved. A 4xx still reaches you at once, because a retry cannot fix it.
+
 ### Read the verdict from an agent
 
 Every pull request Kage judges gets a `Kage policy` check on its head commit, and agents read it like any other check (`gh pr checks`, or `gh api repos/<owner>/<repo>/commits/<sha>/check-runs`). The check passes when Kage approved, runs while required checks run, and ends neutral otherwise, so it never blocks a merge by itself. Its text holds the verdict as JSON:

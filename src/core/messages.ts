@@ -11,6 +11,7 @@ export const ownerLines = {
   githubSweepNeedsPerson: (found: string[]) => `Kage checked the open pull requests, and ${found.length} need a person:\n${found.slice(0, 10).map(f => `• ${f}`).join('\n')}${found.length > 10 ? `\n• and ${found.length - 10} more, each with a Kage policy check that says why` : ''}`,
   githubChecksDenied: () => 'Kage approves pull requests, but GitHub refused its Kage policy check, so agents cannot read why a pull request waits. Give the GitHub App Checks: Read and write, then accept the new permission on each org.',
   githubBadPolicy: (error: string) => `Kage approves nothing under a broken policy file until it is fixed: ${error}`,
+  githubStillFailing: (prs: string[], e: unknown) => `GitHub kept failing for 15 minutes (${cut(e)}), so Kage has not approved ${prs.join(', ')}. The next push or finished check tries again.`,
   githubFailed: (e: unknown) => `A GitHub event failed here (${cut(e)}). It runs again if Kage restarts within 10 minutes; otherwise redeliver it from the app's Advanced page on GitHub.`,
   meetingOverCap: (perHour: number, title: string) => `More than ${perHour} meeting transcripts came in this hour, so I am skipping them. Send "${title}" again after the hour is up.`,
   meetingNoThread: (title: string) => `Notes for the meeting "${title}" could not open a thread here. Send it again.`,

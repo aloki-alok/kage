@@ -37,7 +37,7 @@ export function installationCall(app: { id: number; key: string }, fetchFn: type
     const held = tokens.get(installation)
     if (held && held.until > now()) return held.token
     const r = await fetchFn(`${API}/app/installations/${installation}/access_tokens`, { method: 'POST', headers: { Authorization: `Bearer ${appJwt(app.id, app.key)}`, Accept: 'application/vnd.github+json' } })
-    if (!r.ok) throw new Error(`GitHub refused an installation token for ${installation} (${r.status})`)
+    if (!r.ok) throw new GithubRefused(r.status, `GitHub refused an installation token for ${installation} (${r.status})`)
     const got = await r.json() as { token: string; expires_at: string }
     tokens.set(installation, { token: got.token, until: Date.parse(got.expires_at) - TOKEN_MARGIN_MS })
     return got.token

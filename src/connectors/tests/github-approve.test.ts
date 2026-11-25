@@ -159,7 +159,7 @@ const runWaits = async (s: ReturnType<typeof setup>) => {
 test('a GitHub 5xx on the approval tells the owner nothing, and one retry approves the pull request once GitHub is back', async () => {
   const { down, gh } = reviewsDown(502), s = setup(gh)
   for (let i = 0; i < 3; i++) await s.a.handle('check_suite', { ...pushed, action: 'completed', check_suite: { pull_requests: [{ number: 7 }] } })
-  assert.deepEqual([s.told, s.waits.length], [[], 1])
+  assert.deepEqual([s.told, s.waits.length, pullReads(gh)], [[], 1, 2])
   down.on = false
   await runWaits(s)
   assert.deepEqual(gh.reviews().map(w => w.body?.commit_id), ['bbb2222'])
