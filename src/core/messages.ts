@@ -7,6 +7,7 @@ export const ownerLines = {
   whatsappHeld: (to: string, reason: string, text: string) => `Held a WhatsApp message to ${to} (${reason}). Send it yourself if it is fine:\n${text}`,
   githubOverCap: (perHour: number, latest: string) => `GitHub sent more than ${perHour} events this hour, so I am skipping them until the hour is up. Latest: ${latest}.`,
   githubNoThread: (thread: string, url: string) => `A GitHub event for ${thread} could not open its thread here: ${url || 'no link'}`,
+  githubNeedsPerson: (why: string, url: string) => `${why}. Kage did not approve it, so a person reviews it: ${url || 'no link'}`,
   githubFailed: (e: unknown) => `A GitHub event failed here (${cut(e)}). It runs again if Kage restarts within 10 minutes; otherwise redeliver it from the app's Advanced page on GitHub.`,
   meetingOverCap: (perHour: number, title: string) => `More than ${perHour} meeting transcripts came in this hour, so I am skipping them. Send "${title}" again after the hour is up.`,
   meetingNoThread: (title: string) => `Notes for the meeting "${title}" could not open a thread here. Send it again.`,

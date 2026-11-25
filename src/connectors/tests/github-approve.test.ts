@@ -1,0 +1,93 @@
+import { test } from 'node:test'
+import assert from 'node:assert/strict'
+import { approver } from '../github-approve.ts'
+import type { GithubCall } from '../github-app.ts'
+
+type Review = { id: number; state: string; commit_id: string; user: { login: string } }
+function fakeGithub(o: { head?: string; files?: string[]; checks?: { id: number; name: string; status: string; conclusion: string | null }[]; reviews?: Review[]; author?: string; required?: string[] } = {}) {
+  const writes: { method: string; path: string; body?: Record<string, unknown> }[] = []
+  const head = o.head ?? 'bbb2222'
+  const pr = { number: 7, state: 'open', draft: false, user: { login: o.author ?? 'ana' }, html_url: 'https://gh/acme/app/pull/7', head: { sha: head, repo: { full_name: 'acme/app' } }, base: { ref: 'main', repo: { full_name: 'acme/app' } } }
+  const routes: Record<string, unknown> = {
+    '/repos/acme/app/pulls/7': pr,
+    '/repos/acme/app/branches/main': { protected: true, protection: { required_status_checks: { contexts: o.required ?? ['build'] } } },
+    '/repos/acme/app/pulls/7/files?per_page=100&page=1': (o.files ?? ['docs/a.md']).map(filename => ({ filename })),
+    [`/repos/acme/app/commits/${head}/check-runs?per_page=100`]: { check_runs: o.checks ?? [{ id: 1, name: 'build', status: 'completed', conclusion: 'success' }] },
+    [`/repos/acme/app/commits/${head}/status`]: { statuses: [] },
+    '/repos/acme/app/pulls/7/reviews?per_page=100': o.reviews ?? [],
+    [`/repos/acme/app/commits/${head}/pulls`]: [{ number: 7 }],
+  }
+  const call: GithubCall = async (method, path, body) => {
+    if (method !== 'GET') { writes.push({ method, path, ...(body && { body }) }); return {} }
+    if (!(path in routes)) throw new Error(`no route ${path}`)
+    return routes[path]
+  }
+  return { call, writes }
+}
+const policy = { authors: ['ana'], riskyPaths: ['**/payments/**'] }
+const pushed = { repository: { full_name: 'acme/app' }, installation: { id: 41 }, action: 'synchronize', pull_request: { number: 7 } }
+
+function setup(gh: ReturnType<typeof fakeGithub>) {
+  const told: string[] = []
+  const a = approver({ policy, bot: 'kage-me[bot]', call: () => gh.call, allowed: id => id === 41, notify: t => void told.push(t) })
+  return { a, told }
+}
+
+test('a listed author with green required checks gets one approval on the head commit, with the gates in its text', async () => {
+  const gh = fakeGithub(), { a } = setup(gh)
+  assert.equal(await a.handle('pull_request', pushed), true)
+  assert.equal(gh.writes.length, 1)
+  assert.equal(gh.writes[0]!.path, '/repos/acme/app/pulls/7/reviews')
+  assert.equal(gh.writes[0]!.body!.event, 'APPROVE')
+  assert.equal(gh.writes[0]!.body!.commit_id, 'bbb2222')
+  assert.match(String(gh.writes[0]!.body!.body), /Required checks: build passed/)
+})
+
+test('a commit Kage already approved gets nothing more', async () => {
+  const gh = fakeGithub({ reviews: [{ id: 5, state: 'APPROVED', commit_id: 'bbb2222', user: { login: 'kage-me[bot]' } }] })
+  await setup(gh).a.handle('pull_request', pushed)
+  assert.deepEqual(gh.writes, [])
+})
+
+test('a push that is not approved yet dismisses the approval Kage gave an older commit', async () => {
+  const gh = fakeGithub({
+    checks: [{ id: 1, name: 'build', status: 'in_progress', conclusion: null }],
+    reviews: [{ id: 5, state: 'APPROVED', commit_id: 'aaa1111', user: { login: 'kage-me[bot]' } }, { id: 6, state: 'APPROVED', commit_id: 'aaa1111', user: { login: 'kim' } }],
+  })
+  await setup(gh).a.handle('pull_request', pushed)
+  assert.deepEqual(gh.writes.map(w => w.path), ['/repos/acme/app/pulls/7/reviews/5/dismissals'])
+  assert.match(String(gh.writes[0]!.body!.message), /bbb2222/)
+})
+
+test('the newest run of a check counts, so a rerun that passed unblocks the approval', async () => {
+  const gh = fakeGithub({ checks: [{ id: 2, name: 'build', status: 'completed', conclusion: 'success' }, { id: 1, name: 'build', status: 'completed', conclusion: 'failure' }] })
+  await setup(gh).a.handle('pull_request', pushed)
+  assert.equal(gh.writes[0]?.body?.event, 'APPROVE')
+})
+
+test('a high-risk file tells the owner once per commit and approves nothing', async () => {
+  const gh = fakeGithub({ files: ['src/payments/charge.py'] }), { a, told } = setup(gh)
+  await a.handle('pull_request', pushed)
+  await a.handle('check_suite', { ...pushed, action: 'completed', check_suite: { pull_requests: [{ number: 7 }] } })
+  assert.deepEqual(gh.writes, [])
+  assert.equal(told.length, 1)
+  assert.match(told[0]!, /acme\/app#7.*src\/payments\/charge\.py.*https:\/\/gh\/acme\/app\/pull\/7/s)
+})
+
+test('an author outside the list is left alone', async () => {
+  const gh = fakeGithub({ author: 'eve' }), { a, told } = setup(gh)
+  await a.handle('pull_request', pushed)
+  assert.deepEqual([gh.writes, told], [[], []])
+})
+
+test('a settled status finds its pull request by commit', async () => {
+  const gh = fakeGithub()
+  await setup(gh).a.handle('status', { repository: { full_name: 'acme/app' }, installation: { id: 41 }, sha: 'bbb2222', state: 'success' })
+  assert.equal(gh.writes[0]?.body?.event, 'APPROVE')
+})
+
+test('an event from an installation outside the allowed accounts reads and writes nothing', async () => {
+  const gh = fakeGithub()
+  assert.equal(await setup(gh).a.handle('pull_request', { ...pushed, installation: { id: 77 } }), false)
+  assert.deepEqual(gh.writes, [])
+})
