@@ -189,7 +189,7 @@ cmd_update() {
   local ref=origin/main old new
   [[ "${1:-}" == --stable ]] && ref=stable
   [[ -z "${1:-}" || "${1:-}" == --stable ]] || die "kage update takes nothing, or --stable for the latest release."
-  [[ -z "${KAGE_CLAUDE:-}" ]] || die "This shell runs inside Kage, so kage update would end this session too. Run it in your own terminal."
+  [[ -z "${KAGE_CLAUDE:-}" ]] || { update_by_asking_the_hub "$@"; return; }
   [[ -d .git ]] || die "This install is not a git checkout. Run the install line again to update it."
   [[ -z "$(git status --porcelain --untracked-files=no)" ]] || die "This checkout has local changes, so it was left as it is: $(git status --porcelain --untracked-files=no | awk '{print $2}' | tr '\n' ' ')"
   # --force: the stable tag moves with each release, and git keeps a moved tag's old copy without it.
@@ -207,7 +207,7 @@ cmd_update() {
   new="$(git rev-parse --short HEAD)"
   says "Got the new version. ${DIM}($new)${OFF}"
   if [[ -n $up ]]; then quietly "I'll switch over when I'm not in the middle of anything${packages:+, after I install what it needs}."; fi
-  whats_new "$old..$new"
+  whats_new "$(git log --format=%s "$old..$new")"
   [[ -n $up ]] && return
   if [[ -n $packages ]]; then
     quietly "Installing what the new version needs."
@@ -218,11 +218,24 @@ cmd_update() {
 
 sentence() { [[ $1 == kage\ * ]] && printf %s "$1" || printf %s "$(printf %s "${1:0:1}" | tr '[:lower:]' '[:upper:]')${1:1}"; }
 
+update_by_asking_the_hub() {
+  local out head new packages subjects=""
+  out="$(node src/cli/update.ts "$@")" || exit 1
+  head="${out%%$'\n'*}"
+  [[ $head != current ]] || { says "I'm already on the newest version."; return; }
+  read -r _ _ new packages <<<"$head"
+  [[ $packages == 1 ]] || packages=""
+  [[ $out != *$'\n'* ]] || subjects="${out#*$'\n'}"
+  says "Got the new version. ${DIM}($new)${OFF}"
+  quietly "I'll switch over when I'm not in the middle of anything${packages:+, after I install what it needs}."
+  whats_new "$subjects"
+}
+
 # What a person gets from an update: the feat and fix commits, without their type, scope or PR number.
 whats_new() {
   local new fixed
-  new="$(git log --format=%s "$1" | sed -nE 's/^feat(\([^)]*\))?!?: //p' | sed -E 's/ \(#[0-9]+\)$//')"
-  fixed="$(git log --format=%s "$1" | sed -nE 's/^fix(\([^)]*\))?!?: //p' | sed -E 's/ \(#[0-9]+\)$//')"
+  new="$(printf %s "$1" | sed -nE 's/^feat(\([^)]*\))?!?: //p' | sed -E 's/ \(#[0-9]+\)$//')"
+  fixed="$(printf %s "$1" | sed -nE 's/^fix(\([^)]*\))?!?: //p' | sed -E 's/ \(#[0-9]+\)$//')"
   if [[ -z $new && -z $fixed ]]; then quietly "Only changes under the hood this time."; return; fi
   if [[ -n $new ]]; then echo; echo "  What's new for you"; while IFS= read -r l; do point "$(sentence "$l")"; done <<<"$new"; fi
   if [[ -n $fixed ]]; then echo; echo "  Fixed"; while IFS= read -r l; do point "$(sentence "$l")"; done <<<"$fixed"; fi

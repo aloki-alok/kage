@@ -10,6 +10,7 @@ import { isJobLane } from '../core/conversations.ts'
 import { log } from './log.ts'
 import { linkToken, readToken, sameSecret } from './owner-key.ts'
 import type { ChannelReply, FromSession, ToSession } from './protocol.ts'
+import type { Updated } from './self-update.ts'
 import { awayCommand, type AfkCommand } from '../core/afk.ts'
 import type { scheduler } from './scheduler.ts'
 
@@ -54,6 +55,7 @@ type Options = Replies & {
   end?: (key: string, cut: boolean) => string
   kagelet?: (action: PanelAction, name: string) => Promise<string>
   away?: (c: AfkCommand) => Promise<string>
+  update?: (stable: boolean) => Promise<Updated>
 }
 type Link = { d: Dispatcher<ToSession>; o: Options; dir: string; owned: Set<string> }
 type Conn = { sock: Socket; key: string; held: string; send: (m: ToSession) => void }
@@ -97,15 +99,18 @@ function free({ d, o, dir }: Link, key: string) {
 
 const answer = (c: Conn, type: string, r: object) => c.sock.write(JSON.stringify({ type, ...r }) + '\n')
 
-type Command = { from: 'owner' | 'read' | 'session'; run: (l: Link, c: Conn, m: Msg) => void }
+type Command = { from: 'owner' | 'read' | 'update' | 'session'; run: (l: Link, c: Conn, m: Msg) => void }
 const owner = (run: Command['run']): Command => ({ from: 'owner', run })
 const read = (run: Command['run']): Command => ({ from: 'read', run })
+const update = (run: Command['run']): Command => ({ from: 'update', run })
 const session = (run: Command['run']): Command => ({ from: 'session', run })
 const OWNER_ONLY = "this needs the owner key, which only the kage command in the owner's own terminal sends"
 const OWNER_THREADS = "kage status works in the owner's threads and terminal"
+const UPDATE_THREADS = "kage update works in the owner's threads and terminal"
 const GATES: Record<Command['from'], { admits: (l: Link, m: Msg) => boolean; refuse: (c: Conn, type: string) => void }> = {
   owner: { admits: ({ o }, m) => sameSecret(m.ownerKey, o.ownerKey), refuse: (c, type) => answer(c, type, { refused: OWNER_ONLY }) },
   read: { admits: ({ o }, m) => sameSecret(m.ownerKey, o.ownerKey) || sameSecret(m.readToken, readToken(o.ownerKey)), refuse: (c, type) => answer(c, type, { refused: OWNER_THREADS }) },
+  update: { admits: ({ o }, m) => sameSecret(m.ownerKey, o.ownerKey) || sameSecret(m.readToken, readToken(o.ownerKey)), refuse: (c, type) => answer(c, type, { refused: UPDATE_THREADS }) },
   session: { admits: ({ o }, m) => typeof m.key === 'string' && sameSecret(m.linkToken, linkToken(o.ownerKey, m.key)), refuse: c => c.sock.destroy() },
 }
 
@@ -124,6 +129,10 @@ const COMMANDS: Record<string, Command> = {
     answer(c, 'board', { ...d.status(Date.now()), ...(paused && { paused }), ...(limitCounts && { limitCounts }) })
   }),
   health: read(({ o }, c) => answer(c, 'health', { lines: o.health?.() ?? [], rows: o.healthRows?.() ?? [] })),
+  update: update(({ o }, c, m) => {
+    if (!o.update) return answer(c, 'update', { refused: 'this hub cannot update itself' })
+    void o.update((m as { stable?: unknown }).stable === true).then(r => answer(c, 'update', r), (e: Error) => answer(c, 'update', { refused: e.message }))
+  }),
   end: owner(({ o }, c, m) => { if (o.end && typeof m.key === 'string') answer(c, 'end', { text: o.end(m.key, (m as { cut?: unknown }).cut === true) }) }),
   quiesce: owner(({ o }, c) => { if (o.quiesce) answer(c, 'quiesce', { waiting: o.quiesce() }) }),
   reload: owner(({ o }, c) => answer(c, 'reload', o.reload?.() ?? { refused: 'this hub cannot reload' })),
