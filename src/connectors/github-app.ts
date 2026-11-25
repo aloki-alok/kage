@@ -28,7 +28,7 @@ export class GithubRefused extends Error {
   constructor(status: number, message: string) { super(message); this.status = status }
 }
 
-export type GithubCall = (method: 'GET' | 'POST' | 'PUT', path: string, body?: Record<string, unknown>) => Promise<unknown>
+export type GithubCall = (method: 'GET' | 'POST' | 'PUT' | 'PATCH', path: string, body?: Record<string, unknown>) => Promise<unknown>
 const TOKEN_MARGIN_MS = 300_000
 
 export function installationCall(app: { id: number; key: string }, fetchFn: typeof fetch = fetch, now = Date.now): (installation: number) => GithubCall {

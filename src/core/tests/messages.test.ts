@@ -12,6 +12,8 @@ const cases: [string, string][] = [
   [L.githubNoThread('repo#2', ''), 'A GitHub event for repo#2 could not open its thread here: no link'],
   [L.githubNoThread('repo#2', 'https://x.test/2'), 'A GitHub event for repo#2 could not open its thread here: https://x.test/2'],
   [L.githubNeedsPerson('acme/app#7 touches high-risk paths: a/payments/b.py', 'https://gh/pr'), 'acme/app#7 touches high-risk paths: a/payments/b.py. Kage did not approve it, so a person reviews it: https://gh/pr'],
+  [L.githubNeedsPerson('acme/app#7: eve pushed to fix/a, and is not in people.', 'https://gh/pr'), 'acme/app#7: eve pushed to fix/a, and is not in people. Kage did not approve it, so a person reviews it: https://gh/pr'],
+  [L.githubChecksDenied(), 'Kage approves pull requests, but GitHub refused its Kage policy check, so agents cannot read why a pull request waits. Give the GitHub App Checks: Read and write, then accept the new permission on each org.'],
   [L.githubBadPolicy('acme/policies kage-approve.json is not valid JSON'), 'Kage approves nothing under a broken policy file until it is fixed: acme/policies kage-approve.json is not valid JSON'],
   [L.githubFailed('x'.repeat(130)), `A GitHub event failed here (${'x'.repeat(120)}). It runs again if Kage restarts within 10 minutes; otherwise redeliver it from the app's Advanced page on GitHub.`],
   [L.meetingOverCap(5, 'Standup'), 'More than 5 meeting transcripts came in this hour, so I am skipping them. Send "Standup" again after the hour is up.'],

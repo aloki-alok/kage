@@ -191,7 +191,7 @@ test('when GitHub fails the first listing, the next tag lists again instead of d
   } finally { t.gh.close() }
 })
 
-test('with approve set, a signed push event reaches the approver through the webhook, and a tag in it still opens its thread', async () => {
+test('with approve set, Kage checks the open pull requests at start, a signed push event reaches the approver through the webhook, and a tag in it still opens its thread', async () => {
   const store = openStore(':memory:'), asked: string[] = [], posts: string[] = []
   const gh = connectGithub({
     saved: store, ownerId: 1, accounts: ['me'], app: { id: 1, slug: 'kage-me', key: 'k' }, secret: SECRET, port: 0,
@@ -205,7 +205,7 @@ test('with approve set, a signed push event reaches the approver through the web
     const body = JSON.stringify({ action: 'opened', repository: { full_name: 'acme/app' }, installation: { id: 41 }, sender: { login: 'me', id: 1 }, pull_request: { number: 7, title: 'Docs', html_url: 'https://gh/pr', body: '@kage-me look', user: { login: 'me', id: 1 }, author_association: 'OWNER' } })
     const r = await fetch(`http://127.0.0.1:${port}/github`, { method: 'POST', body, headers: { 'x-github-event': 'pull_request', 'x-hub-signature-256': `sha256=${createHmac('sha256', SECRET).update(body).digest('hex')}` } })
     assert.equal(r.status, 202)
-    assert.deepEqual(asked, ['GET /repos/acme/app/pulls/7'])
+    assert.deepEqual(asked, ['GET /installation/repositories?per_page=100&page=1', 'GET /repos/acme/app/pulls/7'])
     assert.equal(posts.length, 1)
   } finally { gh.close() }
 })

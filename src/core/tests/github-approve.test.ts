@@ -1,101 +1,125 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { approvalEvent, approvalVerdict, approveSetting, parsePolicy, type PrFacts } from '../github-approve.ts'
+import { approvalEvent, approvalVerdict, approveSetting, checkRun, type PrFacts } from '../github-approve.ts'
+import { parsePolicy, type ApprovePolicy } from '../github-policy.ts'
 
-const policy = { authors: ['ana', 'Ben'], riskyPaths: ['**/payments/**', '**/migrations/**'], source: 'acme/policies kage-approve.json' }
+const policy = parsePolicy(JSON.stringify({
+  people: ['ana', 'Ben'],
+  rules: [
+    { name: 'Releases', targets: ['Production'], then: 'person' },
+    { name: 'High-risk paths', anyFile: ['**/payments/**', '**/migrations/**'], then: 'person' },
+    { name: 'Everything else', then: 'approve' },
+  ],
+}), 'acme/policies kage-approve.json') as ApprovePolicy
 const facts = (o: Partial<PrFacts> = {}): PrFacts => ({
-  repo: 'acme/app', number: 7, sha: 'abc1234def', author: 'ana', open: true, draft: false, fromFork: false,
+  repo: 'acme/app', number: 7, sha: 'abc1234def', author: 'ana', base: 'main', branch: 'fix/a', open: true, draft: false, fromFork: false,
   baseProtected: true, requiredChecks: ['build'], checks: [{ name: 'build', result: 'pass' }, { name: 'lint', result: 'fail' }],
-  files: ['docs/a.md', 'src/x.ts'], filesCut: false, approvedShas: [], ...o,
+  files: ['docs/a.md', 'src/x.ts'], filesCut: false, lines: 12, pushers: ['ana'], ...o,
 })
+const verdict = (o: Partial<PrFacts> = {}, p = policy) => approvalVerdict(p, facts(o))
 
-test('a listed author with green required checks and no risky file gets an approval that names each gate', () => {
-  const v = approvalVerdict(policy, facts())
+test('a listed author whose pushes are all listed, with green required checks, is approved under the rule that matched', () => {
+  const v = verdict()
   assert.equal(v.kind, 'approve')
-  if (v.kind !== 'approve') return
-  assert.match(v.body, /Commit: abc1234\b/)
-  assert.match(v.body, /^- Author: ana$/m)
-  assert.match(v.body, /Required checks: build passed/)
-  assert.match(v.body, /^- Files: 2, none high risk$/m)
+  assert.equal(v.rule, 'Everything else')
+  assert.match(v.body ?? '', /^Approved by Kage under acme\/policies kage-approve\.json, rule "Everything else"\./)
+  assert.match(v.body ?? '', /^- Commit: abc1234$/m)
+  assert.match(v.body ?? '', /^- Author: ana$/m)
+  assert.match(v.body ?? '', /^- Pushed by: ana$/m)
+  assert.match(v.body ?? '', /^- Required checks: build passed$/m)
+  assert.match(v.body ?? '', /^- Files: 2$/m)
 })
 
-test('the author list matches GitHub logins without case', () => {
-  assert.equal(approvalVerdict(policy, facts({ author: 'ben' })).kind, 'approve')
+test('people match without case', () => {
+  assert.equal(verdict({ author: 'ben', pushers: ['BEN'] }).kind, 'approve')
 })
 
-test('an author outside the list, a draft, a fork, a closed pull request or an unprotected base is skipped', () => {
-  for (const o of [{ author: 'eve' }, { draft: true }, { fromFork: true }, { open: false }, { baseProtected: false }])
-    assert.equal(approvalVerdict(policy, facts(o)).kind, 'skip', JSON.stringify(o))
+test('a push from someone outside people sends the pull request to a person, naming the pusher', () => {
+  const v = verdict({ pushers: ['ana', 'eve'] })
+  assert.deepEqual([v.kind, v.code], ['person', 'pusher-not-listed'])
+  assert.match(v.why, /eve pushed to fix\/a/)
 })
 
-test('a commit this app already approved is skipped, so a redelivered event posts nothing twice', () => {
-  assert.equal(approvalVerdict(policy, facts({ approvedShas: ['abc1234def'] })).kind, 'skip')
+test('a branch whose pushes Kage cannot all see goes to a person', () => {
+  assert.deepEqual([verdict({ pushers: undefined }).kind, verdict({ pushers: undefined }).code], ['person', 'pushes-unseen'])
 })
 
-test('a required check that is missing or still running waits, and one that failed is skipped', () => {
-  assert.equal(approvalVerdict(policy, facts({ checks: [] })).kind, 'wait')
-  assert.equal(approvalVerdict(policy, facts({ checks: [{ name: 'build', result: 'pending' }] })).kind, 'wait')
-  const failed = approvalVerdict(policy, facts({ checks: [{ name: 'build', result: 'fail' }] }))
-  assert.equal(failed.kind, 'skip')
-  assert.match(failed.kind === 'skip' ? failed.why : '', /build/)
+test('an author outside people, or a closed pull request, is skipped with nothing to show', () => {
+  for (const o of [{ author: 'eve' }, { open: false }]) assert.equal(verdict(o).kind, 'skip', JSON.stringify(o))
+})
+
+test('a draft, a fork or an unprotected base stops with a fix an agent can act on', () => {
+  for (const [o, code] of [[{ draft: true }, 'draft'], [{ fromFork: true }, 'fork'], [{ baseProtected: false }, 'base-unprotected']] as const) {
+    const v = verdict(o)
+    assert.deepEqual([v.kind, v.code], ['stop', code])
+    assert.ok(v.fix.length > 0, code)
+  }
+})
+
+test('a rule that asks for a person names the rule and what matched', () => {
+  const risky = verdict({ files: ['docs/a.md', 'billing/payments/charge.py'] })
+  assert.deepEqual([risky.kind, risky.code, risky.rule], ['person', 'rule', 'High-risk paths'])
+  assert.match(risky.why, /billing\/payments\/charge\.py/)
+  const release = verdict({ base: 'Production' })
+  assert.deepEqual([release.kind, release.rule], ['person', 'Releases'])
+  assert.match(release.why, /targets Production/)
+})
+
+test('a person rule wins over a pending check, so the person hears at once', () => {
+  assert.equal(verdict({ files: ['db/migrations/1.sql'], checks: [] }).kind, 'person')
+})
+
+test('a pull request no rule covers is not approved, and the fix says to add a rule', () => {
+  const narrow = parsePolicy('{"people":["ana"],"rules":[{"name":"Docs","anyFile":["docs/**"],"then":"approve"}]}', 'p') as ApprovePolicy
+  const v = verdict({ files: ['src/x.ts'] }, narrow)
+  assert.deepEqual([v.kind, v.code], ['stop', 'no-rule'])
+  assert.match(v.fix, /rule/)
+})
+
+test('a required check that is missing or running waits, and one that failed stops and names it', () => {
+  assert.deepEqual([verdict({ checks: [] }).kind, verdict({ checks: [] }).code], ['wait', 'checks-pending'])
+  const failed = verdict({ checks: [{ name: 'build', result: 'fail' }] })
+  assert.deepEqual([failed.kind, failed.code], ['stop', 'checks-failed'])
+  assert.match(failed.why, /build/)
 })
 
 test('a repo with no required checks is approved on the other gates', () => {
-  const v = approvalVerdict(policy, facts({ requiredChecks: [], checks: [] }))
-  assert.equal(v.kind, 'approve')
-  assert.match(v.kind === 'approve' ? v.body : '', /Required checks: none set on this branch/)
+  assert.match(verdict({ requiredChecks: [], checks: [] }).body ?? '', /Required checks: none set on this branch/)
 })
 
-test('a file on a high-risk path goes to a human and names that file', () => {
-  const v = approvalVerdict(policy, facts({ files: ['docs/a.md', 'billing/payments/charge.py'] }))
-  assert.equal(v.kind, 'human')
-  assert.match(v.kind === 'human' ? v.why : '', /billing\/payments\/charge\.py/)
+test('more files than Kage read, or a change to a policy file, always goes to a person', () => {
+  assert.equal(verdict({ filesCut: true }).code, 'too-many-files')
+  for (const file of ['.github/kage-approve.json', 'kage-approve.json']) assert.equal(verdict({ files: [file] }).code, 'policy-change', file)
 })
 
-test('a pull request with more files than Kage read goes to a human', () => {
-  assert.equal(approvalVerdict(policy, facts({ filesCut: true })).kind, 'human')
-})
-
-test('a high-risk file wins over a pending check, so the human hears at once', () => {
-  assert.equal(approvalVerdict(policy, facts({ files: ['db/migrations/1.sql'], checks: [] })).kind, 'human')
+test('the check run carries the verdict as data an agent can read', () => {
+  const approved = checkRun(policy, facts(), verdict())
+  assert.deepEqual([approved.name, approved.head_sha, approved.status, approved.conclusion], ['Kage policy', 'abc1234def', 'completed', 'success'])
+  const risky = facts({ files: ['src/payments/x.ts'] })
+  const run = checkRun(policy, risky, approvalVerdict(policy, risky))
+  assert.equal(run.conclusion, 'neutral')
+  assert.match(run.output.title, /Needs a person/)
+  const data = JSON.parse(/```json\n([\s\S]+)\n```/.exec(run.output.text)![1]!)
+  assert.deepEqual(data, { verdict: 'person', code: 'rule', rule: 'High-risk paths', commit: 'abc1234def', why: data.why, fix: data.fix, policy: 'acme/policies kage-approve.json' })
+  const waiting = checkRun(policy, facts({ checks: [] }), verdict({ checks: [] }))
+  assert.deepEqual([waiting.status, waiting.conclusion], ['in_progress', undefined])
 })
 
 const at = { repository: { full_name: 'acme/app' }, installation: { id: 41 } }
-test('a new or pushed pull request, a finished check suite and a settled status each name what to check again', () => {
-  assert.deepEqual(approvalEvent('pull_request', { ...at, action: 'synchronize', pull_request: { number: 7 } }), { repo: 'acme/app', installation: 41, prs: [7] })
-  assert.deepEqual(approvalEvent('check_suite', { ...at, action: 'completed', check_suite: { pull_requests: [{ number: 7 }, { number: 9 }] } }), { repo: 'acme/app', installation: 41, prs: [7, 9] })
-  assert.deepEqual(approvalEvent('status', { ...at, sha: 'abc', state: 'success' }), { repo: 'acme/app', installation: 41, sha: 'abc' })
+test('pull request changes, a finished check suite and a settled status each name what to check again', () => {
+  for (const action of ['opened', 'synchronize', 'reopened', 'ready_for_review', 'converted_to_draft', 'edited'])
+    assert.deepEqual(approvalEvent('pull_request', { ...at, action, pull_request: { number: 7 } }, 'kage-me'), { repo: 'acme/app', installation: 41, prs: [7] }, action)
+  assert.deepEqual(approvalEvent('check_suite', { ...at, action: 'completed', check_suite: { app: { slug: 'ci' }, pull_requests: [{ number: 7 }, { number: 9 }] } }, 'kage-me'), { repo: 'acme/app', installation: 41, prs: [7, 9] })
+  assert.deepEqual(approvalEvent('status', { ...at, sha: 'abc', state: 'success' }, 'kage-me'), { repo: 'acme/app', installation: 41, sha: 'abc' })
 })
 
-test('a closed pull request, a check suite still running, a pending status or a comment start no check', () => {
-  assert.equal(approvalEvent('pull_request', { ...at, action: 'closed', pull_request: { number: 7 } }), undefined)
-  assert.equal(approvalEvent('check_suite', { ...at, action: 'requested', check_suite: { pull_requests: [{ number: 7 }] } }), undefined)
-  assert.equal(approvalEvent('status', { ...at, sha: 'abc', state: 'pending' }), undefined)
-  assert.equal(approvalEvent('issue_comment', { ...at, action: 'created' }), undefined)
-  assert.equal(approvalEvent('pull_request', { action: 'opened', pull_request: { number: 7 } }), undefined)
-})
-
-test('a policy file gives authors and the paths that need a person, and a bad file says what is wrong', () => {
-  assert.deepEqual(parsePolicy('{"authors":["ana"],"needsPerson":["**/payments/**"]}', 'acme/policies'), { authors: ['ana'], riskyPaths: ['**/payments/**'], source: 'acme/policies' })
-  assert.deepEqual(parsePolicy('{"authors":["ana"]}', 'x'), { authors: ['ana'], riskyPaths: [], source: 'x' })
-  assert.match((parsePolicy('{"authors":[]}', 'x') as { error: string }).error, /authors/)
-  assert.match((parsePolicy('{"authors":["ana"],"approveAll":true}', 'x') as { error: string }).error, /approveAll|Unrecognized/)
-  assert.match((parsePolicy('authors: [ana]', 'x') as { error: string }).error, /not valid JSON/)
-})
-
-test('a change to any policy file always goes to a person, so a pull request cannot loosen its own rules', () => {
-  for (const file of ['.github/kage-approve.json', 'kage-approve.json'])
-    assert.equal(approvalVerdict({ ...policy, riskyPaths: [] }, facts({ files: [file] })).kind, 'human', file)
-})
-
-test('a high-risk path inside a folder whose name starts with a dot still counts', () => {
-  assert.equal(approvalVerdict(policy, facts({ files: ['.internal/migrations/1.sql'] })).kind, 'human')
-  assert.equal(approvalVerdict({ ...policy, riskyPaths: ['.github/**'] }, facts({ files: ['.github/.hidden/a.yml'] })).kind, 'human')
-})
-
-test('the approval names the policy it was judged under', () => {
-  const v = approvalVerdict(policy, facts())
-  assert.match(v.kind === 'approve' ? v.body : '', /under acme\/policies kage-approve\.json/)
+test('Kage\'s own check suite, a closed pull request, a running suite, a pending status or a comment start no check', () => {
+  assert.equal(approvalEvent('check_suite', { ...at, action: 'completed', check_suite: { app: { slug: 'kage-me' }, pull_requests: [{ number: 7 }] } }, 'kage-me'), undefined)
+  assert.equal(approvalEvent('pull_request', { ...at, action: 'closed', pull_request: { number: 7 } }, 'kage-me'), undefined)
+  assert.equal(approvalEvent('check_suite', { ...at, action: 'requested', check_suite: { pull_requests: [{ number: 7 }] } }, 'kage-me'), undefined)
+  assert.equal(approvalEvent('status', { ...at, sha: 'abc', state: 'pending' }, 'kage-me'), undefined)
+  assert.equal(approvalEvent('issue_comment', { ...at, action: 'created' }, 'kage-me'), undefined)
+  assert.equal(approvalEvent('pull_request', { action: 'opened', pull_request: { number: 7 } }, 'kage-me'), undefined)
 })
 
 test('approvals are off with no setting, and on they read the org policy from .github unless another repo is named', () => {
