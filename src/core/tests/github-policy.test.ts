@@ -81,4 +81,5 @@ test('a release rule matches only its author, its branch, and a pull request who
   assert.equal(firstRule(releases, release({ files: ['CHANGELOG.md', 'app/main.py'] }))?.name, 'Other bot pull requests')
   assert.equal(firstRule(releases, release({ branch: 'chore/sync' }))?.name, 'Other bot pull requests')
   assert.equal(firstRule(releases, release({ author: 'ana' }))?.name, 'Everything else')
+  assert.equal(firstRule(releases, release({ files: [] }))?.name, 'Other bot pull requests')
 })

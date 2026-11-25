@@ -10,7 +10,7 @@ type Fake = {
   files?: string[]; checks?: Run[]; reviews?: Review[]; author?: string; required?: string[]; draft?: boolean
   activity?: { activity_type: string; actor: { login: string } | null; after?: string }[]; rules?: unknown[]; refuse?: (method: string, path: string) => number | undefined
   open?: { number: number; draft?: boolean; user: { login: string }; head: { sha: string }; base: { ref: string } }[]
-  branch?: string; labels?: string[]; repoSettings?: Record<string, boolean>
+  branch?: string; labels?: string[]; repoSettings?: Record<string, boolean>; merged?: boolean
 }
 const POLICY = '{"people":["ana"],"rules":[{"name":"High-risk paths","anyFile":["**/payments/**"],"then":"person"},{"name":"Everything else","then":"approve"}]}'
 const NOW = Date.parse('2026-11-25T12:00:00Z')
@@ -45,6 +45,7 @@ function fakeGithub(o: Fake = {}) {
     if (method !== 'GET') { writes.push({ method, path, ...(body && { body }) }); return {} }
     reads.push(path)
     if (path === '/repos/acme/app/pulls/7' && pullReads++ && o.movedTo) return { ...pr, head: { ...pr.head, sha: o.movedTo } }
+    if (path === '/repos/acme/app/pulls/7' && o.merged) return { ...pr, merged: true }
     if (/\/files\?per_page=100&page=\d+$/.test(path) && o.files?.length === 100) return o.files.map(filename => ({ filename }))
     if (path.includes('/contents/') && !(path in routes)) throw new GithubRefused(404, `404 ${path}`)
     if (!(path in routes)) throw new Error(`no route ${path}`)
@@ -420,4 +421,44 @@ test('a release GitHub will not merge tells the owner once, with the reason', as
   await a.handle('pull_request', pushed)
   assert.equal(told.filter(t => /could not merge/.test(t)).length, 1)
   assert.match(told.join('\n'), /acme\/app#7/)
+})
+
+test('a release in a repo that allows only rebase merges by rebase', async () => {
+  const gh = release({ repoSettings: { allow_squash_merge: false, allow_merge_commit: false } }), { a } = setup(gh)
+  await a.handle('pull_request', pushed)
+  assert.equal(gh.merges()[0]!.body!.merge_method, 'rebase')
+})
+
+test('removing the hold label judges the release again and merges it', async () => {
+  const gh = release(), { a } = setup(gh)
+  assert.equal(await a.handle('pull_request', { ...pushed, action: 'unlabeled' }), true)
+  assert.equal(gh.merges().length, 1)
+})
+
+test('the sweep merges a release Kage already approved whose merge failed, and approves nothing new', async () => {
+  const gh = release({ reviews: [{ id: 5, state: 'APPROVED', commit_id: 'bbb2222', user: { login: 'kage-me[bot]' } }] }), { a } = setup(gh)
+  await a.sweep(41)
+  assert.deepEqual([gh.reviews().length, gh.merges().length], [0, 1])
+})
+
+test('the sweep never merges a release Kage has not approved', async () => {
+  const gh = release({ reviews: [] }), { a } = setup(gh)
+  await a.sweep(41)
+  assert.equal(gh.merges().length, 0)
+})
+
+test('a GitHub 5xx on the merge tells the owner nothing, and the retry merges it', async () => {
+  let fails = 1
+  const gh = release({ refuse: (m, p) => (m === 'PUT' && p.endsWith('/merge') && fails-- > 0 ? 502 : undefined) }), { a, told, waits, queued } = setup(gh)
+  await a.handle('pull_request', pushed)
+  assert.deepEqual([told.length, gh.merges().length, waits.length], [0, 0, 1])
+  waits[0]!.job()
+  await queued.shift()!()
+  assert.deepEqual([told.length, gh.merges().length], [0, 1])
+})
+
+test('a refused merge of a pull request another event already merged tells the owner nothing', async () => {
+  const gh = release({ merged: true, refuse: (m, p) => (m === 'PUT' && p.endsWith('/merge') ? 405 : undefined) }), { a, told } = setup(gh)
+  await a.handle('pull_request', pushed)
+  assert.equal(told.filter(t => /could not merge/.test(t)).length, 0)
 })
