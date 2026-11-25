@@ -11,6 +11,7 @@ export type FromSession =
   | { type: 'health' }
   | { type: 'end'; key: string; cut?: boolean }
   | { type: 'quiesce' }
+  | { type: 'update'; stable?: boolean }
   | { type: 'reload' }
   | { type: 'callcode' }
   | { type: 'stop'; key: string }
