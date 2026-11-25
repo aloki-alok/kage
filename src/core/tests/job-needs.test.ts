@@ -31,7 +31,17 @@ test('the first miss tells the owner once, with the job and the missing tool', (
   assert.deepEqual(c!.missing, [DIAL])
   assert.match(c!.dm!, /a1b2 in #alerts/)
   assert.match(c!.dm!, /mcp__claude_ai_Dialer__place_call/)
+  assert.doesNotMatch(c!.dm!, /runs no turn/, "an owner run's miss may be a passing connector failure, so it keeps running")
   assert.deepEqual(needsChanges([job([DIAL])], live([])), [], 'a second look while still missing says nothing')
+})
+
+test("a teammate-trust job with none of its tools is told it runs no turn; one that keeps a tool is not", () => {
+  const [c] = needsChanges([{ ...job(), runs: 'teammate' }], live([DIAL]))
+  assert.match(c!.dm!, /runs no turn/)
+  const [d] = needsChanges([{ ...job(), runs: 'teammate', needs: [DIAL, 'mcp__kage__reply'] }], live([]))
+  assert.match(d!.dm!, /runs no turn/, 'its own tools do not count as a need it still has')
+  const [e] = needsChanges([{ ...job(), needs: [DIAL, 'mcp__claude_ai_Slack__read'] }], live(['mcp__claude_ai_Slack__read']))
+  assert.doesNotMatch(e!.dm!, /runs no turn/)
 })
 
 test('the tool coming back tells the owner once more', () => {

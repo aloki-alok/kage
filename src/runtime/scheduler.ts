@@ -1,6 +1,7 @@
 import { log } from './log.ts'
 import { jobLane, isJobLane, threadOfJobLane } from '../core/conversations.ts'
 import { CATCH_UP, dueSchedules, REPLY, type Late, type Schedule } from '../core/cron.ts'
+import { toolless } from '../core/job-needs.ts'
 import { jobCarry } from '../core/ledgers.ts'
 import { sentTexts } from '../core/transcript.ts'
 import { newLines } from './transcript-tail.ts'
@@ -64,8 +65,16 @@ function planFresh({ o, store }: Clock, lane: string) {
   return { reset, carry: reset ? jobCarry(o.job.posted(), lane, o.job.carryCount(), texts, o.job.carryChars()) : '', next: reset ? 1 : n + 1 }
 }
 
+const lacksAll = (o: Options, s: Schedule, fromOwner: boolean) => {
+  if (fromOwner && o.trusted(s.key)) return undefined
+  const gone = toolless(s.needs, o.store.jobState(s.id).missing)
+  return gone.length ? `job ${s.id} runs at a teammate's trust, which has none of the tools it needs (${gone.join(', ')}), so it runs no turn` : undefined
+}
+
 function run(k: Clock, s: Schedule, content: string, fromOwner = s.fromOwner, notify = true): boolean {
   const { o, store } = k
+  const lacks = lacksAll(o, s, fromOwner)
+  if (lacks) { log(lacks); o.event?.({ kind: 'tripwire', who: s.key, trace: '', detail: `skip job=${s.id} reason=no-tools` }); return true }
   const c = store.conversation(s.key)
   if (!c) { log('schedule for an unknown thread', s.id, s.key); return false }
   const task = (fromOwner && o.trusted(s.key) ? taskAsOwner : taskAsOther)({
@@ -221,6 +230,8 @@ export function scheduler(o: Options) {
     runNow(id: string, now: number, lead?: string): string | undefined {
       const s = store.schedules().find(x => x.id === id)
       if (!s) return `no schedule ${id}: it is paused, removed, or not synced yet`
+      const lacks = lacksAll(o, s, s.fromOwner)
+      if (lacks) return lacks
       store.fired(id, now)
       o.ran?.(s, now)
       run(k, s, `${lead ? `${lead}\n` : ''}Run now of job ${id}, asked for outside its schedule (${s.cron}). Nobody wrote a new message.\n${s.prompt}`)
