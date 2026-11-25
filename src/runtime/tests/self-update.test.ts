@@ -67,6 +67,18 @@ test('stable moves to the stable tag, not past it', async () => {
   assert.equal(git(local, 'rev-parse', 'HEAD'), tagged)
 })
 
+test('a second update asked while one runs does its own move after it, for the ref it asked for', async () => {
+  const { origin, local } = repos()
+  commit(origin, 'b.ts')
+  git(origin, 'tag', '-a', '-m', 'stable', 'stable')
+  const tagged = git(origin, 'rev-parse', '--short', 'HEAD')
+  commit(origin, 'c.ts')
+  const [toStable, toMain] = await Promise.all([fastForward(local, true), fastForward(local, false)])
+  assert.ok('moved' in toStable && toStable.moved.new === tagged)
+  assert.ok('moved' in toMain && toMain.moved.old === tagged)
+  assert.equal(git(local, 'rev-parse', 'HEAD'), git(origin, 'rev-parse', 'HEAD'))
+})
+
 test('stable with no stable tag refuses', async () => {
   const { origin, local } = repos()
   commit(origin, 'b.ts')

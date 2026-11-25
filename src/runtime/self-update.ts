@@ -8,11 +8,12 @@ export type Updated = { current: true } | { moved: { old: string; new: string; p
 const git = async (root: string, ...args: string[]) => (await promisify(execFile)('git', args, { cwd: root, encoding: 'utf8', timeout: 60_000 })).stdout.trim()
 const reason = (e: unknown) => String((e as { stderr?: string }).stderr || e).trim().split('\n')[0]!
 
-let running: Promise<Updated> | undefined
+let last: Promise<unknown> = Promise.resolve()
 
 export function fastForward(root: string, stable: boolean): Promise<Updated> {
-  running ??= move(root, stable).catch(e => ({ refused: `git failed: ${reason(e)}` })).finally(() => { running = undefined })
-  return running
+  const next = last.then(() => move(root, stable)).catch(e => ({ refused: `git failed: ${reason(e)}` }))
+  last = next
+  return next
 }
 
 async function move(root: string, stable: boolean): Promise<Updated> {
