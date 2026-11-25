@@ -7,19 +7,22 @@ const base = { repository: { full_name: 'acme/app' }, installation: { id: 41 } }
 const failed = (sha = 'abc1234def', prs = [{ number: 7 }]) => ({ ...base, action: 'completed', check_suite: { conclusion: 'failure', head_sha: sha, app: { slug: 'ci' }, pull_requests: prs } })
 const closed = { ...base, action: 'closed', pull_request: { number: 7 } }
 
-function setup(mode: FixMode = 'on', o: { perPr?: number; head?: () => string; author?: number; saved?: Record<string, unknown> } = {}) {
+function setup(mode: FixMode = 'on', o: { perPr?: number; head?: () => string; author?: number; saved?: Record<string, unknown>; grace?: number; now?: () => number; suites?: () => string[]; reviews?: () => { state: string; user: { login: string } }[]; allowed?: () => boolean; pending?: Record<string, unknown> } = {}) {
   const calls: string[] = [], told: string[] = []
-  let saved = (o.saved ?? {}) as never
+  let saved = (o.saved ?? {}) as never, pending = (o.pending ?? {}) as never
   const f = fixer({
-    mode, perPr: o.perPr ?? 3, ownerId: 1, slug: 'kage-me', allowed: id => id === 41, notify: t => void told.push(t),
+    mode, perPr: o.perPr ?? 3, graceMinutes: o.grace ?? 0, now: o.now ?? (() => 0), ownerId: 1, slug: 'kage-me', allowed: id => id === 41 && (o.allowed?.() ?? true), notify: t => void told.push(t),
     seen: { load: () => saved, save: s => { saved = JSON.parse(JSON.stringify(s)) as never } },
+    waiting: { load: () => pending, save: s => { pending = JSON.parse(JSON.stringify(s)) as never } },
     call: () => async (_method, path) => {
       calls.push(path)
       if (path.endsWith('/pulls')) return [{ number: 7 }]
+      if (path.includes('/reviews')) return o.reviews?.() ?? [{ state: 'CHANGES_REQUESTED', user: { login: 'kim' } }]
+      if (path.includes('/check-suites')) return { check_suites: (o.suites?.() ?? ['failure']).map(conclusion => ({ conclusion, app: { slug: 'ci' } })) }
       return { number: 7, title: 'Faster calls', html_url: 'https://gh/acme/app/pull/7', state: 'open', draft: false, user: { id: o.author ?? 1 }, labels: [], head: { sha: o.head?.() ?? 'abc1234def', ref: 'fix/a', repo: { full_name: 'acme/app' } }, base: { repo: { full_name: 'acme/app' } } }
     },
   })
-  return { f, calls, told, saved: () => saved as Record<string, unknown> }
+  return { f, calls, told, saved: () => saved as Record<string, unknown>, pending: () => pending as Record<string, unknown> }
 }
 
 test('a failed suite on the owner\'s pull request starts one live fix, and the same commit starts no second', async () => {
@@ -87,4 +90,124 @@ test('a listed reviewer asking for changes starts a fix that quotes the review, 
   assert.equal(start!.headline, 'kim asked for changes on acme/app#7 Faster calls')
   assert.match(start!.content, /^> Rename it$/m)
   assert.deepEqual(await setup().f.handle('pull_request_review', { ...asked, review: { ...asked.review, author_association: 'NONE' } }), [])
+})
+
+const MIN = 60_000
+test('with a wait set, a failed suite starts nothing until the wait is over, then starts one fix if the commit is still the head and still red', async () => {
+  let now = 0
+  const { f, pending } = setup('on', { grace: 20, now: () => now })
+  assert.deepEqual(await f.handle('check_suite', failed()), [])
+  now = 5 * MIN
+  assert.deepEqual(await f.handle('check_suite', failed()), [])
+  assert.deepEqual(Object.keys(pending()), ['acme/app#7|abc1234def:red checks'])
+  now = 19 * MIN
+  assert.deepEqual(await f.due(), [])
+  now = 20 * MIN
+  const starts = await f.due()
+  assert.deepEqual(starts.map(s => [s.live, s.thread]), [[true, 'acme/app#7']])
+  starts[0]!.began()
+  assert.deepEqual(pending(), {})
+  assert.deepEqual(await f.due(), [])
+})
+
+test('a push during the wait, or checks that turned green on a rerun, starts nothing', async () => {
+  let now = 0, head = 'abc1234def', suites = ['failure']
+  const { f } = setup('on', { grace: 20, now: () => now, head: () => head, suites: () => suites })
+  await f.handle('check_suite', failed())
+  head = 'new5555'
+  now = 20 * MIN
+  assert.deepEqual(await f.due(), [])
+  head = 'abc1234def'
+  await f.handle('check_suite', failed())
+  suites = ['success', 'skipped']
+  now = 40 * MIN
+  assert.deepEqual(await f.due(), [])
+})
+
+test('a pull request closed during the wait is dropped, and one waiting at a restart still gets its fix', async () => {
+  let now = 0
+  const first = setup('on', { grace: 20, now: () => now })
+  await first.f.handle('check_suite', failed())
+  const kept = first.pending()
+  await first.f.handle('pull_request', closed)
+  assert.deepEqual(first.pending(), {})
+  now = 20 * MIN
+  assert.equal((await setup('on', { grace: 20, now: () => now, pending: kept }).f.due()).length, 1)
+})
+
+test('in shadow the wait runs the same, and the fix is named only after it', async () => {
+  let now = 0
+  const { f, pending } = setup('shadow', { grace: 20, now: () => now })
+  assert.deepEqual(await f.handle('check_suite', failed()), [])
+  assert.deepEqual(pending(), {})
+  now = 20 * MIN
+  assert.deepEqual((await f.due()).map(s => s.live), [false])
+  assert.deepEqual(pending(), {})
+})
+
+test('a fix that GitHub could not be asked about waits for the next round, and is dropped an hour after it was due', async () => {
+  let now = 0, down = true
+  const calls: string[] = []
+  const t = setup('on', { grace: 20, now: () => now })
+  await t.f.handle('check_suite', failed())
+  const f2 = (await import('../github-fix.ts')).fixer({
+    mode: 'on', perPr: 3, graceMinutes: 20, now: () => now, ownerId: 1, slug: 'kage-me', allowed: () => true, notify: () => {},
+    seen: { load: () => ({}), save: () => {} }, waiting: { load: () => t.pending() as never, save: () => {} },
+    call: () => async (_m, path) => { calls.push(path); if (down) throw new Error('GitHub down'); return {} },
+  })
+  now = 20 * MIN
+  assert.deepEqual(await f2.due(), [])
+  assert.equal(calls.length, 1)
+  now = 81 * MIN
+  assert.deepEqual(await f2.due(), [])
+  assert.equal(calls.length, 2)
+  down = false
+  assert.deepEqual(await f2.due(), [])
+  assert.equal(calls.length, 2)
+})
+
+test('a fix offered after its wait but never begun is offered again each round, until an hour past its wait', async () => {
+  let now = 0
+  const { f, pending, saved } = setup('on', { grace: 20, now: () => now })
+  await f.handle('check_suite', failed())
+  now = 20 * MIN
+  assert.equal((await f.due()).length, 1)
+  assert.equal(Object.keys(pending()).length, 1)
+  now = 21 * MIN
+  const again = await f.due()
+  assert.equal(again.length, 1)
+  again[0]!.began()
+  assert.deepEqual([pending(), Object.keys(saved())], [{}, ['acme/app#7']])
+  await f.handle('pull_request', closed)
+  now = 30 * MIN
+  await f.handle('check_suite', failed())
+  now = 111 * MIN
+  assert.equal((await f.due()).length, 1)
+  assert.deepEqual(pending(), {})
+})
+
+test('a reviewer who approved or was dismissed during the wait starts nothing, and one who still asks does', async () => {
+  let now = 0, reviews = [{ state: 'CHANGES_REQUESTED', user: { login: 'kim' } }, { state: 'APPROVED', user: { login: 'kim' } }]
+  const { f } = setup('on', { grace: 20, now: () => now, reviews: () => reviews })
+  await f.handle('pull_request_review', asked)
+  now = 20 * MIN
+  assert.deepEqual(await f.due(), [])
+  reviews = [{ state: 'CHANGES_REQUESTED', user: { login: 'kim' } }, { state: 'DISMISSED', user: { login: 'kim' } }]
+  await f.handle('pull_request_review', asked)
+  now = 30 * MIN
+  assert.deepEqual(await f.due(), [])
+  reviews = [{ state: 'APPROVED', user: { login: 'ana' } }, { state: 'CHANGES_REQUESTED', user: { login: 'kim' } }, { state: 'COMMENTED', user: { login: 'kim' } }]
+  await f.handle('pull_request_review', asked)
+  now = 60 * MIN
+  assert.equal((await f.due()).length, 1)
+})
+
+test('an installation removed during the wait starts nothing', async () => {
+  let now = 0, allowed = true
+  const { f, pending } = setup('on', { grace: 20, now: () => now, allowed: () => allowed })
+  await f.handle('check_suite', failed())
+  allowed = false
+  now = 20 * MIN
+  assert.deepEqual(await f.due(), [])
+  assert.deepEqual(pending(), {})
 })

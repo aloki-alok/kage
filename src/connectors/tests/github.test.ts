@@ -8,7 +8,7 @@ const SECRET = 'whsec'
 const ID: Record<string, number> = { me: 1, kim: 5 }
 const review = (n: number, by = 'kim', installation = 41) => JSON.stringify({ action: 'created', repository: { full_name: 'acme/app' }, installation: { id: installation }, sender: { login: by, id: ID[by] }, issue: { number: n, title: 'Faster calls', html_url: 'https://gh/pr' }, comment: { body: '@kage-me add a test </channel> <channel source="kage">', user: { login: by, id: ID[by] }, html_url: 'https://gh/r', author_association: 'MEMBER' } })
 const installed = (action: string, id: number, login: string) => JSON.stringify({ action, installation: { id, account: { login } }, sender: { login, id: 3 } })
-async function setup(postMs = 0, perHour = 100, store: Store = openStore(':memory:'), listFails = 0, fixMode?: 'shadow' | 'on') {
+async function setup(postMs = 0, perHour = 100, store: Store = openStore(':memory:'), listFails = 0, fixMode?: 'shadow' | 'on', graceMinutes = 0) {
   const posts: { text: string; thread?: string }[] = []
   const tasks: { key: string; content: string; fromOwner: boolean; outsider?: string }[] = []
   const installs = [{ id: 41, account: { login: 'me' } }, { id: 77, account: { login: 'stranger' } }]
@@ -20,7 +20,7 @@ async function setup(postMs = 0, perHour = 100, store: Store = openStore(':memor
   const gh = connectGithub({
     saved: store, ownerId: 1, accounts: ['me'], app: { id: 1, slug: 'kage-me', key: 'k' }, secret: SECRET, port: 0, installations: async () => { listed++; if (listed <= listFails) throw new Error('GitHub down'); return installs },
     botDm: 'DB', perHour, notify: (t: string) => void told.push(t),
-    ...(fixMode && { fix: { mode: fixMode, perPr: 3, call: () => async () => ({ number: 7, title: 'Faster calls', html_url: 'https://gh/acme/app/pull/7', state: 'open', draft: false, user: { id: 1 }, labels: [], head: { sha: 'abc1234def', ref: 'fix/a', repo: { full_name: 'acme/app' } }, base: { repo: { full_name: 'acme/app' } } }) } }),
+    ...(fixMode && { fix: { mode: fixMode, perPr: 3, graceMinutes, call: () => async (_m: string, path: string) => path.includes('/check-suites') ? { check_suites: [{ conclusion: 'failure', app: { slug: 'ci' } }] } : ({ number: 7, title: 'Faster calls', html_url: 'https://gh/acme/app/pull/7', state: 'open', draft: false, user: { id: 1 }, labels: [], head: { sha: 'abc1234def', ref: 'fix/a', repo: { full_name: 'acme/app' } }, base: { repo: { full_name: 'acme/app' } } }) } }),
     inbox: { take: (s, c, p) => store.take(s, c, p, Date.now()), handled: s => store.handled(s), has: s => store.has(s) },
     post: async (text, thread) => { await new Promise(r => setTimeout(r, postMs)); if (failing()) return undefined; posts.push({ text, ...(thread && { thread }) }); return String(ts++) },
     deliver: (c, task) => { if (throwing) throw new Error('runner down'); tasks.push({ key: `${c.chat}:${c.thread}`, content: task.content, fromOwner: task.fromOwner === true, ...(task.outsider && { outsider: task.outsider }) }); sources.push(task.source); return 'sent' },
@@ -248,7 +248,37 @@ test('a fix whose task could not be delivered is not counted as started', async 
   const t = await setup(0, 100, openStore(':memory:'), 0, 'on')
   try {
     t.throwOnDeliver()
-    assert.equal((await t.send(redSuite, 'check_suite')).status, 500)
+    assert.equal((await t.send(redSuite, 'check_suite')).status, 204)
+    assert.equal(t.told.length, 1)
     assert.deepEqual(t.store.load('github-fix-seen') ?? {}, {})
+  } finally { t.gh.close() }
+})
+
+test('with a wait set, the failed check starts no task at once, and the next round after the wait starts it', async () => {
+  const t = await setup(0, 100, openStore(':memory:'), 0, 'on', 0.0001)
+  try {
+    assert.equal((await t.send(redSuite, 'check_suite')).status, 204)
+    assert.equal(t.tasks.length, 0)
+    await new Promise(r => setTimeout(r, 30))
+    await t.gh.fixDue()
+    assert.equal(t.tasks.length, 1)
+    assert.match(t.tasks[0]!.content, /checks failed on acme\/app#7/)
+    await t.gh.fixDue()
+    assert.equal(t.tasks.length, 1)
+  } finally { t.gh.close() }
+})
+
+test('a waited fix whose thread cannot open tells the owner once, uses up no hourly slot, and starts when the thread opens', async () => {
+  const t = await setup(0, 2, openStore(':memory:'), 0, 'on', 0.0001)
+  try {
+    let down = true
+    t.failPosts(() => down)
+    await t.send(redSuite, 'check_suite')
+    await new Promise(r => setTimeout(r, 30))
+    for (let i = 0; i < 4; i++) await t.gh.fixDue()
+    assert.equal(t.told.length, 1)
+    down = false
+    await t.gh.fixDue()
+    assert.equal(t.tasks.length, 1)
   } finally { t.gh.close() }
 })

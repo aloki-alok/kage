@@ -1,9 +1,9 @@
 import { noChannelTag } from './text.ts'
 
 export type FixMode = 'shadow' | 'on'
-export const fixSetting = (set?: { mode?: 'off' | FixMode; perPr?: number }) => set?.mode && set.mode !== 'off' ? { mode: set.mode, perPr: set.perPr || 3 } : undefined
+export const fixSetting = (set?: { mode?: 'off' | FixMode; perPr?: number; graceMinutes?: number }) => set?.mode && set.mode !== 'off' ? { mode: set.mode, perPr: set.perPr || 3, graceMinutes: set.graceMinutes ?? 20 } : undefined
 type Reason = 'red checks' | 'changes requested'
-type StuckEvent = { repo: string; installation: number; reason: Reason; sha: string; prs: number[]; said: string; by?: string }
+export type StuckEvent = { repo: string; installation: number; reason: Reason; sha: string; prs: number[]; said: string; by?: string }
 export type StuckPull = { number: number; title: string; url: string; open: boolean; draft: boolean; fromFork: boolean; authorId: number | undefined; sha: string; branch: string; labels: string[] }
 export type FixSeen = { keys: string[]; tries: number }
 type FixVerdict = { start: true; key: string } | { start: false; why: string; spent?: true }
@@ -20,6 +20,11 @@ const TRUSTED = new Set(['OWNER', 'MEMBER', 'COLLABORATOR'])
 const SAID_MAX = 2000
 const PLAIN_BRANCH = /^[\w./-]{1,200}$/
 const short = (sha: string) => sha.slice(0, 7)
+export const stillRed = (suites: { conclusion?: string | null; app?: { slug?: string } }[], slug: string) => suites.some(x => RED.has(x.conclusion ?? '') && x.app?.slug !== slug)
+export function stillAsked(reviews: { state?: string; user?: { login?: string } }[], by: string) {
+  const theirs = reviews.filter(r => r.user?.login === by && r.state !== 'COMMENTED')
+  return theirs.at(-1)?.state === 'CHANGES_REQUESTED'
+}
 const numbers = (list: (number | undefined)[]) => list.filter((n): n is number => typeof n === 'number')
 
 export function stuckEvent(type: string, raw: unknown, slug: string): StuckEvent | undefined {
