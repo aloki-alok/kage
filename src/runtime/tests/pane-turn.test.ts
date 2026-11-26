@@ -26,7 +26,7 @@ function pane() {
   let kage!: ReturnType<typeof sessionTools>
   const turn = paneTurn({ dir: conf, thread: 'C1:5.5', pollMs: 10, show: m => { kage.onTask(m); shown.push(m.content) } })
   opened.push(turn as { close?: () => void })
-  kage = sessionTools({ title: 'Kage', bot: slack as any, user: slack as any, botDm: () => 'DBOT', dir: conf, ledgers: openLedgers(conf), send: () => {}, memory: { own: '/own', owner: '/owner' }, turnSender: turn.sender })
+  kage = sessionTools({ title: 'Kage', owner: () => 'UOWNER', bot: slack as any, user: slack as any, botDm: () => 'DBOT', dir: conf, ledgers: openLedgers(conf), send: () => {}, memory: { own: '/own', owner: '/owner' }, turnSender: turn.sender })
   const task = (fromOwner: boolean, content: string): Task => ({ type: 'task', content, fromOwner, meta: { channel: 'C1', thread_ts: '5.5', place: '#infra', permalink: '' }, origin: { channel: 'C1', ts: `${shown.length + 1}.0` } })
   return {
     shown,

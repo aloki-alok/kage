@@ -101,7 +101,7 @@ async function runIn(c: Case, o: { code: string; claude: string; timeoutMs: numb
     }), createSdkMcpServer, tool },
     hub: () => d,
     tools: (_key, send, approve, turn) => sessionTools({
-      title: 'Kage', bot: slack, user: slack, botDm: () => BOT_DM, dir: config, ledgers, send, approve, turn,
+      title: 'Kage', owner: () => 'U0TESTOWNR', bot: slack, user: slack, botDm: () => BOT_DM, dir: config, ledgers, send, approve, turn,
       memory: { own: join(config, 'own'), owner: join(config, 'owner') },
       settings: { set: (key, value) => { ev.settings.push({ key, value }) } },
       report: standInReport(ev),

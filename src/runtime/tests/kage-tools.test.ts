@@ -86,7 +86,7 @@ function setup(o: { noHook?: boolean; settings?: { set(key: string, value: unkno
   const turn: Task[] = []
   const routed: string[] = []
   const t = sessionTools({
-    title: 'Kage', owner: 'UOWNER001', bot: slack.bot as any, user: slack.user as any, botDm: () => 'DBOT', dir, ledgers, send: m => { if (o.hubDown) return false; out.push(`${m.type} ${m.text}`) }, memory: { own: '/own', owner: '/owner' },
+    title: 'Kage', owner: () => 'UOWNER001', bot: slack.bot as any, user: slack.user as any, botDm: () => 'DBOT', dir, ledgers, send: m => { if (o.hubDown) return false; out.push(`${m.type} ${m.text}`) }, memory: { own: '/own', owner: '/owner' },
     schedules: {
       add: j => { jobs.push({ ...j, key: 'C1:5.5', created: 0, lastFired: 0 }) },
       remove: id => { jobs.splice(jobs.findIndex(j => j.id === id), 1) },

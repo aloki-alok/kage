@@ -94,6 +94,7 @@ type SessionOptions = {
   title: string
   bot: WebClient
   user: WebClient
+  owner: () => string
   botDm: () => string
   dir: string
   ledgers: Ledgers

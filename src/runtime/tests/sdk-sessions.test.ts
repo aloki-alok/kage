@@ -58,7 +58,7 @@ function setup(o: { saved?: Record<string, string>; transcript?: boolean; silent
   const s = sdkSessions({
     sdk: { query: sdk.query as any, createSdkMcpServer: (c => { servers.push(c); return createSdkMcpServer(c) }) as typeof createSdkMcpServer, tool },
     hub: () => d,
-    tools: (_key, send, approve, turn) => sessionTools({ title: 'Kage', bot: slack as any, user: slack as any, botDm: () => 'DBOT', dir, ledgers: openLedgers(dir), send, memory: { own: '/own', owner: '/owner' }, approve, turn, ...o.browser && { browser: { call: async () => [], block: [] } },
+    tools: (_key, send, approve, turn) => sessionTools({ title: 'Kage', owner: () => 'UOWNER', bot: slack as any, user: slack as any, botDm: () => 'DBOT', dir, ledgers: openLedgers(dir), send, memory: { own: '/own', owner: '/owner' }, approve, turn, ...o.browser && { browser: { call: async () => [], block: [] } },
       ...o.manager && { kagelets: { list: () => '', manage: async (a, ask) => `yes: ${await ask!({ kagelet: a.name, tools: 'mcp__gmail__send', job: 'Mail the count.' })}` } } }),
     hasTranscript: () => o.transcript ?? false,
     ...o.trustedPeople && { trustedNow: (id: string) => o.trustedPeople!.ids.includes(id) },
@@ -1796,7 +1796,7 @@ test('the usage limit, whole: no post but the notice, the inbox message kept, an
   })
   const s = sdkSessions({
     sdk: { query: sdk.query as any, createSdkMcpServer, tool }, hub: () => d,
-    tools: (_key, send) => sessionTools({ title: 'Kage', bot: slack as any, user: slack as any, botDm: () => 'DBOT', dir, ledgers: openLedgers(dir), send, memory: { own: '/own', owner: '/owner' } }),
+    tools: (_key, send) => sessionTools({ title: 'Kage', owner: () => 'UOWNER', bot: slack as any, user: slack as any, botDm: () => 'DBOT', dir, ledgers: openLedgers(dir), send, memory: { own: '/own', owner: '/owner' } }),
     hasTranscript: () => false, toHub: () => {}, options: { cwd: '/home' }, ownerMemory: '/owner', envFile: '/cfg/env', codeDir: '/code/kage', restartMs: 10,
     onTurn: (key, tasks, limit) => limits.turn(key, tasks, limit, 1000),
   })
