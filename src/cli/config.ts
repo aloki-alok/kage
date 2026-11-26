@@ -1,5 +1,7 @@
 #!/usr/bin/env node
 import { tilde } from '../core/config.ts'
+import { SECRETS } from '../core/secret-prompt.ts'
+import { slackTransport } from '../core/slack-transport.ts'
 import { ENV_FILE } from './home.ts'
 import { readSettings, setKey, updateConfig, updateSecrets } from '../runtime/config-files.ts'
 import { readFileSync } from 'node:fs'
@@ -64,11 +66,20 @@ if (cmd === 'has') {
 } else if (cmd === 'save') {
   const words = (await new Promise<string>(res => { let t = ''; process.stdin.on('data', d => t += d).on('end', () => res(t)) })).split(/\s+/).filter(Boolean)
   const [app, user, bot] = ['xapp-', 'xoxp-', 'xoxb-'].map(p => words.find(w => w.startsWith(p)))
-  if (!app || !user || !bot) die('Need all three tokens on stdin: xapp-..., xoxp-..., xoxb-...')
-  updateSecrets(ENV_FILE, s => ({ ...s, slack: { app, user, bot } }))
+  const signing = words.find(w => SECRETS.signing.shape.pattern.test(w))
+  let now: ReturnType<typeof readSettings> | undefined
+  try { now = readSettings(ENV_FILE) } catch {}
+  const slack = { ...now?.secrets.slack, ...user && { user }, ...bot && { bot }, ...app && { app }, ...signing && { signing } }
+  const http = slackTransport({ config: now?.config ?? { version: 1 }, secrets: { ...now?.secrets, slack } }) === 'http'
+  if (!user || !bot || !(http ? signing : app)) die(http ? 'Slack is set to HTTP: need the signing secret (32 characters, 0-9 and a-f), xoxp-... and xoxb-... on stdin' : 'Need all three tokens on stdin: xapp-..., xoxp-..., xoxb-...')
+  updateSecrets(ENV_FILE, s => ({ ...s, slack }))
   updateConfig(ENV_FILE, c => ({ ...c, name: key || c.name }))
+} else if (cmd === 'transport') {
+  let now: ReturnType<typeof readSettings> | undefined
+  try { now = readSettings(ENV_FILE) } catch {}
+  console.log(now ? slackTransport(now) : 'socket')
 } else if (cmd === 'save-claude') {
   const token = (await new Promise<string>(res => { let t = ''; process.stdin.on('data', d => t += d).on('end', () => res(t)) })).trim()
   if (!/^sk-ant-oat\S+$/.test(token)) die('Not a Claude login token: run claude setup-token and paste the sk-ant-oat... line it prints.')
   updateSecrets(ENV_FILE, s => ({ ...s, claudeToken: token }))
-} else die('Usage: config.ts get <key> | has <key> | check-slack <app|user|bot> | set <key> <value> | save <name> | save-claude')
+} else die('Usage: config.ts get <key> | has <key> | check-slack <app|user|bot> | set <key> <value> | save <name> | save-claude | transport')

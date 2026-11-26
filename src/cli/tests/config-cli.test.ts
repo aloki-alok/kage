@@ -1,7 +1,7 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { spawnSync } from 'node:child_process'
-import { mkdtempSync, readFileSync } from 'node:fs'
+import { mkdtempSync, readFileSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
@@ -33,4 +33,20 @@ test('a session cannot change a setting, and the owner at a terminal can', () =>
   assert.equal(readFileSync(`${dir}/config.json`, 'utf8'), before)
   assert.equal(run(['set', 'harness.maxSessions', '3']).code, 0)
   assert.equal(run(['get', 'harness.maxSessions']).out, '3')
+})
+
+test('save takes the token the transport needs: the signing secret over HTTP, the app token in Socket Mode, and keeps the other one', () => {
+  const sig = '0123456789abcdef0123456789abcdef'
+  const http = mkdtempSync(join(tmpdir(), 'kage-cfgcli-http-'))
+  writeFileSync(`${http}/config.json`, JSON.stringify({ version: 1, slack: { transport: 'http' } }))
+  const save = (input: string) => run(['save', 'kage'], { KAGE_ENV: `${http}/env` }, input)
+  assert.equal(run(['transport'], { KAGE_ENV: `${http}/env` }).out, 'http')
+  assert.match(save('xoxp-FAKE-user xoxb-FAKE-bot').err, /signing secret/)
+  assert.equal(save(`${sig} xoxp-FAKE-user xoxb-FAKE-bot`).code, 0)
+  const secrets = () => JSON.parse(readFileSync(`${http}/secrets.json`, 'utf8')).slack
+  assert.deepEqual(secrets(), { user: 'xoxp-FAKE-user', bot: 'xoxb-FAKE-bot', signing: sig })
+  writeFileSync(`${http}/config.json`, JSON.stringify({ version: 1, name: 'kage', slack: { transport: 'socket' } }))
+  assert.match(save('xoxp-FAKE-user xoxb-FAKE-bot').err, /xapp-/)
+  assert.equal(save('xapp-1-FAKE xoxp-FAKE-user2 xoxb-FAKE-bot').code, 0)
+  assert.deepEqual(secrets(), { user: 'xoxp-FAKE-user2', bot: 'xoxb-FAKE-bot', signing: sig, app: 'xapp-1-FAKE' })
 })

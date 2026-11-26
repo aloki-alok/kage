@@ -1,9 +1,10 @@
-export type Secret = { prefix: string; name: string }
+export type Secret = { prefix: string; name: string; shape?: { pattern: RegExp; says: string } }
 
 export const SECRETS = {
   app: { prefix: 'xapp-', name: 'app-level token' },
   user: { prefix: 'xoxp-', name: 'user token' },
   bot: { prefix: 'xoxb-', name: 'bot token' },
+  signing: { prefix: '', name: 'signing secret', shape: { pattern: /^[0-9a-f]{32}$/, says: '32 characters, 0-9 and a-f' } },
   config: { prefix: 'xoxe.xoxp-', name: 'configuration Access Token' },
   refresh: { prefix: 'xoxe-', name: 'configuration Refresh Token' },
   claude: { prefix: 'sk-ant-oat', name: 'Claude token' },
@@ -36,17 +37,20 @@ export function typeKeys(state: Keys, chunk: string): Keys {
   return { typed }
 }
 
-const kindOf = (token: string) => KNOWN.find(k => token.startsWith(k.prefix))
+const isKind = (k: Secret, token: string) => k.shape ? k.shape.pattern.test(token) : token.startsWith(k.prefix)
+const kindOf = (token: string) => KNOWN.find(k => isKind(k, token))
+const described = (k: Secret) => k.shape ? `${k.name} (${k.shape.says})` : `${k.name} (${k.prefix}...)`
 
 export function pickSecret(pasted: string, want: Secret): { value: string; problem?: string } {
   const words = pasted.split(/\s+/).filter(Boolean)
   if (!words.length) return { value: '' }
-  const wanted = words.find(w => w.startsWith(want.prefix))
+  const wanted = words.find(w => isKind(want, w))
   if (wanted) return { value: wanted }
   const other = kindOf(words[0]!)
   if (other === SECRETS.refresh && want === SECRETS.config) return { value: '', problem: `That is the Refresh Token. Paste the Access Token (${want.prefix}...).` }
-  if (other) return { value: '', problem: `That is a ${other.name} (${other.prefix}...). Paste the ${want.name} (${want.prefix}...).` }
-  return { value: '', problem: `That does not look like a ${want.name}. It starts with ${want.prefix}` }
+  if (other?.shape) return { value: '', problem: `That is a ${other.name}. Paste the ${described(want)}.` }
+  if (other) return { value: '', problem: `That is a ${described(other)}. Paste the ${described(want)}.` }
+  return { value: '', problem: want.shape ? `That does not look like a ${want.name}. It is ${want.shape.says}.` : `That does not look like a ${want.name}. It starts with ${want.prefix}` }
 }
 
 export const shownAs = (token: string) => `${kindOf(token)?.prefix ?? token.slice(0, 4)}… (${token.length} characters)`

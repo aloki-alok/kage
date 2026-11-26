@@ -41,6 +41,14 @@ describe('pickSecret: is the paste the token this prompt wants', () => {
   test('text that is no token says what to paste', () => {
     assert.match(pickSecret('hello', SECRETS.app).problem!, /xapp-/)
   })
+  test('a signing secret has no prefix: it is 32 hex characters, and anything else is refused', () => {
+    const sig = '0123456789abcdef0123456789abcdef'
+    assert.deepEqual(pickSecret(` ${sig} `, SECRETS.signing), { value: sig })
+    assert.match(pickSecret('xoxb-1-a', SECRETS.signing).problem!, /bot token \(xoxb-.*Paste the signing secret/)
+    assert.match(pickSecret('0123', SECRETS.signing).problem!, /32 characters, 0-9 and a-f/)
+    assert.equal(pickSecret(sig, SECRETS.user).problem, 'That is a signing secret. Paste the user token (xoxp-...).')
+    assert.ok(!shownAs(sig).includes('0123'))
+  })
 })
 
 test('shownAs names the kind and length, never more than the prefix', () => {

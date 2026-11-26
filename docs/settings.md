@@ -21,7 +21,7 @@ Only your own terminal runs `kage config set`: it refuses inside a Kage session.
 | Setting | Default | Effect |
 |---|---|---|
 | `slack.app` | required in Socket Mode | secrets.json. The `xapp-` token for Socket Mode. `kage slack save` writes it. |
-| `slack.signing` | required over HTTP | secrets.json. The app's signing secret (Basic Information > App Credentials). Over HTTP, Kage refuses every request Slack did not sign, and every request whose timestamp is more than 5 minutes from now. |
+| `slack.signing` | required over HTTP | secrets.json. The app's signing secret (Basic Information > App Credentials). `kage slack save` asks for it in place of the app token when Slack is set to HTTP, and keeps the other one. Over HTTP, Kage refuses every request Slack did not sign, and every request whose timestamp is more than 5 minutes from now. |
 | `slack.transport` | `auto` | How Slack reaches Kage: `socket` (Socket Mode, a connection Kage opens, so it needs no public address), `http` (Slack calls Kage's `/slack` route on port 8796), or `auto`: HTTP when `slack.signing` is set and the hub has a public HTTPS route (`slack.publicUrl`, or the Slack route `kage tunnel on` opened), otherwise Socket Mode. Over HTTP, a delivery Slack retries makes one task, and Kage reads the channels it watches again at each start. |
 | `slack.publicUrl` | none | The public HTTPS URL that reaches Kage's `/slack` route, when something other than `kage tunnel` serves it (a reverse proxy on a server). With `slack.signing` set, it makes `auto` take HTTP. |
 | `slack.user` | required | secrets.json. The `xoxp-` token. Its owner is Kage's owner: the only person with full access. Others drive Kage only with the limits below (`people`, email, voice). |
