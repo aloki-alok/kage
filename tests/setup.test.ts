@@ -57,6 +57,15 @@ describe('kage setup ends with Kage running and connected, not with a list of st
     assert.equal(r.code, 0, r.out)
     assert.match(r.out, /Connected to Slack\. Tag @kagetest in any thread to try it\./)
   })
+  test('with Slack set to HTTP, it takes the signing secret in place of the app token', async () => {
+    const w = world()
+    writeFileSync(join(w.conf, 'config.json'), JSON.stringify({ version: 1, slack: { transport: 'http', publicUrl: 'https://hub.example.test/slack' } }))
+    const sig = '0123456789abcdef0123456789abcdef'
+    const r = await w.run(['setup'], `kagetest\n\n${sig} xoxp-TEST xoxb-TEST\n`)
+    assert.equal(r.code, 0, r.out)
+    assert.deepEqual(JSON.parse(readFileSync(join(w.conf, 'secrets.json'), 'utf8')).slack, { user: 'xoxp-TEST', bot: 'xoxb-TEST', signing: sig })
+    assert.match(r.out, /Connected to Slack\. Tag @kagetest/)
+  })
   test('if Slack does not connect in time, it exits non-zero and points at kage doctor', async () => {
     const w = world()
     const r = await w.run(['setup'], ANSWERS, { FAKE_NO_CONNECT: '1' })

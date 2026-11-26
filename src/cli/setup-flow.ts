@@ -3,9 +3,10 @@ import { readFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { createInterface } from 'node:readline/promises'
 import { validName } from '../core/gate.ts'
-import { fillSlackTokens, typeLines, type SlackSlots } from '../core/secret-prompt.ts'
+import { fillSlackTokens, slackSlots, typeLines, type SlackSlots } from '../core/secret-prompt.ts'
+import { slackTransport } from '../core/slack-transport.ts'
 import { FLICKER, MARK, besideWordmark, painter } from '../core/voice.ts'
-import { envFilePath } from '../runtime/config-files.ts'
+import { envFilePath, readSettings } from '../runtime/config-files.ts'
 
 const ROOT = join(import.meta.dirname, '../..')
 const keys = Boolean(process.stdin.isTTY), screen = Boolean(process.stdout.isTTY)
@@ -74,7 +75,8 @@ async function slackApp(nameIs: string) {
   done('Slack app', 'created')
 }
 
-const SLOTS = [['app', 'xapp'], ['user', 'xoxp'], ['bot', 'xoxb']] as const
+const transport = (() => { try { return slackTransport(readSettings(envFilePath())) } catch { return 'socket' as const } })()
+const SLOTS = slackSlots(transport).map(([k, s]) => [k, s.shape ? 'signing' : s.prefix.slice(0, -1)] as const)
 const slotLine = (s: SlackSlots) => SLOTS.map(([k, p]) => s[k] ? `${v.work('✓')} ${p}` : v.dim(`${MARK.quiet} ${p}`)).join('    ')
 const full = (s: SlackSlots) => SLOTS.every(([k]) => s[k])
 
@@ -96,10 +98,10 @@ function hiddenLines(draw: (typed: string) => void, take: (line: string) => bool
 async function tokens(start: SlackSlots): Promise<SlackSlots> {
   let slots = start, problem = ''
   if (keys) process.stdin.setRawMode(true)
-  needs(`Paste the three tokens ${v.dim('(any order)')}`)
+  needs(`Paste the three ${transport === 'http' ? 'Slack values' : 'tokens'} ${v.dim('(any order)')}`)
   if (!keys) {
-    while (!full(slots) && piped.length) slots = fillSlackTokens(slots, piped.shift()!).slots
-    if (!full(slots)) stop('Need all three tokens: xapp-..., xoxp-..., xoxb-...')
+    while (!full(slots) && piped.length) slots = fillSlackTokens(slots, piped.shift()!, transport).slots
+    if (!full(slots)) stop(transport === 'http' ? 'Need the signing secret, xoxp-... and xoxb-...' : 'Need all three tokens: xapp-..., xoxp-..., xoxb-...')
     return slots
   }
   const block = (typed: string) => [
@@ -110,7 +112,7 @@ async function tokens(start: SlackSlots): Promise<SlackSlots> {
   let drawn = 0
   const draw = (typed: string) => { erase(drawn); const b = block(typed); for (const l of b) out(l); drawn = b.length }
   await hiddenLines(draw, line => {
-    const r = fillSlackTokens(slots, line)
+    const r = fillSlackTokens(slots, line, transport)
     slots = r.slots; problem = r.problem ?? ''
     return full(slots)
   })
@@ -122,7 +124,7 @@ async function save(nameIs: string): Promise<void> {
   let slots: SlackSlots = {}
   for (;;) {
     slots = await tokens(slots)
-    const r = sh(['save', nameIs], `${slots.app} ${slots.user} ${slots.bot}\n`)
+    const r = sh(['save', nameIs], `${SLOTS.map(([k]) => slots[k]).join(' ')}\n`)
     if (r.ok) { done('Tokens', 'ok'); return }
     const bad = r.out.match(/\((xapp|xoxp|xoxb)-\) rejected/)?.[1]
     if (!keys || !bad) stop(r.out.split('\n').filter(Boolean).pop() ?? 'Slack refused the tokens.')
