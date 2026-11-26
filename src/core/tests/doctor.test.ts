@@ -46,6 +46,10 @@ describe('decisions', () => {
       'ok:SLACK_BOT_TOKEN accepted by Slack',
     ])
   })
+  test('tokens over HTTP: the app token is not used, so its absence is no failure', () => {
+    const ls = tokenLines({ hasSettings: true, dir: '/c', file: '/c/secrets.json', mode: '600', transport: 'http', slack: { user: true, bot: true } })
+    assert.deepEqual(text(ls), ['ok:token file is private (600)', 'ok:SLACK_USER_TOKEN accepted by Slack', 'ok:SLACK_BOT_TOKEN accepted by Slack'])
+  })
   test('tokens: a secret whose command failed names the secret and the command, in place of the Slack line', () => {
     const ls = tokenLines({ hasSettings: true, dir: '/c', file: '/c/secrets.json', mode: '600', slack: { app: true, user: true, bot: false },
       failed: [{ path: 'slack.bot', command: 'op read op://kage/bot' }, { path: 'jevKey', command: 'pass show kage/jev' }] })

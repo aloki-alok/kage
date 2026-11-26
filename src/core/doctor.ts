@@ -50,13 +50,13 @@ export function toolsLine(f: { nodeVersion: string; claude: boolean; tmuxNeeded:
   return missing.length ? fail(`tools: ${missing.join('; ')}`) : ok('tools: node 22.18+, claude')
 }
 
-export function tokenLines(f: { hasSettings: boolean; dir: string; file?: string; mode?: string; link?: boolean; slack: { app?: boolean; user?: boolean; bot?: boolean }; failed?: SecretCommand[] }): Line[] {
+export function tokenLines(f: { hasSettings: boolean; dir: string; file?: string; mode?: string; link?: boolean; slack: { app?: boolean; user?: boolean; bot?: boolean }; transport?: 'socket' | 'http'; failed?: SecretCommand[] }): Line[] {
   if (!f.hasSettings) return [fail(`tokens: no settings in ${f.dir}. Run kage slack app, then kage slack save`)]
   const failed = f.failed ?? []
   const names = [['app', 'SLACK_APP_TOKEN'], ['user', 'SLACK_USER_TOKEN'], ['bot', 'SLACK_BOT_TOKEN']] as const
   return [
     f.mode === '600' ? ok('token file is private (600)') : fail(`token file: run chmod 600 ${f.file}`, f.link ? undefined : [['chmod', '600', f.file!]]),
-    ...names.filter(([k]) => !failed.some(c => c.path === `slack.${k}`)).map(([k, n]) => f.slack[k] ? ok(`${n} accepted by Slack`) : fail(`${n}: missing or rejected. Run kage slack save again`)),
+    ...names.filter(([k]) => !(k === 'app' && f.transport === 'http') && !failed.some(c => c.path === `slack.${k}`)).map(([k, n]) => f.slack[k] ? ok(`${n} accepted by Slack`) : fail(`${n}: missing or rejected. Run kage slack save again`)),
     ...failed.map(c => fail(`secrets.json ${c.path}: its command failed or printed nothing. Run it in a terminal to see why: ${c.command}`)),
   ]
 }

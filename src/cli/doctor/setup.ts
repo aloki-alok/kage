@@ -1,5 +1,6 @@
 import { lstatSync, statSync } from 'node:fs'
 import { jevLine, tokenLines, toolsLine } from '../../core/doctor.ts'
+import { slackTransport } from '../../core/slack-transport.ts'
 import { settings, settingsExist } from '../home.ts'
 import { dir, onPath, read, runtime, sh, type Group } from './context.ts'
 
@@ -9,8 +10,9 @@ export const setup: Group = () => {
   const tools = toolsLine({ nodeVersion: process.versions.node, claude: onPath('claude'), tmuxNeeded: runtime === 'tmux', tmux: onPath('tmux') })
   if (!settingsExist()) return [tools, ...tokenLines({ hasSettings: false, dir, slack: {} })]
   const file = read(`${dir}/secrets.json`) !== undefined ? `${dir}/secrets.json` : `${dir}/env`
-  const slack = Object.fromEntries((['app', 'user', 'bot'] as const).map(k => [k, sh('node', ['src/cli/config.ts', 'check-slack', k]).status === 0]))
+  const transport = slackTransport(settings())
+  const slack = Object.fromEntries((transport === 'http' ? ['user', 'bot'] as const : ['app', 'user', 'bot'] as const).map(k => [k, sh('node', ['src/cli/config.ts', 'check-slack', k]).status === 0]))
   const j = sh('node', ['src/cli/jev-doctor.ts'])
   const jev = jevLine({ status: j.status ?? 1, out: j.stdout.trim() })
-  return [tools, ...tokenLines({ hasSettings: true, dir, file, mode: mode(file), link: (() => { try { return lstatSync(file).isSymbolicLink() } catch { return false } })(), slack, failed: settings().failed() }), ...(jev ? [jev] : [])]
+  return [tools, ...tokenLines({ hasSettings: true, dir, file, mode: mode(file), link: (() => { try { return lstatSync(file).isSymbolicLink() } catch { return false } })(), slack, transport, failed: settings().failed() }), ...(jev ? [jev] : [])]
 }
