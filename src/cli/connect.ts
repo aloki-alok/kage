@@ -35,7 +35,7 @@ const off = args[0] === 'off'
 const quit: (line: string) => never = line => { console.log(line); process.exit(0) }
 if (n === 'github') await connectGithub()
 const before = state()[n]
-if (off && before.state === 'unset') quit(`${n} is not set up, so it is off already.`)
+if (off && before.state === 'unset' && !before.partial) quit(`${n} is not set up, so it is off already.`)
 if (off && before.state === 'off') quit(`${n} is off already.`)
 if (n === 'browser' && off) {
   change(() => updateSecrets(ENV_FILE, ({ browserToken: _, ...s }) => s))
