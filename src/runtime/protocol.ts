@@ -19,6 +19,7 @@ export type FromSession =
   | { type: 'tell'; key: string; text: string }
   | { type: 'say'; text: string; channel?: string; thread_ts?: string }
   | { type: 'away'; back?: true; until?: string; minutes?: number; note?: string }
+  | { type: 'job'; action: string; key?: string; id?: string; spec?: object; change?: object }
   | { type: 'relay'; action: 'allow' | 'deny' | 'list'; key?: string }
   | { type: 'hold'; key: string; pid: number }
   | { type: 'hello'; key: string; linkToken: string }

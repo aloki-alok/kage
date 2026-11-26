@@ -72,6 +72,7 @@ import { ownerLines } from '../core/messages.ts'
 import { answersInThread, blockedTask, planDrop } from '../core/blocks.ts'
 import { unanswered } from '../core/ledgers.ts'
 import { issueReporter } from '../runtime/issue-report.ts'
+import { ownerJobs } from './owner-jobs.ts'
 import { selfCheck } from './self-check.ts'
 
 const { ENV_FILE, NAME, Title, TEAMMATES, TRUSTED_PEOPLE, TEAMMATE_EMAILS, TRUSTED_APPS, config, secrets, bot, user, slackHttp } = load()
@@ -360,7 +361,7 @@ const watcher = configWatcher({
   restartWanted: yes => updates.restartWanted(yes),
 })
 const reload = watcher.check
-listenForSessions(`${DIR}/router.sock`, d, { ownerKey: OWNER_KEY, ...replies, failed, health: () => health.lines(Date.now()), healthRows: () => health.rows(Date.now()), schedules: jobs, tell: commands.tell, say: commands.say, away: slack.afk?.command, relay: commands.relay, update: stable => fastForward(CODE, stable), trust: trust.command, reload, paused: () => limits.paused(), limitCounts: () => limits.counts,
+listenForSessions(`${DIR}/router.sock`, d, { ownerKey: OWNER_KEY, ...replies, failed, health: () => health.lines(Date.now()), healthRows: () => health.rows(Date.now()), schedules: jobs, tell: commands.tell, say: commands.say, away: slack.afk?.command, jobs: ownerJobs({ store, dir: DIR, jobs, tune: schedules.tune }), relay: commands.relay, update: stable => fastForward(CODE, stable), trust: trust.command, reload, paused: () => limits.paused(), limitCounts: () => limits.counts,
   end: (key, cut) => stopThread(key, cut), kagelet: (action, name) => action === 'unhold' ? Promise.resolve(ownerLines.holdsLifted(name, deferred.unhold(name, Date.now()))) : kag.manager.manage({ action, name }, Date.now()),
   quiesce: () => { const now = Date.now(); limits.drain(now); return d.unquiet(now).filter(u => u.why !== 'just active' && u.why !== 'open in a terminal') }, callCode: voice?.issueCode })
 

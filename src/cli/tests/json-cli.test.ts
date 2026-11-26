@@ -26,7 +26,7 @@ const json = (...args: string[]) => {
 
 test('schedule list --json gives one row per schedule with its fields', () => {
   const [row] = json('schedule', 'list') as Record<string, unknown>[]
-  assert.deepEqual(Object.keys(row!).sort(), ['blocked', 'fromOwner', 'id', 'key', 'model', 'next', 'place', 'prompt', 'recurring', 'trigger', 'when'])
+  assert.deepEqual(Object.keys(row!).sort(), ['blocked', 'fromOwner', 'id', 'key', 'model', 'next', 'paused', 'place', 'prompt', 'recurring', 'trigger', 'when'])
   assert.equal(row!.id, 'j1')
   assert.equal(row!.prompt, 'check the deploy')
 })

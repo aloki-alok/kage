@@ -53,7 +53,13 @@ Run|telemetry|[show]|What this Kage sends and where: on or off, the endpoint, an
 Run|stats|[days] [--json]|Spend and tokens per day, per connector, per kind of thread and per model, the share read from cache, runs, refusals, turn time, hub starts and reports to the Kage repo (7 days unless you say)|kage stats 30
 Run|release|[--dry-run]|Tag the next version on main, publish its notes and move the stable tag that installs follow (repo admin only). --dry-run prints the version and notes and changes nothing|kage release --dry-run
 Run|dream|undo|Put the memory back to how it was before the last weekly dream|kage dream undo
-Watch|schedule list||Every schedule and reply watch, in every thread|kage schedule list
+Watch|schedule list|[--json]|Every schedule and reply watch, in every thread, paused ones too|kage schedule list
+Watch|schedule add|--cron, --channel or --hook, --prompt, [--thread] [--probe] [--once]|Make a job with no model turn: a clock job, a probe, a channel watch or a webhook, in a thread (the DM with Kage by default)|kage schedule add --cron "0 9 * * 1-5" --prompt "post the standup"
+Watch|schedule view|<id>|One job in full, with its last 10 runs|kage schedule view ab12cd34
+Watch|schedule rm|<id>|Remove a job|kage schedule rm ab12cd34
+Watch|schedule pause|<id>|Stop a job running and keep it, with its state|kage schedule pause ab12cd34
+Watch|schedule resume|<id>|Run a paused job again|kage schedule resume ab12cd34
+Watch|schedule tune|<id> --cron, --probe, --ignore, --reads, --writes or --needs|Change a job in place|kage schedule tune ab12cd34 --cron "*/10 * * * *"
 Watch|top||The live console: every thread, its feed, attach and stop, by mouse or keys|kage top
 Watch|thread list|[--json]|Every thread Kage has, newest first: place, key, live state and last activity|kage thread list
 Watch|thread follow|[place or key] [--replies]|Follow every step every session takes, as it happens: every thread, or only the threads with exactly that place or key. --replies prints only replies|kage thread follow dm --replies
@@ -446,6 +452,7 @@ case "${1:-}" in
   telemetry) node src/cli/telemetry.ts "${@:2}" ;;
   schedule) case "${2:-}" in
       list) node src/cli/schedules.ts "${@:3}" ;;
+      add|view|rm|pause|resume|tune) node src/cli/schedule.ts "${@:2}" ;;
       *) verbs schedule ;;
     esac ;;
   release) node src/cli/release.ts "${@:2}" ;;

@@ -194,7 +194,7 @@ function fireOne(k: Clock, s: Schedule, now: number, l: Late | undefined, stagge
 
 function tick(k: Clock, now: number) {
   const { o, store } = k
-  k.probes.tidy(new Set([...store.schedules().map(s => s.id), ...Object.keys((store.load('swapped-out') ?? {}) as object)]))
+  k.probes.tidy(new Set([...store.schedules().map(s => s.id), ...Object.keys((store.load('swapped-out') ?? {}) as object), ...Object.keys((store.load('paused-jobs') ?? {}) as object)]))
   const catchUp = o.job.catchUp?.() ?? { hours: CATCH_UP / 3600_000, staggerSeconds: 15 }
   const { fire, drop, late, skipped } = dueSchedules(store.schedules(), now, catchUp.hours * 3600_000)
   for (const [id, n] of Object.entries(skipped)) { store.fired(id, now); log('missed', id, `${n} run${n === 1 ? '' : 's'}`, `older than ${catchUp.hours} h`) }
