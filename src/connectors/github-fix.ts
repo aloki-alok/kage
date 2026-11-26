@@ -15,7 +15,7 @@ type RawPull = {
   head: { sha: string; ref: string; repo?: { full_name?: string } | null }; base: { ref: string; repo?: { full_name?: string } }
 }
 type Closed = { action?: string; repository?: { full_name?: string }; pull_request?: { number?: number } }
-export type FixStart = ReturnType<typeof fixTask> & { live: boolean; began: () => void }
+export type FixStart = ReturnType<typeof fixTask> & { live: boolean; began: () => void; repo: string; number: number; installation: number }
 
 const stuckPull = (p: RawPull): StuckPull => ({
   number: p.number, title: p.title ?? '', url: p.html_url ?? '', open: p.state === 'open', draft: p.draft === true,
@@ -75,7 +75,7 @@ function start(c: Ctx, e: StuckEvent, j: Judged): FixStart {
     log(`github fix ${c.live ? 'starts' : 'would start (shadow)'} ${j.at}@${e.sha.slice(0, 7)}: ${e.reason}${j.failing.length ? ` (${j.failing.join(', ')})` : ''}`)
   }
   if (!c.live) began()
-  return { ...fixTask(e, j.pull, j.failing), live: c.live, began }
+  return { ...fixTask(e, j.pull, j.failing, c.o.ownerLogin), live: c.live, began, repo: e.repo, number: j.pull.number, installation: e.installation }
 }
 
 export function fixer(o: Options) {

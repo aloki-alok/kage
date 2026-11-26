@@ -31,7 +31,7 @@ test('kage status --json gives the summary, each connector, each thread and each
   d.task('C0TEST1:5.5', task('work'), 0)
   d.connect('C0TEST1:5.5', () => {})
   const hub = listenForSessions(join(dir, 'router.sock'), d, {
-    ownerKey: KEY, mail: () => {}, wa: () => {}, voice: () => {}, sms: () => {}, failed: () => {}, schedules: { add: () => undefined, remove: () => {} },
+    ownerKey: KEY, mail: () => {}, wa: () => {}, voice: () => {}, sms: () => {}, gh: () => {}, failed: () => {}, schedules: { add: () => undefined, remove: () => {} },
     health: () => ['email     on'], healthRows: () => [{ name: 'email', on: true, bridgeDown: false, lastHeardAt: null, failedLastHour: 0, lastFailure: null }],
   })
   t.after(() => hub.close())

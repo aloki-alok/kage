@@ -30,7 +30,7 @@ function world(t: { after: (f: () => void) => void }, o: { away?: boolean } = {}
   const said: unknown[] = [], away: unknown[] = []
   const d = new Dispatcher<ToSession>({ start: () => {}, stop: () => {}, lastActivity: () => 0, busy: () => false }, { max: 2, idleMs: 9e9, connectMs: 9e9, evictMs: 0, newId: () => 'id1' })
   const hub = listenForSessions(join(dir, 'router.sock'), d, {
-    ownerKey: KEY, mail: () => {}, wa: () => {}, voice: () => {}, sms: () => {}, failed: () => {}, schedules: { add: () => undefined, remove: () => {} },
+    ownerKey: KEY, mail: () => {}, wa: () => {}, voice: () => {}, sms: () => {}, gh: () => {}, failed: () => {}, schedules: { add: () => undefined, remove: () => {} },
     say: async (text, at) => { said.push({ text, ...at }); return { ok: true as const, channel: at?.channel ?? 'DTEST', ts: '9.9' } },
     ...o.away !== false && { away: async (c: unknown) => { away.push(c); return (c as { kind: string }).kind === 'back' ? 'Back. Nobody needed you.' : 'AFK on until 18:30.' } },
   })

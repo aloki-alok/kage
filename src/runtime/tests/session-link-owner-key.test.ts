@@ -32,7 +32,7 @@ function hub(t: { after: (f: () => void) => void }) {
   const did = <T>(name: string, r: T) => () => (acted.push(name), r)
   const sock = join(mkdtempSync(join(tmpdir(), 'kage-key-')), 's.sock')
   const server = listenForSessions(sock, d, {
-    ownerKey: KEY, mail: () => {}, wa: () => {}, voice: () => {}, sms: () => {}, failed: () => {}, schedules: { add: () => undefined, remove: () => {} },
+    ownerKey: KEY, mail: () => {}, wa: () => {}, voice: () => {}, sms: () => {}, gh: () => {}, failed: () => {}, schedules: { add: () => undefined, remove: () => {} },
     tell: did('tell', { ok: true as const }), say: did('say', Promise.resolve({ ok: true as const, channel: 'DTEST', ts: '1.1' })), relay: did('relay', { ok: true as const, keys: [] }), trust: did('trust', { ok: true as const, text: 'revoked T1' }),
     reload: did('reload', { changed: [], restart: [], count: 0 }), paused: did('board', undefined), health: did('health', []), end: did('end', 'ended'),
     quiesce: did('quiesce', []), callCode: did('callcode', '1234'), kagelet: did('kagelet', Promise.resolve('done')), away: did('away', Promise.resolve('AFK on')),

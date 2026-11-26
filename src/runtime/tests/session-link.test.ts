@@ -24,7 +24,7 @@ test('a terminal holds a thread for as long as it stays connected, then hands it
     { max: 2, idleMs: 9e9, connectMs: 9e9, evictMs: 0, newId: () => 'id1', saved: { A: 'id1' } },
   )
   const sock = join(mkdtempSync(join(tmpdir(), 'kage-link-')), 's.sock')
-  const server = listenForSessions(sock, d, { ownerKey: KEY, mail: () => {}, wa: () => {}, voice: () => {}, sms: () => {}, failed: () => {}, schedules: { add: () => undefined, remove: () => {} } })
+  const server = listenForSessions(sock, d, { ownerKey: KEY, mail: () => {}, wa: () => {}, voice: () => {}, sms: () => {}, gh: () => {}, failed: () => {}, schedules: { add: () => undefined, remove: () => {} } })
   await until(() => server.listening)
 
   const c = connect(sock)
@@ -78,7 +78,7 @@ test('a hold outlives a hub restart: the new hub holds the thread before any tas
   restoreHolds(dir, two.d)
   assert.equal(two.d.task('A', task('during restart'), 0), 'held')
   assert.equal(two.d.task('B', task('b'), 0), 'starting')
-  const s2 = listenForSessions(sock, two.d, { ownerKey: KEY, mail: () => {}, wa: () => {}, voice: () => {}, sms: () => {}, failed: () => {}, schedules: { add: () => undefined, remove: () => {} } })
+  const s2 = listenForSessions(sock, two.d, { ownerKey: KEY, mail: () => {}, wa: () => {}, voice: () => {}, sms: () => {}, gh: () => {}, failed: () => {}, schedules: { add: () => undefined, remove: () => {} } })
   await until(() => s2.listening)
   const other = await ask('A', 12345)
   assert.equal(other.reply.refused, 'held')
@@ -104,7 +104,7 @@ test("a session's schedule always lands in its own thread, whatever key the mess
   const removed: string[] = []
   const sock = join(mkdtempSync(join(tmpdir(), 'kage-link-')), 's.sock')
   const server = listenForSessions(sock, d, { ownerKey: KEY,
-    mail: () => {}, wa: () => {}, voice: () => {}, sms: () => {}, failed: () => {},
+    mail: () => {}, wa: () => {}, voice: () => {}, sms: () => {}, gh: () => {}, failed: () => {},
     schedules: { add: (key, j) => { added.push(`${key} ${j.id} ${j.cron} lane=${j.lane} model=${j.model}`); return undefined }, remove: (key, id) => { removed.push(`${key} ${id}`) } },
   })
   await until(() => server.listening)
@@ -129,7 +129,7 @@ test("a job lane's session cannot unschedule over the socket", async () => {
   const removed: string[] = []
   const sock = join(mkdtempSync(join(tmpdir(), 'kage-link-')), 's.sock')
   const server = listenForSessions(sock, d, { ownerKey: KEY,
-    mail: () => {}, wa: () => {}, voice: () => {}, sms: () => {}, failed: () => {},
+    mail: () => {}, wa: () => {}, voice: () => {}, sms: () => {}, gh: () => {}, failed: () => {},
     schedules: { add: () => undefined, remove: (key, id) => { removed.push(`${key} ${id}`) } },
   })
   await until(() => server.listening)
@@ -153,7 +153,7 @@ test('the console reads the live board and stops a quiet session over the socket
   d.task('B', task('b'), 0)
   d.connect('B', () => {})
   const sock = join(mkdtempSync(join(tmpdir(), 'kage-link-')), 's.sock')
-  const server = listenForSessions(sock, d, { ownerKey: KEY, mail: () => {}, wa: () => {}, voice: () => {}, sms: () => {}, failed: () => {}, schedules: { add: () => undefined, remove: () => {} } })
+  const server = listenForSessions(sock, d, { ownerKey: KEY, mail: () => {}, wa: () => {}, voice: () => {}, sms: () => {}, gh: () => {}, failed: () => {}, schedules: { add: () => undefined, remove: () => {} } })
   await until(() => server.listening)
   const ask = async (m: object, hello?: string) => {
     const c = connect(sock)
@@ -188,7 +188,7 @@ test('the console tells a thread something as the owner, and a session cannot', 
   const told: [string, string][] = []
   const tell = (key: string, text: string) => key === 'A' ? (told.push([key, text]), { ok: true as const }) : { refused: 'no thread with that key' }
   const sock = join(mkdtempSync(join(tmpdir(), 'kage-link-')), 's.sock')
-  const server = listenForSessions(sock, d, { ownerKey: KEY, mail: () => {}, wa: () => {}, voice: () => {}, sms: () => {}, failed: () => {}, schedules: { add: () => undefined, remove: () => {} }, tell })
+  const server = listenForSessions(sock, d, { ownerKey: KEY, mail: () => {}, wa: () => {}, voice: () => {}, sms: () => {}, gh: () => {}, failed: () => {}, schedules: { add: () => undefined, remove: () => {} }, tell })
   await until(() => server.listening)
   const ask = async (m: object, hello?: string) => {
     const c = connect(sock)
@@ -218,7 +218,7 @@ test("kage say: an app on this Mac posts the owner's words, and a session cannot
   const said: unknown[] = []
   const say = async (text: string, at?: object) => (said.push([text, at]), { ok: true as const, channel: 'DTEST', ts: '9.9' })
   const sock = join(mkdtempSync(join(tmpdir(), 'kage-link-')), 's.sock')
-  const server = listenForSessions(sock, d, { ownerKey: KEY, mail: () => {}, wa: () => {}, voice: () => {}, sms: () => {}, failed: () => {}, schedules: { add: () => undefined, remove: () => {} }, say })
+  const server = listenForSessions(sock, d, { ownerKey: KEY, mail: () => {}, wa: () => {}, voice: () => {}, sms: () => {}, gh: () => {}, failed: () => {}, schedules: { add: () => undefined, remove: () => {} }, say })
   await until(() => server.listening)
   const ask = async (m: object, hello?: string) => {
     const c = connect(sock)
@@ -248,7 +248,7 @@ test('kage top runs, pauses, resumes and removes a kagelet through the manager; 
   const done: string[] = []
   const kagelet = async (action: string, name: string) => { done.push(`${action} ${name}`); return `${name}: ${action} done` }
   const sock = join(mkdtempSync(join(tmpdir(), 'kage-link-')), 's.sock')
-  const server = listenForSessions(sock, d, { ownerKey: KEY, mail: () => {}, wa: () => {}, voice: () => {}, sms: () => {}, failed: () => {}, schedules: { add: () => undefined, remove: () => {} }, kagelet })
+  const server = listenForSessions(sock, d, { ownerKey: KEY, mail: () => {}, wa: () => {}, voice: () => {}, sms: () => {}, gh: () => {}, failed: () => {}, schedules: { add: () => undefined, remove: () => {} }, kagelet })
   await until(() => server.listening)
   const ask = async (m: object, hello?: string) => {
     const c = connect(sock)
@@ -270,7 +270,7 @@ test('kage top runs, pauses, resumes and removes a kagelet through the manager; 
 
 test('a reply goes only to a conversation of its own channel: a text never reaches a voice, mail or WhatsApp session, nor they a text one', () => {
   const got: string[] = []
-  const o = { mail: (k: string) => got.push(`mail ${k}`), wa: (k: string) => got.push(`wa ${k}`), voice: (k: string, t: string) => got.push(`voice ${k} ${t}`), sms: (k: string, t: string) => got.push(`sms ${k} ${t}`) }
+  const o = { mail: (k: string) => got.push(`mail ${k}`), wa: (k: string) => got.push(`wa ${k}`), voice: (k: string, t: string) => got.push(`voice ${k} ${t}`), sms: (k: string, t: string) => got.push(`sms ${k} ${t}`), gh: (k: string, t: string) => got.push(`gh ${k} ${t}`) }
   routeReply('voice:abc', { type: 'voice', text: 'hi' }, o)
   routeReply('mail:<a@b>', { type: 'voice', text: 'x' }, o)
   routeReply('wa:1', { type: 'voice', text: 'x' }, o)
@@ -278,7 +278,9 @@ test('a reply goes only to a conversation of its own channel: a text never reach
   routeReply('sms:7', { type: 'sms', text: 'open at 9' }, o)
   routeReply('wa:1', { type: 'sms', text: 'x' }, o)
   routeReply('sms:7', { type: 'wa', text: 'x' }, o)
-  assert.deepEqual(got, ['voice voice:abc hi', 'sms sms:7 open at 9'])
+  routeReply('gh:acme/app/7', { type: 'gh', text: 'fixed' }, o)
+  routeReply('sms:7', { type: 'gh', text: 'x' }, o)
+  assert.deepEqual(got, ['voice voice:abc hi', 'sms sms:7 open at 9', 'gh gh:acme/app/7 fixed'])
 })
 
 test('kage config reload: the socket answers with what the hub did with the settings file', async t => {
@@ -289,7 +291,7 @@ test('kage config reload: the socket answers with what the hub did with the sett
   const sock = join(mkdtempSync(join(tmpdir(), 'kage-link-')), 's.sock')
   const answers = [{ changed: ['KAGE_TEAMMATES: added UTEST0002'], restart: ['KAGE_NAME'], count: 1 }, { refused: 'KAGE_TEAMMATES has "priya"' }]
   let asked = 0
-  const server = listenForSessions(sock, d, { ownerKey: KEY, mail: () => {}, wa: () => {}, voice: () => {}, sms: () => {}, failed: () => {}, schedules: { add: () => undefined, remove: () => {} }, reload: () => answers[asked++]! })
+  const server = listenForSessions(sock, d, { ownerKey: KEY, mail: () => {}, wa: () => {}, voice: () => {}, sms: () => {}, gh: () => {}, failed: () => {}, schedules: { add: () => undefined, remove: () => {} }, reload: () => answers[asked++]! })
   t.after(() => server.close())
   await until(() => server.listening)
   const ask = async () => {
@@ -314,7 +316,7 @@ test('the board says when the usage limit paused Kage, and carries the limit cou
   const sock = join(mkdtempSync(join(tmpdir(), 'kage-link-')), 's.sock')
   let paused: { until: number; held: number } | undefined = { until: 5000, held: 2 }
   const counts = { limitHits: 1, held: 2, replays: 0, replayFailures: 0 }
-  const server = listenForSessions(sock, d, { ownerKey: KEY, mail: () => {}, wa: () => {}, voice: () => {}, sms: () => {}, failed: () => {}, schedules: { add: () => undefined, remove: () => {} }, paused: () => paused, limitCounts: () => counts })
+  const server = listenForSessions(sock, d, { ownerKey: KEY, mail: () => {}, wa: () => {}, voice: () => {}, sms: () => {}, gh: () => {}, failed: () => {}, schedules: { add: () => undefined, remove: () => {} }, paused: () => paused, limitCounts: () => counts })
   t.after(() => server.close())
   await until(() => server.listening)
   const ask = async () => {
@@ -339,7 +341,7 @@ test('kage restart and stop ask the hub to drain, and hear which threads they wa
   const sock = join(mkdtempSync(join(tmpdir(), 'kage-link-')), 's.sock')
   const waits = [[{ key: 'C1:5.5', why: 'busy' }], []]
   let asked = 0
-  const server = listenForSessions(sock, d, { ownerKey: KEY, mail: () => {}, wa: () => {}, voice: () => {}, sms: () => {}, failed: () => {}, schedules: { add: () => undefined, remove: () => {} }, quiesce: () => waits[asked++]! })
+  const server = listenForSessions(sock, d, { ownerKey: KEY, mail: () => {}, wa: () => {}, voice: () => {}, sms: () => {}, gh: () => {}, failed: () => {}, schedules: { add: () => undefined, remove: () => {} }, quiesce: () => waits[asked++]! })
   t.after(() => server.close())
   await until(() => server.listening)
   const ask = async () => {
@@ -362,7 +364,7 @@ test('kage stop <thread> asks the hub to end one session, after its turn or now'
     { max: 2, idleMs: 9e9, connectMs: 9e9, evictMs: 0, newId: () => 'id1' },
   )
   const sock = join(mkdtempSync(join(tmpdir(), 'kage-link-')), 's.sock')
-  const server = listenForSessions(sock, d, { ownerKey: KEY, mail: () => {}, wa: () => {}, voice: () => {}, sms: () => {}, failed: () => {}, schedules: { add: () => undefined, remove: () => {} }, end: (key, cut) => `${key} cut=${cut}` })
+  const server = listenForSessions(sock, d, { ownerKey: KEY, mail: () => {}, wa: () => {}, voice: () => {}, sms: () => {}, gh: () => {}, failed: () => {}, schedules: { add: () => undefined, remove: () => {} }, end: (key, cut) => `${key} cut=${cut}` })
   t.after(() => server.close())
   await until(() => server.listening)
   const ask = async (m: object) => {
@@ -388,7 +390,7 @@ test('the console lists, allows and denies relay threads, and a session cannot',
   const calls: string[] = []
   const relay = (action: string, key?: string) => (calls.push(`${action} ${key ?? ''}`), { ok: true as const, keys: ['A'] })
   const sock = join(mkdtempSync(join(tmpdir(), 'kage-link-')), 's.sock')
-  const server = listenForSessions(sock, d, { ownerKey: KEY, mail: () => {}, wa: () => {}, voice: () => {}, sms: () => {}, failed: () => {}, schedules: { add: () => undefined, remove: () => {} }, relay })
+  const server = listenForSessions(sock, d, { ownerKey: KEY, mail: () => {}, wa: () => {}, voice: () => {}, sms: () => {}, gh: () => {}, failed: () => {}, schedules: { add: () => undefined, remove: () => {} }, relay })
   await until(() => server.listening)
   const ask = async (m: object, hello?: string) => {
     const c = connect(sock)
@@ -414,7 +416,7 @@ test('a health question gets the connector lines the hub keeps in memory (#256)'
     { max: 2, idleMs: 9e9, connectMs: 9e9, evictMs: 0, newId: () => 'id1' },
   )
   const sock = join(mkdtempSync(join(tmpdir(), 'kage-link-')), 's.sock')
-  const server = listenForSessions(sock, d, { ownerKey: KEY, mail: () => {}, wa: () => {}, voice: () => {}, sms: () => {}, failed: () => {}, schedules: { add: () => undefined, remove: () => {} }, health: () => ['email     on · last heard 2m ago'], healthRows: () => [{ name: 'email', on: true }] })
+  const server = listenForSessions(sock, d, { ownerKey: KEY, mail: () => {}, wa: () => {}, voice: () => {}, sms: () => {}, gh: () => {}, failed: () => {}, schedules: { add: () => undefined, remove: () => {} }, health: () => ['email     on · last heard 2m ago'], healthRows: () => [{ name: 'email', on: true }] })
   t.after(() => server.close())
   await until(() => server.listening)
   const c = connect(sock)
@@ -436,7 +438,7 @@ test('only a connected session acts as one: a holder or a socket with no hello g
   d.task('B', task('b'), 0)
   const sock = join(mkdtempSync(join(tmpdir(), 'kage-link-')), 's.sock')
   const server = listenForSessions(sock, d, { ownerKey: KEY,
-    mail: () => {}, wa: () => {}, voice: () => {}, sms: () => {}, failed: () => {},
+    mail: () => {}, wa: () => {}, voice: () => {}, sms: () => {}, gh: () => {}, failed: () => {},
     schedules: { add: (key, j) => { added.push(`${key} ${j.id}`); return undefined }, remove: (key, id) => { removed.push(`${key} ${id}`) } },
   })
   await until(() => server.listening)

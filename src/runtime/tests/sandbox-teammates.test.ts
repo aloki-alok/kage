@@ -37,7 +37,7 @@ async function run(ownerThread: boolean, steps: string[]) {
   writeFileSync(`${cfg}/config.json`, '{"version":1}')
   const { key } = ownerKey(cfg), told: string[] = []
   const d = new Dispatcher<ToSession>({ start: () => {}, stop: () => {}, lastActivity: () => 0, busy: () => false }, { max: 2, idleMs: 9e9, connectMs: 9e9, evictMs: 0, newId: () => 'id1' })
-  const hub = listenForSessions(`${cfg}/router.sock`, d, { ownerKey: key, mail: () => {}, wa: () => {}, voice: () => {}, sms: () => {}, failed: () => {}, schedules: { add: () => undefined, remove: () => {} }, tell: (_key, text) => (told.push(text), { ok: true }) })
+  const hub = listenForSessions(`${cfg}/router.sock`, d, { ownerKey: key, mail: () => {}, wa: () => {}, voice: () => {}, sms: () => {}, gh: () => {}, failed: () => {}, schedules: { add: () => undefined, remove: () => {} }, tell: (_key, text) => (told.push(text), { ok: true }) })
   writeFileSync(`${work}/ask.mjs`, ASK_HUB)
   const walls = protectConfig(`${cfg}/env`, code, undefined, sandboxed('teammates', ownerThread))
   const all = [...steps.map(s => s.replaceAll('$ROOT', root).replaceAll('$WORK', work)), `echo done > ${work}/done.txt`]

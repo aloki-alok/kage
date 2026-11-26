@@ -136,7 +136,7 @@ test("a pane's plugin says hello with the token its pane was started with, and t
 
   const d = new Dispatcher<ToSession>({ start: () => {}, stop: () => {}, lastActivity: () => 0, busy: () => false }, { max: 2, idleMs: 9e9, connectMs: 9e9, evictMs: 0, newId: () => 'idA' })
   d.task('C1:5.5', taskAsOwner({ content: 'for the pane', meta: { channel: 'C1', thread_ts: '5.5', place: '#g', permalink: '' }, origin: { channel: 'C1', ts: '5.5' } }), 0)
-  const server = listenForSessions(join(dir, 's.sock'), d, { ownerKey: KEY, mail: () => {}, wa: () => {}, voice: () => {}, sms: () => {}, failed: () => {}, schedules: { add: () => undefined, remove: () => {} } })
+  const server = listenForSessions(join(dir, 's.sock'), d, { ownerKey: KEY, mail: () => {}, wa: () => {}, voice: () => {}, sms: () => {}, gh: () => {}, failed: () => {}, schedules: { add: () => undefined, remove: () => {} } })
   t.after(() => server.close())
   await new Promise(r => server.once('listening', r))
   const c = connect(join(dir, 's.sock'))

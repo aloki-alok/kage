@@ -6,6 +6,7 @@ export const ownerLines = {
   emailReplyFailed: (place: string, e: unknown) => `Email reply failed for ${place}: ${e}`,
   whatsappHeld: (to: string, reason: string, text: string) => `Held a WhatsApp message to ${to} (${reason}). Send it yourself if it is fine:\n${text}`,
   githubOverCap: (perHour: number, latest: string) => `GitHub sent more than ${perHour} events this hour, so I am skipping them until the hour is up. Latest: ${latest}.`,
+  githubCommentFailed: (thread: string, e: unknown) => `Kage could not post on ${thread} (${cut(e)}). The fix session's report is in kage logs.`,
   githubNoThread: (thread: string, url: string) => `A GitHub event for ${thread} could not open its thread here: ${url || 'no link'}`,
   githubNeedsPerson: (why: string, url: string) => `${why.replace(/\.$/, '')}. Kage did not approve it, so a person reviews it: ${url || 'no link'}`,
   githubSweepNeedsPerson: (found: string[]) => `Kage checked the open pull requests, and ${found.length} need a person:\n${found.slice(0, 10).map(f => `• ${f}`).join('\n')}${found.length > 10 ? `\n• and ${found.length - 10} more, each with a Kage policy check that says why` : ''}`,

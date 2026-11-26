@@ -55,7 +55,7 @@ function world(t: { after: (f: () => void) => void }, told: Told = () => ({ ok: 
     }),
   }
   const hub = listenForSessions(join(dir, 'router.sock'), d, {
-    ownerKey: KEY, mail: () => {}, wa: () => {}, voice: () => {}, sms: () => {}, failed: () => {}, schedules: { add: () => undefined, remove: () => {} },
+    ownerKey: KEY, mail: () => {}, wa: () => {}, voice: () => {}, sms: () => {}, gh: () => {}, failed: () => {}, schedules: { add: () => undefined, remove: () => {} },
     tell: (key, text) => { w.told.push(`${key} ${text}`); return told(key, text, w) },
   })
   t.after(() => { hub.close(); store.close?.() })

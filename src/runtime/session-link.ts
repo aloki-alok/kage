@@ -14,7 +14,7 @@ import type { Updated } from './self-update.ts'
 import { awayCommand, type AfkCommand } from '../core/afk.ts'
 import type { scheduler } from './scheduler.ts'
 
-const REPLY_PREFIX: Record<ChannelReply['type'], string> = { mail: 'mail:', wa: 'wa:', voice: 'voice:', sms: 'sms:' }
+const REPLY_PREFIX: Record<ChannelReply['type'], string> = { mail: 'mail:', wa: 'wa:', voice: 'voice:', sms: 'sms:', gh: 'gh:' }
 type Replies = Record<ChannelReply['type'], (key: string, text: string) => void>
 const isReplyType = (t: unknown): t is ChannelReply['type'] => typeof t === 'string' && Object.hasOwn(REPLY_PREFIX, t)
 

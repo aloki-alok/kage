@@ -69,6 +69,7 @@ export function startConnectors(o: Options) {
       void o.say(ownerLines.emailReplyFailed(placeOf(key), e))
     }),
     sms: (key: string, text: string) => void sms?.connector.reply(key, text),
+    gh: (key: string, text: string) => void github?.comment(key, text),
   }
   function replayOf(connector: string): ((source: string, payload: string) => Promise<unknown>) | undefined {
     return ({ slack: slack.replay, github: github?.replay, meeting: meeting?.replay, whatsapp: whatsapp?.replay, sms: sms?.connector.replay, hook: jobs.replay } as Record<string, ((source: string, payload: string) => Promise<unknown>) | undefined>)[connector]
