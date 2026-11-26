@@ -24,7 +24,7 @@ function world(t: { after: (f: () => void) => void }, answer: (m: Record<string,
   const asked: Record<string, unknown>[] = []
   const d = new Dispatcher<ToSession>({ start: () => {}, stop: () => {}, lastActivity: () => 0, busy: () => false }, { max: 2, idleMs: 9e9, connectMs: 9e9, evictMs: 0, newId: () => 'x' })
   const hub = listenForSessions(join(dir, 'router.sock'), d, {
-    ownerKey: KEY, mail: () => {}, wa: () => {}, voice: () => {}, sms: () => {}, failed: () => {}, schedules: { add: () => undefined, remove: () => {} },
+    ownerKey: KEY, mail: () => {}, wa: () => {}, voice: () => {}, sms: () => {}, gh: () => {}, failed: () => {}, schedules: { add: () => undefined, remove: () => {} },
     jobs: m => { const { ownerKey: _, type: _t, ...rest } = m as Record<string, unknown>; asked.push(rest); return answer(rest) },
   })
   t.after(() => hub.close())
