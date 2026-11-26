@@ -40,9 +40,11 @@ const queryError: Why = (stderr, code) => stderr.split('\n').filter(l => SHOWN_E
 
 function routedRead(c: ToolContext, db: Routes): KageTool {
   const names = () => Object.keys(db.routes()).join(', ')
+  const open = db.teammateRoutes?.() ?? []
+  const openLine = open.length ? ` Every listed teammate reads ${open.join(', ')} with no ask.` : ''
   return {
     name: 'db_read',
-    description: `Run one read-only SQL query (SELECT or WITH ... SELECT, PostgreSQL) on one of the owner's databases (${names()}) and get the rows back. The owner may read any of them, and a teammate may read one the owner already said yes to. For any other read, post an ask first. ${RULES}`,
+    description: `Run one read-only SQL query (SELECT or WITH ... SELECT, PostgreSQL) on one of the owner's databases (${names()}) and get the rows back. The owner may read any of them, and a teammate may read one the owner already said yes to.${openLine} For any other read, post an ask first. ${RULES}`,
     shape: {
       channel: c.s.describe('channel attribute from the task tag'),
       thread_ts: c.s.describe('thread_ts attribute from the task tag'),
@@ -60,7 +62,7 @@ function routedRead(c: ToolContext, db: Routes): KageTool {
       const routes = db.routes(), command = Object.hasOwn(routes, route) ? routes[route] : undefined
       if (!command) { note(0, 0, 'refused'); return refusal(`no read route ${route}. The owner named these: ${names()}`) }
       const mode = c.o.trust?.mode() ?? 'off'
-      const verdict = readGate({ turn, owner, route, mode, lines: c.o.trust?.lines() ?? [] })
+      const verdict = readGate({ turn, owner, route, mode, lines: c.o.trust?.lines() ?? [], open: (db.teammateRoutes?.() ?? []).includes(route) })
       if (verdict.would) c.o.event?.('trust', `${mode} ${verdict.would}`)
       if (!verdict.read) { note(0, 0, 'refused'); return refusal(verdict.why) }
       for (const step of verdict.steps ?? []) c.append('trust-steps', [key, step.who, 'prod-read', route, step.line])

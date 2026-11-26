@@ -109,7 +109,7 @@ type SessionOptions = {
   report?: SessionReport
   kageletMemory?: ReturnType<typeof kageletMemory>
   dbRead?: { command: () => string | undefined; maxRows: number; timeoutMs?: number }
-  dbRoutes?: { routes: () => Record<string, string>; maxRows: number }
+  dbRoutes?: { routes: () => Record<string, string>; teammateRoutes?: () => string[]; maxRows: number }
   kagelets?: { list(): string; manage(a: Manage, ask?: AskOwner): Promise<string> }
   settings?: { set(key: string, value: unknown): void }
   trust?: { mode: () => TrustMode; lines: () => TrustLine[] }
