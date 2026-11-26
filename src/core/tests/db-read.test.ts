@@ -106,6 +106,16 @@ describe('who may read a named route', () => {
     assert.equal(gate({ turn: [mate(), { reader: true, owner: true }] }).read, true)
     assert.equal(gate({ turn: [mate(), { reader: false, owner: false, teammate: 'U0TEST1' }] }).read, false)
   })
+  test('a route the owner opened to teammates reads with no line, in every mode', () => {
+    for (const mode of ['off', 'shadow', 'on'] as const) assert.equal(gate({ open: true, mode, lines: [] }).read, true, mode)
+    assert.equal(gate({ open: true, turn: [mate(), mate('U0TEST2')], lines: [] }).read, true)
+    assert.equal(gate({ open: false, lines: [] }).read, false)
+  })
+  test('an open route still says no to a teammate the owner said no to, and to anyone not a listed teammate', () => {
+    assert.match((gate({ open: true, mode: 'off', lines: [line({ answer: 'no' })] }) as { why: string }).why, /said no/)
+    assert.equal(gate({ open: true, turn: [{ reader: true, owner: false }], lines: [] }).read, false)
+    assert.equal(gate({ open: true, turn: [mate(), { reader: false, owner: false, teammate: 'U0TEST1' }], lines: [] }).read, false)
+  })
   test('a kind that never learns covers nothing', () => {
     assert.equal(gate({ lines: [line({ kind: 'ssm-relay' })] }).read, false)
     assert.equal(gate({ lines: [line({ kind: 'prod-shell' })] }).read, false)

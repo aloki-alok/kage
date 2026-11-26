@@ -114,7 +114,7 @@ A read of your database needs no SSM relay. Name each database in `config.json` 
 { "dbRead": { "routes": { "prod": "/path/to/prod-read" }, "maxRows": 200 } }
 ```
 
-`dbRead.routes` names each route (lowercase letters, digits and `-`, up to 31 characters) and the command that reads that database. Each command is like `kagelets.dbRead.command`: it runs one query and prints the rows, with the query as its last argument. With a route named, every Slack session gets `db_read` with a `db` argument. The session sees the route names and never the commands. Only you set routes: a session's change needs your yes on a card. `dbRead.maxRows` (default `200`) is the most rows one routed read returns.
+`dbRead.routes` names each route (lowercase letters, digits and `-`, up to 31 characters) and the command that reads that database. Each command is like `kagelets.dbRead.command`: it runs one query and prints the rows, with the query as its last argument. With a route named, every Slack session gets `db_read` with a `db` argument. The session sees the route names and never the commands. Only you set routes: a session's change needs your yes on a card. `dbRead.maxRows` (default `200`) is the most rows one routed read returns. `dbRead.teammateRoutes` (default none) lists the routes every listed teammate reads with no ask, in any `trust.mode`, for a team that reads one database all day.
 
 Name only a command that connects as a read-only database role. The role is the wall: Kage refuses anything but one `SELECT` or `WITH ... SELECT` statement, caps the rows and stops a read after 30 s, but it does not read functions, so a role that can write can still write.
 
@@ -123,6 +123,7 @@ Who reads a route:
 | Asker | Reads |
 |---|---|
 | You, in any thread | Every route. |
+| A teammate, on a route in `dbRead.teammateRoutes` | That route, in any `trust.mode`, with no ask. A `prod-read` no line you gave that teammate still refuses it. |
 | A teammate, with `trust.mode` set to `on` | A route only when you said yes to it for that teammate (a live `prod-read` line whose reach is the route name). With no line, `db_read` refuses and tells the session to post an ask. Your plain yes saves the line, and the next read goes through. `kage trust revoke <id>` takes it back. |
 | A teammate, with `trust.mode` at `shadow` or `off` | Nothing, unless you answer in the thread: a read runs only in a turn that you started. Shadow logs what `on` would have done. |
 | A meeting, a GitHub tag from outside the repo, any listed agent, a text, a call, an email, a WhatsApp chat | Nothing. |

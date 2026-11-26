@@ -23,7 +23,11 @@ function routeName(c: ToolContext, reach: string): string | { refused: string } 
   return { refused: names.length ? `not sent: reach must be one of the read routes: ${names.join(', ')}` : 'not sent: no read routes are set, so a prod-read ask has no route to name. Ask without kind and reach.' }
 }
 
+const openToTeammates = (c: ToolContext, a: AskRef) =>
+  a.kind === 'prod-read' && (c.o.dbRoutes?.teammateRoutes?.() ?? []).includes(a.reach) && decide(c.o.trust?.lines() ?? [], a).do !== 'no'
+
 export function trustVerdict(c: ToolContext, key: string, ask: string, typed: AskRef | undefined): { result: Result } | { would: string } {
+  if (typed && openToTeammates(c, typed)) return { result: { text: `not asked: the owner opened ${typed.reach} to every listed teammate. Read it with db_read and report after.` } }
   const mode = c.o.trust?.mode() ?? 'off'
   if (mode === 'off') return { would: '' }
   const d = typed ? decide(c.o.trust!.lines(), typed) : undefined
