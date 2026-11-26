@@ -99,3 +99,14 @@ test('slack names the transport it came up on, and a failed HTTP request counts 
   socket.see(['slack socket connected'], start + MIN)
   assert.equal(socket.lines(start + 5 * MIN).at(-1), 'slack     on · over Socket Mode · nothing heard since the hub started 5m ago')
 })
+
+test('a dropped Slack socket shows as disconnected until it connects again, and its own log lines are not something heard', () => {
+  const h = connectorHealth(start)
+  h.see(['slack socket connected'], start)
+  h.see(['slack socket disconnected'], start + MIN)
+  h.see(['slack socket down for 3 minutes: restarting it'], start + 4 * MIN)
+  assert.equal(h.lines(start + 5 * MIN).at(-1), 'slack     on · over Socket Mode · disconnected · nothing heard since the hub started 5m ago')
+  assert.deepEqual(h.rows(start + 5 * MIN).at(-1), { name: 'slack', on: true, transport: 'socket', bridgeDown: true, lastHeardAt: null, failedLastHour: 0, lastFailure: null })
+  h.see(['slack socket connected'], start + 6 * MIN)
+  assert.equal(h.lines(start + 7 * MIN).at(-1), 'slack     on · over Socket Mode · nothing heard since the hub started 7m ago')
+})

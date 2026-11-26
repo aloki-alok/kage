@@ -8,6 +8,7 @@ const START = /^\w+ on:|^jev checks /
 const JEV_LINE = /^triage [^:]+(?::[^:]+)?: \w+: (.*)$|^(?:answering|dropped) \S+ from app \S+: (.*)$/, JEV_SKIP = /^(no jev call|conversation unavailable|jev does not check)/, JEV_FAIL = /^jev (failed|answered HTTP)|^jev: /
 const OUTGOING = /^(mail (sent|reply)|whatsapp (stand-in|card|send held)|sms (reply|report)|(github|meeting) post failed)\b/
 const SLACK_UP = /^slack (http on|socket connected)\b/
+const SLACK_DOWN = /^slack socket (disconnected|reconnecting|down)\b/
 const TRANSPORT = { http: 'HTTP', socket: 'Socket Mode' }
 const HOUR = 3_600_000
 
@@ -34,7 +35,8 @@ export function connectorHealth(startedAt: number) {
       return
     }
     const up = SLACK_UP.exec(first)
-    if (up) { on.add('slack'); transport = up[1] === 'http on' ? 'http' : 'socket'; return }
+    if (up) { on.add('slack'); down.delete('slack'); transport = up[1] === 'http on' ? 'http' : 'socket'; return }
+    if (SLACK_DOWN.test(first)) { down.add('slack'); return }
     const who = WHO.find(([re]) => re.test(first))?.[1]
     if (!who) return
     if (START.test(first)) { on.add(who); return }
@@ -56,7 +58,7 @@ export function connectorHealth(startedAt: number) {
     }
     const at = heard.get(name), recent = (fails.get(name) ?? []).filter(f => now - f.at < HOUR)
     const last = at === undefined ? `nothing heard since the hub started ${ago(now - startedAt)}` : `last heard ${ago(now - at)}`
-    return `${head} · ${name === 'slack' && transport ? `over ${TRANSPORT[transport]} · ` : ''}${down.has(name) ? 'bridge down · ' : ''}${last}${recent.length ? ` · failed ${recent.length}x in 1h: ${recent.at(-1)!.text}` : ''}`
+    return `${head} · ${name === 'slack' && transport ? `over ${TRANSPORT[transport]} · ` : ''}${down.has(name) ? name === 'slack' ? 'disconnected · ' : 'bridge down · ' : ''}${last}${recent.length ? ` · failed ${recent.length}x in 1h: ${recent.at(-1)!.text}` : ''}`
   }
 
   function row(name: ConnectorName, now: number) {
