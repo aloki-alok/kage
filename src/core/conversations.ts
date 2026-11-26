@@ -4,6 +4,7 @@ const OFF_SLACK = {
   whatsapp: { prefix: 'wa:', kind: 'chat' },
   voice: { prefix: 'voice:', kind: 'chat' },
   sms: { prefix: 'sms:', kind: 'chat' },
+  github: { prefix: 'gh:', kind: 'chat' },
 } as const
 type OffSlack = keyof typeof OFF_SLACK
 export const isOffSlack = (connector: string): connector is OffSlack => Object.hasOwn(OFF_SLACK, connector)

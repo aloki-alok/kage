@@ -33,10 +33,12 @@ type Options = {
 type Installed = { action?: string; installation?: { id: number; account?: { login?: string } } }
 type Mention = NonNullable<ReturnType<typeof githubMention>>
 type Headed = Pick<Mention, 'thread' | 'headline' | 'url'>
-type State = { inst: ReturnType<typeof installs>; threads: Record<string, string>; cap: ReturnType<typeof hourCap>; approver?: ReturnType<typeof approver>; fixer?: ReturnType<typeof fixer>; fixTold: Set<string> }
+type State = { inst: ReturnType<typeof installs>; threads: Record<string, string>; cap: ReturnType<typeof hourCap>; approver?: ReturnType<typeof approver>; fixer?: ReturnType<typeof fixer>; fixTold: Set<string>; fixRepos: Record<string, number> }
 type Run = (type: string, body: string, source?: string) => Promise<boolean>
 
 const SWEEP_MS = 3_600_000
+const COMMENT_MAX = 60_000
+const PULL_KEY = /^gh:([\w.-]+\/[\w.-]+)\/(\d+)$/
 
 export function connectGithub(o: Options) {
   const inst = installs(o)
@@ -46,7 +48,7 @@ export function connectGithub(o: Options) {
     chain = next.catch(() => {})
     return next
   }
-  const st: State = { fixTold: new Set(), inst, threads: (o.saved.load('github-threads') ?? {}) as Record<string, string>, cap: hourCap(o.perHour), ...(o.approve && { approver: approverFor(o, inst, queue) }), ...(o.fix && { fixer: fixerFor(o, inst) }) }
+  const st: State = { fixTold: new Set(), fixRepos: (o.saved.load('github-fix-repos') ?? {}) as Record<string, number>, inst, threads: (o.saved.load('github-threads') ?? {}) as Record<string, string>, cap: hourCap(o.perHour), ...(o.approve && { approver: approverFor(o, inst, queue) }), ...(o.fix && { fixer: fixerFor(o, inst) }) }
   const handle = (type: string, body: string, source?: string) => queue(() => handleOne(o, st, type, body, source))
   const sweepAll = () => { if (st.approver) for (const id of inst.ids()) void queue(() => st.approver!.sweep(id)).catch(e => log('github approve sweep failed', e)) }
   void inst.listed().then(sweepAll)
@@ -59,7 +61,8 @@ export function connectGithub(o: Options) {
   }
   const server = listen(githubRoute(o, run), o.port)
   const replay = async (source: string, payload: string) => { const { type, body } = JSON.parse(payload); return run(type, body, source) }
-  return { listening: server.listening, replay, close: () => { clearInterval(sweeps); server.close() } }
+  const comment = (key: string, text: string) => commentOn(o, st, key, text)
+  return { listening: server.listening, replay, comment, close: () => { clearInterval(sweeps); server.close() } }
 }
 
 function approverFor(o: Options, inst: ReturnType<typeof installs>, queue: (job: () => Promise<unknown>) => void) {
@@ -140,16 +143,22 @@ async function startFixes(o: Options, st: State, found: FixStart[], source: stri
   for (const s of starts) {
     const now = Date.now()
     if (st.cap.full(now)) { if (st.cap.tell()) o.notify(ownerLines.githubOverCap(o.perHour, s.thread)); continue }
-    const thread = await threadFor(o, st.threads, s)
-    if (!thread) { once(s, ownerLines.githubNoThread(s.thread, s.url)); continue }
-    const place = `GitHub ${s.thread}`
-    const task = taskAsOwner({ content: s.content, meta: { channel: o.botDm, thread_ts: thread, place, permalink: s.url }, origin: { channel: o.botDm, ts: thread }, ...(source && { source }) })
-    if (o.deliver({ connector: 'slack', chat: o.botDm, thread, kind: 'dm' }, task, place) === 'failed') { once(s, startFailedNote(place, o.startError?.())); continue }
+    const chat = `${s.repo}/${s.number}`, place = `GitHub ${s.thread}`
+    const task = taskAsOwner({ content: s.content, meta: { channel: 'github', thread_ts: `gh:${chat}`, place, permalink: s.url }, origin: { channel: 'github', ts: chat }, ...(source && { source }) })
+    if (st.fixRepos[s.repo] !== s.installation) { st.fixRepos[s.repo] = s.installation; o.saved.save('github-fix-repos', st.fixRepos) }
+    if (o.deliver({ connector: 'github', chat, kind: 'chat' }, task, place) === 'failed') { once(s, startFailedNote(place, o.startError?.())); continue }
     st.cap.add(now)
     st.fixTold.delete(s.thread)
     s.began()
   }
   return starts.length > 0
+}
+
+async function commentOn(o: Options, st: State, key: string, text: string) {
+  const [, repo, n] = PULL_KEY.exec(key) ?? []
+  const installation = repo ? st.fixRepos[repo] : undefined
+  if (installation === undefined || !st.inst.has(installation)) throw new Error(`no installation for ${repo ?? key}`)
+  await (o.fix?.call ?? installationCall(o.app))(installation)('POST', `/repos/${repo}/issues/${n}/comments`, { body: text.slice(0, COMMENT_MAX) })
 }
 
 async function threadFor(o: Options, threads: Record<string, string>, e: Headed) {

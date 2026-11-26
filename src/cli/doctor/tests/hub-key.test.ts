@@ -18,7 +18,7 @@ const KEY = 'f6'.repeat(32)
 test("the doctor asks the running hub with this terminal's key: ok when it matches, a FAIL with the fix when owner.key is missing or changed, nothing when the hub is down or in a session", async t => {
   assert.deepEqual(await hubKey(), [], 'a stopped hub gave a line')
   const d = new Dispatcher<ToSession>({ start: () => {}, stop: () => {}, lastActivity: () => 0, busy: () => false }, { max: 2, idleMs: 9e9, connectMs: 9e9, evictMs: 0, newId: () => 'id1' })
-  const hub = listenForSessions(join(dir, 'router.sock'), d, { ownerKey: KEY, mail: () => {}, wa: () => {}, voice: () => {}, sms: () => {}, failed: () => {}, schedules: { add: () => undefined, remove: () => {} } })
+  const hub = listenForSessions(join(dir, 'router.sock'), d, { ownerKey: KEY, mail: () => {}, wa: () => {}, voice: () => {}, sms: () => {}, gh: () => {}, failed: () => {}, schedules: { add: () => undefined, remove: () => {} } })
   t.after(() => hub.close())
   await new Promise(r => hub.once('listening', r))
 

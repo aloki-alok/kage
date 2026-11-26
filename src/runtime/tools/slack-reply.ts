@@ -72,6 +72,11 @@ const OFF_SLACK_REPLIES: Record<string, (c: ToolContext, a: ReplyArgs, key: stri
     if (c.o.send({ type: 'mail', text: a.text }) === false) return { isError: true, text: HUB_DOWN }
     return { text: 'sent by email' }
   },
+  github(c, a) {
+    if (a.private) return undefined
+    if (c.o.send({ type: 'gh', text: a.text }) === false) return { isError: true, text: HUB_DOWN }
+    return { text: 'commented on the pull request as the app' }
+  },
 }
 
 function offSlackReply(c: ToolContext, a: ReplyArgs, key: string) {

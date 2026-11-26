@@ -53,7 +53,7 @@ test("kage status in an owner thread's session reads the hub with its read token
   writeFileSync(join(dir, 'config.json'), '{"version":1}')
   openStore(join(dir, 'kage.db'))
   const d = new Dispatcher<ToSession>({ start: () => {}, stop: () => {}, lastActivity: () => 0, busy: () => false }, { max: 2, idleMs: 9e9, connectMs: 9e9, evictMs: 0, newId: () => 'id1' })
-  const hub = listenForSessions(join(dir, 'router.sock'), d, { ownerKey: KEY, mail: () => {}, wa: () => {}, voice: () => {}, sms: () => {}, failed: () => {}, schedules: { add: () => undefined, remove: () => {} }, health: () => ['email     on'] })
+  const hub = listenForSessions(join(dir, 'router.sock'), d, { ownerKey: KEY, mail: () => {}, wa: () => {}, voice: () => {}, sms: () => {}, gh: () => {}, failed: () => {}, schedules: { add: () => undefined, remove: () => {} }, health: () => ['email     on'] })
   t.after(() => hub.close())
   await new Promise(r => hub.once('listening', r))
   const { KAGE_THREAD: _, KAGE_CLAUDE: __, KAGE_READ_TOKEN: ___, ...base } = process.env

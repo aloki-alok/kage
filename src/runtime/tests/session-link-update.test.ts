@@ -20,7 +20,7 @@ function hub(t: { after: (f: () => void) => void }) {
   )
   const sock = join(mkdtempSync(join(tmpdir(), 'kage-upd-')), 's.sock')
   const server = listenForSessions(sock, d, {
-    ownerKey: KEY, mail: () => {}, wa: () => {}, voice: () => {}, sms: () => {}, failed: () => {}, schedules: { add: () => undefined, remove: () => {} },
+    ownerKey: KEY, mail: () => {}, wa: () => {}, voice: () => {}, sms: () => {}, gh: () => {}, failed: () => {}, schedules: { add: () => undefined, remove: () => {} },
     update: async stable => { asked.push(stable); return { moved: { old: 'aaa', new: 'bbb', packages: false, subjects: ['feat: x'] } } },
   })
   t.after(() => server.close())
@@ -62,7 +62,7 @@ test('no token, a teammate or pane link token, a wrong read token and a wrong ke
 test('a hub with no update hook refuses instead of staying silent', async t => {
   const d = new Dispatcher<ToSession>({ start: () => {}, stop: () => {}, lastActivity: () => 0, busy: () => false }, { max: 1, idleMs: 9e9, connectMs: 9e9, evictMs: 0, newId: () => 'x', saved: {} })
   const sock = join(mkdtempSync(join(tmpdir(), 'kage-upd-')), 's.sock')
-  const server = listenForSessions(sock, d, { ownerKey: KEY, mail: () => {}, wa: () => {}, voice: () => {}, sms: () => {}, failed: () => {}, schedules: { add: () => undefined, remove: () => {} } })
+  const server = listenForSessions(sock, d, { ownerKey: KEY, mail: () => {}, wa: () => {}, voice: () => {}, sms: () => {}, gh: () => {}, failed: () => {}, schedules: { add: () => undefined, remove: () => {} } })
   t.after(() => server.close())
   await until(() => server.listening)
   const c = connect(sock), got: string[] = []

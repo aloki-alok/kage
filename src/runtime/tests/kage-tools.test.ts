@@ -785,6 +785,12 @@ describe("a session's Kage tools", () => {
     assert.equal((await s.call('reply', { channel: 'email', thread_ts: 'mail:<r@x>', text: 'hi' })).text, 'sent by email')
     assert.deepEqual(s.out, ['mail hi'])
   })
+  test('a pull request reply is handed to the hub as a GitHub comment', async () => {
+    const s = setup()
+    s.t.onTask(s.task({ channel: 'github', thread_ts: 'gh:acme/app/7' }))
+    assert.equal((await s.call('reply', { channel: 'github', thread_ts: 'gh:acme/app/7', text: 'fixed' })).text, 'commented on the pull request as the app')
+    assert.deepEqual(s.out, ['gh fixed'])
+  })
   test('a reply the hub cannot take (it is restarting) fails, so the session tries again instead of believing it went', async () => {
     const s = setup({ hubDown: true })
     s.t.onTask(s.task({ channel: 'email', thread_ts: 'mail:<r@x>' }))

@@ -4,7 +4,7 @@ import type { ProbeArg } from './probe-jobs.ts'
 
 export type Verdict = { type: 'verdict'; request_id: string; behavior: 'allow' | 'deny' }
 export type ToSession = Task | Verdict
-export type ChannelReply = { type: 'mail' | 'wa' | 'voice' | 'sms'; text: string }
+export type ChannelReply = { type: 'mail' | 'wa' | 'voice' | 'sms' | 'gh'; text: string }
 
 export type FromSession =
   | { type: 'board' }

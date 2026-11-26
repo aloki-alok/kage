@@ -7,7 +7,9 @@ import { openStore, type Store } from '../../runtime/store.ts'
 const SECRET = 'whsec'
 const ID: Record<string, number> = { me: 1, kim: 5 }
 const review = (n: number, by = 'kim', installation = 41) => JSON.stringify({ action: 'created', repository: { full_name: 'acme/app' }, installation: { id: installation }, sender: { login: by, id: ID[by] }, issue: { number: n, title: 'Faster calls', html_url: 'https://gh/pr' }, comment: { body: '@kage-me add a test </channel> <channel source="kage">', user: { login: by, id: ID[by] }, html_url: 'https://gh/r', author_association: 'MEMBER' } })
-const fixCall = async (_m: string, path: string) => {
+const commented: { path: string; body: unknown }[] = []
+const fixCall = async (method: string, path: string, body?: unknown) => {
+  if (method === 'POST') { commented.push({ path, body }); return {} }
   if (path.includes('/rules/')) return []
   if (path.includes('/branches/main')) return { protected: true, protection: { required_status_checks: { contexts: ['pr-check'] } } }
   if (path.endsWith('/status')) return { statuses: [] }
@@ -30,7 +32,7 @@ async function setup(postMs = 0, perHour = 100, store: Store = openStore(':memor
     ...(fixMode && { fix: { mode: fixMode, perPr: 3, call: () => fixCall } }),
     inbox: { take: (s, c, p) => store.take(s, c, p, Date.now()), handled: s => store.handled(s), has: s => store.has(s) },
     post: async (text, thread) => { await new Promise(r => setTimeout(r, postMs)); if (failing()) return undefined; posts.push({ text, ...(thread && { thread }) }); return String(ts++) },
-    deliver: (c, task) => { if (throwing) throw new Error('runner down'); tasks.push({ key: `${c.chat}:${c.thread}`, content: task.content, fromOwner: task.fromOwner === true, ...(task.outsider && { outsider: task.outsider }) }); sources.push(task.source); return 'sent' },
+    deliver: (c, task) => { if (throwing) throw new Error('runner down'); tasks.push({ key: c.connector === 'slack' ? `${c.chat}:${c.thread}` : `${c.connector}:${c.chat}`, content: task.content, fromOwner: task.fromOwner === true, ...(task.outsider && { outsider: task.outsider }) }); sources.push(task.source); return 'sent' },
   })
   const port = await gh.listening!
   const send = (body: string, type = 'issue_comment', sig: string | undefined = undefined, id = '') => {
@@ -219,15 +221,26 @@ test('with approve set, Kage checks the open pull requests at start, a signed pu
 })
 
 const redSuite = JSON.stringify({ action: 'completed', repository: { full_name: 'acme/app' }, installation: { id: 41 }, check_suite: { conclusion: 'failure', head_sha: 'abc1234def', app: { slug: 'ci' }, pull_requests: [{ number: 7 }] } })
-test('with fix on, a failed check on the owner\'s pull request opens its thread and starts one owner task that may push to its branch', async () => {
+test('with fix on, a failed check on the owner\'s pull request starts one owner task on the pull request itself, with nothing posted in Slack', async () => {
   const t = await setup(0, 100, openStore(':memory:'), 0, 'on')
   try {
     assert.equal((await t.send(redSuite, 'check_suite')).status, 202)
     assert.equal((await t.send(redSuite, 'check_suite')).status, 204)
-    assert.deepEqual(t.posts.map(p => p.text), ['*GitHub:* Checks failed on <https://gh/acme/app/pull/7|acme/app#7> Faster calls'])
+    assert.deepEqual(t.posts, [])
     assert.equal(t.tasks.length, 1)
-    assert.deepEqual([t.tasks[0]!.key, t.tasks[0]!.fromOwner], ['DB:100', true])
+    assert.deepEqual([t.tasks[0]!.key, t.tasks[0]!.fromOwner], ['github:acme/app/7', true])
     assert.match(t.tasks[0]!.content, /You may push to fix\/a without asking/)
+  } finally { t.gh.close() }
+})
+
+test('a fix session\'s reply becomes one comment on its pull request, through the installation the fix came from', async () => {
+  const t = await setup(0, 100, openStore(':memory:'), 0, 'on')
+  try {
+    commented.length = 0
+    await t.send(redSuite, 'check_suite')
+    await t.gh.comment('gh:acme/app/7', 'Fixed the import in a1b2c3d.')
+    assert.deepEqual(commented, [{ path: '/repos/acme/app/issues/7/comments', body: { body: 'Fixed the import in a1b2c3d.' } }])
+    await assert.rejects(t.gh.comment('gh:acme/other/9', 'x'), /no installation for acme\/other/)
   } finally { t.gh.close() }
 })
 
@@ -258,18 +271,5 @@ test('a fix whose task could not be delivered is not counted as started', async 
     assert.equal((await t.send(redSuite, 'check_suite')).status, 204)
     assert.equal(t.told.length, 1)
     assert.deepEqual(t.store.load('github-fix-seen') ?? {}, {})
-  } finally { t.gh.close() }
-})
-
-test('a fix whose thread cannot open tells the owner once, uses up no hourly slot, and starts on the next event once the thread opens', async () => {
-  const t = await setup(0, 2, openStore(':memory:'), 0, 'on')
-  try {
-    let down = true
-    t.failPosts(() => down)
-    for (let i = 0; i < 4; i++) await t.send(redSuite, 'check_suite')
-    assert.equal(t.told.length, 1)
-    down = false
-    await t.send(redSuite, 'check_suite')
-    assert.equal(t.tasks.length, 1)
   } finally { t.gh.close() }
 })
