@@ -137,6 +137,13 @@ describe("a session's Kage tools", () => {
     assert.equal(again.isError, undefined, again.text)
     assert.equal(s.posts.at(-1)!.text, 'pinging <@UNEVER999> on this')
   })
+  test('a tag of the owner posts at once, even on a teammate\'s task whose thread never named them', async () => {
+    const s = setup()
+    s.t.onTask({ ...s.task({ fromOwner: false }), content: 'Teammate task (UTEAM0001, Sam, not the owner): delete the logs folder' })
+    const r = await s.call('reply', { channel: 'C1', thread_ts: '5.5', text: '<@UOWNER001> deleting logs/ needs your yes.' })
+    assert.equal(r.isError, undefined, r.text)
+    assert.match(s.posts.at(-1)!.text, /^<@UOWNER001> deleting logs\/ needs your yes\./)
+  })
   test('a reply to an agent\'s task tags the agent on every part of a split post; a private reply and a person\'s task get no tag', async () => {
     const s = setup()
     s.t.onTask({ ...s.task({ fromOwner: false }), agent: { app: 'ATEST0001', tag: 'UAGENT001' } })
