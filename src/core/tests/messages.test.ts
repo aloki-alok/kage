@@ -15,6 +15,7 @@ const cases: [string, string][] = [
   [L.githubNeedsPerson('acme/app#7: eve pushed to fix/a, and is not in people.', 'https://gh/pr'), 'acme/app#7: eve pushed to fix/a, and is not in people. Kage did not approve it, so a person reviews it: https://gh/pr'],
   [L.githubSweepNeedsPerson(['acme/app#7: It is big. https://gh/7']), 'Kage checked the open pull requests, and 1 need a person:\n• acme/app#7: It is big. https://gh/7'],
   [L.githubMergeRefused('acme/app#7', '405 Pull Request is not mergeable', 'https://gh/pr'), 'Kage approved release acme/app#7 but could not merge it: 405 Pull Request is not mergeable. Merge it by hand: https://gh/pr'],
+  [L.githubCommentFailed('acme/app#7', 'Error: no installation'), 'Kage could not post on acme/app#7 (Error: no installation). The fix session\'s report is in kage logs.'],
   [L.githubFixSpent('alok', 3), '@alok Kage tried 3 fixes and this pull request is still stuck, so Kage stopped. It needs you.'],
   [L.githubChecksDenied(), 'Kage approves pull requests, but GitHub refused its Kage policy check, so agents cannot read why a pull request waits. Give the GitHub App Checks: Read and write, then accept the new permission on each org.'],
   [L.githubBadPolicy('acme/policies kage-approve.json is not valid JSON'), 'Kage approves nothing under a broken policy file until it is fixed: acme/policies kage-approve.json is not valid JSON'],

@@ -240,7 +240,53 @@ test('a fix session\'s reply becomes one comment on its pull request, through th
     await t.send(redSuite, 'check_suite')
     await t.gh.comment('gh:acme/app/7', 'Fixed the import in a1b2c3d.')
     assert.deepEqual(commented, [{ path: '/repos/acme/app/issues/7/comments', body: { body: 'Fixed the import in a1b2c3d.' } }])
-    await assert.rejects(t.gh.comment('gh:acme/other/9', 'x'), /no installation for acme\/other/)
+    await t.gh.comment('gh:acme/other/9', 'x')
+    assert.equal(commented.length, 1)
+    assert.match(t.told.at(-1)!, /could not post on acme\/other#9/)
+  } finally { t.gh.close() }
+})
+
+test('after a fix starts, the owner\'s tag on that pull request goes back into the fix session, and a teammate\'s tag still opens a DM thread', async () => {
+  const t = await setup(0, 100, openStore(':memory:'), 0, 'on')
+  try {
+    await t.send(redSuite, 'check_suite')
+    await t.send(review(7, 'me'))
+    assert.deepEqual(t.posts, [])
+    assert.deepEqual(t.tasks.map(x => [x.key, x.fromOwner]), [['github:acme/app/7', true], ['github:acme/app/7', true]])
+    await t.send(review(7, 'kim'))
+    assert.deepEqual(t.tasks.at(-1)!.key, 'DB:100')
+    await t.send(JSON.stringify({ action: 'closed', repository: { full_name: 'acme/app' }, installation: { id: 41 }, pull_request: { number: 7 } }), 'pull_request')
+    await t.send(review(7, 'me'))
+    assert.deepEqual(t.tasks.at(-1)!.key, 'DB:100')
+  } finally { t.gh.close() }
+})
+
+test('a fix comment after a hub restart still reaches its pull request, and one on an installation no longer allowed tells the owner instead', async () => {
+  const store = openStore(':memory:')
+  const first = await setup(0, 100, store, 0, 'on')
+  await first.send(redSuite, 'check_suite')
+  first.gh.close()
+  const t = await setup(0, 100, store, 0, 'on')
+  try {
+    commented.length = 0
+    await t.gh.comment('gh:acme/app/7', 'Fixed.')
+    assert.equal(commented.length, 1)
+    await t.send(installed('deleted', 41, 'me'), 'installation')
+    await t.gh.comment('gh:acme/app/7', 'Fixed again.')
+    assert.equal(commented.length, 1)
+    assert.match(t.told.at(-1)!, /could not post on acme\/app#7/)
+  } finally { t.gh.close() }
+})
+
+test('a fix comment is cut to 60,000 characters, and tags no one but the owner', async () => {
+  const t = await setup(0, 100, openStore(':memory:'), 0, 'on')
+  try {
+    commented.length = 0
+    await t.send(redSuite, 'check_suite')
+    await t.gh.comment('gh:acme/app/7', 'x'.repeat(70_000))
+    await t.gh.comment('gh:acme/app/7', '@me pick one. cc @acme/team, (@kim) and ops@acme.dev')
+    assert.equal((commented[0]!.body as { body: string }).body.length, 60_000)
+    assert.equal((commented[1]!.body as { body: string }).body, '@me pick one. cc `@acme/team`, (`@kim`) and ops@acme.dev')
   } finally { t.gh.close() }
 })
 
