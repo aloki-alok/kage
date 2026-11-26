@@ -13,9 +13,8 @@ import type { Config } from '../core/config.ts'
 import { DIR, ENV_FILE, settingsExist } from './home.ts'
 import { createApp } from './github-app.ts'
 import { githubOwner } from '../core/github.ts'
-import { tailscaleBin, tailscaleState } from './tailscale.ts'
+import { tailscaleBin, tailscaleState, tunnelUrl } from './tailscale.ts'
 import { outputFlags, printJson } from './output.ts'
-import { publicUrl } from '../core/tunnel.ts'
 
 const die = (msg: string): never => { console.error(msg); process.exit(1) }
 const out = outputFlags(process.argv.slice(2))
@@ -72,7 +71,7 @@ die(`${n} ${connectorStep(n, settle())}`)
 
 async function ask(asks: Ask[]) {
   for (const a of asks) {
-    const found = a.key === 'connectors.sms.publicUrl' ? tunnelUrl('/sms') : undefined
+    const found = a.key === 'connectors.sms.publicUrl' ? tunnelUrl(readSettings(ENV_FILE).config, '/sms') : undefined
     if (found) { change(() => setKey(ENV_FILE, a.key, found)); console.log(`Filled ${a.key} from your tunnel: ${found}`); filled = true; continue }
     if (a.kind === 'made') {
       const token = randomBytes(24).toString('hex')
@@ -204,12 +203,6 @@ async function connectGithub(): Promise<never> {
   github({ ...gh, login, userId: known ?? app.ownerId, app: { id: app.id, slug: app.slug }, accounts: [...new Set([login, ...(org ? [org] : []), ...(gh.accounts ?? [])])] })
   spawnSync(process.execPath, [fileURLToPath(new URL('./tunnel.ts', import.meta.url)), 'on'], { stdio: 'inherit', env: process.env })
   quit(`github is on as @${app.slug}. Install it from the tab Kage opened, or at ${app.url}/installations/new, then tag @${app.slug} in an issue to try it.`)
-}
-
-function tunnelUrl(path: string) {
-  if (readSettings(ENV_FILE).config.tunnel?.provider === 'off') return undefined
-  const bin = tailscaleBin(), ts = bin ? tailscaleState(bin) : undefined
-  return ts?.running && ts.funnel ? publicUrl(ts.dns, path) : undefined
 }
 
 function openTunnel() {

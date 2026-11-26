@@ -1,5 +1,7 @@
 import { execFileSync } from 'node:child_process'
 import { existsSync } from 'node:fs'
+import type { Config } from '../core/config.ts'
+import { publicUrl } from '../core/tunnel.ts'
 
 const MAC_APP = '/Applications/Tailscale.app/Contents/MacOS/Tailscale'
 
@@ -14,4 +16,10 @@ export function tailscaleState(bin: string): { running: boolean; funnel: boolean
   const json = (args: string[]): unknown => { try { return JSON.parse(tailscaleRun(bin, args) || '{}') } catch { return undefined } }
   const status = (json(['status', '--json']) ?? {}) as { BackendState?: string; Self?: { DNSName?: string; CapMap?: Record<string, unknown> } }
   return { running: status.BackendState === 'Running', funnel: 'funnel' in (status.Self?.CapMap ?? {}), dns: status.Self?.DNSName, serve: json(['serve', 'status', '--json']) }
+}
+
+export function tunnelUrl(config: Config, path: string) {
+  if (config.tunnel?.provider === 'off') return undefined
+  const bin = tailscaleBin(), ts = bin ? tailscaleState(bin) : undefined
+  return ts?.running && ts.funnel ? publicUrl(ts.dns, path) : undefined
 }
