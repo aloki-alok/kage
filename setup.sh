@@ -50,7 +50,7 @@ Set up|completion|<bash, zsh or fish>|Print the tab completion script for your s
 Run|run||Run the hub in the foreground for a supervisor other than launchd or systemd (Docker: --init); output goes to kage logs|kage run
 Run|cost|[days]|What each thread spent, most first, and the models it ran on (1 day unless you say)|kage cost 7
 Run|telemetry|[show]|What this Kage sends and where: on or off, the endpoint, and the next batch with show|kage telemetry show
-Run|stats|[days] [--json]|Spend and tokens per day, per connector, per kind of thread and per model, the share read from cache, runs, refusals, turn time, hub starts and reports to the Kage repo (7 days unless you say)|kage stats 30
+Run|stats|[days] [--json]|Spend and tokens per day, per connector, per kind of thread and per model, the share read from cache, runs, refusals, turn time, hub starts, reports to the Kage repo, and posts per kind with the token and channel type, plus how many were edited or deleted later (7 days unless you say)|kage stats 30
 Run|release|[--dry-run]|Tag the next version on main, publish its notes and move the stable tag that installs follow (repo admin only). --dry-run prints the version and notes and changes nothing|kage release --dry-run
 Run|dream|undo|Put the memory back to how it was before the last weekly dream|kage dream undo
 Watch|schedule list|[--json]|Every schedule and reply watch, in every thread, paused ones too|kage schedule list

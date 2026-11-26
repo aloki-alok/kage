@@ -24,6 +24,7 @@ type Stats = {
   runs: { started: number; ended: number; refusals: number }
   turnTimeMs: { p50: number; p90: number } | null
   reports: Record<string, number>
+  posts: { byKind: { kind: string; count: number; byToken: Record<string, number>; byChannel: Record<string, number> }[]; edited: number; deleted: number } | null
 }
 
 function collect(f: Input): { stats: Stats; empty: boolean } {
@@ -45,7 +46,7 @@ function collect(f: Input): { stats: Stats; empty: boolean } {
   const stats: Stats = {
     days: f.days, usd: sum(costs, c => c.usd), turns: costs.length, perDay, byConnector, tokens: tokenStats(costs), byModel: modelStats(costs), hubStarts24h: boots.length,
     runs: { started: starts.size, ended: ends.length, refusals: events.filter(e => e.kind === 'refusal').length },
-    turnTimeMs: took.length ? { p50: percentile(took, 0.5), p90: percentile(took, 0.9) } : null, reports,
+    turnTimeMs: took.length ? { p50: percentile(took, 0.5), p90: percentile(took, 0.9) } : null, reports, posts: postStats(events),
   }
   return { stats, empty: !costs.length && !events.length && !boots.length && !Object.keys(reports).length }
 }
@@ -69,7 +70,34 @@ export function statsLines(f: Input): string[] {
   lines.push(`hub: ${plural(d.hubStarts24h, 'start')} in the last 24 h`, `runs: ${d.runs.started} started, ${d.runs.ended} ended, ${plural(d.runs.refusals, 'refusal')}`)
   if (d.turnTimeMs) lines.push(`turn time: p50 ${ago(d.turnTimeMs.p50)}, p90 ${ago(d.turnTimeMs.p90)}`)
   const counts = OUTCOMES.flatMap(([o, label]) => d.reports[o] ? [`${d.reports[o]} ${label}`] : [])
-  return [...lines, ...counts.length ? [`reports to the Kage repo: ${counts.join(', ')}`] : []]
+  return [...lines, ...postLines(d.posts), ...counts.length ? [`reports to the Kage repo: ${counts.join(', ')}`] : []]
+}
+
+const LATER = ['edited', 'deleted']
+
+function tally(posts: string[][], field: number): Record<string, number> {
+  const by = new Map<string, number>()
+  for (const p of posts) by.set(p[field] ?? '', (by.get(p[field] ?? '') ?? 0) + 1)
+  return Object.fromEntries([...by].sort((a, b) => b[1] - a[1]))
+}
+
+function postStats(events: KageEvent[]): Stats['posts'] {
+  const byKind = new Map<string, string[][]>()
+  for (const e of events) if (e.kind === 'post') { const p = e.detail.split(' '); byKind.set(p[0]!, [...byKind.get(p[0]!) ?? [], p]) }
+  if (!byKind.size) return null
+  const sent = [...byKind].filter(([k]) => !LATER.includes(k)).sort((a, b) => b[1].length - a[1].length)
+  return { byKind: sent.map(([kind, ps]) => ({ kind, count: ps.length, byToken: tally(ps, 1), byChannel: tally(ps, 2) })), edited: byKind.get('edited')?.length ?? 0, deleted: byKind.get('deleted')?.length ?? 0 }
+}
+
+function postLines(posts: Stats['posts']): string[] {
+  if (!posts) return []
+  const width = Math.max(16, ...posts.byKind.map(p => p.kind.length))
+  const joined = (by: Record<string, number>) => Object.entries(by).map(([k, n]) => `${k} ${n}`).join(' · ')
+  return [
+    'posts by kind:',
+    ...posts.byKind.map(p => `  ${p.kind.padEnd(width)}  ${String(p.count).padStart(4)}  ${joined(p.byToken)}  ${joined(p.byChannel)}`),
+    `  later: ${posts.edited} edited, ${posts.deleted} deleted`,
+  ]
 }
 
 const OUTCOMES: [string, string][] = [['filed', 'filed'], ['commented', 'seen again'], ['link', 'by link'], ['denied', 'denied'], ['capped', 'capped'], ['failed', 'failed']]

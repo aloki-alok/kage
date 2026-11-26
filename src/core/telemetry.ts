@@ -79,6 +79,9 @@ export function planDetail(u: { subscription_type: string | null; rate_limits: {
 
 export const toTelemetry = (e: KageEvent): TelemetryRecord => ({ at: e.at, name: `kage.${e.kind}`, attrs: ATTRS[e.kind]?.(e.detail) ?? {} })
 
+const LOCAL_ONLY: KageEvent['kind'][] = ['post']
+export const telemetryRecords = (events: KageEvent[]) => events.filter(e => !LOCAL_ONLY.includes(e.kind)).map(toTelemetry)
+
 export function crashFingerprint(err: unknown, root: string): string {
   const name = err instanceof Error ? err.name : typeof err
   const stack = err instanceof Error ? err.stack ?? '' : ''

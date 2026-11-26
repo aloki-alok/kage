@@ -4,6 +4,7 @@ import { log } from './log.ts'
 import { lastTotals, trailEvent, trailLine, tsvRow, turnCost, type Tokens } from '../core/ledgers.ts'
 import { eventRow, whoOf, type EventKind, type KageEvent } from '../core/events.ts'
 import { COST_FLAG } from '../core/kagelets/kagelet.ts'
+import { postedEvent } from '../core/post-kinds.ts'
 
 type LedgerName = 'flags' | 'issue-reports' | 'waiting' | 'posted' | 'prod-actions' | 'costs' | 'runs' | 'commands' | 'reports' | 'db-reads' | 'grants' | 'verdicts' | 'card-verdicts' | 'boots' | 'trust-steps' | 'trust-shadow'
 const NAMES: LedgerName[] = ['waiting', 'posted', 'prod-actions', 'costs', 'runs', 'commands', 'reports', 'db-reads', 'grants', 'verdicts']
@@ -49,7 +50,9 @@ function importTsv(db: DatabaseSync, dir: string, insert: StatementSync) {
   }
 }
 
-function rowEvent(name: LedgerName, cells: string[], event: (e: Parameters<typeof eventRow>[0]) => void) {
+function rowEvent(name: LedgerName, cells: string[], event: (e: Parameters<typeof eventRow>[0]) => void, kind?: string) {
+  const post = name === 'posted' ? postedEvent(cells, kind) : undefined
+  if (post) event(post)
   if (name === 'grants') {
     const [who = '', status = '', why = '', tools = 'db_read'] = cells
     event({ kind: ['read', 'granted', 'standing'].includes(status) ? 'grant' : status === 'revoked' ? 'revoke' : 'refusal', who, trace: '', detail: `${tools}${['read', 'standing', 'revoked'].includes(status) ? ` ${status}` : ''}: ${why}` })
@@ -83,11 +86,11 @@ export function openLedgers(dir: string, now = () => new Date().toISOString(), t
     trail?.(trailEvent(r))
   }
   return {
-    add(name: LedgerName, cells: string[]) {
+    add(name: LedgerName, cells: string[], kind?: string) {
       try { insert.run(name, now(), JSON.stringify(cells.map(c => c.replace(/[\t\r\n]+/g, ' ')))) } catch (e) { log('ledger write failed', name, e) }
       trail?.(trailLine(name, cells.map(c => c.replace(/[\t\r\n]+/g, ' '))))
       added?.(name, cells)
-      rowEvent(name, cells, event)
+      rowEvent(name, cells, event, kind)
     },
     text(name: LedgerName, since?: string): string {
       try { return ledgerText(db, name, since) } catch (e) { log('ledger read failed', name, e); return '' }

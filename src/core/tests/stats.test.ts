@@ -103,3 +103,29 @@ test('statsData gives the numbers behind the lines, for --json', () => {
   assert.equal(d.hubStarts24h, 1)
   assert.deepEqual(d.reports, {})
 })
+
+test('posts per kind over the window with their tokens and channel types, and how many were edited or deleted later (#242)', () => {
+  const post = (at: number, detail: string): KageEvent => ({ ...ev(at, 'post', ''), detail })
+  const events = [
+    post(now - 1000, 'reply bot channel'), post(now - 2000, 'reply bot channel'), post(now - 3000, 'reply owner group'),
+    post(now - 4000, 'notice:slackDown bot dm'), post(now - 5000, 'card bot dm'), post(now - 6000, 'ack-skipped none channel'),
+    post(now - 7000, 'people owner group'), post(now - 8000, 'edited bot channel'), post(now - 9000, 'deleted owner group'),
+    post(now - 9 * DAY, 'reply bot channel'),
+  ]
+  const lines = statsLines({ days: 7, now, costs: [], events, boots: [] })
+  const at = lines.indexOf('posts by kind:')
+  assert.deepEqual(lines.slice(at, at + 7), [
+    'posts by kind:',
+    '  reply                3  bot 2 · owner 1  channel 2 · group 1',
+    '  notice:slackDown     1  bot 1  dm 1',
+    '  card                 1  bot 1  dm 1',
+    '  ack-skipped          1  none 1  channel 1',
+    '  people               1  owner 1  group 1',
+    '  later: 1 edited, 1 deleted',
+  ])
+  const posts = statsData({ days: 7, now, costs: [], events, boots: [] }).posts
+  assert.deepEqual(posts?.byKind[0], { kind: 'reply', count: 3, byToken: { bot: 2, owner: 1 }, byChannel: { channel: 2, group: 1 } })
+  assert.deepEqual([posts?.edited, posts?.deleted], [1, 1])
+  assert.equal(statsData({ days: 7, now, costs: [], events: [], boots: [] }).posts, null)
+  assert.doesNotMatch(statsLines({ days: 7, now, costs: [{ at: now - 1, key: 'C0TEST1:1.1', usd: 1 }], events: [], boots: [] }).join('\n'), /posts by kind/)
+})

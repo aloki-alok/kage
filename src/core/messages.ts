@@ -1,6 +1,6 @@
 const cut = (e: unknown) => String(e).slice(0, 120)
 
-export const ownerLines = {
+const lines = {
   holdsLifted: (kagelet: string, n: number) => n ? `Lifted ${n} deny ${n === 1 ? 'hold' : 'holds'} on ${kagelet}. It may ask about those steps again.` : `${kagelet} has no deny holds.`,
   emailHeld: (to: string[], reason: string, body: string) => `Held an email reply to ${to.join(', ')} (${reason}). Send it yourself if it is fine:\n${body}`,
   emailReplyFailed: (place: string, e: unknown) => `Email reply failed for ${place}: ${e}`,
@@ -40,3 +40,18 @@ export const ownerLines = {
   released: (version: string | undefined, url: string | undefined) => `Released Kage v${version}. <${url}|Release notes>`,
   limitLost: (lost: string[]) => `After the usage limit, ${lost.length} held message${lost.length === 1 ? '' : 's'} could not be resumed: ${lost.join(', ')}. Ask again in ${lost.length === 1 ? 'its thread' : 'their threads'}.`,
 }
+
+const RECENT = 100
+const said = new Map<string, string>()
+
+function remember(id: string, text: string): string {
+  said.delete(text)
+  said.set(text, id)
+  if (said.size > RECENT) said.delete(said.keys().next().value!)
+  return text
+}
+
+export const ownerLines = Object.fromEntries(Object.entries(lines).map(([id, line]) =>
+  [id, (...a: never[]) => remember(id, (line as (...a: never[]) => string)(...a))])) as typeof lines
+
+export const noticeOf = (text: string) => said.get(text) ?? 'other'

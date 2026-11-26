@@ -26,6 +26,13 @@ test('if the WhatsApp send fails or throws, the same text goes to Slack, so noth
   assert.equal(await threw.owner.say('two'), true)
   assert.deepEqual([...failed.sent, ...threw.sent], ['slack: one', 'slack: two'])
 })
+test('a line that reached the owner on WhatsApp is reported once, so it counts as a post; one that fell back to Slack is not (#242)', async () => {
+  const told: string[] = []
+  const owner = (ok: boolean) => ownerChannel({ pick: () => 'whatsapp', slack: async () => true, whatsapp: async () => ok, onWhatsapp: t => told.push(t) })
+  await owner(true).say('sent')
+  await owner(false).say('fell back')
+  assert.deepEqual(told, ['sent'])
+})
 test('with whatsapp chosen but not running, the owner hears on Slack', async () => {
   const t = setup('whatsapp')
   await t.owner.say('hi')

@@ -44,6 +44,19 @@ test('new rows go out as one OTLP batch of gated records, and the cursor moves o
   assert.ok(!f.bodies[1]!.includes('Priya') && !f.bodies[1]!.includes('C0TESTCHAN1') && !f.bodies[1]!.includes('/Users'))
 })
 
+test('post rows stay on this machine: they are never sent, and a batch of only posts sends nothing but moves past them (#242)', async () => {
+  const rows = [row(1, 'tool', 'ok')]
+  const f = fake(rows, [])
+  await f.exp.run()
+  rows.push(row(2, 'post', 'reply bot channel'), row(3, 'run.end', '$0.10, no report'))
+  await f.exp.run()
+  rows.push(row(4, 'post', 'notice:slackDown bot dm'))
+  await f.exp.run()
+  assert.equal(f.bodies.length, 1)
+  assert.deepEqual(JSON.parse(f.bodies[0]!).resourceLogs[0].scopeLogs[0].logRecords.map((r: any) => r.body.stringValue), ['kage.run.end'])
+  assert.equal(f.cursor(), 4)
+})
+
 test('a 410 from the receiver stops sending for good in this process, the kill switch', async () => {
   const rows = [row(1, 'tool', 'ok')]
   const f = fake(rows, [410])
