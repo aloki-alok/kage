@@ -29,3 +29,5 @@ export function startSessionCall(args: unknown): PluginCall | { error: string } 
 }
 
 export const ssmEligible = (key: string) => /^(dm|[CDG][A-Z0-9]+:\d+\.\d+)(#side-.+)?$/.test(key) && !/#side-k?dream(-|$)/.test(key)
+export const RELAY_CHANNEL = /^[CG][A-Z0-9]+$/
+export const relayChannelOf = (thread: string) => /^([CG][A-Z0-9]+):\d+\.\d+$/.exec(thread)?.[1]

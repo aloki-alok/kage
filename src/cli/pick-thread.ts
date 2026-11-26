@@ -1,12 +1,28 @@
 import { DatabaseSync } from 'node:sqlite'
 import { matchThreads, slackLinkKey, type ThreadRow } from '../core/conversations.ts'
+import { RELAY_CHANNEL } from '../core/ssm.ts'
 import { DIR } from './home.ts'
 
-export async function pickThread(arg: string, lanes = true): Promise<{ key: string; place: string }> {
+function threadRows(): ThreadRow[] {
   const db = new DatabaseSync(`${DIR}/kage.db`, { readOnly: true })
   const rows = db.prepare(`select s.key, coalesce(c.place, s.key) as place, c.chat, c.agent_dm from sessions s
     left join conversations c using (key) order by c.last_seen desc nulls last`).all() as ThreadRow[]
   db.close()
+  return rows
+}
+
+export function pickChannel(arg: string): string {
+  if (RELAY_CHANNEL.test(arg)) return arg
+  const want = arg.trim().replace(/^#/, '').toLowerCase()
+  const found = [...new Map(threadRows().flatMap(r => r.chat && RELAY_CHANNEL.test(r.chat) && r.place.replace(/^#/, '').toLowerCase() === want ? [[r.chat, r.place] as const] : [])).entries()]
+  if (found.length === 1) return found[0]![0]
+  console.error(found.length ? `${found.length} channels are named "${arg}". Give its id instead:` : `Kage has no thread in a channel named "${arg}". Give its id (C… or G…), or tag Kage there first.`)
+  found.forEach(([chat, place]) => console.error(`  ${place}   (${chat})`))
+  process.exit(found.length ? 2 : 1)
+}
+
+export async function pickThread(arg: string, lanes = true): Promise<{ key: string; place: string }> {
+  const rows = threadRows()
   let found = matchThreads(lanes ? rows : rows.filter(r => !r.key.includes('#')), arg)
   const linked = slackLinkKey(arg)
   if (linked && !found.length) {

@@ -264,6 +264,38 @@ test('a listed teammate thread lets its job lanes use the relay, never its kagel
   assert.equal(s.relayOk('C1:5.5#side-job-j1'), false)
 })
 
+test('a listed channel lets each of its threads and their job lanes use the relay, and nothing outside it', () => {
+  const s = openStore(':memory:')
+  s.setRelayAllow('CTEST1', true)
+  assert.deepEqual(s.relayAllowed(), ['CTEST1'])
+  assert.equal(s.relayOk('CTEST1:5.5'), true)
+  assert.equal(s.relayOk('CTEST1:7.7#side-job-j1'), true)
+  assert.equal(s.relayOk('CTEST1:5.5#side-kagelet-mon'), false)
+  assert.equal(s.relayOk('CTEST1:5.5#side-x'), false)
+  assert.equal(s.relayOk('CTEST12:5.5'), false)
+  assert.equal(s.relayOk('CTEST2:5.5'), false)
+  assert.equal(s.relayOk('dm'), false)
+  s.setRelayAllow('DTEST1', true)
+  assert.equal(s.relayOk('DTEST1:5.5'), false)
+  s.setRelayAllow('CTEST1', false)
+  assert.equal(s.relayOk('CTEST1:5.5'), false)
+})
+
+test('a channel lists only its own Slack channel threads, never their lanes or a group DM', () => {
+  const s = openStore(':memory:')
+  const at = (chat: string, thread: string, kind: 'channel' | 'group' = 'channel') => ({ connector: 'slack' as const, chat, thread, kind })
+  s.seen('CTEST1:2.2', at('CTEST1', '2.2'), '#sales', 1)
+  s.seen('CTEST1:1.1', at('CTEST1', '1.1'), '#sales', 1)
+  s.seen('CTEST1:1.1#side-job-j1', at('CTEST1', '1.1'), '#sales', 1)
+  s.seen('CTEST2:1.1', at('CTEST2', '1.1'), '#other', 1)
+  s.seen('GTEST1:1.1', at('GTEST1', '1.1', 'group'), 'group DM', 1)
+  s.seen('CTEST3:1.1', { connector: 'whatsapp', chat: 'CTEST3', kind: 'channel' } as never, 'chat', 1)
+  assert.deepEqual(s.threadsIn('CTEST1'), ['CTEST1:1.1', 'CTEST1:2.2'])
+  assert.deepEqual(s.threadsIn('GTEST1'), [])
+  assert.deepEqual(s.threadsIn('CTEST3'), [])
+  assert.deepEqual(s.threadsIn('CTEST9'), [])
+})
+
 test('a lane has its thread\'s trust: a thread that loses it takes its lanes\' with it, and a run adds nothing of its own', () => {
   const s = openStore(':memory:')
   const lane = 'C1:5.5#side-job-j1'

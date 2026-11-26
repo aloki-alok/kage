@@ -4,7 +4,7 @@ import { openWaiting } from '../core/ledgers.ts'
 import { findSecret, safeReply } from '../core/outbound.ts'
 import type { Conversation } from '../core/conversations.ts'
 import type { Dispatcher } from '../core/sessions.ts'
-import { ssmEligible } from '../core/ssm.ts'
+import { RELAY_CHANNEL, relayChannelOf, ssmEligible } from '../core/ssm.ts'
 import type { Task } from '../core/task.ts'
 import type { Ledgers } from '../runtime/ledger.ts'
 import type { limitPause } from '../runtime/limit-pause.ts'
@@ -59,10 +59,15 @@ function tell(o: Options, key: string, text: string): { ok: true; held?: true } 
 function relay(o: Options, action: string, key?: string): { ok: true; keys: string[] } | { refused: string } {
   const { store } = o
   if (action !== 'list') {
-    if (!key || !ssmEligible(key) || key.includes('#')) return { refused: 'that is not a Slack thread key (lanes are not listed)' }
-    if (action === 'allow' && !store.conversation(key)) return { refused: 'no thread with that key' }
+    const channel = !!key && RELAY_CHANNEL.test(key)
+    if (!key || !(channel || (ssmEligible(key) && !key.includes('#')))) return { refused: 'that is not a Slack thread key or channel id (a lane or a whole DM is never listed)' }
+    const threads = channel ? store.threadsIn(key) : [key]
+    const listedChannel = channel ? undefined : relayChannelOf(key)
+    if (action === 'allow' && channel && !threads.length) return { refused: 'Kage has no thread in that channel' }
+    if (action === 'allow' && !channel && !store.conversation(key)) return { refused: 'no thread with that key' }
+    if (action === 'deny' && listedChannel && store.relayAllowed().includes(listedChannel)) return { refused: `its whole channel ${listedChannel} is listed, so deny the channel instead` }
     store.setRelayAllow(key, action === 'allow')
-    if (action === 'deny') o.dropRelay(key)
+    if (action === 'deny') threads.forEach(o.dropRelay)
     log('relay', action, key)
   }
   return { ok: true, keys: store.relayAllowed() }
