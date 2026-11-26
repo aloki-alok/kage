@@ -86,7 +86,7 @@ function setup(o: { noHook?: boolean; settings?: { set(key: string, value: unkno
   const turn: Task[] = []
   const routed: string[] = []
   const t = sessionTools({
-    title: 'Kage', bot: slack.bot as any, user: slack.user as any, botDm: () => 'DBOT', dir, ledgers, send: m => { if (o.hubDown) return false; out.push(`${m.type} ${m.text}`) }, memory: { own: '/own', owner: '/owner' },
+    title: 'Kage', owner: 'UOWNER001', bot: slack.bot as any, user: slack.user as any, botDm: () => 'DBOT', dir, ledgers, send: m => { if (o.hubDown) return false; out.push(`${m.type} ${m.text}`) }, memory: { own: '/own', owner: '/owner' },
     schedules: {
       add: j => { jobs.push({ ...j, key: 'C1:5.5', created: 0, lastFired: 0 }) },
       remove: id => { jobs.splice(jobs.findIndex(j => j.id === id), 1) },
@@ -938,6 +938,18 @@ describe("a session's Kage tools", () => {
     assert.equal((await s.call('waiting', {})).text, 'nothing is waiting')
     await s.call('reply', { channel: 'C1', thread_ts: '5.5', text: '<@UTEAM0001> and the web call?', waiting: 'Web call', waiting_on: 'UTEAM0001' })
     assert.equal(s.posts.at(-1)!.text.match(/<@UTEAM0001>/g)!.length, 1)
+  })
+  test('a teammate\'s thread that waits on the owner tags the owner, and the owner\'s own thread or DM does not', async () => {
+    const s = setup()
+    s.t.onTask(s.task({ fromOwner: false }))
+    await s.call('reply', { channel: 'C1', thread_ts: '5.5', text: 'Deleting logs/ needs a yes.', waiting: 'Delete logs/', waiting_on: 'owner' })
+    assert.match(s.posts.at(-1)!.text, /^<@UOWNER001> Deleting logs/)
+    await s.call('reply', { channel: 'C1', thread_ts: '5.5', text: 'Delete logs/ for Sam?', private: true, waiting: 'Delete logs/ for Sam', waiting_on: 'owner' })
+    assert.doesNotMatch(s.posts.at(-1)!.text, /<@UOWNER001>/)
+    const own = setup()
+    own.t.onTask(own.task())
+    await own.call('reply', { channel: 'C1', thread_ts: '5.5', text: 'Merge it?', waiting: 'Merge it', waiting_on: 'owner' })
+    assert.doesNotMatch(own.posts.at(-1)!.text, /<@UOWNER001>/)
   })
   test('a wait that names nobody, or no valid person, is refused before it posts', async () => {
     const s = setup()
