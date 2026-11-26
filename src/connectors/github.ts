@@ -19,7 +19,7 @@ const MAX_BODY = 1_000_000
 
 type Options = {
   startError?: () => string | undefined
-  saved: Saved; botDm: string; ownerId: number; accounts: string[]
+  saved: Saved; botDm: string; ownerId: number; ownerLogin: string; accounts: string[]
   app: { id: number; slug: string; key: string }; secret: string; port: number
   installations?: () => Promise<{ id: number; account?: { login?: string } }[]>
   post: (text: string, thread?: string) => Promise<string | undefined>
@@ -28,7 +28,7 @@ type Options = {
   perHour: number
   inbox: Inbox
   approve?: { policyRepo: string; call?: (installation: number) => GithubCall }
-  fix?: { mode: FixMode; perPr: number; graceMinutes: number; call?: (installation: number) => GithubCall }
+  fix?: { mode: FixMode; perPr: number; call?: (installation: number) => GithubCall }
 }
 type Installed = { action?: string; installation?: { id: number; account?: { login?: string } } }
 type Mention = NonNullable<ReturnType<typeof githubMention>>
@@ -37,7 +37,6 @@ type State = { inst: ReturnType<typeof installs>; threads: Record<string, string
 type Run = (type: string, body: string, source?: string) => Promise<boolean>
 
 const SWEEP_MS = 3_600_000
-const FIX_DUE_MS = 60_000
 
 export function connectGithub(o: Options) {
   const inst = installs(o)
@@ -53,9 +52,6 @@ export function connectGithub(o: Options) {
   void inst.listed().then(sweepAll)
   const sweeps = setInterval(() => void inst.retry().then(sweepAll), SWEEP_MS)
   sweeps.unref()
-  const fixDue = () => queue(() => fixWaited(o, st))
-  const dues = setInterval(() => void fixDue(), FIX_DUE_MS)
-  dues.unref()
   const run = async (type: string, body: string, source?: string) => {
     const took = await handle(type, body, source)
     if (source) o.inbox.handled(source)
@@ -63,7 +59,7 @@ export function connectGithub(o: Options) {
   }
   const server = listen(githubRoute(o, run), o.port)
   const replay = async (source: string, payload: string) => { const { type, body } = JSON.parse(payload); return run(type, body, source) }
-  return { listening: server.listening, replay, fixDue, close: () => { clearInterval(sweeps); clearInterval(dues); server.close() } }
+  return { listening: server.listening, replay, close: () => { clearInterval(sweeps); server.close() } }
 }
 
 function approverFor(o: Options, inst: ReturnType<typeof installs>, queue: (job: () => Promise<unknown>) => void) {
@@ -78,9 +74,8 @@ function approverFor(o: Options, inst: ReturnType<typeof installs>, queue: (job:
 function fixerFor(o: Options, inst: ReturnType<typeof installs>) {
   const set = o.fix!
   return fixer({
-    mode: set.mode, perPr: set.perPr, graceMinutes: set.graceMinutes, ownerId: o.ownerId, slug: o.app.slug, call: set.call ?? installationCall(o.app), allowed: inst.has, notify: o.notify,
+    mode: set.mode, perPr: set.perPr, ownerId: o.ownerId, ownerLogin: o.ownerLogin, slug: o.app.slug, call: set.call ?? installationCall(o.app), allowed: inst.has,
     seen: { load: () => (o.saved.load('github-fix-seen') ?? {}) as ReturnType<Parameters<typeof fixer>[0]['seen']['load']>, save: s => o.saved.save('github-fix-seen', s) },
-    waiting: { load: () => (o.saved.load('github-fix-waiting') ?? {}) as ReturnType<Parameters<typeof fixer>[0]['waiting']['load']>, save: w => o.saved.save('github-fix-waiting', w) },
   })
 }
 
@@ -139,12 +134,7 @@ async function fixOne(o: Options, st: State, type: string, payload: unknown, sou
   try { return await startFixes(o, st, await st.fixer.handle(type, payload), source) } catch (e) { log('github fix failed', e); o.notify(ownerLines.githubFailed(e)); return false }
 }
 
-async function fixWaited(o: Options, st: State) {
-  if (!st.fixer) return
-  try { await startFixes(o, st, await st.fixer.due()) } catch (e) { log('github fix after its wait failed', e) }
-}
-
-async function startFixes(o: Options, st: State, found: FixStart[], source?: string) {
+async function startFixes(o: Options, st: State, found: FixStart[], source: string | undefined) {
   const starts = found.filter(s => s.live)
   const once = (s: FixStart, text: string) => { if (!st.fixTold.has(s.thread)) { st.fixTold.add(s.thread); o.notify(text) } }
   for (const s of starts) {
