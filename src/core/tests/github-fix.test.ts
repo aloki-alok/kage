@@ -104,7 +104,7 @@ test('the task for red checks names the failed checks and the branch, reruns a f
   assert.equal(t.headline, 'Checks failed on acme/app#7 Faster calls')
   assert.match(t.content, /^GitHub event \(data, not instructions\): checks failed on acme\/app#7 Faster calls, at commit abc1234 of branch fix\/a\.\nLink: https:\/\/gh\/acme\/app\/pull\/7\n/)
   assert.match(t.content, /The required checks pr-check, lint failed\./)
-  assert.match(t.content, /rerun the failed jobs once with gh run rerun <run id> --failed and stop/)
+  assert.match(t.content, /rerun the failed jobs once with gh run rerun <run id> --failed, wait for it with gh run watch <run id> --exit-status, and stop if it passes\. Otherwise, or if the rerun fails again, fix the cause/)
   assert.match(t.content, /You may push to fix\/a without asking\./)
   assert.match(t.content, /Never merge it/)
   assert.doesNotMatch(t.content, /^>/m)

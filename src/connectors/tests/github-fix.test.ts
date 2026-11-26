@@ -92,6 +92,12 @@ test('after its fixes are used up the owner is tagged once on the pull request, 
   assert.equal((await f.handle('check_suite', failed('eee5555'))).length, 1)
 })
 
+test('a pull request that used up its fixes gets no comment when only a check the base branch does not require is red', async () => {
+  const { f, comments } = setup('on', { saved: { 'acme/app#7': { keys: ['a:red checks', 'b:red checks', 'c:red checks'], tries: 3 } }, headRuns: { 'pr-check': 'success', 'peer-review': 'failure' } })
+  assert.deepEqual(await f.handle('check_suite', failed()), [])
+  assert.deepEqual(comments, [])
+})
+
 test('in shadow mode a pull request that used up its fixes gets no comment', async () => {
   let head = 'aaa1111'
   const { f, comments } = setup('shadow', { perPr: 1, head: () => head })

@@ -56,13 +56,14 @@ async function tellSpent(c: Ctx, call: GithubCall, repo: string, n: number, was:
 async function judged(c: Ctx, call: GithubCall, e: StuckEvent, n: number): Promise<Judged | undefined> {
   const at = `${e.repo}#${n}`, pull = stuckPull(await call('GET', `/repos/${e.repo}/pulls/${n}`) as RawPull), was = c.seen[at]
   const v = fixVerdict(e, pull, c.o, was)
-  if (!v.start) {
-    log(`github fix skipped ${at}: ${v.why}`)
-    if (v.spent && was) await tellSpent(c, call, e.repo, n, was)
-    return undefined
-  }
+  if (!v.start && !v.spent) { log(`github fix skipped ${at}: ${v.why}`); return undefined }
   const red = e.reason === 'red checks' ? await redOn(c, call, e.repo, pull) : undefined
   if (red && !red.fix) { log(`github fix skipped ${at}: ${red.why}`); return undefined }
+  if (!v.start) {
+    log(`github fix skipped ${at}: ${v.why}`)
+    if (was) await tellSpent(c, call, e.repo, n, was)
+    return undefined
+  }
   return { at, pull, key: v.key, failing: red?.fix ? red.failing : [] }
 }
 
