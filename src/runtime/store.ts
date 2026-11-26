@@ -2,6 +2,7 @@ import { existsSync, readFileSync, renameSync } from 'node:fs'
 import { DatabaseSync } from 'node:sqlite'
 import { isJobLane, parseSessionKey, threadOfJobLane, type Conversation } from '../core/conversations.ts'
 import type { Schedule } from '../core/cron.ts'
+import { relayChannelOf } from '../core/ssm.ts'
 import type { JobState, Trigger } from '../core/tripwire.ts'
 import type { KageletMessage, MessageState } from '../core/kagelets/message.ts'
 import { ensureTrustTable, trustLinesOf } from './trust-store.ts'
@@ -200,8 +201,10 @@ function trustOf(db: DatabaseSync) {
     else db.prepare('delete from relay_allow where key = ?').run(key)
   },
   relayOk(key: string): boolean {
-    return this.trust(key) === true || db.prepare('select 1 from relay_allow where key = ?').get(threadOfJobLane(key)) !== undefined
+    const thread = threadOfJobLane(key), listed = db.prepare('select 1 from relay_allow where key = ?')
+    return this.trust(key) === true || [thread, relayChannelOf(thread)].some(k => k !== undefined && listed.get(k) !== undefined)
   },
+  threadsIn: (chat: string): string[] => (db.prepare("select key from conversations where connector = 'slack' and chat = ? and key not like '%#%' order by key").all(chat) as { key: string }[]).map(r => r.key),
   noteTask(key: string, fromOwner: boolean, known: boolean) {
     if (isJobLane(key)) return
     this.setTrust(key, (this.trust(key) ?? !known) && fromOwner)
