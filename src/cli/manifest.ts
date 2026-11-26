@@ -1,33 +1,17 @@
 import { validName } from '../core/gate.ts'
-import { BOT_SCOPES, USER_SCOPES } from '../core/slack-scopes.ts'
+import { slackManifest } from '../core/slack-manifest.ts'
+import { SLACK_PATH, slackTransport } from '../core/slack-transport.ts'
+import { settings } from './home.ts'
+import { tunnelUrl } from './tailscale.ts'
 
 const name = process.env.KAGE_NAME || 'kage'
 if (!validName(name)) throw new Error(`bad name: ${name}`)
-const Title = name[0]!.toUpperCase() + name.slice(1)
+const s = settings()
 
-const manifest = {
-  display_information: {
-    name: Title,
-    description: 'My Claude Code agent. Tag it in any thread and it works on my machine.',
-    background_color: '#14121a',
-  },
-  features: {
-    app_home: { home_tab_enabled: false, messages_tab_enabled: true, messages_tab_read_only_enabled: false },
-    bot_user: { display_name: name, always_online: true },
-  },
-  oauth_config: {
-    scopes: {
-      bot: BOT_SCOPES,
-      user: USER_SCOPES,
-    },
-  },
-  settings: {
-    event_subscriptions: { user_events: ['message.channels', 'message.groups', 'message.im', 'message.mpim'] },
-    interactivity: { is_enabled: false },
-    org_deploy_enabled: false,
-    socket_mode_enabled: true,
-    token_rotation_enabled: false,
-  },
+if (slackTransport(s) === 'socket') process.stdout.write(JSON.stringify(slackManifest({ name, transport: 'socket' }), null, 2))
+else {
+  const url = s.config.slack?.publicUrl ?? tunnelUrl(s.config, SLACK_PATH)
+  if (!url) { console.error('Slack is set to HTTP, but no public route reaches Kage. Run kage tunnel on, or set slack.publicUrl.'); process.exit(1) }
+  const commands = Object.keys(s.config.connectors?.commands ?? {})
+  process.stdout.write(JSON.stringify(slackManifest({ name, transport: 'http', url, commands }), null, 2))
 }
-
-process.stdout.write(JSON.stringify(manifest, null, 2))

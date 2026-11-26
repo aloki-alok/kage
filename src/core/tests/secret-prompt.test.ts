@@ -1,6 +1,6 @@
 import { describe, test } from 'node:test'
 import assert from 'node:assert/strict'
-import { typeKeys, pickSecret, shownAs, SECRETS, fillSlackTokens, typeLines } from '../secret-prompt.ts'
+import { typeKeys, pickSecret, shownAs, SECRETS, fillSlackTokens, slackSlots, typeLines } from '../secret-prompt.ts'
 
 describe('typeKeys: what a hidden prompt holds after each key', () => {
   test('characters add, backspace removes, Enter ends', () => {
@@ -41,6 +41,14 @@ describe('pickSecret: is the paste the token this prompt wants', () => {
   test('text that is no token says what to paste', () => {
     assert.match(pickSecret('hello', SECRETS.app).problem!, /xapp-/)
   })
+  test('a signing secret has no prefix: it is 32 hex characters, and anything else is refused', () => {
+    const sig = '0123456789abcdef0123456789abcdef'
+    assert.deepEqual(pickSecret(` ${sig} `, SECRETS.signing), { value: sig })
+    assert.match(pickSecret('xoxb-1-a', SECRETS.signing).problem!, /bot token \(xoxb-.*Paste the signing secret/)
+    assert.match(pickSecret('0123', SECRETS.signing).problem!, /32 characters, 0-9 and a-f/)
+    assert.equal(pickSecret(sig, SECRETS.user).problem, 'That is a signing secret. Paste the user token (xoxp-...).')
+    assert.ok(!shownAs(sig).includes('0123'))
+  })
 })
 
 test('shownAs names the kind and length, never more than the prefix', () => {
@@ -50,6 +58,13 @@ test('shownAs names the kind and length, never more than the prefix', () => {
 })
 
 describe('fillSlackTokens: one prompt takes the three Slack tokens in any order', () => {
+  test('over HTTP the signing secret takes the app token\'s slot, and an app token is refused', () => {
+    const sig = '0123456789abcdef0123456789abcdef'
+    assert.deepEqual(fillSlackTokens({}, `xoxb-3 ${sig} xoxp-2`, 'http'), { slots: { bot: 'xoxb-3', signing: sig, user: 'xoxp-2' } })
+    assert.match(fillSlackTokens({}, 'xapp-1', 'http').problem!, /signing secret, xoxp- and xoxb-/)
+    assert.deepEqual(slackSlots('http').map(([k]) => k), ['signing', 'user', 'bot'])
+    assert.deepEqual(slackSlots('socket').map(([k]) => k), ['app', 'user', 'bot'])
+  })
   test('each token goes to its slot by its prefix, one paste or several', () => {
     const one = fillSlackTokens({}, 'xoxb-3 xapp-1')
     assert.deepEqual(one, { slots: { bot: 'xoxb-3', app: 'xapp-1' } })

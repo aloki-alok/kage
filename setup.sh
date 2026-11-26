@@ -27,7 +27,7 @@ verbs() { usage "kage $1 takes $(printf '%s\n' "$COMMANDS" | awk -F'|' -v n="$1"
 # group|name|arguments|what it does|example. `kage help` prints it grouped; `kage help <name>` prints one.
 COMMANDS='Set up|setup||Walk through the first setup, one step at a time. It puts kage on your PATH first if it is not there|kage setup
 Set up|slack app|[name]|Write the Slack app for the name you tag, and open the link that creates it|kage slack app kage
-Set up|slack save|[name]|Paste the three Slack tokens into hidden prompts; each is checked with Slack|kage slack save
+Set up|slack save|[name]|Paste the Slack tokens into hidden prompts: the app token in Socket Mode, the signing secret over HTTP. Each token is checked with Slack|kage slack save
 Set up|tunnel|[on or off]|Open a route for each connector another machine calls (GitHub, voice, job hooks on the internet; the meeting bot on your tailnet) through Tailscale, or close them all|kage tunnel on
 Set up|connector list||List every connector, on or off, with the one step left|kage connector list
 Set up|connector on|<name>|Turn one connector on. In a terminal it asks for each missing setting, and --no-ask only prints them: github (makes the Kage app, so people tag it on GitHub; --org adds an org), browser (pairs the Kage extension in Chrome), email, voice, whatsapp, meeting|kage connector on github
@@ -310,7 +310,7 @@ cmd_app() {
   valid_name "${1:-}"
   local manifest; manifest="$(dirname "$ENV_FILE")/slack-manifest.json"
   mkdir -p "$(dirname "$manifest")"
-  KAGE_NAME="$NAME" node src/cli/manifest.ts > "$manifest"
+  KAGE_NAME="$NAME" node src/cli/manifest.ts > "$manifest" || exit 1
   URL="https://api.slack.com/apps?new_app=1&manifest_json=$(node -e 'process.stdout.write(encodeURIComponent(require("fs").readFileSync(process.argv[1],"utf8")))' "$manifest")"
   (open "$URL" 2>/dev/null || xdg-open "$URL" 2>/dev/null || true) &
   cat <<EOF
@@ -321,8 +321,12 @@ $URL
 In the browser:
   1. Pick your workspace, then click Next and Create.
      (If the form is empty, choose "From a manifest" and paste the manifest file above.)
-  2. Basic Information > App-Level Tokens > Generate: any name, scope connections:write.
-     Copy the token (xapp-...).
+$(if [[ "$(node src/cli/config.ts transport 2>/dev/null)" == http ]]; then
+  echo "  2. Basic Information > App Credentials: copy the Signing Secret."
+else
+  echo "  2. Basic Information > App-Level Tokens > Generate: any name, scope connections:write."
+  echo "     Copy the token (xapp-...)."
+fi)
   3. Install App > Install to Workspace > Allow.
      Copy the User OAuth Token (xoxp-...) and the Bot User OAuth Token (xoxb-...).
 If Slack says the app needs approval, a workspace admin has to approve it once.
@@ -343,10 +347,15 @@ has_settings() { [[ -f "$(dirname "$ENV_FILE")/config.json" || -f "$ENV_FILE" ]]
 cmd_save() {
   valid_name "${1:-$(cfg_get name)}"
   # Tokens arrive on stdin in any order, one per line or space separated. Each is sorted by its prefix.
-  local APP="" USR="" BOT="" t input
+  local APP="" USR="" BOT="" SIG="" t input transport
+  transport="$(node src/cli/config.ts transport 2>/dev/null || echo socket)"
   if [[ -t 0 ]]; then  # a person at a terminal: hidden prompts, so the tokens never show
     local a u b
-    a="$(node src/cli/ask-secret.ts app "App-level token (xapp-...): ")" || exit 1
+    if [[ $transport == http ]]; then
+      a="$(node src/cli/ask-secret.ts signing "Signing secret (Basic Information > App Credentials): ")" || exit 1
+    else
+      a="$(node src/cli/ask-secret.ts app "App-level token (xapp-...): ")" || exit 1
+    fi
     u="$(node src/cli/ask-secret.ts user "User OAuth token (xoxp-...): ")" || exit 1
     b="$(node src/cli/ask-secret.ts bot "Bot token (xoxb-...): ")" || exit 1
     input="$a $u $b"
@@ -354,10 +363,15 @@ cmd_save() {
     input="$(cat)"
   fi
   for t in $input; do
+    if [[ $t =~ ^[0-9a-f]{32}$ ]]; then SIG=$t; continue; fi
     case "$t" in xapp-*) APP=$t ;; xoxp-*) USR=$t ;; xoxb-*) BOT=$t ;; *) die "Not a Slack token: ${t:0:5}..." ;; esac
   done
-  [[ -n $APP && -n $USR && -n $BOT ]] || die "Need all three tokens on stdin: xapp-..., xoxp-..., xoxb-..."
-  slack_check "$APP" >/dev/null || die "App-level token (xapp-) rejected."
+  if [[ $transport == http ]]; then
+    [[ -n $SIG && -n $USR && -n $BOT ]] || die "Slack is set to HTTP: need the signing secret, xoxp-... and xoxb-... on stdin"
+  else
+    [[ -n $APP && -n $USR && -n $BOT ]] || die "Need all three tokens on stdin: xapp-..., xoxp-..., xoxb-..."
+  fi
+  if [[ -n $APP ]]; then slack_check "$APP" >/dev/null || die "App-level token (xapp-) rejected."; fi
   local OWNER; OWNER="$(slack_check "$USR")" || die "User token (xoxp-) rejected."
   slack_check "$BOT" >/dev/null || die "Bot token (xoxb-) rejected."
 
@@ -365,7 +379,7 @@ cmd_save() {
   umask 077
   # The tokens go to secrets.json and the name to config.json; every other setting stays (src/cli/config.ts). printf is a
   # builtin, so the tokens never show in `ps`.
-  printf '%s %s %s\n' "$APP" "$USR" "$BOT" | node src/cli/config.ts save "$NAME" || die "Could not write the settings in $(dirname "$ENV_FILE")."
+  printf '%s %s %s %s\n' "$APP" "$USR" "$BOT" "$SIG" | node src/cli/config.ts save "$NAME" || die "Could not write the settings in $(dirname "$ENV_FILE")."
   says "Saved. I'm @$NAME, and I answer to you ($OWNER)."
   quietly "The tokens are in $(dirname "$ENV_FILE")/secrets.json, readable only by you."
 }

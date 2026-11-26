@@ -50,13 +50,13 @@ export function toolsLine(f: { nodeVersion: string; claude: boolean; tmuxNeeded:
   return missing.length ? fail(`tools: ${missing.join('; ')}`) : ok('tools: node 22.18+, claude')
 }
 
-export function tokenLines(f: { hasSettings: boolean; dir: string; file?: string; mode?: string; link?: boolean; slack: { app?: boolean; user?: boolean; bot?: boolean }; failed?: SecretCommand[] }): Line[] {
+export function tokenLines(f: { hasSettings: boolean; dir: string; file?: string; mode?: string; link?: boolean; slack: { app?: boolean; user?: boolean; bot?: boolean }; transport?: 'socket' | 'http'; failed?: SecretCommand[] }): Line[] {
   if (!f.hasSettings) return [fail(`tokens: no settings in ${f.dir}. Run kage slack app, then kage slack save`)]
   const failed = f.failed ?? []
   const names = [['app', 'SLACK_APP_TOKEN'], ['user', 'SLACK_USER_TOKEN'], ['bot', 'SLACK_BOT_TOKEN']] as const
   return [
     f.mode === '600' ? ok('token file is private (600)') : fail(`token file: run chmod 600 ${f.file}`, f.link ? undefined : [['chmod', '600', f.file!]]),
-    ...names.filter(([k]) => !failed.some(c => c.path === `slack.${k}`)).map(([k, n]) => f.slack[k] ? ok(`${n} accepted by Slack`) : fail(`${n}: missing or rejected. Run kage slack save again`)),
+    ...names.filter(([k]) => !(k === 'app' && f.transport === 'http') && !failed.some(c => c.path === `slack.${k}`)).map(([k, n]) => f.slack[k] ? ok(`${n} accepted by Slack`) : fail(`${n}: missing or rejected. Run kage slack save again`)),
     ...failed.map(c => fail(`secrets.json ${c.path}: its command failed or printed nothing. Run it in a terminal to see why: ${c.command}`)),
   ]
 }
@@ -108,8 +108,20 @@ export function bootNotes(f: { boots: string | undefined; now: number; darwin: b
   ]
 }
 
-export const slackLines = (f: { connected: boolean; status: string; version: string }): Line[] =>
-  f.connected ? [ok(`connected to Slack: ${f.status}`), ok(`runs Kage ${f.version}`)] : [fail('not connected to Slack yet: wait 20 s after start, or run kage logs to see why')]
+type SlackFacts = { connected: boolean; status: string; version: string } & ({ transport: 'socket' } | { transport: 'http'; signing: boolean; route?: { url: string; answer: number | string } })
+
+const ROUTE_FIX = 'run kage tunnel on, or fix slack.publicUrl'
+
+export function slackLines(f: SlackFacts): Line[] {
+  if (f.transport === 'http' && !f.signing) return [fail('Slack is set to HTTP, but its signing secret is not saved: run kage slack save')]
+  if (!f.connected) return [fail('not connected to Slack yet: wait 20 s after start, or run kage logs to see why')]
+  if (f.transport === 'socket') return [ok(`connected to Slack by Socket Mode: ${f.status}`), ok(`runs Kage ${f.version}`)]
+  const r = f.route
+  if (!r) return [fail('Slack is set to HTTP, but no public route reaches Kage: run kage tunnel on, or set slack.publicUrl')]
+  if (typeof r.answer === 'string') return [fail(`Slack's route ${r.url} did not answer (${r.answer}): ${ROUTE_FIX}`)]
+  if (r.answer !== 401) return [fail(`Slack's route ${r.url} answered ${r.answer}, not Kage's signature check: ${ROUTE_FIX}`)]
+  return [ok(`Slack reaches Kage over HTTP at ${r.url}`), ok(`runs Kage ${f.version}`)]
+}
 
 export function autoUpdateNote(f: { off: boolean; git: boolean; branch?: string; dirty: boolean; origin?: 'failed' | 'no-stable' | 'stable' | 'diverged' }): Line | 'ask-origin' | undefined {
   if (f.off) return note('auto-update is off (autoUpdate is false)')

@@ -14,7 +14,7 @@ function world() {
   const dir = join(root, 'code'), conf = join(root, 'conf'), bin = join(root, 'bin'), home = join(root, 'home')
   for (const d of [dir, conf, bin, home, join(dir, 'src', 'cli'), join(dir, 'src', 'core')]) mkdirSync(d, { recursive: true })
   copyFileSync(join(REPO, 'setup.sh'), join(dir, 'setup.sh'))
-  for (const f of ['manifest.ts', 'config.ts', 'home.ts', 'update.ts', 'voice.ts', 'output.ts', 'setup-flow.ts']) copyFileSync(join(REPO, 'src', 'cli', f), join(dir, 'src', 'cli', f))
+  for (const f of ['manifest.ts', 'tailscale.ts', 'config.ts', 'home.ts', 'update.ts', 'voice.ts', 'output.ts', 'setup-flow.ts']) copyFileSync(join(REPO, 'src', 'cli', f), join(dir, 'src', 'cli', f))
   mkdirSync(join(dir, 'src', 'runtime'), { recursive: true })
   for (const f of ['config-files.ts', 'hub-client.ts', 'owner-key.ts', 'self-update.ts']) copyFileSync(join(REPO, 'src', 'runtime', f), join(dir, 'src', 'runtime', f))
   symlinkSync(join(REPO, 'node_modules'), join(dir, 'node_modules'))
@@ -56,6 +56,15 @@ describe('kage setup ends with Kage running and connected, not with a list of st
     const r = await w.run([], ANSWERS)
     assert.equal(r.code, 0, r.out)
     assert.match(r.out, /Connected to Slack\. Tag @kagetest in any thread to try it\./)
+  })
+  test('with Slack set to HTTP, it takes the signing secret in place of the app token', async () => {
+    const w = world()
+    writeFileSync(join(w.conf, 'config.json'), JSON.stringify({ version: 1, slack: { transport: 'http', publicUrl: 'https://hub.example.test/slack' } }))
+    const sig = '0123456789abcdef0123456789abcdef'
+    const r = await w.run(['setup'], `kagetest\n\n${sig} xoxp-TEST xoxb-TEST\n`)
+    assert.equal(r.code, 0, r.out)
+    assert.deepEqual(JSON.parse(readFileSync(join(w.conf, 'secrets.json'), 'utf8')).slack, { user: 'xoxp-TEST', bot: 'xoxb-TEST', signing: sig })
+    assert.match(r.out, /Connected to Slack\. Tag @kagetest/)
   })
   test('if Slack does not connect in time, it exits non-zero and points at kage doctor', async () => {
     const w = world()

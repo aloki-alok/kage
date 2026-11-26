@@ -1,12 +1,15 @@
 import { oneLine } from './text.ts'
 
-const NAMES = ['email', 'whatsapp', 'voice', 'meetings', 'github', 'sms', 'jev'] as const
+const NAMES = ['email', 'whatsapp', 'voice', 'meetings', 'github', 'sms', 'jev', 'slack'] as const
 type ConnectorName = (typeof NAMES)[number]
-const WHO: [RegExp, ConnectorName][] = [[/^(mail|email)\b/, 'email'], [/^whatsapp\b/, 'whatsapp'], [/^voice\b/, 'voice'], [/^(meeting|meetings|meetbot exited)\b/, 'meetings'], [/^github\b/, 'github'], [/^sms\b/, 'sms'], [/^jev\b/, 'jev']]
+const WHO: [RegExp, ConnectorName][] = [[/^slack\b/, 'slack'], [/^(mail|email)\b/, 'email'], [/^whatsapp\b/, 'whatsapp'], [/^voice\b/, 'voice'], [/^(meeting|meetings|meetbot exited)\b/, 'meetings'], [/^github\b/, 'github'], [/^sms\b/, 'sms'], [/^jev\b/, 'jev']]
 const FAILS = /\b(failed|could not|bridge down|bad event|exited)\b/
 const START = /^\w+ on:|^jev checks /
 const JEV_LINE = /^triage [^:]+(?::[^:]+)?: \w+: (.*)$|^(?:answering|dropped) \S+ from app \S+: (.*)$/, JEV_SKIP = /^(no jev call|conversation unavailable|jev does not check)/, JEV_FAIL = /^jev (failed|answered HTTP)|^jev: /
 const OUTGOING = /^(mail (sent|reply)|whatsapp (stand-in|card|send held)|sms (reply|report)|(github|meeting) post failed)\b/
+const SLACK_UP = /^slack (http on|socket connected)\b/
+const SLACK_DOWN = /^slack socket (disconnected|reconnecting|down)\b/
+const TRANSPORT = { http: 'HTTP', socket: 'Socket Mode' }
 const HOUR = 3_600_000
 
 const ago = (ms: number) => ms < 60_000 ? 'just now' : ms < HOUR ? `${Math.floor(ms / 60_000)}m ago` : ms < 86_400_000 ? `${Math.floor(ms / HOUR)}h ago` : `${Math.floor(ms / 86_400_000)}d ago`
@@ -17,6 +20,7 @@ export function connectorHealth(startedAt: number) {
   const heard = new Map<ConnectorName, number>()
   const fails = new Map<ConnectorName, { at: number; text: string }[]>()
   let jev = { day: '', calls: 0, failed: 0 }
+  let transport: keyof typeof TRANSPORT | undefined
   const dayOf = (t: number) => new Date(t).toDateString()
 
   function see(args: unknown[], now: number) {
@@ -30,6 +34,9 @@ export function connectorHealth(startedAt: number) {
       if (JEV_FAIL.test(jevWhy)) jev.failed++
       return
     }
+    const up = SLACK_UP.exec(first)
+    if (up) { on.add('slack'); down.delete('slack'); transport = up[1] === 'http on' ? 'http' : 'socket'; return }
+    if (SLACK_DOWN.test(first)) { down.add('slack'); return }
     const who = WHO.find(([re]) => re.test(first))?.[1]
     if (!who) return
     if (START.test(first)) { on.add(who); return }
@@ -51,13 +58,13 @@ export function connectorHealth(startedAt: number) {
     }
     const at = heard.get(name), recent = (fails.get(name) ?? []).filter(f => now - f.at < HOUR)
     const last = at === undefined ? `nothing heard since the hub started ${ago(now - startedAt)}` : `last heard ${ago(now - at)}`
-    return `${head} · ${down.has(name) ? 'bridge down · ' : ''}${last}${recent.length ? ` · failed ${recent.length}x in 1h: ${recent.at(-1)!.text}` : ''}`
+    return `${head} · ${name === 'slack' && transport ? `over ${TRANSPORT[transport]} · ` : ''}${down.has(name) ? name === 'slack' ? 'disconnected · ' : 'bridge down · ' : ''}${last}${recent.length ? ` · failed ${recent.length}x in 1h: ${recent.at(-1)!.text}` : ''}`
   }
 
   function row(name: ConnectorName, now: number) {
     if (name === 'jev') { const today = jev.day === dayOf(now) ? jev : { calls: 0, failed: 0 }; return { name, on: on.has(name), callsToday: today.calls, failedToday: today.failed } }
     const recent = (fails.get(name) ?? []).filter(f => now - f.at < HOUR), at = heard.get(name)
-    return { name, on: on.has(name), bridgeDown: down.has(name), lastHeardAt: at === undefined ? null : new Date(at).toISOString(), failedLastHour: recent.length, lastFailure: recent.at(-1)?.text ?? null }
+    return { name, on: on.has(name), ...name === 'slack' && { transport: transport ?? null }, bridgeDown: down.has(name), lastHeardAt: at === undefined ? null : new Date(at).toISOString(), failedLastHour: recent.length, lastFailure: recent.at(-1)?.text ?? null }
   }
 
   return {

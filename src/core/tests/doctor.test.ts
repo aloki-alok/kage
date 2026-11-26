@@ -46,6 +46,10 @@ describe('decisions', () => {
       'ok:SLACK_BOT_TOKEN accepted by Slack',
     ])
   })
+  test('tokens over HTTP: the app token is not used, so its absence is no failure', () => {
+    const ls = tokenLines({ hasSettings: true, dir: '/c', file: '/c/secrets.json', mode: '600', transport: 'http', slack: { user: true, bot: true } })
+    assert.deepEqual(text(ls), ['ok:token file is private (600)', 'ok:SLACK_USER_TOKEN accepted by Slack', 'ok:SLACK_BOT_TOKEN accepted by Slack'])
+  })
   test('tokens: a secret whose command failed names the secret and the command, in place of the Slack line', () => {
     const ls = tokenLines({ hasSettings: true, dir: '/c', file: '/c/secrets.json', mode: '600', slack: { app: true, user: true, bot: false },
       failed: [{ path: 'slack.bot', command: 'op read op://kage/bot' }, { path: 'jevKey', command: 'pass show kage/jev' }] })
@@ -115,8 +119,18 @@ describe('decisions', () => {
     assert.deepEqual(text(bootNotes({ boots: undefined, now: 1, darwin: true })), ['note:with the lid closed this Mac sleeps, and Kage is offline until it wakes'])
   })
   test('slack: connected shows the status and version, else one FAIL', () => {
-    assert.deepEqual(text(slackLines({ connected: true, status: 'connected 1 pid 2', version: 'abc (2026-01-01)' })), ['ok:connected to Slack: connected 1 pid 2', 'ok:runs Kage abc (2026-01-01)'])
-    assert.deepEqual(text(slackLines({ connected: false, status: '', version: 'unknown' })), ['fail:not connected to Slack yet: wait 20 s after start, or run kage logs to see why'])
+    assert.deepEqual(text(slackLines({ transport: 'socket', connected: true, status: 'connected 1 pid 2', version: 'abc (2026-01-01)' })), ['ok:connected to Slack by Socket Mode: connected 1 pid 2', 'ok:runs Kage abc (2026-01-01)'])
+    assert.deepEqual(text(slackLines({ transport: 'socket', connected: false, status: '', version: 'unknown' })), ['fail:not connected to Slack yet: wait 20 s after start, or run kage logs to see why'])
+  })
+  test('slack over HTTP: the signing secret is saved and the public route reaches Kage, which refuses an unsigned request', () => {
+    const url = 'https://hub.example.test:8443/slack'
+    const http = { transport: 'http' as const, connected: true, status: 'connected 1 pid 2', version: 'abc', signing: true }
+    assert.deepEqual(text(slackLines({ ...http, route: { url, answer: 401 } })), [`ok:Slack reaches Kage over HTTP at ${url}`, 'ok:runs Kage abc'])
+    assert.deepEqual(text(slackLines({ ...http, route: { url, answer: 404 } })), [`fail:Slack's route ${url} answered 404, not Kage's signature check: run kage tunnel on, or fix slack.publicUrl`])
+    assert.deepEqual(text(slackLines({ ...http, route: { url, answer: 'fetch failed' } })), [`fail:Slack's route ${url} did not answer (fetch failed): run kage tunnel on, or fix slack.publicUrl`])
+    assert.deepEqual(text(slackLines({ ...http })), ['fail:Slack is set to HTTP, but no public route reaches Kage: run kage tunnel on, or set slack.publicUrl'])
+    assert.deepEqual(text(slackLines({ ...http, signing: false, route: { url, answer: 401 } })), ['fail:Slack is set to HTTP, but its signing secret is not saved: run kage slack save'])
+    assert.deepEqual(text(slackLines({ ...http, connected: false, route: { url, answer: 401 } })), ['fail:not connected to Slack yet: wait 20 s after start, or run kage logs to see why'])
   })
   test('auto-update: each reason in order, then ask origin, then the stable-tag cases', () => {
     const base = { off: false, git: true, branch: 'main', dirty: false }
