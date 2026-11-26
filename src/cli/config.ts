@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-import { tilde } from '../core/config.ts'
+import { tilde, type Config } from '../core/config.ts'
 import { SECRETS } from '../core/secret-prompt.ts'
 import { slackTransport } from '../core/slack-transport.ts'
 import { ENV_FILE } from './home.ts'
@@ -67,12 +67,14 @@ if (cmd === 'has') {
   const words = (await new Promise<string>(res => { let t = ''; process.stdin.on('data', d => t += d).on('end', () => res(t)) })).split(/\s+/).filter(Boolean)
   const [app, user, bot] = ['xapp-', 'xoxp-', 'xoxb-'].map(p => words.find(w => w.startsWith(p)))
   const signing = words.find(w => SECRETS.signing.shape.pattern.test(w))
-  let now: ReturnType<typeof readSettings> | undefined
-  try { now = readSettings(ENV_FILE) } catch {}
-  const slack = { ...now?.secrets.slack, ...user && { user }, ...bot && { bot }, ...app && { app }, ...signing && { signing } }
-  const http = slackTransport({ config: now?.config ?? { version: 1 }, secrets: { ...now?.secrets, slack } }) === 'http'
-  if (!user || !bot || !(http ? signing : app)) die(http ? 'Slack is set to HTTP: need the signing secret (32 characters, 0-9 and a-f), xoxp-... and xoxb-... on stdin' : 'Need all three tokens on stdin: xapp-..., xoxp-..., xoxb-...')
-  updateSecrets(ENV_FILE, s => ({ ...s, slack }))
+  let config: Config = { version: 1 }
+  try { config = readSettings(ENV_FILE).config } catch {}
+  updateSecrets(ENV_FILE, s => {
+    const slack = { ...s.slack, ...user && { user }, ...bot && { bot }, ...app && { app }, ...signing && { signing } }
+    const http = slackTransport({ config, secrets: { slack: { signing: slack.signing ? 'saved' : undefined } } }) === 'http'
+    if (!user || !bot || !(http ? signing : app)) die(http ? 'Slack is set to HTTP: need the signing secret (32 characters, 0-9 and a-f), xoxp-... and xoxb-... on stdin' : 'Need all three tokens on stdin: xapp-..., xoxp-..., xoxb-...')
+    return { ...s, slack }
+  })
   updateConfig(ENV_FILE, c => ({ ...c, name: key || c.name }))
 } else if (cmd === 'transport') {
   let now: ReturnType<typeof readSettings> | undefined

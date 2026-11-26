@@ -50,3 +50,11 @@ test('save takes the token the transport needs: the signing secret over HTTP, th
   assert.equal(save('xapp-1-FAKE xoxp-FAKE-user2 xoxb-FAKE-bot').code, 0)
   assert.deepEqual(secrets(), { user: 'xoxp-FAKE-user2', bot: 'xoxb-FAKE-bot', signing: sig, app: 'xapp-1-FAKE' })
 })
+
+test('save keeps a token that names a command as the command, never as its output', () => {
+  const cmd = mkdtempSync(join(tmpdir(), 'kage-cfgcli-cmd-'))
+  writeFileSync(`${cmd}/config.json`, JSON.stringify({ version: 1, slack: { transport: 'socket' } }))
+  writeFileSync(`${cmd}/secrets.json`, JSON.stringify({ slack: { signing: { command: 'printf 0123456789abcdef0123456789abcdef' } } }))
+  assert.equal(run(['save', 'kage'], { KAGE_ENV: `${cmd}/env` }, 'xapp-1-FAKE xoxp-FAKE-user xoxb-FAKE-bot').code, 0)
+  assert.deepEqual(JSON.parse(readFileSync(`${cmd}/secrets.json`, 'utf8')).slack.signing, { command: 'printf 0123456789abcdef0123456789abcdef' })
+})
