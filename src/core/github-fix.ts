@@ -62,8 +62,10 @@ export function redVerdict(head: Check[], base: { ref: string; required: string[
   return caused.length ? { fix: true, failing: caused } : { fix: false, why: `${failing.join(', ')} also fails on ${base.ref}` }
 }
 
-const MENTION = /(^|[\s(\[])@([A-Za-z0-9][\w-]*(?:\/[\w.-]+)?)/g
-export const ownerTagOnly = (text: string, login: string) => text.replace(MENTION, (m, pre: string, name: string) => (name.toLowerCase() === login.toLowerCase() ? m : `${pre}\`@${name}\``))
+const MENTION = /(^|[^\w`/])@([A-Za-z0-9][\w-]*(?:\/[\w.-]+)?)/g
+const CODE = /(```[\s\S]*?```|`[^`\n]*`)/
+export const ownerTagOnly = (text: string, login: string) => text.split(CODE).map((part, i) => (i % 2 ? part
+  : part.replace(MENTION, (m, pre: string, name: string) => (name.toLowerCase() === login.toLowerCase() ? m : `${pre}\`@${name}\``)))).join('')
 
 export function fixTask(e: StuckEvent, pull: StuckPull, failing: string[], login: string) {
   const thread = `${e.repo}#${pull.number}`, named = `${thread} ${pull.title}`.trim()
