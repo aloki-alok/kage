@@ -18,6 +18,7 @@ test('each connector gets one line: on or off, when it last heard something, and
     'github    off',
     'sms       off',
     'jev       off',
+    'slack     off',
   ])
 })
 
@@ -42,8 +43,8 @@ test('Jev shows its calls and failures since midnight, and a skipped triage is n
   h.see(['answering C1:5.5 from app A0BOT0001: jev needs_reply 0.91 (threshold 0.5)'], start + 4 * MIN)
   h.see(['dropped C1:5.5 from app A0BOT0001: jev does not check this agent'], start + 4 * MIN)
   h.see(['dropped C1:5.5 from U0AAA0001 (app A0BOT0001): loop, too many turns: 5'], start + 4 * MIN)
-  assert.equal(h.lines(start + 5 * MIN).at(-1), 'jev       on · 3 calls today, 1 failed')
-  assert.equal(h.lines(Date.parse('2026-11-23T00:30:00')).at(-1), 'jev       on · 0 calls today')
+  assert.equal(h.lines(start + 5 * MIN).find(l => l.startsWith('jev')), 'jev       on · 3 calls today, 1 failed')
+  assert.equal(h.lines(Date.parse('2026-11-23T00:30:00')).find(l => l.startsWith('jev')), 'jev       on · 0 calls today')
 })
 
 test('a down WhatsApp bridge stays on the line until it is back, past the hour (#256 review)', () => {
@@ -85,4 +86,16 @@ test('rows give the same facts as the lines, as data for kage status --json', ()
   assert.deepEqual(rows.find(r => r.name === 'voice'), { name: 'voice', on: false, bridgeDown: false, lastHeardAt: null, failedLastHour: 0, lastFailure: null })
   assert.deepEqual(rows.find(r => r.name === 'jev'), { name: 'jev', on: true, callsToday: 1, failedToday: 1 })
   assert.equal(rows.length, h.lines(start + 35 * MIN).length)
+})
+
+test('slack names the transport it came up on, and a failed HTTP request counts against it', () => {
+  const http = connectorHealth(start)
+  http.see([`slack http on: 127.0.0.1:8796/slack`], start)
+  http.see(['slack http request failed', new Error('socket hang up')], start + 2 * MIN)
+  assert.equal(http.lines(start + 5 * MIN).at(-1), 'slack     on · over HTTP · nothing heard since the hub started 5m ago · failed 1x in 1h: slack http request failed: socket hang up')
+  assert.deepEqual(http.rows(start + 5 * MIN).at(-1), { name: 'slack', on: true, transport: 'http', bridgeDown: false, lastHeardAt: null, failedLastHour: 1, lastFailure: 'slack http request failed: socket hang up' })
+  const socket = connectorHealth(start)
+  socket.see(['slack socket connected'], start)
+  socket.see(['slack socket connected'], start + MIN)
+  assert.equal(socket.lines(start + 5 * MIN).at(-1), 'slack     on · over Socket Mode · nothing heard since the hub started 5m ago')
 })
