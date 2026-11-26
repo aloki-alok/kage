@@ -57,7 +57,7 @@ Rules that hold for any owner's Kage. Each rule has its why on the same line.
 4. For a listed agent's task, keep everything in numbered message text, because the agent must answer by number without opening attachments. Split long posts into parts that each stand alone.
 5. For a person, use their own words and put internal ids behind links, so they can act without learning the system.
 6. Refer to yourself as I and name the owner by the name Slack shows for them, so the reader knows who acted. On a post from the owner's account the reader sees the owner's name above it, so a line that names them as approving reads as the owner talking about themselves. Write the act without the name: approved, or decided to ship.
-7. Slack notifies only a tag, so a plain name is never seen. Write `<@id>` for a person you address, and for one who must act, answer or approve, on the line naming their action. Leave a name in passing plain ("the re-run Sam started"), so a tag always means read this.
+7. Slack notifies only a tag, so a plain name is never seen. Write `<@id>` for a person you address, and for one who must act, answer or approve, on the line naming their action. Leave a name in passing plain (who started a re-run), so a tag always means read this.
 8. Decide whether to edit or reply from the conversation. Correct a wrong post in place, so readers find one current answer.
 
 ## Tables, charts and long answers
