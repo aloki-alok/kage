@@ -108,8 +108,20 @@ export function bootNotes(f: { boots: string | undefined; now: number; darwin: b
   ]
 }
 
-export const slackLines = (f: { connected: boolean; status: string; version: string }): Line[] =>
-  f.connected ? [ok(`connected to Slack: ${f.status}`), ok(`runs Kage ${f.version}`)] : [fail('not connected to Slack yet: wait 20 s after start, or run kage logs to see why')]
+type SlackFacts = { connected: boolean; status: string; version: string } & ({ transport: 'socket' } | { transport: 'http'; signing: boolean; route?: { url: string; answer: number | string } })
+
+const ROUTE_FIX = 'run kage tunnel on, or fix slack.publicUrl'
+
+export function slackLines(f: SlackFacts): Line[] {
+  if (f.transport === 'http' && !f.signing) return [fail('Slack is set to HTTP, but its signing secret is not saved: run kage slack save')]
+  if (!f.connected) return [fail('not connected to Slack yet: wait 20 s after start, or run kage logs to see why')]
+  if (f.transport === 'socket') return [ok(`connected to Slack by Socket Mode: ${f.status}`), ok(`runs Kage ${f.version}`)]
+  const r = f.route
+  if (!r) return [fail('Slack is set to HTTP, but no public route reaches Kage: run kage tunnel on, or set slack.publicUrl')]
+  if (typeof r.answer === 'string') return [fail(`Slack's route ${r.url} did not answer (${r.answer}): ${ROUTE_FIX}`)]
+  if (r.answer !== 401) return [fail(`Slack's route ${r.url} answered ${r.answer}, not Kage's signature check: ${ROUTE_FIX}`)]
+  return [ok(`Slack reaches Kage over HTTP at ${r.url}`), ok(`runs Kage ${f.version}`)]
+}
 
 export function autoUpdateNote(f: { off: boolean; git: boolean; branch?: string; dirty: boolean; origin?: 'failed' | 'no-stable' | 'stable' | 'diverged' }): Line | 'ask-origin' | undefined {
   if (f.off) return note('auto-update is off (autoUpdate is false)')
