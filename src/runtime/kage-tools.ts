@@ -175,8 +175,8 @@ function react({ o, bot, user, asked }: Thread, channel: string, ts: string, nam
   return c.reactions.add({ channel, timestamp: ts, name }).catch(() => {})
 }
 
-function unseenMention({ seenIds, heldOnce }: Thread, text: string, also: readonly string[] = []) {
-  const ids = mentionedIds(text).filter(id => !seenIds.has(id) && !also.includes(id))
+function unseenMention({ o, seenIds, heldOnce }: Thread, text: string, also: readonly string[] = []) {
+  const ids = mentionedIds(text).filter(id => !seenIds.has(id) && !also.includes(id) && id !== o.owner())
   const fresh = ids.filter(id => !heldOnce.has(id))
   for (const id of ids) { if (heldOnce.has(id)) seenIds.add(id); else heldOnce.add(id) }
   return fresh.length ? `not sent: ${fresh.map(id => `<@${id}>`).join(', ')} is not anyone in this thread's tasks, so the mention may be a wrong or remembered id that pings a stranger. Check who it is; if it is right, send the same message again and it goes.` : undefined
