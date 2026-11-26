@@ -16,8 +16,9 @@ if (process.argv[2] === 'show') {
   const cursor = openStore(`${DIR}/kage.db`).load('telemetry-cursor') as number | undefined
   const rows = cursor === undefined ? [] : l.eventsAfter(cursor, 500)
   const version = (JSON.parse(readFileSync(new URL('../../package.json', import.meta.url), 'utf8')) as { version: string }).version
-  console.log(JSON.stringify(JSON.parse(otlpLogs(telemetryRecords(rows), { 'service.name': 'kage', 'service.version': version, 'kage.install': id, 'os.type': platform(), 'host.arch': arch() })), null, 2))
-  console.error(`${rows.length} records wait${endpoint ? '' : ', and none will leave: telemetry is off'}`)
+  const records = telemetryRecords(rows)
+  console.log(JSON.stringify(JSON.parse(otlpLogs(records, { 'service.name': 'kage', 'service.version': version, 'kage.install': id, 'os.type': platform(), 'host.arch': arch() })), null, 2))
+  console.error(`${records.length} records wait${endpoint ? '' : ', and none will leave: telemetry is off'}`)
 } else {
   const why = t?.on === false ? 'telemetry.on is false' : process.env.KAGE_TELEMETRY === 'off' ? 'KAGE_TELEMETRY=off' : 'DO_NOT_TRACK is set'
   console.log(endpoint ? `on: counts and failure codes go to ${endpoint}, install ${id}` : `off: ${why}`)
