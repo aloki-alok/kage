@@ -87,7 +87,8 @@ async function slackReply(c: ToolContext, a: ReplyArgs, key: string): Promise<Re
   const ask = a.waiting?.trim(), on = a.waiting_on?.trim()
   if (ask && on !== 'owner' && !/^[UW][A-Z0-9]{2,}$/.test(on ?? '')) return { isError: true, text: 'not sent: with waiting, set waiting_on to "owner" or the Slack id (U...) of the person who must answer' }
   if (ask && on !== 'owner' && a.private) return { isError: true, text: 'not sent: a teammate cannot see the owner\'s DM. Ask them in the thread, or set waiting_on to "owner"' }
-  if (ask && on !== 'owner' && !a.text.includes(`<@${on}>`)) a.text = `<@${on}>${/^(```|\|)/.test(a.text) ? '\n' : ' '}${a.text}`
+  const waitedOn = !ask || a.private ? undefined : on !== 'owner' ? on : c.ownerNow(key) ? undefined : c.o.owner()
+  if (waitedOn && !a.text.includes(`<@${waitedOn}>`)) a.text = `<@${waitedOn}>${/^(```|\|)/.test(a.text) ? '\n' : ' '}${a.text}`
   if (ask && on === 'owner' && !ownerMayBeAsked(c.ledger('waiting'), key, Date.now())) return { isError: true, text: ASKED_OWNER_ALREADY }
   const typed = ask && on === 'owner' ? typedAsk(c, key, a.kind, a.reach) : undefined
   if (typed && 'text' in typed) return typed

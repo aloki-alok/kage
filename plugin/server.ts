@@ -39,7 +39,7 @@ const turn = paneTurn({
 })
 let ownerId = ''
 const kage = sessionTools({
-  title: Title, bot, user, botDm: () => botDm, dir: dirname(ENV_FILE), ledgers: openLedgers(dirname(ENV_FILE)),
+  title: Title, bot, user, owner: () => ownerId, botDm: () => botDm, dir: dirname(ENV_FILE), ledgers: openLedgers(dirname(ENV_FILE)),
   memory: memoryDirs(process.env.HOME!, ENV_FILE, config.harness),
   turnSender: turn.sender,
   foreignAgents: () => asksOtherAgents(config) ? [] : foreignAgentTags(TRUSTED_APPS, ownerId),

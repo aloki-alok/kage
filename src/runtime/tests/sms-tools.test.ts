@@ -17,7 +17,7 @@ function setup(o: { yes?: boolean; kagelet?: string } = {}) {
   const cards: string[] = []
   const slack = { reactions: { add: async () => {}, remove: async () => {} } }
   const t = sessionTools({
-    title: 'Kage', bot: slack as any, user: slack as any, botDm: () => 'DBOT', dir, ledgers: openLedgers(dir), send: () => {}, memory: { own: '/own', owner: '/owner' },
+    title: 'Kage', owner: () => 'UOWNER', bot: slack as any, user: slack as any, botDm: () => 'DBOT', dir, ledgers: openLedgers(dir), send: () => {}, memory: { own: '/own', owner: '/owner' },
     kagelet: o.kagelet, sms,
     approve: async (_tool, description) => { cards.push(description); return o.yes ?? true },
   })
