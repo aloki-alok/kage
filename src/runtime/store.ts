@@ -204,7 +204,7 @@ function trustOf(db: DatabaseSync) {
     const thread = threadOfJobLane(key), listed = db.prepare('select 1 from relay_allow where key = ?')
     return this.trust(key) === true || [thread, relayChannelOf(thread)].some(k => k !== undefined && listed.get(k) !== undefined)
   },
-  threadsIn: (chat: string): string[] => (db.prepare("select key from conversations where connector = 'slack' and chat = ? and key not like '%#%' order by key").all(chat) as { key: string }[]).map(r => r.key),
+  threadsIn: (chat: string): string[] => (db.prepare("select key from conversations where connector = 'slack' and kind = 'channel' and chat = ? and key not like '%#%' order by key").all(chat) as { key: string }[]).map(r => r.key),
   noteTask(key: string, fromOwner: boolean, known: boolean) {
     if (isJobLane(key)) return
     this.setTrust(key, (this.trust(key) ?? !known) && fromOwner)

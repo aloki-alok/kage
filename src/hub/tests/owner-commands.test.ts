@@ -81,8 +81,8 @@ test('kage thread send reaches only a known Slack thread, never while paused, an
 
 test('kage relay takes only a plain Slack thread key, allows only a known thread, and a deny drops the relay', () => {
   const t = owner()
-  assert.deepEqual(t.c.relay('allow', 'CTEST1:1.1#side-x'), { refused: 'that is not a Slack thread key or channel id (lanes and DMs are not listed)' })
-  assert.deepEqual(t.c.relay('allow', 'wa:1'), { refused: 'that is not a Slack thread key or channel id (lanes and DMs are not listed)' })
+  assert.deepEqual(t.c.relay('allow', 'CTEST1:1.1#side-x'), { refused: 'that is not a Slack thread key or channel id (a lane or a whole DM is never listed)' })
+  assert.deepEqual(t.c.relay('allow', 'wa:1'), { refused: 'that is not a Slack thread key or channel id (a lane or a whole DM is never listed)' })
   assert.deepEqual(t.c.relay('allow', 'CTEST9:9.9'), { refused: 'no thread with that key' })
   assert.deepEqual(t.c.relay('deny', 'CTEST1:1.1'), { ok: true, keys: [] })
   assert.deepEqual(t.calls, ['drop CTEST1:1.1'])
@@ -92,7 +92,7 @@ test('kage relay takes only a plain Slack thread key, allows only a known thread
 test('kage relay takes a channel Kage has a thread in, never a DM, and a channel deny drops each of its threads', () => {
   const t = owner({ threads: { 'CTEST1:1.1': { connector: 'slack', chat: 'CTEST1', thread: '1.1', kind: 'channel' }, 'CTEST1:2.2': { connector: 'slack', chat: 'CTEST1', thread: '2.2', kind: 'channel' }, 'DTEST1:3.3': { connector: 'slack', chat: 'DTEST1', thread: '3.3', kind: 'dm' } } })
   assert.deepEqual(t.c.relay('allow', 'CTEST9'), { refused: 'Kage has no thread in that channel' })
-  assert.deepEqual(t.c.relay('allow', 'DTEST1'), { refused: 'that is not a Slack thread key or channel id (lanes and DMs are not listed)' })
+  assert.deepEqual(t.c.relay('allow', 'DTEST1'), { refused: 'that is not a Slack thread key or channel id (a lane or a whole DM is never listed)' })
   assert.deepEqual(t.c.relay('allow', 'CTEST1'), { ok: true, keys: ['CTEST1:1.1', 'CTEST1'] })
   assert.deepEqual(t.c.relay('deny', 'CTEST1:1.1'), { refused: 'its whole channel CTEST1 is listed, so deny the channel instead' })
   assert.deepEqual(t.c.relay('deny', 'CTEST1'), { ok: true, keys: ['CTEST1:1.1'] })

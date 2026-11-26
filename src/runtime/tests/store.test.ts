@@ -281,14 +281,18 @@ test('a listed channel lets each of its threads and their job lanes use the rela
   assert.equal(s.relayOk('CTEST1:5.5'), false)
 })
 
-test('a channel lists only its own Slack threads, never their lanes', () => {
+test('a channel lists only its own Slack channel threads, never their lanes or a group DM', () => {
   const s = openStore(':memory:')
-  const at = (chat: string, thread: string) => ({ connector: 'slack' as const, chat, thread, kind: 'channel' as const })
+  const at = (chat: string, thread: string, kind: 'channel' | 'group' = 'channel') => ({ connector: 'slack' as const, chat, thread, kind })
   s.seen('CTEST1:2.2', at('CTEST1', '2.2'), '#sales', 1)
   s.seen('CTEST1:1.1', at('CTEST1', '1.1'), '#sales', 1)
   s.seen('CTEST1:1.1#side-job-j1', at('CTEST1', '1.1'), '#sales', 1)
   s.seen('CTEST2:1.1', at('CTEST2', '1.1'), '#other', 1)
+  s.seen('GTEST1:1.1', at('GTEST1', '1.1', 'group'), 'group DM', 1)
+  s.seen('CTEST3:1.1', { connector: 'whatsapp', chat: 'CTEST3', kind: 'channel' } as never, 'chat', 1)
   assert.deepEqual(s.threadsIn('CTEST1'), ['CTEST1:1.1', 'CTEST1:2.2'])
+  assert.deepEqual(s.threadsIn('GTEST1'), [])
+  assert.deepEqual(s.threadsIn('CTEST3'), [])
   assert.deepEqual(s.threadsIn('CTEST9'), [])
 })
 

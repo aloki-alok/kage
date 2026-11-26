@@ -60,7 +60,7 @@ function relay(o: Options, action: string, key?: string): { ok: true; keys: stri
   const { store } = o
   if (action !== 'list') {
     const channel = !!key && RELAY_CHANNEL.test(key)
-    if (!key || !(channel || (ssmEligible(key) && !key.includes('#')))) return { refused: 'that is not a Slack thread key or channel id (lanes and DMs are not listed)' }
+    if (!key || !(channel || (ssmEligible(key) && !key.includes('#')))) return { refused: 'that is not a Slack thread key or channel id (a lane or a whole DM is never listed)' }
     const threads = channel ? store.threadsIn(key) : [key]
     const listedChannel = channel ? undefined : relayChannelOf(key)
     if (action === 'allow' && channel && !threads.length) return { refused: 'Kage has no thread in that channel' }
