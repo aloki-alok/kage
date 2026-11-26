@@ -35,7 +35,7 @@ async function changedFiles(call: GithubCall, repo: string, n: number) {
   return { names: all.flatMap(f => [f.filename, ...(f.previous_filename ? [f.previous_filename] : [])]), cut }
 }
 
-async function commitChecks(call: GithubCall, repo: string, sha: string, slug: string) {
+export async function commitChecks(call: GithubCall, repo: string, sha: string, slug: string) {
   const [runs, status] = await Promise.all([
     pages<Run>(call, `/repos/${repo}/commits/${sha}/check-runs`, b => (b as { check_runs: Run[] }).check_runs),
     call('GET', `/repos/${repo}/commits/${sha}/status`) as Promise<{ statuses: { context: string; state: string }[] }>,
@@ -59,7 +59,7 @@ async function branchPushers(call: GithubCall, repo: string, branch: string, hea
   return { pushers: acts.every(a => a.actor) ? acts.map(a => a.actor!.login) : undefined, headPushed: acts.some(a => a.after === head) }
 }
 
-async function requiredChecks(call: GithubCall, repo: string, base: string) {
+export async function requiredChecks(call: GithubCall, repo: string, base: string) {
   const [branch, rules] = await Promise.all([
     call('GET', `/repos/${repo}/branches/${encodeURIComponent(base)}`) as Promise<Branch>,
     pages<BranchRule>(call, `/repos/${repo}/rules/branches/${encodeURIComponent(base)}`),
