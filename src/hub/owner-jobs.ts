@@ -1,6 +1,6 @@
 import { z } from 'zod'
 import { filesFolderName } from '../core/conversations.ts'
-import type { Schedule } from '../core/cron.ts'
+import { dueSchedules, type Schedule } from '../core/cron.ts'
 import type { JobState } from '../core/tripwire.ts'
 import { jobFromSpec, jobSetLine } from '../runtime/job-spec.ts'
 import type { TuneArg } from '../runtime/probe-jobs.ts'
@@ -43,6 +43,8 @@ export function ownerJobs(d: Deps) {
   function pause(id: string): Answer {
     const s = find(id)
     if (!s) return { refused: `no job ${id} runs: kage schedule list shows them` }
+    const twin = d.store.schedules().find(t => d.store.jobState(t.id).shadow?.of === id)
+    if (twin) return { refused: `twin ${twin.id} shadows it: remove the twin first, or pause the twin instead` }
     d.store.save('paused-jobs', { ...paused(), [id]: { job: s, state: d.store.jobState(id), at: Date.now() } })
     d.jobs.remove(s.key, id)
     return { text: `Paused ${id}. It keeps its state, and kage schedule resume ${id} brings it back.` }
@@ -50,9 +52,11 @@ export function ownerJobs(d: Deps) {
   function resume(id: string): Answer {
     const { [id]: p, ...rest } = paused()
     if (!p) return { refused: `no paused job ${id}` }
-    d.jobs.restore(p.job)
-    d.store.setJobState(id, p.state)
+    const now = Date.now()
     d.store.save('paused-jobs', rest)
+    if (!p.job.recurring && dueSchedules([p.job], now).fire.length) return { text: `Removed ${id}: its time passed while it was paused.` }
+    d.jobs.restore(p.job.recurring ? { ...p.job, lastFired: now } : { ...p.job, created: now })
+    d.store.setJobState(id, p.state)
     return { text: `Resumed ${id}.` }
   }
   function rm(id: string): Answer {

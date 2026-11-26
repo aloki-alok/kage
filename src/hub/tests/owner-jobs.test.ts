@@ -4,6 +4,7 @@ import { mkdtempSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { parseSessionKey } from '../../core/conversations.ts'
+import { dueSchedules } from '../../core/cron.ts'
 import { hookTokenHash } from '../../core/tripwire.ts'
 import { add, tune } from '../../runtime/schedule-edits.ts'
 import { openStore } from '../../runtime/store.ts'
@@ -63,8 +64,11 @@ test('pause sets a job aside with its state, resume brings it back, rm removes i
   assert.match((h.ask({ type: 'job', action: 'pause', id }) as { text: string }).text, /Paused/)
   assert.deepEqual(h.store.schedules(), [])
   assert.match((h.ask({ type: 'job', action: 'pause', id }) as { refused: string }).refused, /no job/)
+  const resumedAt = Date.now()
   assert.match((h.ask({ type: 'job', action: 'resume', id }) as { text: string }).text, /Resumed/)
-  assert.deepEqual(h.store.schedules(), [before])
+  const back = h.store.schedules()[0]!
+  assert.deepEqual({ ...back, lastFired: 0 }, { ...before, lastFired: 0 })
+  assert.ok(back.lastFired >= resumedAt)
   assert.deepEqual(h.store.jobState(id), { fails: 2, fp: 'abc' })
   assert.ok('text' in h.ask({ type: 'job', action: 'tune', id, change: { cron: '*/10 * * * *' } }))
   assert.equal(h.store.schedules()[0]!.cron, '*/10 * * * *')
@@ -72,4 +76,28 @@ test('pause sets a job aside with its state, resume brings it back, rm removes i
   assert.ok('text' in h.ask({ type: 'job', action: 'rm', id }))
   assert.match((h.ask({ type: 'job', action: 'resume', id }) as { refused: string }).refused, /no paused job/)
   assert.deepEqual(h.store.schedules(), [])
+})
+
+test('resume counts a job from the resume time: a recurring job skips what came due while paused, and a one-shot whose time passed is removed', () => {
+  const h = hub()
+  const hoursAgo = Date.now() - 2 * 3_600_000
+  const backdate = (id: string) => { const s = h.store.schedules().find(x => x.id === id)!; h.store.removeSchedule(id); h.store.addSchedule({ ...s, created: hoursAgo, lastFired: 0 }) }
+  const every = idIn((h.ask({ type: 'job', action: 'add', key: THREAD, spec: { cron: '* * * * *', prompt: 'check' } }) as { text: string }).text)
+  const once = idIn((h.ask({ type: 'job', action: 'add', key: THREAD, spec: { cron: '* * * * *', prompt: 'remind me', recurring: false } }) as { text: string }).text)
+  backdate(every); backdate(once)
+  h.ask({ type: 'job', action: 'pause', id: every }); h.ask({ type: 'job', action: 'pause', id: once })
+  assert.match((h.ask({ type: 'job', action: 'resume', id: every }) as { text: string }).text, /Resumed/)
+  assert.deepEqual(dueSchedules(h.store.schedules(), Date.now()).fire, [])
+  assert.match((h.ask({ type: 'job', action: 'resume', id: once }) as { text: string }).text, new RegExp(`${once}.*time passed while it was paused`))
+  assert.deepEqual(h.store.schedules().map(s => s.id), [every])
+  assert.match((h.ask({ type: 'job', action: 'resume', id: once }) as { refused: string }).refused, /no paused job/)
+})
+
+test('pause refuses a job a twin shadows, so the twin is never left shadowing a job that looks gone', () => {
+  const h = hub()
+  const live = idIn((h.ask({ type: 'job', action: 'add', key: THREAD, spec: { cron: '0 9 * * *', prompt: 'post the standup' } }) as { text: string }).text)
+  h.store.addSchedule({ ...h.store.schedules()[0]!, id: 'twin0001' })
+  h.store.setJobState('twin0001', { fails: 0, shadow: { of: live, live: 'post', since: 0 } })
+  assert.match((h.ask({ type: 'job', action: 'pause', id: live }) as { refused: string }).refused, /twin twin0001 shadows it/)
+  assert.deepEqual(h.store.schedules().map(s => s.id).sort(), [live, 'twin0001'].sort())
 })
