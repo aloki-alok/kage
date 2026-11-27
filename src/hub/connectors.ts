@@ -8,6 +8,7 @@ import { approveSetting } from '../core/github-approve.ts'
 import { fixSetting } from '../core/github-fix.ts'
 import { connectMeeting } from '../connectors/meeting.ts'
 import { connectVoice } from '../connectors/voice.ts'
+import { connectSiri, siriTitle, siriWords } from '../connectors/siri.ts'
 import { connectSms } from '../connectors/sms.ts'
 import { smsSender } from '../connectors/sms-send.ts'
 import { openSmsStore } from '../runtime/sms-store.ts'
@@ -24,6 +25,7 @@ import type { ToSession } from '../runtime/protocol.ts'
 import type { Inbox, Store } from '../runtime/store.ts'
 import { taskAsOwner } from '../core/gate.ts'
 import { ownerLines } from '../core/messages.ts'
+import { safeReply } from '../core/outbound.ts'
 
 type Options = {
   secrets: Secrets; conn: NonNullable<Config['connectors']>; store: Store; slack: Awaited<ReturnType<typeof connectSlack>>; bot: WebClient
@@ -33,6 +35,7 @@ type Options = {
   NAME: string; CODE: string; DIR: string; d: Dispatcher<ToSession>; inbox: Inbox; emails: string[]
   deliver: (c: Conversation, task: Task, place: string, lane?: Lane, by?: string) => Delivery
   placeOf: (key: string) => string; failed: (m: ToSession) => void
+  posted: (cells: string[], kind: string) => void
   schedules: Parameters<typeof startJobEvents>[0]['schedules']; event: Parameters<typeof startJobEvents>[0]['event']; ledgers: Parameters<typeof startJobEvents>[0]['ledgers']; tripwires: Config['tripwires']
 }
 
@@ -52,6 +55,7 @@ export function startConnectors(o: Options) {
     failed: task => void o.say(startFailedNote(task.meta.place, d.lastStartError())),
   })
   const whatsapp = startWhatsapp(o)
+  const siri = startSiri(o)
 
   const url = wahaUrl(conn.whatsapp?.wahaUrl)
   const clock = bridgeClock({
@@ -75,7 +79,23 @@ export function startConnectors(o: Options) {
     return ({ slack: slack.replay, github: github?.replay, meeting: meeting?.replay, whatsapp: whatsapp?.replay, sms: sms?.connector.replay, hook: jobs.replay } as Record<string, ((source: string, payload: string) => Promise<unknown>) | undefined>)[connector]
   }
 
-  return { github, meeting, email, voice, whatsapp, sms, replies, replayOf, jobs, clock }
+  return { github, meeting, email, voice, siri, whatsapp, sms, replies, replayOf, jobs, clock }
+}
+
+function startSiri(o: Options) {
+  const { secrets, conn, slack, bot, d } = o
+  const dm = slack.ids.botDm
+  return connectSiri({
+    siri: { ...conn.siri, token: secrets.siriToken },
+    async start(words) {
+      const head = await bot.chat.postMessage({ channel: dm, text: `:studio_microphone: ${siriTitle(words)}` })
+      const key = `${dm}:${head.ts}`
+      o.posted([dm, head.ts!, 'bot', key], 'notice:siri')
+      await slack.say(safeReply(siriWords(words)), { channel: dm, thread_ts: head.ts!, kind: 'dm' })
+      return key
+    },
+    asking: key => d.status(Date.now()).live.some(l => l.key === key && l.state === 'asking'),
+  })
 }
 
 function startGithub(o: Options) {

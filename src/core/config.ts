@@ -86,6 +86,7 @@ export const Config = z.preprocess(foldOldPeople, z.strictObject({
     email: z.strictObject({ on: yes, address: text, queue: text, ownerEmail: text, region: text }).optional(),
     voice: z.strictObject({ on: yes, port: count, max: count, perHour: count, model: text }).optional(),
     call: z.strictObject({ command: text }).optional(),
+    siri: z.strictObject({ on: yes, port: count, perHour: count, waitSeconds: count }).optional(),
     github: z.strictObject({ login: text, userId: z.number().int().positive().optional(), port: count, perHour: count, app: z.strictObject({ id: z.number().int().positive(), slug: z.string().regex(/^[a-z0-9][a-z0-9-]*$/) }).optional(), accounts: strings, approve: z.strictObject({ policyRepo: z.string().regex(/^[A-Za-z0-9._-]{1,100}$/).optional() }).optional(), fix: z.strictObject({ mode: z.enum(['off', 'shadow', 'on']).optional(), perPr: count }).optional() }).optional(),
     meeting: z.strictObject({ port: count, perHour: count, agentApi: text, agentId: count }).optional(),
     browser: z.strictObject({ port: count, block: strings }).optional(),
@@ -101,7 +102,7 @@ export type KeyRoute = NonNullable<Config['sessionKeys']>[string]
 const secretsOf = <L extends z.ZodType>(sec: L) => z.strictObject({
   slack: z.strictObject({ app: sec, user: sec, bot: sec, signing: sec }).optional(),
   aws: z.strictObject({ accessKeyId: sec, secretAccessKey: sec }).optional(),
-  voiceToken: sec, githubSecret: sec, githubAppKey: sec, githubToken: sec, meetingToken: sec, browserToken: sec, jevKey: sec, voiceAgentKey: sec, claudeToken: sec, twilioAuthToken: sec, telnyxApiKey: sec,
+  voiceToken: sec, siriToken: sec, githubSecret: sec, githubAppKey: sec, githubToken: sec, meetingToken: sec, browserToken: sec, jevKey: sec, voiceAgentKey: sec, claudeToken: sec, twilioAuthToken: sec, telnyxApiKey: sec,
   waha: z.record(z.string().regex(/^[A-Z][A-Z0-9_]*$/), z.string()).optional(),
   cartesiaKey: sec,   // compat: remove after 2026-12-15 (Cartesia speech is gone; an old secrets.json still holds it, and the schema is strict)
   unknown: z.record(z.string(), z.string()).optional(),
@@ -279,7 +280,7 @@ export function badValue(c: Config): string | undefined {
   for (const [path, v] of [['harness.memory', c.harness?.memory], ['harness.ownerMemory', c.harness?.ownerMemory], ['harness.cwd', c.harness?.cwd], ['connectors.whatsapp.memory', c.connectors?.whatsapp?.memory]] as const)
     if (v && /['"\\]/.test(v)) return `${path} must not hold a quote or a backslash`
   const k = c.connectors
-  for (const [path, v] of [['voice.port', k?.voice?.port], ['github.port', k?.github?.port], ['meeting.port', k?.meeting?.port], ['browser.port', k?.browser?.port], ['whatsapp.hookPort', k?.whatsapp?.hookPort], ['sms.port', k?.sms?.port]] as const)
+  for (const [path, v] of [['voice.port', k?.voice?.port], ['siri.port', k?.siri?.port], ['github.port', k?.github?.port], ['meeting.port', k?.meeting?.port], ['browser.port', k?.browser?.port], ['whatsapp.hookPort', k?.whatsapp?.hookPort], ['sms.port', k?.sms?.port]] as const)
     if (v != null && !(Number.isInteger(v) && v >= 1024 && v <= 65535)) return `connectors.${path} must be a port from 1024 to 65535`
   const hook = c.tripwires?.hookPort
   if (hook && !(Number.isInteger(hook) && hook >= 1024 && hook <= 65535)) return 'tripwires.hookPort must be 0 (off) or a port from 1024 to 65535'
@@ -294,7 +295,7 @@ export function checkSettings(c: Config, s: Secrets): { name: string; teammates:
 }
 
 const SAFE = [/^kagelets\.(max|dailyUsd|totalDailyUsd|chainUsd|needsPerDay|askRunsPerHour|notesKept|noteChars|measureMinutes|trendRuns|turnStallMinutes|incidentsPerHour)$/, /^waiting\.expireHours$/, /^report\.perDay$/, /^top\.threadCostBar$/, /^afk\.(on|model)$/, /^harness\.(jobModel|jobFreshEvery|jobCarry|jobCarryChars|rotateTokens|jobLaneDefault|jobCatchUpHours|jobCatchUpStaggerSeconds)$/, /^jev\.(threshold|model|ackWords)$/, /^tripwires\.(timeoutSec|maxKb|failPing|patternMax|lineMax|maxPosts|catchUpMax|seenMax|hookPerHour|swapAfter|shadowWindowMin|swapUndoDays)$/,
-  /^connectors\.(voice|github|meeting|browser|whatsapp|sms)\.(port|max|perHour|hookPort)$/, /^connectors\.sms\.perMinute$/, /^connectors\.whatsapp\.(model|checkMinutes)$/]
+  /^connectors\.(voice|siri|github|meeting|browser|whatsapp|sms)\.(port|max|perHour|hookPort)$/, /^connectors\.siri\.waitSeconds$/, /^connectors\.sms\.perMinute$/, /^connectors\.whatsapp\.(model|checkMinutes)$/]
 export function settingTier(key: string): 'safe' | 'power' | 'never' {
   const parts = key.split('.')
   if (!key || parts.some(p => !p || ['__proto__', 'constructor', 'prototype'].includes(p)) || ['secrets', 'version', 'unknown'].includes(parts[0]!)) return 'never'
