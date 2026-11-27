@@ -45,6 +45,12 @@ To move a live job, make the cheaper job a twin: `schedule` with `shadow_of` set
 5. A probe that fails keeps retrying and pings the asker after a few misses. Fix the command with tune_job from a person's task. A monitor is never stopped on its own.
 6. When the source a timed job watches goes idle, suggest a slower schedule in the run's report and say when to speed it back up. A fast check on an idle source spends turns on nothing.
 
+## Write the alert a run posts
+
+1. Open every alert with what the job watches and why the owner asked for it, in plain words. An alert the owner cannot place costs them a turn to ask what it means.
+2. Then give the one change and what the owner should do. Put field names, flags and counters below that line or leave them out.
+3. If the change needs nothing from the owner, post nothing. An alert that says no action is needed still makes them stop and read it.
+
 ## Tell the asker how it wakes
 
 End your first reply with one line: what wakes the job and what that costs. For example: Runs a probe every 15 minutes, no model until the output changes. Or: Wakes on each bot post in the channel, no polling.
