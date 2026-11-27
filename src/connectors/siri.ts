@@ -75,8 +75,8 @@ export function connectSiri(o: Options) {
       const timer = setTimeout(() => { waiting.delete(key); done(undefined) }, waitMs)
       waiting.set(key, r => { clearTimeout(timer); waiting.delete(key); done(r) })
     })
-    return replies ? outcome(replies)
-      : o.asking(key) ? { status: 200, state: 'approval', say: 'That needs your approval. The card is in Slack.' }
+    return o.asking(key) ? { status: 200, state: 'approval', say: 'That needs your approval. The card is in Slack.' }
+      : replies ? outcome(replies)
       : { status: 200, state: 'working', say: `I saved "${siriTitle(words)}". I'll reply in Slack.` }
   }
   const timed = async (words: string) => {

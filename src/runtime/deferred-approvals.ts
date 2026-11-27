@@ -57,6 +57,7 @@ export function deferredApprovals(store: Saved, heard: (v: CardVerdict) => void 
       const open = Object.values(r).filter(w => w.key === key && w.yes === undefined)
       return open.some(w => same(w, key, tool, input)) ? 'same' : open.length >= OPEN_PER_KEY ? 'full' : undefined
     },
+    pending: (key: string, now: number) => Object.values(rows()).some(w => w.key === key && w.yes === undefined && now - w.at < CARD_TTL),
     deniedAt(key: string, tool: string, input: Record<string, unknown>, now: number): number | undefined {
       return holds(now)[holdKey(key, tool, input)]
     },

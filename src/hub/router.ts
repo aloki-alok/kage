@@ -319,7 +319,7 @@ const schedules = scheduler({ store, failed, jobStateDir: `${DIR}/job-state`,
 })
 importCrons(DIR, runningAtStart.size, schedules, t => void owner.say(t))
 
-const { meeting, email, voice, siri, sms, replies, replayOf, jobs, clock } = startConnectors({ posted: (cells, kind) => ledgers.add('posted', cells, kind), secrets, conn, store, slack, bot, ping: pingThread, say: owner.say, ownerAnswer: waCardsOut.answer, NAME, CODE, DIR, d, inbox, deliver, placeOf, failed, emails: TEAMMATE_EMAILS, schedules, event: ledgers.event, ledgers, tripwires: config.tripwires })
+const { meeting, email, voice, siri, sms, replies, replayOf, jobs, clock } = startConnectors({ posted: (cells, kind) => ledgers.add('posted', cells, kind), cardOpen: key => deferred.pending(key, Date.now()), secrets, conn, store, slack, bot, ping: pingThread, say: owner.say, ownerAnswer: waCardsOut.answer, NAME, CODE, DIR, d, inbox, deliver, placeOf, failed, emails: TEAMMATE_EMAILS, schedules, event: ledgers.event, ledgers, tripwires: config.tripwires })
 listenForCommands(slack.transport, { user, team: slack.ids.team!, commands: COMMANDS, ledgers })
 
 function failed(m: ToSession) {

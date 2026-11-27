@@ -96,6 +96,14 @@ describe('what Siri says back', () => {
     assert.equal(r.json?.state, 'approval')
     assert.match(r.json!.say, /approv/)
   })
+  test('a turn that ends because it posted an approval card says so, not done', async () => {
+    const s = await setup({ waitMs: 2000, asking: true })
+    const pending = s.ask({ text: 'deploy the fix' })
+    while (!s.started.length) await tick()
+    await tick()
+    s.s.ended('D1:1', () => [])
+    assert.equal((await pending).json?.state, 'approval')
+  })
   test('the end of another thread does not answer this one', async () => {
     const s = await setup({ waitMs: 150 })
     const pending = s.ask({ text: 'hello' })

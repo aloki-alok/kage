@@ -35,7 +35,7 @@ type Options = {
   NAME: string; CODE: string; DIR: string; d: Dispatcher<ToSession>; inbox: Inbox; emails: string[]
   deliver: (c: Conversation, task: Task, place: string, lane?: Lane, by?: string) => Delivery
   placeOf: (key: string) => string; failed: (m: ToSession) => void
-  posted: (cells: string[], kind: string) => void
+  posted: (cells: string[], kind: string) => void; cardOpen: (key: string) => boolean
   schedules: Parameters<typeof startJobEvents>[0]['schedules']; event: Parameters<typeof startJobEvents>[0]['event']; ledgers: Parameters<typeof startJobEvents>[0]['ledgers']; tripwires: Config['tripwires']
 }
 
@@ -94,7 +94,7 @@ function startSiri(o: Options) {
       await slack.say(safeReply(siriWords(words)), { channel: dm, thread_ts: head.ts!, kind: 'dm' })
       return key
     },
-    asking: key => d.status(Date.now()).live.some(l => l.key === key && l.state === 'asking'),
+    asking: key => o.cardOpen(key) || d.status(Date.now()).live.some(l => l.key === key && l.state === 'asking'),
   })
 }
 

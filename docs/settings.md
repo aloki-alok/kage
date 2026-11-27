@@ -338,7 +338,7 @@ The answer is JSON: `{"state", "say"}`. Siri speaks `say`. `state` is one of the
 |---|---|---|
 | answered | Kage's turn ended within the wait | Kage's reply, as plain speech, cut at 450 characters with "The rest is in Slack." |
 | asks | The turn ended on a question for you | The question, then "Reply in Slack." |
-| approval | The turn waits on an approval card | "That needs your approval. The card is in Slack." |
+| approval | An approval card for this thread waits on you, whether the turn ended on it or still waits | "That needs your approval. The card is in Slack." |
 | working | The turn still runs | "I saved "<first words>". I'll reply in Slack." |
 | busy | Over `perHour` (HTTP 429) | Try later. |
 | failed | Kage could not post the words to Slack (HTTP 502) | Try again. |
