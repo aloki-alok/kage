@@ -75,12 +75,17 @@ export function connectSiri(o: Options) {
       const timer = setTimeout(() => { waiting.delete(key); done(undefined) }, waitMs)
       waiting.set(key, r => { clearTimeout(timer); waiting.delete(key); done(r) })
     })
-    if (replies) return outcome(replies)
-    if (o.asking(key)) return { status: 200, state: 'approval', say: 'That needs your approval. The card is in Slack.' }
-    return { status: 200, state: 'working', say: `I saved "${siriTitle(words)}". I'll reply in Slack.` }
+    return replies ? outcome(replies)
+      : o.asking(key) ? { status: 200, state: 'approval', say: 'That needs your approval. The card is in Slack.' }
+      : { status: 200, state: 'working', say: `I saved "${siriTitle(words)}". I'll reply in Slack.` }
+  }
+  const timed = async (words: string) => {
+    const at = Date.now(), a = await ask(words)
+    log(`siri ask: ${a.state} in ${Date.now() - at} ms`)
+    return a
   }
 
-  const { server, listening } = listen(siriRoute(token, ask), port ?? 8794)
+  const { server, listening } = listen(siriRoute(token, timed), port ?? 8794)
   void listening.then(p => log(`siri on: 127.0.0.1:${p}/ask`), e => log('siri could not listen', e))
   return {
     listening,

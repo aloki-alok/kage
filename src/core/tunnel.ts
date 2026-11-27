@@ -3,7 +3,7 @@ import type { Line } from './doctor.ts'
 import { connectorStates } from './connect.ts'
 import { SLACK_PATH, SLACK_PORT, slackHttpUsable } from './slack-transport.ts'
 
-type TunnelRoute = { name: 'github' | 'voice' | 'hooks' | 'meeting' | 'sms' | 'slack'; port: number; paths: string[]; reach: 'internet' | 'tailnet' }
+type TunnelRoute = { name: 'github' | 'voice' | 'hooks' | 'meeting' | 'siri' | 'sms' | 'slack'; port: number; paths: string[]; reach: 'internet' | 'tailnet' }
 type RouteState = 'internet' | 'tailnet' | 'closed'
 type ServeStatus = {
   TCP?: Record<string, { TCPForward?: string }>
@@ -25,11 +25,17 @@ export function tunnelRoutes({ config, secrets }: { config: Config; secrets: Sec
     on.voice.state === 'on' && { name: 'voice', port: c?.voice?.port || 8787, paths: ['/mcp', '/voice'], reach: 'internet' },
     !!t?.hookPort && t.on !== false && { name: 'hooks', port: t.hookPort, paths: ['/hook'], reach: 'internet' },
     on.meeting.state === 'on' && { name: 'meeting', port: c?.meeting?.port || 8790, paths: [], reach: 'tailnet' },
+    on.siri.state === 'on' && { name: 'siri', port: c?.siri?.port || 8794, paths: [], reach: 'tailnet' },
     on.sms.state === 'on' && { name: 'sms', port: c?.sms?.port || 8793, paths: ['/sms'], reach: 'internet' },
     slackHttpUsable({ config, secrets }) && { name: 'slack', port: SLACK_PORT, paths: [SLACK_PATH], reach: 'internet' },
   ]
   return routes.filter(r => r !== false)
 }
+
+const tailnetPorts = (config: Config) => [
+  { name: 'meeting', port: config.connectors?.meeting?.port || 8790 },
+  { name: 'siri', port: config.connectors?.siri?.port || 8794 },
+]
 
 const CHECK_PATH = '/kage-funnel-check'
 
@@ -49,10 +55,10 @@ export function tunnelPlan(settings: { config: Config; secrets: Secrets }, now: 
   const close = Object.entries(handlers).filter(([p, h]) => owned(p, h) && want.get(p) !== h.Proxy).map(([p]) => ['serve', `--https=${PUBLIC_PORT}`, `--set-path=${p}`, 'off'])
   const opens = Object.fromEntries(foreign.length || !now.funnel ? [] : [...want].filter(([p, t]) => handlers[p]?.Proxy !== t || !funnelOn))
   const open = Object.entries(opens).map(([p, t]) => ['funnel', '--bg', '--yes', `--https=${PUBLIC_PORT}`, `--set-path=${p}`, t])
-  const meetingPort = settings.config.connectors?.meeting?.port || 8790, meetingWanted = wanted.some(r => r.name === 'meeting')
-  const forwarded = s.TCP?.[meetingPort]?.TCPForward === local(meetingPort)
-  const tcp = meetingWanted && !forwarded ? [['serve', '--bg', '--yes', `--tcp=${meetingPort}`, `tcp://${local(meetingPort)}`]]
-    : !meetingWanted && forwarded ? [['serve', `--tcp=${meetingPort}`, 'off']] : []
+  const tcp = tailnetPorts(settings.config).flatMap(({ name, port }) => {
+    const want = wanted.some(r => r.name === name), forwarded = s.TCP?.[port]?.TCPForward === local(port)
+    return want && !forwarded ? [['serve', '--bg', '--yes', `--tcp=${port}`, `tcp://${local(port)}`]] : !want && forwarded ? [['serve', `--tcp=${port}`, 'off']] : []
+  })
   return { run: [...close, ...open, ...tcp], opens, foreign, waitsForFunnel: !now.funnel && want.size > 0 }
 }
 

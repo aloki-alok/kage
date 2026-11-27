@@ -1,6 +1,6 @@
 import { afterEach, describe, test } from 'node:test'
 import assert from 'node:assert/strict'
-import { connectSiri, siriWords, type Siri } from '../siri.ts'
+import { connectSiri, siriWords, turnReplies, type Siri } from '../siri.ts'
 
 const TOKEN = 'siri-test-1234567890'
 const open: { close: () => Promise<void> }[] = []
@@ -127,5 +127,17 @@ describe('the words Kage runs', () => {
     assert.match(w, /check the deploy/)
     assert.match(w, /heard, not typed/)
     assert.match(w, /yes/)
+  })
+})
+
+describe('the answer read from the transcript', () => {
+  test('it keeps every reply tool call with its waiting question, skips other lines, and a missing file reads as none', async () => {
+    const { mkdtempSync, writeFileSync } = await import('node:fs')
+    const { tmpdir } = await import('node:os')
+    const file = `${mkdtempSync(`${tmpdir()}/kage-siri-`)}/t.jsonl`
+    const reply = (input: object) => JSON.stringify({ type: 'assistant', message: { content: [{ type: 'tool_use', name: 'mcp__kage__reply', input }] } })
+    writeFileSync(file, [JSON.stringify({ type: 'user', message: { content: 'hi' } }), reply({ text: 'Looking.' }), 'not json', reply({ text: 'Which region?', waiting: 'Which region?', waiting_on: 'owner' })].join('\n'))
+    assert.deepEqual(turnReplies(file), [{ text: 'Looking.' }, { text: 'Which region?', asksOwner: 'Which region?' }])
+    assert.deepEqual(turnReplies(`${file}.gone`), [])
   })
 })

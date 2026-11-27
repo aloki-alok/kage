@@ -9,8 +9,8 @@ describe('one table says whether each connector is on', () => {
   test('a connector with every setting it needs is on, and GitHub counts a token or a webhook secret', () => {
     const s = connectorStates(settings(
       { connectors: { github: { login: 'me', userId: 1, app: { id: 1, slug: 'kage-me' } }, email: { address: 'k@x.io', queue: 'q', ownerEmail: 'o@x.io' }, sms: { from: '+14155550100', publicUrl: 'https://kage.example.test/sms', telnyxPublicKey: 'p' } } },
-      { githubSecret: 's', githubAppKey: 'k', browserToken: 'b', voiceToken: 'v', waha: { WAHA_API_KEY: 'w', WHATSAPP_HOOK_HMAC_KEY: 'h' }, meetingToken: 'm', telnyxApiKey: 'k' }))
-    assert.deepEqual(Object.values(s).map(c => c.state), ['on', 'on', 'on', 'on', 'on', 'on', 'on'])
+      { githubSecret: 's', githubAppKey: 'k', browserToken: 'b', voiceToken: 'v', siriToken: 's', waha: { WAHA_API_KEY: 'w', WHATSAPP_HOOK_HMAC_KEY: 'h' }, meetingToken: 'm', telnyxApiKey: 'k' }))
+    assert.deepEqual(Object.values(s).map(c => c.state), ['on', 'on', 'on', 'on', 'on', 'on', 'on', 'on'])
     assert.equal(connectorStates(settings({ connectors: { github: { login: 'me' } } }, { githubSecret: 's' })).github.state, 'unset')
   })
 
@@ -35,6 +35,7 @@ describe('kage connect lists every connector with the one step left', () => {
       'unset  browser   run kage connector on browser',
       'unset  email     needs connectors.email.queue and connectors.email.ownerEmail: run kage connector on email in a terminal to be asked (docs/settings.md, "Email")',
       'off    voice     run kage connector on voice to turn it back on',
+      'unset  siri      needs siriToken: run kage connector on siri in a terminal to be asked (docs/settings.md, "Ask Kage from Siri")',
       'unset  whatsapp  needs waha.WAHA_API_KEY and waha.WHATSAPP_HOOK_HMAC_KEY: run kage connector on whatsapp in a terminal to be asked (docs/settings.md, "WhatsApp")',
       'unset  meeting   needs meetingToken: run kage connector on meeting in a terminal to be asked (docs/settings.md, "Voice and calls")',
       'unset  sms       needs connectors.sms.from, connectors.sms.publicUrl, connectors.sms.telnyxPublicKey and telnyxApiKey: run kage connector on sms in a terminal to be asked (docs/settings.md, "SMS")',

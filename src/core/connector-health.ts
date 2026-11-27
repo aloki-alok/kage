@@ -1,8 +1,8 @@
 import { oneLine } from './text.ts'
 
-const NAMES = ['email', 'whatsapp', 'voice', 'meetings', 'github', 'sms', 'jev', 'slack'] as const
+const NAMES = ['email', 'whatsapp', 'voice', 'siri', 'meetings', 'github', 'sms', 'jev', 'slack'] as const
 type ConnectorName = (typeof NAMES)[number]
-const WHO: [RegExp, ConnectorName][] = [[/^slack\b/, 'slack'], [/^(mail|email)\b/, 'email'], [/^whatsapp\b/, 'whatsapp'], [/^voice\b/, 'voice'], [/^(meeting|meetings|meetbot exited)\b/, 'meetings'], [/^github\b/, 'github'], [/^sms\b/, 'sms'], [/^jev\b/, 'jev']]
+const WHO: [RegExp, ConnectorName][] = [[/^slack\b/, 'slack'], [/^(mail|email)\b/, 'email'], [/^whatsapp\b/, 'whatsapp'], [/^voice\b/, 'voice'], [/^siri\b/, 'siri'], [/^(meeting|meetings|meetbot exited)\b/, 'meetings'], [/^github\b/, 'github'], [/^sms\b/, 'sms'], [/^jev\b/, 'jev']]
 const FAILS = /\b(failed|could not|bridge down|bad event|exited)\b/
 const START = /^\w+ on:|^jev checks /
 const JEV_LINE = /^triage [^:]+(?::[^:]+)?: \w+: (.*)$|^(?:answering|dropped) \S+ from app \S+: (.*)$/, JEV_SKIP = /^(no jev call|conversation unavailable|jev does not check)/, JEV_FAIL = /^jev (failed|answered HTTP)|^jev: /

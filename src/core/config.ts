@@ -171,7 +171,8 @@ export const KEYS: Row[] = [
   R('KAGE_EMAIL', 'connectors.email.on', onoff), R('KAGE_MAIL_ADDRESS', 'connectors.email.address'), R('KAGE_MAIL_QUEUE', 'connectors.email.queue'),
   R('KAGE_OWNER_EMAIL', 'connectors.email.ownerEmail'), R('KAGE_AWS_REGION', 'connectors.email.region'),
   R('KAGE_VOICE', 'connectors.voice.on', onoff), R('KAGE_VOICE_PORT', 'connectors.voice.port', int), R('KAGE_VOICE_MAX', 'connectors.voice.max', int),
-  R('KAGE_VOICE_PER_HOUR', 'connectors.voice.perHour', int), R('KAGE_VOICE_MODEL', 'connectors.voice.model'), R('KAGE_CALL_COMMAND', 'connectors.call.command'),
+  R('KAGE_VOICE_PER_HOUR', 'connectors.voice.perHour', int), R('KAGE_VOICE_MODEL', 'connectors.voice.model'),
+  R('KAGE_SIRI', 'connectors.siri.on', onoff), R('KAGE_SIRI_PORT', 'connectors.siri.port', int), R('KAGE_SIRI_PER_HOUR', 'connectors.siri.perHour', int), R('KAGE_SIRI_WAIT_SECONDS', 'connectors.siri.waitSeconds', int), R('KAGE_CALL_COMMAND', 'connectors.call.command'),
   R('KAGE_GITHUB_LOGIN', 'connectors.github.login'), R('KAGE_GITHUB_PORT', 'connectors.github.port', int), R('KAGE_GITHUB_PER_HOUR', 'connectors.github.perHour', int),
   R('KAGE_GITHUB_APP_ID', 'connectors.github.app.id', int), R('KAGE_GITHUB_APP_SLUG', 'connectors.github.app.slug'), R('KAGE_GITHUB_ACCOUNTS', 'connectors.github.accounts', list), R('KAGE_GITHUB_USER_ID', 'connectors.github.userId', int),
   R('KAGE_MEETING_PORT', 'connectors.meeting.port', int), R('KAGE_MEETING_PER_HOUR', 'connectors.meeting.perHour', int), R('KAGE_MEETING_AGENT_API', 'connectors.meeting.agentApi'), R('KAGE_MEETING_AGENT_ID', 'connectors.meeting.agentId', int),
@@ -184,7 +185,7 @@ export const KEYS: Row[] = [
   R('KAGE_COMMANDS', 'connectors.commands', commands),
   R('SLACK_APP_TOKEN', 'slack.app', str, true), R('SLACK_USER_TOKEN', 'slack.user', str, true), R('SLACK_BOT_TOKEN', 'slack.bot', str, true), R('SLACK_SIGNING_SECRET', 'slack.signing', str, true),
   R('KAGE_AWS_ACCESS_KEY_ID', 'aws.accessKeyId', str, true), R('KAGE_AWS_SECRET_ACCESS_KEY', 'aws.secretAccessKey', str, true),
-  R('KAGE_VOICE_TOKEN', 'voiceToken', str, true), R('KAGE_GITHUB_SECRET', 'githubSecret', str, true), R('KAGE_GITHUB_APP_KEY', 'githubAppKey', lines, true), R('KAGE_MEETING_TOKEN', 'meetingToken', str, true),
+  R('KAGE_VOICE_TOKEN', 'voiceToken', str, true), R('KAGE_SIRI_TOKEN', 'siriToken', str, true), R('KAGE_GITHUB_SECRET', 'githubSecret', str, true), R('KAGE_GITHUB_APP_KEY', 'githubAppKey', lines, true), R('KAGE_MEETING_TOKEN', 'meetingToken', str, true),
   R('KAGE_BROWSER_TOKEN', 'browserToken', str, true), R('JEV_API_KEY', 'jevKey', str, true), R('KAGE_VOICE_AGENT_KEY', 'voiceAgentKey', str, true), R('KAGE_CLAUDE_TOKEN', 'claudeToken', str, true),
   R('KAGE_TWILIO_AUTH_TOKEN', 'twilioAuthToken', str, true), R('KAGE_TELNYX_API_KEY', 'telnyxApiKey', str, true),
 ]

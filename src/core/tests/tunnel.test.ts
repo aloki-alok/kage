@@ -179,3 +179,17 @@ describe('kage connect fills a public URL from the tunnel (#570)', () => {
     assert.equal(publicUrl('', '/sms'), undefined)
   })
 })
+
+describe('the Siri route stays on the tailnet', () => {
+  const siri = { config: { connectors: { siri: {} } } as Config, secrets: { siriToken: 't' } as Secrets }
+  test('siri on gets a tailnet route on its port, served by a TCP forward, and nothing public', () => {
+    assert.deepEqual(tunnelRoutes(siri), [{ name: 'siri', port: 8794, paths: [], reach: 'tailnet' }])
+    assert.deepEqual(plan(siri, {}).run, [['serve', '--bg', '--yes', '--tcp=8794', 'tcp://127.0.0.1:8794']])
+    assert.deepEqual(plan(siri, serving({ tcp: { 8794: { TCPForward: '127.0.0.1:8794' } } })).run, [])
+  })
+  test('siri turned off closes its forward, and a forward of its port to somewhere else is never touched', () => {
+    const off = { config: { connectors: { siri: { on: false } } } as Config, secrets: { siriToken: 't' } as Secrets }
+    assert.deepEqual(plan(off, serving({ tcp: { 8794: { TCPForward: '127.0.0.1:8794' } } })).run, [['serve', '--tcp=8794', 'off']])
+    assert.deepEqual(plan(off, serving({ tcp: { 8794: { TCPForward: '127.0.0.1:9999' } } })).run, [])
+  })
+})
