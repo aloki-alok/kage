@@ -243,6 +243,7 @@ One tunnel serves every Kage port another machine needs (#492). Public routes us
 | voice | the voice agent, when `voiceToken` is set | public at `/mcp` and `/voice` |
 | hooks | job webhooks, when `tripwires.hookPort` is set | public at `/hook/<job>` |
 | meeting | the meeting bot, when `meetingToken` is set | your tailnet only, at `<machine>.<tailnet>.ts.net:<port>` |
+| siri | your Siri Shortcut, when `siriToken` is set | your tailnet only, at `http://<machine>.<tailnet>.ts.net:8794/ask` |
 | slack | Slack, when `slack.signing` is set and `slack.transport` is not `socket` | public at `/slack` |
 
 Each public route still checks its own secret or token, so the URL alone lets nobody in.
@@ -318,6 +319,32 @@ Email is on when `connectors.email.address`, `connectors.email.queue` and `conne
 | `connectors.voice.model` | none | The model a call's session uses, such as `sonnet` or `haiku` for faster spoken answers. With none, calls use the same model as your threads. |
 | `connectors.voice.on` | on | `false` turns voice off. |
 | `connectors.call.command` | none | The command `kage call` and an AFK P0 run to phone you. It gets a one-time code in `$KAGE_CALL_CODE`, and for a P0 the reason in `$KAGE_CALL_REASON`. |
+
+## Ask Kage from Siri
+
+A Siri Shortcut on your phone sends your words to Kage, and Siri reads back what Kage says. Each ask starts its own thread in your DM with Kage, and the work and its result stay there. Set up the Shortcut with [docs/siri.md](siri.md).
+
+| Setting | Default | Effect |
+|---|---|---|
+| `siriToken` | none | secrets.json. Turns Siri on: `POST /ask` with JSON `{"text": "<your words>"}` behind `Authorization: Bearer <token>`. The token runs tasks as you, so keep it only in your own Shortcut. `kage connector on siri` makes it and prints it once. |
+| `connectors.siri.port` | `8794` | It listens on `127.0.0.1:<port>/ask`. `kage tunnel on` serves this port on your tailnet only, never on the internet. |
+| `connectors.siri.waitSeconds` | `20` | How long an ask waits for Kage's turn to end before Siri says the work is saved. |
+| `connectors.siri.perHour` | `30` | Asks per hour. Past it, the answer is `busy`. |
+| `connectors.siri.on` | on | `false` turns Siri off. |
+
+The answer is JSON: `{"state", "say"}`. Siri speaks `say`. `state` is one of these:
+
+| state | When | say |
+|---|---|---|
+| answered | Kage's turn ended within the wait | Kage's reply, as plain speech, cut at 450 characters with "The rest is in Slack." |
+| asks | The turn ended on a question for you | The question, then "Reply in Slack." |
+| approval | An approval card for this thread waits on you, whether the turn ended on it or still waits | "That needs your approval. The card is in Slack." |
+| working | The turn still runs | "I saved "<first words>". I'll reply in Slack." |
+| busy | Over `perHour` (HTTP 429) | Try later. |
+| failed | Kage could not post the words to Slack (HTTP 502) | Try again. |
+| bad | No words, or more than 2000 characters (HTTP 400) | Try again. |
+
+A wrong token gets a bare 401. The hub logs one `siri ask: <state> in <ms> ms` line per ask, never the words, and `kage status` shows when Siri last asked. On tmux panes the hub sees no turn end, so every ask answers `working`.
 
 ## Approve pull requests as the GitHub App
 

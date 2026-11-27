@@ -60,6 +60,7 @@ import { hubLock } from '../runtime/hub-lock.ts'
 import { noteExit, rotate } from '../runtime/hub-log.ts'
 import { hubKagelets } from './kagelets.ts'
 import { ownerCommands } from './owner-commands.ts'
+import { turnReplies } from '../connectors/siri.ts'
 import { startConnectors } from './connectors.ts'
 import { hubUpdates } from './updates.ts'
 import { ownerDigests } from './owner-digests.ts'
@@ -166,7 +167,6 @@ function dropped(key: string, turn: Task[], reason: string, kind: string) {
   if (p.dm && !dropToldOwner.has(key)) { dropToldOwner.add(key); void owner.say(p.dm) }
 }
 const noteTrust = (key: string, t: Task) => (trust.heard(key, t), t.need || store.noteTask(key, senderOf(t) === 'owner', key in d.saved()))
-const phoneOwner = (reason: string) => callOwner(conn.call?.command, voice, reason)
 const jev = jevConfig(config.jev, secrets.jevKey)
 if (jev && 'error' in jev) log(`jev is off: ${jev.error}`)
 else if (jev) log(`jev checks ${jev.agents === 'all' ? 'every listed agent' : jev.agents.join(', ')} at threshold ${jev.threshold}`)
@@ -180,7 +180,7 @@ const slack = await connectSlack({
     posted: () => ledgers.text('posted'), sessionOf: (c, lane) => rotator.sessionOf(sessionKey(c, { lane })), kageletsIn: (chat, thread) => kag.peopleIn(chat, thread), kageletAsk: (chat, thread, name, from, text) => kag.ask(chat, thread, name, from, text), ownerWrote: (chat, thread, text) => { for (const k of kag.notes.wrote(kag.lanes(), chat, thread, text)) runs.emit(k, 'owner-note', `${text.length} characters`) }, ...inbox },
   jev: jev && !('error' in jev) ? jevCheck(jev) : undefined, ackWords: config.jev?.ackWords !== false,
   triage: jev && !('error' in jev) ? jevTriage(jev, (who, detail) => runs.emit(who, 'triage', detail)) : undefined,
-  afk: afk.on === false ? undefined : { memory: memoryDirs(process.env.HOME!, ENV_FILE, harness).owner, model: afk.model || DEFAULT_MODEL, saved: store, call: phoneOwner, jev: jev && !('error' in jev) ? jevAfk(jev) : undefined },
+  afk: afk.on === false ? undefined : { memory: memoryDirs(process.env.HOME!, ENV_FILE, harness).owner, model: afk.model || DEFAULT_MODEL, saved: store, call: (reason: string) => callOwner(conn.call?.command, voice, reason), jev: jev && !('error' in jev) ? jevAfk(jev) : undefined },
 })
 const waOn = config.connectors?.whatsapp?.on !== false && !!secrets.waha?.WAHA_API_KEY
 const waSay = waOn ? wahaToOwner(wahaUrl(config.connectors?.whatsapp?.wahaUrl), secrets.waha!.WAHA_API_KEY!, Title, NAME) : undefined
@@ -270,8 +270,9 @@ const sdk = sdkLib ? sdkSessions({
   keys: { sock: KEYS_SOCK, issue: (key, owner) => keys.issue(key, owner), drop: key => keys.drop(key) },
   onStart: () => store.saveSessions(d.saved()), lean: () => harness.leanSessions === false ? undefined : ownerClaude(),
   onResult: (key, total, resumed, limited, error, tokens) => {
-    const usd = recordCost(key, total, resumed, tokens)
-    kag.routes.ended(key, usd ?? 0, d.saved()[key] ? `${PROJECT}/${d.saved()[key]}.jsonl` : '', Date.now(), limited, error)
+    const usd = recordCost(key, total, resumed, tokens), transcript = d.saved()[key] ? `${PROJECT}/${d.saved()[key]}.jsonl` : ''
+    kag.routes.ended(key, usd ?? 0, transcript, Date.now(), limited, error)
+    siri?.ended(key, () => turnReplies(transcript))
   },
   budgetOf: kag.budgetOf,
   modelOf: key => modelFor(key, config.harness?.jobModel, k => k.includes('#side-kdream-') ? DEFAULT_MODEL : k.startsWith('voice:') && config.connectors?.voice?.model ? config.connectors.voice.model : kag.modelOf(k), id => store.schedules().find(s => s.id === id)?.model),
@@ -318,7 +319,7 @@ const schedules = scheduler({ store, failed, jobStateDir: `${DIR}/job-state`,
 })
 importCrons(DIR, runningAtStart.size, schedules, t => void owner.say(t))
 
-const { meeting, email, voice, sms, replies, replayOf, jobs, clock } = startConnectors({ secrets, conn, store, slack, bot, ping: pingThread, say: owner.say, ownerAnswer: waCardsOut.answer, NAME, CODE, DIR, d, inbox, deliver, placeOf, failed, emails: TEAMMATE_EMAILS, schedules, event: ledgers.event, ledgers, tripwires: config.tripwires })
+const { meeting, email, voice, siri, sms, replies, replayOf, jobs, clock } = startConnectors({ posted: (cells, kind) => ledgers.add('posted', cells, kind), cardOpen: key => deferred.pending(key, Date.now()), secrets, conn, store, slack, bot, ping: pingThread, say: owner.say, ownerAnswer: waCardsOut.answer, NAME, CODE, DIR, d, inbox, deliver, placeOf, failed, emails: TEAMMATE_EMAILS, schedules, event: ledgers.event, ledgers, tripwires: config.tripwires })
 listenForCommands(slack.transport, { user, team: slack.ids.team!, commands: COMMANDS, ledgers })
 
 function failed(m: ToSession) {

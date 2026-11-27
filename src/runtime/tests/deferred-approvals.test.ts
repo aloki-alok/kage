@@ -18,6 +18,14 @@ describe('approvals that wait outside a session', () => {
     assert.equal(a.take('CTEST1:5.5', 'Bash', { command: 'ls' }, 4), false)
   })
 
+  test('a thread has a card pending until it is answered or goes stale, and only that thread', () => {
+    const a = deferredApprovals(openStore(':memory:'))
+    a.add(call, 0)
+    assert.deepEqual([a.pending('CTEST1:5.5', 1), a.pending('CTEST1:9.9', 1), a.pending('CTEST1:5.5', HOUR * 48)], [true, false, false])
+    a.answer('abcde', 'allow', 2)
+    assert.equal(a.pending('CTEST1:5.5', 3), false)
+  })
+
   test('a yes covers only the same call, and only before it goes stale', () => {
     const a = deferredApprovals(openStore(':memory:'))
     a.add(call, 0)

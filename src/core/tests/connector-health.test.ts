@@ -14,6 +14,7 @@ test('each connector gets one line: on or off, when it last heard something, and
     'email     on · last heard 32m ago · failed 3x in 1h: mail poll failed: ExpiredToken: the token expired',
     'whatsapp  on · last heard 34m ago',
     'voice     on · nothing heard since the hub started 35m ago',
+    'siri      off',
     'meetings  off',
     'github    off',
     'sms       off',
@@ -60,7 +61,7 @@ test('what Kage sent is not something heard, and a Slack post failure is not the
   h.see(['mail sent for', 'ab12', 'to', 2, 'people'], start + MIN)
   h.see(['meeting post failed', new Error('not_in_channel')], start + MIN)
   assert.equal(h.lines(start + 2 * MIN)[0], 'email     on · nothing heard since the hub started 2m ago')
-  assert.equal(h.lines(start + 2 * MIN)[3], 'meetings  on · nothing heard since the hub started 2m ago')
+  assert.equal(h.lines(start + 2 * MIN)[4], 'meetings  on · nothing heard since the hub started 2m ago')
 })
 
 test('lines that name no connector, or name one in passing, change nothing', () => {
@@ -109,4 +110,11 @@ test('a dropped Slack socket shows as disconnected until it connects again, and 
   assert.deepEqual(h.rows(start + 5 * MIN).at(-1), { name: 'slack', on: true, transport: 'socket', bridgeDown: true, lastHeardAt: null, failedLastHour: 0, lastFailure: null })
   h.see(['slack socket connected'], start + 6 * MIN)
   assert.equal(h.lines(start + 7 * MIN).at(-1), 'slack     on · over Socket Mode · nothing heard since the hub started 7m ago')
+})
+
+test('a Siri ask counts as heard, and a failed start counts as a failure', () => {
+  const h = started('siri')
+  h.see(['siri ask: working in 20012 ms'], start + MIN)
+  h.see(['siri could not start', new Error('not_in_channel')], start + 2 * MIN)
+  assert.equal(h.lines(start + 3 * MIN)[3], 'siri      on · last heard 2m ago · failed 1x in 1h: siri could not start: not_in_channel')
 })
